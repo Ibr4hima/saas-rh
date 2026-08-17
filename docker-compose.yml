@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: teranga
     ports:
-      - '5432:5432'
+      # Port hôte configurable : DB_PORT=5433 dans .env si 5432 est déjà pris
+      - '${DB_PORT:-5432}:5432'
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
