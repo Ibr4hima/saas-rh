@@ -12,7 +12,10 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix('v1');
   app.use(cookieParser());
   app.useGlobalFilters(new ProblemFilter());
-  app.enableCors({ origin: ['http://localhost:3000'], credentials: true });
+  app.enableCors({
+    origin: ['http://localhost:3000', 'http://localhost:3002'],
+    credentials: true,
+  });
   app.enableShutdownHooks();
 
   await app.listen(env.PORT);

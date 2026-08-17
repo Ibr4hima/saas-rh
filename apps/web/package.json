@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev --port 3000",
+    "dev": "next dev --port ${WEB_PORT:-3000}",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
     "lint": "prettier --check app"
