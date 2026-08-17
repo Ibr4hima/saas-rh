@@ -10,7 +10,7 @@ export default function HomePage() {
   const me = useMe();
 
   useEffect(() => {
-    if (me.data) router.replace('/employees');
+    if (me.data) router.replace('/dashboard');
     else if (me.isError) router.replace('/login');
   }, [me.data, me.isError, router]);
 

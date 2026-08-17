@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { EncryptionService } from './common/encryption.service';
+import { DashboardController } from './modules/analytics/dashboard.controller';
 import { TenantDb } from './db/tenant-db';
 import { AuthController } from './modules/auth/auth.controller';
 import { AuthService } from './modules/auth/auth.service';
@@ -18,7 +19,13 @@ import { AbsencesService } from './modules/time/absences.service';
  * qu'ils naissent (people, time, payroll…). Phase 0 : socle auth + santé.
  */
 @Module({
-  controllers: [HealthController, AuthController, PeopleController, AbsencesController],
+  controllers: [
+    HealthController,
+    AuthController,
+    PeopleController,
+    AbsencesController,
+    DashboardController,
+  ],
   providers: [
     TenantDb,
     EncryptionService,

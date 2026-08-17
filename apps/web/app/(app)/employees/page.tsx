@@ -70,9 +70,14 @@ export default function EmployeesPage() {
             {items.length} affiché{items.length > 1 ? 's' : ''}
           </p>
         </div>
-        <Link href="/employees/new">
-          <Button>Nouvel employé</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/import">
+            <Button variant="secondary">Importer</Button>
+          </Link>
+          <Link href="/employees/new">
+            <Button>Nouvel employé</Button>
+          </Link>
+        </div>
       </div>
 
       <div className="mb-4 flex gap-3">
