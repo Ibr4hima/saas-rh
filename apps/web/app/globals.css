@@ -1,0 +1,8 @@
+@import 'tailwindcss';
+@import '@teranga/ui/tokens.css';
+
+body {
+  background: var(--tg-bg);
+  color: var(--tg-ink);
+  font-family: var(--tg-font-sans);
+}

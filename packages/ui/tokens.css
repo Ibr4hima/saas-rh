@@ -1,0 +1,127 @@
+/*
+ * Teranga RH — design tokens (source de vérité visuelle, cf. ch. 05).
+ * Grille 4px stricte. Aucune valeur brute dans les composants : tout passe par ces tokens.
+ * Light par défaut ; dark via [data-theme="dark"] ou préférence système.
+ */
+
+:root {
+  /* --- Couleurs sémantiques (light) --- */
+  --tg-bg: #f7f7fa;
+  --tg-surface: #ffffff;
+  --tg-surface-raised: #ffffff;
+  --tg-ink: #1c2033;
+  --tg-ink-strong: #14172a;
+  --tg-ink-muted: #5a5f75;
+  --tg-line: #e3e4ec;
+  --tg-line-soft: #ecedf3;
+
+  --tg-primary: #3f4bb8;
+  --tg-primary-ink: #ffffff;
+  --tg-primary-hover: #35409f;
+  --tg-primary-soft: #eeeffa;
+
+  --tg-success: #177245;
+  --tg-success-soft: #e7f3ec;
+  --tg-warning: #9a6a00;
+  --tg-warning-soft: #faf1dc;
+  --tg-danger: #b3382e;
+  --tg-danger-soft: #fae9e7;
+
+  --tg-focus-ring: #3f4bb8;
+
+  /* --- Espacement (grille 4px) --- */
+  --tg-space-1: 4px;
+  --tg-space-2: 8px;
+  --tg-space-3: 12px;
+  --tg-space-4: 16px;
+  --tg-space-5: 20px;
+  --tg-space-6: 24px;
+  --tg-space-8: 32px;
+  --tg-space-10: 40px;
+  --tg-space-12: 48px;
+  --tg-space-16: 64px;
+
+  /* --- Typographie --- */
+  --tg-font-sans: -apple-system, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --tg-font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --tg-text-xs: 0.75rem;
+  --tg-text-sm: 0.875rem;
+  --tg-text-base: 1rem;
+  --tg-text-lg: 1.125rem;
+  --tg-text-xl: 1.375rem;
+  --tg-text-2xl: 1.75rem;
+  --tg-text-3xl: 2.25rem;
+  --tg-leading-tight: 1.25;
+  --tg-leading-normal: 1.6;
+
+  /* --- Formes --- */
+  --tg-radius-sm: 4px;
+  --tg-radius-md: 8px;
+  --tg-radius-lg: 12px;
+  --tg-radius-full: 999px;
+  --tg-shadow-sm: 0 1px 2px rgb(20 23 42 / 0.06);
+  --tg-shadow-md: 0 2px 8px rgb(20 23 42 / 0.08);
+
+  /* --- Mouvement (120–200 ms ease-out, cf. ch. 05) --- */
+  --tg-motion-fast: 120ms ease-out;
+  --tg-motion-base: 160ms ease-out;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --tg-bg: #14161f;
+    --tg-surface: #1c1f2c;
+    --tg-surface-raised: #232739;
+    --tg-ink: #e4e6f0;
+    --tg-ink-strong: #f4f5fa;
+    --tg-ink-muted: #9ba0b4;
+    --tg-line: #2c3042;
+    --tg-line-soft: #262a3a;
+
+    --tg-primary: #97a0ec;
+    --tg-primary-ink: #14172a;
+    --tg-primary-hover: #aab2f1;
+    --tg-primary-soft: #252a48;
+
+    --tg-success: #5fbf8f;
+    --tg-success-soft: #1d3229;
+    --tg-warning: #d9a94e;
+    --tg-warning-soft: #362c17;
+    --tg-danger: #e08078;
+    --tg-danger-soft: #3a2321;
+
+    --tg-focus-ring: #97a0ec;
+  }
+}
+
+:root[data-theme='dark'] {
+  --tg-bg: #14161f;
+  --tg-surface: #1c1f2c;
+  --tg-surface-raised: #232739;
+  --tg-ink: #e4e6f0;
+  --tg-ink-strong: #f4f5fa;
+  --tg-ink-muted: #9ba0b4;
+  --tg-line: #2c3042;
+  --tg-line-soft: #262a3a;
+
+  --tg-primary: #97a0ec;
+  --tg-primary-ink: #14172a;
+  --tg-primary-hover: #aab2f1;
+  --tg-primary-soft: #252a48;
+
+  --tg-success: #5fbf8f;
+  --tg-success-soft: #1d3229;
+  --tg-warning: #d9a94e;
+  --tg-warning-soft: #362c17;
+  --tg-danger: #e08078;
+  --tg-danger-soft: #3a2321;
+
+  --tg-focus-ring: #97a0ec;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --tg-motion-fast: 0ms;
+    --tg-motion-base: 0ms;
+  }
+}

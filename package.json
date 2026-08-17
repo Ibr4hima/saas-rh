@@ -1,0 +1,29 @@
+{
+  "name": "teranga-rh",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "dev": "turbo run dev",
+    "db:up": "docker compose up -d db",
+    "db:migrate": "pnpm --filter @teranga/api db:migrate",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.6.0",
+    "turbo": "^2.5.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "@node-rs/argon2"
+    ]
+  }
+}
