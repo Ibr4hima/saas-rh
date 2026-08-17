@@ -81,3 +81,5 @@ export const healthSchema = z.object({
   version: z.string(),
 });
 export type Health = z.infer<typeof healthSchema>;
+
+export * from './employees';

@@ -87,6 +87,12 @@ export const persons = pgTable('persons', {
   addressLine: text('address_line'),
   city: text('city'),
   countryCode: char('country_code', { length: 2 }).notNull().default('SN'),
+  maritalStatus: text('marital_status'),
+  birthPlace: text('birth_place'),
+  nationality: char('nationality', { length: 2 }).notNull().default('SN'),
+  nationalIdEncrypted: text('national_id_encrypted'),
+  emergencyContactName: text('emergency_contact_name'),
+  emergencyContactPhone: text('emergency_contact_phone'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -99,6 +105,9 @@ export const employees = pgTable('employees', {
   employeeNumber: text('employee_number').notNull(),
   hiredOn: date('hired_on').notNull(),
   status: text('status').notNull().default('active'),
+  workEmail: text('work_email'),
+  workPhone: text('work_phone'),
+  customFields: jsonb('custom_fields').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -111,6 +120,19 @@ export const assignments = pgTable('assignments', {
   positionTitle: text('position_title').notNull(),
   validity: daterange('validity').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const contracts = pgTable('contracts', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  contractType: text('contract_type').notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date'),
+  trialPeriodEnd: date('trial_period_end'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const auditLog = pgTable('audit_log', {

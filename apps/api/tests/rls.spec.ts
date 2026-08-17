@@ -88,7 +88,7 @@ beforeAll(async () => {
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 2 });
   // Base propre : le test est le seul écrivain de cette base de test/CI.
   await ownerPool.query(
-    `TRUNCATE audit_log, assignments, employees, persons, org_units,
+    `TRUNCATE audit_log, contracts, assignments, employees, persons, org_units,
               user_tenant_memberships, sessions, tenants, users CASCADE`,
   );
   appPool = new Pool({ connectionString: env.APP_DATABASE_URL, max: 5 });
@@ -117,7 +117,7 @@ describe('préconditions', () => {
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public'
-        AND c.relname IN ('tenants', 'user_tenant_memberships', 'org_units',
+        AND c.relname IN ('tenants', 'user_tenant_memberships', 'org_units', 'contracts',
                           'persons', 'employees', 'assignments', 'audit_log')
         AND NOT (c.relrowsecurity AND c.relforcerowsecurity)
     `);

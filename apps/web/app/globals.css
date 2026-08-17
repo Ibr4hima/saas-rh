@@ -1,6 +1,33 @@
 @import 'tailwindcss';
 @import '@teranga/ui/tokens.css';
 
+/* Les composants du design system vivent dans packages/ui : Tailwind doit les scanner. */
+@source '../../../packages/ui/src';
+
+/* Pont tokens → utilitaires Tailwind : bg-surface, text-ink, border-line, etc. */
+@theme inline {
+  --color-bg: var(--tg-bg);
+  --color-surface: var(--tg-surface);
+  --color-surface-raised: var(--tg-surface-raised);
+  --color-ink: var(--tg-ink);
+  --color-ink-strong: var(--tg-ink-strong);
+  --color-ink-muted: var(--tg-ink-muted);
+  --color-line: var(--tg-line);
+  --color-line-soft: var(--tg-line-soft);
+  --color-primary: var(--tg-primary);
+  --color-primary-ink: var(--tg-primary-ink);
+  --color-primary-hover: var(--tg-primary-hover);
+  --color-primary-soft: var(--tg-primary-soft);
+  --color-success: var(--tg-success);
+  --color-success-soft: var(--tg-success-soft);
+  --color-warning: var(--tg-warning);
+  --color-warning-soft: var(--tg-warning-soft);
+  --color-danger: var(--tg-danger);
+  --color-danger-soft: var(--tg-danger-soft);
+  --font-sans: var(--tg-font-sans);
+  --font-mono: var(--tg-font-mono);
+}
+
 body {
   background: var(--tg-bg);
   color: var(--tg-ink);

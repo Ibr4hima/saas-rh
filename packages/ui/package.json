@@ -3,9 +3,21 @@
   "version": "0.0.1",
   "private": true,
   "exports": {
+    ".": "./src/index.ts",
     "./tokens.css": "./tokens.css"
   },
   "scripts": {
-    "lint": "prettier --check tokens.css"
+    "lint": "prettier --check src tokens.css"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.3.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "typescript": "^5.9.0"
   }
 }

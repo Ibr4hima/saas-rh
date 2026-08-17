@@ -11,6 +11,8 @@ const envSchema = z.object({
   /** Rôle applicatif non-owner — tout le runtime (soumis à la RLS, ADR-0002). */
   APP_DATABASE_URL: z.string().min(1),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).default(12),
+  /** Clé AES-256 (32 octets base64) pour le chiffrement applicatif des champs sensibles. */
+  DATA_ENCRYPTION_KEY: z.string().min(40),
   COOKIE_SECURE: z
     .string()
     .default('false')
