@@ -10,13 +10,15 @@ import { ImportService } from './modules/people/import.service';
 import { OrgUnitsService } from './modules/people/org-units.service';
 import { PeopleController } from './modules/people/people.controller';
 import { PeopleService } from './modules/people/people.service';
+import { AbsencesController } from './modules/time/absences.controller';
+import { AbsencesService } from './modules/time/absences.service';
 
 /**
  * Monolithe modulaire (ADR-0001) : un module Nest par bounded context à mesure
  * qu'ils naissent (people, time, payroll…). Phase 0 : socle auth + santé.
  */
 @Module({
-  controllers: [HealthController, AuthController, PeopleController],
+  controllers: [HealthController, AuthController, PeopleController, AbsencesController],
   providers: [
     TenantDb,
     EncryptionService,
@@ -26,6 +28,7 @@ import { PeopleService } from './modules/people/people.service';
     PeopleService,
     OrgUnitsService,
     ImportService,
+    AbsencesService,
   ],
 })
 export class AppModule {}

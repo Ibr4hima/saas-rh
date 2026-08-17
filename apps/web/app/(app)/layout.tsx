@@ -9,6 +9,7 @@ import { useMe } from '../../lib/hooks';
 
 const NAV = [
   { href: '/employees', label: 'Employés' },
+  { href: '/absences', label: 'Congés' },
   { href: '/organisation', label: 'Organisation' },
   { href: '/import', label: 'Import' },
 ];

@@ -4,11 +4,14 @@
  * qu'au typage des requêtes. Toute divergence est un bug.
  */
 import {
+  boolean,
   char,
   customType,
   date,
   inet,
+  integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -133,6 +136,73 @@ export const contracts = pgTable('contracts', {
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const absenceTypes = pgTable('absence_types', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  name: text('name').notNull(),
+  deductsBalance: boolean('deducts_balance').notNull().default(true),
+  defaultAnnualDays: numeric('default_annual_days', { precision: 5, scale: 2 }),
+  requiresDocument: boolean('requires_document').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
+export const holidays = pgTable('holidays', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  day: date('day').notNull(),
+  label: text('label').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const absenceBalances = pgTable('absence_balances', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  absenceTypeId: uuid('absence_type_id').notNull(),
+  year: integer('year').notNull(),
+  entitledDays: numeric('entitled_days', { precision: 5, scale: 2 }).notNull().default('0'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const approvalChains = pgTable('approval_chains', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  requestType: text('request_type').notNull().default('absence'),
+  levels: text('levels').array().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const absenceRequests = pgTable('absence_requests', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  absenceTypeId: uuid('absence_type_id').notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  daysCount: numeric('days_count', { precision: 5, scale: 2 }).notNull(),
+  reason: text('reason'),
+  status: text('status').notNull().default('pending'),
+  currentLevel: integer('current_level').notNull().default(0),
+  requestedByUserId: uuid('requested_by_user_id'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const absenceApprovals = pgTable('absence_approvals', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  requestId: uuid('request_id').notNull(),
+  level: integer('level').notNull(),
+  decision: text('decision').notNull(),
+  decidedByUserId: uuid('decided_by_user_id').notNull(),
+  comment: text('comment'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const auditLog = pgTable('audit_log', {

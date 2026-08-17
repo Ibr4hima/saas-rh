@@ -1,15 +1,18 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import type { EmployeeDetail, EmployeeHistoryEntry } from '@teranga/contracts';
+import { useState } from 'react';
+import type { BalanceView, EmployeeDetail, EmployeeHistoryEntry } from '@teranga/contracts';
 import {
   Badge,
+  Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  Input,
   Skeleton,
   Table,
   TBody,
@@ -245,6 +248,8 @@ export default function EmployeePage() {
           )}
         </Card>
 
+        <BalancesCard employeeId={e.id} canEdit={Boolean(canSeeHistory)} />
+
         {canSeeHistory ? (
           <Card>
             <CardHeader>
@@ -287,5 +292,106 @@ export default function EmployeePage() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+function BalancesCard({ employeeId, canEdit }: { employeeId: string; canEdit: boolean }) {
+  const queryClient = useQueryClient();
+  const year = new Date().getFullYear();
+  const [edits, setEdits] = useState<Record<string, string>>({});
+
+  const balances = useQuery({
+    queryKey: ['balances', employeeId, String(year)],
+    queryFn: () => api<BalanceView[]>(`/employees/${employeeId}/balances?year=${year}`),
+  });
+  const save = useMutation({
+    mutationFn: (b: { absenceTypeId: string; entitledDays: number }) =>
+      api('/balances', {
+        method: 'PUT',
+        body: { employeeId, absenceTypeId: b.absenceTypeId, year, entitledDays: b.entitledDays },
+      }),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: ['balances', employeeId, String(year)] }),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Congés {year}</CardTitle>
+      </CardHeader>
+      {balances.isLoading ? (
+        <CardContent>
+          <Skeleton className="h-16 w-full" />
+        </CardContent>
+      ) : (
+        <Table>
+          <THead>
+            <tr>
+              <Th>Type</Th>
+              <Th>Droit (jours)</Th>
+              <Th>Pris</Th>
+              <Th>En attente</Th>
+              <Th>Restant</Th>
+              {canEdit ? <Th /> : null}
+            </tr>
+          </THead>
+          <TBody>
+            {balances.data?.map((b) => {
+              const edited = edits[b.absenceTypeId];
+              return (
+                <Tr key={b.absenceTypeId}>
+                  <Td className="font-medium text-ink-strong">{b.absenceTypeName}</Td>
+                  <Td>
+                    {b.deductsBalance ? (
+                      canEdit ? (
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.5"
+                          value={edited ?? String(b.entitledDays)}
+                          onChange={(ev) =>
+                            setEdits({ ...edits, [b.absenceTypeId]: ev.target.value })
+                          }
+                          className="h-8 w-24"
+                        />
+                      ) : (
+                        b.entitledDays
+                      )
+                    ) : (
+                      '—'
+                    )}
+                  </Td>
+                  <Td className="font-mono">{b.takenDays}</Td>
+                  <Td className="font-mono">{b.pendingDays}</Td>
+                  <Td className="font-mono font-semibold">
+                    {b.deductsBalance ? b.remainingDays : '—'}
+                  </Td>
+                  {canEdit ? (
+                    <Td>
+                      {b.deductsBalance &&
+                      edited !== undefined &&
+                      Number(edited) !== b.entitledDays ? (
+                        <Button
+                          size="sm"
+                          loading={save.isPending}
+                          onClick={() =>
+                            save.mutate({
+                              absenceTypeId: b.absenceTypeId,
+                              entitledDays: Number(edited),
+                            })
+                          }
+                        >
+                          Enregistrer
+                        </Button>
+                      ) : null}
+                    </Td>
+                  ) : null}
+                </Tr>
+              );
+            })}
+          </TBody>
+        </Table>
+      )}
+    </Card>
   );
 }
