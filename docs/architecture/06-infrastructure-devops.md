@@ -1,6 +1,6 @@
 # Infrastructure, DevOps et exploitation
 
-> **Principe directeur** : chaque heure passée sur l'infrastructure est une heure non passée sur le moteur de paie. L'objectif est un socle exploitable par 1-2 développeurs à **moins de 10 % de leur temps**, sans jamais transiger sur la donnée de paie : *une boîte de paie qui perd des données est morte*.
+> **Principe directeur** : chaque heure passée sur l'infrastructure est une heure non passée sur le moteur de paie. L'objectif est un socle exploitable par 1-2 développeurs à **moins de 10 % de leur temps**, sans jamais transiger sur la donnée de paie : _une boîte de paie qui perd des données est morte_.
 
 ## 1. Hébergement : où faire tourner une paie depuis Dakar
 
@@ -8,26 +8,26 @@
 
 Intuition fausse à évacuer d'emblée : héberger « en Afrique » ne rapproche pas de Dakar. Le trafic Dakar→Afrique du Sud transite le plus souvent par l'Europe (topologie des câbles sous-marins ACE / SAT-3 / 2Africa). Ordres de grandeur de RTT depuis Dakar (connexions Sonatel/Free, **à vérifier par mesures `mtr` réelles avant décision finale**) :
 
-| Destination | RTT typique | Commentaire |
-|---|---|---|
-| **Paris / Frankfurt** | **60-110 ms** | Meilleure connectivité depuis Dakar (câbles vers l'Europe) |
-| Londres / Amsterdam | 70-120 ms | Équivalent |
-| US East (Virginie) | 120-180 ms | Pénalise chaque appel API |
-| **Le Cap / Johannesburg** (AWS af-south-1, Azure/GCP South Africa) | **150-250 ms** | Souvent routé via l'Europe : pire que Paris |
-| Edge Cloudflare Dakar | 5-20 ms | Cloudflare a un PoP à Dakar : assets statiques quasi locaux |
+| Destination                                                        | RTT typique    | Commentaire                                                 |
+| ------------------------------------------------------------------ | -------------- | ----------------------------------------------------------- |
+| **Paris / Frankfurt**                                              | **60-110 ms**  | Meilleure connectivité depuis Dakar (câbles vers l'Europe)  |
+| Londres / Amsterdam                                                | 70-120 ms      | Équivalent                                                  |
+| US East (Virginie)                                                 | 120-180 ms     | Pénalise chaque appel API                                   |
+| **Le Cap / Johannesburg** (AWS af-south-1, Azure/GCP South Africa) | **150-250 ms** | Souvent routé via l'Europe : pire que Paris                 |
+| Edge Cloudflare Dakar                                              | 5-20 ms        | Cloudflare a un PoP à Dakar : assets statiques quasi locaux |
 
 Conclusion réseau : **l'Europe de l'Ouest est la meilleure région pour servir Dakar**, et un CDN avec PoP à Dakar (Cloudflare) rend le front-end perçu comme local. Les régions sud-africaines n'apportent ni latence ni souveraineté (l'Afrique du Sud reste un pays tiers pour la loi sénégalaise).
 
 ### 1.2 Comparatif des quatre familles
 
-| Critère | (a) PaaS (Railway/Render/Fly.io) | (b) Hyperscaler managé (AWS ECS+RDS, Cloud Run+Cloud SQL) | (c) VPS Hetzner + Coolify | (d) **Cloud européen souverain (Scaleway/OVH) + Coolify** |
-|---|---|---|---|---|
-| Latence Dakar | Render/Railway : EU ok ; Fly : région CDG ok | Paris (eu-west-3) ok ; af-south-1 : pire | Falkenstein/Helsinki : ok (~90-120 ms) | Paris : **la meilleure** (~70-90 ms) |
-| Postgres managé + PITR | Partiel (Render : PITR payant ; Fly PG : non managé) | Excellent (RDS/Cloud SQL) | **Absent** (à auto-héberger : rédhibitoire) | Oui (Scaleway/OVH Managed PG, HA en option) |
-| Coût MVP / 100 clients | ~100 $ / dérive à 1 500-3 000 $ | ~350-500 $ / 3 000-6 000 $ + expertise | ~40 € / ~600 € | ~150 € / ~2 500 € |
-| Effort d'exploitation (1-2 devs) | Minimal | Élevé (VPC, IAM, NAT, ALB : un métier) | Moyen + **on porte la BDD soi-même** | Faible-moyen |
-| Souveraineté / argumentaire client public | Sociétés US, facturation USD | Cloud Act US ; af-south-1 ne résout rien | Allemagne, RGPD ok | **UE/France, RGPD, facturation EUR** (XOF arrimé à l'EUR : zéro risque de change) |
-| Réversibilité vers un déploiement au Sénégal | Faible (lock-in PaaS) | Moyenne | Totale | **Totale** (Docker + Postgres standard) |
+| Critère                                      | (a) PaaS (Railway/Render/Fly.io)                     | (b) Hyperscaler managé (AWS ECS+RDS, Cloud Run+Cloud SQL) | (c) VPS Hetzner + Coolify                   | (d) **Cloud européen souverain (Scaleway/OVH) + Coolify**                         |
+| -------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------- |
+| Latence Dakar                                | Render/Railway : EU ok ; Fly : région CDG ok         | Paris (eu-west-3) ok ; af-south-1 : pire                  | Falkenstein/Helsinki : ok (~90-120 ms)      | Paris : **la meilleure** (~70-90 ms)                                              |
+| Postgres managé + PITR                       | Partiel (Render : PITR payant ; Fly PG : non managé) | Excellent (RDS/Cloud SQL)                                 | **Absent** (à auto-héberger : rédhibitoire) | Oui (Scaleway/OVH Managed PG, HA en option)                                       |
+| Coût MVP / 100 clients                       | ~100 $ / dérive à 1 500-3 000 $                      | ~350-500 $ / 3 000-6 000 $ + expertise                    | ~40 € / ~600 €                              | ~150 € / ~2 500 €                                                                 |
+| Effort d'exploitation (1-2 devs)             | Minimal                                              | Élevé (VPC, IAM, NAT, ALB : un métier)                    | Moyen + **on porte la BDD soi-même**        | Faible-moyen                                                                      |
+| Souveraineté / argumentaire client public    | Sociétés US, facturation USD                         | Cloud Act US ; af-south-1 ne résout rien                  | Allemagne, RGPD ok                          | **UE/France, RGPD, facturation EUR** (XOF arrimé à l'EUR : zéro risque de change) |
+| Réversibilité vers un déploiement au Sénégal | Faible (lock-in PaaS)                                | Moyenne                                                   | Totale                                      | **Totale** (Docker + Postgres standard)                                           |
 
 ### 1.3 Souveraineté : ce que demandera l'APIX
 
@@ -42,11 +42,11 @@ La loi n° 2008-12 n'impose pas une localisation stricte, mais **tout transfert 
 
 Écartés : **Hetzner** (imbattable en prix mais pas de Postgres managé — porter soi-même la BDD d'un produit de paie avec 1-2 devs est une faute professionnelle) ; **AWS/GCP dès le départ** (2 à 4× le coût, et surtout 2-3 semaines de mise en place puis une taxe cognitive permanente : VPC, IAM, NAT Gateway ~35 €/mois à lui seul) ; **PaaS US** (facturation USD, dérive de coûts, lock-in, argumentaire souveraineté faible face à un acheteur public sénégalais).
 
-| Stade | Socle | Déclencheur de passage au stade suivant |
-|---|---|---|
-| **MVP (APIX)** | 2 VPS (app+workers / staging), PG managé 1 nœud, Coolify | Signature des premiers clients payants |
-| **~10 clients** | 3 VPS app en rolling deploy, PG managé **HA (2 nœuds)**, staging isolé | SLA contractuels ≥ 99,9 %, ou > 30 min/semaine d'ops |
-| **~100 clients** | Option A (défaut) : Scaleway Kapsule (k8s managé) ; Option B : AWS eu-west-3 si des clients enterprise l'exigent | — |
+| Stade            | Socle                                                                                                            | Déclencheur de passage au stade suivant              |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| **MVP (APIX)**   | 2 VPS (app+workers / staging), PG managé 1 nœud, Coolify                                                         | Signature des premiers clients payants               |
+| **~10 clients**  | 3 VPS app en rolling deploy, PG managé **HA (2 nœuds)**, staging isolé                                           | SLA contractuels ≥ 99,9 %, ou > 30 min/semaine d'ops |
+| **~100 clients** | Option A (défaut) : Scaleway Kapsule (k8s managé) ; Option B : AWS eu-west-3 si des clients enterprise l'exigent | —                                                    |
 
 La migration est triviale par construction : images Docker + Postgres standard (dump/restore ou réplication logique) + IaC minimal. **Test de reconstruction annuel** : remonter l'intégralité de la prod sur un compte vierge en < 1 journée, chronométré.
 
@@ -71,11 +71,11 @@ flowchart LR
 
 Trois environnements, pas plus au départ :
 
-| Env | Contenu | Données |
-|---|---|---|
-| **Local** | `docker compose up` : Postgres, Redis, MinIO (S3), Mailpit (mails), app. Une commande, < 5 min de la clone au run. | Seed générée |
-| **Staging** | Copie de prod à échelle réduite, sur le VPS secondaire. Déploiement auto à chaque merge sur `main`. | Seed générée — **jamais de vraies données de paie** (exigence RGPD/CDP, non négociable) |
-| **Prod** | Voir §1.4. Déploiement par promotion manuelle. | Réelles |
+| Env         | Contenu                                                                                                            | Données                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| **Local**   | `docker compose up` : Postgres, Redis, MinIO (S3), Mailpit (mails), app. Une commande, < 5 min de la clone au run. | Seed générée                                                                            |
+| **Staging** | Copie de prod à échelle réduite, sur le VPS secondaire. Déploiement auto à chaque merge sur `main`.                | Seed générée — **jamais de vraies données de paie** (exigence RGPD/CDP, non négociable) |
+| **Prod**    | Voir §1.4. Déploiement par promotion manuelle.                                                                     | Réelles                                                                                 |
 
 **Seed data réaliste** — investissement rentabilisé mille fois : un générateur (Faker localisé) produisant une « entreprise sénégalaise type » de 250 salariés — noms, téléphones +221, NINEA, matricules IPRES/CSS plausibles, mix cadres/non-cadres, contrats CDI/CDD, situations familiales variées pour exercer le TRIMF et les parts fiscales. Le même jeu sert aux tests du moteur de paie, aux démos commerciales et au staging.
 
@@ -117,11 +117,11 @@ Pas de LaunchDarkly (49 $+/mois et un SDK pour rien à ce stade). **Table Postgr
 
 ### 4.1 Managé, point final
 
-| | Postgres managé (Scaleway/OVH/RDS) | Auto-hébergé (VPS) |
-|---|---|---|
-| PITR, failover, patchs sécurité | Inclus | À construire (pgBackRest, Patroni…) : 2-4 semaines + astreinte à vie |
-| Coût MVP | ~40-80 €/mois | ~15 €/mois + **le vrai coût : le risque** |
-| Verdict | **Retenu** | Écarté : l'économie de 50 €/mois ne vaut pas une seule fiche de paie perdue |
+|                                 | Postgres managé (Scaleway/OVH/RDS) | Auto-hébergé (VPS)                                                          |
+| ------------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
+| PITR, failover, patchs sécurité | Inclus                             | À construire (pgBackRest, Patroni…) : 2-4 semaines + astreinte à vie        |
+| Coût MVP                        | ~40-80 €/mois                      | ~15 €/mois + **le vrai coût : le risque**                                   |
+| Verdict                         | **Retenu**                         | Écarté : l'économie de 50 €/mois ne vaut pas une seule fiche de paie perdue |
 
 ### 4.2 Backups : stratégie 3-2-1 et test de restauration
 
@@ -132,11 +132,11 @@ Pas de LaunchDarkly (49 $+/mois et un SDK pour rien à ce stade). **Table Postgr
 
 ### 4.3 Rétention
 
-| Donnée | Rétention | Justification |
-|---|---|---|
-| PITR | 14 jours | Erreur applicative détectée tard |
-| Dumps quotidiens | 30 jours | Confort opérationnel |
-| Dumps mensuels | 12 mois | Audits, litiges |
+| Donnée                                                                     | Rétention  | Justification                                                                                                          |
+| -------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| PITR                                                                       | 14 jours   | Erreur applicative détectée tard                                                                                       |
+| Dumps quotidiens                                                           | 30 jours   | Confort opérationnel                                                                                                   |
+| Dumps mensuels                                                             | 12 mois    | Audits, litiges                                                                                                        |
 | Archives annuelles + bulletins PDF (Object Storage versionné, object lock) | **10 ans** | Prescription OHADA / obligations sociales — durée exacte par type de document **à vérifier avec le conseil juridique** |
 
 Les bulletins PDF sont des documents probants : bucket avec versioning + object lock (WORM), distinct des données chaudes.
@@ -145,12 +145,12 @@ Les bulletins PDF sont des documents probants : bucket avec versioning + object 
 
 Trois briques SaaS, zéro infrastructure d'observabilité à opérer :
 
-| Besoin | Outil | Coût | Notes |
-|---|---|---|---|
-| Erreurs + traces (APM léger) | **Sentry** (front + back, release tracking, tracing échantillonné 10 %) | 0-26 $/mois | Un seul outil pour erreurs et perfs : suffisant jusqu'à 100 clients |
-| Logs structurés | JSON (pino) → **Grafana Cloud free** (Loki) ou Axiom | 0 €/mois au départ | `request_id`, `tenant_id`, `user_id` sur chaque ligne ; jamais de données salariales dans les logs |
-| Uptime + astreinte | **Better Stack** : checks multi-régions (dont un synthétique du parcours login) + appel/SMS | 0-30 $/mois | Compléter par une mesure réelle depuis Dakar (RUM Sentry) |
-| Métriques machines | node_exporter → Grafana Cloud free | 0 € | Disque, RAM, CPU, certificats |
+| Besoin                       | Outil                                                                                       | Coût               | Notes                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------- |
+| Erreurs + traces (APM léger) | **Sentry** (front + back, release tracking, tracing échantillonné 10 %)                     | 0-26 $/mois        | Un seul outil pour erreurs et perfs : suffisant jusqu'à 100 clients                                |
+| Logs structurés              | JSON (pino) → **Grafana Cloud free** (Loki) ou Axiom                                        | 0 €/mois au départ | `request_id`, `tenant_id`, `user_id` sur chaque ligne ; jamais de données salariales dans les logs |
+| Uptime + astreinte           | **Better Stack** : checks multi-régions (dont un synthétique du parcours login) + appel/SMS | 0-30 $/mois        | Compléter par une mesure réelle depuis Dakar (RUM Sentry)                                          |
+| Métriques machines           | node_exporter → Grafana Cloud free                                                          | 0 €                | Disque, RAM, CPU, certificats                                                                      |
 
 **Alerting minimal qui réveille** — moins de dix alertes, chacune actionnable, tout le reste est un tableau de bord qu'on regarde le matin :
 
@@ -166,7 +166,7 @@ Un produit de paie se vend sur la confiance ; elle se construit avant le premier
 
 - **Status page** hébergée **hors de notre infra** (Better Stack ou Instatus, gratuit) : `status.terangarh.com`, composants API / App / Calcul de paie / Paiements, historique public.
 - **SLO internes honnêtes** (les afficher, ne les contractualiser qu'au stade 2) : disponibilité **99,5 %** au MVP (≈ 3h39/mois d'indisponibilité tolérée) → **99,9 %** avec l'infra HA ; latence API p95 < 400 ms depuis Dakar ; **RPO ≤ 15 min, RTO ≤ 4 h**. Promettre 99,99 % avec 1-2 devs serait un mensonge commercial.
-- **Plan d'incident volontairement simple** : 3 sévérités (S1 : paie ou prod down ; S2 : dégradé ; S3 : mineur). Un seul rôle : *incident commander* (celui qui est réveillé), qui communique sur la status page **dans les 15 min** (modèles de messages FR pré-rédigés), puis toutes les heures. Post-mortem sans blâme sous 72 h, public pour tout S1. Runbook dans le repo : procédures de restauration, rotation de secrets, contacts fournisseurs, checklist jour de paie.
+- **Plan d'incident volontairement simple** : 3 sévérités (S1 : paie ou prod down ; S2 : dégradé ; S3 : mineur). Un seul rôle : _incident commander_ (celui qui est réveillé), qui communique sur la status page **dans les 15 min** (modèles de messages FR pré-rédigés), puis toutes les heures. Post-mortem sans blâme sous 72 h, public pour tout S1. Runbook dans le repo : procédures de restauration, rotation de secrets, contacts fournisseurs, checklist jour de paie.
 
 ## 7. Sécurité de l'infrastructure
 
@@ -182,17 +182,17 @@ Le socle non négociable, dimensionné pour 1-2 devs (la sécurité applicative 
 
 Tarifs indicatifs 2026, facturés en EUR (XOF arrimé : budget prévisible), **à vérifier sur les grilles au moment de l'engagement** :
 
-| Poste | MVP (APIX) | ~10 clients | ~100 clients |
-|---|---|---|---|
-| Compute app + workers (VPS) | 2 × ~20 € = 40 € | 3 × ~40 € = 120 € | Kapsule + nœuds : ~600 € |
-| PostgreSQL managé | ~50 € (1 nœud) | ~150 € (HA 2 nœuds) | ~700 € (HA, taille supérieure, réplica lecture) |
-| Object Storage + egress | ~5 € | ~20 € | ~150 € |
-| Backups offsite (2e fournisseur) | ~5 € | ~10 € | ~50 € |
-| Staging | inclus (mutualisé) | ~40 € | ~150 € |
-| Cloudflare | 0 € (Free) | 25 € (Pro) | ~250 € (Business) |
-| Sentry + Better Stack + Grafana Cloud | ~25 € | ~80 € | ~400 € |
-| Divers (domaines, mail transactionnel, Tailscale) | ~15 € | ~40 € | ~150 € |
-| **Total** | **~185 €/mois** | **~600 €/mois** | **~2 950 €/mois** |
+| Poste                                             | MVP (APIX)         | ~10 clients         | ~100 clients                                    |
+| ------------------------------------------------- | ------------------ | ------------------- | ----------------------------------------------- |
+| Compute app + workers (VPS)                       | 2 × ~20 € = 40 €   | 3 × ~40 € = 120 €   | Kapsule + nœuds : ~600 €                        |
+| PostgreSQL managé                                 | ~50 € (1 nœud)     | ~150 € (HA 2 nœuds) | ~700 € (HA, taille supérieure, réplica lecture) |
+| Object Storage + egress                           | ~5 €               | ~20 €               | ~150 €                                          |
+| Backups offsite (2e fournisseur)                  | ~5 €               | ~10 €               | ~50 €                                           |
+| Staging                                           | inclus (mutualisé) | ~40 €               | ~150 €                                          |
+| Cloudflare                                        | 0 € (Free)         | 25 € (Pro)          | ~250 € (Business)                               |
+| Sentry + Better Stack + Grafana Cloud             | ~25 €              | ~80 €               | ~400 €                                          |
+| Divers (domaines, mail transactionnel, Tailscale) | ~15 €              | ~40 €               | ~150 €                                          |
+| **Total**                                         | **~185 €/mois**    | **~600 €/mois**     | **~2 950 €/mois**                               |
 
 Lecture : à 100 clients de 100 salariés moyens facturés ne serait-ce que 2 000 FCFA (~3 €)/salarié/mois, le revenu est ~30 000 €/mois — l'infra pèse **< 10 % au MVP et ~3 % ensuite**. L'instance souveraine single-tenant (Diamniadio) est hors tableau : elle se facture au client qui l'exige (ordre de grandeur : 500-1 500 €/mois d'hébergement local + jours d'exploitation, **à chiffrer avec Sénégal Numérique**).
 

@@ -6,13 +6,13 @@
 
 ### 1.1 Ce que fait le marché
 
-| Acteur | Modèle | Ordre de grandeur (à vérifier, tarifs mouvants) | Leçon pour nous |
-|---|---|---|---|
-| **Payfit** | Base fixe + prix/employé/mois | ~25-45 €/employé/mois selon modules | Le standard « per employee per month » (PEPM) est lisible et scale avec la valeur |
-| **BambooHR** | Prix/employé/mois, 2 plans + add-ons | ~6-12 $/employé/mois | Plans simples, upsell par modules |
-| **Deel** | À la carte (contractor ~49 $/mois, EOR ~599 $/mois) | Très supérieur, car porte le risque juridique | Le prix suit le risque porté, pas le coût technique |
-| **Rippling** | Base + modules à la carte | ~8 $/user/mois + modules | La modularité extrême complexifie la vente — à éviter au début |
-| **Sage Paie (Afrique francophone)** | Licence + maintenance annuelle via intégrateurs | Coût initial élevé, TCO opaque | Notre angle d'attaque : SaaS transparent contre licence on-premise opaque |
+| Acteur                              | Modèle                                              | Ordre de grandeur (à vérifier, tarifs mouvants) | Leçon pour nous                                                                   |
+| ----------------------------------- | --------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Payfit**                          | Base fixe + prix/employé/mois                       | ~25-45 €/employé/mois selon modules             | Le standard « per employee per month » (PEPM) est lisible et scale avec la valeur |
+| **BambooHR**                        | Prix/employé/mois, 2 plans + add-ons                | ~6-12 $/employé/mois                            | Plans simples, upsell par modules                                                 |
+| **Deel**                            | À la carte (contractor ~49 $/mois, EOR ~599 $/mois) | Très supérieur, car porte le risque juridique   | Le prix suit le risque porté, pas le coût technique                               |
+| **Rippling**                        | Base + modules à la carte                           | ~8 $/user/mois + modules                        | La modularité extrême complexifie la vente — à éviter au début                    |
+| **Sage Paie (Afrique francophone)** | Licence + maintenance annuelle via intégrateurs     | Coût initial élevé, TCO opaque                  | Notre angle d'attaque : SaaS transparent contre licence on-premise opaque         |
 
 Le PEPM est le bon modèle : il aligne le prix sur la valeur perçue (la paie coûte par bulletin), il est auto-explicatif pour un DAF, et il croît mécaniquement avec le client (expansion revenue sans re-négociation).
 
@@ -20,22 +20,22 @@ Le PEPM est le bon modèle : il aligne le prix sur la valeur perçue (la paie co
 
 Le pouvoir d'achat UEMOA impose un prix ~10× inférieur à Payfit. Un cabinet comptable facture la sous-traitance d'un bulletin de paie au Sénégal entre 2 500 et 7 500 XOF/mois (à vérifier localement) : notre prix doit être nettement sous ce coût de substitution tout en apportant plus (portail employé, congés, déclarations).
 
-| | **Essentiel** | **Pro** | **Entreprise** |
-|---|---|---|---|
-| **Prix** | **1 500 XOF** (~2,3 €)/employé/mois | **3 000 XOF** (~4,6 €)/employé/mois | Sur devis, **à partir de 5 000 XOF**/employé/mois |
-| **Plancher mensuel** | 20 000 XOF/mois | 50 000 XOF/mois | 500 000 XOF/mois |
-| **Cible** | PME 10-50 employés | PME/ETI 50-300 | Public, groupes, 300+ |
-| **Paie sénégalaise complète** (bulletins, IPRES RG + cadres, CSS PF/AT, IR barème + TRIMF, CFCE) | ✅ | ✅ | ✅ |
-| **Déclarations sociales et fiscales** (exports/télédéclarations) | ✅ | ✅ | ✅ |
-| Dossier salarié, congés & absences, portail employé mobile | ✅ | ✅ | ✅ |
-| Exports comptables (SYSCOHADA) | ✅ | ✅ | ✅ |
-| Onboarding/offboarding, workflows de validation | — | ✅ | ✅ |
-| Notes de frais, gestion documentaire + signature | — | ✅ | ✅ |
-| Organigramme, rapports avancés, API publique | — | ✅ | ✅ |
-| Multi-sociétés / multi-conventions | — | ✅ | ✅ |
-| SSO/SAML, SCIM, journal d'audit exportable | — | — | ✅ |
-| SLA 99,9 %, support dédié, environnement de recette | — | — | ✅ |
-| Accompagnement migration + reprise d'historique | Payant | Inclus partiel | Inclus |
+|                                                                                                  | **Essentiel**                       | **Pro**                             | **Entreprise**                                    |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------- | ----------------------------------- | ------------------------------------------------- |
+| **Prix**                                                                                         | **1 500 XOF** (~2,3 €)/employé/mois | **3 000 XOF** (~4,6 €)/employé/mois | Sur devis, **à partir de 5 000 XOF**/employé/mois |
+| **Plancher mensuel**                                                                             | 20 000 XOF/mois                     | 50 000 XOF/mois                     | 500 000 XOF/mois                                  |
+| **Cible**                                                                                        | PME 10-50 employés                  | PME/ETI 50-300                      | Public, groupes, 300+                             |
+| **Paie sénégalaise complète** (bulletins, IPRES RG + cadres, CSS PF/AT, IR barème + TRIMF, CFCE) | ✅                                  | ✅                                  | ✅                                                |
+| **Déclarations sociales et fiscales** (exports/télédéclarations)                                 | ✅                                  | ✅                                  | ✅                                                |
+| Dossier salarié, congés & absences, portail employé mobile                                       | ✅                                  | ✅                                  | ✅                                                |
+| Exports comptables (SYSCOHADA)                                                                   | ✅                                  | ✅                                  | ✅                                                |
+| Onboarding/offboarding, workflows de validation                                                  | —                                   | ✅                                  | ✅                                                |
+| Notes de frais, gestion documentaire + signature                                                 | —                                   | ✅                                  | ✅                                                |
+| Organigramme, rapports avancés, API publique                                                     | —                                   | ✅                                  | ✅                                                |
+| Multi-sociétés / multi-conventions                                                               | —                                   | ✅                                  | ✅                                                |
+| SSO/SAML, SCIM, journal d'audit exportable                                                       | —                                   | —                                   | ✅                                                |
+| SLA 99,9 %, support dédié, environnement de recette                                              | —                                   | —                                   | ✅                                                |
+| Accompagnement migration + reprise d'historique                                                  | Payant                              | Inclus partiel                      | Inclus                                            |
 
 Décisions assumées :
 
@@ -97,12 +97,12 @@ C'est le point le plus dangereux du projet. Le fondateur travaille déjà pour l
 
 ### 3.2 Pièges du client public — et parades
 
-| Piège | Réalité | Parade |
-|---|---|---|
-| **Marchés publics** | Au-delà des seuils (Code des marchés publics, régulation ARCOP — seuils exacts **à vérifier**), l'APIX doit passer un appel d'offres ; un gré à gré mal ficelé est annulable | Démarrer sous le seuil de dispense (abonnement annuel calibré en conséquence), viser ensuite une procédure propre ; ne jamais accepter un montage « caché » dans un autre marché |
-| **Délais de paiement** | 60 à 120 jours après service fait, parfois plus | Facturation annuelle d'avance négociée, trésorerie dimensionnée pour 90 jours de DSO, pénalités de retard contractuelles (même si rarement appliquées, elles cadrent la négociation) |
-| **Conflit d'intérêts** | Le fondateur est déjà prestataire APIX sur un autre projet | Transparence écrite vis-à-vis de l'APIX, contrats et facturations strictement séparés, pas de temps croisé |
-| **Capture produit** | Le client fondateur pousse ses spécificités (statut public, primes particulières) dans le cœur du produit | Gouvernance produit : toute spécificité passe par le système de configuration (conventions, rubriques de paie paramétrables) prévu au chapitre architecture paie — jamais en dur |
+| Piège                  | Réalité                                                                                                                                                                      | Parade                                                                                                                                                                               |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Marchés publics**    | Au-delà des seuils (Code des marchés publics, régulation ARCOP — seuils exacts **à vérifier**), l'APIX doit passer un appel d'offres ; un gré à gré mal ficelé est annulable | Démarrer sous le seuil de dispense (abonnement annuel calibré en conséquence), viser ensuite une procédure propre ; ne jamais accepter un montage « caché » dans un autre marché     |
+| **Délais de paiement** | 60 à 120 jours après service fait, parfois plus                                                                                                                              | Facturation annuelle d'avance négociée, trésorerie dimensionnée pour 90 jours de DSO, pénalités de retard contractuelles (même si rarement appliquées, elles cadrent la négociation) |
+| **Conflit d'intérêts** | Le fondateur est déjà prestataire APIX sur un autre projet                                                                                                                   | Transparence écrite vis-à-vis de l'APIX, contrats et facturations strictement séparés, pas de temps croisé                                                                           |
+| **Capture produit**    | Le client fondateur pousse ses spécificités (statut public, primes particulières) dans le cœur du produit                                                                    | Gouvernance produit : toute spécificité passe par le système de configuration (conventions, rubriques de paie paramétrables) prévu au chapitre architecture paie — jamais en dur     |
 
 ## 4. Go-to-market : Sénégal d'abord, UEMOA ensuite
 
@@ -124,29 +124,29 @@ C'est le point le plus dangereux du projet. Le fondateur travaille déjà pour l
 
 L'instrumentation est une exigence d'architecture (événements produits + schéma de facturation propre), pas un projet ultérieur.
 
-| Métrique | Définition retenue | Cible 18 mois | Source |
-|---|---|---|---|
-| **MRR** (+ décomposition new/expansion/churn) | Somme des abonnements actifs normalisés au mois | 5-8 M XOF | Moteur de facturation interne |
-| **Churn logo mensuel** | Clients perdus / clients actifs | < 1,5 %/mois | Facturation |
-| **NRR** | Revenu cohorte N vs N-12, expansions incluses | > 105 % (croissance des effectifs clients = expansion mécanique du PEPM) | Facturation |
-| **CAC par canal** | Coûts commerciaux / clients signés, par canal | < 6 mois de MRR du client | CRM + compta |
-| **Activation** | **Première paie réelle clôturée < 30 jours après signature** | > 80 % des signatures | Événements produit |
-| **Time-to-first-payroll** | Délai signature → première paie | < 15 jours | Événements produit |
-| **DSO public** | Délai facture → encaissement, segment public | Suivi (pas de cible, mais alerte trésorerie) | Facturation |
+| Métrique                                      | Définition retenue                                           | Cible 18 mois                                                            | Source                        |
+| --------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------ | ----------------------------- |
+| **MRR** (+ décomposition new/expansion/churn) | Somme des abonnements actifs normalisés au mois              | 5-8 M XOF                                                                | Moteur de facturation interne |
+| **Churn logo mensuel**                        | Clients perdus / clients actifs                              | < 1,5 %/mois                                                             | Facturation                   |
+| **NRR**                                       | Revenu cohorte N vs N-12, expansions incluses                | > 105 % (croissance des effectifs clients = expansion mécanique du PEPM) | Facturation                   |
+| **CAC par canal**                             | Coûts commerciaux / clients signés, par canal                | < 6 mois de MRR du client                                                | CRM + compta                  |
+| **Activation**                                | **Première paie réelle clôturée < 30 jours après signature** | > 80 % des signatures                                                    | Événements produit            |
+| **Time-to-first-payroll**                     | Délai signature → première paie                              | < 15 jours                                                               | Événements produit            |
+| **DSO public**                                | Délai facture → encaissement, segment public                 | Suivi (pas de cible, mais alerte trésorerie)                             | Facturation                   |
 
 **Outillage minimal, sans over-engineering** : PostHog (cloud, gratuit jusqu'à 1 M événements/mois) pour les événements produit ; Metabase (self-hosted, gratuit) branché en lecture sur la base de facturation pour MRR/churn/NRR ; un CRM léger (HubSpot Free ou Attio) pour le pipeline et le CAC. **Écarté** : ChartMogul/Baremetrics (conçus pour Stripe, inutilisables sur notre rail XOF), stack data dédiée (dbt/warehouse) avant 200 clients.
 
 ## 6. Risques business majeurs et parades
 
-| Risque | Prob. | Impact | Parade |
-|---|---|---|---|
-| **Dépendance APIX** (mono-client, mono-référence) | Élevée au départ | Fatal si l'APIX se retire avant la traction | Plafond explicite : APIX < 30 % du MRR à 18 mois ; les 8-10 PME de la phase 1 sont non négociables ; contrat APIX pluriannuel avec préavis long |
-| **Concurrence locale** : Socium (SIRH panafricain, Dakar), SmartTeam/WEBGRAM (Dakar), Kayfay/SoftValley Labs (Dakar, SaaS ou on-premise), Sage + intégrateurs, Odoo localisé ; Payfit/Rippling ne viendront pas sur l'UEMOA à moyen terme | Certaine | Moyen | Différenciation frontale : profondeur du moteur de paie sénégalais (IPRES/CSS/TRIMF/CFCE juste et à jour, testé publiquement), UX niveau Stripe/Linear, mobile-first employé, offline-tolerant — le chapitre produit en fait des invariants |
-| **Cycle de vente B2B public long** (6-18 mois) | Certaine | Trésorerie | Le public est une vitrine, pas le fonds de commerce : le volume vient des PME via experts-comptables (cycle 1-3 mois) |
-| **Défaillance d'un agrégateur de paiement** (précédent CinetPay 2025) | Moyenne | Trésorerie bloquée | Double rail PayDunya + CinetPay/Wave, virement toujours possible, pas plus de 50 % du volume sur un seul PSP |
-| **Changement réglementaire paie** (barème IR, taux IPRES/CSS) | Certaine (récurrente) | Confiance produit | Veille structurée (abonnement à un cabinet fiscal local), moteur de paie versionné par période légale (choix d'architecture au chapitre paie) — en faire un argument commercial (« conforme en 48 h ») |
-| **Impayés PME** | Élevée | MRR fictif | Prépaiement annuel incité (-15 %), suspension progressive à J+30, pas de service à crédit au-delà de 60 jours |
-| **Capture juridique par le client fondateur** | Moyenne | Fatal pour la commercialisation | Section 3 : société distincte, IP verrouillée, avocat dès maintenant |
+| Risque                                                                                                                                                                                                                                    | Prob.                 | Impact                                      | Parade                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dépendance APIX** (mono-client, mono-référence)                                                                                                                                                                                         | Élevée au départ      | Fatal si l'APIX se retire avant la traction | Plafond explicite : APIX < 30 % du MRR à 18 mois ; les 8-10 PME de la phase 1 sont non négociables ; contrat APIX pluriannuel avec préavis long                                                                                             |
+| **Concurrence locale** : Socium (SIRH panafricain, Dakar), SmartTeam/WEBGRAM (Dakar), Kayfay/SoftValley Labs (Dakar, SaaS ou on-premise), Sage + intégrateurs, Odoo localisé ; Payfit/Rippling ne viendront pas sur l'UEMOA à moyen terme | Certaine              | Moyen                                       | Différenciation frontale : profondeur du moteur de paie sénégalais (IPRES/CSS/TRIMF/CFCE juste et à jour, testé publiquement), UX niveau Stripe/Linear, mobile-first employé, offline-tolerant — le chapitre produit en fait des invariants |
+| **Cycle de vente B2B public long** (6-18 mois)                                                                                                                                                                                            | Certaine              | Trésorerie                                  | Le public est une vitrine, pas le fonds de commerce : le volume vient des PME via experts-comptables (cycle 1-3 mois)                                                                                                                       |
+| **Défaillance d'un agrégateur de paiement** (précédent CinetPay 2025)                                                                                                                                                                     | Moyenne               | Trésorerie bloquée                          | Double rail PayDunya + CinetPay/Wave, virement toujours possible, pas plus de 50 % du volume sur un seul PSP                                                                                                                                |
+| **Changement réglementaire paie** (barème IR, taux IPRES/CSS)                                                                                                                                                                             | Certaine (récurrente) | Confiance produit                           | Veille structurée (abonnement à un cabinet fiscal local), moteur de paie versionné par période légale (choix d'architecture au chapitre paie) — en faire un argument commercial (« conforme en 48 h »)                                      |
+| **Impayés PME**                                                                                                                                                                                                                           | Élevée                | MRR fictif                                  | Prépaiement annuel incité (-15 %), suspension progressive à J+30, pas de service à crédit au-delà de 60 jours                                                                                                                               |
+| **Capture juridique par le client fondateur**                                                                                                                                                                                             | Moyenne               | Fatal pour la commercialisation             | Section 3 : société distincte, IP verrouillée, avocat dès maintenant                                                                                                                                                                        |
 
 **Position tranchée finale** : le modèle est un SaaS PEPM en XOF, vendu par la confiance (experts-comptables + référence APIX), encaissé par des rails locaux redondants, porté par une société éditrice indépendante dont l'IP est sanctuarisée. Chaque décision d'architecture des chapitres suivants (multi-tenancy, moteur de paie configurable, instrumentation événementielle, facturation interne) découle directement de ces choix économiques.
 
@@ -159,4 +159,4 @@ L'instrumentation est une exigence d'architecture (événements produits + sché
 - Wave Business API : [Guide intégration Wave Business API (Kolonell)](https://kolonell.com/fr/blog/wave-business-api-integration-site-2026), [API Wave Sénégal (Sene-Pay)](https://www.sene-pay.com/api-wave-senegal)
 - Concurrents SIRH locaux : [Socium](https://socium.link/gestion-rh-afrique/), [SmartTeam / WEBGRAM](https://www.agencewebgram.com/2026/03/Digitalisation-RH-Top-5-des-logiciels-SaaS-adaptes-au-marche-africain.html), [Kayfay / SoftValley Labs](https://softvalleylabs.com/)
 
-*Les tarifs concurrents (Payfit, BambooHR, Deel, Rippling), les seuils de marchés publics sénégalais, le mécanisme de précompte de TVA et le statut Paystack-Sénégal sont marqués « à vérifier » dans le corps du chapitre et doivent être confirmés avant toute décision contractuelle.*
+_Les tarifs concurrents (Payfit, BambooHR, Deel, Rippling), les seuils de marchés publics sénégalais, le mécanisme de précompte de TVA et le statut Paystack-Sénégal sont marqués « à vérifier » dans le corps du chapitre et doivent être confirmés avant toute décision contractuelle._

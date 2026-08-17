@@ -27,11 +27,11 @@ Rubrique {
 
 **Décision — trois niveaux de rubriques :**
 
-| Niveau | Qui les définit | Comment |
-|---|---|---|
-| **Légales** (IPRES, IR, TRIMF…) | Le pack pays | Code + tables de barèmes, release immuable, non modifiable par le client |
-| **Conventionnelles** (prime d'ancienneté CCNI, préavis…) | Le pack pays, activables/paramétrables | Déclaratif livré, paramètres client |
-| **Client** (prime de performance, indemnité télétravail…) | Le client via l'UI | DSL d'expressions restreint |
+| Niveau                                                    | Qui les définit                        | Comment                                                                  |
+| --------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
+| **Légales** (IPRES, IR, TRIMF…)                           | Le pack pays                           | Code + tables de barèmes, release immuable, non modifiable par le client |
+| **Conventionnelles** (prime d'ancienneté CCNI, préavis…)  | Le pack pays, activables/paramétrables | Déclaratif livré, paramètres client                                      |
+| **Client** (prime de performance, indemnité télétravail…) | Le client via l'UI                     | DSL d'expressions restreint                                              |
 
 **Le DSL client est volontairement pauvre** : expressions arithmétiques, conditionnelles, accès à un dictionnaire de variables typées (salaire de base, ancienneté, catégorie CCNI…). Pas de boucles, pas d'I/O, pas d'appels de fonction arbitraires. Évaluation sandboxée, parsée en AST validé à la sauvegarde (jamais d'`eval`).
 
@@ -42,6 +42,7 @@ Rubrique {
 Le problème canonique : le barème IR change au 1er janvier ; les paies de décembre doivent rester recalculables à l'identique, et un rappel de décembre payé en février doit utiliser les règles de décembre.
 
 **Décision : versionnement bitemporel.**
+
 - Chaque règle/barème porte une **date d'effet légale** (`effective_from`/`effective_to`) : quel droit s'applique à quelle période de paie.
 - Chaque **release de pack** (ex. `SN-2026.1`) est un artefact immuable et daté : quand la connaissance du droit a été embarquée. Une release contient l'historique complet des barèmes, pas seulement les derniers.
 - Le run de paie résout : `règles = pack@release.pour_période(décembre 2026)`. Corriger une erreur de transcription d'un barème = nouvelle release (`SN-2026.2`) + note de changement ; les bulletins déjà émis gardent leur référence d'origine.
@@ -68,6 +69,7 @@ Le séquencement est un **graphe de dépendances explicite** entre phases, décl
 Cas réels : augmentation signée en mars avec effet janvier, absence saisie en retard, taux AT notifié rétroactivement.
 
 **Décision : recalcul différentiel, jamais de réouverture.**
+
 1. Les entrées d'une période clôturée changent → le moteur **recalcule la période passée avec ses règles d'époque** (bitemporalité, §1.3).
 2. Diff ligne à ligne contre le bulletin émis → génération automatique de **rubriques de rappel** (positives ou négatives) injectées dans la période courante, avec référence à la période d'origine.
 3. Le traitement fiscal/social du rappel (cotisé/imposé sur la période de versement ou d'origine — règle sénégalaise **à vérifier** avec l'expert-comptable) est une politique du pack pays.
@@ -101,16 +103,16 @@ La clôture verrouille en base (contrainte + couche policy) toute écriture sur 
 
 ### 2.1 Prélèvements sénégalais (tous les chiffres : **à vérifier** avant mise en production)
 
-| Prélèvement | Salarié | Employeur | Plafond mensuel | Notes |
-|---|---|---|---|---|
-| IPRES régime général | 5,6 % | 8,4 % | ~432 000 FCFA | Taux global 14 % — **à vérifier** (plafond révisé périodiquement) |
-| IPRES régime cadres | 2,4 % | 3,6 % | ~1 296 000 FCFA | Cadres uniquement, en sus du RG — **à vérifier** |
-| CSS prestations familiales | — | 7 % | ~63 000 FCFA | **à vérifier** |
-| CSS accidents du travail | — | 1 / 3 / 5 % | ~63 000 FCFA | Taux selon classe de risque de l'employeur — **à vérifier** |
-| IPM (maladie) | variable | variable | — | Affiliation obligatoire, taux propres à chaque IPM → rubrique paramétrable |
-| IR (retenue à la source) | barème progressif | — | — | Voir ci-dessous |
-| TRIMF | forfait par tranche | — | — | Ordre de grandeur 300–1 500 FCFA/mois — barème **à vérifier** |
-| CFCE | — | 3 % masse salariale | — | **à vérifier** (exonérations possibles selon statut) |
+| Prélèvement                | Salarié             | Employeur           | Plafond mensuel | Notes                                                                      |
+| -------------------------- | ------------------- | ------------------- | --------------- | -------------------------------------------------------------------------- |
+| IPRES régime général       | 5,6 %               | 8,4 %               | ~432 000 FCFA   | Taux global 14 % — **à vérifier** (plafond révisé périodiquement)          |
+| IPRES régime cadres        | 2,4 %               | 3,6 %               | ~1 296 000 FCFA | Cadres uniquement, en sus du RG — **à vérifier**                           |
+| CSS prestations familiales | —                   | 7 %                 | ~63 000 FCFA    | **à vérifier**                                                             |
+| CSS accidents du travail   | —                   | 1 / 3 / 5 %         | ~63 000 FCFA    | Taux selon classe de risque de l'employeur — **à vérifier**                |
+| IPM (maladie)              | variable            | variable            | —               | Affiliation obligatoire, taux propres à chaque IPM → rubrique paramétrable |
+| IR (retenue à la source)   | barème progressif   | —                   | —               | Voir ci-dessous                                                            |
+| TRIMF                      | forfait par tranche | —                   | —               | Ordre de grandeur 300–1 500 FCFA/mois — barème **à vérifier**              |
+| CFCE                       | —                   | 3 % masse salariale | —               | **à vérifier** (exonérations possibles selon statut)                       |
 
 **IR — mécanique (à faire valider intégralement) :** base = brut fiscal − cotisations sociales salariales obligatoires − abattement forfaitaire de 30 % plafonné (~900 000 FCFA/an — **à vérifier**) ; barème annuel progressif par tranches (0 % → 40 %, seuils du CGI — **à vérifier**) ; puis **réduction d'impôt pour charges de famille** par nombre de parts (0,5 à 5 parts), chaque niveau ayant un taux de réduction encadré par un minimum et un maximum — c'est une réduction sur l'impôt calculé, **pas** un quotient familial à la française. Table complète des parts/taux/min/max : **à vérifier**. Mensualisation selon la méthode DGID en vigueur (**à vérifier**).
 
@@ -120,11 +122,11 @@ Le pack embarque aussi les règles CCNI 2019 (prime d'ancienneté, préavis, ind
 
 ### 2.2 Déclarations périodiques (échéances exactes **à vérifier**)
 
-| Déclaration | Destinataire | Périodicité | Contenu |
-|---|---|---|---|
-| Retenues à la source (IR, TRIMF) + CFCE | DGID (e-Tax) | Mensuelle | État des retenues du mois |
-| Bordereau de cotisations | CSS et IPRES | Mensuelle (≥ 20 salariés) / trimestrielle sinon — **à vérifier** | Assiettes plafonnées, effectifs |
-| État récapitulatif annuel des salaires | DGID | Annuelle (janvier — **à vérifier**) | Récap par salarié |
+| Déclaration                             | Destinataire | Périodicité                                                      | Contenu                         |
+| --------------------------------------- | ------------ | ---------------------------------------------------------------- | ------------------------------- |
+| Retenues à la source (IR, TRIMF) + CFCE | DGID (e-Tax) | Mensuelle                                                        | État des retenues du mois       |
+| Bordereau de cotisations                | CSS et IPRES | Mensuelle (≥ 20 salariés) / trimestrielle sinon — **à vérifier** | Assiettes plafonnées, effectifs |
+| État récapitulatif annuel des salaires  | DGID         | Annuelle (janvier — **à vérifier**)                              | Récap par salarié               |
 
 V1 : génération des états au format attendu (PDF/tableur conformes aux formulaires) + rappels d'échéance. Télétransmission automatique (e-Tax, téléprocédures CSS/IPRES) : phase 2, si et quand des API existent — ne rien promettre ici.
 
@@ -163,13 +165,13 @@ Sessions **opaques côté serveur** (Redis) livrées en cookie `HttpOnly; Secure
 
 ### 3.3 Autorisation : RBAC + périmètres
 
-| Rôle | Périmètre par défaut | Capacités clés | Ne peut pas |
-|---|---|---|---|
-| Admin organisation | Organisation | Tout, gestion rôles et config | — |
-| RH | Organisation | Dossiers employés, contrats, absences | Configurer/lancer la paie |
-| Gestionnaire paie | Organisation | Rubriques, runs, clôture, déclarations | Gérer les comptes utilisateurs |
-| Manager | Son équipe (hiérarchie récursive) | Valider congés/absences, dossier restreint | Voir les salaires, sortir de son équipe |
-| Employé | Lui-même | Ses bulletins, ses demandes, ses données | Tout le reste |
+| Rôle               | Périmètre par défaut              | Capacités clés                             | Ne peut pas                             |
+| ------------------ | --------------------------------- | ------------------------------------------ | --------------------------------------- |
+| Admin organisation | Organisation                      | Tout, gestion rôles et config              | —                                       |
+| RH                 | Organisation                      | Dossiers employés, contrats, absences      | Configurer/lancer la paie               |
+| Gestionnaire paie  | Organisation                      | Rubriques, runs, clôture, déclarations     | Gérer les comptes utilisateurs          |
+| Manager            | Son équipe (hiérarchie récursive) | Valider congés/absences, dossier restreint | Voir les salaires, sortir de son équipe |
+| Employé            | Lui-même                          | Ses bulletins, ses demandes, ses données   | Tout le reste                           |
 
 - Permissions fines `module.ressource.action` (ex. `paie.bulletin.lire`), un rôle = un ensemble de permissions ; l'**attribution** d'un rôle porte le **périmètre** (organisation / entité / équipe / soi-même). Rôles personnalisés : phase 2, le modèle le permet déjà.
 - **Enforcement exclusivement serveur**, dans une couche policy unique appelée par tous les points d'entrée (API, exports, jobs). Déni par défaut. Le front ne fait que masquer.
@@ -187,6 +189,7 @@ Sessions **opaques côté serveur** (Redis) livrées en cookie `HttpOnly; Secure
 ### 4.1 Double cadre : RGPD + loi 2008-12 (CDP)
 
 Teranga RH est **sous-traitant** (au sens art. 28 RGPD et équivalent sénégalais) pour les données employés de ses clients, et **responsable de traitement** pour ses propres traitements (comptes, facturation, télémétrie). Conséquences :
+
 - **DPA type** signé avec chaque client dès le premier contrat (APIX incluse) : objet, sous-traitants ultérieurs listés, mesures techniques (ce chapitre en est l'annexe), localisation, assistance aux droits, notification de violation < 72 h.
 - **Registre des traitements** tenu dès le premier jour (le nôtre) + **registre pré-rempli fourni au client** pour ses propres obligations.
 - **Spécificité sénégalaise** : la loi 2008-12 maintient des **formalités préalables auprès de la CDP** (déclaration, voire autorisation pour certaines catégories) que le RGPD a abandonnées, et soumet les **transferts hors du Sénégal à formalités** (modalités exactes **à vérifier** avec un conseil local ; une réforme de la loi est en discussion — veille nécessaire). **Décision produit : livrer un « kit CDP »** (fiches de déclaration pré-remplies pour le traitement paie/RH) — coût marginal, différenciateur réel face aux acteurs internationaux qui ignorent la CDP.
@@ -197,24 +200,24 @@ Accès, rectification, portabilité : self-service dans l'espace employé (expor
 
 ### 4.3 Durées de conservation et purge
 
-| Catégorie | Conservation | Base (à confirmer par conseil juridique) |
-|---|---|---|
-| Bulletins, livres et journaux de paie | 10 ans après émission | OHADA, documents comptables — **à vérifier** |
-| Dossier contractuel (contrat, avenants) | Contrat + 5 à 10 ans | Prescriptions sociales/civiles — **à vérifier** |
-| Déclarations fiscales et sociales | 10 ans | CGI/OHADA — **à vérifier** |
-| Candidatures non retenues | 6 mois puis purge | Doctrine CNIL/CDP |
-| Logs applicatifs | 12 mois | Sécurité |
-| Journal d'audit | 3 ans en ligne + archive alignée sur la paie | Traçabilité |
+| Catégorie                               | Conservation                                 | Base (à confirmer par conseil juridique)        |
+| --------------------------------------- | -------------------------------------------- | ----------------------------------------------- |
+| Bulletins, livres et journaux de paie   | 10 ans après émission                        | OHADA, documents comptables — **à vérifier**    |
+| Dossier contractuel (contrat, avenants) | Contrat + 5 à 10 ans                         | Prescriptions sociales/civiles — **à vérifier** |
+| Déclarations fiscales et sociales       | 10 ans                                       | CGI/OHADA — **à vérifier**                      |
+| Candidatures non retenues               | 6 mois puis purge                            | Doctrine CNIL/CDP                               |
+| Logs applicatifs                        | 12 mois                                      | Sécurité                                        |
+| Journal d'audit                         | 3 ans en ligne + archive alignée sur la paie | Traçabilité                                     |
 
 Purge **automatisée** : moteur de rétention par catégorie et par pays (les durées sont des données du pack pays), job planifié, chaque purge journalisée. La rétention manuelle « on verra » est une non-conformité programmée.
 
 ### 4.4 Résidence des données — recommandation ferme
 
-| Option | Latence depuis Dakar | Analyse | Verdict |
-|---|---|---|---|
-| **Région UE – Paris** | ~70–100 ms (câbles vers l'Europe — **à vérifier** en conditions réelles) | RGPD natif, écosystème managé complet, coûts standards ; reste un transfert hors Sénégal → formalités CDP | **Retenu** |
-| Régions africaines (Le Cap, Johannesburg) | ~150–200 ms | Toujours un transfert hors Sénégal (aucun gain juridique), services managés plus pauvres, latence pire | Écarté |
-| Hébergement local (Sénégal Numérique, opérateurs) | < 10 ms | Souveraineté maximale, argument secteur public ; mais quasi aucun service managé → charge ops incompatible avec 2 devs | Écarté en V1 |
+| Option                                            | Latence depuis Dakar                                                     | Analyse                                                                                                                | Verdict      |
+| ------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ------------ |
+| **Région UE – Paris**                             | ~70–100 ms (câbles vers l'Europe — **à vérifier** en conditions réelles) | RGPD natif, écosystème managé complet, coûts standards ; reste un transfert hors Sénégal → formalités CDP              | **Retenu**   |
+| Régions africaines (Le Cap, Johannesburg)         | ~150–200 ms                                                              | Toujours un transfert hors Sénégal (aucun gain juridique), services managés plus pauvres, latence pire                 | Écarté       |
+| Hébergement local (Sénégal Numérique, opérateurs) | < 10 ms                                                                  | Souveraineté maximale, argument secteur public ; mais quasi aucun service managé → charge ops incompatible avec 2 devs | Écarté en V1 |
 
 **Décision : Paris au lancement**, formalités de transfert CDP intégrées au kit client. **Assurance de réversibilité** : toute l'infrastructure en IaC, conteneurs, PostgreSQL standard — redéployable chez un hébergeur sénégalais si un client public (l'APIX la première) l'exige contractuellement ; ce serait alors une offre « souveraine » facturée en conséquence, pas le défaut. Vérifier tôt les exigences d'hébergement de l'APIX : c'est le seul risque qui pourrait inverser cette décision.
 
@@ -233,12 +236,17 @@ Purge **automatisée** : moteur de rétention par catégorie et par pays (les du
 Le moteur émet, pour **chaque ligne** de bulletin, un arbre d'explication : rubrique et version (`SN.IR@2026.1`), entrées avec leur provenance, étapes intermédiaires (tranche par tranche pour un barème), arrondis appliqués. Stocké compressé avec le bulletin (ordre de grandeur : quelques Ko/bulletin — négligeable).
 
 ```json
-{ "ligne": "IR", "montant": -131900, "regle": "SN.IR@2026.1",
+{
+  "ligne": "IR",
+  "montant": -131900,
+  "regle": "SN.IR@2026.1",
   "entrees": { "netImposableAnnuel": 7620000, "parts": 2.5 },
   "etapes": [
     { "op": "bareme_progressif", "ref": "SN.IR.bareme@2026-01-01", "resultat": 1978500 },
-    { "op": "reduction_famille", "taux": 0.20, "min": 300000, "max": 1100000, "resultat": -395700 },
-    { "op": "mensualisation", "resultat": 131900 } ] }
+    { "op": "reduction_famille", "taux": 0.2, "min": 300000, "max": 1100000, "resultat": -395700 },
+    { "op": "mensualisation", "resultat": 131900 }
+  ]
+}
 ```
 
 Exposée dans l'UI (« expliquer ce montant ») pour le gestionnaire **et** en version pédagogique pour l'employé. C'est simultanément l'outil de débogage du moteur, la réponse aux contrôles fiscaux/sociaux, et un différenciateur produit visible — aucun acteur local ne l'offre.
@@ -253,25 +261,25 @@ Table **append-only** (aucun droit UPDATE/DELETE pour le rôle applicatif, parti
 
 ## 7. Synthèse des décisions et effort
 
-| # | Décision | Alternative écartée |
-|---|---|---|
-| 1 | Moteur = fonction pure versionnée, arithmétique décimale, traces natives | Calcul « dans les services » dispersé |
-| 2 | Packs pays immuables (code + barèmes datés), corpus de référence validé par expert-comptable | Constantes légales dans le code ou en config libre |
-| 3 | Bitemporalité + régularisations différentielles, périodes closes inviolables | Réouverture de périodes |
-| 4 | Auth interne Argon2id + TOTP, sessions serveur, OIDC en phase 2 | Auth0/Clerk, Keycloak, sessions JWT |
-| 5 | RBAC 5 rôles + permissions fines + périmètres, policy serveur unique testée en CI | ACL ad hoc par endpoint |
-| 6 | Hébergement Paris + réversibilité souveraine en IaC | Région africaine, hébergement local V1 |
-| 7 | Chiffrement d'enveloppe limité aux champs ultra-sensibles ; salaires protégés par RBAC + audit | Chiffrement champ généralisé |
-| 8 | Bulletins scellés par hachage chaîné + WORM | Blockchain |
+| #   | Décision                                                                                       | Alternative écartée                                |
+| --- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1   | Moteur = fonction pure versionnée, arithmétique décimale, traces natives                       | Calcul « dans les services » dispersé              |
+| 2   | Packs pays immuables (code + barèmes datés), corpus de référence validé par expert-comptable   | Constantes légales dans le code ou en config libre |
+| 3   | Bitemporalité + régularisations différentielles, périodes closes inviolables                   | Réouverture de périodes                            |
+| 4   | Auth interne Argon2id + TOTP, sessions serveur, OIDC en phase 2                                | Auth0/Clerk, Keycloak, sessions JWT                |
+| 5   | RBAC 5 rôles + permissions fines + périmètres, policy serveur unique testée en CI              | ACL ad hoc par endpoint                            |
+| 6   | Hébergement Paris + réversibilité souveraine en IaC                                            | Région africaine, hébergement local V1             |
+| 7   | Chiffrement d'enveloppe limité aux champs ultra-sensibles ; salaires protégés par RBAC + audit | Chiffrement champ généralisé                       |
+| 8   | Bulletins scellés par hachage chaîné + WORM                                                    | Blockchain                                         |
 
-| Chantier | Effort (dev senior) |
-|---|---|
-| Moteur core (rubriques, DSL, phases, traces, arrondis) | 3–4 mois |
-| Pack Sénégal + corpus validé (hors honoraires expert : ~2–4 M FCFA) | 1,5–2 mois |
-| Auth + sessions + RBAC + tests d'accès | 1–1,5 mois |
-| Chiffrement champ + KMS + secrets | 2–3 semaines |
-| Audit log + scellement bulletins | 2–3 semaines |
-| Kit conformité (registre, DPA, rétention/purge, kit CDP) | 2 semaines + conseil juridique |
-| **Total** | **≈ 7–9 mois-homme** |
+| Chantier                                                            | Effort (dev senior)            |
+| ------------------------------------------------------------------- | ------------------------------ |
+| Moteur core (rubriques, DSL, phases, traces, arrondis)              | 3–4 mois                       |
+| Pack Sénégal + corpus validé (hors honoraires expert : ~2–4 M FCFA) | 1,5–2 mois                     |
+| Auth + sessions + RBAC + tests d'accès                              | 1–1,5 mois                     |
+| Chiffrement champ + KMS + secrets                                   | 2–3 semaines                   |
+| Audit log + scellement bulletins                                    | 2–3 semaines                   |
+| Kit conformité (registre, DPA, rétention/purge, kit CDP)            | 2 semaines + conseil juridique |
+| **Total**                                                           | **≈ 7–9 mois-homme**           |
 
 Soit environ 4 à 5 mois calendaires à deux développeurs, en parallèle des chantiers des autres chapitres. Les deux risques à traiter **avant** d'écrire le moteur : contractualiser l'expert-comptable pour le corpus de référence, et vérifier les exigences d'hébergement de l'APIX.

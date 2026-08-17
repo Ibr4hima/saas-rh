@@ -8,7 +8,7 @@ Trois principes non négociables gouvernent le modèle :
 
 1. **Un SI RH est une machine à remonter le temps.** Toute question métier est datée : « quel était son salaire au 1er mars ? », « qui était son manager au moment de l'évaluation ? », « quel taux IPRES appliquer pour la paie de janvier recalculée en avril ? ». L'effective dating (§4) n'est pas une option, c'est LA fondation. Les produits qui l'ont bolt-on après coup (beaucoup de SIRH de première génération) ne s'en remettent jamais.
 2. **La paie est un système comptable.** Immuabilité, traçabilité, corrections par écritures compensatoires — jamais par écrasement.
-3. **Le multi-pays est une donnée, pas du code.** Taux, plafonds, barèmes et rubriques sont des enregistrements paramétrés et datés. Le moteur de paie sénégalais de la V1 doit être une *instanciation* d'un moteur générique, pas un fork à réécrire pour la Côte d'Ivoire.
+3. **Le multi-pays est une donnée, pas du code.** Taux, plafonds, barèmes et rubriques sont des enregistrements paramétrés et datés. Le moteur de paie sénégalais de la V1 doit être une _instanciation_ d'un moteur générique, pas un fork à réécrire pour la Côte d'Ivoire.
 
 **Décision d'architecture** : monolithe modulaire, **une seule base PostgreSQL** (≥ 17, cible 18), un schéma logique par context. Chaque context possède ses tables en écriture exclusive ; les autres modules lisent via des interfaces de code (pas d'accès SQL direct cross-module), mais **on conserve les FK physiques entre contexts** — l'intégrité référentielle vaut plus que la pureté DDD à ce stade. Microservices et base-par-context : écartés, coût opérationnel indéfendable à 1-2 développeurs, et une paie a besoin de transactions ACID couvrant plusieurs contexts. À 500 employés × 12 paies × ~60 rubriques ≈ **360 000 lignes de paie/an** : PostgreSQL n'a même pas chaud à 100 fois ce volume.
 
@@ -41,16 +41,16 @@ flowchart LR
   PAIE -->|bulletins| DOC
 ```
 
-| Context | Responsabilité | Entités principales | Relations |
-|---|---|---|---|
-| **Identité & Organisation** | Tenants, entités légales (NINEA, n° employeur IPRES/CSS), établissements, départements, postes ; référentiel organisationnel daté | Tenant, LegalEntity, Establishment, Department, Position | Amont de tout ; ne dépend de personne |
-| **Dossier Employé** (core HR) | Identité civile, dossiers d'emploi, affectations, contacts, personnes à charge (quotient familial) | Person, User, Employee, Assignment, Dependent | Consomme Organisation ; source de vérité pour tous les autres |
-| **Contrats & Rémunération** | Contrats, avenants, historique de rémunération, classification conventionnelle (catégories CCNI) | Contract, ContractAmendment, CompensationRecord | Lit Dossier Employé ; exposé à la Paie en lecture datée |
-| **Temps & Absences** | Types d'absence, règles d'acquisition, demandes/validations, soldes, pointages | AbsenceType, AbsenceRequest, AbsenceBalance, TimesheetEntry | Lit Dossier Employé ; fournit les éléments variables à la Paie |
-| **Paie** | Runs de paie, bulletins, rubriques, paramètres légaux datés (IPRES, CSS, barème IR, TRIMF, CFCE — *taux à vérifier au moment du paramétrage*), déclarations | PayrollRun, Payslip, PayslipLine, PayItem, StatutoryRate | Consomme Contrats, Temps, Organisation à une date de référence ; n'est lu par personne en écriture |
-| **Recrutement** (phase 2) | Offres, candidats, pipeline ; à l'embauche, promotion Candidate → Person + Employee | JobOpening, Candidate, Application | Isolé ; un seul point de contact : l'embauche |
-| **Performance** (phase 2) | Campagnes d'évaluation, objectifs, feedback | ReviewCycle, Review, Goal | Lit Dossier Employé (snapshot manager à date) |
-| **Documents** | GED RH : stockage, versions, signatures, rétention légale | Document, DocumentVersion | Transverse ; référencé par Employé, Contrats, Paie |
+| Context                       | Responsabilité                                                                                                                                              | Entités principales                                         | Relations                                                                                          |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Identité & Organisation**   | Tenants, entités légales (NINEA, n° employeur IPRES/CSS), établissements, départements, postes ; référentiel organisationnel daté                           | Tenant, LegalEntity, Establishment, Department, Position    | Amont de tout ; ne dépend de personne                                                              |
+| **Dossier Employé** (core HR) | Identité civile, dossiers d'emploi, affectations, contacts, personnes à charge (quotient familial)                                                          | Person, User, Employee, Assignment, Dependent               | Consomme Organisation ; source de vérité pour tous les autres                                      |
+| **Contrats & Rémunération**   | Contrats, avenants, historique de rémunération, classification conventionnelle (catégories CCNI)                                                            | Contract, ContractAmendment, CompensationRecord             | Lit Dossier Employé ; exposé à la Paie en lecture datée                                            |
+| **Temps & Absences**          | Types d'absence, règles d'acquisition, demandes/validations, soldes, pointages                                                                              | AbsenceType, AbsenceRequest, AbsenceBalance, TimesheetEntry | Lit Dossier Employé ; fournit les éléments variables à la Paie                                     |
+| **Paie**                      | Runs de paie, bulletins, rubriques, paramètres légaux datés (IPRES, CSS, barème IR, TRIMF, CFCE — _taux à vérifier au moment du paramétrage_), déclarations | PayrollRun, Payslip, PayslipLine, PayItem, StatutoryRate    | Consomme Contrats, Temps, Organisation à une date de référence ; n'est lu par personne en écriture |
+| **Recrutement** (phase 2)     | Offres, candidats, pipeline ; à l'embauche, promotion Candidate → Person + Employee                                                                         | JobOpening, Candidate, Application                          | Isolé ; un seul point de contact : l'embauche                                                      |
+| **Performance** (phase 2)     | Campagnes d'évaluation, objectifs, feedback                                                                                                                 | ReviewCycle, Review, Goal                                   | Lit Dossier Employé (snapshot manager à date)                                                      |
+| **Documents**                 | GED RH : stockage, versions, signatures, rétention légale                                                                                                   | Document, DocumentVersion                                   | Transverse ; référencé par Employé, Contrats, Paie                                                 |
 
 Recrutement et Performance sont **désignés mais non construits en V1** : on réserve leur place dans le modèle (pas de collision de noms, point d'entrée d'embauche identifié) sans écrire une ligne.
 
@@ -60,13 +60,13 @@ Recrutement et Performance sont **désignés mais non construits en V1** : on r�
 
 L'erreur classique des SIRH amateurs est une table `employees` fourre-tout avec un mot de passe dedans. On sépare :
 
-| Entité | C'est quoi | Cardinalités |
-|---|---|---|
-| **Person** | Une personne physique : état civil, PII (CNI, passeport, NIN), coordonnées personnelles. Existe indépendamment de tout emploi. | 1 Person → 0..n Employee, 0..1 User |
-| **User** | Un compte d'authentification (email, MFA, rôles). Un expert-comptable externe ou un admin APIX peut être User sans être Employee ; un ouvrier sans email peut être Employee sans User. | Rattaché à 1 Person, scoppé au tenant |
+| Entité       | C'est quoi                                                                                                                                                                                                                                                                                                                            | Cardinalités                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| **Person**   | Une personne physique : état civil, PII (CNI, passeport, NIN), coordonnées personnelles. Existe indépendamment de tout emploi.                                                                                                                                                                                                        | 1 Person → 0..n Employee, 0..1 User                 |
+| **User**     | Un compte d'authentification (email, MFA, rôles). Un expert-comptable externe ou un admin APIX peut être User sans être Employee ; un ouvrier sans email peut être Employee sans User.                                                                                                                                                | Rattaché à 1 Person, scoppé au tenant               |
 | **Employee** | Un **dossier d'emploi** : la relation entre une Person et une **LegalEntity** (matricule, date d'entrée, statut). Une personne employée par deux entités du même groupe = deux Employee. Une réembauche = un nouvel Employee (ou réactivation, au choix du tenant — nous recommandons un nouveau dossier, l'historique reste propre). | unique(tenant_id, legal_entity_id, employee_number) |
 
-Conséquence immédiate : le portail self-service mobile (mobile-first, connectivité instable) s'adresse à un User qui *voit* un ou plusieurs dossiers Employee — le multi-entités est gratuit dès le premier jour.
+Conséquence immédiate : le portail self-service mobile (mobile-first, connectivité instable) s'adresse à un User qui _voit_ un ou plusieurs dossiers Employee — le multi-entités est gratuit dès le premier jour.
 
 ### 3.2 Tenant, LegalEntity, Position, Assignment
 
@@ -86,7 +86,7 @@ L'historique de rémunération est une table effective-dated pure : salaire de b
 
 ### 3.5 Temps & Absences
 
-- **AbsenceType** : paramétré **par tenant** avec un socle légal par pays (congés payés sénégalais, maternité, permissions exceptionnelles CCNI — *durées à vérifier lors du paramétrage juridique*) : unité (jour/demi-journée), payé ou non, règle d'acquisition, report autorisé.
+- **AbsenceType** : paramétré **par tenant** avec un socle légal par pays (congés payés sénégalais, maternité, permissions exceptionnelles CCNI — _durées à vérifier lors du paramétrage juridique_) : unité (jour/demi-journée), payé ou non, règle d'acquisition, report autorisé.
 - **AbsenceRequest** : machine à états stricte `draft → submitted → approved | rejected → cancelled`, avec validateur = manager résolu via l'Assignment **à la date de la demande**.
 - **AbsenceBalance** : solde matérialisé par (employee, absence_type, période d'acquisition) — recalculable depuis les mouvements (accruals + requests), mais matérialisé pour l'affichage mobile instantané. Le recalcul est la source de vérité, le solde est un cache assumé.
 - **TimesheetEntry** : pointage/saisie par jour et par employé (heures normales, heures supplémentaires typées — les majorations sénégalaises sont des PayItems, pas des colonnes).
@@ -130,12 +130,12 @@ Impact sur les requêtes : toute jointure vers une table datée porte la clause 
 
 **Alternatives écartées :**
 
-| Option | Verdict | Pourquoi |
-|---|---|---|
-| **Event sourcing complet** | Écarté | Le bon modèle *en théorie* pour la paie, mais projections, replay, versioning d'événements et outillage = charge d'une équipe dédiée. À 1-2 devs, c'est le projet qui meurt. On garde l'esprit via l'audit trail (§6) et les snapshots de Payslip. |
-| **SCD2 généralisé sur toutes les tables** | Écarté | Versionner l'adresse email ou un libellé de département pollue le modèle. L'audit trail couvre le « qui a changé quoi » ; l'effective dating est réservé aux attributs à effet **métier** dans le temps. |
-| **Colonnes `valid_from`/`valid_to` séparées sans daterange** | Écarté | Pas de contrainte d'exclusion native → chevauchements garantis en production. Le `daterange` est fait pour ça. |
-| **Extension `temporal_tables` / triggers d'historisation** | Écarté | Historise le *passé technique* (versions de lignes), pas le *futur métier* (augmentation effective au 1er mars saisie en janvier). Un SIRH a besoin des deux sens du temps ; seul l'effective dating explicite donne le second. |
+| Option                                                       | Verdict | Pourquoi                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Event sourcing complet**                                   | Écarté  | Le bon modèle _en théorie_ pour la paie, mais projections, replay, versioning d'événements et outillage = charge d'une équipe dédiée. À 1-2 devs, c'est le projet qui meurt. On garde l'esprit via l'audit trail (§6) et les snapshots de Payslip. |
+| **SCD2 généralisé sur toutes les tables**                    | Écarté  | Versionner l'adresse email ou un libellé de département pollue le modèle. L'audit trail couvre le « qui a changé quoi » ; l'effective dating est réservé aux attributs à effet **métier** dans le temps.                                           |
+| **Colonnes `valid_from`/`valid_to` séparées sans daterange** | Écarté  | Pas de contrainte d'exclusion native → chevauchements garantis en production. Le `daterange` est fait pour ça.                                                                                                                                     |
+| **Extension `temporal_tables` / triggers d'historisation**   | Écarté  | Historise le _passé technique_ (versions de lignes), pas le _futur métier_ (augmentation effective au 1er mars saisie en janvier). Un SIRH a besoin des deux sens du temps ; seul l'effective dating explicite donne le second.                    |
 
 ## 5. Multi-tenant au niveau données
 
@@ -189,13 +189,13 @@ Points fermes : les diffs `before/after` **excluent les champs chiffrés** (on l
 
 **Recommandation** : chiffrement **applicatif** AES-256-GCM (clé de données par tenant, enveloppée par un KMS — voir chapitre infra), champ par champ, avec colonne de recherche par HMAC quand l'égalité est nécessaire. `pgcrypto` est écarté : les clés transiteraient dans les requêtes SQL (logs, pg_stat_statements) et un dump base = données en clair déchiffrables par le DBA.
 
-| Donnée | Chiffrée ? | Justification |
-|---|---|---|
-| IBAN / n° de compte, n° mobile money (Wave, Orange Money) | **Oui** | Cible n°1 en cas de fuite ; jamais utilisée dans un calcul ; lue uniquement au moment du paiement |
-| N° CNI, passeport, NIN | **Oui** | Identifiants d'état civil, risque d'usurpation ; recherche par HMAC |
-| Données santé (inaptitudes, accidents du travail) | **Oui** | Données sensibles au sens loi 2008-12 art. sur les données de santé et RGPD art. 9 |
-| **Salaires, éléments de paie** | **Non** | Le moteur de paie calcule, agrège, déclare dessus en permanence ; les chiffrer casse les requêtes et n'apporte qu'un théâtre de sécurité. Protection réelle : chiffrement du stockage (at-rest), RLS, habilitations applicatives par rôle, audit des consultations |
-| Dates de naissance, adresses | **Non** | Nécessaires en clair (quotient familial, déclarations) ; protégées par RLS + habilitations |
+| Donnée                                                    | Chiffrée ? | Justification                                                                                                                                                                                                                                                      |
+| --------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| IBAN / n° de compte, n° mobile money (Wave, Orange Money) | **Oui**    | Cible n°1 en cas de fuite ; jamais utilisée dans un calcul ; lue uniquement au moment du paiement                                                                                                                                                                  |
+| N° CNI, passeport, NIN                                    | **Oui**    | Identifiants d'état civil, risque d'usurpation ; recherche par HMAC                                                                                                                                                                                                |
+| Données santé (inaptitudes, accidents du travail)         | **Oui**    | Données sensibles au sens loi 2008-12 art. sur les données de santé et RGPD art. 9                                                                                                                                                                                 |
+| **Salaires, éléments de paie**                            | **Non**    | Le moteur de paie calcule, agrège, déclare dessus en permanence ; les chiffrer casse les requêtes et n'apporte qu'un théâtre de sécurité. Protection réelle : chiffrement du stockage (at-rest), RLS, habilitations applicatives par rôle, audit des consultations |
+| Dates de naissance, adresses                              | **Non**    | Nécessaires en clair (quotient familial, déclarations) ; protégées par RLS + habilitations                                                                                                                                                                         |
 
 ## 7. ERD des entités cœur
 
@@ -261,15 +261,15 @@ erDiagram
 
 ## 8. Conventions
 
-| Sujet | Décision | Justification |
-|---|---|---|
-| Clés primaires | **UUID v7** partout (`uuidv7()` natif PG 18 ; génération applicative si PG 17) | Triables temporellement → localité d'index proche du bigint, sans les fuites d'information des séquences (matricules devinables) ni la coordination des bigint en multi-région future. Bigint écarté ; UUID v4 écarté (fragmentation d'index) |
-| Timestamps | `timestamptz`, **UTC exclusivement** en base ; conversion `Africa/Dakar` (UTC+0 toute l'année, ça aide) à l'affichage. Les dates métier (embauche, période de paie) sont des `date` naïves | Un seul référentiel temporel ; les dates légales n'ont pas de fuseau |
-| Nommage | `snake_case`, **anglais**, singulier (`employee`, `payroll_run`) ; libellés métier en français dans les données et l'i18n | Le code et le schéma survivront à l'internationalisation ; mélanger français/anglais dans un schéma est irrécupérable |
-| Soft delete | `deleted_at timestamptz` **uniquement** où le métier l'exige (Document, brouillons) ; index partiels `WHERE deleted_at IS NULL`. Paie, contrats, audit : **aucune suppression**, on vit par statuts (`cancelled`, `superseded`) | Le soft delete généralisé pollue chaque requête pour un besoin qui n'existe presque jamais en RH — on archive, on n'efface pas (obligations légales de rétention ; l'effacement RGPD/loi 2008-12 se traite par anonymisation ciblée de Person, chapitre conformité) |
-| Colonnes système | `created_at`, `updated_at`, `created_by` sur toutes les tables métier | Complément minimal de l'audit_log |
-| Montants | `numeric(14,2)` + `currency char(3)` ; jamais de float | Le XOF n'a pas de centimes mais l'UEMOA n'est pas le monde |
-| Migrations | Versionnées, forward-only, revues comme du code | La base est le produit |
+| Sujet            | Décision                                                                                                                                                                                                                        | Justification                                                                                                                                                                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Clés primaires   | **UUID v7** partout (`uuidv7()` natif PG 18 ; génération applicative si PG 17)                                                                                                                                                  | Triables temporellement → localité d'index proche du bigint, sans les fuites d'information des séquences (matricules devinables) ni la coordination des bigint en multi-région future. Bigint écarté ; UUID v4 écarté (fragmentation d'index)                       |
+| Timestamps       | `timestamptz`, **UTC exclusivement** en base ; conversion `Africa/Dakar` (UTC+0 toute l'année, ça aide) à l'affichage. Les dates métier (embauche, période de paie) sont des `date` naïves                                      | Un seul référentiel temporel ; les dates légales n'ont pas de fuseau                                                                                                                                                                                                |
+| Nommage          | `snake_case`, **anglais**, singulier (`employee`, `payroll_run`) ; libellés métier en français dans les données et l'i18n                                                                                                       | Le code et le schéma survivront à l'internationalisation ; mélanger français/anglais dans un schéma est irrécupérable                                                                                                                                               |
+| Soft delete      | `deleted_at timestamptz` **uniquement** où le métier l'exige (Document, brouillons) ; index partiels `WHERE deleted_at IS NULL`. Paie, contrats, audit : **aucune suppression**, on vit par statuts (`cancelled`, `superseded`) | Le soft delete généralisé pollue chaque requête pour un besoin qui n'existe presque jamais en RH — on archive, on n'efface pas (obligations légales de rétention ; l'effacement RGPD/loi 2008-12 se traite par anonymisation ciblée de Person, chapitre conformité) |
+| Colonnes système | `created_at`, `updated_at`, `created_by` sur toutes les tables métier                                                                                                                                                           | Complément minimal de l'audit_log                                                                                                                                                                                                                                   |
+| Montants         | `numeric(14,2)` + `currency char(3)` ; jamais de float                                                                                                                                                                          | Le XOF n'a pas de centimes mais l'UEMOA n'est pas le monde                                                                                                                                                                                                          |
+| Migrations       | Versionnées, forward-only, revues comme du code                                                                                                                                                                                 | La base est le produit                                                                                                                                                                                                                                              |
 
 ## 9. Ce qu'on ne construit PAS en V1
 

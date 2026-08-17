@@ -10,28 +10,29 @@
 
 ## Sommaire du dossier
 
-| # | Chapitre | Contenu |
-|---|---|---|
-| 01 | [Vision produit et périmètre fonctionnel](01-vision-produit.md) | Marché, différenciation, personas, 14 modules, périmètre MVP → V1 → V2, 10 principes produit |
-| 02 | [Architecture technique globale](02-architecture-technique.md) | Monolithe modulaire NestJS, multi-tenancy RLS, stack TypeScript, API REST, patterns transverses |
-| 03 | [Modèle de données et domaines (DDD)](03-modele-donnees.md) | 8 bounded contexts, Person/User/Employee, effective dating, RLS, audit, conventions |
-| 04 | [Moteur de paie, sécurité et conformité](04-paie-securite-conformite.md) | Moteur pur + packs pays versionnés, pack Sénégal, RBAC, RGPD + loi 2008-12/CDP, chiffrement |
-| 05 | [Design system, UX et ergonomie](05-design-system-ux.md) | Qualité Stripe/Linear décomposée, shadcn/ui + tokens, DataTable unique, run de paie UX, budgets perf |
-| 06 | [Infrastructure, DevOps et exploitation](06-infrastructure-devops.md) | Scaleway Paris + offre souveraine SENUM, CI/CD, backups/PITR, observabilité, coûts par stade |
-| 07 | [Modèle économique et stratégie SaaS](07-modele-economique.md) | Pricing XOF 3 plans, encaissement sans Stripe, relation APIX & PI, go-to-market, métriques |
-| 08 | [Roadmap de construction et plan d'exécution](08-roadmap.md) | Phases 0→4, ordre de construction, discipline qualité, anti-scope-creep, 10 décisions semaine 1 |
-| 09 | [Revue critique et arbitrages](09-revue-critique.md) | Les deux revues adverses intégrales, les 3 blocages levés, le backlog des manques à combler |
+| #   | Chapitre                                                                 | Contenu                                                                                              |
+| --- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| 01  | [Vision produit et périmètre fonctionnel](01-vision-produit.md)          | Marché, différenciation, personas, 14 modules, périmètre MVP → V1 → V2, 10 principes produit         |
+| 02  | [Architecture technique globale](02-architecture-technique.md)           | Monolithe modulaire NestJS, multi-tenancy RLS, stack TypeScript, API REST, patterns transverses      |
+| 03  | [Modèle de données et domaines (DDD)](03-modele-donnees.md)              | 8 bounded contexts, Person/User/Employee, effective dating, RLS, audit, conventions                  |
+| 04  | [Moteur de paie, sécurité et conformité](04-paie-securite-conformite.md) | Moteur pur + packs pays versionnés, pack Sénégal, RBAC, RGPD + loi 2008-12/CDP, chiffrement          |
+| 05  | [Design system, UX et ergonomie](05-design-system-ux.md)                 | Qualité Stripe/Linear décomposée, shadcn/ui + tokens, DataTable unique, run de paie UX, budgets perf |
+| 06  | [Infrastructure, DevOps et exploitation](06-infrastructure-devops.md)    | Scaleway Paris + offre souveraine SENUM, CI/CD, backups/PITR, observabilité, coûts par stade         |
+| 07  | [Modèle économique et stratégie SaaS](07-modele-economique.md)           | Pricing XOF 3 plans, encaissement sans Stripe, relation APIX & PI, go-to-market, métriques           |
+| 08  | [Roadmap de construction et plan d'exécution](08-roadmap.md)             | Phases 0→4, ordre de construction, discipline qualité, anti-scope-creep, 10 décisions semaine 1      |
+| 09  | [Revue critique et arbitrages](09-revue-critique.md)                     | Les deux revues adverses intégrales, les 3 blocages levés, le backlog des manques à combler          |
+| 10  | [Scénario Trésor public](10-scenario-tresor-public.md)                   | La paie APIX si le Trésor verse les salaires : 2 scénarios, checklist de questions pour la RH        |
 
 ## Les 12 décisions structurantes
 
 1. **Positionnement** : paie UEMOA native + expérience employé de classe mondiale. La barrière défendable est le moteur de paie réglementaire (IPRES, CSS, IR/TRIMF, CFCE, convention collective) — le fossé de Payfit, transposé.
-2. **Pilote APIX en deux lots contractualisés** *(arbitrage post-revue)* : Lot 1 = Core HR + congés & absences + portail employé + documents ; Lot 2 = paie sénégalaise. La paie fait partie de l'engagement MVP, mais elle est livrée en second, sur des données Core HR déjà fiabilisées.
+2. **Pilote APIX en deux lots contractualisés** _(arbitrage post-revue)_ : Lot 1 = Core HR + congés & absences + portail employé + documents ; Lot 2 = paie sénégalaise. La paie fait partie de l'engagement MVP, mais elle est livrée en second, sur des données Core HR déjà fiabilisées.
 3. **Monolithe modulaire TypeScript** (NestJS + Next.js), 8 bounded contexts aux frontières outillées, monorepo pnpm/Turborepo. Microservices, Kafka, Kubernetes, GraphQL : explicitement interdits en phase de construction.
 4. **Multi-tenancy en schéma partagé** : `tenant_id` sur toutes les tables + Row-Level Security Postgres forcée, unicité et index scoppés au tenant ; extraction des gros clients vers une base dédiée plus tard par réplication logique.
 5. **Person / User / Employee séparés** : une personne physique ≠ son compte d'accès ≠ ses dossiers d'emploi. Rend natifs le multi-entités, les prestataires, les candidats — et le futur multi-dossiers expert-comptable.
 6. **Effective dating généralisé** : les données à effet temporel (affectations, salaires, barèmes légaux) sont des tables versionnées à `daterange` + contrainte d'exclusion GiST. Une paie doit rester recalculable à l'identique des années plus tard.
 7. **Moteur de paie = fonction pure + packs pays immuables versionnés** (ex. SN-2026.1), traces de calcul par ligne de bulletin, bulletins scellés, validation par golden files de bulletins réels + paie en double sur 3 cycles avant bascule. Tous les taux marqués « à vérifier » jusqu'à validation par expert-comptable sénégalais.
-8. **Front** : shadcn/ui (Radix) + Tailwind possédés dans `packages/ui`, tokens compilés par Style Dictionary, un unique composant DataTable, autosave sur les formulaires longs. **PWA Next.js comme seule cible mobile jusqu'à la V1+** *(arbitrage post-revue : Expo/RN sort du socle initial)*.
+8. **Front** : shadcn/ui (Radix) + Tailwind possédés dans `packages/ui`, tokens compilés par Style Dictionary, un unique composant DataTable, autosave sur les formulaires longs. **PWA Next.js comme seule cible mobile jusqu'à la V1+** _(arbitrage post-revue : Expo/RN sort du socle initial)_.
 9. **Hébergement Scaleway Paris** (VPS + Coolify, PostgreSQL managé PITR) + **offre souveraine single-tenant** déployable chez Sénégal Numérique grâce au packaging 100 % Docker. Démarche CDP (autorisation de transfert, pas simple déclaration) à engager **avant** la Phase 0.
 10. **Pricing en XOF par employé/mois** : Essentiel 1 500 / Pro 3 000 / Entreprise ≥ 5 000 XOF, planchers mensuels, -15 % annuel. Encaissement : PayDunya + Wave Business + virement (Stripe indisponible au Sénégal pour encaisser).
 11. **Société éditrice distincte (SAS OHADA)** et clause de propriété intellectuelle non négociable avec l'APIX : licence d'usage + remise design partner limitée dans le temps, jamais de cession ni d'exclusivité. À valider avec un avocat marchés publics/OHADA.
@@ -41,13 +42,14 @@
 
 La revue croisée a identifié 3 points bloquants, tous arbitrés (détail et justifications dans [09-revue-critique.md](09-revue-critique.md)) :
 
-| Blocage | Arbitrage |
-|---|---|
-| Contradiction ch.01/ch.08 : paie dans le MVP vs exclue du MVP | **Pilote APIX en 2 lots contractualisés dès la signature** : Lot 1 sans paie (fiabilisation Core HR/congés), Lot 2 = paie avec date cible et critères d'acceptation. Périmètre signé par l'APIX en semaine 1. |
+| Blocage                                                                                 | Arbitrage                                                                                                                                                                                                                                                                               |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contradiction ch.01/ch.08 : paie dans le MVP vs exclue du MVP                           | **Pilote APIX en 2 lots contractualisés dès la signature** : Lot 1 sans paie (fiabilisation Core HR/congés), Lot 2 = paie avec date cible et critères d'acceptation. Périmètre signé par l'APIX en semaine 1.                                                                           |
 | Plan capacité insincère (fondateur à 50-60 %, chiffrages incompatibles entre chapitres) | **Calendrier honnête publié** : à capacité constante, V1 commercialisable à 20-24 mois. L'horizon 12-15 mois n'existe que si le dev n°2 rejoint dès la Phase 1 **et** que la capacité fondateur remonte à ≥ 80 % pour la Phase 2 (paie). Lancement Phase 2 conditionné à ces prérequis. |
-| Aucun plan de financement face à un client public payant à 60-120 jours | **Volet trésorerie/runway 24 mois à produire avant le premier commit** (burn mensuel, sources : fonds propres, prestation APIX, DER/FJ, pré-ventes annuelles), avec jalons go/no-go financiers. Chantier ouvert, voir backlog ci-dessous. |
+| Aucun plan de financement face à un client public payant à 60-120 jours                 | **Volet trésorerie/runway 24 mois à produire avant le premier commit** (burn mensuel, sources : fonds propres, prestation APIX, DER/FJ, pré-ventes annuelles), avec jalons go/no-go financiers. Chantier ouvert, voir backlog ci-dessous.                                               |
 
 Deux inconnues réglementaires sont à lever **avant** d'écrire du code :
+
 - **CDP** : la loi 2008-12 soumet le transfert transfrontalier (hébergement Paris) à **autorisation préalable** — position écrite de la CDP et de la DSI APIX exigée avant la Phase 0 ; plan B single-tenant chez Sénégal Numérique déjà prévu par l'architecture.
 - **Mobile money (V1)** : le versement des salaires doit être conçu en « initiation de paiement depuis le compte de l'employeur » (les fonds ne transitent jamais par la plateforme, sinon agrément BCEAO d'établissement de paiement), avec plafonds de wallets vérifiés et fallback virement multi-rails. À valider par un avocat réglementaire BCEAO avant de vendre la feature.
 

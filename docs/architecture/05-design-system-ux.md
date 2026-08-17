@@ -8,13 +8,13 @@ L'ambition « niveau Stripe/Linear » n'est pas un vœu esthétique : c'est une 
 
 Analyse froide de ce que l'utilisateur perçoit, et du mécanisme qui le produit :
 
-| Perception | Mécanisme concret chez Stripe/Linear | Traduction Teranga RH |
-|---|---|---|
-| « C'est instantané » | Optimistic UI sur les mutations réversibles, skeletons calqués sur la mise en page finale, prefetch des routes au survol, transitions < 200 ms | Valider un congé, éditer un champ employé : mise à jour optimiste + rollback. Skeleton par module, jamais de spinner plein écran après le premier chargement |
-| « C'est dense mais lisible » | Grille 4 px stricte, une seule famille typographique, hiérarchie par graisse et couleur (pas par taille), lignes de table 36-40 px | Registre du personnel à 40 px/ligne, 5 tailles de texte max par écran, montants en chiffres tabulaires alignés à droite |
-| « C'est pro » | Micro-interactions 120-200 ms ease-out, jamais de bounce ; états vides qui vendent la fonctionnalité ; erreurs qui expliquent la correction | Chaque état vide = illustration légère + phrase + bouton d'action. Chaque erreur = quoi / pourquoi / comment corriger |
-| « Je vais vite » | Raccourcis clavier documentés, command palette Cmd+K, navigation clavier complète dans les listes | Cmd+K dès la v1 : « aller à un employé », « lancer la paie d'août », « créer une absence » |
-| « C'est cohérent » | Zéro composant ad hoc : tout écran est un assemblage du système | Règle d'or : si un écran exige une valeur hors tokens, c'est le design de l'écran qui est faux |
+| Perception                   | Mécanisme concret chez Stripe/Linear                                                                                                           | Traduction Teranga RH                                                                                                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| « C'est instantané »         | Optimistic UI sur les mutations réversibles, skeletons calqués sur la mise en page finale, prefetch des routes au survol, transitions < 200 ms | Valider un congé, éditer un champ employé : mise à jour optimiste + rollback. Skeleton par module, jamais de spinner plein écran après le premier chargement |
+| « C'est dense mais lisible » | Grille 4 px stricte, une seule famille typographique, hiérarchie par graisse et couleur (pas par taille), lignes de table 36-40 px             | Registre du personnel à 40 px/ligne, 5 tailles de texte max par écran, montants en chiffres tabulaires alignés à droite                                      |
+| « C'est pro »                | Micro-interactions 120-200 ms ease-out, jamais de bounce ; états vides qui vendent la fonctionnalité ; erreurs qui expliquent la correction    | Chaque état vide = illustration légère + phrase + bouton d'action. Chaque erreur = quoi / pourquoi / comment corriger                                        |
+| « Je vais vite »             | Raccourcis clavier documentés, command palette Cmd+K, navigation clavier complète dans les listes                                              | Cmd+K dès la v1 : « aller à un employé », « lancer la paie d'août », « créer une absence »                                                                   |
+| « C'est cohérent »           | Zéro composant ad hoc : tout écran est un assemblage du système                                                                                | Règle d'or : si un écran exige une valeur hors tokens, c'est le design de l'écran qui est faux                                                               |
 
 **Dix principes actionnables** (affichés dans le README de `packages/ui/`, opposables en revue de code) :
 
@@ -35,12 +35,12 @@ Analyse froide de ce que l'utilisateur perçoit, et du mécanisme qui le produit
 
 **Recommandation : shadcn/ui (primitives Radix UI) + Tailwind CSS, copié dans `packages/ui/` et traité comme du code maison.**
 
-| Option | Propriété du code | Accessibilité | Atteinte du « niveau Linear » | Coût initial | Verdict |
-|---|---|---|---|---|---|
-| **shadcn/ui + Radix + Tailwind** | Totale (le code est copié chez nous) | Radix couvre focus, ARIA, clavier | Élevée — esthétique par défaut déjà proche, personnalisation illimitée | ~1 semaine | **Retenu** |
-| Mantine | Dépendance à la lib et à son theming | Bonne | Moyenne — on lutte contre un style existant pour s'en démarquer | ~3 jours | Écarté : excellent framework, mais le polish différenciant passe par une surcouche de theming fragile ; identité visuelle « Mantine » reconnaissable |
-| MUI | Dépendance forte | Bonne | Faible — Material = identité Google, poids élevé, densité difficile | ~3 jours | Écarté |
-| From scratch | Totale | À reconstruire entièrement | Théoriquement maximale | 4-6 mois | Écarté : refaire le focus management et l'ARIA de Radix est de l'over-engineering caractérisé pour 2 devs |
+| Option                           | Propriété du code                    | Accessibilité                     | Atteinte du « niveau Linear »                                          | Coût initial | Verdict                                                                                                                                              |
+| -------------------------------- | ------------------------------------ | --------------------------------- | ---------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **shadcn/ui + Radix + Tailwind** | Totale (le code est copié chez nous) | Radix couvre focus, ARIA, clavier | Élevée — esthétique par défaut déjà proche, personnalisation illimitée | ~1 semaine   | **Retenu**                                                                                                                                           |
+| Mantine                          | Dépendance à la lib et à son theming | Bonne                             | Moyenne — on lutte contre un style existant pour s'en démarquer        | ~3 jours     | Écarté : excellent framework, mais le polish différenciant passe par une surcouche de theming fragile ; identité visuelle « Mantine » reconnaissable |
+| MUI                              | Dépendance forte                     | Bonne                             | Faible — Material = identité Google, poids élevé, densité difficile    | ~3 jours     | Écarté                                                                                                                                               |
+| From scratch                     | Totale                               | À reconstruire entièrement        | Théoriquement maximale                                                 | 4-6 mois     | Écarté : refaire le focus management et l'ARIA de Radix est de l'over-engineering caractérisé pour 2 devs                                            |
 
 Justifications décisives pour shadcn/ui :
 
@@ -55,15 +55,15 @@ Au-dessus de la base shadcn, ~15-20 composants métier à construire : `DataTabl
 
 Package `packages/tokens/` — un JSON de tokens, aucune valeur de style définie ailleurs.
 
-| Catégorie | Contenu | Règles |
-|---|---|---|
-| Couleurs | Palette primitive (échelles 50-950) **jamais référencée par les composants** ; tokens sémantiques : `bg.surface`, `bg.subtle`, `text.default`, `text.muted`, `border.default`, `accent`, `success/warning/danger/info` | Les composants ne consomment que le sémantique. Contrastes AA vérifiés par script sur le JSON |
-| Dark mode | Redéfinition des seuls tokens sémantiques | **Dès le premier jour** : coût ~2 jours à la création, ~2 mois en rétrofit. Attendu par la cible « qualité Linear » |
-| Espacement | Échelle 4 px : 4, 8, 12, 16, 24, 32, 48, 64 | Aucune valeur hors échelle |
-| Typographie | **Inter variable**, self-hosted, subset latin (~40 KB woff2) ; corps 12/13/14/16/20/24/32 ; `tabular-nums` pour tout chiffre | Une seule famille. Pas de font Google en runtime (latence + RGPD) |
-| Radius | 4 / 6 / 8 px + full | |
-| Ombres | 3 niveaux, subtiles | |
-| Motion | Durées 120/180/240 ms + 2 easings | |
+| Catégorie   | Contenu                                                                                                                                                                                                                | Règles                                                                                                              |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Couleurs    | Palette primitive (échelles 50-950) **jamais référencée par les composants** ; tokens sémantiques : `bg.surface`, `bg.subtle`, `text.default`, `text.muted`, `border.default`, `accent`, `success/warning/danger/info` | Les composants ne consomment que le sémantique. Contrastes AA vérifiés par script sur le JSON                       |
+| Dark mode   | Redéfinition des seuls tokens sémantiques                                                                                                                                                                              | **Dès le premier jour** : coût ~2 jours à la création, ~2 mois en rétrofit. Attendu par la cible « qualité Linear » |
+| Espacement  | Échelle 4 px : 4, 8, 12, 16, 24, 32, 48, 64                                                                                                                                                                            | Aucune valeur hors échelle                                                                                          |
+| Typographie | **Inter variable**, self-hosted, subset latin (~40 KB woff2) ; corps 12/13/14/16/20/24/32 ; `tabular-nums` pour tout chiffre                                                                                           | Une seule famille. Pas de font Google en runtime (latence + RGPD)                                                   |
+| Radius      | 4 / 6 / 8 px + full                                                                                                                                                                                                    |                                                                                                                     |
+| Ombres      | 3 niveaux, subtiles                                                                                                                                                                                                    |                                                                                                                     |
+| Motion      | Durées 120/180/240 ms + 2 easings                                                                                                                                                                                      |                                                                                                                     |
 
 ### 2.3 Partage web / React Native
 
@@ -113,14 +113,14 @@ Exigences non négociables :
 
 ### 3.4 Deux postures produit assumées
 
-| | App RH | Portail employé |
-|---|---|---|
-| Utilisateur | RH/paie, usage quotidien intensif | Employé, usage épisodique |
-| Device | Desktop d'abord | **Mobile-first** (PWA) |
-| Densité | Dense, tableaux, raccourcis, Cmd+K | Aérée, cartes, gros touch targets (≥ 44 px) |
-| Ton | Sobre, outil de travail | Chaleureux, vocabulaire simple |
-| Référents | Linear, Stripe Dashboard | Revolut, portail Payfit employé |
-| Langues | fr, en | fr, en, **wolof** (vocabulaire réduit, ~300 chaînes) |
+|             | App RH                             | Portail employé                                      |
+| ----------- | ---------------------------------- | ---------------------------------------------------- |
+| Utilisateur | RH/paie, usage quotidien intensif  | Employé, usage épisodique                            |
+| Device      | Desktop d'abord                    | **Mobile-first** (PWA)                               |
+| Densité     | Dense, tableaux, raccourcis, Cmd+K | Aérée, cartes, gros touch targets (≥ 44 px)          |
+| Ton         | Sobre, outil de travail            | Chaleureux, vocabulaire simple                       |
+| Référents   | Linear, Stripe Dashboard           | Revolut, portail Payfit employé                      |
+| Langues     | fr, en                             | fr, en, **wolof** (vocabulaire réduit, ~300 chaînes) |
 
 Mêmes tokens, mêmes primitives — assemblages et échelles différents. C'est le design system qui garantit la parenté visuelle malgré les deux postures.
 
@@ -141,7 +141,7 @@ flowchart TD
 ```
 
 1. **Checklist guidée** : le run commence par « qu'est-ce qui a changé ce mois-ci ? » — absences importées, primes saisies, entrées/sorties — chaque poste avec un compteur de complétude. L'utilisateur sait toujours où il en est.
-2. **Anomalies expliquées et actionnables**. Deux niveaux : *bloquante* (net négatif, salaire sous le SMIG — taux en vigueur **à vérifier** —, cotisation IPRES au-delà du plafond) et *avertissement* (écart > 20 % vs mois précédent sans élément variable explicatif, RIB manquant pour un virement). Chaque anomalie = **une phrase en français + un lien vers l'écran de correction** ; jamais un code d'erreur. Les avertissements sont ignorables avec justification tracée.
+2. **Anomalies expliquées et actionnables**. Deux niveaux : _bloquante_ (net négatif, salaire sous le SMIG — taux en vigueur **à vérifier** —, cotisation IPRES au-delà du plafond) et _avertissement_ (écart > 20 % vs mois précédent sans élément variable explicatif, RIB manquant pour un virement). Chaque anomalie = **une phrase en français + un lien vers l'écran de correction** ; jamais un code d'erreur. Les avertissements sont ignorables avec justification tracée.
 3. **Prévisualisation réelle** : les bulletins PDF affichés sont ceux qui seront émis, pas une approximation.
 4. **Diff mois précédent** : table de variances par employé (brut, net, coût employeur), triable par écart, chaque écart explicable en un clic — « +50 000 FCFA : prime de rendement saisie le 12/08 ». C'est l'écran qui crée la confiance.
 5. **Validation verrouillante** : récapitulatif agrégé (masse salariale, totaux IPRES, CSS, IR, TRIMF, CFCE), double confirmation, verrouillage de la période, journal d'audit. Toute réouverture est un événement tracé.
@@ -167,12 +167,12 @@ Principe directeur : **l'utilisateur ne valide jamais une paie qu'il ne comprend
 
 Contexte cible : Android milieu de gamme, réseau 3G/4G irrégulier (médiane mobile Sénégal). Budgets vérifiés en CI (Lighthouse CI + `size-limit`), tout dépassement bloque la PR :
 
-| Métrique | Portail employé | App RH | Moyen principal |
-|---|---|---|---|
-| LCP (4G moyenne) | **< 2 s** | < 2,5 s | SSR/streaming, images AVIF/WebP, fonts subset self-hosted |
-| JS initial (gzip) | **< 180 KB** | < 300 KB | Code splitting par module, toute lib > 30 KB justifiée en revue |
-| INP | < 200 ms | < 200 ms | Virtualisation, pas de re-render de liste complète |
-| Requêtes au premier écran | ≤ 15 | ≤ 25 | Cache SWR agressif, prefetch au survol |
+| Métrique                  | Portail employé | App RH   | Moyen principal                                                 |
+| ------------------------- | --------------- | -------- | --------------------------------------------------------------- |
+| LCP (4G moyenne)          | **< 2 s**       | < 2,5 s  | SSR/streaming, images AVIF/WebP, fonts subset self-hosted       |
+| JS initial (gzip)         | **< 180 KB**    | < 300 KB | Code splitting par module, toute lib > 30 KB justifiée en revue |
+| INP                       | < 200 ms        | < 200 ms | Virtualisation, pas de re-render de liste complète              |
+| Requêtes au premier écran | ≤ 15            | ≤ 25     | Cache SWR agressif, prefetch au survol                          |
 
 Le portail employé est une **PWA avec service worker** : consultation des derniers bulletins et du solde de congés tolérante à la coupure réseau. Ce n'est pas du polish, c'est de l'adéquation au marché.
 
@@ -208,14 +208,14 @@ Dépendance à sens unique : `apps/* → packages/*`, jamais l'inverse. Un compo
 
 ### 6.4 Effort estimé (1 dev expérimenté)
 
-| Chantier | Effort | Remarque |
-|---|---|---|
-| Tokens + pipeline Style Dictionary + dark mode | 1 semaine | Une fois, puis marginal |
-| Base shadcn/ui customisée + Storybook + CI visuelle | 1,5-2 semaines | |
-| DataTable complet (tri, filtres URL, colonnes, virtualisation, export) | 1,5-2 semaines | Le composant le plus rentable du produit |
-| Formulaires longs + autosave résilient | 1 semaine | |
-| Command palette + raccourcis | 2-3 jours | |
-| UX du run de paie (hors moteur de calcul) | 3-4 semaines | Le différenciateur — ne pas rogner |
-| A11y + i18n en continu | ~10 % du temps front | Quasi gratuit si les règles sont posées dès la v1, ruineux en rétrofit |
+| Chantier                                                               | Effort               | Remarque                                                               |
+| ---------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------- |
+| Tokens + pipeline Style Dictionary + dark mode                         | 1 semaine            | Une fois, puis marginal                                                |
+| Base shadcn/ui customisée + Storybook + CI visuelle                    | 1,5-2 semaines       |                                                                        |
+| DataTable complet (tri, filtres URL, colonnes, virtualisation, export) | 1,5-2 semaines       | Le composant le plus rentable du produit                               |
+| Formulaires longs + autosave résilient                                 | 1 semaine            |                                                                        |
+| Command palette + raccourcis                                           | 2-3 jours            |                                                                        |
+| UX du run de paie (hors moteur de calcul)                              | 3-4 semaines         | Le différenciateur — ne pas rogner                                     |
+| A11y + i18n en continu                                                 | ~10 % du temps front | Quasi gratuit si les règles sont posées dès la v1, ruineux en rétrofit |
 
 **Total fondations : ~6-8 semaines** avant d'accélérer durablement — chaque écran suivant coûte alors 2 à 3 fois moins cher qu'en approche ad hoc, et la cohérence « niveau mondial » est un sous-produit mécanique du système plutôt qu'un effort permanent.

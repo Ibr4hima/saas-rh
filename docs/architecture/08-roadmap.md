@@ -29,18 +29,18 @@ Objectif de sortie : un squelette applicatif déployé en production (vide de fe
 
 ### Ce qui DOIT être dans la Phase 0 (quasi impossible à changer après)
 
-| Élément | Pourquoi irréversible | Effort |
-|---|---|---|
-| Monorepo + tooling (workspaces, lint, typecheck, conventions) | Restructurer un dépôt vivant casse l'historique et les habitudes | 2-3 j |
-| Multi-tenancy : `tenant_id` sur toutes les tables + **RLS PostgreSQL activée dès la table n°1** + tests automatisés d'isolation | Le retrofit de RLS sur un schéma existant est le chantier le plus dangereux qui existe en SaaS B2B | 4-6 j |
-| Auth (sessions, MFA-ready, modèle compatible SSO futur) | Le modèle identité/compte/membership se propage partout | 3-5 j |
-| RBAC : rôles, permissions, scopes (org / département / self) | Chaque endpoint et chaque écran en dépend dès le premier | 3-4 j |
-| Audit log append-only (qui, quoi, quand, avant/après) branché au niveau de la couche d'accès aux données | Impossible à reconstituer rétroactivement ; exigé par la loi 2008-12 et le RGPD | 2-3 j |
-| **Effective dating** sur les entités cœur (employé, poste, rémunération) : tables de versions avec `valid_from`/`valid_to` | Le passage d'un modèle « état courant » à un modèle temporel est une réécriture, pas une migration | 4-5 j |
-| i18n branchée (fr par défaut, zéro chaîne en dur dès le premier écran) | Extraire les chaînes après coup = des semaines de travail ingrat | 1-2 j |
-| Design system minimal : tokens (couleurs, espacements, typo), 15-20 primitives (bouton, champ, table, modal, toast) sur base Radix/shadcn ou équivalent acté au chapitre frontend | La cohérence visuelle niveau Stripe/Linear ne se rattrape pas écran par écran | 5-7 j |
-| CI/CD : tests + migrations réversibles + déploiement continu, environnements preview/staging/prod | La discipline de livraison se crée au jour 1 ou jamais | 2-3 j |
-| Backups automatisés + PITR testés par une restauration réelle | Non négociable pour des données RH | 1 j |
+| Élément                                                                                                                                                                           | Pourquoi irréversible                                                                              | Effort |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------ |
+| Monorepo + tooling (workspaces, lint, typecheck, conventions)                                                                                                                     | Restructurer un dépôt vivant casse l'historique et les habitudes                                   | 2-3 j  |
+| Multi-tenancy : `tenant_id` sur toutes les tables + **RLS PostgreSQL activée dès la table n°1** + tests automatisés d'isolation                                                   | Le retrofit de RLS sur un schéma existant est le chantier le plus dangereux qui existe en SaaS B2B | 4-6 j  |
+| Auth (sessions, MFA-ready, modèle compatible SSO futur)                                                                                                                           | Le modèle identité/compte/membership se propage partout                                            | 3-5 j  |
+| RBAC : rôles, permissions, scopes (org / département / self)                                                                                                                      | Chaque endpoint et chaque écran en dépend dès le premier                                           | 3-4 j  |
+| Audit log append-only (qui, quoi, quand, avant/après) branché au niveau de la couche d'accès aux données                                                                          | Impossible à reconstituer rétroactivement ; exigé par la loi 2008-12 et le RGPD                    | 2-3 j  |
+| **Effective dating** sur les entités cœur (employé, poste, rémunération) : tables de versions avec `valid_from`/`valid_to`                                                        | Le passage d'un modèle « état courant » à un modèle temporel est une réécriture, pas une migration | 4-5 j  |
+| i18n branchée (fr par défaut, zéro chaîne en dur dès le premier écran)                                                                                                            | Extraire les chaînes après coup = des semaines de travail ingrat                                   | 1-2 j  |
+| Design system minimal : tokens (couleurs, espacements, typo), 15-20 primitives (bouton, champ, table, modal, toast) sur base Radix/shadcn ou équivalent acté au chapitre frontend | La cohérence visuelle niveau Stripe/Linear ne se rattrape pas écran par écran                      | 5-7 j  |
+| CI/CD : tests + migrations réversibles + déploiement continu, environnements preview/staging/prod                                                                                 | La discipline de livraison se crée au jour 1 ou jamais                                             | 2-3 j  |
+| Backups automatisés + PITR testés par une restauration réelle                                                                                                                     | Non négociable pour des données RH                                                                 | 1 j    |
 
 Total : ~28-39 jours-homme, soit 6-8 semaines calendaires à mi-temps. **Coût infra à ce stade : < 100 €/mois** (Postgres managé, hébergement, CI).
 
@@ -121,27 +121,27 @@ Commencer par le modèle de données force à résoudre les questions difficiles
 
 **Pyramide de tests, proportionnée à l'enjeu :**
 
-| Couche | Stratégie | Volume |
-|---|---|---|
-| Moteur de paie | Golden files de bulletins réels + **property-based** (ex. : l'IR est croissant avec le brut à situation égale ; somme des retenues + net = brut ; un changement effectif en cours de mois prorate correctement) | Exhaustif — c'est ici que se joue le produit |
-| Domaine (congés, soldes, effective dating) | Tests unitaires sur la logique pure | Élevé |
-| Isolation multi-tenant | Suite dédiée exécutée à chaque CI (tentatives d'accès croisé sur chaque table) | Systématique |
-| API | Tests d'intégration sur les endpoints à logique non triviale | Ciblé |
-| e2e | **6 parcours seulement** : login, demande + validation de congé, consultation portail employé, cycle de paie complet, onboarding d'un employé, export déclaratif | Minimal et stable |
+| Couche                                     | Stratégie                                                                                                                                                                                                       | Volume                                       |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Moteur de paie                             | Golden files de bulletins réels + **property-based** (ex. : l'IR est croissant avec le brut à situation égale ; somme des retenues + net = brut ; un changement effectif en cours de mois prorate correctement) | Exhaustif — c'est ici que se joue le produit |
+| Domaine (congés, soldes, effective dating) | Tests unitaires sur la logique pure                                                                                                                                                                             | Élevé                                        |
+| Isolation multi-tenant                     | Suite dédiée exécutée à chaque CI (tentatives d'accès croisé sur chaque table)                                                                                                                                  | Systématique                                 |
+| API                                        | Tests d'intégration sur les endpoints à logique non triviale                                                                                                                                                    | Ciblé                                        |
+| e2e                                        | **6 parcours seulement** : login, demande + validation de congé, consultation portail employé, cycle de paie complet, onboarding d'un employé, export déclaratif                                                | Minimal et stable                            |
 
 Interdiction explicite de viser un pourcentage de couverture global : la couverture se concentre là où l'erreur coûte cher. Chaque décision structurante est consignée en **ADR** (architecture decision record) de 15 lignes — c'est la mémoire du projet et l'assurance bus factor.
 
 ## 7. Risques d'exécution majeurs et parades
 
-| Risque | Probabilité | Impact | Parade |
-|---|---|---|---|
-| Burn-out du solo dev sur 2 projets | Élevée | Fatal | WIP = 1 epic ; blocs de 2-3 jours consécutifs par projet (jamais d'alternance intra-journée) ; une semaine « off produit » toutes les 8 semaines ; renoncer par écrit à ce qui est repoussé |
-| Bus factor = 1 | Certaine au départ | Fatal si durable | ADR + runbooks dès la semaine 1 ; infra 100 % as-code ; **recrutement du dev n°2 déclenché avant le début de la Phase 2** (la paie ne doit pas reposer sur une seule tête) |
-| Sur-engineering des fondations | Élevée (profil ambitieux) | Retard de 3-6 mois | Interdits explicites : pas de microservices, pas de Kafka, pas de Kubernetes, pas de multi-région — **monolithe modulaire jusqu'à ~50 tenants** ; toute exception exige un ADR justifié par un problème constaté, pas anticipé |
-| Sous-investissement sur multi-tenancy / effective dating | Moyenne | Dette irrécupérable | Ces deux sujets sont Phase 0, non négociables, avec tests en CI ; c'est la seule « avance » technique autorisée |
-| Scope creep APIX | Certaine | Produit non générique | Voir dispositif ci-dessous |
-| Dérive réglementaire (taux, barèmes qui changent) | Certaine (annuelle) | Erreurs de paie | Moteur versionné par période légale ; veille formalisée avec l'expert-comptable partenaire ; chaque changement = nouveau pack de règles + golden files |
-| L'APIX comme unique client trop longtemps | Moyenne | Produit sur-adapté au secteur public | Prospection de 2-3 PME pilotes dès la Phase 2 ; la Phase 3 a un critère de sortie commercial, pas seulement technique |
+| Risque                                                   | Probabilité               | Impact                               | Parade                                                                                                                                                                                                                         |
+| -------------------------------------------------------- | ------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Burn-out du solo dev sur 2 projets                       | Élevée                    | Fatal                                | WIP = 1 epic ; blocs de 2-3 jours consécutifs par projet (jamais d'alternance intra-journée) ; une semaine « off produit » toutes les 8 semaines ; renoncer par écrit à ce qui est repoussé                                    |
+| Bus factor = 1                                           | Certaine au départ        | Fatal si durable                     | ADR + runbooks dès la semaine 1 ; infra 100 % as-code ; **recrutement du dev n°2 déclenché avant le début de la Phase 2** (la paie ne doit pas reposer sur une seule tête)                                                     |
+| Sur-engineering des fondations                           | Élevée (profil ambitieux) | Retard de 3-6 mois                   | Interdits explicites : pas de microservices, pas de Kafka, pas de Kubernetes, pas de multi-région — **monolithe modulaire jusqu'à ~50 tenants** ; toute exception exige un ADR justifié par un problème constaté, pas anticipé |
+| Sous-investissement sur multi-tenancy / effective dating | Moyenne                   | Dette irrécupérable                  | Ces deux sujets sont Phase 0, non négociables, avec tests en CI ; c'est la seule « avance » technique autorisée                                                                                                                |
+| Scope creep APIX                                         | Certaine                  | Produit non générique                | Voir dispositif ci-dessous                                                                                                                                                                                                     |
+| Dérive réglementaire (taux, barèmes qui changent)        | Certaine (annuelle)       | Erreurs de paie                      | Moteur versionné par période légale ; veille formalisée avec l'expert-comptable partenaire ; chaque changement = nouveau pack de règles + golden files                                                                         |
+| L'APIX comme unique client trop longtemps                | Moyenne                   | Produit sur-adapté au secteur public | Prospection de 2-3 PME pilotes dès la Phase 2 ; la Phase 3 a un critère de sortie commercial, pas seulement technique                                                                                                          |
 
 ### Dispositif anti-scope-creep APIX
 
@@ -155,13 +155,13 @@ Test de gouvernance pour chaque demande APIX : « une PME ivoirienne pourrait-el
 
 ## 8. Tableau récapitulatif
 
-| Phase | Durée (calendaire, mi-temps) | Livrables clés | Critère de passage à la suivante |
-|---|---|---|---|
-| **0 — Fondations** | 6-8 semaines | Squelette en prod : monorepo, auth, RLS + tests d'isolation, RBAC, audit log, effective dating, i18n, design system minimal, CI/CD, backups testés | Tests d'isolation verts en CI ; restauration de backup réussie ; écran de démo complet en production |
-| **1 — MVP APIX** | 10-14 semaines | Core HR + congés/absences + portail employé PWA ; import CSV ; export variables de paie | Critères d'adoption atteints (§3) ; données APIX complètes et fiables ; engagement APIX pour le pilote paie |
-| **2 — Paie Sénégal** | 14-18 semaines | Moteur de paie versionné, bulletins conformes, golden files, états déclaratifs, export virements | 2 cycles consécutifs de paie en double à 100 % de concordance (ou écarts arbitrés par écrit) ; bascule APIX effectuée |
-| **3 — V1 commercialisable** | 10-12 semaines | Onboarding self-service, billing, UI champs custom + workflows, durcissement sécurité, documentation, site | 1er client payant hors APIX onboardé sans intervention manuelle |
-| **4+ — Modules & expansion** | Lots de 6-10 semaines | ATS léger, performance, formation ; pack paie Côte d'Ivoire | Par lot : adoption mesurée ; pour l'expansion : ≥ 3 clients payants au Sénégal |
+| Phase                        | Durée (calendaire, mi-temps) | Livrables clés                                                                                                                                     | Critère de passage à la suivante                                                                                      |
+| ---------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **0 — Fondations**           | 6-8 semaines                 | Squelette en prod : monorepo, auth, RLS + tests d'isolation, RBAC, audit log, effective dating, i18n, design system minimal, CI/CD, backups testés | Tests d'isolation verts en CI ; restauration de backup réussie ; écran de démo complet en production                  |
+| **1 — MVP APIX**             | 10-14 semaines               | Core HR + congés/absences + portail employé PWA ; import CSV ; export variables de paie                                                            | Critères d'adoption atteints (§3) ; données APIX complètes et fiables ; engagement APIX pour le pilote paie           |
+| **2 — Paie Sénégal**         | 14-18 semaines               | Moteur de paie versionné, bulletins conformes, golden files, états déclaratifs, export virements                                                   | 2 cycles consécutifs de paie en double à 100 % de concordance (ou écarts arbitrés par écrit) ; bascule APIX effectuée |
+| **3 — V1 commercialisable**  | 10-12 semaines               | Onboarding self-service, billing, UI champs custom + workflows, durcissement sécurité, documentation, site                                         | 1er client payant hors APIX onboardé sans intervention manuelle                                                       |
+| **4+ — Modules & expansion** | Lots de 6-10 semaines        | ATS léger, performance, formation ; pack paie Côte d'Ivoire                                                                                        | Par lot : adoption mesurée ; pour l'expansion : ≥ 3 clients payants au Sénégal                                        |
 
 Cumul jusqu'à la V1 : **~40-52 semaines de travail effectif, soit 12-15 mois calendaires.** Coût infra total sur la période : < 3 000 €. Le poste de coût réel est le temps du fondateur et l'expert-comptable partenaire (prévoir un budget de validation paie, ordre de grandeur 2 000-4 000 € sur la Phase 2).
 
