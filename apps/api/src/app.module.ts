@@ -15,6 +15,12 @@ import { PeopleController } from './modules/people/people.controller';
 import { PeopleService } from './modules/people/people.service';
 import { InvitationsService } from './modules/portal/invitations.service';
 import { PortalController } from './modules/portal/portal.controller';
+import { ApplyService } from './modules/recruitment/apply.service';
+import { JobsService } from './modules/recruitment/jobs.service';
+import {
+  PublicJobsController,
+  RecruitmentController,
+} from './modules/recruitment/recruitment.controller';
 import { AbsencesController } from './modules/time/absences.controller';
 import { AbsencesService } from './modules/time/absences.service';
 
@@ -31,6 +37,8 @@ import { AbsencesService } from './modules/time/absences.service';
     DashboardController,
     PortalController,
     DocumentsController,
+    RecruitmentController,
+    PublicJobsController,
   ],
   providers: [
     TenantDb,
@@ -44,6 +52,8 @@ import { AbsencesService } from './modules/time/absences.service';
     AbsencesService,
     InvitationsService,
     AttestationService,
+    JobsService,
+    ApplyService,
   ],
 })
 export class AppModule {}

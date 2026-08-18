@@ -17,6 +17,14 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((v) => v === 'true'),
+  /**
+   * Derrière un reverse proxy : valeur Express `trust proxy` ('1', 'loopback'…)
+   * pour que req.ip reflète le client réel et pas le proxy. Vide = désactivé.
+   */
+  TRUST_PROXY: z
+    .string()
+    .default('')
+    .transform((v) => (v === '' ? undefined : /^\d+$/.test(v) ? Number(v) : v)),
 });
 
 export type Env = z.infer<typeof envSchema>;

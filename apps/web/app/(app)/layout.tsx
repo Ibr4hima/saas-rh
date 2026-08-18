@@ -61,6 +61,16 @@ const NAV_GROUPS: Array<{
 ];
 
 const STAFF_ROLES = ['admin', 'hr', 'payroll'];
+/** Sections réservées admin/RH : cachées aux autres rôles staff (payroll). */
+const MANAGE_ONLY_PATHS = ['/recrutement'];
+
+function staffNav(role: string): typeof NAV_GROUPS {
+  if (role !== 'payroll') return NAV_GROUPS;
+  return NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => !MANAGE_ONLY_PATHS.some((p) => i.href.startsWith(p))),
+  })).filter((g) => g.items.length > 0);
+}
 
 /** Espace personnel : navigation réduite pour employés et managers. */
 function personalNav(role: string): typeof NAV_GROUPS {
@@ -113,7 +123,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Garde de routes : les non-gestionnaires restent dans leur espace.
   const allowedForRole = (path: string): boolean => {
-    if (!me.data || isStaff) return true;
+    if (!me.data) return true;
+    if (role === 'payroll' && MANAGE_ONLY_PATHS.some((p) => path.startsWith(p))) return false;
+    if (isStaff) return true;
     if (path.startsWith('/moi') || path.startsWith('/calendrier')) return true;
     // L'organigramme est un annuaire interne : lisible par tous les rôles.
     if (path.startsWith('/organisation')) return true;
@@ -133,8 +145,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [me.isError, router]);
 
   useEffect(() => {
-    if (me.data && !allowed) router.replace('/moi');
-  }, [me.data, allowed, router]);
+    if (me.data && !allowed) router.replace(isStaff ? '/dashboard' : '/moi');
+  }, [me.data, allowed, isStaff, router]);
 
   if (!me.data) {
     return (
@@ -153,7 +165,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const user = me.data;
   const initials = `${user.givenName[0] ?? ''}${user.familyName[0] ?? ''}`.toUpperCase();
   const pending = stats.data?.pendingRequests ?? 0;
-  const groups = isStaff ? NAV_GROUPS : personalNav(user.role);
+  const groups = isStaff ? staffNav(user.role) : personalNav(user.role);
 
   return (
     <div className="flex min-h-screen">

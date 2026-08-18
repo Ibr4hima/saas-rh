@@ -22,6 +22,13 @@ export function problem(status: number, code: string, title: string, detail?: st
   throw new ProblemException({ status, code, title, detail });
 }
 
+/** Statut 4xx d'une erreur du body-parser express, ou null si autre chose. */
+function bodyParserStatus(err: unknown): number | null {
+  const e = err as { statusCode?: unknown; status?: unknown };
+  const status = typeof e?.statusCode === 'number' ? e.statusCode : e?.status;
+  return typeof status === 'number' && status >= 400 && status < 500 ? status : null;
+}
+
 @Catch()
 export class ProblemFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
@@ -41,6 +48,17 @@ export class ProblemFilter implements ExceptionFilter {
       status = exception.getStatus();
       title = exception.message;
       code = `http_${status}`;
+    } else if (bodyParserStatus(exception) !== null) {
+      // Erreurs du body-parser express (corps trop gros, JSON malformé…) :
+      // elles portent un statusCode 4xx et ne sont pas des erreurs internes.
+      status = bodyParserStatus(exception)!;
+      if (status === HttpStatus.PAYLOAD_TOO_LARGE) {
+        title = 'Corps de requête trop volumineux';
+        code = 'request.payload_too_large';
+      } else {
+        title = 'Corps de requête illisible';
+        code = 'request.malformed_body';
+      }
     } else if (process.env.NODE_ENV !== 'production') {
       detail = exception instanceof Error ? exception.message : String(exception);
     }

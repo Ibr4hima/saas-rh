@@ -230,3 +230,54 @@ export const auditLog = pgTable('audit_log', {
   newData: jsonb('new_data'),
   occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------- Recrutement ----------
+
+export const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});
+
+export const jobPostings = pgTable('job_postings', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  orgUnitId: uuid('org_unit_id'),
+  contractType: text('contract_type').notNull(),
+  location: text('location'),
+  deadline: date('deadline'),
+  requiredDocuments: text('required_documents').array().notNull(),
+  status: text('status').notNull().default('draft'),
+  publicSlug: text('public_slug').notNull(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const applications = pgTable('applications', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  jobPostingId: uuid('job_posting_id').notNull(),
+  givenName: text('given_name').notNull(),
+  familyName: text('family_name').notNull(),
+  email: text('email').notNull(),
+  phone: text('phone'),
+  message: text('message'),
+  stage: text('stage').notNull().default('received'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const applicationDocuments = pgTable('application_documents', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  applicationId: uuid('application_id').notNull(),
+  label: text('label').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  data: bytea('data').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

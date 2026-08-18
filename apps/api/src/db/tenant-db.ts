@@ -70,6 +70,20 @@ export class TenantDb implements OnModuleDestroy {
     });
   }
 
+  /**
+   * Contexte « offre publique » : pour la page de candidature (sans compte).
+   * Le slug n'expose QUE l'offre publiée correspondante (et le nom de son
+   * organisation). Une fois l'offre validée, le code pose app.tenant_id
+   * dans la même transaction pour insérer la candidature sous la policy
+   * tenant standard — même pattern que l'acceptation d'invitation.
+   */
+  async withJobSlug<T>(slug: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return this.global.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.job_slug', ${slug}, true)`);
+      return fn(tx);
+    });
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.pool.end();
   }

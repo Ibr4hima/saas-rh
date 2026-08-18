@@ -1,0 +1,261 @@
+import { randomBytes } from 'node:crypto';
+import { Inject, Injectable } from '@nestjs/common';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
+import type {
+  ApplicationStage,
+  ApplicationView,
+  CreateJobPostingInput,
+  JobPostingView,
+  SessionUser,
+  UpdateJobPostingInput,
+} from '@teranga/contracts';
+import { problem } from '../../common/problem';
+import * as t from '../../db/schema';
+import { TenantDb, Tx } from '../../db/tenant-db';
+
+function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
+  return { tenantId: user.tenantId, userId: user.userId };
+}
+
+@Injectable()
+export class JobsService {
+  constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
+
+  async create(
+    user: SessionUser,
+    input: CreateJobPostingInput,
+  ): Promise<{ id: string; publicSlug: string }> {
+    const id = uuidv7();
+    // Le slug est un identifiant public non devinable (pas un secret) : il
+    // rend l'offre accessible sans permettre d'énumérer les autres.
+    const publicSlug = randomBytes(16).toString('base64url');
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      if (input.orgUnitId) await this.requireOrgUnit(tx, input.orgUnitId);
+      await tx.insert(t.jobPostings).values({
+        id,
+        tenantId: user.tenantId,
+        title: input.title,
+        description: input.description,
+        orgUnitId: input.orgUnitId ?? null,
+        contractType: input.contractType,
+        location: input.location ?? null,
+        deadline: input.deadline ?? null,
+        requiredDocuments: input.requiredDocuments,
+        publicSlug,
+        createdByUserId: user.userId,
+      });
+    });
+    return { id, publicSlug };
+  }
+
+  async list(user: SessionUser): Promise<JobPostingView[]> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const rows = await tx
+        .select({
+          posting: t.jobPostings,
+          orgUnitName: t.orgUnits.name,
+          counts: sql<Record<string, number> | null>`(
+            SELECT jsonb_object_agg(s.stage, s.n) FROM (
+              SELECT a.stage, count(*)::int AS n FROM applications a
+              WHERE a.job_posting_id = ${t.jobPostings.id}
+              GROUP BY a.stage
+            ) s)`,
+        })
+        .from(t.jobPostings)
+        .leftJoin(t.orgUnits, eq(t.orgUnits.id, t.jobPostings.orgUnitId))
+        .orderBy(desc(t.jobPostings.createdAt));
+      return rows.map((r) => this.toView(r.posting, r.orgUnitName, r.counts));
+    });
+  }
+
+  async detail(user: SessionUser, id: string): Promise<JobPostingView> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const row = await this.requirePosting(tx, id);
+      const [unit] = row.orgUnitId
+        ? await tx
+            .select({ name: t.orgUnits.name })
+            .from(t.orgUnits)
+            .where(eq(t.orgUnits.id, row.orgUnitId))
+            .limit(1)
+        : [];
+      const counts = await tx
+        .select({ stage: t.applications.stage, n: sql<number>`count(*)::int` })
+        .from(t.applications)
+        .where(eq(t.applications.jobPostingId, id))
+        .groupBy(t.applications.stage);
+      return this.toView(
+        row,
+        unit?.name ?? null,
+        Object.fromEntries(counts.map((c) => [c.stage, c.n])),
+      );
+    });
+  }
+
+  async update(user: SessionUser, id: string, input: UpdateJobPostingInput): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.requirePosting(tx, id);
+      if (input.orgUnitId) await this.requireOrgUnit(tx, input.orgUnitId);
+
+      const changes: Partial<typeof t.jobPostings.$inferInsert> = {};
+      if (input.title !== undefined) changes.title = input.title;
+      if (input.description !== undefined) changes.description = input.description;
+      if (input.orgUnitId !== undefined) changes.orgUnitId = input.orgUnitId;
+      if (input.contractType !== undefined) changes.contractType = input.contractType;
+      if (input.location !== undefined) changes.location = input.location;
+      if (input.deadline !== undefined) changes.deadline = input.deadline;
+      if (input.requiredDocuments !== undefined) {
+        changes.requiredDocuments = input.requiredDocuments;
+      }
+      if (input.status !== undefined) changes.status = input.status;
+      if (Object.keys(changes).length === 0) return;
+      changes.updatedAt = new Date();
+      await tx.update(t.jobPostings).set(changes).where(eq(t.jobPostings.id, id));
+    });
+  }
+
+  /** Candidatures d'une offre, avec les métadonnées de leurs documents. */
+  async applications(user: SessionUser, jobId: string): Promise<ApplicationView[]> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.requirePosting(tx, jobId);
+      const apps = await tx
+        .select()
+        .from(t.applications)
+        .where(eq(t.applications.jobPostingId, jobId))
+        .orderBy(desc(t.applications.createdAt));
+      const docs = await tx
+        .select({
+          id: t.applicationDocuments.id,
+          applicationId: t.applicationDocuments.applicationId,
+          label: t.applicationDocuments.label,
+          filename: t.applicationDocuments.filename,
+          contentType: t.applicationDocuments.contentType,
+          sizeBytes: t.applicationDocuments.sizeBytes,
+        })
+        .from(t.applicationDocuments)
+        .innerJoin(t.applications, eq(t.applications.id, t.applicationDocuments.applicationId))
+        .where(eq(t.applications.jobPostingId, jobId));
+
+      const byApp = new Map<string, ApplicationView['documents']>();
+      for (const d of docs) {
+        const list = byApp.get(d.applicationId) ?? [];
+        list.push({
+          id: d.id,
+          label: d.label,
+          filename: d.filename,
+          contentType: d.contentType,
+          sizeBytes: d.sizeBytes,
+        });
+        byApp.set(d.applicationId, list);
+      }
+      return apps.map((a) => ({
+        id: a.id,
+        jobPostingId: a.jobPostingId,
+        givenName: a.givenName,
+        familyName: a.familyName,
+        email: a.email,
+        phone: a.phone,
+        message: a.message,
+        stage: a.stage as ApplicationStage,
+        createdAt: a.createdAt.toISOString(),
+        documents: byApp.get(a.id) ?? [],
+      }));
+    });
+  }
+
+  async updateStage(user: SessionUser, applicationId: string, stage: string): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const updated = await tx
+        .update(t.applications)
+        .set({ stage, updatedAt: new Date() })
+        .where(eq(t.applications.id, applicationId))
+        .returning({ id: t.applications.id });
+      if (updated.length === 0) {
+        problem(404, 'recruitment.application_not_found', 'Candidature introuvable');
+      }
+    });
+  }
+
+  /**
+   * Suppression d'une candidature par la RH — la voie de remédiation quand un
+   * tiers a « squatté » l'email d'un candidat via le formulaire public : la
+   * supprimer libère l'email (index unique) pour une vraie candidature.
+   */
+  async deleteApplication(user: SessionUser, applicationId: string): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      await tx
+        .delete(t.applicationDocuments)
+        .where(eq(t.applicationDocuments.applicationId, applicationId));
+      const deleted = await tx
+        .delete(t.applications)
+        .where(eq(t.applications.id, applicationId))
+        .returning({ id: t.applications.id });
+      if (deleted.length === 0) {
+        problem(404, 'recruitment.application_not_found', 'Candidature introuvable');
+      }
+    });
+  }
+
+  /** Téléchargement d'un document par le staff (jamais exposé publiquement). */
+  async document(
+    user: SessionUser,
+    documentId: string,
+  ): Promise<{ filename: string; contentType: string; data: Buffer }> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const [doc] = await tx
+        .select({
+          filename: t.applicationDocuments.filename,
+          contentType: t.applicationDocuments.contentType,
+          data: t.applicationDocuments.data,
+        })
+        .from(t.applicationDocuments)
+        .where(eq(t.applicationDocuments.id, documentId))
+        .limit(1);
+      if (!doc) {
+        problem(404, 'recruitment.document_not_found', 'Document introuvable');
+      }
+      return doc;
+    });
+  }
+
+  private toView(
+    p: typeof t.jobPostings.$inferSelect,
+    orgUnitName: string | null,
+    counts: Record<string, number> | null,
+  ): JobPostingView {
+    return {
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      orgUnitId: p.orgUnitId,
+      orgUnitName,
+      contractType: p.contractType,
+      location: p.location,
+      deadline: p.deadline,
+      requiredDocuments: p.requiredDocuments,
+      status: p.status as JobPostingView['status'],
+      publicSlug: p.publicSlug,
+      createdAt: p.createdAt.toISOString(),
+      applicationCounts: counts ?? {},
+    };
+  }
+
+  private async requirePosting(tx: Tx, id: string) {
+    const [row] = await tx.select().from(t.jobPostings).where(eq(t.jobPostings.id, id)).limit(1);
+    if (!row) {
+      problem(404, 'recruitment.job_not_found', 'Offre introuvable');
+    }
+    return row;
+  }
+
+  private async requireOrgUnit(tx: Tx, id: string) {
+    const [unit] = await tx
+      .select({ id: t.orgUnits.id })
+      .from(t.orgUnits)
+      .where(and(eq(t.orgUnits.id, id), sql`${t.orgUnits.deletedAt} IS NULL`))
+      .limit(1);
+    if (!unit) {
+      problem(422, 'org.unit_not_found', "Cette unité n'existe pas");
+    }
+  }
+}
