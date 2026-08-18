@@ -16,6 +16,7 @@ import type {
   SessionUser,
   SetBalanceInput,
 } from '@teranga/contracts';
+import { MAX_JUSTIFICATIF_BYTES } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -27,12 +28,11 @@ const DEFAULT_TYPES: Array<
     requiresDocument: boolean;
   }
 > = [
-  // 24 j ouvrables/an CCNI — à vérifier avec l'expert-comptable avant la paie.
-  { name: 'Congé annuel', deductsBalance: true, defaultAnnualDays: 24, requiresDocument: false },
+  { name: 'Congé annuel', deductsBalance: true, defaultAnnualDays: 30, requiresDocument: false },
   { name: 'Maladie', deductsBalance: false, defaultAnnualDays: null, requiresDocument: true },
   { name: 'Maternité', deductsBalance: false, defaultAnnualDays: null, requiresDocument: true },
   { name: 'Sans solde', deductsBalance: false, defaultAnnualDays: null, requiresDocument: false },
-  { name: 'Mission', deductsBalance: false, defaultAnnualDays: null, requiresDocument: false },
+  { name: 'Mission', deductsBalance: false, defaultAnnualDays: null, requiresDocument: true },
 ];
 
 const DEFAULT_CHAIN = ['hr'];
@@ -295,6 +295,29 @@ export class AbsencesService {
           );
         }
 
+        // Justificatif : exigé quand le type le requiert et que la demande
+        // vient de l'employé lui-même (la RH peut régulariser sans scan,
+        // le papier restant au dossier physique).
+        let document: { filename: string; data: Buffer } | null = null;
+        if (input.document) {
+          const data = Buffer.from(input.document.contentBase64, 'base64');
+          if (data.length === 0 || data.length > MAX_JUSTIFICATIF_BYTES) {
+            problem(422, 'absence.document_too_large', 'Le justificatif doit faire 5 Mo maximum');
+          }
+          if (!data.subarray(0, 5).toString().startsWith('%PDF')) {
+            problem(422, 'absence.document_not_pdf', 'Le justificatif doit être un PDF');
+          }
+          document = { filename: input.document.filename, data };
+        }
+        if (type.requiresDocument && !MANAGE_ROLES.has(user.role) && !document) {
+          problem(
+            422,
+            'absence.document_required',
+            'Un justificatif PDF est requis',
+            `Le type « ${type.name} » exige un justificatif (attestation, ordre de mission…).`,
+          );
+        }
+
         if (type.deductsBalance) {
           const year = Number(input.startDate.slice(0, 4));
           const views = await this.balancesInTx(tx, user, input.employeeId, year, [type]);
@@ -320,6 +343,16 @@ export class AbsencesService {
           reason: input.reason,
           requestedByUserId: user.userId,
         });
+        if (document) {
+          await tx.insert(t.absenceDocuments).values({
+            id: uuidv7(),
+            tenantId: user.tenantId,
+            requestId: id,
+            filename: document.filename,
+            sizeBytes: document.data.length,
+            data: document.data,
+          });
+        }
       });
     } catch (err) {
       if (pgCode(err) === '23P01') {
@@ -356,6 +389,7 @@ export class AbsencesService {
           givenName: t.persons.givenName,
           familyName: t.persons.familyName,
           employeeNumber: t.employees.employeeNumber,
+          workEmail: t.employees.workEmail,
           typeName: t.absenceTypes.name,
           deductsBalance: t.absenceTypes.deductsBalance,
         })
@@ -388,6 +422,7 @@ export class AbsencesService {
           givenName: t.persons.givenName,
           familyName: t.persons.familyName,
           employeeNumber: t.employees.employeeNumber,
+          workEmail: t.employees.workEmail,
           typeName: t.absenceTypes.name,
           deductsBalance: t.absenceTypes.deductsBalance,
         })
@@ -517,6 +552,47 @@ export class AbsencesService {
     });
   }
 
+  /** Justificatif d'une demande — admin/RH ou titulaire du dossier uniquement. */
+  async document(
+    user: SessionUser,
+    requestId: string,
+  ): Promise<{ filename: string; contentType: string; data: Buffer }> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const [request] = await tx
+        .select({ employeeId: t.absenceRequests.employeeId })
+        .from(t.absenceRequests)
+        .where(eq(t.absenceRequests.id, requestId))
+        .limit(1);
+      if (!request) {
+        problem(404, 'absence.request_not_found', 'Demande introuvable');
+      }
+      if (!MANAGE_ROLES.has(user.role)) {
+        const self = await this.selfEmployeeId(tx, user);
+        if (self !== request.employeeId) {
+          // Données de santé potentielles : ni managers ni paie n'y accèdent.
+          problem(
+            403,
+            'absence.document_forbidden',
+            'Justificatif réservé à la RH et au titulaire',
+          );
+        }
+      }
+      const [doc] = await tx
+        .select({
+          filename: t.absenceDocuments.filename,
+          contentType: t.absenceDocuments.contentType,
+          data: t.absenceDocuments.data,
+        })
+        .from(t.absenceDocuments)
+        .where(eq(t.absenceDocuments.requestId, requestId))
+        .limit(1);
+      if (!doc) {
+        problem(404, 'absence.document_not_found', 'Aucun justificatif joint à cette demande');
+      }
+      return doc;
+    });
+  }
+
   // ---------- Privé ----------
 
   /** Id du dossier employé relié au compte connecté (null si aucun). */
@@ -615,6 +691,7 @@ export class AbsencesService {
       givenName: string;
       familyName: string;
       employeeNumber: string;
+      workEmail: string | null;
       typeName: string;
       deductsBalance: boolean;
     }>,
@@ -623,6 +700,16 @@ export class AbsencesService {
 
     const [chainRow] = await tx.select().from(t.approvalChains).limit(1);
     const levels = chainRow?.levels ?? DEFAULT_CHAIN;
+
+    const documentRows = await tx
+      .select({ requestId: t.absenceDocuments.requestId, filename: t.absenceDocuments.filename })
+      .from(t.absenceDocuments)
+      .where(
+        inArray(
+          t.absenceDocuments.requestId,
+          rows.map((r) => r.request.id),
+        ),
+      );
 
     const approvalRows = await tx
       .select({
@@ -645,13 +732,14 @@ export class AbsencesService {
       .orderBy(asc(t.absenceApprovals.level));
 
     return rows.map(
-      ({ request, givenName, familyName, employeeNumber, typeName, deductsBalance }) => {
+      ({ request, givenName, familyName, employeeNumber, workEmail, typeName, deductsBalance }) => {
         const requiredRole = levels[request.currentLevel] ?? levels[levels.length - 1];
         return {
           id: request.id,
           employeeId: request.employeeId,
           employeeName: `${givenName} ${familyName}`,
           employeeNumber,
+          workEmail,
           absenceTypeId: request.absenceTypeId,
           absenceTypeName: typeName,
           deductsBalance,
@@ -664,6 +752,7 @@ export class AbsencesService {
           chainLevels: levels,
           canDecide:
             request.status === 'pending' && (user.role === 'admin' || user.role === requiredRole),
+          documentName: documentRows.find((d) => d.requestId === request.id)?.filename ?? null,
           approvals: approvalRows
             .filter((a) => a.requestId === request.id)
             .map((a) => ({

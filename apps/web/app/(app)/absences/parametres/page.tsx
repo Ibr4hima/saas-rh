@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { AbsenceType, ApprovalChain, Holiday, MembershipRole } from '@teranga/contracts';
+import { SENEGAL_HOLIDAYS } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -60,14 +61,16 @@ export default function AbsenceSettingsPage() {
     queryKey: ['holidays', year],
     queryFn: () => api<Holiday[]>(`/holidays?year=${year}`),
   });
-  const [holidayDay, setHolidayDay] = useState('');
-  const [holidayLabel, setHolidayLabel] = useState('');
+  const [holidayDates, setHolidayDates] = useState<Record<string, string>>({});
   const createHoliday = useMutation({
-    mutationFn: () =>
-      api('/holidays', { method: 'POST', body: { day: holidayDay, label: holidayLabel } }),
-    onSuccess: () => {
-      setHolidayDay('');
-      setHolidayLabel('');
+    mutationFn: (input: { day: string; label: string }) =>
+      api('/holidays', { method: 'POST', body: input }),
+    onSuccess: (_r, input) => {
+      setHolidayDates((prev) => {
+        const next = { ...prev };
+        delete next[input.label];
+        return next;
+      });
       void queryClient.invalidateQueries({ queryKey: ['holidays'] });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Création impossible.'),
@@ -254,62 +257,67 @@ export default function AbsenceSettingsPage() {
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <p className="text-xs text-ink-muted">
-                Les fériés à date mobile (Korité, Tabaski…) s&apos;ajoutent ici dès leur annonce —
-                ils sont exclus du décompte des demandes.
+                Les 14 fériés sénégalais sont prédéfinis : les dates fixes sont préremplies, il ne
+                reste qu&apos;à dater les fêtes mobiles (Korité, Tabaski…) dès leur annonce.
               </p>
               {holidays.isLoading ? (
                 <Skeleton className="h-16 w-full" />
-              ) : (holidays.data ?? []).length === 0 ? (
-                <p className="text-sm text-ink-muted">Aucun férié enregistré pour {year}.</p>
               ) : (
-                <ul className="flex flex-col gap-1">
-                  {holidays.data!.map((h) => (
-                    <li key={h.id} className="flex items-center justify-between text-sm">
-                      <span>
-                        <span className="font-mono text-xs text-ink-muted">
-                          {formatDate(h.day)}
-                        </span>{' '}
-                        <span className="text-ink-strong">{h.label}</span>
-                      </span>
-                      <button
-                        type="button"
-                        className="text-xs text-ink-muted hover:text-danger"
-                        onClick={() => deleteHoliday.mutate(h.id)}
+                <ul className="flex flex-col gap-1.5">
+                  {SENEGAL_HOLIDAYS.map((def) => {
+                    const saved = (holidays.data ?? []).find((h) => h.label === def.label);
+                    if (saved) {
+                      return (
+                        <li key={def.label} className="flex items-center justify-between text-sm">
+                          <span>
+                            <span className="text-ink-strong">{def.label}</span>{' '}
+                            <span className="font-mono text-xs text-ink-muted">
+                              {formatDate(saved.day)}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            className="text-xs text-ink-muted hover:text-danger"
+                            onClick={() => deleteHoliday.mutate(saved.id)}
+                          >
+                            Retirer
+                          </button>
+                        </li>
+                      );
+                    }
+                    const prefill = def.month
+                      ? `${year}-${String(def.month).padStart(2, '0')}-${String(def.day).padStart(2, '0')}`
+                      : '';
+                    const value = holidayDates[def.label] ?? prefill;
+                    return (
+                      <li
+                        key={def.label}
+                        className="flex items-center justify-between gap-2 text-sm"
                       >
-                        Supprimer
-                      </button>
-                    </li>
-                  ))}
+                        <span className="min-w-0 flex-1 truncate text-ink">{def.label}</span>
+                        <Input
+                          type="date"
+                          aria-label={`Date de ${def.label} ${year}`}
+                          value={value}
+                          onChange={(e) =>
+                            setHolidayDates({ ...holidayDates, [def.label]: e.target.value })
+                          }
+                          className="h-8 w-40 shrink-0"
+                        />
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="shrink-0"
+                          disabled={!value || createHoliday.isPending}
+                          onClick={() => createHoliday.mutate({ day: value, label: def.label })}
+                        >
+                          Ajouter
+                        </Button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
-              <div className="mt-2 flex items-end gap-2 border-t border-line-soft pt-3">
-                <Field label="Date" htmlFor="hDay">
-                  <Input
-                    id="hDay"
-                    type="date"
-                    value={holidayDay}
-                    onChange={(e) => setHolidayDay(e.target.value)}
-                    className="h-8"
-                  />
-                </Field>
-                <Field label="Libellé" htmlFor="hLabel">
-                  <Input
-                    id="hLabel"
-                    value={holidayLabel}
-                    onChange={(e) => setHolidayLabel(e.target.value)}
-                    placeholder="Ex : Tabaski"
-                    className="h-8"
-                  />
-                </Field>
-                <Button
-                  size="sm"
-                  disabled={!holidayDay || holidayLabel.trim().length < 2}
-                  onClick={() => createHoliday.mutate()}
-                  loading={createHoliday.isPending}
-                >
-                  Ajouter
-                </Button>
-              </div>
             </CardContent>
           </Card>
         </div>

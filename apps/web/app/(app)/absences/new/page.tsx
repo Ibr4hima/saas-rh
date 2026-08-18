@@ -24,6 +24,21 @@ export default function NewAbsencePage() {
   const [startDate, setStartDate] = useState(today());
   const [endDate, setEndDate] = useState(today());
   const [reason, setReason] = useState('');
+  const [doc, setDoc] = useState<{ filename: string; contentBase64: string } | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  const pickDocument = (file: File | null) => {
+    setFileError(null);
+    if (!file) return setDoc(null);
+    if (file.type !== 'application/pdf') return setFileError('Le justificatif doit être un PDF.');
+    if (file.size === 0 || file.size > 5 * 1024 * 1024)
+      return setFileError('Le PDF doit faire entre 1 octet et 5 Mo.');
+    const reader = new FileReader();
+    reader.onload = () =>
+      setDoc({ filename: file.name, contentBase64: String(reader.result).split(',')[1] ?? '' });
+    reader.onerror = () => setFileError('Impossible de lire ce fichier.');
+    reader.readAsDataURL(file);
+  };
   const [serverError, setServerError] = useState<string | null>(null);
 
   const employees = useQuery({
@@ -67,6 +82,7 @@ export default function NewAbsencePage() {
           startDate,
           endDate,
           reason: reason.trim() || undefined,
+          document: doc ?? undefined,
         },
       }),
     onSuccess: () => router.replace('/absences'),
@@ -80,7 +96,11 @@ export default function NewAbsencePage() {
         <Link href="/absences" className="text-sm text-ink-muted hover:text-ink">
           ← Congés
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink-strong">Nouvelle demande d&apos;absence</h1>
+        <h1 className="mt-1 text-xl font-bold text-ink-strong">Enregistrer une absence</h1>
+        <p className="text-sm text-ink-muted">
+          Saisie RH pour le compte d&apos;un employé (maladie signalée, régularisation…) — les
+          employés posent leurs propres demandes depuis leur portail.
+        </p>
       </div>
 
       <Card>
@@ -137,6 +157,18 @@ export default function NewAbsencePage() {
               onChange={(e) => setReason(e.target.value)}
               placeholder="Ex : congés annuels famille"
             />
+          </Field>
+
+          <Field label="Justificatif PDF (facultatif pour la RH)" htmlFor="rh-justificatif">
+            <input
+              id="rh-justificatif"
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => pickDocument(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-ink-muted file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary-soft file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:opacity-90"
+            />
+            {doc ? <p className="mt-1 text-xs text-success">✓ {doc.filename}</p> : null}
+            {fileError ? <p className="mt-1 text-xs text-danger">{fileError}</p> : null}
           </Field>
 
           {/* Aperçu du décompte — la confiance avant la soumission */}

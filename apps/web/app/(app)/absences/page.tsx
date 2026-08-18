@@ -21,7 +21,7 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
-import { api, ApiError } from '../../../lib/api';
+import { api, ApiError, apiUrl } from '../../../lib/api';
 import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES, ROLE_LABELS } from '../../../lib/absences';
 import { formatDate, useMe } from '../../../lib/hooks';
 
@@ -78,7 +78,7 @@ export default function AbsencesPage() {
           ) : null}
           {canManage ? (
             <Link href="/absences/new">
-              <Button>Nouvelle demande</Button>
+              <Button>Enregistrer une absence</Button>
             </Link>
           ) : null}
         </div>
@@ -111,13 +111,13 @@ export default function AbsencesPage() {
               title="Aucune demande dans ce statut"
               description={
                 canManage
-                  ? 'Créez une demande pour un employé — le circuit de visas se charge du reste.'
+                  ? 'Les employés posent leurs demandes depuis leur portail. Ici, la RH enregistre une absence pour le compte d’un employé (maladie signalée par téléphone, régularisation…).'
                   : undefined
               }
               action={
                 canManage ? (
                   <Link href="/absences/new">
-                    <Button size="sm">Nouvelle demande</Button>
+                    <Button size="sm">Enregistrer une absence</Button>
                   </Link>
                 ) : undefined
               }
@@ -144,7 +144,17 @@ export default function AbsencesPage() {
                         {r.employeeNumber}
                       </span>
                     </Td>
-                    <Td>{r.absenceTypeName}</Td>
+                    <Td>
+                      {r.absenceTypeName}
+                      {r.documentName && canManage ? (
+                        <a
+                          href={apiUrl(`/absence-requests/${r.id}/document`)}
+                          className="block text-xs text-primary hover:underline"
+                        >
+                          ⬇ justificatif
+                        </a>
+                      ) : null}
+                    </Td>
                     <Td className="whitespace-nowrap">
                       {formatDate(r.startDate)} → {formatDate(r.endDate)}
                     </Td>
@@ -225,27 +235,41 @@ export default function AbsencesPage() {
           <CardHeader>
             <CardTitle>Prochaines absences</CardTitle>
           </CardHeader>
-          <CardContent>
-            {upcoming.isLoading ? (
+          {upcoming.isLoading ? (
+            <CardContent>
               <Skeleton className="h-12 w-full" />
-            ) : (upcoming.data ?? []).length === 0 ? (
+            </CardContent>
+          ) : (upcoming.data ?? []).length === 0 ? (
+            <CardContent>
               <p className="text-sm text-ink-muted">Personne d&apos;absent prochainement.</p>
-            ) : (
-              <ul className="flex flex-col gap-2">
+            </CardContent>
+          ) : (
+            <Table>
+              <THead>
+                <tr>
+                  <Th>Nom</Th>
+                  <Th>Type</Th>
+                  <Th>Début</Th>
+                  <Th>Fin</Th>
+                  <Th>Jours</Th>
+                </tr>
+              </THead>
+              <TBody>
                 {upcoming.data!.map((r) => (
-                  <li key={r.id} className="flex items-baseline gap-3 text-sm">
-                    <span className="w-48 shrink-0 font-medium text-ink-strong">
-                      {r.employeeName}
-                    </span>
-                    <span className="text-ink-muted">
-                      {r.absenceTypeName} · {formatDate(r.startDate)} → {formatDate(r.endDate)} (
-                      {r.daysCount} j)
-                    </span>
-                  </li>
+                  <Tr key={r.id}>
+                    <Td>
+                      <p className="font-medium text-ink-strong">{r.employeeName}</p>
+                      {r.workEmail ? <p className="text-xs text-ink-muted">{r.workEmail}</p> : null}
+                    </Td>
+                    <Td>{r.absenceTypeName}</Td>
+                    <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
+                    <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
+                    <Td className="font-mono">{r.daysCount}</Td>
+                  </Tr>
                 ))}
-              </ul>
-            )}
-          </CardContent>
+              </TBody>
+            </Table>
+          )}
         </Card>
       </div>
     </div>

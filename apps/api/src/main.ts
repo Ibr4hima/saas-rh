@@ -26,6 +26,8 @@ async function bootstrap(): Promise<void> {
   // Partout ailleurs la limite reste petite : un corps volumineux non
   // authentifié ne doit jamais être bufferisé (revue adverse du lot).
   app.use('/v1/public/jobs', json({ limit: '40mb' }));
+  // Justificatifs d'absence (PDF ≤ 5 Mo en base64) — route authentifiée.
+  app.use('/v1/absence-requests', json({ limit: '8mb' }));
   app.use(json({ limit: '1mb' }));
   app.use(cookieParser());
   app.useGlobalFilters(new ProblemFilter());

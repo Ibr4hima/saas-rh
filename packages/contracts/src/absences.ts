@@ -71,6 +71,17 @@ export interface BalanceView {
 
 // ---------- Demandes ----------
 
+export const MAX_JUSTIFICATIF_BYTES = 5 * 1024 * 1024;
+
+/** Justificatif d'absence : PDF uniquement (attestation, ordre de mission…). */
+export const absenceJustificatifSchema = z.object({
+  filename: z.string().trim().min(1).max(200),
+  contentBase64: z
+    .string()
+    .min(1)
+    .max(Math.ceil((MAX_JUSTIFICATIF_BYTES * 4) / 3) + 4),
+});
+
 export const createAbsenceRequestSchema = z
   .object({
     employeeId: z.uuid(),
@@ -78,6 +89,7 @@ export const createAbsenceRequestSchema = z
     startDate: isoDate,
     endDate: isoDate,
     reason: z.string().trim().max(1000).optional(),
+    document: absenceJustificatifSchema.optional(),
   })
   .refine((v) => v.endDate >= v.startDate, {
     message: 'La date de fin doit être postérieure ou égale à la date de début',
@@ -111,6 +123,7 @@ export interface AbsenceRequestView {
   employeeId: string;
   employeeName: string;
   employeeNumber: string;
+  workEmail: string | null;
   absenceTypeId: string;
   absenceTypeName: string;
   deductsBalance: boolean;
@@ -125,8 +138,33 @@ export interface AbsenceRequestView {
   /** true si l'utilisateur courant peut viser le niveau en attente. */
   canDecide: boolean;
   approvals: ApprovalView[];
+  /** Nom du justificatif PDF joint, s'il y en a un. */
+  documentName: string | null;
   createdAt: string;
 }
+
+// ---------- Jours fériés du Sénégal ----------
+
+/**
+ * Les 14 jours fériés sénégalais. Ceux à date fixe portent month/day et sont
+ * préremplis chaque année ; les fêtes mobiles (religieuses) se datent à la main.
+ */
+export const SENEGAL_HOLIDAYS: Array<{ label: string; month?: number; day?: number }> = [
+  { label: 'Nouvel an', month: 1, day: 1 },
+  { label: "Fête de l'indépendance", month: 4, day: 4 },
+  { label: 'Fête du travail', month: 5, day: 1 },
+  { label: 'Assomption', month: 8, day: 15 },
+  { label: 'Toussaint', month: 11, day: 1 },
+  { label: 'Noël', month: 12, day: 25 },
+  { label: 'Korité' },
+  { label: 'Tabaski' },
+  { label: 'Tamkharit' },
+  { label: 'Maouloud' },
+  { label: 'Magal de Touba' },
+  { label: 'Lundi de Pâques' },
+  { label: 'Ascension' },
+  { label: 'Lundi de Pentecôte' },
+];
 
 /** Aperçu du décompte avant soumission. */
 export const previewAbsenceSchema = z.object({

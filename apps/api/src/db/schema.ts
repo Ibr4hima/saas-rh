@@ -284,3 +284,14 @@ export const applicationDocuments = pgTable('application_documents', {
   data: bytea('data').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const absenceDocuments = pgTable('absence_documents', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  requestId: uuid('request_id').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull().default('application/pdf'),
+  sizeBytes: integer('size_bytes').notNull(),
+  data: bytea('data').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

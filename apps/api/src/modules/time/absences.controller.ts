@@ -11,8 +11,10 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   createAbsenceRequestSchema,
   createAbsenceTypeSchema,
@@ -169,5 +171,22 @@ export class AbsencesController {
   @HttpCode(204)
   async cancel(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     await this.absences.cancel(req.sessionUser, id);
+  }
+
+  /** Justificatif PDF joint à une demande (RH ou titulaire uniquement). */
+  @Get('absence-requests/:id/document')
+  async document(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ) {
+    const doc = await this.absences.document(req.sessionUser, id);
+    res.setHeader('Content-Type', doc.contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(doc.data);
   }
 }

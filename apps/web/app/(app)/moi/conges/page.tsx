@@ -22,7 +22,7 @@ import {
   Select,
   Skeleton,
 } from '@teranga/ui';
-import { api, ApiError } from '../../../../lib/api';
+import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES } from '../../../../lib/absences';
 import { formatDate } from '../../../../lib/hooks';
 
@@ -34,6 +34,12 @@ export default function MyLeavesPage() {
   const [startDate, setStartDate] = useState(today());
   const [endDate, setEndDate] = useState(today());
   const [reason, setReason] = useState('');
+  const [doc, setDoc] = useState<{
+    filename: string;
+    contentBase64: string;
+    sizeBytes: number;
+  } | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -71,6 +77,30 @@ export default function MyLeavesPage() {
   }, [types.data, typeId]);
 
   const selectedType = types.data?.find((t) => t.id === typeId);
+  const needsDocument = Boolean(selectedType?.requiresDocument);
+
+  const pickDocument = (file: File | null) => {
+    setFileError(null);
+    if (!file) {
+      setDoc(null);
+      return;
+    }
+    if (file.type !== 'application/pdf') {
+      setFileError('Le justificatif doit être un PDF.');
+      return;
+    }
+    if (file.size === 0 || file.size > 5 * 1024 * 1024) {
+      setFileError('Le PDF doit faire entre 1 octet et 5 Mo.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = String(reader.result).split(',')[1] ?? '';
+      setDoc({ filename: file.name, contentBase64: base64, sizeBytes: file.size });
+    };
+    reader.onerror = () => setFileError('Impossible de lire ce fichier — réessayez.');
+    reader.readAsDataURL(file);
+  };
   const balance = balances.data?.find((b) => b.absenceTypeId === typeId);
   const days = preview.data?.workingDays ?? 0;
   const insufficient =
@@ -86,6 +116,7 @@ export default function MyLeavesPage() {
           startDate,
           endDate,
           reason: reason.trim() || undefined,
+          document: doc ? { filename: doc.filename, contentBase64: doc.contentBase64 } : undefined,
         },
       }),
     onSuccess: (r) => {
@@ -93,6 +124,7 @@ export default function MyLeavesPage() {
         `Demande envoyée : ${r.daysCount} jour(s) — elle suit maintenant le circuit de validation.`,
       );
       setReason('');
+      setDoc(null);
       void queryClient.invalidateQueries({ queryKey: ['my-requests'] });
       void queryClient.invalidateQueries({ queryKey: ['balances'] });
     },
@@ -163,6 +195,32 @@ export default function MyLeavesPage() {
               <Input id="reason" value={reason} onChange={(e) => setReason(e.target.value)} />
             </Field>
 
+            {needsDocument ? (
+              <Field
+                label={`Justificatif PDF (${selectedType?.name === 'Mission' ? 'ordre de mission' : 'attestation'})`}
+                htmlFor="justificatif"
+                required
+              >
+                <input
+                  id="justificatif"
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => pickDocument(e.target.files?.[0] ?? null)}
+                  className="block w-full text-sm text-ink-muted file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary-soft file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:opacity-90"
+                />
+                {doc ? (
+                  <p className="mt-1 text-xs text-success">
+                    ✓ {doc.filename} ({Math.round(doc.sizeBytes / 1024)} Ko)
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Obligatoire pour « {selectedType?.name} » — PDF, 5 Mo max.
+                  </p>
+                )}
+                {fileError ? <p className="mt-1 text-xs text-danger">{fileError}</p> : null}
+              </Field>
+            ) : null}
+
             <div className="rounded-md border border-line bg-bg px-4 py-3 text-sm">
               {endDate < startDate ? (
                 <p className="text-danger">La date de fin précède la date de début.</p>
@@ -200,7 +258,14 @@ export default function MyLeavesPage() {
                 setSuccess(null);
                 submit.mutate();
               }}
-              disabled={!employeeId || !typeId || days === 0 || endDate < startDate || insufficient}
+              disabled={
+                !employeeId ||
+                !typeId ||
+                days === 0 ||
+                endDate < startDate ||
+                insufficient ||
+                (needsDocument && !doc)
+              }
               loading={submit.isPending}
             >
               Envoyer ma demande
@@ -230,6 +295,17 @@ export default function MyLeavesPage() {
                         {r.status === 'pending'
                           ? ` · visa ${Math.min(r.currentLevel + 1, r.chainLevels.length)}/${r.chainLevels.length}`
                           : ''}
+                        {r.documentName ? (
+                          <>
+                            {' · '}
+                            <a
+                              href={apiUrl(`/absence-requests/${r.id}/document`)}
+                              className="text-primary hover:underline"
+                            >
+                              justificatif
+                            </a>
+                          </>
+                        ) : null}
                       </p>
                     </div>
                     <Badge tone={ABSENCE_STATUS_TONES[r.status] ?? 'neutral'}>
