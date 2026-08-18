@@ -30,6 +30,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
+import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import type { OrgUnit } from '@teranga/contracts';
 
@@ -44,12 +45,6 @@ const CONTRACT_LABELS: Record<string, string> = {
   stage: 'Stage',
   consultant: 'Consultant',
   detachement: 'Détachement',
-};
-const MARITAL_LABELS: Record<string, string> = {
-  single: 'Célibataire',
-  married: 'Marié·e',
-  divorced: 'Divorcé·e',
-  widowed: 'Veuf·ve',
 };
 const TABLE_LABELS: Record<string, string> = {
   employees: 'Dossier employé',
@@ -153,34 +148,42 @@ export default function EmployeePage() {
           </CardHeader>
           <CardContent>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
-              <Info
-                label="Genre"
-                value={
-                  e.person.gender === 'female'
-                    ? 'Femme'
-                    : e.person.gender === 'male'
-                      ? 'Homme'
-                      : null
-                }
-              />
+              <Info label="Sexe" value={e.person.gender ? SEX_LABELS[e.person.gender] : null} />
               <Info
                 label="Naissance"
                 value={
                   e.person.birthDate
-                    ? `${formatDate(e.person.birthDate)}${e.person.birthPlace ? ` à ${e.person.birthPlace}` : ''}`
+                    ? `${formatDate(e.person.birthDate)}${e.person.birthPlace ? ` (${e.person.birthPlace})` : ''}`
                     : null
                 }
               />
               <Info
-                label="Situation familiale"
-                value={e.person.maritalStatus ? MARITAL_LABELS[e.person.maritalStatus] : null}
+                label="Situation matrimoniale"
+                value={
+                  e.person.maritalStatus
+                    ? maritalLabels(e.person.gender)[e.person.maritalStatus]
+                    : null
+                }
               />
               <Info label="Nationalité" value={e.person.nationality} />
               <Info
-                label="N° CNI"
+                label="Pièce d'identité"
                 value={
-                  e.person.nationalId ? (
-                    <span className="font-mono">{e.person.nationalId}</span>
+                  e.person.nationalId || e.person.idDocumentType ? (
+                    <span>
+                      {e.person.idDocumentType
+                        ? (ID_DOCUMENT_LABELS[e.person.idDocumentType] ?? e.person.idDocumentType)
+                        : 'Pièce'}
+                      {e.person.nationalId ? (
+                        <>
+                          {' '}
+                          n° <span className="font-mono">{e.person.nationalId}</span>
+                        </>
+                      ) : null}
+                      {e.person.idDocumentExpiresOn
+                        ? ` · expire le ${formatDate(e.person.idDocumentExpiresOn)}`
+                        : ''}
+                    </span>
                   ) : null
                 }
               />

@@ -42,7 +42,8 @@
   --tg-space-16: 64px;
 
   /* --- Typographie --- */
-  --tg-font-sans: -apple-system, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --tg-font-sans:
+    'Google Sans', -apple-system, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --tg-font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --tg-text-xs: 0.75rem;
   --tg-text-sm: 0.875rem;

@@ -32,4 +32,6 @@ body {
   background: var(--tg-bg);
   color: var(--tg-ink);
   font-family: var(--tg-font-sans);
+  font-optical-sizing: auto;
+  font-variation-settings: 'GRAD' 0;
 }

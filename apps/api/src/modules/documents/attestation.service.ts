@@ -120,9 +120,11 @@ export class AttestationService {
       .limit(1);
 
     const feminine = row.gender === 'female';
+    // birthPlace contient désormais le pays de naissance : parenthèses plutôt
+    // qu'une préposition (« au/en/aux » varie selon le pays).
     const birthLine =
       row.birthDate && row.birthPlace
-        ? `, né${feminine ? 'e' : ''} le ${frDate(row.birthDate)} à ${row.birthPlace}`
+        ? `, né${feminine ? 'e' : ''} le ${frDate(row.birthDate)} (${row.birthPlace})`
         : row.birthDate
           ? `, né${feminine ? 'e' : ''} le ${frDate(row.birthDate)}`
           : '';

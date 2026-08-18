@@ -71,9 +71,6 @@ export default function EmployeesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/import">
-            <Button variant="secondary">Importer</Button>
-          </Link>
           <Link href="/employees/new">
             <Button>Nouvel employé</Button>
           </Link>
@@ -108,18 +105,13 @@ export default function EmployeesPage() {
             description={
               debounced || status
                 ? 'Essayez une autre recherche ou retirez les filtres.'
-                : 'Créez votre premier employé ou importez votre fichier existant.'
+                : 'Créez votre premier employé pour démarrer le dossier du personnel.'
             }
             action={
               !debounced && !status ? (
                 <div className="flex gap-2">
                   <Link href="/employees/new">
                     <Button size="sm">Nouvel employé</Button>
-                  </Link>
-                  <Link href="/import">
-                    <Button size="sm" variant="secondary">
-                      Importer un fichier
-                    </Button>
                   </Link>
                 </div>
               ) : undefined

@@ -15,7 +15,6 @@ import {
 import {
   createEmployeeSchema,
   createOrgUnitSchema,
-  importEmployeesSchema,
   listEmployeesQuerySchema,
   newAssignmentSchema,
   updateEmployeeSchema,
@@ -23,7 +22,6 @@ import {
   type CreateEmployeeInput,
   type ListEmployeesQuery,
   type CreateOrgUnitInput,
-  type ImportEmployeesInput,
   type NewAssignmentInput,
   type UpdateEmployeeInput,
   type UpdateOrgUnitInput,
@@ -31,7 +29,6 @@ import {
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { Roles, RolesGuard } from '../auth/roles.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
-import { ImportService } from './import.service';
 import { OrgUnitsService } from './org-units.service';
 import { PeopleService } from './people.service';
 
@@ -41,7 +38,6 @@ export class PeopleController {
   constructor(
     @Inject(PeopleService) private readonly people: PeopleService,
     @Inject(OrgUnitsService) private readonly orgUnits: OrgUnitsService,
-    @Inject(ImportService) private readonly importer: ImportService,
   ) {}
 
   // ---------- Employés ----------
@@ -95,15 +91,6 @@ export class PeopleController {
   @Roles('admin', 'hr')
   history(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.people.history(req.sessionUser, id);
-  }
-
-  @Post('employees/import')
-  @Roles('admin', 'hr')
-  importEmployees(
-    @Req() req: AuthenticatedRequest,
-    @Body(new ZodValidationPipe(importEmployeesSchema)) body: ImportEmployeesInput,
-  ) {
-    return this.importer.importEmployees(req.sessionUser, body.content, body.dryRun);
   }
 
   // ---------- Organisation ----------

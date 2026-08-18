@@ -70,11 +70,71 @@ export interface OrgUnitMember {
 
 // ---------- Employé : création / mise à jour ----------
 
-export const personFieldsSchema = z.object({
+export const idDocumentTypeSchema = z.enum(['cni', 'passport']);
+export type IdDocumentType = z.infer<typeof idDocumentTypeSchema>;
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Date de naissance : dans le passé, et âge minimum de 15 ans. */
+const birthDateSchema = isoDate.refine(
+  (v) => {
+    const today = new Date();
+    const min = new Date(
+      Date.UTC(today.getUTCFullYear() - 15, today.getUTCMonth(), today.getUTCDate()),
+    )
+      .toISOString()
+      .slice(0, 10);
+    return v <= min;
+  },
+  { message: 'La personne doit avoir au moins 15 ans (date dans le passé)' },
+);
+
+/** Cohérence de la pièce d'identité — partagée entre création et mise à jour. */
+function checkIdDocument(
+  p: {
+    nationalId?: string | null;
+    idDocumentType?: string | null;
+    idDocumentIssuedOn?: string | null;
+    idDocumentExpiresOn?: string | null;
+  },
+  ctx: z.RefinementCtx,
+  requireTypeWithNumber: boolean,
+): void {
+  if (requireTypeWithNumber && p.nationalId && !p.idDocumentType) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['idDocumentType'],
+      message: 'Précisez le type de pièce (CNI ou passeport)',
+    });
+  }
+  if (
+    p.idDocumentIssuedOn &&
+    p.idDocumentExpiresOn &&
+    p.idDocumentIssuedOn >= p.idDocumentExpiresOn
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['idDocumentExpiresOn'],
+      message: "La date d'expiration doit être postérieure à la date de délivrance",
+    });
+  }
+  if (p.idDocumentExpiresOn && p.idDocumentExpiresOn <= todayIso()) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['idDocumentExpiresOn'],
+      message: "La pièce est expirée : la date d'expiration doit être dans le futur",
+    });
+  }
+}
+
+export const personFieldsBaseSchema = z.object({
   givenName: trimmed(80),
   familyName: trimmed(80),
   gender: genderSchema.optional(),
-  birthDate: isoDate.optional(),
+  birthDate: birthDateSchema.optional(),
+  /** Pays de naissance (libellé français, choisi dans la liste). */
   birthPlace: optionalTrimmed(120),
   maritalStatus: maritalStatusSchema.optional(),
   nationality: z
@@ -82,7 +142,11 @@ export const personFieldsSchema = z.object({
     .length(2)
     .transform((v) => v.toUpperCase())
     .optional(),
+  /** Numéro de la pièce d'identité — chiffré au stockage. */
   nationalId: optionalTrimmed(40),
+  idDocumentType: idDocumentTypeSchema.optional(),
+  idDocumentIssuedOn: isoDate.optional(),
+  idDocumentExpiresOn: isoDate.optional(),
   personalEmail: z.email().optional(),
   phone: optionalTrimmed(30),
   addressLine: optionalTrimmed(200),
@@ -90,6 +154,10 @@ export const personFieldsSchema = z.object({
   emergencyContactName: optionalTrimmed(120),
   emergencyContactPhone: optionalTrimmed(30),
 });
+
+export const personFieldsSchema = personFieldsBaseSchema.superRefine((p, ctx) =>
+  checkIdDocument(p, ctx, true),
+);
 
 export const employeeFieldsSchema = z.object({
   employeeNumber: trimmed(30),
@@ -135,7 +203,7 @@ export const updatePersonFieldsSchema = z
     givenName: trimmed(80),
     familyName: trimmed(80),
     gender: genderSchema.nullable(),
-    birthDate: isoDate.nullable(),
+    birthDate: birthDateSchema.nullable(),
     birthPlace: clearableString(120),
     maritalStatus: maritalStatusSchema.nullable(),
     // NOT NULL en base (défaut 'SN') : modifiable mais jamais effaçable.
@@ -144,6 +212,9 @@ export const updatePersonFieldsSchema = z
       .length(2)
       .transform((v) => v.toUpperCase()),
     nationalId: clearableString(40),
+    idDocumentType: idDocumentTypeSchema.nullable(),
+    idDocumentIssuedOn: isoDate.nullable(),
+    idDocumentExpiresOn: isoDate.nullable(),
     personalEmail: z.email().nullable(),
     phone: clearableString(30),
     addressLine: clearableString(200),
@@ -151,7 +222,11 @@ export const updatePersonFieldsSchema = z
     emergencyContactName: clearableString(120),
     emergencyContactPhone: clearableString(30),
   })
-  .partial();
+  .partial()
+  // En mise à jour partielle on ne peut pas exiger le type avec le numéro
+  // (les champs absents sont « inchangés ») : seule la cohérence des dates
+  // fournies est vérifiée.
+  .superRefine((p, ctx) => checkIdDocument(p, ctx, false));
 
 export const updateEmployeeFieldsSchema = z
   .object({
@@ -234,6 +309,9 @@ export interface EmployeeDetail {
     maritalStatus: string | null;
     nationality: string;
     nationalId: string | null;
+    idDocumentType: string | null;
+    idDocumentIssuedOn: string | null;
+    idDocumentExpiresOn: string | null;
     personalEmail: string | null;
     phone: string | null;
     addressLine: string | null;
@@ -257,40 +335,3 @@ export interface EmployeeHistoryEntry {
   actorUserId: string | null;
   changedFields: string[];
 }
-
-// ---------- Import CSV ----------
-
-export const importEmployeesSchema = z.object({
-  /** Contenu brut du fichier CSV (séparateur ; ou ,). */
-  content: z.string().min(1).max(5_000_000),
-  /** true = valider seulement, ne rien écrire. */
-  dryRun: z.boolean().default(true),
-});
-export type ImportEmployeesInput = z.infer<typeof importEmployeesSchema>;
-
-export interface ImportRowError {
-  line: number;
-  field: string;
-  message: string;
-}
-
-export interface ImportReport {
-  dryRun: boolean;
-  totalRows: number;
-  validRows: number;
-  importedRows: number;
-  errors: ImportRowError[];
-}
-
-/** Colonnes attendues du gabarit d'import (en-têtes exacts, insensibles à la casse). */
-export const IMPORT_COLUMNS = [
-  'matricule',
-  'prenom',
-  'nom',
-  'date_embauche',
-  'email_pro',
-  'telephone',
-  'poste',
-  'type_contrat',
-  'date_debut_contrat',
-] as const;

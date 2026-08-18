@@ -244,6 +244,9 @@ export class PeopleService {
             canSeeSensitive && person.nationalIdEncrypted
               ? this.crypto.decrypt(person.nationalIdEncrypted)
               : null,
+          idDocumentType: person.idDocumentType,
+          idDocumentIssuedOn: person.idDocumentIssuedOn,
+          idDocumentExpiresOn: person.idDocumentExpiresOn,
           personalEmail: person.personalEmail,
           phone: person.phone,
           addressLine: person.addressLine,

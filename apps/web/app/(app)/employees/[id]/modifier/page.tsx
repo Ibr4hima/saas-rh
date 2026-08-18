@@ -18,6 +18,8 @@ import {
   Skeleton,
 } from '@teranga/ui';
 import { api, ApiError } from '../../../../../lib/api';
+import { COUNTRIES } from '../../../../../lib/countries';
+import { maritalLabels, maxBirthDate } from '../../../../../lib/person';
 
 /**
  * Formulaire à plat (chaînes vides pour « vide »), re-mappé à l'envoi :
@@ -32,6 +34,9 @@ interface FormValues {
   maritalStatus: string;
   nationality: string;
   nationalId: string;
+  idDocumentType: string;
+  idDocumentIssuedOn: string;
+  idDocumentExpiresOn: string;
   personalEmail: string;
   phone: string;
   addressLine: string;
@@ -54,6 +59,9 @@ const PERSON_KEYS = [
   'maritalStatus',
   'nationality',
   'nationalId',
+  'idDocumentType',
+  'idDocumentIssuedOn',
+  'idDocumentExpiresOn',
   'personalEmail',
   'phone',
   'addressLine',
@@ -76,6 +84,9 @@ function toDefaults(e: EmployeeDetail): FormValues {
     maritalStatus: e.person.maritalStatus ?? '',
     nationality: e.person.nationality ?? '',
     nationalId: e.person.nationalId ?? '',
+    idDocumentType: e.person.idDocumentType ?? '',
+    idDocumentIssuedOn: e.person.idDocumentIssuedOn ?? '',
+    idDocumentExpiresOn: e.person.idDocumentExpiresOn ?? '',
     personalEmail: e.person.personalEmail ?? '',
     phone: e.person.phone ?? '',
     addressLine: e.person.addressLine ?? '',
@@ -120,6 +131,9 @@ function EditForm({ employee }: { employee: EmployeeDetail }) {
 
   const form = useForm<FormValues>({ defaultValues: toDefaults(employee) });
   const errors = form.formState.errors;
+  const watchedGender = form.watch('gender');
+  const watchedIdType = form.watch('idDocumentType');
+  const marital = maritalLabels(watchedGender || undefined);
 
   const onSubmit = form.handleSubmit(async (v) => {
     setServerError(null);
@@ -182,27 +196,39 @@ function EditForm({ employee }: { employee: EmployeeDetail }) {
                 {...form.register('familyName', { required: 'Le nom est requis' })}
               />
             </Field>
-            <Field label="Genre" htmlFor="gender">
+            <Field label="Sexe" htmlFor="gender">
               <Select id="gender" {...form.register('gender')}>
                 <option value="">—</option>
-                <option value="female">Femme</option>
-                <option value="male">Homme</option>
+                <option value="male">Masculin</option>
+                <option value="female">Féminin</option>
               </Select>
             </Field>
-            <Field label="Situation familiale" htmlFor="maritalStatus">
+            <Field label="Situation matrimoniale" htmlFor="maritalStatus">
               <Select id="maritalStatus" {...form.register('maritalStatus')}>
                 <option value="">—</option>
-                <option value="single">Célibataire</option>
-                <option value="married">Marié·e</option>
-                <option value="divorced">Divorcé·e</option>
-                <option value="widowed">Veuf·ve</option>
+                <option value="single">{marital.single}</option>
+                <option value="married">{marital.married}</option>
+                <option value="divorced">{marital.divorced}</option>
+                <option value="widowed">{marital.widowed}</option>
               </Select>
             </Field>
             <Field label="Date de naissance" htmlFor="birthDate">
-              <Input id="birthDate" type="date" {...form.register('birthDate')} />
+              <Input
+                id="birthDate"
+                type="date"
+                max={maxBirthDate()}
+                {...form.register('birthDate')}
+              />
             </Field>
-            <Field label="Lieu de naissance" htmlFor="birthPlace">
-              <Input id="birthPlace" {...form.register('birthPlace')} />
+            <Field label="Pays de naissance" htmlFor="birthPlace">
+              <Select id="birthPlace" {...form.register('birthPlace')}>
+                <option value="">—</option>
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field label="Nationalité (code pays)" htmlFor="nationality">
               <Input
@@ -212,9 +238,34 @@ function EditForm({ employee }: { employee: EmployeeDetail }) {
                 {...form.register('nationality')}
               />
             </Field>
-            <Field label="N° CNI (chiffré au stockage)" htmlFor="nationalId">
-              <Input id="nationalId" {...form.register('nationalId')} />
+            <Field label="Pièce d'identité" htmlFor="idDocumentType">
+              <Select id="idDocumentType" {...form.register('idDocumentType')}>
+                <option value="">—</option>
+                <option value="cni">CNI</option>
+                <option value="passport">Passeport</option>
+              </Select>
             </Field>
+            {watchedIdType ? (
+              <>
+                <Field label="Numéro de la pièce (chiffré au stockage)" htmlFor="nationalId">
+                  <Input id="nationalId" {...form.register('nationalId')} />
+                </Field>
+                <Field label="Date de délivrance" htmlFor="idDocumentIssuedOn">
+                  <Input
+                    id="idDocumentIssuedOn"
+                    type="date"
+                    {...form.register('idDocumentIssuedOn')}
+                  />
+                </Field>
+                <Field label="Date d'expiration" htmlFor="idDocumentExpiresOn">
+                  <Input
+                    id="idDocumentExpiresOn"
+                    type="date"
+                    {...form.register('idDocumentExpiresOn')}
+                  />
+                </Field>
+              </>
+            ) : null}
             <Field label="Téléphone" htmlFor="phone">
               <Input id="phone" {...form.register('phone')} />
             </Field>
@@ -255,7 +306,7 @@ function EditForm({ employee }: { employee: EmployeeDetail }) {
               />
             </Field>
             <Field
-              label="Date d'embauche"
+              label="Début du contrat"
               htmlFor="hiredOn"
               error={errors.hiredOn?.message}
               required

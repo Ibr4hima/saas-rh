@@ -1,18 +1,10 @@
 'use client';
 
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import {
-  contractTypeSchema,
-  employeeFieldsSchema,
-  personFieldsSchema,
-  type OrgUnit,
-} from '@teranga/contracts';
+import type { OrgUnitView } from '@teranga/contracts';
 import {
   Button,
   Card,
@@ -24,76 +16,127 @@ import {
   Select,
 } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
+import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../../../../lib/countries';
+import { contractEnd, maritalLabels, maxBirthDate } from '../../../../lib/person';
+import { formatDate } from '../../../../lib/hooks';
 
-/** Formulaire à plat, re-mappé vers CreateEmployeeInput à l'envoi. */
-const formSchema = z.object({
-  ...personFieldsSchema.shape,
-  ...employeeFieldsSchema.omit({ customFields: true }).shape,
-  positionTitle: z.string().trim().max(120).optional(),
-  orgUnitId: z.string().optional(),
-  contractType: contractTypeSchema.or(z.literal('')).optional(),
-  contractStart: z.iso.date().or(z.literal('')).optional(),
-});
-type FormValues = z.infer<typeof formSchema>;
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const tomorrowIso = () => {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
 
 export default function NewEmployeePage() {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // État civil
+  const [givenName, setGivenName] = useState('');
+  const [familyName, setFamilyName] = useState('');
+  const [gender, setGender] = useState('');
+  const [maritalStatus, setMaritalStatus] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [birthCountry, setBirthCountry] = useState('');
+  const [idType, setIdType] = useState('');
+  const [idNumber, setIdNumber] = useState('');
+  const [idIssuedOn, setIdIssuedOn] = useState('');
+  const [idExpiresOn, setIdExpiresOn] = useState('');
+  const [phoneCountry, setPhoneCountry] = useState(DEFAULT_COUNTRY);
+  const [phoneLocal, setPhoneLocal] = useState('');
+  const [personalEmail, setPersonalEmail] = useState('');
+  const [city, setCity] = useState('');
+  const [addressLine, setAddressLine] = useState('');
+  const [emergencyName, setEmergencyName] = useState('');
+  const [emergencyPhone, setEmergencyPhone] = useState('');
+
+  // Emploi
+  const [employeeNumber, setEmployeeNumber] = useState('');
+  const [contractType, setContractType] = useState('cdi');
+  const [contractStart, setContractStart] = useState(todayIso());
+  const [durationMonths, setDurationMonths] = useState('');
+  const [workEmail, setWorkEmail] = useState('');
+  const [workPhone, setWorkPhone] = useState('');
+  const [positionTitle, setPositionTitle] = useState('');
+  const [directionId, setDirectionId] = useState('');
+
   const orgUnits = useQuery({
     queryKey: ['org-units'],
-    queryFn: () => api<OrgUnit[]>('/org-units'),
+    queryFn: () => api<OrgUnitView[]>('/org-units'),
   });
+  const directions = (orgUnits.data ?? []).filter((u) => u.unitType === 'direction');
+  const marital = maritalLabels(gender || undefined);
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
-    defaultValues: { hiredOn: new Date().toISOString().slice(0, 10) },
-  });
-  const errors = form.formState.errors;
+  const needsDuration = contractType === 'cdd' || contractType === 'stage';
+  const months = Number(durationMonths);
+  const computedEnd =
+    needsDuration && contractStart && months > 0 ? contractEnd(contractStart, months) : null;
 
-  const onSubmit = form.handleSubmit(async (v) => {
+  const idDatesInvalid =
+    (idIssuedOn && idExpiresOn && idIssuedOn >= idExpiresOn) ||
+    (idExpiresOn !== '' && idExpiresOn <= todayIso());
+
+  const canSubmit =
+    givenName.trim() &&
+    familyName.trim() &&
+    employeeNumber.trim() &&
+    contractStart &&
+    (!needsDuration || months > 0) &&
+    (!idType || idNumber.trim()) &&
+    !idDatesInvalid;
+
+  const submit = async () => {
+    setSaving(true);
     setServerError(null);
     try {
       const { id } = await api<{ id: string }>('/employees', {
         method: 'POST',
         body: {
           person: {
-            givenName: v.givenName,
-            familyName: v.familyName,
-            gender: v.gender || undefined,
-            birthDate: v.birthDate || undefined,
-            birthPlace: v.birthPlace,
-            maritalStatus: v.maritalStatus || undefined,
-            nationalId: v.nationalId,
-            personalEmail: v.personalEmail || undefined,
-            phone: v.phone,
-            addressLine: v.addressLine,
-            city: v.city,
-            emergencyContactName: v.emergencyContactName,
-            emergencyContactPhone: v.emergencyContactPhone,
+            givenName,
+            familyName,
+            gender: gender || undefined,
+            birthDate: birthDate || undefined,
+            birthPlace: birthCountry ? countryByCode(birthCountry)?.name : undefined,
+            maritalStatus: maritalStatus || undefined,
+            nationalId: idType ? idNumber.trim() : undefined,
+            idDocumentType: idType || undefined,
+            idDocumentIssuedOn: idType && idIssuedOn ? idIssuedOn : undefined,
+            idDocumentExpiresOn: idType && idExpiresOn ? idExpiresOn : undefined,
+            personalEmail: personalEmail || undefined,
+            phone: composePhone(phoneCountry, phoneLocal),
+            addressLine: addressLine || undefined,
+            city: city || undefined,
+            emergencyContactName: emergencyName || undefined,
+            emergencyContactPhone: emergencyPhone || undefined,
           },
           employee: {
-            employeeNumber: v.employeeNumber,
-            hiredOn: v.hiredOn,
-            workEmail: v.workEmail || undefined,
-            workPhone: v.workPhone,
+            employeeNumber,
+            hiredOn: contractStart,
+            workEmail: workEmail || undefined,
+            workPhone: workPhone || undefined,
           },
-          assignment: v.positionTitle
+          assignment: positionTitle.trim()
             ? {
-                positionTitle: v.positionTitle,
-                orgUnitId: v.orgUnitId || undefined,
-                startDate: v.hiredOn,
+                positionTitle: positionTitle.trim(),
+                orgUnitId: directionId || undefined,
+                startDate: contractStart,
               }
             : undefined,
-          contract: v.contractType
-            ? { contractType: v.contractType, startDate: v.contractStart || v.hiredOn }
-            : undefined,
+          contract: {
+            contractType,
+            startDate: contractStart,
+            endDate: computedEnd ?? undefined,
+          },
         },
       });
       router.replace(`/employees/${id}`);
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : 'Enregistrement impossible.');
+      setSaving(false);
     }
-  });
+  };
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -104,86 +147,176 @@ export default function NewEmployeePage() {
         <h1 className="mt-1 text-xl font-bold text-ink-strong">Nouvel employé</h1>
       </div>
 
-      <form onSubmit={onSubmit} className="flex flex-col gap-6" noValidate>
+      <div className="flex flex-col gap-6">
         <Card>
           <CardHeader>
             <CardTitle>État civil</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Prénom" htmlFor="givenName" error={errors.givenName?.message} required>
-              <Input id="givenName" {...form.register('givenName')} />
+            <Field label="Prénom" htmlFor="givenName" required>
+              <Input
+                id="givenName"
+                value={givenName}
+                onChange={(e) => setGivenName(e.target.value)}
+              />
             </Field>
-            <Field label="Nom" htmlFor="familyName" error={errors.familyName?.message} required>
-              <Input id="familyName" {...form.register('familyName')} />
+            <Field label="Nom" htmlFor="familyName" required>
+              <Input
+                id="familyName"
+                value={familyName}
+                onChange={(e) => setFamilyName(e.target.value)}
+              />
             </Field>
-            <Field label="Genre" htmlFor="gender" error={errors.gender?.message}>
-              <Select id="gender" {...form.register('gender')}>
+            <Field label="Sexe" htmlFor="gender">
+              <Select id="gender" value={gender} onChange={(e) => setGender(e.target.value)}>
                 <option value="">—</option>
-                <option value="female">Femme</option>
-                <option value="male">Homme</option>
+                <option value="male">Masculin</option>
+                <option value="female">Féminin</option>
               </Select>
             </Field>
-            <Field
-              label="Situation familiale"
-              htmlFor="maritalStatus"
-              error={errors.maritalStatus?.message}
-            >
-              <Select id="maritalStatus" {...form.register('maritalStatus')}>
+            <Field label="Situation matrimoniale" htmlFor="maritalStatus">
+              <Select
+                id="maritalStatus"
+                value={maritalStatus}
+                onChange={(e) => setMaritalStatus(e.target.value)}
+              >
                 <option value="">—</option>
-                <option value="single">Célibataire</option>
-                <option value="married">Marié·e</option>
-                <option value="divorced">Divorcé·e</option>
-                <option value="widowed">Veuf·ve</option>
+                <option value="single">{marital.single}</option>
+                <option value="married">{marital.married}</option>
+                <option value="divorced">{marital.divorced}</option>
+                <option value="widowed">{marital.widowed}</option>
               </Select>
             </Field>
-            <Field label="Date de naissance" htmlFor="birthDate" error={errors.birthDate?.message}>
-              <Input id="birthDate" type="date" {...form.register('birthDate')} />
+            <Field label="Date de naissance" htmlFor="birthDate">
+              <Input
+                id="birthDate"
+                type="date"
+                max={maxBirthDate()}
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-ink-muted">15 ans minimum.</p>
             </Field>
-            <Field
-              label="Lieu de naissance"
-              htmlFor="birthPlace"
-              error={errors.birthPlace?.message}
-            >
-              <Input id="birthPlace" {...form.register('birthPlace')} />
+            <Field label="Pays de naissance" htmlFor="birthCountry">
+              <Select
+                id="birthCountry"
+                value={birthCountry}
+                onChange={(e) => setBirthCountry(e.target.value)}
+              >
+                <option value="">—</option>
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
             </Field>
-            <Field
-              label="N° CNI (chiffré au stockage)"
-              htmlFor="nationalId"
-              error={errors.nationalId?.message}
-            >
-              <Input id="nationalId" {...form.register('nationalId')} />
+
+            <Field label="Pièce d'identité" htmlFor="idType">
+              <Select id="idType" value={idType} onChange={(e) => setIdType(e.target.value)}>
+                <option value="">—</option>
+                <option value="cni">CNI</option>
+                <option value="passport">Passeport</option>
+              </Select>
             </Field>
-            <Field label="Téléphone" htmlFor="phone" error={errors.phone?.message}>
-              <Input id="phone" {...form.register('phone')} />
+            {idType ? (
+              <>
+                <Field label="Numéro de la pièce (chiffré au stockage)" htmlFor="idNumber" required>
+                  <Input
+                    id="idNumber"
+                    value={idNumber}
+                    onChange={(e) => setIdNumber(e.target.value)}
+                  />
+                </Field>
+                <Field label="Date de délivrance" htmlFor="idIssuedOn">
+                  <Input
+                    id="idIssuedOn"
+                    type="date"
+                    max={todayIso()}
+                    value={idIssuedOn}
+                    onChange={(e) => setIdIssuedOn(e.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Date d'expiration"
+                  htmlFor="idExpiresOn"
+                  error={
+                    idDatesInvalid
+                      ? "L'expiration doit être future et postérieure à la délivrance"
+                      : undefined
+                  }
+                >
+                  <Input
+                    id="idExpiresOn"
+                    type="date"
+                    min={tomorrowIso()}
+                    value={idExpiresOn}
+                    onChange={(e) => setIdExpiresOn(e.target.value)}
+                  />
+                </Field>
+              </>
+            ) : null}
+
+            <Field label="Téléphone" htmlFor="phoneLocal">
+              <div className="flex gap-2">
+                <Select
+                  aria-label="Pays de l'indicatif"
+                  value={phoneCountry}
+                  onChange={(e) => setPhoneCountry(e.target.value)}
+                  className="w-40 shrink-0"
+                >
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name} (+{c.dial})
+                    </option>
+                  ))}
+                </Select>
+                <div className="relative flex-1">
+                  <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-ink-muted">
+                    +{countryByCode(phoneCountry)?.dial}
+                  </span>
+                  <Input
+                    id="phoneLocal"
+                    type="tel"
+                    className="pl-14"
+                    placeholder="77 123 45 67"
+                    value={phoneLocal}
+                    onChange={(e) => setPhoneLocal(e.target.value)}
+                  />
+                </div>
+              </div>
             </Field>
-            <Field
-              label="Email personnel"
-              htmlFor="personalEmail"
-              error={errors.personalEmail?.message}
-            >
-              <Input id="personalEmail" type="email" {...form.register('personalEmail')} />
+            <Field label="Email personnel" htmlFor="personalEmail">
+              <Input
+                id="personalEmail"
+                type="email"
+                value={personalEmail}
+                onChange={(e) => setPersonalEmail(e.target.value)}
+              />
             </Field>
-            <Field label="Ville" htmlFor="city" error={errors.city?.message}>
-              <Input id="city" {...form.register('city')} />
+            <Field label="Ville" htmlFor="city">
+              <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} />
             </Field>
-            <div className="sm:col-span-2">
-              <Field label="Adresse" htmlFor="addressLine" error={errors.addressLine?.message}>
-                <Input id="addressLine" {...form.register('addressLine')} />
-              </Field>
-            </div>
-            <Field
-              label="Contact d'urgence — nom"
-              htmlFor="emergencyContactName"
-              error={errors.emergencyContactName?.message}
-            >
-              <Input id="emergencyContactName" {...form.register('emergencyContactName')} />
+            <Field label="Adresse" htmlFor="addressLine">
+              <Input
+                id="addressLine"
+                value={addressLine}
+                onChange={(e) => setAddressLine(e.target.value)}
+              />
             </Field>
-            <Field
-              label="Contact d'urgence — téléphone"
-              htmlFor="emergencyContactPhone"
-              error={errors.emergencyContactPhone?.message}
-            >
-              <Input id="emergencyContactPhone" {...form.register('emergencyContactPhone')} />
+            <Field label="Contact d'urgence — nom" htmlFor="emergencyName">
+              <Input
+                id="emergencyName"
+                value={emergencyName}
+                onChange={(e) => setEmergencyName(e.target.value)}
+              />
+            </Field>
+            <Field label="Contact d'urgence — téléphone" htmlFor="emergencyPhone">
+              <Input
+                id="emergencyPhone"
+                value={emergencyPhone}
+                onChange={(e) => setEmergencyPhone(e.target.value)}
+              />
             </Field>
           </CardContent>
         </Card>
@@ -193,73 +326,85 @@ export default function NewEmployeePage() {
             <CardTitle>Emploi</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field
-              label="Matricule"
-              htmlFor="employeeNumber"
-              error={errors.employeeNumber?.message}
-              required
-            >
-              <Input id="employeeNumber" {...form.register('employeeNumber')} />
+            <Field label="Matricule" htmlFor="employeeNumber" required>
+              <Input
+                id="employeeNumber"
+                value={employeeNumber}
+                onChange={(e) => setEmployeeNumber(e.target.value)}
+              />
             </Field>
-            <Field
-              label="Date d'embauche"
-              htmlFor="hiredOn"
-              error={errors.hiredOn?.message}
-              required
-            >
-              <Input id="hiredOn" type="date" {...form.register('hiredOn')} />
+            <Field label="Type de contrat" htmlFor="contractType" required>
+              <Select
+                id="contractType"
+                value={contractType}
+                onChange={(e) => setContractType(e.target.value)}
+              >
+                <option value="cdi">CDI</option>
+                <option value="cdd">CDD</option>
+                <option value="stage">Stage</option>
+              </Select>
             </Field>
-            <Field
-              label="Email professionnel"
-              htmlFor="workEmail"
-              error={errors.workEmail?.message}
-            >
-              <Input id="workEmail" type="email" {...form.register('workEmail')} />
+            <Field label="Début du contrat" htmlFor="contractStart" required>
+              <Input
+                id="contractStart"
+                type="date"
+                value={contractStart}
+                onChange={(e) => setContractStart(e.target.value)}
+              />
             </Field>
-            <Field
-              label="Téléphone professionnel"
-              htmlFor="workPhone"
-              error={errors.workPhone?.message}
-            >
-              <Input id="workPhone" {...form.register('workPhone')} />
+            {needsDuration ? (
+              <Field label="Durée (mois)" htmlFor="durationMonths" required>
+                <Input
+                  id="durationMonths"
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={durationMonths}
+                  onChange={(e) => setDurationMonths(e.target.value)}
+                />
+                {computedEnd ? (
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Fin du contrat : <span className="font-medium">{formatDate(computedEnd)}</span>
+                  </p>
+                ) : null}
+              </Field>
+            ) : null}
+            <Field label="Email professionnel" htmlFor="workEmail">
+              <Input
+                id="workEmail"
+                type="email"
+                value={workEmail}
+                onChange={(e) => setWorkEmail(e.target.value)}
+              />
             </Field>
-            <Field label="Poste" htmlFor="positionTitle" error={errors.positionTitle?.message}>
+            <Field label="Téléphone professionnel" htmlFor="workPhone">
+              <Input
+                id="workPhone"
+                value={workPhone}
+                onChange={(e) => setWorkPhone(e.target.value)}
+              />
+            </Field>
+            <Field label="Poste" htmlFor="positionTitle">
               <Input
                 id="positionTitle"
                 placeholder="Ex : Chargée d'études"
-                {...form.register('positionTitle')}
+                value={positionTitle}
+                onChange={(e) => setPositionTitle(e.target.value)}
               />
             </Field>
-            <Field label="Unité d'organisation" htmlFor="orgUnitId">
-              <Select id="orgUnitId" {...form.register('orgUnitId')}>
+            <Field label="Direction affectée" htmlFor="directionId">
+              <Select
+                id="directionId"
+                value={directionId}
+                onChange={(e) => setDirectionId(e.target.value)}
+              >
                 <option value="">—</option>
-                {orgUnits.data?.map((u) => (
+                {directions.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.name}
                   </option>
                 ))}
               </Select>
-            </Field>
-            <Field
-              label="Type de contrat"
-              htmlFor="contractType"
-              error={errors.contractType?.message}
-            >
-              <Select id="contractType" {...form.register('contractType')}>
-                <option value="">—</option>
-                <option value="cdi">CDI</option>
-                <option value="cdd">CDD</option>
-                <option value="stage">Stage</option>
-                <option value="consultant">Consultant</option>
-                <option value="detachement">Détachement</option>
-              </Select>
-            </Field>
-            <Field
-              label="Début du contrat"
-              htmlFor="contractStart"
-              error={errors.contractStart?.message}
-            >
-              <Input id="contractStart" type="date" {...form.register('contractStart')} />
             </Field>
           </CardContent>
         </Card>
@@ -272,11 +417,11 @@ export default function NewEmployeePage() {
           <Link href="/employees">
             <Button variant="secondary">Annuler</Button>
           </Link>
-          <Button type="submit" loading={form.formState.isSubmitting}>
+          <Button onClick={submit} loading={saving} disabled={!canSubmit}>
             Créer l&apos;employé
           </Button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }
