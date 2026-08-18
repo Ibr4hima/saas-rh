@@ -10,7 +10,8 @@ export default function HomePage() {
   const me = useMe();
 
   useEffect(() => {
-    if (me.data) router.replace('/dashboard');
+    if (me.data)
+      router.replace(['admin', 'hr', 'payroll'].includes(me.data.role) ? '/dashboard' : '/moi');
     else if (me.isError) router.replace('/login');
   }, [me.data, me.isError, router]);
 

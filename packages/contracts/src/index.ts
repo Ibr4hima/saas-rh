@@ -84,3 +84,4 @@ export type Health = z.infer<typeof healthSchema>;
 
 export * from './employees';
 export * from './absences';
+export * from './portal';

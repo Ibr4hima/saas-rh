@@ -172,6 +172,10 @@ export interface EmployeeDetail {
   };
   assignments: AssignmentView[];
   contracts: ContractView[];
+  portal: {
+    status: 'none' | 'invited' | 'active';
+    role: string | null;
+  };
 }
 
 export interface EmployeeHistoryEntry {

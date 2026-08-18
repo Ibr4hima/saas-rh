@@ -3,6 +3,7 @@ import { Req } from '@nestjs/common';
 import { and, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
+import { Roles, RolesGuard } from '../auth/roles.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 
 export interface DashboardStats {
@@ -13,7 +14,8 @@ export interface DashboardStats {
 }
 
 @Controller()
-@UseGuards(SessionGuard)
+@UseGuards(SessionGuard, RolesGuard)
+@Roles('admin', 'hr', 'payroll', 'manager')
 export class DashboardController {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
 

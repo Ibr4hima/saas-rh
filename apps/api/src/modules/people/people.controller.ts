@@ -45,6 +45,7 @@ export class PeopleController {
   // ---------- Employés ----------
 
   @Get('employees')
+  @Roles('admin', 'hr', 'payroll')
   listEmployees(
     @Req() req: AuthenticatedRequest,
     @Query(new ZodValidationPipe(listEmployeesQuerySchema)) query: ListEmployeesQuery,

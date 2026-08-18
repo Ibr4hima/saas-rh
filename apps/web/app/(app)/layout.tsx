@@ -60,6 +60,32 @@ const NAV_GROUPS: Array<{
   },
 ];
 
+const STAFF_ROLES = ['admin', 'hr', 'payroll'];
+
+/** Espace personnel : navigation réduite pour employés et managers. */
+function personalNav(role: string): typeof NAV_GROUPS {
+  return [
+    {
+      label: 'Mon espace',
+      items: [
+        { href: '/moi', label: 'Mon espace', icon: IconDashboard },
+        { href: '/moi/conges', label: 'Mes congés', icon: IconCalendar },
+        ...(role === 'manager'
+          ? [
+              {
+                href: '/absences',
+                label: 'Validations',
+                icon: IconUsers,
+                badge: 'pending' as const,
+              },
+            ]
+          : []),
+        { href: '/calendrier', label: 'Calendrier', icon: IconCalendarDays },
+      ],
+    },
+  ];
+}
+
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrateur',
   hr: 'RH',
@@ -73,16 +99,39 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
+  const role = me.data?.role ?? '';
+  const isStaff = STAFF_ROLES.includes(role);
+
   const stats = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api<DashboardStats>('/dashboard'),
-    enabled: Boolean(me.data),
+    // Réservé aux rôles qui y ont droit côté serveur — pas de 403 périodiques.
+    enabled: Boolean(me.data) && (isStaff || role === 'manager'),
     refetchInterval: 60_000,
   });
+
+  // Garde de routes : les non-gestionnaires restent dans leur espace.
+  const allowedForRole = (path: string): boolean => {
+    if (!me.data || isStaff) return true;
+    if (path.startsWith('/moi') || path.startsWith('/calendrier')) return true;
+    if (role === 'manager') {
+      return (
+        path.startsWith('/absences') &&
+        !path.startsWith('/absences/new') &&
+        !path.startsWith('/absences/parametres')
+      );
+    }
+    return false;
+  };
+  const allowed = allowedForRole(pathname);
 
   useEffect(() => {
     if (me.isError) router.replace('/login');
   }, [me.isError, router]);
+
+  useEffect(() => {
+    if (me.data && !allowed) router.replace('/moi');
+  }, [me.data, allowed, router]);
 
   if (!me.data) {
     return (
@@ -93,13 +142,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (!allowed) {
+    // La page interdite n'est jamais montée : l'effet ci-dessus redirige.
+    return null;
+  }
+
   const user = me.data;
   const initials = `${user.givenName[0] ?? ''}${user.familyName[0] ?? ''}`.toUpperCase();
   const pending = stats.data?.pendingRequests ?? 0;
+  const groups = isStaff ? NAV_GROUPS : personalNav(user.role);
 
   return (
     <div className="flex min-h-screen">
-      <aside className="sticky top-0 flex h-screen w-60 flex-col border-r border-line bg-surface">
+      <aside className="sticky top-0 flex h-screen w-60 flex-col border-r border-line bg-surface max-lg:hidden">
         {/* Marque */}
         <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
           <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-ink">
@@ -113,7 +168,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Navigation groupée */}
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
-          {NAV_GROUPS.map((group) => (
+          {groups.map((group) => (
             <div key={group.label} className="mt-4 first:mt-1">
               <p className="px-2.5 pb-1.5 text-[11px] font-semibold tracking-wider text-ink-muted/80 uppercase">
                 {group.label}
@@ -179,7 +234,61 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 px-8 py-8">{children}</main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* En-tête mobile */}
+        <header className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-line bg-surface px-4 py-3 lg:hidden">
+          <div className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-ink">
+            T
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm leading-tight font-bold text-ink-strong">Teranga RH</p>
+            <p className="truncate text-[11px] leading-tight text-ink-muted">
+              {user.organizationName}
+            </p>
+          </div>
+          <button
+            type="button"
+            title="Se déconnecter"
+            aria-label="Se déconnecter"
+            className="rounded-md p-1.5 text-ink-muted"
+            onClick={async () => {
+              await api('/auth/logout', { method: 'POST' });
+              router.replace('/login');
+            }}
+          >
+            <IconLogout size={16} />
+          </button>
+        </header>
+
+        <main className="min-w-0 flex-1 px-4 py-6 pb-24 lg:px-8 lg:py-8 lg:pb-8">{children}</main>
+
+        {/* Barre d'onglets mobile */}
+        <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">
+          {groups
+            .flatMap((g) => g.items)
+            .map((item) => {
+              const active = pathname.startsWith(item.href);
+              const IconCmp = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'relative flex min-w-14 flex-col items-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-medium',
+                    active ? 'text-primary' : 'text-ink-muted',
+                  )}
+                >
+                  <IconCmp size={20} />
+                  {item.badge === 'pending' && pending > 0 ? (
+                    <span className="absolute top-0 right-2 size-2 rounded-full bg-danger" />
+                  ) : null}
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              );
+            })}
+        </nav>
+      </div>
     </div>
   );
 }

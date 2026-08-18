@@ -11,6 +11,8 @@ import { ImportService } from './modules/people/import.service';
 import { OrgUnitsService } from './modules/people/org-units.service';
 import { PeopleController } from './modules/people/people.controller';
 import { PeopleService } from './modules/people/people.service';
+import { InvitationsService } from './modules/portal/invitations.service';
+import { PortalController } from './modules/portal/portal.controller';
 import { AbsencesController } from './modules/time/absences.controller';
 import { AbsencesService } from './modules/time/absences.service';
 
@@ -25,6 +27,7 @@ import { AbsencesService } from './modules/time/absences.service';
     PeopleController,
     AbsencesController,
     DashboardController,
+    PortalController,
   ],
   providers: [
     TenantDb,
@@ -36,6 +39,7 @@ import { AbsencesService } from './modules/time/absences.service';
     OrgUnitsService,
     ImportService,
     AbsencesService,
+    InvitationsService,
   ],
 })
 export class AppModule {}

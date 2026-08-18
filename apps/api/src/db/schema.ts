@@ -205,6 +205,19 @@ export const absenceApprovals = pgTable('absence_approvals', {
   decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const invitations = pgTable('invitations', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  personId: uuid('person_id').notNull(),
+  email: text('email').notNull(),
+  role: text('role').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  invitedByUserId: uuid('invited_by_user_id').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const auditLog = pgTable('audit_log', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id'),

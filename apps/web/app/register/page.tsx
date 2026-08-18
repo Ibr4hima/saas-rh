@@ -18,7 +18,7 @@ export default function RegisterPage() {
     setServerError(null);
     try {
       await api<{ user: SessionUser }>('/auth/register', { method: 'POST', body: values });
-      router.replace('/dashboard');
+      router.replace('/');
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : 'Inscription impossible — réessayez.');
     }

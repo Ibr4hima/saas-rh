@@ -4,7 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
-import type { BalanceView, EmployeeDetail, EmployeeHistoryEntry } from '@teranga/contracts';
+import type {
+  BalanceView,
+  EmployeeDetail,
+  EmployeeHistoryEntry,
+  InvitableRole,
+  InviteResult,
+} from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -12,7 +18,9 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Field,
   Input,
+  Select,
   Skeleton,
   Table,
   TBody,
@@ -248,6 +256,8 @@ export default function EmployeePage() {
           )}
         </Card>
 
+        {canSeeHistory ? <PortalCard employeeId={e.id} portal={e.portal} /> : null}
+
         <BalancesCard employeeId={e.id} canEdit={Boolean(canSeeHistory)} />
 
         {canSeeHistory ? (
@@ -391,6 +401,115 @@ function BalancesCard({ employeeId, canEdit }: { employeeId: string; canEdit: bo
             })}
           </TBody>
         </Table>
+      )}
+    </Card>
+  );
+}
+
+const PORTAL_ROLE_LABELS: Record<string, string> = {
+  hr: 'RH',
+  payroll: 'Gestionnaire de paie',
+  manager: 'Manager',
+  employee: 'Employé',
+  admin: 'Administrateur',
+};
+
+function PortalCard({
+  employeeId,
+  portal,
+}: {
+  employeeId: string;
+  portal: EmployeeDetail['portal'];
+}) {
+  const queryClient = useQueryClient();
+  const [role, setRole] = useState<InvitableRole>('employee');
+  const [invite, setInvite] = useState<InviteResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const generate = useMutation({
+    mutationFn: () =>
+      api<InviteResult>(`/employees/${employeeId}/invite`, { method: 'POST', body: { role } }),
+    onSuccess: (r) => {
+      setInvite(r);
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Génération impossible.'),
+  });
+
+  const inviteUrl = invite ? `${window.location.origin}${invite.invitePath}` : null;
+
+  return (
+    <Card>
+      <CardHeader className="flex items-center justify-between">
+        <CardTitle>Accès au portail</CardTitle>
+        {portal.status === 'active' ? (
+          <Badge tone="success">
+            Compte actif{portal.role ? ` · ${PORTAL_ROLE_LABELS[portal.role] ?? portal.role}` : ''}
+          </Badge>
+        ) : portal.status === 'invited' ? (
+          <Badge tone="warning">Invitation en cours</Badge>
+        ) : (
+          <Badge tone="neutral">Aucun accès</Badge>
+        )}
+      </CardHeader>
+      {portal.status === 'active' ? (
+        <CardContent>
+          <p className="text-sm text-ink-muted">
+            Cet employé se connecte au portail et gère ses demandes lui-même.
+          </p>
+        </CardContent>
+      ) : (
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-ink-muted">
+            Générez un lien d&apos;invitation à lui transmettre (email, WhatsApp…) : il choisira son
+            mot de passe et son compte sera relié à ce dossier.
+          </p>
+          <div className="flex items-end gap-3">
+            <div className="w-56">
+              <Field label="Rôle" htmlFor="invite-role">
+                <Select
+                  id="invite-role"
+                  value={role}
+                  onChange={(ev) => setRole(ev.target.value as InvitableRole)}
+                >
+                  <option value="employee">Employé</option>
+                  <option value="manager">Manager</option>
+                  <option value="payroll">Gestionnaire de paie</option>
+                  <option value="hr">RH</option>
+                </Select>
+              </Field>
+            </div>
+            <Button onClick={() => generate.mutate()} loading={generate.isPending}>
+              {portal.status === 'invited' ? 'Régénérer le lien' : "Générer le lien d'invitation"}
+            </Button>
+          </div>
+          {error ? (
+            <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
+          ) : null}
+          {inviteUrl ? (
+            <div className="flex items-center gap-2">
+              <Input readOnly value={inviteUrl} className="font-mono text-xs" />
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(inviteUrl);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+              >
+                {copied ? 'Copié ✓' : 'Copier'}
+              </Button>
+            </div>
+          ) : null}
+          {invite ? (
+            <p className="text-xs text-ink-muted">
+              Envoyé à {invite.email} · valable 7 jours · rôle{' '}
+              {PORTAL_ROLE_LABELS[invite.role] ?? invite.role}
+            </p>
+          ) : null}
+        </CardContent>
       )}
     </Card>
   );

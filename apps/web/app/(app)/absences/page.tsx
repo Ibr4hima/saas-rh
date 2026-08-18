@@ -71,9 +71,11 @@ export default function AbsencesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/absences/parametres">
-            <Button variant="secondary">Paramètres</Button>
-          </Link>
+          {canManage ? (
+            <Link href="/absences/parametres">
+              <Button variant="secondary">Paramètres</Button>
+            </Link>
+          ) : null}
           {canManage ? (
             <Link href="/absences/new">
               <Button>Nouvelle demande</Button>

@@ -88,7 +88,7 @@ beforeAll(async () => {
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 2 });
   // Base propre : le test est le seul écrivain de cette base de test/CI.
   await ownerPool.query(
-    `TRUNCATE audit_log, absence_approvals, absence_requests, absence_balances,
+    `TRUNCATE audit_log, invitations, absence_approvals, absence_requests, absence_balances,
               approval_chains, holidays, absence_types,
               contracts, assignments, employees, persons, org_units,
               user_tenant_memberships, sessions, tenants, users CASCADE`,
@@ -122,7 +122,7 @@ describe('préconditions', () => {
         AND c.relname IN ('tenants', 'user_tenant_memberships', 'org_units', 'contracts',
                           'persons', 'employees', 'assignments', 'audit_log',
                           'absence_types', 'holidays', 'absence_balances',
-                          'approval_chains', 'absence_requests', 'absence_approvals')
+                          'approval_chains', 'absence_requests', 'absence_approvals', 'invitations')
         AND NOT (c.relrowsecurity AND c.relforcerowsecurity)
     `);
     expect(rows).toEqual([]);

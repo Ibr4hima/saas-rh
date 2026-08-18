@@ -164,6 +164,7 @@ export class AbsencesService {
   async balances(user: SessionUser, employeeId: string, year: number): Promise<BalanceView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       await this.requireEmployee(tx, employeeId);
+      await this.assertEmployeeScope(tx, user, employeeId);
       const types = await this.selectTypes(tx);
       const balanceRows = await tx
         .select()
@@ -260,6 +261,16 @@ export class AbsencesService {
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
         await this.requireEmployee(tx, input.employeeId);
+        if (!MANAGE_ROLES.has(user.role)) {
+          const self = await this.selfEmployeeId(tx, user);
+          if (self !== input.employeeId) {
+            problem(
+              403,
+              'absence.self_only',
+              'Vous ne pouvez poser une demande que pour vous-même',
+            );
+          }
+        }
         const [type] = await tx
           .select()
           .from(t.absenceTypes)
@@ -331,6 +342,13 @@ export class AbsencesService {
       const conditions = [];
       if (query.status) conditions.push(eq(t.absenceRequests.status, query.status));
       if (query.employeeId) conditions.push(eq(t.absenceRequests.employeeId, query.employeeId));
+      // Le rôle employé ne voit que ses propres demandes ; les approbateurs
+      // (manager, paie) et gestionnaires voient tout.
+      if (user.role === 'employee') {
+        const self = await this.selfEmployeeId(tx, user);
+        if (!self) return [];
+        conditions.push(eq(t.absenceRequests.employeeId, self));
+      }
 
       const rows = await tx
         .select({
@@ -355,6 +373,15 @@ export class AbsencesService {
 
   async upcoming(user: SessionUser): Promise<AbsenceRequestView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
+      // Même périmètre que listRequests : le rôle employé ne voit que ses
+      // propres absences (les types — maladie, maternité — sont des données
+      // sensibles) ; approbateurs et gestionnaires voient tout le tenant.
+      const scope = [];
+      if (user.role === 'employee') {
+        const self = await this.selfEmployeeId(tx, user);
+        if (!self) return [];
+        scope.push(eq(t.absenceRequests.employeeId, self));
+      }
       const rows = await tx
         .select({
           request: t.absenceRequests,
@@ -372,6 +399,7 @@ export class AbsencesService {
           and(
             eq(t.absenceRequests.status, 'approved'),
             gte(t.absenceRequests.endDate, sql`CURRENT_DATE`),
+            ...scope,
           ),
         )
         .orderBy(asc(t.absenceRequests.startDate))
@@ -455,6 +483,21 @@ export class AbsencesService {
       if (!request) {
         problem(404, 'absence.request_not_found', 'Demande introuvable');
       }
+      if (!MANAGE_ROLES.has(user.role)) {
+        // Le titulaire du dossier peut annuler sa demande en attente, même si
+        // c'est la RH qui l'avait saisie pour lui.
+        const self = await this.selfEmployeeId(tx, user);
+        const isOwnPending =
+          (request.requestedByUserId === user.userId || request.employeeId === self) &&
+          request.status === 'pending';
+        if (!isOwnPending) {
+          problem(
+            403,
+            'absence.cancel_forbidden',
+            'Vous ne pouvez annuler que vos propres demandes en attente',
+          );
+        }
+      }
       const today = new Date().toISOString().slice(0, 10);
       const cancellable =
         request.status === 'pending' ||
@@ -475,6 +518,26 @@ export class AbsencesService {
   }
 
   // ---------- Privé ----------
+
+  /** Id du dossier employé relié au compte connecté (null si aucun). */
+  private async selfEmployeeId(tx: Tx, user: SessionUser): Promise<string | null> {
+    const [row] = await tx
+      .select({ id: t.employees.id })
+      .from(t.employees)
+      .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+      .where(eq(t.persons.userId, user.userId))
+      .limit(1);
+    return row?.id ?? null;
+  }
+
+  /** Gestionnaires : accès à tout dossier ; autres rôles : uniquement le leur. */
+  private async assertEmployeeScope(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
+    if (MANAGE_ROLES.has(user.role) || user.role === 'payroll') return;
+    const self = await this.selfEmployeeId(tx, user);
+    if (self !== employeeId) {
+      problem(403, 'people.forbidden_scope', 'Accès limité à votre propre dossier');
+    }
+  }
 
   private async selectTypes(tx: Tx): Promise<AbsenceType[]> {
     const rows = await tx

@@ -148,7 +148,6 @@ export class AbsencesController {
   }
 
   @Post('absence-requests')
-  @Roles('admin', 'hr')
   createRequest(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(createAbsenceRequestSchema)) body: CreateAbsenceRequestInput,
@@ -167,7 +166,6 @@ export class AbsencesController {
   }
 
   @Post('absence-requests/:id/cancel')
-  @Roles('admin', 'hr')
   @HttpCode(204)
   async cancel(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     await this.absences.cancel(req.sessionUser, id);

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   AssignmentView,
@@ -192,6 +192,13 @@ export class PeopleService {
         problem(500, 'people.person_missing', 'Dossier incohérent : personne absente');
       }
 
+      // Périmètre : les gestionnaires voient tout ; les autres, leur dossier.
+      const isManage = ['admin', 'hr', 'payroll'].includes(user.role);
+      const isSelf = person.userId === user.userId;
+      if (!isManage && !isSelf) {
+        problem(403, 'people.forbidden_scope', 'Accès limité à votre propre dossier');
+      }
+
       const assignmentRows = await tx
         .select({
           id: t.assignments.id,
@@ -215,7 +222,7 @@ export class PeopleService {
         .where(eq(t.contracts.employeeId, id))
         .orderBy(desc(t.contracts.startDate));
 
-      const canSeeSensitive = SENSITIVE_ROLES.has(user.role);
+      const canSeeSensitive = SENSITIVE_ROLES.has(user.role) || isSelf;
       return {
         id: employee.id,
         employeeNumber: employee.employeeNumber,
@@ -261,8 +268,43 @@ export class PeopleService {
           trialPeriodEnd: c.trialPeriodEnd,
           notes: c.notes,
         })),
+        portal: await this.portalStatus(tx, user.tenantId, person.id, person.userId),
       };
     });
+  }
+
+  /** Statut d'accès au portail : compte actif, invitation en cours, ou rien. */
+  private async portalStatus(
+    tx: Tx,
+    tenantId: string,
+    personId: string,
+    personUserId: string | null,
+  ): Promise<{ status: 'none' | 'invited' | 'active'; role: string | null }> {
+    if (personUserId) {
+      const [membership] = await tx
+        .select({ role: t.userTenantMemberships.role })
+        .from(t.userTenantMemberships)
+        .where(
+          and(
+            eq(t.userTenantMemberships.userId, personUserId),
+            eq(t.userTenantMemberships.tenantId, tenantId),
+          ),
+        )
+        .limit(1);
+      return { status: 'active', role: membership?.role ?? null };
+    }
+    const [pending] = await tx
+      .select({ role: t.invitations.role })
+      .from(t.invitations)
+      .where(
+        and(
+          eq(t.invitations.personId, personId),
+          isNull(t.invitations.acceptedAt),
+          gt(t.invitations.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
+    return pending ? { status: 'invited', role: pending.role } : { status: 'none', role: null };
   }
 
   async update(user: SessionUser, id: string, input: UpdateEmployeeInput): Promise<void> {

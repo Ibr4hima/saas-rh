@@ -57,6 +57,19 @@ export class TenantDb implements OnModuleDestroy {
     });
   }
 
+  /**
+   * Contexte « token d'invitation » : pour la page publique d'acceptation.
+   * Sans session ni tenant, les policies dédiées n'exposent QUE la ligne
+   * d'invitation dont l'appelant présente le hash, et ce qu'il faut pour
+   * l'accepter (nom du tenant, personne à relier, membership à créer).
+   */
+  async withInvitationToken<T>(tokenHash: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return this.global.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.invitation_token_hash', ${tokenHash}, true)`);
+      return fn(tx);
+    });
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.pool.end();
   }

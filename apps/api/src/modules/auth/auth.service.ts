@@ -179,11 +179,7 @@ export class AuthService {
     );
   }
 
-  private async issueSession(
-    userId: string,
-    tenantId: string,
-    meta: RequestMeta,
-  ): Promise<IssuedSession> {
+  async issueSession(userId: string, tenantId: string, meta: RequestMeta): Promise<IssuedSession> {
     const env = loadEnv();
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + env.SESSION_TTL_HOURS * 3600 * 1000);
