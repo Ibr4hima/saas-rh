@@ -29,8 +29,9 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
-import { api, ApiError } from '../../../../lib/api';
+import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { formatDate, useMe } from '../../../../lib/hooks';
+import type { OrgUnit } from '@teranga/contracts';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Actif',
@@ -56,6 +57,13 @@ const TABLE_LABELS: Record<string, string> = {
   assignments: 'Affectation',
   contracts: 'Contrat',
 };
+
+/** La borne haute d'un daterange est exclusive : le dernier jour est la veille. */
+function lastDay(exclusiveEnd: string): string {
+  const d = new Date(`${exclusiveEnd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -99,29 +107,43 @@ export default function EmployeePage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="mb-6">
-        <Link href="/employees" className="text-sm text-ink-muted hover:text-ink">
-          ← Employés
-        </Link>
-        <div className="mt-1 flex items-center gap-3">
-          <h1 className="text-xl font-bold text-ink-strong">
-            {e.person.givenName} {e.person.familyName}
-          </h1>
-          <Badge
-            tone={
-              e.status === 'active' ? 'success' : e.status === 'suspended' ? 'warning' : 'neutral'
-            }
-          >
-            {STATUS_LABELS[e.status] ?? e.status}
-          </Badge>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <Link href="/employees" className="text-sm text-ink-muted hover:text-ink">
+            ← Employés
+          </Link>
+          <div className="mt-1 flex items-center gap-3">
+            <h1 className="text-xl font-bold text-ink-strong">
+              {e.person.givenName} {e.person.familyName}
+            </h1>
+            <Badge
+              tone={
+                e.status === 'active' ? 'success' : e.status === 'suspended' ? 'warning' : 'neutral'
+              }
+            >
+              {STATUS_LABELS[e.status] ?? e.status}
+            </Badge>
+          </div>
+          <p className="text-sm text-ink-muted">
+            {current
+              ? `${current.positionTitle}${current.orgUnitName ? ` · ${current.orgUnitName}` : ''} · `
+              : ''}
+            Matricule <span className="font-mono">{e.employeeNumber}</span> · Embauché·e le{' '}
+            {formatDate(e.hiredOn)}
+          </p>
         </div>
-        <p className="text-sm text-ink-muted">
-          {current
-            ? `${current.positionTitle}${current.orgUnitName ? ` · ${current.orgUnitName}` : ''} · `
-            : ''}
-          Matricule <span className="font-mono">{e.employeeNumber}</span> · Embauché·e le{' '}
-          {formatDate(e.hiredOn)}
-        </p>
+        {canSeeHistory ? (
+          <div className="flex shrink-0 gap-2">
+            {e.status === 'active' ? (
+              <a href={apiUrl(`/employees/${e.id}/attestation`)}>
+                <Button variant="secondary">Attestation de travail</Button>
+              </a>
+            ) : null}
+            <Link href={`/employees/${e.id}/modifier`}>
+              <Button>Modifier</Button>
+            </Link>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-6">
@@ -186,41 +208,11 @@ export default function EmployeePage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Affectations</CardTitle>
-          </CardHeader>
-          {e.assignments.length === 0 ? (
-            <CardContent>
-              <p className="text-sm text-ink-muted">Aucune affectation enregistrée.</p>
-            </CardContent>
-          ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <Th>Poste</Th>
-                  <Th>Unité</Th>
-                  <Th>Du</Th>
-                  <Th>Au</Th>
-                  <Th />
-                </tr>
-              </THead>
-              <TBody>
-                {e.assignments.map((a) => (
-                  <Tr key={a.id}>
-                    <Td className="font-medium text-ink-strong">{a.positionTitle}</Td>
-                    <Td>{a.orgUnitName ?? '—'}</Td>
-                    <Td className="whitespace-nowrap">{formatDate(a.validFrom)}</Td>
-                    <Td className="whitespace-nowrap">
-                      {a.validTo ? formatDate(a.validTo) : "aujourd'hui"}
-                    </Td>
-                    <Td>{a.current ? <Badge tone="primary">En cours</Badge> : null}</Td>
-                  </Tr>
-                ))}
-              </TBody>
-            </Table>
-          )}
-        </Card>
+        <AssignmentsCard
+          employeeId={e.id}
+          assignments={e.assignments}
+          canManage={Boolean(canSeeHistory)}
+        />
 
         <Card>
           <CardHeader>
@@ -302,6 +294,150 @@ export default function EmployeePage() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+function AssignmentsCard({
+  employeeId,
+  assignments,
+  canManage,
+}: {
+  employeeId: string;
+  assignments: EmployeeDetail['assignments'];
+  canManage: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [positionTitle, setPositionTitle] = useState('');
+  const [orgUnitId, setOrgUnitId] = useState('');
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [error, setError] = useState<string | null>(null);
+
+  const orgUnits = useQuery({
+    queryKey: ['org-units'],
+    queryFn: () => api<OrgUnit[]>('/org-units'),
+    enabled: canManage && open,
+  });
+
+  const create = useMutation({
+    mutationFn: () =>
+      api(`/employees/${employeeId}/assignments`, {
+        method: 'POST',
+        body: { positionTitle, orgUnitId: orgUnitId || undefined, startDate },
+      }),
+    onSuccess: () => {
+      setOpen(false);
+      setPositionTitle('');
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex items-center justify-between">
+        <CardTitle>Affectations</CardTitle>
+        {canManage ? (
+          <Button variant="secondary" size="sm" onClick={() => setOpen(!open)}>
+            {open ? 'Fermer' : 'Nouvelle affectation'}
+          </Button>
+        ) : null}
+      </CardHeader>
+      {open ? (
+        <CardContent className="border-b border-line-soft">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <Field label="Nouveau poste" htmlFor="asg-title" required>
+                <Input
+                  id="asg-title"
+                  placeholder="Ex : Chef de service études"
+                  value={positionTitle}
+                  onChange={(ev) => setPositionTitle(ev.target.value)}
+                />
+              </Field>
+            </div>
+            <div className="flex-1">
+              <Field label="Unité" htmlFor="asg-unit">
+                <Select
+                  id="asg-unit"
+                  value={orgUnitId}
+                  onChange={(ev) => setOrgUnitId(ev.target.value)}
+                >
+                  <option value="">—</option>
+                  {orgUnits.data?.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="w-full sm:w-44">
+              <Field label="À compter du" htmlFor="asg-start" required>
+                <Input
+                  id="asg-start"
+                  type="date"
+                  value={startDate}
+                  onChange={(ev) => setStartDate(ev.target.value)}
+                />
+              </Field>
+            </div>
+            <Button
+              onClick={() => create.mutate()}
+              loading={create.isPending}
+              disabled={!positionTitle.trim() || !startDate}
+            >
+              Enregistrer
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-ink-muted">
+            L&apos;affectation en cours sera automatiquement clôturée la veille — l&apos;historique
+            reste intact.
+          </p>
+          {error ? (
+            <p className="mt-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
+          ) : null}
+        </CardContent>
+      ) : null}
+      {assignments.length === 0 ? (
+        <CardContent>
+          <p className="text-sm text-ink-muted">Aucune affectation enregistrée.</p>
+        </CardContent>
+      ) : (
+        <Table>
+          <THead>
+            <tr>
+              <Th>Poste</Th>
+              <Th>Unité</Th>
+              <Th>Du</Th>
+              <Th>Au</Th>
+              <Th />
+            </tr>
+          </THead>
+          <TBody>
+            {assignments.map((a) => (
+              <Tr key={a.id}>
+                <Td className="font-medium text-ink-strong">{a.positionTitle}</Td>
+                <Td>{a.orgUnitName ?? '—'}</Td>
+                <Td className="whitespace-nowrap">{formatDate(a.validFrom)}</Td>
+                <Td className="whitespace-nowrap">
+                  {a.validTo ? formatDate(lastDay(a.validTo)) : a.current ? "aujourd'hui" : '—'}
+                </Td>
+                <Td>
+                  {a.current ? (
+                    <Badge tone="primary">En cours</Badge>
+                  ) : !a.validTo ? (
+                    <Badge tone="warning">À venir</Badge>
+                  ) : null}
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
+      )}
+    </Card>
   );
 }
 

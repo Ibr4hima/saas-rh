@@ -3,6 +3,8 @@ import { EncryptionService } from './common/encryption.service';
 import { DashboardController } from './modules/analytics/dashboard.controller';
 import { TenantDb } from './db/tenant-db';
 import { AuthController } from './modules/auth/auth.controller';
+import { AttestationService } from './modules/documents/attestation.service';
+import { DocumentsController } from './modules/documents/documents.controller';
 import { AuthService } from './modules/auth/auth.service';
 import { RolesGuard } from './modules/auth/roles.guard';
 import { SessionGuard } from './modules/auth/session.guard';
@@ -28,6 +30,7 @@ import { AbsencesService } from './modules/time/absences.service';
     AbsencesController,
     DashboardController,
     PortalController,
+    DocumentsController,
   ],
   providers: [
     TenantDb,
@@ -40,6 +43,7 @@ import { AbsencesService } from './modules/time/absences.service';
     ImportService,
     AbsencesService,
     InvitationsService,
+    AttestationService,
   ],
 })
 export class AppModule {}

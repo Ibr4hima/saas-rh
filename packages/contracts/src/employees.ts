@@ -89,12 +89,51 @@ export const createEmployeeSchema = z.object({
 });
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
 
+/** En mise à jour : absent = inchangé, null = effacé, valeur = remplacée. */
+const clearableString = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((v) => (v === '' ? null : v))
+    .nullable();
+
+export const updatePersonFieldsSchema = z
+  .object({
+    givenName: trimmed(80),
+    familyName: trimmed(80),
+    gender: genderSchema.nullable(),
+    birthDate: isoDate.nullable(),
+    birthPlace: clearableString(120),
+    maritalStatus: maritalStatusSchema.nullable(),
+    // NOT NULL en base (défaut 'SN') : modifiable mais jamais effaçable.
+    nationality: z
+      .string()
+      .length(2)
+      .transform((v) => v.toUpperCase()),
+    nationalId: clearableString(40),
+    personalEmail: z.email().nullable(),
+    phone: clearableString(30),
+    addressLine: clearableString(200),
+    city: clearableString(80),
+    emergencyContactName: clearableString(120),
+    emergencyContactPhone: clearableString(30),
+  })
+  .partial();
+
+export const updateEmployeeFieldsSchema = z
+  .object({
+    employeeNumber: trimmed(30),
+    hiredOn: isoDate,
+    workEmail: z.email().nullable(),
+    workPhone: clearableString(30),
+    status: employeeStatusSchema,
+  })
+  .partial();
+
 export const updateEmployeeSchema = z.object({
-  person: personFieldsSchema.partial().optional(),
-  employee: employeeFieldsSchema
-    .partial()
-    .extend({ status: employeeStatusSchema.optional() })
-    .optional(),
+  person: updatePersonFieldsSchema.optional(),
+  employee: updateEmployeeFieldsSchema.optional(),
 });
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>;
 

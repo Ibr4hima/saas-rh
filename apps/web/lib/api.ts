@@ -37,3 +37,8 @@ export async function api<T>(
 export function isUnauthorized(err: unknown): boolean {
   return err instanceof ApiError && err.problem.status === 401;
 }
+
+/** URL absolue d'une route API — pour les téléchargements directs (PDF…). */
+export function apiUrl(path: string): string {
+  return `${API_BASE}/v1${path}`;
+}
