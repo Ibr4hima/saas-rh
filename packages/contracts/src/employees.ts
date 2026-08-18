@@ -21,12 +21,27 @@ const optionalTrimmed = (max: number) =>
 
 // ---------- Unités d'organisation ----------
 
+/** Un <select> HTML envoie '' pour « aucun » : on le tolère comme absent. */
+const optionalUuid = z
+  .uuid()
+  .nullish()
+  .or(z.literal('').transform(() => undefined));
+
 export const createOrgUnitSchema = z.object({
   name: trimmed(120),
   unitType: orgUnitTypeSchema,
-  parentId: z.uuid().nullish(),
+  parentId: optionalUuid,
 });
 export type CreateOrgUnitInput = z.infer<typeof createOrgUnitSchema>;
+
+export const updateOrgUnitSchema = z.object({
+  name: trimmed(120).optional(),
+  unitType: orgUnitTypeSchema.optional(),
+  /** null = détacher (racine) / retirer le responsable ; absent = inchangé. */
+  parentId: z.uuid().nullable().optional(),
+  managerEmployeeId: z.uuid().nullable().optional(),
+});
+export type UpdateOrgUnitInput = z.infer<typeof updateOrgUnitSchema>;
 
 export const orgUnitSchema = z.object({
   id: z.uuid(),
@@ -35,6 +50,23 @@ export const orgUnitSchema = z.object({
   parentId: z.uuid().nullable(),
 });
 export type OrgUnit = z.infer<typeof orgUnitSchema>;
+
+/** Unité enrichie pour l'organigramme : responsable et effectif direct. */
+export interface OrgUnitView extends OrgUnit {
+  managerEmployeeId: string | null;
+  managerName: string | null;
+  managerPosition: string | null;
+  headcount: number;
+}
+
+/** Membre d'une unité : les personnes actuellement affectées. */
+export interface OrgUnitMember {
+  employeeId: string;
+  employeeNumber: string;
+  givenName: string;
+  familyName: string;
+  positionTitle: string | null;
+}
 
 // ---------- Employé : création / mise à jour ----------
 

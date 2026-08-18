@@ -81,6 +81,7 @@ function personalNav(role: string): typeof NAV_GROUPS {
             ]
           : []),
         { href: '/calendrier', label: 'Calendrier', icon: IconCalendarDays },
+        { href: '/organisation', label: 'Organisation', icon: IconNetwork },
       ],
     },
   ];
@@ -114,6 +115,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const allowedForRole = (path: string): boolean => {
     if (!me.data || isStaff) return true;
     if (path.startsWith('/moi') || path.startsWith('/calendrier')) return true;
+    // L'organigramme est un annuaire interne : lisible par tous les rôles.
+    if (path.startsWith('/organisation')) return true;
     if (role === 'manager') {
       return (
         path.startsWith('/absences') &&

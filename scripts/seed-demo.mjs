@@ -43,35 +43,51 @@ const drh = await call('POST', '/org-units', {
   name: 'Direction des Ressources Humaines',
   unitType: 'direction',
 });
-await call('POST', '/org-units', {
+const etudes = await call('POST', '/org-units', {
   name: 'Département Études',
   unitType: 'department',
   parentId: drh.id,
 });
+const dfin = await call('POST', '/org-units', {
+  name: 'Direction Financière',
+  unitType: 'direction',
+});
+const compta = await call('POST', '/org-units', {
+  name: 'Service Comptabilité',
+  unitType: 'service',
+  parentId: dfin.id,
+});
 
 console.log('→ Employés');
-const seedEmployee = (person, employee, positionTitle) =>
+const seedEmployee = (person, employee, positionTitle, orgUnitId) =>
   call('POST', '/employees', {
     person,
     employee,
-    assignment: { positionTitle, orgUnitId: drh.id, startDate: employee.hiredOn },
+    assignment: { positionTitle, orgUnitId, startDate: employee.hiredOn },
     contract: { contractType: 'cdi', startDate: employee.hiredOn },
   });
 const awa = await seedEmployee(
   { givenName: 'Awa', familyName: 'Diop', gender: 'female', phone: '771234567', city: 'Dakar' },
   { employeeNumber: 'EMP-001', hiredOn: '2024-01-15', workEmail: 'a.diop@apix.sn' },
   'Cheffe de service études',
+  etudes.id,
 );
 const moussa = await seedEmployee(
   { givenName: 'Moussa', familyName: 'Ndiaye', gender: 'male', phone: '779876543' },
   { employeeNumber: 'EMP-002', hiredOn: '2023-06-01', workEmail: 'm.ndiaye@apix.sn' },
   "Chargé d'études",
+  etudes.id,
 );
 const fatou = await seedEmployee(
   { givenName: 'Fatou', familyName: 'Sall', gender: 'female' },
   { employeeNumber: 'EMP-003', hiredOn: '2025-02-01', workEmail: 'f.sall@apix.sn' },
   'Comptable',
+  compta.id,
 );
+
+console.log('→ Responsables des unités');
+await call('PATCH', `/org-units/${etudes.id}`, { managerEmployeeId: awa.id });
+await call('PATCH', `/org-units/${compta.id}`, { managerEmployeeId: fatou.id });
 
 console.log('→ Congés : types (seed auto), férié, circuit à 2 niveaux');
 const types = await call('GET', '/absence-types');

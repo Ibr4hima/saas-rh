@@ -19,12 +19,14 @@ import {
   listEmployeesQuerySchema,
   newAssignmentSchema,
   updateEmployeeSchema,
+  updateOrgUnitSchema,
   type CreateEmployeeInput,
   type ListEmployeesQuery,
   type CreateOrgUnitInput,
   type ImportEmployeesInput,
   type NewAssignmentInput,
   type UpdateEmployeeInput,
+  type UpdateOrgUnitInput,
 } from '@teranga/contracts';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { Roles, RolesGuard } from '../auth/roles.guard';
@@ -118,5 +120,22 @@ export class PeopleController {
     @Body(new ZodValidationPipe(createOrgUnitSchema)) body: CreateOrgUnitInput,
   ) {
     return this.orgUnits.create(req.sessionUser, body);
+  }
+
+  @Patch('org-units/:id')
+  @Roles('admin', 'hr')
+  @HttpCode(204)
+  async updateOrgUnit(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateOrgUnitSchema)) body: UpdateOrgUnitInput,
+  ) {
+    await this.orgUnits.update(req.sessionUser, id, body);
+  }
+
+  /** Annuaire interne : visible par tous les rôles (« qui se référer »). */
+  @Get('org-units/:id/members')
+  orgUnitMembers(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.orgUnits.members(req.sessionUser, id);
   }
 }

@@ -72,6 +72,7 @@ export const orgUnits = pgTable('org_units', {
   parentId: uuid('parent_id'),
   unitType: text('unit_type').notNull(),
   name: text('name').notNull(),
+  managerEmployeeId: uuid('manager_employee_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
