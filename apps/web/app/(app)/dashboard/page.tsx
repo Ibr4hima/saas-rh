@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import type { AbsenceRequestView } from '@teranga/contracts';
+import type { AbsenceRequestView, ExpiringContractView } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@teranga/ui';
 import { IconCalendar, IconNetwork, IconUserPlus } from '../../../components/icons';
 import { api } from '../../../lib/api';
@@ -61,6 +61,10 @@ export default function DashboardPage() {
   const pending = useQuery({
     queryKey: ['absence-requests', 'pending'],
     queryFn: () => api<AbsenceRequestView[]>('/absence-requests?status=pending&limit=5'),
+  });
+  const expiring = useQuery({
+    queryKey: ['contracts-expiring'],
+    queryFn: () => api<ExpiringContractView[]>('/contracts/expiring'),
   });
   const upcoming = useQuery({
     queryKey: ['absences-upcoming'],
@@ -160,6 +164,35 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Contrats sous l'œil de la RH jusqu'à leur expiration */}
+      {(expiring.data ?? []).length > 0 ? (
+        <Card className="mt-6 mb-8 border-warning/40">
+          <CardHeader>
+            <CardTitle>Contrats arrivant à échéance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex flex-col gap-2.5">
+              {expiring.data!.map((c) => (
+                <li key={c.contractId} className="flex items-center gap-3 text-sm">
+                  <Link
+                    href={`/employees/${c.employeeId}`}
+                    className="min-w-0 flex-1 truncate font-medium text-ink-strong hover:underline"
+                  >
+                    {c.employeeName}
+                  </Link>
+                  <span className="text-ink-muted">
+                    {c.contractType.toUpperCase()} · fin le {formatDate(c.endDate)}
+                  </span>
+                  <Badge tone={c.daysLeft <= 10 ? 'danger' : 'warning'}>
+                    {c.daysLeft === 0 ? "aujourd'hui" : `J−${c.daysLeft}`}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="mt-8">
         <p className="mb-3 text-[11px] font-semibold tracking-wider text-ink-muted/80 uppercase">

@@ -2,12 +2,16 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useState } from 'react';
 import type { AbsenceRequestView, MyEmployeeView } from '@teranga/contracts';
 import { Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
+import { EmployeeDocumentsCard } from '../../../../components/employee-documents-card';
+import { DocViewer, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate } from '../../../../lib/hooks';
 
 export default function MyDocumentsPage() {
+  const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
   const myEmployee = useQuery({
     queryKey: ['me-employee'],
     queryFn: () => api<MyEmployeeView>('/me/employee'),
@@ -52,6 +56,8 @@ export default function MyDocumentsPage() {
       </div>
 
       <div className="flex flex-col gap-6">
+        <EmployeeDocumentsCard employeeId={emp.employeeId} />
+
         <Card>
           <CardHeader>
             <CardTitle>Attestations</CardTitle>
@@ -97,11 +103,20 @@ export default function MyDocumentsPage() {
                         {r.absenceTypeName} · {formatDate(r.startDate)} → {formatDate(r.endDate)}
                       </p>
                     </div>
-                    <a href={apiUrl(`/absence-requests/${r.id}/document`)} className="shrink-0">
-                      <Button size="sm" variant="secondary">
-                        Télécharger
-                      </Button>
-                    </a>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="shrink-0"
+                      onClick={() =>
+                        setViewedDoc({
+                          url: apiUrl(`/absence-requests/${r.id}/document`),
+                          filename: r.documentName!,
+                          contentType: 'application/pdf',
+                        })
+                      }
+                    >
+                      Aperçu
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -113,6 +128,8 @@ export default function MyDocumentsPage() {
           Bulletins de paie et contrats signés arriveront ici avec les prochains modules.
         </p>
       </div>
+
+      <DocViewer doc={viewedDoc} onClose={() => setViewedDoc(null)} />
     </div>
   );
 }

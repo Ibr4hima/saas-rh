@@ -28,6 +28,8 @@ async function bootstrap(): Promise<void> {
   app.use('/v1/public/jobs', json({ limit: '40mb' }));
   // Justificatifs d'absence (PDF ≤ 5 Mo en base64) — route authentifiée.
   app.use('/v1/absence-requests', json({ limit: '8mb' }));
+  // Pièces justificatives du dossier (PDF/images ≤ 5 Mo en base64).
+  app.use('/v1/employees', json({ limit: '8mb' }));
   app.use(json({ limit: '1mb' }));
   app.use(cookieParser());
   app.useGlobalFilters(new ProblemFilter());

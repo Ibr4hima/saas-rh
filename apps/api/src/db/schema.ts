@@ -295,3 +295,37 @@ export const absenceDocuments = pgTable('absence_documents', {
   data: bytea('data').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------- Pièces justificatives & notifications ----------
+
+export const employeeDocuments = pgTable('employee_documents', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  category: text('category').notNull(),
+  label: text('label').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  data: bytea('data').notNull(),
+  status: text('status').notNull().default('pending'),
+  uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
+  uploadedBySide: text('uploaded_by_side').notNull(),
+  reviewedByUserId: uuid('reviewed_by_user_id'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewComment: text('review_comment'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const notifications = pgTable('notifications', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  recipientUserId: uuid('recipient_user_id').notNull(),
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  body: text('body'),
+  link: text('link'),
+  dedupeKey: text('dedupe_key'),
+  readAt: timestamp('read_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

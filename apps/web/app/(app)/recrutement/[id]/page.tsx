@@ -8,6 +8,7 @@ import type { ApplicationStage, ApplicationView, JobPostingView } from '@teranga
 import { APPLICATION_STAGES } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, Select, Skeleton } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
+import { DocViewer, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate } from '../../../../lib/hooks';
 import {
   CONTRACT_LABELS,
@@ -181,6 +182,7 @@ function CandidatePanel({
 }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
 
   const move = useMutation({
     mutationFn: (stage: ApplicationStage) =>
@@ -255,11 +257,20 @@ function CandidatePanel({
         {a.documents.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {a.documents.map((d) => (
-              <a key={d.id} href={apiUrl(`/application-documents/${d.id}`)}>
-                <Button size="sm" variant="secondary">
-                  ⬇ {d.label} — {d.filename} ({Math.round(d.sizeBytes / 1024)} Ko)
-                </Button>
-              </a>
+              <Button
+                key={d.id}
+                size="sm"
+                variant="secondary"
+                onClick={() =>
+                  setViewedDoc({
+                    url: apiUrl(`/application-documents/${d.id}`),
+                    filename: d.filename,
+                    contentType: d.contentType,
+                  })
+                }
+              >
+                👁 {d.label} — {d.filename} ({Math.round(d.sizeBytes / 1024)} Ko)
+              </Button>
             ))}
           </div>
         ) : null}
@@ -285,6 +296,8 @@ function CandidatePanel({
           </button>
         </div>
       </CardContent>
+
+      <DocViewer doc={viewedDoc} onClose={() => setViewedDoc(null)} />
     </Card>
   );
 }

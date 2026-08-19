@@ -23,6 +23,7 @@ import {
   Skeleton,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
+import { DocViewer, type ViewableDoc } from '../../../../components/doc-viewer';
 import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES } from '../../../../lib/absences';
 import { formatDate } from '../../../../lib/hooks';
 
@@ -40,6 +41,7 @@ export default function MyLeavesPage() {
     sizeBytes: number;
   } | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -81,10 +83,8 @@ export default function MyLeavesPage() {
 
   const pickDocument = (file: File | null) => {
     setFileError(null);
-    if (!file) {
-      setDoc(null);
-      return;
-    }
+    setDoc(null); // une sélection invalide ne doit jamais garder l'ancien fichier
+    if (!file) return;
     if (file.type !== 'application/pdf') {
       setFileError('Le justificatif doit être un PDF.');
       return;
@@ -298,12 +298,19 @@ export default function MyLeavesPage() {
                         {r.documentName ? (
                           <>
                             {' · '}
-                            <a
-                              href={apiUrl(`/absence-requests/${r.id}/document`)}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setViewedDoc({
+                                  url: apiUrl(`/absence-requests/${r.id}/document`),
+                                  filename: r.documentName!,
+                                  contentType: 'application/pdf',
+                                })
+                              }
                               className="text-primary hover:underline"
                             >
                               justificatif
-                            </a>
+                            </button>
                           </>
                         ) : null}
                       </p>
@@ -328,6 +335,8 @@ export default function MyLeavesPage() {
           </CardContent>
         </Card>
       </div>
+
+      <DocViewer doc={viewedDoc} onClose={() => setViewedDoc(null)} />
     </div>
   );
 }

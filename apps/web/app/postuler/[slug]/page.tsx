@@ -64,14 +64,13 @@ export default function ApplyPage() {
 
   const pickFile = (label: string, file: File | null) => {
     setFileError(null);
-    if (!file) {
-      setFiles((prev) => {
-        const next = { ...prev };
-        delete next[label];
-        return next;
-      });
-      return;
-    }
+    // Toute nouvelle sélection remplace l'ancienne : invalide = case vidée.
+    setFiles((prev) => {
+      const next = { ...prev };
+      delete next[label];
+      return next;
+    });
+    if (!file) return;
     if (!(file.type in ALLOWED_DOCUMENT_TYPES)) {
       setFileError(`« ${file.name} » : format accepté — PDF, Word, JPG ou PNG.`);
       return;

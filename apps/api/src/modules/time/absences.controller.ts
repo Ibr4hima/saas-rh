@@ -184,7 +184,7 @@ export class AbsencesController {
     res.setHeader('Content-Type', doc.contentType);
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
+      `inline; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
     );
     res.setHeader('Cache-Control', 'no-store');
     res.end(doc.data);

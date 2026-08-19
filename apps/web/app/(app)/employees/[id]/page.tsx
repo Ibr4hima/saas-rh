@@ -30,6 +30,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
+import { EmployeeDocumentsCard } from '../../../../components/employee-documents-card';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import type { OrgUnit } from '@teranga/contracts';
@@ -250,6 +251,8 @@ export default function EmployeePage() {
             </Table>
           )}
         </Card>
+
+        {canSeeHistory ? <EmployeeDocumentsCard employeeId={e.id} /> : null}
 
         {canSeeHistory ? <PortalCard employeeId={e.id} portal={e.portal} /> : null}
 

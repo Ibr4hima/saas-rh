@@ -3,6 +3,10 @@ import { EncryptionService } from './common/encryption.service';
 import { DashboardController } from './modules/analytics/dashboard.controller';
 import { TenantDb } from './db/tenant-db';
 import { AuthController } from './modules/auth/auth.controller';
+import { EmployeeDocumentsController } from './modules/docs/employee-documents.controller';
+import { EmployeeDocumentsService } from './modules/docs/employee-documents.service';
+import { NotificationsController } from './modules/notifications/notifications.controller';
+import { NotificationsService } from './modules/notifications/notifications.service';
 import { AttestationService } from './modules/documents/attestation.service';
 import { DocumentsController } from './modules/documents/documents.controller';
 import { AuthService } from './modules/auth/auth.service';
@@ -36,6 +40,8 @@ import { AbsencesService } from './modules/time/absences.service';
     DashboardController,
     PortalController,
     DocumentsController,
+    EmployeeDocumentsController,
+    NotificationsController,
     RecruitmentController,
     PublicJobsController,
   ],
@@ -50,6 +56,8 @@ import { AbsencesService } from './modules/time/absences.service';
     AbsencesService,
     InvitationsService,
     AttestationService,
+    EmployeeDocumentsService,
+    NotificationsService,
     JobsService,
     ApplyService,
   ],

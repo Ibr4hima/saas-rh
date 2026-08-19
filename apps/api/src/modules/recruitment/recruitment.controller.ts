@@ -103,7 +103,7 @@ export class RecruitmentController {
     // filename* encodé : les noms de fichiers viennent du public.
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
+      `inline; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
     );
     res.setHeader('Cache-Control', 'no-store');
     res.end(doc.data);

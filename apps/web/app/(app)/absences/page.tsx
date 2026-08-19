@@ -22,6 +22,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../lib/api';
+import { DocViewer, type ViewableDoc } from '../../../components/doc-viewer';
 import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES, ROLE_LABELS } from '../../../lib/absences';
 import { formatDate, useMe } from '../../../lib/hooks';
 
@@ -59,6 +60,7 @@ export default function AbsencesPage() {
   });
 
   const canManage = me.data && ['admin', 'hr'].includes(me.data.role);
+  const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
   const items = requests.data ?? [];
 
   return (
@@ -131,12 +133,19 @@ export default function AbsencesPage() {
                     <Td>
                       {r.absenceTypeName}
                       {r.documentName && canManage ? (
-                        <a
-                          href={apiUrl(`/absence-requests/${r.id}/document`)}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setViewedDoc({
+                              url: apiUrl(`/absence-requests/${r.id}/document`),
+                              filename: r.documentName!,
+                              contentType: 'application/pdf',
+                            })
+                          }
                           className="block text-xs text-primary hover:underline"
                         >
-                          ⬇ justificatif
-                        </a>
+                          👁 justificatif
+                        </button>
                       ) : null}
                     </Td>
                     <Td className="whitespace-nowrap">
@@ -256,6 +265,8 @@ export default function AbsencesPage() {
           )}
         </Card>
       </div>
+
+      <DocViewer doc={viewedDoc} onClose={() => setViewedDoc(null)} />
     </div>
   );
 }

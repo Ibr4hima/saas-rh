@@ -59,12 +59,12 @@ const compta = await call('POST', '/org-units', {
 });
 
 console.log('→ Employés');
-const seedEmployee = (person, employee, positionTitle, orgUnitId) =>
+const seedEmployee = (person, employee, positionTitle, orgUnitId, contract) =>
   call('POST', '/employees', {
     person,
     employee,
     assignment: { positionTitle, orgUnitId, startDate: employee.hiredOn },
-    contract: { contractType: 'cdi', startDate: employee.hiredOn },
+    contract: contract ?? { contractType: 'cdi', startDate: employee.hiredOn },
   });
 const awa = await seedEmployee(
   { givenName: 'Awa', familyName: 'Diop', gender: 'female', phone: '771234567', city: 'Dakar' },
@@ -78,11 +78,15 @@ const moussa = await seedEmployee(
   "Chargé d'études",
   etudes.id,
 );
+// Fatou est en CDD finissant dans ~20 jours : l'échéance apparaît dans les
+// notifications RH et sur le tableau de bord (démonstration du suivi).
+const in20Days = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
 const fatou = await seedEmployee(
   { givenName: 'Fatou', familyName: 'Sall', gender: 'female' },
   { employeeNumber: 'EMP-003', hiredOn: '2025-02-01', workEmail: 'f.sall@apix.sn' },
   'Comptable',
   compta.id,
+  { contractType: 'cdd', startDate: '2025-02-01', endDate: in20Days },
 );
 
 console.log('→ Responsables des unités');
@@ -172,6 +176,25 @@ await request(
   'Grippe',
   fakePdfDoc('attestation-medicale.pdf'),
 );
+
+console.log('→ Pièce justificative : Awa dépose une attestation (à valider par la RH)');
+// Un VRAI PDF pour la démo : l'attestation de travail générée par la plateforme.
+const attRes = await fetch(`${BASE}/employees/${awa.id}/attestation`, {
+  headers: { cookie },
+});
+const attPdf = Buffer.from(await attRes.arrayBuffer()).toString('base64');
+const depotRes = await fetch(`${BASE}/employees/${awa.id}/documents`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', cookie: employeeCookies[awa.id] },
+  body: JSON.stringify({
+    category: 'attestation_travail',
+    label: 'Attestation employeur précédent',
+    filename: 'attestation-2023.pdf',
+    contentType: 'application/pdf',
+    contentBase64: attPdf,
+  }),
+});
+if (!depotRes.ok) throw new Error(`dépôt pièce → ${depotRes.status}`);
 
 console.log('→ Recrutement : offre publiée + candidatures dans le pipeline');
 const job = await call('POST', '/jobs', {

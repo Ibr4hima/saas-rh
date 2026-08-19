@@ -86,3 +86,4 @@ export * from './employees';
 export * from './absences';
 export * from './portal';
 export * from './recruitment';
+export * from './documents';

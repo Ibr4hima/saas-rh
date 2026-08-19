@@ -17,6 +17,7 @@ import {
   IconUserPlus,
   IconUsers,
 } from '../../components/icons';
+import { NotificationsBell } from '../../components/notifications-bell';
 import { api } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 
@@ -112,7 +113,7 @@ function BrandMark({ size }: { size: 'sm' | 'md' }) {
       <img
         src="/logo-apix.png"
         alt="Logo de l'organisation"
-        className={`${size === 'md' ? 'size-8' : 'size-7'} shrink-0 rounded-md bg-white object-contain`}
+        className={`${size === 'md' ? 'h-8 max-w-32' : 'h-7 max-w-24'} w-auto shrink-0 rounded-md bg-white object-contain px-1`}
         onError={() => setImgOk(false)}
       />
     );
@@ -198,10 +199,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Marque */}
         <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
           <BrandMark size="md" />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-sm leading-tight font-bold text-ink-strong">Teranga RH</p>
             <p className="truncate text-xs leading-tight text-ink-muted">{user.organizationName}</p>
           </div>
+          <NotificationsBell />
         </div>
 
         {/* Navigation groupée */}
@@ -283,6 +285,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {user.organizationName}
             </p>
           </div>
+          <NotificationsBell />
           <button
             type="button"
             title="Se déconnecter"
