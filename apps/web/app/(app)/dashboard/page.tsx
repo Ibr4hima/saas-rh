@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import type { AbsenceRequestView } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@teranga/ui';
-import { IconCalendar, IconNetwork, IconUpload, IconUserPlus } from '../../../components/icons';
+import { IconCalendar, IconNetwork, IconUserPlus } from '../../../components/icons';
 import { api } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
 
@@ -171,14 +171,14 @@ export default function DashboardPage() {
               <IconUserPlus size={16} /> Nouvel employé
             </Button>
           </Link>
-          <Link href="/absences/new">
+          <Link href="/absences">
             <Button variant="secondary" className="w-full justify-start gap-2">
-              <IconCalendar size={16} /> Nouvelle demande
+              <IconCalendar size={16} /> Demandes à viser
             </Button>
           </Link>
-          <Link href="/import">
+          <Link href="/recrutement">
             <Button variant="secondary" className="w-full justify-start gap-2">
-              <IconUpload size={16} /> Importer des employés
+              <IconUserPlus size={16} /> Recrutement
             </Button>
           </Link>
           <Link href="/organisation">

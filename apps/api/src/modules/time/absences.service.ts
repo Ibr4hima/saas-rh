@@ -261,15 +261,11 @@ export class AbsencesService {
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
         await this.requireEmployee(tx, input.employeeId);
-        if (!MANAGE_ROLES.has(user.role)) {
-          const self = await this.selfEmployeeId(tx, user);
-          if (self !== input.employeeId) {
-            problem(
-              403,
-              'absence.self_only',
-              'Vous ne pouvez poser une demande que pour vous-même',
-            );
-          }
+        // Décision produit : chaque employé pose SES demandes depuis son
+        // portail — aucun rôle ne saisit pour le compte d'un tiers.
+        const self = await this.selfEmployeeId(tx, user);
+        if (self !== input.employeeId) {
+          problem(403, 'absence.self_only', 'Vous ne pouvez poser une demande que pour vous-même');
         }
         const [type] = await tx
           .select()
@@ -295,9 +291,7 @@ export class AbsencesService {
           );
         }
 
-        // Justificatif : exigé quand le type le requiert et que la demande
-        // vient de l'employé lui-même (la RH peut régulariser sans scan,
-        // le papier restant au dossier physique).
+        // Justificatif : exigé dès que le type le requiert.
         let document: { filename: string; data: Buffer } | null = null;
         if (input.document) {
           const data = Buffer.from(input.document.contentBase64, 'base64');
@@ -309,7 +303,7 @@ export class AbsencesService {
           }
           document = { filename: input.document.filename, data };
         }
-        if (type.requiresDocument && !MANAGE_ROLES.has(user.role) && !document) {
+        if (type.requiresDocument && !document) {
           problem(
             422,
             'absence.document_required',

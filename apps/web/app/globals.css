@@ -35,3 +35,10 @@ body {
   font-optical-sizing: auto;
   font-variation-settings: 'GRAD' 0;
 }
+
+/* Tout l'UI en Google Sans : font-mono ne garde que les chiffres tabulaires
+   (matricules, compteurs) — plus aucune police système visible. */
+.font-mono {
+  font-family: var(--tg-font-sans);
+  font-variant-numeric: tabular-nums;
+}

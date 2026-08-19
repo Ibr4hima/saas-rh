@@ -76,11 +76,6 @@ export default function AbsencesPage() {
               <Button variant="secondary">Paramètres</Button>
             </Link>
           ) : null}
-          {canManage ? (
-            <Link href="/absences/new">
-              <Button>Enregistrer une absence</Button>
-            </Link>
-          ) : null}
         </div>
       </div>
 
@@ -109,18 +104,7 @@ export default function AbsencesPage() {
           ) : items.length === 0 ? (
             <EmptyState
               title="Aucune demande dans ce statut"
-              description={
-                canManage
-                  ? 'Les employés posent leurs demandes depuis leur portail. Ici, la RH enregistre une absence pour le compte d’un employé (maladie signalée par téléphone, régularisation…).'
-                  : undefined
-              }
-              action={
-                canManage ? (
-                  <Link href="/absences/new">
-                    <Button size="sm">Enregistrer une absence</Button>
-                  </Link>
-                ) : undefined
-              }
+              description="Les employés posent leurs demandes depuis leur portail — elles arrivent ici pour visa."
             />
           ) : (
             <Table>

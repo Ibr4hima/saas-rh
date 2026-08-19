@@ -17,6 +17,7 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
 import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../../../../lib/countries';
+import { PhoneInput } from '../../../../components/phone-input';
 import { contractEnd, maritalLabels, maxBirthDate } from '../../../../lib/person';
 import { formatDate } from '../../../../lib/hooks';
 
@@ -57,7 +58,8 @@ export default function NewEmployeePage() {
   const [contractStart, setContractStart] = useState(todayIso());
   const [durationMonths, setDurationMonths] = useState('');
   const [workEmail, setWorkEmail] = useState('');
-  const [workPhone, setWorkPhone] = useState('');
+  const [workPhoneCountry, setWorkPhoneCountry] = useState(DEFAULT_COUNTRY);
+  const [workPhoneLocal, setWorkPhoneLocal] = useState('');
   const [positionTitle, setPositionTitle] = useState('');
   const [directionId, setDirectionId] = useState('');
 
@@ -115,7 +117,7 @@ export default function NewEmployeePage() {
             employeeNumber,
             hiredOn: contractStart,
             workEmail: workEmail || undefined,
-            workPhone: workPhone || undefined,
+            workPhone: composePhone(workPhoneCountry, workPhoneLocal),
           },
           assignment: positionTitle.trim()
             ? {
@@ -258,33 +260,13 @@ export default function NewEmployeePage() {
             ) : null}
 
             <Field label="Téléphone" htmlFor="phoneLocal">
-              <div className="flex gap-2">
-                <Select
-                  aria-label="Pays de l'indicatif"
-                  value={phoneCountry}
-                  onChange={(e) => setPhoneCountry(e.target.value)}
-                  className="w-40 shrink-0"
-                >
-                  {COUNTRIES.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.name} (+{c.dial})
-                    </option>
-                  ))}
-                </Select>
-                <div className="relative flex-1">
-                  <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-ink-muted">
-                    +{countryByCode(phoneCountry)?.dial}
-                  </span>
-                  <Input
-                    id="phoneLocal"
-                    type="tel"
-                    className="pl-14"
-                    placeholder="77 123 45 67"
-                    value={phoneLocal}
-                    onChange={(e) => setPhoneLocal(e.target.value)}
-                  />
-                </div>
-              </div>
+              <PhoneInput
+                id="phoneLocal"
+                country={phoneCountry}
+                local={phoneLocal}
+                onCountryChange={setPhoneCountry}
+                onLocalChange={setPhoneLocal}
+              />
             </Field>
             <Field label="Email personnel" htmlFor="personalEmail">
               <Input
@@ -378,10 +360,13 @@ export default function NewEmployeePage() {
               />
             </Field>
             <Field label="Téléphone professionnel" htmlFor="workPhone">
-              <Input
+              <PhoneInput
                 id="workPhone"
-                value={workPhone}
-                onChange={(e) => setWorkPhone(e.target.value)}
+                country={workPhoneCountry}
+                local={workPhoneLocal}
+                onCountryChange={setWorkPhoneCountry}
+                onLocalChange={setWorkPhoneLocal}
+                placeholder="33 889 11 22"
               />
             </Field>
             <Field label="Poste" htmlFor="positionTitle">

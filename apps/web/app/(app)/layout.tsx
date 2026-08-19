@@ -3,12 +3,13 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { cn, Skeleton } from '@teranga/ui';
 import {
   IconCalendar,
   IconCalendarDays,
   IconDashboard,
+  IconFileText,
   IconLogout,
   IconNetwork,
   IconScale,
@@ -80,6 +81,7 @@ function personalNav(role: string): typeof NAV_GROUPS {
       items: [
         { href: '/moi', label: 'Mon espace', icon: IconDashboard },
         { href: '/moi/conges', label: 'Mes congés', icon: IconCalendar },
+        { href: '/moi/documents', label: 'Mes documents', icon: IconFileText },
         ...(role === 'manager'
           ? [
               {
@@ -95,6 +97,33 @@ function personalNav(role: string): typeof NAV_GROUPS {
       ],
     },
   ];
+}
+
+/**
+ * Logo de l'organisation : apps/web/public/logo-apix.png s'il existe,
+ * sinon repli sur la tuile « T ». (Brandable par tenant plus tard.)
+ */
+function BrandMark({ size }: { size: 'sm' | 'md' }) {
+  const [imgOk, setImgOk] = useState(true);
+  const box = size === 'md' ? 'size-8 rounded-lg text-sm' : 'size-7 rounded-md text-xs';
+  if (imgOk) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src="/logo-apix.png"
+        alt="Logo de l'organisation"
+        className={`${size === 'md' ? 'size-8' : 'size-7'} shrink-0 rounded-md bg-white object-contain`}
+        onError={() => setImgOk(false)}
+      />
+    );
+  }
+  return (
+    <div
+      className={`flex ${box} items-center justify-center bg-primary font-bold text-primary-ink`}
+    >
+      T
+    </div>
+  );
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -130,11 +159,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // L'organigramme est un annuaire interne : lisible par tous les rôles.
     if (path.startsWith('/organisation')) return true;
     if (role === 'manager') {
-      return (
-        path.startsWith('/absences') &&
-        !path.startsWith('/absences/new') &&
-        !path.startsWith('/absences/parametres')
-      );
+      return path.startsWith('/absences') && !path.startsWith('/absences/parametres');
     }
     return false;
   };
@@ -172,9 +197,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <aside className="sticky top-0 flex h-screen w-60 flex-col border-r border-line bg-surface max-lg:hidden">
         {/* Marque */}
         <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-ink">
-            T
-          </div>
+          <BrandMark size="md" />
           <div className="min-w-0">
             <p className="text-sm leading-tight font-bold text-ink-strong">Teranga RH</p>
             <p className="truncate text-xs leading-tight text-ink-muted">{user.organizationName}</p>
@@ -190,7 +213,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </p>
               <div className="flex flex-col gap-0.5">
                 {group.items.map((item) => {
-                  const active = pathname.startsWith(item.href);
+                  const active =
+                    item.href === '/moi' ? pathname === '/moi' : pathname.startsWith(item.href);
                   const IconCmp = item.icon;
                   return (
                     <Link
@@ -252,9 +276,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* En-tête mobile */}
         <header className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-line bg-surface px-4 py-3 lg:hidden">
-          <div className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-ink">
-            T
-          </div>
+          <BrandMark size="sm" />
           <div className="min-w-0 flex-1">
             <p className="text-sm leading-tight font-bold text-ink-strong">Teranga RH</p>
             <p className="truncate text-[11px] leading-tight text-ink-muted">
@@ -282,7 +304,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {groups
             .flatMap((g) => g.items)
             .map((item) => {
-              const active = pathname.startsWith(item.href);
+              const active =
+                item.href === '/moi' ? pathname === '/moi' : pathname.startsWith(item.href);
               const IconCmp = item.icon;
               return (
                 <Link

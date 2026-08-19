@@ -96,15 +96,52 @@ const year = new Date().getFullYear();
 await call('POST', '/holidays', { day: `${year}-08-26`, label: 'Tabaski' }).catch(() => {});
 await call('PUT', '/approval-chain', { levels: ['hr', 'admin'] });
 
-console.log('→ Demandes (2 approuvées, 1 en attente)');
-const request = (employeeId, type, startDate, endDate, reason) =>
-  call('POST', '/absence-requests', {
-    employeeId,
-    absenceTypeId: typeId(type),
-    startDate,
-    endDate,
-    reason,
+console.log('→ Portails employés : Awa, Moussa et Fatou activent leur compte');
+// Les demandes sont posées par les employés EUX-MÊMES (aucune saisie RH) :
+// chaque dossier reçoit une invitation, le compte est activé, puis la
+// demande part depuis ce compte — avec justificatif PDF quand le type l'exige.
+const PASSWORDS = {
+  [awa.id]: ['a.diop@apix.sn', 'MotDePasseAwa1234'],
+  [moussa.id]: ['m.ndiaye@apix.sn', 'MotDePasseMoussa1'],
+  [fatou.id]: ['f.sall@apix.sn', 'MotDePasseFatou12'],
+};
+const employeeCookies = {};
+for (const [employeeId, [, password]] of Object.entries(PASSWORDS)) {
+  const invite = await call('POST', `/employees/${employeeId}/invite`, { role: 'employee' });
+  const token = invite.invitePath.split('/').pop();
+  const res = await fetch(`${BASE}/invitations/${token}/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
   });
+  if (!res.ok) throw new Error(`activation ${employeeId} → ${res.status}`);
+  employeeCookies[employeeId] = res.headers.get('set-cookie').split(';')[0];
+}
+
+console.log('→ Demandes posées par les employés (2 approuvées, 1 en attente)');
+const fakePdfDoc = (name) => ({
+  filename: name,
+  contentBase64: Buffer.from('%PDF-1.4 justificatif de démonstration Teranga RH').toString(
+    'base64',
+  ),
+});
+const request = async (employeeId, type, startDate, endDate, reason, document) => {
+  const res = await fetch(`${BASE}/absence-requests`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', cookie: employeeCookies[employeeId] },
+    body: JSON.stringify({
+      employeeId,
+      absenceTypeId: typeId(type),
+      startDate,
+      endDate,
+      reason,
+      document,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`demande ${type} → ${res.status} : ${data.title}`);
+  return data;
+};
 const approve = async (id, times) => {
   for (let i = 0; i < times; i += 1) {
     await call('POST', `/absence-requests/${id}/decision`, { decision: 'approved' });
@@ -118,9 +155,23 @@ const r1 = await request(
   'Congés famille',
 );
 await approve(r1.id, 2);
-const r2 = await request(moussa.id, 'Mission', `${year}-08-19`, `${year}-08-21`, 'Mission Thiès');
+const r2 = await request(
+  moussa.id,
+  'Mission',
+  `${year}-08-19`,
+  `${year}-08-21`,
+  'Mission Thiès',
+  fakePdfDoc('ordre-de-mission-thies.pdf'),
+);
 await approve(r2.id, 2);
-await request(fatou.id, 'Maladie', `${year}-08-31`, `${year}-09-02`, 'Grippe');
+await request(
+  fatou.id,
+  'Maladie',
+  `${year}-08-31`,
+  `${year}-09-02`,
+  'Grippe',
+  fakePdfDoc('attestation-medicale.pdf'),
+);
 
 console.log('→ Recrutement : offre publiée + candidatures dans le pipeline');
 const job = await call('POST', '/jobs', {
@@ -191,6 +242,7 @@ await call('PATCH', `/applications/${byEmail('ousmane.diallo@yahoo.fr').id}`, {
 console.log(`
 ✔ Démo prête.
   Admin       : ${ADMIN.email} / ${ADMIN.password}
+  Employés    : a.diop@apix.sn / MotDePasseAwa1234 (idem Moussa1, Fatou12)
   Employés    : Awa (EMP-001, ${awa.id}), Moussa (EMP-002, ${moussa.id}), Fatou (EMP-003, ${fatou.id})
   Recrutement : offre « Chargé d'affaires investissement » publiée
                 lien candidat → http://localhost:3002/postuler/${job.publicSlug}
