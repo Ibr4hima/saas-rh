@@ -28,7 +28,9 @@ export function timeAgo(iso: string): string {
 
 /**
  * Une demande de documents, vue RH (avec actions) ou vue employé (lecture).
- * Le circuit suit l'ADR-0012 : reçue → en traitement → prête → remise.
+ * Le circuit suit l'ADR-0012 : reçue → en traitement → prête à retirer.
+ * « Prête » clôt la demande : la RH ne voit pas l'employé passer chez la
+ * personne qui détient le document, elle ne peut donc rien attester de plus.
  */
 export function DocumentRequestRow({
   request: r,
@@ -94,6 +96,11 @@ export function DocumentRequestRow({
             <p className="mt-1 text-xs text-primary">
               À retirer auprès de {r.pickupContact}
               {r.hrMessage ? ` — ${r.hrMessage}` : ''}
+              {/* L'ancienneté rend visible un document annoncé prêt et jamais
+                  venu chercher : sans elle il sortirait du radar pour de bon. */}
+              {showEmployee && r.readyAt ? (
+                <span className="text-ink-muted"> · prête {timeAgo(r.readyAt)}</span>
+              ) : null}
             </p>
           ) : null}
           {r.status === 'rejected' && r.hrMessage ? (
@@ -151,10 +158,14 @@ export function DocumentRequestRow({
           {r.status === 'ready' ? (
             <Button
               size="sm"
-              loading={advance.isPending}
-              onClick={() => advance.mutate({ status: 'delivered' })}
+              variant="ghost"
+              onClick={() => {
+                setPickupContact(r.pickupContact ?? '');
+                setReadyMessage(r.hrMessage ?? '');
+                setReadyOpen(!readyOpen);
+              }}
             >
-              Marquer remise
+              Corriger le point de retrait
             </Button>
           ) : null}
 

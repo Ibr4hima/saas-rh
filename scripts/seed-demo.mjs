@@ -93,11 +93,32 @@ console.log('→ Responsables des unités');
 await call('PATCH', `/org-units/${etudes.id}`, { managerEmployeeId: awa.id });
 await call('PATCH', `/org-units/${compta.id}`, { managerEmployeeId: fatou.id });
 
-console.log('→ Congés : types (seed auto), férié, circuit à 2 niveaux');
+console.log('→ Congés : types (seed auto), fériés, circuit à 2 niveaux');
 const types = await call('GET', '/absence-types');
 const typeId = (name) => types.find((t) => t.name === name).id;
 const year = new Date().getFullYear();
-await call('POST', '/holidays', { day: `${year}-08-26`, label: 'Tabaski' }).catch(() => {});
+const tabaski = `${year}-08-26`;
+await call('POST', '/holidays', { day: tabaski, label: 'Tabaski' }).catch(() => {});
+
+// Fête mobile placée pour que la démo montre le rappel automatique : on prend
+// le premier jour ouvré à venir dont le rappel (J−2 reculé au dernier jour
+// ouvré) est déjà échu, quel que soit le jour où le seed tourne.
+const iso = (d) => d.toISOString().slice(0, 10);
+const isWeekend = (d) => d.getUTCDay() === 0 || d.getUTCDay() === 6;
+const todayUtc = new Date(`${iso(new Date())}T00:00:00Z`);
+let magalOn = null;
+for (let ahead = 1; ahead <= 21 && !magalOn; ahead += 1) {
+  const day = new Date(todayUtc);
+  day.setUTCDate(day.getUTCDate() + ahead);
+  if (isWeekend(day) || iso(day) === tabaski) continue; // date déjà prise
+  const remind = new Date(day);
+  remind.setUTCDate(remind.getUTCDate() - 2);
+  while (isWeekend(remind)) remind.setUTCDate(remind.getUTCDate() - 1);
+  if (remind > todayUtc) continue; // rappel pas encore dû : on essaie le suivant
+  await call('POST', '/holidays', { day: iso(day), label: 'Magal de Touba' });
+  magalOn = iso(day);
+}
+if (!magalOn) console.warn('  ⚠ aucun férié de démonstration placé (rappel non illustré)');
 await call('PUT', '/approval-chain', { levels: ['hr', 'admin'] });
 
 console.log('→ Portails employés : Awa, Moussa et Fatou activent leur compte');

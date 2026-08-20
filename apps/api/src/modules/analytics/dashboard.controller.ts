@@ -11,7 +11,7 @@ export interface DashboardStats {
   pendingRequests: number;
   upcomingAbsences: number;
   orgUnits: number;
-  /** Demandes de documents non closes (reçue / en traitement / prête). */
+  /** Demandes de documents encore à traiter par la RH (reçue / en traitement). */
   pendingDocumentRequests: number;
 }
 
@@ -57,7 +57,9 @@ export class DashboardController {
           tx
             .select({ n })
             .from(t.documentRequests)
-            .where(inArray(t.documentRequests.status, ['received', 'processing', 'ready'])),
+            // « prête » est terminal : la compter ferait un badge rouge qui ne
+            // redescend jamais alors que la RH n'a plus rien à faire.
+            .where(inArray(t.documentRequests.status, ['received', 'processing'])),
         ),
       ]);
 

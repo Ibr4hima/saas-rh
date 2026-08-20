@@ -16,11 +16,15 @@ import {
 import { DocumentRequestRow } from '../../../components/document-request-list';
 import { api, ApiError } from '../../../lib/api';
 
-const OPEN = ['received', 'processing', 'ready'];
+/**
+ * Demandes encore à la charge de la RH. « Prête à retirer » n'en fait pas
+ * partie : le travail est fait, la balle est dans le camp de l'employé.
+ */
+const OPEN = ['received', 'processing'];
 
 /**
  * File d'attente RH des demandes de documents (ADR-0012) : les documents
- * officiels sont générés, cachetés, signés puis remis en main propre.
+ * officiels sont générés, cachetés, signés puis retirés en main propre.
  */
 export default function DocumentRequestsPage() {
   const [status, setStatus] = useState('');
@@ -40,6 +44,10 @@ export default function DocumentRequestsPage() {
   const items = requests.data ?? [];
   const open = items.filter((r) => OPEN.includes(r.status));
   const closed = items.filter((r) => !OPEN.includes(r.status));
+  // La liste réellement rendue : c'est ELLE qui décide de l'état vide, pas le
+  // total. Depuis que « prête » sort de la file, « tout est traité » est le cas
+  // NORMAL — un cadre blanc muet y serait la vue la plus fréquente de la page.
+  const shown = status ? items : open;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -64,21 +72,32 @@ export default function DocumentRequestsPage() {
             <option value="received">Reçues</option>
             <option value="processing">En traitement</option>
             <option value="ready">Prêtes à retirer</option>
-            <option value="delivered">Remises</option>
             <option value="rejected">Refusées</option>
           </Select>
         </CardHeader>
         <CardContent>
           {requests.isLoading ? (
             <Skeleton className="h-24 w-full" />
-          ) : items.length === 0 ? (
+          ) : shown.length === 0 ? (
             <EmptyState
-              title="Aucune demande"
-              description="Les demandes des employés apparaîtront ici dès qu'ils en formuleront une."
+              title={
+                items.length === 0
+                  ? 'Aucune demande'
+                  : status
+                    ? 'Aucune demande dans ce statut'
+                    : 'Tout est traité'
+              }
+              description={
+                items.length === 0
+                  ? "Les demandes des employés apparaîtront ici dès qu'ils en formuleront une."
+                  : status
+                    ? 'Changez de filtre pour voir les autres demandes.'
+                    : 'Aucune demande en attente de votre part. Les demandes closes sont plus bas.'
+              }
             />
           ) : (
             <ul className="flex flex-col">
-              {(status ? items : open).map((r) => (
+              {shown.map((r) => (
                 <DocumentRequestRow key={r.id} request={r} showEmployee />
               ))}
             </ul>
@@ -89,7 +108,10 @@ export default function DocumentRequestsPage() {
       {!status && closed.length > 0 ? (
         <Card className="mt-6">
           <CardHeader>
-            <CardTitle>Historique</CardTitle>
+            <CardTitle>Traitées</CardTitle>
+            <p className="text-sm text-ink-muted">
+              Plus rien à faire de votre côté — l&apos;employé a été prévenu.
+            </p>
           </CardHeader>
           <CardContent>
             <ul className="flex flex-col">

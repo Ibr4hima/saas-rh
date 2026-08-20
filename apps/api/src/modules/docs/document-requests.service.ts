@@ -16,15 +16,27 @@ import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const MANAGE_ROLES = new Set(['admin', 'hr']);
-/** Une demande non close bloque les nouvelles : évite les doublons de file. */
-const OPEN_STATUSES = ['received', 'processing', 'ready'];
+/**
+ * Une demande non close bloque les nouvelles : évite les doublons de file.
+ * « prête » n'en fait PAS partie — c'est l'état final depuis que la remise
+ * n'est plus enregistrée : la compter bloquerait l'employé à vie.
+ */
+const OPEN_STATUSES = ['received', 'processing'];
 const MAX_OPEN_REQUESTS = 3;
 
-/** Transitions autorisées : le circuit ne peut pas remonter le temps. */
+/**
+ * Transitions autorisées : le circuit ne peut pas remonter le temps.
+ * `ready` est terminal en PROGRESSION — la RH annonce le point de retrait mais
+ * n'a aucun moyen de savoir quand l'employé est passé le récupérer
+ * (ADR-0012 rév. 2). Elle garde en revanche le droit de se corriger : `ready`
+ * vers `ready` réécrit le point de retrait et prévient à nouveau l'employé,
+ * sinon une coquille sur le nom l'enverrait au mauvais bureau sans recours.
+ * `delivered` reste listé pour les demandes closes avant cette révision.
+ */
 const ALLOWED_TRANSITIONS: Record<string, DocumentRequestStatus[]> = {
   received: ['processing', 'rejected'],
   processing: ['ready', 'rejected'],
-  ready: ['delivered'],
+  ready: ['ready'],
   delivered: [],
   rejected: [],
 };
@@ -194,6 +206,9 @@ export class DocumentRequestsService {
         );
       }
 
+      // Même statut = la RH corrige le point de retrait d'une demande déjà prête.
+      const isCorrection = row.status === input.status;
+
       const now = new Date();
       const changes: Partial<typeof t.documentRequests.$inferInsert> = {
         status: input.status,
@@ -203,12 +218,13 @@ export class DocumentRequestsService {
       if (input.message?.trim()) changes.hrMessage = input.message.trim();
       if (input.status === 'processing') changes.processingAt = now;
       if (input.status === 'ready') {
-        changes.readyAt = now;
+        // readyAt date la mise à disposition, pas la correction : une coquille
+        // rectifiée ne doit pas rajeunir une demande qui attend depuis 3 semaines.
+        if (!isCorrection) changes.readyAt = now;
         // Sans précision, l'employé s'adresse à celui qui a traité la demande.
         changes.pickupContact =
           input.pickupContact?.trim() || `${user.givenName} ${user.familyName}`;
       }
-      if (input.status === 'delivered') changes.deliveredAt = now;
 
       await tx.update(t.documentRequests).set(changes).where(eq(t.documentRequests.id, requestId));
 
@@ -227,14 +243,12 @@ export class DocumentRequestsService {
           body: `La Direction du Capital Humain prépare : ${docs}.`,
         },
         ready: {
-          title: 'Vos documents sont disponibles',
+          title: isCorrection
+            ? 'Changement : où retirer vos documents'
+            : 'Vos documents sont disponibles',
           body:
             `${docs} — à retirer auprès de ${changes.pickupContact}, Direction du Capital Humain. ` +
             `Merci de passer les récupérer${input.message?.trim() ? ` (${input.message.trim()})` : ''}.`,
-        },
-        delivered: {
-          title: 'Documents remis',
-          body: `${docs} — remise enregistrée le ${now.toLocaleDateString('fr-FR')}.`,
         },
         rejected: {
           title: 'Votre demande de documents n’a pas pu être traitée',

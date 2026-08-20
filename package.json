@@ -13,6 +13,7 @@
     "dev": "turbo run dev",
     "db:up": "docker compose up -d db",
     "db:migrate": "pnpm --filter @teranga/api db:migrate",
+    "db:reset": "pnpm --filter @teranga/api db:reset",
     "format": "prettier --write ."
   },
   "devDependencies": {

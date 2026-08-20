@@ -7,6 +7,7 @@
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:reset": "tsx src/db/reset.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "prettier --check src tests",
     "test": "vitest run"

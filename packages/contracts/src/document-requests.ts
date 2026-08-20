@@ -2,8 +2,13 @@ import { z } from 'zod';
 
 /**
  * Demandes de documents administratifs (ADR-0012).
- * Circuit : reçue → en traitement → prête → remise (ou refusée avec motif).
+ * Circuit : reçue → en traitement → prête à retirer (ou refusée avec motif).
  * Les documents sont remis EN MAIN PROPRE, cachetés et signés.
+ *
+ * « Prête » est l'état FINAL : la RH annonce auprès de qui retirer, mais elle
+ * ne peut pas savoir quand l'employé est effectivement passé chez cette
+ * personne. Le statut « Remise » reste défini pour les demandes déjà closes
+ * en base, sans pouvoir être posé à nouveau.
  */
 
 export const requestableDocSchema = z.enum([
@@ -28,6 +33,7 @@ export const REQUESTABLE_DOC_LABELS: Record<RequestableDoc, string> = {
 /** Ce que l'application sait générer elle-même (le reste vient du système de paie). */
 export const GENERATED_DOCS: RequestableDoc[] = ['attestation_travail'];
 
+/** `delivered` : statut historique, conservé en lecture (voir en-tête). */
 export const documentRequestStatusSchema = z.enum([
   'received',
   'processing',
@@ -69,9 +75,9 @@ export const createDocumentRequestSchema = z.object({
 });
 export type CreateDocumentRequestInput = z.infer<typeof createDocumentRequestSchema>;
 
-/** Transitions pilotées par la RH. */
+/** Transitions pilotées par la RH — « prête » clôt le circuit. */
 export const advanceDocumentRequestSchema = z.object({
-  status: z.enum(['processing', 'ready', 'delivered', 'rejected']),
+  status: z.enum(['processing', 'ready', 'rejected']),
   /** Requis pour « prête » : à qui l'employé doit s'adresser. */
   pickupContact: z.string().trim().max(120).optional(),
   /** Message libre (obligatoire en cas de refus : le motif). */

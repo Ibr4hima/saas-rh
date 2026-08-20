@@ -46,3 +46,30 @@ export function countWorkdays(
   }
   return { workingDays, holidaysSkipped };
 }
+
+/** Décale une date ISO de `days` jours (négatif = vers le passé). */
+function shiftDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Jour d'envoi du rappel avant un jour férié : deux jours avant, reculé au
+ * dernier jour OUVRÉ si ce jour tombe un week-end ou sur un autre férié.
+ * Un férié le lundi prévient donc le vendredi (J−2 = samedi), un férié le
+ * mardi aussi (J−2 = dimanche) — personne ne lit ses notifications le
+ * week-end. Retourne null si l'on remonte au-delà d'une semaine (garde-fou
+ * contre une chaîne de fériés incohérente).
+ */
+export function holidayReminderDate(
+  holidayIso: string,
+  holidays: ReadonlySet<string>,
+): string | null {
+  let day = shiftDays(holidayIso, -2);
+  for (let back = 0; back < 7; back += 1) {
+    if (!isWeekend(day) && !holidays.has(day)) return day;
+    day = shiftDays(day, -1);
+  }
+  return null;
+}
