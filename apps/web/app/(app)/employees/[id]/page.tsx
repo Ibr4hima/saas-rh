@@ -31,9 +31,10 @@ import {
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { EmployeeDocumentsCard } from '../../../../components/employee-documents-card';
+import { DocumentRequestRow } from '../../../../components/document-request-list';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
-import type { OrgUnit } from '@teranga/contracts';
+import type { DocumentRequestView, OrgUnit } from '@teranga/contracts';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Actif',
@@ -254,6 +255,8 @@ export default function EmployeePage() {
 
         {canSeeHistory ? <EmployeeDocumentsCard employeeId={e.id} /> : null}
 
+        {canSeeHistory ? <DocumentRequestsCard employeeId={e.id} /> : null}
+
         {canSeeHistory ? <PortalCard employeeId={e.id} portal={e.portal} /> : null}
 
         <BalancesCard employeeId={e.id} canEdit={Boolean(canSeeHistory)} />
@@ -443,6 +446,35 @@ function AssignmentsCard({
           </TBody>
         </Table>
       )}
+    </Card>
+  );
+}
+
+/** Historique des demandes de documents de cet employé (ADR-0012). */
+function DocumentRequestsCard({ employeeId }: { employeeId: string }) {
+  const requests = useQuery({
+    queryKey: ['document-requests', 'employee', employeeId],
+    queryFn: () => api<DocumentRequestView[]>(`/document-requests?employeeId=${employeeId}`),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Demandes de documents</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {requests.isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : (requests.data ?? []).length === 0 ? (
+          <p className="text-sm text-ink-muted">Aucune demande de document à ce jour.</p>
+        ) : (
+          <ul className="flex flex-col">
+            {requests.data!.map((r) => (
+              <DocumentRequestRow key={r.id} request={r} showEmployee={false} />
+            ))}
+          </ul>
+        )}
+      </CardContent>
     </Card>
   );
 }

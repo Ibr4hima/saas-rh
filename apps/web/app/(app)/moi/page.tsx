@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import type { AbsenceRequestView, BalanceView, MyEmployeeView } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@teranga/ui';
-import { api, ApiError, apiUrl } from '../../../lib/api';
+import { api, ApiError } from '../../../lib/api';
 import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES } from '../../../lib/absences';
 import { formatDate, useMe } from '../../../lib/hooks';
 
@@ -145,26 +145,27 @@ export default function MySpacePage() {
       </Card>
 
       {/* Mes documents */}
-      {emp.status === 'active' ? (
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Mes documents</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-ink-strong">Attestation de travail</p>
-              <p className="text-sm text-ink-muted">
-                PDF officiel généré à l&apos;instant — plus besoin de la demander à la RH.
-              </p>
-            </div>
-            <a href={apiUrl('/me/attestation')} className="sm:shrink-0">
-              <Button variant="secondary" className="w-full sm:w-auto">
-                Télécharger
-              </Button>
-            </a>
-          </CardContent>
-        </Card>
-      ) : null}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Mes documents</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-ink-strong">
+              Attestation de travail, contrat, bulletin…
+            </p>
+            <p className="text-sm text-ink-muted">
+              Demandez vos documents : la Direction du Capital Humain les prépare, les signe et vous
+              prévient dès qu&apos;ils sont à retirer.
+            </p>
+          </div>
+          <Link href="/moi/documents" className="sm:shrink-0">
+            <Button variant="secondary" className="w-full sm:w-auto">
+              Demander un document
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
     </div>
   );
 }

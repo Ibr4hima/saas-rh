@@ -30,8 +30,23 @@ export async function runMigrations(databaseUrl?: string): Promise<void> {
     const { rows } = await client.query<{ name: string }>('SELECT name FROM schema_migrations');
     const applied = new Set(rows.map((r) => r.name));
 
-    for (const file of files) {
-      if (applied.has(file)) continue;
+    // Garde anti-trou : si une migration appliquée est PLUS RÉCENTE qu'une
+    // migration en attente, la base a été construite dans le désordre (ex. un
+    // checkout ancien migré puis remis à jour). Appliquer la suite produirait
+    // un schéma incohérent et silencieusement cassé — on refuse et on nomme
+    // les fichiers manquants.
+    const pending = files.filter((f) => !applied.has(f));
+    const lastApplied = files.filter((f) => applied.has(f)).pop();
+    const outOfOrder = lastApplied ? pending.filter((f) => f < lastApplied) : [];
+    if (outOfOrder.length > 0) {
+      throw new Error(
+        `Migrations manquantes antérieures à ${lastApplied} : ${outOfOrder.join(', ')}. ` +
+          "La base a été migrée dans le désordre. Repartez d'une base vierge " +
+          '(pnpm db:reset) ou appliquez ces fichiers manuellement avant de continuer.',
+      );
+    }
+
+    for (const file of pending) {
       const sql = readFileSync(join(dir, file), 'utf8');
       process.stdout.write(`Applying ${file}… `);
       try {

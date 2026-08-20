@@ -1,6 +1,6 @@
 import { Controller, Get, Inject, UseGuards } from '@nestjs/common';
 import { Req } from '@nestjs/common';
-import { and, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
 import { Roles, RolesGuard } from '../auth/roles.guard';
@@ -11,6 +11,8 @@ export interface DashboardStats {
   pendingRequests: number;
   upcomingAbsences: number;
   orgUnits: number;
+  /** Demandes de documents non closes (reçue / en traitement / prête). */
+  pendingDocumentRequests: number;
 }
 
 @Controller()
@@ -27,7 +29,13 @@ export class DashboardController {
       const count = async (query: Promise<Array<{ n: number }>>) => (await query)[0]?.n ?? 0;
       const n = sql<number>`count(*)::int`;
 
-      const [activeEmployees, pendingRequests, upcomingAbsences, orgUnits] = await Promise.all([
+      const [
+        activeEmployees,
+        pendingRequests,
+        upcomingAbsences,
+        orgUnits,
+        pendingDocumentRequests,
+      ] = await Promise.all([
         count(tx.select({ n }).from(t.employees).where(eq(t.employees.status, 'active'))),
         count(
           tx.select({ n }).from(t.absenceRequests).where(eq(t.absenceRequests.status, 'pending')),
@@ -45,9 +53,22 @@ export class DashboardController {
             ),
         ),
         count(tx.select({ n }).from(t.orgUnits).where(isNull(t.orgUnits.deletedAt))),
+        count(
+          tx
+            .select({ n })
+            .from(t.documentRequests)
+            .where(inArray(t.documentRequests.status, ['received', 'processing', 'ready'])),
+        ),
       ]);
 
-      return { activeEmployees, pendingRequests, upcomingAbsences, orgUnits };
+      return {
+        activeEmployees,
+        pendingRequests,
+        upcomingAbsences,
+        orgUnits,
+        // Le compteur tenant-wide ne concerne que ceux qui traitent la file.
+        pendingDocumentRequests: ['admin', 'hr'].includes(user.role) ? pendingDocumentRequests : 0,
+      };
     });
   }
 }

@@ -1,17 +1,48 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { AbsenceRequestView, MyEmployeeView } from '@teranga/contracts';
-import { Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@teranga/ui';
+import type {
+  AbsenceRequestView,
+  DocumentRequestView,
+  MyEmployeeView,
+  RequestableDoc,
+} from '@teranga/contracts';
+import { REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Field,
+  Input,
+  Skeleton,
+} from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { EmployeeDocumentsCard } from '../../../../components/employee-documents-card';
+import { DocumentRequestRow } from '../../../../components/document-request-list';
 import { DocViewer, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate } from '../../../../lib/hooks';
 
+const REQUESTABLE: RequestableDoc[] = [
+  'attestation_travail',
+  'contrat_travail',
+  'bulletin_salaire',
+  'attestation_salaire',
+  'certificat_travail',
+  'autre',
+];
+
 export default function MyDocumentsPage() {
+  const queryClient = useQueryClient();
   const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
+  const [selected, setSelected] = useState<RequestableDoc[]>([]);
+  const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
   const myEmployee = useQuery({
     queryKey: ['me-employee'],
     queryFn: () => api<MyEmployeeView>('/me/employee'),
@@ -19,11 +50,33 @@ export default function MyDocumentsPage() {
   });
   const employeeId = myEmployee.data?.employeeId;
 
-  const requests = useQuery({
+  const absences = useQuery({
     queryKey: ['my-requests', employeeId],
     queryFn: () =>
       api<AbsenceRequestView[]>(`/absence-requests?employeeId=${employeeId}&limit=100`),
     enabled: Boolean(employeeId),
+  });
+
+  const docRequests = useQuery({
+    // scope=mine : l'espace personnel reste personnel même pour un membre RH.
+    queryKey: ['document-requests', 'me'],
+    queryFn: () => api<DocumentRequestView[]>('/document-requests?scope=mine'),
+  });
+
+  const submit = useMutation({
+    mutationFn: () =>
+      api('/document-requests', {
+        method: 'POST',
+        body: { docTypes: selected, note: note.trim() || undefined },
+      }),
+    onSuccess: () => {
+      setSelected([]);
+      setNote('');
+      setError(null);
+      setSent(true);
+      void queryClient.invalidateQueries({ queryKey: ['document-requests'] });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Envoi impossible.'),
   });
 
   if (myEmployee.isLoading) {
@@ -41,7 +94,9 @@ export default function MyDocumentsPage() {
   }
 
   const emp = myEmployee.data;
-  const withDocument = (requests.data ?? []).filter((r) => r.documentName);
+  const withDocument = (absences.data ?? []).filter((r) => r.documentName);
+  const toggle = (doc: RequestableDoc) =>
+    setSelected(selected.includes(doc) ? selected.filter((d) => d !== doc) : [...selected, doc]);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -51,42 +106,97 @@ export default function MyDocumentsPage() {
         </Link>
         <h1 className="mt-1 text-xl font-bold text-ink-strong">Mes documents</h1>
         <p className="text-sm text-ink-muted">
-          Vos documents RH, disponibles à tout moment — sans passer par le bureau RH.
+          Demandez vos documents administratifs et suivez leur traitement.
         </p>
       </div>
 
       <div className="flex flex-col gap-6">
-        <EmployeeDocumentsCard employeeId={emp.employeeId} />
-
+        {/* Demander des documents */}
         <Card>
           <CardHeader>
-            <CardTitle>Attestations</CardTitle>
+            <CardTitle>Demander un document</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-ink-strong">Attestation de travail</p>
-              <p className="text-sm text-ink-muted">
-                {emp.status === 'active'
-                  ? 'PDF officiel généré à l’instant, à votre nom.'
-                  : 'Disponible uniquement pour les employés en activité.'}
-              </p>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-ink-muted">
+              Cochez ce dont vous avez besoin. La Direction du Capital Humain prépare les documents,
+              les signe et les cachette : vous serez prévenu·e dès qu&apos;ils seront à retirer.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {REQUESTABLE.map((doc) => (
+                <button
+                  key={doc}
+                  type="button"
+                  onClick={() => {
+                    setSent(false);
+                    toggle(doc);
+                  }}
+                  className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                    selected.includes(doc)
+                      ? 'border-primary bg-primary-soft font-medium text-primary'
+                      : 'border-line text-ink-muted hover:border-ink-muted/40'
+                  }`}
+                >
+                  {selected.includes(doc) ? '✓ ' : ''}
+                  {REQUESTABLE_DOC_LABELS[doc]}
+                </button>
+              ))}
             </div>
-            {emp.status === 'active' ? (
-              <a href={apiUrl('/me/attestation')} className="sm:shrink-0">
-                <Button variant="secondary" className="w-full sm:w-auto">
-                  Télécharger
-                </Button>
-              </a>
+            <Field label="Précision (facultatif)" htmlFor="doc-note">
+              <Input
+                id="doc-note"
+                placeholder="Ex : bulletin de juillet 2026, pour un dossier bancaire"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </Field>
+            {error ? (
+              <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
             ) : null}
+            {sent ? (
+              <p className="rounded-md bg-success-soft px-3 py-2 text-sm text-success">
+                Demande envoyée — la Direction du Capital Humain a été prévenue.
+              </p>
+            ) : null}
+            <Button
+              disabled={selected.length === 0}
+              loading={submit.isPending}
+              onClick={() => submit.mutate()}
+            >
+              Envoyer ma demande
+            </Button>
           </CardContent>
         </Card>
+
+        {/* Suivi de mes demandes */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Suivi de mes demandes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {docRequests.isLoading ? (
+              <Skeleton className="h-16 w-full" />
+            ) : (docRequests.data ?? []).length === 0 ? (
+              <p className="text-sm text-ink-muted">
+                Aucune demande pour le moment — votre historique apparaîtra ici.
+              </p>
+            ) : (
+              <ul className="flex flex-col">
+                {docRequests.data!.map((r) => (
+                  <DocumentRequestRow key={r.id} request={r} showEmployee={false} />
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <EmployeeDocumentsCard employeeId={emp.employeeId} />
 
         <Card>
           <CardHeader>
             <CardTitle>Mes justificatifs d&apos;absence</CardTitle>
           </CardHeader>
           <CardContent>
-            {requests.isLoading ? (
+            {absences.isLoading ? (
               <Skeleton className="h-16 w-full" />
             ) : withDocument.length === 0 ? (
               <p className="text-sm text-ink-muted">
@@ -123,10 +233,6 @@ export default function MyDocumentsPage() {
             )}
           </CardContent>
         </Card>
-
-        <p className="text-center text-xs text-ink-muted">
-          Bulletins de paie et contrats signés arriveront ici avec les prochains modules.
-        </p>
       </div>
 
       <DocViewer doc={viewedDoc} onClose={() => setViewedDoc(null)} />

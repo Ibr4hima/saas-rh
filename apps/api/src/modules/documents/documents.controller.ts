@@ -9,13 +9,6 @@ import { AttestationService } from './attestation.service';
 export class DocumentsController {
   constructor(@Inject(AttestationService) private readonly attestations: AttestationService) {}
 
-  /** Self-service : l'employé télécharge sa propre attestation de travail. */
-  @Get('me/attestation')
-  async myAttestation(@Req() req: AuthenticatedRequest, @Res() res: Response) {
-    const { filename, pdf } = await this.attestations.forSelf(req.sessionUser);
-    this.send(res, filename, pdf);
-  }
-
   /** Depuis la fiche : la RH génère l'attestation d'un employé. */
   @Get('employees/:id/attestation')
   @Roles('admin', 'hr')

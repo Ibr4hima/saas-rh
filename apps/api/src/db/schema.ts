@@ -329,3 +329,21 @@ export const notifications = pgTable('notifications', {
   readAt: timestamp('read_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const documentRequests = pgTable('document_requests', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  docTypes: text('doc_types').array().notNull(),
+  note: text('note'),
+  status: text('status').notNull().default('received'),
+  requestedByUserId: uuid('requested_by_user_id').notNull(),
+  handledByUserId: uuid('handled_by_user_id'),
+  pickupContact: text('pickup_contact'),
+  hrMessage: text('hr_message'),
+  processingAt: timestamp('processing_at', { withTimezone: true }),
+  readyAt: timestamp('ready_at', { withTimezone: true }),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

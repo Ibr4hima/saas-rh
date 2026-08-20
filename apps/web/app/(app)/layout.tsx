@@ -26,6 +26,7 @@ interface DashboardStats {
   pendingRequests: number;
   upcomingAbsences: number;
   orgUnits: number;
+  pendingDocumentRequests: number;
 }
 
 const NAV_GROUPS: Array<{
@@ -34,7 +35,7 @@ const NAV_GROUPS: Array<{
     href: string;
     label: string;
     icon: React.ComponentType<{ size?: number }>;
-    badge?: 'pending';
+    badge?: 'pending' | 'docs';
   }>;
 }> = [
   {
@@ -43,6 +44,7 @@ const NAV_GROUPS: Array<{
       { href: '/dashboard', label: 'Tableau de bord', icon: IconDashboard },
       { href: '/employees', label: 'Employés', icon: IconUsers },
       { href: '/absences', label: 'Congés', icon: IconCalendar, badge: 'pending' },
+      { href: '/documents', label: 'Documents', icon: IconFileText, badge: 'docs' },
       { href: '/calendrier', label: 'Calendrier', icon: IconCalendarDays },
     ],
   },
@@ -64,7 +66,7 @@ const NAV_GROUPS: Array<{
 
 const STAFF_ROLES = ['admin', 'hr', 'payroll'];
 /** Sections réservées admin/RH : cachées aux autres rôles staff (payroll). */
-const MANAGE_ONLY_PATHS = ['/recrutement'];
+const MANAGE_ONLY_PATHS = ['/recrutement', '/documents'];
 
 function staffNav(role: string): typeof NAV_GROUPS {
   if (role !== 'payroll') return NAV_GROUPS;
@@ -191,6 +193,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const user = me.data;
   const initials = `${user.givenName[0] ?? ''}${user.familyName[0] ?? ''}`.toUpperCase();
   const pending = stats.data?.pendingRequests ?? 0;
+  const pendingDocs = stats.data?.pendingDocumentRequests ?? 0;
+  const badgeCount = (badge?: 'pending' | 'docs') =>
+    badge === 'pending' ? pending : badge === 'docs' ? pendingDocs : 0;
   const groups = isStaff ? staffNav(user.role) : personalNav(user.role);
 
   return (
@@ -232,9 +237,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     >
                       <IconCmp size={18} />
                       <span className="flex-1">{item.label}</span>
-                      {item.badge === 'pending' && pending > 0 ? (
+                      {badgeCount(item.badge) > 0 ? (
                         <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-[11px] font-semibold text-white">
-                          {pending}
+                          {badgeCount(item.badge)}
                         </span>
                       ) : null}
                     </Link>
@@ -321,7 +326,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   )}
                 >
                   <IconCmp size={20} />
-                  {item.badge === 'pending' && pending > 0 ? (
+                  {badgeCount(item.badge) > 0 ? (
                     <span className="absolute top-0 right-2 size-2 rounded-full bg-danger" />
                   ) : null}
                   <span className="truncate">{item.label}</span>

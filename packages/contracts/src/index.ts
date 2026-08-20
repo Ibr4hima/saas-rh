@@ -87,3 +87,4 @@ export * from './absences';
 export * from './portal';
 export * from './recruitment';
 export * from './documents';
+export * from './document-requests';

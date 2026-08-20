@@ -40,22 +40,6 @@ function frDate(iso: string | Date): string {
 export class AttestationService {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
 
-  /** Attestation de l'employé relié au compte connecté (self-service). */
-  async forSelf(user: SessionUser): Promise<{ filename: string; pdf: Buffer }> {
-    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
-      const [row] = await tx
-        .select({ employeeId: t.employees.id })
-        .from(t.persons)
-        .innerJoin(t.employees, eq(t.employees.personId, t.persons.id))
-        .where(and(eq(t.persons.userId, user.userId), isNull(t.persons.deletedAt)))
-        .limit(1);
-      if (!row) {
-        problem(404, 'me.no_employee_record', 'Aucun dossier employé relié à ce compte');
-      }
-      return this.build(tx, user.tenantId, row.employeeId);
-    });
-  }
-
   /** Attestation générée par la RH depuis la fiche. */
   async forEmployee(
     user: SessionUser,

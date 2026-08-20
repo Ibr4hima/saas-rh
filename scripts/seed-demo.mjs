@@ -262,6 +262,35 @@ await call('PATCH', `/applications/${byEmail('ousmane.diallo@yahoo.fr').id}`, {
   stage: 'interview',
 });
 
+console.log('→ Demandes de documents (circuit DCH : demandée → traitée → prête)');
+const requestDocs = async (employeeId, docTypes, note) => {
+  const res = await fetch(`${BASE}/document-requests`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', cookie: employeeCookies[employeeId] },
+    body: JSON.stringify({ docTypes, note }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`demande documents → ${res.status} : ${data.title}`);
+  return data;
+};
+// Awa : demande toute fraîche, en attente de traitement.
+await requestDocs(awa.id, ['attestation_travail'], 'Pour ouvrir un compte bancaire.');
+// Moussa : prise en charge, en cours de préparation.
+const dr2 = await requestDocs(
+  moussa.id,
+  ['attestation_travail', 'attestation_salaire'],
+  'Dossier de visa Schengen.',
+);
+await call('POST', `/document-requests/${dr2.id}/advance`, { status: 'processing' });
+// Fatou : prête, l'employée est prévenue du lieu de retrait.
+const dr3 = await requestDocs(fatou.id, ['contrat_travail'], 'Copie pour mes archives.');
+await call('POST', `/document-requests/${dr3.id}/advance`, { status: 'processing' });
+await call('POST', `/document-requests/${dr3.id}/advance`, {
+  status: 'ready',
+  pickupContact: 'Mme Fatou Sall',
+  message: 'bureau 204, du lundi au vendredi 9h–16h',
+});
+
 console.log(`
 ✔ Démo prête.
   Admin       : ${ADMIN.email} / ${ADMIN.password}
@@ -269,4 +298,4 @@ console.log(`
   Employés    : Awa (EMP-001, ${awa.id}), Moussa (EMP-002, ${moussa.id}), Fatou (EMP-003, ${fatou.id})
   Recrutement : offre « Chargé d'affaires investissement » publiée
                 lien candidat → http://localhost:3002/postuler/${job.publicSlug}
-  À tester    : fiche employé → « Accès au portail » ; Recrutement → pipeline.`);
+  À tester    : Documents → file d'attente RH ; espace employé → « Demander un document ».`);
