@@ -72,6 +72,8 @@ export const orgUnits = pgTable('org_units', {
   parentId: uuid('parent_id'),
   unitType: text('unit_type').notNull(),
   name: text('name').notNull(),
+  /** Abrégé d'une direction (« DCH ») — NULL pour les autres types. */
+  shortName: text('short_name'),
   managerEmployeeId: uuid('manager_employee_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

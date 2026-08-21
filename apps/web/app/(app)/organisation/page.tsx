@@ -7,10 +7,14 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   createOrgUnitSchema,
+  ORG_UNIT_PARENT_TYPES,
+  ORG_UNIT_TYPE_LABELS,
+  orgUnitLabel,
   type CreateOrgUnitInput,
   type EmployeeListItem,
   type CursorPage,
   type OrgUnitMember,
+  type OrgUnitType,
   type OrgUnitView,
 } from '@teranga/contracts';
 import {
@@ -29,11 +33,13 @@ import {
 import { api, ApiError } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
 
-const TYPE_LABELS: Record<string, string> = {
-  direction: 'Direction',
-  department: 'Département',
-  service: 'Service',
-};
+const TYPE_LABELS = ORG_UNIT_TYPE_LABELS;
+
+/** Parents possibles pour un type donné : une direction n'en a aucun. */
+function parentOptions(units: OrgUnitView[], type: OrgUnitType, excludeId?: string) {
+  const allowed = ORG_UNIT_PARENT_TYPES[type];
+  return units.filter((u) => u.id !== excludeId && allowed.includes(u.unitType as OrgUnitType));
+}
 
 export default function OrganisationPage() {
   const me = useMe();
@@ -89,6 +95,7 @@ export default function OrganisationPage() {
             <UnitPanel
               key={selected.id}
               unit={selected}
+              units={units.data ?? []}
               canManage={canManage}
               isStaff={Boolean(me.data && ['admin', 'hr', 'payroll'].includes(me.data.role))}
               onClose={() => setSelectedId(null)}
@@ -132,7 +139,7 @@ function UnitTree({
             }`}
           >
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-ink-strong">{u.name}</span>
+              <span className="text-sm font-semibold text-ink-strong">{orgUnitLabel(u)}</span>
               <Badge tone={u.unitType === 'direction' ? 'primary' : 'neutral'}>
                 {TYPE_LABELS[u.unitType]}
               </Badge>
@@ -165,11 +172,13 @@ function UnitTree({
 
 function UnitPanel({
   unit,
+  units,
   canManage,
   isStaff,
   onClose,
 }: {
   unit: OrgUnitView;
+  units: OrgUnitView[];
   canManage: boolean;
   isStaff: boolean;
   onClose: () => void;
@@ -177,6 +186,46 @@ function UnitPanel({
   const queryClient = useQueryClient();
   const [managerId, setManagerId] = useState(unit.managerEmployeeId ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(unit.name);
+  const [unitType, setUnitType] = useState<OrgUnitType>(unit.unitType as OrgUnitType);
+  const [parentId, setParentId] = useState(unit.parentId ?? '');
+  const [shortName, setShortName] = useState(unit.shortName ?? '');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reassignTo, setReassignTo] = useState('');
+
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/org-units/${unit.id}`, {
+        method: 'PATCH',
+        body: {
+          name,
+          unitType,
+          parentId: unitType === 'direction' ? null : parentId || null,
+          shortName: unitType === 'direction' ? shortName.trim() || null : null,
+        },
+      }),
+    onSuccess: () => {
+      setError(null);
+      setEditing(false);
+      void queryClient.invalidateQueries({ queryKey: ['org-units'] });
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
+  });
+
+  const remove = useMutation({
+    mutationFn: () =>
+      api(`/org-units/${unit.id}${reassignTo ? `?reassignTo=${reassignTo}` : ''}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ['org-units'] });
+      onClose();
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Suppression impossible.'),
+  });
 
   const members = useQuery({
     queryKey: ['org-unit-members', unit.id],
@@ -205,7 +254,7 @@ function UnitPanel({
   return (
     <Card>
       <CardHeader className="flex items-center justify-between">
-        <CardTitle>{unit.name}</CardTitle>
+        <CardTitle>{orgUnitLabel(unit)}</CardTitle>
         <button
           type="button"
           onClick={onClose}
@@ -218,12 +267,163 @@ function UnitPanel({
       <CardContent className="flex flex-col gap-4">
         <div className="flex items-center gap-2 text-sm text-ink-muted">
           <Badge tone={unit.unitType === 'direction' ? 'primary' : 'neutral'}>
-            {TYPE_LABELS[unit.unitType]}
+            {TYPE_LABELS[unit.unitType as OrgUnitType]}
           </Badge>
           <span>
             {unit.headcount} {unit.headcount > 1 ? 'personnes' : 'personne'}
           </span>
+          {canManage && !editing && !confirmDelete ? (
+            <button
+              type="button"
+              className="ml-auto text-xs text-primary hover:underline"
+              onClick={() => {
+                setError(null);
+                setEditing(true);
+              }}
+            >
+              Modifier
+            </button>
+          ) : null}
         </div>
+
+        {editing ? (
+          <div className="flex flex-col gap-3 rounded-md bg-bg p-3">
+            <Field label="Nom" htmlFor={`edit-name-${unit.id}`} required>
+              <Input
+                id={`edit-name-${unit.id}`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </Field>
+            <Field label="Type" htmlFor={`edit-type-${unit.id}`} required>
+              <Select
+                id={`edit-type-${unit.id}`}
+                value={unitType}
+                onChange={(e) => {
+                  const next = e.target.value as OrgUnitType;
+                  setUnitType(next);
+                  // Une direction est racine : on efface le rattachement pour
+                  // que le formulaire ne propose jamais un état invalide.
+                  if (next === 'direction') setParentId('');
+                }}
+              >
+                <option value="direction">Direction</option>
+                <option value="department">Département</option>
+                <option value="service">Service</option>
+              </Select>
+            </Field>
+            {unitType === 'direction' ? (
+              <Field
+                label="Abrégé"
+                htmlFor={`edit-short-${unit.id}`}
+                hint="Facultatif — « DCH » pour Direction du Capital Humain."
+              >
+                <Input
+                  id={`edit-short-${unit.id}`}
+                  value={shortName}
+                  maxLength={12}
+                  placeholder="DCH"
+                  onChange={(e) => setShortName(e.target.value.toUpperCase())}
+                />
+              </Field>
+            ) : (
+              <Field label="Rattachée à" htmlFor={`edit-parent-${unit.id}`} required>
+                <Select
+                  id={`edit-parent-${unit.id}`}
+                  value={parentId}
+                  onChange={(e) => setParentId(e.target.value)}
+                >
+                  <option value="">— Choisir</option>
+                  {parentOptions(units, unitType, unit.id).map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {orgUnitLabel(u)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+            <div className="flex gap-2">
+              <Button loading={save.isPending} onClick={() => save.mutate()}>
+                Enregistrer
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setEditing(false);
+                  setError(null);
+                  setName(unit.name);
+                  setUnitType(unit.unitType as OrgUnitType);
+                  setParentId(unit.parentId ?? '');
+                  setShortName(unit.shortName ?? '');
+                }}
+              >
+                Annuler
+              </Button>
+              <Button
+                variant="ghost"
+                className="ml-auto text-danger"
+                onClick={() => {
+                  setEditing(false);
+                  setError(null);
+                  setConfirmDelete(true);
+                }}
+              >
+                Dissoudre
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {confirmDelete ? (
+          <div className="flex flex-col gap-3 rounded-md bg-danger-soft p-3">
+            <p className="text-sm text-danger">
+              Dissoudre « {unit.name} » ? L&apos;unité disparaît de l&apos;organigramme, mais
+              l&apos;historique des affectations continue de la mentionner.
+            </p>
+            {unit.headcount > 0 ? (
+              <Field
+                label="Réaffecter les membres à"
+                htmlFor={`reassign-${unit.id}`}
+                hint={`${unit.headcount} personne(s) doivent rejoindre une autre unité.`}
+                required
+              >
+                <Select
+                  id={`reassign-${unit.id}`}
+                  value={reassignTo}
+                  onChange={(e) => setReassignTo(e.target.value)}
+                >
+                  <option value="">— Choisir</option>
+                  {units
+                    .filter((u) => u.id !== unit.id)
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {orgUnitLabel(u)}
+                      </option>
+                    ))}
+                </Select>
+              </Field>
+            ) : null}
+            <div className="flex gap-2">
+              <Button
+                variant="danger"
+                loading={remove.isPending}
+                disabled={unit.headcount > 0 && !reassignTo}
+                onClick={() => remove.mutate()}
+              >
+                Confirmer la dissolution
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setConfirmDelete(false);
+                  setError(null);
+                }}
+              >
+                Annuler
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {canManage ? (
           <div>
@@ -327,12 +527,19 @@ function CreateUnitCard({
     resolver: zodResolver(createOrgUnitSchema),
     defaultValues: { unitType: 'direction' },
   });
+  const selectedType = (form.watch('unitType') ?? 'direction') as OrgUnitType;
+  const allowedParents = parentOptions(units, selectedType);
 
   const create = useMutation({
     mutationFn: (input: CreateOrgUnitInput) =>
       api<{ id: string }>('/org-units', { method: 'POST', body: input }),
     onSuccess: () => {
-      form.reset({ name: '', unitType: form.getValues('unitType'), parentId: undefined });
+      form.reset({
+        name: '',
+        unitType: form.getValues('unitType'),
+        parentId: undefined,
+        shortName: undefined,
+      });
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
     },
     onError: (err) =>
@@ -361,35 +568,74 @@ function CreateUnitCard({
             />
           </Field>
           <Field label="Type" htmlFor="unitType" required>
-            <Select id="unitType" {...form.register('unitType')}>
+            <Select
+              id="unitType"
+              {...form.register('unitType', {
+                onChange: () => {
+                  // Changer de type invalide le rattachement précédent : un
+                  // parent valable pour un service ne l'est pas pour une
+                  // direction. On repart d'un choix vide plutôt que d'envoyer
+                  // une combinaison que le serveur refusera.
+                  form.setValue('parentId', undefined);
+                  form.setValue('shortName', undefined);
+                },
+              })}
+            >
               <option value="direction">Direction</option>
               <option value="department">Département</option>
               <option value="service">Service</option>
             </Select>
           </Field>
-          <Field
-            label="Rattachée à"
-            htmlFor="parentId"
-            error={form.formState.errors.parentId?.message}
-          >
-            <Select id="parentId" {...form.register('parentId')}>
-              <option value="">— Aucune (unité racine)</option>
-              {units.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          {parentHint ? (
-            <button
-              type="button"
-              className="self-start text-xs text-primary hover:underline"
-              onClick={() => form.setValue('parentId', parentHint.id)}
+
+          {selectedType === 'direction' ? (
+            <Field
+              label="Abrégé"
+              htmlFor="shortName"
+              error={form.formState.errors.shortName?.message}
+              hint="Facultatif — « DCH » pour Direction du Capital Humain."
             >
-              Rattacher à « {parentHint.name} »
-            </button>
-          ) : null}
+              <Input
+                id="shortName"
+                placeholder="DCH"
+                maxLength={12}
+                {...form.register('shortName')}
+                onChange={(e) => form.setValue('shortName', e.target.value.toUpperCase())}
+              />
+            </Field>
+          ) : (
+            <>
+              <Field
+                label="Rattachée à"
+                htmlFor="parentId"
+                error={form.formState.errors.parentId?.message}
+                hint={
+                  allowedParents.length === 0
+                    ? `Créez d’abord ${selectedType === 'department' ? 'une direction' : 'une direction ou un département'}.`
+                    : undefined
+                }
+                required
+              >
+                <Select id="parentId" {...form.register('parentId')}>
+                  <option value="">— Choisir</option>
+                  {allowedParents.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {orgUnitLabel(u)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              {parentHint &&
+              ORG_UNIT_PARENT_TYPES[selectedType].includes(parentHint.unitType as OrgUnitType) ? (
+                <button
+                  type="button"
+                  className="self-start text-xs text-primary hover:underline"
+                  onClick={() => form.setValue('parentId', parentHint.id)}
+                >
+                  Rattacher à « {orgUnitLabel(parentHint)} »
+                </button>
+              ) : null}
+            </>
+          )}
           {serverError ? (
             <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{serverError}</p>
           ) : null}

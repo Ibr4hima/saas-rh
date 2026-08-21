@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Inject,
@@ -15,6 +16,7 @@ import {
 import {
   createEmployeeSchema,
   createOrgUnitSchema,
+  deleteOrgUnitSchema,
   listEmployeesQuerySchema,
   newAssignmentSchema,
   updateEmployeeSchema,
@@ -22,6 +24,7 @@ import {
   type CreateEmployeeInput,
   type ListEmployeesQuery,
   type CreateOrgUnitInput,
+  type DeleteOrgUnitInput,
   type NewAssignmentInput,
   type UpdateEmployeeInput,
   type UpdateOrgUnitInput,
@@ -118,6 +121,21 @@ export class PeopleController {
     @Body(new ZodValidationPipe(updateOrgUnitSchema)) body: UpdateOrgUnitInput,
   ) {
     await this.orgUnits.update(req.sessionUser, id, body);
+  }
+
+  /**
+   * Dissolution d'une unité (effacement doux). Ses membres sont réaffectés à
+   * l'unité désignée : personne ne se retrouve sans rattachement.
+   */
+  @Delete('org-units/:id')
+  @Roles('admin', 'hr')
+  @HttpCode(204)
+  async deleteOrgUnit(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(deleteOrgUnitSchema)) query: DeleteOrgUnitInput,
+  ) {
+    await this.orgUnits.remove(req.sessionUser, id, query);
   }
 
   /** Annuaire interne : visible par tous les rôles (« qui se référer »). */

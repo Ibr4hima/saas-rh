@@ -8,6 +8,7 @@ export const genderSchema = z.enum(['female', 'male']);
 export const employeeStatusSchema = z.enum(['active', 'suspended', 'terminated']);
 export const contractTypeSchema = z.enum(['cdi', 'cdd', 'stage', 'consultant', 'detachement']);
 export const orgUnitTypeSchema = z.enum(['direction', 'department', 'service']);
+export type OrgUnitType = z.infer<typeof orgUnitTypeSchema>;
 
 const isoDate = z.iso.date();
 const trimmed = (max: number) => z.string().trim().min(1).max(max);
@@ -27,10 +28,25 @@ const optionalUuid = z
   .nullish()
   .or(z.literal('').transform(() => undefined));
 
+/**
+ * Abrégé d'une direction : « DCH » pour « Direction du Capital Humain ».
+ * Normalisé en majuscules — un sigle ne se saisit pas en minuscules, et
+ * l'unicité en base est insensible à la casse.
+ */
+const shortNameField = z
+  .string()
+  .trim()
+  .max(12)
+  .regex(/^[A-Za-zÀ-ÿ0-9&.\-\s]*$/, 'Lettres, chiffres et tirets uniquement')
+  .transform((v) => (v === '' ? undefined : v.toUpperCase()))
+  .optional();
+
 export const createOrgUnitSchema = z.object({
   name: trimmed(120),
   unitType: orgUnitTypeSchema,
   parentId: optionalUuid,
+  /** Réservé aux directions : refusé sur un département ou un service. */
+  shortName: shortNameField,
 });
 export type CreateOrgUnitInput = z.infer<typeof createOrgUnitSchema>;
 
@@ -40,16 +56,48 @@ export const updateOrgUnitSchema = z.object({
   /** null = détacher (racine) / retirer le responsable ; absent = inchangé. */
   parentId: z.uuid().nullable().optional(),
   managerEmployeeId: z.uuid().nullable().optional(),
+  /** null = effacer l'abrégé ; absent = inchangé. */
+  shortName: shortNameField.or(z.null()),
 });
 export type UpdateOrgUnitInput = z.infer<typeof updateOrgUnitSchema>;
+
+/** Suppression d'une unité : ses membres doivent atterrir quelque part. */
+export const deleteOrgUnitSchema = z.object({
+  /** Unité d'accueil des membres — requise dès que l'unité en compte un. */
+  reassignTo: optionalUuid,
+});
+export type DeleteOrgUnitInput = z.infer<typeof deleteOrgUnitSchema>;
 
 export const orgUnitSchema = z.object({
   id: z.uuid(),
   name: z.string(),
   unitType: orgUnitTypeSchema,
   parentId: z.uuid().nullable(),
+  shortName: z.string().nullable(),
 });
 export type OrgUnit = z.infer<typeof orgUnitSchema>;
+
+/** Libellé d'unité : « Direction du Capital Humain (DCH) ». */
+export function orgUnitLabel(unit: { name: string; shortName?: string | null }): string {
+  return unit.shortName ? `${unit.name} (${unit.shortName})` : unit.name;
+}
+
+/**
+ * Rattachements autorisés : une direction est racine, un département relève
+ * d'une direction, un service d'un département ou directement d'une direction.
+ * Sans cette règle, on pouvait ranger une direction sous un service.
+ */
+export const ORG_UNIT_PARENT_TYPES: Record<OrgUnitType, OrgUnitType[]> = {
+  direction: [],
+  department: ['direction'],
+  service: ['direction', 'department'],
+};
+
+export const ORG_UNIT_TYPE_LABELS: Record<OrgUnitType, string> = {
+  direction: 'Direction',
+  department: 'Département',
+  service: 'Service',
+};
 
 /** Unité enrichie pour l'organigramme : responsable et effectif direct. */
 export interface OrgUnitView extends OrgUnit {

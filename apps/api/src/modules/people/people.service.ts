@@ -375,6 +375,37 @@ export class PeopleService {
             .where(eq(t.assignments.id, current.id));
         }
 
+        // Un responsable ne peut pas quitter l'unité qu'il dirige sans qu'un
+        // successeur soit désigné : sinon l'organigramme affiche un chef parti
+        // ailleurs. On refuse plutôt que de le retirer en douce — la RH doit
+        // décider qui reprend l'unité.
+        const [headed] = await tx
+          .select({ id: t.orgUnits.id, name: t.orgUnits.name })
+          .from(t.orgUnits)
+          .where(and(eq(t.orgUnits.managerEmployeeId, id), isNull(t.orgUnits.deletedAt)))
+          .limit(1);
+        if (headed) {
+          const stillInside = input.orgUnitId
+            ? await tx.execute(sql`
+                WITH RECURSIVE subtree AS (
+                  SELECT id FROM org_units WHERE id = ${headed.id} AND deleted_at IS NULL
+                  UNION ALL
+                  SELECT o.id FROM org_units o
+                  JOIN subtree s ON o.parent_id = s.id
+                  WHERE o.deleted_at IS NULL
+                )
+                SELECT 1 FROM subtree WHERE id = ${input.orgUnitId} LIMIT 1`)
+            : { rows: [] };
+          if (stillInside.rows.length === 0) {
+            problem(
+              422,
+              'people.manager_cannot_leave_unit',
+              `Cet employé dirige « ${headed.name} »`,
+              'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
+            );
+          }
+        }
+
         await tx.insert(t.assignments).values({
           id: uuidv7(),
           tenantId: user.tenantId,

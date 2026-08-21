@@ -40,8 +40,9 @@ await call('POST', '/auth/register', {
 
 console.log('→ Unités');
 const drh = await call('POST', '/org-units', {
-  name: 'Direction des Ressources Humaines',
+  name: 'Direction du Capital Humain',
   unitType: 'direction',
+  shortName: 'DCH',
 });
 const etudes = await call('POST', '/org-units', {
   name: 'Département Études',
@@ -49,8 +50,9 @@ const etudes = await call('POST', '/org-units', {
   parentId: drh.id,
 });
 const dfin = await call('POST', '/org-units', {
-  name: 'Direction Financière',
+  name: 'Direction Financière et Comptable',
   unitType: 'direction',
+  shortName: 'DFC',
 });
 const compta = await call('POST', '/org-units', {
   name: 'Service Comptabilité',
