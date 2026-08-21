@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { cursorPageQuerySchema } from './index';
+import { cursorPageQuerySchema } from './core';
 
 /** Contrats du module « dossier employé » (Lot 1). */
 
@@ -56,7 +56,10 @@ export const updateOrgUnitSchema = z.object({
   /** null = détacher (racine) / retirer le responsable ; absent = inchangé. */
   parentId: z.uuid().nullable().optional(),
   managerEmployeeId: z.uuid().nullable().optional(),
-  /** null = effacer l'abrégé ; absent = inchangé. */
+  /**
+   * `null` efface l'abrégé, l'absence le laisse inchangé. Attention : la chaîne
+   * vide est traitée comme une ABSENCE (le formulaire web envoie `null`).
+   */
   shortName: shortNameField.or(z.null()),
 });
 export type UpdateOrgUnitInput = z.infer<typeof updateOrgUnitSchema>;
@@ -104,7 +107,15 @@ export interface OrgUnitView extends OrgUnit {
   managerEmployeeId: string | null;
   managerName: string | null;
   managerPosition: string | null;
+  /** Effectif AFFICHÉ : les personnes actives qui y travaillent aujourd'hui. */
   headcount: number;
+  /**
+   * Affectations non terminées pointant sur l'unité — suspendus et affectations
+   * futures INCLUS. C'est ce nombre, et non l'effectif, qui décide si une
+   * dissolution exige une unité d'accueil : un agent suspendu compte pour zéro
+   * à l'écran mais reste rattaché quelque part.
+   */
+  openAssignments: number;
 }
 
 /** Membre d'une unité : les personnes actuellement affectées. */

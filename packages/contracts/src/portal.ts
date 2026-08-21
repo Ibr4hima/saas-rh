@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { passwordSchema } from './index';
+import { passwordSchema } from './core';
 
 /** Contrats du portail employé : invitations et espace personnel. */
 

@@ -44,6 +44,22 @@ Conséquence assumée : muter un responsable hors de son unité est **refusé** 
 qu'un successeur n'est pas désigné. Retirer le responsable en douce laisserait
 une unité décapitée sans que personne ne l'ait décidé ; la RH tranche.
 
+## Décision 3 bis — L'invariant se vérifie APRÈS écriture
+
+La règle du responsable porte sur le couple (affectation, unité). La tenir au
+seul moment où l'on mute l'employé laissait deux portes ouvertes, toutes deux
+reproduites en revue : **dissoudre** son unité vers une autre direction, ou
+**re-rattacher** cette unité ailleurs. Ni l'une ni l'autre ne passe par le
+chemin « employé ».
+
+Le contrôle a donc été déplacé : on écrit, on relit l'état réel, et la
+transaction est annulée si l'invariant est rompu. Vérifier avant l'écriture
+obligeait à simuler l'arbre futur — et c'est précisément cette simulation qui
+laissait passer le re-rattachement, puisqu'elle lisait encore l'ancien arbre.
+
+Le même invariant vaut à la **clôture d'un dossier** : suspendre ou clore un
+responsable est refusé tant qu'un successeur n'est pas désigné.
+
 ## Décision 4 — Une unité se modifie et se dissout
 
 Nom, type, rattachement et abrégé sont modifiables. La dissolution est un
@@ -54,8 +70,18 @@ Deux garde-fous :
 
 - une unité qui en contient d'autres n'est pas dissoute tant que celles-ci ne
   sont pas rattachées ailleurs — décision par décision, jamais en cascade ;
-- ses membres doivent être réaffectés à une unité désignée par l'appelant.
-  Personne ne se retrouve sans rattachement du fait d'une suppression.
+- une offre de recrutement ouverte l'empêche aussi : la page publique de
+  candidature annoncerait une direction disparue ;
+- **toutes** les affectations non terminées doivent être réaffectées à une
+  unité désignée, y compris celles d'employés suspendus ou clos et celles qui
+  démarrent plus tard. Ne traiter que les affectations « courantes d'employés
+  actifs » abandonnait les autres sur une unité fantôme.
+
+La réaffectation **clôt** l'affectation en cours à la date du jour et en ouvre
+une nouvelle sur l'unité d'accueil, comme une mutation ordinaire. Réécrire le
+rattachement de la ligne existante ferait dire au dossier que l'agent était
+dans l'unité d'accueil depuis son arrivée : l'historique mentirait. Les
+affectations qui n'ont pas encore commencé sont simplement redirigées.
 
 ## Décision 5 — Abrégé des directions
 
@@ -69,6 +95,12 @@ Un employé ne peut pas appartenir à deux directions simultanément : la
 contrainte d'exclusion `assignments_no_overlap` interdit deux affectations qui
 se chevauchent, et une mutation ferme la précédente. Aucune règle
 supplémentaire n'était nécessaire.
+
+## Portée de l'abrégé
+
+L'abrégé est un **repère d'organigramme**. Il n'est pas propagé aux documents
+officiels (attestation) ni aux offres publiques, qui portent le nom complet :
+un sigle n'a pas de valeur juridique et ne parle pas à un lecteur externe.
 
 ## Ce qui reste ouvert
 

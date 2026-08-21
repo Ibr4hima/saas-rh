@@ -11,8 +11,6 @@ import {
   ORG_UNIT_TYPE_LABELS,
   orgUnitLabel,
   type CreateOrgUnitInput,
-  type EmployeeListItem,
-  type CursorPage,
   type OrgUnitMember,
   type OrgUnitType,
   type OrgUnitView,
@@ -34,6 +32,16 @@ import { api, ApiError } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
 
 const TYPE_LABELS = ORG_UNIT_TYPE_LABELS;
+
+/**
+ * « Direction Financière › Service Comptabilité » : les noms d'unités ne sont
+ * uniques QU'ENTRE SŒURS, donc deux « Service Comptabilité » sous deux
+ * directions différentes sont légitimes — et indiscernables dans un menu plat.
+ */
+function pathLabel(units: OrgUnitView[], u: OrgUnitView): string {
+  const parent = u.parentId ? units.find((p) => p.id === u.parentId) : null;
+  return parent ? `${orgUnitLabel(parent)} › ${orgUnitLabel(u)}` : orgUnitLabel(u);
+}
 
 /** Parents possibles pour un type donné : une direction n'en a aucun. */
 function parentOptions(units: OrgUnitView[], type: OrgUnitType, excludeId?: string) {
@@ -231,9 +239,12 @@ function UnitPanel({
     queryKey: ['org-unit-members', unit.id],
     queryFn: () => api<OrgUnitMember[]>(`/org-units/${unit.id}/members`),
   });
-  const employees = useQuery({
-    queryKey: ['employees', 'for-manager-select'],
-    queryFn: () => api<CursorPage<EmployeeListItem>>('/employees?limit=100'),
+  // Le responsable doit travailler dans l'unité ou en dessous : proposer tout
+  // le tenant, c'était offrir 69 noms pour 2 choix légaux — et faire découvrir
+  // la règle par un 422. Même principe que pour le rattachement.
+  const eligible = useQuery({
+    queryKey: ['org-unit-eligible-managers', unit.id],
+    queryFn: () => api<OrgUnitMember[]>(`/org-units/${unit.id}/eligible-managers`),
     enabled: canManage,
   });
 
@@ -336,7 +347,7 @@ function UnitPanel({
                   <option value="">— Choisir</option>
                   {parentOptions(units, unitType, unit.id).map((u) => (
                     <option key={u.id} value={u.id}>
-                      {orgUnitLabel(u)}
+                      {pathLabel(units, u)}
                     </option>
                   ))}
                 </Select>
@@ -380,11 +391,11 @@ function UnitPanel({
               Dissoudre « {unit.name} » ? L&apos;unité disparaît de l&apos;organigramme, mais
               l&apos;historique des affectations continue de la mentionner.
             </p>
-            {unit.headcount > 0 ? (
+            {unit.openAssignments > 0 ? (
               <Field
                 label="Réaffecter les membres à"
                 htmlFor={`reassign-${unit.id}`}
-                hint={`${unit.headcount} personne(s) doivent rejoindre une autre unité.`}
+                hint={`${unit.openAssignments} affectation(s) pointent sur cette unité — suspendus et affectations à venir compris.`}
                 required
               >
                 <Select
@@ -397,7 +408,7 @@ function UnitPanel({
                     .filter((u) => u.id !== unit.id)
                     .map((u) => (
                       <option key={u.id} value={u.id}>
-                        {orgUnitLabel(u)}
+                        {pathLabel(units, u)}
                       </option>
                     ))}
                 </Select>
@@ -407,7 +418,7 @@ function UnitPanel({
               <Button
                 variant="danger"
                 loading={remove.isPending}
-                disabled={unit.headcount > 0 && !reassignTo}
+                disabled={unit.openAssignments > 0 && !reassignTo}
                 onClick={() => remove.mutate()}
               >
                 Confirmer la dissolution
@@ -427,7 +438,15 @@ function UnitPanel({
 
         {canManage ? (
           <div>
-            <Field label="Responsable" htmlFor="unit-manager">
+            <Field
+              label="Responsable"
+              htmlFor="unit-manager"
+              hint={
+                !eligible.isLoading && (eligible.data ?? []).length === 0
+                  ? 'Personne n’est encore affecté à cette unité : affectez quelqu’un avant de le nommer responsable.'
+                  : 'Parmi les personnes affectées à cette unité ou à une unité en dessous.'
+              }
+            >
               <div className="flex gap-2">
                 <Select
                   id="unit-manager"
@@ -435,8 +454,8 @@ function UnitPanel({
                   onChange={(ev) => setManagerId(ev.target.value)}
                 >
                   <option value="">— Aucun</option>
-                  {employees.data?.items.map((e) => (
-                    <option key={e.id} value={e.id}>
+                  {(eligible.data ?? []).map((e) => (
+                    <option key={e.employeeId} value={e.employeeId}>
                       {e.givenName} {e.familyName}
                       {e.positionTitle ? ` — ${e.positionTitle}` : ''}
                     </option>
@@ -619,7 +638,7 @@ function CreateUnitCard({
                   <option value="">— Choisir</option>
                   {allowedParents.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {orgUnitLabel(u)}
+                      {pathLabel(units, u)}
                     </option>
                   ))}
                 </Select>

@@ -9,11 +9,53 @@
 -- pour un responsable d'appartenir à l'unité qu'il dirige demandent de
 -- remonter l'arbre : elles sont tenues côté applicatif, pas ici.
 --
--- Expand-only. Aucune donnée existante n'est invalidée : short_name est NULL
--- partout, et les index uniques portent sur des colonnes déjà cohérentes.
+-- ATTENTION — ces index REFUSERAIENT une base existante. Les états qu'ils
+-- interdisent étaient parfaitement légitimes jusqu'ici : c'est bien pour cela
+-- qu'on les interdit. Vérifié sur une base de test, la création de l'index
+-- avortait avec 23505 et la migration entière était annulée. La résorption est
+-- donc faite ICI, avant de poser les contraintes, sinon le pilote APIX ne
+-- pourrait pas migrer du tout.
 -- =============================================================================
 
 SET lock_timeout = '5s';
+
+-- --- Résorption des états devenus illégitimes -------------------------------
+
+-- Un employé ne dirigera plus qu'une unité : on garde celle où il travaille
+-- réellement, à défaut la plus ancienne. Les autres perdent leur responsable et
+-- la RH en désignera un nouveau.
+WITH classees AS (
+  SELECT o.id,
+         row_number() OVER (
+           PARTITION BY o.tenant_id, o.manager_employee_id
+           ORDER BY (
+             EXISTS (SELECT 1 FROM assignments a
+                     WHERE a.employee_id = o.manager_employee_id
+                       AND a.org_unit_id = o.id
+                       AND a.validity @> CURRENT_DATE)
+           ) DESC, o.created_at, o.id
+         ) AS rang
+  FROM org_units o
+  WHERE o.manager_employee_id IS NOT NULL AND o.deleted_at IS NULL
+)
+UPDATE org_units o SET manager_employee_id = NULL
+FROM classees c WHERE c.id = o.id AND c.rang > 1;
+
+-- Unités sœurs homonymes : on les suffixe pour qu'elles restent distinguables.
+WITH classees AS (
+  SELECT id,
+         row_number() OVER (
+           PARTITION BY tenant_id,
+                        COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid),
+                        lower(name)
+           ORDER BY created_at, id
+         ) AS rang
+  FROM org_units WHERE deleted_at IS NULL
+)
+UPDATE org_units o SET name = o.name || ' (' || c.rang || ')'
+FROM classees c WHERE c.id = o.id AND c.rang > 1;
+
+-- --- Contraintes ------------------------------------------------------------
 
 -- Abrégé d'une direction : « DCH » pour « Direction du Capital Humain ».
 ALTER TABLE org_units ADD COLUMN short_name text;

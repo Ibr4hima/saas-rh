@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   CreateOrgUnitInput,
@@ -76,6 +76,12 @@ export class OrgUnitsService {
             WHERE a.org_unit_id = ${t.orgUnits.id}
               AND a.validity @> CURRENT_DATE
               AND e.status = 'active')`,
+          // Tout ce qui devra être réaffecté en cas de dissolution : sans
+          // filtre de statut, et affectations futures comprises.
+          openAssignments: sql<number>`(
+            SELECT count(*)::int FROM assignments a
+            WHERE a.org_unit_id = ${t.orgUnits.id}
+              AND (upper_inf(a.validity) OR upper(a.validity) > CURRENT_DATE))`,
         })
         .from(t.orgUnits)
         .leftJoin(t.employees, eq(t.employees.id, t.orgUnits.managerEmployeeId))
@@ -93,6 +99,7 @@ export class OrgUnitsService {
         managerName: r.managerGivenName ? `${r.managerGivenName} ${r.managerFamilyName}` : null,
         managerPosition: r.managerPosition,
         headcount: r.headcount,
+        openAssignments: r.openAssignments,
       }));
     });
   }
@@ -144,48 +151,98 @@ export class OrgUnitsService {
         );
       }
 
-      const members = await tx
-        .select({ id: t.assignments.id, positionTitle: t.assignments.positionTitle })
+      // Une offre de recrutement ouverte annoncerait une direction disparue —
+      // y compris sur la page publique de candidature.
+      const postings = await tx
+        .select({ title: t.jobPostings.title })
+        .from(t.jobPostings)
+        .where(and(eq(t.jobPostings.orgUnitId, id), sql`${t.jobPostings.status} <> 'closed'`));
+      if (postings.length > 0) {
+        problem(
+          422,
+          'org.unit_has_job_postings',
+          'Des offres de recrutement visent cette unité',
+          `Clôturez ou rattachez ailleurs : ${postings.map((j) => j.title).join(', ')}.`,
+        );
+      }
+
+      // TOUTES les affectations qui n'ont pas pris fin, quel que soit le statut
+      // de l'employé : une personne suspendue ou une affectation qui démarre le
+      // mois prochain resterait sinon rattachée à une unité fantôme.
+      const openAssignments = await tx
+        .select({
+          id: t.assignments.id,
+          employeeId: t.assignments.employeeId,
+          positionTitle: t.assignments.positionTitle,
+          startsLater: sql<boolean>`lower(${t.assignments.validity}) > CURRENT_DATE`,
+        })
         .from(t.assignments)
-        .innerJoin(t.employees, eq(t.employees.id, t.assignments.employeeId))
         .where(
           and(
             eq(t.assignments.orgUnitId, id),
-            sql`${t.assignments.validity} @> CURRENT_DATE`,
-            eq(t.employees.status, 'active'),
+            // Parenthèses OBLIGATOIRES : AND lie plus fort que OR, et sans
+            // elles la condition capturait les affectations des AUTRES unités
+            // dont la validité court encore.
+            sql`(upper_inf(${t.assignments.validity}) OR upper(${t.assignments.validity}) > CURRENT_DATE)`,
           ),
         );
 
-      if (members.length > 0) {
+      if (openAssignments.length > 0) {
         if (!input.reassignTo) {
           problem(
             422,
             'org.reassign_required',
             'Ces employés doivent être réaffectés',
-            `${members.length} personne(s) travaillent dans cette unité : indiquez où les affecter.`,
+            `${openAssignments.length} affectation(s) pointent sur cette unité : indiquez où les rattacher.`,
           );
         }
         if (input.reassignTo === id) {
           problem(422, 'org.reassign_to_self', 'Impossible de réaffecter vers l’unité supprimée');
         }
         await this.requireUnit(tx, input.reassignTo, 'org.reassign_target_not_found');
-        // Le rattachement suit l'unité : on déplace l'affectation courante sans
-        // rompre sa validité — l'employé n'a pas changé de poste, c'est la
-        // structure qui disparaît sous lui.
-        await tx
-          .update(t.assignments)
-          .set({ orgUnitId: input.reassignTo })
-          .where(
-            and(eq(t.assignments.orgUnitId, id), sql`${t.assignments.validity} @> CURRENT_DATE`),
-          );
+
+        const today = new Date().toISOString().slice(0, 10);
+        for (const a of openAssignments) {
+          if (a.startsLater) {
+            // Pas encore commencée : rien à historiser, on la redirige.
+            await tx
+              .update(t.assignments)
+              .set({ orgUnitId: input.reassignTo })
+              .where(eq(t.assignments.id, a.id));
+            continue;
+          }
+          // Affectation en cours : on la CLÔT aujourd'hui et on en ouvre une
+          // nouvelle sur l'unité d'accueil, comme une mutation ordinaire.
+          // Réécrire org_unit_id ferait dire au dossier que l'employé était
+          // dans l'unité d'accueil depuis son arrivée — l'historique mentirait.
+          await tx
+            .update(t.assignments)
+            .set({ validity: sql`daterange(lower(${t.assignments.validity}), ${today}::date)` })
+            .where(eq(t.assignments.id, a.id));
+          await tx.insert(t.assignments).values({
+            id: uuidv7(),
+            tenantId: user.tenantId,
+            employeeId: a.employeeId,
+            orgUnitId: input.reassignTo,
+            positionTitle: a.positionTitle,
+            validity: `[${today},)`,
+          });
+        }
       }
 
-      // Les affectations passées gardent leur unité : l'historique doit rester
+      // Les affectations closes gardent leur unité : l'historique doit rester
       // lisible (« était au Service X, dissous depuis »).
       await tx
         .update(t.orgUnits)
         .set({ deletedAt: new Date(), managerEmployeeId: null, updatedAt: new Date() })
         .where(eq(t.orgUnits.id, id));
+
+      // Invariant relu sur l'état final : dissoudre l'unité d'un chef pour le
+      // faire atterrir ailleurs est exactement ce que la mutation refuse.
+      await this.assertManagersStillInScope(
+        tx,
+        openAssignments.map((a) => a.employeeId),
+      );
     });
   }
 
@@ -243,6 +300,28 @@ export class OrgUnitsService {
           await this.assertManagerEligible(tx, id, input.managerEmployeeId);
         }
 
+        // Re-rattacher une unité déplace TOUT son sous-arbre : un responsable
+        // affecté dedans peut se retrouver hors de l'unité qu'il dirige, sans
+        // qu'aucune mutation d'employé n'ait eu lieu. Même invariant, autre porte.
+        // Les employés concernés sont relevés AVANT le déplacement, l'invariant
+        // est vérifié APRÈS — sur l'arbre réel, pas sur une simulation.
+        const deplaces =
+          input.parentId !== undefined && input.parentId !== before!.parentId
+            ? (
+                await tx.execute<{ employee_id: string }>(sql`
+                  WITH RECURSIVE subtree AS (
+                    SELECT id FROM org_units WHERE id = ${id} AND deleted_at IS NULL
+                    UNION ALL
+                    SELECT o.id FROM org_units o
+                    JOIN subtree s ON o.parent_id = s.id
+                    WHERE o.deleted_at IS NULL
+                  )
+                  SELECT DISTINCT a.employee_id FROM assignments a
+                  WHERE a.org_unit_id IN (SELECT id FROM subtree)
+                    AND a.validity @> CURRENT_DATE`)
+              ).rows.map((r) => r.employee_id)
+            : [];
+
         const changes: Partial<typeof t.orgUnits.$inferInsert> = {};
         if (input.name !== undefined) changes.name = input.name;
         if (input.unitType !== undefined) changes.unitType = input.unitType;
@@ -254,6 +333,7 @@ export class OrgUnitsService {
         if (Object.keys(changes).length === 0) return;
         changes.updatedAt = new Date();
         await tx.update(t.orgUnits).set(changes).where(eq(t.orgUnits.id, id));
+        await this.assertManagersStillInScope(tx, deplaces);
       });
     } catch (err) {
       if (pgCode(err) === '23505') mapUniqueViolation(err);
@@ -344,6 +424,54 @@ export class OrgUnitsService {
   }
 
   /**
+   * Contrôle d'INVARIANT, joué APRÈS l'écriture : chaque employé cité qui
+   * dirige une unité doit toujours travailler dedans (ou en dessous).
+   *
+   * Vérifier avant l'écriture demandait de simuler l'arbre futur — et c'est
+   * précisément ce qui a laissé passer le re-rattachement : le sous-arbre lu
+   * était encore l'ancien. On écrit, on relit l'état réel, et on annule la
+   * transaction si l'invariant est rompu. La règle « un responsable travaille
+   * dans l'unité qu'il dirige » porte sur le COUPLE (affectation, unité) : la
+   * tenir seulement quand on mute l'employé laissait deux portes ouvertes —
+   * dissoudre son unité, ou re-rattacher celle-ci ailleurs.
+   */
+  private async assertManagersStillInScope(tx: Tx, employeeIds: string[]): Promise<void> {
+    if (employeeIds.length === 0) return;
+    const rompus = await tx.execute<{ given_name: string; family_name: string; name: string }>(sql`
+      WITH heads AS (
+        SELECT o.id AS unit_id, o.name, o.manager_employee_id AS employee_id
+        FROM org_units o
+        WHERE o.manager_employee_id IN ${employeeIds} AND o.deleted_at IS NULL
+      )
+      SELECT p.given_name, p.family_name, h.name
+      FROM heads h
+      JOIN employees e ON e.id = h.employee_id
+      JOIN persons p ON p.id = e.person_id
+      WHERE NOT EXISTS (
+        WITH RECURSIVE subtree AS (
+          SELECT id FROM org_units WHERE id = h.unit_id AND deleted_at IS NULL
+          UNION ALL
+          SELECT o.id FROM org_units o
+          JOIN subtree s ON o.parent_id = s.id
+          WHERE o.deleted_at IS NULL
+        )
+        SELECT 1 FROM assignments a
+        WHERE a.employee_id = h.employee_id
+          AND a.validity @> CURRENT_DATE
+          AND a.org_unit_id IN (SELECT id FROM subtree)
+      )`);
+    const [rompu] = rompus.rows;
+    if (rompu) {
+      problem(
+        422,
+        'org.manager_would_leave_unit',
+        `${rompu.given_name} ${rompu.family_name} dirige « ${rompu.name} »`,
+        'Ce changement le sortirait de son unité. Désignez d’abord un successeur.',
+      );
+    }
+  }
+
+  /**
    * Un responsable doit être un employé ACTIF, et travailler dans l'unité qu'il
    * dirige ou dans une unité en dessous. Sans quoi l'organigramme affiche un
    * chef parti ailleurs — ou licencié.
@@ -412,6 +540,47 @@ export class OrgUnitsService {
         )
         .orderBy(asc(t.persons.familyName), asc(t.persons.givenName));
       return rows;
+    });
+  }
+
+  /**
+   * Qui peut diriger cette unité : les employés ACTIFS affectés à l'unité ou à
+   * une unité en dessous. Exactement l'ensemble qu'accepte assertManagerEligible
+   * — le formulaire ne doit pas proposer ce que le serveur refusera.
+   */
+  async eligibleManagers(user: SessionUser, id: string): Promise<OrgUnitMember[]> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await this.requireUnit(tx, id, 'org.unit_not_found');
+      const rows = await tx.execute<{
+        employee_id: string;
+        employee_number: string;
+        given_name: string;
+        family_name: string;
+        position_title: string | null;
+      }>(sql`
+        WITH RECURSIVE subtree AS (
+          SELECT id FROM org_units WHERE id = ${id} AND deleted_at IS NULL
+          UNION ALL
+          SELECT o.id FROM org_units o
+          JOIN subtree s ON o.parent_id = s.id
+          WHERE o.deleted_at IS NULL
+        )
+        SELECT e.id AS employee_id, e.employee_number, p.given_name, p.family_name,
+               a.position_title
+        FROM assignments a
+        JOIN employees e ON e.id = a.employee_id
+        JOIN persons p ON p.id = e.person_id
+        WHERE a.org_unit_id IN (SELECT id FROM subtree)
+          AND a.validity @> CURRENT_DATE
+          AND e.status = 'active'
+        ORDER BY p.family_name, p.given_name`);
+      return rows.rows.map((r) => ({
+        employeeId: r.employee_id,
+        employeeNumber: r.employee_number,
+        givenName: r.given_name,
+        familyName: r.family_name,
+        positionTitle: r.position_title,
+      }));
     });
   }
 

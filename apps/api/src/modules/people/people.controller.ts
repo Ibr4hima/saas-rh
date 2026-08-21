@@ -138,6 +138,13 @@ export class PeopleController {
     await this.orgUnits.remove(req.sessionUser, id, query);
   }
 
+  /** Qui peut diriger cette unité : le sous-arbre actif, rien de plus. */
+  @Get('org-units/:id/eligible-managers')
+  @Roles('admin', 'hr')
+  eligibleManagers(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.orgUnits.eligibleManagers(req.sessionUser, id);
+  }
+
   /** Annuaire interne : visible par tous les rôles (« qui se référer »). */
   @Get('org-units/:id/members')
   orgUnitMembers(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {

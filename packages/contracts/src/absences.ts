@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { membershipRoleSchema } from './index';
+import { membershipRoleSchema } from './core';
 
 /** Contrats du module « congés & absences » (Lot 1). */
 

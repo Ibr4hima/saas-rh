@@ -161,6 +161,9 @@ export class PeopleService {
           });
         }
         if (input.assignment) {
+          if (input.assignment.orgUnitId) {
+            await this.requireLiveOrgUnit(tx, input.assignment.orgUnitId);
+          }
           await tx.insert(t.assignments).values({
             id: uuidv7(),
             tenantId: user.tenantId,
@@ -328,6 +331,25 @@ export class PeopleService {
             .where(eq(t.persons.id, employee.personId));
         }
         if (input.employee && Object.keys(input.employee).length > 0) {
+          // Un responsable dont le dossier se ferme resterait à la tête de son
+          // unité : l'organigramme désignerait un chef parti. Même arbitrage que
+          // pour la mutation — la RH nomme un successeur, la plateforme ne
+          // décapite pas une unité toute seule.
+          if (input.employee.status && input.employee.status !== 'active') {
+            const [headed] = await tx
+              .select({ name: t.orgUnits.name })
+              .from(t.orgUnits)
+              .where(and(eq(t.orgUnits.managerEmployeeId, id), isNull(t.orgUnits.deletedAt)))
+              .limit(1);
+            if (headed) {
+              problem(
+                422,
+                'people.manager_cannot_be_closed',
+                `Cet employé dirige « ${headed.name} »`,
+                'Désignez d’abord un nouveau responsable pour cette unité.',
+              );
+            }
+          }
           await tx.update(t.employees).set(input.employee).where(eq(t.employees.id, id));
         }
       });
@@ -344,10 +366,32 @@ export class PeopleService {
    * courante à startDate (borne exclusive) et ouvre la nouvelle [startDate,).
    * Jamais d'UPDATE destructif : l'historique reste intégralement lisible.
    */
+  /**
+   * Une affectation ne peut viser qu'une unité VIVANTE. Seule la clé étrangère
+   * protégeait : elle accepte une unité dissoute, ce qui annulait la garantie
+   * de la dissolution (les membres réaffectés y revenaient aussitôt).
+   */
+  private async requireLiveOrgUnit(tx: Tx, orgUnitId: string): Promise<void> {
+    const [unit] = await tx
+      .select({ id: t.orgUnits.id })
+      .from(t.orgUnits)
+      .where(and(eq(t.orgUnits.id, orgUnitId), isNull(t.orgUnits.deletedAt)))
+      .limit(1);
+    if (!unit) {
+      problem(
+        422,
+        'people.org_unit_not_found',
+        'Cette unité n’existe pas ou a été dissoute',
+        'Choisissez une unité de l’organigramme actuel.',
+      );
+    }
+  }
+
   async newAssignment(user: SessionUser, id: string, input: NewAssignmentInput): Promise<void> {
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
         await this.requireEmployee(tx, id);
+        if (input.orgUnitId) await this.requireLiveOrgUnit(tx, input.orgUnitId);
 
         const [current] = await tx
           .select({
