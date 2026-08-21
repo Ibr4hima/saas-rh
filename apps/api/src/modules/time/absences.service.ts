@@ -20,6 +20,7 @@ import { MAX_JUSTIFICATIF_BYTES } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
+import { holidayDedupeKey } from '../notifications/notifications.service';
 import { countWorkdays } from './workdays';
 
 const DEFAULT_TYPES: Array<
@@ -130,9 +131,21 @@ export class AbsencesService {
   }
 
   async deleteHoliday(user: SessionUser, id: string): Promise<void> {
-    await this.db.withTenant(ctxOf(user), (tx) =>
-      tx.delete(t.holidays).where(eq(t.holidays.id, id)),
-    );
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const [row] = await tx
+        .select({ day: t.holidays.day })
+        .from(t.holidays)
+        .where(eq(t.holidays.id, id))
+        .limit(1);
+      await tx.delete(t.holidays).where(eq(t.holidays.id, id));
+      if (!row) return;
+      // Le rappel déjà parti affirmerait qu'un jour ouvré est chômé : on le
+      // retire de toutes les boîtes. Les fêtes mobiles se recalent souvent
+      // pendant la fenêtre J−2, quand la notification vient d'être envoyée.
+      await tx
+        .delete(t.notifications)
+        .where(eq(t.notifications.dedupeKey, holidayDedupeKey(row.day)));
+    });
   }
 
   // ---------- Circuit d'approbation ----------

@@ -70,6 +70,11 @@ jamais.
 - Le statut `delivered` reste **défini en lecture** pour les demandes
   closes avant cette révision ; aucune transition ne permet plus de le
   poser.
+- La file RH affiche les demandes « prêtes à retirer » dans une section
+  **dédiée et jamais tronquée**, triée du plus ancien au plus récent : puisque
+  personne ne vient clore la demande, un document annoncé et jamais retiré doit
+  remonter de lui-même. L'ancienneté (« prête il y a 12 jours ») est montrée
+  **des deux côtés** — l'employé est le seul à pouvoir aller le chercher.
 - Une vraie preuve de remise (décharge signée au retrait) relève du papier,
   pas de l'application ; si la DCH la veut numérisée un jour, ce sera une
   pièce déposée sur le dossier, pas un clic dans une file.

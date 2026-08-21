@@ -12,27 +12,63 @@
  * distante sans confirmation explicite du nom de la base.
  */
 import { Client } from 'pg';
+import { parse } from 'pg-connection-string';
 import { loadEnv } from '../config/env';
 import { runMigrations } from './migrate';
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '', 'db', 'postgres']);
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'db', 'postgres']);
 
-/** Refuse tout ce qui n'est pas manifestement une base jetable. */
-function assertDisposable(url: string, nodeEnv: string): void {
+/**
+ * Refuse tout ce qui n'est pas manifestement une base jetable.
+ *
+ * Le garde DOIT lire la chaîne de connexion avec le MÊME analyseur que celui
+ * qui se connectera — `pg-connection-string`, celui de `pg`. Avec `new URL()`,
+ * les deux divergeaient : `postgresql:///teranga?host=prod.example.com` donne
+ * un `hostname` vide (donc « local » pour le garde) alors que pg honore le
+ * paramètre `host=` et ouvre la base de PRODUCTION. Cette forme n'a rien
+ * d'exotique — c'est celle des connecteurs à socket, et celle vers laquelle on
+ * bascule dès qu'un mot de passe contient un caractère qui casse l'autorité
+ * d'une URL. Un seul analyseur, donc, et un refus par défaut.
+ */
+export function assertDisposable(url: string, nodeEnv: string): void {
   if (nodeEnv === 'production') {
     throw new Error('db:reset est interdit quand NODE_ENV=production.');
   }
-  let parsed: URL;
+
+  let host: string;
+  let dbName: string;
   try {
-    parsed = new URL(url);
+    const parsed = parse(url);
+    // Crochets d'une adresse IPv6, casse de l'hôte : normalisés ici pour que la
+    // comparaison à LOCAL_HOSTS ne dépende pas de l'écriture de l'URL.
+    host = (parsed.host ?? '')
+      .trim()
+      .replace(/^\[|\]$/g, '')
+      .toLowerCase();
+    dbName = parsed.database ?? '';
   } catch {
     throw new Error(
-      "DATABASE_URL n'est pas une URL exploitable : db:reset refuse d'agir à l'aveugle.",
+      "DATABASE_URL n'est pas une chaîne de connexion exploitable : db:reset " +
+        "refuse d'agir à l'aveugle.",
     );
   }
-  const host = parsed.hostname;
-  const dbName = parsed.pathname.replace(/^\//, '');
+
+  if (!dbName) {
+    throw new Error("db:reset ne sait pas quelle base serait détruite : il s'arrête.");
+  }
+
+  // Socket unix : le chemin désigne un serveur local, pas un hôte réseau.
+  if (host.startsWith('/')) return;
   if (LOCAL_HOSTS.has(host)) return;
+
+  // Hôte indéterminé : on ÉCHOUE FERMÉ. Ne pas savoir où l'on pointe n'est pas
+  // une raison de supposer que c'est chez soi.
+  if (host === '') {
+    throw new Error(
+      "db:reset ne parvient pas à déterminer l'hôte visé par cette chaîne de " +
+        'connexion. Il refuse de détruire une base dont il ignore l’emplacement.',
+    );
+  }
 
   // Base distante : on exige que l'appelant écrive lui-même le nom de la base.
   if (process.env.DB_RESET_CONFIRM !== dbName) {
@@ -53,6 +89,10 @@ export async function resetDatabase(databaseUrl?: string): Promise<void> {
   try {
     // Tables d'abord (CASCADE emporte vues, index, contraintes et triggers),
     // puis les fonctions restées orphelines (audit_row…).
+    // Même règle que les migrations : on ne s'installe pas dans une attente de
+    // verrou silencieuse. Un serveur de dev qui sonde /notifications tient des
+    // verrous ; mieux vaut échouer vite avec un message qu'attendre sans borne.
+    await client.query(`SET lock_timeout = '5s'`);
     await client.query(`
       DO $$
       DECLARE r record;

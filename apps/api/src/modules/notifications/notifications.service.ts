@@ -29,9 +29,19 @@ function frDate(iso: string, withWeekday = false): string {
   });
 }
 
-/** Clé d'idempotence d'un rappel de férié, côté TypeScript. */
-export function holidayDedupeKey(holidayId: string, dayIso: string): string {
-  return `holiday:${holidayId}:${dayIso}`;
+/**
+ * Clé d'idempotence d'un rappel de férié : le JOUR, pas l'identifiant.
+ *
+ * `holidays` porte UNIQUE (tenant_id, day) : un jour désigne donc un férié et
+ * un seul. Cette clé résiste à la façon dont on corrige un férié — l'API n'a
+ * pas de mise à jour, donc rectifier un libellé passe par suppression puis
+ * recréation, avec un identifiant NEUF. Clé sur l'identifiant, cela produisait
+ * un second rappel pour le même jour ; clé sur le jour, la correction reste
+ * silencieuse pour ceux déjà prévenus. Le déplacement d'une fête mobile est
+ * traité à part : la suppression du férié retire ses rappels.
+ */
+export function holidayDedupeKey(dayIso: string): string {
+  return `holiday:${dayIso}`;
 }
 
 /**
@@ -39,7 +49,7 @@ export function holidayDedupeKey(holidayId: string, dayIso: string): string {
  * notifié à cet utilisateur ? ». Corrélée à la table `holidays` de la requête
  * englobante. Exportée UNIQUEMENT pour être testée contre un vrai Postgres.
  *
- * ATTENTION — les colonnes de la table externe sont qualifiées À LA MAIN.
+ * ATTENTION — la colonne de la table externe est qualifiée À LA MAIN.
  * Drizzle rend `${t.holidays.id}` en identifiant NU (`"id"`) ; à l'intérieur de
  * ce sous-SELECT sur `notifications`, la résolution de nom de Postgres consulte
  * d'abord la portée interne, donc `"id"` se lierait à `notifications.id` (qui
@@ -55,7 +65,7 @@ export function holidayAlreadySentSql(userId: string) {
     SELECT 1 FROM ${t.notifications} n
     WHERE n.recipient_user_id = ${userId}
       AND n.dedupe_key =
-        'holiday:' || holidays.id::text || ':' || holidays.day::text
+        'holiday:' || holidays.day::text
   )`;
 }
 
@@ -271,9 +281,7 @@ export class NotificationsService {
           title: `Jour férié à venir : ${h.label}`,
           body: `${frDate(h.day, true)} est chômé — pensez-y pour vos rendez-vous et vos échéances.`,
           link: '/calendrier',
-          // La date fait partie de la clé : une fête mobile recalée produit un
-          // nouveau rappel au lieu d'en rester à l'ancienne date.
-          dedupeKey: holidayDedupeKey(h.id, h.day),
+          dedupeKey: holidayDedupeKey(h.day),
         })),
       )
       .onConflictDoNothing();

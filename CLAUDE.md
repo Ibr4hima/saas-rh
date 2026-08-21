@@ -9,6 +9,7 @@ SaaS de gestion RH et de paie pour l'Afrique de l'Ouest francophone (nom de code
 pnpm install              # installe tout le monorepo
 pnpm db:up                # démarre Postgres 16 (docker compose)
 pnpm db:migrate           # applique les migrations SQL (apps/api/src/db/sql)
+pnpm db:reset             # DÉTRUIT la base puis remigre à neuf (dev/CI seulement)
 pnpm dev                  # api (:3001) + web (:3000)
 pnpm build                # build de tous les paquets (ordre géré par turbo)
 pnpm typecheck            # tsc --noEmit partout
@@ -16,6 +17,12 @@ pnpm test                 # tests (le test RLS exige Postgres démarré + migré
 ```
 
 Copier `.env.example` vers `.env` à la racine (l'API le charge depuis la racine du repo).
+
+`db:reset` est destructeur : il refuse toute base non locale tant que
+`DB_RESET_CONFIRM=<nom_de_la_base>` n'est pas fourni, et refuse toujours si
+`NODE_ENV=production`. Il analyse la chaîne de connexion avec le parseur de `pg`
+lui-même : un hôte passé en `?host=` est vu comme distant, et un hôte
+indéterminé fait échouer le script plutôt que de le laisser passer.
 
 ## Structure
 

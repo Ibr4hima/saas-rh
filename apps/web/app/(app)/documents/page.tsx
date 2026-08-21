@@ -43,7 +43,14 @@ export default function DocumentRequestsPage() {
 
   const items = requests.data ?? [];
   const open = items.filter((r) => OPEN.includes(r.status));
-  const closed = items.filter((r) => !OPEN.includes(r.status));
+  // « Prête » a sa propre section, JAMAIS tronquée et triée du plus ancien au
+  // plus récent. C'est la contrepartie du retrait de « remise » : puisque
+  // personne ne vient clore la demande, un document annoncé et jamais retiré
+  // doit remonter tout seul. Noyé dans un historique plafonné, il disparaissait.
+  const ready = items
+    .filter((r) => r.status === 'ready')
+    .sort((a, b) => (a.readyAt ?? '').localeCompare(b.readyAt ?? ''));
+  const closed = items.filter((r) => !OPEN.includes(r.status) && r.status !== 'ready');
   // La liste réellement rendue : c'est ELLE qui décide de l'état vide, pas le
   // total. Depuis que « prête » sort de la file, « tout est traité » est le cas
   // NORMAL — un cadre blanc muet y serait la vue la plus fréquente de la page.
@@ -92,7 +99,7 @@ export default function DocumentRequestsPage() {
                   ? "Les demandes des employés apparaîtront ici dès qu'ils en formuleront une."
                   : status
                     ? 'Changez de filtre pour voir les autres demandes.'
-                    : 'Aucune demande en attente de votre part. Les demandes closes sont plus bas.'
+                    : 'Aucune demande en attente de votre part. Les autres sont plus bas.'
               }
             />
           ) : (
@@ -105,13 +112,30 @@ export default function DocumentRequestsPage() {
         </CardContent>
       </Card>
 
+      {!status && ready.length > 0 ? (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Prêtes à retirer</CardTitle>
+            <p className="text-sm text-ink-muted">
+              L&apos;employé a été prévenu — les plus anciennes d&apos;abord. Relancez-le si un
+              document attend depuis trop longtemps.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex flex-col">
+              {ready.map((r) => (
+                <DocumentRequestRow key={r.id} request={r} showEmployee />
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {!status && closed.length > 0 ? (
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>Traitées</CardTitle>
-            <p className="text-sm text-ink-muted">
-              Plus rien à faire de votre côté — l&apos;employé a été prévenu.
-            </p>
+            <p className="text-sm text-ink-muted">Demandes closes — rien à faire de votre côté.</p>
           </CardHeader>
           <CardContent>
             <ul className="flex flex-col">

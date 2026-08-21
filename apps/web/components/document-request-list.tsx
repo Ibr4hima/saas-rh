@@ -97,8 +97,11 @@ export function DocumentRequestRow({
               À retirer auprès de {r.pickupContact}
               {r.hrMessage ? ` — ${r.hrMessage}` : ''}
               {/* L'ancienneté rend visible un document annoncé prêt et jamais
-                  venu chercher : sans elle il sortirait du radar pour de bon. */}
-              {showEmployee && r.readyAt ? (
+                  venu chercher. Affichée des DEUX côtés : la RH ne peut plus
+                  rien constater une fois le document confié, et l'employé est
+                  justement le seul à pouvoir aller le retirer — le lui cacher
+                  reviendrait à ne prévenir personne. */}
+              {r.readyAt ? (
                 <span className="text-ink-muted"> · prête {timeAgo(r.readyAt)}</span>
               ) : null}
             </p>
@@ -163,7 +166,6 @@ export function DocumentRequestRow({
                 setPickupContact(r.pickupContact ?? '');
                 // Pre-rempli comme le contact : le panneau montre exactement ce
                 // que l'employe verra, et vider le champ efface la precision.
-                setReadyMessage(r.hrMessage ?? '');
                 setReadyMessage(r.hrMessage ?? '');
                 setReadyOpen(!readyOpen);
               }}

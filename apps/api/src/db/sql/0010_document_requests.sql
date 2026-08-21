@@ -9,6 +9,15 @@
 --   received → processing → ready → delivered
 --                    ↘ rejected (avec motif)
 --
+-- ATTENTION — circuit RÉVISÉ depuis (ADR-0012, révision du 2026-08-20) : le
+-- statut « delivered » n'est plus jamais posé, « ready » est l'état terminal.
+-- La RH confie le document à un tiers et n'a aucun moyen de savoir quand
+-- l'employé passe le récupérer ; un statut que personne ne pose au bon moment
+-- produit une traçabilité fausse. La colonne delivered_at et la valeur
+-- 'delivered' du CHECK subsistent en LECTURE pour les demandes closes avant la
+-- révision — à retirer par une migration de contraction quand elles auront
+-- disparu. Cette migration n'est pas modifiée : elle est déjà appliquée.
+--
 -- Une demande porte 1..N types de documents (tableau doc_types) : l'employé
 -- coche ce dont il a besoin en une fois, la RH traite le lot.
 -- Expand-only.
