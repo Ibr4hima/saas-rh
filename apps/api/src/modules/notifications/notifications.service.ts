@@ -29,6 +29,36 @@ function frDate(iso: string, withWeekday = false): string {
   });
 }
 
+/** Clé d'idempotence d'un rappel de férié, côté TypeScript. */
+export function holidayDedupeKey(holidayId: string, dayIso: string): string {
+  return `holiday:${holidayId}:${dayIso}`;
+}
+
+/**
+ * Sous-requête d'idempotence des rappels de fériés : « ce férié a-t-il déjà été
+ * notifié à cet utilisateur ? ». Corrélée à la table `holidays` de la requête
+ * englobante. Exportée UNIQUEMENT pour être testée contre un vrai Postgres.
+ *
+ * ATTENTION — les colonnes de la table externe sont qualifiées À LA MAIN.
+ * Drizzle rend `${t.holidays.id}` en identifiant NU (`"id"`) ; à l'intérieur de
+ * ce sous-SELECT sur `notifications`, la résolution de nom de Postgres consulte
+ * d'abord la portée interne, donc `"id"` se lierait à `notifications.id` (qui
+ * existe) au lieu de `holidays.id` : le garde-fou serait TOUJOURS faux et cet
+ * endpoint, sondé par chaque session, retenterait une écriture à chaque appel.
+ * `"day"` ne retomberait sur la table externe que par chance, `notifications`
+ * n'ayant pas cette colonne — un hasard sur lequel on ne s'appuie pas.
+ * Ne pas remplacer par des interpolations Drizzle. Couvert par
+ * tests/holiday-reminders.spec.ts.
+ */
+export function holidayAlreadySentSql(userId: string) {
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM ${t.notifications} n
+    WHERE n.recipient_user_id = ${userId}
+      AND n.dedupe_key =
+        'holiday:' || holidays.id::text || ':' || holidays.day::text
+  )`;
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -196,12 +226,7 @@ export class NotificationsService {
     // LUE EN BASE (même horloge que le CURRENT_DATE du filtre) et le rappel
     // éventuellement déjà envoyé. Cet endpoint est pollé par chaque session
     // ouverte : en régime établi il ne doit produire AUCUNE écriture.
-    const alreadySent = sql<boolean>`EXISTS (
-      SELECT 1 FROM ${t.notifications} n
-      WHERE n.recipient_user_id = ${userId}
-        AND n.dedupe_key =
-          'holiday:' || ${t.holidays.id}::text || ':' || ${t.holidays.day}::text
-    )`;
+    const alreadySent = holidayAlreadySentSql(userId);
     const rows = await tx
       .select({
         id: t.holidays.id,
@@ -248,7 +273,7 @@ export class NotificationsService {
           link: '/calendrier',
           // La date fait partie de la clé : une fête mobile recalée produit un
           // nouveau rappel au lieu d'en rester à l'ancienne date.
-          dedupeKey: `holiday:${h.id}:${h.day}`,
+          dedupeKey: holidayDedupeKey(h.id, h.day),
         })),
       )
       .onConflictDoNothing();

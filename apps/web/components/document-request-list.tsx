@@ -161,6 +161,9 @@ export function DocumentRequestRow({
               variant="ghost"
               onClick={() => {
                 setPickupContact(r.pickupContact ?? '');
+                // Pre-rempli comme le contact : le panneau montre exactement ce
+                // que l'employe verra, et vider le champ efface la precision.
+                setReadyMessage(r.hrMessage ?? '');
                 setReadyMessage(r.hrMessage ?? '');
                 setReadyOpen(!readyOpen);
               }}

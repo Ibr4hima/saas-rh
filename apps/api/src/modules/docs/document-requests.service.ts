@@ -215,7 +215,15 @@ export class DocumentRequestsService {
         handledByUserId: user.userId,
         updatedAt: now,
       };
-      if (input.message?.trim()) changes.hrMessage = input.message.trim();
+      if (input.status === 'ready') {
+        // Le panneau « prête » est affiche a la RH pre-rempli avec la valeur
+        // courante : ce qu'elle y laisse fait donc FOI, y compris un champ vidé.
+        // Sans cela, corriger le point de retrait conserverait une précision
+        // devenue fausse (« bureau 204 » etait celui du contact precedent).
+        changes.hrMessage = input.message?.trim() || null;
+      } else if (input.message?.trim()) {
+        changes.hrMessage = input.message.trim();
+      }
       if (input.status === 'processing') changes.processingAt = now;
       if (input.status === 'ready') {
         // readyAt date la mise à disposition, pas la correction : une coquille
