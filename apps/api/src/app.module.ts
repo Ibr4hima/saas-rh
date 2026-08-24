@@ -4,6 +4,8 @@ import { DashboardController } from './modules/analytics/dashboard.controller';
 import { TenantDb } from './db/tenant-db';
 import { AuthController } from './modules/auth/auth.controller';
 import { DocumentRequestsController } from './modules/docs/document-requests.controller';
+import { ProfileChangesController } from './modules/profile/profile-changes.controller';
+import { ProfileChangesService } from './modules/profile/profile-changes.service';
 import { DocumentRequestsService } from './modules/docs/document-requests.service';
 import { EmployeeDocumentsController } from './modules/docs/employee-documents.controller';
 import { EmployeeDocumentsService } from './modules/docs/employee-documents.service';
@@ -44,6 +46,7 @@ import { AbsencesService } from './modules/time/absences.service';
     DocumentsController,
     EmployeeDocumentsController,
     DocumentRequestsController,
+    ProfileChangesController,
     NotificationsController,
     RecruitmentController,
     PublicJobsController,
@@ -61,6 +64,7 @@ import { AbsencesService } from './modules/time/absences.service';
     AttestationService,
     EmployeeDocumentsService,
     DocumentRequestsService,
+    ProfileChangesService,
     NotificationsService,
     JobsService,
     ApplyService,

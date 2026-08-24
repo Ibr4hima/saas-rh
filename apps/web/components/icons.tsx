@@ -142,3 +142,13 @@ export function IconBell(props: IconProps) {
     </Icon>
   );
 }
+
+export function IconIdCard(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <circle cx="8.5" cy="11" r="2" />
+      <path d="M5 16c.6-1.4 2-2.2 3.5-2.2S11.4 14.6 12 16M14.5 10h4M14.5 13.5h3" />
+    </Icon>
+  );
+}

@@ -1,19 +1,13 @@
 /** Libellés d'état civil, accordés selon le sexe de la personne. */
+import { maritalLabelsFor } from '@teranga/contracts';
 
 export const SEX_LABELS: Record<string, string> = {
   male: 'Masculin',
   female: 'Féminin',
 };
 
-export function maritalLabels(gender: string | null | undefined): Record<string, string> {
-  const suffix = gender === 'female' ? 'e' : gender === 'male' ? '' : '·e';
-  return {
-    single: 'Célibataire',
-    married: `Marié${suffix}`,
-    divorced: `Divorcé${suffix}`,
-    widowed: gender === 'female' ? 'Veuve' : gender === 'male' ? 'Veuf' : 'Veuf·ve',
-  };
-}
+/** Réexport : la définition vit dans les contrats, partagée avec le serveur. */
+export const maritalLabels = maritalLabelsFor;
 
 export const ID_DOCUMENT_LABELS: Record<string, string> = {
   cni: 'CNI',

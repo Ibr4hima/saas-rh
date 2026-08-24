@@ -127,6 +127,21 @@ export interface OrgUnitMember {
   positionTitle: string | null;
 }
 
+/**
+ * Libellés d'état civil accordés selon le sexe. Partagés parce que le serveur
+ * en a besoin lui aussi : il décrit « Célibataire → Mariée » dans les demandes
+ * de correction, et l'accord ne se devine pas côté client.
+ */
+export function maritalLabelsFor(gender: string | null | undefined): Record<string, string> {
+  const suffix = gender === 'female' ? 'e' : gender === 'male' ? '' : '·e';
+  return {
+    single: 'Célibataire',
+    married: `Marié${suffix}`,
+    divorced: `Divorcé${suffix}`,
+    widowed: gender === 'female' ? 'Veuve' : gender === 'male' ? 'Veuf' : 'Veuf·ve',
+  };
+}
+
 // ---------- Employé : création / mise à jour ----------
 
 export const idDocumentTypeSchema = z.enum(['cni', 'passport']);

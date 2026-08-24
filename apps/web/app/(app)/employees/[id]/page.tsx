@@ -31,6 +31,7 @@ import {
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { EmployeeDocumentsCard } from '../../../../components/employee-documents-card';
+import { ProfileChangeCard } from '../../../../components/profile-change-card';
 import { DocumentRequestRow } from '../../../../components/document-request-list';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
@@ -252,6 +253,9 @@ export default function EmployeePage() {
             </Table>
           )}
         </Card>
+
+        {/* En tête des cartes : c'est ce qui attend une décision de la RH. */}
+        {canSeeHistory ? <ProfileChangeCard employeeId={e.id} /> : null}
 
         {canSeeHistory ? <EmployeeDocumentsCard employeeId={e.id} /> : null}
 

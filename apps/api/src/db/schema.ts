@@ -80,6 +80,22 @@ export const orgUnits = pgTable('org_units', {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
+export const profileChangeRequests = pgTable('profile_change_requests', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  changes: jsonb('changes').notNull(),
+  previous: jsonb('previous').notNull(),
+  note: text('note'),
+  status: text('status').notNull(),
+  requestedByUserId: uuid('requested_by_user_id').notNull(),
+  handledByUserId: uuid('handled_by_user_id'),
+  hrMessage: text('hr_message'),
+  handledAt: timestamp('handled_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const persons = pgTable('persons', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),

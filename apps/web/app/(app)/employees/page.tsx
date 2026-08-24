@@ -23,16 +23,6 @@ import {
 import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
 
-/**
- * La colonne « Statut » a été retirée du tableau. Le filtre, lui, reste — donc
- * la vue par défaut mêle présents et sortis. On garde une mention discrète sous
- * le nom pour les dossiers NON actifs : sans elle, rien ne les distingue.
- */
-const STATUT_NON_ACTIF: Record<string, string> = {
-  suspended: 'Suspendu',
-  terminated: 'Sorti',
-};
-
 export default function EmployeesPage() {
   const router = useRouter();
   const [search, setSearch] = useState('');
@@ -140,11 +130,6 @@ export default function EmployeesPage() {
                     <Td className="font-mono text-xs text-ink-muted">{e.employeeNumber}</Td>
                     <Td className="font-medium text-ink-strong">
                       {e.givenName} {e.familyName}
-                      {STATUT_NON_ACTIF[e.status] ? (
-                        <span className="ml-1.5 align-middle text-xs font-normal text-ink-muted">
-                          · {STATUT_NON_ACTIF[e.status]}
-                        </span>
-                      ) : null}
                       {e.workEmail ? (
                         <span className="block text-xs font-normal text-ink-muted">
                           {e.workEmail}

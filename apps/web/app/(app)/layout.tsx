@@ -10,6 +10,7 @@ import {
   IconCalendarDays,
   IconDashboard,
   IconFileText,
+  IconIdCard,
   IconLogout,
   IconNetwork,
   IconScale,
@@ -85,6 +86,7 @@ function personalNav(role: string): typeof NAV_GROUPS {
         { href: '/moi', label: 'Mon espace', icon: IconDashboard },
         { href: '/moi/conges', label: 'Mes congés', icon: IconCalendar },
         { href: '/moi/documents', label: 'Mes documents', icon: IconFileText },
+        { href: '/moi/informations', label: 'Mes informations', icon: IconIdCard },
         ...(role === 'manager'
           ? [
               {
