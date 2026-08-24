@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { CursorPage, EmployeeListItem, OrgUnitView } from '@teranga/contracts';
-import { orgUnitLabel } from '@teranga/contracts';
+import { nationalityLabel, orgUnitLabel } from '@teranga/contracts';
 import {
   Button,
   Card,
@@ -41,6 +41,11 @@ export default function NewEmployeePage() {
   const [maritalStatus, setMaritalStatus] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [birthCountry, setBirthCountry] = useState('');
+  // La nationalité SUIT le pays de naissance tant que la RH n'y a pas touché :
+  // c'est le cas courant. Dès qu'elle la choisit elle-même, on cesse de la
+  // remplacer — on naît malien et on peut être sénégalais.
+  const [nationality, setNationality] = useState(DEFAULT_COUNTRY);
+  const [nationalityTouched, setNationalityTouched] = useState(false);
   const [idType, setIdType] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [idIssuedOn, setIdIssuedOn] = useState('');
@@ -110,6 +115,7 @@ export default function NewEmployeePage() {
             gender: gender || undefined,
             birthDate: birthDate || undefined,
             birthPlace: birthCountry ? countryByCode(birthCountry)?.name : undefined,
+            nationality,
             maritalStatus: maritalStatus || undefined,
             nationalId: idType ? idNumber.trim() : undefined,
             idDocumentType: idType || undefined,
@@ -213,12 +219,35 @@ export default function NewEmployeePage() {
               <Select
                 id="birthCountry"
                 value={birthCountry}
-                onChange={(e) => setBirthCountry(e.target.value)}
+                onChange={(e) => {
+                  setBirthCountry(e.target.value);
+                  if (!nationalityTouched && e.target.value) setNationality(e.target.value);
+                }}
               >
                 <option value="">—</option>
                 {COUNTRIES.map((c) => (
                   <option key={c.code} value={c.code}>
                     {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label="Nationalité"
+              htmlFor="nationality"
+              hint="Reprend le pays de naissance ; modifiable si elle en diffère."
+            >
+              <Select
+                id="nationality"
+                value={nationality}
+                onChange={(e) => {
+                  setNationality(e.target.value);
+                  setNationalityTouched(true);
+                }}
+              >
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {nationalityLabel(c.code, gender) ?? c.name}
                   </option>
                 ))}
               </Select>

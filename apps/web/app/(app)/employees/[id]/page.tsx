@@ -31,6 +31,7 @@ import {
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { EmployeeDocumentsCard } from '../../../../components/employee-documents-card';
+import { nationalityLabel } from '@teranga/contracts';
 import { ProfileChangeCard } from '../../../../components/profile-change-card';
 import { DocumentRequestRow } from '../../../../components/document-request-list';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
@@ -168,7 +169,10 @@ export default function EmployeePage() {
                     : null
                 }
               />
-              <Info label="Nationalité" value={e.person.nationality} />
+              <Info
+                label="Nationalité"
+                value={nationalityLabel(e.person.nationality, e.person.gender)}
+              />
               <Info
                 label="Pièce d'identité"
                 value={

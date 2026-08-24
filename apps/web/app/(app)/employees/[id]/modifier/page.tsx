@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { nationalityLabel } from '@teranga/contracts';
 import type {
   CursorPage,
   EmployeeDetail,
@@ -251,13 +252,16 @@ function EditForm({ employee }: { employee: EmployeeDetail }) {
                 ))}
               </Select>
             </Field>
-            <Field label="Nationalité (code pays)" htmlFor="nationality">
-              <Input
-                id="nationality"
-                maxLength={2}
-                placeholder="SN"
-                {...form.register('nationality')}
-              />
+            <Field label="Nationalité" htmlFor="nationality">
+              {/* Le code pays reste la valeur stockée ; c'est le gentilé, accordé
+                  au sexe, qui s'affiche — « SN » ne veut rien dire sur une fiche. */}
+              <Select id="nationality" {...form.register('nationality')}>
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {nationalityLabel(c.code, watchedGender) ?? c.name}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field label="Pièce d'identité" htmlFor="idDocumentType">
               <Select id="idDocumentType" {...form.register('idDocumentType')}>
