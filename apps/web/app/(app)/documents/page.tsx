@@ -58,14 +58,6 @@ export default function DocumentRequestsPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-ink-strong">Demandes à traiter</h1>
-        <p className="text-sm text-ink-muted">
-          Les employés demandent leurs documents ici. Générez-les, imprimez, cachetez et signez,
-          puis indiquez où les retirer.
-        </p>
-      </div>
-
       <Card>
         <CardHeader className="flex items-center justify-between">
           <CardTitle>{status ? DOC_REQUEST_STATUS_LABELS[status as never] : 'À traiter'}</CardTitle>

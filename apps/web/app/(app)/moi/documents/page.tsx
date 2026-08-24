@@ -104,10 +104,6 @@ export default function MyDocumentsPage() {
         <Link href="/moi" className="text-sm text-ink-muted hover:text-ink">
           ← Mon espace
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink-strong">Mes documents</h1>
-        <p className="text-sm text-ink-muted">
-          Demandez vos documents administratifs et suivez leur traitement.
-        </p>
       </div>
 
       <div className="flex flex-col gap-6">

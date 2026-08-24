@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import { useState } from 'react';
 import type { AbsenceRequestView } from '@teranga/contracts';
 import {
@@ -65,22 +64,6 @@ export default function AbsencesPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-ink-strong">Absences &amp; Congés</h1>
-          <p className="text-sm text-ink-muted">
-            Demandes, visas et absences à venir de votre organisation.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {canManage ? (
-            <Link href="/absences/parametres">
-              <Button variant="secondary">Paramètres</Button>
-            </Link>
-          ) : null}
-        </div>
-      </div>
-
       {actionError ? (
         <p className="mb-4 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
           {actionError}

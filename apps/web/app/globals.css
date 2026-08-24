@@ -23,6 +23,11 @@
   --color-accent-hover: var(--tg-accent-hover);
   --color-accent-soft: var(--tg-accent-soft);
   --color-accent-text: var(--tg-accent-text);
+  --color-chrome-ink: var(--tg-chrome-ink);
+  --color-chrome-ink-muted: var(--tg-chrome-ink-muted);
+  --color-chrome-hover: var(--tg-chrome-hover);
+  --color-chrome-active: var(--tg-chrome-active);
+  --color-chrome-line: var(--tg-chrome-line);
   --color-success: var(--tg-success);
   --color-success-soft: var(--tg-success-soft);
   --color-warning: var(--tg-warning);
@@ -103,4 +108,15 @@ body {
   font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
   user-select: none;
+}
+
+/* Le chrome de l'application. Deux directions, un seul dégradé : la barre
+   latérale le descend, la barre supérieure le file vers la droite. Toutes deux
+   commencent à `chrome-from`, donc l'angle où elles se touchent est continu. */
+.chrome-aside {
+  background: linear-gradient(180deg, var(--tg-chrome-from) 0%, var(--tg-chrome-to) 100%);
+}
+
+.chrome-bar {
+  background: linear-gradient(90deg, var(--tg-chrome-from) 0%, var(--tg-chrome-to) 100%);
 }

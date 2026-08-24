@@ -150,7 +150,6 @@ export default function MyLeavesPage() {
         <Link href="/moi" className="text-sm text-ink-muted hover:text-ink">
           ← Mon espace
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink-strong">Mes congés</h1>
       </div>
 
       <div className="flex flex-col gap-6">

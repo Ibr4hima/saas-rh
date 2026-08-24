@@ -20,10 +20,12 @@ import manifest from './icon-font.manifest.json';
  * toutes lettres ; le garde de développement ci-dessous prévient avant.
  */
 export const ICON_NAMES = [
+  'add',
   'badge',
   'calendar_month',
   'chevron_right',
   'dashboard',
+  'edit',
   'event',
   'event_busy',
   'family_history',
@@ -38,6 +40,7 @@ export const ICON_NAMES = [
   'person_add',
   'rule',
   'schedule',
+  'settings',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];

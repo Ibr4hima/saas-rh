@@ -66,13 +66,7 @@ export default function CalendarPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-ink-strong">Calendrier</h1>
-          <p className="text-sm text-ink-muted">
-            Absences approuvées et en attente, jours fériés inclus.
-          </p>
-        </div>
+      <div className="mb-6 flex items-center justify-end gap-4">
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"

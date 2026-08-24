@@ -4,13 +4,6 @@ import { Badge, Card, CardContent, CardHeader, CardTitle } from '@teranga/ui';
 export default function ReglementationsPage() {
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-ink-strong">Lois &amp; Règlementations</h1>
-        <p className="text-sm text-ink-muted">
-          Le cadre légal appliqué par la plateforme — et ce qui reste à instruire.
-        </p>
-      </div>
-
       <div className="flex flex-col gap-6">
         <Card>
           <CardHeader>

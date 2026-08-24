@@ -162,7 +162,6 @@ export default function NewEmployeePage() {
         <Link href="/employees" className="text-sm text-ink-muted hover:text-ink">
           ← Employés
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink-strong">Nouvel employé</h1>
       </div>
 
       <div className="flex flex-col gap-6">

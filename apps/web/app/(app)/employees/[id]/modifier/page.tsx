@@ -194,10 +194,6 @@ function EditForm({ employee }: { employee: EmployeeDetail }) {
         <Link href={`/employees/${employee.id}`} className="text-sm text-ink-muted hover:text-ink">
           ← Fiche de {employee.person.givenName} {employee.person.familyName}
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink-strong">Modifier la fiche</h1>
-        <p className="text-sm text-ink-muted">
-          Chaque modification est tracée dans l&apos;historique du dossier.
-        </p>
       </div>
 
       <form onSubmit={onSubmit} className="flex flex-col gap-6" noValidate>

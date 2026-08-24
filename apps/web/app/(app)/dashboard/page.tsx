@@ -28,13 +28,6 @@ import { formatDate, useMe } from '../../../lib/hooks';
    3. « Que se passe-t-il bientôt ? »            → absences, échéances, fériés
    ———————————————————————————————————————————————————————————————— */
 
-function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return 'Bonjour';
-  if (h < 18) return 'Bon après-midi';
-  return 'Bonsoir';
-}
-
 /** « aujourd'hui », « demain », « dans 12 j » — l'échéance parle mieux que la date. */
 function inDays(iso: string): string {
   const days = Math.round(
@@ -229,14 +222,6 @@ export default function DashboardPage() {
   });
 
   const d = stats.data;
-  // « Lundi 24 août 2026. » — fr-FR rend le jour en minuscule, on capitalise.
-  const todayRaw = new Date().toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-  const today = `${todayRaw.charAt(0).toUpperCase()}${todayRaw.slice(1)}.`;
   const todayIso = localToday();
 
   const inbox = [
@@ -273,17 +258,6 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      {/* ———— En-tête ———— */}
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-[26px] font-bold tracking-[-0.02em] text-ink-strong">
-            {greeting()}
-            {me.data ? `, ${me.data.givenName}` : ''}
-          </h1>
-          <p className="mt-0.5 text-sm text-ink-muted">{today}</p>
-        </div>
-      </div>
-
       {/* ———— Indicateurs ———— */}
       <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
         <StatTile

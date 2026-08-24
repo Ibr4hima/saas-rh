@@ -69,11 +69,6 @@ export default function OrganisationPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="mb-1 text-xl font-bold text-ink-strong">Organigramme</h1>
-      <p className="mb-6 text-sm text-ink-muted">
-        L&apos;organigramme de votre structure : qui fait quoi, et à qui se référer.
-      </p>
-
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
         <Card className="h-fit">
           <CardHeader>

@@ -56,11 +56,13 @@ export function NotificationsBell() {
         type="button"
         aria-label={`Notifications${unread > 0 ? ` (${unread} non lues)` : ''}`}
         onClick={() => setOpen(!open)}
-        className="relative flex size-8 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-line-soft hover:text-ink"
+        // La cloche ne vit plus que sur le chrome (barre supérieure, en-tête
+        // mobile) : elle en porte donc les couleurs, pas celles du contenu.
+        className="relative flex size-9 items-center justify-center rounded-full text-chrome-ink-muted transition-colors hover:bg-chrome-hover hover:text-chrome-ink focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
       >
         <Icon name="notifications" size={20} />
         {unread > 0 ? (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-ink">
+          <span className="absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-ink ring-2 ring-white/30">
             {unread > 9 ? '9+' : unread}
           </span>
         ) : null}

@@ -102,7 +102,6 @@ export default function AbsenceSettingsPage() {
         <Link href="/absences" className="text-sm text-ink-muted hover:text-ink">
           ← Congés
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink-strong">Paramètres des congés</h1>
       </div>
 
       {error ? (

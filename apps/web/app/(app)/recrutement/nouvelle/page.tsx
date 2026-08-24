@@ -72,10 +72,6 @@ export default function NewJobPage() {
         <Link href="/recrutement" className="text-sm text-ink-muted hover:text-ink">
           ← Recrutement
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink-strong">Nouvelle offre</h1>
-        <p className="text-sm text-ink-muted">
-          L&apos;offre est créée en brouillon : vous la publierez quand elle sera prête.
-        </p>
       </div>
 
       <div className="flex flex-col gap-6">

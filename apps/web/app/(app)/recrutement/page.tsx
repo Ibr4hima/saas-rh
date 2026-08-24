@@ -30,19 +30,6 @@ export default function RecruitmentPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-ink-strong">Recrutement</h1>
-          <p className="text-sm text-ink-muted">
-            Publiez une offre, partagez son lien (LinkedIn, WhatsApp…) : les candidatures arrivent
-            directement dans votre pipeline.
-          </p>
-        </div>
-        <Link href="/recrutement/nouvelle" className="shrink-0">
-          <Button>Nouvelle offre</Button>
-        </Link>
-      </div>
-
       {jobs.isLoading ? (
         <Skeleton className="h-40 w-full" />
       ) : (jobs.data ?? []).length === 0 ? (

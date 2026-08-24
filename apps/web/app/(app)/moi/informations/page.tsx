@@ -134,11 +134,6 @@ export default function MyInformationsPage() {
         <Link href="/moi" className="text-sm text-ink-muted hover:text-ink">
           ← Mon espace
         </Link>
-        <h1 className="mt-1 text-xl font-bold text-ink-strong">Mes informations</h1>
-        <p className="text-sm text-ink-muted">
-          Votre dossier tel que la Direction du Capital Humain l&apos;a renseigné. Signalez-lui ce
-          qui a changé : elle confirme, et votre dossier se met à jour.
-        </p>
       </div>
 
       <div className="flex flex-col gap-6">

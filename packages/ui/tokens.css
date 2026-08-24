@@ -47,6 +47,20 @@
 
   --tg-focus-ring: #004f91;
 
+  /* Chrome de l'application — barre latérale ET barre supérieure. Un seul
+     dégradé de marque : la latérale le descend, la supérieure le file vers la
+     droite, et les deux partent de la MÊME extrémité, si bien que le raccord
+     à l'angle haut-gauche ne se voit pas. Les paliers de blanc posés dessus
+     sont vérifiés en contraste sur les DEUX bouts du dégradé — un texte
+     lisible en haut de la barre et illisible en bas passerait la revue. */
+  --tg-chrome-from: #003a6d;
+  --tg-chrome-to: #00609f;
+  --tg-chrome-ink: #ffffff;
+  --tg-chrome-ink-muted: rgb(255 255 255 / 0.78);
+  --tg-chrome-hover: rgb(255 255 255 / 0.1);
+  --tg-chrome-active: rgb(255 255 255 / 0.16);
+  --tg-chrome-line: rgb(255 255 255 / 0.14);
+
   /* --- Espacement (grille 4px) --- */
   --tg-space-1: 4px;
   --tg-space-2: 8px;
@@ -132,6 +146,10 @@
     --tg-danger-soft: #3a2321;
 
     --tg-focus-ring: #86b5ea;
+    /* Le chrome s'assombrit sans changer de teinte : c'est la même marque, la
+       nuit. */
+    --tg-chrome-from: #00284c;
+    --tg-chrome-to: #00477f;
     --tg-chart: #659cd9;
     --tg-chart-track: #262a3a;
   }
@@ -166,6 +184,8 @@
   --tg-danger-soft: #3a2321;
 
   --tg-focus-ring: #86b5ea;
+  --tg-chrome-from: #00284c;
+  --tg-chrome-to: #00477f;
   --tg-chart: #659cd9;
   --tg-chart-track: #262a3a;
 }

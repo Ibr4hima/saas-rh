@@ -4,8 +4,7 @@ import { Badge, Card, CardContent } from '@teranga/ui';
 export default function EvaluationPage() {
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-6 flex items-center gap-3">
-        <h1 className="text-xl font-bold text-ink-strong">Évaluation des objectifs</h1>
+      <div className="mb-6">
         <Badge tone="primary">Bientôt disponible</Badge>
       </div>
       <Card>

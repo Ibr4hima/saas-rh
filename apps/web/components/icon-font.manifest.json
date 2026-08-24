@@ -1,10 +1,12 @@
 {
   "_": "Généré par scripts/fetch-icon-font.mjs — ne pas modifier à la main.",
   "icons": [
+    "add",
     "badge",
     "calendar_month",
     "chevron_right",
     "dashboard",
+    "edit",
     "event",
     "event_busy",
     "family_history",
@@ -18,8 +20,9 @@
     "notifications",
     "person_add",
     "rule",
-    "schedule"
+    "schedule",
+    "settings"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 23252
+  "bytes": 28028
 }

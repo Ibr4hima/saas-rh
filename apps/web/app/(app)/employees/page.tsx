@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { CursorPage, EmployeeListItem } from '@teranga/contracts';
 import {
-  Badge,
   Button,
   Card,
   EmptyState,
@@ -52,20 +51,6 @@ export default function EmployeesPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-ink-strong">Gestion du personnel</h1>
-          <p className="text-sm text-ink-muted">
-            {items.length} affiché{items.length > 1 ? 's' : ''}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/employees/new">
-            <Button>Nouvel employé</Button>
-          </Link>
-        </div>
-      </div>
-
       <div className="mb-4 flex gap-3">
         <Input
           placeholder="Rechercher par nom ou matricule…"
