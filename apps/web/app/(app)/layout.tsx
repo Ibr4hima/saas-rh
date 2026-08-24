@@ -51,7 +51,12 @@ const NAV_ITEMS: NavItem[] = [
     badge: 'docs',
   },
   { href: '/calendrier', label: 'Calendrier', icon: 'event' },
-  { href: '/recrutement', label: 'Recrutement', icon: 'person_add' },
+  {
+    href: '/recrutement',
+    label: 'Dossiers de candidature',
+    short: 'Candidatures',
+    icon: 'person_add',
+  },
   { href: '/evaluation', label: 'Évaluation des objectifs', short: 'Évaluation', icon: 'rule' },
   { href: '/organisation', label: 'Organigramme', short: 'Organig.', icon: 'family_history' },
   { href: '/reglementations', label: 'Lois & Règlementations', short: 'Lois', icon: 'gavel' },
@@ -71,7 +76,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/absences/parametres': 'Paramètres des congés',
   '/documents': 'Demandes à traiter',
   '/calendrier': 'Calendrier',
-  '/recrutement': 'Recrutement',
+  '/recrutement': 'Dossiers de candidature',
   '/recrutement/nouvelle': 'Nouvelle offre',
   '/evaluation': 'Évaluation des objectifs',
   '/organisation': 'Organigramme',
@@ -131,29 +136,14 @@ function pageAction(pathname: string, role: string): ChromeAction | null {
   return null;
 }
 
-/**
- * Bouton d'action de la tête de page. Sur la bande bleue le contraste vient
- * d'un voile blanc ; sur l'en-tête mobile, resté clair pour que le logo s'y
- * lise, il vient de la couleur de marque.
- */
-function ChromeButton({
-  action,
-  tone = 'chrome',
-}: {
-  action: ChromeAction;
-  tone?: 'chrome' | 'light';
-}) {
+/** Bouton d'action de la tête de page : l'unique geste de l'écran, en marque pleine. */
+function HeaderAction({ action }: { action: ChromeAction }) {
   return (
     <Link
       href={action.href}
       title={action.label}
       aria-label={action.label}
-      className={cn(
-        'flex size-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 focus-visible:outline-none',
-        tone === 'chrome'
-          ? 'bg-chrome-hover text-chrome-ink hover:bg-chrome-active focus-visible:ring-2 focus-visible:ring-white/60'
-          : 'bg-primary text-primary-ink hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary/40',
-      )}
+      className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-ink shadow-sm transition-colors duration-150 hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
     >
       <Icon name={action.icon} size={20} />
     </Link>
@@ -280,7 +270,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="sticky top-0 flex h-screen w-[17.125rem] flex-col border-r border-line bg-surface max-lg:hidden">
+      <aside className="sticky top-0 flex h-screen w-[17.125rem] flex-col border-r border-line-soft bg-surface max-lg:hidden">
         {/* Marque */}
         <div className="px-4 pt-5 pb-5">
           <Link href={isStaff ? '/dashboard' : '/moi'} className="block">
@@ -352,22 +342,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Barre supérieure (grand écran). Elle porte le titre de la page et
-            son unique action : la tête de chaque écran devient identique, et le
-            contenu commence tout de suite, sans redite. */}
-        <header className="chrome-bar sticky top-0 z-20 hidden h-16 items-center gap-3 px-6 shadow-[0_1px_3px_rgb(0_58_109/0.22)] lg:flex">
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[19px] leading-tight font-semibold tracking-[-0.01em] text-chrome-ink">
-              {title}
-            </h1>
-            {subtitle ? (
-              <p className="truncate text-[13px] leading-tight text-chrome-ink-muted">{subtitle}</p>
-            ) : null}
-          </div>
-          {action ? <ChromeButton action={action} /> : null}
-          <NotificationsBell />
-        </header>
-
         {/* En-tête mobile */}
         <header className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-line bg-surface px-4 py-3 lg:hidden">
           <BrandMark variant="compact" />
@@ -376,8 +350,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <p className="min-w-0 flex-1 truncate text-sm leading-tight font-semibold text-ink-strong">
             {title}
           </p>
-          {action ? <ChromeButton action={action} tone="light" /> : null}
-          <NotificationsBell tone="light" />
+          {action ? <HeaderAction action={action} /> : null}
+          <NotificationsBell />
           <button
             type="button"
             title="Se déconnecter"
@@ -392,7 +366,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </button>
         </header>
 
-        <main className="min-w-0 flex-1 px-4 py-6 pb-24 lg:px-8 lg:py-7 lg:pb-8">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-6 pb-24 lg:px-8 lg:py-8 lg:pb-8">
+          {/* Tête de page (grand écran) : le titre appartient à la page, comme
+              le reste — même fond, même colonne. Un chrome coloré ici couperait
+              l'écran en deux zones qui ne se répondent pas. */}
+          <div className="mx-auto mb-7 hidden w-full max-w-6xl items-center gap-3 lg:flex">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-[24px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">
+                {title}
+              </h1>
+              {subtitle ? <p className="mt-1 text-sm text-ink-muted">{subtitle}</p> : null}
+            </div>
+            {action ? <HeaderAction action={action} /> : null}
+            <NotificationsBell />
+          </div>
+          {children}
+        </main>
 
         {/* Barre d'onglets mobile */}
         <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">

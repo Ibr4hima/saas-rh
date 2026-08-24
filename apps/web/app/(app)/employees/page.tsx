@@ -50,7 +50,7 @@ export default function EmployeesPage() {
   const items = query.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto w-full max-w-6xl">
       <div className="mb-4 flex gap-3">
         <Input
           placeholder="Rechercher par nom ou matricule…"

@@ -68,7 +68,7 @@ export default function OrganisationPage() {
   const selected = (units.data ?? []).find((u) => u.id === selectedId) ?? null;
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto w-full max-w-6xl">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
         <Card className="h-fit">
           <CardHeader>

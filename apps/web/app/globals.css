@@ -23,10 +23,6 @@
   --color-accent-hover: var(--tg-accent-hover);
   --color-accent-soft: var(--tg-accent-soft);
   --color-accent-text: var(--tg-accent-text);
-  --color-chrome-ink: var(--tg-chrome-ink);
-  --color-chrome-ink-muted: var(--tg-chrome-ink-muted);
-  --color-chrome-hover: var(--tg-chrome-hover);
-  --color-chrome-active: var(--tg-chrome-active);
   --color-success: var(--tg-success);
   --color-success-soft: var(--tg-success-soft);
   --color-warning: var(--tg-warning);
@@ -107,11 +103,4 @@ body {
   font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
   user-select: none;
-}
-
-/* La bande supérieure : un dégradé de marque, du plus profond à gauche vers le
-   plus ouvert à droite. Elle est le SEUL aplat coloré de l'interface — la barre
-   latérale reste claire, et c'est ce contraste qui fait tenir l'ensemble. */
-.chrome-bar {
-  background: linear-gradient(90deg, var(--tg-chrome-from) 0%, var(--tg-chrome-to) 100%);
 }

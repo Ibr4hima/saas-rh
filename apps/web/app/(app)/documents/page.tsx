@@ -57,7 +57,7 @@ export default function DocumentRequestsPage() {
   const shown = status ? items : open;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto w-full max-w-6xl">
       <Card>
         <CardHeader className="flex items-center justify-between">
           <CardTitle>{status ? DOC_REQUEST_STATUS_LABELS[status as never] : 'À traiter'}</CardTitle>

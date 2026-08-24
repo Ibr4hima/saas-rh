@@ -29,7 +29,7 @@ export default function RecruitmentPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto w-full max-w-6xl">
       {jobs.isLoading ? (
         <Skeleton className="h-40 w-full" />
       ) : (jobs.data ?? []).length === 0 ? (

@@ -63,7 +63,7 @@ export default function AbsencesPage() {
   const items = requests.data ?? [];
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto w-full max-w-6xl">
       {actionError ? (
         <p className="mb-4 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
           {actionError}

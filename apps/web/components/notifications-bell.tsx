@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { NotificationsPage } from '@teranga/contracts';
-import { Button, cn } from '@teranga/ui';
+import { Button } from '@teranga/ui';
 import { api } from '../lib/api';
 import { Icon } from './icons';
 
@@ -18,7 +18,7 @@ function relativeTime(iso: string): string {
   return `il y a ${days} j`;
 }
 
-export function NotificationsBell({ tone = 'chrome' }: { tone?: 'chrome' | 'light' }) {
+export function NotificationsBell() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -56,14 +56,7 @@ export function NotificationsBell({ tone = 'chrome' }: { tone?: 'chrome' | 'ligh
         type="button"
         aria-label={`Notifications${unread > 0 ? ` (${unread} non lues)` : ''}`}
         onClick={() => setOpen(!open)}
-        // La cloche vit sur la bande bleue en grand écran et sur un en-tête
-        // clair en petit : elle porte les couleurs du fond qui l'accueille.
-        className={cn(
-          'relative flex size-9 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none',
-          tone === 'chrome'
-            ? 'text-chrome-ink-muted hover:bg-chrome-hover hover:text-chrome-ink focus-visible:ring-2 focus-visible:ring-white/60'
-            : 'text-ink-muted hover:bg-line-soft hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40',
-        )}
+        className="relative flex size-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-line-soft hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
       >
         <Icon name="notifications" size={20} />
         {unread > 0 ? (
