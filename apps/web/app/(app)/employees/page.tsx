@@ -54,7 +54,7 @@ export default function EmployeesPage() {
     <div className="mx-auto max-w-5xl">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-ink-strong">Employés</h1>
+          <h1 className="text-xl font-bold text-ink-strong">Gestion du personnel</h1>
           <p className="text-sm text-ink-muted">
             {items.length} affiché{items.length > 1 ? 's' : ''}
           </p>

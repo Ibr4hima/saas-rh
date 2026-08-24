@@ -18,6 +18,11 @@
   --color-primary-ink: var(--tg-primary-ink);
   --color-primary-hover: var(--tg-primary-hover);
   --color-primary-soft: var(--tg-primary-soft);
+  --color-accent: var(--tg-accent);
+  --color-accent-ink: var(--tg-accent-ink);
+  --color-accent-hover: var(--tg-accent-hover);
+  --color-accent-soft: var(--tg-accent-soft);
+  --color-accent-text: var(--tg-accent-text);
   --color-success: var(--tg-success);
   --color-success-soft: var(--tg-success-soft);
   --color-warning: var(--tg-warning);
@@ -64,4 +69,38 @@ body {
 .font-mono {
   font-family: var(--tg-font-sans);
   font-variant-numeric: tabular-nums;
+}
+
+/* Material Symbols, sous-ensemble servi par nous (cf. scripts/fetch-icon-font.mjs).
+   `block` plutôt que `swap` : une ligature non résolue afficherait le NOM de
+   l'icône en toutes lettres — mieux vaut un blanc de 100 ms. */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: block;
+  src: url('/fonts/material-symbols-outlined.subset.woff2') format('woff2');
+}
+
+/* Boîte carrée fixe (la ligature ne décale jamais la ligne) et axes variables
+   pilotés par le composant Icon. */
+.ms-icon {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
 }

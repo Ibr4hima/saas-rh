@@ -5,19 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { cn, Skeleton } from '@teranga/ui';
-import {
-  IconCalendar,
-  IconCalendarDays,
-  IconDashboard,
-  IconFileText,
-  IconIdCard,
-  IconLogout,
-  IconNetwork,
-  IconScale,
-  IconTarget,
-  IconUserPlus,
-  IconUsers,
-} from '../../components/icons';
+import { Icon, type IconName } from '../../components/icons';
 import { NotificationsBell } from '../../components/notifications-bell';
 import { api } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
@@ -30,103 +18,115 @@ interface DashboardStats {
   pendingDocumentRequests: number;
 }
 
-const NAV_GROUPS: Array<{
+interface NavItem {
+  href: string;
   label: string;
-  items: Array<{
-    href: string;
-    label: string;
-    icon: React.ComponentType<{ size?: number }>;
-    badge?: 'pending' | 'docs';
-  }>;
-}> = [
+  /** Libellé de la barre d'onglets mobile, où la place manque. */
+  short?: string;
+  icon: IconName;
+  badge?: 'pending' | 'docs';
+}
+
+/**
+ * Navigation à plat : neuf entrées se parcourent d'un regard. Les regroupions
+ * en rubriques ajoutait trois lignes de titre à lire avant d'atteindre la
+ * première destination — du bruit pour une liste de cette taille.
+ */
+const NAV_ITEMS: NavItem[] = [
+  { href: '/dashboard', label: 'Tableau de bord', short: 'Tableau', icon: 'dashboard' },
+  { href: '/employees', label: 'Gestion du personnel', short: 'Personnel', icon: 'group' },
   {
-    label: 'Les essentiels',
-    items: [
-      { href: '/dashboard', label: 'Tableau de bord', icon: IconDashboard },
-      { href: '/employees', label: 'Employés', icon: IconUsers },
-      { href: '/absences', label: 'Congés', icon: IconCalendar, badge: 'pending' },
-      { href: '/documents', label: 'Documents', icon: IconFileText, badge: 'docs' },
-      { href: '/calendrier', label: 'Calendrier', icon: IconCalendarDays },
-    ],
+    href: '/absences',
+    label: 'Absences & Congés',
+    short: 'Congés',
+    icon: 'free_cancellation',
+    badge: 'pending',
   },
   {
-    label: 'Talents',
-    items: [
-      { href: '/recrutement', label: 'Recrutement', icon: IconUserPlus },
-      { href: '/evaluation', label: 'Évaluation', icon: IconTarget },
-    ],
+    href: '/documents',
+    label: 'Demande à traiter',
+    short: 'Demandes',
+    icon: 'folder_managed',
+    badge: 'docs',
   },
-  {
-    label: 'Ma structure',
-    items: [
-      { href: '/organisation', label: 'Organisation', icon: IconNetwork },
-      { href: '/reglementations', label: 'Règlementations', icon: IconScale },
-    ],
-  },
+  { href: '/calendrier', label: 'Calendrier', icon: 'event' },
+  { href: '/recrutement', label: 'Recrutement', icon: 'person_add' },
+  { href: '/evaluation', label: 'Évaluation des objectifs', short: 'Évaluation', icon: 'rule' },
+  { href: '/organisation', label: 'Organigramme', short: 'Organig.', icon: 'family_history' },
+  { href: '/reglementations', label: 'Lois & Règlementations', short: 'Lois', icon: 'gavel' },
 ];
 
 const STAFF_ROLES = ['admin', 'hr', 'payroll'];
 /** Sections réservées admin/RH : cachées aux autres rôles staff (payroll). */
 const MANAGE_ONLY_PATHS = ['/recrutement', '/documents'];
 
-function staffNav(role: string): typeof NAV_GROUPS {
-  if (role !== 'payroll') return NAV_GROUPS;
-  return NAV_GROUPS.map((g) => ({
-    ...g,
-    items: g.items.filter((i) => !MANAGE_ONLY_PATHS.some((p) => i.href.startsWith(p))),
-  })).filter((g) => g.items.length > 0);
+function staffNav(role: string): NavItem[] {
+  if (role !== 'payroll') return NAV_ITEMS;
+  return NAV_ITEMS.filter((i) => !MANAGE_ONLY_PATHS.some((p) => i.href.startsWith(p)));
 }
 
 /** Espace personnel : navigation réduite pour employés et managers. */
-function personalNav(role: string): typeof NAV_GROUPS {
+function personalNav(role: string): NavItem[] {
   return [
+    { href: '/moi', label: 'Mon espace', short: 'Espace', icon: 'dashboard' },
+    { href: '/moi/conges', label: 'Mes congés', short: 'Congés', icon: 'free_cancellation' },
     {
-      label: 'Mon espace',
-      items: [
-        { href: '/moi', label: 'Mon espace', icon: IconDashboard },
-        { href: '/moi/conges', label: 'Mes congés', icon: IconCalendar },
-        { href: '/moi/documents', label: 'Mes documents', icon: IconFileText },
-        { href: '/moi/informations', label: 'Mes informations', icon: IconIdCard },
-        ...(role === 'manager'
-          ? [
-              {
-                href: '/absences',
-                label: 'Validations',
-                icon: IconUsers,
-                badge: 'pending' as const,
-              },
-            ]
-          : []),
-        { href: '/calendrier', label: 'Calendrier', icon: IconCalendarDays },
-        { href: '/organisation', label: 'Organisation', icon: IconNetwork },
-      ],
+      href: '/moi/documents',
+      label: 'Mes documents',
+      short: 'Documents',
+      icon: 'folder_managed',
     },
+    { href: '/moi/informations', label: 'Mes informations', short: 'Infos', icon: 'badge' },
+    ...(role === 'manager'
+      ? [
+          {
+            href: '/absences',
+            label: 'Validations',
+            icon: 'how_to_reg' as const,
+            badge: 'pending' as const,
+          },
+        ]
+      : []),
+    { href: '/calendrier', label: 'Calendrier', icon: 'event' },
+    { href: '/organisation', label: 'Organigramme', short: 'Organig.', icon: 'family_history' },
   ];
 }
 
 /**
- * Logo de l'organisation : apps/web/public/logo-apix.png s'il existe,
- * sinon repli sur la tuile « T ». (Brandable par tenant plus tard.)
+ * Marque de l'organisation. Le logo tient toute la largeur de la barre : c'est
+ * la signature de l'employeur, pas une vignette. Fichier attendu en
+ * apps/web/public/logo-apix.png (cf. le README qui s'y trouve) ; sans lui, on
+ * retombe sur un aplat de marque — jamais sur un cadre vide.
  */
-function BrandMark({ size }: { size: 'sm' | 'md' }) {
+function BrandMark({ variant }: { variant: 'full' | 'compact' }) {
   const [imgOk, setImgOk] = useState(true);
-  const box = size === 'md' ? 'size-8 rounded-lg text-sm' : 'size-7 rounded-md text-xs';
+  const full = variant === 'full';
+
   if (imgOk) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src="/logo-apix.png"
         alt="Logo de l'organisation"
-        className={`${size === 'md' ? 'h-8 max-w-32' : 'h-7 max-w-24'} w-auto shrink-0 rounded-md bg-white object-contain px-1`}
+        className={
+          full
+            ? // Largeur imposée, hauteur libre plafonnée : un logo large occupe
+              // vraiment toute la barre, un logo carré reste raisonnable.
+              'max-h-20 w-full rounded-lg bg-white object-contain px-2 py-2'
+            : 'h-8 w-auto max-w-28 shrink-0 rounded-md bg-white object-contain px-1'
+        }
         onError={() => setImgOk(false)}
       />
     );
   }
   return (
     <div
-      className={`flex ${box} items-center justify-center bg-primary font-bold text-primary-ink`}
+      className={cn(
+        'flex items-center justify-center bg-primary font-bold text-primary-ink',
+        full ? 'h-16 w-full rounded-lg text-lg tracking-[0.12em]' : 'size-8 rounded-md text-xs',
+      )}
     >
-      T
+      CH
     </div>
   );
 }
@@ -198,58 +198,56 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pendingDocs = stats.data?.pendingDocumentRequests ?? 0;
   const badgeCount = (badge?: 'pending' | 'docs') =>
     badge === 'pending' ? pending : badge === 'docs' ? pendingDocs : 0;
-  const groups = isStaff ? staffNav(user.role) : personalNav(user.role);
+  const items = isStaff ? staffNav(user.role) : personalNav(user.role);
+  const isActive = (href: string) =>
+    href === '/moi' ? pathname === '/moi' : pathname.startsWith(href);
 
   return (
     <div className="flex min-h-screen">
-      <aside className="sticky top-0 flex h-screen w-60 flex-col border-r border-line bg-surface max-lg:hidden">
+      <aside className="sticky top-0 flex h-screen w-64 flex-col border-r border-line bg-surface max-lg:hidden">
         {/* Marque */}
-        <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
-          <BrandMark size="md" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm leading-tight font-bold text-ink-strong">Teranga RH</p>
-            <p className="truncate text-xs leading-tight text-ink-muted">{user.organizationName}</p>
+        <div className="px-4 pt-5 pb-5">
+          <Link href={isStaff ? '/dashboard' : '/moi'} className="block">
+            <BrandMark variant="full" />
+          </Link>
+          <div className="mt-3 flex items-center gap-2">
+            <p className="min-w-0 flex-1 truncate text-[15px] leading-tight font-semibold tracking-[-0.01em] text-ink-strong">
+              Capital Humain
+            </p>
+            <NotificationsBell />
           </div>
-          <NotificationsBell />
         </div>
 
-        {/* Navigation groupée */}
+        {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
-          {groups.map((group) => (
-            <div key={group.label} className="mt-4 first:mt-1">
-              <p className="px-2.5 pb-1.5 text-[11px] font-semibold tracking-wider text-ink-muted/80 uppercase">
-                {group.label}
-              </p>
-              <div className="flex flex-col gap-0.5">
-                {group.items.map((item) => {
-                  const active =
-                    item.href === '/moi' ? pathname === '/moi' : pathname.startsWith(item.href);
-                  const IconCmp = item.icon;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      aria-current={active ? 'page' : undefined}
-                      className={cn(
-                        'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors duration-150',
-                        active
-                          ? 'bg-primary-soft font-medium text-primary'
-                          : 'text-ink-muted hover:bg-line-soft hover:text-ink',
-                      )}
-                    >
-                      <IconCmp size={18} />
-                      <span className="flex-1">{item.label}</span>
-                      {badgeCount(item.badge) > 0 ? (
-                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-[11px] font-semibold text-white">
-                          {badgeCount(item.badge)}
-                        </span>
-                      ) : null}
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+          <div className="flex flex-col gap-0.5">
+            {items.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors duration-150',
+                    active
+                      ? 'bg-primary-soft font-medium text-primary'
+                      : 'text-ink-muted hover:bg-line-soft hover:text-ink',
+                  )}
+                >
+                  {/* Icône pleine sur l'entrée courante : la position dans le
+                      menu se lit alors sans dépendre de la seule couleur. */}
+                  <Icon name={item.icon} size={20} fill={active} />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {badgeCount(item.badge) > 0 ? (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-accent-ink">
+                      {badgeCount(item.badge)}
+                    </span>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
         </nav>
 
         {/* Utilisateur */}
@@ -276,7 +274,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 router.replace('/login');
               }}
             >
-              <IconLogout size={16} />
+              <Icon name="logout" size={18} />
             </button>
           </div>
         </div>
@@ -285,13 +283,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* En-tête mobile */}
         <header className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-line bg-surface px-4 py-3 lg:hidden">
-          <BrandMark size="sm" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm leading-tight font-bold text-ink-strong">Teranga RH</p>
-            <p className="truncate text-[11px] leading-tight text-ink-muted">
-              {user.organizationName}
-            </p>
-          </div>
+          <BrandMark variant="compact" />
+          <p className="min-w-0 flex-1 truncate text-sm leading-tight font-semibold text-ink-strong">
+            Capital Humain
+          </p>
           <NotificationsBell />
           <button
             type="button"
@@ -303,7 +298,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               router.replace('/login');
             }}
           >
-            <IconLogout size={16} />
+            <Icon name="logout" size={18} />
           </button>
         </header>
 
@@ -311,30 +306,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Barre d'onglets mobile */}
         <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">
-          {groups
-            .flatMap((g) => g.items)
-            .map((item) => {
-              const active =
-                item.href === '/moi' ? pathname === '/moi' : pathname.startsWith(item.href);
-              const IconCmp = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    'relative flex min-w-14 flex-col items-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-medium',
-                    active ? 'text-primary' : 'text-ink-muted',
-                  )}
-                >
-                  <IconCmp size={20} />
-                  {badgeCount(item.badge) > 0 ? (
-                    <span className="absolute top-0 right-2 size-2 rounded-full bg-danger" />
-                  ) : null}
-                  <span className="truncate">{item.label}</span>
-                </Link>
-              );
-            })}
+          {items.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'relative flex min-w-14 flex-col items-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-medium',
+                  active ? 'text-primary' : 'text-ink-muted',
+                )}
+              >
+                <Icon name={item.icon} size={22} fill={active} />
+                {badgeCount(item.badge) > 0 ? (
+                  <span className="absolute top-0 right-2 size-2 rounded-full bg-accent" />
+                ) : null}
+                <span className="truncate">{item.short ?? item.label}</span>
+              </Link>
+            );
+          })}
         </nav>
       </div>
     </div>

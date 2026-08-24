@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { NotificationsPage } from '@teranga/contracts';
 import { Button } from '@teranga/ui';
 import { api } from '../lib/api';
-import { IconBell } from './icons';
+import { Icon } from './icons';
 
 function relativeTime(iso: string): string {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
@@ -58,9 +58,9 @@ export function NotificationsBell() {
         onClick={() => setOpen(!open)}
         className="relative flex size-8 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-line-soft hover:text-ink"
       >
-        <IconBell size={18} />
+        <Icon name="notifications" size={20} />
         {unread > 0 ? (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white">
+          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-ink">
             {unread > 9 ? '9+' : unread}
           </span>
         ) : null}
@@ -97,7 +97,7 @@ export function NotificationsBell() {
                 >
                   <span className="flex items-start gap-2">
                     {!n.readAt ? (
-                      <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />
+                      <span className="mt-1.5 size-2 shrink-0 rounded-full bg-accent" />
                     ) : (
                       <span className="mt-1.5 size-2 shrink-0" />
                     )}

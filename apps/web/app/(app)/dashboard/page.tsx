@@ -18,17 +18,7 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
-import {
-  IconCalendar,
-  IconCalendarDays,
-  IconChevronRight,
-  IconClock,
-  IconFileText,
-  IconFlag,
-  IconIdCard,
-  IconUserPlus,
-  IconUsers,
-} from '../../../components/icons';
+import { Icon } from '../../../components/icons';
 import { api } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
 
@@ -80,7 +70,7 @@ function StatTile({
   value: number | undefined;
   context?: string;
   href: string;
-  /** true = ce chiffre attend une action : le chip passe à l'accent. */
+  /** true = ce chiffre attend une action : le chip passe à l'orange de charte. */
   alert?: boolean;
 }) {
   return (
@@ -90,13 +80,14 @@ function StatTile({
           <div className="flex items-center justify-between">
             <span
               className={`flex size-9 items-center justify-center rounded-[10px] ${
-                alert ? 'bg-primary text-primary-ink' : 'bg-primary-soft text-primary'
+                alert ? 'bg-accent text-accent-ink' : 'bg-primary-soft text-primary'
               }`}
             >
               {icon}
             </span>
-            <IconChevronRight
-              size={14}
+            <Icon
+              name="chevron_right"
+              size={16}
               className="text-ink-muted/0 transition-colors duration-150 group-hover:text-ink-muted/60"
             />
           </div>
@@ -149,13 +140,14 @@ function InboxRow({
           <span className="block truncate text-xs text-ink-muted">{detail}</span>
         </span>
         <span
-          className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-ink"
+          className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-accent-ink"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {count}
         </span>
-        <IconChevronRight
-          size={16}
+        <Icon
+          name="chevron_right"
+          size={18}
           className="shrink-0 text-ink-muted/40 transition-transform duration-150 group-hover:translate-x-0.5"
         />
       </Link>
@@ -226,7 +218,7 @@ export default function DashboardPage() {
 
   const inbox = [
     {
-      icon: <IconCalendar size={17} />,
+      icon: <Icon name="free_cancellation" size={18} />,
       label: 'Demandes de congés',
       detail: 'À viser — les soldes sont vérifiés, il ne manque que vous.',
       count: d?.pendingRequests ?? 0,
@@ -234,7 +226,7 @@ export default function DashboardPage() {
       show: true,
     },
     {
-      icon: <IconFileText size={17} />,
+      icon: <Icon name="folder_managed" size={18} />,
       label: 'Demandes de documents',
       detail: 'À générer, cacheter, signer puis annoncer le retrait.',
       count: d?.pendingDocumentRequests ?? 0,
@@ -242,7 +234,7 @@ export default function DashboardPage() {
       show: canManage,
     },
     {
-      icon: <IconIdCard size={17} />,
+      icon: <Icon name="badge" size={18} />,
       label: 'Informations personnelles',
       detail: 'Changements déclarés par les agents, à confirmer sur leur fiche.',
       count: d?.pendingProfileChanges ?? 0,
@@ -270,7 +262,7 @@ export default function DashboardPage() {
         {canManage ? (
           <Link href="/employees/new">
             <Button className="gap-2">
-              <IconUserPlus size={16} /> Nouvel employé
+              <Icon name="person_add" size={18} /> Nouvel employé
             </Button>
           </Link>
         ) : null}
@@ -279,7 +271,7 @@ export default function DashboardPage() {
       {/* ———— Indicateurs ———— */}
       <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
         <StatTile
-          icon={<IconUsers size={17} />}
+          icon={<Icon name="group" size={19} />}
           label="Effectif actif"
           value={d?.activeEmployees}
           context={
@@ -292,7 +284,7 @@ export default function DashboardPage() {
           href="/employees"
         />
         <StatTile
-          icon={<IconCalendar size={17} />}
+          icon={<Icon name="free_cancellation" size={19} />}
           label="Demandes à valider"
           value={d?.pendingRequests}
           context="congés en attente de visa"
@@ -300,7 +292,7 @@ export default function DashboardPage() {
           alert={(d?.pendingRequests ?? 0) > 0}
         />
         <StatTile
-          icon={<IconCalendarDays size={17} />}
+          icon={<Icon name="event_busy" size={19} />}
           label="Absents aujourd'hui"
           value={d?.absentToday}
           context={d ? `${d.upcomingAbsences} à venir sous 30 j` : undefined}
@@ -308,7 +300,7 @@ export default function DashboardPage() {
         />
         {seesContracts ? (
           <StatTile
-            icon={<IconClock size={17} />}
+            icon={<Icon name="schedule" size={19} />}
             label="Contrats à suivre"
             value={expiring.data?.length}
             context="échéance sous 30 jours"
@@ -317,7 +309,7 @@ export default function DashboardPage() {
           />
         ) : (
           <StatTile
-            icon={<IconUsers size={17} />}
+            icon={<Icon name="family_history" size={19} />}
             label="Unités d'organisation"
             value={d?.orgUnits}
             context="directions, départements, services"
@@ -518,7 +510,7 @@ export default function DashboardPage() {
                           · {inDays(h.day)}
                         </span>
                       </span>
-                      <IconFlag size={14} className="shrink-0 text-ink-muted/40" />
+                      <Icon name="flag" size={16} className="shrink-0 text-ink-muted/40" />
                     </li>
                   ))}
                 </ul>

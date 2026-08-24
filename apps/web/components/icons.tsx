@@ -1,179 +1,92 @@
 import * as React from 'react';
+import { cn } from '@teranga/ui';
+import manifest from './icon-font.manifest.json';
 
-/** Icônes du produit — tracés type Lucide, 24×24, stroke currentColor. */
+/**
+ * Icônes du produit — Material Symbols Outlined, rendues par ligature.
+ *
+ * Un seul jeu d'icônes dans toute l'application : mélanger deux familles
+ * (traits fins d'un côté, pleins de l'autre) se voit immédiatement sur un
+ * même écran — la barre latérale et le tableau de bord se regardent.
+ *
+ * La police est SOUS-ENSEMBLÉE aux seules icônes listées ci-dessous et servie
+ * depuis /fonts (23 Ko) : aucune requête vers un tiers à l'exécution. Cette
+ * liste est la source de vérité — `scripts/fetch-icon-font.mjs` la lit pour
+ * fabriquer la police. Après y avoir ajouté une icône :
+ *
+ *     pnpm --filter @teranga/web icons:fetch
+ *
+ * Sans cela l'icône manquerait de la police et s'afficherait comme son nom en
+ * toutes lettres ; le garde de développement ci-dessous prévient avant.
+ */
+export const ICON_NAMES = [
+  'badge',
+  'calendar_month',
+  'chevron_right',
+  'dashboard',
+  'event',
+  'event_busy',
+  'family_history',
+  'flag',
+  'folder_managed',
+  'free_cancellation',
+  'gavel',
+  'group',
+  'how_to_reg',
+  'logout',
+  'notifications',
+  'person_add',
+  'rule',
+  'schedule',
+] as const;
 
-type IconProps = React.SVGProps<SVGSVGElement> & { size?: number };
+export type IconName = (typeof ICON_NAMES)[number];
 
-function Icon({ size = 18, children, ...props }: IconProps & { children: React.ReactNode }) {
+if (process.env.NODE_ENV !== 'production') {
+  const gravees = new Set<string>(manifest.icons);
+  const manquantes = ICON_NAMES.filter((n) => !gravees.has(n));
+  if (manquantes.length > 0) {
+    console.warn(
+      `[icons] ${manquantes.join(', ')} ne sont pas dans la police servie — ` +
+        'lancez « pnpm --filter @teranga/web icons:fetch », sinon ces icônes ' +
+        "s'afficheront sous forme de texte.",
+    );
+  }
+}
+
+type IconProps = Omit<React.HTMLAttributes<HTMLSpanElement>, 'children'> & {
+  name: IconName;
+  size?: number;
+  /** Icône pleine — réservée à l'état actif, jamais au repos. */
+  fill?: boolean;
+  weight?: 300 | 400 | 500 | 600;
+};
+
+export function Icon({
+  name,
+  size = 18,
+  fill = false,
+  weight = 400,
+  className,
+  style,
+  ...rest
+}: IconProps) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <span
       aria-hidden
-      {...props}
+      className={cn('ms-icon', className)}
+      style={{
+        fontSize: size,
+        width: size,
+        height: size,
+        // L'axe optique suit la taille de rendu : les contre-formes s'ouvrent en
+        // petit, les traits s'affinent en grand. Borné à la plage servie.
+        fontVariationSettings: `'FILL' ${fill ? 1 : 0}, 'wght' ${weight}, 'GRAD' 0, 'opsz' ${Math.min(48, Math.max(20, size))}`,
+        ...style,
+      }}
+      {...rest}
     >
-      {children}
-    </svg>
-  );
-}
-
-export function IconDashboard(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <rect x="3" y="3" width="7" height="9" rx="1.5" />
-      <rect x="14" y="3" width="7" height="5" rx="1.5" />
-      <rect x="14" y="12" width="7" height="9" rx="1.5" />
-      <rect x="3" y="16" width="7" height="5" rx="1.5" />
-    </Icon>
-  );
-}
-
-export function IconUsers(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </Icon>
-  );
-}
-
-export function IconCalendar(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <rect x="3" y="4" width="18" height="17" rx="2" />
-      <path d="M16 2v4M8 2v4M3 10h18" />
-      <path d="m9 16 2 2 4-4" />
-    </Icon>
-  );
-}
-
-export function IconUserPlus(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M19 8v6M22 11h-6" />
-    </Icon>
-  );
-}
-
-export function IconTarget(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="12" r="5" />
-      <circle cx="12" cy="12" r="1" />
-    </Icon>
-  );
-}
-
-export function IconNetwork(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <rect x="9" y="2" width="6" height="6" rx="1.5" />
-      <rect x="2" y="16" width="6" height="6" rx="1.5" />
-      <rect x="16" y="16" width="6" height="6" rx="1.5" />
-      <path d="M5 16v-2a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v2" />
-      <path d="M12 12V8" />
-    </Icon>
-  );
-}
-
-export function IconScale(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M12 3v18M7 21h10" />
-      <path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2" />
-      <path d="m5 7-3 8a5.3 5.3 0 0 0 6 0L5 7ZM19 7l-3 8a5.3 5.3 0 0 0 6 0l-3-8Z" />
-    </Icon>
-  );
-}
-
-export function IconLogout(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <path d="m16 17 5-5-5-5M21 12H9" />
-    </Icon>
-  );
-}
-
-export function IconUpload(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <path d="m7 8 5-5 5 5M12 3v12" />
-    </Icon>
-  );
-}
-
-export function IconCalendarDays(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <rect x="3" y="4" width="18" height="17" rx="2" />
-      <path d="M16 2v4M8 2v4M3 10h18" />
-      <path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01" />
-    </Icon>
-  );
-}
-
-export function IconFileText(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-      <path d="M14 3v6h6M9 13h6M9 17h6" />
-    </Icon>
-  );
-}
-
-export function IconBell(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-    </Icon>
-  );
-}
-
-export function IconIdCard(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <rect x="2" y="5" width="20" height="14" rx="2" />
-      <circle cx="8.5" cy="11" r="2" />
-      <path d="M5 16c.6-1.4 2-2.2 3.5-2.2S11.4 14.6 12 16M14.5 10h4M14.5 13.5h3" />
-    </Icon>
-  );
-}
-
-export function IconClock(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3 2" />
-    </Icon>
-  );
-}
-
-export function IconFlag(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M5 21V4a1 1 0 0 1 1-1h11.6a.5.5 0 0 1 .4.8L15 8l3 4.2a.5.5 0 0 1-.4.8H5" />
-    </Icon>
-  );
-}
-
-export function IconChevronRight(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="m9 6 6 6-6 6" />
-    </Icon>
+      {name}
+    </span>
   );
 }

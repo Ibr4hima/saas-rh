@@ -67,7 +67,7 @@ export default function AbsencesPage() {
     <div className="mx-auto max-w-5xl">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-ink-strong">Congés &amp; absences</h1>
+          <h1 className="text-xl font-bold text-ink-strong">Absences &amp; Congés</h1>
           <p className="text-sm text-ink-muted">
             Demandes, visas et absences à venir de votre organisation.
           </p>

@@ -2,6 +2,15 @@
  * Teranga RH — design tokens (source de vérité visuelle, cf. ch. 05).
  * Grille 4px stricte. Aucune valeur brute dans les composants : tout passe par ces tokens.
  * Light par défaut ; dark via [data-theme="dark"] ou préférence système.
+ *
+ * Charte : deux couleurs, deux rôles.
+ *   #004f91 (bleu) — la STRUCTURE : navigation, liens, actions principales, marques
+ *                    de graphique. C'est la couleur du produit au repos.
+ *   #ca631f (orange) — l'ATTENTE : ce qui réclame un geste de l'utilisateur
+ *                    (compteurs à traiter, chiffres en attente). Jamais décoratif,
+ *                    sinon il cesse d'attirer l'œil là où il compte.
+ * Les paliers clairs/sombres sont dérivés en OKLCH à teinte constante puis vérifiés
+ * en contraste WCAG sur CHAQUE fond (aucun palier n'est posé à l'œil).
  */
 
 :root {
@@ -15,10 +24,19 @@
   --tg-line: #e3e4ec;
   --tg-line-soft: #ecedf3;
 
-  --tg-primary: #3f4bb8;
+  --tg-primary: #004f91;
   --tg-primary-ink: #ffffff;
-  --tg-primary-hover: #35409f;
-  --tg-primary-soft: #eeeffa;
+  --tg-primary-hover: #003e7e;
+  --tg-primary-soft: #e7f1fe;
+
+  /* Accent de marque. `accent` est l'APLAT (l'orange exact de la charte) ;
+     `accent-text` est le palier assombri utilisable en TEXTE — l'orange de
+     marque ne passe que 3.95:1 sur blanc, insuffisant sous 18 px. */
+  --tg-accent: #ca631f;
+  --tg-accent-ink: #2a1002;
+  --tg-accent-hover: #d9752f;
+  --tg-accent-soft: #ffece2;
+  --tg-accent-text: #b14600;
 
   --tg-success: #177245;
   --tg-success-soft: #e7f3ec;
@@ -27,7 +45,7 @@
   --tg-danger: #b3382e;
   --tg-danger-soft: #fae9e7;
 
-  --tg-focus-ring: #3f4bb8;
+  --tg-focus-ring: #004f91;
 
   /* --- Espacement (grille 4px) --- */
   --tg-space-1: 4px;
@@ -69,8 +87,12 @@
   --tg-shadow-lg: 0 4px 8px rgb(20 23 42 / 0.06), 0 16px 48px rgb(20 23 42 / 0.1);
 
   /* Couleur des MARQUES de graphiques (barres d'effectifs…), validée
-     colorimétriquement sur chaque fond — dataviz, pas décorative. */
-  --tg-chart: #3f4bb8;
+     colorimétriquement sur chaque fond — dataviz, pas décorative.
+     Une SEULE série aujourd'hui : le bleu de marque, très contrasté, fait
+     l'affaire. Le jour où deux séries coexistent, la paire doit repasser au
+     validateur de palette (bande de clarté + séparation daltonienne) — deux
+     couleurs de charte ne forment pas d'office une palette catégorielle. */
+  --tg-chart: #004f91;
   --tg-chart-track: #ecedf3;
 
   /* --- Mouvement (120–200 ms ease-out, cf. ch. 05) --- */
@@ -89,10 +111,18 @@
     --tg-line: #2c3042;
     --tg-line-soft: #262a3a;
 
-    --tg-primary: #97a0ec;
+    /* Le bleu de charte (#004f91) est trop sombre pour un fond sombre : on
+       remonte la clarté à teinte constante plutôt que d'inverser. */
+    --tg-primary: #86b5ea;
     --tg-primary-ink: #14172a;
-    --tg-primary-hover: #aab2f1;
-    --tg-primary-soft: #252a48;
+    --tg-primary-hover: #a2cbfa;
+    --tg-primary-soft: #153455;
+
+    --tg-accent: #f69f70;
+    --tg-accent-ink: #2a1002;
+    --tg-accent-hover: #ffb990;
+    --tg-accent-soft: #562605;
+    --tg-accent-text: #f69f70;
 
     --tg-success: #5fbf8f;
     --tg-success-soft: #1d3229;
@@ -101,15 +131,13 @@
     --tg-danger: #e08078;
     --tg-danger-soft: #3a2321;
 
-    --tg-focus-ring: #97a0ec;
-    --tg-chart: #7c88e6;
+    --tg-focus-ring: #86b5ea;
+    --tg-chart: #659cd9;
     --tg-chart-track: #262a3a;
   }
 }
 
 :root[data-theme='dark'] {
-  --tg-chart: #7c88e6;
-  --tg-chart-track: #262a3a;
   --tg-bg: #14161f;
   --tg-surface: #1c1f2c;
   --tg-surface-raised: #232739;
@@ -119,10 +147,16 @@
   --tg-line: #2c3042;
   --tg-line-soft: #262a3a;
 
-  --tg-primary: #97a0ec;
+  --tg-primary: #86b5ea;
   --tg-primary-ink: #14172a;
-  --tg-primary-hover: #aab2f1;
-  --tg-primary-soft: #252a48;
+  --tg-primary-hover: #a2cbfa;
+  --tg-primary-soft: #153455;
+
+  --tg-accent: #f69f70;
+  --tg-accent-ink: #2a1002;
+  --tg-accent-hover: #ffb990;
+  --tg-accent-soft: #562605;
+  --tg-accent-text: #f69f70;
 
   --tg-success: #5fbf8f;
   --tg-success-soft: #1d3229;
@@ -131,7 +165,9 @@
   --tg-danger: #e08078;
   --tg-danger-soft: #3a2321;
 
-  --tg-focus-ring: #97a0ec;
+  --tg-focus-ring: #86b5ea;
+  --tg-chart: #659cd9;
+  --tg-chart-track: #262a3a;
 }
 
 @media (prefers-reduced-motion: reduce) {

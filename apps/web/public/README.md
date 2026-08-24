@@ -4,13 +4,16 @@ Servis tels quels à la racine du site (`/logo-apix.png` → `public/logo-apix.p
 
 ## Logo de l'organisation
 
-Déposez ici `logo-apix.png` : il s'affiche dans la barre latérale et l'en-tête
-mobile. Sans ce fichier, l'application retombe sur la tuile « T » — aucune
+Déposez ici `logo-apix.png` : il occupe toute la largeur de la barre latérale,
+avec « Capital Humain » juste en dessous, et se réduit dans l'en-tête mobile.
+Sans ce fichier, l'application retombe sur l'aplat de marque « CH » — aucune
 erreur visible.
 
 ```bash
 cp /chemin/vers/votre-logo.png apps/web/public/logo-apix.png
 ```
 
-Format conseillé : PNG à fond transparent, carré ou proche, 256 px minimum
-(il est affiché en 28–32 px, `object-contain`).
+Format conseillé : PNG à fond transparent, **en largeur** (rapport ~3:1 à 4:1),
+600 px de large minimum. Il est affiché en `object-contain` sur une plaque
+blanche de 56 px de haut : un logo carré fonctionne aussi, il sera simplement
+plus petit.
