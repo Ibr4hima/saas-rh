@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { NotificationsPage } from '@teranga/contracts';
-import { Button } from '@teranga/ui';
+import { Button, cn } from '@teranga/ui';
 import { api } from '../lib/api';
 import { Icon } from './icons';
 
@@ -18,7 +18,7 @@ function relativeTime(iso: string): string {
   return `il y a ${days} j`;
 }
 
-export function NotificationsBell() {
+export function NotificationsBell({ tone = 'chrome' }: { tone?: 'chrome' | 'light' }) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -56,13 +56,18 @@ export function NotificationsBell() {
         type="button"
         aria-label={`Notifications${unread > 0 ? ` (${unread} non lues)` : ''}`}
         onClick={() => setOpen(!open)}
-        // La cloche ne vit plus que sur le chrome (barre supérieure, en-tête
-        // mobile) : elle en porte donc les couleurs, pas celles du contenu.
-        className="relative flex size-9 items-center justify-center rounded-full text-chrome-ink-muted transition-colors hover:bg-chrome-hover hover:text-chrome-ink focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
+        // La cloche vit sur la bande bleue en grand écran et sur un en-tête
+        // clair en petit : elle porte les couleurs du fond qui l'accueille.
+        className={cn(
+          'relative flex size-9 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none',
+          tone === 'chrome'
+            ? 'text-chrome-ink-muted hover:bg-chrome-hover hover:text-chrome-ink focus-visible:ring-2 focus-visible:ring-white/60'
+            : 'text-ink-muted hover:bg-line-soft hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40',
+        )}
       >
         <Icon name="notifications" size={20} />
         {unread > 0 ? (
-          <span className="absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-ink ring-2 ring-white/30">
+          <span className="absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-ink ring-2 ring-surface">
             {unread > 9 ? '9+' : unread}
           </span>
         ) : null}

@@ -47,6 +47,11 @@
 
   --tg-focus-ring: #004f91;
 
+  /* Fond posé derrière le logo. Transparent en clair : le logo se pose
+     directement sur la barre. En sombre il redevient blanc — un logo à encre
+     foncée, le cas courant des administrations, s'effacerait sinon. */
+  --tg-brand-plate: transparent;
+
   /* Chrome de l'application — barre latérale ET barre supérieure. Un seul
      dégradé de marque : la latérale le descend, la supérieure le file vers la
      droite, et les deux partent de la MÊME extrémité, si bien que le raccord
@@ -59,7 +64,6 @@
   --tg-chrome-ink-muted: rgb(255 255 255 / 0.78);
   --tg-chrome-hover: rgb(255 255 255 / 0.1);
   --tg-chrome-active: rgb(255 255 255 / 0.16);
-  --tg-chrome-line: rgb(255 255 255 / 0.14);
 
   /* --- Espacement (grille 4px) --- */
   --tg-space-1: 4px;
@@ -145,6 +149,7 @@
     --tg-danger: #e08078;
     --tg-danger-soft: #3a2321;
 
+    --tg-brand-plate: #ffffff;
     --tg-focus-ring: #86b5ea;
     /* Le chrome s'assombrit sans changer de teinte : c'est la même marque, la
        nuit. */
@@ -183,6 +188,7 @@
   --tg-danger: #e08078;
   --tg-danger-soft: #3a2321;
 
+  --tg-brand-plate: #ffffff;
   --tg-focus-ring: #86b5ea;
   --tg-chrome-from: #00284c;
   --tg-chrome-to: #00477f;

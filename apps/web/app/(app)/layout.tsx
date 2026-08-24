@@ -131,14 +131,29 @@ function pageAction(pathname: string, role: string): ChromeAction | null {
   return null;
 }
 
-/** Bouton d'action posé sur le chrome : contraste porté par le fond translucide. */
-function ChromeButton({ action }: { action: ChromeAction }) {
+/**
+ * Bouton d'action de la tête de page. Sur la bande bleue le contraste vient
+ * d'un voile blanc ; sur l'en-tête mobile, resté clair pour que le logo s'y
+ * lise, il vient de la couleur de marque.
+ */
+function ChromeButton({
+  action,
+  tone = 'chrome',
+}: {
+  action: ChromeAction;
+  tone?: 'chrome' | 'light';
+}) {
   return (
     <Link
       href={action.href}
       title={action.label}
       aria-label={action.label}
-      className="flex size-9 items-center justify-center rounded-full bg-chrome-hover text-chrome-ink transition-colors duration-150 hover:bg-chrome-active focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
+      className={cn(
+        'flex size-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 focus-visible:outline-none',
+        tone === 'chrome'
+          ? 'bg-chrome-hover text-chrome-ink hover:bg-chrome-active focus-visible:ring-2 focus-visible:ring-white/60'
+          : 'bg-primary text-primary-ink hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary/40',
+      )}
     >
       <Icon name={action.icon} size={20} />
     </Link>
@@ -259,17 +274,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     year: 'numeric',
   });
   const todayLabel = `${todayRaw.charAt(0).toUpperCase()}${todayRaw.slice(1)}`;
+  const subtitle = pathname === '/dashboard' ? todayLabel : null;
   const isActive = (href: string) =>
     href === '/moi' ? pathname === '/moi' : pathname.startsWith(href);
 
   return (
     <div className="flex min-h-screen">
-      <aside className="chrome-aside sticky top-0 flex h-screen w-[17.125rem] flex-col max-lg:hidden">
+      <aside className="sticky top-0 flex h-screen w-[17.125rem] flex-col border-r border-line bg-surface max-lg:hidden">
         {/* Marque */}
         <div className="px-4 pt-5 pb-5">
           <Link href={isStaff ? '/dashboard' : '/moi'} className="block">
             <BrandMark variant="full" />
-            <BrandWordmark className="mt-2.5 text-chrome-ink" />
+            <BrandWordmark className="mt-2.5" />
           </Link>
         </div>
 
@@ -286,8 +302,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   className={cn(
                     'flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors duration-150',
                     active
-                      ? 'bg-chrome-active font-medium text-chrome-ink'
-                      : 'text-chrome-ink-muted hover:bg-chrome-hover hover:text-chrome-ink',
+                      ? 'bg-primary-soft font-medium text-primary'
+                      : 'text-ink-muted hover:bg-line-soft hover:text-ink',
                   )}
                 >
                   {/* Icône pleine sur l'entrée courante : la position dans le
@@ -306,16 +322,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Utilisateur */}
-        <div className="border-t border-chrome-line px-3 py-3">
+        <div className="border-t border-line-soft px-3 py-3">
           <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-chrome-active text-xs font-semibold text-chrome-ink">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
               {initials}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm leading-tight font-medium text-chrome-ink">
+              <p className="truncate text-sm leading-tight font-medium text-ink-strong">
                 {user.givenName} {user.familyName}
               </p>
-              <p className="truncate text-xs leading-tight text-chrome-ink-muted">
+              <p className="truncate text-xs leading-tight text-ink-muted">
                 {ROLE_LABELS[user.role] ?? user.role}
               </p>
             </div>
@@ -323,7 +339,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               type="button"
               title="Se déconnecter"
               aria-label="Se déconnecter"
-              className="rounded-md p-1.5 text-chrome-ink-muted transition-colors hover:bg-chrome-hover hover:text-chrome-ink"
+              className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
               onClick={async () => {
                 await api('/auth/logout', { method: 'POST' });
                 router.replace('/login');
@@ -340,27 +356,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             son unique action : la tête de chaque écran devient identique, et le
             contenu commence tout de suite, sans redite. */}
         <header className="chrome-bar sticky top-0 z-20 hidden h-16 items-center gap-3 px-6 shadow-[0_1px_3px_rgb(0_58_109/0.22)] lg:flex">
-          <h1 className="min-w-0 flex-1 truncate text-[19px] font-semibold tracking-[-0.01em] text-chrome-ink">
-            {title}
-          </h1>
-          {pathname === '/dashboard' ? (
-            <span className="hidden text-sm text-chrome-ink-muted xl:inline">{todayLabel}</span>
-          ) : null}
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[19px] leading-tight font-semibold tracking-[-0.01em] text-chrome-ink">
+              {title}
+            </h1>
+            {subtitle ? (
+              <p className="truncate text-[13px] leading-tight text-chrome-ink-muted">{subtitle}</p>
+            ) : null}
+          </div>
           {action ? <ChromeButton action={action} /> : null}
           <NotificationsBell />
         </header>
 
         {/* En-tête mobile */}
-        <header className="chrome-bar sticky top-0 z-20 flex items-center gap-2.5 px-4 py-3 lg:hidden">
+        <header className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-line bg-surface px-4 py-3 lg:hidden">
           <BrandMark variant="compact" />
-          <BrandWordmark className="min-w-0 flex-1 truncate text-left text-chrome-ink" />
-          {action ? <ChromeButton action={action} /> : null}
-          <NotificationsBell />
+          {/* Le petit écran troque la signature contre le titre : le logo à
+              côté dit déjà de quelle maison il s'agit. */}
+          <p className="min-w-0 flex-1 truncate text-sm leading-tight font-semibold text-ink-strong">
+            {title}
+          </p>
+          {action ? <ChromeButton action={action} tone="light" /> : null}
+          <NotificationsBell tone="light" />
           <button
             type="button"
             title="Se déconnecter"
             aria-label="Se déconnecter"
-            className="rounded-md p-1.5 text-chrome-ink-muted"
+            className="rounded-md p-1.5 text-ink-muted"
             onClick={async () => {
               await api('/auth/logout', { method: 'POST' });
               router.replace('/login');
@@ -373,7 +395,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <main className="min-w-0 flex-1 px-4 py-6 pb-24 lg:px-8 lg:py-7 lg:pb-8">{children}</main>
 
         {/* Barre d'onglets mobile */}
-        <nav className="chrome-bar fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">
           {items.map((item) => {
             const active = isActive(item.href);
             return (
@@ -383,7 +405,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'relative flex min-w-14 flex-col items-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-medium',
-                  active ? 'text-chrome-ink' : 'text-chrome-ink-muted',
+                  active ? 'text-primary' : 'text-ink-muted',
                 )}
               >
                 <Icon name={item.icon} size={22} fill={active} />
