@@ -5,7 +5,6 @@ import Link from 'next/link';
 import type { AbsenceRequestView, DashboardView, ExpiringContractView } from '@teranga/contracts';
 import {
   Badge,
-  Button,
   Card,
   CardContent,
   CardHeader,
@@ -50,9 +49,30 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n > 1 ? 's' : ''}`;
 }
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? '') + (parts[parts.length - 1]?.[0] ?? '')).toUpperCase();
+/**
+ * Jour courant au format ISO, dans le calendrier LOCAL de l'utilisateur.
+ * `toISOString()` donnerait la date UTC : à Dakar (UTC+0) c'est identique,
+ * ailleurs cela ferait basculer « en cours » un jour trop tôt ou trop tard.
+ */
+function localToday(): string {
+  const d = new Date();
+  const p = (v: number) => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * L'échéance se lit sans calcul mental, et tient sur une ligne : dans une
+ * colonne étroite, un libellé qui se replie sur trois lignes coûte plus de
+ * lecture qu'il n'en épargne.
+ */
+function deadlineLabel(daysLeft: number | null): {
+  text: string;
+  tone: 'danger' | 'warning' | 'neutral';
+} {
+  if (daysLeft === null) return { text: 'à préciser', tone: 'danger' };
+  if (daysLeft < 0) return { text: `échu · ${-daysLeft} j`, tone: 'danger' };
+  if (daysLeft === 0) return { text: 'dernier jour', tone: 'danger' };
+  return { text: `${daysLeft} j`, tone: daysLeft <= 30 ? 'warning' : 'neutral' };
 }
 
 /* ———— Indicateurs ———— */
@@ -209,12 +229,15 @@ export default function DashboardPage() {
   });
 
   const d = stats.data;
-  const today = new Date().toLocaleDateString('fr-FR', {
+  // « Lundi 24 août 2026. » — fr-FR rend le jour en minuscule, on capitalise.
+  const todayRaw = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   });
+  const today = `${todayRaw.charAt(0).toUpperCase()}${todayRaw.slice(1)}.`;
+  const todayIso = localToday();
 
   const inbox = [
     {
@@ -255,17 +278,10 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-[26px] font-bold tracking-[-0.02em] text-ink-strong">
             {greeting()}
-            {me.data ? `, ${me.data.givenName}` : ''} 👋
+            {me.data ? `, ${me.data.givenName}` : ''}
           </h1>
-          <p className="mt-0.5 text-sm text-ink-muted">Nous sommes le {today}.</p>
+          <p className="mt-0.5 text-sm text-ink-muted">{today}</p>
         </div>
-        {canManage ? (
-          <Link href="/employees/new">
-            <Button className="gap-2">
-              <Icon name="person_add" size={18} /> Nouvel employé
-            </Button>
-          </Link>
-        ) : null}
       </div>
 
       {/* ———— Indicateurs ———— */}
@@ -323,14 +339,14 @@ export default function DashboardPage() {
         <div className="flex min-w-0 flex-col gap-6 xl:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>À traiter</CardTitle>
+              <CardTitle>Demandes à traiter</CardTitle>
             </CardHeader>
             <CardContent className="px-2 py-2">
               {stats.isLoading ? (
                 <Skeleton className="m-3 h-14" />
               ) : inbox.length === 0 ? (
                 <p className="px-3 py-6 text-center text-sm text-ink-muted">
-                  Rien en attente — tout est à jour. ✨
+                  Aucune nouvelle demande.
                 </p>
               ) : (
                 <ul className="flex flex-col">
@@ -343,11 +359,8 @@ export default function DashboardPage() {
           </Card>
 
           <Card>
-            <CardHeader className="flex items-center justify-between">
-              <CardTitle>Prochaines absences</CardTitle>
-              <Link href="/calendrier" className="text-xs font-medium text-primary hover:underline">
-                Calendrier →
-              </Link>
+            <CardHeader>
+              <CardTitle>Calendrier des absences</CardTitle>
             </CardHeader>
             {upcoming.isLoading ? (
               <CardContent>
@@ -368,61 +381,34 @@ export default function DashboardPage() {
                     <Th>Du</Th>
                     <Th>Au</Th>
                     <Th className="text-right">Jours</Th>
+                    <Th>Statut</Th>
                   </tr>
                 </THead>
                 <TBody>
                   {upcoming.data!.slice(0, 6).map((r) => (
                     <Tr key={r.id}>
-                      <Td className="font-medium text-ink-strong">{r.employeeName}</Td>
-                      <Td className="text-ink-muted">{r.absenceTypeName}</Td>
+                      <Td className="font-medium whitespace-nowrap text-ink-strong">
+                        {r.employeeName}
+                      </Td>
+                      <Td className="whitespace-nowrap text-ink-muted">{r.absenceTypeName}</Td>
                       <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
                       <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
                       <Td className="text-right font-mono">{r.daysCount}</Td>
+                      <Td>
+                        {r.startDate <= todayIso ? (
+                          <Badge tone="success" className="whitespace-nowrap">
+                            En cours
+                          </Badge>
+                        ) : (
+                          <Badge className="whitespace-nowrap">À venir</Badge>
+                        )}
+                      </Td>
                     </Tr>
                   ))}
                 </TBody>
               </Table>
             )}
           </Card>
-
-          {seesContracts && (expiring.data ?? []).length > 0 ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Contrats arrivant à échéance</CardTitle>
-              </CardHeader>
-              <Table>
-                <THead>
-                  <tr>
-                    <Th>Employé</Th>
-                    <Th>Contrat</Th>
-                    <Th>Fin</Th>
-                    <Th className="text-right">Échéance</Th>
-                  </tr>
-                </THead>
-                <TBody>
-                  {expiring.data!.map((c) => (
-                    <Tr key={c.contractId}>
-                      <Td>
-                        <Link
-                          href={`/employees/${c.employeeId}`}
-                          className="font-medium text-ink-strong hover:underline"
-                        >
-                          {c.employeeName}
-                        </Link>
-                      </Td>
-                      <Td className="text-ink-muted uppercase">{c.contractType}</Td>
-                      <Td className="whitespace-nowrap">{formatDate(c.endDate)}</Td>
-                      <Td className="text-right">
-                        <Badge tone={c.daysLeft <= 10 ? 'danger' : 'warning'}>
-                          {c.daysLeft === 0 ? "aujourd'hui" : `J−${c.daysLeft}`}
-                        </Badge>
-                      </Td>
-                    </Tr>
-                  ))}
-                </TBody>
-              </Table>
-            </Card>
-          ) : null}
         </div>
 
         {/* ———— Colonne de contexte ———— */}
@@ -517,56 +503,84 @@ export default function DashboardPage() {
               )}
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Dernières embauches</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats.isLoading ? (
-                <Skeleton className="h-16 w-full" />
-              ) : (d?.recentHires ?? []).length === 0 ? (
-                <p className="text-sm text-ink-muted">Aucun dossier pour le moment.</p>
-              ) : (
-                <ul className="flex flex-col gap-3">
-                  {d!.recentHires.map((h) => {
-                    const inner = (
-                      <>
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11px] font-bold text-primary">
-                          {initials(h.name)}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium text-ink-strong">
-                            {h.name}
-                          </span>
-                          <span className="block truncate text-xs text-ink-muted">
-                            {h.positionTitle ?? 'Poste à préciser'} · depuis le{' '}
-                            {formatDate(h.hiredOn)}
-                          </span>
-                        </span>
-                      </>
-                    );
-                    return (
-                      <li key={h.employeeId}>
-                        {canManage ? (
-                          <Link
-                            href={`/employees/${h.employeeId}`}
-                            className="flex items-center gap-3 rounded-lg transition-colors duration-150 hover:bg-bg"
-                          >
-                            {inner}
-                          </Link>
-                        ) : (
-                          <span className="flex items-center gap-3">{inner}</span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
+
+      {seesContracts ? (
+        <Card className="mt-6">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle>Suivi des contrats</CardTitle>
+            <span className="text-xs text-ink-muted">CDD et stages en cours</span>
+          </CardHeader>
+          {stats.isLoading ? (
+            <CardContent>
+              <Skeleton className="h-20 w-full" />
+            </CardContent>
+          ) : (d?.contractFollowUp ?? []).length === 0 ? (
+            <CardContent>
+              <p className="py-4 text-center text-sm text-ink-muted">
+                Aucun contrat à durée limitée en cours.
+              </p>
+            </CardContent>
+          ) : (
+            <>
+              <Table>
+                <THead>
+                  <tr>
+                    <Th>Matricule</Th>
+                    <Th>Nom</Th>
+                    <Th>Poste</Th>
+                    <Th>Contrat</Th>
+                    <Th>Date fin</Th>
+                    <Th className="text-right whitespace-nowrap">Jours restants</Th>
+                  </tr>
+                </THead>
+                <TBody>
+                  {d!.contractFollowUp.map((c) => {
+                    const deadline = deadlineLabel(c.daysLeft);
+                    return (
+                      <Tr key={c.employeeId}>
+                        <Td className="font-mono text-ink-muted">{c.employeeNumber}</Td>
+                        <Td className="whitespace-nowrap">
+                          <Link
+                            href={`/employees/${c.employeeId}`}
+                            className="font-medium text-ink-strong hover:underline"
+                          >
+                            {c.name}
+                          </Link>
+                        </Td>
+                        <Td
+                          className="max-w-40 truncate text-ink-muted"
+                          title={c.positionTitle ?? undefined}
+                        >
+                          {c.positionTitle ?? '—'}
+                        </Td>
+                        <Td className="uppercase">{c.contractType}</Td>
+                        <Td className="whitespace-nowrap">
+                          {c.endDate ? formatDate(c.endDate) : '—'}
+                        </Td>
+                        <Td className="text-right">
+                          <Badge tone={deadline.tone} className="whitespace-nowrap">
+                            {deadline.text}
+                          </Badge>
+                        </Td>
+                      </Tr>
+                    );
+                  })}
+                </TBody>
+              </Table>
+              {d && d.contractFollowUpTotal > d.contractFollowUp.length ? (
+                <CardContent className="border-t border-line-soft py-3">
+                  <p className="text-xs text-ink-muted">
+                    {d.contractFollowUp.length} des {d.contractFollowUpTotal} contrats suivis — les
+                    plus urgents d&apos;abord.
+                  </p>
+                </CardContent>
+              ) : null}
+            </>
+          )}
+        </Card>
+      ) : null}
     </div>
   );
 }

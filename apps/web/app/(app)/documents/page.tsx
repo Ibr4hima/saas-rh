@@ -59,7 +59,7 @@ export default function DocumentRequestsPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-ink-strong">Demande à traiter</h1>
+        <h1 className="text-xl font-bold text-ink-strong">Demandes à traiter</h1>
         <p className="text-sm text-ink-muted">
           Les employés demandent leurs documents ici. Générez-les, imprimez, cachetez et signez,
           puis indiquez où les retirer.

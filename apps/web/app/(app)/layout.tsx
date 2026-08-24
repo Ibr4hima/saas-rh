@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { cn, Skeleton } from '@teranga/ui';
+import { BrandMark, BrandWordmark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
 import { NotificationsBell } from '../../components/notifications-bell';
 import { api } from '../../lib/api';
@@ -44,7 +45,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/documents',
-    label: 'Demande à traiter',
+    label: 'Demandes à traiter',
     short: 'Demandes',
     icon: 'folder_managed',
     badge: 'docs',
@@ -90,45 +91,6 @@ function personalNav(role: string): NavItem[] {
     { href: '/calendrier', label: 'Calendrier', icon: 'event' },
     { href: '/organisation', label: 'Organigramme', short: 'Organig.', icon: 'family_history' },
   ];
-}
-
-/**
- * Marque de l'organisation. Le logo tient toute la largeur de la barre : c'est
- * la signature de l'employeur, pas une vignette. Fichier attendu en
- * apps/web/public/logo-apix.png (cf. le README qui s'y trouve) ; sans lui, on
- * retombe sur un aplat de marque — jamais sur un cadre vide.
- */
-function BrandMark({ variant }: { variant: 'full' | 'compact' }) {
-  const [imgOk, setImgOk] = useState(true);
-  const full = variant === 'full';
-
-  if (imgOk) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src="/logo-apix.png"
-        alt="Logo de l'organisation"
-        className={
-          full
-            ? // Largeur imposée, hauteur libre plafonnée : un logo large occupe
-              // vraiment toute la barre, un logo carré reste raisonnable.
-              'max-h-20 w-full rounded-lg bg-white object-contain px-2 py-2'
-            : 'h-8 w-auto max-w-28 shrink-0 rounded-md bg-white object-contain px-1'
-        }
-        onError={() => setImgOk(false)}
-      />
-    );
-  }
-  return (
-    <div
-      className={cn(
-        'flex items-center justify-center bg-primary font-bold text-primary-ink',
-        full ? 'h-16 w-full rounded-lg text-lg tracking-[0.12em]' : 'size-8 rounded-md text-xs',
-      )}
-    >
-      CH
-    </div>
-  );
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -204,18 +166,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="sticky top-0 flex h-screen w-64 flex-col border-r border-line bg-surface max-lg:hidden">
+      <aside className="sticky top-0 flex h-screen w-[17rem] flex-col border-r border-line bg-surface max-lg:hidden">
         {/* Marque */}
         <div className="px-4 pt-5 pb-5">
           <Link href={isStaff ? '/dashboard' : '/moi'} className="block">
             <BrandMark variant="full" />
+            <BrandWordmark className="mt-2.5" />
           </Link>
-          <div className="mt-3 flex items-center gap-2">
-            <p className="min-w-0 flex-1 truncate text-[15px] leading-tight font-semibold tracking-[-0.01em] text-ink-strong">
-              Capital Humain
-            </p>
-            <NotificationsBell />
-          </div>
         </div>
 
         {/* Navigation */}
@@ -281,12 +238,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* Barre supérieure (grand écran) : la cloche vit à l'extrême droite,
+            là où l'œil la cherche, et non dans la colonne de navigation. */}
+        <header className="sticky top-0 z-20 hidden h-14 items-center justify-end border-b border-line bg-surface px-6 lg:flex">
+          <NotificationsBell />
+        </header>
+
         {/* En-tête mobile */}
         <header className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-line bg-surface px-4 py-3 lg:hidden">
           <BrandMark variant="compact" />
-          <p className="min-w-0 flex-1 truncate text-sm leading-tight font-semibold text-ink-strong">
-            Capital Humain
-          </p>
+          <BrandWordmark className="min-w-0 flex-1 truncate text-left" />
           <NotificationsBell />
           <button
             type="button"
@@ -302,7 +263,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </button>
         </header>
 
-        <main className="min-w-0 flex-1 px-4 py-6 pb-24 lg:px-8 lg:py-8 lg:pb-8">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-6 pb-24 lg:px-8 lg:py-7 lg:pb-8">{children}</main>
 
         {/* Barre d'onglets mobile */}
         <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">

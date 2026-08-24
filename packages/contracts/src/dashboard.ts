@@ -17,11 +17,22 @@ export interface DashboardHoliday {
   label: string;
 }
 
-export interface DashboardHire {
+/**
+ * Un contrat à durée limitée en cours de suivi (CDD ou stage).
+ * Le contrat retenu est le PLUS RÉCENT de l'employé : un CDD renouvelé en CDI
+ * sort du suivi de lui-même, sans quoi l'ancien CDD y resterait à vie.
+ */
+export interface DashboardContractFollowUp {
   employeeId: string;
+  employeeNumber: string;
   name: string;
   positionTitle: string | null;
-  hiredOn: string;
+  /** 'cdd' | 'stage' — les seuls types à durée limitée suivis ici. */
+  contractType: string;
+  /** null = date de fin non saisie : anomalie à corriger, pas à masquer. */
+  endDate: string | null;
+  /** Jours restants. Négatif = échéance dépassée. null = pas de date de fin. */
+  daysLeft: number | null;
 }
 
 export interface DashboardView {
@@ -43,5 +54,8 @@ export interface DashboardView {
   men: number;
   headcountByDirection: DashboardDirectionHeadcount[];
   upcomingHolidays: DashboardHoliday[];
-  recentHires: DashboardHire[];
+  /** Contrats à durée limitée, les plus urgents d'abord. Vide hors RH/paie. */
+  contractFollowUp: DashboardContractFollowUp[];
+  /** Total suivi, y compris ce que la carte ne montre pas — pas de troncature muette. */
+  contractFollowUpTotal: number;
 }

@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { loginInputSchema, type LoginInput, type SessionUser } from '@teranga/contracts';
 import { Button, Card, CardContent, Field, Input } from '@teranga/ui';
+import { BrandMark, BrandWordmark } from '../../components/brand-mark';
 import { api, ApiError } from '../../lib/api';
 
 export default function LoginPage() {
@@ -26,8 +27,14 @@ export default function LoginPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6 py-16">
-      <h1 className="mb-1 text-2xl font-bold text-ink-strong">Teranga RH</h1>
-      <p className="mb-6 text-sm text-ink-muted">Connectez-vous à votre espace.</p>
+      <div className="mb-7">
+        <div className="mx-auto max-w-[13rem]">
+          <BrandMark variant="full" />
+        </div>
+        <h1 className="sr-only">Capital Humain</h1>
+        <BrandWordmark className="mt-3" aria-hidden />
+        <p className="mt-2 text-center text-sm text-ink-muted">Connectez-vous à votre espace.</p>
+      </div>
       <Card>
         <CardContent>
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
