@@ -59,9 +59,19 @@
   --tg-radius-sm: 4px;
   --tg-radius-md: 8px;
   --tg-radius-lg: 12px;
+  --tg-radius-xl: 16px;
   --tg-radius-full: 999px;
-  --tg-shadow-sm: 0 1px 2px rgb(20 23 42 / 0.06);
-  --tg-shadow-md: 0 2px 8px rgb(20 23 42 / 0.08);
+  /* Ombres en couches, très basse opacité : la profondeur vient de la
+     superposition, jamais d'une tache grise. */
+  --tg-shadow-xs: 0 1px 2px rgb(20 23 42 / 0.04);
+  --tg-shadow-sm: 0 1px 2px rgb(20 23 42 / 0.04), 0 2px 8px rgb(20 23 42 / 0.04);
+  --tg-shadow-md: 0 2px 4px rgb(20 23 42 / 0.05), 0 8px 24px rgb(20 23 42 / 0.07);
+  --tg-shadow-lg: 0 4px 8px rgb(20 23 42 / 0.06), 0 16px 48px rgb(20 23 42 / 0.1);
+
+  /* Couleur des MARQUES de graphiques (barres d'effectifs…), validée
+     colorimétriquement sur chaque fond — dataviz, pas décorative. */
+  --tg-chart: #3f4bb8;
+  --tg-chart-track: #ecedf3;
 
   /* --- Mouvement (120–200 ms ease-out, cf. ch. 05) --- */
   --tg-motion-fast: 120ms ease-out;
@@ -92,10 +102,14 @@
     --tg-danger-soft: #3a2321;
 
     --tg-focus-ring: #97a0ec;
+    --tg-chart: #7c88e6;
+    --tg-chart-track: #262a3a;
   }
 }
 
 :root[data-theme='dark'] {
+  --tg-chart: #7c88e6;
+  --tg-chart-track: #262a3a;
   --tg-bg: #14161f;
   --tg-surface: #1c1f2c;
   --tg-surface-raised: #232739;

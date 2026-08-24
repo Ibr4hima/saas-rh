@@ -6,6 +6,7 @@
  * du paquet n'ait de raison d'importer « ./index » et de recréer un cycle.
  */
 export * from './core';
+export * from './dashboard';
 export * from './employees';
 export * from './absences';
 export * from './portal';

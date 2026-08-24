@@ -24,8 +24,20 @@
   --color-warning-soft: var(--tg-warning-soft);
   --color-danger: var(--tg-danger);
   --color-danger-soft: var(--tg-danger-soft);
+  --color-chart: var(--tg-chart);
+  --color-chart-track: var(--tg-chart-track);
   --font-sans: var(--tg-font-sans);
   --font-mono: var(--tg-font-mono);
+  --shadow-xs: var(--tg-shadow-xs);
+  --shadow-sm: var(--tg-shadow-sm);
+  --shadow-md: var(--tg-shadow-md);
+  --shadow-lg: var(--tg-shadow-lg);
+  --radius-xl: var(--tg-radius-xl);
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
@@ -34,6 +46,17 @@ body {
   font-family: var(--tg-font-sans);
   font-optical-sizing: auto;
   font-variation-settings: 'GRAD' 0;
+}
+
+::selection {
+  background: var(--tg-primary-soft);
+  color: var(--tg-ink-strong);
+}
+
+/* Barres de défilement discrètes : le contenu prime sur la chromiure. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--tg-line) transparent;
 }
 
 /* Tout l'UI en Google Sans : font-mono ne garde que les chiffres tabulaires

@@ -152,3 +152,28 @@ export function IconIdCard(props: IconProps) {
     </Icon>
   );
 }
+
+export function IconClock(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </Icon>
+  );
+}
+
+export function IconFlag(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 21V4a1 1 0 0 1 1-1h11.6a.5.5 0 0 1 .4.8L15 8l3 4.2a.5.5 0 0 1-.4.8H5" />
+    </Icon>
+  );
+}
+
+export function IconChevronRight(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m9 6 6 6-6 6" />
+    </Icon>
+  );
+}
