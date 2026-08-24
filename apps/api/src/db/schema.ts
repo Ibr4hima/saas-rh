@@ -119,6 +119,8 @@ export const employees = pgTable('employees', {
   customFields: jsonb('custom_fields').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  /** À qui l'agent rend compte — distinct du responsable d'unité. */
+  managerEmployeeId: uuid('manager_employee_id'),
 });
 
 export const assignments = pgTable('assignments', {

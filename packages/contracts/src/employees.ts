@@ -223,6 +223,8 @@ export const employeeFieldsSchema = z.object({
   hiredOn: isoDate,
   workEmail: z.email().optional(),
   workPhone: optionalTrimmed(30),
+  /** À qui l'agent rend compte. Absent = personne (un DG n'a pas de manager). */
+  managerEmployeeId: optionalUuid,
   customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -294,6 +296,8 @@ export const updateEmployeeFieldsSchema = z
     workEmail: z.email().nullable(),
     workPhone: clearableString(30),
     status: employeeStatusSchema,
+    /** null = plus de manager ; absent = inchangé. */
+    managerEmployeeId: z.uuid().nullable(),
   })
   .partial();
 
@@ -328,6 +332,19 @@ export interface EmployeeListItem {
   hiredOn: string;
   positionTitle: string | null;
   orgUnitName: string | null;
+  /**
+   * Abrégé de la DIRECTION de rattachement (« DCH »), remonté depuis l'unité
+   * d'affectation quel que soit son niveau : un agent du Service Comptabilité
+   * relève de la DFC. Le nom complet de la direction est dans `directionName`,
+   * pour l'infobulle — la colonne, elle, doit rester courte.
+   */
+  directionShortName: string | null;
+  directionName: string | null;
+  /** Contrat le plus récent : c'est lui que la RH lit dans la liste. */
+  contractStartDate: string | null;
+  contractEndDate: string | null;
+  managerId: string | null;
+  managerName: string | null;
   workEmail: string | null;
 }
 
@@ -357,6 +374,8 @@ export interface EmployeeDetail {
   hiredOn: string;
   workEmail: string | null;
   workPhone: string | null;
+  managerId: string | null;
+  managerName: string | null;
   customFields: Record<string, unknown>;
   person: {
     id: string;

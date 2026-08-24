@@ -23,13 +23,12 @@ import {
 import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
 
-const STATUS_TONES: Record<string, 'success' | 'warning' | 'neutral'> = {
-  active: 'success',
-  suspended: 'warning',
-  terminated: 'neutral',
-};
-const STATUS_LABELS: Record<string, string> = {
-  active: 'Actif',
+/**
+ * La colonne « Statut » a été retirée du tableau. Le filtre, lui, reste — donc
+ * la vue par défaut mêle présents et sortis. On garde une mention discrète sous
+ * le nom pour les dossiers NON actifs : sans elle, rien ne les distingue.
+ */
+const STATUT_NON_ACTIF: Record<string, string> = {
   suspended: 'Suspendu',
   terminated: 'Sorti',
 };
@@ -125,9 +124,10 @@ export default function EmployeesPage() {
                   <Th>Matricule</Th>
                   <Th>Nom</Th>
                   <Th>Poste</Th>
+                  <Th>Manager</Th>
                   <Th>Unité</Th>
-                  <Th>Embauche</Th>
-                  <Th>Statut</Th>
+                  <Th>Début contrat</Th>
+                  <Th>Fin contrat</Th>
                 </tr>
               </THead>
               <TBody>
@@ -140,6 +140,11 @@ export default function EmployeesPage() {
                     <Td className="font-mono text-xs text-ink-muted">{e.employeeNumber}</Td>
                     <Td className="font-medium text-ink-strong">
                       {e.givenName} {e.familyName}
+                      {STATUT_NON_ACTIF[e.status] ? (
+                        <span className="ml-1.5 align-middle text-xs font-normal text-ink-muted">
+                          · {STATUT_NON_ACTIF[e.status]}
+                        </span>
+                      ) : null}
                       {e.workEmail ? (
                         <span className="block text-xs font-normal text-ink-muted">
                           {e.workEmail}
@@ -147,12 +152,17 @@ export default function EmployeesPage() {
                       ) : null}
                     </Td>
                     <Td>{e.positionTitle ?? '—'}</Td>
-                    <Td>{e.orgUnitName ?? '—'}</Td>
-                    <Td className="whitespace-nowrap">{formatDate(e.hiredOn)}</Td>
-                    <Td>
-                      <Badge tone={STATUS_TONES[e.status] ?? 'neutral'}>
-                        {STATUS_LABELS[e.status] ?? e.status}
-                      </Badge>
+                    <Td>{e.managerName ?? '—'}</Td>
+                    {/* L'abrégé tient dans une colonne, pas le nom complet :
+                        l'infobulle garde le nom entier pour qui hésite. */}
+                    <Td title={e.directionName ?? e.orgUnitName ?? undefined}>
+                      {e.directionShortName ?? e.directionName ?? e.orgUnitName ?? '—'}
+                    </Td>
+                    <Td className="whitespace-nowrap">
+                      {e.contractStartDate ? formatDate(e.contractStartDate) : '—'}
+                    </Td>
+                    <Td className="whitespace-nowrap">
+                      {e.contractEndDate ? formatDate(e.contractEndDate) : '—'}
                     </Td>
                   </Tr>
                 ))}

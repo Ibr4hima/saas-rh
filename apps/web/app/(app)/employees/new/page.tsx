@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { OrgUnitView } from '@teranga/contracts';
+import type { CursorPage, EmployeeListItem, OrgUnitView } from '@teranga/contracts';
+import { orgUnitLabel } from '@teranga/contracts';
 import {
   Button,
   Card,
@@ -54,6 +55,7 @@ export default function NewEmployeePage() {
 
   // Emploi
   const [employeeNumber, setEmployeeNumber] = useState('');
+  const [managerId, setManagerId] = useState('');
   const [contractType, setContractType] = useState('cdi');
   const [contractStart, setContractStart] = useState(todayIso());
   const [durationMonths, setDurationMonths] = useState('');
@@ -68,6 +70,13 @@ export default function NewEmployeePage() {
     queryFn: () => api<OrgUnitView[]>('/org-units'),
   });
   const directions = (orgUnits.data ?? []).filter((u) => u.unitType === 'direction');
+  // Seuls les dossiers ACTIFS peuvent encadrer : le serveur refuse les autres,
+  // autant ne pas les proposer.
+  const managerQuery = useQuery({
+    queryKey: ['employees', 'managers'],
+    queryFn: () => api<CursorPage<EmployeeListItem>>('/employees?status=active&limit=100'),
+  });
+  const managers = managerQuery.data?.items ?? [];
   const marital = maritalLabels(gender || undefined);
 
   const needsDuration = contractType === 'cdd' || contractType === 'stage';
@@ -118,6 +127,7 @@ export default function NewEmployeePage() {
             hiredOn: contractStart,
             workEmail: workEmail || undefined,
             workPhone: composePhone(workPhoneCountry, workPhoneLocal),
+            managerEmployeeId: managerId || undefined,
           },
           assignment: positionTitle.trim()
             ? {
@@ -386,7 +396,26 @@ export default function NewEmployeePage() {
                 <option value="">—</option>
                 {directions.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.name}
+                    {orgUnitLabel(u)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label="Manager"
+              htmlFor="managerId"
+              hint="À qui la personne rend compte. Un directeur général n’en a pas."
+            >
+              <Select
+                id="managerId"
+                value={managerId}
+                onChange={(e) => setManagerId(e.target.value)}
+              >
+                <option value="">— Aucun</option>
+                {managers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.givenName} {m.familyName}
+                    {m.positionTitle ? ` — ${m.positionTitle}` : ''}
                   </option>
                 ))}
               </Select>

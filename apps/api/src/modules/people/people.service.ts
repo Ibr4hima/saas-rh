@@ -86,6 +86,42 @@ export class PeopleService {
           workEmail: t.employees.workEmail,
           positionTitle: t.assignments.positionTitle,
           orgUnitName: t.orgUnits.name,
+          // La direction de rattachement se trouve en REMONTANT l'arbre : un
+          // agent affecté à un service relève de la direction qui le coiffe.
+          // Les colonnes de la table externe sont qualifiées à la main —
+          // Drizzle les rendrait nues et la portée interne les capterait.
+          directionShortName: sql<string | null>`(
+            WITH RECURSIVE remontee AS (
+              SELECT id, parent_id, unit_type, short_name, name
+              FROM org_units WHERE id = assignments.org_unit_id
+              UNION ALL
+              SELECT o.id, o.parent_id, o.unit_type, o.short_name, o.name
+              FROM org_units o JOIN remontee r ON o.id = r.parent_id
+            )
+            SELECT short_name FROM remontee WHERE unit_type = 'direction' LIMIT 1)`,
+          directionName: sql<string | null>`(
+            WITH RECURSIVE remontee AS (
+              SELECT id, parent_id, unit_type, name
+              FROM org_units WHERE id = assignments.org_unit_id
+              UNION ALL
+              SELECT o.id, o.parent_id, o.unit_type, o.name
+              FROM org_units o JOIN remontee r ON o.id = r.parent_id
+            )
+            SELECT name FROM remontee WHERE unit_type = 'direction' LIMIT 1)`,
+          // Contrat le plus récent, même convention que la fiche employé.
+          contractStartDate: sql<string | null>`(
+            SELECT c.start_date::text FROM contracts c
+            WHERE c.employee_id = employees.id
+            ORDER BY c.start_date DESC LIMIT 1)`,
+          contractEndDate: sql<string | null>`(
+            SELECT c.end_date::text FROM contracts c
+            WHERE c.employee_id = employees.id
+            ORDER BY c.start_date DESC LIMIT 1)`,
+          managerId: t.employees.managerEmployeeId,
+          managerName: sql<string | null>`(
+            SELECT mp.given_name || ' ' || mp.family_name
+            FROM employees me JOIN persons mp ON mp.id = me.person_id
+            WHERE me.id = employees.manager_employee_id)`,
           createdAt: t.employees.createdAt,
         })
         .from(t.employees)
@@ -116,6 +152,12 @@ export class PeopleService {
           workEmail: r.workEmail,
           positionTitle: r.positionTitle ?? null,
           orgUnitName: r.orgUnitName ?? null,
+          directionShortName: r.directionShortName ?? null,
+          directionName: r.directionName ?? null,
+          contractStartDate: r.contractStartDate ?? null,
+          contractEndDate: r.contractEndDate ?? null,
+          managerId: r.managerId ?? null,
+          managerName: r.managerName ?? null,
         })),
         nextCursor:
           hasMore && last
@@ -138,6 +180,9 @@ export class PeopleService {
           ...person,
           nationalIdEncrypted: nationalId ? this.crypto.encrypt(nationalId) : null,
         });
+        if (input.employee.managerEmployeeId) {
+          await this.assertManagerValid(tx, employeeId, input.employee.managerEmployeeId);
+        }
         await tx.insert(t.employees).values({
           id: employeeId,
           tenantId: user.tenantId,
@@ -146,6 +191,7 @@ export class PeopleService {
           hiredOn: input.employee.hiredOn,
           workEmail: input.employee.workEmail,
           workPhone: input.employee.workPhone,
+          managerEmployeeId: input.employee.managerEmployeeId ?? null,
           customFields: input.employee.customFields ?? {},
         });
         if (input.contract) {
@@ -225,6 +271,15 @@ export class PeopleService {
         .where(eq(t.contracts.employeeId, id))
         .orderBy(desc(t.contracts.startDate));
 
+      const [managerRow] = employee.managerEmployeeId
+        ? await tx
+            .select({ givenName: t.persons.givenName, familyName: t.persons.familyName })
+            .from(t.employees)
+            .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+            .where(eq(t.employees.id, employee.managerEmployeeId))
+            .limit(1)
+        : [];
+
       const canSeeSensitive = SENSITIVE_ROLES.has(user.role) || isSelf;
       return {
         id: employee.id,
@@ -233,6 +288,8 @@ export class PeopleService {
         hiredOn: employee.hiredOn,
         workEmail: employee.workEmail,
         workPhone: employee.workPhone,
+        managerId: employee.managerEmployeeId,
+        managerName: managerRow ? `${managerRow.givenName} ${managerRow.familyName}` : null,
         customFields: (employee.customFields ?? {}) as Record<string, unknown>,
         person: {
           id: person.id,
@@ -335,6 +392,9 @@ export class PeopleService {
           // unité : l'organigramme désignerait un chef parti. Même arbitrage que
           // pour la mutation — la RH nomme un successeur, la plateforme ne
           // décapite pas une unité toute seule.
+          if (input.employee.managerEmployeeId) {
+            await this.assertManagerValid(tx, id, input.employee.managerEmployeeId);
+          }
           if (input.employee.status && input.employee.status !== 'active') {
             const [headed] = await tx
               .select({ name: t.orgUnits.name })
@@ -366,6 +426,51 @@ export class PeopleService {
    * courante à startDate (borne exclusive) et ouvre la nouvelle [startDate,).
    * Jamais d'UPDATE destructif : l'historique reste intégralement lisible.
    */
+  /**
+   * Le manager désigné doit être un employé ACTIF du tenant, différent de
+   * l'intéressé, et ne pas relever lui-même de lui : une boucle hiérarchique
+   * ferait tourner sans fin toute remontée de chaîne (validation d'absence,
+   * organigramme). La contrainte CHECK couvre le cas « soi-même » ; les boucles
+   * plus longues demandent de remonter, donc c'est ici.
+   */
+  private async assertManagerValid(tx: Tx, employeeId: string, managerId: string): Promise<void> {
+    if (managerId === employeeId) {
+      problem(422, 'people.manager_is_self', 'Un employé ne peut pas être son propre manager');
+    }
+    const [manager] = await tx
+      .select({ status: t.employees.status })
+      .from(t.employees)
+      .where(eq(t.employees.id, managerId))
+      .limit(1);
+    if (!manager) {
+      problem(422, 'people.manager_not_found', "Ce manager n'existe pas");
+    }
+    if (manager.status !== 'active') {
+      problem(
+        422,
+        'people.manager_not_active',
+        'Seul un employé actif peut être désigné manager',
+        'Ce dossier est suspendu ou clos.',
+      );
+    }
+    const boucle = await tx.execute(sql`
+      WITH RECURSIVE chaine AS (
+        SELECT id, manager_employee_id FROM employees WHERE id = ${managerId}
+        UNION ALL
+        SELECT e.id, e.manager_employee_id
+        FROM employees e JOIN chaine c ON e.id = c.manager_employee_id
+      )
+      SELECT 1 FROM chaine WHERE id = ${employeeId} LIMIT 1`);
+    if (boucle.rows.length > 0) {
+      problem(
+        422,
+        'people.manager_cycle',
+        'Ce rattachement créerait une boucle hiérarchique',
+        'Cette personne relève déjà, directement ou non, de l’employé concerné.',
+      );
+    }
+  }
+
   /**
    * Une affectation ne peut viser qu'une unité VIVANTE. Seule la clé étrangère
    * protégeait : elle accepte une unité dissoute, ce qui annulait la garantie

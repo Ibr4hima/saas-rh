@@ -5,7 +5,12 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import type { EmployeeDetail, UpdateEmployeeInput } from '@teranga/contracts';
+import type {
+  CursorPage,
+  EmployeeDetail,
+  EmployeeListItem,
+  UpdateEmployeeInput,
+} from '@teranga/contracts';
 import {
   Button,
   Card,
@@ -48,6 +53,7 @@ interface FormValues {
   workEmail: string;
   workPhone: string;
   status: string;
+  managerEmployeeId: string;
 }
 
 const PERSON_KEYS = [
@@ -69,7 +75,14 @@ const PERSON_KEYS = [
   'emergencyContactName',
   'emergencyContactPhone',
 ] as const;
-const EMPLOYEE_KEYS = ['employeeNumber', 'hiredOn', 'workEmail', 'workPhone', 'status'] as const;
+const EMPLOYEE_KEYS = [
+  'employeeNumber',
+  'hiredOn',
+  'workEmail',
+  'workPhone',
+  'status',
+  'managerEmployeeId',
+] as const;
 const REQUIRED_KEYS = new Set(['givenName', 'familyName', 'employeeNumber', 'hiredOn', 'status']);
 /** Champs qu'on ne peut pas effacer : vidés, ils restent simplement inchangés. */
 const KEEP_IF_EMPTY = new Set(['nationality']);
@@ -98,6 +111,8 @@ function toDefaults(e: EmployeeDetail): FormValues {
     workEmail: e.workEmail ?? '',
     workPhone: e.workPhone ?? '',
     status: e.status,
+    // Vidé, le champ vaut « plus de manager » : c'est bien un effacement.
+    managerEmployeeId: e.managerId ?? '',
   };
 }
 
@@ -128,6 +143,12 @@ function EditForm({ employee }: { employee: EmployeeDetail }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
+
+  const managerQuery = useQuery({
+    queryKey: ['employees', 'managers'],
+    queryFn: () => api<CursorPage<EmployeeListItem>>('/employees?status=active&limit=100'),
+  });
+  const managers = managerQuery.data?.items ?? [];
 
   const form = useForm<FormValues>({ defaultValues: toDefaults(employee) });
   const errors = form.formState.errors;
@@ -304,6 +325,23 @@ function EditForm({ employee }: { employee: EmployeeDetail }) {
                 id="employeeNumber"
                 {...form.register('employeeNumber', { required: 'Le matricule est requis' })}
               />
+            </Field>
+            <Field
+              label="Manager"
+              htmlFor="managerEmployeeId"
+              hint="À qui la personne rend compte. Laisser vide si elle n’en a pas."
+            >
+              <Select id="managerEmployeeId" {...form.register('managerEmployeeId')}>
+                <option value="">— Aucun</option>
+                {managers
+                  .filter((m) => m.id !== employee.id)
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.givenName} {m.familyName}
+                      {m.positionTitle ? ` — ${m.positionTitle}` : ''}
+                    </option>
+                  ))}
+              </Select>
             </Field>
             <Field
               label="Début du contrat"

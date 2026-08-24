@@ -91,6 +91,15 @@ const fatou = await seedEmployee(
   { contractType: 'cdd', startDate: '2025-02-01', endDate: in20Days },
 );
 
+console.log('→ Rattachements hiérarchiques');
+// Awa encadre Moussa (même département) ; Fatou relève d'Awa.
+await call('PATCH', `/employees/${moussa.id}`, {
+  employee: { managerEmployeeId: awa.id },
+});
+await call('PATCH', `/employees/${fatou.id}`, {
+  employee: { managerEmployeeId: awa.id },
+});
+
 console.log('→ Responsables des unités');
 await call('PATCH', `/org-units/${etudes.id}`, { managerEmployeeId: awa.id });
 await call('PATCH', `/org-units/${compta.id}`, { managerEmployeeId: fatou.id });
