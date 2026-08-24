@@ -247,7 +247,7 @@ export default function NewEmployeePage() {
               >
                 {COUNTRIES.map((c) => (
                   <option key={c.code} value={c.code}>
-                    {nationalityLabel(c.code, gender) ?? c.name}
+                    {nationalityLabel(c.code) ?? c.name}
                   </option>
                 ))}
               </Select>

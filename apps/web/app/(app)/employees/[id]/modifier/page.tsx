@@ -258,7 +258,7 @@ function EditForm({ employee }: { employee: EmployeeDetail }) {
               <Select id="nationality" {...form.register('nationality')}>
                 {COUNTRIES.map((c) => (
                   <option key={c.code} value={c.code}>
-                    {nationalityLabel(c.code, watchedGender) ?? c.name}
+                    {nationalityLabel(c.code) ?? c.name}
                   </option>
                 ))}
               </Select>

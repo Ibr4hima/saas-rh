@@ -169,10 +169,7 @@ export default function EmployeePage() {
                     : null
                 }
               />
-              <Info
-                label="Nationalité"
-                value={nationalityLabel(e.person.nationality, e.person.gender)}
-              />
+              <Info label="Nationalité" value={nationalityLabel(e.person.nationality)} />
               <Info
                 label="Pièce d'identité"
                 value={

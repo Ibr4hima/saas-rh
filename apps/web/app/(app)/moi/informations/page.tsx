@@ -151,7 +151,7 @@ export default function MyInformationsPage() {
             <Info label="Sexe" value={p.gender ? SEX_LABELS[p.gender] : null} />
             <Info label="Date de naissance" value={p.birthDate ? formatDate(p.birthDate) : null} />
             <Info label="Pays de naissance" value={p.birthPlace} />
-            <Info label="Nationalité" value={nationalityLabel(p.nationality, p.gender)} />
+            <Info label="Nationalité" value={nationalityLabel(p.nationality)} />
             <Info
               label="Situation matrimoniale"
               value={p.maritalStatus ? marital[p.maritalStatus] : null}
