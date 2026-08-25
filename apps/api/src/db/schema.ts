@@ -111,7 +111,8 @@ export const persons = pgTable('persons', {
   countryCode: char('country_code', { length: 2 }).notNull().default('SN'),
   maritalStatus: text('marital_status'),
   birthPlace: text('birth_place'),
-  nationality: char('nationality', { length: 2 }).notNull().default('SN'),
+  /** NULL = pas encore renseignée (cf. migration 0015), jamais un défaut. */
+  nationality: char('nationality', { length: 2 }),
   nationalIdEncrypted: text('national_id_encrypted'),
   idDocumentType: text('id_document_type'),
   idDocumentIssuedOn: date('id_document_issued_on'),

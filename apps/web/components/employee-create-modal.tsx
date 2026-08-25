@@ -11,6 +11,7 @@ import { contractEnd, maritalLabels, maxBirthDate } from '../lib/person';
 import { formatDate } from '../lib/hooks';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
+import { composeWorkEmail, WorkEmailInput } from './work-email-input';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const tomorrowIso = () => {
@@ -38,8 +39,9 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   const [birthCountry, setBirthCountry] = useState('');
   // La nationalité SUIT le pays de naissance tant que la RH n'y a pas touché :
   // c'est le cas courant. Dès qu'elle la choisit elle-même, on cesse de la
-  // remplacer — on naît malien et on peut être sénégalais.
-  const [nationality, setNationality] = useState(DEFAULT_COUNTRY);
+  // remplacer — on naît malien et on peut être sénégalais. Vide au départ :
+  // aucune nationalité n'est plus probable qu'une autre avant qu'on le dise.
+  const [nationality, setNationality] = useState('');
   const [nationalityTouched, setNationalityTouched] = useState(false);
   const [idType, setIdType] = useState('');
   const [idNumber, setIdNumber] = useState('');
@@ -48,10 +50,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   const [phoneCountry, setPhoneCountry] = useState(DEFAULT_COUNTRY);
   const [phoneLocal, setPhoneLocal] = useState('');
   const [personalEmail, setPersonalEmail] = useState('');
-  const [city, setCity] = useState('');
   const [addressLine, setAddressLine] = useState('');
-  const [emergencyName, setEmergencyName] = useState('');
-  const [emergencyPhone, setEmergencyPhone] = useState('');
 
   // Emploi
   const [employeeNumber, setEmployeeNumber] = useState('');
@@ -110,7 +109,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             gender: gender || undefined,
             birthDate: birthDate || undefined,
             birthPlace: birthCountry ? countryByCode(birthCountry)?.name : undefined,
-            nationality,
+            nationality: nationality || undefined,
             maritalStatus: maritalStatus || undefined,
             nationalId: idType ? idNumber.trim() : undefined,
             idDocumentType: idType || undefined,
@@ -119,14 +118,11 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             personalEmail: personalEmail || undefined,
             phone: composePhone(phoneCountry, phoneLocal),
             addressLine: addressLine || undefined,
-            city: city || undefined,
-            emergencyContactName: emergencyName || undefined,
-            emergencyContactPhone: emergencyPhone || undefined,
           },
           employee: {
             employeeNumber,
             hiredOn: contractStart,
-            workEmail: workEmail || undefined,
+            workEmail: composeWorkEmail(workEmail),
             workPhone: composePhone(workPhoneCountry, workPhoneLocal),
             managerEmployeeId: managerId || undefined,
           },
@@ -222,7 +218,6 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
             />
-            <p className="mt-1 text-xs text-ink-muted">15 ans minimum.</p>
           </Field>
           <Field label="Pays de naissance" htmlFor="birthCountry">
             <Select
@@ -241,11 +236,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               ))}
             </Select>
           </Field>
-          <Field
-            label="Nationalité"
-            htmlFor="nationality"
-            hint="Reprend le pays de naissance ; modifiable si elle en diffère."
-          >
+          <Field label="Nationalité" htmlFor="nationality">
             <Select
               id="nationality"
               value={nationality}
@@ -254,6 +245,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
                 setNationalityTouched(true);
               }}
             >
+              <option value="">—</option>
               {COUNTRIES.map((c) => (
                 <option key={c.code} value={c.code}>
                   {nationalityLabel(c.code) ?? c.name}
@@ -265,13 +257,13 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
           <Field label="Pièce d'identité" htmlFor="idType">
             <Select id="idType" value={idType} onChange={(e) => setIdType(e.target.value)}>
               <option value="">—</option>
-              <option value="cni">CNI</option>
+              <option value="cni">Carte Nationale d&apos;Identité</option>
               <option value="passport">Passeport</option>
             </Select>
           </Field>
           {idType ? (
             <>
-              <Field label="Numéro de la pièce (chiffré au stockage)" htmlFor="idNumber" required>
+              <Field label="Numéro de la pièce" htmlFor="idNumber" required>
                 <Input
                   id="idNumber"
                   value={idNumber}
@@ -324,30 +316,17 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               onChange={(e) => setPersonalEmail(e.target.value)}
             />
           </Field>
-          <Field label="Ville" htmlFor="city">
-            <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} />
-          </Field>
-          <Field label="Adresse" htmlFor="addressLine">
-            <Input
-              id="addressLine"
-              value={addressLine}
-              onChange={(e) => setAddressLine(e.target.value)}
-            />
-          </Field>
-          <Field label="Contact d'urgence — nom" htmlFor="emergencyName">
-            <Input
-              id="emergencyName"
-              value={emergencyName}
-              onChange={(e) => setEmergencyName(e.target.value)}
-            />
-          </Field>
-          <Field label="Contact d'urgence — téléphone" htmlFor="emergencyPhone">
-            <Input
-              id="emergencyPhone"
-              value={emergencyPhone}
-              onChange={(e) => setEmergencyPhone(e.target.value)}
-            />
-          </Field>
+          {/* Seule de sa rangée depuis le retrait de « Ville » — et de toute
+              façon le champ le plus long de la section. */}
+          <div className="sm:col-span-2">
+            <Field label="Adresse" htmlFor="addressLine">
+              <Input
+                id="addressLine"
+                value={addressLine}
+                onChange={(e) => setAddressLine(e.target.value)}
+              />
+            </Field>
+          </div>
         </ModalGrid>
       </ModalSection>
 
@@ -397,12 +376,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             </Field>
           ) : null}
           <Field label="Email professionnel" htmlFor="workEmail">
-            <Input
-              id="workEmail"
-              type="email"
-              value={workEmail}
-              onChange={(e) => setWorkEmail(e.target.value)}
-            />
+            <WorkEmailInput id="workEmail" value={workEmail} onChange={setWorkEmail} />
           </Field>
           <Field label="Téléphone professionnel" htmlFor="workPhone">
             <PhoneInput
@@ -417,7 +391,6 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
           <Field label="Poste" htmlFor="positionTitle">
             <Input
               id="positionTitle"
-              placeholder="Ex : Chargée d'études"
               value={positionTitle}
               onChange={(e) => setPositionTitle(e.target.value)}
             />
@@ -436,11 +409,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               ))}
             </Select>
           </Field>
-          <Field
-            label="Manager"
-            htmlFor="managerId"
-            hint="À qui la personne rend compte. Un directeur général n’en a pas."
-          >
+          <Field label="Manager" htmlFor="managerId">
             <Select id="managerId" value={managerId} onChange={(e) => setManagerId(e.target.value)}>
               <option value="">— Aucun</option>
               {managers.map((m) => (

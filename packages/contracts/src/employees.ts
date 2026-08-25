@@ -282,11 +282,13 @@ export const updatePersonFieldsSchema = z
     birthDate: birthDateSchema.nullable(),
     birthPlace: clearableString(120),
     maritalStatus: maritalStatusSchema.nullable(),
-    // NOT NULL en base (défaut 'SN') : modifiable mais jamais effaçable.
+    // Effaçable comme les autres champs facultatifs : depuis la migration
+    // 0015, « pas renseignée » est un état, plus un défaut silencieux.
     nationality: z
       .string()
       .length(2)
-      .transform((v) => v.toUpperCase()),
+      .transform((v) => v.toUpperCase())
+      .nullable(),
     nationalId: clearableString(40),
     idDocumentType: idDocumentTypeSchema.nullable(),
     idDocumentIssuedOn: isoDate.nullable(),
@@ -400,7 +402,7 @@ export interface EmployeeDetail {
     birthDate: string | null;
     birthPlace: string | null;
     maritalStatus: string | null;
-    nationality: string;
+    nationality: string | null;
     nationalId: string | null;
     idDocumentType: string | null;
     idDocumentIssuedOn: string | null;
