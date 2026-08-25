@@ -120,7 +120,7 @@ function pageAction(pathname: string, role: string): ChromeAction | null {
   const canManage = role === 'admin' || role === 'hr';
   if (!canManage) return null;
   if (pathname === '/employees') {
-    return { href: '/employees/new', icon: 'add', label: 'Nouvel employé' };
+    return { href: '/employees?nouveau=1', icon: 'add', label: 'Nouvel employé' };
   }
   if (pathname === '/absences') {
     return { href: '/absences/parametres', icon: 'settings', label: 'Paramètres des congés' };

@@ -24,6 +24,7 @@ export const ICON_NAMES = [
   'badge',
   'calendar_month',
   'chevron_right',
+  'close',
   'dashboard',
   'edit',
   'event',

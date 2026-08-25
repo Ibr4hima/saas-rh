@@ -5,6 +5,7 @@
     "badge",
     "calendar_month",
     "chevron_right",
+    "close",
     "dashboard",
     "edit",
     "event",
@@ -24,5 +25,5 @@
     "settings"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 28028
+  "bytes": 28264
 }

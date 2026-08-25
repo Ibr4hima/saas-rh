@@ -104,3 +104,32 @@ body {
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
+
+/* Ouverture d'une fenêtre de saisie : elle monte de 10 px en se posant.
+   Assez pour dire d'où elle vient, assez court pour ne pas se faire attendre. */
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.modal-panel {
+  animation: modal-in 220ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-panel {
+    animation: none;
+  }
+}
+
+/* Le panneau prend le focus à l'ouverture (cf. useDialogue) : c'est une cible
+   technique, pas un élément que l'on parcourt — pas de halo. */
+[role='dialog']:focus {
+  outline: none;
+}

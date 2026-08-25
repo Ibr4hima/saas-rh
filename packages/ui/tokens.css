@@ -47,6 +47,10 @@
 
   --tg-focus-ring: #004f91;
 
+  /* Voile des surfaces modales. Valeur ABSOLUE, pas dérivée de l'encre :
+     l'encre s'inverse en thème sombre et le voile virerait au blanc. */
+  --tg-overlay: rgb(20 23 42 / 0.45);
+
   /* Fond posé derrière le logo. Transparent en clair : le logo se pose
      directement sur la barre. En sombre il redevient blanc — un logo à encre
      foncée, le cas courant des administrations, s'effacerait sinon. */
@@ -138,6 +142,7 @@
 
     --tg-brand-plate: #ffffff;
     --tg-focus-ring: #86b5ea;
+    --tg-overlay: rgb(4 6 12 / 0.6);
     --tg-chart: #659cd9;
     --tg-chart-track: #262a3a;
   }
@@ -173,6 +178,7 @@
 
   --tg-brand-plate: #ffffff;
   --tg-focus-ring: #86b5ea;
+  --tg-overlay: rgb(4 6 12 / 0.6);
   --tg-chart: #659cd9;
   --tg-chart-track: #262a3a;
 }

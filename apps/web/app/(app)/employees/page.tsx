@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { CursorPage, EmployeeListItem } from '@teranga/contracts';
 import {
@@ -21,9 +21,14 @@ import {
 } from '@teranga/ui';
 import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
+import { EmployeeCreateModal } from '../../../components/employee-create-modal';
 
 export default function EmployeesPage() {
   const router = useRouter();
+  // L'ouverture passe par l'URL (?nouveau) : le bouton de la barre supérieure
+  // est un lien, la fenêtre se partage, et le bouton Retour la referme au lieu
+  // de quitter la liste.
+  const createOpen = useSearchParams().get('nouveau') !== null;
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [status, setStatus] = useState('');
@@ -51,6 +56,7 @@ export default function EmployeesPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl">
+      <EmployeeCreateModal open={createOpen} onClose={() => router.replace('/employees')} />
       <div className="mb-4 flex gap-3">
         <Input
           placeholder="Rechercher par nom ou matricule…"
