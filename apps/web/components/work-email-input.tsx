@@ -19,6 +19,16 @@ export function composeWorkEmail(local: string): string | undefined {
 }
 
 /**
+ * Partie locale d'une adresse enregistrée, pour pré-remplir le champ.
+ * Une adresse d'un autre domaine (import ancien) n'est PAS réécrite pour
+ * autant : le formulaire n'envoie que les champs modifiés, si bien qu'une
+ * adresse qu'on ne touche pas reste telle quelle en base.
+ */
+export function localWorkEmail(email: string | null | undefined): string {
+  return (email ?? '').split('@')[0] ?? '';
+}
+
+/**
  * Champ d'adresse professionnelle : on ne saisit que ce qui varie.
  *
  * Le domaine est affiché DANS le champ, à droite, en gris — il fait partie de

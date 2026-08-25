@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import type {
   BalanceView,
@@ -34,6 +34,7 @@ import { EmployeeDocumentsCard } from '../../../../components/employee-documents
 import { nationalityLabel } from '@teranga/contracts';
 import { ProfileChangeCard } from '../../../../components/profile-change-card';
 import { DocumentRequestRow } from '../../../../components/document-request-list';
+import { EmployeeEditModal } from '../../../../components/employee-edit-modal';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import type { DocumentRequestView, OrgUnit } from '@teranga/contracts';
@@ -75,6 +76,10 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function EmployeePage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  // Même convention que la création : l'ouverture vit dans l'URL, si bien que
+  // le bouton de la barre supérieure reste un lien et que Retour referme.
+  const editOpen = useSearchParams().get('modifier') !== null;
   const me = useMe();
   const canSeeHistory = me.data && ['admin', 'hr'].includes(me.data.role);
 
@@ -106,6 +111,11 @@ export default function EmployeePage() {
 
   return (
     <div className="mx-auto max-w-4xl">
+      <EmployeeEditModal
+        open={editOpen}
+        employeeId={id}
+        onClose={() => router.replace(`/employees/${id}`)}
+      />
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Link href="/employees" className="text-sm text-ink-muted hover:text-ink">

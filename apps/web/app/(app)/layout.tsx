@@ -131,7 +131,7 @@ function pageAction(pathname: string, role: string): ChromeAction | null {
   // Fiche employé — et elle seule : /employees/<id>, jamais /employees/<id>/…
   const parts = pathname.split('/').filter(Boolean);
   if (parts.length === 2 && parts[0] === 'employees' && parts[1] !== 'new') {
-    return { href: `${pathname}/modifier`, icon: 'edit', label: 'Modifier la fiche' };
+    return { href: `${pathname}?modifier=1`, icon: 'edit', label: 'Modifier la fiche' };
   }
   return null;
 }
