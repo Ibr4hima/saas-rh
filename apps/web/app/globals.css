@@ -29,6 +29,7 @@
   --color-warning-soft: var(--tg-warning-soft);
   --color-danger: var(--tg-danger);
   --color-danger-soft: var(--tg-danger-soft);
+  --color-hero-ink: var(--tg-hero-ink);
   --color-chart: var(--tg-chart);
   --color-chart-track: var(--tg-chart-track);
   --font-sans: var(--tg-font-sans);
@@ -132,4 +133,70 @@ body {
    technique, pas un élément que l'on parcourt — pas de halo. */
 [role='dialog']:focus {
   outline: none;
+}
+
+/* ── Bandeau de tête ──────────────────────────────────────────────────────
+   Repris de la plateforme APIX : un aplat de marque, une trame très fine
+   masquée en diagonale, deux halos lumineux et un liseré en bas. Aucune de
+   ces couches ne se voit isolément ; ensemble elles donnent au bandeau une
+   profondeur qu'une couleur unie n'a pas. */
+.hero-bar {
+  background: var(--tg-hero);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.04) 1px, transparent 1px);
+  background-size: 44px 44px;
+  /* La trame s'efface vers le bas : visible là où l'œil entre, absente là où
+     le titre se lit. */
+  mask-image: radial-gradient(ellipse at 75% 0%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse at 75% 0%, #000 0%, transparent 72%);
+}
+
+/* Liseré lumineux en bas — la seule séparation entre le bandeau et la page. */
+.hero-bar::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.3) 50%, transparent 100%);
+}
+
+/* Le point pulsant : une onde blanche qui s'ouvre et s'éteint. */
+@keyframes hero-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(255 255 255 / 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgb(255 255 255 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(255 255 255 / 0);
+  }
+}
+
+.hero-dot {
+  animation: hero-pulse 1.6s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-dot {
+    animation: none;
+  }
+}
+
+/* Le logo se pose en blanc pur sur le bandeau, quelles que soient ses encres. */
+.hero-logo {
+  filter: brightness(0) invert(1);
 }

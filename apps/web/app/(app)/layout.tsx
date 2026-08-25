@@ -136,14 +136,18 @@ function pageAction(pathname: string, role: string): ChromeAction | null {
   return null;
 }
 
-/** Bouton d'action de la tête de page : l'unique geste de l'écran, en marque pleine. */
+/**
+ * Bouton d'action du bandeau : l'unique geste de l'écran. Verre translucide
+ * plutôt qu'aplat — sur un fond de marque, un second aplat de marque ne se
+ * détacherait pas.
+ */
 function HeaderAction({ action }: { action: ChromeAction }) {
   return (
     <Link
       href={action.href}
       title={action.label}
       aria-label={action.label}
-      className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-ink transition-colors duration-150 hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+      className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
     >
       <Icon name={action.icon} size={20} />
     </Link>
@@ -269,115 +273,47 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     href === '/moi' ? pathname === '/moi' : pathname.startsWith(href);
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="sticky top-0 flex h-screen w-[17.125rem] flex-col border-r border-line-soft bg-surface max-lg:hidden">
-        {/* Marque. Sa hauteur est CELLE de la barre supérieure : les deux
-            filets se rejoignent alors sur une seule ligne d'un bord à l'autre
-            de l'écran, au lieu de se rater de quelques pixels. */}
-        <div className="flex h-20 shrink-0 flex-col justify-center border-b border-line-soft px-5">
-          <Link href={isStaff ? '/dashboard' : '/moi'} className="block">
-            <BrandMark variant="rail" />
-            <BrandWordmark className="mt-2" />
-          </Link>
-        </div>
+    /* Coquille d'application : la page elle-même ne défile pas. Le bandeau et
+       la barre latérale restent en place, seul le contenu bouge — comme sur la
+       plateforme APIX. */
+    <div className="flex h-dvh flex-col overflow-hidden">
+      {/* ———— Bandeau de tête, d'un bord à l'autre ———— */}
+      <header className="hero-bar z-30 flex shrink-0 items-center gap-3 px-4 pt-5 pb-[18px] lg:gap-4 lg:px-10">
+        <span aria-hidden className="pointer-events-none absolute inset-0 opacity-50">
+          <span className="absolute -top-[140%] -right-[6%] size-[580px] rounded-full bg-[radial-gradient(circle,var(--tg-halo-clair)_0%,transparent_60%)]" />
+          <span className="absolute -bottom-[160%] -left-[8%] size-[460px] rounded-full bg-[radial-gradient(circle,var(--tg-halo-bleu)_0%,transparent_65%)]" />
+        </span>
+        <Link
+          href={isStaff ? '/dashboard' : '/moi'}
+          aria-label="Accueil"
+          className="relative z-10 flex shrink-0 items-center"
+        >
+          <BrandMark variant="hero" />
+        </Link>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
-          <div className="flex flex-col gap-0.5">
-            {items.map((item) => {
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    'flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors duration-150',
-                    active
-                      ? 'bg-primary-soft font-medium text-primary'
-                      : 'text-ink-muted hover:bg-line-soft hover:text-ink',
-                  )}
-                >
-                  {/* Icône pleine sur l'entrée courante : la position dans le
-                      menu se lit alors sans dépendre de la seule couleur. */}
-                  <Icon name={item.icon} size={20} fill={active} />
-                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  {badgeCount(item.badge) > 0 ? (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-accent-ink">
-                      {badgeCount(item.badge)}
-                    </span>
-                  ) : null}
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-
-        {/* Utilisateur */}
-        <div className="border-t border-line-soft px-3 py-3">
-          <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
-              {initials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm leading-tight font-medium text-ink-strong">
-                {user.givenName} {user.familyName}
-              </p>
-              <p className="truncate text-xs leading-tight text-ink-muted">
-                {ROLE_LABELS[user.role] ?? user.role}
-              </p>
-            </div>
-            <button
-              type="button"
-              title="Se déconnecter"
-              aria-label="Se déconnecter"
-              className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
-              onClick={async () => {
-                await api('/auth/logout', { method: 'POST' });
-                router.replace('/login');
-              }}
-            >
-              <Icon name="logout" size={18} />
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Barre supérieure (grand écran) : même blanc que la barre latérale,
-            posée sur la toile grise du contenu. Un filet la sépare — pas un
-            aplat de couleur, qui ferait deux zones au lieu d'un cadre. Son
-            contenu s'aligne sur la colonne des cartes en dessous. */}
-        <header className="sticky top-0 z-20 hidden h-20 shrink-0 items-center border-b border-line-soft bg-surface px-8 lg:flex">
-          <div className="mx-auto flex w-full max-w-6xl items-center gap-4">
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-[20px] leading-tight font-semibold tracking-[-0.01em] text-ink-strong">
-                {title}
-              </h1>
-              {subtitle ? (
-                <p className="mt-1 truncate text-[13px] leading-tight text-ink-muted">{subtitle}</p>
-              ) : null}
-            </div>
-            {action ? <HeaderAction action={action} /> : null}
-            <NotificationsBell />
-          </div>
-        </header>
-
-        {/* En-tête mobile */}
-        <header className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-line bg-surface px-4 py-3 lg:hidden">
-          <BrandMark variant="compact" />
-          {/* Le petit écran troque la signature contre le titre : le logo à
-              côté dit déjà de quelle maison il s'agit. */}
-          <p className="min-w-0 flex-1 truncate text-sm leading-tight font-semibold text-ink-strong">
+        <div className="relative z-10 flex min-w-0 items-center gap-3">
+          {/* Le point pulsant ouvre la ligne : l'écran est vivant, quelque
+              chose s'y passe — et c'est lui qu'on voit avant de lire. */}
+          <span aria-hidden className="hero-dot size-[7px] shrink-0 rounded-full bg-hero-ink" />
+          <h1 className="truncate text-[19px] leading-tight font-extrabold tracking-[-0.01em] text-hero-ink lg:text-[21px]">
             {title}
-          </p>
+          </h1>
+        </div>
+
+        {subtitle ? (
+          <span className="relative z-10 hidden shrink-0 rounded-full border border-white/25 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-hero-ink lg:inline-flex">
+            {subtitle}
+          </span>
+        ) : null}
+
+        <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
           {action ? <HeaderAction action={action} /> : null}
           <NotificationsBell />
           <button
             type="button"
             title="Se déconnecter"
             aria-label="Se déconnecter"
-            className="rounded-md p-1.5 text-ink-muted"
+            className="flex size-9 items-center justify-center rounded-full border border-white/30 bg-white/10 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 lg:hidden"
             onClick={async () => {
               await api('/auth/logout', { method: 'POST' });
               router.replace('/login');
@@ -385,34 +321,108 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           >
             <Icon name="logout" size={18} />
           </button>
-        </header>
+        </div>
+      </header>
 
-        <main className="min-w-0 flex-1 px-4 py-6 pb-24 lg:px-8 lg:py-8 lg:pb-8">{children}</main>
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex w-[17.125rem] shrink-0 flex-col border-r border-line-soft bg-surface max-lg:hidden">
+          {/* Navigation */}
+          <nav className="flex-1 overflow-y-auto px-3 py-4">
+            <div className="flex flex-col gap-0.5">
+              {items.map((item) => {
+                const active = isActive(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={active ? 'page' : undefined}
+                    className={cn(
+                      'flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors duration-150',
+                      active
+                        ? 'bg-primary-soft font-medium text-primary'
+                        : 'text-ink-muted hover:bg-line-soft hover:text-ink',
+                    )}
+                  >
+                    {/* Icône pleine sur l'entrée courante : la position dans le
+                      menu se lit alors sans dépendre de la seule couleur. */}
+                    <Icon name={item.icon} size={20} fill={active} />
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    {badgeCount(item.badge) > 0 ? (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-accent-ink">
+                        {badgeCount(item.badge)}
+                      </span>
+                    ) : null}
+                  </Link>
+                );
+              })}
+            </div>
+          </nav>
 
-        {/* Barre d'onglets mobile */}
-        <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">
-          {items.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'relative flex min-w-14 flex-col items-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-medium',
-                  active ? 'text-primary' : 'text-ink-muted',
-                )}
+          {/* Utilisateur */}
+          <div className="border-t border-line-soft px-3 py-3">
+            <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm leading-tight font-medium text-ink-strong">
+                  {user.givenName} {user.familyName}
+                </p>
+                <p className="truncate text-xs leading-tight text-ink-muted">
+                  {ROLE_LABELS[user.role] ?? user.role}
+                </p>
+              </div>
+              <button
+                type="button"
+                title="Se déconnecter"
+                aria-label="Se déconnecter"
+                className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
+                onClick={async () => {
+                  await api('/auth/logout', { method: 'POST' });
+                  router.replace('/login');
+                }}
               >
-                <Icon name={item.icon} size={22} fill={active} />
-                {badgeCount(item.badge) > 0 ? (
-                  <span className="absolute top-0 right-2 size-2 rounded-full bg-accent" />
-                ) : null}
-                <span className="truncate">{item.short ?? item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+                <Icon name="logout" size={18} />
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* Le seul panneau qui défile. `data-scroll-root` le signale aux
+              fenêtres modales, qui doivent le geler comme elles gèlent la page. */}
+          <main
+            data-scroll-root
+            className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 pb-24 lg:px-10 lg:py-8 lg:pb-10"
+          >
+            {children}
+          </main>
+        </div>
       </div>
+
+      {/* Barre d'onglets mobile */}
+      <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line-soft bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">
+        {items.map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? 'page' : undefined}
+              className={cn(
+                'relative flex min-w-14 flex-col items-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-medium',
+                active ? 'text-primary' : 'text-ink-muted',
+              )}
+            >
+              <Icon name={item.icon} size={22} fill={active} />
+              {badgeCount(item.badge) > 0 ? (
+                <span className="absolute top-0 right-2 size-2 rounded-full bg-accent" />
+              ) : null}
+              <span className="truncate">{item.short ?? item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

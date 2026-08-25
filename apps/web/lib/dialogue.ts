@@ -25,7 +25,17 @@ const FOCUSABLE =
  * encore à l'écran.
  */
 let locks = 0;
-let before = { body: '', root: '', paddingRight: '' };
+let before = { body: '', root: '', paddingRight: '', pane: '' };
+
+/**
+ * Le panneau qui défile réellement. Depuis que l'application est une coquille
+ * à hauteur d'écran, ce n'est plus le document : geler <body> ne suffit pas,
+ * la molette continuerait de faire défiler le contenu DERRIÈRE la fenêtre. Le
+ * layout marque ce panneau, à charge pour nous de le figer avec le reste.
+ */
+function scrollPane(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[data-scroll-root]');
+}
 
 export function useDialogue(active: boolean, label?: string) {
   const ref = useRef<HTMLDivElement>(null);
@@ -34,6 +44,7 @@ export function useDialogue(active: boolean, label?: string) {
     if (!active) return;
     const body = document.body;
     const root = document.documentElement;
+    const pane = scrollPane();
     if (locks === 0) {
       // La largeur de l'ascenseur est reportée en marge : le masquer sans
       // compenser élargit la page d'une quinzaine de pixels, et TOUT son
@@ -43,10 +54,12 @@ export function useDialogue(active: boolean, label?: string) {
         body: body.style.overflow,
         root: root.style.overflow,
         paddingRight: body.style.paddingRight,
+        pane: pane?.style.overflow ?? '',
       };
       // Les DEUX : selon la page, l'ascenseur appartient à <body> ou à <html>.
       body.style.overflow = 'hidden';
       root.style.overflow = 'hidden';
+      if (pane) pane.style.overflow = 'hidden';
       if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
     }
     locks++;
@@ -57,6 +70,7 @@ export function useDialogue(active: boolean, label?: string) {
         body.style.overflow = before.body;
         root.style.overflow = before.root;
         body.style.paddingRight = before.paddingRight;
+        if (pane) pane.style.overflow = before.pane;
       }
     };
   }, [active]);

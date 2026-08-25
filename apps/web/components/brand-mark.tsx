@@ -19,7 +19,7 @@ const LOGO_SOURCES = ['/logo-apix.svg', '/logo-apix.png'];
  * jamais. Le logo tient toute la largeur qu'on lui donne : c'est la signature
  * de l'employeur, pas une vignette. Cf. apps/web/public/README.md.
  */
-export function BrandMark({ variant }: { variant: 'full' | 'rail' | 'compact' }) {
+export function BrandMark({ variant }: { variant: 'full' | 'hero' | 'compact' }) {
   // Index dans LOGO_SOURCES ; au-delà de la liste, plus de fichier à tenter.
   const [candidate, setCandidate] = useState(0);
   const src = LOGO_SOURCES[candidate];
@@ -38,9 +38,9 @@ export function BrandMark({ variant }: { variant: 'full' | 'rail' | 'compact' })
           // toute la place offerte, un logo haut reste à sa mesure.
           'bg-[var(--tg-brand-plate)] object-contain',
           variant === 'full' && 'max-h-14 w-full rounded-lg px-1 py-0.5',
-          // En barre latérale l'identité se fait discrète : c'est la
-          // navigation, pas une page de garde.
-          variant === 'rail' && 'max-h-9 w-full rounded-md px-1',
+          // Sur le bandeau, le logo se pose en blanc pur : la plaque n'a plus
+          // lieu d'être, et ses encres foncées disparaîtraient dans le bleu.
+          variant === 'hero' && 'hero-logo h-8 w-auto max-w-32 shrink-0 bg-transparent',
           variant === 'compact' && 'h-8 w-auto max-w-28 shrink-0 rounded-md px-0.5',
         )}
         onError={() => setCandidate((i) => i + 1)}
@@ -50,10 +50,12 @@ export function BrandMark({ variant }: { variant: 'full' | 'rail' | 'compact' })
   return (
     <div
       className={cn(
-        'flex items-center justify-center bg-primary font-bold text-primary-ink',
-        variant === 'full' && 'h-14 w-full rounded-lg text-lg tracking-[0.12em]',
-        variant === 'rail' && 'h-9 w-full rounded-md text-sm tracking-[0.12em]',
-        variant === 'compact' && 'size-8 rounded-md text-xs',
+        'flex items-center justify-center font-bold',
+        variant === 'full' &&
+          'h-14 w-full rounded-lg bg-primary text-lg tracking-[0.12em] text-primary-ink',
+        // Sur le bandeau, pas d'aplat : l'encre blanche suffit.
+        variant === 'hero' && 'h-8 shrink-0 px-1 text-base tracking-[0.14em] text-hero-ink',
+        variant === 'compact' && 'size-8 rounded-md bg-primary text-xs text-primary-ink',
       )}
     >
       CH

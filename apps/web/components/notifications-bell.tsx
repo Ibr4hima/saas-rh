@@ -56,7 +56,9 @@ export function NotificationsBell() {
         type="button"
         aria-label={`Notifications${unread > 0 ? ` (${unread} non lues)` : ''}`}
         onClick={() => setOpen(!open)}
-        className="relative flex size-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-line-soft hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+        // Sur le bandeau : verre translucide, comme les commandes de la
+        // plateforme APIX. L'anneau blanc dit le contour sans peser.
+        className="relative flex size-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
       >
         <Icon name="notifications" size={20} />
         {unread > 0 ? (

@@ -15,14 +15,17 @@
 
 :root {
   /* --- Couleurs sémantiques (light) --- */
-  --tg-bg: #f7f7fa;
+  /* Surfaces reprises de la plateforme APIX (--champ / --carte / --carte-douce) :
+     des gris CHAUDS, pas bleutés — c'est ce qui donne à l'ensemble sa lumière
+     d'ivoire plutôt que sa froideur d'écran. */
+  --tg-bg: #f8f7f6;
   --tg-surface: #ffffff;
-  --tg-surface-raised: #ffffff;
+  --tg-surface-raised: #fafaf9;
   --tg-ink: #1c2033;
   --tg-ink-strong: #14172a;
   --tg-ink-muted: #5a5f75;
-  --tg-line: #e3e4ec;
-  --tg-line-soft: #ecedf3;
+  --tg-line: #d8d3cf;
+  --tg-line-soft: #eceae7;
 
   --tg-primary: #004f91;
   --tg-primary-ink: #ffffff;
@@ -46,6 +49,17 @@
   --tg-danger-soft: #fae9e7;
 
   --tg-focus-ring: #004f91;
+
+  /* Bandeau de tête — dégradé de marque de la plateforme APIX, repris à
+     l'identique. Ce n'est pas une couleur unie : la diagonale à 155° fait
+     descendre le bleu du presque-noir vers le bleu ouvert, et c'est elle qui
+     donne au bandeau son épaisseur. */
+  --tg-hero: linear-gradient(155deg, #002a52 0%, #003a6e 35%, #004f91 70%, #1a6ab0 100%);
+  --tg-hero-ink: #ffffff;
+  /* Halos posés sur le bandeau. Éteints la nuit : sur un aplat de minuit, ils
+     ne feraient que remettre le dégradé qu'on en a retiré. */
+  --tg-halo-clair: rgb(255 255 255 / 0.07);
+  --tg-halo-bleu: rgb(0 79 145 / 0.5);
 
   /* Voile des surfaces modales. Valeur ABSOLUE, pas dérivée de l'encre :
      l'encre s'inverse en thème sombre et le voile virerait au blanc. */
@@ -111,14 +125,19 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --tg-bg: #14161f;
-    --tg-surface: #1c1f2c;
-    --tg-surface-raised: #232739;
+    --tg-bg: #101927;
+    --tg-surface: #151e2e;
+    --tg-surface-raised: #1b2536;
     --tg-ink: #e4e6f0;
     --tg-ink-strong: #f4f5fa;
     --tg-ink-muted: #9ba0b4;
-    --tg-line: #2c3042;
-    --tg-line-soft: #262a3a;
+    --tg-line: rgb(122 138 164 / 0.32);
+    --tg-line-soft: rgb(122 138 164 / 0.17);
+    /* Aplat, pas dégradé : entre #16213A et #22406A l'écart est trop faible
+       pour se lire comme une matière. */
+    --tg-hero: #16213a;
+    --tg-halo-clair: transparent;
+    --tg-halo-bleu: transparent;
 
     /* Le bleu de charte (#004f91) est trop sombre pour un fond sombre : on
        remonte la clarté à teinte constante plutôt que d'inverser. */
@@ -149,14 +168,17 @@
 }
 
 :root[data-theme='dark'] {
-  --tg-bg: #14161f;
-  --tg-surface: #1c1f2c;
-  --tg-surface-raised: #232739;
+  --tg-bg: #101927;
+  --tg-surface: #151e2e;
+  --tg-surface-raised: #1b2536;
   --tg-ink: #e4e6f0;
   --tg-ink-strong: #f4f5fa;
   --tg-ink-muted: #9ba0b4;
-  --tg-line: #2c3042;
-  --tg-line-soft: #262a3a;
+  --tg-line: rgb(122 138 164 / 0.32);
+  --tg-line-soft: rgb(122 138 164 / 0.17);
+  --tg-hero: #16213a;
+  --tg-halo-clair: transparent;
+  --tg-halo-bleu: transparent;
 
   --tg-primary: #86b5ea;
   --tg-primary-ink: #14172a;
