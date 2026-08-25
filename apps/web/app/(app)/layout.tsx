@@ -143,7 +143,7 @@ function HeaderAction({ action }: { action: ChromeAction }) {
       href={action.href}
       title={action.label}
       aria-label={action.label}
-      className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-ink shadow-sm transition-colors duration-150 hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+      className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-ink transition-colors duration-150 hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
     >
       <Icon name={action.icon} size={20} />
     </Link>
@@ -271,16 +271,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <aside className="sticky top-0 flex h-screen w-[17.125rem] flex-col border-r border-line-soft bg-surface max-lg:hidden">
-        {/* Marque */}
-        <div className="px-4 pt-5 pb-5">
+        {/* Marque. Sa hauteur est CELLE de la barre supérieure : les deux
+            filets se rejoignent alors sur une seule ligne d'un bord à l'autre
+            de l'écran, au lieu de se rater de quelques pixels. */}
+        <div className="flex h-20 shrink-0 flex-col justify-center border-b border-line-soft px-5">
           <Link href={isStaff ? '/dashboard' : '/moi'} className="block">
-            <BrandMark variant="full" />
-            <BrandWordmark className="mt-2.5" />
+            <BrandMark variant="rail" />
+            <BrandWordmark className="mt-2" />
           </Link>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 pb-4">
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
           <div className="flex flex-col gap-0.5">
             {items.map((item) => {
               const active = isActive(item.href);
@@ -342,6 +344,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* Barre supérieure (grand écran) : même blanc que la barre latérale,
+            posée sur la toile grise du contenu. Un filet la sépare — pas un
+            aplat de couleur, qui ferait deux zones au lieu d'un cadre. Son
+            contenu s'aligne sur la colonne des cartes en dessous. */}
+        <header className="sticky top-0 z-20 hidden h-20 shrink-0 items-center border-b border-line-soft bg-surface px-8 lg:flex">
+          <div className="mx-auto flex w-full max-w-6xl items-center gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-[20px] leading-tight font-semibold tracking-[-0.01em] text-ink-strong">
+                {title}
+              </h1>
+              {subtitle ? (
+                <p className="mt-1 truncate text-[13px] leading-tight text-ink-muted">{subtitle}</p>
+              ) : null}
+            </div>
+            {action ? <HeaderAction action={action} /> : null}
+            <NotificationsBell />
+          </div>
+        </header>
+
         {/* En-tête mobile */}
         <header className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-line bg-surface px-4 py-3 lg:hidden">
           <BrandMark variant="compact" />
@@ -366,22 +387,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </button>
         </header>
 
-        <main className="min-w-0 flex-1 px-4 py-6 pb-24 lg:px-8 lg:py-8 lg:pb-8">
-          {/* Tête de page (grand écran) : le titre appartient à la page, comme
-              le reste — même fond, même colonne. Un chrome coloré ici couperait
-              l'écran en deux zones qui ne se répondent pas. */}
-          <div className="mx-auto mb-7 hidden w-full max-w-6xl items-center gap-3 lg:flex">
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-[24px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">
-                {title}
-              </h1>
-              {subtitle ? <p className="mt-1 text-sm text-ink-muted">{subtitle}</p> : null}
-            </div>
-            {action ? <HeaderAction action={action} /> : null}
-            <NotificationsBell />
-          </div>
-          {children}
-        </main>
+        <main className="min-w-0 flex-1 px-4 py-6 pb-24 lg:px-8 lg:py-8 lg:pb-8">{children}</main>
 
         {/* Barre d'onglets mobile */}
         <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">

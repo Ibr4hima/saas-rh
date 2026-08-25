@@ -19,10 +19,9 @@ const LOGO_SOURCES = ['/logo-apix.svg', '/logo-apix.png'];
  * jamais. Le logo tient toute la largeur qu'on lui donne : c'est la signature
  * de l'employeur, pas une vignette. Cf. apps/web/public/README.md.
  */
-export function BrandMark({ variant }: { variant: 'full' | 'compact' }) {
+export function BrandMark({ variant }: { variant: 'full' | 'rail' | 'compact' }) {
   // Index dans LOGO_SOURCES ; au-delà de la liste, plus de fichier à tenter.
   const [candidate, setCandidate] = useState(0);
-  const full = variant === 'full';
   const src = LOGO_SOURCES[candidate];
 
   if (src) {
@@ -35,12 +34,14 @@ export function BrandMark({ variant }: { variant: 'full' | 'compact' }) {
           // La plaque est TRANSPARENTE en clair : le logo se pose directement
           // sur la barre. Elle réapparaît en sombre, faute de quoi un logo à
           // encre foncée — le cas courant — disparaîtrait dans le fond.
+          // Largeur imposée, hauteur libre plafonnée : un logo large occupe
+          // toute la place offerte, un logo haut reste à sa mesure.
           'bg-[var(--tg-brand-plate)] object-contain',
-          full
-            ? // Largeur imposée, hauteur libre plafonnée : un logo large occupe
-              // toute la barre, un logo haut reste à sa place.
-              'max-h-14 w-full rounded-lg px-1 py-0.5'
-            : 'h-8 w-auto max-w-28 shrink-0 rounded-md px-0.5',
+          variant === 'full' && 'max-h-14 w-full rounded-lg px-1 py-0.5',
+          // En barre latérale l'identité se fait discrète : c'est la
+          // navigation, pas une page de garde.
+          variant === 'rail' && 'max-h-9 w-full rounded-md px-1',
+          variant === 'compact' && 'h-8 w-auto max-w-28 shrink-0 rounded-md px-0.5',
         )}
         onError={() => setCandidate((i) => i + 1)}
       />
@@ -50,7 +51,9 @@ export function BrandMark({ variant }: { variant: 'full' | 'compact' }) {
     <div
       className={cn(
         'flex items-center justify-center bg-primary font-bold text-primary-ink',
-        full ? 'h-14 w-full rounded-lg text-lg tracking-[0.12em]' : 'size-8 rounded-md text-xs',
+        variant === 'full' && 'h-14 w-full rounded-lg text-lg tracking-[0.12em]',
+        variant === 'rail' && 'h-9 w-full rounded-md text-sm tracking-[0.12em]',
+        variant === 'compact' && 'size-8 rounded-md text-xs',
       )}
     >
       CH
@@ -65,7 +68,7 @@ export function BrandWordmark({ className, ...props }: React.HTMLAttributes<HTML
     // une première entrée de menu.
     <p
       className={cn(
-        'text-center text-[13px] leading-none font-semibold tracking-[0.14em] text-ink-strong uppercase',
+        'text-center text-[10px] leading-none font-semibold tracking-[0.2em] text-ink-muted uppercase',
         className,
       )}
       {...props}
