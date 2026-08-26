@@ -26,8 +26,12 @@ export function TexteDeReference({
   intro: string;
   appliques: PointApplique[];
   aVenir?: PointApplique[];
-  /** Ce que le dépôt du texte apportera, dit sans le promettre pour demain. */
-  depot: string;
+  /**
+   * Ce que le dépôt du texte apportera, dit sans le promettre pour demain.
+   * Omis quand la rubrique n'attend AUCUN texte : la conformité n'est pas un
+   * document à déposer, c'est un état à constater.
+   */
+  depot?: string;
 }) {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
@@ -59,18 +63,20 @@ export function TexteDeReference({
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Le texte</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <EmptyState
-            icon={<Icon name="gavel" size={22} />}
-            title="Texte non déposé"
-            description={depot}
-          />
-        </CardContent>
-      </Card>
+      {depot ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Le texte</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EmptyState
+              icon={<Icon name="gavel" size={22} />}
+              title="Texte non déposé"
+              description={depot}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

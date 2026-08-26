@@ -9,6 +9,8 @@ import { BrandMark, BrandWordmark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
 import { PageTitleProvider, usePageTitleOverride } from '../../components/page-title';
 import { NotificationsBell } from '../../components/notifications-bell';
+import { Calendrier } from '../../components/calendrier';
+import { Modal } from '../../components/modal';
 import { api } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 
@@ -62,7 +64,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: 'folder_managed',
     badge: 'docs',
   },
-  { href: '/calendrier', label: 'Calendrier', icon: 'event' },
   {
     href: '/recrutement',
     label: 'Recrutement',
@@ -84,6 +85,7 @@ const NAV_ITEMS: NavItem[] = [
       { href: '/reglementations/code-du-travail', label: 'Code du travail' },
       { href: '/reglementations/convention-collective', label: 'Convention collective' },
       { href: '/reglementations/reglement-interieur', label: 'Règlement intérieur' },
+      { href: '/reglementations/conformite', label: 'Conformité' },
     ],
   },
 ];
@@ -110,6 +112,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/reglementations/code-du-travail': 'Code du travail',
   '/reglementations/convention-collective': 'Convention collective',
   '/reglementations/reglement-interieur': 'Règlement intérieur',
+  '/reglementations/conformite': 'Conformité',
   '/moi': 'Mon espace',
   '/moi/conges': 'Mes congés',
   '/moi/documents': 'Mes documents',
@@ -214,7 +217,6 @@ function personalNav(role: string): NavItem[] {
           },
         ]
       : []),
-    { href: '/calendrier', label: 'Calendrier', icon: 'event' },
     { href: '/organisation', label: 'Organigramme', short: 'Organig.', icon: 'family_history' },
   ];
 }
@@ -341,6 +343,51 @@ function Rubrique({
   );
 }
 
+/**
+ * La date du jour, dans le bandeau — et le calendrier derrière.
+ *
+ * Elle a quitté le menu : consulter le planning est un geste d'un instant, pas
+ * une destination. On l'ouvre là où on lit la date, on referme, et on est
+ * revenu exactement où l'on était — ce qu'une page ne permet pas.
+ */
+function DateDuJour() {
+  const [ouvert, setOuvert] = useState(false);
+  const brut = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const libelle = `${brut.charAt(0).toUpperCase()}${brut.slice(1)}`;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOuvert(true)}
+        title="Ouvrir le calendrier des absences"
+        aria-label={`${libelle} — ouvrir le calendrier`}
+        className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none lg:px-3.5"
+      >
+        <Icon name="calendar_month" size={18} />
+        {/* Sous 1024 px, l'icône suffit : la date complète y mangerait la
+            place du titre de l'écran. */}
+        <span className="hidden text-xs font-semibold whitespace-nowrap lg:inline">{libelle}</span>
+      </button>
+
+      <Modal
+        open={ouvert}
+        onClose={() => setOuvert(false)}
+        title="Calendrier des absences"
+        subtitle={libelle}
+        maxWidth="max-w-6xl"
+      >
+        <Calendrier />
+      </Modal>
+    </>
+  );
+}
+
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrateur',
   hr: 'RH',
@@ -421,15 +468,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
   const title = titleOverride ?? pageTitle(pathname, user.givenName);
   const action = pageAction(pathname, user.role);
-  // La date ne vit que sur l'accueil : ailleurs elle n'informe de rien.
-  const todayRaw = new Date().toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-  const todayLabel = `${todayRaw.charAt(0).toUpperCase()}${todayRaw.slice(1)}`;
-  const subtitle = pathname === '/dashboard' ? todayLabel : null;
   const isActive = (href: string) =>
     href === '/moi' ? pathname === '/moi' : pathname.startsWith(href);
   /**
@@ -472,14 +510,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
           {title}
         </h1>
 
-        {subtitle ? (
-          <span className="relative z-10 hidden shrink-0 rounded-full border border-white/25 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-hero-ink lg:inline-flex">
-            {subtitle}
-          </span>
-        ) : null}
-
         <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
           {action ? <HeaderAction action={action} /> : null}
+          <DateDuJour />
           <NotificationsBell />
           <button
             type="button"
