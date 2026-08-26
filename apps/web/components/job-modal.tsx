@@ -1,21 +1,25 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { JobPostingView, OrgUnit } from '@teranga/contracts';
-import { Button, Field, Input, Select, Skeleton, Textarea } from '@teranga/ui';
+import type { JobPostingView } from '@teranga/contracts';
+import { Button, Field, Input, Select, Textarea } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { Icon } from './icons';
 import { Modal, ModalGrid, ModalSection } from './modal';
 
-const DOCUMENTS_SUGGERES = ['CV', 'Lettre de motivation', 'Diplômes', 'Références'];
+/**
+ * Ce qu'on demande à un candidat, et rien de plus.
+ *
+ * Chaque pièce exigée est un candidat qui renonce. Diplômes et références se
+ * réclament à l'entretien, quand le dossier est déjà retenu — pas au dépôt.
+ */
+const DOCUMENTS_SUGGERES = ['CV', 'Lettre de motivation'];
 
 interface Champs {
   title: string;
   description: string;
-  orgUnitId: string;
   contractType: string;
-  location: string;
   deadline: string;
   documents: string[];
 }
@@ -23,9 +27,7 @@ interface Champs {
 const VIDE: Champs = {
   title: '',
   description: '',
-  orgUnitId: '',
   contractType: 'cdi',
-  location: 'Dakar',
   deadline: '',
   documents: ['CV'],
 };
@@ -34,10 +36,10 @@ function depuis(offre: JobPostingView): Champs {
   return {
     title: offre.title,
     description: offre.description,
-    orgUnitId: offre.orgUnitId ?? '',
     contractType: offre.contractType,
-    location: offre.location ?? '',
     deadline: offre.deadline ?? '',
+    // Une offre plus ancienne peut porter d'autres pièces : elles restent
+    // affichées et décochables, sinon la modifier les effacerait en silence.
     documents: offre.requiredDocuments,
   };
 }
@@ -61,14 +63,7 @@ export function JobModal({
 }) {
   const queryClient = useQueryClient();
   const [v, setV] = useState<Champs>(offre ? depuis(offre) : VIDE);
-  const [autreDoc, setAutreDoc] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
-
-  const unites = useQuery({
-    queryKey: ['org-units'],
-    queryFn: () => api<OrgUnit[]>('/org-units'),
-    enabled: open,
-  });
 
   const set = <K extends keyof Champs>(k: K, val: Champs[K]) => setV((c) => ({ ...c, [k]: val }));
   const basculerDoc = (doc: string) =>
@@ -82,9 +77,7 @@ export function JobModal({
       const corps = {
         title: v.title.trim(),
         description: v.description.trim(),
-        orgUnitId: v.orgUnitId || (offre ? null : undefined),
         contractType: v.contractType,
-        location: v.location.trim() || (offre ? null : undefined),
         deadline: v.deadline || (offre ? null : undefined),
         requiredDocuments: v.documents,
       };
@@ -171,31 +164,6 @@ export function JobModal({
                 <option value="detachement">Détachement</option>
               </Select>
             </Field>
-            <Field label="Unité d'organisation" htmlFor="orgUnitId">
-              {unites.isLoading ? (
-                <Skeleton className="h-9 w-full" />
-              ) : (
-                <Select
-                  id="orgUnitId"
-                  value={v.orgUnitId}
-                  onChange={(e) => set('orgUnitId', e.target.value)}
-                >
-                  <option value="">—</option>
-                  {unites.data?.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-            <Field label="Lieu" htmlFor="location">
-              <Input
-                id="location"
-                value={v.location}
-                onChange={(e) => set('location', e.target.value)}
-              />
-            </Field>
             <Field label="Date limite de candidature" htmlFor="deadline">
               <Input
                 id="deadline"
@@ -229,28 +197,8 @@ export function JobModal({
             );
           })}
         </div>
-        <div className="mt-3 flex gap-2">
-          <Input
-            placeholder="Autre document…"
-            value={autreDoc}
-            onChange={(e) => setAutreDoc(e.target.value)}
-            className="max-w-60"
-          />
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!autreDoc.trim() || v.documents.length >= 5}
-            onClick={() => {
-              const doc = autreDoc.trim();
-              if (doc && !v.documents.includes(doc)) set('documents', [...v.documents, doc]);
-              setAutreDoc('');
-            }}
-          >
-            Ajouter
-          </Button>
-        </div>
         <p className="mt-2.5 text-[11.5px] text-ink-muted">
-          Le candidat devra fournir chaque document coché pour pouvoir postuler (5 maximum).
+          Le candidat devra fournir chaque document coché pour pouvoir postuler.
         </p>
       </ModalSection>
     </Modal>

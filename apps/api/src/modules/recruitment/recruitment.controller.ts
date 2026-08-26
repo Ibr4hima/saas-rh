@@ -9,15 +9,12 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
-  Query,
   Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { z } from 'zod';
 import {
-  applicationStageSchema,
   applySchema,
   createJobPostingSchema,
   deleteJobPostingsSchema,
@@ -31,7 +28,6 @@ import {
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 
-const applicationsQuerySchema = z.object({ stage: applicationStageSchema.optional() });
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { Roles, RolesGuard } from '../auth/roles.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
@@ -76,11 +72,6 @@ export class RecruitmentController {
   }
 
   /**
-   * Toutes les candidatures, offres confondues. Déclarée AVANT « jobs/:id » ne
-   * s'impose pas ici (le chemin diffère), mais elle reste voisine de sa sœur
-   * pour qu'on ne les fasse pas diverger.
-   */
-  /**
    * Suppression d'offres — toujours par lot, même pour une seule. Une route
    * unitaire à côté ferait deux chemins à garder d'accord pour un seul geste.
    */
@@ -90,15 +81,6 @@ export class RecruitmentController {
     @Body(new ZodValidationPipe(deleteJobPostingsSchema)) body: DeleteJobPostingsInput,
   ) {
     return this.jobs.remove(req.sessionUser, body);
-  }
-
-  @Get('applications')
-  allApplications(
-    @Req() req: AuthenticatedRequest,
-    @Query(new ZodValidationPipe(applicationsQuerySchema))
-    query: z.infer<typeof applicationsQuerySchema>,
-  ) {
-    return this.jobs.allApplications(req.sessionUser, query);
   }
 
   @Get('jobs/:id/applications')

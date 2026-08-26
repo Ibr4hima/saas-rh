@@ -1,12 +1,10 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import type { ApplicationListItem } from '@teranga/contracts';
-import { APPLICATION_STAGES } from '@teranga/contracts';
+import type { JobPostingView } from '@teranga/contracts';
 import {
-  Badge,
   Card,
   CardContent,
   CardHeader,
@@ -14,7 +12,6 @@ import {
   cn,
   EmptyState,
   Input,
-  Select,
   Skeleton,
   TBody,
   Td,
@@ -24,39 +21,40 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api } from '../../../../lib/api';
-import { formatDate } from '../../../../lib/hooks';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
-import { STAGE_LABELS, STAGE_TONES } from '../../../../lib/recruitment';
+import { CONTRACT_LABELS } from '../../../../lib/recruitment';
+
+/** Le nombre de dossiers reçus, toutes étapes confondues — refus compris. */
+function postulants(offre: JobPostingView): number {
+  return Object.values(offre.applicationCounts).reduce((n, v) => n + v, 0);
+}
 
 /**
- * Toutes les candidatures, offres confondues.
+ * Les dossiers de candidature, rangés par offre.
  *
- * Le pipeline d'une offre répond à « où en est ce recrutement ». Cet écran-ci
- * répond à l'autre question, celle du lundi matin : qui a postulé, à quoi, et
- * depuis combien de temps personne ne l'a regardé.
+ * Une candidature ne se lit pas seule : « Mariama Ba » ne dit rien tant qu'on
+ * ignore à quoi elle postule. L'entrée se fait donc par la campagne, et la
+ * ligne mène au pipeline où les dossiers vivent.
  */
 export default function CandidaturesPage() {
-  const [stage, setStage] = useState('');
+  const router = useRouter();
   const [q, setQ] = useState('');
 
-  const apps = useQuery({
-    queryKey: ['applications', stage],
-    queryFn: () => api<ApplicationListItem[]>(`/applications${stage ? `?stage=${stage}` : ''}`),
-  });
+  const jobs = useQuery({ queryKey: ['jobs'], queryFn: () => api<JobPostingView[]>('/jobs') });
 
   const lignes = useMemo(() => {
     const terme = q.trim().toLowerCase();
-    const tout = apps.data ?? [];
+    const tout = jobs.data ?? [];
     if (!terme) return tout;
-    return tout.filter((a) =>
-      `${a.givenName} ${a.familyName} ${a.email} ${a.jobTitle}`.toLowerCase().includes(terme),
-    );
-  }, [apps.data, q]);
+    return tout.filter((o) => `${o.reference} ${o.title}`.toLowerCase().includes(terme));
+  }, [jobs.data, q]);
 
-  if (apps.isError) {
-    return <LoadFailure error={apps.error} onRetry={() => void apps.refetch()} />;
+  if (jobs.isError) {
+    return <LoadFailure error={jobs.error} onRetry={() => void jobs.refetch()} />;
   }
+
+  const total = lignes.reduce((n, o) => n + postulants(o), 0);
 
   return (
     <div className="mx-auto w-full max-w-6xl">
@@ -64,115 +62,89 @@ export default function CandidaturesPage() {
         <CardHeader className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <CardTitle>Dossiers de candidature</CardTitle>
-            {lignes.length > 0 ? (
+            {total > 0 ? (
               <span
                 className="rounded-full bg-primary/[0.09] px-2 py-px text-[10.5px] font-extrabold text-primary"
                 style={{ fontVariantNumeric: 'tabular-nums' }}
               >
-                {lignes.length}
+                {total}
               </span>
             ) : null}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              placeholder="Rechercher…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="h-8 w-44"
-              aria-label="Rechercher"
-            />
-            <Select
-              value={stage}
-              onChange={(e) => setStage(e.target.value)}
-              className="h-8 w-44"
-              aria-label="Filtrer par étape"
-            >
-              <option value="">Toutes les étapes</option>
-              {APPLICATION_STAGES.map((s) => (
-                <option key={s} value={s}>
-                  {STAGE_LABELS[s]}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <Input
+            placeholder="Rechercher une offre…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="h-8 w-52"
+            aria-label="Rechercher une offre"
+          />
         </CardHeader>
         <CardContent className="px-0 pb-0">
-          {apps.isLoading ? (
+          {jobs.isLoading ? (
             <Skeleton className="mx-[18px] mb-[18px] h-24" />
           ) : lignes.length === 0 ? (
             <EmptyState
               icon={<Icon name="person_add" size={22} />}
-              title={
-                (apps.data ?? []).length === 0
-                  ? 'Aucune candidature'
-                  : 'Aucun dossier ne correspond'
-              }
+              title={(jobs.data ?? []).length === 0 ? 'Aucune offre' : 'Aucune offre ne correspond'}
               description={
-                (apps.data ?? []).length === 0
-                  ? 'Publiez une offre et partagez son lien : les dossiers déposés arriveront ici.'
-                  : 'Changez de recherche ou d’étape pour voir les autres dossiers.'
+                (jobs.data ?? []).length === 0
+                  ? 'Publiez une offre et partagez son lien : les dossiers déposés se rangeront ici, campagne par campagne.'
+                  : 'Changez de recherche pour voir les autres offres.'
               }
             />
           ) : (
             <Table>
               <THead>
                 <tr>
-                  <Th>Candidat</Th>
-                  <Th>Offre</Th>
-                  <Th>Étape</Th>
-                  <Th>Pièces</Th>
-                  <Th>Déposé le</Th>
+                  <Th>Référence</Th>
+                  <Th>Poste</Th>
+                  <Th>Type contrat</Th>
+                  <Th className="text-right">Postulants</Th>
                   <Th className="w-8" />
                 </tr>
               </THead>
               <TBody>
-                {lignes.map((a) => (
-                  <Tr key={a.id}>
-                    <Td>
-                      <span className="block font-bold text-ink-strong">
-                        {a.givenName} {a.familyName}
-                      </span>
-                      <span className="block text-[11px] text-ink-muted">{a.email}</span>
-                    </Td>
-                    <Td>
-                      <Link
-                        href={`/recrutement/${a.jobPostingId}`}
-                        className="font-semibold text-primary hover:underline"
-                      >
-                        {a.jobTitle}
-                      </Link>
-                    </Td>
-                    <Td>
-                      <Badge tone={STAGE_TONES[a.stage] ?? 'neutral'}>
-                        {STAGE_LABELS[a.stage] ?? a.stage}
-                      </Badge>
-                    </Td>
-                    <Td
-                      className={cn(
-                        'font-semibold',
-                        a.documents.length === 0 ? 'text-ink-muted' : 'text-ink',
-                      )}
-                      style={{ fontVariantNumeric: 'tabular-nums' }}
+                {lignes.map((o) => {
+                  const n = postulants(o);
+                  return (
+                    // La ligne entière ouvre le pipeline : c'est le seul geste
+                    // de cet écran, il n'a pas à se chercher dans une cellule.
+                    <Tr
+                      key={o.id}
+                      onClick={() => router.push(`/recrutement/${o.id}`)}
+                      tabIndex={0}
+                      role="link"
+                      aria-label={`Voir les dossiers de ${o.title}`}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          router.push(`/recrutement/${o.id}`);
+                        }
+                      }}
+                      className="cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
                     >
-                      {a.documents.length}
-                    </Td>
-                    <Td className="whitespace-nowrap text-ink-muted">
-                      {formatDate(a.createdAt.slice(0, 10))}
-                    </Td>
-                    <Td className="pl-0 text-right">
-                      {/* Le dossier se traite dans le pipeline de son offre :
-                          c'est là que vivent les étapes et les pièces. */}
-                      <Link
-                        href={`/recrutement/${a.jobPostingId}`}
-                        title="Ouvrir le pipeline de l’offre"
-                        aria-label={`Ouvrir le pipeline — ${a.jobTitle}`}
-                        className="inline-flex rounded-[7px] p-1.5 text-ink-muted transition-colors hover:bg-primary/[0.07] hover:text-primary"
+                      <Td className="font-mono text-[11.5px] whitespace-nowrap text-ink-muted">
+                        {o.reference}
+                      </Td>
+                      <Td className="font-bold text-ink-strong">{o.title}</Td>
+                      <Td className="whitespace-nowrap">
+                        {CONTRACT_LABELS[o.contractType] ?? o.contractType}
+                      </Td>
+                      <Td
+                        className={cn(
+                          'text-right font-bold',
+                          n === 0 ? 'text-ink-muted' : 'text-primary',
+                        )}
+                        style={{ fontVariantNumeric: 'tabular-nums' }}
                       >
-                        <Icon name="chevron_right" size={15} />
-                      </Link>
-                    </Td>
-                  </Tr>
-                ))}
+                        {n}
+                      </Td>
+                      <Td className="pl-0 text-right">
+                        <Icon name="chevron_right" size={15} className="text-ink-muted/60" />
+                      </Td>
+                    </Tr>
+                  );
+                })}
               </TBody>
             </Table>
           )}

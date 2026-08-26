@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { DeleteJobPostingsResult, JobPostingView } from '@teranga/contracts';
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -29,7 +28,7 @@ import { Icon } from '../../../components/icons';
 import { JobModal } from '../../../components/job-modal';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalSection } from '../../../components/modal';
-import { CONTRACT_LABELS, JOB_STATUS_LABELS, JOB_STATUS_TONES } from '../../../lib/recruitment';
+import { CONTRACT_LABELS } from '../../../lib/recruitment';
 
 /** « il y a 3 jours » — l'âge d'une offre dit s'il faut la relancer. */
 function depuis(iso: string): string {
@@ -66,9 +65,17 @@ export default function OffresPage() {
   const creation = params.get('nouvelle') === '1';
   const fermerCreation = () => router.replace('/recrutement');
 
-  const publier = useMutation({
-    mutationFn: (id: string) =>
-      api(`/jobs/${id}`, { method: 'PATCH', body: { status: 'published' } }),
+  /**
+   * Publier, archiver, rouvrir : le même geste, un statut différent.
+   *
+   * « Archiver » ferme la campagne — l'offre n'accepte plus de candidature et
+   * son lien public ne mène plus nulle part. Elle n'est pas supprimée pour
+   * autant : les dossiers déjà reçus restent consultables, et une campagne
+   * close se rouvre.
+   */
+  const changerStatut = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'published' | 'closed' }) =>
+      api(`/jobs/${id}`, { method: 'PATCH', body: { status } }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['jobs'] }),
   });
 
@@ -106,8 +113,8 @@ export default function OffresPage() {
               {seule && seule.status === 'draft' ? (
                 <Button
                   size="sm"
-                  loading={publier.isPending}
-                  onClick={() => publier.mutate(seule.id)}
+                  loading={changerStatut.isPending}
+                  onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
                 >
                   Publier
                 </Button>
@@ -116,6 +123,26 @@ export default function OffresPage() {
                 <Button size="sm" variant="secondary" onClick={() => setPanneau('modifier')}>
                   <Icon name="edit" size={15} />
                   Modifier
+                </Button>
+              ) : null}
+              {seule && seule.status === 'published' ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={changerStatut.isPending}
+                  onClick={() => changerStatut.mutate({ id: seule.id, status: 'closed' })}
+                >
+                  Archiver
+                </Button>
+              ) : null}
+              {seule && seule.status === 'closed' ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={changerStatut.isPending}
+                  onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
+                >
+                  Rouvrir
                 </Button>
               ) : null}
               <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
@@ -180,16 +207,6 @@ export default function OffresPage() {
                         >
                           {o.title}
                         </Link>
-                        <span className="mt-0.5 flex items-center gap-2">
-                          <Badge tone={JOB_STATUS_TONES[o.status] ?? 'neutral'}>
-                            {JOB_STATUS_LABELS[o.status] ?? o.status}
-                          </Badge>
-                          {o.orgUnitName ? (
-                            <span className="truncate text-[11px] text-ink-muted">
-                              {o.orgUnitName}
-                            </span>
-                          ) : null}
-                        </span>
                       </Td>
                       <Td className="whitespace-nowrap">
                         {CONTRACT_LABELS[o.contractType] ?? o.contractType}
@@ -271,6 +288,9 @@ export default function OffresPage() {
  */
 function LienPublic({ offre }: { offre: JobPostingView }) {
   const [copie, setCopie] = useState(false);
+  if (offre.status === 'closed') {
+    return <span className="text-[11.5px] font-semibold text-ink-muted">Archivée</span>;
+  }
   if (offre.status !== 'published') {
     return <span className="text-[11.5px] text-ink-muted">Non publiée</span>;
   }

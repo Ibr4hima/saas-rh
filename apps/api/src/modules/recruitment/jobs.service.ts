@@ -3,7 +3,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
-  ApplicationListItem,
   ApplicationStage,
   ApplicationView,
   CreateJobPostingInput,
@@ -120,77 +119,6 @@ export class JobsService {
   }
 
   /** Candidatures d'une offre, avec les métadonnées de leurs documents. */
-  /**
-   * Toutes les candidatures du tenant, offres confondues.
-   *
-   * Le pipeline d'une offre répond à « où en est ce recrutement ». Cette liste
-   * répond à l'autre question, celle qu'on se pose le lundi matin : « qui a
-   * postulé, et à quoi ». Elle porte donc le titre de l'offre sur chaque ligne.
-   */
-  async allApplications(
-    user: SessionUser,
-    filters: { stage?: ApplicationStage },
-  ): Promise<ApplicationListItem[]> {
-    return this.db.withTenant(ctxOf(user), async (tx) => {
-      const rows = await tx
-        .select({
-          app: t.applications,
-          jobTitle: t.jobPostings.title,
-          jobStatus: t.jobPostings.status,
-        })
-        .from(t.applications)
-        .innerJoin(t.jobPostings, eq(t.jobPostings.id, t.applications.jobPostingId))
-        .where(filters.stage ? eq(t.applications.stage, filters.stage) : undefined)
-        .orderBy(desc(t.applications.createdAt))
-        .limit(200);
-      if (rows.length === 0) return [];
-
-      const docs = await tx
-        .select({
-          id: t.applicationDocuments.id,
-          applicationId: t.applicationDocuments.applicationId,
-          label: t.applicationDocuments.label,
-          filename: t.applicationDocuments.filename,
-          contentType: t.applicationDocuments.contentType,
-          sizeBytes: t.applicationDocuments.sizeBytes,
-        })
-        .from(t.applicationDocuments)
-        .where(
-          inArray(
-            t.applicationDocuments.applicationId,
-            rows.map((r) => r.app.id),
-          ),
-        );
-      const byApp = new Map<string, ApplicationView['documents']>();
-      for (const d of docs) {
-        const list = byApp.get(d.applicationId) ?? [];
-        list.push({
-          id: d.id,
-          label: d.label,
-          filename: d.filename,
-          contentType: d.contentType,
-          sizeBytes: d.sizeBytes,
-        });
-        byApp.set(d.applicationId, list);
-      }
-
-      return rows.map((r) => ({
-        id: r.app.id,
-        jobPostingId: r.app.jobPostingId,
-        jobTitle: r.jobTitle,
-        jobStatus: r.jobStatus,
-        givenName: r.app.givenName,
-        familyName: r.app.familyName,
-        email: r.app.email,
-        phone: r.app.phone,
-        message: r.app.message,
-        stage: r.app.stage as ApplicationStage,
-        createdAt: r.app.createdAt.toISOString(),
-        documents: byApp.get(r.app.id) ?? [],
-      }));
-    });
-  }
-
   async applications(user: SessionUser, jobId: string): Promise<ApplicationView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       await this.requirePosting(tx, jobId);
