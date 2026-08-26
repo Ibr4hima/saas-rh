@@ -4,7 +4,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { JobPostingView } from '@teranga/contracts';
-import { Badge, Button, Card, CardContent, EmptyState, Skeleton } from '@teranga/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardInteractive,
+  EmptyState,
+  Skeleton,
+} from '@teranga/ui';
 import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
@@ -67,43 +75,64 @@ function JobCard({ job }: { job: JobPostingView }) {
   const candidates = activeCount(job);
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={`/recrutement/${job.id}`}
-            className="text-base font-semibold text-ink-strong hover:underline"
-          >
-            {job.title}
-          </Link>
-          <Badge tone={JOB_STATUS_TONES[job.status] ?? 'neutral'}>
-            {JOB_STATUS_LABELS[job.status] ?? job.status}
-          </Badge>
-          <span className="ml-auto text-sm text-ink-muted">
-            {candidates} candidature{candidates > 1 ? 's' : ''}
+    <CardInteractive>
+      <div className="flex flex-col gap-3 px-[18px] py-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[11px] bg-primary/[0.07] text-primary">
+            <Icon name="person_add" size={18} />
           </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/recrutement/${job.id}`}
+                className="text-[14px] font-bold text-ink-strong hover:underline"
+              >
+                {job.title}
+              </Link>
+              <Badge tone={JOB_STATUS_TONES[job.status] ?? 'neutral'}>
+                {JOB_STATUS_LABELS[job.status] ?? job.status}
+              </Badge>
+            </div>
+            <p className="mt-0.5 text-[12px] text-ink-muted">
+              {CONTRACT_LABELS[job.contractType] ?? job.contractType}
+              {job.location ? ` · ${job.location}` : ''}
+              {job.orgUnitName ? ` · ${job.orgUnitName}` : ''}
+              {job.deadline ? ` · candidatures jusqu'au ${formatDate(job.deadline)}` : ''}
+            </p>
+          </div>
+          {/* Le nombre de candidatures est le chiffre qu'on cherche en
+              balayant la page : il se lit comme un compteur, pas comme une
+              note de bas de ligne. */}
+          <div className="shrink-0 text-right">
+            <p
+              className="text-[19px] leading-none font-extrabold text-primary"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            >
+              {candidates}
+            </p>
+            <p className="mt-1 text-[9.5px] font-extrabold tracking-[0.1em] text-ink-muted uppercase">
+              candidature{candidates > 1 ? 's' : ''}
+            </p>
+          </div>
         </div>
-        <p className="text-sm text-ink-muted">
-          {CONTRACT_LABELS[job.contractType] ?? job.contractType}
-          {job.location ? ` · ${job.location}` : ''}
-          {job.orgUnitName ? ` · ${job.orgUnitName}` : ''}
-          {job.deadline ? ` · candidatures jusqu'au ${formatDate(job.deadline)}` : ''}
-        </p>
+
         {candidates > 0 ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5 sm:pl-12">
             {Object.entries(job.applicationCounts)
               .filter(([, n]) => n > 0)
               .map(([stage, n]) => (
                 <span
                   key={stage}
-                  className="rounded-full bg-bg px-2.5 py-0.5 text-xs font-medium text-ink-muted"
+                  className="rounded-full border border-primary/10 bg-primary/[0.05] px-2.5 py-0.5 text-[11px] font-semibold text-primary"
                 >
-                  {STAGE_LABELS[stage as keyof typeof STAGE_LABELS] ?? stage} : {n}
+                  {STAGE_LABELS[stage as keyof typeof STAGE_LABELS] ?? stage}
+                  <span className="ml-1 font-extrabold">{n}</span>
                 </span>
               ))}
           </div>
         ) : null}
-        <div className="flex flex-wrap items-center gap-2">
+
+        <div className="flex flex-wrap items-center gap-2 sm:pl-12">
           {job.status === 'draft' ? (
             <Button size="sm" onClick={() => publish.mutate()} loading={publish.isPending}>
               Publier
@@ -119,16 +148,18 @@ function JobCard({ job }: { job: JobPostingView }) {
                 setTimeout(() => setCopied(false), 2000);
               }}
             >
-              {copied ? 'Lien copié ✓' : 'Copier le lien public'}
+              <Icon name={copied ? 'check' : 'content_copy'} size={15} />
+              {copied ? 'Lien copié' : 'Copier le lien public'}
             </Button>
           ) : null}
-          <Link href={`/recrutement/${job.id}`}>
-            <Button size="sm" variant="secondary">
-              Voir le pipeline →
+          <Link href={`/recrutement/${job.id}`} className="ml-auto">
+            <Button size="sm" variant="ghost">
+              Voir le pipeline
+              <Icon name="chevron_right" size={15} />
             </Button>
           </Link>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </CardInteractive>
   );
 }

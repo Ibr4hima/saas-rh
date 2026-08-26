@@ -109,7 +109,7 @@ export default function DocumentRequestsPage() {
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>Prêtes à retirer</CardTitle>
-            <p className="text-sm text-ink-muted">
+            <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
               L&apos;employé a été prévenu — les plus anciennes d&apos;abord. Relancez-le si un
               document attend depuis trop longtemps.
             </p>
@@ -128,7 +128,9 @@ export default function DocumentRequestsPage() {
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>Traitées</CardTitle>
-            <p className="text-sm text-ink-muted">Demandes closes — rien à faire de votre côté.</p>
+            <p className="mt-1 text-[12px] text-ink-muted">
+              Demandes closes — rien à faire de votre côté.
+            </p>
           </CardHeader>
           <CardContent>
             <ul className="flex flex-col">

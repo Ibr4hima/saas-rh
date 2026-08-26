@@ -36,6 +36,9 @@ interface FormValues {
   personalEmail: string;
   phone: string;
   addressLine: string;
+  city: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
   employeeNumber: string;
   hiredOn: string;
   workEmail: string;
@@ -59,6 +62,9 @@ const PERSON_KEYS = [
   'personalEmail',
   'phone',
   'addressLine',
+  'city',
+  'emergencyContactName',
+  'emergencyContactPhone',
 ] as const;
 const EMPLOYEE_KEYS = [
   'employeeNumber',
@@ -86,6 +92,9 @@ function toDefaults(e: EmployeeDetail): FormValues {
     personalEmail: e.person.personalEmail ?? '',
     phone: e.person.phone ?? '',
     addressLine: e.person.addressLine ?? '',
+    city: e.person.city ?? '',
+    emergencyContactName: e.person.emergencyContactName ?? '',
+    emergencyContactPhone: e.person.emergencyContactPhone ?? '',
     employeeNumber: e.employeeNumber,
     hiredOn: e.hiredOn,
     workEmail: localWorkEmail(e.workEmail),
@@ -313,6 +322,27 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               <Input id="addressLine" {...form.register('addressLine')} />
             </Field>
           </div>
+          <Field label="Ville" htmlFor="city">
+            <Input id="city" {...form.register('city')} />
+          </Field>
+        </ModalGrid>
+      </ModalSection>
+
+      {/* Deux champs qui ne servent qu'un jour, mais ce jour-là ils servent
+          seuls : ils méritent leur propre bloc, pas une ligne perdue en bas
+          de l'état civil. */}
+      <ModalSection title="Personne à prévenir">
+        <ModalGrid>
+          <Field label="Nom" htmlFor="emergencyContactName">
+            <Input id="emergencyContactName" {...form.register('emergencyContactName')} />
+          </Field>
+          <Field label="Téléphone" htmlFor="emergencyContactPhone">
+            <Input
+              id="emergencyContactPhone"
+              type="tel"
+              {...form.register('emergencyContactPhone')}
+            />
+          </Field>
         </ModalGrid>
       </ModalSection>
 

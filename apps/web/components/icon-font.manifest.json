@@ -4,8 +4,11 @@
     "add",
     "badge",
     "calendar_month",
+    "check",
+    "chevron_left",
     "chevron_right",
     "close",
+    "content_copy",
     "dashboard",
     "edit",
     "error",
@@ -26,5 +29,5 @@
     "settings"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 29028
+  "bytes": 30228
 }
