@@ -22,6 +22,7 @@ export function Modal({
   onClose,
   title,
   subtitle,
+  enTete,
   footer,
   children,
   maxWidth = 'max-w-3xl',
@@ -30,6 +31,13 @@ export function Modal({
   onClose: () => void;
   title: string;
   subtitle?: React.ReactNode;
+  /**
+   * Commandes posées sur la MÊME ligne que le titre — navigation, légende.
+   * Les descendre dans le corps leur coûterait une bande de soixante pixels
+   * que le contenu réclame, et les couperait du titre auquel elles se
+   * rapportent.
+   */
+  enTete?: React.ReactNode;
   footer?: React.ReactNode;
   children: React.ReactNode;
   maxWidth?: string;
@@ -76,7 +84,7 @@ export function Modal({
           maxWidth,
         )}
       >
-        <header className="flex shrink-0 items-center justify-between gap-4 border-b border-line-soft px-6 py-4 sm:px-7">
+        <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2.5 border-b border-line-soft px-6 py-4 sm:px-7">
           <div className="min-w-0">
             <h2
               id={titleId}
@@ -86,6 +94,11 @@ export function Modal({
             </h2>
             {subtitle ? <p className="mt-0.5 truncate text-xs text-ink-muted">{subtitle}</p> : null}
           </div>
+          {enTete ? (
+            <div className="order-last flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 sm:order-none sm:ml-auto">
+              {enTete}
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={onClose}

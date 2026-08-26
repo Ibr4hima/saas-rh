@@ -9,8 +9,7 @@ import { BrandMark, BrandWordmark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
 import { PageTitleProvider, usePageTitleOverride } from '../../components/page-title';
 import { NotificationsBell } from '../../components/notifications-bell';
-import { Calendrier } from '../../components/calendrier';
-import { Modal } from '../../components/modal';
+import { CalendrierModal } from '../../components/calendrier';
 import { api } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 
@@ -375,15 +374,7 @@ function DateDuJour() {
         <span className="hidden text-xs font-semibold whitespace-nowrap lg:inline">{libelle}</span>
       </button>
 
-      <Modal
-        open={ouvert}
-        onClose={() => setOuvert(false)}
-        title="Calendrier des absences"
-        subtitle={libelle}
-        maxWidth="max-w-6xl"
-      >
-        <Calendrier />
-      </Modal>
+      <CalendrierModal open={ouvert} onClose={() => setOuvert(false)} />
     </>
   );
 }
