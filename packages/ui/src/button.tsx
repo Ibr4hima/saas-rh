@@ -6,14 +6,19 @@ type Size = 'sm' | 'md';
 
 const variants: Record<Variant, string> = {
   primary: 'bg-primary text-primary-ink hover:bg-primary-hover',
-  secondary: 'border border-line bg-surface text-ink hover:bg-line-soft',
-  ghost: 'text-ink-muted hover:bg-line-soft hover:text-ink',
+  secondary: 'border border-line bg-surface text-ink hover:bg-bg',
+  ghost: 'text-ink-muted hover:bg-bg hover:text-ink',
   danger: 'bg-danger text-white hover:opacity-90',
 };
 
+/**
+ * Boutons en pilule, comme sur la plateforme APIX. Le coin arrondi les
+ * détache des champs de saisie, qui restent à angle doux : à l'écran, on
+ * distingue d'un coup d'œil ce qui se remplit de ce qui s'actionne.
+ */
 const sizes: Record<Size, string> = {
-  sm: 'h-8 px-3 text-sm',
-  md: 'h-10 px-4 text-sm',
+  sm: 'h-[30px] px-3.5 text-[12px]',
+  md: 'h-[34px] px-4 text-[12.5px]',
 };
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -37,7 +42,7 @@ export function Button({
       type={type ?? 'button'}
       disabled={disabled || loading}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-md font-medium',
+        'inline-flex items-center justify-center gap-2 rounded-full font-semibold',
         'transition-colors duration-150 ease-out',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
         'disabled:pointer-events-none disabled:opacity-50',
@@ -50,7 +55,7 @@ export function Button({
       {loading ? (
         <span
           aria-hidden
-          className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+          className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
         />
       ) : null}
       {children}

@@ -278,7 +278,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
        plateforme APIX. */
     <div className="flex h-dvh flex-col overflow-hidden">
       {/* ———— Bandeau de tête, d'un bord à l'autre ———— */}
-      <header className="hero-bar z-30 flex shrink-0 items-center gap-3 px-4 pt-5 pb-[18px] lg:gap-4 lg:px-10">
+      <header className="hero-bar z-30 flex h-[58px] shrink-0 items-center gap-3.5 px-4 lg:gap-4 lg:px-7">
         <span aria-hidden className="pointer-events-none absolute inset-0 opacity-50">
           <span className="absolute -top-[140%] -right-[6%] size-[580px] rounded-full bg-[radial-gradient(circle,var(--tg-halo-clair)_0%,transparent_60%)]" />
           <span className="absolute -bottom-[160%] -left-[8%] size-[460px] rounded-full bg-[radial-gradient(circle,var(--tg-halo-bleu)_0%,transparent_65%)]" />
@@ -291,14 +291,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <BrandMark variant="hero" />
         </Link>
 
-        <div className="relative z-10 flex min-w-0 items-center gap-3">
-          {/* Le point pulsant ouvre la ligne : l'écran est vivant, quelque
-              chose s'y passe — et c'est lui qu'on voit avant de lire. */}
-          <span aria-hidden className="hero-dot size-[7px] shrink-0 rounded-full bg-hero-ink" />
-          <h1 className="truncate text-[19px] leading-tight font-extrabold tracking-[-0.01em] text-hero-ink lg:text-[21px]">
-            {title}
-          </h1>
-        </div>
+        <h1 className="relative z-10 min-w-0 truncate text-[18px] leading-tight font-extrabold tracking-[-0.01em] text-hero-ink lg:text-[19px]">
+          {title}
+        </h1>
 
         {subtitle ? (
           <span className="relative z-10 hidden shrink-0 rounded-full border border-white/25 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-hero-ink lg:inline-flex">
@@ -325,10 +320,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[17.125rem] shrink-0 flex-col border-r border-line-soft bg-surface max-lg:hidden">
-          {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto px-3 py-4">
-            <div className="flex flex-col gap-0.5">
+        {/* Barre latérale — grammaire de la plateforme APIX : un intitulé de
+            rubrique en très petites capitales grises, des rangées serrées, et
+            l'entrée courante teintée à peine plutôt que peinte. La navigation
+            est un instrument, pas une affiche. */}
+        <aside className="flex w-[15.5rem] shrink-0 flex-col border-r border-line bg-surface max-lg:hidden">
+          <div className="border-b border-line-soft px-4 pt-3.5 pb-2.5">
+            <span className="text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
+              {isStaff ? 'Navigation' : 'Mon espace'}
+            </span>
+          </div>
+
+          <nav className="flex-1 overflow-y-auto px-2.5 py-3">
+            <div className="flex flex-col gap-px">
               {items.map((item) => {
                 const active = isActive(item.href);
                 return (
@@ -337,18 +341,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     href={item.href}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors duration-150',
+                      'flex items-center gap-2.5 rounded-[7px] px-2.5 py-[7px] text-[12.5px] transition-colors duration-150',
                       active
-                        ? 'bg-primary-soft font-medium text-primary'
-                        : 'text-ink-muted hover:bg-line-soft hover:text-ink',
+                        ? 'bg-primary/[0.07] font-bold text-primary'
+                        : 'font-medium text-ink hover:bg-bg',
                     )}
                   >
                     {/* Icône pleine sur l'entrée courante : la position dans le
-                      menu se lit alors sans dépendre de la seule couleur. */}
-                    <Icon name={item.icon} size={20} fill={active} />
+                        menu se lit sans dépendre de la seule couleur. */}
+                    <Icon name={item.icon} size={17} fill={active} />
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {badgeCount(item.badge) > 0 ? (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-accent-ink">
+                      <span className="rounded-full bg-accent px-[6px] py-px text-[10px] font-bold text-accent-ink">
                         {badgeCount(item.badge)}
                       </span>
                     ) : null}
@@ -358,33 +362,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           </nav>
 
-          {/* Utilisateur */}
-          <div className="border-t border-line-soft px-3 py-3">
-            <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
-                {initials}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm leading-tight font-medium text-ink-strong">
-                  {user.givenName} {user.familyName}
-                </p>
-                <p className="truncate text-xs leading-tight text-ink-muted">
-                  {ROLE_LABELS[user.role] ?? user.role}
-                </p>
-              </div>
-              <button
-                type="button"
-                title="Se déconnecter"
-                aria-label="Se déconnecter"
-                className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
-                onClick={async () => {
-                  await api('/auth/logout', { method: 'POST' });
-                  router.replace('/login');
-                }}
-              >
-                <Icon name="logout" size={18} />
-              </button>
-            </div>
+          <div className="flex items-center gap-2.5 border-t border-line-soft px-4 py-3">
+            <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-primary/[0.09] text-[10.5px] font-bold text-primary">
+              {initials}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12.5px] leading-tight font-semibold text-ink-strong">
+                {user.givenName} {user.familyName}
+              </span>
+              <span className="block truncate text-[10.5px] leading-tight text-ink-muted">
+                {ROLE_LABELS[user.role] ?? user.role}
+              </span>
+            </span>
+            <button
+              type="button"
+              title="Se déconnecter"
+              aria-label="Se déconnecter"
+              className="rounded-[7px] p-1.5 text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
+              onClick={async () => {
+                await api('/auth/logout', { method: 'POST' });
+                router.replace('/login');
+              }}
+            >
+              <Icon name="logout" size={17} />
+            </button>
           </div>
         </aside>
 
@@ -393,7 +394,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               fenêtres modales, qui doivent le geler comme elles gèlent la page. */}
           <main
             data-scroll-root
-            className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 pb-24 lg:px-10 lg:py-8 lg:pb-10"
+            className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 pb-24 lg:px-7 lg:py-6 lg:pb-10"
           >
             {children}
           </main>

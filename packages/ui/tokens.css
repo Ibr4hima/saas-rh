@@ -61,6 +61,13 @@
   --tg-halo-clair: rgb(255 255 255 / 0.07);
   --tg-halo-bleu: rgb(0 79 145 / 0.5);
 
+  /* Filet des cartes. Il DÉRIVE de l'encre et s'inverse donc avec le thème :
+     un gris fixe paraîtrait sale sur fond clair et invisible sur fond sombre.
+     C'est ce filet, et non une ombre, qui pose les cartes — la profondeur
+     n'apparaît qu'au survol, là où elle veut dire « cliquable ». */
+  --tg-card-line: rgb(26 26 46 / 0.12);
+  --tg-card-line-hover: rgb(0 79 145 / 0.35);
+
   /* Voile des surfaces modales. Valeur ABSOLUE, pas dérivée de l'encre :
      l'encre s'inverse en thème sombre et le voile virerait au blanc. */
   --tg-overlay: rgb(20 23 42 / 0.45);
@@ -135,6 +142,8 @@
     --tg-line-soft: rgb(122 138 164 / 0.17);
     /* Aplat, pas dégradé : entre #16213A et #22406A l'écart est trop faible
        pour se lire comme une matière. */
+    --tg-card-line: rgb(237 241 247 / 0.12);
+    --tg-card-line-hover: rgb(133 185 236 / 0.35);
     --tg-hero: #16213a;
     --tg-halo-clair: transparent;
     --tg-halo-bleu: transparent;
@@ -176,6 +185,8 @@
   --tg-ink-muted: #9ba0b4;
   --tg-line: rgb(122 138 164 / 0.32);
   --tg-line-soft: rgb(122 138 164 / 0.17);
+  --tg-card-line: rgb(237 241 247 / 0.12);
+  --tg-card-line-hover: rgb(133 185 236 / 0.35);
   --tg-hero: #16213a;
   --tg-halo-clair: transparent;
   --tg-halo-bleu: transparent;

@@ -8,6 +8,7 @@ import {
   Card,
   CardContent,
   CardHeader,
+  CardInteractive,
   CardTitle,
   Skeleton,
   Table,
@@ -87,39 +88,30 @@ function StatTile({
   alert?: boolean;
 }) {
   return (
-    <Link href={href} className="group focus-visible:outline-none">
-      <Card className="h-full transition-all duration-150 group-hover:-translate-y-px group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-primary/40">
-        <CardContent className="flex flex-col gap-3 py-4">
-          <div className="flex items-center justify-between">
-            <span
-              className={`flex size-9 items-center justify-center rounded-[10px] ${
-                alert ? 'bg-accent text-accent-ink' : 'bg-primary-soft text-primary'
-              }`}
-            >
-              {icon}
-            </span>
-            <Icon
-              name="chevron_right"
-              size={16}
-              className="text-ink-muted/0 transition-colors duration-150 group-hover:text-ink-muted/60"
-            />
-          </div>
-          <div>
-            {value === undefined ? (
-              <Skeleton className="mb-1 h-8 w-14" />
-            ) : (
-              <p
-                className="text-[28px] leading-none font-bold tracking-[-0.02em] text-ink-strong"
-                style={{ fontVariantNumeric: 'tabular-nums' }}
-              >
-                {value}
-              </p>
-            )}
-            <p className="mt-1.5 text-[13px] font-medium text-ink">{label}</p>
-            {context ? <p className="mt-0.5 text-xs text-ink-muted">{context}</p> : null}
-          </div>
-        </CardContent>
-      </Card>
+    /* L'étiquette passe AVANT le chiffre : on lit « ce que c'est » puis
+       « combien », l'ordre dans lequel la question se pose. L'icône descend au
+       rang de repère, dans le coin, plutôt que d'ouvrir la tuile. */
+    <Link
+      href={href}
+      className="group rounded-[14px] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+    >
+      <CardInteractive className="h-full px-3.5 py-3">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-[10px] font-bold tracking-[0.1em] text-ink-muted uppercase">{label}</p>
+          <span className={alert ? 'text-accent' : 'text-primary/45'}>{icon}</span>
+        </div>
+        {value === undefined ? (
+          <Skeleton className="mt-2.5 h-7 w-12" />
+        ) : (
+          <p
+            className="mt-2 text-[26px] leading-none font-bold tracking-[-0.02em] text-ink-strong"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
+            {value}
+          </p>
+        )}
+        {context ? <p className="mt-1.5 text-[11.5px] text-ink-muted">{context}</p> : null}
+      </CardInteractive>
     </Link>
   );
 }
@@ -143,17 +135,17 @@ function InboxRow({
     <li>
       <Link
         href={href}
-        className="group flex items-center gap-3.5 rounded-lg px-3 py-3 transition-colors duration-150 hover:bg-bg"
+        className="group flex items-center gap-3 rounded-[7px] px-2.5 py-2.5 transition-colors duration-150 hover:bg-bg"
       >
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-primary-soft text-primary">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/[0.07] text-primary">
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-ink-strong">{label}</span>
-          <span className="block truncate text-xs text-ink-muted">{detail}</span>
+          <span className="block text-[12.5px] font-semibold text-ink-strong">{label}</span>
+          <span className="block truncate text-[11.5px] text-ink-muted">{detail}</span>
         </span>
         <span
-          className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-accent-ink"
+          className="rounded-full bg-accent px-2 py-px text-[11px] font-bold text-accent-ink"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {count}
@@ -259,7 +251,7 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-6xl">
       {/* ———— Indicateurs ———— */}
-      <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatTile
           icon={<Icon name="group" size={19} />}
           label="Effectif actif"
@@ -308,9 +300,9 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
         {/* ———— Colonne principale ———— */}
-        <div className="flex min-w-0 flex-col gap-6 xl:col-span-2">
+        <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle>Demandes à traiter</CardTitle>
@@ -386,7 +378,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ———— Colonne de contexte ———— */}
-        <div className="flex min-w-0 flex-col gap-6">
+        <div className="flex min-w-0 flex-col gap-4">
           <Card>
             <CardHeader>
               <CardTitle>Effectifs par direction</CardTitle>

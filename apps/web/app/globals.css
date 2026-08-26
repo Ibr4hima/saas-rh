@@ -30,6 +30,8 @@
   --color-danger: var(--tg-danger);
   --color-danger-soft: var(--tg-danger-soft);
   --color-hero-ink: var(--tg-hero-ink);
+  --color-card-line: var(--tg-card-line);
+  --color-card-line-hover: var(--tg-card-line-hover);
   --color-chart: var(--tg-chart);
   --color-chart-track: var(--tg-chart-track);
   --font-sans: var(--tg-font-sans);
