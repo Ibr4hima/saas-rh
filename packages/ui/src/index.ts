@@ -1,4 +1,5 @@
 export { cn } from './cn';
+export { Checkbox } from './checkbox';
 export { Button } from './button';
 export { Input } from './input';
 export { Label } from './label';

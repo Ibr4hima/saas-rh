@@ -85,6 +85,33 @@ export const advanceDocumentRequestSchema = z.object({
 });
 export type AdvanceDocumentRequestInput = z.infer<typeof advanceDocumentRequestSchema>;
 
+/**
+ * Même geste, sur plusieurs demandes à la fois.
+ *
+ * La RH ne traite pas les demandes une par une : elle sort le parapheur du
+ * jour, génère la pile, la fait signer, puis annonce tout d'un coup. Boucler
+ * côté navigateur sur l'appel unitaire laisserait la file à moitié avancée au
+ * premier échec ; le lot est donc appliqué en une seule transaction.
+ */
+export const batchAdvanceDocumentRequestSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(50),
+  /** « processing » n'a pas de sens en lot : on valide ou on décline. */
+  status: z.enum(['ready', 'rejected']),
+  pickupContact: z.string().trim().max(120).optional(),
+  message: z.string().trim().max(500).optional(),
+});
+export type BatchAdvanceDocumentRequestInput = z.infer<typeof batchAdvanceDocumentRequestSchema>;
+
+/**
+ * Ce que le lot a réellement fait. Une demande déjà traitée par un collègue
+ * pendant que l'écran était ouvert n'annule pas les autres : elle est
+ * ÉCARTÉE et nommée, pour que la RH sache exactement ce qui est parti.
+ */
+export interface BatchAdvanceResult {
+  advanced: number;
+  skipped: { id: string; employeeName: string; reason: string }[];
+}
+
 export interface DocumentRequestView {
   id: string;
   employeeId: string;
@@ -102,6 +129,12 @@ export interface DocumentRequestView {
   processingAt: string | null;
   readyAt: string | null;
   deliveredAt: string | null;
+  /**
+   * Date de clôture — mise à disposition, remise, ou refus. `null` tant que la
+   * demande est ouverte. C'est elle qui donne la durée de traitement : une
+   * correction du point de retrait ne la déplace pas.
+   */
+  handledAt: string | null;
   /** true si l'utilisateur courant (RH) peut faire avancer la demande. */
   canAdvance: boolean;
 }

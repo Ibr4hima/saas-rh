@@ -13,9 +13,11 @@ import {
 } from '@nestjs/common';
 import {
   advanceDocumentRequestSchema,
+  batchAdvanceDocumentRequestSchema,
   createDocumentRequestSchema,
   documentRequestStatusSchema,
   type AdvanceDocumentRequestInput,
+  type BatchAdvanceDocumentRequestInput,
   type CreateDocumentRequestInput,
 } from '@teranga/contracts';
 import { z } from 'zod';
@@ -54,6 +56,20 @@ export class DocumentRequestsController {
     @Query(new ZodValidationPipe(listQuerySchema)) query: z.infer<typeof listQuerySchema>,
   ) {
     return this.requests.list(req.sessionUser, query);
+  }
+
+  /**
+   * Même geste sur plusieurs demandes. Déclaré AVANT la route paramétrée :
+   * sans quoi « batch-advance » serait lu comme un identifiant.
+   */
+  @Post('document-requests/batch-advance')
+  @Roles('admin', 'hr')
+  batchAdvance(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(batchAdvanceDocumentRequestSchema))
+    body: BatchAdvanceDocumentRequestInput,
+  ) {
+    return this.requests.batchAdvance(req.sessionUser, body);
   }
 
   @Post('document-requests/:id/advance')

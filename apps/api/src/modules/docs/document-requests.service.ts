@@ -3,13 +3,15 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   AdvanceDocumentRequestInput,
+  BatchAdvanceDocumentRequestInput,
+  BatchAdvanceResult,
   CreateDocumentRequestInput,
   DocumentRequestStatus,
   DocumentRequestView,
   RequestableDoc,
   SessionUser,
 } from '@teranga/contracts';
-import { REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
+import { DOC_REQUEST_STATUS_LABELS, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -167,6 +169,14 @@ export class DocumentRequestsService {
         processingAt: r.request.processingAt?.toISOString() ?? null,
         readyAt: r.request.readyAt?.toISOString() ?? null,
         deliveredAt: r.request.deliveredAt?.toISOString() ?? null,
+        // Clôture : mise à disposition, remise, ou refus. Le refus n'a pas de
+        // colonne dédiée, mais rien ne suit un refus — `updatedAt` en date donc
+        // exactement. Une correction du point de retrait, elle, laisse
+        // `readyAt` en place : la durée de traitement ne rajeunit pas.
+        handledAt:
+          r.request.readyAt?.toISOString() ??
+          r.request.deliveredAt?.toISOString() ??
+          (r.request.status === 'rejected' ? r.request.updatedAt.toISOString() : null),
         canAdvance: isManage && (ALLOWED_TRANSITIONS[r.request.status]?.length ?? 0) > 0,
       }));
     });
@@ -244,34 +254,163 @@ export class DocumentRequestsService {
         .limit(1);
       if (!person?.userId) return; // dossier sans compte portail : rien à notifier
 
-      const docs = labelList(row.docTypes);
-      const drafts: Record<string, { title: string; body: string }> = {
-        processing: {
-          title: 'Votre demande de documents est en cours de traitement',
-          body: `La Direction du Capital Humain prépare : ${docs}.`,
-        },
-        ready: {
-          title: isCorrection
-            ? 'Changement : où retirer vos documents'
-            : 'Vos documents sont disponibles',
-          body:
-            `${docs} — à retirer auprès de ${changes.pickupContact}, Direction du Capital Humain. ` +
-            `Merci de passer les récupérer${input.message?.trim() ? ` (${input.message.trim()})` : ''}.`,
-        },
-        rejected: {
-          title: 'Votre demande de documents n’a pas pu être traitée',
-          body: `${docs} — motif : ${input.message?.trim()}`,
-        },
-      };
-      const draft = drafts[input.status];
-      if (draft) {
-        await this.notifications.notifyUser(tx, user.tenantId, person.userId, {
-          type: `document_request_${input.status}`,
-          title: draft.title,
-          body: draft.body,
-          link: '/moi/documents',
-        });
+      await this.notifyEmployee(tx, user.tenantId, person.userId, {
+        status: input.status,
+        docTypes: row.docTypes,
+        pickupContact: changes.pickupContact ?? null,
+        message: input.message?.trim() || null,
+        isCorrection,
+      });
+    });
+  }
+
+  /**
+   * Traite plusieurs demandes d'un coup — le geste réel de la RH, qui sort le
+   * parapheur du jour plutôt qu'une demande à la fois.
+   *
+   * Tout se joue dans UNE transaction : au premier problème, rien ne part.
+   * Une demande qu'un collègue a fait avancer entre-temps n'annule pas les
+   * autres — elle est écartée et nommée dans le résultat.
+   */
+  async batchAdvance(
+    user: SessionUser,
+    input: BatchAdvanceDocumentRequestInput,
+  ): Promise<BatchAdvanceResult> {
+    if (input.status === 'rejected' && !input.message?.trim()) {
+      problem(
+        422,
+        'documents.reject_reason_required',
+        'Un motif est requis pour refuser une demande',
+      );
+    }
+
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      // Verrouillage dans un ordre STABLE : deux lots qui se croisent sur les
+      // mêmes demandes s'attendent au lieu de s'interbloquer.
+      const rows = await tx
+        .select()
+        .from(t.documentRequests)
+        .where(inArray(t.documentRequests.id, input.ids))
+        .orderBy(t.documentRequests.id)
+        .for('update');
+
+      const found = new Map(rows.map((r) => [r.id, r]));
+      const employees = rows.length
+        ? await tx
+            .select({
+              employeeId: t.employees.id,
+              userId: t.persons.userId,
+              givenName: t.persons.givenName,
+              familyName: t.persons.familyName,
+            })
+            .from(t.employees)
+            .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+            .where(
+              inArray(
+                t.employees.id,
+                rows.map((r) => r.employeeId),
+              ),
+            )
+        : [];
+      const byEmployee = new Map(employees.map((e) => [e.employeeId, e]));
+
+      const skipped: BatchAdvanceResult['skipped'] = [];
+      const now = new Date();
+      const pickupContact = input.pickupContact?.trim() || `${user.givenName} ${user.familyName}`;
+      const message = input.message?.trim() || null;
+      let advanced = 0;
+
+      for (const id of input.ids) {
+        const row = found.get(id);
+        const who = row ? byEmployee.get(row.employeeId) : undefined;
+        const name = who ? `${who.givenName} ${who.familyName}` : '';
+        if (!row) {
+          skipped.push({ id, employeeName: name, reason: 'Demande introuvable' });
+          continue;
+        }
+        if (!OPEN_STATUSES.includes(row.status)) {
+          skipped.push({
+            id,
+            employeeName: name,
+            reason: `Déjà « ${DOC_REQUEST_STATUS_LABELS[row.status as DocumentRequestStatus] ?? row.status} »`,
+          });
+          continue;
+        }
+
+        const changes: Partial<typeof t.documentRequests.$inferInsert> = {
+          status: input.status,
+          handledByUserId: user.userId,
+          hrMessage: message,
+          updatedAt: now,
+        };
+        if (input.status === 'ready') {
+          changes.readyAt = now;
+          changes.pickupContact = pickupContact;
+          // Une demande encore « reçue » traverse l'étape de traitement au
+          // même instant : le circuit reste celui de l'ADR-0012, et la durée
+          // de traitement garde une borne de départ. L'employé ne reçoit en
+          // revanche QUE l'avis final — être prévenu deux fois dans la même
+          // seconde ne l'informe de rien.
+          if (row.status === 'received') changes.processingAt = now;
+        }
+
+        await tx.update(t.documentRequests).set(changes).where(eq(t.documentRequests.id, id));
+        advanced += 1;
+
+        if (who?.userId) {
+          await this.notifyEmployee(tx, user.tenantId, who.userId, {
+            status: input.status,
+            docTypes: row.docTypes,
+            pickupContact,
+            message,
+            isCorrection: false,
+          });
+        }
       }
+
+      return { advanced, skipped };
+    });
+  }
+
+  /** Avis envoyé à l'employé, identique que la demande parte seule ou en lot. */
+  private async notifyEmployee(
+    tx: Tx,
+    tenantId: string,
+    userId: string,
+    e: {
+      status: DocumentRequestStatus;
+      docTypes: string[];
+      pickupContact: string | null;
+      message: string | null;
+      isCorrection: boolean;
+    },
+  ): Promise<void> {
+    const docs = labelList(e.docTypes);
+    const drafts: Record<string, { title: string; body: string }> = {
+      processing: {
+        title: 'Votre demande de documents est en cours de traitement',
+        body: `La Direction du Capital Humain prépare : ${docs}.`,
+      },
+      ready: {
+        title: e.isCorrection
+          ? 'Changement : où retirer vos documents'
+          : 'Vos documents sont disponibles',
+        body:
+          `${docs} — à retirer auprès de ${e.pickupContact}, Direction du Capital Humain. ` +
+          `Merci de passer les récupérer${e.message ? ` (${e.message})` : ''}.`,
+      },
+      rejected: {
+        title: 'Votre demande de documents n’a pas pu être traitée',
+        body: `${docs} — motif : ${e.message}`,
+      },
+    };
+    const draft = drafts[e.status];
+    if (!draft) return;
+    await this.notifications.notifyUser(tx, tenantId, userId, {
+      type: `document_request_${e.status}`,
+      title: draft.title,
+      body: draft.body,
+      link: '/moi/documents',
     });
   }
 
