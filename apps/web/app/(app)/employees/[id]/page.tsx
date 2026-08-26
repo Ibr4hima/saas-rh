@@ -25,6 +25,8 @@ import {
   Table,
   TBody,
   Td,
+  DataBlock,
+  DataGrid,
   Th,
   THead,
   Tr,
@@ -65,13 +67,18 @@ function lastDay(exclusiveEnd: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function Info({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div>
-      <dt className="text-xs text-ink-muted">{label}</dt>
-      <dd className="text-sm text-ink-strong">{value ?? '—'}</dd>
-    </div>
-  );
+const initials = (given: string, family: string) =>
+  `${given[0] ?? ''}${family[0] ?? ''}`.toUpperCase();
+
+/** Ancienneté en clair : « 3 ans et 2 mois », pas une date à soustraire. */
+function seniority(hiredOn: string): string {
+  const start = new Date(`${hiredOn}T12:00:00Z`);
+  const months = Math.max(0, (Date.now() - start.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+  const years = Math.floor(months / 12);
+  const rest = Math.floor(months % 12);
+  if (years === 0) return rest <= 1 ? "moins d'un mois" : `${rest} mois`;
+  const y = `${years} an${years > 1 ? 's' : ''}`;
+  return rest === 0 ? y : `${y} et ${rest} mois`;
 }
 
 export default function EmployeePage() {
@@ -110,212 +117,231 @@ export default function EmployeePage() {
   const current = e.assignments.find((a) => a.current);
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto w-full max-w-6xl">
       <EmployeeEditModal
         open={editOpen}
         employeeId={id}
         onClose={() => router.replace(`/employees/${id}`)}
       />
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <Link href="/employees" className="text-sm text-ink-muted hover:text-ink">
-            ← Employés
-          </Link>
-          <div className="mt-1 flex items-center gap-3">
-            <h1 className="text-xl font-bold text-ink-strong">
-              {e.person.givenName} {e.person.familyName}
-            </h1>
-            <Badge
-              tone={
-                e.status === 'active' ? 'success' : e.status === 'suspended' ? 'warning' : 'neutral'
-              }
-            >
-              {STATUS_LABELS[e.status] ?? e.status}
-            </Badge>
-          </div>
-          <p className="text-sm text-ink-muted">
-            {current
-              ? `${current.positionTitle}${current.orgUnitName ? ` · ${current.orgUnitName}` : ''} · `
-              : ''}
-            Matricule <span className="font-mono">{e.employeeNumber}</span> · Embauché·e le{' '}
-            {formatDate(e.hiredOn)}
-          </p>
-        </div>
-        {canSeeHistory ? (
-          <div className="flex shrink-0 gap-2">
-            {e.status === 'active' ? (
-              <a href={apiUrl(`/employees/${e.id}/attestation`)}>
-                <Button variant="secondary">Attestation de travail</Button>
-              </a>
-            ) : null}
-            <Link href={`/employees/${e.id}/modifier`}>
-              <Button>Modifier</Button>
-            </Link>
-          </div>
-        ) : null}
-      </div>
+      <Link
+        href="/employees"
+        className="mb-3 inline-flex items-center gap-1 text-[11.5px] font-semibold text-ink-muted transition-colors hover:text-primary"
+      >
+        ← Gestion du personnel
+      </Link>
 
-      <div className="flex flex-col gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>État civil et contact</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
-              <Info label="Sexe" value={e.person.gender ? SEX_LABELS[e.person.gender] : null} />
-              <Info
-                label="Naissance"
-                value={
-                  e.person.birthDate
-                    ? `${formatDate(e.person.birthDate)}${e.person.birthPlace ? ` (${e.person.birthPlace})` : ''}`
-                    : null
+      {/* ———— Bande d'identité ————
+          Tout ce qui permet de reconnaître le dossier en une seconde : le
+          visage (à défaut, les initiales), le nom, la fonction, et les quatre
+          repères qu'on cherche systématiquement. Le reste de la fiche
+          approfondit ; cette bande, elle, identifie. */}
+      <Card className="mb-4 px-4 py-4 sm:px-[18px]">
+        <div className="flex flex-wrap items-start gap-4">
+          <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary/[0.09] text-[17px] font-bold text-primary">
+            {initials(e.person.givenName, e.person.familyName)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-[20px] leading-tight font-bold tracking-[-0.01em] text-ink-strong">
+                {e.person.givenName} {e.person.familyName}
+              </h1>
+              <Badge
+                tone={
+                  e.status === 'active'
+                    ? 'success'
+                    : e.status === 'suspended'
+                      ? 'warning'
+                      : 'neutral'
                 }
-              />
-              <Info
-                label="Situation matrimoniale"
-                value={
-                  e.person.maritalStatus
+              >
+                {STATUS_LABELS[e.status] ?? e.status}
+              </Badge>
+            </div>
+            <p className="mt-0.5 truncate text-[12.5px] text-ink-muted">
+              {current?.positionTitle ?? 'Poste à préciser'}
+              {current?.orgUnitName ? ` · ${current.orgUnitName}` : ''}
+            </p>
+          </div>
+          {canSeeHistory && e.status === 'active' ? (
+            <a href={apiUrl(`/employees/${e.id}/attestation`)} target="_blank" rel="noreferrer">
+              <Button variant="secondary">Attestation de travail</Button>
+            </a>
+          ) : null}
+        </div>
+
+        <DataGrid className="mt-4 lg:grid-cols-4">
+          <DataBlock label="Matricule">
+            <span className="font-mono">{e.employeeNumber}</span>
+          </DataBlock>
+          <DataBlock label="Direction">{current?.orgUnitName}</DataBlock>
+          <DataBlock label="Dans l'organisation">
+            {seniority(e.hiredOn)}
+            <span className="font-normal text-ink-muted"> · depuis {formatDate(e.hiredOn)}</span>
+          </DataBlock>
+          <DataBlock label="Email professionnel">{e.workEmail}</DataBlock>
+        </DataGrid>
+      </Card>
+
+      {/* Deux colonnes sur grand écran : à gauche ce qui décrit la personne
+          et son emploi, à droite ce qui s'administre — accès, soldes, traces.
+          En une colonne, la fiche demandait quatre écrans de défilement. */}
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
+        <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>État civil et contact</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DataGrid>
+                <DataBlock label="Sexe">
+                  {e.person.gender ? SEX_LABELS[e.person.gender] : null}
+                </DataBlock>
+                <DataBlock label="Naissance">
+                  {e.person.birthDate
+                    ? `${formatDate(e.person.birthDate)}${e.person.birthPlace ? ` · ${e.person.birthPlace}` : ''}`
+                    : null}
+                </DataBlock>
+                <DataBlock label="Nationalité">{nationalityLabel(e.person.nationality)}</DataBlock>
+                <DataBlock label="Situation matrimoniale">
+                  {e.person.maritalStatus
                     ? maritalLabels(e.person.gender)[e.person.maritalStatus]
-                    : null
-                }
-              />
-              <Info label="Nationalité" value={nationalityLabel(e.person.nationality)} />
-              <Info
-                label="Pièce d'identité"
-                value={
-                  e.person.nationalId || e.person.idDocumentType ? (
-                    <span>
+                    : null}
+                </DataBlock>
+                <DataBlock label="Pièce d'identité">
+                  {e.person.nationalId || e.person.idDocumentType ? (
+                    <>
                       {e.person.idDocumentType
                         ? (ID_DOCUMENT_LABELS[e.person.idDocumentType] ?? e.person.idDocumentType)
                         : 'Pièce'}
                       {e.person.nationalId ? (
                         <>
                           {' '}
-                          n° <span className="font-mono">{e.person.nationalId}</span>
+                          · <span className="font-mono">{e.person.nationalId}</span>
                         </>
                       ) : null}
-                      {e.person.idDocumentExpiresOn
-                        ? ` · expire le ${formatDate(e.person.idDocumentExpiresOn)}`
-                        : ''}
-                    </span>
-                  ) : null
-                }
-              />
-              <Info label="Téléphone" value={e.person.phone} />
-              <Info label="Email personnel" value={e.person.personalEmail} />
-              <Info label="Email professionnel" value={e.workEmail} />
-              <Info label="Téléphone professionnel" value={e.workPhone} />
-              <Info
-                label="Adresse"
-                value={
-                  e.person.addressLine
-                    ? `${e.person.addressLine}${e.person.city ? `, ${e.person.city}` : ''}`
-                    : e.person.city
-                }
-              />
-              <Info
-                label="Contact d'urgence"
-                value={
-                  e.person.emergencyContactName
+                      {e.person.idDocumentExpiresOn ? (
+                        <span className="font-normal text-ink-muted">
+                          {' '}
+                          · expire le {formatDate(e.person.idDocumentExpiresOn)}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : null}
+                </DataBlock>
+                <DataBlock label="Téléphone">{e.person.phone}</DataBlock>
+                <DataBlock label="Email personnel">{e.person.personalEmail}</DataBlock>
+                <DataBlock label="Téléphone professionnel">{e.workPhone}</DataBlock>
+                <DataBlock label="Contact d'urgence">
+                  {e.person.emergencyContactName
                     ? `${e.person.emergencyContactName}${e.person.emergencyContactPhone ? ` — ${e.person.emergencyContactPhone}` : ''}`
-                    : null
-                }
-              />
-            </dl>
-          </CardContent>
-        </Card>
-
-        <AssignmentsCard
-          employeeId={e.id}
-          assignments={e.assignments}
-          canManage={Boolean(canSeeHistory)}
-        />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Contrats</CardTitle>
-          </CardHeader>
-          {e.contracts.length === 0 ? (
-            <CardContent>
-              <p className="text-sm text-ink-muted">Aucun contrat enregistré.</p>
-            </CardContent>
-          ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <Th>Type</Th>
-                  <Th>Début</Th>
-                  <Th>Fin</Th>
-                  <Th>Fin d&apos;essai</Th>
-                </tr>
-              </THead>
-              <TBody>
-                {e.contracts.map((c) => (
-                  <Tr key={c.id}>
-                    <Td className="font-medium text-ink-strong">
-                      {CONTRACT_LABELS[c.contractType] ?? c.contractType}
-                    </Td>
-                    <Td>{formatDate(c.startDate)}</Td>
-                    <Td>{c.endDate ? formatDate(c.endDate) : '—'}</Td>
-                    <Td>{c.trialPeriodEnd ? formatDate(c.trialPeriodEnd) : '—'}</Td>
-                  </Tr>
-                ))}
-              </TBody>
-            </Table>
-          )}
-        </Card>
-
-        {/* En tête des cartes : c'est ce qui attend une décision de la RH. */}
-        {canSeeHistory ? <ProfileChangeCard employeeId={e.id} /> : null}
-
-        {canSeeHistory ? <EmployeeDocumentsCard employeeId={e.id} /> : null}
-
-        {canSeeHistory ? <DocumentRequestsCard employeeId={e.id} /> : null}
-
-        {canSeeHistory ? <PortalCard employeeId={e.id} portal={e.portal} /> : null}
-
-        <BalancesCard employeeId={e.id} canEdit={Boolean(canSeeHistory)} />
-
-        {canSeeHistory ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Historique des modifications</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {history.isLoading ? (
-                <Skeleton className="h-16 w-full" />
-              ) : !history.data || history.data.length === 0 ? (
-                <p className="text-sm text-ink-muted">Aucune modification enregistrée.</p>
-              ) : (
-                <ol className="flex flex-col gap-3">
-                  {history.data.map((h) => (
-                    <li key={h.id} className="flex items-baseline gap-3 text-sm">
-                      <span className="shrink-0 font-mono text-xs text-ink-muted">
-                        {new Date(h.occurredAt).toLocaleString('fr-FR', {
-                          day: '2-digit',
-                          month: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                      <span className="text-ink">
-                        {h.action === 'INSERT'
-                          ? 'Création'
-                          : h.action === 'UPDATE'
-                            ? 'Modification'
-                            : 'Suppression'}{' '}
-                        · {TABLE_LABELS[h.tableName] ?? h.tableName}
-                        {h.changedFields.length > 0 ? (
-                          <span className="text-ink-muted"> ({h.changedFields.join(', ')})</span>
-                        ) : null}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              )}
+                    : null}
+                </DataBlock>
+                <DataBlock label="Adresse" full>
+                  {e.person.addressLine
+                    ? `${e.person.addressLine}${e.person.city ? `, ${e.person.city}` : ''}`
+                    : e.person.city}
+                </DataBlock>
+              </DataGrid>
             </CardContent>
           </Card>
-        ) : null}
+
+          <AssignmentsCard
+            employeeId={e.id}
+            assignments={e.assignments}
+            canManage={Boolean(canSeeHistory)}
+          />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Contrats</CardTitle>
+            </CardHeader>
+            {e.contracts.length === 0 ? (
+              <CardContent>
+                <p className="text-sm text-ink-muted">Aucun contrat enregistré.</p>
+              </CardContent>
+            ) : (
+              <Table>
+                <THead>
+                  <tr>
+                    <Th>Type</Th>
+                    <Th>Début</Th>
+                    <Th>Fin</Th>
+                    <Th>Fin d&apos;essai</Th>
+                  </tr>
+                </THead>
+                <TBody>
+                  {e.contracts.map((c) => (
+                    <Tr key={c.id}>
+                      <Td className="font-medium text-ink-strong">
+                        {CONTRACT_LABELS[c.contractType] ?? c.contractType}
+                      </Td>
+                      <Td>{formatDate(c.startDate)}</Td>
+                      <Td>{c.endDate ? formatDate(c.endDate) : '—'}</Td>
+                      <Td>{c.trialPeriodEnd ? formatDate(c.trialPeriodEnd) : '—'}</Td>
+                    </Tr>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </Card>
+
+          {/* En tête des cartes de gauche : c'est ce qui attend une décision. */}
+          {canSeeHistory ? <ProfileChangeCard employeeId={e.id} /> : null}
+
+          {canSeeHistory ? <EmployeeDocumentsCard employeeId={e.id} /> : null}
+
+          {canSeeHistory ? <DocumentRequestsCard employeeId={e.id} /> : null}
+
+          {/* Les soldes sont un TABLEAU : ils appartiennent à la colonne large.
+              Serrés dans le tiers de droite, leurs colonnes débordaient. */}
+          <BalancesCard employeeId={e.id} canEdit={Boolean(canSeeHistory)} />
+        </div>
+
+        {/* ———— Colonne d'administration : accès et traces ———— */}
+        <div className="flex min-w-0 flex-col gap-4">
+          {canSeeHistory ? <PortalCard employeeId={e.id} portal={e.portal} /> : null}
+
+          {canSeeHistory ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Historique des modifications</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {history.isLoading ? (
+                  <Skeleton className="h-16 w-full" />
+                ) : !history.data || history.data.length === 0 ? (
+                  <p className="text-sm text-ink-muted">Aucune modification enregistrée.</p>
+                ) : (
+                  <ol className="flex flex-col gap-3">
+                    {history.data.map((h) => (
+                      <li key={h.id} className="flex items-baseline gap-3 text-sm">
+                        <span className="shrink-0 font-mono text-xs text-ink-muted">
+                          {new Date(h.occurredAt).toLocaleString('fr-FR', {
+                            day: '2-digit',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                        <span className="text-ink">
+                          {h.action === 'INSERT'
+                            ? 'Création'
+                            : h.action === 'UPDATE'
+                              ? 'Modification'
+                              : 'Suppression'}{' '}
+                          · {TABLE_LABELS[h.tableName] ?? h.tableName}
+                          {h.changedFields.length > 0 ? (
+                            <span className="text-ink-muted"> ({h.changedFields.join(', ')})</span>
+                          ) : null}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
       </div>
     </div>
   );

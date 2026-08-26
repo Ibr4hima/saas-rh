@@ -7,6 +7,7 @@ export { Select } from './select';
 export { Textarea } from './textarea';
 export { Badge } from './badge';
 export { Card, CardInteractive, CardHeader, CardTitle, CardContent } from './card';
+export { DataBlock, DataGrid } from './data-block';
 export { Table, THead, TBody, Tr, Th, Td } from './table';
 export { Skeleton } from './skeleton';
 export { EmptyState } from './empty-state';
