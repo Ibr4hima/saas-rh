@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PublicJobInfo } from '@teranga/contracts';
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_BYTES } from '@teranga/contracts';
-import { Button, Card, CardContent, Field, Input, Skeleton, Textarea, cn } from '@teranga/ui';
+import { Button, Card, CardContent, Field, Input, Skeleton, cn } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
 import { Icon, type IconName } from '../../../components/icons';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
@@ -43,6 +43,21 @@ function joursRestants(iso: string): number {
 }
 
 /**
+ * L'âge de l'offre, en une durée nue — l'intitulé porte déjà « publiée il y
+ * a ». Au-delà d'une semaine on cesse de compter en jours : « il y a 34
+ * jours » demande un calcul mental que « il y a 5 semaines » épargne.
+ */
+function anciennete(iso: string): string {
+  const jours = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+  if (jours === 0) return "moins d'un jour";
+  if (jours === 1) return '1 jour';
+  if (jours < 7) return `${jours} jours`;
+  const semaines = Math.floor(jours / 7);
+  if (jours < 61) return semaines === 1 ? '1 semaine' : `${semaines} semaines`;
+  return `${Math.floor(jours / 30)} mois`;
+}
+
+/**
  * La description telle qu'on l'a tapée, rendue telle qu'on l'a pensée.
  *
  * La RH écrit ses missions en tirets, comme dans un traitement de texte. Sortie
@@ -68,27 +83,40 @@ function Description({ texte }: { texte: string }) {
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3.5">
       {blocs.map((bloc, i) =>
         bloc.type === 'liste' ? (
           <ul key={i} className="flex flex-col gap-2">
             {bloc.items.map((item, j) => (
-              <li key={j} className="flex gap-2.5 text-[14.5px] leading-relaxed text-ink">
+              <li key={j} className="flex gap-2.5 text-[13.5px] leading-relaxed text-ink">
                 <span
                   aria-hidden
-                  className="mt-[9px] size-1.5 shrink-0 rounded-full bg-primary/45"
+                  className="mt-[8px] size-1.5 shrink-0 rounded-full bg-primary/45"
                 />
                 <span className="min-w-0">{item}</span>
               </li>
             ))}
           </ul>
         ) : (
-          <p key={i} className="text-[14.5px] leading-relaxed whitespace-pre-line text-ink">
+          <p key={i} className="text-[13.5px] leading-relaxed whitespace-pre-line text-ink">
             {bloc.texte}
           </p>
         ),
       )}
     </div>
+  );
+}
+
+/** La marque de l'organisation qui recrute, en pastille. */
+function Logo({ organisation, taille = 56 }: { organisation: string; taille?: number }) {
+  return (
+    <span
+      aria-hidden
+      className="flex shrink-0 items-center justify-center rounded-[18px] bg-primary font-extrabold text-primary-ink"
+      style={{ width: taille, height: taille, fontSize: Math.round(taille * 0.4) }}
+    >
+      {organisation[0]?.toUpperCase()}
+    </span>
   );
 }
 
@@ -207,84 +235,69 @@ function PieceJointe({
 }
 
 /**
- * Bandeau de marque de la page publique.
+ * Fond de la page publique.
  *
- * C'est la seule chose qui dit au candidat chez QUI il dépose son dossier —
- * jusqu'à l'écran de confirmation compris, où la question se repose : le nom
- * qui accuse réception doit être celui qu'on a vu en arrivant.
+ * Le lien mène droit à la fiche : il n'y a pas d'écran derrière elle, seulement
+ * la couleur de l'organisation qui recrute. Le voile de la fenêtre s'y pose et
+ * lui donne sa profondeur.
  */
-function Bandeau({ organisation }: { organisation: string }) {
-  return (
-    <header className="hero-bar">
-      <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-3.5">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-white/15 text-[15px] font-extrabold text-hero-ink ring-1 ring-white/25">
-            {organisation[0]}
-          </span>
-          <span className="truncate text-[14px] font-bold text-hero-ink">{organisation}</span>
-        </div>
-        <span className="hidden text-[11.5px] font-semibold text-hero-ink/75 sm:block">
-          Espace recrutement
-        </span>
-      </div>
-    </header>
-  );
+function Fond({ children }: { children: React.ReactNode }) {
+  return <main className="hero-bar h-dvh overflow-hidden">{children}</main>;
 }
 
-/** Coquille commune aux écrans qui n'ont qu'un message à donner. */
-function Message({
-  ton = 'neutre',
+/** Coquille des écrans qui n'ont qu'un message à donner. */
+function Ecran({
+  organisation,
   icon,
   titre,
   children,
   action,
 }: {
-  ton?: 'neutre' | 'succes';
+  organisation?: string;
   icon: IconName;
   titre: string;
   children?: React.ReactNode;
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-lg flex-col justify-center px-5 py-12">
-      <Card>
-        <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-          <span
-            className={cn(
-              'flex size-12 items-center justify-center rounded-full',
-              ton === 'succes' ? 'bg-success-soft text-success' : 'bg-bg text-ink-muted',
+    // `min-h-full` sur l'enfant plutôt que `items-center` sur le conteneur qui
+    // défile : centré quand ça tient, défilable par le haut quand ça déborde.
+    <div className="h-full overflow-y-auto p-5">
+      <div className="flex min-h-full items-center justify-center">
+        <Card className="w-full max-w-lg">
+          <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            {organisation ? (
+              <Logo organisation={organisation} taille={48} />
+            ) : (
+              <span className="flex size-12 items-center justify-center rounded-full bg-bg text-ink-muted">
+                <Icon name={icon} size={26} />
+              </span>
             )}
-          >
-            <Icon name={icon} size={26} />
-          </span>
-          <p className="text-[17px] font-bold text-ink-strong">{titre}</p>
-          {children ? (
-            <div className="text-[13.5px] leading-relaxed text-ink-muted">{children}</div>
-          ) : null}
-          {action}
-        </CardContent>
-      </Card>
+            <p className="flex items-center gap-2 text-[17px] font-bold text-ink-strong">
+              {organisation ? <Icon name={icon} size={20} className="text-success" /> : null}
+              {titre}
+            </p>
+            {children ? (
+              <div className="text-[13.5px] leading-relaxed text-ink-muted">{children}</div>
+            ) : null}
+            {action}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
 
 export default function ApplyPage() {
   const { slug } = useParams<{ slug: string }>();
-  const [ouvert, setOuvert] = useState(false);
   const [givenName, setGivenName] = useState('');
   const [familyName, setFamilyName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [message, setMessage] = useState('');
   const [files, setFiles] = useState<Record<string, PickedFile>>({});
   const [fileError, setFileError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-
-  // La barre collante n'apparaît qu'une fois le bouton d'en-tête sorti de
-  // l'écran : deux « Postuler » visibles en même temps, c'est un de trop.
-  const ancre = useRef<HTMLDivElement>(null);
-  const [ancreVisible, setAncreVisible] = useState(true);
 
   // Le refus du serveur s'affiche en bas d'un formulaire qui défile : sans
   // cela, un candidat dont la fenêtre est remontée cliquerait « Envoyer » une
@@ -298,20 +311,6 @@ export default function ApplyPage() {
   });
 
   const offre = info.data?.valid ? info.data : null;
-
-  useEffect(() => {
-    const cible = ancre.current;
-    if (!cible) return;
-    const obs = new IntersectionObserver(
-      (entrees) => {
-        const e = entrees[0];
-        if (e) setAncreVisible(e.isIntersecting);
-      },
-      { threshold: 0 },
-    );
-    obs.observe(cible);
-    return () => obs.disconnect();
-  }, [offre, sent]);
 
   useEffect(() => {
     if (offre) document.title = `${offre.title} — ${offre.organizationName}`;
@@ -330,7 +329,6 @@ export default function ApplyPage() {
           familyName,
           email,
           phone: phone || undefined,
-          message: message || undefined,
           documents: Object.entries(files).map(([label, f]) => ({
             label,
             filename: f.filename,
@@ -339,10 +337,7 @@ export default function ApplyPage() {
           })),
         },
       }),
-    onSuccess: () => {
-      setOuvert(false);
-      setSent(true);
-    },
+    onSuccess: () => setSent(true),
     onError: (err) =>
       setServerError(err instanceof ApiError ? err.message : 'Envoi impossible — réessayez.'),
   });
@@ -390,21 +385,19 @@ export default function ApplyPage() {
 
   if (info.isLoading) {
     return (
-      <main className="min-h-dvh bg-bg">
-        <div className="hero-bar h-[57px]" />
-        <div className="mx-auto max-w-3xl px-5 py-8">
-          <Skeleton className="mb-4 h-52 w-full" />
-          <Skeleton className="h-64 w-full" />
+      <Fond>
+        <div className="flex h-full items-center justify-center p-5">
+          <Skeleton className="h-[70vh] w-full max-w-2xl rounded-[20px]" />
         </div>
-      </main>
+      </Fond>
     );
   }
 
   // Une erreur réseau/serveur n'est PAS « offre inexistante » : on distingue.
   if (info.isError) {
     return (
-      <main className="min-h-dvh bg-bg">
-        <Message
+      <Fond>
+        <Ecran
           icon="error"
           titre="Chargement impossible"
           action={
@@ -414,26 +407,29 @@ export default function ApplyPage() {
           }
         >
           Impossible de joindre le serveur — vérifiez votre connexion et réessayez.
-        </Message>
-      </main>
+        </Ecran>
+      </Fond>
     );
   }
 
   if (!offre) {
     return (
-      <main className="min-h-dvh bg-bg">
-        <Message icon="event_busy" titre="Offre indisponible">
+      <Fond>
+        <Ecran icon="event_busy" titre="Offre indisponible">
           {INVALID_MESSAGES[info.data && !info.data.valid ? info.data.reason : 'not_found']}
-        </Message>
-      </main>
+        </Ecran>
+      </Fond>
     );
   }
 
   if (sent) {
     return (
-      <main className="min-h-dvh bg-bg">
-        <Bandeau organisation={offre.organizationName} />
-        <Message ton="succes" icon="check_circle" titre="Candidature envoyée">
+      <Fond>
+        <Ecran
+          organisation={offre.organizationName}
+          icon="check_circle"
+          titre="Candidature envoyée"
+        >
           <p>
             Merci {givenName}. Votre dossier pour « {offre.title} » est arrivé chez{' '}
             {offre.organizationName}. Le service des ressources humaines vous répondra à
@@ -443,8 +439,8 @@ export default function ApplyPage() {
             Référence à rappeler :{' '}
             <span className="font-mono font-bold text-ink-strong">{offre.reference}</span>
           </p>
-        </Message>
-      </main>
+        </Ecran>
+      </Fond>
     );
   }
 
@@ -460,139 +456,12 @@ export default function ApplyPage() {
   const urgence = restants !== null && restants <= 7;
 
   return (
-    <main className="min-h-dvh bg-bg pb-24">
-      <Bandeau organisation={offre.organizationName} />
-
-      <div className="mx-auto flex max-w-3xl flex-col gap-4 px-5 py-6 sm:py-8">
-        {/* L'offre : ce qu'on propose, et les quelques faits qui décident. */}
-        <Card>
-          <CardContent className="py-6">
-            <p className="text-[11px] font-extrabold tracking-[0.14em] text-primary uppercase">
-              Offre d&apos;emploi
-            </p>
-            <h1 className="mt-1.5 text-[26px] leading-tight font-extrabold text-ink-strong sm:text-[30px]">
-              {offre.title}
-            </h1>
-
-            <div className="mt-5 grid grid-cols-1 gap-4 border-t border-line-soft pt-5 sm:grid-cols-2">
-              <Fait icon="badge" label="Type de contrat">
-                {CONTRACT_LABELS[offre.contractType] ?? offre.contractType}
-              </Fait>
-              {offre.location ? (
-                <Fait icon="place" label="Lieu">
-                  {offre.location}
-                </Fait>
-              ) : null}
-              <Fait icon="event" label="Date limite">
-                {offre.deadline ? (
-                  <>
-                    {jourFr(offre.deadline)}
-                    {compteRebours ? (
-                      <span
-                        className={cn(
-                          'ml-1.5 text-[12px] font-bold',
-                          urgence ? 'text-accent-text' : 'text-ink-muted',
-                        )}
-                      >
-                        {restants === 0
-                          ? '· dernier jour'
-                          : `· plus que ${restants} jour${restants! > 1 ? 's' : ''}`}
-                      </span>
-                    ) : null}
-                  </>
-                ) : (
-                  <span className="font-normal text-ink-muted">Sans date limite</span>
-                )}
-              </Fait>
-              <Fait icon="description" label="Référence">
-                <span className="font-mono">{offre.reference}</span>
-              </Fait>
-            </div>
-
-            <div ref={ancre} className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2">
-              <Button size="lg" onClick={() => setOuvert(true)}>
-                Postuler à cette offre
-              </Button>
-              <p className="text-[12.5px] text-ink-muted">
-                {offre.requiredDocuments.length > 0
-                  ? `${offre.requiredDocuments.length} pièce${offre.requiredDocuments.length > 1 ? 's' : ''} à joindre`
-                  : 'Aucune pièce à joindre'}{' '}
-                · environ deux minutes
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="py-6">
-            <h2 className="mb-4 text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
-              La mission
-            </h2>
-            <Description texte={offre.description} />
-          </CardContent>
-        </Card>
-
-        {/* Ce qu'il faut avoir sous la main AVANT d'ouvrir le formulaire : un
-            dossier abandonné en cours de route l'est presque toujours parce
-            qu'on découvre la pièce manquante une fois la saisie commencée. */}
-        {offre.requiredDocuments.length > 0 ? (
-          <Card>
-            <CardContent className="py-6">
-              <h2 className="mb-1 text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
-                À préparer
-              </h2>
-              <p className="mb-4 text-[13px] text-ink-muted">
-                Rassemblez ces pièces avant de commencer — {FORMATS}, {POIDS_MAX}.
-              </p>
-              <ul className="flex flex-col gap-2">
-                {offre.requiredDocuments.map((doc) => (
-                  <li
-                    key={doc}
-                    className="flex items-center gap-2.5 rounded-[10px] bg-bg px-3.5 py-2.5"
-                  >
-                    <Icon name="description" size={18} className="shrink-0 text-primary/70" />
-                    <span className="text-[13.5px] font-semibold text-ink-strong">{doc}</span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <p className="mt-1 text-center text-[11.5px] text-ink-muted">
-          Propulsé par Teranga RH — vos données ne sont transmises qu&apos;à{' '}
-          {offre.organizationName}.
-        </p>
-      </div>
-
-      {/* Barre collante : sur une offre longue, « Postuler » ne doit jamais
-          être à un défilement de distance. */}
-      <div
-        className={cn(
-          'fixed inset-x-0 bottom-0 z-30 border-t border-line-soft bg-surface/95 backdrop-blur-sm transition-transform duration-200',
-          ancreVisible ? 'translate-y-full' : 'translate-y-0',
-        )}
-        aria-hidden={ancreVisible}
-      >
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-3">
-          <div className="min-w-0">
-            <p className="truncate text-[13.5px] font-bold text-ink-strong">{offre.title}</p>
-            <p className="truncate text-[11.5px] text-ink-muted">
-              {CONTRACT_LABELS[offre.contractType] ?? offre.contractType}
-              {offre.deadline ? ` · jusqu'au ${jourFr(offre.deadline)}` : ''}
-            </p>
-          </div>
-          <Button onClick={() => setOuvert(true)} tabIndex={ancreVisible ? -1 : 0}>
-            Postuler
-          </Button>
-        </div>
-      </div>
-
+    <Fond>
+      {/* La fenêtre EST l'écran : pas de croix, pas d'Échap, pas de clic au
+          dehors — il n'y a rien derrière elle vers quoi refermer. */}
       <Modal
-        open={ouvert}
-        onClose={() => setOuvert(false)}
+        open
         title="Postuler"
-        subtitle={`${offre.title} · ${offre.reference}`}
         maxWidth="max-w-2xl"
         footer={
           <>
@@ -603,10 +472,8 @@ export default function ApplyPage() {
                   ? 'Tout est prêt.'
                   : 'Renseignez vos nom, prénom et adresse email.'}
             </p>
-            <Button variant="secondary" onClick={() => setOuvert(false)}>
-              Annuler
-            </Button>
             <Button
+              size="lg"
               onClick={() => {
                 setServerError(null);
                 apply.mutate();
@@ -619,6 +486,57 @@ export default function ApplyPage() {
           </>
         }
       >
+        {/* La fiche de l'offre : qui recrute, pour quoi, et les quatre faits
+            qui décident — avant qu'on demande quoi que ce soit au candidat. */}
+        <section className="rounded-[14px] border border-line-soft bg-surface px-4 pt-7 pb-[18px] sm:px-[18px]">
+          <div className="flex flex-col items-center text-center">
+            <Logo organisation={offre.organizationName} />
+            <p className="mt-3 text-[10.5px] font-extrabold tracking-[0.16em] text-primary uppercase">
+              {offre.organizationName} recrute
+            </p>
+            <h1 className="mt-1.5 text-[22px] leading-tight font-extrabold text-balance text-ink-strong sm:text-[26px]">
+              {offre.title}
+            </h1>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 border-t border-line-soft pt-5 sm:grid-cols-2">
+            <Fait icon="badge" label="Type de contrat">
+              {CONTRACT_LABELS[offre.contractType] ?? offre.contractType}
+            </Fait>
+            <Fait icon="schedule" label="Publiée il y a">
+              {anciennete(offre.createdAt)}
+            </Fait>
+            <Fait icon="event" label="Date limite">
+              {offre.deadline ? (
+                <>
+                  {jourFr(offre.deadline)}
+                  {compteRebours ? (
+                    <span
+                      className={cn(
+                        'ml-1.5 text-[12px] font-bold',
+                        urgence ? 'text-accent-text' : 'text-ink-muted',
+                      )}
+                    >
+                      {restants === 0
+                        ? '· dernier jour'
+                        : `· plus que ${restants} jour${restants! > 1 ? 's' : ''}`}
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <span className="font-normal text-ink-muted">Sans date limite</span>
+              )}
+            </Fait>
+            <Fait icon="description" label="Référence">
+              <span className="font-mono">{offre.reference}</span>
+            </Fait>
+          </div>
+        </section>
+
+        <ModalSection title="Description du poste">
+          <Description texte={offre.description} />
+        </ModalSection>
+
         <ModalSection title="Vos coordonnées">
           <ModalGrid>
             <Field label="Prénom" htmlFor="givenName" required>
@@ -697,27 +615,21 @@ export default function ApplyPage() {
           </ModalSection>
         ) : null}
 
-        <ModalSection title="Votre message">
-          <Field label="Quelques mots sur votre motivation (facultatif)" htmlFor="message">
-            <Textarea
-              id="message"
-              rows={4}
-              placeholder="Ce qui vous attire dans ce poste, ce que vous y apportez…"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-            />
-          </Field>
-          {serverError ? (
-            <p
-              ref={alerte}
-              role="alert"
-              className="mt-3 rounded-[9px] bg-danger-soft px-3 py-2 text-[12.5px] text-danger"
-            >
-              {serverError}
-            </p>
-          ) : null}
-        </ModalSection>
+        {serverError ? (
+          <p
+            ref={alerte}
+            role="alert"
+            className="rounded-[11px] border border-danger/30 bg-danger-soft px-4 py-3 text-[12.5px] font-medium text-danger"
+          >
+            {serverError}
+          </p>
+        ) : null}
+
+        <p className="px-1 pt-1 pb-1 text-center text-[11px] text-ink-muted">
+          Propulsé par Teranga RH — vos données ne sont transmises qu&apos;à{' '}
+          {offre.organizationName}.
+        </p>
       </Modal>
-    </main>
+    </Fond>
   );
 }

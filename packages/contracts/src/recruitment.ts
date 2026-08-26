@@ -135,6 +135,8 @@ export type PublicJobInfo =
       organizationName: string;
       /** OFF-AAAA-NNN — ce que le candidat cite quand il relance. */
       reference: string;
+      /** Mise en ligne de l'offre — « publiée il y a trois jours ». */
+      createdAt: string;
       title: string;
       description: string;
       contractType: string;

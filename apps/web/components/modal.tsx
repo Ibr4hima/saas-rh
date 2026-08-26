@@ -29,7 +29,13 @@ export function Modal({
   maxWidth = 'max-w-3xl',
 }: {
   open: boolean;
-  onClose: () => void;
+  /**
+   * Absent, la fenêtre ne se ferme pas : ni croix, ni Échap, ni clic au
+   * dehors. Réservé aux fenêtres qui SONT l'écran — une candidature ouverte
+   * par un lien public n'a pas de page derrière elle à laquelle revenir, et
+   * une croix n'y mènerait qu'à du vide.
+   */
+  onClose?: () => void;
   title: string;
   subtitle?: React.ReactNode;
   /**
@@ -50,7 +56,7 @@ export function Modal({
   maxWidth?: string;
 }) {
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || !onClose) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
@@ -67,6 +73,38 @@ export function Modal({
   const dialog = useDialogue(open);
   const titleId = React.useId();
 
+  /**
+   * « Il y a la suite en dessous ».
+   *
+   * Un corps qui défile s'arrête souvent PILE sur une fin de section : le
+   * contenu paraît alors complet, et l'on ne cherche pas ce qu'on ne
+   * soupçonne pas. Un dégradé sur le bord bas dit qu'il en reste, et
+   * disparaît dès qu'on est arrivé.
+   */
+  const corps = React.useRef<HTMLDivElement>(null);
+  const [suite, setSuite] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open || corpsFixe) return;
+    const el = corps.current;
+    if (!el) return;
+    const maj = () => setSuite(el.scrollTop + el.clientHeight < el.scrollHeight - 8);
+    maj();
+    el.addEventListener('scroll', maj, { passive: true });
+    // La hauteur du panneau change (fenêtre redimensionnée) ET son contenu
+    // aussi (une pièce jointe remplace sa zone de dépôt, une alerte apparaît).
+    // Il faut les deux : l'un ne voit pas ce que l'autre observe.
+    const taille = new ResizeObserver(maj);
+    taille.observe(el);
+    const contenu = new MutationObserver(maj);
+    contenu.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => {
+      el.removeEventListener('scroll', maj);
+      taille.disconnect();
+      contenu.disconnect();
+    };
+  }, [open, corpsFixe]);
+
   if (!open) return null;
 
   return (
@@ -75,7 +113,7 @@ export function Modal({
         startedOnBackdrop.current = e.target === e.currentTarget;
       }}
       onMouseUp={(e) => {
-        if (startedOnBackdrop.current && e.target === e.currentTarget) onClose();
+        if (onClose && startedOnBackdrop.current && e.target === e.currentTarget) onClose();
         startedOnBackdrop.current = false;
       }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--tg-overlay)] backdrop-blur-[6px] sm:p-6"
@@ -106,23 +144,50 @@ export function Modal({
               {enTete}
             </div>
           ) : null}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fermer"
-            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-bg text-ink-muted transition-colors hover:bg-line-soft hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
-          >
-            <Icon name="close" size={18} />
-          </button>
+          {onClose ? (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fermer"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-bg text-ink-muted transition-colors hover:bg-line-soft hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+            >
+              <Icon name="close" size={18} />
+            </button>
+          ) : null}
         </header>
 
-        <div
-          className={cn(
-            'flex flex-1 flex-col gap-3 bg-bg px-4 pt-4 pb-5 sm:px-[22px]',
-            corpsFixe ? 'overflow-hidden' : 'overflow-y-auto',
-          )}
-        >
-          {children}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            ref={corps}
+            className={cn(
+              'flex flex-1 flex-col gap-3 bg-bg px-4 pt-4 pb-5 sm:px-[22px]',
+              corpsFixe ? 'overflow-hidden' : 'overflow-y-auto',
+            )}
+          >
+            {children}
+          </div>
+          {suite ? (
+            <>
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-bg to-transparent"
+              />
+              {/* Le dégradé seul ne suffit pas : les sections sont des cartes
+                  blanches, et un voile clair sur du blanc ne se voit pas. Ce
+                  bouton, lui, se voit — et fait le geste à la place du doigt. */}
+              <button
+                type="button"
+                aria-label="Voir la suite"
+                onClick={() => {
+                  const el = corps.current;
+                  if (el) el.scrollBy({ top: el.clientHeight * 0.8, behavior: 'smooth' });
+                }}
+                className="absolute bottom-2.5 left-1/2 flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-line-soft bg-surface text-ink-muted shadow-md transition-colors hover:bg-bg hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+              >
+                <Icon name="chevron_right" size={18} className="rotate-90" />
+              </button>
+            </>
+          ) : null}
         </div>
 
         {footer ? (

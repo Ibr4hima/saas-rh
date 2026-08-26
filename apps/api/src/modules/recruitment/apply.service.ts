@@ -36,6 +36,7 @@ export class ApplyService {
       const [row] = await tx
         .select({
           reference: t.jobPostings.reference,
+          createdAt: t.jobPostings.createdAt,
           title: t.jobPostings.title,
           description: t.jobPostings.description,
           contractType: t.jobPostings.contractType,
@@ -53,6 +54,7 @@ export class ApplyService {
         valid: true,
         organizationName: row.organizationName,
         reference: row.reference,
+        createdAt: row.createdAt.toISOString(),
         title: row.title,
         description: row.description,
         contractType: row.contractType,
