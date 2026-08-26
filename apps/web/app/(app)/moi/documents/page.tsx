@@ -25,6 +25,7 @@ import { EmployeeDocumentsCard } from '../../../../components/employee-documents
 import { DocumentRequestRow } from '../../../../components/document-request-list';
 import { DocViewer, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate } from '../../../../lib/hooks';
+import { LoadFailure } from '../../../../components/load-failure';
 
 const REQUESTABLE: RequestableDoc[] = [
   'attestation_travail',
@@ -88,9 +89,7 @@ export default function MyDocumentsPage() {
     );
   }
   if (myEmployee.isError || !myEmployee.data) {
-    const message =
-      myEmployee.error instanceof ApiError ? myEmployee.error.message : 'Chargement impossible.';
-    return <p className="text-sm text-danger">{message}</p>;
+    return <LoadFailure error={myEmployee.error} onRetry={() => void myEmployee.refetch()} />;
   }
 
   const emp = myEmployee.data;

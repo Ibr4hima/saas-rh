@@ -45,13 +45,36 @@ export function DataBlock({
   );
 }
 
-/** Grille de blocs libellés : deux colonnes, trois à partir du grand écran. */
+/**
+ * Grille de blocs libellés.
+ *
+ * Le nombre de colonnes suit la largeur du CONTENEUR, jamais celle de l'écran :
+ * la même grille sert une carte pleine largeur et un rail latéral de 300 px, et
+ * un seuil en `lg:` ferait quatre colonnes dans le rail sur un grand écran —
+ * des mots coupés en deux et des intitulés qui se chevauchent. Les requêtes de
+ * conteneur (`@container`) posent la question à la bonne échelle.
+ */
 export function DataGrid({
   children,
   className,
 }: {
   children: React.ReactNode;
+  /** Seuils supplémentaires — en variantes de conteneur (`@[52rem]:…`). */
   className?: string;
 }) {
-  return <div className={cn('grid grid-cols-2 gap-2.5 lg:grid-cols-3', className)}>{children}</div>;
+  return (
+    <div className="@container">
+      <div
+        // Seuils mesurés sur les conteneurs réels : rail d'unité 302 px,
+        // carte de l'espace personnel 634 px, colonne de la fiche 607→725 px
+        // selon l'écran. Ils tombent au milieu de ces paliers, jamais à 2 px.
+        className={cn(
+          'grid grid-cols-1 gap-2.5 @[17rem]:grid-cols-2 @[42rem]:grid-cols-3',
+          className,
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
 }

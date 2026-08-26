@@ -8,6 +8,7 @@
     "close",
     "dashboard",
     "edit",
+    "error",
     "event",
     "event_busy",
     "family_history",
@@ -25,5 +26,5 @@
     "settings"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 28264
+  "bytes": 29028
 }

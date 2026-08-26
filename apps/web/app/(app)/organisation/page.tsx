@@ -292,7 +292,7 @@ function UnitPanel({
 
         {/* Les faits de l'unité, dans le même vocabulaire que la fiche
             employé : on passe d'un écran à l'autre sans réapprendre à lire. */}
-        <DataGrid className="lg:grid-cols-4">
+        <DataGrid>
           <DataBlock label="Type">{TYPE_LABELS[unit.unitType as OrgUnitType]}</DataBlock>
           <DataBlock label="Abrégé">{unit.shortName}</DataBlock>
           <DataBlock label="Rattachement">

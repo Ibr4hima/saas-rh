@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import type { JobPostingView } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, EmptyState, Skeleton } from '@teranga/ui';
-import { api, ApiError } from '../../../lib/api';
+import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
 import {
@@ -14,6 +14,7 @@ import {
   JOB_STATUS_TONES,
   STAGE_LABELS,
 } from '../../../lib/recruitment';
+import { LoadFailure } from '../../../components/load-failure';
 
 function activeCount(j: JobPostingView): number {
   return Object.entries(j.applicationCounts)
@@ -25,8 +26,7 @@ export default function RecruitmentPage() {
   const jobs = useQuery({ queryKey: ['jobs'], queryFn: () => api<JobPostingView[]>('/jobs') });
 
   if (jobs.isError) {
-    const message = jobs.error instanceof ApiError ? jobs.error.message : 'Chargement impossible.';
-    return <p className="text-sm text-danger">{message}</p>;
+    return <LoadFailure error={jobs.error} onRetry={() => void jobs.refetch()} />;
   }
 
   return (

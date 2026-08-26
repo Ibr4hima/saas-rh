@@ -27,6 +27,7 @@ export const ICON_NAMES = [
   'close',
   'dashboard',
   'edit',
+  'error',
   'event',
   'event_busy',
   'family_history',

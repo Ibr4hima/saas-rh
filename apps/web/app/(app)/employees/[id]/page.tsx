@@ -41,6 +41,7 @@ import { usePageTitle } from '../../../../components/page-title';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import type { DocumentRequestView, OrgUnit } from '@teranga/contracts';
+import { LoadFailure } from '../../../../components/load-failure';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Actif',
@@ -115,9 +116,7 @@ export default function EmployeePage() {
     );
   }
   if (detail.isError) {
-    const message =
-      detail.error instanceof ApiError ? detail.error.message : 'Chargement impossible.';
-    return <p className="text-sm text-danger">{message}</p>;
+    return <LoadFailure error={detail.error} onRetry={() => void detail.refetch()} />;
   }
   const e = detail.data!;
   const current = e.assignments.find((a) => a.current);
@@ -175,7 +174,7 @@ export default function EmployeePage() {
           ) : null}
         </div>
 
-        <DataGrid className="mt-4 lg:grid-cols-4">
+        <DataGrid className="mt-4 @[52rem]:grid-cols-4">
           <DataBlock label="Matricule">
             <span className="font-mono">{e.employeeNumber}</span>
           </DataBlock>

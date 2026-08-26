@@ -17,6 +17,7 @@ import {
   STAGE_LABELS,
   STAGE_TONES,
 } from '../../../../lib/recruitment';
+import { LoadFailure } from '../../../../components/load-failure';
 
 export default function JobPipelinePage() {
   const { id } = useParams<{ id: string }>();
@@ -42,8 +43,7 @@ export default function JobPipelinePage() {
     );
   }
   if (job.isError || !job.data) {
-    const message = job.error instanceof ApiError ? job.error.message : 'Chargement impossible.';
-    return <p className="text-sm text-danger">{message}</p>;
+    return <LoadFailure error={job.error} onRetry={() => void job.refetch()} />;
   }
   const j = job.data;
   const apps = applications.data ?? [];

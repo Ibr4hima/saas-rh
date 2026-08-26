@@ -14,8 +14,9 @@ import {
   Skeleton,
 } from '@teranga/ui';
 import { DocumentRequestRow } from '../../../components/document-request-list';
-import { api, ApiError } from '../../../lib/api';
+import { api } from '../../../lib/api';
 import { Icon } from '../../../components/icons';
+import { LoadFailure } from '../../../components/load-failure';
 
 /**
  * Demandes encore à la charge de la RH. « Prête à retirer » n'en fait pas
@@ -37,9 +38,7 @@ export default function DocumentRequestsPage() {
   });
 
   if (requests.isError) {
-    const message =
-      requests.error instanceof ApiError ? requests.error.message : 'Chargement impossible.';
-    return <p className="text-sm text-danger">{message}</p>;
+    return <LoadFailure error={requests.error} onRetry={() => void requests.refetch()} />;
   }
 
   const items = requests.data ?? [];

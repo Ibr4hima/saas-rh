@@ -34,6 +34,7 @@ import { api, ApiError } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/hooks';
 import { ID_DOCUMENT_LABELS, SEX_LABELS, maritalLabels } from '../../../../lib/person';
 import { timeAgo } from '../../../../components/document-request-list';
+import { LoadFailure } from '../../../../components/load-failure';
 
 type Draft = Partial<Record<ProfileChangeField, string>>;
 
@@ -87,11 +88,11 @@ export default function MyInformationsPage() {
       </div>
     );
   }
-  if (me.isError || !me.data) {
-    const message = me.error instanceof ApiError ? me.error.message : 'Chargement impossible.';
-    return <p className="text-sm text-danger">{message}</p>;
+  if (me.isError || !me.data)
+    return <LoadFailure error={me.error} onRetry={() => void me.refetch()} />;
+  if (!detail.data) {
+    return <LoadFailure error={detail.error} onRetry={() => void detail.refetch()} />;
   }
-  if (!detail.data) return <p className="text-sm text-danger">Dossier introuvable.</p>;
 
   const p = detail.data.person;
   const marital = maritalLabels(p.gender);
@@ -154,7 +155,7 @@ export default function MyInformationsPage() {
             <CardTitle>Pièce d&apos;identité</CardTitle>
           </CardHeader>
           <CardContent>
-            <DataGrid className="lg:grid-cols-4">
+            <DataGrid>
               <DataBlock label="Type">
                 {p.idDocumentType ? ID_DOCUMENT_LABELS[p.idDocumentType] : null}
               </DataBlock>
