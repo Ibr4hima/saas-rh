@@ -2,164 +2,371 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useState } from 'react';
-import type { JobPostingView } from '@teranga/contracts';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useMemo, useState } from 'react';
+import type { DeleteJobPostingsResult, JobPostingView } from '@teranga/contracts';
 import {
   Badge,
   Button,
   Card,
   CardContent,
-  CardInteractive,
+  CardHeader,
+  CardTitle,
+  Checkbox,
+  cn,
   EmptyState,
   Skeleton,
+  TBody,
+  Td,
+  Th,
+  THead,
+  Table,
+  Tr,
 } from '@teranga/ui';
-import { api } from '../../../lib/api';
+import { api, ApiError } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
-import {
-  CONTRACT_LABELS,
-  JOB_STATUS_LABELS,
-  JOB_STATUS_TONES,
-  STAGE_LABELS,
-} from '../../../lib/recruitment';
+import { JobModal } from '../../../components/job-modal';
 import { LoadFailure } from '../../../components/load-failure';
+import { Modal, ModalSection } from '../../../components/modal';
+import { CONTRACT_LABELS, JOB_STATUS_LABELS, JOB_STATUS_TONES } from '../../../lib/recruitment';
 
-function activeCount(j: JobPostingView): number {
-  return Object.entries(j.applicationCounts)
-    .filter(([stage]) => stage !== 'rejected')
-    .reduce((sum, [, n]) => sum + n, 0);
+/** « il y a 3 jours » — l'âge d'une offre dit s'il faut la relancer. */
+function depuis(iso: string): string {
+  const jours = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (jours <= 0) return "aujourd'hui";
+  if (jours === 1) return 'hier';
+  if (jours < 31) return `${jours} jours`;
+  const mois = Math.floor(jours / 30);
+  if (mois < 12) return `${mois} mois`;
+  const ans = Math.floor(mois / 12);
+  return `${ans} an${ans > 1 ? 's' : ''}`;
 }
 
-export default function RecruitmentPage() {
+export default function OffresPage() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const queryClient = useQueryClient();
+  const [selection, setSelection] = useState<string[]>([]);
+  const [panneau, setPanneau] = useState<'modifier' | 'supprimer' | null>(null);
+  const [ecartees, setEcartees] = useState<DeleteJobPostingsResult['skipped']>([]);
+
   const jobs = useQuery({ queryKey: ['jobs'], queryFn: () => api<JobPostingView[]>('/jobs') });
+  const offres = useMemo(() => jobs.data ?? [], [jobs.data]);
+  // La sélection ne survit pas à la disparition d'une ligne : une offre
+  // supprimée ailleurs ne doit pas rester cochée dans un lot invisible.
+  const choisies = useMemo(
+    () => offres.filter((o) => selection.includes(o.id)),
+    [offres, selection],
+  );
+  const seule = choisies.length === 1 ? choisies[0] : undefined;
+
+  // Le « + » du bandeau ouvre la fenêtre : une URL plutôt qu'un état local,
+  // pour que le bouton de la barre supérieure puisse y mener sans la connaître.
+  const creation = params.get('nouvelle') === '1';
+  const fermerCreation = () => router.replace('/recrutement');
+
+  const publier = useMutation({
+    mutationFn: (id: string) =>
+      api(`/jobs/${id}`, { method: 'PATCH', body: { status: 'published' } }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['jobs'] }),
+  });
 
   if (jobs.isError) {
     return <LoadFailure error={jobs.error} onRetry={() => void jobs.refetch()} />;
   }
 
+  const bascule = (id: string) =>
+    setSelection((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const toutBasculer = () =>
+    setSelection((s) => (s.length === offres.length ? [] : offres.map((o) => o.id)));
+
   return (
     <div className="mx-auto w-full max-w-6xl">
-      {jobs.isLoading ? (
-        <Skeleton className="h-40 w-full" />
-      ) : (jobs.data ?? []).length === 0 ? (
-        <Card>
-          <CardContent>
+      <Card>
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <CardTitle>Offres d&apos;emploi</CardTitle>
+            {offres.length > 0 ? (
+              <span
+                className="rounded-full bg-primary/[0.09] px-2 py-px text-[10.5px] font-extrabold text-primary"
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                {offres.length}
+              </span>
+            ) : null}
+          </div>
+          {/* La barre d'action n'apparaît qu'avec une sélection : au repos,
+              des boutons désactivés en permanence ne feraient que du bruit. */}
+          {choisies.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11.5px] font-semibold text-ink-muted">
+                {choisies.length} sélectionnée{choisies.length > 1 ? 's' : ''}
+              </span>
+              {seule && seule.status === 'draft' ? (
+                <Button
+                  size="sm"
+                  loading={publier.isPending}
+                  onClick={() => publier.mutate(seule.id)}
+                >
+                  Publier
+                </Button>
+              ) : null}
+              {seule ? (
+                <Button size="sm" variant="secondary" onClick={() => setPanneau('modifier')}>
+                  <Icon name="edit" size={15} />
+                  Modifier
+                </Button>
+              ) : null}
+              <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
+                Supprimer
+              </Button>
+            </div>
+          ) : null}
+        </CardHeader>
+        <CardContent className="px-0 pb-0">
+          {jobs.isLoading ? (
+            <Skeleton className="mx-[18px] mb-[18px] h-24" />
+          ) : offres.length === 0 ? (
             <EmptyState
               icon={<Icon name="person_add" size={22} />}
               title="Aucune offre pour le moment"
               description="Créez votre première offre : vous obtiendrez un lien public de candidature à partager."
+              action={
+                <Link href="/recrutement?nouvelle=1">
+                  <Button size="sm">Nouvelle offre</Button>
+                </Link>
+              }
             />
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {jobs.data!.map((j) => (
-            <JobCard key={j.id} job={j} />
-          ))}
-        </div>
-      )}
+          ) : (
+            <Table>
+              <THead>
+                <tr>
+                  <Th className="w-9 pr-0">
+                    <Checkbox
+                      aria-label="Tout sélectionner"
+                      checked={selection.length > 0 && choisies.length === offres.length}
+                      indeterminate={choisies.length > 0 && choisies.length < offres.length}
+                      onChange={toutBasculer}
+                    />
+                  </Th>
+                  <Th>Référence</Th>
+                  <Th>Poste</Th>
+                  <Th>Type contrat</Th>
+                  <Th>Publiée il y a</Th>
+                  <Th>Date limite</Th>
+                  <Th>Lien</Th>
+                </tr>
+              </THead>
+              <TBody>
+                {offres.map((o) => {
+                  const coche = selection.includes(o.id);
+                  return (
+                    <Tr key={o.id} className={cn(coche && 'bg-primary/[0.04]')}>
+                      <Td className="pr-0">
+                        <Checkbox
+                          aria-label={`Sélectionner ${o.title}`}
+                          checked={coche}
+                          onChange={() => bascule(o.id)}
+                        />
+                      </Td>
+                      <Td className="font-mono text-[11.5px] whitespace-nowrap text-ink-muted">
+                        {o.reference}
+                      </Td>
+                      <Td>
+                        <Link
+                          href={`/recrutement/${o.id}`}
+                          className="font-bold text-ink-strong hover:underline"
+                        >
+                          {o.title}
+                        </Link>
+                        <span className="mt-0.5 flex items-center gap-2">
+                          <Badge tone={JOB_STATUS_TONES[o.status] ?? 'neutral'}>
+                            {JOB_STATUS_LABELS[o.status] ?? o.status}
+                          </Badge>
+                          {o.orgUnitName ? (
+                            <span className="truncate text-[11px] text-ink-muted">
+                              {o.orgUnitName}
+                            </span>
+                          ) : null}
+                        </span>
+                      </Td>
+                      <Td className="whitespace-nowrap">
+                        {CONTRACT_LABELS[o.contractType] ?? o.contractType}
+                      </Td>
+                      <Td className="whitespace-nowrap text-ink-muted">{depuis(o.createdAt)}</Td>
+                      <Td
+                        className={cn(
+                          'whitespace-nowrap',
+                          o.deadline && o.deadline < new Date().toISOString().slice(0, 10)
+                            ? 'font-semibold text-danger'
+                            : 'text-ink-muted',
+                        )}
+                      >
+                        {o.deadline ? formatDate(o.deadline) : '—'}
+                      </Td>
+                      <Td>
+                        <LienPublic offre={o} />
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </TBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {creation ? <JobModal open onClose={fermerCreation} /> : null}
+      {panneau === 'modifier' && seule ? (
+        <JobModal open offre={seule} onClose={() => setPanneau(null)} />
+      ) : null}
+      {panneau === 'supprimer' ? (
+        <SupprimerModal
+          offres={choisies}
+          onClose={() => setPanneau(null)}
+          onEcartees={(s) => {
+            setPanneau(null);
+            setSelection([]);
+            setEcartees(s);
+          }}
+          onFini={() => {
+            setPanneau(null);
+            setSelection([]);
+          }}
+        />
+      ) : null}
+      {ecartees.length > 0 ? (
+        <Modal
+          open
+          onClose={() => setEcartees([])}
+          title="Offres conservées"
+          maxWidth="max-w-lg"
+          footer={<Button onClick={() => setEcartees([])}>J&apos;ai compris</Button>}
+        >
+          <ModalSection title="Non supprimées">
+            <ul className="flex flex-col gap-1.5">
+              {ecartees.map((s) => (
+                <li key={s.id} className="flex items-start gap-2 text-[12.5px]">
+                  <Icon name="error" size={15} className="mt-0.5 shrink-0 text-warning" />
+                  <span>
+                    <span className="font-semibold text-ink-strong">{s.title || 'Offre'}</span>
+                    <span className="text-ink-muted"> — {s.reason}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </ModalSection>
+        </Modal>
+      ) : null}
     </div>
   );
 }
 
-function JobCard({ job }: { job: JobPostingView }) {
+/**
+ * Le lien public, en un geste.
+ *
+ * Une offre non publiée n'en a pas : le slug existe, mais le partager mènerait
+ * à une page qui refuse — mieux vaut le dire que de livrer un lien mort.
+ */
+function LienPublic({ offre }: { offre: JobPostingView }) {
+  const [copie, setCopie] = useState(false);
+  if (offre.status !== 'published') {
+    return <span className="text-[11.5px] text-ink-muted">Non publiée</span>;
+  }
+  return (
+    <Button
+      size="sm"
+      variant={copie ? 'ghost' : 'secondary'}
+      onClick={async () => {
+        await navigator.clipboard.writeText(
+          `${window.location.origin}/postuler/${offre.publicSlug}`,
+        );
+        setCopie(true);
+        setTimeout(() => setCopie(false), 2000);
+      }}
+    >
+      <Icon name={copie ? 'check' : 'content_copy'} size={15} />
+      {copie ? 'Copié' : 'Copier'}
+    </Button>
+  );
+}
+
+/** Confirmation de suppression — nommer ce qui part avant de le faire partir. */
+function SupprimerModal({
+  offres,
+  onClose,
+  onEcartees,
+  onFini,
+}: {
+  offres: JobPostingView[];
+  onClose: () => void;
+  onEcartees: (s: DeleteJobPostingsResult['skipped']) => void;
+  onFini: () => void;
+}) {
   const queryClient = useQueryClient();
-  const [copied, setCopied] = useState(false);
-  const publish = useMutation({
-    mutationFn: () => api(`/jobs/${job.id}`, { method: 'PATCH', body: { status: 'published' } }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['jobs'] }),
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const supprimer = useMutation({
+    mutationFn: () =>
+      api<DeleteJobPostingsResult>('/jobs/delete', {
+        method: 'POST',
+        body: { ids: offres.map((o) => o.id) },
+      }),
+    onSuccess: async (res) => {
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      if (res.skipped.length > 0) onEcartees(res.skipped);
+      else onFini();
+    },
+    onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Suppression impossible.'),
   });
 
-  const publicUrl =
-    typeof window !== 'undefined' ? `${window.location.origin}/postuler/${job.publicSlug}` : '';
-  const candidates = activeCount(job);
-
   return (
-    <CardInteractive>
-      <div className="flex flex-col gap-3 px-[18px] py-4">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[11px] bg-primary/[0.07] text-primary">
-            <Icon name="person_add" size={18} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href={`/recrutement/${job.id}`}
-                className="text-[14px] font-bold text-ink-strong hover:underline"
-              >
-                {job.title}
-              </Link>
-              <Badge tone={JOB_STATUS_TONES[job.status] ?? 'neutral'}>
-                {JOB_STATUS_LABELS[job.status] ?? job.status}
-              </Badge>
-            </div>
-            <p className="mt-0.5 text-[12px] text-ink-muted">
-              {CONTRACT_LABELS[job.contractType] ?? job.contractType}
-              {job.location ? ` · ${job.location}` : ''}
-              {job.orgUnitName ? ` · ${job.orgUnitName}` : ''}
-              {job.deadline ? ` · candidatures jusqu'au ${formatDate(job.deadline)}` : ''}
-            </p>
-          </div>
-          {/* Le nombre de candidatures est le chiffre qu'on cherche en
-              balayant la page : il se lit comme un compteur, pas comme une
-              note de bas de ligne. */}
-          <div className="shrink-0 text-right">
+    <Modal
+      open
+      onClose={onClose}
+      title={`Supprimer ${offres.length} offre${offres.length > 1 ? 's' : ''} ?`}
+      maxWidth="max-w-lg"
+      footer={
+        <>
+          {erreur ? (
             <p
-              className="text-[19px] leading-none font-extrabold text-primary"
-              style={{ fontVariantNumeric: 'tabular-nums' }}
+              role="alert"
+              className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
             >
-              {candidates}
+              {erreur}
             </p>
-            <p className="mt-1 text-[9.5px] font-extrabold tracking-[0.1em] text-ink-muted uppercase">
-              candidature{candidates > 1 ? 's' : ''}
-            </p>
-          </div>
-        </div>
-
-        {candidates > 0 ? (
-          <div className="flex flex-wrap gap-1.5 sm:pl-12">
-            {Object.entries(job.applicationCounts)
-              .filter(([, n]) => n > 0)
-              .map(([stage, n]) => (
-                <span
-                  key={stage}
-                  className="rounded-full border border-primary/10 bg-primary/[0.05] px-2.5 py-0.5 text-[11px] font-semibold text-primary"
-                >
-                  {STAGE_LABELS[stage as keyof typeof STAGE_LABELS] ?? stage}
-                  <span className="ml-1 font-extrabold">{n}</span>
-                </span>
-              ))}
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap items-center gap-2 sm:pl-12">
-          {job.status === 'draft' ? (
-            <Button size="sm" onClick={() => publish.mutate()} loading={publish.isPending}>
-              Publier
-            </Button>
           ) : null}
-          {job.status === 'published' ? (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={async () => {
-                await navigator.clipboard.writeText(publicUrl);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}
-            >
-              <Icon name={copied ? 'check' : 'content_copy'} size={15} />
-              {copied ? 'Lien copié' : 'Copier le lien public'}
-            </Button>
-          ) : null}
-          <Link href={`/recrutement/${job.id}`} className="ml-auto">
-            <Button size="sm" variant="ghost">
-              Voir le pipeline
-              <Icon name="chevron_right" size={15} />
-            </Button>
-          </Link>
-        </div>
-      </div>
-    </CardInteractive>
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button
+            variant="danger"
+            loading={supprimer.isPending}
+            onClick={() => {
+              setErreur(null);
+              supprimer.mutate();
+            }}
+          >
+            Supprimer
+          </Button>
+        </>
+      }
+    >
+      <ModalSection title="Offres concernées">
+        <ul className="flex flex-col gap-1.5">
+          {offres.map((o) => (
+            <li key={o.id} className="text-[12.5px]">
+              <span className="font-mono text-[11.5px] text-ink-muted">{o.reference}</span>{' '}
+              <span className="font-bold text-ink-strong">{o.title}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-[11.5px] leading-relaxed text-ink-muted">
+          Une offre qui a déjà reçu des candidatures ne sera pas supprimée : les dossiers déposés
+          appartiennent aux candidats. Fermez-la plutôt.
+        </p>
+      </ModalSection>
+    </Modal>
   );
 }

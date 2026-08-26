@@ -13,6 +13,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -266,6 +267,8 @@ export const bytea = customType<{ data: Buffer }>({
 export const jobPostings = pgTable('job_postings', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
+  /** OFF-AAAA-NNN — numéroté par organisation et par année (cf. 0016). */
+  reference: text('reference').notNull(),
   title: text('title').notNull(),
   description: text('description').notNull(),
   orgUnitId: uuid('org_unit_id'),
@@ -279,6 +282,23 @@ export const jobPostings = pgTable('job_postings', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Numérotation des offres — à part de la table, et jamais décrémentée.
+ *
+ * Déduire le prochain numéro des offres présentes le rendrait à la suppression
+ * d'une offre : deux campagnes porteraient alors la même référence dans les
+ * archives (cf. migration 0017).
+ */
+export const jobPostingCounters = pgTable(
+  'job_posting_counters',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    year: integer('year').notNull(),
+    lastNumber: integer('last_number').notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.tenantId, table.year] })],
+);
 
 export const applications = pgTable('applications', {
   id: uuid('id').primaryKey(),

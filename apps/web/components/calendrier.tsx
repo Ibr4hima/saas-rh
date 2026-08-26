@@ -299,15 +299,20 @@ export function CalendrierModal({ open, onClose }: { open: boolean; onClose: () 
       onClose={onClose}
       title="Calendrier"
       maxWidth="max-w-6xl"
+      corpsFixe
       enTete={cal.failed ? null : <CommandesMois cal={cal} />}
-      footer={cal.failed ? null : <Legende className="mr-auto" />}
+      footer={cal.failed ? null : <Legende className="w-full justify-center" />}
     >
       {cal.failed ? (
         <LoadFailure error={cal.failed.error} onRetry={() => void cal.failed!.refetch()} />
       ) : (
         // Hauteur DONNÉE, pas réclamée : cinq semaines ou six, la fenêtre garde
         // la même taille. Sans cela elle sautait d'un cran à chaque flèche.
-        <div className="h-[32rem] shrink-0 overflow-hidden rounded-[14px] border border-line-soft bg-surface">
+        //
+        // Le plafond suit l'écran — en-tête, pied et marges déduits — pour que
+        // la fenêtre n'ait JAMAIS à défiler : un calendrier qu'on fait défiler
+        // ne montre plus le mois, ce qui est tout son objet.
+        <div className="h-[min(32rem,92vh_-_11.5rem)] shrink-0 overflow-hidden rounded-[14px] border border-line-soft bg-surface">
           <Grille cal={cal} fixe />
         </div>
       )}

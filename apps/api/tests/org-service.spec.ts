@@ -224,9 +224,9 @@ describe('dissolution', () => {
   it('refuse si une offre de recrutement vise l’unité', async () => {
     await raw(
       `INSERT INTO job_postings
-         (id, tenant_id, title, description, contract_type, org_unit_id, status,
+         (id, tenant_id, reference, title, description, contract_type, org_unit_id, status,
           public_slug, created_by_user_id)
-       VALUES ($1,$2,'Poste','desc','cdi',$3,'published',$4,$5)`,
+       VALUES ($1,$2,'OFF-2026-001','Poste','desc','cdi',$3,'published',$4,$5)`,
       [randomUUID(), tenantId, serviceUnit, randomUUID().slice(0, 20), userId],
     );
     expect(await codeOf(() => service.remove(user, serviceUnit, { reassignTo: direction }))).toBe(

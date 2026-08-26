@@ -44,6 +44,8 @@ export type UpdateJobPostingInput = z.infer<typeof updateJobPostingSchema>;
 
 export interface JobPostingView {
   id: string;
+  /** OFF-AAAA-NNN : ce qu'on cite dans un courrier ou une relance. */
+  reference: string;
   title: string;
   description: string;
   orgUnitId: string | null;
@@ -88,6 +90,23 @@ export const APPLICATION_STAGES: ApplicationStage[] = [
 export interface ApplicationListItem extends ApplicationView {
   jobTitle: string;
   jobStatus: string;
+}
+
+/**
+ * Suppression d'offres, une ou plusieurs.
+ *
+ * Une offre qui a reçu des candidatures n'est PAS supprimable : les dossiers
+ * déposés appartiennent à des personnes, et les effacer par ricochet en
+ * fermant une campagne serait une perte silencieuse. Ces offres-là se ferment.
+ */
+export const deleteJobPostingsSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(50),
+});
+export type DeleteJobPostingsInput = z.infer<typeof deleteJobPostingsSchema>;
+
+export interface DeleteJobPostingsResult {
+  deleted: number;
+  skipped: { id: string; title: string; reason: string }[];
 }
 
 export const updateApplicationSchema = z.object({

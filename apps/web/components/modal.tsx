@@ -23,6 +23,7 @@ export function Modal({
   title,
   subtitle,
   enTete,
+  corpsFixe = false,
   footer,
   children,
   maxWidth = 'max-w-3xl',
@@ -38,6 +39,12 @@ export function Modal({
    * rapportent.
    */
   enTete?: React.ReactNode;
+  /**
+   * Corps calibré pour tenir : pas de défilement, même d'un pixel. Réservé aux
+   * contenus qui se dimensionnent eux-mêmes sur la place disponible — un
+   * calendrier qu'on fait défiler ne montre plus le mois.
+   */
+  corpsFixe?: boolean;
   footer?: React.ReactNode;
   children: React.ReactNode;
   maxWidth?: string;
@@ -109,12 +116,17 @@ export function Modal({
           </button>
         </header>
 
-        <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-bg px-4 pt-4 pb-5 sm:px-[22px]">
+        <div
+          className={cn(
+            'flex flex-1 flex-col gap-3 bg-bg px-4 pt-4 pb-5 sm:px-[22px]',
+            corpsFixe ? 'overflow-hidden' : 'overflow-y-auto',
+          )}
+        >
           {children}
         </div>
 
         {footer ? (
-          <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2.5 border-t border-line-soft px-4 py-3.5 sm:px-[22px]">
+          <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2.5 border-t border-line-soft px-4 py-3 sm:px-[22px]">
             {footer}
           </footer>
         ) : null}

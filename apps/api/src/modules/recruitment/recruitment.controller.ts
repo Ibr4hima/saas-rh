@@ -20,10 +20,12 @@ import {
   applicationStageSchema,
   applySchema,
   createJobPostingSchema,
+  deleteJobPostingsSchema,
   updateApplicationSchema,
   updateJobPostingSchema,
   type ApplyInput,
   type CreateJobPostingInput,
+  type DeleteJobPostingsInput,
   type UpdateApplicationInput,
   type UpdateJobPostingInput,
 } from '@teranga/contracts';
@@ -78,6 +80,18 @@ export class RecruitmentController {
    * s'impose pas ici (le chemin diffère), mais elle reste voisine de sa sœur
    * pour qu'on ne les fasse pas diverger.
    */
+  /**
+   * Suppression d'offres — toujours par lot, même pour une seule. Une route
+   * unitaire à côté ferait deux chemins à garder d'accord pour un seul geste.
+   */
+  @Post('jobs/delete')
+  remove(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(deleteJobPostingsSchema)) body: DeleteJobPostingsInput,
+  ) {
+    return this.jobs.remove(req.sessionUser, body);
+  }
+
   @Get('applications')
   allApplications(
     @Req() req: AuthenticatedRequest,

@@ -157,7 +157,7 @@ function pageAction(pathname: string, role: string): ChromeAction | null {
     return { href: '/absences/parametres', icon: 'settings', label: 'Paramètres des congés' };
   }
   if (pathname === '/recrutement') {
-    return { href: '/recrutement/nouvelle', icon: 'add', label: 'Nouvelle offre' };
+    return { href: '/recrutement?nouvelle=1', icon: 'add', label: 'Nouvelle offre' };
   }
   // Fiche employé — et elle seule : /employees/<id>, jamais /employees/<id>/…
   const parts = pathname.split('/').filter(Boolean);

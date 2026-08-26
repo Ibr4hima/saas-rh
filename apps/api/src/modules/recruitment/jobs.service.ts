@@ -7,6 +7,8 @@ import type {
   ApplicationStage,
   ApplicationView,
   CreateJobPostingInput,
+  DeleteJobPostingsInput,
+  DeleteJobPostingsResult,
   JobPostingView,
   SessionUser,
   UpdateJobPostingInput,
@@ -33,9 +35,11 @@ export class JobsService {
     const publicSlug = randomBytes(16).toString('base64url');
     await this.db.withTenant(ctxOf(user), async (tx) => {
       if (input.orgUnitId) await this.requireOrgUnit(tx, input.orgUnitId);
+      const reference = await this.prochaineReference(tx, user.tenantId);
       await tx.insert(t.jobPostings).values({
         id,
         tenantId: user.tenantId,
+        reference,
         title: input.title,
         description: input.description,
         orgUnitId: input.orgUnitId ?? null,
@@ -253,6 +257,69 @@ export class JobsService {
    * tiers a « squatté » l'email d'un candidat via le formulaire public : la
    * supprimer libère l'email (index unique) pour une vraie candidature.
    */
+  /**
+   * Supprime une ou plusieurs offres, en une transaction.
+   *
+   * Une offre qui porte des candidatures est ÉCARTÉE, pas effacée : les
+   * dossiers déposés appartiennent à des candidats, et les emporter en
+   * refermant une campagne serait une perte que personne n'a demandée. Le
+   * résultat nomme ce qui n'est pas parti, plutôt que d'échouer en bloc et de
+   * laisser la RH deviner laquelle bloquait.
+   */
+  async remove(user: SessionUser, input: DeleteJobPostingsInput): Promise<DeleteJobPostingsResult> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const offres = await tx
+        .select({ id: t.jobPostings.id, title: t.jobPostings.title })
+        .from(t.jobPostings)
+        .where(inArray(t.jobPostings.id, input.ids))
+        .orderBy(t.jobPostings.id)
+        .for('update');
+      const connues = new Map(offres.map((o) => [o.id, o]));
+
+      const comptes = offres.length
+        ? await tx
+            .select({
+              jobPostingId: t.applications.jobPostingId,
+              n: sql<number>`count(*)::int`,
+            })
+            .from(t.applications)
+            .where(
+              inArray(
+                t.applications.jobPostingId,
+                offres.map((o) => o.id),
+              ),
+            )
+            .groupBy(t.applications.jobPostingId)
+        : [];
+      const parOffre = new Map(comptes.map((c) => [c.jobPostingId, c.n]));
+
+      const skipped: DeleteJobPostingsResult['skipped'] = [];
+      const aSupprimer: string[] = [];
+      for (const id of input.ids) {
+        const offre = connues.get(id);
+        if (!offre) {
+          skipped.push({ id, title: '', reason: 'Offre introuvable' });
+          continue;
+        }
+        const n = parOffre.get(id) ?? 0;
+        if (n > 0) {
+          skipped.push({
+            id,
+            title: offre.title,
+            reason: `${n} candidature${n > 1 ? 's' : ''} déposée${n > 1 ? 's' : ''} — fermez l’offre plutôt`,
+          });
+          continue;
+        }
+        aSupprimer.push(id);
+      }
+
+      if (aSupprimer.length > 0) {
+        await tx.delete(t.jobPostings).where(inArray(t.jobPostings.id, aSupprimer));
+      }
+      return { deleted: aSupprimer.length, skipped };
+    });
+  }
+
   async deleteApplication(user: SessionUser, applicationId: string): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
       await tx
@@ -297,6 +364,7 @@ export class JobsService {
   ): JobPostingView {
     return {
       id: p.id,
+      reference: p.reference,
       title: p.title,
       description: p.description,
       orgUnitId: p.orgUnitId,
@@ -318,6 +386,28 @@ export class JobsService {
       problem(404, 'recruitment.job_not_found', 'Offre introuvable');
     }
     return row;
+  }
+
+  /**
+   * Le numéro suivant du registre : OFF-AAAA-NNN, remis à 001 chaque janvier.
+   *
+   * Le compteur vit dans sa propre table et n'est JAMAIS décrémenté. Le
+   * déduire des offres présentes le rendrait à la suppression d'une offre —
+   * et un courrier archivé citant OFF-2026-002 désignerait alors deux
+   * campagnes. L'incrément se fait en une écriture atomique : deux créations
+   * simultanées ne peuvent pas obtenir le même numéro.
+   */
+  private async prochaineReference(tx: Tx, tenantId: string): Promise<string> {
+    const annee = new Date().getFullYear();
+    const [row] = await tx
+      .insert(t.jobPostingCounters)
+      .values({ tenantId, year: annee, lastNumber: 1 })
+      .onConflictDoUpdate({
+        target: [t.jobPostingCounters.tenantId, t.jobPostingCounters.year],
+        set: { lastNumber: sql`${t.jobPostingCounters.lastNumber} + 1` },
+      })
+      .returning({ n: t.jobPostingCounters.lastNumber });
+    return `OFF-${annee}-${String(row!.n).padStart(3, '0')}`;
   }
 
   private async requireOrgUnit(tx: Tx, id: string) {
