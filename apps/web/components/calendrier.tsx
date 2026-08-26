@@ -132,14 +132,14 @@ function FlecheMois({
 }
 
 /** Légende des pastilles — un jour férié n'est pas une absence de plus. */
-function Legende() {
+function Legende({ className }: { className?: string }) {
   const entrees = [
     { classe: 'bg-primary', texte: 'Approuvée' },
     { classe: 'bg-warning', texte: 'En attente' },
     { classe: 'bg-success', texte: 'Jour férié' },
   ];
   return (
-    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
+    <div className={cn('flex flex-wrap items-center gap-x-3.5 gap-y-1', className)}>
       {entrees.map((e) => (
         <span
           key={e.texte}
@@ -156,15 +156,18 @@ function Legende() {
 /**
  * La grille du mois.
  *
- * `dense` abaisse le plancher des cases : en fenêtre, six rangées à 6,5 rem
- * dépassent la hauteur disponible et le mois se lit à moitié. Le plancher
- * n'est qu'un plancher — une journée chargée continue de pousser sa rangée.
+ * `fixe` fait tenir le mois dans une hauteur DONNÉE plutôt que de la réclamer :
+ * les rangées se partagent la place, et une journée chargée fait défiler sa
+ * case au lieu de pousser toute la fenêtre. C'est ce qu'exige une fenêtre —
+ * un mois de cinq semaines et un mois de six ne doivent pas la faire sauter
+ * d'un cran à chaque flèche. Sur la page, où la place ne manque pas, les
+ * cases gardent leur plancher et la colonne s'allonge.
  */
-function Grille({ cal, dense = false }: { cal: Cal; dense?: boolean }) {
-  if (cal.loading) return <Skeleton className="m-[18px] h-96" />;
+function Grille({ cal, fixe = false }: { cal: Cal; fixe?: boolean }) {
+  if (cal.loading) return <Skeleton className={fixe ? 'h-full' : 'm-[18px] h-96'} />;
   return (
-    <>
-      <div className="grid grid-cols-7 border-y border-line-soft bg-bg">
+    <div className={cn('flex flex-col', fixe && 'h-full')}>
+      <div className="grid shrink-0 grid-cols-7 border-y border-line-soft bg-bg">
         {WEEKDAYS.map((d) => (
           <div
             key={d}
@@ -174,77 +177,87 @@ function Grille({ cal, dense = false }: { cal: Cal; dense?: boolean }) {
           </div>
         ))}
       </div>
-      {cal.weeks.map((week, wi) => (
-        <div key={wi} className="grid grid-cols-7 border-b border-line-soft last:border-b-0">
-          {week.map((day) => {
-            const inMonth = new Date(`${day}T00:00:00Z`).getUTCMonth() === cal.month;
-            const dow = new Date(`${day}T00:00:00Z`).getUTCDay();
-            const weekend = dow === 0 || dow === 6;
-            const holiday = cal.holidayByDay.get(day);
-            const dayAbsences = inMonth ? cal.absencesOn(day) : [];
-            const isToday = day === cal.todayIso;
-            return (
-              <div
-                key={day}
-                className={cn(
-                  'border-r border-line-soft p-1.5 align-top last:border-r-0',
-                  dense ? 'min-h-[4.75rem]' : 'min-h-[6.5rem]',
-                  !inMonth
-                    ? 'bg-bg opacity-40'
-                    : holiday
-                      ? 'bg-success-soft/50'
-                      : weekend
-                        ? 'bg-line-soft/45'
-                        : 'bg-surface',
-                )}
-              >
-                <span
+      <div className={cn('flex flex-col', fixe && 'min-h-0 flex-1')}>
+        {cal.weeks.map((week, wi) => (
+          <div
+            key={wi}
+            className={cn(
+              'grid grid-cols-7 border-b border-line-soft last:border-b-0',
+              fixe && 'min-h-0 flex-1',
+            )}
+          >
+            {week.map((day) => {
+              const inMonth = new Date(`${day}T00:00:00Z`).getUTCMonth() === cal.month;
+              const dow = new Date(`${day}T00:00:00Z`).getUTCDay();
+              const weekend = dow === 0 || dow === 6;
+              const holiday = cal.holidayByDay.get(day);
+              const dayAbsences = inMonth ? cal.absencesOn(day) : [];
+              const isToday = day === cal.todayIso;
+              return (
+                <div
+                  key={day}
                   className={cn(
-                    'mb-1 flex h-[22px] w-[22px] items-center justify-center rounded-full text-[11.5px]',
-                    isToday
-                      ? 'bg-primary font-bold text-primary-ink'
-                      : 'font-semibold text-ink-muted',
+                    'flex flex-col overflow-hidden border-r border-line-soft p-1.5 last:border-r-0',
+                    fixe ? 'min-h-0' : 'min-h-[6.5rem]',
+                    !inMonth
+                      ? 'bg-bg opacity-40'
+                      : holiday
+                        ? 'bg-success-soft/50'
+                        : weekend
+                          ? 'bg-line-soft/45'
+                          : 'bg-surface',
                   )}
-                  style={{ fontVariantNumeric: 'tabular-nums' }}
                 >
-                  {Number(day.slice(8, 10))}
-                </span>
-                {holiday && inMonth ? (
-                  <p
-                    title={holiday}
-                    className="mb-1 flex items-center gap-1 truncate rounded-md bg-success-soft px-1.5 py-0.5 text-[10.5px] font-bold text-success"
+                  <span
+                    className={cn(
+                      'mb-1 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[11.5px]',
+                      isToday
+                        ? 'bg-primary font-bold text-primary-ink'
+                        : 'font-semibold text-ink-muted',
+                    )}
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
                   >
-                    <Icon name="flag" size={11} className="shrink-0" />
-                    <span className="truncate">{holiday}</span>
-                  </p>
-                ) : null}
-                <div className="flex flex-col gap-0.5">
-                  {dayAbsences.slice(0, 3).map((a) => (
-                    <span
-                      key={a.id}
-                      title={`${a.employeeName} — ${a.absenceTypeName} (${a.status === 'pending' ? 'en attente' : 'approuvée'})`}
-                      className={cn(
-                        'truncate rounded-md border-l-2 px-1.5 py-0.5 text-[10.5px] font-semibold',
-                        a.status === 'pending'
-                          ? 'border-warning bg-warning-soft text-warning'
-                          : 'border-primary bg-primary-soft text-primary',
-                      )}
+                    {Number(day.slice(8, 10))}
+                  </span>
+                  {holiday && inMonth ? (
+                    <p
+                      title={holiday}
+                      className="mb-1 flex shrink-0 items-center gap-1 truncate rounded-md bg-success-soft px-1.5 py-0.5 text-[10.5px] font-bold text-success"
                     >
-                      {a.employeeName.split(' ')[0]} · {a.absenceTypeName}
-                    </span>
-                  ))}
-                  {dayAbsences.length > 3 ? (
-                    <span className="px-1 text-[10px] font-semibold text-ink-muted">
-                      +{dayAbsences.length - 3} autre(s)
-                    </span>
+                      <Icon name="flag" size={11} className="shrink-0" />
+                      <span className="truncate">{holiday}</span>
+                    </p>
                   ) : null}
+                  {/* La liste prend ce qui reste et défile : une journée à six
+                    absences ne doit pas décider de la hauteur de la fenêtre. */}
+                  <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
+                    {dayAbsences.slice(0, 3).map((a) => (
+                      <span
+                        key={a.id}
+                        title={`${a.employeeName} — ${a.absenceTypeName} (${a.status === 'pending' ? 'en attente' : 'approuvée'})`}
+                        className={cn(
+                          'truncate rounded-md border-l-2 px-1.5 py-0.5 text-[10.5px] font-semibold',
+                          a.status === 'pending'
+                            ? 'border-warning bg-warning-soft text-warning'
+                            : 'border-primary bg-primary-soft text-primary',
+                        )}
+                      >
+                        {a.employeeName.split(' ')[0]} · {a.absenceTypeName}
+                      </span>
+                    ))}
+                    {dayAbsences.length > 3 ? (
+                      <span className="shrink-0 px-1 text-[10px] font-semibold text-ink-muted">
+                        +{dayAbsences.length - 3} autre(s)
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -256,13 +269,17 @@ export function Calendrier() {
   }
   return (
     <Card className="overflow-hidden">
-      <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+      <CardHeader>
         <CommandesMois cal={cal} />
-        <Legende />
       </CardHeader>
       <CardContent className="px-0 pb-0">
         <Grille cal={cal} />
       </CardContent>
+      {/* La légende se lit APRÈS la grille : on y revient quand une pastille
+          intrigue, pas avant de l'avoir vue. */}
+      <div className="border-t border-line-soft px-[18px] py-2.5">
+        <Legende />
+      </div>
     </Card>
   );
 }
@@ -282,20 +299,16 @@ export function CalendrierModal({ open, onClose }: { open: boolean; onClose: () 
       onClose={onClose}
       title="Calendrier"
       maxWidth="max-w-6xl"
-      enTete={
-        cal.failed ? null : (
-          <>
-            <CommandesMois cal={cal} />
-            <Legende />
-          </>
-        )
-      }
+      enTete={cal.failed ? null : <CommandesMois cal={cal} />}
+      footer={cal.failed ? null : <Legende className="mr-auto" />}
     >
       {cal.failed ? (
         <LoadFailure error={cal.failed.error} onRetry={() => void cal.failed!.refetch()} />
       ) : (
-        <div className="overflow-hidden rounded-[14px] border border-line-soft bg-surface">
-          <Grille cal={cal} dense />
+        // Hauteur DONNÉE, pas réclamée : cinq semaines ou six, la fenêtre garde
+        // la même taille. Sans cela elle sautait d'un cran à chaque flèche.
+        <div className="h-[32rem] shrink-0 overflow-hidden rounded-[14px] border border-line-soft bg-surface">
+          <Grille cal={cal} fixe />
         </div>
       )}
     </Modal>
