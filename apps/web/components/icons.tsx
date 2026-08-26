@@ -43,6 +43,7 @@ export const ICON_NAMES = [
   'logout',
   'notifications',
   'person_add',
+  'print',
   'rule',
   'schedule',
   'settings',

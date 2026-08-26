@@ -24,10 +24,11 @@
     "logout",
     "notifications",
     "person_add",
+    "print",
     "rule",
     "schedule",
     "settings"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 30228
+  "bytes": 31924
 }

@@ -2,16 +2,15 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import type { BatchAdvanceResult, DocumentRequestView, RequestableDoc } from '@teranga/contracts';
-import {
-  DOC_REQUEST_STATUS_LABELS,
-  DOC_REQUEST_STATUS_TONES,
-  GENERATED_DOCS,
-  REQUESTABLE_DOC_LABELS,
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type {
+  BatchAdvanceResult,
+  DocumentRequestView,
+  EmployeeDetail,
+  RequestableDoc,
 } from '@teranga/contracts';
+import { GENERATED_DOCS, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -19,6 +18,8 @@ import {
   CardTitle,
   Checkbox,
   cn,
+  DataBlock,
+  DataGrid,
   EmptyState,
   Field,
   Input,
@@ -32,6 +33,7 @@ import {
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
+import { CONTRACT_LABELS } from '../../../lib/recruitment';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
@@ -85,17 +87,12 @@ export default function DocumentRequestsPage() {
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }, [items]);
   const traitees = useMemo(() => {
-    // « Prête à retirer » remonte en tête, la plus ancienne devant : personne
-    // ne vient clore la demande une fois le document annoncé, donc un document
-    // jamais retiré ne se signalerait plus tout seul. Le reste est un
-    // historique, du plus récent au plus ancien.
-    const enAttenteDeRetrait = items
-      .filter((r) => r.status === 'ready')
-      .sort((a, b) => (a.handledAt ?? '').localeCompare(b.handledAt ?? ''));
-    const closes = items
-      .filter((r) => !OPEN.includes(r.status) && r.status !== 'ready')
+    // Un historique se lit du plus récent au plus ancien. Annoncer le retrait
+    // CLÔT le travail de la RH : l'employé est prévenu et vient chercher son
+    // document, il n'y a plus rien à relancer depuis cet écran.
+    return items
+      .filter((r) => !OPEN.includes(r.status))
       .sort((a, b) => (b.handledAt ?? b.createdAt).localeCompare(a.handledAt ?? a.createdAt));
-    return [...enAttenteDeRetrait, ...closes];
   }, [items]);
 
   // La sélection ne survit pas à la disparition d'une ligne : une demande
@@ -138,7 +135,7 @@ export default function DocumentRequestsPage() {
               </span>
               <Button size="sm" onClick={() => setPanneau('traiter')}>
                 <Icon name="folder_managed" size={15} />
-                Traiter
+                Prévisualiser
               </Button>
               <Button size="sm" variant="secondary" onClick={() => setPanneau('decliner')}>
                 Décliner
@@ -232,10 +229,6 @@ export default function DocumentRequestsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Traitées</CardTitle>
-          <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
-            Les demandes prêtes à retirer remontent en tête, la plus ancienne devant : personne ne
-            vient clore une demande une fois le document annoncé.
-          </p>
         </CardHeader>
         <CardContent className="px-0 pb-0">
           {requests.isLoading ? (
@@ -255,7 +248,7 @@ export default function DocumentRequestsPage() {
                   <Th>Requête</Th>
                   <Th>Date</Th>
                   <Th className="text-right">Durée traitement</Th>
-                  <Th>Statut</Th>
+                  <Th>Suite donnée</Th>
                   <Th className="w-8" />
                 </tr>
               </THead>
@@ -281,18 +274,25 @@ export default function DocumentRequestsPage() {
                     >
                       {r.handledAt ? heures(ecartHeures(r.createdAt, r.handledAt)) : '—'}
                     </Td>
+                    {/* Ce qui a été RÉPONDU au demandeur, pas l'étiquette d'un
+                        automate : une fois le retrait annoncé, la RH n'a plus
+                        rien à faire, et la seule chose qu'on relit ici c'est
+                        l'instruction envoyée — ou le motif du refus. */}
                     <Td>
-                      <Badge tone={DOC_REQUEST_STATUS_TONES[r.status]}>
-                        {DOC_REQUEST_STATUS_LABELS[r.status]}
-                      </Badge>
-                      {r.status === 'ready' && r.pickupContact ? (
-                        <span className="block text-[11px] text-ink-muted">
-                          auprès de {r.pickupContact}
+                      {r.status === 'rejected' ? (
+                        <span className="font-semibold text-danger">
+                          Refusée{r.hrMessage ? ` — ${r.hrMessage}` : ''}
                         </span>
-                      ) : null}
-                      {r.status === 'rejected' && r.hrMessage ? (
-                        <span className="block text-[11px] text-ink-muted">{r.hrMessage}</span>
-                      ) : null}
+                      ) : (
+                        <>
+                          <span className="text-ink">
+                            À retirer auprès de {r.pickupContact ?? '—'}
+                          </span>
+                          {r.hrMessage ? (
+                            <span className="block text-[11px] text-ink-muted">{r.hrMessage}</span>
+                          ) : null}
+                        </>
+                      )}
                     </Td>
                     <Td className="pl-0 text-right">
                       {/* Corriger un point de retrait erroné reste possible :
@@ -361,12 +361,13 @@ function piecesOf(requests: DocumentRequestView[]): Piece[] {
 }
 
 /**
- * Traiter un lot : produire les documents, les relire, puis valider.
+ * Traiter un lot, en deux temps : PRÉVISUALISER, puis mettre à disposition.
  *
- * L'ordre compte. Valider annonce à l'employé que son document l'attend : le
- * faire avant d'avoir ouvert le document, c'est convoquer quelqu'un pour une
- * feuille qu'on n'a pas lue. Le bouton reste donc fermé tant qu'une pièce
- * générable n'a pas été ouverte au moins une fois.
+ * Valider annonce à l'employé que son document l'attend. Le faire sans avoir
+ * regardé le document, c'est convoquer quelqu'un pour une feuille qu'on n'a
+ * pas lue — et découvrir la coquille une fois qu'il est devant le bureau. La
+ * première étape affiche donc chaque pièce telle qu'elle sera remise, et la
+ * seconde ne s'ouvre qu'une fois toutes les pièces passées sous les yeux.
  */
 function TraiterModal({
   requests,
@@ -378,15 +379,24 @@ function TraiterModal({
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
+  const [etape, setEtape] = useState<'apercu' | 'retrait'>('apercu');
+  const [courante, setCourante] = useState(0);
+  const [vues, setVues] = useState<string[]>([]);
   const [pickupContact, setPickupContact] = useState('');
   const [message, setMessage] = useState('');
-  const [vues, setVues] = useState<string[]>([]);
   const [erreur, setErreur] = useState<string | null>(null);
   const [ecartees, setEcartees] = useState<BatchAdvanceResult['skipped']>([]);
 
   const pieces = useMemo(() => piecesOf(requests), [requests]);
-  const generables = pieces.filter((p) => p.generable);
-  const restantes = generables.filter((p) => !vues.includes(p.key)).length;
+  const piece = pieces[courante];
+  // Seules les pièces que l'application produit se vérifient ici : un bulletin
+  // de salaire vient de la paie, il n'y a rien à relire à l'écran.
+  const aVerifier = pieces.filter((p) => p.generable);
+  const restantes = aVerifier.filter((p) => !vues.includes(p.key)).length;
+
+  const marquerVue = useCallback((key: string) => {
+    setVues((v) => (v.includes(key) ? v : [...v, key]));
+  }, []);
 
   const valider = useMutation({
     mutationFn: () =>
@@ -445,100 +455,306 @@ function TraiterModal({
     );
   }
 
+  const nbDemandes = `${requests.length} demande${requests.length > 1 ? 's' : ''}`;
+
+  if (etape === 'retrait') {
+    return (
+      <Modal
+        open
+        onClose={onClose}
+        title="Mise à disposition"
+        subtitle={`Étape 2 sur 2 · ${nbDemandes} · où l'employé doit se présenter`}
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            {erreur ? (
+              <p
+                role="alert"
+                className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+              >
+                {erreur}
+              </p>
+            ) : null}
+            <Button variant="secondary" onClick={() => setEtape('apercu')}>
+              Retour à l&apos;aperçu
+            </Button>
+            <Button
+              loading={valider.isPending}
+              onClick={() => {
+                setErreur(null);
+                valider.mutate();
+              }}
+            >
+              Valider et prévenir
+            </Button>
+          </>
+        }
+      >
+        <ModalSection title="Point de retrait">
+          <ModalGrid>
+            <Field label="À retirer auprès de" htmlFor="pickupContact">
+              <Input
+                id="pickupContact"
+                placeholder="Vous, si laissé vide"
+                value={pickupContact}
+                onChange={(e) => setPickupContact(e.target.value)}
+              />
+            </Field>
+            <Field label="Précision (facultatif)" htmlFor="pickupMessage">
+              <Input
+                id="pickupMessage"
+                placeholder="Ex : bureau 204, 9h–16h"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+              />
+            </Field>
+          </ModalGrid>
+          <p className="mt-3 text-[11.5px] leading-relaxed text-ink-muted">
+            Chaque demandeur reçoit un avis avec cette indication et vient retirer son document. La
+            demande passe alors dans « Traitées » : plus rien n&apos;est attendu de votre part.
+          </p>
+        </ModalSection>
+
+        <ModalSection title="Ce qui part">
+          <ul className="flex flex-col gap-1.5">
+            {requests.map((r) => (
+              <li key={r.id} className="text-[12.5px]">
+                <span className="font-bold text-ink-strong">{r.employeeName}</span>
+                <span className="text-ink-muted"> — {docLabels(r)}</span>
+              </li>
+            ))}
+          </ul>
+        </ModalSection>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       open
       onClose={onClose}
-      title={`Traiter ${requests.length} demande${requests.length > 1 ? 's' : ''}`}
-      subtitle="Produisez les documents, relisez-les, puis annoncez le retrait."
+      title={`Prévisualiser ${nbDemandes}`}
+      subtitle="Étape 1 sur 2 · vérifiez chaque document avant de l'annoncer"
+      maxWidth="max-w-6xl"
       footer={
         <>
-          {erreur ? (
-            <p
-              role="alert"
-              className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
-            >
-              {erreur}
-            </p>
-          ) : restantes > 0 ? (
-            <p className="min-w-0 flex-1 text-[11.5px] text-ink-muted">
-              Ouvrez {restantes} document{restantes > 1 ? 's' : ''} avant de valider.
-            </p>
-          ) : null}
+          <p className="min-w-0 flex-1 text-[11.5px] text-ink-muted">
+            {restantes > 0
+              ? `${restantes} document${restantes > 1 ? 's' : ''} encore à vérifier.`
+              : 'Tous les documents ont été vérifiés.'}
+          </p>
           <Button variant="secondary" onClick={onClose}>
             Annuler
           </Button>
-          <Button
-            disabled={restantes > 0}
-            loading={valider.isPending}
-            onClick={() => {
-              setErreur(null);
-              valider.mutate();
-            }}
-          >
-            Valider et imprimer
+          <Button disabled={restantes > 0} onClick={() => setEtape('retrait')}>
+            Continuer
+            <Icon name="chevron_right" size={15} />
           </Button>
         </>
       }
     >
-      <ModalSection title="Documents à produire">
-        <ul className="flex flex-col divide-y divide-line-soft">
-          {pieces.map((p) => {
-            const vue = vues.includes(p.key);
+      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+        {/* La pile de documents, dans l'ordre où elle sera signée. */}
+        <ul className="flex shrink-0 flex-col gap-1.5 self-start lg:w-[14rem]">
+          {pieces.map((p, i) => {
+            // Une pièce que l'application ne produit pas n'entre pas dans le
+            // contrôle : lui poser une coche « vérifiée » serait mentir, et la
+            // laisser numérotée ferait croire qu'il reste quelque chose à voir.
+            const vue = p.generable && vues.includes(p.key);
+            const active = i === courante;
             return (
-              <li key={p.key} className="flex flex-wrap items-center gap-3 py-2.5 first:pt-0">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[12.5px] font-bold text-ink-strong">
-                    {REQUESTABLE_DOC_LABELS[p.doc] ?? p.doc}
-                  </p>
-                  <p className="text-[11.5px] text-ink-muted">{p.employeeName}</p>
-                </div>
-                {p.generable ? (
-                  <a
-                    href={apiUrl(`/employees/${p.employeeId}/attestation?disposition=inline`)}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => setVues((v) => (v.includes(p.key) ? v : [...v, p.key]))}
+              <li key={p.key}>
+                <button
+                  type="button"
+                  onClick={() => setCourante(i)}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 rounded-[10px] border px-2.5 py-2 text-left transition-colors',
+                    active
+                      ? 'border-primary/35 bg-primary/[0.07]'
+                      : 'border-line-soft bg-surface hover:border-primary/20',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'flex size-[18px] shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+                      vue ? 'bg-success text-primary-ink' : 'border border-line text-ink-muted',
+                    )}
                   >
-                    <Button size="sm" variant={vue ? 'ghost' : 'secondary'}>
-                      <Icon name={vue ? 'check' : 'folder_managed'} size={15} />
-                      {vue ? 'Relu' : 'Ouvrir et imprimer'}
-                    </Button>
-                  </a>
-                ) : (
-                  <span className="text-[11.5px] font-semibold text-ink-muted">
-                    {(GENERATED_DOCS as string[]).includes(p.doc)
-                      ? 'Dossier non actif — à établir à la main'
-                      : 'Préparé hors application'}
+                    {vue ? <Icon name="check" size={12} /> : p.generable ? i + 1 : '·'}
                   </span>
-                )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12px] font-bold text-ink-strong">
+                      {REQUESTABLE_DOC_LABELS[p.doc] ?? p.doc}
+                    </span>
+                    <span className="block truncate text-[11px] text-ink-muted">
+                      {p.employeeName}
+                    </span>
+                  </span>
+                </button>
               </li>
             );
           })}
         </ul>
-      </ModalSection>
 
-      <ModalSection title="Point de retrait">
-        <ModalGrid>
-          <Field label="À retirer auprès de" htmlFor="pickupContact">
-            <Input
-              id="pickupContact"
-              placeholder="Vous, si laissé vide"
-              value={pickupContact}
-              onChange={(e) => setPickupContact(e.target.value)}
-            />
-          </Field>
-          <Field label="Précision (facultatif)" htmlFor="pickupMessage">
-            <Input
-              id="pickupMessage"
-              placeholder="Ex : bureau 204, 9h–16h"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-            />
-          </Field>
-        </ModalGrid>
-      </ModalSection>
+        {/* L'aperçu : le document tel qu'il sera remis, pas une promesse. */}
+        <div className="flex min-h-[19rem] min-w-0 flex-1 flex-col overflow-hidden rounded-[14px] border border-line-soft bg-surface">
+          {piece ? <Apercu piece={piece} onVue={marquerVue} /> : null}
+        </div>
+      </div>
     </Modal>
+  );
+}
+
+/**
+ * Aperçu d'une pièce : les informations qui seront IMPRIMÉES dessus.
+ *
+ * On a d'abord essayé d'encastrer le PDF. Une A4 réduite à la taille d'une
+ * fenêtre n'est pas lisible — on y voit une page, pas ce qu'elle dit, et la
+ * visionneuse du navigateur ajoute sa propre barre et ses marges. Or ce qu'on
+ * vérifie avant d'annoncer un document, c'est bien précis : est-ce la bonne
+ * personne, la bonne fonction, les bonnes dates. Ces champs sont donc affichés
+ * en clair, exactement ceux que l'attestation reprend, et le document lui-même
+ * reste à un clic pour qui veut le lire en entier ou l'imprimer.
+ */
+function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }) {
+  const detail = useQuery({
+    queryKey: ['employee', piece.employeeId],
+    queryFn: () => api<EmployeeDetail>(`/employees/${piece.employeeId}`),
+    enabled: piece.generable,
+    retry: false,
+  });
+
+  // Vue dès qu'elle est affichée — ou dès qu'on sait qu'elle ne peut pas
+  // l'être : bloquer sur un document impossible à produire enfermerait la RH.
+  const affichee = detail.isSuccess || detail.isError || !piece.generable;
+  useEffect(() => {
+    if (affichee) onVue(piece.key);
+  }, [affichee, onVue, piece.key]);
+
+  const entete = (
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line-soft px-4 py-2.5">
+      <div className="min-w-0">
+        <p className="truncate text-[12.5px] font-bold text-ink-strong">
+          {REQUESTABLE_DOC_LABELS[piece.doc] ?? piece.doc}
+        </p>
+        <p className="truncate text-[11px] text-ink-muted">{piece.employeeName}</p>
+      </div>
+      {piece.generable ? (
+        <a
+          href={apiUrl(`/employees/${piece.employeeId}/attestation?disposition=inline`)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <Button size="sm" variant="secondary">
+            <Icon name="print" size={15} />
+            Ouvrir et imprimer
+          </Button>
+        </a>
+      ) : null}
+    </div>
+  );
+
+  if (!piece.generable) {
+    // Deux raisons de ne rien avoir à montrer, et elles n'appellent pas le
+    // même geste : soit l'application ne produit pas ce document, soit elle
+    // le produit mais refuse pour ce dossier-là.
+    const dossierInactif = (GENERATED_DOCS as string[]).includes(piece.doc);
+    return (
+      <>
+        {entete}
+        <EmptyState
+          className="flex-1"
+          icon={<Icon name={dossierInactif ? 'error' : 'folder_managed'} size={22} />}
+          title={dossierInactif ? 'Dossier non actif' : 'Préparé hors application'}
+          description={
+            dossierInactif
+              ? "L'attestation de travail est réservée aux employés en activité : pour ce dossier, elle est à établir à la main."
+              : 'Ce document ne sort pas de l’application — il vient du service paie. Rien à vérifier ici : joignez-le à la pile avant de valider.'
+          }
+        />
+      </>
+    );
+  }
+
+  if (detail.isLoading) {
+    return (
+      <>
+        {entete}
+        <div className="flex-1 p-4">
+          <Skeleton className="h-full w-full" />
+        </div>
+      </>
+    );
+  }
+
+  if (detail.isError || !detail.data) {
+    return (
+      <>
+        {entete}
+        <EmptyState
+          className="flex-1"
+          icon={<Icon name="error" size={22} />}
+          title="Dossier illisible"
+          description={
+            detail.error instanceof ApiError
+              ? (detail.error.problem.detail ?? detail.error.problem.title)
+              : 'Réessayez dans un instant.'
+          }
+          action={
+            <Button size="sm" variant="secondary" onClick={() => void detail.refetch()}>
+              Réessayer
+            </Button>
+          }
+        />
+      </>
+    );
+  }
+
+  const e = detail.data;
+  const affectation = e.assignments.find((a) => a.current) ?? e.assignments[0];
+  // Le contrat le plus récemment commencé : c'est celui que l'attestation cite.
+  const contrat = [...e.contracts].sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
+  // Composé AVANT d'entrer dans le bloc : un enfant fait de plusieurs morceaux
+  // vides n'est pas « vide » pour DataBlock, qui afficherait du blanc là où le
+  // tiret dit « on ne sait pas ».
+  const naissance =
+    [e.person.birthDate ? formatDate(e.person.birthDate) : null, e.person.birthPlace]
+      .filter(Boolean)
+      .join(' — ') || null;
+
+  return (
+    <>
+      {entete}
+      <div className="flex-1 overflow-y-auto p-4">
+        <DataGrid>
+          <DataBlock label="Nom et prénom">
+            {e.person.givenName} {e.person.familyName}
+          </DataBlock>
+          <DataBlock label="Matricule">{e.employeeNumber}</DataBlock>
+          <DataBlock label="Naissance">{naissance}</DataBlock>
+          <DataBlock label="Fonction">{affectation?.positionTitle}</DataBlock>
+          <DataBlock label="Direction">{affectation?.orgUnitName}</DataBlock>
+          <DataBlock label="Type de contrat">
+            {contrat ? (CONTRACT_LABELS[contrat.contractType] ?? contrat.contractType) : null}
+          </DataBlock>
+          <DataBlock label="Date d'embauche">{formatDate(e.hiredOn)}</DataBlock>
+          <DataBlock label="Fin de contrat">
+            {contrat?.endDate ? formatDate(contrat.endDate) : 'Sans terme'}
+          </DataBlock>
+        </DataGrid>
+
+        <p className="mt-3.5 text-[11.5px] leading-relaxed text-ink-muted">
+          Ce sont les informations que l&apos;attestation reprend. Une erreur ici se corrige sur la{' '}
+          <Link
+            href={`/employees/${piece.employeeId}`}
+            className="font-semibold text-primary hover:underline"
+          >
+            fiche de l&apos;employé
+          </Link>{' '}
+          avant de valider.
+        </p>
+      </div>
+    </>
   );
 }
 
