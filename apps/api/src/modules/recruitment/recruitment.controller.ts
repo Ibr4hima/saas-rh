@@ -9,12 +9,15 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import {
+  applicationStageSchema,
   applySchema,
   createJobPostingSchema,
   updateApplicationSchema,
@@ -25,6 +28,8 @@ import {
   type UpdateJobPostingInput,
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
+
+const applicationsQuerySchema = z.object({ stage: applicationStageSchema.optional() });
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { Roles, RolesGuard } from '../auth/roles.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
@@ -66,6 +71,20 @@ export class RecruitmentController {
     @Body(new ZodValidationPipe(updateJobPostingSchema)) body: UpdateJobPostingInput,
   ) {
     await this.jobs.update(req.sessionUser, id, body);
+  }
+
+  /**
+   * Toutes les candidatures, offres confondues. Déclarée AVANT « jobs/:id » ne
+   * s'impose pas ici (le chemin diffère), mais elle reste voisine de sa sœur
+   * pour qu'on ne les fasse pas diverger.
+   */
+  @Get('applications')
+  allApplications(
+    @Req() req: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(applicationsQuerySchema))
+    query: z.infer<typeof applicationsQuerySchema>,
+  ) {
+    return this.jobs.allApplications(req.sessionUser, query);
   }
 
   @Get('jobs/:id/applications')

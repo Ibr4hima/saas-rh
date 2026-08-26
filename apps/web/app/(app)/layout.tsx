@@ -20,6 +20,11 @@ interface DashboardStats {
   pendingDocumentRequests: number;
 }
 
+interface NavChild {
+  href: string;
+  label: string;
+}
+
 interface NavItem {
   href: string;
   label: string;
@@ -27,6 +32,12 @@ interface NavItem {
   short?: string;
   icon: IconName;
   badge?: 'pending' | 'docs';
+  /**
+   * Rubrique dépliable. La rangée parente ne navigue plus — elle ouvre et
+   * ferme. Un parent qui serait à la fois destination ET interrupteur rend le
+   * clic ambigu : on ne sait pas ce qu'on va obtenir.
+   */
+  children?: NavChild[];
 }
 
 /**
@@ -54,13 +65,27 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/calendrier', label: 'Calendrier', icon: 'event' },
   {
     href: '/recrutement',
-    label: 'Dossiers de candidature',
-    short: 'Candidatures',
+    label: 'Recrutement',
+    short: 'Recrut.',
     icon: 'person_add',
+    children: [
+      { href: '/recrutement', label: "Offres d'emploi" },
+      { href: '/recrutement/candidatures', label: 'Dossiers de candidature' },
+    ],
   },
   { href: '/evaluation', label: 'Évaluation des objectifs', short: 'Évaluation', icon: 'rule' },
   { href: '/organisation', label: 'Organigramme', short: 'Organig.', icon: 'family_history' },
-  { href: '/reglementations', label: 'Lois & Règlementations', short: 'Lois', icon: 'gavel' },
+  {
+    href: '/reglementations',
+    label: 'Lois & Règlementations',
+    short: 'Lois',
+    icon: 'gavel',
+    children: [
+      { href: '/reglementations/code-du-travail', label: 'Code du travail' },
+      { href: '/reglementations/convention-collective', label: 'Convention collective' },
+      { href: '/reglementations/reglement-interieur', label: 'Règlement intérieur' },
+    ],
+  },
 ];
 
 /**
@@ -77,11 +102,14 @@ const PAGE_TITLES: Record<string, string> = {
   '/absences/parametres': 'Paramètres des congés',
   '/documents': 'Demandes à traiter',
   '/calendrier': 'Calendrier',
-  '/recrutement': 'Dossiers de candidature',
+  '/recrutement': "Offres d'emploi",
+  '/recrutement/candidatures': 'Dossiers de candidature',
   '/recrutement/nouvelle': 'Nouvelle offre',
   '/evaluation': 'Évaluation des objectifs',
   '/organisation': 'Organigramme',
-  '/reglementations': 'Lois & Règlementations',
+  '/reglementations/code-du-travail': 'Code du travail',
+  '/reglementations/convention-collective': 'Convention collective',
+  '/reglementations/reglement-interieur': 'Règlement intérieur',
   '/moi': 'Mon espace',
   '/moi/conges': 'Mes congés',
   '/moi/documents': 'Mes documents',
@@ -191,6 +219,128 @@ function personalNav(role: string): NavItem[] {
   ];
 }
 
+/** Une entrée simple de la barre latérale. */
+function RangeeNav({
+  href,
+  label,
+  icon,
+  active,
+  badge,
+}: {
+  href: string;
+  label: string;
+  icon?: IconName;
+  active: boolean;
+  badge?: number;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        'flex items-center gap-2.5 rounded-[7px] px-2.5 py-[7px] text-[12.5px] transition-colors duration-150',
+        active ? 'bg-primary/[0.07] font-bold text-primary' : 'font-medium text-ink hover:bg-bg',
+      )}
+    >
+      {/* Icône pleine sur l'entrée courante : la position dans le menu se lit
+          sans dépendre de la seule couleur. */}
+      {icon ? <Icon name={icon} size={17} fill={active} /> : null}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {badge && badge > 0 ? (
+        <span className="rounded-full bg-accent px-[6px] py-px text-[10px] font-bold text-accent-ink">
+          {badge}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
+
+/**
+ * Rubrique dépliable.
+ *
+ * Elle s'ouvre d'elle-même quand on se trouve à l'intérieur — arriver sur une
+ * sous-page par un lien et voir sa rubrique fermée, c'est perdre où l'on est —
+ * et se referme ensuite à la main. La rangée parente n'est pas un lien : elle
+ * ouvre. Les sous-pages sont reliées par un filet vertical, qui dit
+ * l'appartenance sans réécrire le nom de la rubrique sur chaque ligne.
+ */
+function Rubrique({
+  item,
+  ouverteParDefaut,
+  estActive,
+}: {
+  item: NavItem;
+  ouverteParDefaut: boolean;
+  estActive: (href: string) => boolean;
+}) {
+  const [ouverte, setOuverte] = useState(ouverteParDefaut);
+  // Le chemin change (clic ailleurs dans le menu, retour arrière) : la rubrique
+  // qui contient la page courante doit s'ouvrir, sans refermer les autres.
+  useEffect(() => {
+    if (ouverteParDefaut) setOuverte(true);
+  }, [ouverteParDefaut]);
+
+  const contientLaPage = item.children?.some((c) => estActive(c.href)) ?? false;
+
+  return (
+    <div className="flex flex-col gap-px">
+      <button
+        type="button"
+        onClick={() => setOuverte((v) => !v)}
+        aria-expanded={ouverte}
+        className={cn(
+          'flex items-center gap-2 rounded-[7px] px-2.5 py-[7px] text-left text-[12.5px] transition-colors duration-150',
+          // Repliée sur la page courante, la rubrique porte l'état actif ;
+          // dépliée, elle le laisse à la sous-page pour ne pas l'allumer deux
+          // fois sur la même colonne.
+          contientLaPage && !ouverte
+            ? 'bg-primary/[0.07] font-bold text-primary'
+            : contientLaPage
+              ? // Dépliée, la rubrique s'allège : la sous-page porte déjà l'état
+                // actif, et deux bleus gras l'un sous l'autre alourdissent la
+                // colonne — en plus de faire déborder « Lois & Règlementations ».
+                'font-semibold text-primary hover:bg-bg'
+              : 'font-medium text-ink hover:bg-bg',
+        )}
+      >
+        <Icon name={item.icon} size={17} fill={contientLaPage} />
+        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        <Icon
+          name="chevron_right"
+          size={14}
+          className={cn(
+            'shrink-0 text-ink-muted transition-transform duration-200',
+            ouverte && 'rotate-90',
+          )}
+        />
+      </button>
+
+      {ouverte ? (
+        <div className="relative ml-[1.4rem] flex flex-col gap-px border-l border-line-soft pl-2.5">
+          {item.children!.map((c) => {
+            const active = estActive(c.href);
+            return (
+              <Link
+                key={c.href}
+                href={c.href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'rounded-[7px] px-2.5 py-[6px] text-[12px] transition-colors duration-150',
+                  active
+                    ? 'bg-primary/[0.07] font-bold text-primary'
+                    : 'font-medium text-ink-muted hover:bg-bg hover:text-ink',
+                )}
+              >
+                {c.label}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrateur',
   hr: 'RH',
@@ -282,6 +432,22 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const subtitle = pathname === '/dashboard' ? todayLabel : null;
   const isActive = (href: string) =>
     href === '/moi' ? pathname === '/moi' : pathname.startsWith(href);
+  /**
+   * Une sous-page s'allume sur SON chemin seul.
+   *
+   * « Offres d'emploi » vit à /recrutement, « Dossiers de candidature » à
+   * /recrutement/candidatures : avec la règle par préfixe, la première
+   * resterait allumée sur la seconde. Une feuille ne couvre que son chemin —
+   * et les écrans qui en dépendent (nouvelle offre, pipeline d'une offre).
+   */
+  const isChildActive = (href: string) => {
+    if (href === '/recrutement') {
+      return (
+        pathname === '/recrutement' || /^\/recrutement\/(nouvelle|[0-9a-f-]{8,})/.test(pathname)
+      );
+    }
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   return (
     /* Coquille d'application : la page elle-même ne défile pas. Le bandeau et
@@ -335,7 +501,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             rubrique en très petites capitales grises, des rangées serrées, et
             l'entrée courante teintée à peine plutôt que peinte. La navigation
             est un instrument, pas une affiche. */}
-        <aside className="flex w-[15.5rem] shrink-0 flex-col border-r border-line bg-surface max-lg:hidden">
+        <aside className="flex w-[16.5rem] shrink-0 flex-col border-r border-line bg-surface max-lg:hidden">
           <div className="border-b border-line-soft px-4 pt-3.5 pb-2.5">
             <span className="text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
               {isStaff ? 'Navigation' : 'Mon espace'}
@@ -344,32 +510,25 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
           <nav className="flex-1 overflow-y-auto px-2.5 py-3">
             <div className="flex flex-col gap-px">
-              {items.map((item) => {
-                const active = isActive(item.href);
-                return (
-                  <Link
+              {items.map((item) =>
+                item.children ? (
+                  <Rubrique
+                    key={item.href}
+                    item={item}
+                    ouverteParDefaut={isActive(item.href)}
+                    estActive={isChildActive}
+                  />
+                ) : (
+                  <RangeeNav
                     key={item.href}
                     href={item.href}
-                    aria-current={active ? 'page' : undefined}
-                    className={cn(
-                      'flex items-center gap-2.5 rounded-[7px] px-2.5 py-[7px] text-[12.5px] transition-colors duration-150',
-                      active
-                        ? 'bg-primary/[0.07] font-bold text-primary'
-                        : 'font-medium text-ink hover:bg-bg',
-                    )}
-                  >
-                    {/* Icône pleine sur l'entrée courante : la position dans le
-                        menu se lit sans dépendre de la seule couleur. */}
-                    <Icon name={item.icon} size={17} fill={active} />
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    {badgeCount(item.badge) > 0 ? (
-                      <span className="rounded-full bg-accent px-[6px] py-px text-[10px] font-bold text-accent-ink">
-                        {badgeCount(item.badge)}
-                      </span>
-                    ) : null}
-                  </Link>
-                );
-              })}
+                    label={item.label}
+                    icon={item.icon}
+                    active={isActive(item.href)}
+                    badge={badgeCount(item.badge)}
+                  />
+                ),
+              )}
             </div>
           </nav>
 
@@ -416,10 +575,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line-soft bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">
         {items.map((item) => {
           const active = isActive(item.href);
+          // Une rubrique n'a pas de page à elle : l'onglet mène à sa première
+          // sous-page, sinon il ouvrirait une redirection au lieu d'un écran.
+          const cible = item.children?.[0]?.href ?? item.href;
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={cible}
               aria-current={active ? 'page' : undefined}
               className={cn(
                 'relative flex min-w-14 flex-col items-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-medium',

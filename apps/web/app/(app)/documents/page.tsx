@@ -463,7 +463,7 @@ function TraiterModal({
         open
         onClose={onClose}
         title="Mise à disposition"
-        subtitle={`Étape 2 sur 2 · ${nbDemandes} · où l'employé doit se présenter`}
+        subtitle="Étape 2 sur 2 · Point de retrait"
         maxWidth="max-w-2xl"
         footer={
           <>
@@ -509,10 +509,6 @@ function TraiterModal({
               />
             </Field>
           </ModalGrid>
-          <p className="mt-3 text-[11.5px] leading-relaxed text-ink-muted">
-            Chaque demandeur reçoit un avis avec cette indication et vient retirer son document. La
-            demande passe alors dans « Traitées » : plus rien n&apos;est attendu de votre part.
-          </p>
         </ModalSection>
 
         <ModalSection title="Ce qui part">
@@ -534,7 +530,7 @@ function TraiterModal({
       open
       onClose={onClose}
       title={`Prévisualiser ${nbDemandes}`}
-      subtitle="Étape 1 sur 2 · vérifiez chaque document avant de l'annoncer"
+      subtitle="Étape 1 sur 2 · Vérification des informations"
       maxWidth="max-w-6xl"
       footer={
         <>
@@ -669,7 +665,7 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
           description={
             dossierInactif
               ? "L'attestation de travail est réservée aux employés en activité : pour ce dossier, elle est à établir à la main."
-              : 'Ce document ne sort pas de l’application — il vient du service paie. Rien à vérifier ici : joignez-le à la pile avant de valider.'
+              : 'Veuillez vérifier l’exactitude des informations demandées dans le service de paie avant de valider.'
           }
         />
       </>

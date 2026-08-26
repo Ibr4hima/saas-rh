@@ -80,6 +80,16 @@ export const APPLICATION_STAGES: ApplicationStage[] = [
   'rejected',
 ];
 
+/**
+ * Une candidature vue depuis la liste TOUTES OFFRES confondues : elle doit dire
+ * de quelle offre elle vient, sinon deux homonymes sur deux postes différents
+ * ne se distinguent plus.
+ */
+export interface ApplicationListItem extends ApplicationView {
+  jobTitle: string;
+  jobStatus: string;
+}
+
 export const updateApplicationSchema = z.object({
   stage: applicationStageSchema,
 });
