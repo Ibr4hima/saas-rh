@@ -22,6 +22,8 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  DataBlock,
+  DataGrid,
   EmptyState,
   Field,
   Input,
@@ -30,6 +32,7 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
+import { Icon } from '../../../components/icons';
 
 const TYPE_LABELS = ORG_UNIT_TYPE_LABELS;
 
@@ -79,6 +82,7 @@ export default function OrganisationPage() {
               <Skeleton className="h-32 w-full" />
             ) : (units.data ?? []).length === 0 ? (
               <EmptyState
+                icon={<Icon name="family_history" size={22} />}
                 title="Aucune unité pour le moment"
                 description="Commencez par créer vos directions, puis leurs départements et services."
               />
@@ -271,17 +275,11 @@ function UnitPanel({
         </button>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className="flex items-center gap-2 text-sm text-ink-muted">
-          <Badge tone={unit.unitType === 'direction' ? 'primary' : 'neutral'}>
-            {TYPE_LABELS[unit.unitType as OrgUnitType]}
-          </Badge>
-          <span>
-            {unit.headcount} {unit.headcount > 1 ? 'personnes' : 'personne'}
-          </span>
-          {canManage && !editing && !confirmDelete ? (
+        {canManage && !editing && !confirmDelete ? (
+          <div className="flex">
             <button
               type="button"
-              className="ml-auto text-xs text-primary hover:underline"
+              className="ml-auto text-xs font-semibold text-primary hover:underline"
               onClick={() => {
                 setError(null);
                 setEditing(true);
@@ -289,8 +287,21 @@ function UnitPanel({
             >
               Modifier
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
+
+        {/* Les faits de l'unité, dans le même vocabulaire que la fiche
+            employé : on passe d'un écran à l'autre sans réapprendre à lire. */}
+        <DataGrid className="lg:grid-cols-4">
+          <DataBlock label="Type">{TYPE_LABELS[unit.unitType as OrgUnitType]}</DataBlock>
+          <DataBlock label="Abrégé">{unit.shortName}</DataBlock>
+          <DataBlock label="Rattachement">
+            {units.find((u) => u.id === unit.parentId)?.name ?? 'Aucun — unité racine'}
+          </DataBlock>
+          <DataBlock label="Effectif">
+            {unit.headcount} {unit.headcount > 1 ? 'personnes' : 'personne'}
+          </DataBlock>
+        </DataGrid>
 
         {editing ? (
           <div className="flex flex-col gap-3 rounded-md bg-bg p-3">
@@ -489,9 +500,12 @@ function UnitPanel({
           {members.isLoading ? (
             <Skeleton className="h-12 w-full" />
           ) : (members.data ?? []).length === 0 ? (
-            <p className="text-sm text-ink-muted">
-              Personne n&apos;est affecté à cette unité aujourd&apos;hui.
-            </p>
+            <EmptyState
+              icon={<Icon name="group" size={22} />}
+              title="Aucun membre aujourd'hui"
+              description="Les affectations se posent depuis la fiche de chaque employé, sur la carte « Affectations »."
+              className="py-8"
+            />
           ) : (
             <ul className="flex flex-col gap-2">
               {members.data!.map((m) => (

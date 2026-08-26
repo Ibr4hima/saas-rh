@@ -22,6 +22,7 @@ import {
 import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
 import { EmployeeCreateModal } from '../../../components/employee-create-modal';
+import { Icon } from '../../../components/icons';
 
 export default function EmployeesPage() {
   const router = useRouter();
@@ -81,6 +82,7 @@ export default function EmployeesPage() {
           </div>
         ) : items.length === 0 ? (
           <EmptyState
+            icon={<Icon name="group" size={22} />}
             title={debounced || status ? 'Aucun résultat' : 'Aucun employé pour le moment'}
             description={
               debounced || status

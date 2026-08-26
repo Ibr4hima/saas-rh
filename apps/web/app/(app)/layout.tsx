@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { cn, Skeleton } from '@teranga/ui';
 import { BrandMark, BrandWordmark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
+import { PageTitleProvider, usePageTitleOverride } from '../../components/page-title';
 import { NotificationsBell } from '../../components/notifications-bell';
 import { api } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
@@ -199,9 +200,18 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <PageTitleProvider>
+      <AppShell>{children}</AppShell>
+    </PageTitleProvider>
+  );
+}
+
+function AppShell({ children }: { children: React.ReactNode }) {
   const me = useMe();
   const router = useRouter();
   const pathname = usePathname();
+  const titleOverride = usePageTitleOverride();
 
   const role = me.data?.role ?? '';
   const isStaff = STAFF_ROLES.includes(role);
@@ -258,7 +268,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const badgeCount = (badge?: 'pending' | 'docs') =>
     badge === 'pending' ? pending : badge === 'docs' ? pendingDocs : 0;
   const items = isStaff ? staffNav(user.role) : personalNav(user.role);
-  const title = pageTitle(pathname, user.givenName);
+  // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
+  const title = titleOverride ?? pageTitle(pathname, user.givenName);
   const action = pageAction(pathname, user.role);
   // La date ne vit que sur l'accueil : ailleurs elle n'informe de rien.
   const todayRaw = new Date().toLocaleDateString('fr-FR', {

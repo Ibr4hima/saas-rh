@@ -24,6 +24,7 @@ import { api, ApiError, apiUrl } from '../../../lib/api';
 import { DocViewer, type ViewableDoc } from '../../../components/doc-viewer';
 import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES, ROLE_LABELS } from '../../../lib/absences';
 import { formatDate, useMe } from '../../../lib/hooks';
+import { Icon } from '../../../components/icons';
 
 export default function AbsencesPage() {
   const queryClient = useQueryClient();
@@ -88,6 +89,7 @@ export default function AbsencesPage() {
             </CardContent>
           ) : items.length === 0 ? (
             <EmptyState
+              icon={<Icon name="free_cancellation" size={22} />}
               title="Aucune demande dans ce statut"
               description="Les employés posent leurs demandes depuis leur portail — elles arrivent ici pour visa."
             />

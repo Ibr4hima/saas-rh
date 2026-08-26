@@ -37,6 +37,7 @@ import { nationalityLabel } from '@teranga/contracts';
 import { ProfileChangeCard } from '../../../../components/profile-change-card';
 import { DocumentRequestRow } from '../../../../components/document-request-list';
 import { EmployeeEditModal } from '../../../../components/employee-edit-modal';
+import { usePageTitle } from '../../../../components/page-title';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import type { DocumentRequestView, OrgUnit } from '@teranga/contracts';
@@ -99,6 +100,11 @@ export default function EmployeePage() {
     queryFn: () => api<EmployeeHistoryEntry[]>(`/employees/${id}/history`),
     enabled: Boolean(canSeeHistory),
   });
+
+  // Le bandeau annonce QUI, pas « Fiche employé ». Null tant que le dossier
+  // charge : le titre déduit du chemin tient la place sans clignoter.
+  const person = detail.data?.person;
+  usePageTitle(person ? `${person.givenName} ${person.familyName}` : null);
 
   if (detail.isLoading) {
     return (

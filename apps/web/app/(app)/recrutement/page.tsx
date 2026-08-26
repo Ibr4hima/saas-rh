@@ -7,6 +7,7 @@ import type { JobPostingView } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, EmptyState, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
+import { Icon } from '../../../components/icons';
 import {
   CONTRACT_LABELS,
   JOB_STATUS_LABELS,
@@ -36,6 +37,7 @@ export default function RecruitmentPage() {
         <Card>
           <CardContent>
             <EmptyState
+              icon={<Icon name="person_add" size={22} />}
               title="Aucune offre pour le moment"
               description="Créez votre première offre : vous obtiendrez un lien public de candidature à partager."
             />

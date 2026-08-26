@@ -23,6 +23,8 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  DataBlock,
+  DataGrid,
   Field,
   Input,
   Select,
@@ -32,16 +34,6 @@ import { api, ApiError } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/hooks';
 import { ID_DOCUMENT_LABELS, SEX_LABELS, maritalLabels } from '../../../../lib/person';
 import { timeAgo } from '../../../../components/document-request-list';
-
-/** Une ligne « libellé : valeur » du dossier tel que la RH l'a rempli. */
-function Info({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div className="flex justify-between gap-4 border-b border-line-soft py-2 last:border-b-0">
-      <span className="text-sm text-ink-muted">{label}</span>
-      <span className="text-right text-sm font-medium text-ink-strong">{value || '—'}</span>
-    </div>
-  );
-}
 
 type Draft = Partial<Record<ProfileChangeField, string>>;
 
@@ -142,15 +134,18 @@ export default function MyInformationsPage() {
             <CardTitle>État civil</CardTitle>
           </CardHeader>
           <CardContent>
-            <Info label="Nom" value={`${p.givenName} ${p.familyName}`} />
-            <Info label="Sexe" value={p.gender ? SEX_LABELS[p.gender] : null} />
-            <Info label="Date de naissance" value={p.birthDate ? formatDate(p.birthDate) : null} />
-            <Info label="Pays de naissance" value={p.birthPlace} />
-            <Info label="Nationalité" value={nationalityLabel(p.nationality)} />
-            <Info
-              label="Situation matrimoniale"
-              value={p.maritalStatus ? marital[p.maritalStatus] : null}
-            />
+            <DataGrid>
+              <DataBlock label="Nom">{`${p.givenName} ${p.familyName}`}</DataBlock>
+              <DataBlock label="Sexe">{p.gender ? SEX_LABELS[p.gender] : null}</DataBlock>
+              <DataBlock label="Date de naissance">
+                {p.birthDate ? formatDate(p.birthDate) : null}
+              </DataBlock>
+              <DataBlock label="Pays de naissance">{p.birthPlace}</DataBlock>
+              <DataBlock label="Nationalité">{nationalityLabel(p.nationality)}</DataBlock>
+              <DataBlock label="Situation matrimoniale">
+                {p.maritalStatus ? marital[p.maritalStatus] : null}
+              </DataBlock>
+            </DataGrid>
           </CardContent>
         </Card>
 
@@ -159,20 +154,21 @@ export default function MyInformationsPage() {
             <CardTitle>Pièce d&apos;identité</CardTitle>
           </CardHeader>
           <CardContent>
-            <Info
-              label="Type"
-              value={p.idDocumentType ? ID_DOCUMENT_LABELS[p.idDocumentType] : null}
-            />
-            <Info label="Numéro" value={p.nationalId} />
-            <Info
-              label="Délivrée le"
-              value={p.idDocumentIssuedOn ? formatDate(p.idDocumentIssuedOn) : null}
-            />
-            <Info
-              label="Expire le"
-              value={p.idDocumentExpiresOn ? formatDate(p.idDocumentExpiresOn) : null}
-            />
-            <p className="pt-3 text-xs text-ink-muted">
+            <DataGrid className="lg:grid-cols-4">
+              <DataBlock label="Type">
+                {p.idDocumentType ? ID_DOCUMENT_LABELS[p.idDocumentType] : null}
+              </DataBlock>
+              <DataBlock label="Numéro">
+                {p.nationalId ? <span className="font-mono">{p.nationalId}</span> : null}
+              </DataBlock>
+              <DataBlock label="Délivrée le">
+                {p.idDocumentIssuedOn ? formatDate(p.idDocumentIssuedOn) : null}
+              </DataBlock>
+              <DataBlock label="Expire le">
+                {p.idDocumentExpiresOn ? formatDate(p.idDocumentExpiresOn) : null}
+              </DataBlock>
+            </DataGrid>
+            <p className="mt-3 text-xs text-ink-muted">
               Ces informations s&apos;appuient sur un document officiel : adressez-vous directement
               à la Direction du Capital Humain pour les corriger.
             </p>
@@ -184,12 +180,16 @@ export default function MyInformationsPage() {
             <CardTitle>Dossier professionnel</CardTitle>
           </CardHeader>
           <CardContent>
-            <Info label="Matricule" value={detail.data.employeeNumber} />
-            <Info label="Poste" value={me.data.positionTitle} />
-            <Info label="Unité" value={me.data.orgUnitName} />
-            <Info label="Manager" value={detail.data.managerName} />
-            <Info label="Email professionnel" value={detail.data.workEmail} />
-            <Info label="Téléphone professionnel" value={detail.data.workPhone} />
+            <DataGrid>
+              <DataBlock label="Matricule">
+                <span className="font-mono">{detail.data.employeeNumber}</span>
+              </DataBlock>
+              <DataBlock label="Poste">{me.data.positionTitle}</DataBlock>
+              <DataBlock label="Unité">{me.data.orgUnitName}</DataBlock>
+              <DataBlock label="Manager">{detail.data.managerName}</DataBlock>
+              <DataBlock label="Email professionnel">{detail.data.workEmail}</DataBlock>
+              <DataBlock label="Téléphone professionnel">{detail.data.workPhone}</DataBlock>
+            </DataGrid>
           </CardContent>
         </Card>
 

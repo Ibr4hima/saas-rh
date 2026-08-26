@@ -15,6 +15,7 @@ import {
 } from '@teranga/ui';
 import { DocumentRequestRow } from '../../../components/document-request-list';
 import { api, ApiError } from '../../../lib/api';
+import { Icon } from '../../../components/icons';
 
 /**
  * Demandes encore à la charge de la RH. « Prête à retirer » n'en fait pas
@@ -79,6 +80,7 @@ export default function DocumentRequestsPage() {
             <Skeleton className="h-24 w-full" />
           ) : shown.length === 0 ? (
             <EmptyState
+              icon={<Icon name="folder_managed" size={22} />}
               title={
                 items.length === 0
                   ? 'Aucune demande'
