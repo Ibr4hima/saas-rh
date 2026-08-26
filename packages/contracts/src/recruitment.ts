@@ -133,6 +133,8 @@ export type PublicJobInfo =
   | {
       valid: true;
       organizationName: string;
+      /** OFF-AAAA-NNN — ce que le candidat cite quand il relance. */
+      reference: string;
       title: string;
       description: string;
       contractType: string;

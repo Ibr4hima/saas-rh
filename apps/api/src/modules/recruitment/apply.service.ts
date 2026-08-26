@@ -35,6 +35,7 @@ export class ApplyService {
     return this.db.withJobSlug(slug, async (tx) => {
       const [row] = await tx
         .select({
+          reference: t.jobPostings.reference,
           title: t.jobPostings.title,
           description: t.jobPostings.description,
           contractType: t.jobPostings.contractType,
@@ -51,6 +52,7 @@ export class ApplyService {
       return {
         valid: true,
         organizationName: row.organizationName,
+        reference: row.reference,
         title: row.title,
         description: row.description,
         contractType: row.contractType,

@@ -24,11 +24,13 @@ export const ICON_NAMES = [
   'badge',
   'calendar_month',
   'check',
+  'check_circle',
   'chevron_left',
   'chevron_right',
   'close',
   'content_copy',
   'dashboard',
+  'description',
   'edit',
   'error',
   'event',
@@ -43,10 +45,12 @@ export const ICON_NAMES = [
   'logout',
   'notifications',
   'person_add',
+  'place',
   'print',
   'rule',
   'schedule',
   'settings',
+  'upload_file',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];

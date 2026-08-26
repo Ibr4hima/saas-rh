@@ -2,7 +2,7 @@ import * as React from 'react';
 import { cn } from './cn';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
-type Size = 'sm' | 'md';
+type Size = 'sm' | 'md' | 'lg';
 
 const variants: Record<Variant, string> = {
   primary: 'bg-primary text-primary-ink hover:bg-primary-hover',
@@ -19,6 +19,9 @@ const variants: Record<Variant, string> = {
 const sizes: Record<Size, string> = {
   sm: 'h-[30px] px-3.5 text-[12px]',
   md: 'h-[34px] px-4 text-[12.5px]',
+  // Réservé à l'action unique d'une page — l'appel à candidature d'une offre
+  // publique, par exemple. Dans l'application, `md` reste la taille de travail.
+  lg: 'h-[42px] px-6 text-[14px]',
 };
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

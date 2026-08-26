@@ -5,11 +5,13 @@
     "badge",
     "calendar_month",
     "check",
+    "check_circle",
     "chevron_left",
     "chevron_right",
     "close",
     "content_copy",
     "dashboard",
+    "description",
     "edit",
     "error",
     "event",
@@ -24,11 +26,13 @@
     "logout",
     "notifications",
     "person_add",
+    "place",
     "print",
     "rule",
     "schedule",
-    "settings"
+    "settings",
+    "upload_file"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 31924
+  "bytes": 34800
 }
