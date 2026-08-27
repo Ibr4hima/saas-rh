@@ -15,25 +15,67 @@ import type {
   ListAbsenceRequestsQuery,
   SessionUser,
   SetBalanceInput,
+  UpdateAbsenceTypeInput,
+  UpdateHolidayInput,
 } from '@teranga/contracts';
-import { MAX_JUSTIFICATIF_BYTES } from '@teranga/contracts';
+import {
+  MAX_JUSTIFICATIF_BYTES,
+  SENEGAL_FIXED_HOLIDAYS,
+  type AbsenceFrequency,
+} from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayDedupeKey } from '../notifications/notifications.service';
 import { countWorkdays } from './workdays';
 
-const DEFAULT_TYPES: Array<
-  Omit<CreateAbsenceTypeInput, 'deductsBalance' | 'requiresDocument'> & {
-    deductsBalance: boolean;
-    requiresDocument: boolean;
-  }
-> = [
-  { name: 'Congé annuel', deductsBalance: true, defaultAnnualDays: 30, requiresDocument: false },
-  { name: 'Maladie', deductsBalance: false, defaultAnnualDays: null, requiresDocument: true },
-  { name: 'Maternité', deductsBalance: false, defaultAnnualDays: null, requiresDocument: true },
-  { name: 'Sans solde', deductsBalance: false, defaultAnnualDays: null, requiresDocument: false },
-  { name: 'Mission', deductsBalance: false, defaultAnnualDays: null, requiresDocument: true },
+type DefaultType = {
+  name: string;
+  deductsBalance: boolean;
+  allowanceDays: number | null;
+  frequency: AbsenceFrequency;
+  requiresDocument: boolean;
+};
+
+// La maternité s'ouvre à la naissance : ses jours ne se rechargent ni au mois
+// ni au 1er janvier. Le nombre reste à la RH — il dépend de la convention, et
+// en inventer un ici le graverait dans chaque tenant.
+const DEFAULT_TYPES: DefaultType[] = [
+  {
+    name: 'Congé annuel',
+    deductsBalance: true,
+    allowanceDays: 30,
+    frequency: 'annual',
+    requiresDocument: false,
+  },
+  {
+    name: 'Maladie',
+    deductsBalance: false,
+    allowanceDays: null,
+    frequency: 'none',
+    requiresDocument: true,
+  },
+  {
+    name: 'Maternité',
+    deductsBalance: false,
+    allowanceDays: null,
+    frequency: 'none',
+    requiresDocument: true,
+  },
+  {
+    name: 'Sans solde',
+    deductsBalance: false,
+    allowanceDays: null,
+    frequency: 'none',
+    requiresDocument: false,
+  },
+  {
+    name: 'Mission',
+    deductsBalance: false,
+    allowanceDays: null,
+    frequency: 'none',
+    requiresDocument: true,
+  },
 ];
 
 const DEFAULT_CHAIN = ['hr'];
@@ -52,6 +94,20 @@ function num(v: string | number | null | undefined): number {
   return v == null ? 0 : Number(v);
 }
 
+/**
+ * Le droit à porter d'office sur un solde d'année. Seul un quota annuel s'y
+ * verse : « 3 par mois » ne fait pas 3 sur l'année, et les jours de maternité
+ * ne s'ouvrent pas au 1er janvier.
+ */
+function droitAnnuel(type: {
+  allowanceDays: string | number | null;
+  frequency: string;
+}): number | null {
+  return type.frequency === 'annual' && type.allowanceDays != null
+    ? Number(type.allowanceDays)
+    : null;
+}
+
 @Injectable()
 export class AbsencesService {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
@@ -68,7 +124,8 @@ export class AbsencesService {
             tenantId: user.tenantId,
             name: d.name,
             deductsBalance: d.deductsBalance,
-            defaultAnnualDays: d.defaultAnnualDays?.toString() ?? null,
+            allowanceDays: d.allowanceDays?.toString() ?? null,
+            frequency: d.frequency,
             requiresDocument: d.requiresDocument,
           });
         }
@@ -87,7 +144,8 @@ export class AbsencesService {
           tenantId: user.tenantId,
           name: input.name,
           deductsBalance: input.deductsBalance,
-          defaultAnnualDays: input.defaultAnnualDays?.toString() ?? null,
+          allowanceDays: input.allowanceDays?.toString() ?? null,
+          frequency: input.frequency,
           requiresDocument: input.requiresDocument,
         }),
       );
@@ -100,12 +158,99 @@ export class AbsencesService {
     return { id };
   }
 
+  async updateType(user: SessionUser, id: string, input: UpdateAbsenceTypeInput): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const [row] = await tx
+        .select({ id: t.absenceTypes.id })
+        .from(t.absenceTypes)
+        .where(and(eq(t.absenceTypes.id, id), isNull(t.absenceTypes.deletedAt)))
+        .limit(1);
+      if (!row) problem(404, 'absence.type_not_found', 'Type d’absence introuvable');
+      try {
+        await tx
+          .update(t.absenceTypes)
+          .set({
+            name: input.name,
+            deductsBalance: input.deductsBalance,
+            allowanceDays: input.allowanceDays?.toString() ?? null,
+            frequency: input.frequency,
+            requiresDocument: input.requiresDocument,
+          })
+          .where(eq(t.absenceTypes.id, id));
+      } catch (err) {
+        if (pgCode(err) === '23505') {
+          problem(409, 'absence.type_exists', 'Un type d’absence porte déjà ce nom');
+        }
+        throw err;
+      }
+    });
+  }
+
+  /**
+   * Retrait d'un type. La ligne reste en base : les demandes déjà déposées la
+   * désignent, et une absence de 2024 doit garder son intitulé. Elle disparaît
+   * simplement des listes et des formulaires.
+   */
+  async deleteType(user: SessionUser, id: string): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const [row] = await tx
+        .select({ name: t.absenceTypes.name })
+        .from(t.absenceTypes)
+        .where(and(eq(t.absenceTypes.id, id), isNull(t.absenceTypes.deletedAt)))
+        .limit(1);
+      if (!row) problem(404, 'absence.type_not_found', 'Type d’absence introuvable');
+
+      // Une demande en cours de visa ne doit pas voir son motif s'évanouir
+      // sous elle : on la laisse aboutir avant de retirer le type.
+      const [pending] = await tx
+        .select({ n: sql<string>`count(*)` })
+        .from(t.absenceRequests)
+        .where(
+          and(eq(t.absenceRequests.absenceTypeId, id), eq(t.absenceRequests.status, 'pending')),
+        );
+      if (Number(pending?.n ?? 0) > 0) {
+        problem(
+          409,
+          'absence.type_in_use',
+          'Ce type porte des demandes en attente',
+          `« ${row.name} » ne peut pas être retiré tant que ${pending?.n} demande(s) attendent un visa. Traitez-les d’abord.`,
+        );
+      }
+
+      // Le dernier type ne se retire pas : la liste vide déclenche le
+      // réamorçage des types par défaut, et les cinq reviendraient d'un coup.
+      const [restants] = await tx
+        .select({ n: sql<string>`count(*)` })
+        .from(t.absenceTypes)
+        .where(isNull(t.absenceTypes.deletedAt));
+      if (Number(restants?.n ?? 0) <= 1) {
+        problem(
+          409,
+          'absence.type_last',
+          'Il faut au moins un type d’absence',
+          'Créez-en un autre avant de retirer celui-ci.',
+        );
+      }
+
+      await tx
+        .update(t.absenceTypes)
+        .set({ deletedAt: new Date() })
+        .where(eq(t.absenceTypes.id, id));
+    });
+  }
+
   // ---------- Jours fériés ----------
 
   async listHolidays(user: SessionUser, year?: number): Promise<Holiday[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
+      if (year && MANAGE_ROLES.has(user.role)) await this.semerFeriesFixes(tx, user, year);
       const rows = await tx
-        .select({ id: t.holidays.id, day: t.holidays.day, label: t.holidays.label })
+        .select({
+          id: t.holidays.id,
+          day: t.holidays.day,
+          label: t.holidays.label,
+          fixed: t.holidays.fixedDate,
+        })
         .from(t.holidays)
         .where(year ? sql`extract(year from ${t.holidays.day}) = ${year}` : undefined)
         .orderBy(asc(t.holidays.day));
@@ -117,6 +262,9 @@ export class AbsencesService {
     const id = uuidv7();
     try {
       await this.db.withTenant(ctxOf(user), (tx) =>
+        // Un férié saisi à la main est mobile par nature : les six dates
+        // civiles sont déjà posées, et rien d'autre ne revient au même jour
+        // chaque année.
         tx
           .insert(t.holidays)
           .values({ id, tenantId: user.tenantId, day: input.day, label: input.label }),
@@ -130,22 +278,93 @@ export class AbsencesService {
     return { id };
   }
 
+  async updateHoliday(user: SessionUser, id: string, input: UpdateHolidayInput): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const row = await this.chargerFerie(tx, id, 'modifié');
+      try {
+        await tx
+          .update(t.holidays)
+          .set({ day: input.day, label: input.label })
+          .where(eq(t.holidays.id, id));
+      } catch (err) {
+        if (pgCode(err) === '23505') {
+          problem(409, 'absence.holiday_exists', 'Un jour férié existe déjà à cette date');
+        }
+        throw err;
+      }
+      // Le rappel parti pour l'ancienne date annonce désormais un jour ouvré.
+      if (row.day !== input.day) await this.oublierRappel(tx, row.day);
+    });
+  }
+
   async deleteHoliday(user: SessionUser, id: string): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
-      const [row] = await tx
-        .select({ day: t.holidays.day })
-        .from(t.holidays)
-        .where(eq(t.holidays.id, id))
-        .limit(1);
+      const row = await this.chargerFerie(tx, id, 'supprimé');
       await tx.delete(t.holidays).where(eq(t.holidays.id, id));
-      if (!row) return;
       // Le rappel déjà parti affirmerait qu'un jour ouvré est chômé : on le
       // retire de toutes les boîtes. Les fêtes mobiles se recalent souvent
       // pendant la fenêtre J−2, quand la notification vient d'être envoyée.
-      await tx
-        .delete(t.notifications)
-        .where(eq(t.notifications.dedupeKey, holidayDedupeKey(row.day)));
+      await this.oublierRappel(tx, row.day);
     });
+  }
+
+  /** Le férié demandé, à condition qu'il ne soit pas une date civile. */
+  private async chargerFerie(
+    tx: Tx,
+    id: string,
+    geste: 'modifié' | 'supprimé',
+  ): Promise<{ day: string; label: string }> {
+    const [row] = await tx
+      .select({ day: t.holidays.day, label: t.holidays.label, fixed: t.holidays.fixedDate })
+      .from(t.holidays)
+      .where(eq(t.holidays.id, id))
+      .limit(1);
+    if (!row) problem(404, 'absence.holiday_not_found', 'Jour férié introuvable');
+    if (row.fixed) {
+      problem(
+        409,
+        'absence.holiday_fixed',
+        'Ce jour férié est à date fixe',
+        `« ${row.label} » tombe à la même date chaque année : il ne peut pas être ${geste}.`,
+      );
+    }
+    return { day: row.day, label: row.label };
+  }
+
+  private async oublierRappel(tx: Tx, day: string): Promise<void> {
+    await tx.delete(t.notifications).where(eq(t.notifications.dedupeKey, holidayDedupeKey(day)));
+  }
+
+  /**
+   * Les six dates civiles existent, qu'on les ait saisies ou non. On les pose
+   * sur chaque année consultée plutôt que d'attendre un geste : oublier de
+   * cocher le 1er mai transformerait un jour chômé en jour travaillé dans tous
+   * les décomptes.
+   */
+  private async semerFeriesFixes(tx: Tx, user: SessionUser, year: number): Promise<void> {
+    const [row] = await tx
+      .select({ n: sql<string>`count(*)` })
+      .from(t.holidays)
+      .where(
+        and(sql`extract(year from ${t.holidays.day}) = ${year}`, eq(t.holidays.fixedDate, true)),
+      );
+    if (Number(row?.n ?? 0) >= SENEGAL_FIXED_HOLIDAYS.length) return;
+
+    for (const def of SENEGAL_FIXED_HOLIDAYS) {
+      const day = `${year}-${String(def.month).padStart(2, '0')}-${String(def.day).padStart(2, '0')}`;
+      await tx
+        .insert(t.holidays)
+        .values({
+          id: uuidv7(),
+          tenantId: user.tenantId,
+          day,
+          label: def.label,
+          fixedDate: true,
+        })
+        // Une fête mobile a pu être datée là avant que la date civile n'y soit
+        // posée : on ne l'écrase pas.
+        .onConflictDoNothing();
+    }
   }
 
   // ---------- Circuit d'approbation ----------
@@ -207,7 +426,7 @@ export class AbsencesService {
         const pending = num(
           sums.find((s) => s.absenceTypeId === type.id && s.status === 'pending')?.days,
         );
-        const entitled = num(balance?.entitledDays ?? type.defaultAnnualDays ?? 0);
+        const entitled = num(balance?.entitledDays ?? droitAnnuel(type) ?? 0);
         return {
           absenceTypeId: type.id,
           absenceTypeName: type.name,
@@ -628,15 +847,27 @@ export class AbsencesService {
         id: t.absenceTypes.id,
         name: t.absenceTypes.name,
         deductsBalance: t.absenceTypes.deductsBalance,
-        defaultAnnualDays: t.absenceTypes.defaultAnnualDays,
+        allowanceDays: t.absenceTypes.allowanceDays,
+        frequency: t.absenceTypes.frequency,
         requiresDocument: t.absenceTypes.requiresDocument,
       })
       .from(t.absenceTypes)
       .where(isNull(t.absenceTypes.deletedAt))
       .orderBy(asc(t.absenceTypes.name));
+    // Ce que le type a déjà servi : l'écran s'en sert pour dire ce qu'un
+    // retrait emporte.
+    const usages = await tx
+      .select({
+        typeId: t.absenceRequests.absenceTypeId,
+        n: sql<string>`count(*)`,
+      })
+      .from(t.absenceRequests)
+      .groupBy(t.absenceRequests.absenceTypeId);
     return rows.map((r) => ({
       ...r,
-      defaultAnnualDays: r.defaultAnnualDays ? Number(r.defaultAnnualDays) : null,
+      allowanceDays: r.allowanceDays == null ? null : Number(r.allowanceDays),
+      frequency: r.frequency as AbsenceType['frequency'],
+      usageCount: Number(usages.find((u) => u.typeId === r.id)?.n ?? 0),
     }));
   }
 
@@ -676,7 +907,7 @@ export class AbsencesService {
       const pending = num(
         sums.find((s) => s.absenceTypeId === type.id && s.status === 'pending')?.days,
       );
-      const entitled = num(balance?.entitledDays ?? type.defaultAnnualDays ?? 0);
+      const entitled = num(balance?.entitledDays ?? droitAnnuel(type) ?? 0);
       return {
         absenceTypeId: type.id,
         absenceTypeName: type.name,

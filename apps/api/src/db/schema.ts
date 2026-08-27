@@ -171,7 +171,9 @@ export const absenceTypes = pgTable('absence_types', {
   tenantId: uuid('tenant_id').notNull(),
   name: text('name').notNull(),
   deductsBalance: boolean('deducts_balance').notNull().default(true),
-  defaultAnnualDays: numeric('default_annual_days', { precision: 5, scale: 2 }),
+  allowanceDays: numeric('allowance_days', { precision: 5, scale: 2 }),
+  /** 'annual' | 'monthly' | 'none' — la période sur laquelle le quota se rouvre. */
+  frequency: text('frequency').notNull().default('none'),
   requiresDocument: boolean('requires_document').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -183,6 +185,8 @@ export const holidays = pgTable('holidays', {
   tenantId: uuid('tenant_id').notNull(),
   day: date('day').notNull(),
   label: text('label').notNull(),
+  /** Férié à date civile (Nouvel an, Noël…) : ni modifiable, ni supprimable. */
+  fixedDate: boolean('fixed_date').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

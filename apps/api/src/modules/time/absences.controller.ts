@@ -7,6 +7,7 @@ import {
   Inject,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -23,14 +24,18 @@ import {
   listAbsenceRequestsQuerySchema,
   previewAbsenceSchema,
   setBalanceSchema,
+  updateAbsenceTypeSchema,
   updateApprovalChainSchema,
+  updateHolidaySchema,
   type CreateAbsenceRequestInput,
   type CreateAbsenceTypeInput,
   type CreateHolidayInput,
   type DecideAbsenceRequestInput,
   type ListAbsenceRequestsQuery,
   type SetBalanceInput,
+  type UpdateAbsenceTypeInput,
   type UpdateApprovalChainInput,
+  type UpdateHolidayInput,
 } from '@teranga/contracts';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../../common/zod.pipe';
@@ -63,6 +68,24 @@ export class AbsencesController {
     return this.absences.createType(req.sessionUser, body);
   }
 
+  @Patch('absence-types/:id')
+  @Roles('admin', 'hr')
+  @HttpCode(204)
+  async updateType(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateAbsenceTypeSchema)) body: UpdateAbsenceTypeInput,
+  ) {
+    await this.absences.updateType(req.sessionUser, id, body);
+  }
+
+  @Delete('absence-types/:id')
+  @Roles('admin', 'hr')
+  @HttpCode(204)
+  async deleteType(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    await this.absences.deleteType(req.sessionUser, id);
+  }
+
   // ---------- Jours fériés ----------
 
   @Get('holidays')
@@ -80,6 +103,17 @@ export class AbsencesController {
     @Body(new ZodValidationPipe(createHolidaySchema)) body: CreateHolidayInput,
   ) {
     return this.absences.createHoliday(req.sessionUser, body);
+  }
+
+  @Patch('holidays/:id')
+  @Roles('admin', 'hr')
+  @HttpCode(204)
+  async updateHoliday(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateHolidaySchema)) body: UpdateHolidayInput,
+  ) {
+    await this.absences.updateHoliday(req.sessionUser, id, body);
   }
 
   @Delete('holidays/:id')

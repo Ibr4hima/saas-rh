@@ -11,6 +11,7 @@
     "close",
     "content_copy",
     "dashboard",
+    "delete",
     "description",
     "edit",
     "error",
@@ -23,6 +24,7 @@
     "gavel",
     "group",
     "how_to_reg",
+    "lock",
     "logout",
     "notifications",
     "person_add",
@@ -35,5 +37,5 @@
     "upload_file"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 35416
+  "bytes": 37380
 }

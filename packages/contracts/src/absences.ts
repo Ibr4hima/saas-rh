@@ -7,20 +7,59 @@ const isoDate = z.iso.date();
 
 // ---------- Types d'absences ----------
 
-export const createAbsenceTypeSchema = z.object({
+/**
+ * La période sur laquelle le quota se rouvre. « none » n'est pas un trou : la
+ * maternité ouvre ses jours à la naissance, pas au 1er janvier.
+ */
+export const absenceFrequencySchema = z.enum(['annual', 'monthly', 'none']);
+export type AbsenceFrequency = z.infer<typeof absenceFrequencySchema>;
+
+export const ABSENCE_FREQUENCY_LABELS: Record<AbsenceFrequency, string> = {
+  annual: 'Par an',
+  monthly: 'Par mois',
+  none: 'Par événement',
+};
+
+const absenceTypeFields = z.object({
   name: z.string().trim().min(2).max(80),
   deductsBalance: z.boolean().default(true),
-  defaultAnnualDays: z.number().min(0).max(365).nullish(),
+  allowanceDays: z.number().min(0).max(365).nullish(),
+  frequency: absenceFrequencySchema.default('none'),
   requiresDocument: z.boolean().default(false),
 });
+
+/** « 30 par an » se comprend ; « par an » tout court ne veut rien dire. */
+const allowanceMatchesFrequency = (v: {
+  frequency: AbsenceFrequency;
+  allowanceDays?: number | null;
+}) => v.frequency === 'none' || v.allowanceDays != null;
+const allowanceMessage = {
+  message: 'Indiquez un nombre de jours, ou choisissez « Par événement »',
+  path: ['allowanceDays'] as PropertyKey[],
+};
+
+export const createAbsenceTypeSchema = absenceTypeFields.refine(
+  allowanceMatchesFrequency,
+  allowanceMessage,
+);
 export type CreateAbsenceTypeInput = z.infer<typeof createAbsenceTypeSchema>;
+
+/** La fenêtre de modification renvoie le type entier : même forme qu'à la création. */
+export const updateAbsenceTypeSchema = absenceTypeFields.refine(
+  allowanceMatchesFrequency,
+  allowanceMessage,
+);
+export type UpdateAbsenceTypeInput = z.infer<typeof updateAbsenceTypeSchema>;
 
 export interface AbsenceType {
   id: string;
   name: string;
   deductsBalance: boolean;
-  defaultAnnualDays: number | null;
+  allowanceDays: number | null;
+  frequency: AbsenceFrequency;
   requiresDocument: boolean;
+  /** Nombre de demandes déjà déposées sur ce type : il ne se supprime pas à la légère. */
+  usageCount: number;
 }
 
 // ---------- Jours fériés ----------
@@ -31,10 +70,16 @@ export const createHolidaySchema = z.object({
 });
 export type CreateHolidayInput = z.infer<typeof createHolidaySchema>;
 
+/** Corriger une fête mobile, c'est en changer la date, l'intitulé, ou les deux. */
+export const updateHolidaySchema = createHolidaySchema;
+export type UpdateHolidayInput = z.infer<typeof updateHolidaySchema>;
+
 export interface Holiday {
   id: string;
   day: string;
   label: string;
+  /** Férié à date civile : le produit refuse de le déplacer ou de le retirer. */
+  fixed: boolean;
 }
 
 // ---------- Circuit d'approbation ----------
@@ -146,24 +191,32 @@ export interface AbsenceRequestView {
 // ---------- Jours fériés du Sénégal ----------
 
 /**
- * Les 14 jours fériés sénégalais. Ceux à date fixe portent month/day et sont
- * préremplis chaque année ; les fêtes mobiles (religieuses) se datent à la main.
+ * Les six fériés sénégalais à date civile. Ils sont posés d'office sur chaque
+ * année consultée : ils tomberont là, quoi qu'il arrive.
  */
-export const SENEGAL_HOLIDAYS: Array<{ label: string; month?: number; day?: number }> = [
+export const SENEGAL_FIXED_HOLIDAYS: Array<{ label: string; month: number; day: number }> = [
   { label: 'Nouvel an', month: 1, day: 1 },
   { label: "Fête de l'indépendance", month: 4, day: 4 },
   { label: 'Fête du travail', month: 5, day: 1 },
   { label: 'Assomption', month: 8, day: 15 },
   { label: 'Toussaint', month: 11, day: 1 },
   { label: 'Noël', month: 12, day: 25 },
-  { label: 'Korité' },
-  { label: 'Tabaski' },
-  { label: 'Tamkharit' },
-  { label: 'Maouloud' },
-  { label: 'Magal de Touba' },
-  { label: 'Lundi de Pâques' },
-  { label: 'Ascension' },
-  { label: 'Lundi de Pentecôte' },
+];
+
+/**
+ * Les huit fêtes mobiles : elles se datent à la main, à l'annonce — le
+ * croissant pour les unes, le calendrier pascal pour les autres. Simple liste
+ * de suggestions à la saisie, rien n'oblige à s'y tenir.
+ */
+export const SENEGAL_MOBILE_HOLIDAYS: string[] = [
+  'Korité',
+  'Tabaski',
+  'Tamkharit',
+  'Maouloud',
+  'Magal de Touba',
+  'Lundi de Pâques',
+  'Ascension',
+  'Lundi de Pentecôte',
 ];
 
 /** Aperçu du décompte avant soumission. */
