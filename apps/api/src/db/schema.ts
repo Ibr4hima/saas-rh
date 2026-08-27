@@ -132,6 +132,8 @@ export const employees = pgTable('employees', {
   employeeNumber: text('employee_number').notNull(),
   hiredOn: date('hired_on').notNull(),
   status: text('status').notNull().default('active'),
+  /** Quand le dossier a été archivé — le délai de conservation part de là. */
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
   workEmail: text('work_email'),
   workPhone: text('work_phone'),
   customFields: jsonb('custom_fields').notNull().default({}),

@@ -394,13 +394,6 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
           <Field label="Téléphone professionnel" htmlFor="workPhone">
             <Input id="workPhone" {...form.register('workPhone')} />
           </Field>
-          <Field label="Statut" htmlFor="status" required>
-            <Select id="status" {...form.register('status')}>
-              <option value="active">Actif</option>
-              <option value="suspended">Suspendu</option>
-              <option value="terminated">Sorti</option>
-            </Select>
-          </Field>
         </ModalGrid>
       </ModalSection>
     </Modal>

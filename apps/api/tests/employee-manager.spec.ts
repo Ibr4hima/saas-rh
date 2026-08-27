@@ -112,8 +112,8 @@ describe('désignation', () => {
     expect((await people.detail(user, bruno)).managerId).toBeNull();
   });
 
-  it('refuse un employé au dossier clos', async () => {
-    await raw(`UPDATE employees SET status = 'terminated' WHERE id = $1`, [alice]);
+  it('refuse un employé au dossier archivé', async () => {
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [alice]);
     expect(await codeOf(() => setManager(bruno, alice))).toBe('people.manager_not_active');
   });
 

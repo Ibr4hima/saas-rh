@@ -5,7 +5,16 @@ import { cursorPageQuerySchema } from './core';
 
 export const maritalStatusSchema = z.enum(['single', 'married', 'divorced', 'widowed']);
 export const genderSchema = z.enum(['female', 'male']);
-export const employeeStatusSchema = z.enum(['active', 'suspended', 'terminated']);
+/**
+ * Deux états, et deux seulement.
+ *
+ * `active` : l'agent est dans l'organisation. `archived` : il n'y est plus,
+ * mais on a encore le droit de conserver son dossier — le portail se ferme,
+ * le dossier reste, et le rendre actif rouvre l'accès tel quel. Au-delà du
+ * délai de conservation, le dossier ne s'archive plus : il s'efface.
+ */
+export const employeeStatusSchema = z.enum(['active', 'archived']);
+export type EmployeeStatus = z.infer<typeof employeeStatusSchema>;
 export const contractTypeSchema = z.enum(['cdi', 'cdd', 'stage', 'consultant', 'detachement']);
 export const orgUnitTypeSchema = z.enum(['direction', 'department', 'service']);
 export type OrgUnitType = z.infer<typeof orgUnitTypeSchema>;
@@ -312,7 +321,13 @@ export const updateEmployeeFieldsSchema = z
     hiredOn: isoDate,
     workEmail: z.email().nullable(),
     workPhone: clearableString(30),
-    status: employeeStatusSchema,
+    /**
+     * Le statut n'est PAS ici : fermer un dossier révoque des sessions et se
+     * refuse dans des cas précis (soi-même, dernier administrateur, chef
+     * d'unité). Le laisser passer par la modification générique aurait posé le
+     * statut sans rien de tout cela — un dossier archivé dont le portail reste
+     * ouvert. Il a sa route : POST employees/archive.
+     */
     /** null = plus de manager ; absent = inchangé. */
     managerEmployeeId: z.uuid().nullable(),
   })
@@ -339,6 +354,35 @@ export const listEmployeesQuerySchema = cursorPageQuerySchema.extend({
   status: employeeStatusSchema.optional(),
 });
 export type ListEmployeesQuery = z.infer<typeof listEmployeesQuerySchema>;
+
+/**
+ * Archiver ou réactiver, par lot — le même geste dans les deux sens.
+ *
+ * Rien n'est touché au compte : mot de passe, identifiant et rôle restent en
+ * place. C'est ce qui permet de rouvrir l'accès sans rien redemander à
+ * l'agent, six mois plus tard, avec les identifiants qu'il connaît déjà.
+ */
+export const archiveEmployeesSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(100),
+  archived: z.boolean(),
+});
+export type ArchiveEmployeesInput = z.infer<typeof archiveEmployeesSchema>;
+
+/**
+ * Suppression définitive. Sans retour, et sans reste : le dossier, le portail,
+ * les congés, les documents, les demandes — et jusqu'au contenu que le journal
+ * d'audit avait recopié au passage.
+ */
+export const deleteEmployeesSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(50),
+});
+export type DeleteEmployeesInput = z.infer<typeof deleteEmployeesSchema>;
+
+/** Ce qu'un lot a réellement fait, et ce qu'il a laissé de côté, avec le motif. */
+export interface EmployeeBatchResult {
+  done: number;
+  skipped: { id: string; name: string; reason: string }[];
+}
 
 export interface EmployeeListItem {
   id: string;
@@ -388,6 +432,8 @@ export interface EmployeeDetail {
   id: string;
   employeeNumber: string;
   status: string;
+  /** Date d'archivage — c'est elle qui fait courir le délai de conservation. */
+  archivedAt: string | null;
   hiredOn: string;
   workEmail: string | null;
   workPhone: string | null;

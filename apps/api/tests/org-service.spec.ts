@@ -191,8 +191,8 @@ describe('responsable', () => {
     expect(units.find((u) => u.id === direction)!.managerEmployeeId).toBe(chefId);
   });
 
-  it('refuse un employé au dossier clos', async () => {
-    await raw(`UPDATE employees SET status = 'terminated' WHERE id = $1`, [chefId]);
+  it('refuse un employé au dossier archivé', async () => {
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [chefId]);
     expect(await codeOf(() => service.update(user, direction, { managerEmployeeId: chefId }))).toBe(
       'org.manager_not_active',
     );
@@ -214,10 +214,10 @@ describe('dissolution', () => {
     expect(await codeOf(() => service.remove(user, serviceUnit, {}))).toBe('org.reassign_required');
   });
 
-  it('compte AUSSI les employés non actifs et les affectations à venir', async () => {
-    // Un suspendu est invisible à l'écran mais reste rattaché : le compter est
+  it('compte AUSSI les dossiers archivés et les affectations à venir', async () => {
+    // Un dossier archivé sort des écrans mais reste rattaché : le compter est
     // la seule façon de ne pas l'abandonner sur une unité fantôme.
-    await raw(`UPDATE employees SET status = 'suspended' WHERE id = $1`, [chefId]);
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [chefId]);
     expect(await codeOf(() => service.remove(user, serviceUnit, {}))).toBe('org.reassign_required');
   });
 

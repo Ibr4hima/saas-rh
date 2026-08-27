@@ -117,7 +117,38 @@ export class AuthService {
       );
     }
 
+    if (await this.dossierArchive(user.id, selected.tenantId)) {
+      problem(
+        403,
+        'auth.employee_archived',
+        'Votre accès a été désactivé',
+        // Le client affiche le DÉTAIL quand il existe : il doit donc se lire
+        // seul, sans le titre au-dessus.
+        'Votre accès a été désactivé. Le service des ressources humaines peut le rouvrir.',
+      );
+    }
+
     return this.issueSession(user.id, selected.tenantId, meta);
+  }
+
+  /**
+   * Le dossier de cet agent est-il archivé DANS CETTE organisation ?
+   *
+   * La question se pose par tenant, pas globalement : le compte peut être
+   * employé ailleurs, et la fin d'un contrat ici ne referme pas cette
+   * porte-là. C'est aussi pourquoi on ne touche pas à `users.status`, qui,
+   * lui, vaut pour toutes les organisations à la fois.
+   */
+  private async dossierArchive(userId: string, tenantId: string): Promise<boolean> {
+    return this.db.withTenant({ tenantId, userId }, async (tx) => {
+      const [row] = await tx
+        .select({ status: t.employees.status })
+        .from(t.employees)
+        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+        .where(eq(t.persons.userId, userId))
+        .limit(1);
+      return row?.status === 'archived';
+    });
   }
 
   async logout(token: string): Promise<void> {
@@ -165,6 +196,17 @@ export class AuthService {
           )
           .limit(1);
         if (!row) return null;
+        // Un dossier archivé pendant que la session courait : le cookie est
+        // encore valide, l'accès ne l'est plus. La révocation posée à
+        // l'archivage suffirait, mais elle ne couvre pas les sessions ouvertes
+        // ailleurs entre-temps ; c'est ici que la porte se referme vraiment.
+        const [dossier] = await tx
+          .select({ status: t.employees.status })
+          .from(t.employees)
+          .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+          .where(eq(t.persons.userId, session.userId))
+          .limit(1);
+        if (dossier?.status === 'archived') return null;
         return {
           userId: session.userId,
           tenantId: session.tenantId,

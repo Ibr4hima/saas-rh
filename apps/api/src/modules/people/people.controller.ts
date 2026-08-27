@@ -14,14 +14,18 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  archiveEmployeesSchema,
   createEmployeeSchema,
   createOrgUnitSchema,
+  deleteEmployeesSchema,
   deleteOrgUnitSchema,
   listEmployeesQuerySchema,
   newAssignmentSchema,
   updateEmployeeSchema,
   updateOrgUnitSchema,
+  type ArchiveEmployeesInput,
   type CreateEmployeeInput,
+  type DeleteEmployeesInput,
   type ListEmployeesQuery,
   type CreateOrgUnitInput,
   type DeleteOrgUnitInput,
@@ -61,6 +65,32 @@ export class PeopleController {
     @Body(new ZodValidationPipe(createEmployeeSchema)) body: CreateEmployeeInput,
   ) {
     return this.people.create(req.sessionUser, body);
+  }
+
+  /**
+   * Archiver ou réactiver, toujours par lot — même pour un seul dossier. Deux
+   * chemins pour un même geste finiraient par diverger.
+   *
+   * Déclarées AVANT « employees/:id » : Nest apparie dans l'ordre, et une route
+   * paramétrée placée plus haut capterait « archive » comme un identifiant.
+   */
+  @Post('employees/archive')
+  @Roles('admin', 'hr')
+  archiveEmployees(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(archiveEmployeesSchema)) body: ArchiveEmployeesInput,
+  ) {
+    return this.people.archive(req.sessionUser, body);
+  }
+
+  /** Suppression définitive — réservée à l'administrateur. */
+  @Post('employees/delete')
+  @Roles('admin')
+  deleteEmployees(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(deleteEmployeesSchema)) body: DeleteEmployeesInput,
+  ) {
+    return this.people.remove(req.sessionUser, body);
   }
 
   @Get('employees/:id')

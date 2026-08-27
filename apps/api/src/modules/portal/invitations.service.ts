@@ -49,6 +49,7 @@ export class InvitationsService {
         .select({
           personId: t.employees.personId,
           personUserId: t.persons.userId,
+          status: t.employees.status,
           workEmail: t.employees.workEmail,
           personalEmail: t.persons.personalEmail,
         })
@@ -62,6 +63,18 @@ export class InvitationsService {
       }
       if (row.personUserId) {
         problem(409, 'portal.already_active', 'Cet employé a déjà un accès au portail');
+      }
+      // Ouvrir un portail à un dossier archivé donnerait un accès que la
+      // première requête refuserait : l'invitation partirait pour rien, et
+      // l'agent buterait sur une porte fermée après avoir choisi son mot de
+      // passe.
+      if (row.status !== 'active') {
+        problem(
+          422,
+          'portal.employee_archived',
+          'Ce dossier est archivé',
+          'Ce dossier est archivé : réactivez-le avant d’ouvrir un accès au portail.',
+        );
       }
       email = emailOverride ?? row.workEmail ?? row.personalEmail ?? '';
       if (!email) {

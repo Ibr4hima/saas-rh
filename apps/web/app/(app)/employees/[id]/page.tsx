@@ -45,8 +45,7 @@ import { LoadFailure } from '../../../../components/load-failure';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Actif',
-  suspended: 'Suspendu',
-  terminated: 'Sorti',
+  archived: 'Archivé',
 };
 const CONTRACT_LABELS: Record<string, string> = {
   cdi: 'CDI',
@@ -150,17 +149,16 @@ export default function EmployeePage() {
               <h1 className="text-[20px] leading-tight font-bold tracking-[-0.01em] text-ink-strong">
                 {e.person.givenName} {e.person.familyName}
               </h1>
-              <Badge
-                tone={
-                  e.status === 'active'
-                    ? 'success'
-                    : e.status === 'suspended'
-                      ? 'warning'
-                      : 'neutral'
-                }
-              >
+              <Badge tone={e.status === 'active' ? 'success' : 'neutral'}>
                 {STATUS_LABELS[e.status] ?? e.status}
               </Badge>
+              {/* Un dossier archivé porte sa date : c'est elle qui dit depuis
+                  combien de temps on le conserve, et donc quand l'effacer. */}
+              {e.archivedAt ? (
+                <span className="text-[11.5px] text-ink-muted">
+                  depuis le {formatDate(e.archivedAt)}
+                </span>
+              ) : null}
             </div>
             <p className="mt-0.5 truncate text-[12.5px] text-ink-muted">
               {current?.positionTitle ?? 'Poste à préciser'}
