@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   AbsenceFrequency,
   AbsenceType,
@@ -46,11 +46,17 @@ function aujourdhui(): string {
 
 const JOURS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'] as const;
 
-function jourSemaine(iso: string): { nom: string; weekend: boolean } {
+function jourSemaine(iso: string): string {
   // La chaîne sans fuseau se lit comme une date locale : le jour de la semaine
   // est celui du calendrier, quel que soit le fuseau du poste.
-  const n = new Date(`${iso}T00:00:00`).getDay();
-  return { nom: JOURS[n] ?? '', weekend: n === 0 || n === 6 };
+  return JOURS[new Date(`${iso}T00:00:00`).getDay()] ?? '';
+}
+
+/** Le statut se lit en toutes lettres : trois états, pas trois pastilles. */
+function statutDuJour(jourFerie: string, aujourdhui: string): { texte: string; classe: string } {
+  if (jourFerie === aujourdhui) return { texte: 'En cours', classe: 'font-semibold text-primary' };
+  if (jourFerie < aujourdhui) return { texte: 'Passé', classe: 'text-ink-muted' };
+  return { texte: 'À venir', classe: 'text-ink' };
 }
 
 function messageErreur(err: unknown, defaut: string): string {
@@ -412,10 +418,16 @@ function FenetreType({
 // =============================================================================
 
 /**
- * Les six dates civiles sont posées d'office sur l'année consultée : oublier
- * de saisir le 1er mai transformerait un jour chômé en jour travaillé dans
- * tous les décomptes. Ce sont aussi les seules que le produit refuse de
- * déplacer — les huit fêtes mobiles, elles, se datent à l'annonce.
+ * Les quatorze fériés sénégalais, datés ou pas encore.
+ *
+ * Les six dates civiles se posent d'office sur l'année consultée : oublier de
+ * saisir le 1er mai transformerait un jour chômé en jour travaillé dans tous
+ * les décomptes. Ce sont aussi les seules que le produit refuse de déplacer.
+ *
+ * Les huit fêtes mobiles ne se connaissent qu'à l'annonce — le croissant pour
+ * les unes, le calendrier pascal pour les autres. Elles tiennent quand même
+ * leur ligne, vide, avec un calendrier à ouvrir : un tableau qui ne montre que
+ * les fériés déjà saisis ne dit jamais lesquels manquent.
  */
 function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
   const queryClient = useQueryClient();
@@ -427,34 +439,46 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
   });
   const [edition, setEdition] = useState<Holiday | 'nouveau' | null>(null);
   const [aSupprimer, setASupprimer] = useState<Holiday | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
   const rafraichir = () => void queryClient.invalidateQueries({ queryKey: ['holidays'] });
 
+  /** Datation d'un clic, depuis le calendrier de la ligne. */
+  const dater = useMutation({
+    mutationFn: (input: { day: string; label: string }) =>
+      api('/holidays', { method: 'POST', body: input }),
+    onSuccess: () => {
+      setErreur(null);
+      rafraichir();
+    },
+    onError: (err) => setErreur(messageErreur(err, 'Impossible de poser cette date.')),
+  });
+
   const jour = aujourdhui();
-  const lignes = feries.data ?? [];
-  const aVenir = lignes.filter((h) => h.day >= jour).length;
+  const poses = feries.data ?? [];
+  // Une fête mobile non datée n'existe pas en base. Sa ligne est fabriquée ici,
+  // et ne porte donc ni identifiant, ni gestes de modification.
+  const aDater = feries.data
+    ? SENEGAL_MOBILE_HOLIDAYS.filter((l) => !poses.some((h) => h.label === l))
+    : [];
+  const colonnes = peutGerer ? 5 : 4;
 
   return (
     <Card>
       <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <CardTitle>Jours fériés</CardTitle>
-            <Select
-              aria-label="Année"
-              value={String(annee)}
-              onChange={(e) => setAnnee(Number(e.target.value))}
-              className="h-7 w-24 rounded-full text-[12px]"
-            >
-              {[anneeCourante - 1, anneeCourante, anneeCourante + 1, anneeCourante + 2].map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <p className="text-[12px] text-ink-muted">
-            Chômés : ils ne comptent dans aucune demande. {aVenir} à venir sur {annee}.
-          </p>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <CardTitle>Jours fériés</CardTitle>
+          <Select
+            aria-label="Année"
+            value={String(annee)}
+            onChange={(e) => setAnnee(Number(e.target.value))}
+            className="h-7 w-24 rounded-full text-[12px]"
+          >
+            {[anneeCourante - 1, anneeCourante, anneeCourante + 1, anneeCourante + 2].map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </Select>
         </div>
         {peutGerer ? (
           <Button size="sm" onClick={() => setEdition('nouveau')}>
@@ -465,41 +489,44 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
       </CardHeader>
 
       <CardContent className="px-0 pb-0">
+        {erreur ? (
+          <p className="mx-[18px] mb-3 rounded-[9px] bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
+            {erreur}
+          </p>
+        ) : null}
+
         {feries.isLoading ? (
           <div className="flex flex-col gap-3 p-5">
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
-        ) : lignes.length === 0 ? (
+        ) : !feries.data ? (
           <EmptyState
-            icon={<Icon name="event" size={22} />}
-            title={`Aucun jour férié sur ${annee}`}
-            description="Ajoutez les fêtes mobiles dès leur annonce : Korité, Tabaski, Tamkharit…"
+            icon={<Icon name="error" size={22} />}
+            title="Chargement impossible"
+            description="Les jours fériés n’ont pas pu être chargés. Vérifiez votre connexion, puis réessayez."
             action={
-              peutGerer ? (
-                <Button size="sm" onClick={() => setEdition('nouveau')}>
-                  Ajouter un jour férié
-                </Button>
-              ) : undefined
+              <Button size="sm" variant="secondary" onClick={() => void feries.refetch()}>
+                Réessayer
+              </Button>
             }
           />
         ) : (
           <Table>
             <THead>
               <tr>
-                <Th className="w-40">Date</Th>
+                <Th className="w-44">Date</Th>
                 <Th>Intitulé</Th>
-                <Th className="w-44">Jour de la semaine</Th>
-                <Th className="w-32">Statut</Th>
+                <Th className="w-40">Jour de la semaine</Th>
+                <Th className="w-28">Statut</Th>
                 {peutGerer ? <Th className="w-20 text-right">Actions</Th> : null}
               </tr>
             </THead>
             <TBody>
-              {lignes.map((h) => {
+              {poses.map((h) => {
                 const passe = h.day < jour;
-                const cejour = h.day === jour;
-                const { nom, weekend } = jourSemaine(h.day);
+                const etat = statutDuJour(h.day, jour);
                 return (
                   <Tr key={h.id} className={passe ? 'group bg-line-soft/70' : 'group'}>
                     <Td
@@ -521,21 +548,8 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
                         ) : null}
                       </span>
                     </Td>
-                    <Td className="text-ink-muted">
-                      {nom}
-                      {/* Un férié qui tombe le week-end ne libère personne : le
-                          décompte l'ignorait déjà. */}
-                      {weekend ? <span className="ml-1.5 text-[11px]">· déjà chômé</span> : null}
-                    </Td>
-                    <Td>
-                      {cejour ? (
-                        <Badge tone="success">Aujourd&apos;hui</Badge>
-                      ) : passe ? (
-                        <Badge tone="neutral">Passé</Badge>
-                      ) : (
-                        <Badge tone="primary">À venir</Badge>
-                      )}
-                    </Td>
+                    <Td className="text-ink-muted">{jourSemaine(h.day)}</Td>
+                    <Td className={etat.classe}>{etat.texte}</Td>
                     {peutGerer ? (
                       <Td className="text-right">
                         {h.fixed ? (
@@ -552,6 +566,35 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
                   </Tr>
                 );
               })}
+
+              {aDater.map((label) => (
+                <Tr key={label}>
+                  <Td>
+                    {peutGerer ? (
+                      <BoutonDater
+                        label={label}
+                        annee={annee}
+                        enCours={dater.isPending}
+                        onChoisi={(day) => dater.mutate({ day, label })}
+                      />
+                    ) : (
+                      <span className="text-ink-muted">—</span>
+                    )}
+                  </Td>
+                  <Td className="text-ink">{label}</Td>
+                  <Td className="text-ink-muted">—</Td>
+                  <Td className="text-ink-muted">À dater</Td>
+                  {peutGerer ? <Td /> : null}
+                </Tr>
+              ))}
+
+              {poses.length + aDater.length === 0 ? (
+                <Tr>
+                  <Td colSpan={colonnes} className="py-8 text-center text-ink-muted">
+                    Aucun jour férié sur {annee}.
+                  </Td>
+                </Tr>
+              ) : null}
             </TBody>
           </Table>
         )}
@@ -587,6 +630,62 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
         </FenetreSuppression>
       ) : null}
     </Card>
+  );
+}
+
+/**
+ * Le calendrier d'une fête qui reste à dater.
+ *
+ * `showPicker()` est le seul moyen d'ouvrir l'agenda du navigateur depuis un
+ * bouton : `click()` sur un champ date ne fait que le focaliser. Le champ reste
+ * donc dans le document, réduit à un pixel — masqué par `display:none`, le
+ * navigateur refuserait de lui ouvrir son agenda.
+ */
+function BoutonDater({
+  label,
+  annee,
+  enCours,
+  onChoisi,
+}: {
+  label: string;
+  annee: number;
+  enCours: boolean;
+  onChoisi: (day: string) => void;
+}) {
+  const champ = useRef<HTMLInputElement>(null);
+  return (
+    <span className="relative inline-flex items-center">
+      <input
+        ref={champ}
+        type="date"
+        tabIndex={-1}
+        aria-hidden
+        min={`${annee}-01-01`}
+        max={`${annee}-12-31`}
+        className="absolute bottom-0 left-4 size-px opacity-0"
+        onChange={(e) => {
+          if (e.target.value) onChoisi(e.target.value);
+        }}
+      />
+      <button
+        type="button"
+        disabled={enCours}
+        aria-label={`Dater ${label} sur ${annee}`}
+        className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-line px-2.5 py-1 text-[12px] text-ink-muted transition-colors duration-150 hover:border-primary hover:text-primary disabled:opacity-50"
+        onClick={() => {
+          const el = champ.current;
+          if (!el) return;
+          try {
+            el.showPicker();
+          } catch {
+            el.focus();
+          }
+        }}
+      >
+        <Icon name="calendar_month" size={15} />
+        Définir la date
+      </button>
+    </span>
   );
 }
 
