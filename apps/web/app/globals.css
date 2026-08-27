@@ -202,3 +202,51 @@ body {
 .hero-logo {
   filter: brightness(0) invert(1);
 }
+
+/* ── Fond de la page publique de candidature ──────────────────────────────
+   Repris de l'écran de connexion de la plateforme APIX : un bleu de marque
+   balayé de nappes blanches très diffuses. Ce n'est pas UN dégradé, ce sont
+   quatre couches qui se recouvrent — c'est leur recouvrement, et non l'une
+   d'elles, qui donne au fond sa lumière. La trame fine par-dessus l'empêche
+   de paraître plat sur un grand écran.
+
+   Le fond ne suit pas le thème : le candidat n'a pas de compte, donc pas de
+   préférence enregistrée, et la couleur de l'employeur ne s'inverse pas. */
+.fond-candidature {
+  position: relative;
+  background-color: #0c4b8c;
+  background-image:
+    /* La grande nappe de gauche : c'est elle qui donne au fond son arc clair.
+       Elle porte un palier à mi-course, sans quoi le blanc se dilue en un
+       halo mou au lieu de dessiner un bord. */
+    radial-gradient(
+      62% 58% at 4% 58%,
+      rgb(255 255 255 / 0.98) 0%,
+      rgb(226 240 253 / 0.7) 42%,
+      rgb(226 240 253 / 0) 78%
+    ),
+    /* La remontée du bas, qui éclaire le pied de l'écran. */
+    radial-gradient(
+        78% 46% at 46% 112%,
+        rgb(255 255 255 / 0.92) 0%,
+        rgb(233 244 255 / 0.5) 46%,
+        rgb(233 244 255 / 0) 80%
+      ),
+    /* Un souffle froid en haut à droite, pour que le bleu n'y soit pas mort. */
+    radial-gradient(50% 44% at 96% 26%, rgb(150 205 255 / 0.4) 0%, rgb(150 205 255 / 0) 72%),
+    linear-gradient(168deg, #052a56 0%, #0b4a8c 44%, #2179c2 100%);
+}
+
+.fond-candidature::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.45;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-size: 52px 52px;
+  mask-image: radial-gradient(ellipse at 70% 8%, #000 0%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at 70% 8%, #000 0%, transparent 70%);
+}

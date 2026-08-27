@@ -49,17 +49,27 @@ function isWeekend(iso: string): boolean {
 }
 
 /**
- * Premier jour OUVRÉ à partir de J+2 : son rappel (J−2, reculé au dernier jour
- * ouvré) tombe forcément aujourd'hui ou avant, donc il est dû.
+ * Le prochain férié dont le rappel est DÛ aujourd'hui.
+ *
+ * Le rappel part deux jours avant, reculé au dernier jour ouvré. Prendre le
+ * premier jour ouvré à partir de J+2 ne suffit pas : un jeudi, ce jour-là est
+ * le lundi suivant, dont le rappel tombe le vendredi — demain, donc pas encore
+ * dû. Le test échouait un jour sur sept. On cherche donc explicitement le
+ * premier jour ouvré à venir dont le rappel est déjà passé.
  */
 function prochainFerieDu(): string {
-  let day = shift(2);
-  for (let i = 0; i < 7 && isWeekend(day); i += 1) {
-    const d = new Date(`${day}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() + 1);
-    day = d.toISOString().slice(0, 10);
+  const aujourdhui = shift(0);
+  for (let i = 1; i <= 10; i += 1) {
+    const jour = shift(i);
+    if (isWeekend(jour)) continue;
+    const rappel = new Date(`${jour}T00:00:00Z`);
+    rappel.setUTCDate(rappel.getUTCDate() - 2);
+    while (isWeekend(rappel.toISOString().slice(0, 10))) {
+      rappel.setUTCDate(rappel.getUTCDate() - 1);
+    }
+    if (rappel.toISOString().slice(0, 10) <= aujourdhui) return jour;
   }
-  return day;
+  throw new Error('aucun férié dû dans les dix jours');
 }
 /** Premier samedi à venir, dans la fenêtre de lecture du service. */
 function prochainSamedi(): string {

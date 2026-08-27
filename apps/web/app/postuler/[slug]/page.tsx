@@ -7,8 +7,11 @@ import type { PublicJobInfo } from '@teranga/contracts';
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_BYTES } from '@teranga/contracts';
 import { Button, Card, CardContent, Field, Input, Skeleton, cn } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
+import { BrandMark } from '../../../components/brand-mark';
 import { Icon, type IconName } from '../../../components/icons';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
+import { PhoneInput } from '../../../components/phone-input';
+import { composePhone, DEFAULT_COUNTRY } from '../../../lib/countries';
 import { CONTRACT_LABELS } from '../../../lib/recruitment';
 
 const INVALID_MESSAGES: Record<string, string> = {
@@ -104,19 +107,6 @@ function Description({ texte }: { texte: string }) {
         ),
       )}
     </div>
-  );
-}
-
-/** La marque de l'organisation qui recrute, en pastille. */
-function Logo({ organisation, taille = 56 }: { organisation: string; taille?: number }) {
-  return (
-    <span
-      aria-hidden
-      className="flex shrink-0 items-center justify-center rounded-[18px] bg-primary font-extrabold text-primary-ink"
-      style={{ width: taille, height: taille, fontSize: Math.round(taille * 0.4) }}
-    >
-      {organisation[0]?.toUpperCase()}
-    </span>
   );
 }
 
@@ -242,7 +232,17 @@ function PieceJointe({
  * lui donne sa profondeur.
  */
 function Fond({ children }: { children: React.ReactNode }) {
-  return <main className="hero-bar h-dvh overflow-hidden">{children}</main>;
+  return (
+    // Le voile de la fenêtre est levé : à 45 % d'encre il éteignait le fond,
+    // et même à 14 % il grisait le blanc. Le flou d'arrière-plan suffit à
+    // détacher la fiche, avec son filet et son ombre.
+    <main
+      className="fond-candidature h-dvh overflow-hidden"
+      style={{ ['--tg-overlay' as string]: 'transparent' }}
+    >
+      {children}
+    </main>
+  );
 }
 
 /** Coquille des écrans qui n'ont qu'un message à donner. */
@@ -267,7 +267,7 @@ function Ecran({
         <Card className="w-full max-w-lg">
           <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
             {organisation ? (
-              <Logo organisation={organisation} taille={48} />
+              <BrandMark variant="candidature" repli={organisation[0]?.toUpperCase()} />
             ) : (
               <span className="flex size-12 items-center justify-center rounded-full bg-bg text-ink-muted">
                 <Icon name={icon} size={26} />
@@ -293,7 +293,8 @@ export default function ApplyPage() {
   const [givenName, setGivenName] = useState('');
   const [familyName, setFamilyName] = useState('');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phonePays, setPhonePays] = useState(DEFAULT_COUNTRY);
+  const [phoneLocal, setPhoneLocal] = useState('');
   const [files, setFiles] = useState<Record<string, PickedFile>>({});
   const [fileError, setFileError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -328,7 +329,7 @@ export default function ApplyPage() {
           givenName,
           familyName,
           email,
-          phone: phone || undefined,
+          phone: composePhone(phonePays, phoneLocal),
           documents: Object.entries(files).map(([label, f]) => ({
             label,
             filename: f.filename,
@@ -490,11 +491,8 @@ export default function ApplyPage() {
             qui décident — avant qu'on demande quoi que ce soit au candidat. */}
         <section className="rounded-[14px] border border-line-soft bg-surface px-4 pt-7 pb-[18px] sm:px-[18px]">
           <div className="flex flex-col items-center text-center">
-            <Logo organisation={offre.organizationName} />
-            <p className="mt-3 text-[10.5px] font-extrabold tracking-[0.16em] text-primary uppercase">
-              {offre.organizationName} recrute
-            </p>
-            <h1 className="mt-1.5 text-[22px] leading-tight font-extrabold text-balance text-ink-strong sm:text-[26px]">
+            <BrandMark variant="candidature" repli={offre.organizationName[0]?.toUpperCase()} />
+            <h1 className="mt-4 text-[22px] leading-tight font-extrabold text-balance text-ink-strong sm:text-[26px]">
               {offre.title}
             </h1>
           </div>
@@ -564,14 +562,13 @@ export default function ApplyPage() {
                 onChange={(e) => setEmail(e.target.value)}
               />
             </Field>
-            <Field label="Téléphone" htmlFor="phone">
-              <Input
-                id="phone"
-                type="tel"
-                autoComplete="tel"
-                placeholder="77 000 00 00"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+            <Field label="Téléphone" htmlFor="phoneLocal">
+              <PhoneInput
+                id="phoneLocal"
+                country={phonePays}
+                local={phoneLocal}
+                onCountryChange={setPhonePays}
+                onLocalChange={setPhoneLocal}
               />
             </Field>
           </ModalGrid>
@@ -624,11 +621,6 @@ export default function ApplyPage() {
             {serverError}
           </p>
         ) : null}
-
-        <p className="px-1 pt-1 pb-1 text-center text-[11px] text-ink-muted">
-          Propulsé par Teranga RH — vos données ne sont transmises qu&apos;à{' '}
-          {offre.organizationName}.
-        </p>
       </Modal>
     </Fond>
   );
