@@ -48,6 +48,7 @@ export const ICON_NAMES = [
   'place',
   'print',
   'rule',
+  'search',
   'schedule',
   'settings',
   'upload_file',

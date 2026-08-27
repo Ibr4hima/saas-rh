@@ -10,6 +10,7 @@ import { Icon, type IconName } from '../../components/icons';
 import { PageTitleProvider, usePageTitleOverride } from '../../components/page-title';
 import { NotificationsBell } from '../../components/notifications-bell';
 import { CalendrierModal } from '../../components/calendrier';
+import { ANCRE_ONGLETS } from '../../components/onglets-bandeau';
 import { api } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 
@@ -500,6 +501,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
         <h1 className="relative z-10 min-w-0 truncate text-[18px] leading-tight font-extrabold tracking-[-0.01em] text-hero-ink lg:text-[19px]">
           {title}
         </h1>
+
+        {/* Emplacement laissé aux écrans qui ont des onglets à poser ici. La
+            coquille ne sait pas lesquels : elle réserve la place, la page y
+            écrit par un portail (cf. components/onglets-bandeau.tsx). */}
+        <div id={ANCRE_ONGLETS} className="relative z-10 hidden shrink-0 md:flex" />
 
         <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
           {action ? <HeaderAction action={action} /> : null}

@@ -4,6 +4,7 @@ import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   ArchiveEmployeesInput,
+  EmployeeListPage,
   AssignmentView,
   CreateEmployeeInput,
   CursorPage,
@@ -34,6 +35,27 @@ function pgCode(err: unknown): string | undefined {
   return e?.code ?? e?.cause?.code;
 }
 
+/** Une ligne du SQL de liste, en snake_case comme la base la rend. */
+interface LigneListe extends Record<string, unknown> {
+  id: string;
+  employee_number: string;
+  given_name: string;
+  family_name: string;
+  status: string;
+  hired_on: string;
+  work_email: string | null;
+  created_at: Date;
+  position_title: string | null;
+  org_unit_name: string | null;
+  direction_short_name: string | null;
+  direction_name: string | null;
+  contract_start_date: string | null;
+  contract_end_date: string | null;
+  manager_employee_id: string | null;
+  manager_name: string | null;
+  unite: string | null;
+}
+
 interface Cursor {
   createdAt: string;
   id: string;
@@ -60,113 +82,173 @@ export class PeopleService {
     @Inject(EncryptionService) private readonly crypto: EncryptionService,
   ) {}
 
-  async list(user: SessionUser, query: ListEmployeesQuery): Promise<CursorPage<EmployeeListItem>> {
+  /**
+   * La liste du personnel : recherche, onglet, filtres, tri, page.
+   *
+   * Écrite en SQL plutôt qu'au constructeur de requêtes, pour une raison
+   * précise : trois des colonnes affichées sont calculées — la direction se
+   * trouve en REMONTANT l'arbre des unités, le contrat est le plus récent des
+   * contrats — et l'on doit pouvoir FILTRER et TRIER dessus. En SQL, un alias
+   * ne se réutilise pas dans le WHERE de la même requête ; il faudrait donc
+   * répéter chaque sous-requête à chaque endroit où elle sert. Une CTE la
+   * nomme une fois, et tout le reste — filtres, tri, effectifs, valeurs des
+   * listes déroulantes — s'appuie dessus.
+   */
+  async list(user: SessionUser, query: ListEmployeesQuery): Promise<EmployeeListPage> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      const conditions = [];
-      if (query.status) conditions.push(eq(t.employees.status, query.status));
-      if (query.q) {
-        const like = `%${query.q}%`;
-        conditions.push(
-          sql`(${t.persons.givenName} ILIKE ${like}
-            OR ${t.persons.familyName} ILIKE ${like}
-            OR ${t.employees.employeeNumber} ILIKE ${like})`,
-        );
-      }
-      if (query.cursor) {
-        const c = decodeCursor(query.cursor);
-        conditions.push(
-          sql`(${t.employees.createdAt}, ${t.employees.id}) < (${new Date(c.createdAt)}, ${c.id}::uuid)`,
-        );
-      }
+      const like = query.q ? `%${query.q}%` : null;
 
-      const rows = await tx
-        .select({
-          id: t.employees.id,
-          employeeNumber: t.employees.employeeNumber,
-          givenName: t.persons.givenName,
-          familyName: t.persons.familyName,
-          status: t.employees.status,
-          hiredOn: t.employees.hiredOn,
-          workEmail: t.employees.workEmail,
-          positionTitle: t.assignments.positionTitle,
-          orgUnitName: t.orgUnits.name,
-          // La direction de rattachement se trouve en REMONTANT l'arbre : un
-          // agent affecté à un service relève de la direction qui le coiffe.
-          // Les colonnes de la table externe sont qualifiées à la main —
-          // Drizzle les rendrait nues et la portée interne les capterait.
-          directionShortName: sql<string | null>`(
-            WITH RECURSIVE remontee AS (
-              SELECT id, parent_id, unit_type, short_name, name
-              FROM org_units WHERE id = assignments.org_unit_id
-              UNION ALL
-              SELECT o.id, o.parent_id, o.unit_type, o.short_name, o.name
-              FROM org_units o JOIN remontee r ON o.id = r.parent_id
-            )
-            SELECT short_name FROM remontee WHERE unit_type = 'direction' LIMIT 1)`,
-          directionName: sql<string | null>`(
-            WITH RECURSIVE remontee AS (
-              SELECT id, parent_id, unit_type, name
-              FROM org_units WHERE id = assignments.org_unit_id
-              UNION ALL
-              SELECT o.id, o.parent_id, o.unit_type, o.name
-              FROM org_units o JOIN remontee r ON o.id = r.parent_id
-            )
-            SELECT name FROM remontee WHERE unit_type = 'direction' LIMIT 1)`,
-          // Contrat le plus récent, même convention que la fiche employé.
-          contractStartDate: sql<string | null>`(
-            SELECT c.start_date::text FROM contracts c
-            WHERE c.employee_id = employees.id
-            ORDER BY c.start_date DESC LIMIT 1)`,
-          contractEndDate: sql<string | null>`(
-            SELECT c.end_date::text FROM contracts c
-            WHERE c.employee_id = employees.id
-            ORDER BY c.start_date DESC LIMIT 1)`,
-          managerId: t.employees.managerEmployeeId,
-          managerName: sql<string | null>`(
-            SELECT mp.given_name || ' ' || mp.family_name
-            FROM employees me JOIN persons mp ON mp.id = me.person_id
-            WHERE me.id = employees.manager_employee_id)`,
-          createdAt: t.employees.createdAt,
-        })
-        .from(t.employees)
-        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-        .leftJoin(
-          t.assignments,
-          and(
-            eq(t.assignments.employeeId, t.employees.id),
-            sql`${t.assignments.validity} @> CURRENT_DATE`,
-          ),
-        )
-        .leftJoin(t.orgUnits, eq(t.orgUnits.id, t.assignments.orgUnitId))
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(t.employees.createdAt), desc(t.employees.id))
-        .limit(query.limit + 1);
+      /**
+       * Le socle : une ligne par agent, colonnes affichées comprises. La
+       * recherche y est appliquée tout de suite — elle vaut pour la page, pour
+       * les effectifs des onglets ET pour les listes déroulantes.
+       */
+      const socle = sql`
+        WITH socle AS (
+          SELECT
+            e.id,
+            e.employee_number,
+            p.given_name,
+            p.family_name,
+            e.status,
+            e.hired_on::text            AS hired_on,
+            e.work_email,
+            e.created_at,
+            a.position_title,
+            o.name                      AS org_unit_name,
+            (WITH RECURSIVE remontee AS (
+               SELECT id, parent_id, unit_type, short_name, name
+               FROM org_units WHERE id = a.org_unit_id
+               UNION ALL
+               SELECT u.id, u.parent_id, u.unit_type, u.short_name, u.name
+               FROM org_units u JOIN remontee r ON u.id = r.parent_id
+             )
+             SELECT short_name FROM remontee WHERE unit_type = 'direction' LIMIT 1)
+                                        AS direction_short_name,
+            (WITH RECURSIVE remontee AS (
+               SELECT id, parent_id, unit_type, name
+               FROM org_units WHERE id = a.org_unit_id
+               UNION ALL
+               SELECT u.id, u.parent_id, u.unit_type, u.name
+               FROM org_units u JOIN remontee r ON u.id = r.parent_id
+             )
+             SELECT name FROM remontee WHERE unit_type = 'direction' LIMIT 1)
+                                        AS direction_name,
+            (SELECT c.start_date::text FROM contracts c
+              WHERE c.employee_id = e.id ORDER BY c.start_date DESC LIMIT 1)
+                                        AS contract_start_date,
+            (SELECT c.end_date::text FROM contracts c
+              WHERE c.employee_id = e.id ORDER BY c.start_date DESC LIMIT 1)
+                                        AS contract_end_date,
+            e.manager_employee_id,
+            (SELECT mp.given_name || ' ' || mp.family_name
+               FROM employees me JOIN persons mp ON mp.id = me.person_id
+              WHERE me.id = e.manager_employee_id)
+                                        AS manager_name
+          FROM employees e
+          JOIN persons p ON p.id = e.person_id
+          LEFT JOIN assignments a
+            ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
+          LEFT JOIN org_units o ON o.id = a.org_unit_id
+          WHERE ${
+            like === null
+              ? sql`TRUE`
+              : sql`(p.given_name ILIKE ${like} OR p.family_name ILIKE ${like}
+                     OR e.employee_number ILIKE ${like})`
+          }
+        ),
+        -- L'unité TELLE QU'ELLE S'AFFICHE : la colonne montre l'abrégé de la
+        -- direction, et un filtre qui porterait sur autre chose ne
+        -- correspondrait pas à ce qu'on lit.
+        vue AS (
+          SELECT socle.*,
+                 COALESCE(direction_short_name, direction_name, org_unit_name) AS unite
+          FROM socle
+        )`;
 
-      const hasMore = rows.length > query.limit;
-      const page = hasMore ? rows.slice(0, query.limit) : rows;
-      const last = page[page.length - 1];
+      const filtres = [
+        query.status ? sql`status = ${query.status}` : null,
+        query.positionTitle ? sql`position_title = ${query.positionTitle}` : null,
+        query.managerId ? sql`manager_employee_id = ${query.managerId}` : null,
+        query.unit ? sql`unite = ${query.unit}` : null,
+      ].filter((c): c is NonNullable<typeof c> => c !== null);
+      const ou = filtres.length > 0 ? sql`WHERE ${sql.join(filtres, sql` AND `)}` : sql``;
+
+      // NULLS LAST dans les deux sens : un contrat sans date de fin n'est pas
+      // « le plus ancien », il est absent — sa place est en bas de la pile.
+      const sens = query.dir === 'asc' ? sql`ASC` : sql`DESC`;
+      const ordre = {
+        recent: sql`created_at ${sens}, id ${sens}`,
+        name: sql`family_name ${sens}, given_name ${sens}, id ASC`,
+        contractStart: sql`contract_start_date ${sens} NULLS LAST, family_name ASC`,
+        contractEnd: sql`contract_end_date ${sens} NULLS LAST, family_name ASC`,
+      }[query.sort];
+
+      const lignes = await tx.execute<LigneListe>(sql`
+        ${socle}
+        SELECT * FROM vue ${ou}
+        ORDER BY ${ordre}
+        LIMIT ${query.limit + 1} OFFSET ${query.offset}
+      `);
+      const trop = lignes.rows.length > query.limit;
+      const page = trop ? lignes.rows.slice(0, query.limit) : lignes.rows;
+
+      // Les effectifs ignorent l'onglet — c'est leur raison d'être : dire
+      // combien il y en a DE L'AUTRE CÔTÉ.
+      const effectifs = await tx.execute<{ status: string; n: string }>(sql`
+        ${socle}
+        SELECT status, count(*)::text AS n FROM vue GROUP BY status
+      `);
+      const compte = (s: string) => Number(effectifs.rows.find((r) => r.status === s)?.n ?? 0);
+
+      // Les valeurs proposées suivent l'onglet, pas les autres filtres : sinon
+      // choisir un poste viderait la liste des managers, et l'on ne pourrait
+      // plus revenir en arrière sans tout défaire.
+      const cadre = query.status ? sql` AND status = ${query.status}` : sql``;
+      const facettes = await tx.execute<{
+        kind: string;
+        value: string;
+        label: string;
+      }>(sql`
+        ${socle}
+        SELECT 'position' AS kind, position_title AS value, position_title AS label
+          FROM vue WHERE position_title IS NOT NULL ${cadre}
+        UNION
+        SELECT 'unit', unite, unite
+          FROM vue WHERE unite IS NOT NULL ${cadre}
+        UNION
+        SELECT 'manager', manager_employee_id::text, manager_name
+          FROM vue WHERE manager_employee_id IS NOT NULL ${cadre}
+        ORDER BY 3
+      `);
+
       return {
         items: page.map((r) => ({
           id: r.id,
-          employeeNumber: r.employeeNumber,
-          givenName: r.givenName,
-          familyName: r.familyName,
+          employeeNumber: r.employee_number,
+          givenName: r.given_name,
+          familyName: r.family_name,
           status: r.status,
-          hiredOn: r.hiredOn,
-          workEmail: r.workEmail,
-          positionTitle: r.positionTitle ?? null,
-          orgUnitName: r.orgUnitName ?? null,
-          directionShortName: r.directionShortName ?? null,
-          directionName: r.directionName ?? null,
-          contractStartDate: r.contractStartDate ?? null,
-          contractEndDate: r.contractEndDate ?? null,
-          managerId: r.managerId ?? null,
-          managerName: r.managerName ?? null,
+          hiredOn: r.hired_on,
+          workEmail: r.work_email,
+          positionTitle: r.position_title,
+          orgUnitName: r.org_unit_name,
+          directionShortName: r.direction_short_name,
+          directionName: r.direction_name,
+          contractStartDate: r.contract_start_date,
+          contractEndDate: r.contract_end_date,
+          managerId: r.manager_employee_id,
+          managerName: r.manager_name,
         })),
-        nextCursor:
-          hasMore && last
-            ? encodeCursor({ createdAt: last.createdAt.toISOString(), id: last.id })
-            : null,
+        nextOffset: trop ? query.offset + query.limit : null,
+        counts: { active: compte('active'), archived: compte('archived') },
+        facets: {
+          positions: facettes.rows.filter((f) => f.kind === 'position').map((f) => f.value),
+          units: facettes.rows.filter((f) => f.kind === 'unit').map((f) => f.value),
+          managers: facettes.rows
+            .filter((f) => f.kind === 'manager')
+            .map((f) => ({ id: f.value, name: f.label })),
+        },
       };
     });
   }

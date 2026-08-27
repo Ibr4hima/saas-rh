@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { cursorPageQuerySchema } from './core';
 
 /** Contrats du module « dossier employé » (Lot 1). */
 
@@ -349,11 +348,64 @@ export type NewAssignmentInput = z.infer<typeof newAssignmentSchema>;
 
 // ---------- Employé : lecture ----------
 
-export const listEmployeesQuerySchema = cursorPageQuerySchema.extend({
+/** Les trois colonnes qu'on trie ; `recent` est l'ordre d'arrivée, par défaut. */
+export const employeeSortSchema = z.enum(['recent', 'name', 'contractStart', 'contractEnd']);
+export type EmployeeSort = z.infer<typeof employeeSortSchema>;
+
+const optionalFiltre = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((v) => (v === '' ? undefined : v))
+    .optional();
+
+/**
+ * La liste passe au décalage plutôt qu'au curseur.
+ *
+ * Un curseur est arrimé À UNE clé de tri — ici la date de création. Dès que la
+ * colonne de tri change, il faudrait un curseur par clé, et pour les dates de
+ * contrat, qui sont des sous-requêtes corrélées, il faudrait répéter la
+ * sous-requête dans le WHERE de chaque page. À l'échelle d'un effectif —
+ * quelques centaines d'agents, vingt-cinq par page — le décalage est la
+ * réponse honnête. Sa faiblesse est connue : une embauche enregistrée pendant
+ * qu'on feuillette décale la fenêtre d'un rang.
+ */
+export const listEmployeesQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
   status: employeeStatusSchema.optional(),
+  positionTitle: optionalFiltre(120),
+  managerId: z
+    .uuid()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  /** L'unité TELLE QU'ELLE S'AFFICHE : l'abrégé de la direction, sinon le nom. */
+  unit: optionalFiltre(120),
+  sort: employeeSortSchema.default('recent'),
+  dir: z.enum(['asc', 'desc']).default('desc'),
+  offset: z.coerce.number().int().min(0).max(100_000).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 export type ListEmployeesQuery = z.infer<typeof listEmployeesQuerySchema>;
+
+/** Ce qui remplit les listes déroulantes de filtre, pour l'onglet courant. */
+export interface EmployeeFacets {
+  positions: string[];
+  managers: { id: string; name: string }[];
+  units: string[];
+}
+
+export interface EmployeeListPage {
+  items: EmployeeListItem[];
+  /** Décalage de la page suivante ; null quand il n'y en a plus. */
+  nextOffset: number | null;
+  /**
+   * Effectifs par statut À RECHERCHE ÉGALE, mais sans tenir compte de l'onglet :
+   * c'est ce qui permet aux onglets de dire où se trouve ce qu'on cherche.
+   */
+  counts: { active: number; archived: number };
+  facets: EmployeeFacets;
+}
 
 /**
  * Archiver ou réactiver, par lot — le même geste dans les deux sens.

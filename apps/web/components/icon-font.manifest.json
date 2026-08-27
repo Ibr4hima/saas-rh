@@ -30,9 +30,10 @@
     "print",
     "rule",
     "schedule",
+    "search",
     "settings",
     "upload_file"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 34800
+  "bytes": 35416
 }

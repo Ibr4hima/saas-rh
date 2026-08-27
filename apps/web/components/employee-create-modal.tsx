@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { CursorPage, EmployeeListItem, OrgUnitView } from '@teranga/contracts';
+import type { EmployeeListItem, EmployeeListPage, OrgUnitView } from '@teranga/contracts';
 import { nationalityLabel, orgUnitLabel } from '@teranga/contracts';
 import { Button, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
@@ -73,7 +73,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   // autant ne pas les proposer.
   const managerQuery = useQuery({
     queryKey: ['employees', 'managers'],
-    queryFn: () => api<CursorPage<EmployeeListItem>>('/employees?status=active&limit=100'),
+    queryFn: () => api<EmployeeListPage>('/employees?status=active&limit=100'),
   });
   const managers = managerQuery.data?.items ?? [];
   const marital = maritalLabels(gender || undefined);

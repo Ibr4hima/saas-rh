@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionUser } from '@teranga/contracts';
+import type { ListEmployeesQuery, SessionUser } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -81,8 +81,11 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await raw(`UPDATE employees SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM assignments WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM employees WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM persons WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM org_units WHERE tenant_id = $1`, [tenantId]);
   alice = await creerEmploye('ALICE');
   bruno = await creerEmploye('BRUNO');
   carla = await creerEmploye('CARLA');
@@ -90,8 +93,11 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await raw(`UPDATE employees SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM assignments WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM employees WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM persons WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM org_units WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
   await raw(`DELETE FROM users WHERE id = $1`, [userId]);
   await db?.pool.end();
@@ -154,14 +160,125 @@ describe('boucles hiérarchiques', () => {
 describe('liste des employés', () => {
   it('remonte le nom du manager', async () => {
     await setManager(bruno, alice);
-    const page = await people.list(user, { limit: 25 });
+    const page = await people.list(user, { limit: 25, sort: 'recent', dir: 'desc', offset: 0 });
     const ligne = page.items.find((i) => i.employeeNumber === 'BRUNO')!;
     expect(ligne.managerName).toBe('ALICE Test');
     expect(ligne.managerId).toBe(alice);
   });
 
   it('laisse le manager vide quand il n’y en a pas', async () => {
-    const page = await people.list(user, { limit: 25 });
+    const page = await people.list(user, { limit: 25, sort: 'recent', dir: 'desc', offset: 0 });
     expect(page.items.find((i) => i.employeeNumber === 'ALICE')!.managerName).toBeNull();
+  });
+});
+
+describe('tri, filtres et effectifs', () => {
+  const lister = (q: Partial<ListEmployeesQuery> = {}) =>
+    people.list(user, { limit: 25, sort: 'recent', dir: 'desc', offset: 0, ...q });
+
+  /** Affecte l'agent à une unité, avec un intitulé de poste. */
+  async function affecter(employeeId: string, poste: string, uniteId: string | null) {
+    await raw(
+      `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+       VALUES ($1,$2,$3,$4,$5,'[2024-01-01,)')`,
+      [randomUUID(), tenantId, employeeId, uniteId, poste],
+    );
+  }
+
+  it('trie par nom, dans les deux sens', async () => {
+    const asc = await lister({ sort: 'name', dir: 'asc' });
+    expect(asc.items.map((i) => i.employeeNumber)).toEqual(['ALICE', 'BRUNO', 'CARLA']);
+    const desc = await lister({ sort: 'name', dir: 'desc' });
+    expect(desc.items.map((i) => i.employeeNumber)).toEqual(['CARLA', 'BRUNO', 'ALICE']);
+  });
+
+  it('trie par date de contrat, et renvoie les dossiers sans date en dernier', async () => {
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+       VALUES ($1,$2,$3,'cdd','2025-06-01','2026-06-01')`,
+      [randomUUID(), tenantId, bruno],
+    );
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+       VALUES ($1,$2,$3,'cdi','2024-02-01',NULL)`,
+      [randomUUID(), tenantId, alice],
+    );
+
+    const asc = await lister({ sort: 'contractStart', dir: 'asc' });
+    expect(asc.items.map((i) => i.employeeNumber)).toEqual(['ALICE', 'BRUNO', 'CARLA']);
+
+    // Une fin de contrat absente n'est pas « la plus ancienne » : elle n'existe
+    // pas, et sa place est en bas quel que soit le sens du tri.
+    for (const dir of ['asc', 'desc'] as const) {
+      const page = await lister({ sort: 'contractEnd', dir });
+      expect(page.items.at(-1)!.employeeNumber).not.toBe('BRUNO');
+      expect(page.items.at(-1)!.contractEndDate).toBeNull();
+    }
+  });
+
+  it('filtre par poste, par manager et par unité', async () => {
+    const uniteId = randomUUID();
+    await raw(
+      `INSERT INTO org_units (id, tenant_id, name, unit_type, short_name)
+       VALUES ($1,$2,'Direction Financière','direction','DFC')`,
+      [uniteId, tenantId],
+    );
+    await affecter(alice, 'Comptable', uniteId);
+    await affecter(bruno, 'Comptable', null);
+    await affecter(carla, 'Analyste', uniteId);
+    await setManager(bruno, alice);
+
+    expect((await lister({ positionTitle: 'Comptable' })).items).toHaveLength(2);
+    expect((await lister({ managerId: alice })).items.map((i) => i.employeeNumber)).toEqual([
+      'BRUNO',
+    ]);
+    // L'unité se filtre sur ce que la colonne AFFICHE — l'abrégé de la direction.
+    expect((await lister({ unit: 'DFC' })).items.map((i) => i.employeeNumber).sort()).toEqual([
+      'ALICE',
+      'CARLA',
+    ]);
+  });
+
+  it('propose en filtre exactement ce que l’onglet contient', async () => {
+    const uniteId = randomUUID();
+    await raw(
+      `INSERT INTO org_units (id, tenant_id, name, unit_type, short_name)
+       VALUES ($1,$2,'Direction Générale','direction','DG')`,
+      [uniteId, tenantId],
+    );
+    await affecter(alice, 'Comptable', uniteId);
+    await affecter(carla, 'Analyste', null);
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [carla]);
+
+    const actifs = await lister({ status: 'active' });
+    expect(actifs.facets.positions).toEqual(['Comptable']);
+    expect(actifs.facets.units).toEqual(['DG']);
+
+    const archives = await lister({ status: 'archived' });
+    expect(archives.facets.positions).toEqual(['Analyste']);
+  });
+
+  it('compte les deux onglets, quel que soit celui qu’on regarde', async () => {
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [carla]);
+    for (const status of [undefined, 'active', 'archived'] as const) {
+      const page = await lister({ status });
+      expect(page.counts).toEqual({ active: 2, archived: 1 });
+    }
+  });
+
+  it('compte ce que la RECHERCHE trouve — c’est ce qui dit dans quel onglet chercher', async () => {
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [carla]);
+    const page = await lister({ q: 'CARLA', status: 'active' });
+    expect(page.items).toHaveLength(0);
+    expect(page.counts).toEqual({ active: 0, archived: 1 });
+  });
+
+  it('pagine par décalage', async () => {
+    const p1 = await lister({ sort: 'name', dir: 'asc', limit: 2, offset: 0 });
+    expect(p1.items.map((i) => i.employeeNumber)).toEqual(['ALICE', 'BRUNO']);
+    expect(p1.nextOffset).toBe(2);
+    const p2 = await lister({ sort: 'name', dir: 'asc', limit: 2, offset: 2 });
+    expect(p2.items.map((i) => i.employeeNumber)).toEqual(['CARLA']);
+    expect(p2.nextOffset).toBeNull();
   });
 });

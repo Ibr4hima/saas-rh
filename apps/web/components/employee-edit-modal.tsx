@@ -5,9 +5,9 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { nationalityLabel } from '@teranga/contracts';
 import type {
-  CursorPage,
   EmployeeDetail,
   EmployeeListItem,
+  EmployeeListPage,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
 import { Button, Field, Input, Select, Skeleton } from '@teranga/ui';
@@ -152,7 +152,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
 
   const managerQuery = useQuery({
     queryKey: ['employees', 'managers'],
-    queryFn: () => api<CursorPage<EmployeeListItem>>('/employees?status=active&limit=100'),
+    queryFn: () => api<EmployeeListPage>('/employees?status=active&limit=100'),
   });
   const managers = managerQuery.data?.items ?? [];
 
