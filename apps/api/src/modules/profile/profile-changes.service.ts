@@ -11,7 +11,7 @@ import type {
   SessionUser,
 } from '@teranga/contracts';
 import {
-  PROFILE_CHANGE_LABELS,
+  PROFILE_CHANGE_ALL_LABELS,
   profileChangeValuesSchema,
   maritalLabelsFor,
 } from '@teranga/contracts';
@@ -22,8 +22,14 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 const MANAGE_ROLES = new Set(['admin', 'hr']);
 
-/** Colonne `persons` correspondant à chaque champ demandable. */
-const COLUMN_OF: Record<ProfileChangeField, keyof typeof t.persons.$inferInsert> = {
+/**
+ * Colonne `persons` correspondant à chaque champ.
+ *
+ * Les champs RETIRÉS de la liste des demandables y figurent encore : une
+ * demande déposée avant leur retrait doit s'appliquer entière le jour où la RH
+ * la valide. Sans leur colonne ici, elle s'appliquerait amputée, en silence.
+ */
+const COLUMN_OF: Record<string, keyof typeof t.persons.$inferInsert> = {
   maritalStatus: 'maritalStatus',
   personalEmail: 'personalEmail',
   phone: 'phone',
@@ -58,7 +64,7 @@ export class ProfileChangesService {
         ProfileChangeField,
         string | null,
       ][]) {
-        const current = (self.person as Record<string, unknown>)[COLUMN_OF[field]] ?? null;
+        const current = (self.person as Record<string, unknown>)[COLUMN_OF[field] ?? field] ?? null;
         if ((current ?? null) === (value ?? null)) continue;
         changes[field] = value ?? null;
         previous[field] = current;
@@ -106,7 +112,7 @@ export class ProfileChangesService {
         type: 'profile_change_request',
         title: `${self.givenName} ${self.familyName} signale un changement personnel`,
         body: Object.keys(changes)
-          .map((f) => PROFILE_CHANGE_LABELS[f as ProfileChangeField])
+          .map((f) => PROFILE_CHANGE_ALL_LABELS[f])
           .join(', '),
         link: `/employees/${self.employeeId}`,
       });
@@ -228,11 +234,12 @@ export class ProfileChangesService {
           );
         }
         const patch: Record<string, unknown> = {};
-        for (const [field, value] of Object.entries(parsed.data) as [
-          ProfileChangeField,
-          string | null,
-        ][]) {
-          patch[COLUMN_OF[field]] = value ?? null;
+        for (const [field, value] of Object.entries(parsed.data) as [string, string | null][]) {
+          const colonne = COLUMN_OF[field];
+          // Un champ dont on ne connaît plus la colonne ne s'applique pas :
+          // mieux vaut le laisser que d'écrire quelque part au hasard.
+          if (!colonne) continue;
+          patch[colonne] = value ?? null;
         }
         if (Object.keys(patch).length > 0 && target) {
           await tx.update(t.persons).set(patch).where(eq(t.persons.id, target.personId));
@@ -278,16 +285,16 @@ export class ProfileChangesService {
     gender: string | null,
   ) {
     const marital = maritalLabelsFor(gender ?? undefined);
-    const render = (field: ProfileChangeField, value: unknown): string | null => {
+    const render = (field: string, value: unknown): string | null => {
       if (value === null || value === undefined || value === '') return null;
       if (field === 'maritalStatus') return marital[String(value)] ?? String(value);
       return String(value);
     };
-    return (Object.keys(changes) as ProfileChangeField[])
-      .filter((f) => f in PROFILE_CHANGE_LABELS)
+    return Object.keys(changes)
+      .filter((f) => f in PROFILE_CHANGE_ALL_LABELS)
       .map((field) => ({
         field,
-        label: PROFILE_CHANGE_LABELS[field],
+        label: PROFILE_CHANGE_ALL_LABELS[field]!,
         previous: render(field, previous[field]),
         next: render(field, changes[field]),
       }));

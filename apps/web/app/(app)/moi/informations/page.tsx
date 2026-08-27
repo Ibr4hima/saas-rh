@@ -106,8 +106,6 @@ export default function MyInformationsPage() {
       phone: p.phone ?? '',
       addressLine: p.addressLine ?? '',
       city: p.city ?? '',
-      emergencyContactName: p.emergencyContactName ?? '',
-      emergencyContactPhone: p.emergencyContactPhone ?? '',
     })[f];
 
   const valueOf = (f: ProfileChangeField) => draft[f] ?? current(f);
@@ -251,26 +249,6 @@ export default function MyInformationsPage() {
                     id="city"
                     value={valueOf('city')}
                     onChange={(e) => set('city', e.target.value)}
-                  />
-                </Field>
-                <Field
-                  label={PROFILE_CHANGE_LABELS.emergencyContactName}
-                  htmlFor="emergencyContactName"
-                >
-                  <Input
-                    id="emergencyContactName"
-                    value={valueOf('emergencyContactName')}
-                    onChange={(e) => set('emergencyContactName', e.target.value)}
-                  />
-                </Field>
-                <Field
-                  label={PROFILE_CHANGE_LABELS.emergencyContactPhone}
-                  htmlFor="emergencyContactPhone"
-                >
-                  <Input
-                    id="emergencyContactPhone"
-                    value={valueOf('emergencyContactPhone')}
-                    onChange={(e) => set('emergencyContactPhone', e.target.value)}
                   />
                 </Field>
                 <Field label="Précision (facultatif)" htmlFor="note">

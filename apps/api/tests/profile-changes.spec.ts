@@ -52,7 +52,8 @@ async function codeOf(fn: () => Promise<unknown>): Promise<string> {
 /** Le dossier tel qu'il est en base, après décision. */
 async function dossier() {
   const { rows } = await raw(
-    `SELECT city, address_line, marital_status, personal_email, given_name, family_name
+    `SELECT city, address_line, marital_status, personal_email, given_name, family_name,
+            emergency_contact_name
      FROM persons WHERE id = $1`,
     [personId],
   );
@@ -232,6 +233,31 @@ describe('affectation de masse', () => {
     expect(apres.city).toBe('Thiès');
     expect(apres.family_name).toBe('Diop');
     expect(apres.given_name).toBe('Awa');
+  });
+
+  it('applique ENTIÈRE une demande portant un champ qu’on ne propose plus', async () => {
+    // Le contact d'urgence a quitté les formulaires, mais une demande déposée
+    // avant ce retrait dort peut-être encore dans le circuit. Elle doit rester
+    // lisible par la RH ET s'appliquer sans être amputée en silence : c'est
+    // tout l'intérêt de garder sa validation et sa colonne.
+    await service.create(agent, { changes: { city: 'Saint-Louis' } });
+    const [vue] = await service.list(rh, {});
+    if (!vue) throw new Error('demande absente');
+    await raw(
+      `UPDATE profile_change_requests
+         SET changes = '{"city":"Saint-Louis","emergencyContactName":"Fatou Ba"}'::jsonb
+       WHERE id = $1`,
+      [vue.id],
+    );
+
+    const relue = (await service.list(rh, {})).find((r) => r.id === vue.id);
+    const champs = relue!.fields.map((c) => c.label);
+    expect(champs).toContain('Contact d’urgence');
+
+    await service.decide(rh, vue.id, { decision: 'approve' });
+    const apres = await dossier();
+    expect(apres.city).toBe('Saint-Louis');
+    expect(apres.emergency_contact_name).toBe('Fatou Ba');
   });
 });
 

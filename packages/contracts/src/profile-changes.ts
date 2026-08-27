@@ -21,19 +21,35 @@ export const PROFILE_CHANGE_FIELDS = [
   'phone',
   'addressLine',
   'city',
-  'emergencyContactName',
-  'emergencyContactPhone',
 ] as const;
 export type ProfileChangeField = (typeof PROFILE_CHANGE_FIELDS)[number];
 
+/** Les intitulés des champs qu'on peut demander à faire changer aujourd'hui. */
 export const PROFILE_CHANGE_LABELS: Record<ProfileChangeField, string> = {
   maritalStatus: 'Situation matrimoniale',
   personalEmail: 'Email personnel',
   phone: 'Téléphone personnel',
   addressLine: 'Adresse',
   city: 'Ville',
+};
+
+/**
+ * Les intitulés de champs RETIRÉS de la liste.
+ *
+ * Une demande déposée avant le retrait porte encore ses clés d'origine dans
+ * son jsonb. Sans son intitulé, elle s'afficherait à la RH sous son nom de
+ * colonne, ou disparaîtrait de la comparaison — dans les deux cas on lui
+ * demanderait d'approuver ce qu'elle ne peut pas lire.
+ */
+const LIBELLES_RETIRES: Record<string, string> = {
   emergencyContactName: 'Contact d’urgence',
   emergencyContactPhone: 'Téléphone du contact d’urgence',
+};
+
+/** Tout intitulé connu, courant ou retiré : ce que l'AFFICHAGE consulte. */
+export const PROFILE_CHANGE_ALL_LABELS: Record<string, string> = {
+  ...PROFILE_CHANGE_LABELS,
+  ...LIBELLES_RETIRES,
 };
 
 /** Vidé, un champ vaut « effacer » : on distingue absent (inchangé) et null. */
@@ -60,6 +76,9 @@ export const profileChangeValuesSchema = z
     phone: clearable(30),
     addressLine: clearable(200),
     city: clearable(120),
+    // Plus proposés à la saisie, mais toujours validés : une demande en cours
+    // de circuit doit s'appliquer ENTIÈRE le jour où la RH la valide, pas
+    // amputée en silence des champs qu'on a cessé d'afficher entre-temps.
     emergencyContactName: clearable(120),
     emergencyContactPhone: clearable(30),
   })
@@ -115,9 +134,15 @@ export interface ProfileChangeRequestView {
   handledByName: string | null;
   createdAt: string;
   handledAt: string | null;
-  /** Une ligne par champ : ce qui change, et depuis quoi. */
+  /**
+   * Une ligne par champ : ce qui change, et depuis quoi.
+   *
+   * `field` est une chaîne, pas l'union des champs demandables : une demande
+   * déposée avant qu'un champ soit retiré de la liste doit rester lisible, et
+   * le type doit dire ce que le service peut réellement renvoyer.
+   */
   fields: {
-    field: ProfileChangeField;
+    field: string;
     label: string;
     /** Valeur au moment de la demande — pour repérer un dossier modifié depuis. */
     previous: string | null;
