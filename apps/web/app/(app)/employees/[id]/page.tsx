@@ -83,9 +83,19 @@ function seniority(hiredOn: string): string {
   const months = Math.max(0, (Date.now() - start.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
   const years = Math.floor(months / 12);
   const rest = Math.floor(months % 12);
-  if (years === 0) return rest <= 1 ? "moins d'un mois" : `${rest} mois`;
+  if (years === 0) return rest <= 1 ? '< 1 mois' : `${rest} mois`;
   const y = `${years} an${years > 1 ? 's' : ''}`;
   return rest === 0 ? y : `${y} et ${rest} mois`;
+}
+
+/** Deux lignes au plus, le nom entier en infobulle. */
+function Tronque({ children }: { children?: string | null }) {
+  if (!children) return null;
+  return (
+    <span className="line-clamp-2 block" title={children}>
+      {children}
+    </span>
+  );
 }
 
 /**
@@ -239,9 +249,11 @@ export default function EmployeePage() {
                 </span>
               ) : null}
             </div>
-            <p className="mt-0.5 truncate text-[12.5px] text-ink-muted">
-              {current?.positionTitle ?? 'Poste à préciser'}
-              {current?.orgUnitName ? ` · ${current.orgUnitName}` : ''}
+            {/* Sous le nom : le matricule. C'est lui qu'on cite au téléphone
+                et qu'on recopie sur une attestation ; le poste et la direction
+                ont chacun leur bloc juste en dessous, où on les lit en entier. */}
+            <p className="mt-1 font-mono text-[12.5px] tracking-tight text-ink-muted">
+              {e.employeeNumber}
             </p>
           </div>
           {canSeeHistory && e.status === 'active' ? (
@@ -252,15 +264,27 @@ export default function EmployeePage() {
         </div>
 
         <DataGrid className="mt-4 @[52rem]:grid-cols-4">
-          <DataBlock label="Matricule">
-            <span className="font-mono">{e.employeeNumber}</span>
+          {/* Un intitulé de poste ou de direction peut tenir sur trois lignes
+              — « Direction de l'Intelligence et des Perspectives Économiques »
+              étirait toute la rangée. On le borne à deux lignes ; l'infobulle
+              rend le nom entier à qui en a besoin. */}
+          <DataBlock label="Poste">
+            <Tronque>{current?.positionTitle}</Tronque>
           </DataBlock>
-          <DataBlock label="Direction">{current?.orgUnitName}</DataBlock>
+          <DataBlock label="Direction">
+            <Tronque>{current?.orgUnitName}</Tronque>
+          </DataBlock>
           <DataBlock label="Ancienneté">
             {seniority(e.hiredOn)}
-            <span className="font-normal text-ink-muted"> · depuis {formatDate(e.hiredOn)}</span>
+            <span className="mt-1 block text-[11.5px] font-normal text-ink-muted">
+              Depuis le {formatDate(e.hiredOn)}
+            </span>
           </DataBlock>
-          <DataBlock label="Email professionnel">{e.workEmail}</DataBlock>
+          <DataBlock label="Email professionnel">
+            <span className="block truncate" title={e.workEmail ?? undefined}>
+              {e.workEmail}
+            </span>
+          </DataBlock>
         </DataGrid>
       </Card>
 
@@ -377,7 +401,14 @@ export default function EmployeePage() {
 
         {/* ———— Colonne d'administration : accès et traces ———— */}
         <div className="flex min-w-0 flex-col gap-4">
-          {canSeeHistory ? <PortalCard employeeId={e.id} portal={e.portal} /> : null}
+          {canSeeHistory ? (
+            <PortalCard
+              employeeId={e.id}
+              portal={e.portal}
+              prenom={e.person.givenName}
+              gender={e.person.gender}
+            />
+          ) : null}
 
           {canSeeHistory ? (
             <Card>
@@ -731,9 +762,13 @@ const PORTAL_ROLE_LABELS: Record<string, string> = {
 function PortalCard({
   employeeId,
   portal,
+  prenom,
+  gender,
 }: {
   employeeId: string;
   portal: EmployeeDetail['portal'];
+  prenom: string;
+  gender: string | null;
 }) {
   const queryClient = useQueryClient();
   const [role, setRole] = useState<InvitableRole>('employee');
@@ -776,8 +811,13 @@ function PortalCard({
         </CardContent>
       ) : (
         <CardContent className="flex flex-col gap-3">
+          {/* Le pronom suit le sexe au dossier quand il y est. « Il ou elle »
+              n'est pas une faute, mais quand on connaît la personne à qui l'on
+              écrit, la phrase n'a pas à hésiter. */}
           <p className="text-sm text-ink-muted">
-            Générez un lien d&apos;invitation à lui transmettre (email, WhatsApp…) : il choisira son
+            Générez le lien d&apos;invitation à transmettre à{' '}
+            <span className="font-semibold text-ink">{prenom}</span>.{' '}
+            {gender === 'female' ? 'Elle' : gender === 'male' ? 'Il' : 'Il ou elle'} choisira son
             mot de passe et son compte sera relié à ce dossier.
           </p>
           <div className="flex items-end gap-3">
@@ -790,7 +830,6 @@ function PortalCard({
                 >
                   <option value="employee">Employé</option>
                   <option value="manager">Manager</option>
-                  <option value="payroll">Gestionnaire de paie</option>
                   <option value="hr">RH</option>
                 </Select>
               </Field>
