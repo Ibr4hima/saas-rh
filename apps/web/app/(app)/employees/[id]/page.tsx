@@ -15,6 +15,7 @@ import {
   Badge,
   Button,
   Card,
+  cn,
   CardContent,
   CardHeader,
   CardTitle,
@@ -54,6 +55,11 @@ const CONTRACT_LABELS: Record<string, string> = {
   consultant: 'Consultant',
   detachement: 'Détachement',
 };
+const ACTION_LABELS: Record<string, string> = {
+  INSERT: 'Création',
+  UPDATE: 'Modification',
+  DELETE: 'Suppression',
+};
 const TABLE_LABELS: Record<string, string> = {
   employees: 'Dossier employé',
   persons: 'État civil',
@@ -80,6 +86,79 @@ function seniority(hiredOn: string): string {
   if (years === 0) return rest <= 1 ? "moins d'un mois" : `${rest} mois`;
   const y = `${years} an${years > 1 ? 's' : ''}`;
   return rest === 0 ? y : `${y} et ${rest} mois`;
+}
+
+/**
+ * Une donnée du dossier : intitulé discret, valeur lisible.
+ *
+ * Pas une pastille. Les pastilles conviennent aux QUELQUES repères qu'on
+ * cherche du regard — matricule, direction, ancienneté — et c'est ce que la
+ * bande de tête en fait. Ici, treize champs en pastilles donnaient un mur de
+ * cadres où plus rien ne ressortait ; un filet et de l'air suffisent, et
+ * l'état civil se lit comme ce qu'il est : un registre.
+ */
+function Donnee({
+  label,
+  children,
+  large,
+}: {
+  label: string;
+  children?: React.ReactNode;
+  /** Occupe deux colonnes — une adresse ne se coupe pas en trois. */
+  large?: boolean;
+}) {
+  const vide = children === null || children === undefined || children === '';
+  return (
+    <div
+      className={cn('min-w-0 border-t border-line-soft pt-2.5 pb-0.5', large && 'sm:col-span-2')}
+    >
+      <dt className="text-[9.5px] font-extrabold tracking-[0.11em] text-ink-muted uppercase">
+        {label}
+      </dt>
+      <dd
+        className={cn(
+          'mt-1 text-[13.5px] leading-snug font-semibold break-words',
+          vide ? 'text-ink-muted/70' : 'text-ink-strong',
+        )}
+      >
+        {vide ? '—' : children}
+      </dd>
+    </div>
+  );
+}
+
+/** Un groupe de données, sous son intitulé de marque. */
+function Groupe({ titre, children }: { titre: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h3 className="mb-2 text-[10px] font-extrabold tracking-[0.14em] text-primary uppercase">
+        {titre}
+      </h3>
+      <dl className="grid grid-cols-1 gap-x-7 sm:grid-cols-2">{children}</dl>
+    </section>
+  );
+}
+
+/**
+ * Ce qu'il advient d'une pièce d'identité qui arrive à terme.
+ *
+ * La date seule ne dit rien à qui ne compte pas : « 10 avr. 2030 » se lit
+ * comme « c'est bon ». Le rappel n'apparaît que quand il y a lieu de s'en
+ * occuper — trois mois avant, puis après.
+ */
+function Peremption({ date }: { date: string }) {
+  const jours = Math.round((new Date(`${date}T12:00:00Z`).getTime() - Date.now()) / 86_400_000);
+  if (jours > 90) return null;
+  return (
+    <span
+      className={cn(
+        'ml-1.5 text-[11.5px] font-bold',
+        jours < 0 ? 'text-danger' : 'text-accent-text',
+      )}
+    >
+      {jours < 0 ? '· expirée' : jours === 0 ? "· expire aujourd'hui" : `· dans ${jours} j`}
+    </span>
+  );
 }
 
 export default function EmployeePage() {
@@ -177,7 +256,7 @@ export default function EmployeePage() {
             <span className="font-mono">{e.employeeNumber}</span>
           </DataBlock>
           <DataBlock label="Direction">{current?.orgUnitName}</DataBlock>
-          <DataBlock label="Dans l'organisation">
+          <DataBlock label="Ancienneté">
             {seniority(e.hiredOn)}
             <span className="font-normal text-ink-muted"> · depuis {formatDate(e.hiredOn)}</span>
           </DataBlock>
@@ -194,57 +273,55 @@ export default function EmployeePage() {
             <CardHeader>
               <CardTitle>État civil et contact</CardTitle>
             </CardHeader>
-            <CardContent>
-              <DataGrid>
-                <DataBlock label="Sexe">
-                  {e.person.gender ? SEX_LABELS[e.person.gender] : null}
-                </DataBlock>
-                <DataBlock label="Naissance">
-                  {e.person.birthDate
-                    ? `${formatDate(e.person.birthDate)}${e.person.birthPlace ? ` · ${e.person.birthPlace}` : ''}`
-                    : null}
-                </DataBlock>
-                <DataBlock label="Nationalité">{nationalityLabel(e.person.nationality)}</DataBlock>
-                <DataBlock label="Situation matrimoniale">
+            <CardContent className="flex flex-col gap-6">
+              <Groupe titre="Identité">
+                <Donnee label="Sexe">{e.person.gender ? SEX_LABELS[e.person.gender] : null}</Donnee>
+                <Donnee label="Date de naissance">
+                  {e.person.birthDate ? formatDate(e.person.birthDate) : null}
+                </Donnee>
+                <Donnee label="Pays de naissance">{e.person.birthPlace}</Donnee>
+                <Donnee label="Nationalité">{nationalityLabel(e.person.nationality)}</Donnee>
+                <Donnee label="Situation matrimoniale">
                   {e.person.maritalStatus
                     ? maritalLabels(e.person.gender)[e.person.maritalStatus]
                     : null}
-                </DataBlock>
-                <DataBlock label="Pièce d'identité">
-                  {e.person.nationalId || e.person.idDocumentType ? (
+                </Donnee>
+              </Groupe>
+
+              <Groupe titre="Pièce d'identité">
+                <Donnee label="Type de pièce d'identité">
+                  {e.person.idDocumentType
+                    ? (ID_DOCUMENT_LABELS[e.person.idDocumentType] ?? e.person.idDocumentType)
+                    : null}
+                </Donnee>
+                <Donnee label="Numéro de la pièce">
+                  {e.person.nationalId ? (
+                    <span className="font-mono">{e.person.nationalId}</span>
+                  ) : null}
+                </Donnee>
+                <Donnee label="Date de délivrance">
+                  {e.person.idDocumentIssuedOn ? formatDate(e.person.idDocumentIssuedOn) : null}
+                </Donnee>
+                <Donnee label="Date d'expiration">
+                  {e.person.idDocumentExpiresOn ? (
                     <>
-                      {e.person.idDocumentType
-                        ? (ID_DOCUMENT_LABELS[e.person.idDocumentType] ?? e.person.idDocumentType)
-                        : 'Pièce'}
-                      {e.person.nationalId ? (
-                        <>
-                          {' '}
-                          · <span className="font-mono">{e.person.nationalId}</span>
-                        </>
-                      ) : null}
-                      {e.person.idDocumentExpiresOn ? (
-                        <span className="font-normal text-ink-muted">
-                          {' '}
-                          · expire le {formatDate(e.person.idDocumentExpiresOn)}
-                        </span>
-                      ) : null}
+                      {formatDate(e.person.idDocumentExpiresOn)}
+                      <Peremption date={e.person.idDocumentExpiresOn} />
                     </>
                   ) : null}
-                </DataBlock>
-                <DataBlock label="Téléphone">{e.person.phone}</DataBlock>
-                <DataBlock label="Email personnel">{e.person.personalEmail}</DataBlock>
-                <DataBlock label="Téléphone professionnel">{e.workPhone}</DataBlock>
-                <DataBlock label="Contact d'urgence">
-                  {e.person.emergencyContactName
-                    ? `${e.person.emergencyContactName}${e.person.emergencyContactPhone ? ` — ${e.person.emergencyContactPhone}` : ''}`
-                    : null}
-                </DataBlock>
-                <DataBlock label="Adresse" full>
+                </Donnee>
+              </Groupe>
+
+              <Groupe titre="Coordonnées">
+                <Donnee label="Téléphone">{e.person.phone}</Donnee>
+                <Donnee label="Téléphone professionnel">{e.workPhone}</Donnee>
+                <Donnee label="Email personnel">{e.person.personalEmail}</Donnee>
+                <Donnee label="Adresse" large>
                   {e.person.addressLine
                     ? `${e.person.addressLine}${e.person.city ? `, ${e.person.city}` : ''}`
                     : e.person.city}
-                </DataBlock>
-              </DataGrid>
+                </Donnee>
+              </Groupe>
             </CardContent>
           </Card>
 
@@ -269,7 +346,6 @@ export default function EmployeePage() {
                     <Th>Type</Th>
                     <Th>Début</Th>
                     <Th>Fin</Th>
-                    <Th>Fin d&apos;essai</Th>
                   </tr>
                 </THead>
                 <TBody>
@@ -280,7 +356,6 @@ export default function EmployeePage() {
                       </Td>
                       <Td>{formatDate(c.startDate)}</Td>
                       <Td>{c.endDate ? formatDate(c.endDate) : '—'}</Td>
-                      <Td>{c.trialPeriodEnd ? formatDate(c.trialPeriodEnd) : '—'}</Td>
                     </Tr>
                   ))}
                 </TBody>
@@ -313,30 +388,38 @@ export default function EmployeePage() {
                 {history.isLoading ? (
                   <Skeleton className="h-16 w-full" />
                 ) : !history.data || history.data.length === 0 ? (
-                  <p className="text-sm text-ink-muted">Aucune modification enregistrée.</p>
+                  <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
+                    Aucune modification enregistrée.
+                  </p>
                 ) : (
-                  <ol className="flex flex-col gap-3">
+                  /* Une frise : le fil vertical relie les événements et fait
+                     lire la colonne comme une suite, pas comme un tableau de
+                     dates dont chaque ligne repartirait de zéro. */
+                  <ol className="relative flex flex-col gap-4 border-l border-line-soft pl-4">
                     {history.data.map((h) => (
-                      <li key={h.id} className="flex items-baseline gap-3 text-sm">
-                        <span className="shrink-0 font-mono text-xs text-ink-muted">
+                      <li key={h.id} className="relative">
+                        <span
+                          aria-hidden
+                          className="absolute top-[6px] -left-[21px] size-[7px] rounded-full bg-primary/40 ring-[3px] ring-surface"
+                        />
+                        <p className="text-[12.5px] leading-snug font-semibold text-ink-strong">
+                          {ACTION_LABELS[h.action] ?? h.action} ·{' '}
+                          {TABLE_LABELS[h.tableName] ?? h.tableName}
+                        </p>
+                        {h.changedFields.length > 0 ? (
+                          <p className="mt-0.5 text-[11.5px] leading-snug text-ink-muted">
+                            {h.changedFields.join(', ')}
+                          </p>
+                        ) : null}
+                        <p className="mt-0.5 text-[11px] text-ink-muted/80">
                           {new Date(h.occurredAt).toLocaleString('fr-FR', {
                             day: '2-digit',
                             month: 'short',
+                            year: 'numeric',
                             hour: '2-digit',
                             minute: '2-digit',
                           })}
-                        </span>
-                        <span className="text-ink">
-                          {h.action === 'INSERT'
-                            ? 'Création'
-                            : h.action === 'UPDATE'
-                              ? 'Modification'
-                              : 'Suppression'}{' '}
-                          · {TABLE_LABELS[h.tableName] ?? h.tableName}
-                          {h.changedFields.length > 0 ? (
-                            <span className="text-ink-muted"> ({h.changedFields.join(', ')})</span>
-                          ) : null}
-                        </span>
+                        </p>
                       </li>
                     ))}
                   </ol>
@@ -466,7 +549,6 @@ function AssignmentsCard({
               <Th>Unité</Th>
               <Th>Du</Th>
               <Th>Au</Th>
-              <Th />
             </tr>
           </THead>
           <TBody>
@@ -475,15 +557,17 @@ function AssignmentsCard({
                 <Td className="font-medium text-ink-strong">{a.positionTitle}</Td>
                 <Td>{a.orgUnitName ?? '—'}</Td>
                 <Td className="whitespace-nowrap">{formatDate(a.validFrom)}</Td>
+                {/* La colonne « Au » porte seule l'état : « aujourd'hui » dit
+                    l'affectation en cours, « à venir » celle qui n'a pas
+                    commencé. Un badge à côté répétait ce que la date dit. */}
                 <Td className="whitespace-nowrap">
-                  {a.validTo ? formatDate(lastDay(a.validTo)) : a.current ? "aujourd'hui" : '—'}
-                </Td>
-                <Td>
-                  {a.current ? (
-                    <Badge tone="primary">En cours</Badge>
-                  ) : !a.validTo ? (
-                    <Badge tone="warning">À venir</Badge>
-                  ) : null}
+                  {a.validTo ? (
+                    formatDate(lastDay(a.validTo))
+                  ) : a.current ? (
+                    <span className="font-semibold text-primary">aujourd&apos;hui</span>
+                  ) : (
+                    <span className="text-ink-muted">à venir</span>
+                  )}
                 </Td>
               </Tr>
             ))}
@@ -501,19 +585,31 @@ function DocumentRequestsCard({ employeeId }: { employeeId: string }) {
     queryFn: () => api<DocumentRequestView[]>(`/document-requests?employeeId=${employeeId}`),
   });
 
+  const liste = requests.data ?? [];
+
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex items-center gap-2.5">
         <CardTitle>Demandes de documents</CardTitle>
+        {liste.length > 0 ? (
+          <span
+            className="rounded-full bg-primary/[0.09] px-2 py-px text-[10.5px] font-extrabold text-primary"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
+            {liste.length}
+          </span>
+        ) : null}
       </CardHeader>
       <CardContent>
         {requests.isLoading ? (
           <Skeleton className="h-16 w-full" />
-        ) : (requests.data ?? []).length === 0 ? (
-          <p className="text-sm text-ink-muted">Aucune demande de document à ce jour.</p>
+        ) : liste.length === 0 ? (
+          <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
+            Aucune demande à ce jour — attestations et bulletins se demandent depuis le portail.
+          </p>
         ) : (
           <ul className="flex flex-col">
-            {requests.data!.map((r) => (
+            {liste.map((r) => (
               <DocumentRequestRow key={r.id} request={r} showEmployee={false} />
             ))}
           </ul>

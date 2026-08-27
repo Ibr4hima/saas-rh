@@ -21,6 +21,7 @@ import {
   Skeleton,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../lib/api';
+import { Icon } from './icons';
 import { formatDate } from '../lib/hooks';
 import { DocViewer, type ViewableDoc } from './doc-viewer';
 
@@ -45,6 +46,10 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [viewed, setViewed] = useState<ViewableDoc | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  // Le dépôt est replié : la carte sert d'abord à LIRE le dossier. Déplié en
+  // permanence, le formulaire occupait la moitié de la hauteur pour un geste
+  // qu'on fait deux fois par recrutement.
+  const [depotOuvert, setDepotOuvert] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
 
   // Dépôt
@@ -77,6 +82,7 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
       setLabel('');
       setFile(null);
       setError(null);
+      setDepotOuvert(false);
       invalidate();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Dépôt impossible.'),
@@ -124,10 +130,33 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
     reader.readAsDataURL(f);
   };
 
+  const pieces = documents.data ?? [];
+  const aValider = pieces.filter((d) => d.status === 'pending').length;
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Pièces justificatives</CardTitle>
+      <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <CardTitle>Pièces justificatives</CardTitle>
+          {pieces.length > 0 ? (
+            <span
+              className="rounded-full bg-primary/[0.09] px-2 py-px text-[10.5px] font-extrabold text-primary"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            >
+              {pieces.length}
+            </span>
+          ) : null}
+          {/* Ce qui attend une décision se dit dans le titre : c'est la seule
+              chose de cette carte qui demande une action aujourd'hui. */}
+          {aValider > 0 ? (
+            <span className="rounded-full bg-warning-soft px-2 py-px text-[10.5px] font-bold text-warning">
+              {aValider} à valider
+            </span>
+          ) : null}
+        </div>
+        <Button variant="secondary" size="sm" onClick={() => setDepotOuvert(!depotOuvert)}>
+          {depotOuvert ? 'Fermer' : 'Déposer une pièce'}
+        </Button>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {documents.isLoading ? (
@@ -136,16 +165,19 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
           <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
             Chargement des pièces impossible — rechargez la page.
           </p>
-        ) : (documents.data ?? []).length === 0 ? (
-          <p className="text-sm text-ink-muted">
-            Aucune pièce pour le moment — pièce d&apos;identité, diplômes et attestations sont
-            attendus au dossier.
+        ) : pieces.length === 0 ? (
+          <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
+            Aucune pièce au dossier — pièce d&apos;identité, diplômes et attestations sont attendus.
           </p>
         ) : (
-          <ul className="flex flex-col gap-3">
-            {documents.data!.map((d) => (
-              <li key={d.id} className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-2">
+            {pieces.map((d) => (
+              <li
+                key={d.id}
+                className="rounded-[11px] border border-line-soft bg-surface-raised px-3.5 py-3"
+              >
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <Icon name="description" size={18} className="shrink-0 text-primary/70" />
                   <button
                     type="button"
                     onClick={() =>
@@ -157,17 +189,14 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
                     }
                     className="min-w-40 flex-1 basis-48 text-left"
                   >
-                    <p className="truncate text-sm font-medium text-ink-strong hover:underline">
+                    <p className="truncate text-[13px] font-bold text-ink-strong hover:underline">
                       {d.label}
                     </p>
-                    <p className="text-xs text-ink-muted">
-                      {DOCUMENT_CATEGORY_LABELS[d.category]} · déposé par {d.uploadedByName}
+                    <p className="truncate text-[11.5px] text-ink-muted">
+                      {DOCUMENT_CATEGORY_LABELS[d.category]} · {d.uploadedByName}
                       {d.uploadedBySide === 'hr' ? ' (RH)' : ''} ·{' '}
                       {formatDate(d.createdAt.slice(0, 10))}
                     </p>
-                    {d.status === 'rejected' && d.reviewComment ? (
-                      <p className="text-xs text-danger">Motif : {d.reviewComment}</p>
-                    ) : null}
                   </button>
                   <Badge tone={STATUS_TONES[d.status] ?? 'warning'}>
                     {STATUS_LABELS[d.status] ?? d.status}
@@ -183,7 +212,7 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
                       </Button>
                       <Button
                         size="sm"
-                        variant="danger"
+                        variant="secondary"
                         onClick={() => setRejectingId(rejectingId === d.id ? null : d.id)}
                       >
                         Rejeter
@@ -195,13 +224,18 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
                     </Button>
                   ) : null}
                 </div>
+                {d.status === 'rejected' && d.reviewComment ? (
+                  <p className="mt-2 rounded-[8px] bg-danger-soft px-2.5 py-1.5 text-[11.5px] text-danger">
+                    Motif du rejet : {d.reviewComment}
+                  </p>
+                ) : null}
                 {rejectingId === d.id ? (
-                  <div className="flex items-center gap-2 pl-2">
+                  <div className="mt-2.5 flex items-center gap-2">
                     <Input
                       placeholder="Motif du rejet (ex : document illisible)"
                       value={rejectComment}
                       onChange={(e) => setRejectComment(e.target.value)}
-                      className="h-8 flex-1"
+                      className="h-8 flex-1 text-[12.5px]"
                     />
                     <Button
                       size="sm"
@@ -224,59 +258,93 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
           </ul>
         )}
 
-        {/* Dépôt */}
-        <div className="flex flex-col gap-3 border-t border-line-soft pt-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Type de pièce" htmlFor={`doc-cat-${employeeId}`}>
-              <Select
-                id={`doc-cat-${employeeId}`}
-                value={category}
-                onChange={(e) => setCategory(e.target.value as DocumentCategory)}
-              >
-                {Object.entries(DOCUMENT_CATEGORY_LABELS).map(([value, text]) => (
-                  <option key={value} value={value}>
-                    {text}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Libellé" htmlFor={`doc-label-${employeeId}`}>
-              <Input
-                id={`doc-label-${employeeId}`}
-                placeholder="Ex : CNI, Master 2 Finance — UCAD…"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-              />
-            </Field>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <input
-              type="file"
-              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-              onChange={(e) => {
-                pickFile(e.target.files?.[0] ?? null);
-                e.currentTarget.value = '';
-              }}
-              className="block w-full text-sm text-ink-muted file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary-soft file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:opacity-90"
-            />
-            <Button
-              className="sm:shrink-0"
-              disabled={!label.trim() || !file}
-              loading={upload.isPending}
-              onClick={() => upload.mutate()}
+        {/* Le dépôt, quand on le demande. */}
+        {depotOuvert ? (
+          <div className="flex flex-col gap-3 rounded-[11px] border border-line-soft bg-bg px-3.5 py-3.5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Type de pièce" htmlFor={`doc-cat-${employeeId}`}>
+                <Select
+                  id={`doc-cat-${employeeId}`}
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as DocumentCategory)}
+                >
+                  {Object.entries(DOCUMENT_CATEGORY_LABELS).map(([value, text]) => (
+                    <option key={value} value={value}>
+                      {text}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Libellé" htmlFor={`doc-label-${employeeId}`}>
+                <Input
+                  id={`doc-label-${employeeId}`}
+                  placeholder="Ex : CNI, Master 2 Finance — UCAD…"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                />
+              </Field>
+            </div>
+
+            {/* Le sélecteur du navigateur annonce « Aucun fichier choisi »
+                dans sa propre langue et ne dit ni le format attendu ni le
+                poids permis tant qu'on n'a pas échoué. On l'habille. */}
+            <label
+              htmlFor={`doc-file-${employeeId}`}
+              className="flex cursor-pointer items-center gap-3 rounded-[10px] border border-dashed border-line bg-surface px-3.5 py-3 transition-colors focus-within:ring-2 focus-within:ring-primary/40 hover:border-primary/50"
             >
-              Déposer
-            </Button>
+              <input
+                id={`doc-file-${employeeId}`}
+                type="file"
+                className="sr-only"
+                accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                onChange={(e) => {
+                  pickFile(e.target.files?.[0] ?? null);
+                  e.currentTarget.value = '';
+                }}
+              />
+              <Icon
+                name={file ? 'check_circle' : 'upload_file'}
+                size={19}
+                className={file ? 'shrink-0 text-success' : 'shrink-0 text-primary'}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12.5px] font-bold text-ink-strong">
+                  {file ? file.filename : 'Choisir un fichier'}
+                </span>
+                <span className="block text-[11.5px] text-ink-muted">
+                  PDF, JPG ou PNG · 5 Mo maximum
+                </span>
+              </span>
+              <span className="shrink-0 text-[12px] font-semibold text-primary">
+                {file ? 'Remplacer' : 'Parcourir…'}
+              </span>
+            </label>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11.5px] text-ink-muted">
+                La contrepartie vérifie la pièce, puis la valide : elle rejoint alors le dossier.
+              </p>
+              <Button
+                disabled={!label.trim() || !file}
+                loading={upload.isPending}
+                onClick={() => upload.mutate()}
+              >
+                Déposer
+              </Button>
+            </div>
+            {fileError ? (
+              <p role="alert" className="text-[12px] font-semibold text-danger">
+                {fileError}
+              </p>
+            ) : null}
           </div>
-          <p className="text-xs text-ink-muted">
-            PDF, JPG ou PNG — 5 Mo max. La contrepartie (RH ou employé) vérifie la conformité puis
-            valide : le document rejoint alors le dossier.
+        ) : null}
+
+        {error ? (
+          <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
+            {error}
           </p>
-          {fileError ? <p className="text-xs text-danger">{fileError}</p> : null}
-          {error ? (
-            <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
-          ) : null}
-        </div>
+        ) : null}
       </CardContent>
 
       <DocViewer doc={viewed} onClose={() => setViewed(null)} />
