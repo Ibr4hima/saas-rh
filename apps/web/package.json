@@ -1,0 +1,32 @@
+{
+  "name": "@teranga/web",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev --port ${WEB_PORT:-3000}",
+    "icons:fetch": "node scripts/fetch-icon-font.mjs",
+    "start": "next start --port 3000",
+    "typecheck": "tsc --noEmit",
+    "lint": "prettier --check app"
+  },
+  "dependencies": {
+    "@teranga/contracts": "workspace:*",
+    "@teranga/ui": "workspace:*",
+    "next": "^15.4.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@hookform/resolvers": "^5.0.0",
+    "@tanstack/react-query": "^5.80.0",
+    "react-hook-form": "^7.60.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.9.0"
+  }
+}

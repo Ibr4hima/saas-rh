@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: teranga
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d teranga"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Configure environment
+        run: |
+          cat > .env << 'EOF'
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/teranga
+          APP_DATABASE_URL=postgres://app_user:app_user_dev_password@localhost:5432/teranga
+          DATA_ENCRYPTION_KEY=mfM8qEsFfS1lIiWvm8hrM8zqi+O/PFhzPku1whgaMoU=
+          EOF
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Migrate database
+        run: pnpm db:migrate
+
+      # LE gate de la Phase 0 : étanchéité inter-tenant contre un Postgres réel
+      # (rôle non-owner + pool), effective dating, audit append-only.
+      - name: Tests
+        run: pnpm test

@@ -1,0 +1,252 @@
+@import 'tailwindcss';
+@import '@teranga/ui/tokens.css';
+
+/* Les composants du design system vivent dans packages/ui : Tailwind doit les scanner. */
+@source '../../../packages/ui/src';
+
+/* Pont tokens → utilitaires Tailwind : bg-surface, text-ink, border-line, etc. */
+@theme inline {
+  --color-bg: var(--tg-bg);
+  --color-surface: var(--tg-surface);
+  --color-surface-raised: var(--tg-surface-raised);
+  --color-ink: var(--tg-ink);
+  --color-ink-strong: var(--tg-ink-strong);
+  --color-ink-muted: var(--tg-ink-muted);
+  --color-line: var(--tg-line);
+  --color-line-soft: var(--tg-line-soft);
+  --color-primary: var(--tg-primary);
+  --color-primary-ink: var(--tg-primary-ink);
+  --color-primary-hover: var(--tg-primary-hover);
+  --color-primary-soft: var(--tg-primary-soft);
+  --color-accent: var(--tg-accent);
+  --color-accent-ink: var(--tg-accent-ink);
+  --color-accent-hover: var(--tg-accent-hover);
+  --color-accent-soft: var(--tg-accent-soft);
+  --color-accent-text: var(--tg-accent-text);
+  --color-success: var(--tg-success);
+  --color-success-soft: var(--tg-success-soft);
+  --color-warning: var(--tg-warning);
+  --color-warning-soft: var(--tg-warning-soft);
+  --color-danger: var(--tg-danger);
+  --color-danger-soft: var(--tg-danger-soft);
+  --color-hero-ink: var(--tg-hero-ink);
+  --color-card-line: var(--tg-card-line);
+  --color-card-line-hover: var(--tg-card-line-hover);
+  --color-chart: var(--tg-chart);
+  --color-chart-track: var(--tg-chart-track);
+  --font-sans: var(--tg-font-sans);
+  --font-mono: var(--tg-font-mono);
+  --shadow-xs: var(--tg-shadow-xs);
+  --shadow-sm: var(--tg-shadow-sm);
+  --shadow-md: var(--tg-shadow-md);
+  --shadow-lg: var(--tg-shadow-lg);
+  --radius-xl: var(--tg-radius-xl);
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: var(--tg-bg);
+  color: var(--tg-ink);
+  font-family: var(--tg-font-sans);
+  font-optical-sizing: auto;
+  font-variation-settings: 'GRAD' 0;
+}
+
+::selection {
+  background: var(--tg-primary-soft);
+  color: var(--tg-ink-strong);
+}
+
+/* Barres de défilement discrètes : le contenu prime sur la chromiure. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--tg-line) transparent;
+}
+
+/* Tout l'UI en Google Sans : font-mono ne garde que les chiffres tabulaires
+   (matricules, compteurs) — plus aucune police système visible. */
+.font-mono {
+  font-family: var(--tg-font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Material Symbols, sous-ensemble servi par nous (cf. scripts/fetch-icon-font.mjs).
+   `block` plutôt que `swap` : une ligature non résolue afficherait le NOM de
+   l'icône en toutes lettres — mieux vaut un blanc de 100 ms. */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: block;
+  src: url('/fonts/material-symbols-outlined.subset.woff2') format('woff2');
+}
+
+/* Boîte carrée fixe (la ligature ne décale jamais la ligne) et axes variables
+   pilotés par le composant Icon. */
+.ms-icon {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Ouverture d'une fenêtre de saisie : elle monte de 10 px en se posant.
+   Assez pour dire d'où elle vient, assez court pour ne pas se faire attendre. */
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.modal-panel {
+  animation: modal-in 220ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-panel {
+    animation: none;
+  }
+}
+
+/* Le panneau prend le focus à l'ouverture (cf. useDialogue) : c'est une cible
+   technique, pas un élément que l'on parcourt — pas de halo. */
+[role='dialog']:focus {
+  outline: none;
+}
+
+/* ── Bandeau de tête ──────────────────────────────────────────────────────
+   Repris de la plateforme APIX : un aplat de marque, une trame très fine
+   masquée en diagonale, deux halos lumineux et un liseré en bas. Aucune de
+   ces couches ne se voit isolément ; ensemble elles donnent au bandeau une
+   profondeur qu'une couleur unie n'a pas. */
+.hero-bar {
+  background: var(--tg-hero);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.04) 1px, transparent 1px);
+  background-size: 44px 44px;
+  /* La trame s'efface vers le bas : visible là où l'œil entre, absente là où
+     le titre se lit. */
+  mask-image: radial-gradient(ellipse at 75% 0%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse at 75% 0%, #000 0%, transparent 72%);
+}
+
+/* Liseré lumineux en bas — la seule séparation entre le bandeau et la page. */
+.hero-bar::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.3) 50%, transparent 100%);
+}
+
+/* Le point pulsant : une onde blanche qui s'ouvre et s'éteint. */
+@keyframes hero-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(255 255 255 / 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgb(255 255 255 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(255 255 255 / 0);
+  }
+}
+
+.hero-dot {
+  animation: hero-pulse 1.6s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-dot {
+    animation: none;
+  }
+}
+
+/* Le logo se pose en blanc pur sur le bandeau, quelles que soient ses encres. */
+.hero-logo {
+  filter: brightness(0) invert(1);
+}
+
+/* ── Fond de la page publique de candidature ──────────────────────────────
+   Repris de l'écran de connexion de la plateforme APIX : un bleu de marque
+   balayé de nappes blanches très diffuses. Ce n'est pas UN dégradé, ce sont
+   quatre couches qui se recouvrent — c'est leur recouvrement, et non l'une
+   d'elles, qui donne au fond sa lumière. La trame fine par-dessus l'empêche
+   de paraître plat sur un grand écran.
+
+   Le fond ne suit pas le thème : le candidat n'a pas de compte, donc pas de
+   préférence enregistrée, et la couleur de l'employeur ne s'inverse pas. */
+.fond-candidature {
+  position: relative;
+  background-color: #0c4b8c;
+  background-image:
+    /* La grande nappe de gauche : c'est elle qui donne au fond son arc clair.
+       Elle porte un palier à mi-course, sans quoi le blanc se dilue en un
+       halo mou au lieu de dessiner un bord. */
+    radial-gradient(
+      62% 58% at 4% 58%,
+      rgb(255 255 255 / 0.98) 0%,
+      rgb(226 240 253 / 0.7) 42%,
+      rgb(226 240 253 / 0) 78%
+    ),
+    /* La remontée du bas, qui éclaire le pied de l'écran. */
+    radial-gradient(
+        78% 46% at 46% 112%,
+        rgb(255 255 255 / 0.92) 0%,
+        rgb(233 244 255 / 0.5) 46%,
+        rgb(233 244 255 / 0) 80%
+      ),
+    /* Un souffle froid en haut à droite, pour que le bleu n'y soit pas mort. */
+    radial-gradient(50% 44% at 96% 26%, rgb(150 205 255 / 0.4) 0%, rgb(150 205 255 / 0) 72%),
+    linear-gradient(168deg, #052a56 0%, #0b4a8c 44%, #2179c2 100%);
+}
+
+.fond-candidature::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.45;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-size: 52px 52px;
+  mask-image: radial-gradient(ellipse at 70% 8%, #000 0%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at 70% 8%, #000 0%, transparent 70%);
+}
