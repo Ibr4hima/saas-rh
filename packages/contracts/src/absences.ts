@@ -64,21 +64,31 @@ export interface AbsenceType {
 
 // ---------- Jours fériés ----------
 
+/**
+ * La date est facultative : la Korité s'inscrit dès janvier et ne se date qu'à
+ * l'annonce. C'est l'année qui rattache la fête au tableau, pas le jour.
+ */
 export const createHolidaySchema = z.object({
-  day: isoDate,
+  year: z.number().int().min(2000).max(2100),
+  day: isoDate.nullish(),
   label: z.string().trim().min(2).max(120),
 });
 export type CreateHolidayInput = z.infer<typeof createHolidaySchema>;
 
-/** Corriger une fête mobile, c'est en changer la date, l'intitulé, ou les deux. */
-export const updateHolidaySchema = createHolidaySchema;
+/** Dater une fête mobile, la recaler ou la renommer : le même geste. */
+export const updateHolidaySchema = z.object({
+  day: isoDate.nullish(),
+  label: z.string().trim().min(2).max(120),
+});
 export type UpdateHolidayInput = z.infer<typeof updateHolidaySchema>;
 
 export interface Holiday {
   id: string;
-  day: string;
+  year: number;
+  /** Null tant que la fête n'est pas datée. */
+  day: string | null;
   label: string;
-  /** Férié à date civile : le produit refuse de le déplacer ou de le retirer. */
+  /** Férié à date civile : le produit refuse de le déplacer (il se retire). */
   fixed: boolean;
 }
 

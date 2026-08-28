@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   AbsenceFrequency,
   AbsenceType,
@@ -52,8 +52,12 @@ function jourSemaine(iso: string): string {
   return JOURS[new Date(`${iso}T00:00:00`).getDay()] ?? '';
 }
 
-/** Le statut se lit en toutes lettres : trois états, pas trois pastilles. */
-function statutDuJour(jourFerie: string, aujourdhui: string): { texte: string; classe: string } {
+/** Le statut se lit en toutes lettres : quatre états, pas quatre pastilles. */
+function statutDuJour(
+  jourFerie: string | null,
+  aujourdhui: string,
+): { texte: string; classe: string } {
+  if (jourFerie == null) return { texte: 'À dater', classe: 'text-ink-muted' };
   if (jourFerie === aujourdhui) return { texte: 'En cours', classe: 'font-semibold text-primary' };
   if (jourFerie < aujourdhui) return { texte: 'Passé', classe: 'text-ink-muted' };
   return { texte: 'À venir', classe: 'text-ink' };
@@ -416,18 +420,18 @@ function FenetreType({
 // =============================================================================
 // Jours fériés
 // =============================================================================
-
 /**
  * Les quatorze fériés sénégalais, datés ou pas encore.
  *
- * Les six dates civiles se posent d'office sur l'année consultée : oublier de
- * saisir le 1er mai transformerait un jour chômé en jour travaillé dans tous
- * les décomptes. Ce sont aussi les seules que le produit refuse de déplacer.
+ * Le socle de l'année est posé à sa première consultation : les six dates
+ * civiles avec leur date, les huit fêtes mobiles sans la leur. Une Korité
+ * absente du tableau ne se voit pas — elle rend simplement un jour chômé
+ * ouvré dans tous les décomptes, sans erreur nulle part. Sa ligne est donc là
+ * dès janvier, vide, avec un calendrier à ouvrir le jour de l'annonce.
  *
- * Les huit fêtes mobiles ne se connaissent qu'à l'annonce — le croissant pour
- * les unes, le calendrier pascal pour les autres. Elles tiennent quand même
- * leur ligne, vide, avec un calendrier à ouvrir : un tableau qui ne montre que
- * les fériés déjà saisis ne dit jamais lesquels manquent.
+ * Rien n'y est acquis pour autant : une date civile ne se déplace pas, mais
+ * elle se retire — si l'Assomption cessait d'être chômée, il faudrait pouvoir
+ * la sortir de la liste.
  */
 function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
   const queryClient = useQueryClient();
@@ -439,27 +443,10 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
   });
   const [edition, setEdition] = useState<Holiday | 'nouveau' | null>(null);
   const [aSupprimer, setASupprimer] = useState<Holiday | null>(null);
-  const [erreur, setErreur] = useState<string | null>(null);
   const rafraichir = () => void queryClient.invalidateQueries({ queryKey: ['holidays'] });
 
-  /** Datation d'un clic, depuis le calendrier de la ligne. */
-  const dater = useMutation({
-    mutationFn: (input: { day: string; label: string }) =>
-      api('/holidays', { method: 'POST', body: input }),
-    onSuccess: () => {
-      setErreur(null);
-      rafraichir();
-    },
-    onError: (err) => setErreur(messageErreur(err, 'Impossible de poser cette date.')),
-  });
-
   const jour = aujourdhui();
-  const poses = feries.data ?? [];
-  // Une fête mobile non datée n'existe pas en base. Sa ligne est fabriquée ici,
-  // et ne porte donc ni identifiant, ni gestes de modification.
-  const aDater = feries.data
-    ? SENEGAL_MOBILE_HOLIDAYS.filter((l) => !poses.some((h) => h.label === l))
-    : [];
+  const lignes = feries.data ?? [];
   const colonnes = peutGerer ? 5 : 4;
 
   return (
@@ -489,12 +476,6 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
       </CardHeader>
 
       <CardContent className="px-0 pb-0">
-        {erreur ? (
-          <p className="mx-[18px] mb-3 rounded-[9px] bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
-            {erreur}
-          </p>
-        ) : null}
-
         {feries.isLoading ? (
           <div className="flex flex-col gap-3 p-5">
             {[0, 1, 2].map((i) => (
@@ -524,8 +505,8 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
               </tr>
             </THead>
             <TBody>
-              {poses.map((h) => {
-                const passe = h.day < jour;
+              {lignes.map((h) => {
+                const passe = h.day != null && h.day < jour;
                 const etat = statutDuJour(h.day, jour);
                 return (
                   <Tr key={h.id} className={passe ? 'group bg-line-soft/70' : 'group'}>
@@ -533,9 +514,27 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
                       className={passe ? 'text-ink-muted' : 'text-ink'}
                       style={{ fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {formatDate(h.day)}
+                      {h.day != null ? (
+                        formatDate(h.day)
+                      ) : peutGerer ? (
+                        <button
+                          type="button"
+                          aria-label={`Dater ${h.label} sur ${h.year}`}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-line px-2.5 py-1 text-[12px] text-ink-muted transition-colors duration-150 hover:border-primary hover:text-primary"
+                          onClick={() => setEdition(h)}
+                        >
+                          <Icon name="calendar_month" size={15} />
+                          Définir la date
+                        </button>
+                      ) : (
+                        <span className="text-ink-muted">—</span>
+                      )}
                     </Td>
-                    <Td className={passe ? 'text-ink-muted' : 'font-semibold text-ink-strong'}>
+                    <Td
+                      className={
+                        passe || h.day == null ? 'text-ink-muted' : 'font-semibold text-ink-strong'
+                      }
+                    >
                       <span className="inline-flex items-center gap-1.5">
                         {h.label}
                         {h.fixed ? (
@@ -548,47 +547,25 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
                         ) : null}
                       </span>
                     </Td>
-                    <Td className="text-ink-muted">{jourSemaine(h.day)}</Td>
+                    <Td className="text-ink-muted">{h.day != null ? jourSemaine(h.day) : '—'}</Td>
                     <Td className={etat.classe}>{etat.texte}</Td>
                     {peutGerer ? (
                       <Td className="text-right">
-                        {h.fixed ? (
-                          <span className="text-[11.5px] text-ink-muted">Date fixe</span>
-                        ) : (
-                          <Actions
-                            nom={h.label}
-                            onModifier={() => setEdition(h)}
-                            onSupprimer={() => setASupprimer(h)}
-                          />
-                        )}
+                        <Actions
+                          nom={h.label}
+                          // Une date civile se retire, mais ne se déplace pas :
+                          // pas de crayon, sinon le formulaire proposerait un
+                          // champ que l'API refuse.
+                          onModifier={h.fixed ? undefined : () => setEdition(h)}
+                          onSupprimer={() => setASupprimer(h)}
+                        />
                       </Td>
                     ) : null}
                   </Tr>
                 );
               })}
 
-              {aDater.map((label) => (
-                <Tr key={label}>
-                  <Td>
-                    {peutGerer ? (
-                      <BoutonDater
-                        label={label}
-                        annee={annee}
-                        enCours={dater.isPending}
-                        onChoisi={(day) => dater.mutate({ day, label })}
-                      />
-                    ) : (
-                      <span className="text-ink-muted">—</span>
-                    )}
-                  </Td>
-                  <Td className="text-ink">{label}</Td>
-                  <Td className="text-ink-muted">—</Td>
-                  <Td className="text-ink-muted">À dater</Td>
-                  {peutGerer ? <Td /> : null}
-                </Tr>
-              ))}
-
-              {poses.length + aDater.length === 0 ? (
+              {lignes.length === 0 ? (
                 <Tr>
                   <Td colSpan={colonnes} className="py-8 text-center text-ink-muted">
                     Aucun jour férié sur {annee}.
@@ -615,7 +592,11 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
       {aSupprimer ? (
         <FenetreSuppression
           titre="Retirer ce jour férié"
-          nom={`${aSupprimer.label} — ${formatDate(aSupprimer.day)}`}
+          nom={
+            aSupprimer.day != null
+              ? `${aSupprimer.label} — ${formatDate(aSupprimer.day)}`
+              : aSupprimer.label
+          }
           bouton="Retirer le jour"
           chemin={`/holidays/${aSupprimer.id}`}
           onClose={() => setASupprimer(null)}
@@ -625,67 +606,19 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
           }}
         >
           <p className="text-[12.5px] leading-relaxed text-ink">
-            Ce jour redevient ouvré : il sera de nouveau décompté des demandes qui l&apos;englobent.
+            {aSupprimer.day != null
+              ? 'Ce jour redevient ouvré : il sera de nouveau décompté des demandes qui l’englobent.'
+              : 'Cette fête sort de la liste de l’année : elle ne pourra plus y être datée.'}
           </p>
+          {aSupprimer.fixed ? (
+            <p className="mt-3 rounded-[9px] bg-bg px-3 py-2 text-[12px] text-ink-muted">
+              C’est un férié à date civile. Le retirer ne vaut que pour {aSupprimer.year} : les
+              autres années gardent le leur.
+            </p>
+          ) : null}
         </FenetreSuppression>
       ) : null}
     </Card>
-  );
-}
-
-/**
- * Le calendrier d'une fête qui reste à dater.
- *
- * `showPicker()` est le seul moyen d'ouvrir l'agenda du navigateur depuis un
- * bouton : `click()` sur un champ date ne fait que le focaliser. Le champ reste
- * donc dans le document, réduit à un pixel — masqué par `display:none`, le
- * navigateur refuserait de lui ouvrir son agenda.
- */
-function BoutonDater({
-  label,
-  annee,
-  enCours,
-  onChoisi,
-}: {
-  label: string;
-  annee: number;
-  enCours: boolean;
-  onChoisi: (day: string) => void;
-}) {
-  const champ = useRef<HTMLInputElement>(null);
-  return (
-    <span className="relative inline-flex items-center">
-      <input
-        ref={champ}
-        type="date"
-        tabIndex={-1}
-        aria-hidden
-        min={`${annee}-01-01`}
-        max={`${annee}-12-31`}
-        className="absolute bottom-0 left-4 size-px opacity-0"
-        onChange={(e) => {
-          if (e.target.value) onChoisi(e.target.value);
-        }}
-      />
-      <button
-        type="button"
-        disabled={enCours}
-        aria-label={`Dater ${label} sur ${annee}`}
-        className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-line px-2.5 py-1 text-[12px] text-ink-muted transition-colors duration-150 hover:border-primary hover:text-primary disabled:opacity-50"
-        onClick={() => {
-          const el = champ.current;
-          if (!el) return;
-          try {
-            el.showPicker();
-          } catch {
-            el.focus();
-          }
-        }}
-      >
-        <Icon name="calendar_month" size={15} />
-        Définir la date
-      </button>
-    </span>
   );
 }
 
@@ -703,29 +636,40 @@ function FenetreFerie({
   const [day, setDay] = useState(cible?.day ?? '');
   const [label, setLabel] = useState(cible?.label ?? '');
   const [erreur, setErreur] = useState<string | null>(null);
+  const anneeCible = cible?.year ?? annee;
 
   const enregistrer = useMutation({
     mutationFn: () => {
-      const body = { day, label: label.trim() };
+      // Le champ vide vaut « pas encore datée », pas la chaîne vide.
+      const jour = day === '' ? null : day;
       return cible
-        ? api(`/holidays/${cible.id}`, { method: 'PATCH', body })
-        : api('/holidays', { method: 'POST', body });
+        ? api(`/holidays/${cible.id}`, {
+            method: 'PATCH',
+            body: { day: jour, label: label.trim() },
+          })
+        : api('/holidays', {
+            method: 'POST',
+            body: { year: annee, day: jour, label: label.trim() },
+          });
     },
     onSuccess: onEnregistre,
     onError: (err) => setErreur(messageErreur(err, 'Enregistrement impossible.')),
   });
 
-  const valide = day !== '' && label.trim().length >= 2;
-
+  const aDater = cible != null && cible.day == null;
   return (
     <Modal
       open
       onClose={onClose}
-      title={cible ? 'Modifier le jour férié' : 'Nouveau jour férié'}
+      title={
+        aDater ? 'Dater ce jour férié' : cible ? 'Modifier le jour férié' : 'Nouveau jour férié'
+      }
       subtitle={
-        cible
-          ? 'Une fête mobile se recale souvent la veille : les rappels déjà partis sont retirés.'
-          : 'Il sera chômé pour toute l’organisation, et exclu des décomptes.'
+        aDater
+          ? `Une fois datée, cette fête sera chômée et exclue des décomptes de ${anneeCible}.`
+          : cible
+            ? 'Une fête mobile se recale souvent la veille : les rappels déjà partis sont retirés.'
+            : 'Il sera chômé pour toute l’organisation, et exclu des décomptes.'
       }
       maxWidth="max-w-xl"
       footer={
@@ -734,7 +678,7 @@ function FenetreFerie({
             Annuler
           </Button>
           <Button
-            disabled={!valide}
+            disabled={label.trim().length < 2}
             loading={enregistrer.isPending}
             onClick={() => {
               setErreur(null);
@@ -752,23 +696,22 @@ function FenetreFerie({
 
       <ModalSection title="Le jour">
         <ModalGrid>
-          <Field label="Date" htmlFor="ferieDate" required>
+          <Field
+            label="Date"
+            htmlFor="ferieDate"
+            hint="Laissez vide tant que la date n’est pas annoncée."
+          >
             <Input
               id="ferieDate"
               type="date"
               autoFocus
-              min={`${annee}-01-01`}
-              max={`${annee}-12-31`}
+              min={`${anneeCible}-01-01`}
+              max={`${anneeCible}-12-31`}
               value={day}
               onChange={(e) => setDay(e.target.value)}
             />
           </Field>
-          <Field
-            label="Intitulé"
-            htmlFor="ferieLabel"
-            required
-            hint="Les huit fêtes mobiles sénégalaises sont proposées à la saisie."
-          >
+          <Field label="Intitulé" htmlFor="ferieLabel" required>
             <Input
               id="ferieLabel"
               list="feries-mobiles"
@@ -901,21 +844,24 @@ function Actions({
   onSupprimer,
 }: {
   nom: string;
-  onModifier: () => void;
+  /** Omis quand la ligne se retire mais ne se modifie pas (date civile). */
+  onModifier?: () => void;
   onSupprimer: () => void;
 }) {
   const base =
     'inline-flex size-7 items-center justify-center rounded-md text-ink-muted transition-colors duration-150';
   return (
     <div className="flex items-center justify-end gap-0.5">
-      <button
-        type="button"
-        aria-label={`Modifier ${nom}`}
-        className={`${base} hover:bg-primary-soft hover:text-primary`}
-        onClick={onModifier}
-      >
-        <Icon name="edit" size={16} />
-      </button>
+      {onModifier ? (
+        <button
+          type="button"
+          aria-label={`Modifier ${nom}`}
+          className={`${base} hover:bg-primary-soft hover:text-primary`}
+          onClick={onModifier}
+        >
+          <Icon name="edit" size={16} />
+        </button>
+      ) : null}
       <button
         type="button"
         aria-label={`Retirer ${nom}`}

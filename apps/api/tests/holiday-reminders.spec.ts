@@ -130,7 +130,8 @@ async function rappels(): Promise<{ title: string; body: string }[]> {
 async function ajouterFerie(id: string, day: string, label: string): Promise<void> {
   await withTenant(async (db) => {
     await db.execute(
-      sql`INSERT INTO holidays (id, tenant_id, day, label) VALUES (${id}, ${tenantId}, ${day}, ${label})`,
+      sql`INSERT INTO holidays (id, tenant_id, year, day, label)
+          VALUES (${id}, ${tenantId}, ${Number(day.slice(0, 4))}, ${day}, ${label})`,
     );
   });
 }
@@ -157,6 +158,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await ownerPool?.query(`DELETE FROM notifications WHERE tenant_id = $1`, [tenantId]);
   await ownerPool?.query(`DELETE FROM holidays WHERE tenant_id = $1`, [tenantId]);
+  await ownerPool?.query(`DELETE FROM holiday_seeds WHERE tenant_id = $1`, [tenantId]);
   await ownerPool?.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
   await ownerPool?.query(`DELETE FROM users WHERE id = $1`, [userId]);
   await tenantDb?.pool.end();

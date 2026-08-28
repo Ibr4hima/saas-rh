@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   AbsencePreview,
@@ -21,6 +21,7 @@ import type {
 import {
   MAX_JUSTIFICATIF_BYTES,
   SENEGAL_FIXED_HOLIDAYS,
+  SENEGAL_MOBILE_HOLIDAYS,
   type AbsenceFrequency,
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
@@ -243,48 +244,86 @@ export class AbsencesService {
 
   async listHolidays(user: SessionUser, year?: number): Promise<Holiday[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      if (year && MANAGE_ROLES.has(user.role)) await this.semerFeriesFixes(tx, user, year);
+      if (year && MANAGE_ROLES.has(user.role)) await this.semerAnnee(tx, user, year);
       const rows = await tx
         .select({
           id: t.holidays.id,
+          year: t.holidays.year,
           day: t.holidays.day,
           label: t.holidays.label,
           fixed: t.holidays.fixedDate,
         })
         .from(t.holidays)
-        .where(year ? sql`extract(year from ${t.holidays.day}) = ${year}` : undefined)
-        .orderBy(asc(t.holidays.day));
+        .where(year ? eq(t.holidays.year, year) : undefined)
+        // Les fêtes non datées ferment la marche : elles n'ont pas de place
+        // dans une lecture chronologique, mais elles doivent rester visibles.
+        .orderBy(sql`${t.holidays.day} ASC NULLS LAST`, asc(t.holidays.label));
       return rows;
     });
   }
 
   async createHoliday(user: SessionUser, input: CreateHolidayInput): Promise<{ id: string }> {
     const id = uuidv7();
-    try {
-      await this.db.withTenant(ctxOf(user), (tx) =>
+    if (input.day && Number(input.day.slice(0, 4)) !== input.year) {
+      problem(
+        422,
+        'absence.holiday_year_mismatch',
+        'La date ne tombe pas dans l’année choisie',
+        `Le tableau des fériés se lit année par année : une date de ${input.day.slice(0, 4)} ne s’y range pas sous ${input.year}.`,
+      );
+    }
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.refuserDoublon(tx, input.year, input.label, null);
+      try {
         // Un férié saisi à la main est mobile par nature : les six dates
         // civiles sont déjà posées, et rien d'autre ne revient au même jour
         // chaque année.
-        tx
-          .insert(t.holidays)
-          .values({ id, tenantId: user.tenantId, day: input.day, label: input.label }),
-      );
-    } catch (err) {
-      if (pgCode(err) === '23505') {
-        problem(409, 'absence.holiday_exists', 'Un jour férié existe déjà à cette date');
+        await tx.insert(t.holidays).values({
+          id,
+          tenantId: user.tenantId,
+          year: input.year,
+          day: input.day ?? null,
+          label: input.label,
+        });
+      } catch (err) {
+        if (pgCode(err) === '23505') {
+          problem(409, 'absence.holiday_exists', 'Un jour férié existe déjà à cette date');
+        }
+        throw err;
       }
-      throw err;
-    }
+    });
     return { id };
   }
 
   async updateHoliday(user: SessionUser, id: string, input: UpdateHolidayInput): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
-      const row = await this.chargerFerie(tx, id, 'modifié');
+      const row = await this.chargerFerie(tx, id);
+      const jour = input.day ?? null;
+
+      // Une date civile se retire, mais ne se déplace pas : Noël déplacé d'un
+      // jour ne lève aucune erreur, il rend seulement un jour chômé ouvré.
+      if (row.fixed && jour !== row.day) {
+        problem(
+          409,
+          'absence.holiday_fixed',
+          'Ce jour férié est à date fixe',
+          `« ${row.label} » tombe à la même date chaque année : sa date ne se déplace pas. Retirez-le si ce jour n’est plus chômé.`,
+        );
+      }
+      if (jour && Number(jour.slice(0, 4)) !== row.year) {
+        problem(
+          422,
+          'absence.holiday_year_mismatch',
+          'La date ne tombe pas dans l’année choisie',
+          `Ce jour est rangé sous ${row.year} : une date de ${jour.slice(0, 4)} ne s’y lirait pas.`,
+        );
+      }
+      await this.refuserDoublon(tx, row.year, input.label, id);
+
       try {
         await tx
           .update(t.holidays)
-          .set({ day: input.day, label: input.label })
+          .set({ day: jour, label: input.label })
           .where(eq(t.holidays.id, id));
       } catch (err) {
         if (pgCode(err) === '23505') {
@@ -293,42 +332,76 @@ export class AbsencesService {
         throw err;
       }
       // Le rappel parti pour l'ancienne date annonce désormais un jour ouvré.
-      if (row.day !== input.day) await this.oublierRappel(tx, row.day);
+      if (row.day && row.day !== jour) await this.oublierRappel(tx, row.day);
     });
   }
 
+  /**
+   * Retrait d'un jour férié — y compris une date civile.
+   *
+   * Rien n'est chômé pour toujours : si l'Assomption cessait de l'être, il
+   * faudrait pouvoir la retirer. C'est `holiday_seeds` qui empêche la ligne
+   * supprimée de revenir au prochain affichage.
+   */
   async deleteHoliday(user: SessionUser, id: string): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
-      const row = await this.chargerFerie(tx, id, 'supprimé');
+      const row = await this.chargerFerie(tx, id);
       await tx.delete(t.holidays).where(eq(t.holidays.id, id));
       // Le rappel déjà parti affirmerait qu'un jour ouvré est chômé : on le
       // retire de toutes les boîtes. Les fêtes mobiles se recalent souvent
       // pendant la fenêtre J−2, quand la notification vient d'être envoyée.
-      await this.oublierRappel(tx, row.day);
+      if (row.day) await this.oublierRappel(tx, row.day);
     });
   }
 
-  /** Le férié demandé, à condition qu'il ne soit pas une date civile. */
   private async chargerFerie(
     tx: Tx,
     id: string,
-    geste: 'modifié' | 'supprimé',
-  ): Promise<{ day: string; label: string }> {
+  ): Promise<{ year: number; day: string | null; label: string; fixed: boolean }> {
     const [row] = await tx
-      .select({ day: t.holidays.day, label: t.holidays.label, fixed: t.holidays.fixedDate })
+      .select({
+        year: t.holidays.year,
+        day: t.holidays.day,
+        label: t.holidays.label,
+        fixed: t.holidays.fixedDate,
+      })
       .from(t.holidays)
       .where(eq(t.holidays.id, id))
       .limit(1);
     if (!row) problem(404, 'absence.holiday_not_found', 'Jour férié introuvable');
-    if (row.fixed) {
+    return row;
+  }
+
+  /**
+   * Deux « Korité » sur la même année ne veulent rien dire, et la base ne peut
+   * pas l'interdire seule : l'unicité de date ne couvre pas les jours non
+   * datés, qui sont précisément ceux qu'on risque de saisir deux fois.
+   */
+  private async refuserDoublon(
+    tx: Tx,
+    year: number,
+    label: string,
+    sauf: string | null,
+  ): Promise<void> {
+    const [jumeau] = await tx
+      .select({ id: t.holidays.id })
+      .from(t.holidays)
+      .where(
+        and(
+          eq(t.holidays.year, year),
+          sql`lower(${t.holidays.label}) = lower(${label})`,
+          sauf ? sql`${t.holidays.id} <> ${sauf}` : undefined,
+        ),
+      )
+      .limit(1);
+    if (jumeau) {
       problem(
         409,
-        'absence.holiday_fixed',
-        'Ce jour férié est à date fixe',
-        `« ${row.label} » tombe à la même date chaque année : il ne peut pas être ${geste}.`,
+        'absence.holiday_label_exists',
+        'Ce jour férié figure déjà sur cette année',
+        `« ${label} » est déjà inscrit sur ${year}.`,
       );
     }
-    return { day: row.day, label: row.label };
   }
 
   private async oublierRappel(tx: Tx, day: string): Promise<void> {
@@ -336,27 +409,45 @@ export class AbsencesService {
   }
 
   /**
-   * Les six dates civiles existent, qu'on les ait saisies ou non. On les pose
-   * sur chaque année consultée plutôt que d'attendre un geste : oublier de
-   * cocher le 1er mai transformerait un jour chômé en jour travaillé dans tous
-   * les décomptes.
+   * Le socle des quatorze fériés sénégalais, posé à la PREMIÈRE consultation
+   * de l'année — les six dates civiles avec leur date, les huit fêtes mobiles
+   * sans la leur, à dater à l'annonce.
+   *
+   * « Première consultation » ne se déduit pas du contenu de la table : une
+   * année sans férié peut être une année jamais ouverte comme une année dont
+   * on a retiré tous les jours. Les confondre ferait revenir ce qu'on vient de
+   * supprimer. D'où la marque posée en même temps que le socle.
    */
-  private async semerFeriesFixes(tx: Tx, user: SessionUser, year: number): Promise<void> {
-    const [row] = await tx
-      .select({ n: sql<string>`count(*)` })
-      .from(t.holidays)
-      .where(
-        and(sql`extract(year from ${t.holidays.day}) = ${year}`, eq(t.holidays.fixedDate, true)),
-      );
-    if (Number(row?.n ?? 0) >= SENEGAL_FIXED_HOLIDAYS.length) return;
+  private async semerAnnee(tx: Tx, user: SessionUser, year: number): Promise<void> {
+    const marque = await tx
+      .insert(t.holidaySeeds)
+      .values({ tenantId: user.tenantId, year })
+      .onConflictDoNothing()
+      .returning({ year: t.holidaySeeds.year });
+    if (marque.length === 0) return;
+
+    // L'année peut déjà porter des fériés saisis avant que le socle n'y soit
+    // posé — un import, une Tabaski entrée à la main. Les réinsérer donnerait
+    // deux lignes du même nom, que l'index de date ne rattraperait pas : une
+    // fête non datée n'entre pas dans l'unicité de date.
+    const dejaLa = new Set(
+      (
+        await tx
+          .select({ label: t.holidays.label })
+          .from(t.holidays)
+          .where(eq(t.holidays.year, year))
+      ).map((r) => r.label.toLowerCase()),
+    );
 
     for (const def of SENEGAL_FIXED_HOLIDAYS) {
+      if (dejaLa.has(def.label.toLowerCase())) continue;
       const day = `${year}-${String(def.month).padStart(2, '0')}-${String(def.day).padStart(2, '0')}`;
       await tx
         .insert(t.holidays)
         .values({
           id: uuidv7(),
           tenantId: user.tenantId,
+          year,
           day,
           label: def.label,
           fixedDate: true,
@@ -364,6 +455,16 @@ export class AbsencesService {
         // Une fête mobile a pu être datée là avant que la date civile n'y soit
         // posée : on ne l'écrase pas.
         .onConflictDoNothing();
+    }
+    for (const label of SENEGAL_MOBILE_HOLIDAYS) {
+      if (dejaLa.has(label.toLowerCase())) continue;
+      await tx.insert(t.holidays).values({
+        id: uuidv7(),
+        tenantId: user.tenantId,
+        year,
+        day: null,
+        label,
+      });
     }
   }
 
@@ -470,9 +571,11 @@ export class AbsencesService {
 
   async preview(user: SessionUser, startDate: string, endDate: string): Promise<AbsencePreview> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
+      // Une fête non encore datée ne chôme rien : elle n'entre pas au décompte.
       const holidayRows = await tx
-        .select({ day: t.holidays.day, label: t.holidays.label })
-        .from(t.holidays);
+        .select({ day: sql<string>`${t.holidays.day}`, label: t.holidays.label })
+        .from(t.holidays)
+        .where(isNotNull(t.holidays.day));
       const result = countWorkdays(startDate, endDate, new Set(holidayRows.map((h) => h.day)));
       return {
         workingDays: result.workingDays,
@@ -508,7 +611,10 @@ export class AbsencesService {
           problem(422, 'absence.type_not_found', "Ce type d'absence n'existe pas");
         }
 
-        const holidayRows = await tx.select({ day: t.holidays.day }).from(t.holidays);
+        const holidayRows = await tx
+          .select({ day: sql<string>`${t.holidays.day}` })
+          .from(t.holidays)
+          .where(isNotNull(t.holidays.day));
         daysCount = countWorkdays(
           input.startDate,
           input.endDate,

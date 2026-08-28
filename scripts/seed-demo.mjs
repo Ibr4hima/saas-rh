@@ -109,7 +109,7 @@ const types = await call('GET', '/absence-types');
 const typeId = (name) => types.find((t) => t.name === name).id;
 const year = new Date().getFullYear();
 const tabaski = `${year}-08-26`;
-await call('POST', '/holidays', { day: tabaski, label: 'Tabaski' }).catch(() => {});
+await call('POST', '/holidays', { year, day: tabaski, label: 'Tabaski' }).catch(() => {});
 
 // Fête mobile placée pour que la démo montre le rappel automatique : on prend
 // le premier jour ouvré à venir dont le rappel (J−2 reculé au dernier jour
@@ -126,7 +126,13 @@ for (let ahead = 1; ahead <= 21 && !magalOn; ahead += 1) {
   remind.setUTCDate(remind.getUTCDate() - 2);
   while (isWeekend(remind)) remind.setUTCDate(remind.getUTCDate() - 1);
   if (remind > todayUtc) continue; // rappel pas encore dû : on essaie le suivant
-  await call('POST', '/holidays', { day: iso(day), label: 'Magal de Touba' });
+  // Fin décembre, le premier jour ouvré à venir bascule sur l'année suivante :
+  // le férié se range sous SON année, pas sous celle du jour où le seed tourne.
+  await call('POST', '/holidays', {
+    year: Number(iso(day).slice(0, 4)),
+    day: iso(day),
+    label: 'Magal de Touba',
+  });
   magalOn = iso(day);
 }
 if (!magalOn) console.warn('  ⚠ aucun férié de démonstration placé (rappel non illustré)');

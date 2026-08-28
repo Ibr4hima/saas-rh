@@ -17,7 +17,11 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionUser } from '@teranga/contracts';
-import { createAbsenceTypeSchema, SENEGAL_FIXED_HOLIDAYS } from '@teranga/contracts';
+import {
+  createAbsenceTypeSchema,
+  SENEGAL_FIXED_HOLIDAYS,
+  SENEGAL_MOBILE_HOLIDAYS,
+} from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
@@ -58,6 +62,7 @@ async function tableRase(): Promise<void> {
   await raw('DELETE FROM absence_balances WHERE tenant_id = $1', [tenantId]);
   await raw('DELETE FROM absence_types WHERE tenant_id = $1', [tenantId]);
   await raw('DELETE FROM holidays WHERE tenant_id = $1', [tenantId]);
+  await raw('DELETE FROM holiday_seeds WHERE tenant_id = $1', [tenantId]);
   await raw('DELETE FROM notifications WHERE tenant_id = $1', [tenantId]);
 }
 
@@ -105,65 +110,189 @@ beforeEach(tableRase);
 
 // ---------------------------------------------------------------------------
 
-describe('les six dates civiles', () => {
-  it("se posent d'office sur l'année consultée, marquées fixes", async () => {
+describe('le socle de l’année', () => {
+  it('se pose à la première consultation : six dates civiles et huit fêtes à dater', async () => {
     const liste = await absences.listHolidays(admin, ANNEE);
-    expect(liste).toHaveLength(SENEGAL_FIXED_HOLIDAYS.length);
-    expect(liste.every((h) => h.fixed)).toBe(true);
-    expect(liste.map((h) => h.day)).toContain(`${ANNEE}-05-01`);
-    expect(liste.map((h) => h.label)).toContain('Noël');
+    expect(liste).toHaveLength(SENEGAL_FIXED_HOLIDAYS.length + SENEGAL_MOBILE_HOLIDAYS.length);
+
+    const datees = liste.filter((h) => h.day != null);
+    expect(datees).toHaveLength(SENEGAL_FIXED_HOLIDAYS.length);
+    expect(datees.every((h) => h.fixed)).toBe(true);
+    expect(datees.map((h) => h.day)).toContain(`${ANNEE}-05-01`);
+
+    const aDater = liste.filter((h) => h.day == null);
+    expect(aDater.map((h) => h.label).sort()).toEqual([...SENEGAL_MOBILE_HOLIDAYS].sort());
+    expect(aDater.every((h) => h.year === ANNEE)).toBe(true);
   });
 
-  it('ne se dédoublent pas à la deuxième consultation', async () => {
+  it('ne se repose pas à la deuxième consultation', async () => {
     await absences.listHolidays(admin, ANNEE);
     const liste = await absences.listHolidays(admin, ANNEE);
-    expect(liste).toHaveLength(SENEGAL_FIXED_HOLIDAYS.length);
+    expect(liste).toHaveLength(SENEGAL_FIXED_HOLIDAYS.length + SENEGAL_MOBILE_HOLIDAYS.length);
   });
 
-  it("n'écrasent pas une fête mobile déjà datée au même jour", async () => {
-    await absences.createHoliday(admin, { day: `${ANNEE}-01-01`, label: 'Korité' });
+  it('range les fêtes non datées après les autres', async () => {
     const liste = await absences.listHolidays(admin, ANNEE);
-    const premier = liste.find((h) => h.day === `${ANNEE}-01-01`);
-    expect(premier?.label).toBe('Korité');
-    expect(premier?.fixed).toBe(false);
+    const premierVide = liste.findIndex((h) => h.day == null);
+    expect(premierVide).toBeGreaterThan(0);
+    expect(liste.slice(premierVide).every((h) => h.day == null)).toBe(true);
   });
 
-  it('ne se déplacent pas', async () => {
-    const [premier] = await absences.listHolidays(admin, ANNEE);
+  it('ne double pas un férié déjà saisi avant lui', async () => {
+    // Un import, ou une Tabaski entrée à la main avant d'ouvrir l'écran.
+    await absences.createHoliday(admin, {
+      year: ANNEE,
+      day: `${ANNEE}-08-26`,
+      label: 'Tabaski',
+    });
+    await absences.createHoliday(admin, { year: ANNEE, day: null, label: 'noël' });
+
+    const liste = await absences.listHolidays(admin, ANNEE);
+    const compte = (l: string) =>
+      liste.filter((h) => h.label.toLowerCase() === l.toLowerCase()).length;
+    expect(compte('Tabaski')).toBe(1);
+    expect(compte('Noël')).toBe(1);
+    // La ligne existante n'est pas retouchée : le Noël saisi reste non daté.
+    expect(liste.find((h) => h.label.toLowerCase() === 'noël')?.day).toBeNull();
+  });
+
+  it('ne rattache pas une année à une autre', async () => {
+    await absences.listHolidays(admin, ANNEE);
+    const suivante = await absences.listHolidays(admin, ANNEE + 1);
+    expect(suivante.every((h) => h.year === ANNEE + 1)).toBe(true);
+    expect(suivante.filter((h) => h.day == null)).toHaveLength(SENEGAL_MOBILE_HOLIDAYS.length);
+  });
+});
+
+describe('une date civile', () => {
+  async function noel(): Promise<{ id: string; label: string }> {
+    const liste = await absences.listHolidays(admin, ANNEE);
+    const row = liste.find((h) => h.label === 'Noël');
+    if (!row) throw new Error('Noël absent du socle');
+    return row;
+  }
+
+  it('ne se déplace pas', async () => {
+    const row = await noel();
     expect(
       await codeOf(() =>
-        absences.updateHoliday(admin, premier!.id, {
-          day: `${ANNEE}-01-02`,
-          label: premier!.label,
-        }),
+        absences.updateHoliday(admin, row.id, { day: `${ANNEE}-12-26`, label: row.label }),
       ),
     ).toBe('absence.holiday_fixed');
   });
 
-  it('ne se suppriment pas', async () => {
-    const [premier] = await absences.listHolidays(admin, ANNEE);
-    expect(await codeOf(() => absences.deleteHoliday(admin, premier!.id))).toBe(
-      'absence.holiday_fixed',
-    );
-    expect(await absences.listHolidays(admin, ANNEE)).toHaveLength(SENEGAL_FIXED_HOLIDAYS.length);
+  it('se renomme sans bouger', async () => {
+    const row = await noel();
+    await absences.updateHoliday(admin, row.id, {
+      day: `${ANNEE}-12-25`,
+      label: 'Noël (Nativité)',
+    });
+    const liste = await absences.listHolidays(admin, ANNEE);
+    expect(liste.find((h) => h.id === row.id)?.label).toBe('Noël (Nativité)');
   });
 
-  it('un férié saisi à la main reste mobile', async () => {
+  it('se retire — rien n’est chômé pour toujours', async () => {
+    const liste = await absences.listHolidays(admin, ANNEE);
+    const assomption = liste.find((h) => h.label === 'Assomption');
+    await absences.deleteHoliday(admin, assomption!.id);
+    expect((await absences.listHolidays(admin, ANNEE)).some((h) => h.label === 'Assomption')).toBe(
+      false,
+    );
+  });
+
+  it('retirée, ne revient pas au prochain affichage', async () => {
+    const liste = await absences.listHolidays(admin, ANNEE);
+    const assomption = liste.find((h) => h.label === 'Assomption');
+    await absences.deleteHoliday(admin, assomption!.id);
+    // C'est tout l'objet de holiday_seeds : sans marque, une année incomplète
+    // se ferait resemer et la ligne supprimée reviendrait.
+    await absences.listHolidays(admin, ANNEE);
+    await absences.listHolidays(admin, ANNEE);
+    expect((await absences.listHolidays(admin, ANNEE)).some((h) => h.label === 'Assomption')).toBe(
+      false,
+    );
+  });
+
+  it('vidée de toute son année, ne se resème pas non plus', async () => {
+    for (const h of await absences.listHolidays(admin, ANNEE)) {
+      await absences.deleteHoliday(admin, h.id);
+    }
+    expect(await absences.listHolidays(admin, ANNEE)).toHaveLength(0);
+  });
+});
+
+describe('un férié sans date', () => {
+  it('s’inscrit sans qu’on sache encore quand il tombe', async () => {
     const { id } = await absences.createHoliday(admin, {
-      day: `${ANNEE}-03-11`,
-      label: 'Korité',
+      year: ANNEE,
+      day: null,
+      label: 'Journée de la femme',
     });
-    const ferie = (await absences.listHolidays(admin, ANNEE)).find((h) => h.id === id);
-    expect(ferie?.fixed).toBe(false);
+    const row = (await absences.listHolidays(admin, ANNEE)).find((h) => h.id === id);
+    expect(row?.day).toBeNull();
+    expect(row?.year).toBe(ANNEE);
+    expect(row?.fixed).toBe(false);
+  });
+
+  it('ne chôme rien tant qu’il n’est pas daté', async () => {
+    await absences.listHolidays(admin, ANNEE); // sème les huit fêtes non datées
+    // Une semaine pleine de lundi à vendredi : cinq jours ouvrés, et aucune
+    // des fêtes en attente ne doit en retirer.
+    const apercu = await absences.preview(admin, `${ANNEE}-06-02`, `${ANNEE}-06-06`);
+    expect(apercu.workingDays).toBe(5);
+    expect(apercu.holidaysSkipped).toHaveLength(0);
+  });
+
+  it('se date ensuite, et devient un jour chômé', async () => {
+    const liste = await absences.listHolidays(admin, ANNEE);
+    const korite = liste.find((h) => h.label === 'Korité');
+    await absences.updateHoliday(admin, korite!.id, { day: `${ANNEE}-06-03`, label: 'Korité' });
+
+    const apres = (await absences.listHolidays(admin, ANNEE)).find((h) => h.id === korite!.id);
+    expect(apres?.day).toBe(`${ANNEE}-06-03`);
+    const apercu = await absences.preview(admin, `${ANNEE}-06-02`, `${ANNEE}-06-06`);
+    expect(apercu.workingDays).toBe(4);
+  });
+
+  it('se retire comme les autres', async () => {
+    const liste = await absences.listHolidays(admin, ANNEE);
+    const tabaski = liste.find((h) => h.label === 'Tabaski');
+    await absences.deleteHoliday(admin, tabaski!.id);
+    expect((await absences.listHolidays(admin, ANNEE)).some((h) => h.label === 'Tabaski')).toBe(
+      false,
+    );
+  });
+
+  it('ne s’inscrit pas deux fois sur la même année', async () => {
+    await absences.createHoliday(admin, { year: ANNEE, day: null, label: 'Journée de la femme' });
+    expect(
+      await codeOf(() =>
+        absences.createHoliday(admin, { year: ANNEE, day: null, label: 'journée de la femme' }),
+      ),
+    ).toBe('absence.holiday_label_exists');
+  });
+
+  it('refuse une date qui tombe hors de son année', async () => {
+    expect(
+      await codeOf(() =>
+        absences.createHoliday(admin, {
+          year: ANNEE,
+          day: `${ANNEE + 1}-03-11`,
+          label: 'Korité',
+        }),
+      ),
+    ).toBe('absence.holiday_year_mismatch');
   });
 });
 
 describe('une fête mobile se recale', () => {
+  async function poser(day: string, label: string): Promise<string> {
+    const { id } = await absences.createHoliday(admin, { year: ANNEE, day, label });
+    return id;
+  }
+
   it('change de date et d’intitulé', async () => {
-    const { id } = await absences.createHoliday(admin, {
-      day: `${ANNEE}-03-11`,
-      label: 'Korite',
-    });
+    const id = await poser(`${ANNEE}-03-11`, 'Korite');
     await absences.updateHoliday(admin, id, { day: `${ANNEE}-03-12`, label: 'Korité' });
     const ferie = (await absences.listHolidays(admin, ANNEE)).find((h) => h.id === id);
     expect(ferie?.day).toBe(`${ANNEE}-03-12`);
@@ -171,10 +300,7 @@ describe('une fête mobile se recale', () => {
   });
 
   it('emporte le rappel déjà parti pour l’ancienne date', async () => {
-    const { id } = await absences.createHoliday(admin, {
-      day: `${ANNEE}-03-11`,
-      label: 'Korité',
-    });
+    const id = await poser(`${ANNEE}-03-11`, 'Korité');
     await raw(
       `INSERT INTO notifications (id, tenant_id, recipient_user_id, type, title, body, dedupe_key)
        VALUES ($1, $2, $3, 'holiday_reminder', 'Korité', 'Jour chômé mercredi', $4)`,
@@ -191,10 +317,7 @@ describe('une fête mobile se recale', () => {
   });
 
   it('laisse le rappel tranquille quand seul l’intitulé change', async () => {
-    const { id } = await absences.createHoliday(admin, {
-      day: `${ANNEE}-03-11`,
-      label: 'Korite',
-    });
+    const id = await poser(`${ANNEE}-03-11`, 'Korite');
     await raw(
       `INSERT INTO notifications (id, tenant_id, recipient_user_id, type, title, body, dedupe_key)
        VALUES ($1, $2, $3, 'holiday_reminder', 'Korite', 'Jour chômé mercredi', $4)`,
@@ -210,13 +333,13 @@ describe('une fête mobile se recale', () => {
     expect((rows[0] as { n: number }).n).toBe(1);
   });
 
-  it('se supprime', async () => {
-    const { id } = await absences.createHoliday(admin, {
-      day: `${ANNEE}-03-11`,
-      label: 'Korité',
-    });
-    await absences.deleteHoliday(admin, id);
-    expect((await absences.listHolidays(admin, ANNEE)).some((h) => h.id === id)).toBe(false);
+  it('refuse une date déjà occupée', async () => {
+    await poser(`${ANNEE}-03-11`, 'Korité');
+    expect(
+      await codeOf(() =>
+        absences.createHoliday(admin, { year: ANNEE, day: `${ANNEE}-03-11`, label: 'Tabaski' }),
+      ),
+    ).toBe('absence.holiday_exists');
   });
 });
 

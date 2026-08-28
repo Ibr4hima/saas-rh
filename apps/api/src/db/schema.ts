@@ -183,11 +183,21 @@ export const absenceTypes = pgTable('absence_types', {
 export const holidays = pgTable('holidays', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
-  day: date('day').notNull(),
+  /** L'année de rattachement : elle tient même quand la date manque encore. */
+  year: integer('year').notNull(),
+  /** Null tant que la fête n'est pas datée (Korité, Tabaski… avant l'annonce). */
+  day: date('day'),
   label: text('label').notNull(),
-  /** Férié à date civile (Nouvel an, Noël…) : ni modifiable, ni supprimable. */
+  /** Férié à date civile (Nouvel an, Noël…) : sa date ne se déplace pas. */
   fixedDate: boolean('fixed_date').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Années dont le socle de quatorze fériés a déjà été posé (cf. 0020). */
+export const holidaySeeds = pgTable('holiday_seeds', {
+  tenantId: uuid('tenant_id').notNull(),
+  year: integer('year').notNull(),
+  seededAt: timestamp('seeded_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const absenceBalances = pgTable('absence_balances', {
