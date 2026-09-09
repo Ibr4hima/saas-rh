@@ -335,13 +335,6 @@ body {
   }
 }
 
-/* Le liseré de tête de la carte. Le dégradé du bandeau est diagonal ; posé
-   sur 4 px de haut il ne montrerait qu'une seule de ses teintes, d'où cette
-   version horizontale de la même descente. */
-.login-edge {
-  background: linear-gradient(90deg, #002a52 0%, #004f91 55%, #1a6ab0 100%);
-}
-
 /* Entrée de l'écran de connexion : une montée de quelques pixels, échelonnée
    entre la marque, la carte et la mention. Assez pour que la page se pose au
    lieu d'apparaître ; jamais assez pour faire attendre qui vient se connecter. */

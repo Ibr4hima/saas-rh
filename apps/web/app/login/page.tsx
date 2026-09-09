@@ -76,14 +76,14 @@ export default function LoginPage() {
             className="pointer-events-none absolute -top-8 left-1/2 h-64 w-[min(34rem,92vw)] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(closest-side,rgb(255_255_255/0.13),transparent)]"
           />
 
-          <div className="relative overflow-hidden rounded-[20px] border border-card-line bg-surface shadow-[0_30px_70px_rgb(0_0_0/0.28),0_4px_14px_rgb(0_0_0/0.10)]">
-            <div className="login-edge h-1" />
-
-            <div className="px-7 pt-7 pb-6 sm:px-8">
-              <p className="text-2xl font-extrabold tracking-[-0.02em] text-ink-strong">
+          {/* Le rayon est celui des cartes de l'application : l'écran de
+              connexion n'a pas de raison d'avoir sa propre rondeur. */}
+          <div className="relative overflow-hidden rounded-[14px] border border-card-line bg-surface shadow-[0_30px_70px_rgb(0_0_0/0.28),0_4px_14px_rgb(0_0_0/0.10)]">
+            <div className="px-7 pt-8 pb-6 sm:px-8">
+              <p className="text-center text-2xl font-extrabold tracking-[-0.02em] text-ink-strong">
                 Connexion
               </p>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-muted">
+              <p className="mt-1.5 text-center text-[13px] leading-relaxed text-ink-muted">
                 Accédez à votre espace avec votre compte{' '}
                 <span className="font-semibold text-ink">@apix.sn</span>
               </p>
@@ -98,7 +98,7 @@ export default function LoginPage() {
                     placeholder="Entrez votre adresse email"
                     aria-invalid={errors.email ? true : undefined}
                     aria-describedby={errors.email ? 'email-erreur' : undefined}
-                    className="h-11 rounded-xl border-[1.5px] bg-surface-raised pr-3 pl-10 text-[14px]"
+                    className="h-11 rounded-lg border-[1.5px] bg-surface-raised pr-3 pl-10 text-[14px]"
                     {...form.register('email')}
                   />
                 </Champ>
@@ -126,7 +126,7 @@ export default function LoginPage() {
                         .filter(Boolean)
                         .join(' ') || undefined
                     }
-                    className="h-11 rounded-xl border-[1.5px] bg-surface-raised pr-11 pl-10 text-[14px]"
+                    className="h-11 rounded-lg border-[1.5px] bg-surface-raised pr-11 pl-10 text-[14px]"
                     {...form.register('password')}
                     // Le verrouillage majuscules est LA cause silencieuse
                     // d'échec sur un champ masqué : le mot de passe est juste,
@@ -146,7 +146,7 @@ export default function LoginPage() {
                 {serverError ? (
                   <p
                     role="alert"
-                    className="rounded-[10px] border border-danger/20 bg-danger-soft px-3.5 py-2.5 text-center text-[12.5px] font-medium text-danger"
+                    className="rounded-lg border border-danger/20 bg-danger-soft px-3.5 py-2.5 text-center text-[12.5px] font-medium text-danger"
                   >
                     {serverError}
                   </p>
