@@ -33,17 +33,28 @@ export function BrandMark({
 }) {
   // Index dans LOGO_SOURCES ; au-delà de la liste, plus de fichier à tenter.
   const [candidate, setCandidate] = useState(0);
+  // Une image qu'on n'a pas encore vue arriver ne se peint PAS.
+  //
+  // Le navigateur dessine sa propre vignette — l'icône de fichier cassé, plus
+  // le texte alternatif — dès qu'une source échoue. Sur une installation qui
+  // n'a que le PNG, le SVG essayé en premier rend 404 et cette vignette
+  // s'affichait une seconde avant la bascule. On garde donc l'image masquée
+  // tant qu'elle n'a pas réellement chargé : le temps d'essayer les sources,
+  // l'emplacement reste vide, ce que personne ne remarque.
+  const [charge, setCharge] = useState(false);
   const img = useRef<HTMLImageElement>(null);
   const src = LOGO_SOURCES[candidate];
 
-  // `onError` ne suffit pas. Sur une page rendue au serveur, le navigateur
-  // charge — et rate — l'image AVANT que React n'ait attaché le gestionnaire :
-  // l'événement est déjà passé, le repli ne viendrait jamais, et l'écran de
-  // connexion afficherait une vignette cassée au lieu de l'aplat de marque.
-  // On relit donc l'état réel de l'image au montage.
+  // `onLoad` et `onError` ne suffisent pas. Sur une page rendue au serveur, le
+  // navigateur charge l'image AVANT que React n'ait attaché ses gestionnaires :
+  // l'événement est déjà passé et n'arrivera jamais. On relit donc l'état réel
+  // de l'image au montage — sans quoi, selon le cas, le repli ne viendrait
+  // jamais ou le logo resterait masqué pour toujours.
   useEffect(() => {
     const el = img.current;
-    if (el?.complete && el.naturalWidth === 0) setCandidate((i) => i + 1);
+    if (!el?.complete) return;
+    if (el.naturalWidth > 0) setCharge(true);
+    else setCandidate((i) => i + 1);
   }, [candidate]);
 
   if (src) {
@@ -53,6 +64,7 @@ export function BrandMark({
         ref={img}
         src={src}
         alt="Logo de l'organisation"
+        onLoad={() => setCharge(true)}
         className={cn(
           // La plaque est TRANSPARENTE en clair : le logo se pose directement
           // sur la barre. Elle réapparaît en sombre, faute de quoi un logo à
@@ -60,12 +72,9 @@ export function BrandMark({
           // Largeur imposée, hauteur libre plafonnée : un logo large occupe
           // toute la place offerte, un logo haut reste à sa mesure.
           'bg-[var(--tg-brand-plate)] object-contain',
-          // Le texte alternatif est peint par le navigateur TANT QUE l'image
-          // n'est pas arrivée : au rechargement, « Logo de l'organisation »
-          // s'affichait une seconde à la place de la marque. L'encre
-          // transparente l'empêche de paraître sans le retirer de l'arbre
-          // d'accessibilité — le lecteur d'écran l'annonce toujours.
-          'text-transparent',
+          // `invisible` et non `hidden` : l'élément garde sa place et reste
+          // dans l'arbre d'accessibilité, le lecteur d'écran l'annonce.
+          !charge && 'invisible',
           variant === 'full' && 'max-h-14 w-full rounded-lg px-1 py-0.5',
           // Sur le bandeau, le logo se pose en blanc pur : la plaque n'a plus
           // lieu d'être, et ses encres foncées disparaîtraient dans le bleu.
