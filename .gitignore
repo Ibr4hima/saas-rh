@@ -8,3 +8,7 @@ coverage/
 .env
 .env.local
 .DS_Store
+
+# Ressources de l'organisation, déposées par l'exploitant (cf. apps/api/assets/README.md)
+apps/api/assets/entete-republique.*
+apps/api/assets/logo-apix.*

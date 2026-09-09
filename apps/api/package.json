@@ -10,7 +10,8 @@
     "db:reset": "tsx src/db/reset.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "prettier --check src tests",
-    "test": "vitest run"
+    "test": "vitest run",
+    "fonts:fetch": "node scripts/fetch-pdf-fonts.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
