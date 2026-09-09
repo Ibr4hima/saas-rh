@@ -250,3 +250,119 @@ body {
   mask-image: radial-gradient(ellipse at 70% 8%, #000 0%, transparent 70%);
   -webkit-mask-image: radial-gradient(ellipse at 70% 8%, #000 0%, transparent 70%);
 }
+
+/* ── Écran de connexion ───────────────────────────────────────────────────
+   Le dôme de marque de la plateforme APIX : un bleu profond qui descend du
+   haut de l'écran et se DISSOUT dans le fond de la page. Il n'y a aucune
+   ligne de séparation — c'est cette dissolution, et rien d'autre, qui pose
+   la carte au milieu.
+
+   Deux écarts assumés avec la plateforme, tous deux au bénéfice du produit :
+
+   1. Pas de halo orange en bas. L'orange de la charte signale CE QUI ATTEND
+      un geste (cf. tokens.css). Décoratif sur le premier écran, il
+      apprendrait à l'œil à ne plus le chercher là où il compte.
+   2. Le dôme ne suit pas le thème — c'est la couleur de l'employeur — mais
+      le sol, la carte et le pied de page, eux, passent par les tokens : en
+      thème sombre l'écran de connexion reste le même écran que le reste de
+      l'application, au lieu d'une page blanche isolée. */
+.login-dome {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(
+      135% 115% at 50% -32%,
+      #002a52 0%,
+      #002a52 34%,
+      #003a6e 50%,
+      #004f91 62%,
+      rgb(26 106 176 / 0) 82%
+    ),
+    var(--tg-bg);
+}
+
+/* Les couches décoratives vivent dans un calque qui LES ROGNE.
+   Le voile dérive de 24 px : posé directement sur le dôme, il déborderait
+   d'autant à droite et ferait apparaître une barre de défilement horizontale
+   sur toute la page — un pixel de décor pour un défaut visible partout. */
+.login-decor {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Trame fine, masquée bien avant la carte : elle donne de la matière au haut
+   du dôme sans jamais courir derrière le texte du formulaire. */
+.login-decor::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.55;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(100% 52% at 50% -6%, #000 0%, transparent 76%);
+  -webkit-mask-image: radial-gradient(100% 52% at 50% -6%, #000 0%, transparent 76%);
+}
+
+/* Deux voiles clairs qui dérivent lentement dans le dôme. Sans eux le bleu
+   est un aplat ; avec eux il respire. */
+.login-decor::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(38% 34% at 14% 2%, rgb(255 255 255 / 0.08) 0%, transparent 62%),
+    radial-gradient(42% 38% at 88% 6%, rgb(90 165 235 / 0.28) 0%, transparent 64%);
+  animation: login-derive 14s ease-in-out infinite alternate;
+}
+
+@keyframes login-derive {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(24px, 12px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-decor::after {
+    animation: none;
+  }
+}
+
+/* Le liseré de tête de la carte. Le dégradé du bandeau est diagonal ; posé
+   sur 4 px de haut il ne montrerait qu'une seule de ses teintes, d'où cette
+   version horizontale de la même descente. */
+.login-edge {
+  background: linear-gradient(90deg, #002a52 0%, #004f91 55%, #1a6ab0 100%);
+}
+
+/* Entrée de l'écran de connexion : une montée de quelques pixels, échelonnée
+   entre la marque, la carte et la mention. Assez pour que la page se pose au
+   lieu d'apparaître ; jamais assez pour faire attendre qui vient se connecter. */
+@keyframes login-monte {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.login-monte {
+  animation: login-monte 0.45s ease both;
+  animation-delay: var(--retard, 0s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-monte {
+    animation: none;
+  }
+}

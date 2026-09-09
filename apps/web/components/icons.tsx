@@ -21,6 +21,7 @@ import manifest from './icon-font.manifest.json';
  */
 export const ICON_NAMES = [
   'add',
+  'arrow_forward',
   'badge',
   'calendar_month',
   'check',
@@ -45,6 +46,7 @@ export const ICON_NAMES = [
   'how_to_reg',
   'lock',
   'logout',
+  'mail',
   'notifications',
   'person_add',
   'place',
@@ -54,6 +56,8 @@ export const ICON_NAMES = [
   'schedule',
   'settings',
   'upload_file',
+  'visibility',
+  'visibility_off',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];

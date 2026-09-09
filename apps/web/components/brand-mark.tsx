@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '@teranga/ui';
 
 /**
@@ -23,7 +23,7 @@ export function BrandMark({
   variant,
   repli,
 }: {
-  variant: 'full' | 'hero' | 'compact' | 'candidature';
+  variant: 'full' | 'hero' | 'compact' | 'candidature' | 'connexion';
   /**
    * Ce qui s'affiche à défaut de fichier de logo. « CH » convient à
    * l'application, qui est le portail ; pas à la page publique d'une offre,
@@ -33,12 +33,24 @@ export function BrandMark({
 }) {
   // Index dans LOGO_SOURCES ; au-delà de la liste, plus de fichier à tenter.
   const [candidate, setCandidate] = useState(0);
+  const img = useRef<HTMLImageElement>(null);
   const src = LOGO_SOURCES[candidate];
+
+  // `onError` ne suffit pas. Sur une page rendue au serveur, le navigateur
+  // charge — et rate — l'image AVANT que React n'ait attaché le gestionnaire :
+  // l'événement est déjà passé, le repli ne viendrait jamais, et l'écran de
+  // connexion afficherait une vignette cassée au lieu de l'aplat de marque.
+  // On relit donc l'état réel de l'image au montage.
+  useEffect(() => {
+    const el = img.current;
+    if (el?.complete && el.naturalWidth === 0) setCandidate((i) => i + 1);
+  }, [candidate]);
 
   if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
+        ref={img}
         src={src}
         alt="Logo de l'organisation"
         className={cn(
@@ -52,6 +64,10 @@ export function BrandMark({
           // Sur le bandeau, le logo se pose en blanc pur : la plaque n'a plus
           // lieu d'être, et ses encres foncées disparaîtraient dans le bleu.
           variant === 'hero' && 'hero-logo h-8 w-auto max-w-32 shrink-0 bg-transparent',
+          // Écran de connexion : le logo se pose sur le dôme de marque, en
+          // blanc pur et à sa pleine mesure — c'est la signature de la maison,
+          // pas la vignette d'une barre de navigation.
+          variant === 'connexion' && 'hero-logo h-11 w-auto max-w-[190px] bg-transparent',
           variant === 'compact' && 'h-8 w-auto max-w-28 shrink-0 rounded-md px-0.5',
           // Page publique : le logo est la première chose que voit le
           // candidat, il a droit à sa pleine mesure.
@@ -69,6 +85,7 @@ export function BrandMark({
           'h-14 w-full rounded-lg bg-primary text-lg tracking-[0.12em] text-primary-ink',
         // Sur le bandeau, pas d'aplat : l'encre blanche suffit.
         variant === 'hero' && 'h-8 shrink-0 px-1 text-base tracking-[0.14em] text-hero-ink',
+        variant === 'connexion' && 'h-11 px-1 text-xl tracking-[0.16em] text-hero-ink',
         variant === 'compact' && 'size-8 rounded-md bg-primary text-xs text-primary-ink',
         variant === 'candidature' &&
           'size-14 rounded-[18px] bg-primary text-[22px] text-primary-ink',
