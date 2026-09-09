@@ -28,6 +28,8 @@ export interface InvitationInfo {
   organizationName?: string;
   givenName?: string;
   familyName?: string;
+  /** Accorde l'accueil : « Apixien » ou « Apixienne ». Null = formulation neutre. */
+  gender?: 'female' | 'male' | null;
   email?: string;
   role?: string;
 }

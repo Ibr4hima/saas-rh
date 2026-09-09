@@ -122,6 +122,7 @@ export class InvitationsService {
           organizationName: t.tenants.name,
           givenName: t.persons.givenName,
           familyName: t.persons.familyName,
+          gender: t.persons.gender,
         })
         .from(t.invitations)
         .innerJoin(t.tenants, eq(t.tenants.id, t.invitations.tenantId))
@@ -135,6 +136,7 @@ export class InvitationsService {
         organizationName: row.organizationName,
         givenName: row.givenName,
         familyName: row.familyName,
+        gender: (row.gender as 'female' | 'male' | null) ?? null,
         email: row.invitation.email,
         role: row.invitation.role,
       };

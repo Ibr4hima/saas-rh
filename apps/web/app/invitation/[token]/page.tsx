@@ -16,12 +16,16 @@ import {
 } from '../../../components/ecran-marque';
 import { api, ApiError } from '../../../lib/api';
 
-const ROLE_LABELS: Record<string, string> = {
-  hr: 'RH',
-  payroll: 'Gestionnaire de paie',
-  manager: 'Manager',
-  employee: 'Employé·e',
-};
+/**
+ * L'accueil s'accorde avec la personne invitée. Sans genre au dossier, la
+ * forme inclusive : mieux vaut « Apixien·ne » qu'un masculin posé au hasard
+ * sur quelqu'un dont on n'a pas l'information.
+ */
+function apixien(gender: 'female' | 'male' | null | undefined): string {
+  if (gender === 'female') return 'Apixienne';
+  if (gender === 'male') return 'Apixien';
+  return 'Apixien·ne';
+}
 
 const INVALID_MESSAGES: Record<string, string> = {
   expired: 'Cette invitation a expiré. Demandez à votre service RH de vous en renvoyer une.',
@@ -85,14 +89,8 @@ export default function InvitationPage() {
 
   return (
     <EcranMarque
-      titre={`Bienvenue, ${invite.givenName} 👋`}
-      sousTitre={
-        <>
-          Vous êtes invité·e à rejoindre{' '}
-          <span className="font-semibold text-ink">{invite.organizationName}</span> en tant que{' '}
-          {ROLE_LABELS[invite.role ?? ''] ?? invite.role}.
-        </>
-      }
+      titre={`Bienvenue, ${invite.givenName}`}
+      sousTitre={<>Rejoignez-nous en tant qu’{apixien(invite.gender)}.</>}
     >
       <form
         className="mt-6 flex flex-col gap-4"
@@ -103,16 +101,20 @@ export default function InvitationPage() {
           accept.mutate();
         }}
       >
-        <div className="rounded-lg border border-line-soft bg-surface-raised px-3.5 py-3">
-          <p className="text-[10.5px] font-extrabold tracking-[0.1em] text-primary uppercase">
-            Votre identifiant
-          </p>
-          <p className="mt-1 text-[14px] font-semibold break-all text-ink-strong">{invite.email}</p>
-          <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-muted">
-            Si un compte Teranga RH existe déjà avec cet email, saisissez son mot de passe actuel
-            pour le relier.
-          </p>
-        </div>
+        {/* L'identifiant se lit comme les autres champs, mais ne se saisit pas :
+            il vient de l'invitation. `readOnly` plutôt que `disabled` — le
+            champ reste sélectionnable, copiable et annoncé. */}
+        <ChampMarque id="identifiant" label="Votre identifiant" icone="mail">
+          <SaisieMarque
+            id="identifiant"
+            type="email"
+            value={invite.email ?? ''}
+            readOnly
+            aria-readonly
+            onFocus={(e) => e.currentTarget.select()}
+            className="cursor-default text-ink-muted"
+          />
+        </ChampMarque>
 
         <div>
           <ChampMarque id="password" label="Choisissez un mot de passe" icone="lock">
