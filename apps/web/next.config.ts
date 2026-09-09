@@ -19,6 +19,14 @@ import type { NextConfig } from 'next';
  *
  * On peut demander à chacun de penser à effacer `.next`. Il vaut mieux que la
  * collision n'existe pas.
+ *
+ * Contrepartie, réglée dans tsconfig.json : Next inscrit d'office les types de
+ * routes de CHAQUE dossier de sortie dans `include`. La compilation de
+ * production se mettait donc à vérifier ceux du serveur de développement, qui
+ * sont périmés dès qu'il ne tourne pas — supprimer une page faisait échouer la
+ * compilation sur un fichier qui ne la concerne pas. `.next-dev` est donc
+ * exclu du contrôle de types : `next build` régénère les siens dans la foulée,
+ * ceux du développement n'ont personne pour les rafraîchir.
  */
 const nextConfig: NextConfig = {
   distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
