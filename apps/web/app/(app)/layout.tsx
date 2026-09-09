@@ -56,6 +56,11 @@ const NAV_ITEMS: NavItem[] = [
     short: 'Congés',
     icon: 'free_cancellation',
     badge: 'pending',
+    children: [
+      { href: '/absences', label: 'Gestion des demandes' },
+      { href: '/absences/feries', label: 'Gestion des jours fériés' },
+      { href: '/absences/parametres', label: 'Paramètres des congés' },
+    ],
   },
   {
     href: '/documents',
@@ -83,9 +88,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: 'gavel',
     children: [
       { href: '/reglementations/code-du-travail', label: 'Code du travail' },
-      { href: '/reglementations/convention-collective', label: 'Convention collective' },
       { href: '/reglementations/reglement-interieur', label: 'Règlement intérieur' },
-      { href: '/reglementations/conformite', label: 'Conformité' },
     ],
   },
 ];
@@ -101,6 +104,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/employees': 'Gestion du personnel',
   '/employees/new': 'Nouvel employé',
   '/absences': 'Absences & Congés',
+  '/absences/feries': 'Jours fériés',
   '/absences/parametres': 'Paramètres des congés',
   '/documents': 'Demandes à traiter',
   '/calendrier': 'Calendrier',
@@ -153,9 +157,6 @@ function pageAction(pathname: string, role: string): ChromeAction | null {
   if (!canManage) return null;
   if (pathname === '/employees') {
     return { href: '/employees?nouveau=1', icon: 'add', label: 'Nouvel employé' };
-  }
-  if (pathname === '/absences') {
-    return { href: '/absences/parametres', icon: 'settings', label: 'Paramètres des congés' };
   }
   if (pathname === '/recrutement') {
     return { href: '/recrutement?nouvelle=1', icon: 'add', label: 'Nouvelle offre' };
@@ -260,29 +261,52 @@ function RangeeNav({
 /**
  * Rubrique dépliable.
  *
- * Elle s'ouvre d'elle-même quand on se trouve à l'intérieur — arriver sur une
- * sous-page par un lien et voir sa rubrique fermée, c'est perdre où l'on est —
- * et se referme ensuite à la main. La rangée parente n'est pas un lien : elle
- * ouvre. Les sous-pages sont reliées par un filet vertical, qui dit
- * l'appartenance sans réécrire le nom de la rubrique sur chaque ligne.
+ * Dépliée d'emblée, et repliable à la main. Elle se rouvre d'elle-même quand
+ * on arrive à l'intérieur par un lien — voir sa rubrique fermée, c'est perdre
+ * où l'on est. La rangée parente n'est pas un lien : elle ouvre. Les sous-pages
+ * sont reliées par un filet vertical, qui dit l'appartenance sans réécrire le
+ * nom de la rubrique sur chaque ligne.
  */
 function Rubrique({
   item,
-  ouverteParDefaut,
+  contientLaPageCourante,
+  badge,
   estActive,
 }: {
   item: NavItem;
-  ouverteParDefaut: boolean;
+  contientLaPageCourante: boolean;
+  /** Le compteur de la rubrique : il vit sur la rangée parente, ouverte ou non. */
+  badge?: number;
   estActive: (href: string) => boolean;
 }) {
-  const [ouverte, setOuverte] = useState(ouverteParDefaut);
+  // Dépliée d'emblée : le menu montre d'un regard tout ce qu'il contient. Une
+  // rubrique fermée cache des destinations que rien n'annonce, et il faut
+  // cliquer pour savoir ce qu'on y trouve.
+  const [ouverte, setOuverte] = useState(true);
   // Le chemin change (clic ailleurs dans le menu, retour arrière) : la rubrique
   // qui contient la page courante doit s'ouvrir, sans refermer les autres.
   useEffect(() => {
-    if (ouverteParDefaut) setOuverte(true);
-  }, [ouverteParDefaut]);
+    if (contientLaPageCourante) setOuverte(true);
+  }, [contientLaPageCourante]);
 
-  const contientLaPage = item.children?.some((c) => estActive(c.href)) ?? false;
+  const enfants = item.children ?? [];
+  const contientLaPage = enfants.some((c) => estActive(c.href));
+
+  /**
+   * Une seule sous-page s'allume : LA PLUS PRÉCISE.
+   *
+   * « Gestion des demandes » vit à /absences et « Jours fériés » à
+   * /absences/feries : la règle par préfixe allumerait les deux, et la
+   * première mentirait sur l'endroit où l'on se trouve. On garde donc le
+   * chemin correspondant le plus long — ce qui vaut pour toute rubrique dont
+   * un enfant est la racine des autres, sans avoir à l'énumérer.
+   */
+  const enfantActif = enfants
+    .filter((c) => estActive(c.href))
+    .reduce<string | null>(
+      (long, c) => (long && long.length >= c.href.length ? long : c.href),
+      null,
+    );
 
   return (
     <div className="flex flex-col gap-px">
@@ -307,6 +331,14 @@ function Rubrique({
       >
         <Icon name={item.icon} size={17} fill={contientLaPage} />
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        {/* Le compteur reste sur le parent : replié, c'est le seul endroit où
+            il puisse se voir ; déplié, il dit lequel des deux ensembles
+            réclame un geste sans qu'on ait à le chercher plus bas. */}
+        {badge && badge > 0 ? (
+          <span className="rounded-full bg-accent px-[6px] py-px text-[10px] font-bold text-accent-ink">
+            {badge}
+          </span>
+        ) : null}
         <Icon
           name="chevron_right"
           size={14}
@@ -319,8 +351,8 @@ function Rubrique({
 
       {ouverte ? (
         <div className="relative ml-[1.4rem] flex flex-col gap-px border-l border-line-soft pl-2.5">
-          {item.children!.map((c) => {
-            const active = estActive(c.href);
+          {enfants.map((c) => {
+            const active = c.href === enfantActif;
             return (
               <Link
                 key={c.href}
@@ -462,22 +494,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const action = pageAction(pathname, user.role);
   const isActive = (href: string) =>
     href === '/moi' ? pathname === '/moi' : pathname.startsWith(href);
-  /**
-   * Une sous-page s'allume sur SON chemin seul.
-   *
-   * « Offres d'emploi » vit à /recrutement, « Dossiers de candidature » à
-   * /recrutement/candidatures : avec la règle par préfixe, la première
-   * resterait allumée sur la seconde. Une feuille ne couvre que son chemin —
-   * et les écrans qui en dépendent (nouvelle offre, pipeline d'une offre).
-   */
-  const isChildActive = (href: string) => {
-    if (href === '/recrutement') {
-      return (
-        pathname === '/recrutement' || /^\/recrutement\/(nouvelle|[0-9a-f-]{8,})/.test(pathname)
-      );
-    }
-    return pathname === href || pathname.startsWith(`${href}/`);
-  };
+  /** Une sous-page couvre son chemin et ce qui en descend. */
+  const isChildActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     /* Coquille d'application : la page elle-même ne défile pas. Le bandeau et
@@ -545,7 +563,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   <Rubrique
                     key={item.href}
                     item={item}
-                    ouverteParDefaut={isActive(item.href)}
+                    contientLaPageCourante={isActive(item.href)}
+                    badge={badgeCount(item.badge)}
                     estActive={isChildActive}
                   />
                 ) : (
