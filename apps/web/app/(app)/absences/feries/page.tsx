@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import { useState } from 'react';
 import type { Holiday } from '@teranga/contracts';
 import { SENEGAL_MOBILE_HOLIDAYS } from '@teranga/contracts';
@@ -63,11 +62,6 @@ export default function JoursFeriesPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-6">
-        <Link href="/absences" className="text-sm text-ink-muted hover:text-ink">
-          ← Congés
-        </Link>
-      </div>
       <FeriesCard peutGerer={peutGerer} />
     </div>
   );

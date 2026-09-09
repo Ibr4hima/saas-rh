@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type {
   AbsenceFrequency,
@@ -54,12 +53,6 @@ export default function AbsenceSettingsPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-6">
-        <Link href="/absences" className="text-sm text-ink-muted hover:text-ink">
-          ← Congés
-        </Link>
-      </div>
-
       <div className="flex flex-col gap-6">
         <TypesCard peutGerer={peutGerer} />
         <CircuitCard isAdmin={isAdmin} />
