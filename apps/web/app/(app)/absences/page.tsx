@@ -29,10 +29,10 @@ import { Icon } from '../../../components/icons';
 /**
  * Le circuit de visa, en toutes lettres, au survol du statut.
  *
- * La colonne de pastilles qui le montrait a disparu : sur huit colonnes, trois
+ * La colonne de pastilles qui le montrait a disparu : sur sept colonnes, trois
  * points gris ne disaient rien à qui ne connaissait pas le code, et prenaient
- * la place d'une information qu'on lit vraiment. Le détail reste à un survol,
- * et le niveau qui bloque est écrit sous le statut des demandes en attente.
+ * la place d'une information qu'on lit vraiment. Le détail reste ici, à un
+ * survol du statut — il ne coûte plus une colonne à tout le monde.
  */
 function resumeVisas(r: AbsenceRequestView): string | undefined {
   if (r.chainLevels.length === 0) return undefined;
@@ -114,8 +114,7 @@ export default function AbsencesPage() {
                 <tr>
                   <Th>Employé</Th>
                   <Th>Type</Th>
-                  <Th>Début</Th>
-                  <Th>Fin</Th>
+                  <Th>Période</Th>
                   <Th className="text-right">Jours</Th>
                   <Th>Justificatif</Th>
                   <Th>Statut</Th>
@@ -132,8 +131,10 @@ export default function AbsencesPage() {
                       </span>
                     </Td>
                     <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
-                    <Td className="whitespace-nowrap tabular-nums">{formatDate(r.startDate)}</Td>
-                    <Td className="whitespace-nowrap tabular-nums">{formatDate(r.endDate)}</Td>
+                    <Td className="whitespace-nowrap tabular-nums">
+                      {formatDate(r.startDate)} <span className="text-ink-muted">→</span>{' '}
+                      {formatDate(r.endDate)}
+                    </Td>
                     <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
                     <Td>
                       {r.documentName && canManage ? (
@@ -147,9 +148,8 @@ export default function AbsencesPage() {
                             })
                           }
                           title={r.documentName}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-[3px] text-[11px] font-semibold text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                          className="inline-flex items-center rounded-full border border-line px-2.5 py-[3px] text-[11px] font-semibold text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                         >
-                          <Icon name="visibility" size={13} />
                           Prévisualiser
                         </button>
                       ) : (
@@ -160,13 +160,6 @@ export default function AbsencesPage() {
                     </Td>
                     <Td>
                       <StatutAbsence statut={r.status} titre={resumeVisas(r)} />
-                      {r.status === 'pending' && r.chainLevels[r.currentLevel] ? (
-                        <span className="mt-1 block text-[10.5px] whitespace-nowrap text-ink-muted">
-                          chez{' '}
-                          {ROLE_LABELS[r.chainLevels[r.currentLevel]!] ??
-                            r.chainLevels[r.currentLevel]}
-                        </span>
-                      ) : null}
                     </Td>
                     <Td>
                       {r.canDecide ? (

@@ -16,9 +16,9 @@ const FONDS: Record<string, string> = {
 /**
  * Le statut d'une demande d'absence.
  *
- * Une pastille de couleur PUIS le mot : la couleur donne l'état d'un coup
- * d'œil sur vingt lignes, le mot le dit pour qui ne la distingue pas — un
- * daltonien, une impression en noir et blanc. Aucun des deux ne suffit seul.
+ * Le mot porte lui-même la couleur : l'état se lit d'un coup d'œil sur vingt
+ * lignes sans que la couleur soit seule à le dire — un daltonien, une
+ * impression en noir et blanc lisent le mot.
  */
 export function StatutAbsence({
   statut,
@@ -35,12 +35,11 @@ export function StatutAbsence({
     <span
       title={titre}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full py-[3px] pr-2.5 pl-2 text-[11px] font-semibold whitespace-nowrap ring-1 ring-current/15 ring-inset',
+        'inline-flex items-center rounded-full px-2.5 py-[3px] text-[11px] font-semibold whitespace-nowrap ring-1 ring-current/15 ring-inset',
         FONDS[ton] ?? FONDS.neutral,
         className,
       )}
     >
-      <span className="size-[5px] shrink-0 rounded-full bg-current" />
       {ABSENCE_STATUS_LABELS[statut] ?? statut}
     </span>
   );
