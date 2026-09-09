@@ -145,7 +145,7 @@ function InboxRow({
           <span className="block truncate text-[11.5px] text-ink-muted">{detail}</span>
         </span>
         <span
-          className="rounded-full bg-accent px-2 py-px text-[11px] font-bold text-accent-ink"
+          className="rounded-full bg-alert-soft px-2 py-px text-[11px] font-extrabold text-alert-text"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {count}
