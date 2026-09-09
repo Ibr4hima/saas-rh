@@ -105,49 +105,53 @@ export function police(doc: Doc, coupe: 'normal' | 'bold' | 'italic'): string {
  * disposition du papier à en-tête de l'agence — l'État d'abord, l'émetteur
  * ensuite.
  */
+/**
+ * Hauteurs de l'en-tête, en points.
+ *
+ * Un papier à en-tête d'administration porte ces deux blocs DISCRETS, calés
+ * sur les bords : ils annoncent l'émetteur, ils ne sont pas le sujet de la
+ * page. Ajustés à la largeur de leur colonne, ils prenaient le tiers de la
+ * feuille et écrasaient l'acte.
+ */
+const HAUTEUR_ENTETE = 66;
+const HAUTEUR_LOGO = 50;
+
 export function dessinerEntete(doc: Doc, marge: number): number {
   const hautDePage = doc.y;
-  const largeur = doc.page.width - marge * 2;
-  const colonneGauche = largeur * 0.62;
+  const droite = doc.page.width - marge;
 
+  // Le bloc de l'État se cale sur le bord gauche, le logo sur le bord droit :
+  // c'est l'écart entre les deux qui fait l'en-tête, pas leur taille.
   const image = cheminEnteteRepublique();
+  let basGauche: number;
   if (image) {
-    doc.image(image, marge, hautDePage, { fit: [colonneGauche, 120], align: 'center' });
+    doc.image(image, marge, hautDePage, { height: HAUTEUR_ENTETE });
+    basGauche = hautDePage + HAUTEUR_ENTETE;
   } else {
-    dessinerEnteteComposee(doc, marge, colonneGauche);
+    dessinerEnteteComposee(doc, marge, (droite - marge) * 0.62);
+    basGauche = doc.y;
   }
-  const basGauche = image
-    ? Math.max(doc.y, hautDePage + hauteurRendue(doc, image, colonneGauche))
-    : doc.y;
 
-  // Le logo occupe la colonne de droite, centré sur la hauteur du bloc d'État.
   const logo = cheminLogo();
   if (logo) {
-    const boite = { largeur: largeur - colonneGauche - 8, hauteur: basGauche - hautDePage };
-    doc.image(logo, marge + colonneGauche + 8, hautDePage, {
-      fit: [boite.largeur, boite.hauteur],
-      align: 'center',
-      valign: 'center',
-    });
+    const largeurLogo = largeurPour(doc, logo, HAUTEUR_LOGO);
+    // Centré sur la hauteur du bloc d'État : les deux se répondent.
+    const y = hautDePage + Math.max(0, (basGauche - hautDePage - HAUTEUR_LOGO) / 2);
+    doc.image(logo, droite - largeurLogo, y, { height: HAUTEUR_LOGO });
   }
 
-  // Le filet ferme l'en-tête : c'est lui qui sépare l'émetteur de l'acte.
-  const y = basGauche + 14;
-  doc
-    .moveTo(marge, y)
-    .lineTo(doc.page.width - marge, y)
-    .lineWidth(1)
-    .strokeColor('#1f2a44')
-    .stroke();
+  // Un filet de cheveu, à peine posé : il sépare sans souligner. Le trait
+  // épais d'avant faisait un bandeau là où il ne fallait qu'une limite.
+  const y = basGauche + 12;
+  doc.moveTo(marge, y).lineTo(droite, y).lineWidth(0.4).strokeColor('#9aa2b1').stroke();
   doc.y = y + 1;
   return doc.y;
 }
 
-/** La hauteur réellement occupée par une image ajustée à une largeur donnée. */
-function hauteurRendue(doc: Doc, chemin: string, largeurBoite: number): number {
+/** La largeur d'une image ramenée à une hauteur donnée. */
+function largeurPour(doc: Doc, chemin: string, hauteur: number): number {
   const img = doc.openImage(chemin);
-  const echelle = Math.min(largeurBoite / img.width, 120 / img.height);
-  return img.height * echelle;
+  return (img.width * hauteur) / img.height;
 }
 
 /**

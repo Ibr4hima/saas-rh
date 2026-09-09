@@ -181,37 +181,27 @@ export class AttestationService {
     });
 
     const today = new Date();
-    const ref = `ATT-${d.employeeNumber}-${today.toISOString().slice(0, 10).replaceAll('-', '')}`;
     const largeur = doc.page.width - MARGE * 2;
     const e = d.feminine ? 'e' : '';
 
     dessinerEntete(doc, MARGE);
 
-    // Référence : espace insécable avant le deux-points, comme le veut le
-    // français — et comme l'exige un document qu'on imprime.
-    doc.moveDown(1.2);
-    doc.font(police(doc, 'normal')).fontSize(9).fillColor('#555555');
-    doc.text(`Réf.\u00a0: ${ref}`, MARGE, doc.y, { width: largeur, align: 'right' });
-
     // ── Titre ──
-    doc.moveDown(2.2);
+    doc.moveDown(3);
+    const titre = 'ATTESTATION DE TRAVAIL';
+    const ECART = 1.8;
+    doc.font(police(doc, 'bold')).fontSize(15).fillColor('#111111');
+    // Le trait est tracé à la main plutôt que par `underline`, qui compte
+    // l'espacement ajouté APRÈS la dernière lettre et débordait d'autant.
+    const largeurTitre = doc.widthOfString(titre, { characterSpacing: ECART }) - ECART;
     const yTitre = doc.y;
+    doc.text(titre, MARGE, yTitre, { width: largeur, align: 'center', characterSpacing: ECART });
+    const xTitre = (doc.page.width - largeurTitre) / 2;
     doc
-      .font(police(doc, 'bold'))
-      .fontSize(15)
-      .fillColor('#111111')
-      .text('ATTESTATION DE TRAVAIL', MARGE, yTitre, {
-        width: largeur,
-        align: 'center',
-        characterSpacing: 1.8,
-      });
-    // Un trait court sous le titre : il pose l'acte sans encadrer la page.
-    const largeurTrait = 132;
-    doc
-      .moveTo((doc.page.width - largeurTrait) / 2, doc.y + 5)
-      .lineTo((doc.page.width + largeurTrait) / 2, doc.y + 5)
-      .lineWidth(1.4)
-      .strokeColor('#1f2a44')
+      .moveTo(xTitre, yTitre + doc.currentLineHeight() + 1)
+      .lineTo(xTitre + largeurTitre, yTitre + doc.currentLineHeight() + 1)
+      .lineWidth(0.9)
+      .strokeColor('#111111')
       .stroke();
 
     // ── Corps ──
@@ -260,30 +250,6 @@ export class AttestationService {
     doc
       .font(police(doc, 'normal'))
       .text(`La ${ENTETE.service}`, MARGE, doc.y, { width: largeur, align: 'right' });
-
-    // ── Pied de page ──
-    //
-    // L'ancien pied disait au destinataire de vérifier l'authenticité « sans
-    // signature ni cachet » — alors que le circuit prévoit précisément que la
-    // RH signe et cachette avant remise en main propre. Il annonçait donc le
-    // contraire de ce que fait l'organisation.
-    // Écrire sous la marge basse déclenche le saut de page de pdfkit :
-    // l'attestation sortait sur DEUX pages, la seconde ne portant que ce pied.
-    // On efface la marge le temps de le poser.
-    const margeBasse = doc.page.margins.bottom;
-    doc.page.margins.bottom = 0;
-    doc
-      .font(police(doc, 'normal'))
-      .fontSize(8)
-      .fillColor('#888888')
-      .text(
-        `Édité le ${frDate(today)} depuis le système de gestion des ressources humaines — réf.\u00a0${ref}. ` +
-          'Cette attestation n’est valable que revêtue de la signature et du cachet de l’employeur.',
-        MARGE,
-        doc.page.height - 78,
-        { width: largeur, align: 'center', lineGap: 2 },
-      );
-    doc.page.margins.bottom = margeBasse;
 
     doc.end();
     return done;
