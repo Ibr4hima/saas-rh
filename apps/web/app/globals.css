@@ -31,6 +31,12 @@
   --color-warning-soft: var(--tg-warning-soft);
   --color-danger: var(--tg-danger);
   --color-danger-soft: var(--tg-danger-soft);
+  --color-alert: var(--tg-alert);
+  --color-alert-ink: var(--tg-alert-ink);
+  --color-alert-hero: var(--tg-alert-hero);
+  --color-alert-hero-ink: var(--tg-alert-hero-ink);
+  --color-alert-soft: var(--tg-alert-soft);
+  --color-alert-text: var(--tg-alert-text);
   --color-hero-ink: var(--tg-hero-ink);
   --color-card-line: var(--tg-card-line);
   --color-card-line-hover: var(--tg-card-line-hover);
@@ -129,6 +135,32 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .modal-panel {
+    animation: none;
+  }
+}
+
+/* Voile des notifications : la page RECULE, elle ne disparaît pas.
+   Le flou fait tout le travail — un aplat opaque par-dessus la page ferait de
+   ce panneau un dialogue modal, ce qu'il n'est pas : on doit pouvoir cliquer
+   à côté pour revenir à son écran, et voir que l'écran est toujours là. */
+.notif-voile {
+  background: var(--tg-veil);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: notif-voile 160ms ease-out;
+}
+
+@keyframes notif-voile {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notif-voile {
     animation: none;
   }
 }

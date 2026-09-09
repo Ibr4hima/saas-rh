@@ -384,6 +384,8 @@ export const notifications = pgTable('notifications', {
   link: text('link'),
   dedupeKey: text('dedupe_key'),
   readAt: timestamp('read_at', { withTimezone: true }),
+  /** Rangée hors de la boîte, jamais perdue : voir 0021. */
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

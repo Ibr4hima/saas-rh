@@ -1,7 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import type { ExpiringContractView, NotificationsPage, SessionUser } from '@teranga/contracts';
+import type {
+  ExpiringContractView,
+  NotificationScope,
+  NotificationsPage,
+  SessionUser,
+} from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -69,6 +74,11 @@ export function holidayAlreadySentSql(userId: string) {
   )`;
 }
 
+/** Les trois prédicats qui reviennent partout, nommés une fois pour toutes. */
+const mien = (userId: string) => eq(t.notifications.recipientUserId, userId);
+const dansLaBoite = () => isNull(t.notifications.archivedAt);
+const range = () => sql`${t.notifications.archivedAt} IS NOT NULL`;
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -120,7 +130,7 @@ export class NotificationsService {
   }
 
   /** Boîte de réception : génère d'abord les échéances (idempotent). */
-  async list(user: SessionUser): Promise<NotificationsPage> {
+  async list(user: SessionUser, scope: NotificationScope = 'inbox'): Promise<NotificationsPage> {
     const ctx = { tenantId: user.tenantId, userId: user.userId };
 
     // Génération dans sa PROPRE transaction, et jamais bloquante : une écriture
@@ -148,17 +158,26 @@ export class NotificationsService {
       const items = await tx
         .select()
         .from(t.notifications)
-        .where(eq(t.notifications.recipientUserId, user.userId))
-        .orderBy(desc(t.notifications.createdAt))
+        .where(and(mien(user.userId), scope === 'archive' ? range() : dansLaBoite()))
+        // Les archives se lisent par date de RANGEMENT : la dernière rangée est
+        // celle qu'on vient de ranger, donc celle qu'on cherche à ressortir.
+        .orderBy(
+          scope === 'archive' ? desc(t.notifications.archivedAt) : desc(t.notifications.createdAt),
+        )
         .limit(30);
-      const [unread] = await tx
-        .select({ n: sql<number>`count(*)::int` })
+      const [compte] = await tx
+        .select({
+          // Le compteur de la cloche ne parle que de la BOÎTE : une ligne
+          // rangée sort du décompte sans qu'on ait eu à la déclarer lue.
+          nonLues: sql<number>`count(*) FILTER (
+            WHERE read_at IS NULL AND archived_at IS NULL)::int`,
+          archivees: sql<number>`count(*) FILTER (WHERE archived_at IS NOT NULL)::int`,
+        })
         .from(t.notifications)
-        .where(
-          and(eq(t.notifications.recipientUserId, user.userId), isNull(t.notifications.readAt)),
-        );
+        .where(mien(user.userId));
       return {
-        unreadCount: unread?.n ?? 0,
+        unreadCount: compte?.nonLues ?? 0,
+        archivedCount: compte?.archivees ?? 0,
         items: items.map((i) => ({
           id: i.id,
           type: i.type,
@@ -166,10 +185,75 @@ export class NotificationsService {
           body: i.body,
           link: i.link,
           readAt: i.readAt?.toISOString() ?? null,
+          archivedAt: i.archivedAt?.toISOString() ?? null,
           createdAt: i.createdAt.toISOString(),
         })),
       };
     });
+  }
+
+  /**
+   * Ranger : la ligne quitte la boîte, rien n'est effacé.
+   *
+   * On ne touche PAS à `read_at`. Ranger n'est pas lire — une échéance rangée
+   * pour dégager la vue reste une échéance qu'on n'a pas ouverte, et les
+   * archives le montrent encore. Le compteur de la cloche, lui, ne compte que
+   * la boîte : ranger le fait bien descendre.
+   *
+   * L'idempotence des rappels générés (dedupeKey) survit au rangement :
+   * l'index unique couvre la table entière, donc un rappel de férié rangé ne
+   * revient PAS à la prochaine ouverture du panneau.
+   */
+  async archive(user: SessionUser, ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      const rangees = await tx
+        .update(t.notifications)
+        .set({ archivedAt: new Date() })
+        .where(and(mien(user.userId), inArray(t.notifications.id, ids), dansLaBoite()))
+        .returning({ id: t.notifications.id });
+      // Ranger deux fois n'est pas une erreur ; ranger une ligne qui n'existe
+      // pas en est une — on ne laisse pas l'interface croire à un succès.
+      if (rangees.length === 0) await this.exigerExistence(tx, user.userId, ids);
+    });
+  }
+
+  /** Ressortir une ligne des archives : elle retrouve sa place dans la boîte. */
+  async unarchive(user: SessionUser, ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      const sorties = await tx
+        .update(t.notifications)
+        .set({ archivedAt: null })
+        .where(and(mien(user.userId), inArray(t.notifications.id, ids), range()))
+        .returning({ id: t.notifications.id });
+      if (sorties.length === 0) await this.exigerExistence(tx, user.userId, ids);
+    });
+  }
+
+  /**
+   * Ranger d'un geste tout ce qui a été lu — le cas courant du « faire de la
+   * place ». Les non-lues restent : personne n'a envie de voir disparaître un
+   * avis qu'il n'a pas encore ouvert.
+   */
+  async archiveRead(user: SessionUser): Promise<void> {
+    await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      tx
+        .update(t.notifications)
+        .set({ archivedAt: new Date() })
+        .where(and(mien(user.userId), dansLaBoite(), sql`${t.notifications.readAt} IS NOT NULL`)),
+    );
+  }
+
+  /** 404 si l'un des identifiants n'est pas une notification de cet utilisateur. */
+  private async exigerExistence(tx: Tx, userId: string, ids: string[]): Promise<void> {
+    const connues = await tx
+      .select({ id: t.notifications.id })
+      .from(t.notifications)
+      .where(and(mien(userId), inArray(t.notifications.id, ids)));
+    if (connues.length !== ids.length) {
+      problem(404, 'notifications.not_found', 'Notification introuvable');
+    }
   }
 
   async markRead(user: SessionUser, id: string): Promise<void> {

@@ -48,6 +48,21 @@
   --tg-danger: #b3382e;
   --tg-danger-soft: #fae9e7;
 
+  /* Le rouge des COMPTEURS de notification. Distinct de `danger`, qui dit
+     l'erreur : ici rien n'est cassé, quelque chose attend d'être vu.
+     Deux aplats, parce que la pastille se pose sur DEUX fonds opposés et
+     qu'aucun rouge unique ne tient les deux. Sur le bleu du bandeau seul un
+     palier clair se détache ; sur le blanc des surfaces, seul un palier
+     profond. Les rapports ci-dessous sont mesurés, pas estimés — et le
+     bandeau est éprouvé sur le point le plus CLAIR de son dégradé (#1a6ab0),
+     celui où une pastille claire risque de se fondre. */
+  --tg-alert: #d92d20; /* 4,83:1 sur blanc — 4,51:1 sur le fond */
+  --tg-alert-ink: #ffffff; /* 4,83:1 sur l'aplat */
+  --tg-alert-hero: #ffa79e; /* 3,02:1 au plus clair du bandeau, 7,76:1 au plus sombre */
+  --tg-alert-hero-ink: #4a0b06; /* 8,40:1 sur l'aplat */
+  --tg-alert-soft: #ffece9;
+  --tg-alert-text: #b3382e; /* 5,23:1 sur l'aplat doux */
+
   --tg-focus-ring: #004f91;
 
   /* Bandeau de tête — dégradé de marque de la plateforme APIX, repris à
@@ -71,6 +86,16 @@
   /* Voile des surfaces modales. Valeur ABSOLUE, pas dérivée de l'encre :
      l'encre s'inverse en thème sombre et le voile virerait au blanc. */
   --tg-overlay: rgb(20 23 42 / 0.45);
+  /* Voile du panneau de notifications. Bien plus léger que `overlay` : le
+     panneau n'est PAS un dialogue modal, la page doit reculer sans être
+     éteinte. C'est le flou qui fait ressortir le panneau ; la teinte ne fait
+     qu'empêcher le blanc flouté de rester aussi lumineux que le panneau. */
+  --tg-veil: rgb(20 23 42 / 0.12);
+  /* Liseré de la pastille d'alerte. Sombre, pas blanc : la pastille mord sur
+     le bouton en verre du bandeau, où le fond remonte à 25 % de blanc et où
+     un rouge clair tomberait à 1,9:1. Ce liseré rétablit 4,4:1 au pire, et
+     se lit comme une ombre plutôt que comme un contour. */
+  --tg-alert-ring: rgb(0 32 63 / 0.55);
 
   /* Fond posé derrière le logo. Transparent en clair : le logo se pose
      directement sur la barre. En sombre il redevient blanc — un logo à encre
@@ -168,9 +193,20 @@
     --tg-danger: #e08078;
     --tg-danger-soft: #3a2321;
 
+    /* La nuit, les deux fonds redeviennent sombres : un seul palier clair
+       suffit. 7,25:1 sur la surface, 7,10:1 pour l'encre sur l'aplat. */
+    --tg-alert: #ff8f85;
+    --tg-alert-ink: #4a0b06;
+    --tg-alert-hero: #ff8f85;
+    --tg-alert-hero-ink: #4a0b06;
+    --tg-alert-soft: #3f1c19;
+    --tg-alert-text: #ff8f85; /* 6,84:1 sur l'aplat doux */
+
     --tg-brand-plate: #ffffff;
     --tg-focus-ring: #86b5ea;
     --tg-overlay: rgb(4 6 12 / 0.6);
+    --tg-veil: rgb(4 6 12 / 0.34);
+    --tg-alert-ring: rgb(0 0 0 / 0.45);
     --tg-chart: #659cd9;
     --tg-chart-track: #262a3a;
   }
@@ -209,9 +245,18 @@
   --tg-danger: #e08078;
   --tg-danger-soft: #3a2321;
 
+  --tg-alert: #ff8f85;
+  --tg-alert-ink: #4a0b06;
+  --tg-alert-hero: #ff8f85;
+  --tg-alert-hero-ink: #4a0b06;
+  --tg-alert-soft: #3f1c19;
+  --tg-alert-text: #ff8f85;
+
   --tg-brand-plate: #ffffff;
   --tg-focus-ring: #86b5ea;
   --tg-overlay: rgb(4 6 12 / 0.6);
+  --tg-veil: rgb(4 6 12 / 0.34);
+  --tg-alert-ring: rgb(0 0 0 / 0.45);
   --tg-chart: #659cd9;
   --tg-chart-track: #262a3a;
 }

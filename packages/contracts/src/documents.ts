@@ -72,12 +72,29 @@ export interface NotificationView {
   body: string | null;
   link: string | null;
   readAt: string | null;
+  /** Rangée hors de la boîte — consultable et restaurable, jamais perdue. */
+  archivedAt: string | null;
   createdAt: string;
 }
 
+/** Les deux vues de la boîte : ce qui reste à voir, et ce qu'on a rangé. */
+export const notificationScopeSchema = z.enum(['inbox', 'archive']).default('inbox');
+export type NotificationScope = z.infer<typeof notificationScopeSchema>;
+
+export const notificationScopeQuerySchema = z.object({ scope: notificationScopeSchema });
+
+/** Ranger ou ressortir : toujours une LISTE, même pour une seule ligne. */
+export const notificationIdsSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(60),
+});
+export type NotificationIdsInput = z.infer<typeof notificationIdsSchema>;
+
 export interface NotificationsPage {
   items: NotificationView[];
+  /** Non lues DANS LA BOÎTE : ranger une notification la retire du compteur. */
   unreadCount: number;
+  /** Combien de lignes dorment dans les archives (pour l'onglet). */
+  archivedCount: number;
 }
 
 // ---------- Contrats à échéance ----------

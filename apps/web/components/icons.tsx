@@ -21,6 +21,7 @@ import manifest from './icon-font.manifest.json';
  */
 export const ICON_NAMES = [
   'add',
+  'archive',
   'arrow_forward',
   'badge',
   'calendar_month',
@@ -44,6 +45,7 @@ export const ICON_NAMES = [
   'gavel',
   'group',
   'how_to_reg',
+  'inbox',
   'lock',
   'logout',
   'mail',
@@ -55,6 +57,7 @@ export const ICON_NAMES = [
   'search',
   'schedule',
   'settings',
+  'unarchive',
   'upload_file',
   'visibility',
   'visibility_off',
