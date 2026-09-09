@@ -2,6 +2,14 @@ node_modules/
 dist/
 .next/
 .next-dev/
+# Fichier ENGENDRÉ par Next à chaque `dev` et à chaque `build`, et qui porte
+# le nom du répertoire de sortie du dernier lancement — donc `.next` après une
+# compilation, `.next-dev` après un serveur de développement (cf. distDir dans
+# next.config.ts). Versionné, il change de contenu selon la dernière commande
+# lancée sur chaque poste et fait échouer le prochain « git pull » de tout le
+# monde. Il se régénère seul avant que quoi que ce soit ne le lise, et la
+# vérification de types passe même en son absence : il n'a rien à faire ici.
+apps/web/next-env.d.ts
 .turbo/
 coverage/
 *.tsbuildinfo
