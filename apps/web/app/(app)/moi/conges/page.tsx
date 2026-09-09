@@ -11,7 +11,6 @@ import type {
   MyEmployeeView,
 } from '@teranga/contracts';
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -24,7 +23,7 @@ import {
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { DocViewer, type ViewableDoc } from '../../../../components/doc-viewer';
-import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES } from '../../../../lib/absences';
+import { StatutAbsence } from '../../../../components/statut-absence';
 import { formatDate } from '../../../../lib/hooks';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -314,9 +313,7 @@ export default function MyLeavesPage() {
                         ) : null}
                       </p>
                     </div>
-                    <Badge tone={ABSENCE_STATUS_TONES[r.status] ?? 'neutral'}>
-                      {ABSENCE_STATUS_LABELS[r.status] ?? r.status}
-                    </Badge>
+                    <StatutAbsence statut={r.status} />
                     {r.status === 'pending' ? (
                       <Button
                         size="sm"

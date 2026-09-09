@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { AbsenceRequestView } from '@teranga/contracts';
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -22,9 +21,31 @@ import {
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../lib/api';
 import { DocViewer, type ViewableDoc } from '../../../components/doc-viewer';
-import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES, ROLE_LABELS } from '../../../lib/absences';
+import { ROLE_LABELS } from '../../../lib/absences';
+import { StatutAbsence } from '../../../components/statut-absence';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
+
+/**
+ * Le circuit de visa, en toutes lettres, au survol du statut.
+ *
+ * La colonne de pastilles qui le montrait a disparu : sur huit colonnes, trois
+ * points gris ne disaient rien à qui ne connaissait pas le code, et prenaient
+ * la place d'une information qu'on lit vraiment. Le détail reste à un survol,
+ * et le niveau qui bloque est écrit sous le statut des demandes en attente.
+ */
+function resumeVisas(r: AbsenceRequestView): string | undefined {
+  if (r.chainLevels.length === 0) return undefined;
+  return r.chainLevels
+    .map((role, i) => {
+      const qui = ROLE_LABELS[role] ?? role;
+      const visa = r.approvals.find((a) => a.level === i);
+      if (visa?.decision === 'approved') return `${qui} — visé par ${visa.decidedByName}`;
+      if (visa?.decision === 'rejected') return `${qui} — refusé par ${visa.decidedByName}`;
+      return `${qui} — en attente`;
+    })
+    .join('\n');
+}
 
 export default function AbsencesPage() {
   const queryClient = useQueryClient();
@@ -53,12 +74,6 @@ export default function AbsencesPage() {
     onSuccess: refresh,
     onError: (err) => setActionError(err instanceof ApiError ? err.message : 'Action impossible.'),
   });
-  const cancel = useMutation({
-    mutationFn: (id: string) => api(`/absence-requests/${id}/cancel`, { method: 'POST' }),
-    onSuccess: refresh,
-    onError: (err) => setActionError(err instanceof ApiError ? err.message : 'Action impossible.'),
-  });
-
   const canManage = me.data && ['admin', 'hr'].includes(me.data.role);
   const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
   const items = requests.data ?? [];
@@ -99,9 +114,10 @@ export default function AbsencesPage() {
                 <tr>
                   <Th>Employé</Th>
                   <Th>Type</Th>
-                  <Th>Période</Th>
-                  <Th>Jours</Th>
-                  <Th>Visas</Th>
+                  <Th>Début</Th>
+                  <Th>Fin</Th>
+                  <Th className="text-right">Jours</Th>
+                  <Th>Justificatif</Th>
                   <Th>Statut</Th>
                   <Th />
                 </tr>
@@ -109,14 +125,17 @@ export default function AbsencesPage() {
               <TBody>
                 {items.map((r) => (
                   <Tr key={r.id}>
-                    <Td className="font-medium text-ink-strong">
+                    <Td className="font-semibold text-ink-strong">
                       {r.employeeName}
-                      <span className="block font-mono text-xs font-normal text-ink-muted">
+                      <span className="mt-0.5 block font-mono text-[10.5px] font-normal text-ink-muted">
                         {r.employeeNumber}
                       </span>
                     </Td>
+                    <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
+                    <Td className="whitespace-nowrap tabular-nums">{formatDate(r.startDate)}</Td>
+                    <Td className="whitespace-nowrap tabular-nums">{formatDate(r.endDate)}</Td>
+                    <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
                     <Td>
-                      {r.absenceTypeName}
                       {r.documentName && canManage ? (
                         <button
                           type="button"
@@ -127,80 +146,48 @@ export default function AbsencesPage() {
                               contentType: 'application/pdf',
                             })
                           }
-                          className="block text-xs text-primary hover:underline"
+                          title={r.documentName}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-[3px] text-[11px] font-semibold text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                         >
-                          👁 justificatif
+                          <Icon name="visibility" size={13} />
+                          Prévisualiser
                         </button>
+                      ) : (
+                        // Un tiret, pas une case vide : « rien à joindre » se dit,
+                        // sinon la colonne a l'air de n'avoir pas fini de charger.
+                        <span className="text-ink-muted/60">—</span>
+                      )}
+                    </Td>
+                    <Td>
+                      <StatutAbsence statut={r.status} titre={resumeVisas(r)} />
+                      {r.status === 'pending' && r.chainLevels[r.currentLevel] ? (
+                        <span className="mt-1 block text-[10.5px] whitespace-nowrap text-ink-muted">
+                          chez{' '}
+                          {ROLE_LABELS[r.chainLevels[r.currentLevel]!] ??
+                            r.chainLevels[r.currentLevel]}
+                        </span>
                       ) : null}
                     </Td>
-                    <Td className="whitespace-nowrap">
-                      {formatDate(r.startDate)} → {formatDate(r.endDate)}
-                    </Td>
-                    <Td className="font-mono">{r.daysCount}</Td>
                     <Td>
-                      <div className="flex items-center gap-1">
-                        {r.chainLevels.map((role, i) => {
-                          const approval = r.approvals.find(
-                            (a) => a.level === i && a.decision === 'approved',
-                          );
-                          const rejected = r.approvals.find(
-                            (a) => a.level === i && a.decision === 'rejected',
-                          );
-                          return (
-                            <span
-                              key={i}
-                              title={`Niveau ${i + 1} : ${ROLE_LABELS[role] ?? role}${
-                                approval ? ` — visé par ${approval.decidedByName}` : ''
-                              }${rejected ? ` — refusé par ${rejected.decidedByName}` : ''}`}
-                              className={
-                                rejected
-                                  ? 'size-2.5 rounded-full bg-danger'
-                                  : approval
-                                    ? 'size-2.5 rounded-full bg-success'
-                                    : i === r.currentLevel && r.status === 'pending'
-                                      ? 'size-2.5 rounded-full bg-warning'
-                                      : 'size-2.5 rounded-full bg-line'
-                              }
-                            />
-                          );
-                        })}
-                        <span className="ml-1 text-xs text-ink-muted">
-                          {Math.min(r.currentLevel, r.chainLevels.length)}/{r.chainLevels.length}
-                        </span>
-                      </div>
-                    </Td>
-                    <Td>
-                      <Badge tone={ABSENCE_STATUS_TONES[r.status] ?? 'neutral'}>
-                        {ABSENCE_STATUS_LABELS[r.status] ?? r.status}
-                      </Badge>
-                    </Td>
-                    <Td>
-                      <div className="flex justify-end gap-2">
-                        {r.canDecide ? (
-                          <>
-                            <Button
-                              size="sm"
-                              onClick={() => decide.mutate({ id: r.id, decision: 'approved' })}
-                              loading={decide.isPending}
-                            >
-                              Approuver
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              onClick={() => decide.mutate({ id: r.id, decision: 'rejected' })}
-                              loading={decide.isPending}
-                            >
-                              Refuser
-                            </Button>
-                          </>
-                        ) : null}
-                        {canManage && ['pending', 'approved'].includes(r.status) ? (
-                          <Button size="sm" variant="ghost" onClick={() => cancel.mutate(r.id)}>
-                            Annuler
+                      {r.canDecide ? (
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => decide.mutate({ id: r.id, decision: 'approved' })}
+                            loading={decide.isPending}
+                          >
+                            Approuver
                           </Button>
-                        ) : null}
-                      </div>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => decide.mutate({ id: r.id, decision: 'rejected' })}
+                            loading={decide.isPending}
+                          >
+                            Refuser
+                          </Button>
+                        </div>
+                      ) : null}
                     </Td>
                   </Tr>
                 ))}
