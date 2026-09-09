@@ -1,25 +1,7 @@
-import type { ApplicationStage } from '@teranga/contracts';
-
-export const STAGE_LABELS: Record<ApplicationStage, string> = {
-  received: 'Reçues',
-  screening: 'Présélection',
-  interview: 'Entretien',
-  offer: 'Offre',
-  hired: 'Embauché·e',
-  rejected: 'Refusées',
-};
-
-export const STAGE_TONES: Record<
-  ApplicationStage,
-  'neutral' | 'primary' | 'warning' | 'success' | 'danger'
-> = {
-  received: 'neutral',
-  screening: 'primary',
-  interview: 'warning',
-  offer: 'primary',
-  hired: 'success',
-  rejected: 'danger',
-};
+// Le vocabulaire d'étapes — Présélection, Entretien, Offre… — n'est plus
+// affiché nulle part : le tableau de flux à six colonnes qui le portait
+// montrait cinq colonnes vides en permanence. Le champ `stage` reste dans
+// l'API et en base, intact, pour le jour où un suivi plus fin sera voulu.
 
 export const JOB_STATUS_LABELS: Record<string, string> = {
   draft: 'Brouillon',
