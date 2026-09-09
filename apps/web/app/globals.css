@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 @import '@teranga/ui/tokens.css';
+/* Police de l'interface, servie depuis /fonts — cf. scripts/fetch-text-font.mjs. */
+@import './google-sans.css';
 
 /* Les composants du design system vivent dans packages/ui : Tailwind doit les scanner. */
 @source '../../../packages/ui/src';

@@ -8,7 +8,8 @@
     "icons:fetch": "node scripts/fetch-icon-font.mjs",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
-    "lint": "prettier --check app"
+    "lint": "prettier --check app",
+    "fonts:fetch": "node scripts/fetch-text-font.mjs"
   },
   "dependencies": {
     "@teranga/contracts": "workspace:*",

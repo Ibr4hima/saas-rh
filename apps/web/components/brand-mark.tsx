@@ -60,6 +60,12 @@ export function BrandMark({
           // Largeur imposée, hauteur libre plafonnée : un logo large occupe
           // toute la place offerte, un logo haut reste à sa mesure.
           'bg-[var(--tg-brand-plate)] object-contain',
+          // Le texte alternatif est peint par le navigateur TANT QUE l'image
+          // n'est pas arrivée : au rechargement, « Logo de l'organisation »
+          // s'affichait une seconde à la place de la marque. L'encre
+          // transparente l'empêche de paraître sans le retirer de l'arbre
+          // d'accessibilité — le lecteur d'écran l'annonce toujours.
+          'text-transparent',
           variant === 'full' && 'max-h-14 w-full rounded-lg px-1 py-0.5',
           // Sur le bandeau, le logo se pose en blanc pur : la plaque n'a plus
           // lieu d'être, et ses encres foncées disparaîtraient dans le bleu.
