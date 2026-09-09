@@ -48,20 +48,21 @@
   --tg-danger: #b3382e;
   --tg-danger-soft: #fae9e7;
 
-  /* Le rouge des COMPTEURS de notification. Distinct de `danger`, qui dit
-     l'erreur : ici rien n'est cassé, quelque chose attend d'être vu.
-     Deux aplats, parce que la pastille se pose sur DEUX fonds opposés et
-     qu'aucun rouge unique ne tient les deux. Sur le bleu du bandeau seul un
-     palier clair se détache ; sur le blanc des surfaces, seul un palier
-     profond. Les rapports ci-dessous sont mesurés, pas estimés — et le
-     bandeau est éprouvé sur le point le plus CLAIR de son dégradé (#1a6ab0),
-     celui où une pastille claire risque de se fondre. */
-  --tg-alert: #d92d20; /* 4,83:1 sur blanc — 4,51:1 sur le fond */
-  --tg-alert-ink: #ffffff; /* 4,83:1 sur l'aplat */
-  --tg-alert-hero: #ffa79e; /* 3,02:1 au plus clair du bandeau, 7,76:1 au plus sombre */
-  --tg-alert-hero-ink: #4a0b06; /* 8,40:1 sur l'aplat */
-  --tg-alert-soft: #ffece9;
-  --tg-alert-text: #b3382e; /* 5,23:1 sur l'aplat doux */
+  /* Le rouge des COMPTEURS de notification, décliné depuis #dc2626. Distinct
+     de `danger`, qui dit l'erreur : ici rien n'est cassé, quelque chose
+     attend d'être vu.
+     Le badge est CLAIR — un aplat pâle et un chiffre foncé — et il change de
+     palier selon le fond, parce qu'un aplat unique ne peut pas se détacher à
+     la fois du blanc des surfaces et du bleu du bandeau. Le chiffre, lui,
+     porte toujours le contraste : l'aplat pâle sur blanc ne fait que 1,2:1,
+     ce qui suffit à dire « badge » mais jamais à faire lire un nombre.
+     Rapports mesurés, pas estimés, et le bandeau est éprouvé sur le point le
+     plus CLAIR de son dégradé (#1a6ab0), celui où un aplat pâle se fond. */
+  --tg-alert: #dc2626; /* pastille pleine, sans chiffre — 4,83:1 sur blanc */
+  --tg-alert-soft: #fee2e2; /* badge sur fond clair */
+  --tg-alert-text: #991b1b; /* 6,80:1 sur l'aplat, 8,31:1 sur blanc */
+  --tg-alert-hero: #fecaca; /* 3,89:1 sur le bleu le plus clair du bandeau */
+  --tg-alert-hero-ink: #7f1d1d; /* 6,93:1 sur l'aplat */
 
   --tg-focus-ring: #004f91;
 
@@ -193,14 +194,15 @@
     --tg-danger: #e08078;
     --tg-danger-soft: #3a2321;
 
-    /* La nuit, les deux fonds redeviennent sombres : un seul palier clair
-       suffit. 7,25:1 sur la surface, 7,10:1 pour l'encre sur l'aplat. */
-    --tg-alert: #ff8f85;
-    --tg-alert-ink: #4a0b06;
-    --tg-alert-hero: #ff8f85;
-    --tg-alert-hero-ink: #4a0b06;
-    --tg-alert-soft: #3f1c19;
-    --tg-alert-text: #ff8f85; /* 6,84:1 sur l'aplat doux */
+    /* La nuit, le rapport s'inverse : sur les surfaces sombres le badge
+       devient un aplat rouge PROFOND à chiffre clair. Le bandeau, lui, reste
+       le fond le plus sombre de l'écran — un aplat profond s'y perdrait, le
+       badge y garde donc son palier pâle. */
+    --tg-alert: #f87171; /* 5,78:1 sur la surface de nuit */
+    --tg-alert-soft: #7a2422; /* 1,5:1 sur la surface — assez pour dire « badge » */
+    --tg-alert-text: #fecaca; /* 6,90:1 sur l'aplat */
+    --tg-alert-hero: #fca5a5; /* 8,43:1 sur le bandeau de nuit */
+    --tg-alert-hero-ink: #450a0a; /* 10,3:1 sur l'aplat */
 
     --tg-brand-plate: #ffffff;
     --tg-focus-ring: #86b5ea;
@@ -245,12 +247,11 @@
   --tg-danger: #e08078;
   --tg-danger-soft: #3a2321;
 
-  --tg-alert: #ff8f85;
-  --tg-alert-ink: #4a0b06;
-  --tg-alert-hero: #ff8f85;
-  --tg-alert-hero-ink: #4a0b06;
-  --tg-alert-soft: #3f1c19;
-  --tg-alert-text: #ff8f85;
+  --tg-alert: #f87171;
+  --tg-alert-soft: #7a2422;
+  --tg-alert-text: #fecaca;
+  --tg-alert-hero: #fca5a5;
+  --tg-alert-hero-ink: #450a0a;
 
   --tg-brand-plate: #ffffff;
   --tg-focus-ring: #86b5ea;

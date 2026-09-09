@@ -32,11 +32,10 @@
   --color-danger: var(--tg-danger);
   --color-danger-soft: var(--tg-danger-soft);
   --color-alert: var(--tg-alert);
-  --color-alert-ink: var(--tg-alert-ink);
-  --color-alert-hero: var(--tg-alert-hero);
-  --color-alert-hero-ink: var(--tg-alert-hero-ink);
   --color-alert-soft: var(--tg-alert-soft);
   --color-alert-text: var(--tg-alert-text);
+  --color-alert-hero: var(--tg-alert-hero);
+  --color-alert-hero-ink: var(--tg-alert-hero-ink);
   --color-hero-ink: var(--tg-hero-ink);
   --color-card-line: var(--tg-card-line);
   --color-card-line-hover: var(--tg-card-line-hover);

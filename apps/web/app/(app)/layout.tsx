@@ -248,7 +248,7 @@ function RangeeNav({
       {icon ? <Icon name={icon} size={17} fill={active} /> : null}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {badge && badge > 0 ? (
-        <span className="rounded-full bg-alert px-[6px] py-px text-[10px] font-bold text-alert-ink">
+        <span className="rounded-full bg-alert-soft px-[6px] py-px text-[10px] font-extrabold text-alert-text">
           {badge}
         </span>
       ) : null}
@@ -333,7 +333,7 @@ function Rubrique({
             il puisse se voir ; déplié, il dit lequel des deux ensembles
             réclame un geste sans qu'on ait à le chercher plus bas. */}
         {badge && badge > 0 ? (
-          <span className="rounded-full bg-alert px-[6px] py-px text-[10px] font-bold text-alert-ink">
+          <span className="rounded-full bg-alert-soft px-[6px] py-px text-[10px] font-extrabold text-alert-text">
             {badge}
           </span>
         ) : null}

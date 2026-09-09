@@ -232,16 +232,20 @@ export class NotificationsService {
   }
 
   /**
-   * Ranger d'un geste tout ce qui a été lu — le cas courant du « faire de la
-   * place ». Les non-lues restent : personne n'a envie de voir disparaître un
-   * avis qu'il n'a pas encore ouvert.
+   * Vider la boîte d'un geste — le cas courant du « faire de la place ».
+   *
+   * Tout part, lues comme non lues, parce que le bouton s'appelle « Tout
+   * archiver » et qu'un bouton doit faire ce qu'il dit. Épargner les non-lues
+   * serait plus prudent mais mentirait sur son intitulé, et le geste n'est de
+   * toute façon pas destructeur : rien n'est effacé, rien n'est marqué lu,
+   * tout est repris d'un clic depuis les archives.
    */
-  async archiveRead(user: SessionUser): Promise<void> {
+  async archiveAll(user: SessionUser): Promise<void> {
     await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
       tx
         .update(t.notifications)
         .set({ archivedAt: new Date() })
-        .where(and(mien(user.userId), dansLaBoite(), sql`${t.notifications.readAt} IS NOT NULL`)),
+        .where(and(mien(user.userId), dansLaBoite())),
     );
   }
 

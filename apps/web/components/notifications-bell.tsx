@@ -68,8 +68,8 @@ export function NotificationsBell() {
       api('/notifications/unarchive', { method: 'POST', body: { ids } }),
     onSuccess: rafraichir,
   });
-  const rangerLues = useMutation({
-    mutationFn: () => api('/notifications/archive-read', { method: 'POST' }),
+  const toutArchiver = useMutation({
+    mutationFn: () => api('/notifications/archive-all', { method: 'POST' }),
     onSuccess: rafraichir,
   });
 
@@ -126,7 +126,7 @@ export function NotificationsBell() {
         )}
       >
         <Icon name="notifications" size={20} fill={unread > 0} />
-        {unread > 0 ? <Pastille valeur={unread} sur="hero" /> : null}
+        {unread > 0 ? <Pastille valeur={unread} /> : null}
       </button>
 
       {open ? (
@@ -141,10 +141,10 @@ export function NotificationsBell() {
           chargement={page.isPending}
           onTousLus={() => markAll.mutate()}
           tousLusEnCours={markAll.isPending}
-          onRanger={(ids) => ranger.mutate(ids)}
+          onArchiver={(ids) => ranger.mutate(ids)}
           onRessortir={(ids) => ressortir.mutate(ids)}
-          onRangerLues={() => rangerLues.mutate()}
-          rangementEnCours={ranger.isPending || rangerLues.isPending}
+          onToutArchiver={() => toutArchiver.mutate()}
+          archivageEnCours={ranger.isPending || toutArchiver.isPending}
           onOuvrir={ouvrir}
           onFermer={fermer}
         />
@@ -154,24 +154,17 @@ export function NotificationsBell() {
 }
 
 /**
- * Le compteur d'avis en attente.
+ * Le compteur d'avis en attente, posé sur le bandeau.
  *
- * Le rouge est celui de `--tg-alert`, et il change de palier selon le fond :
- * clair sur le bleu du bandeau, profond sur le blanc des surfaces. Les deux
- * paliers sont mesurés dans tokens.css — un seul rouge ne pouvait pas tenir
- * les deux fonds, et l'ancien orange de la charte ne faisait que 1,4:1 sur le
- * bandeau. Le liseré sombre n'est pas un ornement : la pastille mord sur le
- * bouton en verre, dont le fond remonte jusqu'à 25 % de blanc.
+ * Aplat rouge PÂLE et chiffre foncé — le badge est clair partout, et ne change
+ * que de palier selon le fond (voir `--tg-alert-*` dans tokens.css). Le liseré
+ * sombre n'est pas un ornement : la pastille mord sur le bouton en verre, dont
+ * le fond remonte jusqu'à 25 % de blanc, où un aplat pâle tomberait à 2,4:1.
  */
-function Pastille({ valeur, sur }: { valeur: number; sur: 'hero' | 'surface' }) {
+function Pastille({ valeur }: { valeur: number }) {
   return (
     <span
-      className={cn(
-        'absolute -top-[3px] -right-[3px] flex h-[17px] min-w-[17px] items-center justify-center rounded-full px-[4.5px] text-[10px] leading-none font-extrabold',
-        sur === 'hero'
-          ? 'bg-alert-hero text-alert-hero-ink ring-2 ring-[var(--tg-alert-ring)]'
-          : 'bg-alert text-alert-ink',
-      )}
+      className="absolute -top-[3px] -right-[3px] flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-alert-hero px-[4.5px] text-[10px] leading-none font-extrabold text-alert-hero-ink ring-2 ring-[var(--tg-alert-ring)]"
       style={{ fontVariantNumeric: 'tabular-nums' }}
     >
       {valeur > 99 ? '99+' : valeur}
@@ -200,10 +193,10 @@ function PanneauNotifications({
   chargement,
   onTousLus,
   tousLusEnCours,
-  onRanger,
+  onArchiver,
   onRessortir,
-  onRangerLues,
-  rangementEnCours,
+  onToutArchiver,
+  archivageEnCours,
   onOuvrir,
   onFermer,
 }: {
@@ -217,10 +210,10 @@ function PanneauNotifications({
   chargement: boolean;
   onTousLus: () => void;
   tousLusEnCours: boolean;
-  onRanger: (ids: string[]) => void;
+  onArchiver: (ids: string[]) => void;
   onRessortir: (ids: string[]) => void;
-  onRangerLues: () => void;
-  rangementEnCours: boolean;
+  onToutArchiver: () => void;
+  archivageEnCours: boolean;
   onOuvrir: (n: NotificationView) => void;
   onFermer: () => void;
 }) {
@@ -249,7 +242,6 @@ function PanneauNotifications({
   if (typeof document === 'undefined' || !pos) return null;
 
   const archive = vue === 'archive';
-  const lues = items.filter((n) => n.readAt).length;
 
   return createPortal(
     <>
@@ -274,35 +266,47 @@ function PanneauNotifications({
           'max-sm:inset-x-3 max-sm:!right-auto max-sm:w-auto',
         )}
       >
-        <header className="border-b border-line-soft px-4 pt-3 pb-2.5">
-          <div className="flex items-center justify-between gap-3">
+        {/* L'en-tête tient sur deux lignes de rôles distincts : le titre et
+            les deux commandes de masse d'abord, la navigation entre les deux
+            vues ensuite, sur toute la largeur. L'ancienne disposition mêlait
+            les trois sur deux rangs irréguliers — le titre poussait les
+            onglets contre le bord, et les commandes formaient une deuxième
+            ligne orpheline qui apparaissait et disparaissait sous eux. */}
+        <header className="border-b border-line-soft px-3 pt-2.5 pb-3">
+          <div className="flex h-7 items-center justify-between gap-3 pl-1">
             <p className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
               Notifications
             </p>
-            {/* Deux vues, jamais plus : ce qui reste à voir, ce qu'on a rangé. */}
-            <div className="flex items-center gap-0.5 rounded-full bg-bg p-0.5">
-              <Onglet actif={!archive} onClick={() => onVue('inbox')} compte={unread} alerte>
-                Boîte
-              </Onglet>
-              <Onglet actif={archive} onClick={() => onVue('archive')} compte={archivees}>
-                Archives
-              </Onglet>
-            </div>
+            {!archive ? (
+              <div className="flex items-center gap-0.5">
+                {unread > 0 ? (
+                  <ActionEntete
+                    onClick={onTousLus}
+                    disabled={tousLusEnCours}
+                    icone="check"
+                    libelle="Tout marquer lu"
+                  />
+                ) : null}
+                {items.length > 0 ? (
+                  <ActionEntete
+                    onClick={onToutArchiver}
+                    disabled={archivageEnCours}
+                    icone="archive"
+                    libelle="Tout archiver"
+                  />
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          {!archive && (unread > 0 || lues > 0) ? (
-            <div className="mt-1.5 flex items-center gap-1">
-              {unread > 0 ? (
-                <ActionEntete onClick={onTousLus} disabled={tousLusEnCours} icone="check">
-                  Tout marquer lu
-                </ActionEntete>
-              ) : null}
-              {lues > 0 ? (
-                <ActionEntete onClick={onRangerLues} disabled={rangementEnCours} icone="archive">
-                  Ranger les lues
-                </ActionEntete>
-              ) : null}
-            </div>
-          ) : null}
+          {/* Deux vues, jamais plus : ce qui reste à voir, ce qu'on a archivé. */}
+          <div className="mt-2 flex items-center gap-1 rounded-full bg-bg p-0.5">
+            <Onglet actif={!archive} onClick={() => onVue('inbox')} compte={unread}>
+              Boîte
+            </Onglet>
+            <Onglet actif={archive} onClick={() => onVue('archive')} compte={archivees}>
+              Archives
+            </Onglet>
+          </div>
         </header>
 
         <div className="max-h-[26rem] overflow-y-auto overscroll-contain">
@@ -315,7 +319,7 @@ function PanneauNotifications({
               title={archive ? 'Aucune archive' : 'Rien à signaler'}
               description={
                 archive
-                  ? "Ranger une notification la sort de la boîte sans l'effacer : elle atterrit ici, et un bouton la remet en place."
+                  ? undefined
                   : 'Les demandes, validations et échéances qui vous concernent arriveront ici.'
               }
             />
@@ -375,10 +379,10 @@ function PanneauNotifications({
                           <span className="size-[7px] rounded-full bg-alert" />
                         )}
                       </span>
-                      <Ranger
+                      <Archiver
                         archive={archive}
                         titre={n.title}
-                        onClick={() => (archive ? onRessortir([n.id]) : onRanger([n.id]))}
+                        onClick={() => (archive ? onRessortir([n.id]) : onArchiver([n.id]))}
                       />
                     </span>
                   </li>
@@ -393,18 +397,16 @@ function PanneauNotifications({
   );
 }
 
-/** Onglet de la boîte : le compte fait partie de l'étiquette, pas d'un badge à part. */
+/** Onglet : le compte fait partie de l'étiquette, pas d'un badge posé à côté. */
 function Onglet({
   actif,
   onClick,
   compte,
-  alerte = false,
   children,
 }: {
   actif: boolean;
   onClick: () => void;
   compte: number;
-  alerte?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -413,17 +415,14 @@ function Onglet({
       onClick={onClick}
       aria-pressed={actif}
       className={cn(
-        'flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors',
+        'flex flex-1 items-center justify-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11.5px] font-bold transition-colors',
         actif ? 'bg-surface text-primary shadow-sm' : 'text-ink-muted hover:text-ink',
       )}
     >
       {children}
       {compte > 0 ? (
         <span
-          className={cn(
-            'rounded-full px-1 py-px text-[9.5px] leading-none font-extrabold',
-            alerte ? 'bg-alert-soft text-alert-text' : 'bg-primary/[0.09] text-primary',
-          )}
+          className="rounded-full bg-alert-soft px-1.5 py-px text-[10px] leading-none font-extrabold text-alert-text"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {compte > 99 ? '99+' : compte}
@@ -433,39 +432,46 @@ function Onglet({
   );
 }
 
+/**
+ * Commande de masse. L'intitulé n'est pas écrit dans le bouton mais porté par
+ * l'infobulle et le nom accessible : à deux commandes côte à côte dans une
+ * en-tête de 336 px, « Tout marquer lu » et « Tout archiver » écrits en toutes
+ * lettres mangeaient la ligne et laissaient les onglets sans place.
+ */
 function ActionEntete({
   onClick,
   disabled,
   icone,
-  children,
+  libelle,
 }: {
   onClick: () => void;
   disabled: boolean;
   icone: IconName;
-  children: React.ReactNode;
+  libelle: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-semibold text-primary transition-colors hover:bg-primary/[0.07] disabled:opacity-50"
+      aria-label={libelle}
+      title={libelle}
+      className="flex size-7 items-center justify-center rounded-lg text-primary transition-colors hover:bg-primary/[0.09] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:opacity-50"
     >
-      <Icon name={icone} size={14} />
-      {children}
+      <Icon name={icone} size={16} />
     </button>
   );
 }
 
 /**
- * Ranger une ligne — ou la ressortir.
+ * Archiver une ligne — ou la ressortir.
  *
  * Le bouton reste discret au repos et se révèle au survol : une colonne
  * d'icônes toujours pleine ferait dix boutons visibles pour un geste qu'on
  * fait rarement. Au clavier et au doigt il n'y a pas de survol — d'où
  * `group-focus-within` et l'affichage permanent sous 640 px.
  */
-function Ranger({
+function Archiver({
   archive,
   titre,
   onClick,
@@ -478,8 +484,8 @@ function Ranger({
     <button
       type="button"
       onClick={onClick}
-      aria-label={archive ? `Remettre « ${titre} » dans la boîte` : `Ranger « ${titre} »`}
-      title={archive ? 'Remettre dans la boîte' : 'Ranger'}
+      aria-label={archive ? `Remettre « ${titre} » dans la boîte` : `Archiver « ${titre} »`}
+      title={archive ? 'Remettre dans la boîte' : 'Archiver'}
       className={cn(
         'flex size-7 items-center justify-center rounded-lg text-ink-muted transition-all',
         'hover:bg-primary/[0.09] hover:text-primary',

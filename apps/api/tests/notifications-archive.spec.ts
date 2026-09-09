@@ -179,13 +179,18 @@ describe('ranger ≠ lire', () => {
     expect((await service.list(user, 'inbox')).unreadCount).toBe(avant - 1);
   });
 
-  it('« ranger les lues » épargne les non-lues', async () => {
+  it('« tout archiver » vide la boîte sans marquer quoi que ce soit lu', async () => {
     const lue = await poser('Déjà lue', { lue: true });
     const nonLue = await poser('Pas encore lue');
-    await service.archiveRead(user);
+    await service.archiveAll(user);
+    // Le bouton dit « tout » : il prend aussi les non-lues. Le geste n'est pas
+    // destructeur — mais il ne doit pas non plus falsifier `read_at`.
     expect((await etat(lue)).archived_at).not.toBeNull();
-    expect((await etat(nonLue)).archived_at).toBeNull();
-    await service.archive(user, [nonLue]); // ménage
+    expect((await etat(nonLue)).archived_at).not.toBeNull();
+    expect((await etat(nonLue)).read_at).toBeNull();
+    const boite = await service.list(user, 'inbox');
+    expect(boite.items).toHaveLength(0);
+    expect(boite.unreadCount).toBe(0);
   });
 });
 

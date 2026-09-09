@@ -70,10 +70,10 @@ export class NotificationsController {
     await this.notifications.unarchive(req.sessionUser, body.ids);
   }
 
-  @Post('notifications/archive-read')
+  @Post('notifications/archive-all')
   @HttpCode(204)
-  async archiveRead(@Req() req: AuthenticatedRequest) {
-    await this.notifications.archiveRead(req.sessionUser);
+  async archiveAll(@Req() req: AuthenticatedRequest) {
+    await this.notifications.archiveAll(req.sessionUser);
   }
 
   /** Les contrats sous l'œil de la RH jusqu'à leur expiration. */
