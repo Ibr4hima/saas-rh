@@ -10,6 +10,7 @@ import type {
   InviteResult,
   SessionUser,
 } from '@teranga/contracts';
+import { passwordDiffersFromEmail, passwordShortfall } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
@@ -203,6 +204,23 @@ export class InvitationsService {
         await tx.execute(sql`SELECT set_config('app.user_id', ${userId}, true)`);
 
         if (!existing) {
+          // C'est ici, et seulement ici, qu'on POSE un mot de passe : la
+          // politique s'applique. La branche du dessus, elle, ne fait que
+          // VÉRIFIER un mot de passe déjà en place — le soumettre à une règle
+          // adoptée depuis interdirait de relier un compte ancien.
+          const manque = passwordShortfall(password);
+          if (manque) {
+            problem(422, 'portal.weak_password', 'Mot de passe trop faible', manque);
+          }
+          if (!passwordDiffersFromEmail(password, invitation.email)) {
+            problem(
+              422,
+              'portal.weak_password',
+              'Mot de passe trop faible',
+              'Le mot de passe ne doit pas reprendre votre adresse email.',
+            );
+          }
+
           const [person] = await tx
             .select({ givenName: t.persons.givenName, familyName: t.persons.familyName })
             .from(t.persons)

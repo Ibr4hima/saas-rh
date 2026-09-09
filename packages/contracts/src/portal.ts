@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { passwordSchema } from './core';
 
 /** Contrats du portail employé : invitations et espace personnel. */
 
@@ -33,8 +32,18 @@ export interface InvitationInfo {
   role?: string;
 }
 
+/**
+ * Volontairement permissif, à la différence de l'inscription.
+ *
+ * Ce champ porte DEUX choses selon le cas : le mot de passe qu'on se choisit
+ * (compte à créer) ou celui d'un compte qui existe déjà, saisi pour le relier
+ * au dossier. Appliquer la politique ici refuserait le second — un mot de
+ * passe ancien n'a pas à satisfaire une règle adoptée depuis. La politique
+ * s'applique donc côté serveur, sur la seule branche qui POSE un mot de
+ * passe (cf. invitations.service.ts).
+ */
 export const acceptInvitationSchema = z.object({
-  password: passwordSchema,
+  password: z.string().min(1).max(128),
 });
 export type AcceptInvitationInput = z.infer<typeof acceptInvitationSchema>;
 

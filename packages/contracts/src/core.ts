@@ -26,18 +26,89 @@ export type Problem = z.infer<typeof problemSchema>;
 
 // ---------- Auth ----------
 
+export const PASSWORD_MIN_LENGTH = 12;
+
+export interface PasswordRule {
+  libelle: string;
+  ok: (password: string) => boolean;
+}
+
+/**
+ * La politique de mot de passe — SOURCE UNIQUE.
+ *
+ * L'écran affiche cette liste et la coche en direct ; le serveur revalide la
+ * MÊME liste. Une politique écrite deux fois dérive : la coche verte finirait
+ * par promettre ce que l'API refuse, ou l'inverse.
+ */
+export const PASSWORD_RULES: PasswordRule[] = [
+  {
+    libelle: `${PASSWORD_MIN_LENGTH} caractères minimum`,
+    ok: (p) => p.length >= PASSWORD_MIN_LENGTH,
+  },
+  { libelle: 'Une majuscule', ok: (p) => /[A-Z]/.test(p) },
+  { libelle: 'Une minuscule', ok: (p) => /[a-z]/.test(p) },
+  { libelle: 'Un chiffre', ok: (p) => /\d/.test(p) },
+  { libelle: 'Un caractère spécial', ok: (p) => /[^A-Za-z0-9]/.test(p) },
+];
+
+export const PASSWORD_EMAIL_RULE = 'Différent de votre email';
+
+/**
+ * Le mot de passe ne reprend pas l'identifiant.
+ *
+ * On compare la partie locale de l'adresse par fenêtres de quatre caractères :
+ * « diop » dans « diop2026! » se voit, alors qu'une comparaison stricte le
+ * laisserait passer. En dessous de trois caractères la règle ne veut rien dire
+ * — trop d'homonymies fortuites — et elle cesse alors de s'appliquer.
+ */
+export function passwordDiffersFromEmail(password: string, email: string): boolean {
+  const local = (email.split('@')[0] ?? '').toLowerCase();
+  if (local.length < 3) return true;
+  const p = password.toLowerCase();
+  if (local.length < 4) return !p.includes(local);
+  for (let i = 0; i <= local.length - 4; i += 1) {
+    if (p.includes(local.slice(i, i + 4))) return false;
+  }
+  return true;
+}
+
+/** Les règles à afficher, celle qui dépend de l'adresse comprise. */
+export function passwordRulesFor(email: string): PasswordRule[] {
+  return [
+    ...PASSWORD_RULES,
+    { libelle: PASSWORD_EMAIL_RULE, ok: (p) => passwordDiffersFromEmail(p, email) },
+  ];
+}
+
+/** Ce qui manque encore, en une phrase — c'est ce que le serveur renverra. */
+export function passwordShortfall(password: string): string | null {
+  const manque = PASSWORD_RULES.filter((r) => !r.ok(password)).map((r) => r.libelle.toLowerCase());
+  if (manque.length === 0) return null;
+  return `Le mot de passe doit comporter : ${manque.join(', ')}.`;
+}
+
 export const passwordSchema = z
   .string()
-  .min(12, 'Le mot de passe doit contenir au moins 12 caractères')
-  .max(128);
+  .max(128)
+  .superRefine((valeur, ctx) => {
+    const manque = passwordShortfall(valeur);
+    if (manque) ctx.addIssue({ code: 'custom', message: manque });
+  });
 
-export const registerInputSchema = z.object({
-  organizationName: z.string().trim().min(2).max(120),
-  givenName: z.string().trim().min(1).max(80),
-  familyName: z.string().trim().min(1).max(80),
-  email: z.email().max(254),
-  password: passwordSchema,
-});
+export const registerInputSchema = z
+  .object({
+    organizationName: z.string().trim().min(2).max(120),
+    givenName: z.string().trim().min(1).max(80),
+    familyName: z.string().trim().min(1).max(80),
+    email: z.email().max(254),
+    password: passwordSchema,
+  })
+  // La règle qui croise deux champs ne peut pas vivre dans `passwordSchema` :
+  // elle a besoin de l'adresse.
+  .refine((v) => passwordDiffersFromEmail(v.password, v.email), {
+    message: 'Le mot de passe ne doit pas reprendre votre adresse email.',
+    path: ['password'] as PropertyKey[],
+  });
 export type RegisterInput = z.infer<typeof registerInputSchema>;
 
 export const loginInputSchema = z.object({

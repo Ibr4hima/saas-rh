@@ -28,7 +28,7 @@ async function call(method, path, body) {
   return data;
 }
 
-const ADMIN = { email: 'demo@apix.sn', password: 'MotDePasseSolide123' };
+const ADMIN = { email: 'demo@apix.sn', password: 'MotDePasseSolide123!' };
 
 console.log('→ Organisation et admin');
 await call('POST', '/auth/register', {
@@ -143,9 +143,9 @@ console.log('→ Portails employés : Awa, Moussa et Fatou activent leur compte'
 // chaque dossier reçoit une invitation, le compte est activé, puis la
 // demande part depuis ce compte — avec justificatif PDF quand le type l'exige.
 const PASSWORDS = {
-  [awa.id]: ['a.diop@apix.sn', 'MotDePasseAwa1234'],
-  [moussa.id]: ['m.ndiaye@apix.sn', 'MotDePasseMoussa1'],
-  [fatou.id]: ['f.sall@apix.sn', 'MotDePasseFatou12'],
+  [awa.id]: ['a.diop@apix.sn', 'MotDePasseAwa1234!'],
+  [moussa.id]: ['m.ndiaye@apix.sn', 'MotDePasseMoussa1!'],
+  [fatou.id]: ['f.sall@apix.sn', 'MotDePasseFatou12!'],
 };
 const employeeCookies = {};
 for (const [employeeId, [, password]] of Object.entries(PASSWORDS)) {
@@ -332,7 +332,7 @@ await call('POST', `/document-requests/${dr3.id}/advance`, {
 console.log(`
 ✔ Démo prête.
   Admin       : ${ADMIN.email} / ${ADMIN.password}
-  Employés    : a.diop@apix.sn / MotDePasseAwa1234 (idem Moussa1, Fatou12)
+  Employés    : a.diop@apix.sn / MotDePasseAwa1234! (idem Moussa1!, Fatou12!)
   Employés    : Awa (EMP-001, ${awa.id}), Moussa (EMP-002, ${moussa.id}), Fatou (EMP-003, ${fatou.id})
   Recrutement : offre « Chargé d'affaires investissement » publiée
                 lien candidat → http://localhost:3002/postuler/${job.publicSlug}
