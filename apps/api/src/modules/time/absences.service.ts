@@ -109,6 +109,31 @@ function droitAnnuel(type: {
     : null;
 }
 
+/** Un férié vu comme MODÈLE : ce qu'on recopie d'une année sur la suivante. */
+type ModeleFerie = {
+  label: string;
+  month: number | null;
+  day: number | null;
+  /** Date civile : elle seule se reporte telle quelle d'une année à l'autre. */
+  fixedDate: boolean;
+};
+
+/**
+ * Reporte une date civile sur une autre année.
+ *
+ * Rend `null` plutôt qu'une date fausse quand le quantième n'existe pas dans
+ * l'année visée — un 29 février reporté sur une année commune. Aucune des six
+ * dates sénégalaises n'est dans ce cas, mais une agence peut en inscrire une :
+ * mieux vaut une ligne à dater qu'un 1er mars qui se fait passer pour elle.
+ */
+function reporterSur(year: number, modele: ModeleFerie): string | null {
+  const { month, day } = modele;
+  if (month == null || day == null) return null;
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (d.getUTCMonth() + 1 !== month || d.getUTCDate() !== day) return null;
+  return d.toISOString().slice(0, 10);
+}
+
 @Injectable()
 export class AbsencesService {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
@@ -409,9 +434,16 @@ export class AbsencesService {
   }
 
   /**
-   * Le socle des quatorze fériés sénégalais, posé à la PREMIÈRE consultation
-   * de l'année — les six dates civiles avec leur date, les huit fêtes mobiles
-   * sans la leur, à dater à l'annonce.
+   * Le socle d'une année, posé à sa PREMIÈRE consultation.
+   *
+   * Il est recopié de l'ANNÉE PRÉCÉDENTE, pas d'une liste figée : une agence
+   * qui a ajouté un jour chômé à elle le retrouve l'année suivante, et une
+   * qui en a retiré un ne le voit pas revenir. Seules les dates CIVILES sont
+   * reportées avec leur jour — tout le reste arrive vide, à dater à
+   * l'annonce, ce qui est le seul geste que la RH ait à faire.
+   *
+   * L'année précédente vide (première année ouverte par l'agence), on retombe
+   * sur les quatorze fériés sénégalais.
    *
    * « Première consultation » ne se déduit pas du contenu de la table : une
    * année sans férié peut être une année jamais ouverte comme une année dont
@@ -439,33 +471,55 @@ export class AbsencesService {
       ).map((r) => r.label.toLowerCase()),
     );
 
-    for (const def of SENEGAL_FIXED_HOLIDAYS) {
-      if (dejaLa.has(def.label.toLowerCase())) continue;
-      const day = `${year}-${String(def.month).padStart(2, '0')}-${String(def.day).padStart(2, '0')}`;
+    for (const modele of await this.modeleDAnnee(tx, year - 1)) {
+      if (dejaLa.has(modele.label.toLowerCase())) continue;
       await tx
         .insert(t.holidays)
         .values({
           id: uuidv7(),
           tenantId: user.tenantId,
           year,
-          day,
-          label: def.label,
-          fixedDate: true,
+          day: modele.fixedDate ? reporterSur(year, modele) : null,
+          label: modele.label,
+          fixedDate: modele.fixedDate,
         })
         // Une fête mobile a pu être datée là avant que la date civile n'y soit
         // posée : on ne l'écrase pas.
         .onConflictDoNothing();
     }
-    for (const label of SENEGAL_MOBILE_HOLIDAYS) {
-      if (dejaLa.has(label.toLowerCase())) continue;
-      await tx.insert(t.holidays).values({
-        id: uuidv7(),
-        tenantId: user.tenantId,
-        year,
-        day: null,
-        label,
+  }
+
+  /** Ce qu'on recopie : l'année demandée, ou le socle sénégalais si elle est vide. */
+  private async modeleDAnnee(tx: Tx, year: number): Promise<ModeleFerie[]> {
+    const precedente = await tx
+      .select({ label: t.holidays.label, day: t.holidays.day, fixedDate: t.holidays.fixedDate })
+      .from(t.holidays)
+      .where(eq(t.holidays.year, year));
+    if (precedente.length > 0) {
+      return precedente.map((r) => {
+        const [, mois, jour] = (r.day ?? '--').split('-');
+        return {
+          label: r.label,
+          month: mois ? Number(mois) : null,
+          day: jour ? Number(jour) : null,
+          fixedDate: r.fixedDate,
+        };
       });
     }
+    return [
+      ...SENEGAL_FIXED_HOLIDAYS.map((d) => ({
+        label: d.label,
+        month: d.month,
+        day: d.day,
+        fixedDate: true,
+      })),
+      ...SENEGAL_MOBILE_HOLIDAYS.map((label) => ({
+        label,
+        month: null,
+        day: null,
+        fixedDate: false,
+      })),
+    ];
   }
 
   // ---------- Circuit d'approbation ----------

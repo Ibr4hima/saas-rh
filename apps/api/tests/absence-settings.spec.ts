@@ -164,6 +164,61 @@ describe('le socle de l’année', () => {
   });
 });
 
+/**
+ * Une année se recopie de la précédente, pas d'une liste figée. C'est ce qui
+ * fait qu'une agence retrouve SES jours d'une année sur l'autre, et que la RH
+ * n'a plus qu'à dater ce qui bouge.
+ */
+describe('le socle se recopie de l’année précédente', () => {
+  it('reprend un jour chômé ajouté par l’agence, mais sans sa date', async () => {
+    await absences.listHolidays(admin, ANNEE);
+    await absences.createHoliday(admin, {
+      year: ANNEE,
+      day: `${ANNEE}-02-04`,
+      label: "Journée de l'agence",
+    });
+
+    const suivante = await absences.listHolidays(admin, ANNEE + 1);
+    const repris = suivante.find((h) => h.label === "Journée de l'agence");
+    expect(repris).toBeDefined();
+    // Rien ne dit qu'elle retombera au 4 février : c'est à la RH de le dire.
+    expect(repris!.day).toBeNull();
+  });
+
+  it('vide la date des fêtes mobiles datées l’an dernier', async () => {
+    const socle = await absences.listHolidays(admin, ANNEE);
+    const korite = socle.find((h) => h.label === 'Korité')!;
+    await absences.updateHoliday(admin, korite.id, { day: `${ANNEE}-03-20`, label: 'Korité' });
+
+    const suivante = await absences.listHolidays(admin, ANNEE + 1);
+    expect(suivante.find((h) => h.label === 'Korité')?.day).toBeNull();
+  });
+
+  it('reporte les dates civiles au même quantième', async () => {
+    await absences.listHolidays(admin, ANNEE);
+    const suivante = await absences.listHolidays(admin, ANNEE + 1);
+    const noel = suivante.find((h) => h.label === 'Noël');
+    expect(noel?.day).toBe(`${ANNEE + 1}-12-25`);
+    expect(noel?.fixed).toBe(true);
+  });
+
+  it('ne fait pas revenir un jour supprimé l’an dernier', async () => {
+    const socle = await absences.listHolidays(admin, ANNEE);
+    const tabaski = socle.find((h) => h.label === 'Tabaski')!;
+    await absences.deleteHoliday(admin, tabaski.id);
+
+    const suivante = await absences.listHolidays(admin, ANNEE + 1);
+    expect(suivante.map((h) => h.label)).not.toContain('Tabaski');
+  });
+
+  it('retombe sur le socle sénégalais quand l’année précédente est vide', async () => {
+    // Première année ouverte par l'agence : il n'y a rien à recopier.
+    const liste = await absences.listHolidays(admin, ANNEE + 5);
+    expect(liste).toHaveLength(SENEGAL_FIXED_HOLIDAYS.length + SENEGAL_MOBILE_HOLIDAYS.length);
+    expect(liste.filter((h) => h.day == null)).toHaveLength(SENEGAL_MOBILE_HOLIDAYS.length);
+  });
+});
+
 describe('une date civile', () => {
   async function noel(): Promise<{ id: string; label: string }> {
     const liste = await absences.listHolidays(admin, ANNEE);
