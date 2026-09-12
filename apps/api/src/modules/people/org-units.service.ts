@@ -80,10 +80,13 @@ export class OrgUnitsService {
             WHERE a.org_unit_id = ${t.orgUnits.id}
               AND a.validity @> CURRENT_DATE
               AND e.status = 'active')`,
-          // Tout ce qui devra être réaffecté en cas de dissolution : sans
-          // filtre de statut, et affectations futures comprises.
-          openAssignments: sql<number>`(
-            SELECT count(*)::int FROM assignments a
+          // Qui perdrait son rattachement en cas de dissolution : sans filtre
+          // de statut, et affectations futures comprises. On compte les
+          // PERSONNES, pas les affectations — c'est ce que l'avertissement
+          // annonce, et deux affectations d'un même agent ne font pas deux
+          // agents à prévenir.
+          attachedEmployees: sql<number>`(
+            SELECT count(DISTINCT a.employee_id)::int FROM assignments a
             WHERE a.org_unit_id = ${t.orgUnits.id}
               AND (upper_inf(a.validity) OR upper(a.validity) > CURRENT_DATE))`,
         })
@@ -103,7 +106,7 @@ export class OrgUnitsService {
         managerName: r.managerGivenName ? `${r.managerGivenName} ${r.managerFamilyName}` : null,
         managerPosition: r.managerPosition,
         headcount: r.headcount,
-        openAssignments: r.openAssignments,
+        attachedEmployees: r.attachedEmployees,
       }));
     });
   }
@@ -178,7 +181,11 @@ export class OrgUnitsService {
           id: t.assignments.id,
           employeeId: t.assignments.employeeId,
           positionTitle: t.assignments.positionTitle,
-          startsLater: sql<boolean>`lower(${t.assignments.validity}) > CURRENT_DATE`,
+          // Rien à historiser tant que l'affectation n'a pas duré un jour.
+          // Le seuil est bien « aujourd'hui ou plus tard » et non « plus
+          // tard » : clore aujourd'hui une affectation commencée aujourd'hui
+          // donne un intervalle VIDE, que la contrainte de la table refuse.
+          sansHistorique: sql<boolean>`lower(${t.assignments.validity}) >= CURRENT_DATE`,
         })
         .from(t.assignments)
         .where(
@@ -192,33 +199,34 @@ export class OrgUnitsService {
         );
 
       if (openAssignments.length > 0) {
-        if (!input.reassignTo) {
-          problem(
-            422,
-            'org.reassign_required',
-            'Ces employés doivent être réaffectés',
-            `${openAssignments.length} affectation(s) pointent sur cette unité : indiquez où les rattacher.`,
-          );
+        // Sans unité d'accueil, on DÉTACHE au lieu de refuser. Exiger une
+        // réaffectation bloquait la dissolution d'une direction vidée de sa
+        // substance dès qu'un seul agent — fût-il suspendu — y pendait encore,
+        // et obligeait à inventer un rattachement faux pour s'en sortir.
+        // Détachée, la personne garde son poste, son dossier et son historique ;
+        // elle n'a simplement plus d'unité, ce que l'écran annonce avant.
+        const accueil = input.reassignTo ?? null;
+        if (accueil !== null) {
+          if (accueil === id) {
+            problem(422, 'org.reassign_to_self', 'Impossible de réaffecter vers l’unité supprimée');
+          }
+          await this.requireUnit(tx, accueil, 'org.reassign_target_not_found');
         }
-        if (input.reassignTo === id) {
-          problem(422, 'org.reassign_to_self', 'Impossible de réaffecter vers l’unité supprimée');
-        }
-        await this.requireUnit(tx, input.reassignTo, 'org.reassign_target_not_found');
 
         const today = new Date().toISOString().slice(0, 10);
         for (const a of openAssignments) {
-          if (a.startsLater) {
-            // Pas encore commencée : rien à historiser, on la redirige.
+          if (a.sansHistorique) {
+            // Pas encore vécue : on la redirige telle quelle.
             await tx
               .update(t.assignments)
-              .set({ orgUnitId: input.reassignTo })
+              .set({ orgUnitId: accueil })
               .where(eq(t.assignments.id, a.id));
             continue;
           }
           // Affectation en cours : on la CLÔT aujourd'hui et on en ouvre une
-          // nouvelle sur l'unité d'accueil, comme une mutation ordinaire.
-          // Réécrire org_unit_id ferait dire au dossier que l'employé était
-          // dans l'unité d'accueil depuis son arrivée — l'historique mentirait.
+          // nouvelle — sur l'unité d'accueil, ou sans unité. Réécrire
+          // org_unit_id ferait dire au dossier que l'employé n'a jamais mis les
+          // pieds ici : l'historique mentirait.
           await tx
             .update(t.assignments)
             .set({ validity: sql`daterange(lower(${t.assignments.validity}), ${today}::date)` })
@@ -227,7 +235,7 @@ export class OrgUnitsService {
             id: uuidv7(),
             tenantId: user.tenantId,
             employeeId: a.employeeId,
-            orgUnitId: input.reassignTo,
+            orgUnitId: accueil,
             positionTitle: a.positionTitle,
             validity: `[${today},)`,
           });

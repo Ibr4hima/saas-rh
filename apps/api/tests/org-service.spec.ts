@@ -235,15 +235,70 @@ describe('dissolution', () => {
     expect(await codeOf(() => service.remove(user, direction, {}))).toBe('org.unit_has_children');
   });
 
-  it('exige une unité d’accueil dès qu’une affectation pointe dessus', async () => {
-    expect(await codeOf(() => service.remove(user, serviceUnit, {}))).toBe('org.reassign_required');
+  it('détache les employés quand aucune unité d’accueil n’est indiquée', async () => {
+    await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [departement]);
+    await service.remove(user, serviceUnit, {});
+    const { rows } = await raw(
+      `SELECT org_unit_id, position_title, lower(validity)::text AS debut,
+              upper(validity)::text AS fin
+       FROM assignments WHERE employee_id = $1 ORDER BY lower(validity)`,
+      [chefId],
+    );
+    // L'ancienne se ferme aujourd'hui en gardant son unité ; la nouvelle reste
+    // ouverte, au même poste, mais sans rattachement. L'agent n'a rien perdu
+    // d'autre que son unité.
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ org_unit_id: serviceUnit, debut: '2024-01-01', fin: today() });
+    expect(rows[1]).toMatchObject({
+      org_unit_id: null,
+      position_title: 'Agent',
+      debut: today(),
+      fin: null,
+    });
   });
 
-  it('compte AUSSI les dossiers archivés et les affectations à venir', async () => {
-    // Un dossier archivé sort des écrans mais reste rattaché : le compter est
-    // la seule façon de ne pas l'abandonner sur une unité fantôme.
+  it('ne casse pas sur une affectation commencée aujourd’hui', async () => {
+    // Clore aujourd'hui ce qui a commencé aujourd'hui donne un intervalle
+    // VIDE, que la contrainte de la table refuse : il faut rediriger en place.
+    await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [departement]);
+    await raw(`DELETE FROM assignments WHERE employee_id = $1`, [chefId]);
+    await raw(
+      `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+       VALUES ($1,$2,$3,$4,'Agent', daterange(CURRENT_DATE, NULL))`,
+      [randomUUID(), tenantId, chefId, serviceUnit],
+    );
+    await service.remove(user, serviceUnit, {});
+    const { rows } = await raw(`SELECT org_unit_id FROM assignments WHERE employee_id = $1`, [
+      chefId,
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].org_unit_id).toBeNull();
+  });
+
+  it('annonce AUSSI les dossiers archivés, invisibles à l’effectif', async () => {
+    // Un dossier archivé sort des écrans mais reste rattaché : l'annoncer est
+    // la seule façon de ne pas le détacher à l'insu de tout le monde.
     await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [chefId]);
-    expect(await codeOf(() => service.remove(user, serviceUnit, {}))).toBe('org.reassign_required');
+    const unite = (await service.list(user)).find((u) => u.id === serviceUnit)!;
+    expect(unite.headcount).toBe(0);
+    expect(unite.attachedEmployees).toBe(1);
+  });
+
+  it('annonce des PERSONNES, pas des affectations', async () => {
+    // Une mutation déjà programmée sur la même unité : deux affectations non
+    // terminées, un seul agent à prévenir.
+    await raw(
+      `UPDATE assignments SET validity = daterange('2024-01-01', CURRENT_DATE + 30)
+       WHERE employee_id = $1`,
+      [chefId],
+    );
+    await raw(
+      `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+       VALUES ($1,$2,$3,$4,'Agent principal', daterange(CURRENT_DATE + 30, NULL))`,
+      [randomUUID(), tenantId, chefId, serviceUnit],
+    );
+    const unite = (await service.list(user)).find((u) => u.id === serviceUnit)!;
+    expect(unite.attachedEmployees).toBe(1);
   });
 
   it('refuse si une offre de recrutement vise l’unité', async () => {

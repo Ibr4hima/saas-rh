@@ -130,12 +130,12 @@ export interface OrgUnitView extends OrgUnit {
   /** Effectif AFFICHÉ : les personnes actives qui y travaillent aujourd'hui. */
   headcount: number;
   /**
-   * Affectations non terminées pointant sur l'unité — suspendus et affectations
-   * futures INCLUS. C'est ce nombre, et non l'effectif, qui décide si une
-   * dissolution exige une unité d'accueil : un agent suspendu compte pour zéro
-   * à l'écran mais reste rattaché quelque part.
+   * Personnes dont l'affectation à cette unité n'a pas pris fin — suspendus et
+   * affectations futures INCLUS. C'est ce nombre, et non l'effectif, qu'il faut
+   * annoncer avant une dissolution : un agent suspendu compte pour zéro à
+   * l'écran mais se retrouverait, lui aussi, sans unité.
    */
-  openAssignments: number;
+  attachedEmployees: number;
 }
 
 /** Membre d'une unité : les personnes actuellement affectées. */

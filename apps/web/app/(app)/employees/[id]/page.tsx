@@ -269,11 +269,16 @@ export default function EmployeePage() {
               — « Direction de l'Intelligence et des Perspectives Économiques »
               étirait toute la rangée. On le borne à deux lignes ; l'infobulle
               rend le nom entier à qui en a besoin. */}
+          {/* `Tronque` ne rend RIEN quand la valeur manque, et `DataBlock` ne
+              voit alors plus un vide mais un élément : son tiret ne s'affiche
+              pas et la case reste béante. On lui passe donc `null`, qu'il sait
+              reconnaître — cas courant depuis qu'un agent peut n'avoir aucune
+              unité de rattachement. */}
           <DataBlock label="Poste">
-            <Tronque>{current?.positionTitle}</Tronque>
+            {current?.positionTitle ? <Tronque>{current.positionTitle}</Tronque> : null}
           </DataBlock>
           <DataBlock label="Direction">
-            <Tronque>{current?.orgUnitName}</Tronque>
+            {current?.orgUnitName ? <Tronque>{current.orgUnitName}</Tronque> : null}
           </DataBlock>
           <DataBlock label="Ancienneté">
             {seniority(e.hiredOn)}

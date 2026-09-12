@@ -402,19 +402,18 @@ function UnitPanel({
               Dissoudre « {unit.name} » ? L’unité disparaît de l’organigramme, mais l’historique des
               affectations continue de la mentionner.
             </p>
-            {unit.openAssignments > 0 ? (
+            {unit.attachedEmployees > 0 ? (
               <Field
                 label="Réaffecter les membres à"
                 htmlFor={`reassign-${unit.id}`}
-                hint={`${unit.openAssignments} affectation(s) pointent sur cette unité — suspendus et affectations à venir compris.`}
-                required
+                hint="Facultatif — suspendus et affectations à venir compris."
               >
                 <Select
                   id={`reassign-${unit.id}`}
                   value={reassignTo}
                   onChange={(e) => setReassignTo(e.target.value)}
                 >
-                  <option value="">— Choisir</option>
+                  <option value="">— Aucune : les détacher</option>
                   {units
                     .filter((u) => u.id !== unit.id)
                     .map((u) => (
@@ -425,12 +424,21 @@ function UnitPanel({
                 </Select>
               </Field>
             ) : null}
+            {/* Détacher n'est pas refusé, mais cela ne doit pas se faire par
+                surprise : on dit combien de personnes y perdent leur unité, et
+                ce qu'elles gardent. */}
+            {unit.attachedEmployees > 0 && !reassignTo ? (
+              <p className="rounded-md bg-warning-soft px-3 py-2 text-[12px] text-warning">
+                {unit.attachedEmployees === 1
+                  ? '1 personne n’aura plus d’unité de rattachement : son poste, son dossier et son historique sont conservés, et vous pourrez la rattacher ailleurs depuis sa fiche.'
+                  : `${unit.attachedEmployees} personnes n’auront plus d’unité de rattachement : leur poste, leur dossier et leur historique sont conservés, et vous pourrez les rattacher ailleurs depuis leur fiche.`}
+              </p>
+            ) : null}
             <div className="flex gap-2">
               <Button
                 size="sm"
                 variant="danger"
                 loading={remove.isPending}
-                disabled={unit.openAssignments > 0 && !reassignTo}
                 onClick={() => remove.mutate()}
               >
                 Confirmer la dissolution
