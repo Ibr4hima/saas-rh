@@ -35,6 +35,12 @@ interface NavItem {
   icon: IconName;
   badge?: 'pending' | 'docs';
   /**
+   * Entrée ÉTEINTE : elle reste à sa place dans la liste — l'ordre du menu
+   * est une carte qu'on mémorise, et retirer une ligne la redessine — mais
+   * elle ne mène plus nulle part tant que l'écran n'existe pas vraiment.
+   */
+  desactive?: boolean;
+  /**
    * Rubrique dépliable. La rangée parente ne navigue plus — elle ouvre et
    * ferme. Un parent qui serait à la fois destination ET interrupteur rend le
    * clic ambigu : on ne sait pas ce qu'on va obtenir.
@@ -79,7 +85,13 @@ const NAV_ITEMS: NavItem[] = [
       { href: '/recrutement/candidatures', label: 'Dossiers de candidature' },
     ],
   },
-  { href: '/evaluation', label: 'Évaluation des objectifs', short: 'Évaluation', icon: 'rule' },
+  {
+    href: '/evaluation',
+    label: 'Évaluation des objectifs',
+    short: 'Évaluation',
+    icon: 'rule',
+    desactive: true,
+  },
   { href: '/organisation', label: 'Organigramme', short: 'Organig.', icon: 'family_history' },
   {
     href: '/reglementations',
@@ -227,31 +239,56 @@ function RangeeNav({
   icon,
   active,
   badge,
+  desactive,
 }: {
   href: string;
   label: string;
   icon?: IconName;
   active: boolean;
   badge?: number;
+  desactive?: boolean;
 }) {
-  return (
-    <Link
-      href={href}
-      aria-current={active ? 'page' : undefined}
-      className={cn(
-        'flex items-center gap-2.5 rounded-[7px] px-2.5 py-[7px] text-[12.5px] transition-colors duration-150',
-        active ? 'bg-primary/[0.07] font-bold text-primary' : 'font-medium text-ink hover:bg-bg',
-      )}
-    >
+  const contenu = (
+    <>
       {/* Icône pleine sur l'entrée courante : la position dans le menu se lit
           sans dépendre de la seule couleur. */}
-      {icon ? <Icon name={icon} size={17} fill={active} /> : null}
+      {icon ? <Icon name={icon} size={17} fill={active && !desactive} /> : null}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {badge && badge > 0 ? (
         <span className="rounded-full bg-alert-soft px-[6px] py-px text-[10px] font-extrabold text-alert-text">
           {badge}
         </span>
       ) : null}
+    </>
+  );
+
+  const forme =
+    'flex items-center gap-2.5 rounded-[7px] px-2.5 py-[7px] text-[12.5px] transition-colors duration-150';
+
+  // Éteinte, la rangée n'est plus un lien DU TOUT : la griser sans la
+  // désarmer laisserait le clic passer, et le curseur promettrait une
+  // destination qui n'existe pas encore.
+  if (desactive) {
+    return (
+      <span
+        aria-disabled
+        className={cn(forme, 'cursor-not-allowed font-medium text-ink-muted/45 select-none')}
+      >
+        {contenu}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        forme,
+        active ? 'bg-primary/[0.07] font-bold text-primary' : 'font-medium text-ink hover:bg-bg',
+      )}
+    >
+      {contenu}
     </Link>
   );
 }
@@ -573,6 +610,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                     icon={item.icon}
                     active={isActive(item.href)}
                     badge={badgeCount(item.badge)}
+                    desactive={item.desactive}
                   />
                 ),
               )}
@@ -625,21 +663,36 @@ function AppShell({ children }: { children: React.ReactNode }) {
           // Une rubrique n'a pas de page à elle : l'onglet mène à sa première
           // sous-page, sinon il ouvrirait une redirection au lieu d'un écran.
           const cible = item.children?.[0]?.href ?? item.href;
+          const forme =
+            'relative flex min-w-14 flex-col items-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-medium';
+          const contenu = (
+            <>
+              <Icon name={item.icon} size={22} fill={active && !item.desactive} />
+              {badgeCount(item.badge) > 0 ? (
+                <span className="absolute top-0 right-2 size-2 rounded-full bg-alert" />
+              ) : null}
+              <span className="truncate">{item.short ?? item.label}</span>
+            </>
+          );
+          if (item.desactive) {
+            return (
+              <span
+                key={item.href}
+                aria-disabled
+                className={cn(forme, 'cursor-not-allowed text-ink-muted/40 select-none')}
+              >
+                {contenu}
+              </span>
+            );
+          }
           return (
             <Link
               key={item.href}
               href={cible}
               aria-current={active ? 'page' : undefined}
-              className={cn(
-                'relative flex min-w-14 flex-col items-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-medium',
-                active ? 'text-primary' : 'text-ink-muted',
-              )}
+              className={cn(forme, active ? 'text-primary' : 'text-ink-muted')}
             >
-              <Icon name={item.icon} size={22} fill={active} />
-              {badgeCount(item.badge) > 0 ? (
-                <span className="absolute top-0 right-2 size-2 rounded-full bg-alert" />
-              ) : null}
-              <span className="truncate">{item.short ?? item.label}</span>
+              {contenu}
             </Link>
           );
         })}
