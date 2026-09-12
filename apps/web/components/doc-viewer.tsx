@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Skeleton } from '@teranga/ui';
+import { Button, cn, Skeleton } from '@teranga/ui';
 
 export interface ViewableDoc {
   /** URL API absolue du binaire (servie avec le cookie de session). */
@@ -11,16 +11,19 @@ export interface ViewableDoc {
 }
 
 /**
- * Aperçu de document dans la page (PDF via le lecteur du navigateur, images
- * en direct) : le fichier est récupéré en blob avec la session — pas de
- * téléchargement forcé, pas de dépendance aux cookies d'iframe.
+ * Le document lui-même, sans cadre ni commandes.
+ *
+ * Extrait de `DocViewer` pour pouvoir être posé AILLEURS que dans une
+ * surcouche plein écran — une fenêtre de dossier, par exemple, où l'aperçu
+ * n'est pas un détour mais le contenu principal. Le fichier est récupéré en
+ * blob avec la session : pas de téléchargement forcé, et pas de dépendance
+ * aux cookies tiers d'une iframe.
  */
-export function DocViewer({ doc, onClose }: { doc: ViewableDoc | null; onClose: () => void }) {
+export function ApercuDocument({ doc, className }: { doc: ViewableDoc; className?: string }) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!doc) return;
     let revoked: string | null = null;
     let cancelled = false;
     setBlobUrl(null);
@@ -42,6 +45,45 @@ export function DocViewer({ doc, onClose }: { doc: ViewableDoc | null; onClose: 
     };
   }, [doc]);
 
+  const isImage = doc.contentType.startsWith('image/');
+  const previewable = isImage || doc.contentType === 'application/pdf';
+
+  return (
+    <div className={cn('h-full overflow-auto bg-bg', className)}>
+      {error ? (
+        <p className="p-8 text-center text-sm text-danger">{error}</p>
+      ) : !blobUrl ? (
+        <div className="p-6">
+          <Skeleton className="h-64 w-full" />
+        </div>
+      ) : !previewable ? (
+        <div className="flex min-h-full flex-col items-center justify-center gap-3 p-8 text-center">
+          <p className="text-sm text-ink-muted">
+            Aperçu indisponible pour ce format ({doc.contentType}).
+          </p>
+          <a href={blobUrl} download={doc.filename}>
+            <Button variant="secondary">Télécharger {doc.filename}</Button>
+          </a>
+        </div>
+      ) : isImage ? (
+        <div className="flex min-h-full items-center justify-center p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={blobUrl} alt={doc.filename} className="max-w-full rounded-md shadow-sm" />
+        </div>
+      ) : (
+        <iframe src={blobUrl} title={doc.filename} className="h-full w-full border-0" />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Aperçu de document en surcouche plein écran — pour les écrans où consulter
+ * une pièce est un DÉTOUR : on regarde, on ferme, on revient à sa liste.
+ */
+export function DocViewer({ doc, onClose }: { doc: ViewableDoc | null; onClose: () => void }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
   useEffect(() => {
     if (!doc) return;
     const onKey = (e: KeyboardEvent) => {
@@ -51,9 +93,30 @@ export function DocViewer({ doc, onClose }: { doc: ViewableDoc | null; onClose: 
     return () => window.removeEventListener('keydown', onKey);
   }, [doc, onClose]);
 
+  // Le lien de téléchargement a besoin du blob, que seul l'aperçu détient :
+  // on le récupère au passage plutôt que de télécharger le fichier deux fois.
+  useEffect(() => {
+    if (!doc) {
+      setBlobUrl(null);
+      return;
+    }
+    let revoked: string | null = null;
+    let cancelled = false;
+    fetch(doc.url, { credentials: 'include' })
+      .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((blob) => {
+        if (cancelled) return;
+        revoked = URL.createObjectURL(blob);
+        setBlobUrl(revoked);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (revoked) URL.revokeObjectURL(revoked);
+    };
+  }, [doc]);
+
   if (!doc) return null;
-  const isImage = doc.contentType.startsWith('image/');
-  const previewable = isImage || doc.contentType === 'application/pdf';
 
   return (
     <div
@@ -82,31 +145,7 @@ export function DocViewer({ doc, onClose }: { doc: ViewableDoc | null; onClose: 
             Fermer ✕
           </Button>
         </div>
-        <div className="flex-1 overflow-auto bg-bg">
-          {error ? (
-            <p className="p-8 text-center text-sm text-danger">{error}</p>
-          ) : !blobUrl ? (
-            <div className="p-6">
-              <Skeleton className="h-64 w-full" />
-            </div>
-          ) : !previewable ? (
-            <div className="flex min-h-full flex-col items-center justify-center gap-3 p-8 text-center">
-              <p className="text-sm text-ink-muted">
-                Aperçu indisponible pour ce format ({doc.contentType}).
-              </p>
-              <a href={blobUrl} download={doc.filename}>
-                <Button variant="secondary">Télécharger {doc.filename}</Button>
-              </a>
-            </div>
-          ) : isImage ? (
-            <div className="flex min-h-full items-center justify-center p-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={blobUrl} alt={doc.filename} className="max-w-full rounded-md shadow-sm" />
-            </div>
-          ) : (
-            <iframe src={blobUrl} title={doc.filename} className="h-full w-full border-0" />
-          )}
-        </div>
+        <ApercuDocument doc={doc} className="flex-1" />
       </div>
     </div>
   );

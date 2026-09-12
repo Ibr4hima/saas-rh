@@ -1,14 +1,14 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ApplicationView, JobPostingView } from '@teranga/contracts';
 import { nomAbrege } from '@teranga/contracts';
 import { Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
-import { api, ApiError, apiUrl } from '../../../../lib/api';
-import { DocViewer, type ViewableDoc } from '../../../../components/doc-viewer';
+import { api, apiUrl } from '../../../../lib/api';
+import { ApercuDocument, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate } from '../../../../lib/hooks';
 import { CONTRACT_LABELS } from '../../../../lib/recruitment';
 import {
@@ -137,7 +137,7 @@ export default function JobPage() {
         )}
       </section>
 
-      <FenetreCandidat dossier={candidat} jobId={j.id} onClose={() => setOuvert(null)} />
+      <FenetreCandidat dossier={candidat} onClose={() => setOuvert(null)} />
     </div>
   );
 }
@@ -289,161 +289,113 @@ function Ligne({ icon, children }: { icon: IconName; children: React.ReactNode }
   );
 }
 
-/** Le dossier ouvert : le message du candidat et ses pièces. */
+/**
+ * Le dossier ouvert EST la pièce qu'on vient lire.
+ *
+ * On ouvre une candidature pour lire un CV — pas pour arriver sur une liste
+ * de fichiers et cliquer une deuxième fois. La fenêtre affiche donc
+ * directement la première pièce, et les autres s'atteignent par les onglets
+ * de son en-tête. Le message du candidat, quand il en a écrit un, est un
+ * onglet comme les autres : il ne mérite pas de repousser le CV plus bas,
+ * mais il ne mérite pas non plus de disparaître.
+ */
 function FenetreCandidat({
   dossier: a,
-  jobId,
   onClose,
 }: {
   dossier: ApplicationView | null;
-  jobId: string;
   onClose: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const [erreur, setErreur] = useState<string | null>(null);
-  const [confirme, setConfirme] = useState(false);
-  const [piece, setPiece] = useState<ViewableDoc | null>(null);
+  const [onglet, setOnglet] = useState(0);
 
-  const supprimer = useMutation({
-    mutationFn: () => api(`/applications/${a!.id}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      fermer();
-      void queryClient.invalidateQueries({ queryKey: ['job-applications', jobId] });
-      void queryClient.invalidateQueries({ queryKey: ['job', jobId] });
-      void queryClient.invalidateQueries({ queryKey: ['jobs'] });
-    },
-    onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Suppression impossible.'),
-  });
+  // Le dossier change : on repart de sa première pièce.
+  useEffect(() => setOnglet(0), [a?.id]);
 
-  const fermer = () => {
-    setErreur(null);
-    setConfirme(false);
-    onClose();
-  };
+  if (!a) return null;
+
+  const vues: { cle: string; titre: string; doc: ViewableDoc | null }[] = [
+    ...a.documents.map((d) => ({
+      cle: d.id,
+      titre: d.label,
+      doc: {
+        url: apiUrl(`/application-documents/${d.id}`),
+        filename: d.filename,
+        contentType: d.contentType,
+      },
+    })),
+    ...(a.message?.trim() ? [{ cle: 'message', titre: 'Message', doc: null }] : []),
+  ];
+  // L'onglet retenu peut dépasser après une suppression de pièce : on le
+  // ramène dans les bornes ici plutôt que de laisser une vue vide.
+  const index = Math.min(onglet, Math.max(0, vues.length - 1));
+  const courante = vues[index] ?? null;
 
   return (
-    <>
-      <Modal
-        open={a !== null}
-        onClose={fermer}
-        title={a ? `${a.givenName} ${a.familyName}` : ''}
-        subtitle={
-          a
-            ? `${a.email}${a.phone ? ` · ${a.phone}` : ''} · candidature du ${formatDate(a.createdAt.slice(0, 10))}`
-            : undefined
-        }
-        maxWidth="max-w-2xl"
-        footer={
-          a ? (
-            // Deux temps plutôt qu'une boîte du navigateur : la phrase dit ce
-            // que la suppression emporte, et le geste reste dans la fenêtre.
-            <div className="flex w-full flex-wrap items-center justify-between gap-3">
-              {confirme ? (
-                <>
-                  <p className="text-[12px] text-ink-muted">
-                    Le dossier et ses pièces seront effacés. {a.email} pourra postuler à nouveau.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => setConfirme(false)}>
-                      Annuler
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      loading={supprimer.isPending}
-                      onClick={() => supprimer.mutate()}
-                    >
-                      Supprimer définitivement
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setConfirme(true)}
-                    className="text-[12px] font-semibold text-ink-muted transition-colors hover:text-danger"
-                  >
-                    Supprimer la candidature
-                  </button>
-                  <Button variant="secondary" size="sm" onClick={fermer}>
-                    Fermer
-                  </Button>
-                </>
-              )}
-            </div>
-          ) : null
-        }
-      >
-        {a ? (
-          <>
-            <Card>
-              <CardContent className="py-4">
-                <p className="text-[9.5px] font-extrabold tracking-[0.12em] text-ink-muted uppercase">
-                  Message
-                </p>
-                <p className="mt-2 text-[13px] leading-relaxed whitespace-pre-wrap text-ink">
-                  {a.message?.trim() ? (
-                    a.message
-                  ) : (
-                    <span className="text-ink-muted/70">Aucun message joint.</span>
-                  )}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="py-4">
-                <p className="text-[9.5px] font-extrabold tracking-[0.12em] text-ink-muted uppercase">
-                  Pièces jointes
-                </p>
-                {a.documents.length === 0 ? (
-                  <p className="mt-2 text-[13px] text-ink-muted/70">Aucune pièce déposée.</p>
-                ) : (
-                  <ul className="mt-2 flex flex-col divide-y divide-line-soft">
-                    {a.documents.map((d) => (
-                      <li
-                        key={d.id}
-                        className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate text-[12.5px] font-semibold text-ink-strong">
-                            {d.label}
-                          </span>
-                          <span className="block truncate text-[11px] text-ink-muted">
-                            {d.filename} · {poids(d.sizeBytes)}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPiece({
-                              url: apiUrl(`/application-documents/${d.id}`),
-                              filename: d.filename,
-                              contentType: d.contentType,
-                            })
-                          }
-                          className="shrink-0 rounded-full border border-line px-2.5 py-[3px] text-[11px] font-semibold text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-                        >
-                          Prévisualiser
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+    <Modal
+      open
+      onClose={onClose}
+      title={`${a.givenName} ${a.familyName}`}
+      subtitle={`${a.email}${a.phone ? ` · ${a.phone}` : ''} · candidature du ${formatDate(a.createdAt.slice(0, 10))}`}
+      maxWidth="max-w-4xl"
+      enTete={
+        vues.length > 1 ? (
+          <div className="flex items-center gap-0.5 rounded-full bg-bg p-0.5">
+            {vues.map((v, i) => (
+              <button
+                key={v.cle}
+                type="button"
+                onClick={() => setOnglet(i)}
+                aria-pressed={i === index}
+                className={cn(
+                  'rounded-full px-3 py-1 text-[11.5px] font-bold whitespace-nowrap transition-colors',
+                  i === index
+                    ? 'bg-surface text-primary shadow-sm'
+                    : 'text-ink-muted hover:text-ink',
                 )}
-              </CardContent>
-            </Card>
-
-            {erreur ? (
-              <p className="rounded-md bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
-                {erreur}
-              </p>
-            ) : null}
-          </>
-        ) : null}
-      </Modal>
-
-      <DocViewer doc={piece} onClose={() => setPiece(null)} />
-    </>
+              >
+                {v.titre}
+              </button>
+            ))}
+          </div>
+        ) : null
+      }
+      footer={
+        // Les deux décisions du tri. Elles n'agissent pas encore : le champ
+        // `stage` existe en base, la route aussi, mais le geste et ce qu'il
+        // déclenche — un courriel ? une trace ? — restent à décider.
+        <div className="flex w-full items-center justify-end gap-2">
+          <Button variant="secondary" size="sm">
+            Rejeter
+          </Button>
+          <Button size="sm">Présélectionner</Button>
+        </div>
+      }
+    >
+      {courante === null ? (
+        <Card>
+          <CardContent className="py-10 text-center text-[13px] text-ink-muted">
+            Ce dossier ne contient aucune pièce.
+          </CardContent>
+        </Card>
+      ) : courante.doc ? (
+        <div className="flex flex-col gap-2">
+          <p className="px-0.5 text-[11px] text-ink-muted">
+            {courante.doc.filename} · {poids(a.documents[index]?.sizeBytes ?? 0)}
+          </p>
+          {/* Hauteur fixée plutôt que `h-full` : la fenêtre se dimensionne sur
+              son contenu, et une iframe qui demande « toute la hauteur » d'un
+              parent sans hauteur propre se réduit à zéro. */}
+          <div className="h-[min(66vh,640px)] overflow-hidden rounded-[12px] border border-card-line">
+            <ApercuDocument doc={courante.doc} />
+          </div>
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="py-4">
+            <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink">{a.message}</p>
+          </CardContent>
+        </Card>
+      )}
+    </Modal>
   );
 }
