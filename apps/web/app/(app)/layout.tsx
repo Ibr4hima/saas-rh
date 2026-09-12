@@ -148,6 +148,7 @@ function pageTitle(pathname: string, givenName: string): string {
     return pathname.endsWith('/modifier') ? 'Modifier la fiche' : 'Fiche employé';
   }
   if (pathname.startsWith('/recrutement/')) return 'Offre de recrutement';
+  if (pathname.endsWith('/deposer')) return 'Dépôt du texte';
   // Un troisième texte — convention collective, accord d'entreprise — entrera
   // sans qu'on ait à revenir ici.
   if (pathname.startsWith('/reglementations/')) return 'Lois & Règlementations';
@@ -177,8 +178,13 @@ function pageAction(pathname: string, role: string): ChromeAction | null {
   if (pathname === '/organisation') {
     return { href: '/organisation?nouvelle=1', icon: 'add', label: 'Nouvelle unité' };
   }
-  // Fiche employé — et elle seule : /employees/<id>, jamais /employees/<id>/…
   const parts = pathname.split('/').filter(Boolean);
+  // Un texte de référence — /reglementations/<slug> — et non son écran de
+  // dépôt, qui a ses propres boutons.
+  if (parts.length === 2 && parts[0] === 'reglementations') {
+    return { href: `${pathname}/deposer`, icon: 'edit', label: 'Déposer le texte' };
+  }
+  // Fiche employé — et elle seule : /employees/<id>, jamais /employees/<id>/…
   if (parts.length === 2 && parts[0] === 'employees' && parts[1] !== 'new') {
     return { href: `${pathname}?modifier=1`, icon: 'edit', label: 'Modifier la fiche' };
   }

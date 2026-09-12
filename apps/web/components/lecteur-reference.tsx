@@ -8,8 +8,10 @@ import {
   type ReferenceSearchHit,
   type ReferenceTextView,
 } from '@teranga/contracts';
-import { Card, CardContent, cn, EmptyState, Input, Skeleton } from '@teranga/ui';
+import Link from 'next/link';
+import { Button, Card, CardContent, cn, EmptyState, Input, Skeleton } from '@teranga/ui';
 import { api, apiUrl } from '../lib/api';
+import { useMe } from '../lib/hooks';
 import { FenetreDocument } from './fenetre-document';
 import { Icon } from './icons';
 
@@ -28,6 +30,8 @@ import { Icon } from './icons';
  * que sur des balises reçues du serveur.
  */
 export function LecteurReference({ slug }: { slug: string }) {
+  const me = useMe();
+  const peutDeposer = Boolean(me.data && ['admin', 'hr'].includes(me.data.role));
   const texte = useQuery({
     queryKey: ['reference-text', slug],
     queryFn: () => api<ReferenceTextView>(`/reference-texts/${slug}`),
@@ -94,7 +98,21 @@ export function LecteurReference({ slug }: { slug: string }) {
           className="py-16"
           icon={<Icon name="gavel" size={22} />}
           title="Ce texte n’a pas encore été déposé"
-          description="La Direction du Capital Humain dépose ici le texte en vigueur et son fichier officiel."
+          description={
+            peutDeposer
+              ? 'Collez le texte en vigueur et joignez son fichier officiel : chacun pourra ensuite le consulter depuis son espace.'
+              : 'La Direction du Capital Humain dépose ici le texte en vigueur et son fichier officiel.'
+          }
+          action={
+            peutDeposer ? (
+              <Link href={`/reglementations/${slug}/deposer`}>
+                <Button size="sm">
+                  <Icon name="add" size={15} />
+                  Déposer le texte
+                </Button>
+              </Link>
+            ) : undefined
+          }
         />
       </Card>
     );

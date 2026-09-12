@@ -30,8 +30,13 @@ export async function api<T>(
     }
     throw new ApiError(problem);
   }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  // Un corps VIDE est une réponse valable, et pas seulement en 204 : une route
+  // qui ne rend rien — un enregistrement, une suppression — répond 200 sans
+  // contenu, et `res.json()` lève alors une erreur de syntaxe que l'appelant
+  // prend pour une panne. L'écran affichait « Enregistrement impossible »
+  // après un enregistrement réussi.
+  const corps = await res.text();
+  return (corps ? JSON.parse(corps) : undefined) as T;
 }
 
 export function isUnauthorized(err: unknown): boolean {
