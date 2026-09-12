@@ -7,6 +7,19 @@ import { PROFILE_CHANGE_STATUS_LABELS, PROFILE_CHANGE_STATUS_TONES } from '@tera
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { timeAgo } from './document-request-list';
+import { formatTelephone } from './telephone';
+
+/**
+ * La valeur d'un champ, mise en forme comme elle l'est sur la fiche.
+ *
+ * Un numéro proposé en correction est un NUMÉRO : l'afficher brut ici alors
+ * qu'il se lit « +221 77 123 45 67 » deux écrans plus loin ferait douter que
+ * ce soit le même.
+ */
+function lisible(champ: string, valeur: string | null | undefined) {
+  if (valeur == null || valeur === '') return '—';
+  return champ === 'phone' ? formatTelephone(valeur) : valeur;
+}
 
 /**
  * Les corrections signalées par l'employé, côté RH.
@@ -77,9 +90,11 @@ export function ProfileChangeCard({ employeeId }: { employeeId: string }) {
                 {r.fields.map((f) => (
                   <li key={f.field} className="text-sm">
                     <span className="text-ink-muted">{f.label} : </span>
-                    <span className="text-ink-muted line-through">{f.previous ?? '—'}</span>
+                    <span className="text-ink-muted line-through">
+                      {lisible(f.field, f.previous)}
+                    </span>
                     <span className="mx-1.5 text-ink-muted">→</span>
-                    <span className="font-medium text-ink-strong">{f.next ?? '—'}</span>
+                    <span className="font-medium text-ink-strong">{lisible(f.field, f.next)}</span>
                   </li>
                 ))}
               </ul>

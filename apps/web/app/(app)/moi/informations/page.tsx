@@ -35,6 +35,7 @@ import { formatDate } from '../../../../lib/hooks';
 import { ID_DOCUMENT_LABELS, SEX_LABELS, maritalLabels } from '../../../../lib/person';
 import { timeAgo } from '../../../../components/document-request-list';
 import { LoadFailure } from '../../../../components/load-failure';
+import { Telephone } from '../../../../components/telephone';
 
 type Draft = Partial<Record<ProfileChangeField, string>>;
 
@@ -187,7 +188,9 @@ export default function MyInformationsPage() {
               <DataBlock label="Unité">{me.data.orgUnitName}</DataBlock>
               <DataBlock label="Manager">{detail.data.managerName}</DataBlock>
               <DataBlock label="Email professionnel">{detail.data.workEmail}</DataBlock>
-              <DataBlock label="Téléphone professionnel">{detail.data.workPhone}</DataBlock>
+              <DataBlock label="Téléphone professionnel">
+                {detail.data.workPhone ? <Telephone valeur={detail.data.workPhone} /> : null}
+              </DataBlock>
             </DataGrid>
           </CardContent>
         </Card>

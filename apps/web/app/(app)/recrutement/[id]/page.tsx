@@ -10,7 +10,7 @@ import { Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui
 import { api, apiUrl } from '../../../../lib/api';
 import { ApercuDocument, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate } from '../../../../lib/hooks';
-import { phoneLisible } from '../../../../lib/countries';
+import { Telephone, telHref } from '../../../../components/telephone';
 import { CONTRACT_LABELS, libelleDocument } from '../../../../lib/recruitment';
 import {
   anciennete,
@@ -258,7 +258,11 @@ function CarteCandidat({
         </span>
         <span className="mt-1 flex flex-col gap-[3px]">
           <Ligne icon="mail">{a.email}</Ligne>
-          {a.phone ? <Ligne icon="call">{a.phone}</Ligne> : null}
+          {a.phone ? (
+            <Ligne icon="call">
+              <Telephone valeur={a.phone} lien={false} />
+            </Ligne>
+          ) : null}
           <Ligne icon="event">{formatDate(a.createdAt.slice(0, 10))}</Ligne>
         </span>
       </span>
@@ -362,8 +366,8 @@ function FenetreCandidat({
           {a.phone ? (
             // Le lien porte le numéro INTERNATIONAL : composer « 764443322 »
             // depuis un poste hors du Sénégal ne mène nulle part.
-            <Joindre href={`tel:${phoneLisible(a.phone).replace(/\s/g, '')}`} icon="call">
-              {phoneLisible(a.phone)}
+            <Joindre href={`tel:${telHref(a.phone) ?? a.phone}`} icon="call">
+              <Telephone valeur={a.phone} lien={false} />
             </Joindre>
           ) : null}
           <span className="inline-flex items-center gap-1.5 px-1 text-[11.5px] text-ink-muted">

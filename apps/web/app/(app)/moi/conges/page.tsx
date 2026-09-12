@@ -22,7 +22,8 @@ import {
   Skeleton,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
-import { DocViewer, type ViewableDoc } from '../../../../components/doc-viewer';
+import { type ViewableDoc } from '../../../../components/doc-viewer';
+import { FenetreDocument } from '../../../../components/fenetre-document';
 import { StatutAbsence } from '../../../../components/statut-absence';
 import { formatDate } from '../../../../lib/hooks';
 
@@ -303,6 +304,7 @@ export default function MyLeavesPage() {
                                   url: apiUrl(`/absence-requests/${r.id}/document`),
                                   filename: r.documentName!,
                                   contentType: 'application/pdf',
+                                  titre: 'Justificatif',
                                 })
                               }
                               className="text-primary hover:underline"
@@ -332,7 +334,7 @@ export default function MyLeavesPage() {
         </Card>
       </div>
 
-      <DocViewer doc={viewedDoc} onClose={() => setViewedDoc(null)} />
+      <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
     </div>
   );
 }

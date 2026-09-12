@@ -30,8 +30,12 @@ export function PdfViewer({
 }: {
   /** Le PDF déjà en mémoire — c'est l'appelant qui l'a récupéré avec la session. */
   data: ArrayBuffer;
-  /** Ce que la pièce EST — « Curriculum Vitæ » —, pas le nom que le fichier porte. */
-  titre: string;
+  /**
+   * Ce que la pièce EST — « Curriculum Vitæ » —, pas le nom que le fichier
+   * porte. Omis quand la coquille qui entoure le lecteur la nomme déjà : la
+   * barre n'est alors plus qu'un poste de pilotage.
+   */
+  titre?: string;
   onError?: () => void;
 }) {
   const [pages, setPages] = useState<{ width: number; height: number }[]>([]);
@@ -210,7 +214,11 @@ export function PdfViewer({
   return (
     <div className="flex h-full flex-col overflow-hidden bg-bg">
       <div className="flex shrink-0 items-center gap-2 border-b border-line-soft bg-surface px-3 py-2">
-        <p className="min-w-0 flex-1 truncate text-[12px] font-bold text-ink-strong">{titre}</p>
+        {titre ? (
+          <p className="min-w-0 flex-1 truncate text-[12px] font-bold text-ink-strong">{titre}</p>
+        ) : (
+          <span className="flex-1" />
+        )}
 
         <div className="flex items-center gap-0.5">
           <Commande

@@ -23,7 +23,8 @@ import {
 import { api, ApiError, apiUrl } from '../lib/api';
 import { Icon } from './icons';
 import { formatDate } from '../lib/hooks';
-import { DocViewer, type ViewableDoc } from './doc-viewer';
+import { type ViewableDoc } from './doc-viewer';
+import { FenetreDocument } from './fenetre-document';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'À valider',
@@ -185,6 +186,10 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
                         url: apiUrl(`/employee-documents/${d.id}/content`),
                         filename: d.filename,
                         contentType: d.contentType,
+                        // L'intitulé du dossier — « Diplôme », « Pièce
+                        // d'identité » — dit ce qu'on ouvre ; le nom du
+                        // fichier est le classement de celui qui l'a déposé.
+                        titre: d.label,
                       })
                     }
                     className="min-w-40 flex-1 basis-48 text-left"
@@ -347,7 +352,7 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
         ) : null}
       </CardContent>
 
-      <DocViewer doc={viewed} onClose={() => setViewed(null)} />
+      <FenetreDocument doc={viewed} onClose={() => setViewed(null)} />
     </Card>
   );
 }

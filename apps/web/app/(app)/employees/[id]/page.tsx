@@ -38,6 +38,7 @@ import { nationalityLabel } from '@teranga/contracts';
 import { ProfileChangeCard } from '../../../../components/profile-change-card';
 import { DocumentRequestRow } from '../../../../components/document-request-list';
 import { EmployeeEditModal } from '../../../../components/employee-edit-modal';
+import { Telephone } from '../../../../components/telephone';
 import { usePageTitle } from '../../../../components/page-title';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
@@ -337,8 +338,12 @@ export default function EmployeePage() {
               </Groupe>
 
               <Groupe titre="Coordonnées">
-                <Donnee label="Téléphone">{e.person.phone}</Donnee>
-                <Donnee label="Téléphone professionnel">{e.workPhone}</Donnee>
+                <Donnee label="Téléphone">
+                  {e.person.phone ? <Telephone valeur={e.person.phone} /> : null}
+                </Donnee>
+                <Donnee label="Téléphone professionnel">
+                  {e.workPhone ? <Telephone valeur={e.workPhone} /> : null}
+                </Donnee>
                 <Donnee label="Email personnel">{e.person.personalEmail}</Donnee>
                 <Donnee label="Adresse" large>
                   {e.person.addressLine

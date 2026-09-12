@@ -16,6 +16,7 @@
     "@tanstack/react-query": "^5.80.0",
     "@teranga/contracts": "workspace:*",
     "@teranga/ui": "workspace:*",
+    "libphonenumber-js": "^1.13.13",
     "next": "^15.4.0",
     "pdfjs-dist": "^4.10.38",
     "react": "^19.1.0",

@@ -23,7 +23,8 @@ import {
 import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { EmployeeDocumentsCard } from '../../../../components/employee-documents-card';
 import { DocumentRequestRow } from '../../../../components/document-request-list';
-import { DocViewer, type ViewableDoc } from '../../../../components/doc-viewer';
+import { type ViewableDoc } from '../../../../components/doc-viewer';
+import { FenetreDocument } from '../../../../components/fenetre-document';
 import { formatDate } from '../../../../lib/hooks';
 import { LoadFailure } from '../../../../components/load-failure';
 
@@ -217,6 +218,7 @@ export default function MyDocumentsPage() {
                           url: apiUrl(`/absence-requests/${r.id}/document`),
                           filename: r.documentName!,
                           contentType: 'application/pdf',
+                          titre: 'Justificatif',
                         })
                       }
                     >
@@ -230,7 +232,7 @@ export default function MyDocumentsPage() {
         </Card>
       </div>
 
-      <DocViewer doc={viewedDoc} onClose={() => setViewedDoc(null)} />
+      <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
     </div>
   );
 }

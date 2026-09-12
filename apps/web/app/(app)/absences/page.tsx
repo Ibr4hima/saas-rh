@@ -20,7 +20,8 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../lib/api';
-import { DocViewer, type ViewableDoc } from '../../../components/doc-viewer';
+import { type ViewableDoc } from '../../../components/doc-viewer';
+import { FenetreDocument } from '../../../components/fenetre-document';
 import { ROLE_LABELS } from '../../../lib/absences';
 import { StatutAbsence } from '../../../components/statut-absence';
 import { formatDate, useMe } from '../../../lib/hooks';
@@ -145,6 +146,9 @@ export default function AbsencesPage() {
                               url: apiUrl(`/absence-requests/${r.id}/document`),
                               filename: r.documentName!,
                               contentType: 'application/pdf',
+                              // Ce que la pièce EST : le nom du fichier, lui,
+                              // est le classement de l'employé qui l'a déposée.
+                              titre: 'Justificatif',
                             })
                           }
                           title={r.documentName}
@@ -231,7 +235,7 @@ export default function AbsencesPage() {
         </Card>
       </div>
 
-      <DocViewer doc={viewedDoc} onClose={() => setViewedDoc(null)} />
+      <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
     </div>
   );
 }
