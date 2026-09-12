@@ -223,6 +223,17 @@ describe('responsable', () => {
     );
   });
 
+  it('abrège le responsable pour les blocs de l’organigramme', async () => {
+    await raw(
+      `UPDATE persons SET given_name = 'Mouhamadou Moustapha Habib', family_name = 'Kane'
+       WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [chefId],
+    );
+    const dept = (await service.list(user)).find((u) => u.id === departement)!;
+    expect(dept.managerName).toBe('Mouhamadou Moustapha Habib Kane');
+    expect(dept.managerShortName).toBe('Mouhamadou M. H. Kane');
+  });
+
   it('ne propose comme éligibles que le sous-arbre actif', async () => {
     await creerEmploye('ETR-2', autreDirection);
     const eligibles = await service.eligibleManagers(user, departement);

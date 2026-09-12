@@ -126,6 +126,12 @@ export const ORG_UNIT_TYPE_LABELS: Record<OrgUnitType, string> = {
 export interface OrgUnitView extends OrgUnit {
   managerEmployeeId: string | null;
   managerName: string | null;
+  /**
+   * Le responsable tel qu'il tient dans un bloc d'organigramme : premier
+   * prénom en entier, suivants en initiales (cf. `nomAbrege`). `managerName`
+   * reste le nom complet, pour les écrans qui ont la place de l'écrire.
+   */
+  managerShortName: string | null;
   managerPosition: string | null;
   /** Effectif AFFICHÉ : les personnes actives qui y travaillent aujourd'hui. */
   headcount: number;

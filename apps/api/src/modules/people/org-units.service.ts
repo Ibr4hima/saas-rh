@@ -11,6 +11,7 @@ import type {
   UpdateOrgUnitInput,
 } from '@teranga/contracts';
 import {
+  nomAbrege,
   ORG_UNIT_PARENT_TYPES,
   ORG_UNIT_ROOT_TYPES,
   ORG_UNIT_TYPE_LABELS,
@@ -104,6 +105,9 @@ export class OrgUnitsService {
         shortName: r.shortName,
         managerEmployeeId: r.managerEmployeeId,
         managerName: r.managerGivenName ? `${r.managerGivenName} ${r.managerFamilyName}` : null,
+        managerShortName: r.managerGivenName
+          ? nomAbrege(r.managerGivenName, r.managerFamilyName ?? '')
+          : null,
         managerPosition: r.managerPosition,
         headcount: r.headcount,
         attachedEmployees: r.attachedEmployees,

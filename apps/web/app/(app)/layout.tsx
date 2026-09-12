@@ -171,6 +171,9 @@ function pageAction(pathname: string, role: string): ChromeAction | null {
   if (pathname === '/recrutement') {
     return { href: '/recrutement?nouvelle=1', icon: 'add', label: 'Nouvelle offre' };
   }
+  if (pathname === '/organisation') {
+    return { href: '/organisation?nouvelle=1', icon: 'add', label: 'Nouvelle unité' };
+  }
   // Fiche employé — et elle seule : /employees/<id>, jamais /employees/<id>/…
   const parts = pathname.split('/').filter(Boolean);
   if (parts.length === 2 && parts[0] === 'employees' && parts[1] !== 'new') {

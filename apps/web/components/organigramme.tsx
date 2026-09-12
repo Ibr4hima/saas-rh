@@ -2,7 +2,7 @@
 
 import type * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ORG_UNIT_TYPE_LABELS, orgUnitLabel, type OrgUnitView } from '@teranga/contracts';
+import { orgUnitLabel, type OrgUnitView } from '@teranga/contracts';
 import { cn } from '@teranga/ui';
 import { Icon } from './icons';
 
@@ -21,19 +21,21 @@ import { Icon } from './icons';
  * structure reste donc du HTML sélectionnable, imprimable, et lisible par un
  * lecteur d'écran dans son ordre logique.
  *
- * Reste le problème de largeur : sept directions font mille huit cents pixels,
- * le cadre en fait mille deux cents. Un organigramme qu'il faut faire défiler
- * pour voir son sommet ne montre plus la hiérarchie, seulement un morceau. On
- * MESURE donc l'arbre et on le met à l'échelle du cadre (voir `useAjustement`).
+ * Un tel arbre est LARGE : c'est sa nature, pas un défaut. Il se tient donc
+ * dans un canevas — on le met à l'échelle, on l'attrape à la souris pour le
+ * balader, et le cadre s'ouvre sur le sommet plutôt que sur le bord gauche
+ * (voir `useCanevas`).
  */
 
-/** En deçà, les noms deviennent illisibles : on préfère laisser défiler. */
-const PLANCHER = 0.62;
-const PLAFOND = 1.5;
+/** Taille de lecture. L'arbre déborde souvent : on le balade, on ne le rapetisse pas. */
+const ZOOM_DEFAUT = 0.9;
+const ZOOM_MIN = 0.4;
+const ZOOM_MAX = 1.5;
+const PAS = 0.1;
 
 /**
  * Une trame de points, très pâle, derrière l'arbre : elle dit « ceci est un
- * plan », pas « ceci est un formulaire », et donne au défilement un repère
+ * plan », pas « ceci est un formulaire », et donne au déplacement un repère
  * visuel. Le point emprunte la couleur des filets, donc il suit le thème.
  */
 const FOND_CANEVAS: React.CSSProperties = {
@@ -88,25 +90,24 @@ export function Organigramme({
     });
 
   const racines = parEnfant.get(null) ?? [];
-  const { cadre, arbre, taille, zoom, anime, ajuste, zoomer, ajuster } = useAjustement();
-  // La commande d'échelle ne s'affiche que lorsqu'elle sert à quelque chose :
-  // sur un organigramme de trois blocs, ce serait du mobilier.
-  const commandes = taille !== null && (ajuste < 1 || zoom !== ajuste);
+  const { cadre, arbre, taille, zoom, anime, deborde, ajustement, zoomer, poser, glisser } =
+    useCanevas();
 
   return (
     <div className="relative">
-      {/* Si même réduit l'arbre déborde, il défile dans SON cadre — jamais
-          dans la page : le reste de l'écran ne doit pas bouger. */}
+      {/* L'arbre se déplace dans SON cadre — jamais dans la page : le reste de
+          l'écran ne doit pas bouger quand on le balade. */}
       <div
         ref={cadre}
         style={FOND_CANEVAS}
+        // Le bandeau du bas est RÉSERVÉ à la commande d'échelle : posée en
+        // flottant sur un arbre qui descend jusqu'au bord, elle masquerait le
+        // dernier bloc.
         className={cn(
-          'overflow-x-auto overflow-y-hidden px-4 pt-6',
-          // Le bandeau du bas est RÉSERVÉ à la commande d'échelle : posée en
-          // flottant sur un arbre qui descend jusqu'au bord, elle masquerait
-          // le dernier bloc.
-          commandes ? 'pb-14' : 'pb-6',
+          'overflow-x-auto overflow-y-hidden px-4 pt-6 pb-14',
+          deborde && 'cursor-grab active:cursor-grabbing',
         )}
+        {...glisser}
       >
         {/* Une cale aux dimensions de l'arbre UNE FOIS MIS À L'ÉCHELLE : une
             transformation ne change pas la boîte de mise en page, donc sans
@@ -145,33 +146,37 @@ export function Organigramme({
         </div>
       </div>
 
-      {commandes ? (
-        <div className="absolute right-3 bottom-3 flex items-center gap-0.5 rounded-full border border-card-line bg-surface p-1 shadow-sm">
-          <BoutonEchelle
-            icone="remove"
-            label="Réduire"
-            disabled={zoom <= PLANCHER + 0.001}
-            onClick={() => zoomer(-0.1)}
-          />
-          <button
-            type="button"
-            onClick={ajuster}
-            title="Ajuster à la fenêtre"
-            className="rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums text-ink-muted transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-          >
-            {Math.round(zoom * 100)} %
-          </button>
-          <BoutonEchelle
-            icone="add"
-            label="Agrandir"
-            disabled={zoom >= PLAFOND - 0.001}
-            onClick={() => zoomer(0.1)}
-          />
-        </div>
-      ) : null}
+      <div className="absolute right-3 bottom-3 flex items-center gap-0.5 rounded-full border border-card-line bg-surface p-1 shadow-sm">
+        <BoutonEchelle
+          icone="remove"
+          label="Réduire"
+          disabled={zoom <= ZOOM_MIN + 0.001}
+          onClick={() => zoomer(-PAS)}
+        />
+        {/* Le pourcentage est un interrupteur : il montre tout, puis rend la
+            taille de lecture. Deux gestes qu'on veut à un clic, et un seul
+            endroit où les chercher. */}
+        <button
+          type="button"
+          onClick={() => poser(ajuste(zoom, ajustement) ? ZOOM_DEFAUT : ajustement)}
+          title={ajuste(zoom, ajustement) ? 'Revenir à la taille de lecture' : 'Voir tout l’arbre'}
+          className="rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums text-ink-muted transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+        >
+          {Math.round(zoom * 100)} %
+        </button>
+        <BoutonEchelle
+          icone="add"
+          label="Agrandir"
+          disabled={zoom >= ZOOM_MAX - 0.001}
+          onClick={() => zoomer(PAS)}
+        />
+      </div>
     </div>
   );
 }
+
+/** L'échelle est-elle déjà celle qui montre tout l'arbre ? */
+const ajuste = (zoom: number, ajustement: number) => Math.abs(zoom - ajustement) < 0.005;
 
 function BoutonEchelle({
   icone,
@@ -199,23 +204,21 @@ function BoutonEchelle({
 }
 
 /**
- * Mesure l'arbre, puis l'accorde au cadre.
+ * Le canevas : mesurer l'arbre, le mettre à l'échelle, le balader.
  *
  * `offsetWidth` ignore les transformations : on lit donc toujours la taille
- * NATURELLE de l'arbre, même déjà réduit — sans quoi chaque mesure réduirait
- * un peu plus la précédente. L'observateur surveille les deux boîtes : le
- * cadre parce que la fenêtre change, l'arbre parce qu'on replie une branche.
+ * NATURELLE de l'arbre, même déjà réduit — sans quoi chaque mesure mangerait
+ * la précédente. L'observateur surveille les deux boîtes : le cadre parce que
+ * la fenêtre change, l'arbre parce qu'on replie une branche ou qu'on ajoute
+ * une unité.
  */
-function useAjustement() {
+function useCanevas() {
   const cadre = useRef<HTMLDivElement | null>(null);
   const arbre = useRef<HTMLDivElement | null>(null);
   const [taille, setTaille] = useState<{ w: number; h: number } | null>(null);
-  const [ajustement, setAjustement] = useState(1);
-  // `null` tant que l'utilisateur n'a pas pris la main : l'ajustement suit
-  // alors la fenêtre. Dès qu'il zoome, son choix prime jusqu'à « Ajuster ».
-  const [manuel, setManuel] = useState<number | null>(null);
+  const [dispo, setDispo] = useState(0);
+  const [zoom, setZoom] = useState(ZOOM_DEFAUT);
   const [anime, setAnime] = useState(false);
-  const zoom = manuel ?? ajustement;
 
   useEffect(() => {
     const c = cadre.current;
@@ -227,8 +230,7 @@ function useAjustement() {
       if (w === 0 || h === 0) return;
       setTaille((t) => (t && t.w === w && t.h === h ? t : { w, h }));
       // `clientWidth` comprend le rembourrage du cadre ; l'arbre n'y a pas droit.
-      const dispo = c.clientWidth - 32;
-      setAjustement(Math.min(1, Math.max(PLANCHER, dispo / w)));
+      setDispo(c.clientWidth - 32);
     };
     mesurer();
     const ro = new ResizeObserver(mesurer);
@@ -237,16 +239,17 @@ function useAjustement() {
     return () => ro.disconnect();
   }, []);
 
-  // Quand même réduit l'arbre déborde — un téléphone, une agence de trente
-  // directions —, le cadre s'ouvre sur son MILIEU, là où se tient le sommet.
-  // Sans cela il s'ouvrait sur le bord gauche : une colonne de blocs sans
-  // racine visible, c'est-à-dire sans hiérarchie lisible. Une seule fois : on
-  // ne reprend pas la main sur un défilement que l'utilisateur a fait sien.
+  const ajustement = taille ? Math.min(1, Math.max(ZOOM_MIN, dispo / taille.w)) : 1;
+  const deborde = taille !== null && taille.w * zoom > dispo + 1;
+
+  // Le cadre s'ouvre sur le MILIEU de l'arbre, là où se tient le sommet. Sans
+  // cela il s'ouvrait sur le bord gauche : une colonne de blocs sans racine
+  // visible, c'est-à-dire sans hiérarchie lisible. Une seule fois : on ne
+  // reprend pas la main sur un déplacement que l'utilisateur a fait sien.
   //
   // Le débordement se CALCULE au lieu de se lire dans `scrollWidth` : l'arbre
-  // est posé en absolu, et tant que la mise à l'échelle n'est pas appliquée
-  // le navigateur compte encore sa largeur d'origine — on se serait retrouvé
-  // au bout droit de l'arbre après que le compte se soit corrigé.
+  // est posé en absolu, et tant que la mise à l'échelle n'est pas appliquée le
+  // navigateur compte encore sa largeur d'origine.
   const centre = useRef(false);
   useEffect(() => {
     const c = cadre.current;
@@ -257,9 +260,51 @@ function useAjustement() {
     // Les transitions n'entrent en service qu'après ce premier accord : on
     // veut voir l'arbre à sa bonne taille, pas le voir s'y rendre.
     requestAnimationFrame(() => setAnime(true));
-    // Une seule dépendance, volontairement : l'effet ne doit courir qu'à la
-    // PREMIÈRE mesure, et le verrou ci-dessus s'en charge.
   }, [taille, zoom]);
+
+  /**
+   * Attraper l'arbre et le tirer, comme une carte.
+   *
+   * À la souris seulement : au doigt, le défilement natif fait déjà mieux que
+   * tout ce qu'on écrirait, et lui voler ses événements le saccaderait. Un
+   * glissement de plus de quatre pixels AVALE le clic qui suit — sans quoi
+   * déplacer l'arbre ouvrirait le bloc qu'on a pris comme poignée.
+   */
+  const prise = useRef<{ x: number; scroll: number } | null>(null);
+  const glisse = useRef(false);
+  const glisser = {
+    onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0 || !cadre.current) return;
+      prise.current = { x: e.clientX, scroll: cadre.current.scrollLeft };
+      glisse.current = false;
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => {
+      const p = prise.current;
+      const c = cadre.current;
+      if (!p || !c) return;
+      const dx = e.clientX - p.x;
+      if (!glisse.current) {
+        if (Math.abs(dx) < 4) return;
+        glisse.current = true;
+        c.setPointerCapture(e.pointerId);
+      }
+      c.scrollLeft = p.scroll - dx;
+    },
+    onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => {
+      if (glisse.current) cadre.current?.releasePointerCapture(e.pointerId);
+      prise.current = null;
+    },
+    onPointerCancel: () => {
+      prise.current = null;
+      glisse.current = false;
+    },
+    onClickCapture: (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!glisse.current) return;
+      glisse.current = false;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+  };
 
   return {
     cadre,
@@ -267,10 +312,11 @@ function useAjustement() {
     taille,
     zoom,
     anime,
-    ajuste: ajustement,
-    zoomer: (pas: number) =>
-      setManuel((z) => Math.min(PLAFOND, Math.max(PLANCHER, (z ?? ajustement) + pas))),
-    ajuster: () => setManuel(null),
+    deborde,
+    ajustement,
+    glisser,
+    poser: (z: number) => setZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z))),
+    zoomer: (pas: number) => setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z + pas))),
   };
 }
 
@@ -409,10 +455,13 @@ function Bloc({
       <button
         type="button"
         onClick={() => actions.onOuvrir(u)}
+        title={u.name}
         className={cn(
-          // Une hauteur plancher : sans elle, un bloc au nom court et son
-          // voisin au nom de trois lignes font une rangée en dents de scie.
-          'flex min-h-[104px] w-[230px] flex-col gap-1.5 rounded-[14px] border px-3.5 py-3 text-left transition-all duration-200',
+          // Hauteur FIXE, celle qu'il faut à un nom de deux lignes : tous les
+          // blocs se posent ainsi sur la même ligne d'horizon, et un nom court
+          // ne rétrécit pas sa carte. La largeur, elle, respire entre deux
+          // bornes — au-delà, un seul nom à rallonge étirerait toute la rangée.
+          'flex h-[76px] w-max max-w-[300px] min-w-[200px] items-center gap-2.5 rounded-[14px] border px-3.5 text-left transition-all duration-200',
           'hover:-translate-y-0.5 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
           // Le sommet se distingue sans crier : un fond teinté suffit à dire
           // « tout part d'ici » là où une couleur pleine écraserait le reste.
@@ -429,56 +478,33 @@ function Bloc({
               : 'border-card-line hover:border-card-line-hover',
         )}
       >
-        <span className="flex items-start gap-2">
-          {/* Le type se lit à la couleur de la pastille avant de se lire en
-              toutes lettres : sur trente blocs, l'œil trie par étage. */}
-          <span
-            className={cn(
-              'mt-px flex size-7 shrink-0 items-center justify-center rounded-[9px]',
-              direction ? 'bg-primary/[0.10] text-primary' : 'bg-bg text-ink-muted',
-            )}
-          >
-            <Icon name={direction ? 'family_history' : 'group'} size={15} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span
-              className={cn(
-                'block text-[12.5px] leading-snug font-bold text-ink-strong',
-                direction && 'text-[13px]',
-              )}
-            >
-              {u.name}
-            </span>
-            {u.shortName ? (
-              <span className="mt-px block font-mono text-[10.5px] font-semibold text-ink-muted">
-                {u.shortName}
-              </span>
-            ) : null}
-          </span>
+        {/* Le type se lit à la couleur de la pastille avant de se lire dans
+            le nom : sur trente blocs, l'œil trie par étage. Le dire EN PLUS
+            en toutes lettres — « Direction », « Département » — répétait ce
+            que le nom de l'unité annonce déjà. */}
+        <span
+          className={cn(
+            'flex size-8 shrink-0 items-center justify-center rounded-[10px]',
+            direction ? 'bg-primary/[0.10] text-primary' : 'bg-bg text-ink-muted',
+          )}
+        >
+          <Icon name={direction ? 'family_history' : 'group'} size={16} />
         </span>
-
-        {/* Le pied du bloc tombe en bas : d'une colonne à l'autre, les lignes
-            de responsable s'alignent au lieu de flotter à des hauteurs
-            différentes. */}
-        <span className="mt-auto flex flex-col gap-1.5 pt-1">
-          <span className="flex items-center gap-1.5">
-            <span className="rounded-full bg-bg px-1.5 py-px text-[9.5px] font-extrabold tracking-[0.06em] text-ink-muted uppercase">
-              {ORG_UNIT_TYPE_LABELS[u.unitType as keyof typeof ORG_UNIT_TYPE_LABELS]}
-            </span>
-            <span className="flex items-center gap-1 text-[10.5px] font-semibold text-ink-muted">
-              <Icon name="group" size={12} className="text-ink-muted/70" />
-              {u.headcount}
-            </span>
+        <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          {/* Deux lignes au plus : au-delà, le nom complet reste à portée par
+              l'infobulle du bloc et par la fenêtre de détail. Mieux vaut une
+              rangée droite qu'un nom entier qui déforme sa carte. */}
+          <span className="line-clamp-2 text-[12.5px] leading-[1.28] font-bold text-ink-strong">
+            {u.name}
           </span>
-
-          <span className="block truncate text-[11px] text-ink-muted">
+          <span className="block truncate text-[11.5px] leading-tight text-ink-muted">
+            Responsable&nbsp;:{' '}
             {u.managerName ? (
-              <>
-                <span className="font-semibold text-ink">{u.managerName}</span>
-                {u.managerPosition ? ` · ${u.managerPosition}` : ''}
-              </>
+              // Abrégé : « Mouhamadou Moustapha Salih Niang » ne tient pas
+              // dans un bloc, et c'est le NOM DE FAMILLE qu'on y perdrait.
+              <span className="font-semibold text-ink">{u.managerShortName ?? u.managerName}</span>
             ) : (
-              <span className="text-ink-muted/70">Sans responsable</span>
+              <span className="text-ink-muted/70">Non désigné</span>
             )}
           </span>
         </span>

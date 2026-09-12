@@ -3,6 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
@@ -85,11 +86,19 @@ function typeEnfantPropose(parent: OrgUnitView): OrgUnitType {
 
 export default function OrganisationPage() {
   const me = useMe();
+  const router = useRouter();
   const canManage = Boolean(me.data && ['admin', 'hr'].includes(me.data.role));
   const isStaff = Boolean(me.data && ['admin', 'hr', 'payroll'].includes(me.data.role));
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  /** Unité en cours de création : le parent visé, ou `racine` depuis l'en-tête. */
+  /** Unité en cours de création depuis le « + » d'un bloc : le parent visé. */
   const [creation, setCreation] = useState<{ parent: OrgUnitView | null } | null>(null);
+  // L'autre porte d'entrée passe par l'URL (?nouvelle) : le bouton vit dans le
+  // bandeau de tête, qui appartient à la coquille et ne connaît pas cet écran.
+  const creationRacine = useSearchParams().get('nouvelle') !== null && canManage;
+  const fermerCreation = () => {
+    setCreation(null);
+    if (creationRacine) router.replace('/organisation');
+  };
 
   const units = useQuery({
     queryKey: ['org-units'],
@@ -100,18 +109,9 @@ export default function OrganisationPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1400px]">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
-          Organigramme
-        </p>
-        {canManage ? (
-          <Button size="sm" onClick={() => setCreation({ parent: null })}>
-            <Icon name="add" size={15} />
-            Nouvelle unité
-          </Button>
-        ) : null}
-      </div>
-
+      {/* Ni titre ni bouton ici : la barre supérieure porte déjà le nom de
+          l'écran et son unique geste. Les répéter faisait lire deux fois la
+          même chose avant d'atteindre l'organigramme. */}
       <Card>
         {units.isLoading ? (
           <CardContent className="py-6">
@@ -147,11 +147,11 @@ export default function OrganisationPage() {
         />
       ) : null}
 
-      {creation ? (
+      {creation || creationRacine ? (
         <FenetreNouvelleUnite
           units={liste}
-          parent={creation.parent}
-          onClose={() => setCreation(null)}
+          parent={creation?.parent ?? null}
+          onClose={fermerCreation}
         />
       ) : null}
     </div>
