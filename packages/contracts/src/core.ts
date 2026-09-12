@@ -175,6 +175,31 @@ export type Health = z.infer<typeof healthSchema>;
  * Baptiste » est un seul prénom, « Jean B. » en ferait deux. Seule l'espace
  * sépare deux prénoms.
  */
+/**
+ * Le premier prénom, seul.
+ *
+ * « Mouhamadou Moustapha Salih » est un état civil ; « Mouhamadou » est la
+ * façon dont on s'adresse à quelqu'un. Un message de remerciement qui récite
+ * les trois prénoms sonne comme un formulaire administratif.
+ */
+export function premierPrenom(givenName: string): string {
+  return givenName.trim().split(/\s+/)[0] ?? '';
+}
+
+/**
+ * « de » ou « d' », selon ce qui suit.
+ *
+ * « le poste de Chargé d'affaires », mais « le poste d'Analyste marketing ».
+ * L'élision se fait devant une voyelle et devant un h muet — et les intitulés
+ * de poste qui commencent par un h en portent presque toujours un muet
+ * (hôtesse, horticulteur, hydraulicien). Les rares h aspirés — « héros » — ne
+ * sont pas des métiers.
+ */
+export function deElide(mot: string): string {
+  const premier = mot.trim()[0]?.toLocaleLowerCase('fr') ?? '';
+  return /[aeiouyàâäéèêëîïôöùûüh]/.test(premier) ? "d'" : 'de ';
+}
+
 export function nomAbrege(givenName: string, familyName: string): string {
   const nom = familyName.trim();
   const prenoms = givenName.trim().split(/\s+/).filter(Boolean);

@@ -4,7 +4,12 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { PublicJobInfo } from '@teranga/contracts';
-import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_BYTES } from '@teranga/contracts';
+import {
+  ALLOWED_DOCUMENT_TYPES,
+  deElide,
+  MAX_DOCUMENT_BYTES,
+  premierPrenom,
+} from '@teranga/contracts';
 import { Button, Card, CardContent, Field, Input, Skeleton, cn } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
 import { BrandMark } from '../../../components/brand-mark';
@@ -26,7 +31,7 @@ const INVALID_MESSAGES: Record<string, string> = {
   not_found: "Cette offre n'existe pas ou n'est plus publiée.",
 };
 
-const FORMATS = 'PDF, Word, JPG ou PNG';
+const FORMATS = 'PDF uniquement';
 const POIDS_MAX = '5 Mo maximum';
 
 interface PickedFile {
@@ -35,6 +40,9 @@ interface PickedFile {
   contentBase64: string;
   sizeBytes: number;
 }
+
+/** Le nom sans son « .pdf » : c'est la partie qu'on renomme. */
+const sansExtension = (nom: string) => nom.replace(/\.pdf$/i, '');
 
 /**
  * Une pièce à joindre, choisie ou non.
@@ -50,22 +58,24 @@ function PieceJointe({
   label,
   fichier,
   onPick,
+  onRenommer,
   onClear,
 }: {
   label: string;
   fichier?: PickedFile;
   onPick: (f: File | null) => void;
+  onRenommer: (nom: string) => void;
   onClear: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const id = `doc-${label.replace(/\s+/g, '-').toLowerCase()}`;
 
-  const champ = (
+  const champ = (classe: string) => (
     <input
       ref={input}
       id={id}
       type="file"
-      className="sr-only"
+      className={classe}
       accept={Object.values(ALLOWED_DOCUMENT_TYPES).join(',')}
       onChange={(e) => {
         const f = e.target.files?.[0] ?? null;
@@ -80,13 +90,27 @@ function PieceJointe({
   if (fichier) {
     return (
       <div className="flex items-center gap-3 rounded-[11px] border border-success/35 bg-success-soft px-3.5 py-3">
-        {champ}
+        {champ('sr-only')}
         <Icon name="check_circle" size={20} className="shrink-0 text-success" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-bold text-ink-strong">{label}</p>
-          <p className="truncate text-[11.5px] text-ink-muted">
-            {fichier.filename} · {Math.max(1, Math.round(fichier.sizeBytes / 1024))} Ko
-          </p>
+          {/* Le nom du fichier se CORRIGE ici même. « CV_final_v3(2).pdf » est
+              le classement du candidat sur son propre disque ; ce qui arrive
+              au recruteur mérite d'être nommé. Le champ n'a l'air d'un champ
+              qu'au survol : au repos, il se lit comme la ligne qu'il remplace. */}
+          <span className="flex items-baseline gap-1.5">
+            <input
+              value={sansExtension(fichier.filename)}
+              onChange={(e) => onRenommer(e.target.value)}
+              aria-label={`Renommer ${label}`}
+              maxLength={120}
+              spellCheck={false}
+              className="min-w-0 flex-1 truncate rounded-[5px] border border-transparent bg-transparent px-1 py-px text-[11.5px] text-ink-muted transition-colors hover:border-success/40 hover:bg-surface focus:border-primary/50 focus:bg-surface focus:text-ink focus:outline-none"
+            />
+            <span className="shrink-0 text-[11.5px] whitespace-nowrap text-ink-muted/80">
+              .pdf · {Math.max(1, Math.round(fichier.sizeBytes / 1024))} Ko
+            </span>
+          </span>
         </div>
         <button
           type="button"
@@ -110,9 +134,14 @@ function PieceJointe({
   return (
     <label
       htmlFor={id}
-      className="flex cursor-pointer items-center gap-3 rounded-[11px] border border-dashed border-line bg-surface-raised px-3.5 py-3 transition-colors focus-within:ring-2 focus-within:ring-primary/40 hover:border-primary/50 hover:bg-primary-soft/40"
+      className="relative flex cursor-pointer items-center gap-3 rounded-[11px] border border-dashed border-line bg-surface-raised px-3.5 py-3 transition-colors focus-within:ring-2 focus-within:ring-primary/40 hover:border-primary/50 hover:bg-primary-soft/40"
     >
-      {champ}
+      {/* Le champ COUVRE la zone au lieu de se cacher dans un coin. Un
+          `sr-only` est une boîte d'un pixel posée ailleurs que là où l'on
+          clique : en ouvrant le sélecteur, le navigateur l'amène dans la vue
+          et fait sauter le conteneur qui défile. Ici l'élément focalisé est
+          exactement sous le curseur, il n'y a rien à ramener. */}
+      {champ('absolute inset-0 cursor-pointer opacity-0')}
       <Icon name="upload_file" size={20} className="shrink-0 text-primary" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] font-bold text-ink-strong">{label}</p>
@@ -244,6 +273,23 @@ export default function ApplyPage() {
       setServerError(err instanceof ApiError ? err.message : 'Envoi impossible — réessayez.'),
   });
 
+  /**
+   * Renommer une pièce déjà choisie.
+   *
+   * Le nom est celui qui arrivera dans la file du recruteur : il vaut mieux
+   * « CV Mouhamadou Kane » que « Document (3) copie.pdf ». L'extension n'est
+   * pas modifiable — elle dit le format, qui n'est pas au choix du candidat —
+   * et un nom vidé revient à celui du fichier d'origine à l'envoi.
+   */
+  const renommer = (label: string, nom: string) => {
+    const propre = nom.replace(/[\\/:*?"<>|]/g, '').slice(0, 120);
+    setFiles((prev) => {
+      const piece = prev[label];
+      if (!piece) return prev;
+      return { ...prev, [label]: { ...piece, filename: `${propre}.pdf` } };
+    });
+  };
+
   const pickFile = (label: string, file: File | null) => {
     setFileError(null);
     // Toute nouvelle sélection remplace l'ancienne : invalide = case vidée.
@@ -254,7 +300,7 @@ export default function ApplyPage() {
     });
     if (!file) return;
     if (!(file.type in ALLOWED_DOCUMENT_TYPES)) {
-      setFileError(`« ${file.name} » : format accepté — PDF, Word, JPG ou PNG.`);
+      setFileError(`« ${file.name} » : seuls les PDF sont acceptés.`);
       return;
     }
     if (file.size === 0) {
@@ -333,12 +379,17 @@ export default function ApplyPage() {
           titre="Candidature envoyée"
         >
           <p>
-            Merci {givenName}. Votre dossier pour « {offre.title} » est arrivé chez{' '}
-            {offre.organizationName}. Le service des ressources humaines vous répondra à
-            l&apos;adresse <span className="font-semibold text-ink">{email}</span>.
+            Merci {premierPrenom(givenName)} ! La Direction du Capital Humain a bien reçu votre
+            candidature pour le poste {deElide(offre.title)}
+            <span className="font-semibold text-ink">{offre.title}</span>.
+          </p>
+          <p className="mt-2">
+            Votre dossier va être étudié avec attention. Vous recevrez notre réponse à
+            l&apos;adresse <span className="font-semibold text-ink">{email}</span> — pensez à
+            regarder vos courriers indésirables. Bonne chance !
           </p>
           <p className="mt-3 text-[12px]">
-            Référence à rappeler :{' '}
+            Référence de l&apos;offre :{' '}
             <span className="font-mono font-bold text-ink-strong">{offre.reference}</span>
           </p>
         </Ecran>
@@ -492,6 +543,7 @@ export default function ApplyPage() {
                   label={label}
                   fichier={files[label]}
                   onPick={(f) => pickFile(label, f)}
+                  onRenommer={(nom) => renommer(label, nom)}
                   onClear={() =>
                     setFiles((prev) => {
                       const next = { ...prev };

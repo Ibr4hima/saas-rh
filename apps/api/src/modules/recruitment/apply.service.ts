@@ -76,6 +76,17 @@ export class ApplyService {
       if (data.length === 0 || data.length > MAX_DOCUMENT_BYTES) {
         problem(422, 'recruitment.document_too_large', 'Chaque document doit faire 5 Mo maximum');
       }
+      // Le type ANNONCÉ ne prouve rien : n'importe qui peut poster un exécutable
+      // étiqueté « application/pdf ». On lit la signature du fichier, comme au
+      // dépôt des pièces du dossier employé.
+      if (data.subarray(0, 5).toString() !== '%PDF-') {
+        problem(
+          422,
+          'recruitment.document_not_pdf',
+          'Chaque pièce doit être un PDF',
+          `« ${d.filename} » n'en est pas un.`,
+        );
+      }
       return { label: d.label, filename: d.filename, contentType: d.contentType, data };
     });
 

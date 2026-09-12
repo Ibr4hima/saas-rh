@@ -148,13 +148,17 @@ export type PublicJobInfo =
 export const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
 export const MAX_DOCUMENTS_PER_APPLICATION = 5;
 
-/** Types de fichiers acceptés pour les documents de candidature. */
+/**
+ * Le PDF, et lui seul.
+ *
+ * Un dossier de candidature est lu, annoté et archivé : un .docx s'ouvre
+ * différemment d'un poste à l'autre, une photo de CV ne se lit pas à l'écran,
+ * et ni l'un ni l'autre ne s'affiche dans la visionneuse du produit. Exiger le
+ * PDF, c'est garantir au recruteur que tous les dossiers s'ouvrent pareil — et
+ * au candidat que son document arrive tel qu'il l'a mis en page.
+ */
 export const ALLOWED_DOCUMENT_TYPES: Record<string, string> = {
   'application/pdf': '.pdf',
-  'application/msword': '.doc',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
 };
 
 export const applyDocumentSchema = z.object({
