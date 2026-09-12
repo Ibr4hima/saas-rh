@@ -45,6 +45,43 @@ interface PickedFile {
 const sansExtension = (nom: string) => nom.replace(/\.pdf$/i, '');
 
 /**
+ * Un nom de fichier qu'on peut réécrire, et qui reste un nom de fichier.
+ *
+ * Le champ SE DIMENSIONNE SUR SON TEXTE, pour que l'extension et le poids
+ * restent collés au nom au lieu de flotter au bout d'une barre vide. Un
+ * champ ne sait pas faire cela seul : on superpose donc, dans une même case
+ * de grille, le champ et une doublure invisible portant le même texte — c'est
+ * elle qui donne sa largeur à la case, et le champ s'y étire.
+ */
+function NomModifiable({
+  valeur,
+  onChange,
+  label,
+}: {
+  valeur: string;
+  onChange: (v: string) => void;
+  label: string;
+}) {
+  return (
+    <span className="group/nom grid min-w-0 max-w-full [&>*]:col-start-1 [&>*]:row-start-1">
+      {/* La doublure : invisible, elle porte le même texte et donne sa largeur
+          à la case ; le champ s'y étire. */}
+      <span aria-hidden className="invisible truncate px-0.5 whitespace-pre">
+        {valeur || ' '}
+      </span>
+      <input
+        value={valeur}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={`Renommer ${label}`}
+        maxLength={120}
+        spellCheck={false}
+        className="w-full min-w-0 truncate rounded-[3px] border-b border-dashed border-transparent bg-transparent px-0.5 text-ink-muted transition-colors outline-none group-hover/nom:border-ink-muted/40 focus:border-primary focus:text-ink-strong"
+      />
+    </span>
+  );
+}
+
+/**
  * Une pièce à joindre, choisie ou non.
  *
  * Le `<input type=file>` du navigateur affiche « Aucun fichier choisi » dans
@@ -89,27 +126,35 @@ function PieceJointe({
 
   if (fichier) {
     return (
-      <div className="flex items-center gap-3 rounded-[11px] border border-success/35 bg-success-soft px-3.5 py-3">
+      <div className="group flex items-center gap-3 rounded-[11px] border border-success/35 bg-success-soft px-3.5 py-3">
         {champ('sr-only')}
         <Icon name="check_circle" size={20} className="shrink-0 text-success" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-bold text-ink-strong">{label}</p>
-          {/* Le nom du fichier se CORRIGE ici même. « CV_final_v3(2).pdf » est
-              le classement du candidat sur son propre disque ; ce qui arrive
-              au recruteur mérite d'être nommé. Le champ n'a l'air d'un champ
-              qu'au survol : au repos, il se lit comme la ligne qu'il remplace. */}
-          <span className="flex items-baseline gap-1.5">
-            <input
-              value={sansExtension(fichier.filename)}
-              onChange={(e) => onRenommer(e.target.value)}
-              aria-label={`Renommer ${label}`}
-              maxLength={120}
-              spellCheck={false}
-              className="min-w-0 flex-1 truncate rounded-[5px] border border-transparent bg-transparent px-1 py-px text-[11.5px] text-ink-muted transition-colors hover:border-success/40 hover:bg-surface focus:border-primary/50 focus:bg-surface focus:text-ink focus:outline-none"
+          {/* Le nom du fichier se CORRIGE ici même : « Document (3) copie.pdf »
+              est le classement du candidat sur son propre disque, et c'est ce
+              qui arrive dans la file du recruteur.
+              Le champ ne RESSEMBLE PAS à un champ : ni cadre ni fond, la même
+              encre que la ligne qu'il remplace. Un soulignement pointillé
+              paraît au survol, un crayon à côté — c'est tout ce qu'il faut
+              pour dire qu'on peut écrire là. */}
+          <span className="flex items-baseline gap-1.5 text-[11.5px] text-ink-muted">
+            <NomModifiable
+              valeur={sansExtension(fichier.filename)}
+              onChange={onRenommer}
+              label={label}
             />
-            <span className="shrink-0 text-[11.5px] whitespace-nowrap text-ink-muted/80">
+            <span className="shrink-0 whitespace-nowrap">
               .pdf · {Math.max(1, Math.round(fichier.sizeBytes / 1024))} Ko
             </span>
+            {/* En bout de ligne, et nulle part ailleurs : posé entre le nom et
+                son extension, il les décollait l'un de l'autre même invisible. */}
+            <Icon
+              name="edit"
+              size={11}
+              aria-hidden
+              className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+            />
           </span>
         </div>
         <button
@@ -381,12 +426,8 @@ export default function ApplyPage() {
           <p>
             Merci {premierPrenom(givenName)} ! La Direction du Capital Humain a bien reçu votre
             candidature pour le poste {deElide(offre.title)}
-            <span className="font-semibold text-ink">{offre.title}</span>.
-          </p>
-          <p className="mt-2">
-            Votre dossier va être étudié avec attention. Vous recevrez notre réponse à
-            l&apos;adresse <span className="font-semibold text-ink">{email}</span> — pensez à
-            regarder vos courriers indésirables. Bonne chance !
+            <span className="font-semibold text-ink">{offre.title}</span>. Votre dossier va être
+            étudié avec attention. Bonne chance !
           </p>
           <p className="mt-3 text-[12px]">
             Référence de l&apos;offre :{' '}
