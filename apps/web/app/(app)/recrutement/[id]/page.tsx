@@ -6,11 +6,11 @@ import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import type { ApplicationView, JobPostingView } from '@teranga/contracts';
 import { nomAbrege } from '@teranga/contracts';
-import { Badge, Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
+import { Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { DocViewer, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate } from '../../../../lib/hooks';
-import { CONTRACT_LABELS, JOB_STATUS_LABELS, JOB_STATUS_TONES } from '../../../../lib/recruitment';
+import { CONTRACT_LABELS } from '../../../../lib/recruitment';
 import {
   anciennete,
   DescriptionOffre,
@@ -159,10 +159,7 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
     <Card>
       <CardContent className="flex flex-col gap-5 py-5">
         <div className="min-w-0">
-          <Badge tone={JOB_STATUS_TONES[j.status] ?? 'neutral'}>
-            {JOB_STATUS_LABELS[j.status] ?? j.status}
-          </Badge>
-          <h1 className="mt-2.5 text-[22px] leading-tight font-extrabold text-balance text-ink-strong">
+          <h1 className="text-[22px] leading-tight font-extrabold text-balance text-ink-strong">
             {j.title}
           </h1>
           {/* La direction et le lieu tiennent sous le titre, là où on les
