@@ -12,13 +12,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import type { SaveReferenceTextInput, UploadReferencePdfInput } from '@teranga/contracts';
+import type { SaveReferenceTextInput } from '@teranga/contracts';
 import {
+  referencePdfQuerySchema,
   referenceSearchSchema,
   saveReferenceTextSchema,
-  uploadReferencePdfSchema,
 } from '@teranga/contracts';
 import { ZodValidationPipe } from '../../common/zod.pipe';
+import { problem } from '../../common/problem';
 import { Roles, RolesGuard } from '../auth/roles.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { ReferenceTextsService } from './reference-texts.service';
@@ -85,14 +86,25 @@ export class ReferenceTextsController {
     return this.textes.save(req.sessionUser, slug, body);
   }
 
-  /** Le PDF officiel, déposé à côté du texte lu. */
+  /**
+   * Le PDF officiel, déposé à côté du texte lu.
+   *
+   * Les octets arrivent BRUTS — `Content-Type: application/pdf` — et non
+   * encodés dans du JSON : à plusieurs dizaines de mégaoctets, le base64
+   * ajouterait un tiers de volume et un `JSON.parse` de la taille du fichier.
+   * Le nom voyage donc dans l'URL, seul endroit qui reste.
+   */
   @Post(':slug/pdf')
   @Roles('admin', 'hr')
   uploadPdf(
     @Req() req: AuthenticatedRequest,
     @Param('slug') slug: string,
-    @Body(new ZodValidationPipe(uploadReferencePdfSchema)) body: UploadReferencePdfInput,
+    @Query(new ZodValidationPipe(referencePdfQuerySchema)) query: { filename: string },
   ) {
-    return this.textes.uploadPdf(req.sessionUser, slug, body);
+    const octets = req.body;
+    if (!Buffer.isBuffer(octets)) {
+      problem(415, 'reference.bad_body', 'Le fichier doit être envoyé en application/pdf');
+    }
+    return this.textes.uploadPdf(req.sessionUser, slug, query.filename, octets);
   }
 }

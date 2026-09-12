@@ -7,7 +7,6 @@ import type {
   ReferenceTextView,
   SaveReferenceTextInput,
   SessionUser,
-  UploadReferencePdfInput,
 } from '@teranga/contracts';
 import {
   MAX_REFERENCE_PDF_BYTES,
@@ -441,14 +440,14 @@ export class ReferenceTextsService {
   async uploadPdf(
     user: SessionUser,
     slug: string,
-    input: UploadReferencePdfInput,
+    filename: string,
+    data: Buffer,
   ): Promise<{ size: number }> {
     if (!this.redige(user)) {
       problem(403, 'reference.forbidden', 'Seule la RH dépose les textes de référence');
     }
-    const data = Buffer.from(input.contentBase64, 'base64');
     if (data.length === 0 || data.length > MAX_REFERENCE_PDF_BYTES) {
-      problem(422, 'reference.too_large', 'Le fichier doit faire 15 Mo maximum');
+      problem(422, 'reference.too_large', 'Le fichier doit faire 80 Mo maximum');
     }
     // Le type annoncé ne prouve rien : on lit la signature du fichier.
     if (data.subarray(0, 5).toString() !== '%PDF-') {
@@ -458,7 +457,7 @@ export class ReferenceTextsService {
       const res = await tx
         .update(t.referenceTexts)
         .set({
-          pdfFilename: input.filename,
+          pdfFilename: filename,
           pdfData: data,
           pdfSize: data.length,
           updatedAt: new Date(),

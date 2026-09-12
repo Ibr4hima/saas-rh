@@ -46,9 +46,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
   const [entreeEnVigueur, setEntreeEnVigueur] = useState('');
   const [publie, setPublie] = useState(false);
   const [brut, setBrut] = useState('');
-  const [fichier, setFichier] = useState<{ nom: string; base64: string; taille: number } | null>(
-    null,
-  );
+  const [fichier, setFichier] = useState<File | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const prerempli = useRef(false);
 
@@ -100,10 +98,11 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
       };
       await api(`/reference-texts/${slug}`, { method: 'PUT', body: corps });
       // Le fichier ne part qu'APRÈS : il se dépose sur un texte qui existe.
+      // Les octets voyagent bruts ; seul le nom passe par l'URL.
       if (fichier) {
-        await api(`/reference-texts/${slug}/pdf`, {
+        await api(`/reference-texts/${slug}/pdf?filename=${encodeURIComponent(fichier.name)}`, {
           method: 'POST',
-          body: { filename: fichier.nom, contentBase64: fichier.base64 },
+          body: fichier,
         });
       }
     },
@@ -324,11 +323,16 @@ function FichierOfficiel({
   onErreur,
 }: {
   actuel: { filename: string; size: number } | null;
-  choisi: { nom: string; base64: string; taille: number } | null;
-  onChoisir: (f: { nom: string; base64: string; taille: number } | null) => void;
+  choisi: File | null;
+  onChoisir: (f: File | null) => void;
   onErreur: (m: string | null) => void;
 }) {
-  const enKo = (o: number) => `${Math.max(1, Math.round(o / 1024))} Ko`;
+  /** Un Journal officiel se compte en mégaoctets : le dire en kilo-octets ne
+      renseignerait personne. */
+  const poids = (o: number) =>
+    o >= 1024 * 1024
+      ? `${(o / (1024 * 1024)).toFixed(1)} Mo`
+      : `${Math.max(1, Math.round(o / 1024))} Ko`;
   return (
     <Card>
       <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-3 py-4">
@@ -339,9 +343,9 @@ function FichierOfficiel({
           <p className="text-[12.5px] font-bold text-ink-strong">Fichier officiel</p>
           <p className="mt-0.5 text-[11.5px] text-ink-muted">
             {choisi
-              ? `${choisi.nom} · ${enKo(choisi.taille)} — sera déposé à l’enregistrement`
+              ? `${choisi.name} · ${poids(choisi.size)} — sera déposé à l’enregistrement`
               : actuel
-                ? `${actuel.filename} · ${enKo(actuel.size)}`
+                ? `${actuel.filename} · ${poids(actuel.size)}`
                 : 'Aucun fichier déposé. Le texte lu reste consultable sans lui.'}
           </p>
         </div>
@@ -351,23 +355,18 @@ function FichierOfficiel({
             type="file"
             accept="application/pdf"
             className="sr-only"
-            onChange={async (e) => {
+            onChange={(e) => {
               const f = e.target.files?.[0];
               e.target.value = '';
               if (!f) return;
               if (f.size > MAX_REFERENCE_PDF_BYTES) {
-                onErreur('Le fichier doit faire 15 Mo maximum.');
+                onErreur('Le fichier doit faire 80 Mo maximum.');
                 return;
               }
-              const octets = new Uint8Array(await f.arrayBuffer());
-              let binaire = '';
-              // Par tranches : `String.fromCharCode(...tableau)` sur plusieurs
-              // mégaoctets dépasse la taille de pile des arguments.
-              for (let i = 0; i < octets.length; i += 8192) {
-                binaire += String.fromCharCode(...octets.subarray(i, i + 8192));
-              }
+              // Le fichier n'est ni lu ni copié ici : il part tel quel à
+              // l'enregistrement. Rien ne transite par la mémoire de la page.
               onErreur(null);
-              onChoisir({ nom: f.name, base64: btoa(binaire), taille: f.size });
+              onChoisir(f);
             }}
           />
         </label>

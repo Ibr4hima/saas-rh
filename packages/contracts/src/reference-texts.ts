@@ -157,7 +157,13 @@ export function decouperTexte(corps: string): BlocTexte[] {
 
 const isoDate = z.iso.date();
 
-export const MAX_REFERENCE_PDF_BYTES = 15 * 1024 * 1024;
+/**
+ * Quatre-vingts mégaoctets. Un Journal officiel numérisé — des pages d'images,
+ * pas du texte — dépasse allègrement les quinze mégaoctets d'une pièce de
+ * dossier, et c'est le seul exemplaire qui fasse foi : le rogner reviendrait à
+ * déposer autre chose que le texte.
+ */
+export const MAX_REFERENCE_PDF_BYTES = 80 * 1024 * 1024;
 
 const corpsSchema = z.string().max(40_000);
 
@@ -202,11 +208,10 @@ export const saveReferenceTextSchema = z.object({
 });
 export type SaveReferenceTextInput = z.infer<typeof saveReferenceTextSchema>;
 
-export const uploadReferencePdfSchema = z.object({
+/** Le nom du fichier voyage dans l'URL ; les octets, dans le corps. */
+export const referencePdfQuerySchema = z.object({
   filename: z.string().trim().min(1).max(255),
-  contentBase64: z.string().min(1),
 });
-export type UploadReferencePdfInput = z.infer<typeof uploadReferencePdfSchema>;
 
 // ---------- Lire un texte collé ----------
 

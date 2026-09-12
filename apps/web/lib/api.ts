@@ -13,12 +13,24 @@ export async function api<T>(
   path: string,
   options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<T> {
+  // Un fichier part TEL QUEL, avec son propre type. L'encoder en base64 dans
+  // du JSON ajouterait un tiers de volume à l'aller et autant de travail au
+  // retour — sensible dès quelques mégaoctets, inacceptable à quatre-vingts.
+  const binaire = options.body instanceof Blob;
   const res = await fetch(`${API_BASE}/v1${path}`, {
     method: options.method ?? 'GET',
     credentials: 'include',
     signal: options.signal,
-    headers: options.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    headers: binaire
+      ? { 'Content-Type': (options.body as Blob).type || 'application/octet-stream' }
+      : options.body !== undefined
+        ? { 'Content-Type': 'application/json' }
+        : undefined,
+    body: binaire
+      ? (options.body as Blob)
+      : options.body !== undefined
+        ? JSON.stringify(options.body)
+        : undefined,
   });
 
   if (!res.ok) {
