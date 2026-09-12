@@ -455,13 +455,20 @@ function Bloc({
       <button
         type="button"
         onClick={() => actions.onOuvrir(u)}
-        title={u.name}
+        // Le gabarit coupe les noms à rallonge et les responsables aux
+        // prénoms multiples : l'infobulle rend l'un et l'autre en entier, et
+        // la fenêtre de détail aussi.
+        title={`${u.name}\nResponsable : ${u.managerName ?? 'Non désigné'}`}
         className={cn(
-          // Hauteur FIXE, celle qu'il faut à un nom de deux lignes : tous les
-          // blocs se posent ainsi sur la même ligne d'horizon, et un nom court
-          // ne rétrécit pas sa carte. La largeur, elle, respire entre deux
-          // bornes — au-delà, un seul nom à rallonge étirerait toute la rangée.
-          'flex h-[76px] w-max max-w-[300px] min-w-[200px] items-center gap-2.5 rounded-[14px] border px-3.5 text-left transition-all duration-200',
+          // Largeur ET hauteur fixes, celles qu'il faut à un nom de deux
+          // lignes. Une carte qui s'ajuste à son nom donne une rangée de
+          // vignettes dépareillées ; un gabarit unique donne un organigramme.
+          // La largeur est MESURÉE, pas devinée : à deux cent trente pixels,
+          // « Direction des Passations de Marchés » passe à la ligne après
+          // « Passations » — la référence donnée. Les deux ou trois noms qui
+          // demanderaient une troisième ligne s'arrêtent à la deuxième ;
+          // l'infobulle et la fenêtre de détail les rendent en entier.
+          'flex h-[76px] w-[230px] items-center gap-2.5 rounded-[14px] border px-3.5 text-left transition-all duration-200',
           'hover:-translate-y-0.5 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
           // Le sommet se distingue sans crier : un fond teinté suffit à dire
           // « tout part d'ici » là où une couleur pleine écraserait le reste.
