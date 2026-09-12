@@ -27,6 +27,25 @@ import { Icon } from './icons';
  * (voir `useCanevas`).
  */
 
+/**
+ * Le gabarit d'un bloc.
+ *
+ * Une hauteur pour tous, celle d'un nom de deux lignes : c'est elle qui fait
+ * la régularité d'une rangée. La largeur, elle, est celle qui coupe
+ * « Direction des Passations de Marchés » après « Passations » — et celle-là
+ * seule, un pixel de plus casserait au mot suivant.
+ *
+ * `CHROME` est ce que le bloc consomme AUTOUR du texte : rembourrage gauche et
+ * droit (28), pastille (32), gouttière (10) et les deux bordures (2) — que
+ * `box-sizing: border-box` prend DANS la largeur, et qu'on oubliait. Le reste
+ * est la colonne où le nom se plie.
+ */
+const HAUTEUR_BLOC = 80;
+const LARGEUR_BLOC = 230;
+const CHROME_BLOC = 72;
+/** Aucun nom ne justifie une carte plus large que cela : au-delà, on coupe. */
+const LARGEUR_BLOC_MAX = 470;
+
 /** Taille de lecture. L'arbre déborde souvent : on le balade, on ne le rapetisse pas. */
 const ZOOM_DEFAUT = 0.9;
 const ZOOM_MIN = 0.4;
@@ -90,6 +109,7 @@ export function Organigramme({
     });
 
   const racines = parEnfant.get(null) ?? [];
+  const largeurs = useLargeursDesBlocs(unites);
   const { cadre, arbre, taille, zoom, anime, deborde, ajustement, zoomer, poser, glisser } =
     useCanevas();
 
@@ -135,6 +155,7 @@ export function Organigramme({
                 key={u.id}
                 unite={u}
                 parEnfant={parEnfant}
+                largeurs={largeurs}
                 selectionId={selectionId}
                 replies={replies}
                 onBasculer={basculer}
@@ -201,6 +222,77 @@ function BoutonEchelle({
       <Icon name={icone} size={15} />
     </button>
   );
+}
+
+/**
+ * La largeur de chaque bloc : le gabarit, ou juste ce qu'il faut de plus.
+ *
+ * Tous les blocs font la même largeur — c'est ce qui fait une rangée et non
+ * une collection de vignettes. Mais deux ou trois noms d'agence ne tiennent
+ * pas en deux lignes dans ce gabarit, et les couper serait mentir sur le nom
+ * d'une direction. Ceux-là, et EUX SEULS, s'élargissent juste assez pour se
+ * plier en deux lignes. La hauteur, elle, ne bouge jamais.
+ *
+ * La césure est SIMULÉE au lieu d'être constatée : on mesure le texte dans la
+ * police réelle, on replie les mots comme le ferait le navigateur, et on
+ * cherche la première largeur qui suffit. Laisser le navigateur trancher
+ * aurait voulu dire poser le bloc, lire son débordement, l'élargir, relire —
+ * une cascade de calculs de mise en page à chaque rendu.
+ */
+function useLargeursDesBlocs(unites: OrgUnitView[]): Map<string, number> {
+  // Les polices arrivent après le premier rendu et changent toutes les
+  // mesures : on recompte une fois qu'elles sont là.
+  const [policesPretes, setPolicesPretes] = useState(false);
+  useEffect(() => {
+    let vivant = true;
+    void document.fonts?.ready.then(() => vivant && setPolicesPretes(true));
+    return () => {
+      vivant = false;
+    };
+  }, []);
+
+  return useMemo(() => {
+    const largeurs = new Map<string, number>();
+    if (typeof document === 'undefined') return largeurs;
+    const ctx = document.createElement('canvas').getContext('2d');
+    if (!ctx) return largeurs;
+    // Le nom d'un bloc : gras, 12,5 px, dans la police du produit.
+    ctx.font = `700 12.5px ${getComputedStyle(document.body).fontFamily}`;
+    const mesurer = (t: string) => ctx.measureText(t).width;
+    for (const u of unites) {
+      let largeur = LARGEUR_BLOC;
+      // Un pixel de marge : le navigateur compose en sous-pixels, et un mot
+      // qui tient tout juste dans la simulation peut basculer à la ligne à
+      // l'écran. Se tromper d'un pixel ici coûte une troisième ligne.
+      while (
+        replie(u.name, largeur - CHROME_BLOC - 1, mesurer) > 2 &&
+        largeur + 6 <= LARGEUR_BLOC_MAX
+      ) {
+        largeur += 6;
+      }
+      if (largeur > LARGEUR_BLOC) largeurs.set(u.id, largeur);
+    }
+    return largeurs;
+    // `policesPretes` ne sert qu'à redemander le calcul quand les métriques
+    // changent ; sa valeur n'entre pas dans le résultat.
+  }, [unites, policesPretes]);
+}
+
+/** Le nombre de lignes qu'un texte prend dans une colonne, mots repliés. */
+function replie(texte: string, largeur: number, mesurer: (t: string) => number): number {
+  let lignes = 1;
+  let courante = '';
+  for (const mot of texte.split(/\s+/).filter(Boolean)) {
+    const essai = courante ? `${courante} ${mot}` : mot;
+    // Un premier mot plus long que la colonne y reste quand même : le
+    // navigateur ne le coupe pas non plus.
+    if (!courante || mesurer(essai) <= largeur) courante = essai;
+    else {
+      lignes += 1;
+      courante = mot;
+    }
+  }
+  return lignes;
 }
 
 /**
@@ -330,6 +422,7 @@ function useCanevas() {
 function Branche({
   unite,
   parEnfant,
+  largeurs,
   selectionId,
   replies,
   onBasculer,
@@ -338,6 +431,8 @@ function Branche({
 }: {
   unite: OrgUnitView;
   parEnfant: Map<string | null, OrgUnitView[]>;
+  /** Les blocs qui, exceptionnellement, méritent plus que le gabarit. */
+  largeurs: Map<string, number>;
   selectionId: string | null;
   replies: Set<string>;
   onBasculer: (id: string) => void;
@@ -352,6 +447,7 @@ function Branche({
     <div className="flex flex-col items-center">
       <Bloc
         unite={unite}
+        largeur={largeurs.get(unite.id) ?? LARGEUR_BLOC}
         racine={premier}
         selectionne={selectionId === unite.id}
         replie={replie}
@@ -371,6 +467,7 @@ function Branche({
                 <Branche
                   unite={e}
                   parEnfant={parEnfant}
+                  largeurs={largeurs}
                   selectionId={selectionId}
                   replies={replies}
                   onBasculer={onBasculer}
@@ -434,6 +531,7 @@ function Connecteur({ premier, dernier }: { premier: boolean; dernier: boolean }
 /** Le bloc d'une unité : ce qu'on lit, et ce qu'on peut en faire. */
 function Bloc({
   unite: u,
+  largeur,
   racine,
   selectionne,
   replie,
@@ -442,6 +540,7 @@ function Bloc({
   actions,
 }: {
   unite: OrgUnitView;
+  largeur: number;
   racine: boolean;
   selectionne: boolean;
   replie: boolean;
@@ -459,16 +558,12 @@ function Bloc({
         // prénoms multiples : l'infobulle rend l'un et l'autre en entier, et
         // la fenêtre de détail aussi.
         title={`${u.name}\nResponsable : ${u.managerName ?? 'Non désigné'}`}
+        style={{ width: largeur, height: HAUTEUR_BLOC }}
         className={cn(
-          // Largeur ET hauteur fixes, celles qu'il faut à un nom de deux
-          // lignes. Une carte qui s'ajuste à son nom donne une rangée de
-          // vignettes dépareillées ; un gabarit unique donne un organigramme.
-          // La largeur est MESURÉE, pas devinée : à deux cent trente pixels,
-          // « Direction des Passations de Marchés » passe à la ligne après
-          // « Passations » — la référence donnée. Les deux ou trois noms qui
-          // demanderaient une troisième ligne s'arrêtent à la deuxième ;
-          // l'infobulle et la fenêtre de détail les rendent en entier.
-          'flex h-[76px] w-[230px] items-center gap-2.5 rounded-[14px] border px-3.5 text-left transition-all duration-200',
+          // Gabarit unique (cf. HAUTEUR_BLOC / LARGEUR_BLOC) : la hauteur ne
+          // bouge jamais, la largeur ne bouge que pour les rares noms qui ne
+          // se plieraient pas en deux lignes.
+          'flex items-center gap-2.5 rounded-[14px] border px-3.5 text-left transition-all duration-200',
           'hover:-translate-y-0.5 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
           // Le sommet se distingue sans crier : un fond teinté suffit à dire
           // « tout part d'ici » là où une couleur pleine écraserait le reste.
