@@ -457,11 +457,12 @@ function Bloc({
         onClick={() => actions.onOuvrir(u)}
         title={u.name}
         className={cn(
-          // Hauteur FIXE, celle qu'il faut à un nom de deux lignes : tous les
-          // blocs se posent ainsi sur la même ligne d'horizon, et un nom court
-          // ne rétrécit pas sa carte. La largeur, elle, respire entre deux
-          // bornes — au-delà, un seul nom à rallonge étirerait toute la rangée.
-          'flex h-[76px] w-max max-w-[300px] min-w-[200px] items-center gap-2.5 rounded-[14px] border px-3.5 text-left transition-all duration-200',
+          // Hauteur FIXE, celle qu'il faut à un nom de DEUX LIGNES suivi de la
+          // ligne du responsable : tous les blocs se posent ainsi sur la même
+          // ligne d'horizon, et un nom court ne rétrécit pas sa carte. La
+          // largeur, elle, respire entre deux bornes — au-delà, un seul nom à
+          // rallonge étirerait toute la rangée.
+          'flex h-[92px] w-max max-w-[300px] min-w-[210px] flex-col justify-center gap-1.5 rounded-[14px] border px-3.5 py-3 text-left transition-all duration-200',
           'hover:-translate-y-0.5 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
           // Le sommet se distingue sans crier : un fond teinté suffit à dire
           // « tout part d'ici » là où une couleur pleine écraserait le reste.
@@ -478,35 +479,37 @@ function Bloc({
               : 'border-card-line hover:border-card-line-hover',
         )}
       >
-        {/* Le type se lit à la couleur de la pastille avant de se lire dans
-            le nom : sur trente blocs, l'œil trie par étage. Le dire EN PLUS
-            en toutes lettres — « Direction », « Département » — répétait ce
-            que le nom de l'unité annonce déjà. */}
-        <span
-          className={cn(
-            'flex size-8 shrink-0 items-center justify-center rounded-[10px]',
-            direction ? 'bg-primary/[0.10] text-primary' : 'bg-bg text-ink-muted',
-          )}
-        >
-          <Icon name={direction ? 'family_history' : 'group'} size={16} />
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+        <span className="flex items-start gap-2">
+          {/* Le type se lit à la couleur de la pastille avant de se lire dans
+              le nom : sur trente blocs, l'œil trie par étage. Le dire EN PLUS
+              en toutes lettres — « Direction », « Département » — répétait ce
+              que le nom de l'unité annonce déjà. */}
+          <span
+            className={cn(
+              'flex size-8 shrink-0 items-center justify-center rounded-[10px]',
+              direction ? 'bg-primary/[0.10] text-primary' : 'bg-bg text-ink-muted',
+            )}
+          >
+            <Icon name={direction ? 'family_history' : 'group'} size={16} />
+          </span>
           {/* Deux lignes au plus : au-delà, le nom complet reste à portée par
               l'infobulle du bloc et par la fenêtre de détail. Mieux vaut une
               rangée droite qu'un nom entier qui déforme sa carte. */}
-          <span className="line-clamp-2 text-[12.5px] leading-[1.28] font-bold text-ink-strong">
+          <span className="line-clamp-2 min-w-0 flex-1 text-[12.5px] leading-[1.3] font-bold text-ink-strong">
             {u.name}
           </span>
-          <span className="block truncate text-[11.5px] leading-tight text-ink-muted">
-            Responsable&nbsp;:{' '}
-            {u.managerName ? (
-              // Abrégé : « Mouhamadou Moustapha Salih Niang » ne tient pas
-              // dans un bloc, et c'est le NOM DE FAMILLE qu'on y perdrait.
-              <span className="font-semibold text-ink">{u.managerShortName ?? u.managerName}</span>
-            ) : (
-              <span className="text-ink-muted/70">Non désigné</span>
-            )}
-          </span>
+        </span>
+        {/* Sur sa propre ligne, au bord du bloc : la ligne du responsable se
+            lit d'une rangée à l'autre comme une colonne. */}
+        <span className="block truncate text-[11.5px] leading-tight text-ink-muted">
+          Responsable&nbsp;:{' '}
+          {u.managerName ? (
+            // Abrégé : « Mouhamadou Moustapha Salih Niang » ne tient pas dans
+            // un bloc, et c'est le NOM DE FAMILLE qu'on y perdrait.
+            <span className="font-semibold text-ink">{u.managerShortName ?? u.managerName}</span>
+          ) : (
+            <span className="text-ink-muted/70">Non désigné</span>
+          )}
         </span>
       </button>
 
