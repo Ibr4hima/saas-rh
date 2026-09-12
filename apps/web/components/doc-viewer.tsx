@@ -2,12 +2,25 @@
 
 import { useEffect, useState } from 'react';
 import { Button, cn, Skeleton } from '@teranga/ui';
+import { PdfViewer } from './pdf-viewer';
 
 export interface ViewableDoc {
   /** URL API absolue du binaire (servie avec le cookie de session). */
   url: string;
   filename: string;
   contentType: string;
+  /** Facultatif : affiché à côté du nom quand l'appelant le connaît. */
+  sizeBytes?: number;
+}
+
+/**
+ * Le poids d'un fichier. Sous le kilo-octet, `Math.round(o / 1024)` rendait
+ * « 0 Ko » — un fichier de 400 octets n'est pas vide, il est petit.
+ */
+export function poidsFichier(octets: number): string {
+  if (octets < 1024) return `${octets} o`;
+  if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`;
+  return `${(octets / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`;
 }
 
 /**
@@ -20,21 +33,22 @@ export interface ViewableDoc {
  * aux cookies tiers d'une iframe.
  */
 export function ApercuDocument({ doc, className }: { doc: ViewableDoc; className?: string }) {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [contenu, setContenu] = useState<{ blobUrl: string; data: ArrayBuffer } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let revoked: string | null = null;
     let cancelled = false;
-    setBlobUrl(null);
+    setContenu(null);
     setError(null);
     fetch(doc.url, { credentials: 'include' })
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const blob = await res.blob();
+        const data = await blob.arrayBuffer();
         if (cancelled) return;
         revoked = URL.createObjectURL(blob);
-        setBlobUrl(revoked);
+        setContenu({ blobUrl: revoked, data });
       })
       .catch(() => {
         if (!cancelled) setError('Impossible de charger le document.');
@@ -46,32 +60,42 @@ export function ApercuDocument({ doc, className }: { doc: ViewableDoc; className
   }, [doc]);
 
   const isImage = doc.contentType.startsWith('image/');
-  const previewable = isImage || doc.contentType === 'application/pdf';
+  const isPdf = doc.contentType === 'application/pdf';
 
   return (
-    <div className={cn('h-full overflow-auto bg-bg', className)}>
+    <div className={cn('h-full bg-bg', !isPdf && 'overflow-auto', className)}>
       {error ? (
         <p className="p-8 text-center text-sm text-danger">{error}</p>
-      ) : !blobUrl ? (
+      ) : !contenu ? (
         <div className="p-6">
           <Skeleton className="h-64 w-full" />
         </div>
-      ) : !previewable ? (
+      ) : isPdf ? (
+        // Notre propre lecteur : le cadre du navigateur affichait une barre
+        // noire et, pour titre, l'identifiant du blob.
+        <PdfViewer
+          data={contenu.data}
+          filename={doc.filename}
+          poids={doc.sizeBytes === undefined ? undefined : poidsFichier(doc.sizeBytes)}
+        />
+      ) : isImage ? (
+        <div className="flex min-h-full items-center justify-center p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={contenu.blobUrl}
+            alt={doc.filename}
+            className="max-w-full rounded-md shadow-sm"
+          />
+        </div>
+      ) : (
         <div className="flex min-h-full flex-col items-center justify-center gap-3 p-8 text-center">
           <p className="text-sm text-ink-muted">
             Aperçu indisponible pour ce format ({doc.contentType}).
           </p>
-          <a href={blobUrl} download={doc.filename}>
+          <a href={contenu.blobUrl} download={doc.filename}>
             <Button variant="secondary">Télécharger {doc.filename}</Button>
           </a>
         </div>
-      ) : isImage ? (
-        <div className="flex min-h-full items-center justify-center p-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={blobUrl} alt={doc.filename} className="max-w-full rounded-md shadow-sm" />
-        </div>
-      ) : (
-        <iframe src={blobUrl} title={doc.filename} className="h-full w-full border-0" />
       )}
     </div>
   );

@@ -161,11 +161,51 @@ for (const [employeeId, [, password]] of Object.entries(PASSWORDS)) {
 }
 
 console.log('→ Demandes posées par les employés (2 approuvées, 1 en attente)');
+const echappe = (t) => t.replace(/([()\\])/g, '\\$1');
+
+/**
+ * Un PDF minimal mais VALIDE, écrit à la main : le jeu de démonstration en
+ * produisait un faux de 46 octets (« %PDF-1.4 justificatif de… »), que le
+ * navigateur affichait en page blanche et qu'un vrai lecteur refuse.
+ */
+function pdfDemo(titre, lignes = []) {
+  const objets = [];
+  const pages = [
+    [`(${titre}) Tj`, ...lignes.map((l) => `T* (${echappe(l)}) Tj`)],
+    ['(Page 2) Tj', 'T* (Document de demonstration Teranga RH.) Tj'],
+  ];
+  const idPage = (i) => 3 + i * 2;
+  const idFlux = (i) => 4 + i * 2;
+
+  objets[1] = `<< /Type /Catalog /Pages 2 0 R >>`;
+  objets[2] = `<< /Type /Pages /Kids [${pages.map((_, i) => `${idPage(i)} 0 R`).join(' ')}] /Count ${pages.length} >>`;
+  const idPolice = 3 + pages.length * 2;
+  pages.forEach((contenu, i) => {
+    const flux = `BT /F1 16 Tf 72 760 Td 22 TL\n${contenu.join('\n')}\nET`;
+    objets[idPage(i)] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ${idFlux(i)} 0 R /Resources << /Font << /F1 ${idPolice} 0 R >> >> >>`;
+    objets[idFlux(i)] = `<< /Length ${flux.length} >>\nstream\n${flux}\nendstream`;
+  });
+  objets[idPolice] = `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>`;
+
+  let sortie = '%PDF-1.4\n';
+  const decalages = [];
+  for (let i = 1; i < objets.length; i += 1) {
+    decalages[i] = sortie.length;
+    sortie += `${i} 0 obj\n${objets[i]}\nendobj\n`;
+  }
+  const xref = sortie.length;
+  sortie += `xref\n0 ${objets.length}\n0000000000 65535 f \n`;
+  for (let i = 1; i < objets.length; i += 1) {
+    sortie += `${String(decalages[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  sortie += `trailer\n<< /Size ${objets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(sortie, 'latin1');
+}
+
 const fakePdfDoc = (name) => ({
   filename: name,
-  contentBase64: Buffer.from('%PDF-1.4 justificatif de démonstration Teranga RH').toString(
-    'base64',
-  ),
+  contentBase64: pdfDemo(name).toString('base64'),
 });
 const request = async (employeeId, type, startDate, endDate, reason, document) => {
   const res = await fetch(`${BASE}/absence-requests`, {
@@ -247,7 +287,7 @@ const job = await call('POST', '/jobs', {
   requiredDocuments: ['CV', 'Lettre de motivation'],
 });
 await call('PATCH', `/jobs/${job.id}`, { status: 'published' });
-const fakePdf = Buffer.from('%PDF-1.4 document de démonstration Teranga RH').toString('base64');
+
 const applyAs = async (givenName, familyName, email, phone, message) => {
   const res = await fetch(`${BASE}/public/jobs/${job.publicSlug}/apply`, {
     method: 'POST',
@@ -263,13 +303,19 @@ const applyAs = async (givenName, familyName, email, phone, message) => {
           label: 'CV',
           filename: `cv-${familyName.toLowerCase()}.pdf`,
           contentType: 'application/pdf',
-          contentBase64: fakePdf,
+          contentBase64: pdfDemo(`CV — ${givenName} ${familyName}`, [
+            'Parcours, diplomes et experiences.',
+            'Document de demonstration.',
+          ]).toString('base64'),
         },
         {
           label: 'Lettre de motivation',
           filename: `lettre-${familyName.toLowerCase()}.pdf`,
           contentType: 'application/pdf',
-          contentBase64: fakePdf,
+          contentBase64: pdfDemo(`Lettre de motivation — ${givenName} ${familyName}`, [
+            'Madame, Monsieur,',
+            'Je vous adresse ma candidature.',
+          ]).toString('base64'),
         },
       ],
     }),

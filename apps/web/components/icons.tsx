@@ -54,6 +54,7 @@ export const ICON_NAMES = [
   'person_add',
   'place',
   'print',
+  'remove',
   'rule',
   'search',
   'schedule',

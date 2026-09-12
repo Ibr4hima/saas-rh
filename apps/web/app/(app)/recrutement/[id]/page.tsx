@@ -23,16 +23,6 @@ import { Modal } from '../../../../components/modal';
 import { usePageTitle } from '../../../../components/page-title';
 
 /**
- * Le poids d'une pièce. Sous le kilo-octet, `Math.round` rendait « 0 Ko » —
- * un fichier de 400 octets n'est pas vide, il est petit.
- */
-function poids(octets: number): string {
-  if (octets < 1024) return `${octets} o`;
-  if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`;
-  return `${(octets / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`;
-}
-
-/**
  * Une offre et ses candidatures.
  *
  * La page montrait un TABLEAU DE FLUX à six colonnes — Reçues, Présélection,
@@ -313,18 +303,16 @@ function FenetreCandidat({
 
   if (!a) return null;
 
-  const vues: { cle: string; titre: string; doc: ViewableDoc | null }[] = [
-    ...a.documents.map((d) => ({
-      cle: d.id,
-      titre: d.label,
-      doc: {
-        url: apiUrl(`/application-documents/${d.id}`),
-        filename: d.filename,
-        contentType: d.contentType,
-      },
-    })),
-    ...(a.message?.trim() ? [{ cle: 'message', titre: 'Message', doc: null }] : []),
-  ];
+  const vues = a.documents.map((d) => ({
+    cle: d.id,
+    titre: d.label,
+    doc: {
+      url: apiUrl(`/application-documents/${d.id}`),
+      filename: d.filename,
+      contentType: d.contentType,
+      sizeBytes: d.sizeBytes,
+    } satisfies ViewableDoc,
+  }));
   // L'onglet retenu peut dépasser après une suppression de pièce : on le
   // ramène dans les bornes ici plutôt que de laisser une vue vide.
   const index = Math.min(onglet, Math.max(0, vues.length - 1));
@@ -377,24 +365,16 @@ function FenetreCandidat({
             Ce dossier ne contient aucune pièce.
           </CardContent>
         </Card>
-      ) : courante.doc ? (
-        <div className="flex flex-col gap-2">
-          <p className="px-0.5 text-[11px] text-ink-muted">
-            {courante.doc.filename} · {poids(a.documents[index]?.sizeBytes ?? 0)}
-          </p>
-          {/* Hauteur fixée plutôt que `h-full` : la fenêtre se dimensionne sur
-              son contenu, et une iframe qui demande « toute la hauteur » d'un
-              parent sans hauteur propre se réduit à zéro. */}
-          <div className="h-[min(66vh,640px)] overflow-hidden rounded-[12px] border border-card-line">
-            <ApercuDocument doc={courante.doc} />
-          </div>
-        </div>
       ) : (
-        <Card>
-          <CardContent className="py-4">
-            <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink">{a.message}</p>
-          </CardContent>
-        </Card>
+        // Hauteur fixée plutôt que `h-full` : la fenêtre se dimensionne sur son
+        // contenu, et un enfant qui demande « toute la hauteur » d'un parent
+        // sans hauteur propre se réduit à zéro.
+        <div className="h-[min(68vh,660px)] overflow-hidden rounded-[12px] border border-card-line">
+          {/* La clé force un lecteur NEUF par pièce : sans elle, passer du CV à
+              la lettre réutiliserait l'état de défilement et de zoom du
+              précédent, et la première page s'afficherait au mauvais endroit. */}
+          <ApercuDocument key={courante.cle} doc={courante.doc} />
+        </div>
       )}
     </Modal>
   );
