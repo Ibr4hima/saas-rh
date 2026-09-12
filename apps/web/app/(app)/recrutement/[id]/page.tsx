@@ -15,7 +15,6 @@ import {
   anciennete,
   DescriptionOffre,
   FaitOffre,
-  joursRestants,
   jourFr,
 } from '../../../../components/offre-fiche';
 import { LoadFailure } from '../../../../components/load-failure';
@@ -151,54 +150,29 @@ export default function JobPage() {
  * avant de postuler, et non une seconde mise en forme qui en diverge.
  */
 function CarteOffre({ offre: j }: { offre: JobPostingView }) {
-  const [copie, setCopie] = useState(false);
   const [deplie, setDeplie] = useState(false);
-  const lienPublic =
-    typeof window !== 'undefined' ? `${window.location.origin}/postuler/${j.publicSlug}` : '';
   // Au-delà de cette longueur, la description repousserait les candidatures
   // hors de l'écran : on en montre l'amorce, le reste au clic.
   const longue = j.description.length > 520;
-  const restants = j.deadline ? joursRestants(j.deadline) : null;
-  const urgence = restants !== null && restants >= 0 && restants <= 7;
 
   return (
     <Card>
       <CardContent className="flex flex-col gap-5 py-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <Badge tone={JOB_STATUS_TONES[j.status] ?? 'neutral'}>
-              {JOB_STATUS_LABELS[j.status] ?? j.status}
-            </Badge>
-            <h1 className="mt-2.5 text-[22px] leading-tight font-extrabold text-balance text-ink-strong">
-              {j.title}
-            </h1>
-            {/* La direction et le lieu tiennent sous le titre, là où on les
-                cherche — et disparaissent quand ils ne sont pas renseignés,
-                plutôt que d'afficher deux tirets dans la grille des faits. */}
-            {j.orgUnitName || j.location ? (
-              <p className="mt-1 text-[12.5px] text-ink-muted">
-                {[j.orgUnitName, j.location].filter(Boolean).join(' · ')}
-              </p>
-            ) : null}
-          </div>
-          <div className="shrink-0">
-            {j.status === 'draft' ? (
-              <BoutonPublier jobId={j.id} />
-            ) : j.status === 'published' ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(lienPublic);
-                  setCopie(true);
-                  setTimeout(() => setCopie(false), 2000);
-                }}
-              >
-                <Icon name={copie ? 'check' : 'content_copy'} size={15} />
-                {copie ? 'Lien copié' : 'Copier le lien public'}
-              </Button>
-            ) : null}
-          </div>
+        <div className="min-w-0">
+          <Badge tone={JOB_STATUS_TONES[j.status] ?? 'neutral'}>
+            {JOB_STATUS_LABELS[j.status] ?? j.status}
+          </Badge>
+          <h1 className="mt-2.5 text-[22px] leading-tight font-extrabold text-balance text-ink-strong">
+            {j.title}
+          </h1>
+          {/* La direction et le lieu tiennent sous le titre, là où on les
+              cherche — et disparaissent quand ils ne sont pas renseignés,
+              plutôt que d'afficher deux tirets dans la grille des faits. */}
+          {j.orgUnitName || j.location ? (
+            <p className="mt-1 text-[12.5px] text-ink-muted">
+              {[j.orgUnitName, j.location].filter(Boolean).join(' · ')}
+            </p>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-1 gap-4 border-t border-line-soft pt-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -213,23 +187,7 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
           </FaitOffre>
           <FaitOffre icon="event" label="Date limite">
             {j.deadline ? (
-              <>
-                {jourFr(j.deadline)}
-                {restants !== null && restants >= 0 ? (
-                  <span
-                    className={cn(
-                      'ml-1.5 text-[12px] font-bold',
-                      urgence ? 'text-accent-text' : 'text-ink-muted',
-                    )}
-                  >
-                    {restants === 0
-                      ? '· dernier jour'
-                      : `· plus que ${restants} jour${restants > 1 ? 's' : ''}`}
-                  </span>
-                ) : (
-                  <span className="ml-1.5 text-[12px] font-bold text-ink-muted">· dépassée</span>
-                )}
-              </>
+              jourFr(j.deadline)
             ) : (
               <span className="font-normal text-ink-muted">Sans date limite</span>
             )}
@@ -331,19 +289,6 @@ function Ligne({ icon, children }: { icon: IconName; children: React.ReactNode }
       <Icon name={icon} size={13} className="shrink-0 text-ink-muted/70" />
       <span className="truncate">{children}</span>
     </span>
-  );
-}
-
-function BoutonPublier({ jobId }: { jobId: string }) {
-  const queryClient = useQueryClient();
-  const publish = useMutation({
-    mutationFn: () => api(`/jobs/${jobId}`, { method: 'PATCH', body: { status: 'published' } }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['job', jobId] }),
-  });
-  return (
-    <Button onClick={() => publish.mutate()} loading={publish.isPending}>
-      Publier l&apos;offre
-    </Button>
   );
 }
 
