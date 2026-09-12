@@ -39,10 +39,18 @@ await call('POST', '/auth/register', {
 });
 
 console.log('→ Unités');
+// La Direction Générale tient le sommet ; les directions métier lui sont
+// rattachées. Sans elle, l'organigramme était une rangée de racines sans lien.
+const dg = await call('POST', '/org-units', {
+  name: 'Direction Générale',
+  unitType: 'direction',
+  shortName: 'DG',
+});
 const drh = await call('POST', '/org-units', {
   name: 'Direction du Capital Humain',
   unitType: 'direction',
   shortName: 'DCH',
+  parentId: dg.id,
 });
 const etudes = await call('POST', '/org-units', {
   name: 'Département Études',
@@ -53,12 +61,26 @@ const dfin = await call('POST', '/org-units', {
   name: 'Direction Financière et Comptable',
   unitType: 'direction',
   shortName: 'DFC',
+  parentId: dg.id,
 });
 const compta = await call('POST', '/org-units', {
   name: 'Service Comptabilité',
   unitType: 'service',
   parentId: dfin.id,
 });
+// Les autres directions de l'agence. Elles n'ont ni employé ni département à
+// ce stade, mais sans elles l'organigramme se résume à deux branches — et une
+// démonstration à deux branches ne dit rien de ce qu'il fait d'un organisme
+// réel : la barre de liaison, le repli, la mise à l'échelle du cadre.
+for (const [name, shortName] of [
+  ['Direction de la Promotion des Investissements', 'DPI'],
+  ["Direction de l'Intelligence et des Perspectives Économiques", 'DIPE'],
+  ["Direction des Systèmes d'information et de la Digitalisation", 'DSID'],
+  ['Direction des Passations de Marchés', 'DPM'],
+  ['Direction des Moyens Généraux', 'DMG'],
+]) {
+  await call('POST', '/org-units', { name, unitType: 'direction', shortName, parentId: dg.id });
+}
 
 console.log('→ Employés');
 const seedEmployee = (person, employee, positionTitle, orgUnitId, contract) =>

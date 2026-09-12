@@ -10,7 +10,11 @@ import type {
   SessionUser,
   UpdateOrgUnitInput,
 } from '@teranga/contracts';
-import { ORG_UNIT_PARENT_TYPES, ORG_UNIT_TYPE_LABELS } from '@teranga/contracts';
+import {
+  ORG_UNIT_PARENT_TYPES,
+  ORG_UNIT_ROOT_TYPES,
+  ORG_UNIT_TYPE_LABELS,
+} from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -354,8 +358,10 @@ export class OrgUnitsService {
   }
 
   /**
-   * Hiérarchie des types : une direction est racine, un département relève
-   * d'une direction, un service d'un département ou d'une direction.
+   * Hiérarchie des types : une direction relève d'une autre direction ou de
+   * rien, un département d'une direction, un service d'un département ou
+   * d'une direction. La boucle, elle, se refuse dans `update` — seul un
+   * re-rattachement peut en créer une.
    */
   private async assertParentAllowed(
     tx: Tx,
@@ -365,7 +371,8 @@ export class OrgUnitsService {
   ): Promise<void> {
     const allowed = ORG_UNIT_PARENT_TYPES[unitType];
     if (!parentId) {
-      if (allowed.length > 0) {
+      // Sans parent : seul un type qui peut tenir le sommet est recevable.
+      if (!ORG_UNIT_ROOT_TYPES.includes(unitType)) {
         problem(
           422,
           'org.parent_required',
@@ -374,14 +381,6 @@ export class OrgUnitsService {
         );
       }
       return;
-    }
-    if (allowed.length === 0) {
-      problem(
-        422,
-        'org.direction_is_root',
-        'Une direction ne se rattache à rien',
-        'Les directions sont au sommet de l’organigramme.',
-      );
     }
     if (selfId && parentId === selfId) {
       problem(422, 'org.cycle', 'Une unité ne peut pas être rattachée à elle-même');

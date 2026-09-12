@@ -3,11 +3,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   createOrgUnitSchema,
   ORG_UNIT_PARENT_TYPES,
+  ORG_UNIT_ROOT_TYPES,
   ORG_UNIT_TYPE_LABELS,
   orgUnitLabel,
   type CreateOrgUnitInput,
@@ -16,12 +17,10 @@ import {
   type OrgUnitView,
 } from '@teranga/contracts';
 import {
-  Badge,
   Button,
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
+  cn,
   DataBlock,
   DataGrid,
   EmptyState,
@@ -33,6 +32,8 @@ import {
 import { api, ApiError } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
+import { Modal } from '../../../components/modal';
+import { Organigramme } from '../../../components/organigramme';
 
 const TYPE_LABELS = ORG_UNIT_TYPE_LABELS;
 
@@ -46,137 +47,118 @@ function pathLabel(units: OrgUnitView[], u: OrgUnitView): string {
   return parent ? `${orgUnitLabel(parent)} › ${orgUnitLabel(u)}` : orgUnitLabel(u);
 }
 
-/** Parents possibles pour un type donné : une direction n'en a aucun. */
+/** Tout le sous-arbre d'une unité, elle comprise. */
+function sousArbre(units: OrgUnitView[], id: string): Set<string> {
+  const dedans = new Set([id]);
+  let bouge = true;
+  while (bouge) {
+    bouge = false;
+    for (const u of units) {
+      if (u.parentId && dedans.has(u.parentId) && !dedans.has(u.id)) {
+        dedans.add(u.id);
+        bouge = true;
+      }
+    }
+  }
+  return dedans;
+}
+
+/**
+ * Parents possibles pour un type donné.
+ *
+ * Depuis qu'une direction peut relever d'une autre, la liste doit écarter le
+ * SOUS-ARBRE de l'unité déplacée : se ranger sous sa propre fille ferait une
+ * boucle. Le serveur la refuse, mais une option qu'on ne peut pas choisir n'a
+ * rien à faire dans un menu.
+ */
 function parentOptions(units: OrgUnitView[], type: OrgUnitType, excludeId?: string) {
   const allowed = ORG_UNIT_PARENT_TYPES[type];
-  return units.filter((u) => u.id !== excludeId && allowed.includes(u.unitType as OrgUnitType));
+  const interdits = excludeId ? sousArbre(units, excludeId) : new Set<string>();
+  return units.filter((u) => !interdits.has(u.id) && allowed.includes(u.unitType as OrgUnitType));
+}
+
+/** Le type le plus naturel pour une unité rattachée à celle-ci. */
+function typeEnfantPropose(parent: OrgUnitView): OrgUnitType {
+  if (parent.unitType === 'direction') return 'department';
+  return 'service';
 }
 
 export default function OrganisationPage() {
   const me = useMe();
   const canManage = Boolean(me.data && ['admin', 'hr'].includes(me.data.role));
+  const isStaff = Boolean(me.data && ['admin', 'hr', 'payroll'].includes(me.data.role));
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Unité en cours de création : le parent visé, ou `racine` depuis l'en-tête. */
+  const [creation, setCreation] = useState<{ parent: OrgUnitView | null } | null>(null);
 
   const units = useQuery({
     queryKey: ['org-units'],
     queryFn: () => api<OrgUnitView[]>('/org-units'),
   });
-
-  const byParent = new Map<string | null, OrgUnitView[]>();
-  for (const u of units.data ?? []) {
-    const list = byParent.get(u.parentId) ?? [];
-    list.push(u);
-    byParent.set(u.parentId, list);
-  }
-  const selected = (units.data ?? []).find((u) => u.id === selectedId) ?? null;
+  const liste = units.data ?? [];
+  const selected = liste.find((u) => u.id === selectedId) ?? null;
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>Organigramme</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {units.isLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : (units.data ?? []).length === 0 ? (
-              <EmptyState
-                icon={<Icon name="family_history" size={22} />}
-                title="Aucune unité pour le moment"
-                description="Commencez par créer vos directions, puis leurs départements et services."
-              />
-            ) : (
-              <UnitTree
-                byParent={byParent}
-                parentId={null}
-                selectedId={selectedId}
-                onSelect={(id) => setSelectedId(id === selectedId ? null : id)}
-              />
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="flex flex-col gap-6">
-          {selected ? (
-            <UnitPanel
-              key={selected.id}
-              unit={selected}
-              units={units.data ?? []}
-              canManage={canManage}
-              isStaff={Boolean(me.data && ['admin', 'hr', 'payroll'].includes(me.data.role))}
-              onClose={() => setSelectedId(null)}
-            />
-          ) : null}
-          {canManage ? <CreateUnitCard units={units.data ?? []} parentHint={selected} /> : null}
-        </div>
+    <div className="mx-auto w-full max-w-[1400px]">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
+          Organigramme
+        </p>
+        {canManage ? (
+          <Button size="sm" onClick={() => setCreation({ parent: null })}>
+            <Icon name="add" size={15} />
+            Nouvelle unité
+          </Button>
+        ) : null}
       </div>
-    </div>
-  );
-}
 
-function UnitTree({
-  byParent,
-  parentId,
-  selectedId,
-  onSelect,
-}: {
-  byParent: Map<string | null, OrgUnitView[]>;
-  parentId: string | null;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-}) {
-  const children = byParent.get(parentId) ?? [];
-  if (children.length === 0) return null;
-  return (
-    <div
-      className={
-        parentId ? 'ml-4 flex flex-col gap-2 border-l border-line pl-4' : 'flex flex-col gap-2'
-      }
-    >
-      {children.map((u) => (
-        <div key={u.id} className="flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => onSelect(u.id)}
-            className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-              selectedId === u.id
-                ? 'border-primary bg-primary-soft'
-                : 'border-line bg-surface hover:border-ink-muted/40'
-            }`}
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-ink-strong">{orgUnitLabel(u)}</span>
-              <Badge tone={u.unitType === 'direction' ? 'primary' : 'neutral'}>
-                {TYPE_LABELS[u.unitType]}
-              </Badge>
-              <span className="ml-auto shrink-0 rounded-full bg-bg px-2 py-0.5 text-xs font-medium text-ink-muted">
-                {u.headcount} {u.headcount > 1 ? 'personnes' : 'personne'}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-ink-muted">
-              {u.managerName ? (
-                <>
-                  Responsable : <span className="font-medium text-ink">{u.managerName}</span>
-                  {u.managerPosition ? ` — ${u.managerPosition}` : ''}
-                </>
-              ) : (
-                'Aucun responsable désigné'
-              )}
-            </p>
-          </button>
-          <UnitTree
-            byParent={byParent}
-            parentId={u.id}
-            selectedId={selectedId}
-            onSelect={onSelect}
+      <Card>
+        {units.isLoading ? (
+          <CardContent className="py-6">
+            <Skeleton className="h-64 w-full" />
+          </CardContent>
+        ) : liste.length === 0 ? (
+          <EmptyState
+            className="py-14"
+            icon={<Icon name="family_history" size={22} />}
+            title="Aucune unité pour le moment"
+            description="Commencez par la Direction Générale, puis rattachez-lui les directions métier."
           />
-        </div>
-      ))}
+        ) : (
+          <Organigramme
+            unites={liste}
+            selectionId={selectedId}
+            actions={{
+              onOuvrir: (u) => setSelectedId(u.id),
+              ...(canManage ? { onAjouter: (parent: OrgUnitView) => setCreation({ parent }) } : {}),
+            }}
+          />
+        )}
+      </Card>
+
+      {selected ? (
+        <UnitPanel
+          key={selected.id}
+          unit={selected}
+          units={liste}
+          canManage={canManage}
+          isStaff={isStaff}
+          onClose={() => setSelectedId(null)}
+        />
+      ) : null}
+
+      {creation ? (
+        <FenetreNouvelleUnite
+          units={liste}
+          parent={creation.parent}
+          onClose={() => setCreation(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
+/** La fiche d'une unité : ses faits, son responsable, ses membres. */
 function UnitPanel({
   unit,
   units,
@@ -208,7 +190,7 @@ function UnitPanel({
         body: {
           name,
           unitType,
-          parentId: unitType === 'direction' ? null : parentId || null,
+          parentId: parentId || null,
           shortName: unitType === 'direction' ? shortName.trim() || null : null,
         },
       }),
@@ -261,50 +243,71 @@ function UnitPanel({
       setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
   });
 
+  const direction = unit.unitType === 'direction';
+  const parents = parentOptions(units, unitType, unit.id);
+
   return (
-    <Card>
-      <CardHeader className="flex items-center justify-between">
-        <CardTitle>{orgUnitLabel(unit)}</CardTitle>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-sm text-ink-muted hover:text-ink"
-          aria-label="Fermer"
+    <Modal
+      open
+      onClose={onClose}
+      avatar={
+        <span
+          className={cn(
+            'flex size-11 items-center justify-center rounded-[14px]',
+            direction ? 'bg-primary/[0.10] text-primary' : 'bg-bg text-ink-muted',
+          )}
         >
-          ✕
-        </button>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {canManage && !editing && !confirmDelete ? (
-          <div className="flex">
+          <Icon name={direction ? 'family_history' : 'group'} size={20} />
+        </span>
+      }
+      title={unit.name}
+      subtitle={
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-ink-muted">
+          <span className="rounded-full bg-bg px-2 py-[3px] font-semibold text-ink">
+            {TYPE_LABELS[unit.unitType as OrgUnitType]}
+          </span>
+          {unit.shortName ? (
+            <span className="font-mono font-semibold">{unit.shortName}</span>
+          ) : null}
+          <span>·</span>
+          <span>
+            {units.find((u) => u.id === unit.parentId)
+              ? `Rattachée à ${orgUnitLabel(units.find((u) => u.id === unit.parentId)!)}`
+              : 'Au sommet de l’organigramme'}
+          </span>
+        </span>
+      }
+      maxWidth="max-w-2xl"
+      footer={
+        canManage && !editing && !confirmDelete ? (
+          <div className="flex w-full items-center justify-between gap-3">
             <button
               type="button"
-              className="ml-auto text-xs font-semibold text-primary hover:underline"
+              onClick={() => {
+                setError(null);
+                setConfirmDelete(true);
+              }}
+              className="text-[12px] font-semibold text-ink-muted transition-colors hover:text-danger"
+            >
+              Dissoudre l’unité
+            </button>
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={() => {
                 setError(null);
                 setEditing(true);
               }}
             >
               Modifier
-            </button>
+            </Button>
           </div>
-        ) : null}
-
-        {/* Les faits de l'unité, dans le même vocabulaire que la fiche
-            employé : on passe d'un écran à l'autre sans réapprendre à lire. */}
-        <DataGrid>
-          <DataBlock label="Type">{TYPE_LABELS[unit.unitType as OrgUnitType]}</DataBlock>
-          <DataBlock label="Abrégé">{unit.shortName}</DataBlock>
-          <DataBlock label="Rattachement">
-            {units.find((u) => u.id === unit.parentId)?.name ?? 'Aucun — unité racine'}
-          </DataBlock>
-          <DataBlock label="Effectif">
-            {unit.headcount} {unit.headcount > 1 ? 'personnes' : 'personne'}
-          </DataBlock>
-        </DataGrid>
-
-        {editing ? (
-          <div className="flex flex-col gap-3 rounded-md bg-bg p-3">
+        ) : null
+      }
+    >
+      {editing ? (
+        <Card>
+          <CardContent className="flex flex-col gap-3 py-4">
             <Field label="Nom" htmlFor={`edit-name-${unit.id}`} required>
               <Input
                 id={`edit-name-${unit.id}`}
@@ -319,14 +322,39 @@ function UnitPanel({
                 onChange={(e) => {
                   const next = e.target.value as OrgUnitType;
                   setUnitType(next);
-                  // Une direction est racine : on efface le rattachement pour
-                  // que le formulaire ne propose jamais un état invalide.
-                  if (next === 'direction') setParentId('');
+                  // Changer de type invalide le rattachement : un parent
+                  // valable pour un service ne l'est pas pour une direction.
+                  setParentId('');
                 }}
               >
                 <option value="direction">Direction</option>
                 <option value="department">Département</option>
                 <option value="service">Service</option>
+              </Select>
+            </Field>
+            <Field
+              label="Rattachée à"
+              htmlFor={`edit-parent-${unit.id}`}
+              hint={
+                ORG_UNIT_ROOT_TYPES.includes(unitType)
+                  ? 'Laissez vide pour une unité au sommet de l’organigramme.'
+                  : undefined
+              }
+              required={!ORG_UNIT_ROOT_TYPES.includes(unitType)}
+            >
+              <Select
+                id={`edit-parent-${unit.id}`}
+                value={parentId}
+                onChange={(e) => setParentId(e.target.value)}
+              >
+                <option value="">
+                  {ORG_UNIT_ROOT_TYPES.includes(unitType) ? '— Au sommet' : '— Choisir'}
+                </option>
+                {parents.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {pathLabel(units, u)}
+                  </option>
+                ))}
               </Select>
             </Field>
             {unitType === 'direction' ? (
@@ -343,27 +371,13 @@ function UnitPanel({
                   onChange={(e) => setShortName(e.target.value.toUpperCase())}
                 />
               </Field>
-            ) : (
-              <Field label="Rattachée à" htmlFor={`edit-parent-${unit.id}`} required>
-                <Select
-                  id={`edit-parent-${unit.id}`}
-                  value={parentId}
-                  onChange={(e) => setParentId(e.target.value)}
-                >
-                  <option value="">— Choisir</option>
-                  {parentOptions(units, unitType, unit.id).map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {pathLabel(units, u)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            )}
+            ) : null}
             <div className="flex gap-2">
-              <Button loading={save.isPending} onClick={() => save.mutate()}>
+              <Button size="sm" loading={save.isPending} onClick={() => save.mutate()}>
                 Enregistrer
               </Button>
               <Button
+                size="sm"
                 variant="ghost"
                 onClick={() => {
                   setEditing(false);
@@ -376,26 +390,17 @@ function UnitPanel({
               >
                 Annuler
               </Button>
-              <Button
-                variant="ghost"
-                className="ml-auto text-danger"
-                onClick={() => {
-                  setEditing(false);
-                  setError(null);
-                  setConfirmDelete(true);
-                }}
-              >
-                Dissoudre
-              </Button>
             </div>
-          </div>
-        ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
-        {confirmDelete ? (
-          <div className="flex flex-col gap-3 rounded-md bg-danger-soft p-3">
-            <p className="text-sm text-danger">
-              Dissoudre « {unit.name} » ? L&apos;unité disparaît de l&apos;organigramme, mais
-              l&apos;historique des affectations continue de la mentionner.
+      {confirmDelete ? (
+        <Card className="border-danger/30">
+          <CardContent className="flex flex-col gap-3 py-4">
+            <p className="text-[12.5px] text-danger">
+              Dissoudre « {unit.name} » ? L’unité disparaît de l’organigramme, mais l’historique des
+              affectations continue de la mentionner.
             </p>
             {unit.openAssignments > 0 ? (
               <Field
@@ -422,6 +427,7 @@ function UnitPanel({
             ) : null}
             <div className="flex gap-2">
               <Button
+                size="sm"
                 variant="danger"
                 loading={remove.isPending}
                 disabled={unit.openAssignments > 0 && !reassignTo}
@@ -430,6 +436,7 @@ function UnitPanel({
                 Confirmer la dissolution
               </Button>
               <Button
+                size="sm"
                 variant="ghost"
                 onClick={() => {
                   setConfirmDelete(false);
@@ -439,77 +446,85 @@ function UnitPanel({
                 Annuler
               </Button>
             </div>
-          </div>
-        ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
-        {canManage ? (
-          <div>
-            <Field
-              label="Responsable"
-              htmlFor="unit-manager"
-              hint={
-                !eligible.isLoading && (eligible.data ?? []).length === 0
-                  ? 'Personne n’est encore affecté à cette unité : affectez quelqu’un avant de le nommer responsable.'
-                  : 'Parmi les personnes affectées à cette unité ou à une unité en dessous.'
-              }
-            >
-              <div className="flex gap-2">
-                <Select
-                  id="unit-manager"
-                  value={managerId}
-                  onChange={(ev) => setManagerId(ev.target.value)}
-                >
-                  <option value="">— Aucun</option>
-                  {(eligible.data ?? []).map((e) => (
-                    <option key={e.employeeId} value={e.employeeId}>
-                      {e.givenName} {e.familyName}
-                      {e.positionTitle ? ` — ${e.positionTitle}` : ''}
-                    </option>
-                  ))}
-                </Select>
-                <Button
-                  variant="secondary"
-                  loading={saveManager.isPending}
-                  disabled={(unit.managerEmployeeId ?? '') === managerId}
-                  onClick={() => saveManager.mutate()}
-                >
-                  OK
-                </Button>
-              </div>
-            </Field>
-            {error ? (
-              <p className="mt-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
-                {error}
-              </p>
-            ) : null}
-          </div>
-        ) : unit.managerName ? (
-          <p className="text-sm">
-            <span className="text-ink-muted">Responsable :</span>{' '}
-            <span className="font-medium text-ink-strong">{unit.managerName}</span>
-            {unit.managerPosition ? (
-              <span className="text-ink-muted"> — {unit.managerPosition}</span>
-            ) : null}
-          </p>
-        ) : null}
+      <Card>
+        <CardContent className="py-4">
+          <DataGrid>
+            <DataBlock label="Effectif">
+              {unit.headcount} {unit.headcount > 1 ? 'personnes' : 'personne'}
+            </DataBlock>
+            <DataBlock label="Responsable">
+              {unit.managerName ? (
+                <>
+                  {unit.managerName}
+                  {unit.managerPosition ? (
+                    <span className="text-ink-muted"> — {unit.managerPosition}</span>
+                  ) : null}
+                </>
+              ) : null}
+            </DataBlock>
+          </DataGrid>
 
-        <div>
-          <p className="mb-2 text-xs font-semibold tracking-wide text-ink-muted uppercase">
+          {canManage ? (
+            <div className="mt-3 border-t border-line-soft pt-3">
+              <Field
+                label="Désigner un responsable"
+                htmlFor="unit-manager"
+                hint={
+                  !eligible.isLoading && (eligible.data ?? []).length === 0
+                    ? 'Personne n’est encore affecté à cette unité : affectez quelqu’un avant de le nommer responsable.'
+                    : 'Parmi les personnes affectées à cette unité ou à une unité en dessous.'
+                }
+              >
+                <div className="flex gap-2">
+                  <Select
+                    id="unit-manager"
+                    value={managerId}
+                    onChange={(ev) => setManagerId(ev.target.value)}
+                  >
+                    <option value="">— Aucun</option>
+                    {(eligible.data ?? []).map((e) => (
+                      <option key={e.employeeId} value={e.employeeId}>
+                        {e.givenName} {e.familyName}
+                        {e.positionTitle ? ` — ${e.positionTitle}` : ''}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={saveManager.isPending}
+                    disabled={(unit.managerEmployeeId ?? '') === managerId}
+                    onClick={() => saveManager.mutate()}
+                  >
+                    OK
+                  </Button>
+                </div>
+              </Field>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="py-4">
+          <p className="text-[9.5px] font-extrabold tracking-[0.12em] text-ink-muted uppercase">
             Membres
           </p>
           {members.isLoading ? (
-            <Skeleton className="h-12 w-full" />
+            <Skeleton className="mt-2 h-12 w-full" />
           ) : (members.data ?? []).length === 0 ? (
-            <EmptyState
-              icon={<Icon name="group" size={22} />}
-              title="Aucun membre aujourd'hui"
-              description="Les affectations se posent depuis la fiche de chaque employé, sur la carte « Affectations »."
-              className="py-8"
-            />
+            <p className="mt-2 text-[12.5px] text-ink-muted/70">
+              Aucun membre aujourd’hui. Les affectations se posent depuis la fiche de chaque
+              employé, sur la carte « Affectations ».
+            </p>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="mt-2 flex flex-col gap-2">
               {members.data!.map((m) => (
-                <li key={m.employeeId} className="flex items-center gap-2.5 text-sm">
+                <li key={m.employeeId} className="flex items-center gap-2.5 text-[12.5px]">
                   <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11px] font-bold text-primary">
                     {m.givenName[0]}
                     {m.familyName[0]}
@@ -518,12 +533,12 @@ function UnitPanel({
                     {isStaff ? (
                       <Link
                         href={`/employees/${m.employeeId}`}
-                        className="font-medium text-ink-strong hover:underline"
+                        className="font-semibold text-ink-strong hover:underline"
                       >
                         {m.givenName} {m.familyName}
                       </Link>
                     ) : (
-                      <span className="font-medium text-ink-strong">
+                      <span className="font-semibold text-ink-strong">
                         {m.givenName} {m.familyName}
                       </span>
                     )}
@@ -535,143 +550,175 @@ function UnitPanel({
               ))}
             </ul>
           )}
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      {error ? (
+        <p className="rounded-md bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>
+      ) : null}
+    </Modal>
   );
 }
 
-function CreateUnitCard({
+/**
+ * Créer une unité, depuis le « + » d'un bloc ou depuis l'en-tête.
+ *
+ * Ouverte depuis un bloc, la fenêtre arrive DÉJÀ REMPLIE : le parent est
+ * celui qu'on a survolé, et le type est celui qu'on attend en dessous — un
+ * département sous une direction, un service sous un département. C'est le
+ * geste entier qui compte : on montre où l'on veut accrocher, on tape un nom.
+ */
+function FenetreNouvelleUnite({
   units,
-  parentHint,
+  parent,
+  onClose,
 }: {
   units: OrgUnitView[];
-  parentHint: OrgUnitView | null;
+  parent: OrgUnitView | null;
+  onClose: () => void;
 }) {
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
 
   const form = useForm<CreateOrgUnitInput>({
     resolver: zodResolver(createOrgUnitSchema),
-    defaultValues: { unitType: 'direction' },
+    defaultValues: {
+      name: '',
+      unitType: parent ? typeEnfantPropose(parent) : 'direction',
+      parentId: parent?.id,
+    },
   });
   const selectedType = (form.watch('unitType') ?? 'direction') as OrgUnitType;
   const allowedParents = parentOptions(units, selectedType);
+  const racinePossible = ORG_UNIT_ROOT_TYPES.includes(selectedType);
+
+  // Le champ prend le focus à l'ouverture : la fenêtre n'attend qu'un nom.
+  useEffect(() => {
+    const t = setTimeout(() => document.getElementById('new-unit-name')?.focus(), 60);
+    return () => clearTimeout(t);
+  }, []);
 
   const create = useMutation({
     mutationFn: (input: CreateOrgUnitInput) =>
       api<{ id: string }>('/org-units', { method: 'POST', body: input }),
     onSuccess: () => {
-      form.reset({
-        name: '',
-        unitType: form.getValues('unitType'),
-        parentId: undefined,
-        shortName: undefined,
-      });
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
+      onClose();
     },
     onError: (err) =>
       setServerError(err instanceof ApiError ? err.message : 'Création impossible.'),
   });
 
-  return (
-    <Card className="h-fit">
-      <CardHeader>
-        <CardTitle>Nouvelle unité</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form
-          onSubmit={form.handleSubmit((v) => {
-            setServerError(null);
-            create.mutate({ ...v, parentId: v.parentId || undefined });
-          })}
-          className="flex flex-col gap-4"
-          noValidate
-        >
-          <Field label="Nom" htmlFor="name" error={form.formState.errors.name?.message} required>
-            <Input
-              id="name"
-              placeholder="Ex : Direction des Ressources Humaines"
-              {...form.register('name')}
-            />
-          </Field>
-          <Field label="Type" htmlFor="unitType" required>
-            <Select
-              id="unitType"
-              {...form.register('unitType', {
-                onChange: () => {
-                  // Changer de type invalide le rattachement précédent : un
-                  // parent valable pour un service ne l'est pas pour une
-                  // direction. On repart d'un choix vide plutôt que d'envoyer
-                  // une combinaison que le serveur refusera.
-                  form.setValue('parentId', undefined);
-                  form.setValue('shortName', undefined);
-                },
-              })}
-            >
-              <option value="direction">Direction</option>
-              <option value="department">Département</option>
-              <option value="service">Service</option>
-            </Select>
-          </Field>
+  const soumettre = form.handleSubmit((v) => {
+    setServerError(null);
+    create.mutate({ ...v, parentId: v.parentId || undefined });
+  });
 
-          {selectedType === 'direction' ? (
-            <Field
-              label="Abrégé"
-              htmlFor="shortName"
-              error={form.formState.errors.shortName?.message}
-              hint="Facultatif — « DCH » pour Direction du Capital Humain."
-            >
-              <Input
-                id="shortName"
-                placeholder="DCH"
-                maxLength={12}
-                {...form.register('shortName')}
-                onChange={(e) => form.setValue('shortName', e.target.value.toUpperCase())}
-              />
-            </Field>
-          ) : (
-            <>
-              <Field
-                label="Rattachée à"
-                htmlFor="parentId"
-                error={form.formState.errors.parentId?.message}
-                hint={
-                  allowedParents.length === 0
-                    ? `Créez d’abord ${selectedType === 'department' ? 'une direction' : 'une direction ou un département'}.`
-                    : undefined
-                }
-                required
-              >
-                <Select id="parentId" {...form.register('parentId')}>
-                  <option value="">— Choisir</option>
-                  {allowedParents.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {pathLabel(units, u)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              {parentHint &&
-              ORG_UNIT_PARENT_TYPES[selectedType].includes(parentHint.unitType as OrgUnitType) ? (
-                <button
-                  type="button"
-                  className="self-start text-xs text-primary hover:underline"
-                  onClick={() => form.setValue('parentId', parentHint.id)}
-                >
-                  Rattacher à « {orgUnitLabel(parentHint)} »
-                </button>
-              ) : null}
-            </>
-          )}
-          {serverError ? (
-            <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{serverError}</p>
-          ) : null}
-          <Button type="submit" loading={create.isPending}>
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Nouvelle unité"
+      subtitle={parent ? `Rattachée à ${orgUnitLabel(parent)}` : undefined}
+      maxWidth="max-w-lg"
+      footer={
+        <div className="flex w-full justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button size="sm" loading={create.isPending} onClick={() => void soumettre()}>
             Créer
           </Button>
-        </form>
-      </CardContent>
-    </Card>
+        </div>
+      }
+    >
+      <Card>
+        <CardContent className="py-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void soumettre();
+            }}
+            className="flex flex-col gap-3.5"
+            noValidate
+          >
+            <Field
+              label="Nom"
+              htmlFor="new-unit-name"
+              error={form.formState.errors.name?.message}
+              required
+            >
+              <Input
+                id="new-unit-name"
+                placeholder="Ex : Direction des Ressources Humaines"
+                {...form.register('name')}
+              />
+            </Field>
+            <Field label="Type" htmlFor="new-unit-type" required>
+              <Select
+                id="new-unit-type"
+                {...form.register('unitType', {
+                  onChange: () => {
+                    // Changer de type invalide le rattachement précédent : un
+                    // parent valable pour un service ne l'est pas pour une
+                    // direction. On repart d'un choix vide plutôt que d'envoyer
+                    // une combinaison que le serveur refusera.
+                    form.setValue('parentId', undefined);
+                    form.setValue('shortName', undefined);
+                  },
+                })}
+              >
+                <option value="direction">Direction</option>
+                <option value="department">Département</option>
+                <option value="service">Service</option>
+              </Select>
+            </Field>
+            <Field
+              label="Rattachée à"
+              htmlFor="new-unit-parent"
+              error={form.formState.errors.parentId?.message}
+              hint={
+                racinePossible
+                  ? 'Laissez vide pour la placer au sommet — la Direction Générale.'
+                  : allowedParents.length === 0
+                    ? `Créez d’abord ${selectedType === 'department' ? 'une direction' : 'une direction ou un département'}.`
+                    : undefined
+              }
+              required={!racinePossible}
+            >
+              <Select id="new-unit-parent" {...form.register('parentId')}>
+                <option value="">{racinePossible ? '— Au sommet' : '— Choisir'}</option>
+                {allowedParents.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {pathLabel(units, u)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {selectedType === 'direction' ? (
+              <Field
+                label="Abrégé"
+                htmlFor="new-unit-short"
+                error={form.formState.errors.shortName?.message}
+                hint="Facultatif — « DCH » pour Direction du Capital Humain."
+              >
+                <Input
+                  id="new-unit-short"
+                  placeholder="DCH"
+                  maxLength={12}
+                  {...form.register('shortName')}
+                  onChange={(e) => form.setValue('shortName', e.target.value.toUpperCase())}
+                />
+              </Field>
+            ) : null}
+            {serverError ? (
+              <p className="rounded-md bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
+                {serverError}
+              </p>
+            ) : null}
+          </form>
+        </CardContent>
+      </Card>
+    </Modal>
   );
 }

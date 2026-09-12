@@ -146,7 +146,32 @@ describe('hiérarchie des types', () => {
     // de type qui doit parler, pas l'anti-cycle.
     expect(
       await codeOf(() => service.update(user, autreDirection, { parentId: serviceUnit })),
-    ).toBe('org.direction_is_root');
+    ).toBe('org.parent_type_invalid');
+  });
+
+  it('accepte une direction sous une AUTRE direction — la Générale chapeaute', async () => {
+    const generale = await creerUnite('Direction Générale', 'direction', null);
+    await service.update(user, autreDirection, { parentId: generale });
+    const unites = await service.list(user);
+    expect(unites.find((u) => u.id === autreDirection)?.parentId).toBe(generale);
+    // Remise en place : les autres cas de ce fichier partent d'une voisine
+    // libre de tout rattachement.
+    await service.update(user, autreDirection, { parentId: null });
+  });
+
+  it('laisse une direction SANS rattachement : elle peut tenir le sommet', async () => {
+    const id = await creerUnite('Direction Racine', 'direction', null);
+    const unites = await service.list(user);
+    expect(unites.find((u) => u.id === id)?.parentId).toBeNull();
+  });
+
+  it('refuse de ranger une direction sous sa propre descendante', async () => {
+    // `direction` → `departement` → `serviceUnit`. Une direction sœur du
+    // département ferait une boucle si sa mère venait s'y ranger.
+    const fille = await creerUnite('Direction Fille', 'direction', direction);
+    expect(await codeOf(() => service.update(user, direction, { parentId: fille }))).toBe(
+      'org.cycle',
+    );
   });
 
   it('refuse un département sans rattachement', async () => {

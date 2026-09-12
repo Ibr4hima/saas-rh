@@ -94,15 +94,27 @@ export function orgUnitLabel(unit: { name: string; shortName?: string | null }):
 }
 
 /**
- * Rattachements autorisés : une direction est racine, un département relève
- * d'une direction, un service d'un département ou directement d'une direction.
+ * Rattachements autorisés : une direction relève d'une autre direction — la
+ * Direction Générale chapeaute les directions métier —, un département d'une
+ * direction, un service d'un département ou directement d'une direction.
  * Sans cette règle, on pouvait ranger une direction sous un service.
  */
 export const ORG_UNIT_PARENT_TYPES: Record<OrgUnitType, OrgUnitType[]> = {
-  direction: [],
+  direction: ['direction'],
   department: ['direction'],
   service: ['direction', 'department'],
 };
+
+/**
+ * Les types qui peuvent vivre SANS parent, au sommet de l'organigramme.
+ *
+ * Seule une direction le peut, et une seule le fait en pratique : la Direction
+ * Générale. Mais l'organigramme se construit rarement de haut en bas — on
+ * saisit les directions métier d'abord, la Générale ensuite —, alors on
+ * n'impose pas qu'un parent existe déjà. Un département orphelin, lui, n'a
+ * aucun sens : il n'existe que rattaché.
+ */
+export const ORG_UNIT_ROOT_TYPES: OrgUnitType[] = ['direction'];
 
 export const ORG_UNIT_TYPE_LABELS: Record<OrgUnitType, string> = {
   direction: 'Direction',
