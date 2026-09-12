@@ -150,7 +150,6 @@ function StatTile({
   short,
   value,
   context,
-  delta,
   href,
   alert,
 }: {
@@ -160,8 +159,6 @@ function StatTile({
   short: string;
   value: number | undefined;
   context?: string;
-  /** Une variation à mettre en avant : « +2 en 90 j ». */
-  delta?: string;
   href: string;
   /** true = ce chiffre attend une action : la pastille passe à l'orange de charte. */
   alert?: boolean;
@@ -203,20 +200,9 @@ function StatTile({
             {value}
           </p>
         )}
-        <p className="mt-2 flex min-h-[18px] items-center gap-1.5 text-[11.5px] text-ink-muted sm:pr-5">
-          {delta ? (
-            <span
-              className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-success-soft py-px pr-1.5 pl-1 text-[10.5px] font-bold text-success"
-              style={TABULAIRE}
-            >
-              <Icon name="trending_up" size={12} />
-              {delta}
-            </span>
-          ) : null}
-          {context ? (
-            <span className="line-clamp-2 sm:line-clamp-none sm:truncate">{context}</span>
-          ) : null}
-        </p>
+        {context ? (
+          <p className="mt-2 text-[11.5px] text-ink-muted sm:truncate sm:pr-5">{context}</p>
+        ) : null}
         <Icon
           name="arrow_forward"
           size={16}
@@ -486,7 +472,6 @@ export default function DashboardPage() {
     },
   ];
   const aTraiter = inbox.filter((r) => r.show && r.count > 0);
-  const totalATraiter = aTraiter.reduce((s, r) => s + r.count, 0);
 
   const absences = upcoming.data ?? [];
   const ABSENCES_VISIBLES = 6;
@@ -506,8 +491,13 @@ export default function DashboardPage() {
           label="Effectif actif"
           short="Effectif"
           value={d?.activeEmployees}
-          delta={d && d.hiredLast90d > 0 ? `+${d.hiredLast90d} en 90 j` : undefined}
-          context={d ? `${plural(d.women, 'femme')} · ${plural(d.men, 'homme')}` : undefined}
+          context={
+            d
+              ? d.hiredLast90d > 0
+                ? `dont ${plural(d.hiredLast90d, 'recruté')} en 90 j`
+                : `${plural(d.women, 'femme')} · ${plural(d.men, 'homme')}`
+              : undefined
+          }
           href="/employees"
         />
         <StatTile
@@ -515,13 +505,7 @@ export default function DashboardPage() {
           label="Demandes à valider"
           short="À valider"
           value={d?.pendingRequests}
-          context={
-            d
-              ? d.pendingRequests > 0
-                ? 'congés en attente de votre visa'
-                : 'aucun congé en attente'
-              : undefined
-          }
+          context="congés en attente de visa"
           href="/absences"
           alert={(d?.pendingRequests ?? 0) > 0}
         />
@@ -530,13 +514,7 @@ export default function DashboardPage() {
           label="Absents aujourd'hui"
           short="Absents"
           value={d?.absentToday}
-          context={
-            d
-              ? d.upcomingAbsences > 0
-                ? `${d.upcomingAbsences} à venir sous 30 j`
-                : 'rien de prévu sous 30 j'
-              : undefined
-          }
+          context={d ? `${d.upcomingAbsences} à venir sous 30 j` : undefined}
           href="/calendrier"
         />
         {seesContracts ? (
@@ -545,13 +523,7 @@ export default function DashboardPage() {
             label="Contrats à suivre"
             short="Contrats"
             value={expiring.data?.length}
-            context={
-              expiring.data
-                ? expiring.data.length > 0
-                  ? 'échéance sous 30 jours'
-                  : 'aucune échéance sous 30 j'
-                : undefined
-            }
+            context="échéance sous 30 jours"
             href="/employees"
             alert={(expiring.data?.length ?? 0) > 0}
           />
@@ -571,9 +543,8 @@ export default function DashboardPage() {
         {/* ———— Colonne principale ———— */}
         <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
           <Card>
-            <CardHeader className="flex items-center justify-between gap-3">
+            <CardHeader>
               <CardTitle>Demandes à traiter</CardTitle>
-              {totalATraiter > 0 ? <TotalCarte>{totalATraiter} en attente</TotalCarte> : null}
             </CardHeader>
             <CardContent className="px-2 py-2">
               {stats.isLoading ? (
@@ -632,9 +603,8 @@ export default function DashboardPage() {
         {/* ———— Colonne de contexte ———— */}
         <div className="flex min-w-0 flex-col gap-4">
           <Card>
-            <CardHeader className="flex items-center justify-between gap-3">
+            <CardHeader>
               <CardTitle>Effectifs par direction</CardTitle>
-              {d ? <TotalCarte>{plural(d.activeEmployees, 'agent')}</TotalCarte> : null}
             </CardHeader>
             <CardContent>
               {stats.isLoading ? (
@@ -710,13 +680,7 @@ export default function DashboardPage() {
         <Card className="mt-4">
           <CardHeader className="flex items-center justify-between gap-3">
             <CardTitle>Suivi des contrats</CardTitle>
-            {d ? (
-              <TotalCarte>
-                {d.contractFollowUpTotal > 0
-                  ? `${plural(d.contractFollowUpTotal, 'contrat')} · CDD et stages en cours`
-                  : 'CDD et stages en cours'}
-              </TotalCarte>
-            ) : null}
+            <TotalCarte>CDD et stages en cours</TotalCarte>
           </CardHeader>
           {stats.isLoading ? (
             <CardContent>

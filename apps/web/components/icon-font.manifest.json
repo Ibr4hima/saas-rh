@@ -42,12 +42,11 @@
     "search",
     "settings",
     "task_alt",
-    "trending_up",
     "unarchive",
     "upload_file",
     "visibility",
     "visibility_off"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 50048
+  "bytes": 50216
 }

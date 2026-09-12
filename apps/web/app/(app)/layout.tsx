@@ -26,7 +26,6 @@ interface DashboardStats {
   upcomingAbsences: number;
   orgUnits: number;
   pendingDocumentRequests: number;
-  pendingProfileChanges: number;
 }
 
 interface NavChild {
@@ -582,28 +581,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const badgeCount = (badge?: 'pending' | 'docs') =>
     badge === 'pending' ? pending : badge === 'docs' ? pendingDocs : 0;
 
-  // Sous le bonjour, ce qui attend : la première chose qu'on veut savoir en
-  // arrivant, avant même de lire les tuiles. Sur le tableau de bord seulement
-  // — ailleurs, le titre de l'écran suffit.
-  const contexte =
-    pathname === '/dashboard' && isStaff && stats.data
-      ? (() => {
-          const s = stats.data;
-          const n = (v: number, un: string, des: string) => `${v} ${v > 1 ? des : un}`;
-          const attente = [
-            s.pendingRequests > 0 ? `${n(s.pendingRequests, 'congé', 'congés')} à viser` : null,
-            s.pendingDocumentRequests > 0
-              ? `${n(s.pendingDocumentRequests, 'document', 'documents')} à préparer`
-              : null,
-            s.pendingProfileChanges > 0
-              ? `${n(s.pendingProfileChanges, 'information', 'informations')} à confirmer`
-              : null,
-          ].filter(Boolean);
-          return attente.length > 0
-            ? attente.join(' · ')
-            : 'Rien ne vous attend — tout est à jour.';
-        })()
-      : null;
   // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
   const title = titleOverride ?? pageTitle(pathname, user.givenName);
   const action = pageAction(pathname, user.role);
@@ -631,16 +608,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <BrandMark variant="hero" />
         </Link>
 
-        <div className="relative z-10 min-w-0">
-          <h1 className="truncate text-[17px] leading-tight font-extrabold tracking-[-0.01em] text-hero-ink sm:text-[18px] lg:text-[19px]">
-            {title}
-          </h1>
-          {contexte ? (
-            <p className="mt-0.5 hidden truncate text-[11.5px] leading-tight font-medium text-hero-ink/85 sm:block">
-              {contexte}
-            </p>
-          ) : null}
-        </div>
+        <h1 className="relative z-10 min-w-0 truncate text-[17px] leading-tight font-extrabold tracking-[-0.01em] text-hero-ink sm:text-[18px] lg:text-[19px]">
+          {title}
+        </h1>
 
         {/* Emplacement laissé aux écrans qui ont des onglets à poser ici. La
             coquille ne sait pas lesquels : elle réserve la place, la page y

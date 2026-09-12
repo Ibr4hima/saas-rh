@@ -60,7 +60,6 @@ export const ICON_NAMES = [
   'search',
   'schedule',
   'settings',
-  'trending_up',
   'task_alt',
   'unarchive',
   'upload_file',
