@@ -10,7 +10,8 @@ import { Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui
 import { api, apiUrl } from '../../../../lib/api';
 import { ApercuDocument, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate } from '../../../../lib/hooks';
-import { CONTRACT_LABELS } from '../../../../lib/recruitment';
+import { phoneLisible } from '../../../../lib/countries';
+import { CONTRACT_LABELS, libelleDocument } from '../../../../lib/recruitment';
 import {
   anciennete,
   DescriptionOffre,
@@ -279,6 +280,27 @@ function Ligne({ icon, children }: { icon: IconName; children: React.ReactNode }
   );
 }
 
+/** Un moyen de joindre le candidat, en un clic. */
+function Joindre({
+  href,
+  icon,
+  children,
+}: {
+  href: string;
+  icon: IconName;
+  children: React.ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2 py-[3px] text-[11.5px] font-semibold text-ink transition-colors hover:bg-primary/[0.08] hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+    >
+      <Icon name={icon} size={13} className="shrink-0 text-ink-muted" />
+      <span className="truncate">{children}</span>
+    </a>
+  );
+}
+
 /**
  * Le dossier ouvert EST la pièce qu'on vient lire.
  *
@@ -310,7 +332,7 @@ function FenetreCandidat({
       url: apiUrl(`/application-documents/${d.id}`),
       filename: d.filename,
       contentType: d.contentType,
-      sizeBytes: d.sizeBytes,
+      titre: libelleDocument(d.label),
     } satisfies ViewableDoc,
   }));
   // L'onglet retenu peut dépasser après une suppression de pièce : on le
@@ -322,8 +344,34 @@ function FenetreCandidat({
     <Modal
       open
       onClose={onClose}
+      avatar={
+        <span className="flex size-11 items-center justify-center rounded-full bg-primary-soft text-[14px] font-bold text-primary uppercase">
+          {a.givenName[0]}
+          {a.familyName[0]}
+        </span>
+      }
       title={`${a.givenName} ${a.familyName}`}
-      subtitle={`${a.email}${a.phone ? ` · ${a.phone}` : ''} · candidature du ${formatDate(a.createdAt.slice(0, 10))}`}
+      subtitle={
+        // Le courriel et le téléphone deviennent CLIQUABLES : c'est par là
+        // qu'on rappelle un candidat, et les recopier à la main était le
+        // geste le plus probable de cette fenêtre.
+        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+          <Joindre href={`mailto:${a.email}`} icon="mail">
+            {a.email}
+          </Joindre>
+          {a.phone ? (
+            // Le lien porte le numéro INTERNATIONAL : composer « 764443322 »
+            // depuis un poste hors du Sénégal ne mène nulle part.
+            <Joindre href={`tel:${phoneLisible(a.phone).replace(/\s/g, '')}`} icon="call">
+              {phoneLisible(a.phone)}
+            </Joindre>
+          ) : null}
+          <span className="inline-flex items-center gap-1.5 px-1 text-[11.5px] text-ink-muted">
+            <Icon name="event" size={13} className="shrink-0 text-ink-muted/70" />
+            Candidature du {formatDate(a.createdAt.slice(0, 10))}
+          </span>
+        </span>
+      }
       maxWidth="max-w-4xl"
       enTete={
         vues.length > 1 ? (

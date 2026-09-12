@@ -25,15 +25,13 @@ import { Icon } from './icons';
  */
 export function PdfViewer({
   data,
-  filename,
-  poids,
+  titre,
   onError,
 }: {
   /** Le PDF déjà en mémoire — c'est l'appelant qui l'a récupéré avec la session. */
   data: ArrayBuffer;
-  filename: string;
-  /** Le poids déjà mis en forme, quand l'appelant le connaît. */
-  poids?: string;
+  /** Ce que la pièce EST — « Curriculum Vitæ » —, pas le nom que le fichier porte. */
+  titre: string;
   onError?: () => void;
 }) {
   const [pages, setPages] = useState<{ width: number; height: number }[]>([]);
@@ -212,10 +210,7 @@ export function PdfViewer({
   return (
     <div className="flex h-full flex-col overflow-hidden bg-bg">
       <div className="flex shrink-0 items-center gap-2 border-b border-line-soft bg-surface px-3 py-2">
-        <p className="min-w-0 flex-1 truncate text-[11.5px] font-semibold text-ink">
-          {filename}
-          {poids ? <span className="font-normal text-ink-muted"> · {poids}</span> : null}
-        </p>
+        <p className="min-w-0 flex-1 truncate text-[12px] font-bold text-ink-strong">{titre}</p>
 
         <div className="flex items-center gap-0.5">
           <Commande

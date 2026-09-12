@@ -244,3 +244,23 @@ export function splitPhone(stored: string | null | undefined): { country: string
   if (!best) return { country: DEFAULT_COUNTRY, local: stored };
   return { country: best.code, local: raw.slice(best.dial.length) };
 }
+
+/**
+ * Un numéro stocké, rendu lisible : « +221771234567 » → « +221 77 123 45 67 ».
+ *
+ * Neuf chiffres se groupent 2-3-2-2, comme on les dicte au Sénégal ; pour
+ * toute autre longueur on retombe sur des paires, qui valent mieux qu'une
+ * suite ininterrompue. Un numéro qu'on n'arrive pas à décomposer est rendu
+ * tel quel — mieux vaut brut que faux.
+ */
+export function phoneLisible(stored: string | null | undefined): string {
+  if (!stored) return '';
+  const { country, local } = splitPhone(stored);
+  const dial = countryByCode(country)?.dial;
+  if (!dial || !/^\d+$/.test(local)) return stored;
+  const groupes =
+    local.length === 9
+      ? [local.slice(0, 2), local.slice(2, 5), local.slice(5, 7), local.slice(7)]
+      : (local.match(/\d{1,2}/g) ?? [local]);
+  return `+${dial} ${groupes.join(' ')}`;
+}

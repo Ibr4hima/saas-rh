@@ -20,6 +20,7 @@ import { Icon } from './icons';
 export function Modal({
   open,
   onClose,
+  avatar,
   title,
   subtitle,
   enTete,
@@ -36,6 +37,11 @@ export function Modal({
    * une croix n'y mènerait qu'à du vide.
    */
   onClose?: () => void;
+  /**
+   * Vignette posée à gauche du titre — une pastille d'initiales, une icône de
+   * famille. Elle dit DE QUI ou de quoi parle la fenêtre avant qu'on lise.
+   */
+  avatar?: React.ReactNode;
   title: string;
   subtitle?: React.ReactNode;
   /**
@@ -130,14 +136,24 @@ export function Modal({
         )}
       >
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2.5 border-b border-line-soft px-6 py-4 sm:px-7">
-          <div className="min-w-0">
-            <h2
-              id={titleId}
-              className="truncate text-[17px] leading-tight font-bold text-ink-strong"
-            >
-              {title}
-            </h2>
-            {subtitle ? <p className="mt-0.5 truncate text-xs text-ink-muted">{subtitle}</p> : null}
+          <div className="flex min-w-0 items-center gap-3">
+            {avatar ? <span className="shrink-0">{avatar}</span> : null}
+            <div className="min-w-0">
+              <h2
+                id={titleId}
+                className="truncate text-[17px] leading-tight font-bold text-ink-strong"
+              >
+                {title}
+              </h2>
+              {/* Un sous-titre EN TEXTE se coupe proprement d'une ellipse ;
+                  un sous-titre composé — des puces, des liens — a besoin de
+                  passer à la ligne, et `truncate` le mutilerait. */}
+              {typeof subtitle === 'string' ? (
+                <p className="mt-0.5 truncate text-xs text-ink-muted">{subtitle}</p>
+              ) : subtitle ? (
+                <div className="mt-1">{subtitle}</div>
+              ) : null}
+            </div>
           </div>
           {enTete ? (
             <div className="order-last flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 sm:order-none sm:ml-auto">

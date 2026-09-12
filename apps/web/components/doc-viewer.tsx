@@ -9,18 +9,13 @@ export interface ViewableDoc {
   url: string;
   filename: string;
   contentType: string;
-  /** Facultatif : affiché à côté du nom quand l'appelant le connaît. */
-  sizeBytes?: number;
-}
-
-/**
- * Le poids d'un fichier. Sous le kilo-octet, `Math.round(o / 1024)` rendait
- * « 0 Ko » — un fichier de 400 octets n'est pas vide, il est petit.
- */
-export function poidsFichier(octets: number): string {
-  if (octets < 1024) return `${octets} o`;
-  if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`;
-  return `${(octets / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`;
+  /**
+   * Ce que la pièce EST — « Curriculum Vitæ ». Quand l'appelant le connaît, le
+   * lecteur l'affiche plutôt que le nom du fichier : « attestation-travail-
+   * SF120099.pdf » est le classement de quelqu'un d'autre, pas une
+   * information pour celui qui lit.
+   */
+  titre?: string;
 }
 
 /**
@@ -73,11 +68,7 @@ export function ApercuDocument({ doc, className }: { doc: ViewableDoc; className
       ) : isPdf ? (
         // Notre propre lecteur : le cadre du navigateur affichait une barre
         // noire et, pour titre, l'identifiant du blob.
-        <PdfViewer
-          data={contenu.data}
-          filename={doc.filename}
-          poids={doc.sizeBytes === undefined ? undefined : poidsFichier(doc.sizeBytes)}
-        />
+        <PdfViewer data={contenu.data} titre={doc.titre ?? doc.filename} />
       ) : isImage ? (
         <div className="flex min-h-full items-center justify-center p-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}

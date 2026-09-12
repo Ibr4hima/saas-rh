@@ -23,3 +23,14 @@ export const CONTRACT_LABELS: Record<string, string> = {
   consultant: 'Consultant',
   detachement: 'Détachement',
 };
+
+/**
+ * L'intitulé d'une pièce, tel qu'on le montre en grand.
+ *
+ * La RH saisit « CV » dans les pièces demandées — c'est ce qu'on veut sur un
+ * onglet, où la place manque. En titre du lecteur, la forme longue se lit
+ * mieux et fait moins sigle administratif.
+ */
+export function libelleDocument(label: string): string {
+  return label.trim().toLowerCase() === 'cv' ? 'Curriculum Vitæ' : label;
+}
