@@ -89,12 +89,23 @@ export default function OrganisationPage() {
   const router = useRouter();
   const canManage = Boolean(me.data && ['admin', 'hr'].includes(me.data.role));
   const isStaff = Boolean(me.data && ['admin', 'hr', 'payroll'].includes(me.data.role));
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const parametres = useSearchParams();
+  // L'unité peut être désignée par l'URL (?unite=<id>) : c'est ainsi que la
+  // palette et le tableau de bord ouvrent l'organigramme directement sur elle.
+  const uniteUrl = parametres.get('unite');
+  const [selectedId, setSelectedId] = useState<string | null>(uniteUrl);
+  useEffect(() => {
+    if (uniteUrl) setSelectedId(uniteUrl);
+  }, [uniteUrl]);
+  const fermerPanneau = () => {
+    setSelectedId(null);
+    if (uniteUrl) router.replace('/organisation');
+  };
   /** Unité en cours de création depuis le « + » d'un bloc : le parent visé. */
   const [creation, setCreation] = useState<{ parent: OrgUnitView | null } | null>(null);
   // L'autre porte d'entrée passe par l'URL (?nouvelle) : le bouton vit dans le
   // bandeau de tête, qui appartient à la coquille et ne connaît pas cet écran.
-  const creationRacine = useSearchParams().get('nouvelle') !== null && canManage;
+  const creationRacine = parametres.get('nouvelle') !== null && canManage;
   const fermerCreation = () => {
     setCreation(null);
     if (creationRacine) router.replace('/organisation');
@@ -143,7 +154,7 @@ export default function OrganisationPage() {
           units={liste}
           canManage={canManage}
           isStaff={isStaff}
-          onClose={() => setSelectedId(null)}
+          onClose={fermerPanneau}
         />
       ) : null}
 

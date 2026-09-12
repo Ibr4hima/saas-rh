@@ -6,6 +6,8 @@
  */
 
 export interface DashboardDirectionHeadcount {
+  /** L'unité elle-même : la barre mène à l'organigramme, ouvert dessus. */
+  id: string;
   name: string;
   shortName: string | null;
   /** Employés ACTIFS affectés à la direction ou à une unité en dessous. */

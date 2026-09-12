@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cn, Skeleton } from '@teranga/ui';
 import { BrandMark, BrandWordmark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
@@ -11,6 +11,12 @@ import { PageTitleProvider, usePageTitleOverride } from '../../components/page-t
 import { NotificationsBell } from '../../components/notifications-bell';
 import { CalendrierModal } from '../../components/calendrier';
 import { ANCRE_ONGLETS } from '../../components/onglets-bandeau';
+import {
+  Palette,
+  useNomDuRaccourci,
+  useRaccourciPalette,
+  type EcranPalette,
+} from '../../components/palette';
 import { api } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 
@@ -20,6 +26,7 @@ interface DashboardStats {
   upcomingAbsences: number;
   orgUnits: number;
   pendingDocumentRequests: number;
+  pendingProfileChanges: number;
 }
 
 interface NavChild {
@@ -493,6 +500,32 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   const role = me.data?.role ?? '';
   const isStaff = STAFF_ROLES.includes(role);
+  const [palette, setPalette] = useState(false);
+  const ouvrirPalette = useCallback(() => setPalette(true), []);
+  const fermerPalette = useCallback(() => setPalette(false), []);
+  useRaccourciPalette(ouvrirPalette);
+  const raccourci = useNomDuRaccourci();
+
+  const items = useMemo(() => (isStaff ? staffNav(role) : personalNav(role)), [isStaff, role]);
+  // Les écrans que la palette sait ouvrir : le menu, mis à plat, avec le
+  // chemin qu'on aurait suivi pour y arriver — c'est ce qu'on tape. Une
+  // rubrique n'a pas de page à elle : seules ses sous-pages sont des écrans.
+  const ecrans = useMemo<EcranPalette[]>(
+    () =>
+      items.flatMap((i) =>
+        i.desactive
+          ? []
+          : i.children
+            ? i.children.map((c) => ({
+                href: c.href,
+                label: c.label,
+                icon: i.icon,
+                chemin: i.label,
+              }))
+            : [{ href: i.href, label: i.label, icon: i.icon }],
+      ),
+    [items],
+  );
 
   const stats = useQuery({
     queryKey: ['dashboard'],
@@ -548,7 +581,29 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const pendingDocs = stats.data?.pendingDocumentRequests ?? 0;
   const badgeCount = (badge?: 'pending' | 'docs') =>
     badge === 'pending' ? pending : badge === 'docs' ? pendingDocs : 0;
-  const items = isStaff ? staffNav(user.role) : personalNav(user.role);
+
+  // Sous le bonjour, ce qui attend : la première chose qu'on veut savoir en
+  // arrivant, avant même de lire les tuiles. Sur le tableau de bord seulement
+  // — ailleurs, le titre de l'écran suffit.
+  const contexte =
+    pathname === '/dashboard' && isStaff && stats.data
+      ? (() => {
+          const s = stats.data;
+          const n = (v: number, un: string, des: string) => `${v} ${v > 1 ? des : un}`;
+          const attente = [
+            s.pendingRequests > 0 ? `${n(s.pendingRequests, 'congé', 'congés')} à viser` : null,
+            s.pendingDocumentRequests > 0
+              ? `${n(s.pendingDocumentRequests, 'document', 'documents')} à préparer`
+              : null,
+            s.pendingProfileChanges > 0
+              ? `${n(s.pendingProfileChanges, 'information', 'informations')} à confirmer`
+              : null,
+          ].filter(Boolean);
+          return attente.length > 0
+            ? attente.join(' · ')
+            : 'Rien ne vous attend — tout est à jour.';
+        })()
+      : null;
   // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
   const title = titleOverride ?? pageTitle(pathname, user.givenName);
   const action = pageAction(pathname, user.role);
@@ -576,9 +631,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <BrandMark variant="hero" />
         </Link>
 
-        <h1 className="relative z-10 min-w-0 truncate text-[18px] leading-tight font-extrabold tracking-[-0.01em] text-hero-ink lg:text-[19px]">
-          {title}
-        </h1>
+        <div className="relative z-10 min-w-0">
+          <h1 className="truncate text-[17px] leading-tight font-extrabold tracking-[-0.01em] text-hero-ink sm:text-[18px] lg:text-[19px]">
+            {title}
+          </h1>
+          {contexte ? (
+            <p className="mt-0.5 hidden truncate text-[11.5px] leading-tight font-medium text-hero-ink/85 sm:block">
+              {contexte}
+            </p>
+          ) : null}
+        </div>
 
         {/* Emplacement laissé aux écrans qui ont des onglets à poser ici. La
             coquille ne sait pas lesquels : elle réserve la place, la page y
@@ -586,6 +648,25 @@ function AppShell({ children }: { children: React.ReactNode }) {
         <div id={ANCRE_ONGLETS} className="relative z-10 hidden shrink-0 md:flex" />
 
         <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
+          {/* La recherche a l'air d'un champ mais n'en est pas un : c'est un
+              bouton qui ouvre la palette, pour que la frappe se fasse dans
+              une fenêtre qui a la place d'afficher ce qu'elle trouve. Le
+              raccourci est écrit dessus — c'est ainsi qu'on l'apprend. */}
+          <button
+            type="button"
+            onClick={() => setPalette(true)}
+            aria-label={`Rechercher (${raccourci})`}
+            title={`Rechercher — ${raccourci}`}
+            className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-white/30 bg-white/10 px-2.5 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none md:pr-2 md:pl-3 lg:w-60"
+          >
+            <Icon name="search" size={18} />
+            <span className="hidden flex-1 text-left text-xs font-medium text-hero-ink md:inline">
+              Rechercher…
+            </span>
+            <kbd className="hidden rounded-[6px] border border-white/25 bg-white/10 px-1.5 py-px font-sans text-[10px] font-semibold whitespace-nowrap text-hero-ink md:inline">
+              {raccourci}
+            </kbd>
+          </button>
           {action ? <HeaderAction action={action} /> : null}
           <DateDuJour />
           <NotificationsBell />
@@ -722,6 +803,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
           );
         })}
       </nav>
+
+      <Palette
+        ouverte={palette}
+        onFermer={fermerPalette}
+        ecrans={ecrans}
+        peutChercherLesAgents={isStaff}
+      />
     </div>
   );
 }

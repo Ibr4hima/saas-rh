@@ -142,7 +142,12 @@ export class DashboardController {
           .groupBy(t.persons.gender),
         // Effectif par DIRECTION : l'affectation vise souvent un service — on
         // remonte l'arbre jusqu'à la direction qui le coiffe.
-        tx.execute<{ name: string; short_name: string | null; headcount: number }>(sql`
+        tx.execute<{
+          dir_id: string;
+          name: string;
+          short_name: string | null;
+          headcount: number;
+        }>(sql`
           WITH RECURSIVE tree AS (
             SELECT id AS dir_id, id AS unit_id, name, short_name
             FROM org_units WHERE unit_type = 'direction' AND deleted_at IS NULL
@@ -151,7 +156,7 @@ export class DashboardController {
             FROM org_units o JOIN tree ON o.parent_id = tree.unit_id
             WHERE o.deleted_at IS NULL
           )
-          SELECT tree.name, tree.short_name,
+          SELECT tree.dir_id, tree.name, tree.short_name,
                  count(e.id)::int AS headcount
           FROM tree
           LEFT JOIN assignments a
@@ -205,6 +210,7 @@ export class DashboardController {
         women: byGender['female'] ?? 0,
         men: byGender['male'] ?? 0,
         headcountByDirection: directions.rows.map((d) => ({
+          id: d.dir_id,
           name: d.name,
           shortName: d.short_name,
           headcount: d.headcount,
