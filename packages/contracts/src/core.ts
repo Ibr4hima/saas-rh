@@ -158,3 +158,28 @@ export const healthSchema = z.object({
   version: z.string(),
 });
 export type Health = z.infer<typeof healthSchema>;
+
+// ---------- Noms de personnes ----------
+
+/**
+ * Le nom d'affichage d'une personne, quand la place manque.
+ *
+ * Au Sénégal, deux ou trois prénoms sont la règle plutôt que l'exception —
+ * « Mouhamadou Moustapha Habib Kane ». Écrit en entier dans une carte ou une
+ * colonne de tableau, le nom déborde ou se fait couper au milieu, et c'est
+ * justement le NOM DE FAMILLE, à la fin, qui disparaît. On garde donc le
+ * premier prénom en entier et on réduit les suivants à leur initiale :
+ * « Mouhamadou M. H. Kane ».
+ *
+ * Les prénoms composés ne se coupent PAS sur leur trait d'union : « Jean-
+ * Baptiste » est un seul prénom, « Jean B. » en ferait deux. Seule l'espace
+ * sépare deux prénoms.
+ */
+export function nomAbrege(givenName: string, familyName: string): string {
+  const nom = familyName.trim();
+  const prenoms = givenName.trim().split(/\s+/).filter(Boolean);
+  if (prenoms.length === 0) return nom;
+  const [premier, ...suivants] = prenoms;
+  const initiales = suivants.map((p) => `${[...p][0]!.toLocaleUpperCase('fr')}.`);
+  return [premier, ...initiales, nom].filter(Boolean).join(' ');
+}

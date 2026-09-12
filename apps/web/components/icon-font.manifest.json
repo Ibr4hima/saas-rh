@@ -6,6 +6,7 @@
     "arrow_forward",
     "badge",
     "calendar_month",
+    "call",
     "check",
     "check_circle",
     "chevron_left",
@@ -44,5 +45,5 @@
     "visibility_off"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 45936
+  "bytes": 48284
 }

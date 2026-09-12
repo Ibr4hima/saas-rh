@@ -25,6 +25,7 @@ export const ICON_NAMES = [
   'arrow_forward',
   'badge',
   'calendar_month',
+  'call',
   'check',
   'check_circle',
   'chevron_left',

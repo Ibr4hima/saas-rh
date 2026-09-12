@@ -5,13 +5,21 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import type { ApplicationView, JobPostingView } from '@teranga/contracts';
-import { Badge, Button, Card, CardContent, EmptyState, Skeleton } from '@teranga/ui';
+import { nomAbrege } from '@teranga/contracts';
+import { Badge, Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { DocViewer, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate } from '../../../../lib/hooks';
 import { CONTRACT_LABELS, JOB_STATUS_LABELS, JOB_STATUS_TONES } from '../../../../lib/recruitment';
+import {
+  anciennete,
+  DescriptionOffre,
+  FaitOffre,
+  joursRestants,
+  jourFr,
+} from '../../../../components/offre-fiche';
 import { LoadFailure } from '../../../../components/load-failure';
-import { Icon } from '../../../../components/icons';
+import { Icon, type IconName } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { usePageTitle } from '../../../../components/page-title';
 
@@ -52,9 +60,10 @@ export default function JobPage() {
     queryFn: () => api<ApplicationView[]>(`/jobs/${id}/applications`),
   });
 
-  // Le bandeau dit l'offre, comme il dit le nom sur une fiche employé : la
-  // carte ci-dessous n'a donc pas à répéter le titre soixante pixels plus bas.
-  usePageTitle(job.data?.title ?? null);
+  // Le bandeau nomme l'ÉCRAN, pas l'offre : le titre de l'offre est le titre
+  // de la carte, soixante pixels plus bas, et l'écrire deux fois de suite ne
+  // dit pas deux fois plus.
+  usePageTitle('Dossiers de candidature');
 
   if (job.isLoading) {
     return (
@@ -76,11 +85,11 @@ export default function JobPage() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
       <Link
-        href="/recrutement"
+        href="/recrutement/candidatures"
         className="inline-flex w-fit items-center gap-1 text-[12.5px] font-semibold text-ink-muted transition-colors hover:text-primary"
       >
         <Icon name="chevron_left" size={16} />
-        Offres d&apos;emploi
+        Dossiers de candidature
       </Link>
 
       <CarteOffre offre={j} />
@@ -103,9 +112,9 @@ export default function JobPage() {
         {applications.isError ? (
           <LoadFailure error={applications.error} onRetry={() => void applications.refetch()} />
         ) : applications.isLoading ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            <Skeleton className="h-[104px] w-full" />
-            <Skeleton className="h-[104px] w-full" />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Skeleton className="h-[100px] w-full" />
+            <Skeleton className="h-[100px] w-full" />
           </div>
         ) : dossiers.length === 0 ? (
           <Card>
@@ -121,7 +130,7 @@ export default function JobPage() {
             />
           </Card>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {dossiers.map((a) => (
               <CarteCandidat key={a.id} dossier={a} onOuvrir={() => setOuvert(a.id)} />
             ))}
@@ -134,7 +143,13 @@ export default function JobPage() {
   );
 }
 
-/** L'offre, en toutes lettres : ce qu'on publie et ce qu'on demande. */
+/**
+ * L'offre, montrée à la RH comme elle l'est au candidat.
+ *
+ * Mêmes faits, même ordre, même rendu de la description que sur la page
+ * publique : ce que la RH relit ici est exactement ce que le candidat a lu
+ * avant de postuler, et non une seconde mise en forme qui en diverge.
+ */
 function CarteOffre({ offre: j }: { offre: JobPostingView }) {
   const [copie, setCopie] = useState(false);
   const [deplie, setDeplie] = useState(false);
@@ -142,52 +157,107 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
     typeof window !== 'undefined' ? `${window.location.origin}/postuler/${j.publicSlug}` : '';
   // Au-delà de cette longueur, la description repousserait les candidatures
   // hors de l'écran : on en montre l'amorce, le reste au clic.
-  const longue = j.description.length > 420;
+  const longue = j.description.length > 520;
+  const restants = j.deadline ? joursRestants(j.deadline) : null;
+  const urgence = restants !== null && restants >= 0 && restants <= 7;
 
   return (
     <Card>
       <CardContent className="flex flex-col gap-5 py-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0">
             <Badge tone={JOB_STATUS_TONES[j.status] ?? 'neutral'}>
               {JOB_STATUS_LABELS[j.status] ?? j.status}
             </Badge>
-            <span className="font-mono text-[11.5px] font-semibold text-ink-muted">
-              {j.reference}
-            </span>
+            <h1 className="mt-2.5 text-[22px] leading-tight font-extrabold text-balance text-ink-strong">
+              {j.title}
+            </h1>
+            {/* La direction et le lieu tiennent sous le titre, là où on les
+                cherche — et disparaissent quand ils ne sont pas renseignés,
+                plutôt que d'afficher deux tirets dans la grille des faits. */}
+            {j.orgUnitName || j.location ? (
+              <p className="mt-1 text-[12.5px] text-ink-muted">
+                {[j.orgUnitName, j.location].filter(Boolean).join(' · ')}
+              </p>
+            ) : null}
           </div>
-          {j.status === 'draft' ? (
-            <BoutonPublier jobId={j.id} />
-          ) : j.status === 'published' ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={async () => {
-                await navigator.clipboard.writeText(lienPublic);
-                setCopie(true);
-                setTimeout(() => setCopie(false), 2000);
-              }}
-            >
-              <Icon name={copie ? 'check' : 'content_copy'} size={15} />
-              {copie ? 'Lien copié' : 'Copier le lien public'}
-            </Button>
-          ) : null}
+          <div className="shrink-0">
+            {j.status === 'draft' ? (
+              <BoutonPublier jobId={j.id} />
+            ) : j.status === 'published' ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(lienPublic);
+                  setCopie(true);
+                  setTimeout(() => setCopie(false), 2000);
+                }}
+              >
+                <Icon name={copie ? 'check' : 'content_copy'} size={15} />
+                {copie ? 'Lien copié' : 'Copier le lien public'}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 border-t border-line-soft pt-5 sm:grid-cols-2 lg:grid-cols-4">
+          <FaitOffre icon="description" label="Référence">
+            <span className="font-mono">{j.reference}</span>
+          </FaitOffre>
+          <FaitOffre icon="badge" label="Type de contrat">
+            {CONTRACT_LABELS[j.contractType] ?? j.contractType}
+          </FaitOffre>
+          <FaitOffre icon="schedule" label="Publiée il y a">
+            {anciennete(j.createdAt)}
+          </FaitOffre>
+          <FaitOffre icon="event" label="Date limite">
+            {j.deadline ? (
+              <>
+                {jourFr(j.deadline)}
+                {restants !== null && restants >= 0 ? (
+                  <span
+                    className={cn(
+                      'ml-1.5 text-[12px] font-bold',
+                      urgence ? 'text-accent-text' : 'text-ink-muted',
+                    )}
+                  >
+                    {restants === 0
+                      ? '· dernier jour'
+                      : `· plus que ${restants} jour${restants > 1 ? 's' : ''}`}
+                  </span>
+                ) : (
+                  <span className="ml-1.5 text-[12px] font-bold text-ink-muted">· dépassée</span>
+                )}
+              </>
+            ) : (
+              <span className="font-normal text-ink-muted">Sans date limite</span>
+            )}
+          </FaitOffre>
         </div>
 
         {j.description ? (
-          <div>
-            <p
-              className={`text-[13px] leading-relaxed whitespace-pre-wrap text-ink ${
-                longue && !deplie ? 'line-clamp-4' : ''
-              }`}
-            >
-              {j.description}
+          <div className="border-t border-line-soft pt-5">
+            <p className="mb-3 text-[10px] font-extrabold tracking-[0.12em] text-primary uppercase">
+              Description du poste
             </p>
+            {/* Repli par la HAUTEUR, pas par le nombre de lignes : la
+                description est une liste de puces, et `line-clamp` ne sait pas
+                couper une liste — il couperait la première puce. */}
+            <div className={cn('relative', longue && !deplie && 'max-h-[164px] overflow-hidden')}>
+              <DescriptionOffre texte={j.description} />
+              {longue && !deplie ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-surface to-transparent"
+                />
+              ) : null}
+            </div>
             {longue ? (
               <button
                 type="button"
                 onClick={() => setDeplie(!deplie)}
-                className="mt-1.5 text-[12px] font-semibold text-primary hover:underline"
+                className="mt-2.5 text-[12.5px] font-semibold text-primary hover:underline"
               >
                 {deplie ? 'Réduire' : 'Lire la suite'}
               </button>
@@ -195,28 +265,15 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
           </div>
         ) : null}
 
-        {/* Les faits de l'offre, chacun sous son étiquette. En ligne de prose
-            grise, on relisait trois fois pour retrouver la date limite. */}
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line-soft pt-4 sm:grid-cols-4">
-          <Fait label="Contrat" valeur={CONTRACT_LABELS[j.contractType] ?? j.contractType} />
-          <Fait label="Direction" valeur={j.orgUnitName} />
-          <Fait label="Lieu" valeur={j.location} />
-          <Fait
-            label="Date limite"
-            valeur={j.deadline ? formatDate(j.deadline) : null}
-            vide="Sans date limite"
-          />
-        </dl>
-
         {j.requiredDocuments.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[9.5px] font-extrabold tracking-[0.12em] text-ink-muted uppercase">
+          <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4">
+            <span className="text-[10px] font-extrabold tracking-[0.12em] text-ink-muted uppercase">
               Pièces demandées
             </span>
             {j.requiredDocuments.map((d) => (
               <span
                 key={d}
-                className="rounded-full bg-bg px-2.5 py-[3px] text-[11px] font-semibold text-ink"
+                className="rounded-full bg-bg px-2.5 py-[3px] text-[11.5px] font-semibold text-ink"
               >
                 {d}
               </span>
@@ -228,30 +285,10 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
   );
 }
 
-function Fait({
-  label,
-  valeur,
-  vide = '—',
-}: {
-  label: string;
-  valeur: string | null;
-  vide?: string;
-}) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[9.5px] font-extrabold tracking-[0.12em] text-ink-muted uppercase">
-        {label}
-      </dt>
-      <dd
-        className={`mt-1 truncate text-[13px] font-semibold ${valeur ? 'text-ink-strong' : 'text-ink-muted/70'}`}
-      >
-        {valeur ?? vide}
-      </dd>
-    </div>
-  );
-}
-
-/** Un dossier reçu. La carte tient ce qu'on lit avant d'ouvrir : qui, quand, combien de pièces. */
+/**
+ * Un dossier reçu, en une carte compacte : le nom, puis les trois lignes par
+ * lesquelles on rappelle quelqu'un — courriel, téléphone, date de dépôt.
+ */
 function CarteCandidat({
   dossier: a,
   onOuvrir,
@@ -263,28 +300,37 @@ function CarteCandidat({
     <button
       type="button"
       onClick={onOuvrir}
-      className="group flex w-full items-start gap-3 rounded-[14px] border border-card-line bg-surface px-4 py-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+      className="group flex w-full items-start gap-3 rounded-[14px] border border-card-line bg-surface px-3.5 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
     >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12.5px] font-bold text-primary uppercase">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11.5px] font-bold text-primary uppercase">
         {a.givenName[0]}
         {a.familyName[0]}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-bold text-ink-strong">
-          {a.givenName} {a.familyName}
+          {nomAbrege(a.givenName, a.familyName)}
         </span>
-        <span className="block truncate text-[11.5px] text-ink-muted">{a.email}</span>
-        <span className="mt-1.5 block text-[11px] font-semibold text-ink-muted">
-          {formatDate(a.createdAt.slice(0, 10))} · {a.documents.length} pièce
-          {a.documents.length > 1 ? 's' : ''}
+        <span className="mt-1 flex flex-col gap-[3px]">
+          <Ligne icon="mail">{a.email}</Ligne>
+          {a.phone ? <Ligne icon="call">{a.phone}</Ligne> : null}
+          <Ligne icon="event">{formatDate(a.createdAt.slice(0, 10))}</Ligne>
         </span>
       </span>
       <Icon
         name="chevron_right"
-        size={16}
-        className="mt-0.5 shrink-0 text-ink-muted/50 transition-transform duration-200 group-hover:translate-x-0.5"
+        size={15}
+        className="mt-1 shrink-0 text-ink-muted/50 transition-transform duration-200 group-hover:translate-x-0.5"
       />
     </button>
+  );
+}
+
+function Ligne({ icon, children }: { icon: IconName; children: React.ReactNode }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-ink-muted">
+      <Icon name={icon} size={13} className="shrink-0 text-ink-muted/70" />
+      <span className="truncate">{children}</span>
+    </span>
   );
 }
 
