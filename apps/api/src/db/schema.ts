@@ -406,3 +406,56 @@ export const documentRequests = pgTable('document_requests', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------- Textes de référence (0023) ----------
+
+export const referenceTexts = pgTable('reference_texts', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  slug: text('slug').notNull(),
+  title: text('title').notNull(),
+  reference: text('reference'),
+  effectiveOn: date('effective_on'),
+  pdfFilename: text('pdf_filename'),
+  pdfData: bytea('pdf_data'),
+  pdfSize: integer('pdf_size'),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const referenceChapters = pgTable('reference_chapters', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  textId: uuid('text_id').notNull(),
+  number: integer('number').notNull(),
+  title: text('title').notNull(),
+  body: text('body'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const referenceSections = pgTable('reference_sections', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  chapterId: uuid('chapter_id').notNull(),
+  number: integer('number').notNull(),
+  title: text('title').notNull(),
+  body: text('body'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const referenceArticles = pgTable('reference_articles', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  textId: uuid('text_id').notNull(),
+  chapterId: uuid('chapter_id').notNull(),
+  sectionId: uuid('section_id'),
+  number: integer('number').notNull(),
+  label: text('label'),
+  title: text('title'),
+  body: text('body').notNull().default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

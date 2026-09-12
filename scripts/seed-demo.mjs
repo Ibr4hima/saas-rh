@@ -5,6 +5,8 @@
  * Usage : node scripts/seed-demo.mjs [http://localhost:3001]
  * Idempotence : à lancer sur une base vide (sinon l'email admin existe déjà).
  */
+import { CODE_DU_TRAVAIL, REGLEMENT_INTERIEUR } from './seed-textes.mjs';
+
 const BASE = (process.argv[2] ?? 'http://localhost:3001') + '/v1';
 
 let cookie = '';
@@ -81,6 +83,12 @@ for (const [name, shortName] of [
 ]) {
   await call('POST', '/org-units', { name, unitType: 'direction', shortName, parentId: dg.id });
 }
+
+console.log('→ Textes de référence');
+// Le règlement intérieur et le Code du travail, dans leur écran de lecture.
+// Le contenu est une démonstration : la RH dépose ensuite le texte officiel.
+await call('PUT', '/reference-texts/reglement-interieur', REGLEMENT_INTERIEUR);
+await call('PUT', '/reference-texts/code-du-travail', CODE_DU_TRAVAIL);
 
 console.log('→ Employés');
 const seedEmployee = (person, employee, positionTitle, orgUnitId, contract) =>

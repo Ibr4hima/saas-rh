@@ -61,6 +61,13 @@ export class OrgUnitsService {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       const managerPersons = t.persons;
       const rows = await tx
+        // Les colonnes corrélées des sous-requêtes sont NOMMÉES en toutes
+        // lettres — « org_units.id » — plutôt qu'interpolées depuis le schéma.
+        // Drizzle n'ajoute le préfixe de table que si la requête extérieure
+        // porte une jointure ; sans elle il rend « id » tout court, qui se
+        // résout alors sur `assignments`, qui en a un aussi, et la sous-requête
+        // compare silencieusement une ligne à elle-même. Le préfixe explicite
+        // ne dépend pas de la forme de la requête qui l'entoure.
         .select({
           id: t.orgUnits.id,
           name: t.orgUnits.name,
@@ -72,13 +79,13 @@ export class OrgUnitsService {
           managerFamilyName: managerPersons.familyName,
           managerPosition: sql<string | null>`(
             SELECT a.position_title FROM assignments a
-            WHERE a.employee_id = ${t.orgUnits.managerEmployeeId}
+            WHERE a.employee_id = org_units.manager_employee_id
               AND a.validity @> CURRENT_DATE
             LIMIT 1)`,
           headcount: sql<number>`(
             SELECT count(*)::int FROM assignments a
             JOIN employees e ON e.id = a.employee_id
-            WHERE a.org_unit_id = ${t.orgUnits.id}
+            WHERE a.org_unit_id = org_units.id
               AND a.validity @> CURRENT_DATE
               AND e.status = 'active')`,
           // Qui perdrait son rattachement en cas de dissolution : sans filtre
@@ -88,7 +95,7 @@ export class OrgUnitsService {
           // agents à prévenir.
           attachedEmployees: sql<number>`(
             SELECT count(DISTINCT a.employee_id)::int FROM assignments a
-            WHERE a.org_unit_id = ${t.orgUnits.id}
+            WHERE a.org_unit_id = org_units.id
               AND (upper_inf(a.validity) OR upper(a.validity) > CURRENT_DATE))`,
         })
         .from(t.orgUnits)

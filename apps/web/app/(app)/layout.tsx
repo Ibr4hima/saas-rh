@@ -148,6 +148,9 @@ function pageTitle(pathname: string, givenName: string): string {
     return pathname.endsWith('/modifier') ? 'Modifier la fiche' : 'Fiche employé';
   }
   if (pathname.startsWith('/recrutement/')) return 'Offre de recrutement';
+  // Un troisième texte — convention collective, accord d'entreprise — entrera
+  // sans qu'on ait à revenir ici.
+  if (pathname.startsWith('/reglementations/')) return 'Lois & Règlementations';
   return 'Capital Humain';
 }
 
@@ -221,6 +224,16 @@ function personalNav(role: string): NavItem[] {
       icon: 'folder_managed',
     },
     { href: '/moi/informations', label: 'Mes informations', short: 'Infos', icon: 'badge' },
+    {
+      href: '/reglementations',
+      label: 'Lois & Règlementations',
+      short: 'Lois',
+      icon: 'gavel',
+      children: [
+        { href: '/reglementations/code-du-travail', label: 'Code du travail' },
+        { href: '/reglementations/reglement-interieur', label: 'Règlement intérieur' },
+      ],
+    },
     ...(role === 'manager'
       ? [
           {
@@ -491,6 +504,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (path.startsWith('/moi') || path.startsWith('/calendrier')) return true;
     // L'organigramme est un annuaire interne : lisible par tous les rôles.
     if (path.startsWith('/organisation')) return true;
+    // Les textes de référence aussi, et à plus forte raison : un règlement
+    // intérieur que seule la RH peut ouvrir ne s'oppose à personne.
+    if (path.startsWith('/reglementations')) return true;
     if (role === 'manager') {
       return path.startsWith('/absences') && !path.startsWith('/absences/parametres');
     }

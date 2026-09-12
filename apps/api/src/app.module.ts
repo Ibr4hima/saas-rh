@@ -28,6 +28,8 @@ import {
   PublicJobsController,
   RecruitmentController,
 } from './modules/recruitment/recruitment.controller';
+import { ReferenceTextsController } from './modules/reference/reference-texts.controller';
+import { ReferenceTextsService } from './modules/reference/reference-texts.service';
 import { AbsencesController } from './modules/time/absences.controller';
 import { AbsencesService } from './modules/time/absences.service';
 
@@ -50,6 +52,7 @@ import { AbsencesService } from './modules/time/absences.service';
     NotificationsController,
     RecruitmentController,
     PublicJobsController,
+    ReferenceTextsController,
   ],
   providers: [
     TenantDb,
@@ -68,6 +71,7 @@ import { AbsencesService } from './modules/time/absences.service';
     NotificationsService,
     JobsService,
     ApplyService,
+    ReferenceTextsService,
   ],
 })
 export class AppModule {}
