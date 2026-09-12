@@ -18,9 +18,15 @@
   /* Surfaces reprises de la plateforme APIX (--champ / --carte / --carte-douce) :
      des gris CHAUDS, pas bleutés — c'est ce qui donne à l'ensemble sa lumière
      d'ivoire plutôt que sa froideur d'écran. */
-  --tg-bg: #f8f7f6;
+  --tg-bg: #fbfaf8;
   --tg-surface: #ffffff;
   --tg-surface-raised: #fafaf9;
+  /* Teinte des ÉTATS (rangée survolée, bouton discret, onglet au repos).
+     Elle ne dérive pas du fond : le fond est presque blanc, et un survol qui
+     en dépendrait se verrait à peine sur une carte blanche. C'est une couleur
+     à part, tenue quelques points en dessous du blanc — assez pour que la
+     rangée sous le curseur se détache, jamais assez pour peser. */
+  --tg-hover: #f5f3f0;
   --tg-ink: #1c2033;
   --tg-ink-strong: #14172a;
   --tg-ink-muted: #5a5f75;
@@ -66,22 +72,21 @@
 
   --tg-focus-ring: #004f91;
 
-  /* Bandeau de tête — dégradé de marque de la plateforme APIX, repris à
-     l'identique. Ce n'est pas une couleur unie : la diagonale à 155° fait
-     descendre le bleu du presque-noir vers le bleu ouvert, et c'est elle qui
-     donne au bandeau son épaisseur. */
-  --tg-hero: linear-gradient(155deg, #002a52 0%, #003a6e 35%, #004f91 70%, #1a6ab0 100%);
+  /* Bandeau de tête — le bleu de la charte, en APLAT.
+     Un dégradé oblige à mesurer tout ce qui se pose dessus sur son point le
+     plus clair : le blanc du titre n'y tenait que 4,56:1, les boutons en
+     verre moins encore. L'aplat monte tout le monde à 8,31:1 d'un coup, et
+     donne au bandeau un bord franc au lieu d'un fondu. */
+  --tg-hero: #004f91;
   --tg-hero-ink: #ffffff;
-  /* Halos posés sur le bandeau. Éteints la nuit : sur un aplat de minuit, ils
-     ne feraient que remettre le dégradé qu'on en a retiré. */
-  --tg-halo-clair: rgb(255 255 255 / 0.07);
-  --tg-halo-bleu: rgb(0 79 145 / 0.5);
+  /* Liseré du bas : la seule séparation entre le bandeau et la page. */
+  --tg-hero-line: rgb(255 255 255 / 0.14);
 
   /* Filet des cartes. Il DÉRIVE de l'encre et s'inverse donc avec le thème :
      un gris fixe paraîtrait sale sur fond clair et invisible sur fond sombre.
      C'est ce filet, et non une ombre, qui pose les cartes — la profondeur
      n'apparaît qu'au survol, là où elle veut dire « cliquable ». */
-  --tg-card-line: rgb(26 26 46 / 0.12);
+  --tg-card-line: rgb(26 26 46 / 0.1);
   --tg-card-line-hover: rgb(0 79 145 / 0.35);
 
   /* Voile des surfaces modales. Valeur ABSOLUE, pas dérivée de l'encre :
@@ -149,7 +154,7 @@
      validateur de palette (bande de clarté + séparation daltonienne) — deux
      couleurs de charte ne forment pas d'office une palette catégorielle. */
   --tg-chart: #004f91;
-  --tg-chart-track: #ecedf3;
+  --tg-chart-track: #eae7e3;
 
   /* --- Mouvement (120–200 ms ease-out, cf. ch. 05) --- */
   --tg-motion-fast: 120ms ease-out;
@@ -170,9 +175,9 @@
        pour se lire comme une matière. */
     --tg-card-line: rgb(237 241 247 / 0.12);
     --tg-card-line-hover: rgb(133 185 236 / 0.35);
+    --tg-hover: #1e2839;
     --tg-hero: #16213a;
-    --tg-halo-clair: transparent;
-    --tg-halo-bleu: transparent;
+    --tg-hero-line: rgb(255 255 255 / 0.08);
 
     /* Le bleu de charte (#004f91) est trop sombre pour un fond sombre : on
        remonte la clarté à teinte constante plutôt que d'inverser. */
@@ -225,9 +230,9 @@
   --tg-line-soft: rgb(122 138 164 / 0.17);
   --tg-card-line: rgb(237 241 247 / 0.12);
   --tg-card-line-hover: rgb(133 185 236 / 0.35);
+  --tg-hover: #1e2839;
   --tg-hero: #16213a;
-  --tg-halo-clair: transparent;
-  --tg-halo-bleu: transparent;
+  --tg-hero-line: rgb(255 255 255 / 0.08);
 
   --tg-primary: #86b5ea;
   --tg-primary-ink: #14172a;

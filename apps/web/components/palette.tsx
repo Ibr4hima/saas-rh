@@ -314,7 +314,7 @@ export function Palette({
                           onClick={() => ouvrir(r)}
                           className={cn(
                             'flex cursor-pointer items-center gap-3 rounded-[10px] px-2.5 py-2 transition-colors',
-                            choisi ? 'bg-primary/[0.08]' : 'hover:bg-bg',
+                            choisi ? 'bg-primary/[0.08]' : 'hover:bg-hover',
                           )}
                         >
                           {r.type === 'agent' ? (

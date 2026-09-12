@@ -217,7 +217,7 @@ function BoutonEchelle({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="flex size-6 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-bg hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:pointer-events-none disabled:opacity-35"
+      className="flex size-6 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-hover hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:pointer-events-none disabled:opacity-35"
     >
       <Icon name={icone} size={15} />
     </button>

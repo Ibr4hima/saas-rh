@@ -313,7 +313,7 @@ function RangeeNav({
       aria-current={active ? 'page' : undefined}
       className={cn(
         forme,
-        active ? 'bg-primary/[0.07] font-bold text-primary' : 'font-medium text-ink hover:bg-bg',
+        active ? 'bg-primary/[0.07] font-bold text-primary' : 'font-medium text-ink hover:bg-hover',
       )}
     >
       {contenu}
@@ -388,8 +388,8 @@ function Rubrique({
               ? // Dépliée, la rubrique s'allège : la sous-page porte déjà l'état
                 // actif, et deux bleus gras l'un sous l'autre alourdissent la
                 // colonne — en plus de faire déborder « Lois & Règlementations ».
-                'font-semibold text-primary hover:bg-bg'
-              : 'font-medium text-ink hover:bg-bg',
+                'font-semibold text-primary hover:bg-hover'
+              : 'font-medium text-ink hover:bg-hover',
         )}
       >
         <Icon name={item.icon} size={17} fill={contientLaPage} />
@@ -425,7 +425,7 @@ function Rubrique({
                   'rounded-[7px] px-2.5 py-[6px] text-[12px] transition-colors duration-150',
                   active
                     ? 'bg-primary/[0.07] font-bold text-primary'
-                    : 'font-medium text-ink-muted hover:bg-bg hover:text-ink',
+                    : 'font-medium text-ink-muted hover:bg-hover hover:text-ink',
                 )}
               >
                 {c.label}
@@ -596,10 +596,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex h-dvh flex-col overflow-hidden">
       {/* ———— Bandeau de tête, d'un bord à l'autre ———— */}
       <header className="hero-bar z-30 flex h-[58px] shrink-0 items-center gap-3.5 px-4 lg:gap-4 lg:px-7">
-        <span aria-hidden className="pointer-events-none absolute inset-0 opacity-50">
-          <span className="absolute -top-[140%] -right-[6%] size-[580px] rounded-full bg-[radial-gradient(circle,var(--tg-halo-clair)_0%,transparent_60%)]" />
-          <span className="absolute -bottom-[160%] -left-[8%] size-[460px] rounded-full bg-[radial-gradient(circle,var(--tg-halo-bleu)_0%,transparent_65%)]" />
-        </span>
         <Link
           href={isStaff ? '/dashboard' : '/moi'}
           aria-label="Accueil"

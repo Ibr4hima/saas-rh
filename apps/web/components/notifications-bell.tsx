@@ -334,7 +334,7 @@ function PanneauNotifications({
                       'group flex items-start border-b border-line-soft transition-colors last:border-b-0',
                       // Le NON-LU est teinté, pas le lu grisé : rendre l'ancien
                       // illisible pour distinguer le récent punit la mémoire.
-                      lu ? 'hover:bg-bg' : 'bg-primary/[0.035] hover:bg-primary/[0.06]',
+                      lu ? 'hover:bg-hover' : 'bg-primary/[0.035] hover:bg-primary/[0.06]',
                     )}
                   >
                     <button

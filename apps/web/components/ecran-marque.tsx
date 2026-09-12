@@ -181,7 +181,7 @@ export function BoutonOeil({ visible, onToggle }: { visible: boolean; onToggle: 
       type="button"
       onClick={onToggle}
       aria-label={visible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-      className="absolute top-1/2 right-2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-bg hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+      className="absolute top-1/2 right-2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
     >
       <Icon name={visible ? 'visibility_off' : 'visibility'} size={17} />
     </button>

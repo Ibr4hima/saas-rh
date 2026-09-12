@@ -198,7 +198,7 @@ export function Modal({
                   const el = corps.current;
                   if (el) el.scrollBy({ top: el.clientHeight * 0.8, behavior: 'smooth' });
                 }}
-                className="absolute bottom-2.5 left-1/2 flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-line-soft bg-surface text-ink-muted shadow-md transition-colors hover:bg-bg hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+                className="absolute bottom-2.5 left-1/2 flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-line-soft bg-surface text-ink-muted shadow-md transition-colors hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
               >
                 <Icon name="chevron_right" size={18} className="rotate-90" />
               </button>

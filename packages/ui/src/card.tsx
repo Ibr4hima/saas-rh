@@ -2,17 +2,20 @@ import * as React from 'react';
 import { cn } from './cn';
 
 /**
- * Carte de contenu — matière reprise de la plateforme APIX.
+ * Carte de contenu.
  *
- * Un filet d'un pixel, AUCUNE ombre au repos. C'est le point de bascule du
- * style : une ombre permanente fait flotter chaque bloc et, quand tout flotte,
- * plus rien ne ressort. Le filet pose la carte sans la soulever ; la
- * profondeur est gardée pour le survol, où elle signifie « cliquable ».
+ * Le fond de page est presque blanc : une carte blanche posée dessus ne se
+ * distingue plus par sa couleur, elle se distingue par son BORD. D'où un
+ * filet d'un pixel très pâle DOUBLÉ d'une ombre d'un pixel — pas une ombre
+ * portée, qui ferait flotter chaque bloc, mais le trait de crayon sous le
+ * filet qui suffit à décoller la carte du papier. C'est tout ce qu'elle
+ * porte au repos ; la vraie profondeur reste réservée au survol de ce qui
+ * se clique, où elle veut dire quelque chose.
  */
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('rounded-[14px] border border-card-line bg-surface', className)}
+      className={cn('rounded-[16px] border border-card-line bg-surface shadow-xs', className)}
       {...props}
     />
   );
@@ -23,8 +26,8 @@ export function CardInteractive({ className, ...props }: React.HTMLAttributes<HT
   return (
     <div
       className={cn(
-        'rounded-[14px] border border-card-line bg-surface transition-all duration-200',
-        'hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-sm',
+        'rounded-[16px] border border-card-line bg-surface shadow-xs transition-all duration-200',
+        'hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-md',
         className,
       )}
       {...props}
@@ -33,7 +36,7 @@ export function CardInteractive({ className, ...props }: React.HTMLAttributes<HT
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('px-[18px] pt-4 pb-3', className)} {...props} />;
+  return <div className={cn('px-5 pt-[17px] pb-3.5', className)} {...props} />;
 }
 
 /**
@@ -55,5 +58,5 @@ export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHead
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('px-[18px] pt-0 pb-[18px]', className)} {...props} />;
+  return <div className={cn('px-5 pt-0 pb-5', className)} {...props} />;
 }

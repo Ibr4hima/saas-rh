@@ -2,7 +2,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import type { AbsenceRequestView, DashboardView, ExpiringContractView } from '@teranga/contracts';
+import type {
+  AbsenceRequestView,
+  DashboardHoliday,
+  DashboardView,
+  ExpiringContractView,
+} from '@teranga/contracts';
 import {
   Badge,
   Card,
@@ -61,25 +66,6 @@ function localToday(): string {
   const d = new Date();
   const p = (v: number) => String(v).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-/** « 17 sept. » — à trente jours d'horizon, l'année n'apprend rien. */
-function jourCourt(iso: string): string {
-  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'short',
-  });
-}
-
-/** « 17 sept. → 2 oct. », ou le seul jour quand l'absence n'en dure qu'un. */
-function plage(debut: string, fin: string): string {
-  return debut === fin ? jourCourt(debut) : `${jourCourt(debut)} → ${jourCourt(fin)}`;
-}
-
-/** Deux lettres pour une pastille : première du prénom, première du nom. */
-function initiales(nom: string): string {
-  const mots = nom.trim().split(/\s+/);
-  return `${mots[0]?.[0] ?? ''}${mots[mots.length - 1]?.[0] ?? ''}`.toUpperCase();
 }
 
 /**
@@ -232,7 +218,7 @@ function InboxRow({
     <li>
       <Link
         href={href}
-        className="group flex items-center gap-3 rounded-[9px] px-2.5 py-2.5 transition-colors duration-150 hover:bg-bg"
+        className="group flex items-center gap-3 rounded-[9px] px-2.5 py-2.5 transition-colors duration-150 hover:bg-hover"
       >
         <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-primary/[0.07] text-primary">
           <Icon name={icon} size={18} />
@@ -252,54 +238,6 @@ function InboxRow({
           size={18}
           className="shrink-0 text-ink-muted/40 transition-transform duration-150 group-hover:translate-x-0.5"
         />
-      </Link>
-    </li>
-  );
-}
-
-/* ———— Absences à venir : une rangée par personne, pas un tableau ———— */
-
-function AbsenceRow({ r, todayIso }: { r: AbsenceRequestView; todayIso: string }) {
-  const enCours = r.startDate <= todayIso;
-  const dates = plage(r.startDate, r.endDate);
-  return (
-    <li>
-      <Link
-        href={`/employees/${r.employeeId}`}
-        className="group flex items-center gap-3 rounded-[9px] px-2.5 py-2 transition-colors duration-150 hover:bg-bg"
-      >
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/[0.07] text-[10.5px] font-bold text-primary">
-          {initiales(r.employeeName)}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[12.5px] font-semibold text-ink-strong">
-            {r.employeeName}
-          </span>
-          <span className="block text-[11.5px] text-ink-muted md:truncate">
-            {r.absenceTypeName}
-            {/* Sur un petit écran, les dates descendent sous le nom — et la
-                ligne se replie plutôt que de couper une date en deux. */}
-            <span className="md:hidden"> · {dates}</span>
-          </span>
-        </span>
-        <span
-          className="hidden shrink-0 text-right text-[12px] whitespace-nowrap text-ink md:block"
-          style={TABULAIRE}
-        >
-          {dates}
-          <span className="ml-1.5 text-ink-muted">· {r.daysCount} j</span>
-        </span>
-        <span
-          className={cn(
-            'inline-flex w-[88px] shrink-0 items-center justify-center gap-1.5 rounded-full py-px text-[11px] font-semibold whitespace-nowrap',
-            enCours ? 'bg-success-soft text-success' : 'bg-line-soft text-ink-muted',
-          )}
-        >
-          <span
-            className={cn('size-1.5 rounded-full', enCours ? 'bg-success' : 'bg-ink-muted/60')}
-          />
-          {enCours ? 'En cours' : inDays(r.startDate)}
-        </span>
       </Link>
     </li>
   );
@@ -358,7 +296,7 @@ function DirectionBar({
       {id ? (
         <Link
           href={`/organisation?unite=${id}`}
-          className={cn(forme, 'transition-colors duration-150 hover:bg-bg')}
+          className={cn(forme, 'transition-colors duration-150 hover:bg-hover')}
         >
           {contenu}
         </Link>
@@ -369,21 +307,50 @@ function DirectionBar({
   );
 }
 
-/* ———— Jours fériés : le prochain est teinté, les autres attendent ———— */
+/* ———— Les fériés en frise : le temps de gauche à droite ———— */
 
-function Ferie({ day, label, prochain }: { day: string; label: string; prochain: boolean }) {
+/**
+ * Une frise, pas une liste. Trois dates posées sur un rail, à intervalles
+ * égaux — l'espacement dit l'ORDRE, la mention « dans 50 j » dit la distance ;
+ * espacer proportionnellement aurait collé les deux premières pastilles l'une
+ * contre l'autre dès que le premier férié tombe cette semaine.
+ *
+ * Le prochain porte seul la couleur : c'est la seule date sur laquelle on ait
+ * quelque chose à décider cette semaine-là.
+ */
+function Frise({ jours }: { jours: DashboardHoliday[] }) {
+  // Le rail court d'un centre de pastille à l'autre, pas d'un bord à l'autre
+  // de la carte : un trait qui dépasse de la première date ne mène à rien.
+  const garde = `${50 / jours.length}%`;
+  return (
+    <ol className="relative flex pt-2">
+      <span
+        aria-hidden
+        className="absolute top-[25px] h-px bg-line"
+        style={{ left: garde, right: garde }}
+      />
+      {jours.map((h, i) => (
+        <NoeudFerie key={h.day} day={h.day} label={h.label} prochain={i === 0} />
+      ))}
+    </ol>
+  );
+}
+
+function NoeudFerie({ day, label, prochain }: { day: string; label: string; prochain: boolean }) {
   const date = new Date(`${day}T00:00:00`);
   return (
-    <li className="flex items-center gap-3">
+    <li className="relative flex min-w-0 flex-1 flex-col items-center px-1.5 text-center sm:px-3">
+      {/* L'anneau à la couleur de la carte découpe le rail autour de la
+          pastille : le trait s'arrête net au lieu de la traverser. */}
       <span
         className={cn(
-          'flex size-10 shrink-0 flex-col items-center justify-center rounded-[10px] border',
-          prochain ? 'border-primary/25 bg-primary-soft' : 'border-line-soft bg-bg',
+          'flex size-[46px] shrink-0 flex-col items-center justify-center rounded-full border ring-4 ring-surface',
+          prochain ? 'border-primary/30 bg-primary-soft' : 'border-line bg-surface',
         )}
       >
         <span
           className={cn(
-            'text-sm leading-none font-bold',
+            'text-[15px] leading-none font-bold',
             prochain ? 'text-primary' : 'text-ink-strong',
           )}
           style={TABULAIRE}
@@ -392,22 +359,20 @@ function Ferie({ day, label, prochain }: { day: string; label: string; prochain:
         </span>
         <span
           className={cn(
-            'mt-0.5 text-[9px] leading-none uppercase',
+            'mt-0.5 text-[9px] leading-none font-semibold uppercase',
             prochain ? 'text-primary/80' : 'text-ink-muted',
           )}
         >
           {date.toLocaleDateString('fr-FR', { month: 'short' })}
         </span>
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-ink-strong">{label}</span>
-        <span className="block text-xs text-ink-muted">
-          <span className="capitalize">
-            {date.toLocaleDateString('fr-FR', { weekday: 'long' })}
-          </span>
-          {' · '}
-          <span className={prochain ? 'font-semibold text-primary' : undefined}>{inDays(day)}</span>
-        </span>
+      <span className="mt-2.5 line-clamp-2 text-[12.5px] leading-tight font-semibold text-ink-strong">
+        {label}
+      </span>
+      <span className="mt-1 text-[11px] leading-tight text-ink-muted">
+        <span className="capitalize">{date.toLocaleDateString('fr-FR', { weekday: 'long' })}</span>
+        {' · '}
+        <span className={prochain ? 'font-semibold text-primary' : undefined}>{inDays(day)}</span>
       </span>
     </li>
   );
@@ -571,32 +536,63 @@ export default function DashboardPage() {
               <CardTitle>Calendrier des absences</CardTitle>
               <LienCarte href="/calendrier">Voir le calendrier</LienCarte>
             </CardHeader>
-            <CardContent className="px-2 py-2">
-              {upcoming.isLoading ? (
-                <RangeesEnAttente n={3} />
-              ) : absences.length === 0 ? (
-                <EmptyState
-                  className="py-7"
-                  icon={<Icon name="event_available" size={22} />}
-                  title="Personne d'absent à l'horizon"
-                  description="Aucune absence approuvée dans les 30 prochains jours."
-                />
-              ) : (
-                <>
-                  <ul className="flex flex-col">
+            {upcoming.isLoading ? (
+              <CardContent>
+                <Skeleton className="h-20 w-full" />
+              </CardContent>
+            ) : absences.length === 0 ? (
+              <EmptyState
+                className="py-7"
+                icon={<Icon name="event_available" size={22} />}
+                title="Personne d'absent à l'horizon"
+                description="Aucune absence approuvée dans les 30 prochains jours."
+              />
+            ) : (
+              <>
+                <Table>
+                  <THead>
+                    <tr>
+                      <Th>Employé</Th>
+                      <Th>Type</Th>
+                      <Th>Du</Th>
+                      <Th>Au</Th>
+                      <Th className="text-right">Jours</Th>
+                      <Th>Statut</Th>
+                    </tr>
+                  </THead>
+                  <TBody>
                     {absences.slice(0, ABSENCES_VISIBLES).map((r) => (
-                      <AbsenceRow key={r.id} r={r} todayIso={todayIso} />
+                      <Tr key={r.id}>
+                        <Td className="font-medium whitespace-nowrap text-ink-strong">
+                          {r.employeeName}
+                        </Td>
+                        <Td className="whitespace-nowrap text-ink-muted">{r.absenceTypeName}</Td>
+                        <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
+                        <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
+                        <Td className="text-right font-mono">{r.daysCount}</Td>
+                        <Td>
+                          {r.startDate <= todayIso ? (
+                            <Badge tone="success" className="whitespace-nowrap">
+                              En cours
+                            </Badge>
+                          ) : (
+                            <Badge className="whitespace-nowrap">À venir</Badge>
+                          )}
+                        </Td>
+                      </Tr>
                     ))}
-                  </ul>
-                  {absencesEnPlus > 0 ? (
-                    <p className="border-t border-line-soft px-2.5 pt-2.5 pb-1 text-[11.5px] text-ink-muted">
+                  </TBody>
+                </Table>
+                {absencesEnPlus > 0 ? (
+                  <CardContent className="border-t border-line-soft py-3">
+                    <p className="text-xs text-ink-muted">
                       {plural(absencesEnPlus, 'autre')} sous 30 jours — le calendrier les montre
                       toutes.
                     </p>
-                  ) : null}
-                </>
-              )}
-            </CardContent>
+                  </CardContent>
+                ) : null}
+              </>
+            )}
           </Card>
         </div>
 
@@ -651,30 +647,27 @@ export default function DashboardPage() {
               )}
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader className="flex items-center justify-between gap-3">
-              <CardTitle>Prochains jours fériés</CardTitle>
-              {canManage ? <LienCarte href="/absences/feries">Gérer</LienCarte> : null}
-            </CardHeader>
-            <CardContent>
-              {stats.isLoading ? (
-                <Skeleton className="h-16 w-full" />
-              ) : (d?.upcomingHolidays ?? []).length === 0 ? (
-                <p className="text-sm text-ink-muted">
-                  Aucun férié à venir — la liste se gère dans les paramètres des congés.
-                </p>
-              ) : (
-                <ul className="flex flex-col gap-3">
-                  {d!.upcomingHolidays.map((h, i) => (
-                    <Ferie key={h.day} day={h.day} label={h.label} prochain={i === 0} />
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
+
+      {/* ———— Les fériés, en frise ———— */}
+      <Card className="mt-4">
+        <CardHeader className="flex items-center justify-between gap-3">
+          <CardTitle>Prochains jours fériés</CardTitle>
+          {canManage ? <LienCarte href="/absences/feries">Gérer</LienCarte> : null}
+        </CardHeader>
+        <CardContent className="pt-1">
+          {stats.isLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : (d?.upcomingHolidays ?? []).length === 0 ? (
+            <p className="py-3 text-sm text-ink-muted">
+              Aucun férié à venir — la liste se gère dans les paramètres des congés.
+            </p>
+          ) : (
+            <Frise jours={d!.upcomingHolidays} />
+          )}
+        </CardContent>
+      </Card>
 
       {seesContracts ? (
         <Card className="mt-4">

@@ -302,7 +302,9 @@ function Sommaire({
                   aria-current={actif ? 'true' : undefined}
                   className={cn(
                     'flex w-full items-baseline gap-2.5 rounded-[10px] border-l-[3px] px-2.5 py-2 text-left transition-colors',
-                    actif ? 'border-primary bg-primary/[0.06]' : 'border-transparent hover:bg-bg',
+                    actif
+                      ? 'border-primary bg-primary/[0.06]'
+                      : 'border-transparent hover:bg-hover',
                   )}
                 >
                   {/* Le chiffre romain fait office de repère de rang : on
@@ -598,7 +600,7 @@ function Pagination({
       onClick={() => onAller(chap.id)}
       className={cn(
         'flex flex-1 items-center gap-3 rounded-[12px] border border-card-line px-4 py-3 transition-colors',
-        'hover:border-primary/40 hover:bg-bg focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+        'hover:border-primary/40 hover:bg-hover focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
       )}
     >
       {sens === 'avant' ? (

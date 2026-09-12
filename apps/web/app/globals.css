@@ -9,6 +9,7 @@
 /* Pont tokens → utilitaires Tailwind : bg-surface, text-ink, border-line, etc. */
 @theme inline {
   --color-bg: var(--tg-bg);
+  --color-hover: var(--tg-hover);
   --color-surface: var(--tg-surface);
   --color-surface-raised: var(--tg-surface-raised);
   --color-ink: var(--tg-ink);
@@ -171,33 +172,18 @@ body {
 }
 
 /* ── Bandeau de tête ──────────────────────────────────────────────────────
-   Repris de la plateforme APIX : un aplat de marque, une trame très fine
-   masquée en diagonale, deux halos lumineux et un liseré en bas. Aucune de
-   ces couches ne se voit isolément ; ensemble elles donnent au bandeau une
-   profondeur qu'une couleur unie n'a pas. */
+   Un aplat du bleu de la charte, et rien d'autre. Il portait jusqu'ici un
+   dégradé à 155°, une trame en diagonale et deux halos ; chacune de ces
+   couches obligeait à mesurer le blanc du titre sur le point le plus clair
+   du bandeau, où il ne tenait que 4,56:1. L'aplat le monte à 8,31:1, et le
+   bandeau y gagne un bord franc — c'est le même geste que sur les barres de
+   tête des produits qu'on regarde toute la journée sans les voir. */
 .hero-bar {
   background: var(--tg-hero);
   position: relative;
-  overflow: hidden;
 }
 
-.hero-bar::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.5;
-  background-image:
-    linear-gradient(rgb(255 255 255 / 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(255 255 255 / 0.04) 1px, transparent 1px);
-  background-size: 44px 44px;
-  /* La trame s'efface vers le bas : visible là où l'œil entre, absente là où
-     le titre se lit. */
-  mask-image: radial-gradient(ellipse at 75% 0%, #000 0%, transparent 72%);
-  -webkit-mask-image: radial-gradient(ellipse at 75% 0%, #000 0%, transparent 72%);
-}
-
-/* Liseré lumineux en bas — la seule séparation entre le bandeau et la page. */
+/* La seule séparation avec la page : un filet clair, d'un bord à l'autre. */
 .hero-bar::after {
   content: '';
   position: absolute;
@@ -205,7 +191,7 @@ body {
   bottom: 0;
   height: 1px;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.3) 50%, transparent 100%);
+  background: var(--tg-hero-line);
 }
 
 /* Le point pulsant : une onde blanche qui s'ouvre et s'éteint. */
