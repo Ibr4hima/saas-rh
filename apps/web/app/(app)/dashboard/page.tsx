@@ -657,13 +657,11 @@ export default function DashboardPage() {
                         <Td className="text-right font-mono">{r.daysCount}</Td>
                         <Td>
                           {r.startDate <= todayIso ? (
-                            <Badge tone="success" dot className="whitespace-nowrap">
+                            <Badge tone="success" className="whitespace-nowrap">
                               En cours
                             </Badge>
                           ) : (
-                            <Badge dot className="whitespace-nowrap">
-                              À venir
-                            </Badge>
+                            <Badge className="whitespace-nowrap">À venir</Badge>
                           )}
                         </Td>
                       </Tr>
@@ -806,7 +804,7 @@ export default function DashboardPage() {
                           {c.endDate ? formatDate(c.endDate) : '—'}
                         </Td>
                         <Td className="text-right">
-                          <Badge tone={deadline.tone} dot className="whitespace-nowrap">
+                          <Badge tone={deadline.tone} className="whitespace-nowrap">
                             {deadline.text}
                           </Badge>
                         </Td>
