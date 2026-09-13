@@ -73,9 +73,6 @@ function lastDay(exclusiveEnd: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-const initials = (given: string, family: string) =>
-  `${given[0] ?? ''}${family[0] ?? ''}`.toUpperCase();
-
 /** Ancienneté en clair : « 3 ans et 2 mois », pas une date à soustraire. */
 function seniority(hiredOn: string): string {
   const start = new Date(`${hiredOn}T12:00:00Z`);
@@ -192,24 +189,29 @@ function Peremption({ date }: { date: string }) {
 function Repere({
   label,
   valeur,
+  titre,
   children,
 }: {
   label: string;
-  valeur?: string | null;
+  /** Un texte, ou un composant quand la valeur s'actionne (un numéro, une adresse). */
+  valeur?: React.ReactNode;
+  /** L'infobulle, quand la valeur n'est pas un texte qu'on puisse y recopier. */
+  titre?: string;
   /** Une seconde ligne, plus discrète — la date d'embauche sous l'ancienneté. */
   children?: React.ReactNode;
 }) {
+  const vide = valeur === null || valeur === undefined || valeur === '';
   return (
     <div className="min-w-0">
       <dt className="text-[9.5px] font-bold tracking-[0.11em] text-ink-muted uppercase">{label}</dt>
       <dd
         className={cn(
           'mt-1.5 line-clamp-2 text-[13.5px] leading-snug font-semibold break-words',
-          valeur ? 'text-ink-strong' : 'text-ink-muted',
+          vide ? 'text-ink-muted/45' : 'text-ink-strong',
         )}
-        title={valeur ?? undefined}
+        title={titre ?? (typeof valeur === 'string' ? valeur : undefined)}
       >
-        {valeur || '—'}
+        {vide ? '—' : valeur}
       </dd>
       {children ? (
         <dd className="mt-1 text-[11.5px] leading-tight font-normal text-ink-muted">{children}</dd>
@@ -266,20 +268,22 @@ export default function EmployeePage() {
       </Link>
 
       {/* ———— Bande d'identité ————
-          Ce qui permet de reconnaître un dossier en une seconde : les
-          initiales, le nom, l'état, et les quatre repères qu'on cherche
+          Ce qui permet de reconnaître un dossier en une seconde : le nom,
+          l'état, le matricule, le poste, et les quatre repères qu'on cherche
           systématiquement. Le reste de la fiche approfondit ; cette bande
           identifie, et rien d'autre.
 
-          Les quatre repères ont quitté leurs boîtes teintées. Quatre cadres
-          bleus alignés pesaient plus lourd que les valeurs qu'ils portaient :
-          l'œil voyait des boîtes avant de lire des mots. Un filet d'un pixel
-          entre les colonnes sépare aussi bien, et rend son blanc à la carte. */}
+          Plus de cartouche d'initiales. Deux lettres dans un carré ne
+          reconnaissent personne — le nom est écrit juste à côté, en vingt-deux
+          pixels — et ce cartouche poussait toute la ligne vers la droite. Un
+          avatar mérite sa place le jour où il porte une photographie.
+
+          Les quatre repères ont aussi quitté leurs boîtes teintées : quatre
+          cadres bleus alignés pesaient plus lourd que les valeurs qu'ils
+          portaient. Un filet d'un pixel entre les colonnes sépare aussi bien,
+          et rend son blanc à la carte. */}
       <Card className="mb-4">
-        <div className="flex flex-wrap items-start gap-4 p-5 sm:gap-5">
-          <span className="flex size-[60px] shrink-0 items-center justify-center rounded-[18px] bg-primary/[0.07] text-[18px] font-bold text-primary ring-1 ring-primary/10 ring-inset">
-            {initials(e.person.givenName, e.person.familyName)}
-          </span>
+        <div className="flex items-start gap-4 p-5">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
               <h1 className="text-[22px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">
@@ -296,11 +300,12 @@ export default function EmployeePage() {
                 </span>
               ) : null}
             </div>
-            {/* Sous le nom : le matricule. C'est lui qu'on cite au téléphone
-                et qu'on recopie sur une attestation ; le poste et la direction
-                ont chacun leur colonne juste en dessous. */}
-            <p className="mt-1.5 font-mono text-[12.5px] tracking-tight text-ink-muted">
-              {e.employeeNumber}
+            {/* Sous le nom, les deux choses qui désignent la personne dans une
+                conversation : le matricule qu'on cite au téléphone, et le
+                poste qu'on occupe. La direction, elle, a sa colonne. */}
+            <p className="mt-1.5 text-[12.5px] leading-tight text-ink-muted">
+              <span className="font-mono tracking-tight">{e.employeeNumber}</span>
+              {current?.positionTitle ? <> · {current.positionTitle}</> : null}
             </p>
           </div>
           {canSeeHistory ? (
@@ -322,12 +327,32 @@ export default function EmployeePage() {
             couper en morceaux. */}
         <div className="@container border-t border-line-soft px-5 py-4">
           <dl className="grid grid-cols-2 gap-x-6 gap-y-5 @[44rem]:grid-cols-4 @[44rem]:gap-x-0 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:border-l @[44rem]:[&>*+*]:border-line-soft @[44rem]:[&>*+*]:pl-5">
-            <Repere label="Poste" valeur={current?.positionTitle} />
-            <Repere label="Direction" valeur={current?.orgUnitName} />
+            <Repere label="Direction affectée" valeur={current?.orgUnitName} />
+            <Repere
+              label="Téléphone portable"
+              titre={e.person.phone ?? undefined}
+              valeur={e.person.phone ? <Telephone valeur={e.person.phone} /> : null}
+            />
+            <Repere
+              label="Email professionnel"
+              titre={e.workEmail ?? undefined}
+              valeur={
+                e.workEmail ? (
+                  // Comme le numéro juste avant : une adresse qu'on ne peut
+                  // que recopier à la main est la seule donnée inerte d'une
+                  // bande qui sert à joindre quelqu'un.
+                  <a
+                    href={`mailto:${e.workEmail}`}
+                    className="break-all transition-colors hover:text-primary hover:underline"
+                  >
+                    {e.workEmail}
+                  </a>
+                ) : null
+              }
+            />
             <Repere label="Ancienneté" valeur={seniority(e.hiredOn)}>
               Depuis le {formatDate(e.hiredOn)}
             </Repere>
-            <Repere label="Email professionnel" valeur={e.workEmail} />
           </dl>
         </div>
       </Card>
@@ -903,10 +928,17 @@ function PortalCard({
             <div className="flex flex-col gap-3 @[24rem]:flex-row @[24rem]:items-end">
               <div className="@[24rem]:w-44">
                 <Field label="Rôle" htmlFor="invite-role">
+                  {/* En pilule, contre la règle de la maison (cf. button.tsx :
+                      pilule = ce qui s'actionne, coin doux = ce qui se
+                      remplit). Ces deux-là forment une seule commande — un
+                      rôle et le lien qu'il produit — et deux formes
+                      différentes côte à côte les faisaient lire comme deux
+                      gestes sans rapport. */}
                   <Select
                     id="invite-role"
                     value={role}
                     onChange={(ev) => setRole(ev.target.value as InvitableRole)}
+                    className="rounded-full px-4"
                   >
                     <option value="employee">Employé</option>
                     <option value="manager">Manager</option>
