@@ -26,20 +26,18 @@ import {
   Table,
   TBody,
   Td,
-  DataBlock,
-  DataGrid,
   Th,
   THead,
   Tr,
 } from '@teranga/ui';
-import { api, ApiError, apiUrl } from '../../../../lib/api';
+import { api, ApiError } from '../../../../lib/api';
 import { EmployeeDocumentsCard } from '../../../../components/employee-documents-card';
 import { nationalityLabel } from '@teranga/contracts';
 import { ProfileChangeCard } from '../../../../components/profile-change-card';
 import { DocumentRequestRow } from '../../../../components/document-request-list';
 import { EmployeeEditModal } from '../../../../components/employee-edit-modal';
 import { Telephone } from '../../../../components/telephone';
-import { usePageTitle } from '../../../../components/page-title';
+import { Icon } from '../../../../components/icons';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import type { DocumentRequestView, OrgUnit } from '@teranga/contracts';
@@ -87,16 +85,6 @@ function seniority(hiredOn: string): string {
   if (years === 0) return rest <= 1 ? '< 1 mois' : `${rest} mois`;
   const y = `${years} an${years > 1 ? 's' : ''}`;
   return rest === 0 ? y : `${y} et ${rest} mois`;
-}
-
-/** Deux lignes au plus, le nom entier en infobulle. */
-function Tronque({ children }: { children?: string | null }) {
-  if (!children) return null;
-  return (
-    <span className="line-clamp-2 block" title={children}>
-      {children}
-    </span>
-  );
 }
 
 /**
@@ -172,6 +160,44 @@ function Peremption({ date }: { date: string }) {
   );
 }
 
+/**
+ * Un repère de la bande d'identité : l'intitulé au-dessus, petit et gris, la
+ * valeur en dessous. Pas de cadre — c'est le filet de la colonne voisine qui
+ * sépare, et le blanc qui aère.
+ *
+ * Un intitulé de poste ou de direction peut être très long (« Direction de
+ * l'Intelligence et des Perspectives Économiques ») : on le borne à deux
+ * lignes, et l'infobulle rend le nom entier à qui en a besoin.
+ */
+function Repere({
+  label,
+  valeur,
+  children,
+}: {
+  label: string;
+  valeur?: string | null;
+  /** Une seconde ligne, plus discrète — la date d'embauche sous l'ancienneté. */
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[9.5px] font-bold tracking-[0.11em] text-ink-muted uppercase">{label}</dt>
+      <dd
+        className={cn(
+          'mt-1.5 line-clamp-2 text-[13.5px] leading-snug font-semibold break-words',
+          valeur ? 'text-ink-strong' : 'text-ink-muted',
+        )}
+        title={valeur ?? undefined}
+      >
+        {valeur || '—'}
+      </dd>
+      {children ? (
+        <dd className="mt-1 text-[11.5px] leading-tight font-normal text-ink-muted">{children}</dd>
+      ) : null}
+    </div>
+  );
+}
+
 export default function EmployeePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -190,11 +216,6 @@ export default function EmployeePage() {
     queryFn: () => api<EmployeeHistoryEntry[]>(`/employees/${id}/history`),
     enabled: Boolean(canSeeHistory),
   });
-
-  // Le bandeau annonce QUI, pas « Fiche employé ». Null tant que le dossier
-  // charge : le titre déduit du chemin tient la place sans clignoter.
-  const person = detail.data?.person;
-  usePageTitle(person ? `${person.givenName} ${person.familyName}` : null);
 
   if (detail.isLoading) {
     return (
@@ -225,18 +246,23 @@ export default function EmployeePage() {
       </Link>
 
       {/* ———— Bande d'identité ————
-          Tout ce qui permet de reconnaître le dossier en une seconde : le
-          visage (à défaut, les initiales), le nom, la fonction, et les quatre
-          repères qu'on cherche systématiquement. Le reste de la fiche
-          approfondit ; cette bande, elle, identifie. */}
-      <Card className="mb-4 px-4 py-4 sm:px-[18px]">
-        <div className="flex flex-wrap items-start gap-4">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary/[0.09] text-[17px] font-bold text-primary">
+          Ce qui permet de reconnaître un dossier en une seconde : les
+          initiales, le nom, l'état, et les quatre repères qu'on cherche
+          systématiquement. Le reste de la fiche approfondit ; cette bande
+          identifie, et rien d'autre.
+
+          Les quatre repères ont quitté leurs boîtes teintées. Quatre cadres
+          bleus alignés pesaient plus lourd que les valeurs qu'ils portaient :
+          l'œil voyait des boîtes avant de lire des mots. Un filet d'un pixel
+          entre les colonnes sépare aussi bien, et rend son blanc à la carte. */}
+      <Card className="mb-4">
+        <div className="flex flex-wrap items-start gap-4 p-5 sm:gap-5">
+          <span className="flex size-[60px] shrink-0 items-center justify-center rounded-[18px] bg-primary/[0.07] text-[18px] font-bold text-primary ring-1 ring-primary/10 ring-inset">
             {initials(e.person.givenName, e.person.familyName)}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-[20px] leading-tight font-bold tracking-[-0.01em] text-ink-strong">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+              <h1 className="text-[22px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">
                 {e.person.givenName} {e.person.familyName}
               </h1>
               <Badge tone={e.status === 'active' ? 'success' : 'neutral'}>
@@ -252,46 +278,38 @@ export default function EmployeePage() {
             </div>
             {/* Sous le nom : le matricule. C'est lui qu'on cite au téléphone
                 et qu'on recopie sur une attestation ; le poste et la direction
-                ont chacun leur bloc juste en dessous, où on les lit en entier. */}
-            <p className="mt-1 font-mono text-[12.5px] tracking-tight text-ink-muted">
+                ont chacun leur colonne juste en dessous. */}
+            <p className="mt-1.5 font-mono text-[12.5px] tracking-tight text-ink-muted">
               {e.employeeNumber}
             </p>
           </div>
-          {canSeeHistory && e.status === 'active' ? (
-            <a href={apiUrl(`/employees/${e.id}/attestation`)} target="_blank" rel="noreferrer">
-              <Button variant="secondary">Attestation de travail</Button>
-            </a>
+          {canSeeHistory ? (
+            <Link
+              href={`/employees/${e.id}?modifier=1`}
+              aria-label="Modifier la fiche"
+              title="Modifier la fiche"
+              className="flex size-9 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink-muted transition-colors duration-200 hover:border-primary/40 hover:bg-primary/[0.06] hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+            >
+              <Icon name="edit" size={18} />
+            </Link>
           ) : null}
         </div>
 
-        <DataGrid className="mt-4 @[52rem]:grid-cols-4">
-          {/* Un intitulé de poste ou de direction peut tenir sur trois lignes
-              — « Direction de l'Intelligence et des Perspectives Économiques »
-              étirait toute la rangée. On le borne à deux lignes ; l'infobulle
-              rend le nom entier à qui en a besoin. */}
-          {/* `Tronque` ne rend RIEN quand la valeur manque, et `DataBlock` ne
-              voit alors plus un vide mais un élément : son tiret ne s'affiche
-              pas et la case reste béante. On lui passe donc `null`, qu'il sait
-              reconnaître — cas courant depuis qu'un agent peut n'avoir aucune
-              unité de rattachement. */}
-          <DataBlock label="Poste">
-            {current?.positionTitle ? <Tronque>{current.positionTitle}</Tronque> : null}
-          </DataBlock>
-          <DataBlock label="Direction">
-            {current?.orgUnitName ? <Tronque>{current.orgUnitName}</Tronque> : null}
-          </DataBlock>
-          <DataBlock label="Ancienneté">
-            {seniority(e.hiredOn)}
-            <span className="mt-1 block text-[11.5px] font-normal text-ink-muted">
+        {/* Quatre colonnes séparées par un filet, repliées en deux sur une
+            carte étroite — où le filet disparaît, deux valeurs empilées n'ayant
+            rien à séparer. Le seuil suit la largeur du CONTENEUR et non celle
+            de l'écran : la même bande servira un panneau latéral sans se
+            couper en morceaux. */}
+        <div className="@container border-t border-line-soft px-5 py-4">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-5 @[44rem]:grid-cols-4 @[44rem]:gap-x-0 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:border-l @[44rem]:[&>*+*]:border-line-soft @[44rem]:[&>*+*]:pl-5">
+            <Repere label="Poste" valeur={current?.positionTitle} />
+            <Repere label="Direction" valeur={current?.orgUnitName} />
+            <Repere label="Ancienneté" valeur={seniority(e.hiredOn)}>
               Depuis le {formatDate(e.hiredOn)}
-            </span>
-          </DataBlock>
-          <DataBlock label="Email professionnel">
-            <span className="block truncate" title={e.workEmail ?? undefined}>
-              {e.workEmail}
-            </span>
-          </DataBlock>
-        </DataGrid>
+            </Repere>
+            <Repere label="Email professionnel" valeur={e.workEmail} />
+          </dl>
+        </div>
       </Card>
 
       {/* Deux colonnes sur grand écran : à gauche ce qui décrit la personne

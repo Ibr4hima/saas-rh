@@ -150,8 +150,11 @@ function pageTitle(pathname: string, givenName: string): string {
   if (pathname === '/dashboard') return `${greeting()}, ${givenName}`;
   const exact = PAGE_TITLES[pathname];
   if (exact) return exact;
+  // Une fiche garde le titre de sa SECTION : le dossier nomme déjà la personne
+  // en gros caractères, trois centimètres plus bas. Le bandeau, lui, dit où
+  // l'on se trouve dans l'application — c'est le seul endroit qui le dise.
   if (pathname.startsWith('/employees/')) {
-    return pathname.endsWith('/modifier') ? 'Modifier la fiche' : 'Fiche employé';
+    return pathname.endsWith('/modifier') ? 'Modifier la fiche' : 'Gestion du personnel';
   }
   if (pathname.startsWith('/recrutement/')) return 'Offre de recrutement';
   if (pathname.endsWith('/deposer')) return 'Dépôt du texte';
@@ -189,10 +192,6 @@ function pageAction(pathname: string, role: string): ChromeAction | null {
   // dépôt, qui a ses propres boutons.
   if (parts.length === 2 && parts[0] === 'reglementations') {
     return { href: `${pathname}/deposer`, icon: 'edit', label: 'Déposer le texte' };
-  }
-  // Fiche employé — et elle seule : /employees/<id>, jamais /employees/<id>/…
-  if (parts.length === 2 && parts[0] === 'employees' && parts[1] !== 'new') {
-    return { href: `${pathname}?modifier=1`, icon: 'edit', label: 'Modifier la fiche' };
   }
   return null;
 }
