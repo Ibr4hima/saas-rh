@@ -154,6 +154,17 @@
      validateur de palette (bande de clarté + séparation daltonienne) — deux
      couleurs de charte ne forment pas d'office une palette catégorielle. */
   --tg-chart: #004f91;
+  /* Deuxième série. Mesurée, pas choisie : contre --tg-chart, la paire donne
+     ΔE 33,1 en vision normale et 23,9 en protanopie (OKLab ×100, seuil 8) —
+     bleu et orange sont l'un des rares couples que toutes les daltonies
+     séparent. Le validateur signale la bande de clarté, les deux teintes
+     n'ayant pas la même luminosité : c'est acceptable ici parce que la barre
+     de parité porte ses ÉTIQUETTES à côté, la couleur n'y est jamais le seul
+     porteur de l'information.
+     Ce token est distinct de --tg-accent À DESSEIN : l'orange sémantique
+     reste réservé à ce qui attend un geste (cf. en-tête de ce fichier), et ne
+     doit pas s'user à colorer des graphiques. */
+  --tg-chart-2: #ca631f;
   --tg-chart-track: #eae7e3;
 
   /* --- Mouvement (120–200 ms ease-out, cf. ch. 05) --- */
@@ -215,6 +226,7 @@
     --tg-veil: rgb(4 6 12 / 0.34);
     --tg-alert-ring: rgb(0 0 0 / 0.45);
     --tg-chart: #659cd9;
+    --tg-chart-2: #f69f70;
     --tg-chart-track: #262a3a;
   }
 }
@@ -264,6 +276,7 @@
   --tg-veil: rgb(4 6 12 / 0.34);
   --tg-alert-ring: rgb(0 0 0 / 0.45);
   --tg-chart: #659cd9;
+  --tg-chart-2: #f69f70;
   --tg-chart-track: #262a3a;
 }
 

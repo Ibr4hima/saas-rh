@@ -141,6 +141,24 @@ const year = new Date().getFullYear();
 const tabaski = `${year}-08-26`;
 await call('POST', '/holidays', { year, day: tabaski, label: 'Tabaski' }).catch(() => {});
 
+// Les fêtes à date fixe du calendrier sénégalais, sur l'année en cours et la
+// suivante. Le tableau de bord montre une FENÊTRE de fériés — le dernier passé
+// et les trois à venir : avec deux dates en base, la démonstration ne montrait
+// jamais la frise complète, quel que soit le jour où le seed tourne.
+const FIXES = [
+  ['01-01', 'Nouvel an'],
+  ['04-04', "Fête de l'Indépendance"],
+  ['05-01', 'Fête du Travail'],
+  ['08-15', 'Assomption'],
+  ['11-01', 'Toussaint'],
+  ['12-25', 'Noël'],
+];
+for (const an of [year, year + 1]) {
+  for (const [jour, label] of FIXES) {
+    await call('POST', '/holidays', { year: an, day: `${an}-${jour}`, label }).catch(() => {});
+  }
+}
+
 // Fête mobile placée pour que la démo montre le rappel automatique : on prend
 // le premier jour ouvré à venir dont le rappel (J−2 reculé au dernier jour
 // ouvré) est déjà échu, quel que soit le jour où le seed tourne.

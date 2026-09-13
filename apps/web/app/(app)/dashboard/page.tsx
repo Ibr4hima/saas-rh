@@ -2,12 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import type {
-  AbsenceRequestView,
-  DashboardHoliday,
-  DashboardView,
-  ExpiringContractView,
-} from '@teranga/contracts';
+import type { AbsenceRequestView, DashboardHoliday, DashboardView } from '@teranga/contracts';
 import {
   Badge,
   Card,
@@ -43,14 +38,20 @@ import { formatDate, useMe } from '../../../lib/hooks';
 
 const TABULAIRE = { fontVariantNumeric: 'tabular-nums' } as const;
 
-/** « aujourd'hui », « demain », « dans 12 j » — l'échéance parle mieux que la date. */
-function inDays(iso: string): string {
-  const days = Math.round(
+/** Jours d'écart avec aujourd'hui — négatif vers le passé. */
+function ecartJours(iso: string): number {
+  return Math.round(
     (new Date(`${iso}T00:00:00`).getTime() - new Date().setHours(0, 0, 0, 0)) / 86_400_000,
   );
-  if (days <= 0) return "aujourd'hui";
+}
+
+/** « hier », « aujourd'hui », « dans 12 j » — l'écart parle mieux que la date. */
+function inDays(iso: string): string {
+  const days = ecartJours(iso);
+  if (days === 0) return "aujourd'hui";
   if (days === 1) return 'demain';
-  return `dans ${days} j`;
+  if (days === -1) return 'hier';
+  return days < 0 ? `il y a ${-days} j` : `dans ${days} j`;
 }
 
 function plural(n: number, word: string): string {
@@ -69,38 +70,22 @@ function localToday(): string {
 }
 
 /**
- * L'échéance se lit sans calcul mental, et tient sur une ligne : dans une
- * colonne étroite, un libellé qui se replie sur trois lignes coûte plus de
- * lecture qu'il n'en épargne.
+ * L'échéance de contrat, écrite comme on la dirait. « 16 j » obligeait à
+ * deviner de quel côté de la date on se trouvait ; « Échu · il y a 16 jours »
+ * ne se devine pas.
  */
 function deadlineLabel(daysLeft: number | null): {
   text: string;
   tone: 'danger' | 'warning' | 'neutral';
 } {
-  if (daysLeft === null) return { text: 'à préciser', tone: 'danger' };
-  if (daysLeft < 0) return { text: `échu · ${-daysLeft} j`, tone: 'danger' };
-  if (daysLeft === 0) return { text: 'dernier jour', tone: 'danger' };
-  return { text: `${daysLeft} j`, tone: daysLeft <= 30 ? 'warning' : 'neutral' };
+  if (daysLeft === null) return { text: 'À préciser', tone: 'danger' };
+  if (daysLeft < 0) return { text: `Échu · il y a ${plural(-daysLeft, 'jour')}`, tone: 'danger' };
+  if (daysLeft === 0) return { text: "Échoit aujourd'hui", tone: 'danger' };
+  if (daysLeft === 1) return { text: 'Échoit demain', tone: 'warning' };
+  return { text: `Dans ${plural(daysLeft, 'jour')}`, tone: daysLeft <= 30 ? 'warning' : 'neutral' };
 }
 
 /* ———— Pièces communes ———— */
-
-/** Le geste d'une carte, à droite de son titre : « Voir le calendrier → ». */
-function LienCarte({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="group/lien inline-flex shrink-0 items-center gap-1 rounded-md text-[11.5px] font-semibold text-primary transition-colors hover:text-primary-hover focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
-    >
-      {children}
-      <Icon
-        name="arrow_forward"
-        size={14}
-        className="transition-transform duration-150 group-hover/lien:translate-x-0.5"
-      />
-    </Link>
-  );
-}
 
 /** Le total d'une carte, à droite de son titre : « 3 agents ». */
 function TotalCarte({ children }: { children: React.ReactNode }) {
@@ -137,24 +122,24 @@ function StatTile({
   value,
   context,
   href,
-  alert,
 }: {
   icon: IconName;
   label: string;
   /** L'étiquette d'un téléphone, où deux tuiles se partagent 360 px. */
   short: string;
-  value: number | undefined;
+  /** Un nombre le plus souvent, une date pour le prochain férié. */
+  value: React.ReactNode;
   context?: string;
   href: string;
-  /** true = ce chiffre attend une action : la pastille passe à l'orange de charte. */
-  alert?: boolean;
 }) {
   return (
     /* L'étiquette passe AVANT le chiffre : on lit « ce que c'est » puis
        « combien », l'ordre dans lequel la question se pose. L'icône tient
-       dans une pastille, à droite : c'est elle qui dit si la tuile ATTEND
-       quelque chose (orange) ou informe seulement (bleu). La flèche n'apparaît
-       qu'au survol — la tuile est une porte, on ne le voit qu'en s'approchant. */
+       dans une pastille bleue, à droite — la même pour les quatre tuiles :
+       une pastille orange sur l'une d'elles la faisait lire comme une alerte
+       permanente, alors qu'elle ne fait qu'ouvrir un écran. La flèche
+       n'apparaît qu'au survol : la tuile est une porte, on ne le voit qu'en
+       s'approchant. */
     <Link
       href={href}
       className="group block rounded-[14px] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
@@ -165,14 +150,7 @@ function StatTile({
             <span className="sm:hidden">{short}</span>
             <span className="hidden sm:inline">{label}</span>
           </p>
-          <span
-            className={cn(
-              'flex size-7 shrink-0 items-center justify-center rounded-[8px] transition-colors duration-200',
-              alert
-                ? 'bg-accent-soft text-accent-text'
-                : 'bg-primary/[0.07] text-primary group-hover:bg-primary/[0.12]',
-            )}
-          >
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-primary/[0.07] text-primary transition-colors duration-200 group-hover:bg-primary/[0.12]">
             <Icon name={icon} size={17} />
           </span>
         </div>
@@ -180,7 +158,7 @@ function StatTile({
           <Skeleton className="mt-3 h-[30px] w-14" />
         ) : (
           <p
-            className="mt-2.5 text-[30px] leading-none font-bold tracking-[-0.025em] text-ink-strong"
+            className="mt-2.5 text-[26px] leading-none font-bold tracking-[-0.025em] text-ink-strong sm:text-[30px]"
             style={TABULAIRE}
           >
             {value}
@@ -307,66 +285,132 @@ function DirectionBar({
   );
 }
 
-/* ———— Les fériés en frise : le temps de gauche à droite ———— */
+/* ———— La frise des fériés ———— */
+
+/** Position du centre d'une date sur le rail, en % de la largeur. */
+const centre = (i: number, n: number) => ((i + 0.5) / n) * 100;
 
 /**
- * Une frise, pas une liste. Trois dates posées sur un rail, à intervalles
- * égaux — l'espacement dit l'ORDRE, la mention « dans 50 j » dit la distance ;
- * espacer proportionnellement aurait collé les deux premières pastilles l'une
- * contre l'autre dès que le premier férié tombe cette semaine.
+ * Le calendrier des fériés : le dernier passé, puis les trois qui viennent.
  *
- * Le prochain porte seul la couleur : c'est la seule date sur laquelle on ait
- * quelque chose à décider cette semaine-là.
+ * Le passé n'est pas là pour décorer — c'est lui qui donne à « aujourd'hui »
+ * un point d'appui. Sans lui, le repère du jour n'aurait rien devant quoi se
+ * placer et la frise commencerait dans le vide.
+ *
+ * Les dates sont à intervalles ÉGAUX : l'espacement dit l'ordre, la mention
+ * « dans 49 j » dit la distance. Le seul élément placé à sa vraie proportion
+ * est le repère du jour, entre le férié passé et le prochain — le seul endroit
+ * où la position apporte quelque chose qu'aucun mot ne dit aussi vite.
  */
 function Frise({ jours }: { jours: DashboardHoliday[] }) {
-  // Le rail court d'un centre de pastille à l'autre, pas d'un bord à l'autre
-  // de la carte : un trait qui dépasse de la première date ne mène à rien.
-  const garde = `${50 / jours.length}%`;
+  const n = jours.length;
+  const passes = jours.filter((h) => ecartJours(h.day) < 0).length;
+  const garde = `${50 / n}%`;
+
+  // Le repère du jour ne se dessine que s'il est encadré : il lui faut un
+  // férié derrière et un devant.
+  let repere: number | null = null;
+  if (passes > 0 && passes < n) {
+    const avant = ecartJours(jours[passes - 1]!.day); // négatif
+    const apres = ecartJours(jours[passes]!.day); // positif ou nul
+    const brut = -avant / (apres - avant);
+    // Bridé au quart central du segment. La proportion vraie peut valoir 0,95
+    // — un férié passé il y a dix-huit jours, le suivant demain — et la
+    // pastille du repère viendrait alors mordre sur la date voisine.
+    const t = Math.min(0.62, Math.max(0.38, brut));
+    repere = centre(passes - 1, n) + t * (centre(passes, n) - centre(passes - 1, n));
+  }
+
   return (
-    <ol className="relative flex pt-2">
+    <div className="relative">
+      {/* Le rail court d'un centre de date à l'autre, jamais d'un bord à
+          l'autre de la carte : un trait qui dépasse ne mène à rien. Il est
+          coupé en deux au niveau du jour — ce qui est écoulé porte un gris
+          plus dense que ce qui reste à venir. */}
       <span
         aria-hidden
-        className="absolute top-[25px] h-px bg-line"
+        className="absolute top-[45px] h-[2px] rounded-full bg-line-soft"
         style={{ left: garde, right: garde }}
       />
-      {jours.map((h, i) => (
-        <NoeudFerie key={h.day} day={h.day} label={h.label} prochain={i === 0} />
-      ))}
-    </ol>
+      {repere !== null ? (
+        <>
+          <span
+            aria-hidden
+            className="absolute top-[45px] h-[2px] rounded-full bg-line"
+            style={{ left: garde, width: `calc(${repere}% - ${garde})` }}
+          />
+          <span
+            className="absolute top-[38px] hidden -translate-x-1/2 rounded-full border border-line bg-surface px-2 py-[3px] text-[9px] font-bold tracking-[0.08em] text-ink-muted uppercase shadow-xs sm:block"
+            style={{ left: `${repere}%` }}
+          >
+            Aujourd&apos;hui
+          </span>
+        </>
+      ) : null}
+
+      <ol className="relative flex">
+        {jours.map((h, i) => (
+          <DateFerie
+            key={h.day}
+            day={h.day}
+            label={h.label}
+            etat={i < passes ? 'passe' : i === passes ? 'prochain' : 'avenir'}
+          />
+        ))}
+      </ol>
+    </div>
   );
 }
 
-function NoeudFerie({ day, label, prochain }: { day: string; label: string; prochain: boolean }) {
+function DateFerie({
+  day,
+  label,
+  etat,
+}: {
+  day: string;
+  label: string;
+  etat: 'passe' | 'prochain' | 'avenir';
+}) {
   const date = new Date(`${day}T00:00:00`);
+  const prochain = etat === 'prochain';
+  const passe = etat === 'passe';
   return (
-    <li className="relative flex min-w-0 flex-1 flex-col items-center px-1.5 text-center sm:px-3">
-      {/* L'anneau à la couleur de la carte découpe le rail autour de la
-          pastille : le trait s'arrête net au lieu de la traverser. */}
+    <li className="relative flex min-w-0 flex-1 flex-col items-center px-1 pt-5 text-center sm:px-3">
+      {prochain ? (
+        <span className="absolute top-0 text-[9px] font-extrabold tracking-[0.12em] text-primary uppercase">
+          Prochain
+        </span>
+      ) : null}
+      {/* Un carré aux angles très adoucis plutôt qu'un rond : la date y tient
+          sur deux lignes sans que le mois vienne toucher le bord. */}
       <span
         className={cn(
-          'flex size-[46px] shrink-0 flex-col items-center justify-center rounded-full border ring-4 ring-surface',
-          prochain ? 'border-primary/30 bg-primary-soft' : 'border-line bg-surface',
+          'flex size-[52px] shrink-0 flex-col items-center justify-center rounded-[15px] border transition-colors duration-200',
+          prochain
+            ? 'ferie-prochain border-transparent bg-primary text-primary-ink'
+            : passe
+              ? 'ferie-neutre border-line-soft bg-bg text-ink-muted'
+              : 'ferie-neutre border-line bg-surface text-ink-strong',
         )}
       >
-        <span
-          className={cn(
-            'text-[15px] leading-none font-bold',
-            prochain ? 'text-primary' : 'text-ink-strong',
-          )}
-          style={TABULAIRE}
-        >
+        <span className="text-[17px] leading-none font-bold" style={TABULAIRE}>
           {Number(day.slice(8, 10))}
         </span>
         <span
           className={cn(
-            'mt-0.5 text-[9px] leading-none font-semibold uppercase',
-            prochain ? 'text-primary/80' : 'text-ink-muted',
+            'mt-1 text-[9px] leading-none font-bold tracking-[0.06em] uppercase',
+            prochain ? 'text-primary-ink/75' : passe ? 'text-ink-muted' : 'text-ink-muted',
           )}
         >
           {date.toLocaleDateString('fr-FR', { month: 'short' })}
         </span>
       </span>
-      <span className="mt-2.5 line-clamp-2 text-[12.5px] leading-tight font-semibold text-ink-strong">
+      <span
+        className={cn(
+          'mt-3 line-clamp-2 text-[12.5px] leading-tight font-semibold',
+          passe ? 'text-ink-muted' : 'text-ink-strong',
+        )}
+      >
         {label}
       </span>
       <span className="mt-1 text-[11px] leading-tight text-ink-muted">
@@ -375,6 +419,47 @@ function NoeudFerie({ day, label, prochain }: { day: string; label: string; proc
         <span className={prochain ? 'font-semibold text-primary' : undefined}>{inDays(day)}</span>
       </span>
     </li>
+  );
+}
+
+/* ———— Parité ———— */
+
+/**
+ * Deux segments dans une même barre, et leurs étiquettes juste dessous.
+ *
+ * La couleur n'est jamais seule à porter l'information : chaque segment a son
+ * libellé écrit, ce qui met la lecture à l'abri d'un écran mal réglé comme
+ * d'un daltonisme. Les deux teintes se séparent de toute façon largement
+ * (cf. --tg-chart-2 dans tokens.css), et un jour de blanc les écarte pour que
+ * la barre ne se lise pas comme un seul bloc.
+ */
+function Parite({ femmes, hommes }: { femmes: number; hommes: number }) {
+  const total = femmes + hommes;
+  if (total === 0) return null;
+  return (
+    <div className="mt-4 border-t border-line-soft pt-3.5">
+      <p className="text-[10px] font-bold tracking-[0.1em] text-ink-muted uppercase">Parité</p>
+      <div className="mt-2.5 flex h-2 gap-[2px]">
+        {femmes > 0 ? (
+          <span
+            className="rounded-full bg-chart-2"
+            style={{ width: `${(femmes / total) * 100}%` }}
+          />
+        ) : null}
+        {hommes > 0 ? <span className="flex-1 rounded-full bg-chart" /> : null}
+      </div>
+      <ul className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
+        {[
+          { n: femmes, mot: 'femme', teinte: 'bg-chart-2' },
+          { n: hommes, mot: 'homme', teinte: 'bg-chart' },
+        ].map((x) => (
+          <li key={x.mot} className="flex items-center gap-1.5 text-xs text-ink-muted">
+            <span aria-hidden className={cn('size-2 shrink-0 rounded-full', x.teinte)} />
+            {plural(x.n, x.mot)}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -401,12 +486,6 @@ export default function DashboardPage() {
     queryKey: ['absences-upcoming'],
     queryFn: () => api<AbsenceRequestView[]>('/absences/upcoming'),
   });
-  const expiring = useQuery({
-    queryKey: ['contracts-expiring'],
-    queryFn: () => api<ExpiringContractView[]>('/contracts/expiring'),
-    enabled: seesContracts,
-  });
-
   const d = stats.data;
   const todayIso = localToday();
 
@@ -437,6 +516,11 @@ export default function DashboardPage() {
     },
   ];
   const aTraiter = inbox.filter((r) => r.show && r.count > 0);
+
+  // La quatrième tuile montre le prochain férié : la fenêtre renvoyée par
+  // l'API contient aussi le dernier passé, on prend la première date à venir.
+  const fenetreFeries = d?.holidayWindow ?? [];
+  const prochainFerie = fenetreFeries.find((h) => ecartJours(h.day) >= 0);
 
   const absences = upcoming.data ?? [];
   const ABSENCES_VISIBLES = 6;
@@ -472,7 +556,6 @@ export default function DashboardPage() {
           value={d?.pendingRequests}
           context="congés en attente de visa"
           href="/absences"
-          alert={(d?.pendingRequests ?? 0) > 0}
         />
         <StatTile
           icon="event_busy"
@@ -482,26 +565,29 @@ export default function DashboardPage() {
           context={d ? `${d.upcomingAbsences} à venir sous 30 j` : undefined}
           href="/calendrier"
         />
-        {seesContracts ? (
-          <StatTile
-            icon="schedule"
-            label="Contrats à suivre"
-            short="Contrats"
-            value={expiring.data?.length}
-            context="échéance sous 30 jours"
-            href="/employees"
-            alert={(expiring.data?.length ?? 0) > 0}
-          />
-        ) : (
-          <StatTile
-            icon="family_history"
-            label="Unités d'organisation"
-            short="Unités"
-            value={d?.orgUnits}
-            context="directions, départements, services"
-            href="/organisation"
-          />
-        )}
+        <StatTile
+          icon="flag"
+          label="Proch. jour férié"
+          short="Férié"
+          value={
+            d
+              ? prochainFerie
+                ? new Date(`${prochainFerie.day}T00:00:00`).toLocaleDateString('fr-FR', {
+                    day: 'numeric',
+                    month: 'short',
+                  })
+                : '—'
+              : undefined
+          }
+          context={
+            prochainFerie
+              ? `${prochainFerie.label} · ${inDays(prochainFerie.day)}`
+              : d
+                ? 'aucun férié programmé'
+                : undefined
+          }
+          href="/absences/feries"
+        />
       </div>
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
@@ -532,9 +618,8 @@ export default function DashboardPage() {
           </Card>
 
           <Card>
-            <CardHeader className="flex items-center justify-between gap-3">
+            <CardHeader>
               <CardTitle>Calendrier des absences</CardTitle>
-              <LienCarte href="/calendrier">Voir le calendrier</LienCarte>
             </CardHeader>
             {upcoming.isLoading ? (
               <CardContent>
@@ -572,11 +657,13 @@ export default function DashboardPage() {
                         <Td className="text-right font-mono">{r.daysCount}</Td>
                         <Td>
                           {r.startDate <= todayIso ? (
-                            <Badge tone="success" className="whitespace-nowrap">
+                            <Badge tone="success" dot className="whitespace-nowrap">
                               En cours
                             </Badge>
                           ) : (
-                            <Badge className="whitespace-nowrap">À venir</Badge>
+                            <Badge dot className="whitespace-nowrap">
+                              À venir
+                            </Badge>
                           )}
                         </Td>
                       </Tr>
@@ -638,11 +725,7 @@ export default function DashboardPage() {
                       />
                     ) : null}
                   </ul>
-                  {d && d.women + d.men > 0 ? (
-                    <p className="mt-3.5 border-t border-line-soft pt-3 text-xs text-ink-muted">
-                      Parité : {plural(d.women, 'femme')} · {plural(d.men, 'homme')}
-                    </p>
-                  ) : null}
+                  {d ? <Parite femmes={d.women} hommes={d.men} /> : null}
                 </>
               )}
             </CardContent>
@@ -652,19 +735,18 @@ export default function DashboardPage() {
 
       {/* ———— Les fériés, en frise ———— */}
       <Card className="mt-4">
-        <CardHeader className="flex items-center justify-between gap-3">
-          <CardTitle>Prochains jours fériés</CardTitle>
-          {canManage ? <LienCarte href="/absences/feries">Gérer</LienCarte> : null}
+        <CardHeader>
+          <CardTitle>Calendrier des jours fériés</CardTitle>
         </CardHeader>
-        <CardContent className="pt-1">
+        <CardContent className="pt-1 pb-6">
           {stats.isLoading ? (
-            <Skeleton className="h-24 w-full" />
-          ) : (d?.upcomingHolidays ?? []).length === 0 ? (
+            <Skeleton className="h-28 w-full" />
+          ) : fenetreFeries.length === 0 ? (
             <p className="py-3 text-sm text-ink-muted">
-              Aucun férié à venir — la liste se gère dans les paramètres des congés.
+              Aucun férié enregistré — la liste se gère dans les paramètres des congés.
             </p>
           ) : (
-            <Frise jours={d!.upcomingHolidays} />
+            <Frise jours={fenetreFeries} />
           )}
         </CardContent>
       </Card>
@@ -719,14 +801,12 @@ export default function DashboardPage() {
                         >
                           {c.positionTitle ?? '—'}
                         </Td>
-                        <Td>
-                          <Badge className="uppercase">{c.contractType}</Badge>
-                        </Td>
+                        <Td className="uppercase">{c.contractType}</Td>
                         <Td className="whitespace-nowrap">
                           {c.endDate ? formatDate(c.endDate) : '—'}
                         </Td>
                         <Td className="text-right">
-                          <Badge tone={deadline.tone} className="whitespace-nowrap">
+                          <Badge tone={deadline.tone} dot className="whitespace-nowrap">
                             {deadline.text}
                           </Badge>
                         </Td>

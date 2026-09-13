@@ -55,7 +55,12 @@ export interface DashboardView {
   women: number;
   men: number;
   headcountByDirection: DashboardDirectionHeadcount[];
-  upcomingHolidays: DashboardHoliday[];
+  /**
+   * Fenêtre de fériés autour d'aujourd'hui : le dernier passé (s'il y en a
+   * un) puis les trois suivants, par date croissante. Le passé sert d'ancre à
+   * la frise — sans lui, « aujourd'hui » n'aurait rien devant quoi se poser.
+   */
+  holidayWindow: DashboardHoliday[];
   /** Contrats à durée limitée, les plus urgents d'abord. Vide hors RH/paie. */
   contractFollowUp: DashboardContractFollowUp[];
   /** Total suivi, y compris ce que la carte ne montre pas — pas de troncature muette. */

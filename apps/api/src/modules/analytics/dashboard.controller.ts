@@ -165,12 +165,16 @@ export class DashboardController {
             ON e.id = a.employee_id AND e.status = 'active'
           GROUP BY tree.dir_id, tree.name, tree.short_name
           ORDER BY headcount DESC, tree.name`),
-        tx
-          .select({ day: sql<string>`${t.holidays.day}::text`, label: t.holidays.label })
-          .from(t.holidays)
-          .where(gte(t.holidays.day, sql`CURRENT_DATE`))
-          .orderBy(asc(t.holidays.day))
-          .limit(3),
+        // Une frise a besoin d'un avant : le férié qui vient de passer ancre
+        // « aujourd'hui » quelque part sur le rail, au lieu de le laisser
+        // flotter avant la première date. Un seul, et les trois qui viennent.
+        tx.execute<{ day: string; label: string }>(sql`
+          (SELECT day::text AS day, label FROM holidays
+             WHERE day < CURRENT_DATE ORDER BY day DESC LIMIT 1)
+          UNION ALL
+          (SELECT day::text AS day, label FROM holidays
+             WHERE day >= CURRENT_DATE ORDER BY day ASC LIMIT 3)
+          ORDER BY day`),
         // La carte n'affiche que les plus urgents ; le total suit, pour que le
         // reste soit annoncé plutôt que tu.
         seesContracts
@@ -215,7 +219,7 @@ export class DashboardController {
           shortName: d.short_name,
           headcount: d.headcount,
         })),
-        upcomingHolidays: holidays,
+        holidayWindow: holidays.rows,
         contractFollowUp: followUp.rows.map((c) => ({
           employeeId: c.employee_id,
           employeeNumber: c.employee_number,
