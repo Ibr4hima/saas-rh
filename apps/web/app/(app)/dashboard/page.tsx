@@ -287,67 +287,27 @@ function DirectionBar({
 
 /* ———— La frise des fériés ———— */
 
-/** Position du centre d'une date sur le rail, en % de la largeur. */
-const centre = (i: number, n: number) => ((i + 0.5) / n) * 100;
-
 /**
  * Le calendrier des fériés : le dernier passé, puis les trois qui viennent.
  *
- * Le passé n'est pas là pour décorer — c'est lui qui donne à « aujourd'hui »
- * un point d'appui. Sans lui, le repère du jour n'aurait rien devant quoi se
- * placer et la frise commencerait dans le vide.
- *
  * Les dates sont à intervalles ÉGAUX : l'espacement dit l'ordre, la mention
- * « dans 49 j » dit la distance. Le seul élément placé à sa vraie proportion
- * est le repère du jour, entre le férié passé et le prochain — le seul endroit
- * où la position apporte quelque chose qu'aucun mot ne dit aussi vite.
+ * « dans 49 j » dit la distance. Rien n'est écrit au-dessus des pastilles —
+ * le prochain férié se reconnaît à son aplat bleu et à son double anneau, et
+ * le passé à son gris ; un intitulé par-dessus ne faisait que répéter ce que
+ * la couleur montrait déjà.
  */
 function Frise({ jours }: { jours: DashboardHoliday[] }) {
-  const n = jours.length;
   const passes = jours.filter((h) => ecartJours(h.day) < 0).length;
-  const garde = `${50 / n}%`;
-
-  // Le repère du jour ne se dessine que s'il est encadré : il lui faut un
-  // férié derrière et un devant.
-  let repere: number | null = null;
-  if (passes > 0 && passes < n) {
-    const avant = ecartJours(jours[passes - 1]!.day); // négatif
-    const apres = ecartJours(jours[passes]!.day); // positif ou nul
-    const brut = -avant / (apres - avant);
-    // Bridé au quart central du segment. La proportion vraie peut valoir 0,95
-    // — un férié passé il y a dix-huit jours, le suivant demain — et la
-    // pastille du repère viendrait alors mordre sur la date voisine.
-    const t = Math.min(0.62, Math.max(0.38, brut));
-    repere = centre(passes - 1, n) + t * (centre(passes, n) - centre(passes - 1, n));
-  }
-
+  // Le rail court d'un centre de date à l'autre, jamais d'un bord à l'autre de
+  // la carte : un trait qui dépasse ne mène à rien.
+  const garde = `${50 / jours.length}%`;
   return (
     <div className="relative">
-      {/* Le rail court d'un centre de date à l'autre, jamais d'un bord à
-          l'autre de la carte : un trait qui dépasse ne mène à rien. Il est
-          coupé en deux au niveau du jour — ce qui est écoulé porte un gris
-          plus dense que ce qui reste à venir. */}
       <span
         aria-hidden
-        className="absolute top-[45px] h-[2px] rounded-full bg-line-soft"
+        className="absolute top-[33px] h-[2px] rounded-full bg-line-soft"
         style={{ left: garde, right: garde }}
       />
-      {repere !== null ? (
-        <>
-          <span
-            aria-hidden
-            className="absolute top-[45px] h-[2px] rounded-full bg-line"
-            style={{ left: garde, width: `calc(${repere}% - ${garde})` }}
-          />
-          <span
-            className="absolute top-[38px] hidden -translate-x-1/2 rounded-full border border-line bg-surface px-2 py-[3px] text-[9px] font-bold tracking-[0.08em] text-ink-muted uppercase shadow-xs sm:block"
-            style={{ left: `${repere}%` }}
-          >
-            Aujourd&apos;hui
-          </span>
-        </>
-      ) : null}
-
       <ol className="relative flex">
         {jours.map((h, i) => (
           <DateFerie
@@ -375,12 +335,7 @@ function DateFerie({
   const prochain = etat === 'prochain';
   const passe = etat === 'passe';
   return (
-    <li className="relative flex min-w-0 flex-1 flex-col items-center px-1 pt-5 text-center sm:px-3">
-      {prochain ? (
-        <span className="absolute top-0 text-[9px] font-extrabold tracking-[0.12em] text-primary uppercase">
-          Prochain
-        </span>
-      ) : null}
+    <li className="relative flex min-w-0 flex-1 flex-col items-center px-1 pt-2 text-center sm:px-3">
       {/* Un carré aux angles très adoucis plutôt qu'un rond : la date y tient
           sur deux lignes sans que le mois vienne toucher le bord. */}
       <span
@@ -399,7 +354,7 @@ function DateFerie({
         <span
           className={cn(
             'mt-1 text-[9px] leading-none font-bold tracking-[0.06em] uppercase',
-            prochain ? 'text-primary-ink/75' : passe ? 'text-ink-muted' : 'text-ink-muted',
+            prochain ? 'text-primary-ink/75' : 'text-ink-muted',
           )}
         >
           {date.toLocaleDateString('fr-FR', { month: 'short' })}
