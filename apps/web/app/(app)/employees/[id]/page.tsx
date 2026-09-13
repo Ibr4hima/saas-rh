@@ -714,23 +714,20 @@ function DocumentRequestsCard({ employeeId }: { employeeId: string }) {
   );
 }
 
+/**
+ * Les compteurs de congés de l'année.
+ *
+ * Le DROIT ne se saisit pas ici. Il est fixé par type d'absence dans
+ * « Paramètres des congés » (le champ « Droit ouvert »), et c'est de là qu'il
+ * doit venir : un droit modifiable sur chaque fiche se serait mis à diverger
+ * agent par agent, et plus personne n'aurait su lequel faisait foi. Cette
+ * carte montre l'état du compteur ; elle ne le décide pas.
+ */
 function BalancesCard({ employeeId, canEdit }: { employeeId: string; canEdit: boolean }) {
-  const queryClient = useQueryClient();
   const year = new Date().getFullYear();
-  const [edits, setEdits] = useState<Record<string, string>>({});
-
   const balances = useQuery({
     queryKey: ['balances', employeeId, String(year)],
     queryFn: () => api<BalanceView[]>(`/employees/${employeeId}/balances?year=${year}`),
-  });
-  const save = useMutation({
-    mutationFn: (b: { absenceTypeId: string; entitledDays: number }) =>
-      api('/balances', {
-        method: 'PUT',
-        body: { employeeId, absenceTypeId: b.absenceTypeId, year, entitledDays: b.entitledDays },
-      }),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ['balances', employeeId, String(year)] }),
   });
 
   return (
@@ -743,73 +740,61 @@ function BalancesCard({ employeeId, canEdit }: { employeeId: string; canEdit: bo
           <Skeleton className="h-16 w-full" />
         </CardContent>
       ) : (
-        <Table>
-          <THead>
-            <tr>
-              <Th>Type</Th>
-              <Th>Droit (jours)</Th>
-              <Th>Pris</Th>
-              <Th>En attente</Th>
-              <Th>Restant</Th>
-              {canEdit ? <Th /> : null}
-            </tr>
-          </THead>
-          <TBody>
-            {balances.data?.map((b) => {
-              const edited = edits[b.absenceTypeId];
-              return (
+        <>
+          <Table>
+            <THead>
+              <tr>
+                <Th>Type</Th>
+                {/* Quatre colonnes de nombres, cadrées à DROITE et en chiffres
+                    de largeur fixe : les unités tombent sous les unités, et on
+                    compare deux lignes sans les lire. */}
+                <Th className="text-right">Droit</Th>
+                <Th className="text-right">Pris</Th>
+                <Th className="text-right">En attente</Th>
+                <Th className="text-right">Restant</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {balances.data?.map((b) => (
                 <Tr key={b.absenceTypeId}>
                   <Td className="font-medium text-ink-strong">{b.absenceTypeName}</Td>
-                  <Td>
+                  <Td className="text-right font-mono">
                     {b.deductsBalance ? (
-                      canEdit ? (
-                        <Input
-                          type="number"
-                          min={0}
-                          step="0.5"
-                          value={edited ?? String(b.entitledDays)}
-                          onChange={(ev) =>
-                            setEdits({ ...edits, [b.absenceTypeId]: ev.target.value })
-                          }
-                          className="h-8 w-24"
-                        />
-                      ) : (
-                        b.entitledDays
-                      )
+                      b.entitledDays
                     ) : (
-                      '—'
+                      <span className="text-ink-muted/45">—</span>
                     )}
                   </Td>
-                  <Td className="font-mono">{b.takenDays}</Td>
-                  <Td className="font-mono">{b.pendingDays}</Td>
-                  <Td className="font-mono font-semibold">
-                    {b.deductsBalance ? b.remainingDays : '—'}
+                  <Td className="text-right font-mono">{b.takenDays}</Td>
+                  <Td className="text-right font-mono">{b.pendingDays}</Td>
+                  <Td className="text-right font-mono font-semibold text-ink-strong">
+                    {b.deductsBalance ? (
+                      b.remainingDays
+                    ) : (
+                      <span className="font-normal text-ink-muted/45">—</span>
+                    )}
                   </Td>
-                  {canEdit ? (
-                    <Td>
-                      {b.deductsBalance &&
-                      edited !== undefined &&
-                      Number(edited) !== b.entitledDays ? (
-                        <Button
-                          size="sm"
-                          loading={save.isPending}
-                          onClick={() =>
-                            save.mutate({
-                              absenceTypeId: b.absenceTypeId,
-                              entitledDays: Number(edited),
-                            })
-                          }
-                        >
-                          Enregistrer
-                        </Button>
-                      ) : null}
-                    </Td>
-                  ) : null}
                 </Tr>
-              );
-            })}
-          </TBody>
-        </Table>
+              ))}
+            </TBody>
+          </Table>
+          {/* Là où le droit se règle. Sans ce renvoi, on cherche le champ de
+              saisie sur cette carte — c'est là qu'il était. */}
+          {canEdit ? (
+            <CardContent className="border-t border-line-soft py-3">
+              <p className="text-[11.5px] text-ink-muted">
+                Le droit annuel se règle par type d&apos;absence dans{' '}
+                <Link
+                  href="/absences/parametres"
+                  className="font-semibold text-primary transition-colors hover:text-primary-hover hover:underline"
+                >
+                  Paramètres des congés
+                </Link>
+                .
+              </p>
+            </CardContent>
+          ) : null}
+        </>
       )}
     </Card>
   );
@@ -846,88 +831,137 @@ function PortalCard({
     onSuccess: (r) => {
       setInvite(r);
       setError(null);
+      setCopied(false);
       void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Génération impossible.'),
   });
 
   const inviteUrl = invite ? `${window.location.origin}${invite.invitePath}` : null;
+  const actif = portal.status === 'active';
 
   return (
     <Card>
-      <CardHeader className="flex items-center justify-between">
+      <CardHeader className="flex items-center justify-between gap-3">
         <CardTitle>Accès au portail</CardTitle>
-        {portal.status === 'active' ? (
-          <Badge tone="success">
-            Compte actif{portal.role ? ` · ${PORTAL_ROLE_LABELS[portal.role] ?? portal.role}` : ''}
-          </Badge>
+        {actif ? (
+          <Badge tone="success">Compte actif</Badge>
         ) : portal.status === 'invited' ? (
           <Badge tone="warning">Invitation en cours</Badge>
         ) : (
           <Badge tone="neutral">Aucun accès</Badge>
         )}
       </CardHeader>
-      {portal.status === 'active' ? (
-        <CardContent>
-          <p className="text-sm text-ink-muted">
-            Cet employé se connecte au portail et gère ses demandes lui-même.
-          </p>
-        </CardContent>
-      ) : (
-        <CardContent className="flex flex-col gap-3">
-          {/* Le pronom suit le sexe au dossier quand il y est. « Il ou elle »
-              n'est pas une faute, mais quand on connaît la personne à qui l'on
-              écrit, la phrase n'a pas à hésiter. */}
-          <p className="text-sm text-ink-muted">
-            Générez le lien d&apos;invitation à transmettre à{' '}
-            <span className="font-semibold text-ink">{prenom}</span>.{' '}
-            {gender === 'female' ? 'Elle' : gender === 'male' ? 'Il' : 'Il ou elle'} choisira son
-            mot de passe et son compte sera relié à ce dossier.
-          </p>
-          <div className="flex items-end gap-3">
-            <div className="w-56">
-              <Field label="Rôle" htmlFor="invite-role">
-                <Select
-                  id="invite-role"
-                  value={role}
-                  onChange={(ev) => setRole(ev.target.value as InvitableRole)}
-                >
-                  <option value="employee">Employé</option>
-                  <option value="manager">Manager</option>
-                  <option value="hr">RH</option>
-                </Select>
-              </Field>
-            </div>
-            <Button onClick={() => generate.mutate()} loading={generate.isPending}>
-              {portal.status === 'invited' ? 'Régénérer le lien' : "Générer le lien d'invitation"}
-            </Button>
+
+      <CardContent className="@container flex flex-col gap-4">
+        {/* L'état, dit une fois, en entier : une pastille d'icône, une ligne
+            qui NOMME la situation, une ligne qui l'explique. La pastille de
+            l'en-tête classe la carte quand on balaie la colonne ; ce bloc-ci
+            répond à « et concrètement ? ». */}
+        <div className="flex items-start gap-3">
+          <span
+            className={cn(
+              'flex size-9 shrink-0 items-center justify-center rounded-[11px]',
+              actif ? 'bg-success-soft text-success' : 'bg-primary/[0.07] text-primary',
+            )}
+          >
+            <Icon name={actif ? 'how_to_reg' : 'lock'} size={19} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] leading-tight font-semibold text-ink-strong">
+              {actif
+                ? `Connecté en tant que ${PORTAL_ROLE_LABELS[portal.role ?? ''] ?? portal.role ?? 'employé'}`
+                : portal.status === 'invited'
+                  ? 'Invitation envoyée, pas encore acceptée'
+                  : 'Pas encore de compte'}
+            </p>
+            <p className="mt-1 text-[12px] leading-snug text-ink-muted">
+              {actif ? (
+                <>
+                  {prenom} se connecte au portail et y gère ses demandes de congés et de documents.
+                </>
+              ) : (
+                <>
+                  {/* Le pronom suit le sexe au dossier quand il y est. « Il ou
+                      elle » n'est pas une faute, mais quand on connaît la
+                      personne à qui l'on écrit, la phrase n'a pas à hésiter. */}
+                  Transmettez le lien d&apos;invitation à{' '}
+                  <span className="font-semibold text-ink">{prenom}</span>.{' '}
+                  {gender === 'female' ? 'Elle' : gender === 'male' ? 'Il' : 'Il ou elle'} choisira
+                  son mot de passe et son compte sera relié à ce dossier.
+                </>
+              )}
+            </p>
           </div>
-          {error ? (
-            <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
-          ) : null}
-          {inviteUrl ? (
-            <div className="flex items-center gap-2">
-              <Input readOnly value={inviteUrl} className="font-mono text-xs" />
+        </div>
+
+        {actif ? null : (
+          <>
+            {/* Le rôle et le bouton côte à côte dès que la carte a la largeur
+                — dans le rail de droite elle ne l'a pas, et un bouton à demi
+                coupé vaut moins qu'un bouton empilé. */}
+            <div className="flex flex-col gap-3 @[24rem]:flex-row @[24rem]:items-end">
+              <div className="@[24rem]:w-44">
+                <Field label="Rôle" htmlFor="invite-role">
+                  <Select
+                    id="invite-role"
+                    value={role}
+                    onChange={(ev) => setRole(ev.target.value as InvitableRole)}
+                  >
+                    <option value="employee">Employé</option>
+                    <option value="manager">Manager</option>
+                    <option value="hr">RH</option>
+                  </Select>
+                </Field>
+              </div>
               <Button
-                variant="secondary"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(inviteUrl);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}
+                onClick={() => generate.mutate()}
+                loading={generate.isPending}
+                className="w-full @[24rem]:w-auto"
               >
-                {copied ? 'Copié ✓' : 'Copier'}
+                {portal.status === 'invited' ? 'Régénérer le lien' : 'Générer le lien'}
               </Button>
             </div>
-          ) : null}
-          {invite ? (
-            <p className="text-xs text-ink-muted">
-              Envoyé à {invite.email} · valable 7 jours · rôle{' '}
-              {PORTAL_ROLE_LABELS[invite.role] ?? invite.role}
-            </p>
-          ) : null}
-        </CardContent>
-      )}
+
+            {error ? (
+              <p className="rounded-[10px] bg-danger-soft/55 px-3 py-2 text-[12.5px] text-danger ring-1 ring-danger/25 ring-inset">
+                {error}
+              </p>
+            ) : null}
+
+            {inviteUrl && invite ? (
+              <div className="rounded-[13px] border border-primary/20 bg-primary-soft/45 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[9.5px] font-bold tracking-[0.1em] text-primary uppercase">
+                    Lien d&apos;invitation
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(inviteUrl);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    className="flex shrink-0 items-center gap-1 rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-primary ring-1 ring-primary/20 ring-inset transition-colors hover:bg-primary hover:text-primary-ink focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                  >
+                    <Icon name={copied ? 'check' : 'content_copy'} size={14} />
+                    {copied ? 'Copié' : 'Copier'}
+                  </button>
+                </div>
+                {/* Le lien tient sur une ligne, coupé au besoin : c'est le
+                    bouton qui le transmet, pas la lecture à l'œil. */}
+                <p className="mt-2 truncate font-mono text-[11.5px] text-ink" title={inviteUrl}>
+                  {inviteUrl}
+                </p>
+                <p className="mt-2 text-[11px] text-ink-muted">
+                  Pour {invite.email} · rôle {PORTAL_ROLE_LABELS[invite.role] ?? invite.role} ·
+                  valable jusqu&apos;au {formatDate(invite.expiresAt)}
+                </p>
+              </div>
+            ) : null}
+          </>
+        )}
+      </CardContent>
     </Card>
   );
 }
