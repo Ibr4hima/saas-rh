@@ -928,17 +928,10 @@ function PortalCard({
             <div className="flex flex-col gap-3 @[24rem]:flex-row @[24rem]:items-end">
               <div className="@[24rem]:w-44">
                 <Field label="Rôle" htmlFor="invite-role">
-                  {/* En pilule, contre la règle de la maison (cf. button.tsx :
-                      pilule = ce qui s'actionne, coin doux = ce qui se
-                      remplit). Ces deux-là forment une seule commande — un
-                      rôle et le lien qu'il produit — et deux formes
-                      différentes côte à côte les faisaient lire comme deux
-                      gestes sans rapport. */}
                   <Select
                     id="invite-role"
                     value={role}
                     onChange={(ev) => setRole(ev.target.value as InvitableRole)}
-                    className="rounded-full px-4"
                   >
                     <option value="employee">Employé</option>
                     <option value="manager">Manager</option>

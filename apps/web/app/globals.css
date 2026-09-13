@@ -140,6 +140,30 @@ body {
   }
 }
 
+/* ── Liste de choix ───────────────────────────────────────────────────────
+   La liste se pose : elle monte de quatre pixels en apparaissant. Assez pour
+   qu'on voie d'où elle vient, trop court pour qu'on l'attende. */
+@keyframes tg-menu {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tg-menu {
+  animation: tg-menu 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-menu {
+    animation: none;
+  }
+}
+
 /* Voile des notifications : la page RECULE, elle ne disparaît pas.
    Le flou fait tout le travail — un aplat opaque par-dessus la page ferait de
    ce panneau un dialogue modal, ce qu'il n'est pas : on doit pouvoir cliquer

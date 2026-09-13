@@ -12,9 +12,15 @@ const variants: Record<Variant, string> = {
 };
 
 /**
- * Boutons en pilule, comme sur la plateforme APIX. Le coin arrondi les
- * détache des champs de saisie, qui restent à angle doux : à l'écran, on
- * distingue d'un coup d'œil ce qui se remplit de ce qui s'actionne.
+ * Boutons en pilule, comme sur la plateforme APIX.
+ *
+ * Les champs de saisie et les listes de choix ont rejoint la même forme. Ce
+ * commentaire disait l'inverse — le coin doux devait distinguer ce qui se
+ * remplit de ce qui s'actionne — et c'était une distinction que personne ne
+ * lisait : sur une même ligne, un champ à angle doux collé à un bouton en
+ * pilule donnait deux rayons qui se contredisaient. La différence se fait par
+ * le remplissage, qui se voit sans qu'on l'apprenne : un bouton est plein ou
+ * bordé de la marque, un champ est blanc bordé de gris.
  */
 const sizes: Record<Size, string> = {
   sm: 'h-[30px] px-3.5 text-[12px]',
