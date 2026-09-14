@@ -329,10 +329,54 @@ interface Piece {
   requestId: string;
   employeeId: string;
   employeeName: string;
+  /** Ce qui nomme le fichier téléchargé — un nom se répète, un matricule non. */
+  employeeNumber: string;
   employeeStatus: string;
   doc: RequestableDoc;
   /** L'application sait la produire elle-même (attestation de travail). */
   generable: boolean;
+}
+
+/**
+ * Enregistre sur le poste de la RH les pièces que l'application produit.
+ *
+ * Pas un simple lien `download` : l'API vit sur un autre port, et l'attribut
+ * `download` est IGNORÉ pour une autre origine — le navigateur naviguerait
+ * vers le PDF au lieu de l'enregistrer. On récupère donc chaque fichier en
+ * mémoire, puis on le fait enregistrer depuis une adresse `blob:` locale, à
+ * laquelle l'attribut s'applique.
+ *
+ * Une pièce que l'application ne produit pas (contrat, bulletin) n'a rien à
+ * télécharger : elle est préparée à la main, hors de l'outil.
+ *
+ * Rend le nombre de fichiers réellement enregistrés — un échec ne doit pas
+ * passer pour un succès.
+ */
+async function telechargerLesPieces(pieces: Piece[]): Promise<number> {
+  let n = 0;
+  for (const p of pieces.filter((x) => x.generable)) {
+    try {
+      const res = await fetch(apiUrl(`/employees/${p.employeeId}/attestation`), {
+        credentials: 'include',
+      });
+      if (!res.ok) continue;
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attestation-travail-${p.employeeNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Le navigateur lit l'adresse après le clic : la révoquer tout de suite
+      // annulerait l'enregistrement qu'on vient de demander.
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      n += 1;
+    } catch {
+      // Un fichier manquant n'arrête pas les autres : la RH verra lesquels
+      // sont arrivés dans son dossier de téléchargements.
+    }
+  }
+  return n;
 }
 
 function piecesOf(requests: DocumentRequestView[]): Piece[] {
@@ -342,6 +386,7 @@ function piecesOf(requests: DocumentRequestView[]): Piece[] {
       requestId: r.id,
       employeeId: r.employeeId,
       employeeName: r.employeeName,
+      employeeNumber: r.employeeNumber,
       employeeStatus: r.employeeStatus,
       doc: d,
       generable: (GENERATED_DOCS as string[]).includes(d) && r.employeeStatus === 'active',
@@ -369,6 +414,7 @@ function TraiterModal({
 }) {
   const queryClient = useQueryClient();
   const [etape, setEtape] = useState<'apercu' | 'retrait'>('apercu');
+  const [telechargement, setTelechargement] = useState(false);
   const [courante, setCourante] = useState(0);
   const [vues, setVues] = useState<string[]>([]);
   const [pickupContact, setPickupContact] = useState('');
@@ -468,13 +514,19 @@ function TraiterModal({
               Retour à l&apos;aperçu
             </Button>
             <Button
-              loading={valider.isPending}
-              onClick={() => {
+              loading={telechargement || valider.isPending}
+              onClick={async () => {
                 setErreur(null);
+                // Les fichiers PARTENT D'ABORD. Annoncer le retrait puis
+                // échouer au téléchargement laisserait l'employé prévenu d'un
+                // document que la RH n'a pas ; l'inverse se rattrape d'un clic.
+                setTelechargement(true);
+                await telechargerLesPieces(pieces);
+                setTelechargement(false);
                 valider.mutate();
               }}
             >
-              Valider et prévenir
+              Télécharger et prévenir
             </Button>
           </>
         }
@@ -500,7 +552,9 @@ function TraiterModal({
           </ModalGrid>
         </ModalSection>
 
-        <ModalSection title="Ce qui part">
+        {/* Le pluriel compte les DOCUMENTS, pas les demandes : une seule
+            demande peut en porter deux (attestation de travail et de salaire). */}
+        <ModalSection title={pieces.length > 1 ? 'Documents demandés' : 'Document demandé'}>
           <ul className="flex flex-col gap-1.5">
             {requests.map((r) => (
               <li key={r.id} className="text-[12.5px]">
@@ -674,18 +728,6 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
           {piece.employeeName}
         </p>
       </div>
-      {piece.generable ? (
-        <a
-          href={apiUrl(`/employees/${piece.employeeId}/attestation?disposition=inline`)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <Button size="sm" variant="secondary">
-            <Icon name="print" size={15} />
-            Ouvrir et imprimer
-          </Button>
-        </a>
-      ) : null}
     </div>
   );
 
@@ -749,13 +791,6 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
   const affectation = e.assignments.find((a) => a.current) ?? e.assignments[0];
   // Le contrat le plus récemment commencé : c'est celui que l'attestation cite.
   const contrat = [...e.contracts].sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
-  // Composé AVANT d'entrer dans la ligne : un enfant fait de plusieurs morceaux
-  // vides n'est pas « vide » pour `Ligne`, qui afficherait du blanc là où le
-  // tiret dit « on ne sait pas ».
-  const naissance =
-    [e.person.birthDate ? formatDate(e.person.birthDate) : null, e.person.birthPlace]
-      .filter(Boolean)
-      .join(' — ') || null;
 
   return (
     <>
@@ -778,7 +813,9 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
           <Ligne label="Matricule" mono>
             {e.employeeNumber}
           </Ligne>
-          <Ligne label="Naissance">{naissance}</Ligne>
+          <Ligne label="Date de naissance">
+            {e.person.birthDate ? formatDate(e.person.birthDate) : null}
+          </Ligne>
           <Ligne label="Fonction">{affectation?.positionTitle}</Ligne>
           <Ligne label="Direction">{affectation?.orgUnitName}</Ligne>
           <Ligne label="Type de contrat">
@@ -791,14 +828,7 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
         </dl>
 
         <p className="mt-4 text-[11.5px] leading-relaxed text-ink-muted">
-          Ce sont les informations que l&apos;attestation reprend. Une erreur ici se corrige sur la{' '}
-          <Link
-            href={`/employees/${piece.employeeId}`}
-            className="font-semibold text-primary transition-colors hover:text-primary-hover hover:underline"
-          >
-            fiche de l&apos;employé
-          </Link>{' '}
-          avant de valider.
+          L&apos;attestation reprend ces informations. Pensez à bien les vérifier avant de valider.
         </p>
       </div>
     </>
