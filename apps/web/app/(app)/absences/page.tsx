@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { AbsenceRequestView } from '@teranga/contracts';
 import {
-  Button,
+  Badge,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  cn,
   EmptyState,
   Select,
   Skeleton,
@@ -48,6 +49,67 @@ function resumeVisas(r: AbsenceRequestView): string | undefined {
     .join('\n');
 }
 
+/**
+ * Un geste de décision : viser, ou refuser.
+ *
+ * Deux icônes plutôt que deux mots. « Approuver » et « Refuser » côte à côte
+ * pesaient cent-soixante pixels sur chaque ligne d'un tableau qu'on parcourt,
+ * et leurs deux aplats pleins tiraient l'œil avant les données. La coche et la
+ * croix se reconnaissent sans se lire ; la couleur dit le sens, et le nom de
+ * l'employé est repris dans l'intitulé accessible — « Approuver le congé de
+ * Hawa Ba » — pour que la colonne reste utilisable sans la voir.
+ *
+ * Au repos une teinte pâle cerclée d'un filet ; au survol la teinte se remplit.
+ * Pas d'aplat vif qui s'inverse en thème sombre : on n'a pas d'encre garantie
+ * sur le vert ni sur le rouge, et un blanc posé dessus tomberait sous le seuil
+ * de lisibilité la nuit.
+ */
+function BoutonDecision({
+  geste,
+  employe,
+  enCours,
+  bloque,
+  onClick,
+}: {
+  geste: 'approuver' | 'refuser';
+  employe: string;
+  /** C'est CE bouton qui attend le serveur. */
+  enCours: boolean;
+  /** Une décision est en cours, quelle qu'elle soit : on ne clique plus. */
+  bloque: boolean;
+  onClick: () => void;
+}) {
+  const approuve = geste === 'approuver';
+  const intitule = `${approuve ? 'Approuver' : 'Refuser'} le congé de ${employe}`;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={bloque}
+      title={intitule}
+      aria-label={intitule}
+      className={cn(
+        'flex size-8 shrink-0 items-center justify-center rounded-full ring-1 ring-inset',
+        'transition-all duration-150 ease-out active:scale-95',
+        'focus-visible:outline-2 focus-visible:outline-offset-1',
+        'disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100',
+        approuve
+          ? 'bg-success-soft/55 text-success ring-success/30 hover:bg-success-soft hover:ring-success/60 focus-visible:outline-success'
+          : 'bg-danger-soft/55 text-danger ring-danger/30 hover:bg-danger-soft hover:ring-danger/60 focus-visible:outline-danger',
+      )}
+    >
+      {enCours ? (
+        <span
+          aria-hidden
+          className="size-4 animate-spin rounded-full border-2 border-current/30 border-t-current"
+        />
+      ) : (
+        <Icon name={approuve ? 'check' : 'close'} size={18} />
+      )}
+    </button>
+  );
+}
+
 export default function AbsencesPage() {
   const queryClient = useQueryClient();
   const me = useMe();
@@ -59,6 +121,13 @@ export default function AbsencesPage() {
     queryFn: () =>
       api<AbsenceRequestView[]>(`/absence-requests${status ? `?status=${status}` : ''}`),
   });
+  // Le jour courant dans le calendrier LOCAL : `toISOString()` donnerait la
+  // date UTC, et une absence basculerait « en cours » un jour trop tôt ou trop
+  // tard selon le fuseau.
+  const maintenant = new Date();
+  const p2 = (v: number) => String(v).padStart(2, '0');
+  const aujourdhui = `${maintenant.getFullYear()}-${p2(maintenant.getMonth() + 1)}-${p2(maintenant.getDate())}`;
+
   const upcoming = useQuery({
     queryKey: ['absences-upcoming'],
     queryFn: () => api<AbsenceRequestView[]>('/absences/upcoming'),
@@ -119,7 +188,7 @@ export default function AbsencesPage() {
                   <Th className="text-right">Jours</Th>
                   <Th>Justificatif</Th>
                   <Th>Statut</Th>
-                  <Th />
+                  <Th className="text-right">Décision</Th>
                 </tr>
               </THead>
               <TBody>
@@ -167,24 +236,35 @@ export default function AbsencesPage() {
                     </Td>
                     <Td>
                       {r.canDecide ? (
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
+                        <div className="flex justify-end gap-1.5">
+                          <BoutonDecision
+                            geste="approuver"
+                            employe={r.employeeName}
+                            enCours={
+                              decide.isPending &&
+                              decide.variables?.id === r.id &&
+                              decide.variables.decision === 'approved'
+                            }
+                            bloque={decide.isPending}
                             onClick={() => decide.mutate({ id: r.id, decision: 'approved' })}
-                            loading={decide.isPending}
-                          >
-                            Approuver
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="danger"
+                          />
+                          <BoutonDecision
+                            geste="refuser"
+                            employe={r.employeeName}
+                            enCours={
+                              decide.isPending &&
+                              decide.variables?.id === r.id &&
+                              decide.variables.decision === 'rejected'
+                            }
+                            bloque={decide.isPending}
                             onClick={() => decide.mutate({ id: r.id, decision: 'rejected' })}
-                            loading={decide.isPending}
-                          >
-                            Refuser
-                          </Button>
+                          />
                         </div>
-                      ) : null}
+                      ) : (
+                        // Un tiret plutôt qu'une case vide, comme la colonne
+                        // « Justificatif » : rien à décider ici SE DIT.
+                        <p className="text-right text-ink-muted/60">—</p>
+                      )}
                     </Td>
                   </Tr>
                 ))}
@@ -195,7 +275,7 @@ export default function AbsencesPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Prochaines absences</CardTitle>
+            <CardTitle>Calendrier des absences</CardTitle>
           </CardHeader>
           {upcoming.isLoading ? (
             <CardContent>
@@ -213,7 +293,8 @@ export default function AbsencesPage() {
                   <Th>Type</Th>
                   <Th>Début</Th>
                   <Th>Fin</Th>
-                  <Th>Jours</Th>
+                  <Th className="text-right">Jours</Th>
+                  <Th>Statut</Th>
                 </tr>
               </THead>
               <TBody>
@@ -226,7 +307,18 @@ export default function AbsencesPage() {
                     <Td>{r.absenceTypeName}</Td>
                     <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
                     <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
-                    <Td className="font-mono">{r.daysCount}</Td>
+                    <Td className="text-right font-mono">{r.daysCount}</Td>
+                    <Td>
+                      {r.startDate <= aujourdhui ? (
+                        <Badge tone="success" className="whitespace-nowrap">
+                          En cours
+                        </Badge>
+                      ) : (
+                        <Badge tone="primary" className="whitespace-nowrap">
+                          À venir
+                        </Badge>
+                      )}
+                    </Td>
                   </Tr>
                 ))}
               </TBody>

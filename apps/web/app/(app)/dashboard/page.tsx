@@ -616,7 +616,12 @@ export default function DashboardPage() {
                               En cours
                             </Badge>
                           ) : (
-                            <Badge className="whitespace-nowrap">À venir</Badge>
+                            // Bleu, comme sur l'écran des demandes : les deux
+                            // tableaux montrent le même état, ils ne peuvent pas
+                            // le dire de deux couleurs.
+                            <Badge tone="primary" className="whitespace-nowrap">
+                              À venir
+                            </Badge>
                           )}
                         </Td>
                       </Tr>
