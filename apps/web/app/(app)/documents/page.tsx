@@ -18,8 +18,6 @@ import {
   CardTitle,
   Checkbox,
   cn,
-  DataBlock,
-  DataGrid,
   EmptyState,
   Field,
   Input,
@@ -249,7 +247,6 @@ export default function DocumentRequestsPage() {
                   <Th>Date</Th>
                   <Th className="text-right">Durée traitement</Th>
                   <Th>Suite donnée</Th>
-                  <Th className="w-8" />
                 </tr>
               </THead>
               <TBody>
@@ -293,14 +290,6 @@ export default function DocumentRequestsPage() {
                           ) : null}
                         </>
                       )}
-                    </Td>
-                    <Td className="pl-0 text-right">
-                      {/* Corriger un point de retrait erroné reste possible :
-                          une coquille sur le nom envoie l'employé au mauvais
-                          bureau, et lui seul peut aller chercher le document. */}
-                      {r.status === 'ready' && r.canAdvance ? (
-                        <CorrigerRetrait request={r} />
-                      ) : null}
                     </Td>
                   </Tr>
                 ))}
@@ -564,25 +553,38 @@ function TraiterModal({
                   type="button"
                   onClick={() => setCourante(i)}
                   className={cn(
-                    'flex w-full items-center gap-2.5 rounded-[10px] border px-2.5 py-2 text-left transition-colors',
+                    'flex w-full items-center gap-2.5 rounded-[12px] px-3 py-2.5 text-left',
+                    'ring-1 ring-inset transition-all duration-150',
                     active
-                      ? 'border-primary/35 bg-primary/[0.07]'
-                      : 'border-line-soft bg-surface hover:border-primary/20',
+                      ? 'bg-primary/[0.06] ring-primary/35'
+                      : 'bg-surface ring-line-soft hover:bg-hover hover:ring-line',
                   )}
                 >
+                  {/* La pastille dit où l'on en est : un numéro tant qu'il
+                      reste à voir, une coche une fois vu, un point pour ce qui
+                      n'entre pas dans le contrôle. */}
                   <span
                     className={cn(
-                      'flex size-[18px] shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
-                      vue ? 'bg-success text-primary-ink' : 'border border-line text-ink-muted',
+                      'flex size-[20px] shrink-0 items-center justify-center rounded-full text-[10px] font-bold transition-colors',
+                      vue
+                        ? 'bg-success-soft text-success ring-1 ring-success/35 ring-inset'
+                        : active
+                          ? 'bg-primary text-primary-ink'
+                          : 'text-ink-muted ring-1 ring-line ring-inset',
                     )}
                   >
-                    {vue ? <Icon name="check" size={12} /> : p.generable ? i + 1 : '·'}
+                    {vue ? <Icon name="check" size={13} /> : p.generable ? i + 1 : '·'}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12px] font-bold text-ink-strong">
+                    <span
+                      className={cn(
+                        'block truncate text-[12px] leading-tight font-bold',
+                        active ? 'text-primary' : 'text-ink-strong',
+                      )}
+                    >
                       {REQUESTABLE_DOC_LABELS[p.doc] ?? p.doc}
                     </span>
-                    <span className="block truncate text-[11px] text-ink-muted">
+                    <span className="mt-0.5 block truncate text-[11px] leading-tight text-ink-muted">
                       {p.employeeName}
                     </span>
                   </span>
@@ -593,11 +595,46 @@ function TraiterModal({
         </ul>
 
         {/* L'aperçu : le document tel qu'il sera remis, pas une promesse. */}
-        <div className="flex min-h-[19rem] min-w-0 flex-1 flex-col overflow-hidden rounded-[14px] border border-line-soft bg-surface">
+        <div className="flex min-h-[19rem] min-w-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-card-line bg-surface shadow-xs">
           {piece ? <Apercu piece={piece} onVue={marquerVue} /> : null}
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Une ligne de contrôle : l'intitulé à gauche, la valeur à droite.
+ *
+ * Une valeur manquante s'efface au lieu de s'aligner — sur un document qu'on
+ * s'apprête à remettre, un champ vide est une chose à voir, pas un tiret à
+ * compter parmi les autres.
+ */
+function Ligne({
+  label,
+  children,
+  mono,
+}: {
+  label: string;
+  children?: React.ReactNode;
+  mono?: boolean;
+}) {
+  const vide = children === null || children === undefined || children === '';
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-line-soft py-2.5">
+      <dt className="shrink-0 text-[9.5px] font-bold tracking-[0.1em] text-ink-muted uppercase">
+        {label}
+      </dt>
+      <dd
+        className={cn(
+          'min-w-0 text-right text-[13px] leading-snug font-semibold break-words',
+          mono && 'font-mono',
+          vide ? 'text-ink-muted/45' : 'text-ink-strong',
+        )}
+      >
+        {vide ? '—' : children}
+      </dd>
+    </div>
   );
 }
 
@@ -628,12 +665,14 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
   }, [affichee, onVue, piece.key]);
 
   const entete = (
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line-soft px-4 py-2.5">
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-line-soft bg-surface-raised px-5 py-3">
       <div className="min-w-0">
-        <p className="truncate text-[12.5px] font-bold text-ink-strong">
+        <p className="truncate text-[13.5px] leading-tight font-bold text-ink-strong">
           {REQUESTABLE_DOC_LABELS[piece.doc] ?? piece.doc}
         </p>
-        <p className="truncate text-[11px] text-ink-muted">{piece.employeeName}</p>
+        <p className="mt-0.5 truncate text-[11.5px] leading-tight text-ink-muted">
+          {piece.employeeName}
+        </p>
       </div>
       {piece.generable ? (
         <a
@@ -710,8 +749,8 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
   const affectation = e.assignments.find((a) => a.current) ?? e.assignments[0];
   // Le contrat le plus récemment commencé : c'est celui que l'attestation cite.
   const contrat = [...e.contracts].sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
-  // Composé AVANT d'entrer dans le bloc : un enfant fait de plusieurs morceaux
-  // vides n'est pas « vide » pour DataBlock, qui afficherait du blanc là où le
+  // Composé AVANT d'entrer dans la ligne : un enfant fait de plusieurs morceaux
+  // vides n'est pas « vide » pour `Ligne`, qui afficherait du blanc là où le
   // tiret dit « on ne sait pas ».
   const naissance =
     [e.person.birthDate ? formatDate(e.person.birthDate) : null, e.person.birthPlace]
@@ -721,29 +760,41 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
   return (
     <>
       {entete}
-      <div className="flex-1 overflow-y-auto p-4">
-        <DataGrid>
-          <DataBlock label="Nom et prénom">
-            {e.person.givenName} {e.person.familyName}
-          </DataBlock>
-          <DataBlock label="Matricule">{e.employeeNumber}</DataBlock>
-          <DataBlock label="Naissance">{naissance}</DataBlock>
-          <DataBlock label="Fonction">{affectation?.positionTitle}</DataBlock>
-          <DataBlock label="Direction">{affectation?.orgUnitName}</DataBlock>
-          <DataBlock label="Type de contrat">
-            {contrat ? (CONTRACT_LABELS[contrat.contractType] ?? contrat.contractType) : null}
-          </DataBlock>
-          <DataBlock label="Date d'embauche">{formatDate(e.hiredOn)}</DataBlock>
-          <DataBlock label="Fin de contrat">
-            {contrat?.endDate ? formatDate(contrat.endDate) : 'Sans terme'}
-          </DataBlock>
-        </DataGrid>
+      {/* Huit champs à contrôler l'un après l'autre. Ils étaient dans huit
+          cadres bleus : on voyait des boîtes avant de lire des mots, alors que
+          le geste ici est justement de LIRE — est-ce la bonne personne, la
+          bonne fonction, les bonnes dates.
 
-        <p className="mt-3.5 text-[11.5px] leading-relaxed text-ink-muted">
+          Chaque champ tient donc sur une ligne, l'intitulé à gauche et la
+          valeur à droite, séparée de la suivante par un filet. Deux colonnes
+          dès que la fenêtre a la largeur ; comme la grille étire ses cases à
+          la hauteur de leur rangée, les filets des deux colonnes tombent
+          exactement en face. */}
+      <div className="@container flex-1 overflow-y-auto px-5 py-4">
+        <dl className="grid grid-cols-1 gap-x-10 @[38rem]:grid-cols-2">
+          <Ligne label="Nom et prénom">
+            {e.person.givenName} {e.person.familyName}
+          </Ligne>
+          <Ligne label="Matricule" mono>
+            {e.employeeNumber}
+          </Ligne>
+          <Ligne label="Naissance">{naissance}</Ligne>
+          <Ligne label="Fonction">{affectation?.positionTitle}</Ligne>
+          <Ligne label="Direction">{affectation?.orgUnitName}</Ligne>
+          <Ligne label="Type de contrat">
+            {contrat ? (CONTRACT_LABELS[contrat.contractType] ?? contrat.contractType) : null}
+          </Ligne>
+          <Ligne label="Date d'embauche">{formatDate(e.hiredOn)}</Ligne>
+          <Ligne label="Fin de contrat">
+            {contrat?.endDate ? formatDate(contrat.endDate) : 'Sans terme'}
+          </Ligne>
+        </dl>
+
+        <p className="mt-4 text-[11.5px] leading-relaxed text-ink-muted">
           Ce sont les informations que l&apos;attestation reprend. Une erreur ici se corrige sur la{' '}
           <Link
             href={`/employees/${piece.employeeId}`}
-            className="font-semibold text-primary hover:underline"
+            className="font-semibold text-primary transition-colors hover:text-primary-hover hover:underline"
           >
             fiche de l&apos;employé
           </Link>{' '}
@@ -840,101 +891,5 @@ function DeclinerModal({
         </Field>
       </ModalSection>
     </Modal>
-  );
-}
-
-/** Rectifier le point de retrait d'une demande déjà annoncée. */
-function CorrigerRetrait({ request: r }: { request: DocumentRequestView }) {
-  const queryClient = useQueryClient();
-  const [ouvert, setOuvert] = useState(false);
-  const [contact, setContact] = useState(r.pickupContact ?? '');
-  const [message, setMessage] = useState(r.hrMessage ?? '');
-  const [erreur, setErreur] = useState<string | null>(null);
-
-  const corriger = useMutation({
-    mutationFn: () =>
-      api(`/document-requests/${r.id}/advance`, {
-        method: 'POST',
-        body: {
-          status: 'ready',
-          pickupContact: contact.trim() || undefined,
-          message: message.trim() || undefined,
-        },
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['document-requests'] });
-      await queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      // La pastille de la barre de menu compte les demandes ouvertes : sans
-      // ça elle continue d'annoncer un travail qui vient d'être fait.
-      await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      setOuvert(false);
-    },
-    onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Correction impossible.'),
-  });
-
-  return (
-    <>
-      <button
-        type="button"
-        title="Corriger le point de retrait"
-        aria-label={`Corriger le point de retrait — ${r.employeeName}`}
-        onClick={() => setOuvert(true)}
-        className="rounded-[7px] p-1.5 text-ink-muted transition-colors hover:bg-primary/[0.07] hover:text-primary"
-      >
-        <Icon name="edit" size={15} />
-      </button>
-      {ouvert ? (
-        <Modal
-          open
-          onClose={() => setOuvert(false)}
-          title="Corriger le point de retrait"
-          subtitle={r.employeeName}
-          maxWidth="max-w-xl"
-          footer={
-            <>
-              {erreur ? (
-                <p
-                  role="alert"
-                  className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
-                >
-                  {erreur}
-                </p>
-              ) : null}
-              <Button variant="secondary" onClick={() => setOuvert(false)}>
-                Annuler
-              </Button>
-              <Button
-                loading={corriger.isPending}
-                onClick={() => {
-                  setErreur(null);
-                  corriger.mutate();
-                }}
-              >
-                Prévenir à nouveau
-              </Button>
-            </>
-          }
-        >
-          <ModalSection title="Où retirer">
-            <ModalGrid>
-              <Field label="À retirer auprès de" htmlFor={`c-${r.id}`}>
-                <Input
-                  id={`c-${r.id}`}
-                  value={contact}
-                  onChange={(e) => setContact(e.target.value)}
-                />
-              </Field>
-              <Field label="Précision (facultatif)" htmlFor={`m-${r.id}`}>
-                <Input
-                  id={`m-${r.id}`}
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                />
-              </Field>
-            </ModalGrid>
-          </ModalSection>
-        </Modal>
-      ) : null}
-    </>
   );
 }

@@ -166,23 +166,6 @@ export function DocumentRequestRow({
             </>
           ) : null}
 
-          {r.status === 'ready' ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="first:-ml-3.5"
-              onClick={() => {
-                setPickupContact(r.pickupContact ?? '');
-                // Pre-rempli comme le contact : le panneau montre exactement ce
-                // que l'employe verra, et vider le champ efface la precision.
-                setReadyMessage(r.hrMessage ?? '');
-                setReadyOpen(!readyOpen);
-              }}
-            >
-              Corriger le point de retrait
-            </Button>
-          ) : null}
-
           {r.status === 'received' || r.status === 'processing' ? (
             <Button
               size="sm"
