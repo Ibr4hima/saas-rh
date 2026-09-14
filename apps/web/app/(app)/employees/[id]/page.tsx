@@ -32,7 +32,6 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
 import { EmployeeDocumentsCard } from '../../../../components/employee-documents-card';
-import { nationalityLabel } from '@teranga/contracts';
 import { ProfileChangeCard } from '../../../../components/profile-change-card';
 import { DocumentRequestRow } from '../../../../components/document-request-list';
 import { EmployeeEditModal } from '../../../../components/employee-edit-modal';
@@ -376,7 +375,6 @@ export default function EmployeePage() {
                   {e.person.birthDate ? formatDate(e.person.birthDate) : null}
                 </Donnee>
                 <Donnee label="Pays de naissance">{e.person.birthPlace}</Donnee>
-                <Donnee label="Nationalité">{nationalityLabel(e.person.nationality)}</Donnee>
                 <Donnee label="Situation matrimoniale">
                   {e.person.maritalStatus
                     ? maritalLabels(e.person.gender)[e.person.maritalStatus]

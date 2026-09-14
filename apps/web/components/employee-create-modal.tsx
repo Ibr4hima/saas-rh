@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { EmployeeListItem, EmployeeListPage, OrgUnitView } from '@teranga/contracts';
-import { nationalityLabel, orgUnitLabel } from '@teranga/contracts';
+import { orgUnitLabel } from '@teranga/contracts';
 import { Button, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../lib/countries';
@@ -37,12 +37,6 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   const [maritalStatus, setMaritalStatus] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [birthCountry, setBirthCountry] = useState('');
-  // La nationalité SUIT le pays de naissance tant que la RH n'y a pas touché :
-  // c'est le cas courant. Dès qu'elle la choisit elle-même, on cesse de la
-  // remplacer — on naît malien et on peut être sénégalais. Vide au départ :
-  // aucune nationalité n'est plus probable qu'une autre avant qu'on le dise.
-  const [nationality, setNationality] = useState('');
-  const [nationalityTouched, setNationalityTouched] = useState(false);
   const [idType, setIdType] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [idIssuedOn, setIdIssuedOn] = useState('');
@@ -109,7 +103,6 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             gender: gender || undefined,
             birthDate: birthDate || undefined,
             birthPlace: birthCountry ? countryByCode(birthCountry)?.name : undefined,
-            nationality: nationality || undefined,
             maritalStatus: maritalStatus || undefined,
             nationalId: idType ? idNumber.trim() : undefined,
             idDocumentType: idType || undefined,
@@ -223,32 +216,12 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             <Select
               id="birthCountry"
               value={birthCountry}
-              onChange={(e) => {
-                setBirthCountry(e.target.value);
-                if (!nationalityTouched && e.target.value) setNationality(e.target.value);
-              }}
+              onChange={(e) => setBirthCountry(e.target.value)}
             >
               <option value="">—</option>
               {COUNTRIES.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Nationalité" htmlFor="nationality">
-            <Select
-              id="nationality"
-              value={nationality}
-              onChange={(e) => {
-                setNationality(e.target.value);
-                setNationalityTouched(true);
-              }}
-            >
-              <option value="">—</option>
-              {COUNTRIES.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {nationalityLabel(c.code) ?? c.name}
                 </option>
               ))}
             </Select>
@@ -385,7 +358,6 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               local={workPhoneLocal}
               onCountryChange={setWorkPhoneCountry}
               onLocalChange={setWorkPhoneLocal}
-              placeholder="33 889 11 22"
             />
           </Field>
           <Field label="Poste" htmlFor="positionTitle">

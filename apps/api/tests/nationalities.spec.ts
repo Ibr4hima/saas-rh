@@ -16,13 +16,28 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { NATIONALITY_LABELS, nationalityLabel } from '@teranga/contracts';
 
-/** Codes réellement proposés dans les menus déroulants du produit. */
+/**
+ * Codes proposés par les menus du produit — pays de naissance, indicatif
+ * téléphonique.
+ *
+ * La table est lue dans sa forme source : `['SN', 'SEN', '221']`, c'est-à-dire
+ * alpha-2, alpha-3, indicatif. Elle n'a pas toujours eu trois colonnes, et
+ * l'expression qui n'en lisait que deux a rendu une liste VIDE du jour où
+ * l'alpha-3 y est entré — ce test passait alors pour de mauvaises raisons.
+ * D'où l'assertion de garde en dessous : une liste vide est un défaut de
+ * lecture, pas une réussite.
+ */
 function codesProposes(): string[] {
   const src = readFileSync(join(__dirname, '../../web/lib/countries.ts'), 'utf8');
-  return [...src.matchAll(/\['([A-Z]{2})', '\d+'\]/g)].map((m) => m[1]!);
+  return [...src.matchAll(/\['([A-Z]{2})', '[A-Z]{3}', '\d+'\]/g)].map((m) => m[1]!);
 }
 
 describe('couverture', () => {
+  it('la table des pays est bien lue', () => {
+    // Sans cela, une table illisible ferait passer les deux tests suivants.
+    expect(codesProposes().length).toBeGreaterThan(150);
+  });
+
   it('chaque pays proposé a sa nationalité', () => {
     const sans = codesProposes().filter((c) => !NATIONALITY_LABELS[c]);
     expect(sans).toEqual([]);

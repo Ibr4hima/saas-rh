@@ -14,7 +14,6 @@ import {
   PROFILE_CHANGE_LABELS,
   PROFILE_CHANGE_STATUS_LABELS,
   PROFILE_CHANGE_STATUS_TONES,
-  nationalityLabel,
 } from '@teranga/contracts';
 import {
   Badge,
@@ -141,7 +140,6 @@ export default function MyInformationsPage() {
                 {p.birthDate ? formatDate(p.birthDate) : null}
               </DataBlock>
               <DataBlock label="Pays de naissance">{p.birthPlace}</DataBlock>
-              <DataBlock label="Nationalité">{nationalityLabel(p.nationality)}</DataBlock>
               <DataBlock label="Situation matrimoniale">
                 {p.maritalStatus ? marital[p.maritalStatus] : null}
               </DataBlock>

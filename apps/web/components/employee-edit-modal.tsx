@@ -3,7 +3,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { nationalityLabel } from '@teranga/contracts';
 import type {
   EmployeeDetail,
   EmployeeListItem,
@@ -12,10 +11,49 @@ import type {
 } from '@teranga/contracts';
 import { Button, Field, Input, Select, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
-import { COUNTRIES } from '../lib/countries';
+import { composePhone, COUNTRIES, splitPhone } from '../lib/countries';
 import { maritalLabels, maxBirthDate } from '../lib/person';
 import { Modal, ModalGrid, ModalSection } from './modal';
+import { PhoneInput } from './phone-input';
 import { composeWorkEmail, localWorkEmail, WorkEmailInput } from './work-email-input';
+
+/**
+ * Un téléphone dans ce formulaire.
+ *
+ * Le champ enregistré par react-hook-form reste la chaîne COMPLÈTE
+ * (« +221771234567 ») : c'est elle que le PATCH envoie, et c'est sur elle que
+ * `dirtyFields` décide si le champ a bougé. Le pays et le numéro local ne sont
+ * qu'un moyen de la saisir — ils vivent donc ici, en état local, et chaque
+ * frappe recompose la valeur enregistrée.
+ */
+function ChampTelephone({
+  id,
+  stocke,
+  onChange,
+}: {
+  id: string;
+  stocke: string | null;
+  onChange: (valeur: string) => void;
+}) {
+  const depart = splitPhone(stocke);
+  const [pays, setPays] = useState(depart.country);
+  const [local, setLocal] = useState(depart.local);
+  return (
+    <PhoneInput
+      id={id}
+      country={pays}
+      local={local}
+      onCountryChange={(c) => {
+        setPays(c);
+        onChange(composePhone(c, local) ?? '');
+      }}
+      onLocalChange={(v) => {
+        setLocal(v);
+        onChange(composePhone(pays, v) ?? '');
+      }}
+    />
+  );
+}
 
 /**
  * Formulaire à plat (chaînes vides pour « vide »), re-mappé à l'envoi :
@@ -28,7 +66,6 @@ interface FormValues {
   birthDate: string;
   birthPlace: string;
   maritalStatus: string;
-  nationality: string;
   nationalId: string;
   idDocumentType: string;
   idDocumentIssuedOn: string;
@@ -52,7 +89,6 @@ const PERSON_KEYS = [
   'birthDate',
   'birthPlace',
   'maritalStatus',
-  'nationality',
   'nationalId',
   'idDocumentType',
   'idDocumentIssuedOn',
@@ -80,7 +116,6 @@ function toDefaults(e: EmployeeDetail): FormValues {
     birthDate: e.person.birthDate ?? '',
     birthPlace: e.person.birthPlace ?? '',
     maritalStatus: e.person.maritalStatus ?? '',
-    nationality: e.person.nationality ?? '',
     nationalId: e.person.nationalId ?? '',
     idDocumentType: e.person.idDocumentType ?? '',
     idDocumentIssuedOn: e.person.idDocumentIssuedOn ?? '',
@@ -264,19 +299,6 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               ))}
             </Select>
           </Field>
-          <Field label="Nationalité" htmlFor="nationality">
-            {/* Le code pays reste la valeur stockée ; c'est le gentilé qui
-                  s'affiche — « SN » ne veut rien dire sur une fiche. Vidable :
-                  « pas renseignée » est un état depuis la migration 0015. */}
-            <Select id="nationality" {...form.register('nationality')}>
-              <option value="">—</option>
-              {COUNTRIES.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {nationalityLabel(c.code) ?? c.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
           <Field label="Pièce d'identité" htmlFor="idDocumentType">
             <Select id="idDocumentType" {...form.register('idDocumentType')}>
               <option value="">—</option>
@@ -306,7 +328,11 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
             </>
           ) : null}
           <Field label="Téléphone" htmlFor="phone">
-            <Input id="phone" {...form.register('phone')} />
+            <ChampTelephone
+              id="phone"
+              stocke={employee.person.phone}
+              onChange={(v) => form.setValue('phone', v, { shouldDirty: true })}
+            />
           </Field>
           <Field label="Email personnel" htmlFor="personalEmail">
             <Input id="personalEmail" type="email" {...form.register('personalEmail')} />
@@ -368,7 +394,11 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
             />
           </Field>
           <Field label="Téléphone professionnel" htmlFor="workPhone">
-            <Input id="workPhone" {...form.register('workPhone')} />
+            <ChampTelephone
+              id="workPhone"
+              stocke={employee.workPhone}
+              onChange={(v) => form.setValue('workPhone', v, { shouldDirty: true })}
+            />
           </Field>
         </ModalGrid>
       </ModalSection>

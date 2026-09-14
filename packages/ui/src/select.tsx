@@ -34,7 +34,11 @@ import { cn } from './cn';
 
 interface Choix {
   valeur: string;
+  /** Ce que montre la LISTE. */
   libelle: string;
+  /** Ce que montre le bouton une fois refermé — l'attribut `label` de
+      l'`<option>` quand il est posé, le libellé sinon. */
+  court: string;
   desactive: boolean;
 }
 
@@ -59,6 +63,9 @@ function lireChoix(children: React.ReactNode): Choix[] {
     out.push({
       valeur: p.value === undefined ? libelle : String(p.value),
       libelle,
+      // `<option label="SEN">SEN · +221</option>` : l'attribut existe en HTML
+      // pour cela, et le `<select>` caché s'en sert de la même façon.
+      court: p.label ?? libelle,
       desactive: Boolean(p.disabled),
     });
   });
@@ -94,6 +101,7 @@ function fusionnerRefs<T>(...refs: (React.Ref<T> | undefined)[]) {
 interface Position {
   left: number;
   width: number;
+  maxWidth: number;
   top?: number;
   bottom?: number;
   maxHeight: number;
@@ -133,7 +141,7 @@ export function Select({
     0,
     choix.findIndex((c) => c.valeur === valeur),
   );
-  const libelleCourant = choix[indexCourant]?.libelle ?? '';
+  const libelleCourant = choix[indexCourant]?.court ?? '';
 
   const placer = React.useCallback(() => {
     const b = declencheur.current?.getBoundingClientRect();
@@ -147,6 +155,11 @@ export function Select({
     setPosition({
       left: b.left,
       width: b.width,
+      // La liste part de la largeur du bouton et grandit avec son contenu :
+      // un sélecteur étroit — l'indicatif d'un téléphone, large de trois
+      // lettres — ne doit pas couper « SEN · +221 » dans sa propre liste.
+      // Bridée à ce qui reste jusqu'au bord de l'écran.
+      maxWidth: Math.max(b.width, window.innerWidth - b.left - 8),
       ...(versLeHaut ? { bottom: window.innerHeight - b.top + marge } : { top: b.bottom + marge }),
       maxHeight: Math.max(120, Math.min(300, versLeHaut ? dessus : dessous)),
     });
@@ -334,7 +347,9 @@ export function Select({
               className="tg-menu fixed z-[70] overflow-y-auto overscroll-contain rounded-[16px] border border-line bg-surface p-1.5 shadow-lg"
               style={{
                 left: position.left,
-                width: position.width,
+                minWidth: position.width,
+                width: 'max-content',
+                maxWidth: position.maxWidth,
                 top: position.top,
                 bottom: position.bottom,
                 maxHeight: position.maxHeight,
