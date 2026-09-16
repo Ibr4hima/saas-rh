@@ -1,13 +1,30 @@
 'use client';
 
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { AbsenceRequestView, Holiday } from '@teranga/contracts';
-import { Card, CardContent, CardHeader, cn, Skeleton } from '@teranga/ui';
+import type { Holiday } from '@teranga/contracts';
+import { cn, Skeleton } from '@teranga/ui';
 import { api } from '../lib/api';
 import { Icon } from './icons';
 import { LoadFailure } from './load-failure';
 import { Modal } from './modal';
+
+/* ————————————————————————————————————————————————————————————————
+   Un calendrier, et rien d'autre.
+
+   Il portait les absences de tout le monde. Un congé de maternité couvrait
+   trente cases du même libellé, et le mois n'était plus un calendrier mais
+   une colonne de répétitions — on ne pouvait plus y lire ce pour quoi on
+   l'ouvrait : quel jour on est, et quand tombe le prochain férié.
+
+   Le planning des absences n'a pas disparu ; il vit là où on le cherche, et
+   où il se lit par période plutôt que par jour : « Calendrier des absences »
+   sur la page des demandes. Ici, on consulte.
+
+   Restent les jours fériés : ils n'appartiennent à personne, ils sont une
+   propriété du calendrier lui-même — un calendrier sénégalais qui tairait
+   la Tabaski serait un calendrier incomplet, pas un calendrier sobre.
+   ———————————————————————————————————————————————————————————————— */
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
@@ -32,30 +49,24 @@ function monthGrid(year: number, month: number): string[][] {
 }
 
 /**
- * L'état du calendrier, séparé de son rendu.
- *
- * Le même calendrier s'affiche en page et en fenêtre, mais ses commandes ne
- * vivent pas au même endroit : dans la fenêtre elles montent dans l'en-tête,
- * à côté du titre. Le mois courant doit donc être connu des deux côtés — d'où
- * l'état ici plutôt qu'enfermé dans un composant.
+ * L'état du calendrier, séparé de son rendu : la fenêtre fait monter ses
+ * commandes dans l'en-tête, à côté du titre, et doit donc connaître le mois
+ * affiché sans l'enfermer dans la grille.
  */
 function useCalendrier() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth()); // 0-11
 
-  const absenceQueries = useQueries({
-    queries: ['approved', 'pending'].map((status) => ({
-      queryKey: ['absence-requests', status],
-      queryFn: () => api<AbsenceRequestView[]>(`/absence-requests?status=${status}&limit=100`),
-    })),
-  });
+  // Une seule requête, et elle sert à quelque chose. Les deux appels aux
+  // demandes d'absence partaient à CHAQUE page — la fenêtre est montée dans
+  // le bandeau, donc toujours présente — pour alimenter un affichage qui
+  // n'existe plus.
   const holidays = useQuery({
     queryKey: ['holidays', year],
     queryFn: () => api<Holiday[]>(`/holidays?year=${year}`),
   });
 
-  const absences = absenceQueries.flatMap((q) => q.data ?? []);
   const monthLabel = new Date(year, month, 1).toLocaleDateString('fr-FR', {
     month: 'long',
     year: 'numeric',
@@ -82,9 +93,8 @@ function useCalendrier() {
     weeks: monthGrid(year, month),
     todayIso: iso(now),
     holidayByDay: new Map((holidays.data ?? []).map((h) => [h.day, h.label])),
-    absencesOn: (day: string) => absences.filter((a) => a.startDate <= day && day <= a.endDate),
-    loading: absenceQueries.some((q) => q.isLoading) || holidays.isLoading,
-    failed: absenceQueries.find((q) => q.isError) ?? (holidays.isError ? holidays : null),
+    loading: holidays.isLoading,
+    failed: holidays.isError ? holidays : null,
   };
 }
 
@@ -131,40 +141,16 @@ function FlecheMois({
   );
 }
 
-/** Légende des pastilles — un jour férié n'est pas une absence de plus. */
-function Legende({ className }: { className?: string }) {
-  const entrees = [
-    { classe: 'bg-primary', texte: 'Approuvée' },
-    { classe: 'bg-warning', texte: 'En attente' },
-    { classe: 'bg-success', texte: 'Jour férié' },
-  ];
-  return (
-    <div className={cn('flex flex-wrap items-center gap-x-3.5 gap-y-1', className)}>
-      {entrees.map((e) => (
-        <span
-          key={e.texte}
-          className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-muted"
-        >
-          <span className={cn('size-2 rounded-full', e.classe)} />
-          {e.texte}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 /**
  * La grille du mois.
  *
  * Le mois tient dans une hauteur DONNÉE plutôt que de la réclamer : les
- * rangées se partagent la place, et une journée chargée fait défiler sa case
- * au lieu de pousser toute la fenêtre. C'est ce qu'exige une fenêtre — un
- * mois de cinq semaines et un mois de six ne doivent pas la faire sauter d'un
- * cran à chaque flèche.
+ * rangées se partagent la place. C'est ce qu'exige une fenêtre — un mois de
+ * cinq semaines et un mois de six ne doivent pas la faire sauter d'un cran à
+ * chaque flèche.
  *
- * La variante « à hauteur libre » a disparu avec la page qui l'employait : la
- * grille ne sert plus qu'en fenêtre, et un paramètre dont il ne reste qu'une
- * valeur n'est plus un paramètre.
+ * Les cases n'ont plus de liste à contenir : le chiffre respire au centre, et
+ * le nom du férié se pose dessous. Elles n'ont donc plus rien à faire défiler.
  */
 function Grille({ cal }: { cal: Cal }) {
   if (cal.loading) return <Skeleton className="h-full" />;
@@ -190,14 +176,13 @@ function Grille({ cal }: { cal: Cal }) {
               const inMonth = new Date(`${day}T00:00:00Z`).getUTCMonth() === cal.month;
               const dow = new Date(`${day}T00:00:00Z`).getUTCDay();
               const weekend = dow === 0 || dow === 6;
-              const holiday = cal.holidayByDay.get(day);
-              const dayAbsences = inMonth ? cal.absencesOn(day) : [];
+              const holiday = inMonth ? cal.holidayByDay.get(day) : undefined;
               const isToday = day === cal.todayIso;
               return (
                 <div
                   key={day}
                   className={cn(
-                    'flex min-h-0 flex-col overflow-hidden border-r border-line-soft p-1.5 last:border-r-0',
+                    'flex min-h-0 flex-col items-center justify-center gap-1 overflow-hidden border-r border-line-soft p-1.5 last:border-r-0',
                     !inMonth
                       ? 'bg-bg opacity-40'
                       : holiday
@@ -209,47 +194,25 @@ function Grille({ cal }: { cal: Cal }) {
                 >
                   <span
                     className={cn(
-                      'mb-1 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[11.5px]',
+                      'flex size-[30px] shrink-0 items-center justify-center rounded-full text-[14px]',
                       isToday
                         ? 'bg-primary font-bold text-primary-ink'
-                        : 'font-semibold text-ink-muted',
+                        : holiday
+                          ? 'font-bold text-success'
+                          : 'font-semibold text-ink',
                     )}
                     style={{ fontVariantNumeric: 'tabular-nums' }}
                   >
                     {Number(day.slice(8, 10))}
                   </span>
-                  {holiday && inMonth ? (
+                  {holiday ? (
                     <p
                       title={holiday}
-                      className="mb-1 flex shrink-0 items-center gap-1 truncate rounded-md bg-success-soft px-1.5 py-0.5 text-[10.5px] font-bold text-success"
+                      className="max-w-full truncate px-1 text-center text-[10.5px] font-bold text-success"
                     >
-                      <Icon name="flag" size={11} className="shrink-0" />
-                      <span className="truncate">{holiday}</span>
+                      {holiday}
                     </p>
                   ) : null}
-                  {/* La liste prend ce qui reste et défile : une journée à six
-                    absences ne doit pas décider de la hauteur de la fenêtre. */}
-                  <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
-                    {dayAbsences.slice(0, 3).map((a) => (
-                      <span
-                        key={a.id}
-                        title={`${a.employeeName} — ${a.absenceTypeName} (${a.status === 'pending' ? 'en attente' : 'approuvée'})`}
-                        className={cn(
-                          'truncate rounded-md border-l-2 px-1.5 py-0.5 text-[10.5px] font-semibold',
-                          a.status === 'pending'
-                            ? 'border-warning bg-warning-soft text-warning'
-                            : 'border-primary bg-primary-soft text-primary',
-                        )}
-                      >
-                        {a.employeeName.split(' ')[0]} · {a.absenceTypeName}
-                      </span>
-                    ))}
-                    {dayAbsences.length > 3 ? (
-                      <span className="shrink-0 px-1 text-[10px] font-semibold text-ink-muted">
-                        +{dayAbsences.length - 3} autre(s)
-                      </span>
-                    ) : null}
-                  </div>
                 </div>
               );
             })}
@@ -263,9 +226,10 @@ function Grille({ cal }: { cal: Cal }) {
 /**
  * Le calendrier en fenêtre, depuis la date du bandeau.
  *
- * Navigation et légende montent dans l'en-tête, à côté du titre : gardées dans
- * le corps, elles mangeaient une bande de soixante pixels que le mois
- * réclamait, et il fallait dérouler pour voir les dernières semaines.
+ * La navigation monte dans l'en-tête, à côté du titre : gardée dans le corps,
+ * elle mangeait une bande de soixante pixels que le mois réclamait. Le pied a
+ * disparu avec la légende qu'il portait — trois pastilles pour deux états qui
+ * n'existent plus, et un troisième dont le nom est écrit dans la case.
  */
 export function CalendrierModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cal = useCalendrier();
@@ -274,10 +238,9 @@ export function CalendrierModal({ open, onClose }: { open: boolean; onClose: () 
       open={open}
       onClose={onClose}
       title="Calendrier"
-      maxWidth="max-w-6xl"
+      maxWidth="max-w-5xl"
       corpsFixe
       enTete={cal.failed ? null : <CommandesMois cal={cal} />}
-      footer={cal.failed ? null : <Legende className="w-full justify-center" />}
     >
       {cal.failed ? (
         <LoadFailure error={cal.failed.error} onRetry={() => void cal.failed!.refetch()} />
@@ -285,10 +248,13 @@ export function CalendrierModal({ open, onClose }: { open: boolean; onClose: () 
         // Hauteur DONNÉE, pas réclamée : cinq semaines ou six, la fenêtre garde
         // la même taille. Sans cela elle sautait d'un cran à chaque flèche.
         //
-        // Le plafond suit l'écran — en-tête, pied et marges déduits — pour que
-        // la fenêtre n'ait JAMAIS à défiler : un calendrier qu'on fait défiler
-        // ne montre plus le mois, ce qui est tout son objet.
-        <div className="h-[min(32rem,92vh_-_11.5rem)] shrink-0 overflow-hidden rounded-[14px] border border-line-soft bg-surface">
+        // Le plafond suit l'écran — en-tête et marges déduits — pour que la
+        // fenêtre n'ait JAMAIS à défiler : un calendrier qu'on fait défiler ne
+        // montre plus le mois, ce qui est tout son objet.
+        // Sur téléphone la fenêtre occupe tout l'écran : le mois y prend la
+        // place qui reste, au lieu de tenir dans 448 px et de laisser sept
+        // cents pixels de vide sous lui.
+        <div className="min-h-0 flex-1 overflow-hidden rounded-[14px] border border-line-soft bg-surface sm:h-[min(28rem,92vh_-_9rem)] sm:flex-none">
           <Grille cal={cal} />
         </div>
       )}
