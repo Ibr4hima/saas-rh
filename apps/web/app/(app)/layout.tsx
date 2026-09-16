@@ -95,7 +95,7 @@ const NAV_ITEMS: NavItem[] = [
     // des absences, qui vit dans la fenêtre du bandeau ; la page, elle, ne
     // porte que les fériés de l'année. La barre d'onglets du téléphone garde
     // le mot court : sur cinquante-six pixels, rien d'autre ne tient.
-    label: 'Calendrier des jours fériés',
+    label: 'Calendrier · Jours fériés',
     short: 'Calendrier',
     icon: 'calendar_month',
     groupe: 'pilotage',
@@ -181,7 +181,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/absences/feries': 'Jours fériés',
   '/absences/parametres': 'Paramètres des congés',
   '/documents': 'Demandes à traiter',
-  '/calendrier': 'Calendrier des jours fériés',
+  '/calendrier': 'Calendrier · Jours fériés',
   '/recrutement': "Offres d'emploi",
   '/recrutement/candidatures': 'Dossiers de candidature',
   '/recrutement/nouvelle': 'Nouvelle offre',
@@ -292,7 +292,7 @@ function personalNav(role: string): NavItem[] {
     { href: '/moi', label: 'Mon espace', short: 'Espace', icon: 'dashboard', groupe: 'pilotage' },
     {
       href: '/calendrier',
-      label: 'Calendrier des jours fériés',
+      label: 'Calendrier · Jours fériés',
       short: 'Calendrier',
       icon: 'calendar_month',
       groupe: 'pilotage',
