@@ -7,19 +7,11 @@ import { PROFILE_CHANGE_STATUS_LABELS, PROFILE_CHANGE_STATUS_TONES } from '@tera
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { timeAgo } from './document-request-list';
-import { formatTelephone } from './telephone';
+import { valeurSignalee } from './telephone';
 
-/**
- * La valeur d'un champ, mise en forme comme elle l'est sur la fiche.
- *
- * Un numéro proposé en correction est un NUMÉRO : l'afficher brut ici alors
- * qu'il se lit « +221 77 123 45 67 » deux écrans plus loin ferait douter que
- * ce soit le même.
- */
-function lisible(champ: string, valeur: string | null | undefined) {
-  if (valeur == null || valeur === '') return '—';
-  return champ === 'phone' ? formatTelephone(valeur) : valeur;
-}
+/** Le tiret cadratin reste local : l'agent, lui, lit « non renseigné ». */
+const lisible = (champ: string, valeur: string | null | undefined) =>
+  valeurSignalee(champ, valeur) ?? '—';
 
 /**
  * Les corrections signalées par l'employé, côté RH.

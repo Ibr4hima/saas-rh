@@ -281,7 +281,12 @@ export function splitPhone(stored: string | null | undefined): { country: string
   if (!stored) return { country: DEFAULT_COUNTRY, local: '' };
   const analyse = stored.startsWith('+') ? parsePhoneNumberFromString(stored) : undefined;
   if (analyse?.country) return { country: analyse.country, local: analyse.formatNational() };
-  if (!stored.startsWith('+')) return { country: DEFAULT_COUNTRY, local: stored };
+  // Numéro sans indicatif : c'est du sénégalais par convention du produit,
+  // et il se met en forme comme le reste — sinon un dossier importé s'ouvre
+  // sur « 771234567 » d'un bloc là où une saisie neuve donne « 77 123 45 67 ».
+  if (!stored.startsWith('+')) {
+    return { country: DEFAULT_COUNTRY, local: formatAsYouType(DEFAULT_COUNTRY, stored) };
+  }
   // Indicatif reconnu mais pays indécidable (+1 en couvre vingt) : on prend le
   // plus long indicatif qui corresponde.
   const raw = stored.slice(1);

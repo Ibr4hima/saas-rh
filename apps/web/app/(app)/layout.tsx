@@ -136,7 +136,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/moi': 'Mon espace',
   '/moi/conges': 'Mes congés',
   '/moi/documents': 'Mes documents',
-  '/moi/informations': 'Mes informations',
+  '/moi/informations': 'Mes informations personnelles',
 };
 
 function greeting(): string {
@@ -234,7 +234,12 @@ function personalNav(role: string): NavItem[] {
       short: 'Documents',
       icon: 'folder_managed',
     },
-    { href: '/moi/informations', label: 'Mes informations', short: 'Infos', icon: 'badge' },
+    {
+      href: '/moi/informations',
+      label: 'Mes informations personnelles',
+      short: 'Infos',
+      icon: 'badge',
+    },
     {
       href: '/reglementations',
       label: 'Lois & Règlementations',

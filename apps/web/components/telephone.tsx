@@ -73,3 +73,21 @@ export function Telephone({
     </a>
   );
 }
+
+/**
+ * La valeur d'un champ signalé en correction, mise en forme comme elle l'est
+ * sur la fiche.
+ *
+ * Un numéro proposé en correction est un NUMÉRO : l'afficher brut alors qu'il
+ * se lit « +221 77 123 45 67 » deux écrans plus loin ferait douter que ce
+ * soit le même. Le serveur traduit déjà la situation matrimoniale en toutes
+ * lettres ; il ne peut pas en faire autant du téléphone, dont le découpage
+ * dépend d'une bibliothèque qui ne vit que côté navigateur.
+ *
+ * Partagée par les deux bouts du circuit — la RH qui décide, l'agent qui
+ * suit sa demande : la même correction doit s'écrire pareil des deux côtés.
+ */
+export function valeurSignalee(champ: string, valeur: string | null | undefined): string | null {
+  if (valeur == null || valeur === '') return null;
+  return champ === 'phone' || champ === 'emergencyContactPhone' ? formatTelephone(valeur) : valeur;
+}
