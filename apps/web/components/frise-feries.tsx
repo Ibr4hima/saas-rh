@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import type { Holiday } from '@teranga/contracts';
 import { Badge, cn, Skeleton } from '@teranga/ui';
 import { api } from '../lib/api';
@@ -57,17 +58,40 @@ function majuscule(texte: string): string {
 }
 
 export function FriseFeries() {
-  const annee = new Date().getFullYear();
+  const anneeCourante = new Date().getFullYear();
+  // On ne feuillette qu'une année en avant. Au-delà, le calendrier n'est pas
+  // connu : les dates civiles se reportent d'elles-mêmes, mais aucune fête
+  // mobile n'est datée, et une frise de six cartes sur quatorze donnerait une
+  // année fausse plutôt qu'une année vide.
+  const [annee, setAnnee] = useState(anneeCourante);
+  const suivante = annee === anneeCourante;
+
   const feries = useQuery({
     queryKey: ['holidays', annee],
     queryFn: () => api<Holiday[]>(`/holidays?year=${annee}`),
   });
 
+  const entete = (
+    <EnTete
+      annee={suivante ? anneeCourante + 1 : anneeCourante}
+      sens={suivante ? 'suivante' : 'precedente'}
+      onAller={() => setAnnee(suivante ? anneeCourante + 1 : anneeCourante)}
+    />
+  );
+
   if (feries.isLoading) {
-    return <Skeleton className="h-[520px] w-full rounded-[16px]" />;
+    return (
+      <section>
+        {entete}
+        <Skeleton className="mt-5 h-[520px] w-full rounded-[16px]" />
+      </section>
+    );
   }
 
   const tous = feries.data ?? [];
+  // L'année se lit dans son sens : janvier en haut, décembre en bas. Le
+  // prochain férié tombe sur la CHARNIÈRE — la première carte nette après
+  // celles qui ont reculé — et c'est là que l'œil s'arrête en descendant.
   const dates = tous
     .filter((h): h is Holiday & { day: string } => Boolean(h.day))
     .sort((a, b) => a.day.localeCompare(b.day));
@@ -75,14 +99,17 @@ export function FriseFeries() {
   // chronologique : elle attend en bas, nommée, plutôt que d'être tue.
   const aDater = tous.filter((h) => !h.day);
 
-  const indexProchain = dates.findIndex((h) => ecartJours(h.day) >= 0);
-  const restants = indexProchain < 0 ? 0 : dates.length - indexProchain;
+  // Le bandeau « prochain » n'a de sens que sur l'année en cours : sur celle
+  // d'après, la première date n'est pas le prochain férié — celui-ci tombe
+  // encore dans l'année qu'on vient de quitter.
+  const indexProchain =
+    annee === anneeCourante ? dates.findIndex((h) => ecartJours(h.day) >= 0) : -1;
 
   if (dates.length === 0 && aDater.length === 0) {
     return (
       <section>
-        <EnTete annee={annee} total={0} restants={0} />
-        <p className="mt-4 rounded-[16px] border border-dashed border-line bg-surface-raised px-5 py-8 text-center text-[12.5px] text-ink-muted">
+        {entete}
+        <p className="mt-5 rounded-[16px] border border-dashed border-line bg-surface-raised px-5 py-8 text-center text-[12.5px] text-ink-muted">
           Aucun jour férié n&apos;est encore posé pour {annee}.
         </p>
       </section>
@@ -91,7 +118,7 @@ export function FriseFeries() {
 
   return (
     <section>
-      <EnTete annee={annee} total={dates.length} restants={restants} />
+      {entete}
 
       <div className="relative mt-5">
         {/* Le rail. Il s'efface par le bas plutôt que de s'arrêter net : un
@@ -118,13 +145,7 @@ export function FriseFeries() {
             <Entree
               key={h.id}
               ferie={h}
-              etat={
-                indexProchain < 0 || i < indexProchain
-                  ? 'passe'
-                  : i === indexProchain
-                    ? 'prochain'
-                    : 'avenir'
-              }
+              etat={i === indexProchain ? 'prochain' : ecartJours(h.day) >= 0 ? 'avenir' : 'passe'}
               aGauche={i % 2 === 0}
             />
           ))}
@@ -152,17 +173,57 @@ export function FriseFeries() {
   );
 }
 
-function EnTete({ annee, total, restants }: { annee: number; total: number; restants: number }) {
+/**
+ * Le titre, et la porte vers l'autre année.
+ *
+ * Le décompte qui vivait ici — « 11 dates · 2 à venir » — ne servait personne :
+ * la frise les montre toutes, et ce qui vient se lit sur les cartes. La place
+ * revient au seul geste que l'écran peut offrir, feuilleter d'une année.
+ */
+function EnTete({
+  annee,
+  sens,
+  onAller,
+}: {
+  /** L'année vers laquelle le bouton emmène — pas celle qui est affichée. */
+  annee: number;
+  sens: 'suivante' | 'precedente';
+  onAller: () => void;
+}) {
+  const enAvant = sens === 'suivante';
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       <h2 className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
-        Jours fériés {annee}
+        Calendrier des jours fériés
       </h2>
-      {total > 0 ? (
-        <p className="text-[11.5px] text-ink-muted" style={TABULAIRE}>
-          {pluriel(total, 'date')} · {restants > 0 ? `${restants} à venir` : 'toutes passées'}
-        </p>
-      ) : null}
+      <button
+        type="button"
+        onClick={onAller}
+        aria-label={`Voir les jours fériés de ${annee}`}
+        className={cn(
+          // Le chevron avance d'un cheveu au survol : le bouton dit alors dans
+          // quel sens il emmène, sans qu'on ait à lire son intitulé.
+          'group inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface py-[6px] text-[12.5px] font-bold text-ink shadow-xs transition-colors duration-150 hover:border-primary/40 hover:bg-primary/[0.04] hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/40',
+          enAvant ? 'pr-2.5 pl-4' : 'pr-4 pl-2.5',
+        )}
+        style={TABULAIRE}
+      >
+        {enAvant ? null : (
+          <Icon
+            name="chevron_left"
+            size={16}
+            className="shrink-0 text-ink-muted transition-transform duration-150 group-hover:-translate-x-0.5 group-hover:text-primary"
+          />
+        )}
+        {annee}
+        {enAvant ? (
+          <Icon
+            name="chevron_right"
+            size={16}
+            className="shrink-0 text-ink-muted transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-primary"
+          />
+        ) : null}
+      </button>
     </div>
   );
 }
@@ -268,7 +329,7 @@ function Entree({
                 tone={ferie.fixed ? 'neutral' : 'primary'}
                 className="shrink-0 whitespace-nowrap"
               >
-                {ferie.fixed ? 'Date civile' : 'Fête mobile'}
+                {ferie.fixed ? 'Date fixe' : 'Date variable'}
               </Badge>
             </div>
 
