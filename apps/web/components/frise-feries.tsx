@@ -6,6 +6,7 @@ import type { Holiday } from '@teranga/contracts';
 import { Badge, cn, Skeleton } from '@teranga/ui';
 import { api } from '../lib/api';
 import { Icon } from './icons';
+import { distance, ecartJours } from '../lib/feries';
 
 /* ————————————————————————————————————————————————————————————————
    Les jours fériés de l'année, en frise.
@@ -25,33 +26,6 @@ import { Icon } from './icons';
 const TABULAIRE = { fontVariantNumeric: 'tabular-nums' } as const;
 
 type Etat = 'passe' | 'prochain' | 'avenir';
-
-/** Écart en jours entre une date ISO et aujourd'hui, au calendrier local. */
-function ecartJours(iso: string): number {
-  return Math.round(
-    (new Date(`${iso}T00:00:00`).getTime() - new Date().setHours(0, 0, 0, 0)) / 86_400_000,
-  );
-}
-
-function pluriel(n: number, mot: string, suffixe = 's'): string {
-  return `${n} ${mot}${n > 1 ? suffixe : ''}`;
-}
-
-/**
- * « Dans 6 mois », « Il y a 21 jours », « Demain ».
- *
- * L'unité suit la distance : à onze mois, « dans 337 jours » ne se
- * représente pas — on compte en mois dès qu'on dépasse le mois.
- */
-function distance(iso: string): string {
-  const j = ecartJours(iso);
-  if (j === 0) return "Aujourd'hui";
-  if (j === 1) return 'Demain';
-  if (j === -1) return 'Hier';
-  const n = Math.abs(j);
-  const mots = n < 31 ? pluriel(n, 'jour') : pluriel(Math.max(1, Math.round(n / 30.4)), 'mois', '');
-  return j < 0 ? `Il y a ${mots}` : `Dans ${mots}`;
-}
 
 function majuscule(texte: string): string {
   return texte.charAt(0).toUpperCase() + texte.slice(1);

@@ -7,8 +7,6 @@ import { useMemo, useState } from 'react';
 import type { DeleteJobPostingsResult, JobPostingView } from '@teranga/contracts';
 import {
   Button,
-  Card,
-  CardContent,
   CardHeader,
   CardTitle,
   Checkbox,
@@ -28,6 +26,7 @@ import { Icon } from '../../../components/icons';
 import { JobModal } from '../../../components/job-modal';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalSection } from '../../../components/modal';
+import { CartePleine, compte, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
 import { CONTRACT_LABELS } from '../../../lib/recruitment';
 
 /** « il y a 3 jours » — l'âge d'une offre dit s'il faut la relancer. */
@@ -89,20 +88,10 @@ export default function OffresPage() {
     setSelection((s) => (s.length === offres.length ? [] : offres.map((o) => o.id)));
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
-      <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <CardTitle>Offres d&apos;emploi</CardTitle>
-            {offres.length > 0 ? (
-              <span
-                className="rounded-full bg-primary/[0.09] px-2 py-px text-[10.5px] font-extrabold text-primary"
-                style={{ fontVariantNumeric: 'tabular-nums' }}
-              >
-                {offres.length}
-              </span>
-            ) : null}
-          </div>
+    <Page>
+      <CartePleine>
+        <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+          <CardTitle>Offres d&apos;emploi</CardTitle>
           {/* La barre d'action n'apparaît qu'avec une sélection : au repos,
               des boutons désactivés en permanence ne feraient que du bruit. */}
           {choisies.length > 0 ? (
@@ -151,10 +140,12 @@ export default function OffresPage() {
             </div>
           ) : null}
         </CardHeader>
-        <CardContent className="px-0 pb-0">
-          {jobs.isLoading ? (
-            <Skeleton className="mx-[18px] mb-[18px] h-24" />
-          ) : offres.length === 0 ? (
+        {jobs.isLoading ? (
+          <CorpsDefilant className="px-5 pb-5">
+            <Skeleton className="h-full min-h-24" />
+          </CorpsDefilant>
+        ) : offres.length === 0 ? (
+          <CorpsDefilant className="grid place-items-center">
             <EmptyState
               icon={<Icon name="person_add" size={22} />}
               title="Aucune offre pour le moment"
@@ -165,74 +156,75 @@ export default function OffresPage() {
                 </Link>
               }
             />
-          ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <Th className="w-9 pr-0">
-                    <Checkbox
-                      aria-label="Tout sélectionner"
-                      checked={selection.length > 0 && choisies.length === offres.length}
-                      indeterminate={choisies.length > 0 && choisies.length < offres.length}
-                      onChange={toutBasculer}
-                    />
-                  </Th>
-                  <Th>Référence</Th>
-                  <Th>Poste</Th>
-                  <Th>Type contrat</Th>
-                  <Th>Publiée il y a</Th>
-                  <Th>Date limite</Th>
-                  <Th>Lien</Th>
-                </tr>
-              </THead>
-              <TBody>
-                {offres.map((o) => {
-                  const coche = selection.includes(o.id);
-                  return (
-                    <Tr key={o.id} className={cn(coche && 'bg-primary/[0.04]')}>
-                      <Td className="pr-0">
-                        <Checkbox
-                          aria-label={`Sélectionner ${o.title}`}
-                          checked={coche}
-                          onChange={() => bascule(o.id)}
-                        />
-                      </Td>
-                      <Td className="font-mono text-[11.5px] whitespace-nowrap text-ink-muted">
-                        {o.reference}
-                      </Td>
-                      <Td>
-                        <Link
-                          href={`/recrutement/${o.id}`}
-                          className="font-bold text-ink-strong hover:underline"
-                        >
-                          {o.title}
-                        </Link>
-                      </Td>
-                      <Td className="whitespace-nowrap">
-                        {CONTRACT_LABELS[o.contractType] ?? o.contractType}
-                      </Td>
-                      <Td className="whitespace-nowrap text-ink-muted">{depuis(o.createdAt)}</Td>
-                      <Td
-                        className={cn(
-                          'whitespace-nowrap',
-                          o.deadline && o.deadline < new Date().toISOString().slice(0, 10)
-                            ? 'font-semibold text-danger'
-                            : 'text-ink-muted',
-                        )}
+          </CorpsDefilant>
+        ) : (
+          <Table pleine>
+            <THead>
+              <tr>
+                <Th className="w-9 pr-0">
+                  <Checkbox
+                    aria-label="Tout sélectionner"
+                    checked={selection.length > 0 && choisies.length === offres.length}
+                    indeterminate={choisies.length > 0 && choisies.length < offres.length}
+                    onChange={toutBasculer}
+                  />
+                </Th>
+                <Th>Référence</Th>
+                <Th>Poste</Th>
+                <Th>Type contrat</Th>
+                <Th>Publiée il y a</Th>
+                <Th>Date limite</Th>
+                <Th>Lien</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {offres.map((o) => {
+                const coche = selection.includes(o.id);
+                return (
+                  <Tr key={o.id} className={cn(coche && 'bg-primary/[0.04]')}>
+                    <Td className="pr-0">
+                      <Checkbox
+                        aria-label={`Sélectionner ${o.title}`}
+                        checked={coche}
+                        onChange={() => bascule(o.id)}
+                      />
+                    </Td>
+                    <Td className="font-mono text-[11.5px] whitespace-nowrap text-ink-muted">
+                      {o.reference}
+                    </Td>
+                    <Td>
+                      <Link
+                        href={`/recrutement/${o.id}`}
+                        className="font-bold text-ink-strong hover:underline"
                       >
-                        {o.deadline ? formatDate(o.deadline) : '—'}
-                      </Td>
-                      <Td>
-                        <LienPublic offre={o} />
-                      </Td>
-                    </Tr>
-                  );
-                })}
-              </TBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                        {o.title}
+                      </Link>
+                    </Td>
+                    <Td className="whitespace-nowrap">
+                      {CONTRACT_LABELS[o.contractType] ?? o.contractType}
+                    </Td>
+                    <Td className="whitespace-nowrap text-ink-muted">{depuis(o.createdAt)}</Td>
+                    <Td
+                      className={cn(
+                        'whitespace-nowrap',
+                        o.deadline && o.deadline < new Date().toISOString().slice(0, 10)
+                          ? 'font-semibold text-danger'
+                          : 'text-ink-muted',
+                      )}
+                    >
+                      {o.deadline ? formatDate(o.deadline) : '—'}
+                    </Td>
+                    <Td>
+                      <LienPublic offre={o} />
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </TBody>
+          </Table>
+        )}
+        {offres.length > 0 ? <PiedCarte>{compte(offres.length, 'offre')}</PiedCarte> : null}
+      </CartePleine>
 
       {creation ? <JobModal open onClose={fermerCreation} /> : null}
       {panneau === 'modifier' && seule ? (
@@ -276,7 +268,7 @@ export default function OffresPage() {
           </ModalSection>
         </Modal>
       ) : null}
-    </div>
+    </Page>
   );
 }
 

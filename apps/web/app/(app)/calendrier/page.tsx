@@ -1,6 +1,7 @@
 'use client';
 
 import { FriseFeries } from '../../../components/frise-feries';
+import { Page } from '../../../components/gabarit';
 
 /**
  * Le calendrier de l'année : ses jours fériés, en frise.
@@ -17,8 +18,8 @@ import { FriseFeries } from '../../../components/frise-feries';
  */
 export default function CalendrierPage() {
   return (
-    <div className="mx-auto max-w-6xl">
+    <Page>
       <FriseFeries />
-    </div>
+    </Page>
   );
 }

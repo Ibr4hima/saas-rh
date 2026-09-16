@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { Badge, Card, CardContent } from '@teranga/ui';
+import { Page } from '../../../components/gabarit';
 
 export default function EvaluationPage() {
   return (
-    <div className="mx-auto max-w-3xl">
+    <Page>
       <div className="mb-6">
         <Badge tone="primary">Bientôt disponible</Badge>
       </div>
@@ -27,6 +28,6 @@ export default function EvaluationPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </Page>
   );
 }

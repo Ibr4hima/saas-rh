@@ -42,6 +42,7 @@ import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/p
 import { formatDate, useMe } from '../../../../lib/hooks';
 import type { DocumentRequestView, OrgUnit } from '@teranga/contracts';
 import { LoadFailure } from '../../../../components/load-failure';
+import { Page } from '../../../../components/gabarit';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Actif',
@@ -157,10 +158,10 @@ export default function EmployeePage() {
 
   if (detail.isLoading) {
     return (
-      <div className="mx-auto max-w-4xl">
+      <Page>
         <Skeleton className="mb-4 h-8 w-64" />
         <Skeleton className="h-48 w-full" />
-      </div>
+      </Page>
     );
   }
   if (detail.isError) {
@@ -170,7 +171,7 @@ export default function EmployeePage() {
   const current = e.assignments.find((a) => a.current);
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <Page>
       <EmployeeEditModal
         open={editOpen}
         employeeId={id}
@@ -464,7 +465,7 @@ export default function EmployeePage() {
           ) : null}
         </div>
       </div>
-    </div>
+    </Page>
   );
 }
 

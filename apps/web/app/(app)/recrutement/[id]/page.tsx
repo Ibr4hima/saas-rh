@@ -22,6 +22,7 @@ import { LoadFailure } from '../../../../components/load-failure';
 import { Icon, type IconName } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { usePageTitle } from '../../../../components/page-title';
+import { Page } from '../../../../components/gabarit';
 
 /**
  * Une offre et ses candidatures.
@@ -57,11 +58,11 @@ export default function JobPage() {
 
   if (job.isLoading) {
     return (
-      <div className="mx-auto w-full max-w-5xl">
+      <Page>
         <Skeleton className="mb-4 h-6 w-40" />
         <Skeleton className="mb-6 h-44 w-full" />
         <Skeleton className="h-32 w-full" />
-      </div>
+      </Page>
     );
   }
   if (job.isError || !job.data) {
@@ -73,7 +74,7 @@ export default function JobPage() {
   const candidat = dossiers.find((a) => a.id === ouvert) ?? null;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+    <Page>
       <Link
         href="/recrutement/candidatures"
         className="inline-flex w-fit items-center gap-1 text-[12.5px] font-semibold text-ink-muted transition-colors hover:text-primary"
@@ -129,7 +130,7 @@ export default function JobPage() {
       </section>
 
       <FenetreCandidat dossier={candidat} onClose={() => setOuvert(null)} />
-    </div>
+    </Page>
   );
 }
 

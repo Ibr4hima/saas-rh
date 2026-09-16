@@ -35,6 +35,7 @@ import { useMe } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
 import { Modal } from '../../../components/modal';
 import { Organigramme } from '../../../components/organigramme';
+import { CartePleine, Page } from '../../../components/gabarit';
 
 const TYPE_LABELS = ORG_UNIT_TYPE_LABELS;
 
@@ -119,18 +120,18 @@ export default function OrganisationPage() {
   const selected = liste.find((u) => u.id === selectedId) ?? null;
 
   return (
-    <div className="mx-auto w-full max-w-[1400px]">
+    <Page canevas>
       {/* Ni titre ni bouton ici : la barre supérieure porte déjà le nom de
           l'écran et son unique geste. Les répéter faisait lire deux fois la
           même chose avant d'atteindre l'organigramme. */}
-      <Card>
+      <CartePleine>
         {units.isLoading ? (
-          <CardContent className="py-6">
-            <Skeleton className="h-64 w-full" />
+          <CardContent className="min-h-0 flex-1 py-6">
+            <Skeleton className="h-full" />
           </CardContent>
         ) : liste.length === 0 ? (
           <EmptyState
-            className="py-14"
+            className="min-h-0 flex-1 py-14"
             icon={<Icon name="family_history" size={22} />}
             title="Aucune unité pour le moment"
             description="Commencez par la Direction Générale, puis rattachez-lui les directions métier."
@@ -145,7 +146,7 @@ export default function OrganisationPage() {
             }}
           />
         )}
-      </Card>
+      </CartePleine>
 
       {selected ? (
         <UnitPanel
@@ -165,7 +166,7 @@ export default function OrganisationPage() {
           onClose={fermerCreation}
         />
       ) : null}
-    </div>
+    </Page>
   );
 }
 

@@ -27,6 +27,7 @@ import { resumeVisas } from '../../../lib/absences';
 import { StatutAbsence } from '../../../components/statut-absence';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
+import { CartePleine, CorpsDefilant, Page, PiedCarte, compte } from '../../../components/gabarit';
 
 /**
  * Un geste de décision : viser, ou refuser.
@@ -128,185 +129,194 @@ export default function AbsencesPage() {
   const items = requests.data ?? [];
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <Page>
       {actionError ? (
-        <p className="mb-4 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
+        <p className="shrink-0 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
           {actionError}
         </p>
       ) : null}
 
-      <div className="flex flex-col gap-6">
-        <Card>
-          <CardHeader className="flex items-center justify-between">
-            <CardTitle>Demandes</CardTitle>
-            <Select value={status} onChange={(e) => setStatus(e.target.value)} className="h-8 w-40">
-              <option value="pending">En attente</option>
-              <option value="approved">Approuvées</option>
-              <option value="rejected">Refusées</option>
-              <option value="cancelled">Annulées</option>
-              <option value="">Toutes</option>
-            </Select>
-          </CardHeader>
-          {requests.isLoading ? (
-            <CardContent>
-              <Skeleton className="h-24 w-full" />
-            </CardContent>
-          ) : items.length === 0 ? (
+      <CartePleine>
+        <CardHeader className="flex shrink-0 items-center justify-between">
+          <CardTitle>Demandes</CardTitle>
+          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="h-8 w-40">
+            <option value="pending">En attente</option>
+            <option value="approved">Approuvées</option>
+            <option value="rejected">Refusées</option>
+            <option value="cancelled">Annulées</option>
+            <option value="">Toutes</option>
+          </Select>
+        </CardHeader>
+        {requests.isLoading ? (
+          <CorpsDefilant className="px-5 pb-5">
+            <Skeleton className="h-full min-h-24 w-full" />
+          </CorpsDefilant>
+        ) : items.length === 0 ? (
+          <CorpsDefilant className="grid place-items-center">
             <EmptyState
               icon={<Icon name="free_cancellation" size={22} />}
               title="Aucune demande dans ce statut"
               description="Les employés posent leurs demandes depuis leur portail — elles arrivent ici pour visa."
             />
-          ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <Th>Employé</Th>
-                  <Th>Type</Th>
-                  <Th>Période</Th>
-                  <Th className="text-right">Jours</Th>
-                  <Th>Justificatif</Th>
-                  <Th>Statut</Th>
-                  <Th className="text-right">Décision</Th>
-                </tr>
-              </THead>
-              <TBody>
-                {items.map((r) => (
-                  <Tr key={r.id}>
-                    <Td className="font-semibold text-ink-strong">
-                      {r.employeeName}
-                      <span className="mt-0.5 block font-mono text-[10.5px] font-normal text-ink-muted">
-                        {r.employeeNumber}
-                      </span>
-                    </Td>
-                    <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
-                    <Td className="whitespace-nowrap tabular-nums">
-                      {formatDate(r.startDate)} <span className="text-ink-muted">→</span>{' '}
-                      {formatDate(r.endDate)}
-                    </Td>
-                    <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
-                    <Td>
-                      {r.documentName && canManage ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setViewedDoc({
-                              url: apiUrl(`/absence-requests/${r.id}/document`),
-                              filename: r.documentName!,
-                              contentType: 'application/pdf',
-                              // Ce que la pièce EST : le nom du fichier, lui,
-                              // est le classement de l'employé qui l'a déposée.
-                              titre: 'Justificatif',
-                            })
+          </CorpsDefilant>
+        ) : (
+          <Table pleine>
+            <THead>
+              <tr>
+                <Th>Employé</Th>
+                <Th>Type</Th>
+                <Th>Période</Th>
+                <Th className="text-right">Jours</Th>
+                <Th>Justificatif</Th>
+                <Th>Statut</Th>
+                <Th className="text-right">Décision</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {items.map((r) => (
+                <Tr key={r.id}>
+                  <Td className="font-semibold text-ink-strong">
+                    {r.employeeName}
+                    <span className="mt-0.5 block font-mono text-[10.5px] font-normal text-ink-muted">
+                      {r.employeeNumber}
+                    </span>
+                  </Td>
+                  <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
+                  <Td className="whitespace-nowrap tabular-nums">
+                    {formatDate(r.startDate)} <span className="text-ink-muted">→</span>{' '}
+                    {formatDate(r.endDate)}
+                  </Td>
+                  <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
+                  <Td>
+                    {r.documentName && canManage ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setViewedDoc({
+                            url: apiUrl(`/absence-requests/${r.id}/document`),
+                            filename: r.documentName!,
+                            contentType: 'application/pdf',
+                            // Ce que la pièce EST : le nom du fichier, lui,
+                            // est le classement de l'employé qui l'a déposée.
+                            titre: 'Justificatif',
+                          })
+                        }
+                        title={r.documentName}
+                        className="inline-flex items-center rounded-full border border-line px-2.5 py-[3px] text-[11px] font-semibold text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                      >
+                        Prévisualiser
+                      </button>
+                    ) : (
+                      // Un tiret, pas une case vide : « rien à joindre » se dit,
+                      // sinon la colonne a l'air de n'avoir pas fini de charger.
+                      <span className="text-ink-muted/60">—</span>
+                    )}
+                  </Td>
+                  <Td>
+                    <StatutAbsence statut={r.status} titre={resumeVisas(r)} />
+                  </Td>
+                  <Td>
+                    {r.canDecide ? (
+                      <div className="flex justify-end gap-1.5">
+                        <BoutonDecision
+                          geste="approuver"
+                          employe={r.employeeName}
+                          enCours={
+                            decide.isPending &&
+                            decide.variables?.id === r.id &&
+                            decide.variables.decision === 'approved'
                           }
-                          title={r.documentName}
-                          className="inline-flex items-center rounded-full border border-line px-2.5 py-[3px] text-[11px] font-semibold text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-                        >
-                          Prévisualiser
-                        </button>
-                      ) : (
-                        // Un tiret, pas une case vide : « rien à joindre » se dit,
-                        // sinon la colonne a l'air de n'avoir pas fini de charger.
-                        <span className="text-ink-muted/60">—</span>
-                      )}
-                    </Td>
-                    <Td>
-                      <StatutAbsence statut={r.status} titre={resumeVisas(r)} />
-                    </Td>
-                    <Td>
-                      {r.canDecide ? (
-                        <div className="flex justify-end gap-1.5">
-                          <BoutonDecision
-                            geste="approuver"
-                            employe={r.employeeName}
-                            enCours={
-                              decide.isPending &&
-                              decide.variables?.id === r.id &&
-                              decide.variables.decision === 'approved'
-                            }
-                            bloque={decide.isPending}
-                            onClick={() => decide.mutate({ id: r.id, decision: 'approved' })}
-                          />
-                          <BoutonDecision
-                            geste="refuser"
-                            employe={r.employeeName}
-                            enCours={
-                              decide.isPending &&
-                              decide.variables?.id === r.id &&
-                              decide.variables.decision === 'rejected'
-                            }
-                            bloque={decide.isPending}
-                            onClick={() => decide.mutate({ id: r.id, decision: 'rejected' })}
-                          />
-                        </div>
-                      ) : (
-                        // Un tiret plutôt qu'une case vide, comme la colonne
-                        // « Justificatif » : rien à décider ici SE DIT.
-                        <p className="text-right text-ink-muted/60">—</p>
-                      )}
-                    </Td>
-                  </Tr>
-                ))}
-              </TBody>
-            </Table>
-          )}
-        </Card>
+                          bloque={decide.isPending}
+                          onClick={() => decide.mutate({ id: r.id, decision: 'approved' })}
+                        />
+                        <BoutonDecision
+                          geste="refuser"
+                          employe={r.employeeName}
+                          enCours={
+                            decide.isPending &&
+                            decide.variables?.id === r.id &&
+                            decide.variables.decision === 'rejected'
+                          }
+                          bloque={decide.isPending}
+                          onClick={() => decide.mutate({ id: r.id, decision: 'rejected' })}
+                        />
+                      </div>
+                    ) : (
+                      // Un tiret plutôt qu'une case vide, comme la colonne
+                      // « Justificatif » : rien à décider ici SE DIT.
+                      <p className="text-right text-ink-muted/60">—</p>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+        )}
+        {items.length > 0 ? <PiedCarte>{compte(items.length, 'demande')}</PiedCarte> : null}
+      </CartePleine>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Calendrier des absences</CardTitle>
-          </CardHeader>
-          {upcoming.isLoading ? (
-            <CardContent>
-              <Skeleton className="h-12 w-full" />
-            </CardContent>
-          ) : (upcoming.data ?? []).length === 0 ? (
-            <CardContent>
-              <p className="text-sm text-ink-muted">Personne d&apos;absent prochainement.</p>
-            </CardContent>
-          ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <Th>Nom</Th>
-                  <Th>Type</Th>
-                  <Th>Début</Th>
-                  <Th>Fin</Th>
-                  <Th className="text-right">Jours</Th>
-                  <Th>Statut</Th>
-                </tr>
-              </THead>
-              <TBody>
-                {upcoming.data!.map((r) => (
-                  <Tr key={r.id}>
-                    <Td>
-                      <p className="font-medium text-ink-strong">{r.employeeName}</p>
-                      {r.workEmail ? <p className="text-xs text-ink-muted">{r.workEmail}</p> : null}
-                    </Td>
-                    <Td>{r.absenceTypeName}</Td>
-                    <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
-                    <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
-                    <Td className="text-right font-mono">{r.daysCount}</Td>
-                    <Td>
-                      {r.startDate <= aujourdhui ? (
-                        <Badge tone="success" className="whitespace-nowrap">
-                          En cours
-                        </Badge>
-                      ) : (
-                        <Badge tone="primary" className="whitespace-nowrap">
-                          À venir
-                        </Badge>
-                      )}
-                    </Td>
-                  </Tr>
-                ))}
-              </TBody>
-            </Table>
-          )}
-        </Card>
-      </div>
+      {/* L'horizon des absences : un complément, pas la file de travail. Il
+          garde donc sa taille — c'est la carte du haut qui prend la place. */}
+      <Card className="shrink-0">
+        <CardHeader>
+          <CardTitle>Calendrier des absences</CardTitle>
+        </CardHeader>
+        {upcoming.isLoading ? (
+          <CardContent>
+            <Skeleton className="h-12 w-full" />
+          </CardContent>
+        ) : (upcoming.data ?? []).length === 0 ? (
+          // Le même état vide que sur le tableau de bord, qui dit la même
+          // chose : une phrase grise dans une carte à plat se lisait comme
+          // une panne, pas comme une bonne nouvelle.
+          <EmptyState
+            icon={<Icon name="event_busy" size={22} />}
+            title="Personne d'absent à l'horizon"
+            description="Aucune absence approuvée dans les 30 prochains jours."
+            className="py-8"
+          />
+        ) : (
+          <Table>
+            <THead>
+              <tr>
+                <Th>Nom</Th>
+                <Th>Type</Th>
+                <Th>Début</Th>
+                <Th>Fin</Th>
+                <Th className="text-right">Jours</Th>
+                <Th>Statut</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {upcoming.data!.map((r) => (
+                <Tr key={r.id}>
+                  <Td>
+                    <p className="font-medium text-ink-strong">{r.employeeName}</p>
+                    {r.workEmail ? <p className="text-xs text-ink-muted">{r.workEmail}</p> : null}
+                  </Td>
+                  <Td>{r.absenceTypeName}</Td>
+                  <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
+                  <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
+                  <Td className="text-right font-mono">{r.daysCount}</Td>
+                  <Td>
+                    {r.startDate <= aujourdhui ? (
+                      <Badge tone="success" className="whitespace-nowrap">
+                        En cours
+                      </Badge>
+                    ) : (
+                      <Badge tone="primary" className="whitespace-nowrap">
+                        À venir
+                      </Badge>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </Card>
 
       <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
-    </div>
+    </Page>
   );
 }

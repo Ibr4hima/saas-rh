@@ -17,16 +17,40 @@ import { cn } from './cn';
  *    diagonale ; ce qui garde l'œil sur la bonne ligne vaut mieux que ce qui
  *    la décore.
  */
-export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
+export function Table({
+  className,
+  pleine,
+  ...props
+}: React.TableHTMLAttributes<HTMLTableElement> & {
+  /**
+   * Le tableau EST le panneau qui défile — il prend la hauteur que la carte
+   * lui laisse, et ses intitulés de colonne restent en place pendant que les
+   * lignes passent dessous. Sans cela, un tableau dans une carte étirée
+   * emporte son en-tête hors de vue au troisième tour de molette.
+   *
+   * Le conteneur doit alors être l'enfant flex DIRECT de la carte : c'est lui
+   * qui défile, et `position: sticky` se mesure sur le plus proche ancêtre
+   * défilant.
+   */
+  pleine?: boolean;
+}) {
   return (
-    <div className="overflow-x-auto">
+    <div className={cn(pleine ? 'min-h-0 flex-1 overflow-auto' : 'overflow-x-auto')}>
       <table className={cn('w-full text-[12.5px]', className)} {...props} />
     </div>
   );
 }
 
+/**
+ * L'en-tête TIENT.
+ *
+ * Collé en haut du panneau qui défile, et opaque — un en-tête translucide
+ * laisse passer les lignes qui glissent dessous. Sur un tableau qui ne
+ * défile pas, `sticky` ne change rien : la règle ne coûte donc rien là où
+ * elle ne sert pas.
+ */
 export function THead({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn('bg-surface-raised', className)} {...props} />;
+  return <thead className={cn('sticky top-0 z-10 bg-surface-raised', className)} {...props} />;
 }
 
 export function TBody({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {

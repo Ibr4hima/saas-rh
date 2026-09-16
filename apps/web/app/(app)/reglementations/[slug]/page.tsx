@@ -2,6 +2,7 @@
 
 import { use } from 'react';
 import { LecteurReference } from '../../../../components/lecteur-reference';
+import { Page } from '../../../../components/gabarit';
 
 /**
  * Un écran pour TOUS les textes de référence.
@@ -14,8 +15,8 @@ import { LecteurReference } from '../../../../components/lecteur-reference';
 export default function TexteDeReferencePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   return (
-    <div className="mx-auto w-full max-w-[1180px]">
+    <Page>
       <LecteurReference slug={slug} />
-    </div>
+    </Page>
   );
 }

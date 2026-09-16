@@ -114,7 +114,9 @@ export function Organigramme({
     useCanevas();
 
   return (
-    <div className="relative">
+    // Le canevas prend la hauteur que la carte lui donne — un plan de service
+    // n'est pas un paragraphe : il occupe la table sur laquelle on l'étale.
+    <div className="relative flex h-full min-h-0 flex-col">
       {/* L'arbre se déplace dans SON cadre — jamais dans la page : le reste de
           l'écran ne doit pas bouger quand on le balade. */}
       <div
@@ -124,7 +126,10 @@ export function Organigramme({
         // flottant sur un arbre qui descend jusqu'au bord, elle masquerait le
         // dernier bloc.
         className={cn(
-          'overflow-x-auto overflow-y-hidden px-4 pt-6 pb-14',
+          // `overflow-auto` sur les DEUX axes : le cadre ne fait plus la
+          // hauteur de l'arbre, c'est l'arbre qui doit pouvoir défiler dans
+          // le cadre — sinon un organigramme de six rangs se coupe en bas.
+          'min-h-0 flex-1 overflow-auto px-4 pt-6 pb-14',
           deborde && 'cursor-grab active:cursor-grabbing',
         )}
         {...glisser}

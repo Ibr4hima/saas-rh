@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Skeleton } from '@teranga/ui';
+import { Page } from '../../../../components/gabarit';
 
 /**
  * La création s'ouvre désormais EN FENÊTRE sur la liste (/employees?nouveau).
@@ -15,8 +16,8 @@ export default function NewEmployeeRedirect() {
     router.replace('/employees?nouveau=1');
   }, [router]);
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <Page>
       <Skeleton className="h-64 w-full" />
-    </div>
+    </Page>
   );
 }

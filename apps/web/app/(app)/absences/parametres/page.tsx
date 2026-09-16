@@ -39,6 +39,7 @@ import {
 import { ROLE_LABELS } from '../../../../lib/absences';
 import { api } from '../../../../lib/api';
 import { useMe } from '../../../../lib/hooks';
+import { Page } from '../../../../components/gabarit';
 
 const CHAIN_ROLES: MembershipRole[] = ['manager', 'hr', 'payroll', 'admin'];
 
@@ -52,12 +53,12 @@ export default function AbsenceSettingsPage() {
   const peutGerer = isAdmin || me.data?.role === 'hr';
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <Page>
       <div className="flex flex-col gap-6">
         <TypesCard peutGerer={peutGerer} />
         <CircuitCard isAdmin={isAdmin} />
       </div>
-    </div>
+    </Page>
   );
 }
 

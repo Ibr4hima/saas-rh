@@ -35,6 +35,7 @@ import { CONTRACT_LABELS } from '../../../lib/recruitment';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
+import { CartePleine, CorpsDefilant, Page, PiedCarte, compte } from '../../../components/gabarit';
 
 /** Demandes encore à la charge de la RH — celles qui peuplent le premier tableau. */
 const OPEN = ['received', 'processing'];
@@ -110,20 +111,13 @@ export default function DocumentRequestsPage() {
     setSelection((s) => (s.length === aTraiter.length ? [] : aTraiter.map((r) => r.id)));
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
-      <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <CardTitle>À traiter</CardTitle>
-            {aTraiter.length > 0 ? (
-              <span
-                className="rounded-full bg-primary/[0.09] px-2 py-px text-[10.5px] font-extrabold text-primary"
-                style={{ fontVariantNumeric: 'tabular-nums' }}
-              >
-                {aTraiter.length}
-              </span>
-            ) : null}
-          </div>
+    <Page>
+      {/* Deux files, deux poids : ce qui attend un geste prend les deux tiers
+          de la hauteur, l'historique le tiers restant. Chacune défile chez
+          elle, sous ses propres intitulés de colonne. */}
+      <CartePleine className="flex-[2]">
+        <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+          <CardTitle>À traiter</CardTitle>
           {/* La barre d'action n'apparaît qu'avec une sélection : au repos,
               deux boutons désactivés en permanence ne feraient que du bruit. */}
           {selectionnees.length > 0 ? (
@@ -141,117 +135,52 @@ export default function DocumentRequestsPage() {
             </div>
           ) : null}
         </CardHeader>
-        <CardContent className="px-0 pb-0">
-          {requests.isLoading ? (
-            <Skeleton className="mx-[18px] mb-[18px] h-24" />
-          ) : aTraiter.length === 0 ? (
+        {requests.isLoading ? (
+          <CorpsDefilant className="px-5 pb-5">
+            <Skeleton className="h-full min-h-24" />
+          </CorpsDefilant>
+        ) : aTraiter.length === 0 ? (
+          <CorpsDefilant className="grid place-items-center">
             <EmptyState
               icon={<Icon name="folder_managed" size={22} />}
               title="Tout est traité"
               description="Aucune demande n'attend de votre part. L'historique est juste en dessous."
             />
-          ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <Th className="w-9 pr-0">
-                    <Checkbox
-                      aria-label="Tout sélectionner"
-                      checked={selection.length > 0 && selectionnees.length === aTraiter.length}
-                      indeterminate={
-                        selectionnees.length > 0 && selectionnees.length < aTraiter.length
-                      }
-                      onChange={toutBasculer}
-                    />
-                  </Th>
-                  <Th>Matricule</Th>
-                  <Th>Demandeur</Th>
-                  <Th>Requête</Th>
-                  <Th>Date</Th>
-                  <Th className="text-right">Temps écoulé</Th>
-                </tr>
-              </THead>
-              <TBody>
-                {aTraiter.map((r) => {
-                  const coche = selection.includes(r.id);
-                  const h = hoursSince(r.createdAt);
-                  return (
-                    <Tr key={r.id} className={cn(coche && 'bg-primary/[0.04]')}>
-                      <Td className="pr-0">
-                        <Checkbox
-                          aria-label={`Sélectionner la demande de ${r.employeeName}`}
-                          checked={coche}
-                          onChange={() => bascule(r.id)}
-                        />
-                      </Td>
-                      <Td className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</Td>
-                      <Td>
-                        <Link
-                          href={`/employees/${r.employeeId}`}
-                          className="font-bold text-ink-strong hover:underline"
-                        >
-                          {r.employeeName}
-                        </Link>
-                      </Td>
-                      <Td>
-                        {docLabels(r)}
-                        {r.note ? (
-                          <span className="block text-[11px] text-ink-muted italic">
-                            « {r.note} »
-                          </span>
-                        ) : null}
-                      </Td>
-                      <Td className="whitespace-nowrap text-ink-muted">
-                        {formatDate(r.createdAt.slice(0, 10))}
-                      </Td>
-                      <Td
-                        className={cn(
-                          'text-right font-semibold whitespace-nowrap',
-                          // Le retard se signale seul : au-delà de 48 h une
-                          // demande de document devient un sujet.
-                          h >= 48 ? 'text-danger' : h >= 24 ? 'text-warning' : 'text-ink-muted',
-                        )}
-                        style={{ fontVariantNumeric: 'tabular-nums' }}
-                      >
-                        {heures(h)}
-                      </Td>
-                    </Tr>
-                  );
-                })}
-              </TBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Traitées</CardTitle>
-        </CardHeader>
-        <CardContent className="px-0 pb-0">
-          {requests.isLoading ? (
-            <Skeleton className="mx-[18px] mb-[18px] h-24" />
-          ) : traitees.length === 0 ? (
-            <EmptyState
-              icon={<Icon name="folder_managed" size={22} />}
-              title="Aucune demande traitée"
-              description="L'historique se remplira au fur et à mesure des demandes que vous clôturez."
-            />
-          ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <Th>Matricule</Th>
-                  <Th>Demandeur</Th>
-                  <Th>Requête</Th>
-                  <Th>Date</Th>
-                  <Th className="text-right">Durée traitement</Th>
-                  <Th>Suite donnée</Th>
-                </tr>
-              </THead>
-              <TBody>
-                {traitees.map((r) => (
-                  <Tr key={r.id}>
+          </CorpsDefilant>
+        ) : (
+          <Table pleine>
+            <THead>
+              <tr>
+                <Th className="w-9 pr-0">
+                  <Checkbox
+                    aria-label="Tout sélectionner"
+                    checked={selection.length > 0 && selectionnees.length === aTraiter.length}
+                    indeterminate={
+                      selectionnees.length > 0 && selectionnees.length < aTraiter.length
+                    }
+                    onChange={toutBasculer}
+                  />
+                </Th>
+                <Th>Matricule</Th>
+                <Th>Demandeur</Th>
+                <Th>Requête</Th>
+                <Th>Date</Th>
+                <Th className="text-right">Temps écoulé</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {aTraiter.map((r) => {
+                const coche = selection.includes(r.id);
+                const h = hoursSince(r.createdAt);
+                return (
+                  <Tr key={r.id} className={cn(coche && 'bg-primary/[0.04]')}>
+                    <Td className="pr-0">
+                      <Checkbox
+                        aria-label={`Sélectionner la demande de ${r.employeeName}`}
+                        checked={coche}
+                        onChange={() => bascule(r.id)}
+                      />
+                    </Td>
                     <Td className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</Td>
                     <Td>
                       <Link
@@ -261,43 +190,116 @@ export default function DocumentRequestsPage() {
                         {r.employeeName}
                       </Link>
                     </Td>
-                    <Td>{docLabels(r)}</Td>
+                    <Td>
+                      {docLabels(r)}
+                      {r.note ? (
+                        <span className="block text-[11px] text-ink-muted italic">
+                          « {r.note} »
+                        </span>
+                      ) : null}
+                    </Td>
                     <Td className="whitespace-nowrap text-ink-muted">
                       {formatDate(r.createdAt.slice(0, 10))}
                     </Td>
                     <Td
-                      className="text-right font-semibold whitespace-nowrap text-ink-muted"
+                      className={cn(
+                        'text-right font-semibold whitespace-nowrap',
+                        // Le retard se signale seul : au-delà de 48 h une
+                        // demande de document devient un sujet.
+                        h >= 48 ? 'text-danger' : h >= 24 ? 'text-warning' : 'text-ink-muted',
+                      )}
                       style={{ fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {r.handledAt ? heures(ecartHeures(r.createdAt, r.handledAt)) : '—'}
+                      {heures(h)}
                     </Td>
-                    {/* Ce qui a été RÉPONDU au demandeur, pas l'étiquette d'un
+                  </Tr>
+                );
+              })}
+            </TBody>
+          </Table>
+        )}
+        {aTraiter.length > 0 ? (
+          <PiedCarte>{compte(aTraiter.length, 'demande')} en attente</PiedCarte>
+        ) : null}
+      </CartePleine>
+
+      <CartePleine className="flex-[1]">
+        <CardHeader className="shrink-0">
+          <CardTitle>Traitées</CardTitle>
+        </CardHeader>
+        {requests.isLoading ? (
+          <CorpsDefilant className="px-5 pb-5">
+            <Skeleton className="h-full min-h-24" />
+          </CorpsDefilant>
+        ) : traitees.length === 0 ? (
+          <CorpsDefilant className="grid place-items-center">
+            <EmptyState
+              icon={<Icon name="folder_managed" size={22} />}
+              title="Aucune demande traitée"
+              description="L'historique se remplira au fur et à mesure des demandes que vous clôturez."
+            />
+          </CorpsDefilant>
+        ) : (
+          <Table pleine>
+            <THead>
+              <tr>
+                <Th>Matricule</Th>
+                <Th>Demandeur</Th>
+                <Th>Requête</Th>
+                <Th>Date</Th>
+                <Th className="text-right">Durée traitement</Th>
+                <Th>Suite donnée</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {traitees.map((r) => (
+                <Tr key={r.id}>
+                  <Td className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</Td>
+                  <Td>
+                    <Link
+                      href={`/employees/${r.employeeId}`}
+                      className="font-bold text-ink-strong hover:underline"
+                    >
+                      {r.employeeName}
+                    </Link>
+                  </Td>
+                  <Td>{docLabels(r)}</Td>
+                  <Td className="whitespace-nowrap text-ink-muted">
+                    {formatDate(r.createdAt.slice(0, 10))}
+                  </Td>
+                  <Td
+                    className="text-right font-semibold whitespace-nowrap text-ink-muted"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {r.handledAt ? heures(ecartHeures(r.createdAt, r.handledAt)) : '—'}
+                  </Td>
+                  {/* Ce qui a été RÉPONDU au demandeur, pas l'étiquette d'un
                         automate : une fois le retrait annoncé, la RH n'a plus
                         rien à faire, et la seule chose qu'on relit ici c'est
                         l'instruction envoyée — ou le motif du refus. */}
-                    <Td>
-                      {r.status === 'rejected' ? (
-                        <span className="font-semibold text-danger">
-                          Refusée{r.hrMessage ? ` — ${r.hrMessage}` : ''}
+                  <Td>
+                    {r.status === 'rejected' ? (
+                      <span className="font-semibold text-danger">
+                        Refusée{r.hrMessage ? ` — ${r.hrMessage}` : ''}
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-ink">
+                          À retirer auprès de {r.pickupContact ?? '—'}
                         </span>
-                      ) : (
-                        <>
-                          <span className="text-ink">
-                            À retirer auprès de {r.pickupContact ?? '—'}
-                          </span>
-                          {r.hrMessage ? (
-                            <span className="block text-[11px] text-ink-muted">{r.hrMessage}</span>
-                          ) : null}
-                        </>
-                      )}
-                    </Td>
-                  </Tr>
-                ))}
-              </TBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                        {r.hrMessage ? (
+                          <span className="block text-[11px] text-ink-muted">{r.hrMessage}</span>
+                        ) : null}
+                      </>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+        )}
+        {traitees.length > 0 ? <PiedCarte>{compte(traitees.length, 'demande')}</PiedCarte> : null}
+      </CartePleine>
 
       {panneau === 'traiter' ? (
         <TraiterModal
@@ -319,7 +321,7 @@ export default function DocumentRequestsPage() {
           }}
         />
       ) : null}
-    </div>
+    </Page>
   );
 }
 

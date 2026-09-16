@@ -50,6 +50,7 @@
   --shadow-md: var(--tg-shadow-md);
   --shadow-lg: var(--tg-shadow-lg);
   --radius-xl: var(--tg-radius-xl);
+  --container-page: var(--tg-page);
 }
 
 html {

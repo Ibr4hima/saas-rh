@@ -805,11 +805,18 @@ function AppShell({ children }: { children: React.ReactNode }) {
             relief — pas une ombre portée, qui ferait flotter la colonne
             au-dessus du contenu au lieu de la poser à côté. */}
         <aside className="hidden w-[17rem] shrink-0 flex-col gap-3 py-3.5 pl-3.5 lg:flex">
-          {/* La carte épouse SES rangées : étirée sur toute la hauteur, elle
-              laissait sous la dernière entrée un panneau blanc de trois cents
-              pixels qui ne disait rien. Elle ne s'étire que si la liste
-              dépasse l'écran, et défile alors à l'intérieur. */}
-          <nav className="flex min-h-0 flex-col overflow-hidden rounded-[18px] border border-card-line bg-surface shadow-xs">
+          {/* La carte DESCEND jusqu'en bas.
+
+              Elle épousait ses rangées, pour ne pas laisser sous la dernière
+              entrée un panneau blanc de trois cents pixels. L'argument valait
+              tant que le contenu à droite s'arrêtait lui aussi à mi-hauteur :
+              deux colonnes courtes se répondaient. Le contenu occupe
+              désormais l'écran, et c'est la colonne écourtée qui devient le
+              seul trou de la page — un blanc encadré, lui, se lit comme la
+              réserve d'un tableau qui attend ses lignes, pas comme un oubli.
+
+              Elle défile à l'intérieur si la liste dépasse. */}
+          <nav className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[18px] border border-card-line bg-surface shadow-xs">
             <p className="shrink-0 px-4 pt-4 pb-2 text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
               {isStaff ? 'Navigation' : 'Mon espace'}
             </p>

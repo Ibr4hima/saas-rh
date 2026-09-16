@@ -3,6 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Skeleton } from '@teranga/ui';
+import { Page } from '../../../../../components/gabarit';
 
 /**
  * La modification s'ouvre désormais EN FENÊTRE sur la fiche
@@ -16,8 +17,8 @@ export default function EditEmployeeRedirect() {
     router.replace(`/employees/${id}?modifier=1`);
   }, [id, router]);
   return (
-    <div className="mx-auto max-w-4xl">
+    <Page>
       <Skeleton className="h-64 w-full" />
-    </div>
+    </Page>
   );
 }

@@ -31,6 +31,7 @@ import {
 } from '../../../../components/reglages-absences';
 import { api } from '../../../../lib/api';
 import { formatDate, useMe } from '../../../../lib/hooks';
+import { Page } from '../../../../components/gabarit';
 
 /** Dakar vit à UTC : la date du jour se lit sans décalage. */
 function aujourdhui(): string {
@@ -61,9 +62,9 @@ export default function JoursFeriesPage() {
   const peutGerer = me.data?.role === 'admin' || me.data?.role === 'hr';
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <Page>
       <FeriesCard peutGerer={peutGerer} />
-    </div>
+    </Page>
   );
 }
 

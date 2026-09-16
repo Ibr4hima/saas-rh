@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { JobPostingView } from '@teranga/contracts';
 import {
-  Card,
-  CardContent,
   CardHeader,
   CardTitle,
   cn,
@@ -24,6 +22,13 @@ import { api } from '../../../../lib/api';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
 import { CONTRACT_LABELS } from '../../../../lib/recruitment';
+import {
+  CartePleine,
+  compte,
+  CorpsDefilant,
+  Page,
+  PiedCarte,
+} from '../../../../components/gabarit';
 
 /** Le nombre de dossiers reçus, toutes étapes confondues — refus compris. */
 function postulants(offre: JobPostingView): number {
@@ -57,20 +62,10 @@ export default function CandidaturesPage() {
   const total = lignes.reduce((n, o) => n + postulants(o), 0);
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
-      <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <CardTitle>Dossiers de candidature</CardTitle>
-            {total > 0 ? (
-              <span
-                className="rounded-full bg-primary/[0.09] px-2 py-px text-[10.5px] font-extrabold text-primary"
-                style={{ fontVariantNumeric: 'tabular-nums' }}
-              >
-                {total}
-              </span>
-            ) : null}
-          </div>
+    <Page>
+      <CartePleine>
+        <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+          <CardTitle>Dossiers de candidature</CardTitle>
           <Input
             placeholder="Rechercher une offre…"
             value={q}
@@ -79,10 +74,12 @@ export default function CandidaturesPage() {
             aria-label="Rechercher une offre"
           />
         </CardHeader>
-        <CardContent className="px-0 pb-0">
-          {jobs.isLoading ? (
-            <Skeleton className="mx-[18px] mb-[18px] h-24" />
-          ) : lignes.length === 0 ? (
+        {jobs.isLoading ? (
+          <CorpsDefilant className="px-5 pb-5">
+            <Skeleton className="h-full min-h-24" />
+          </CorpsDefilant>
+        ) : lignes.length === 0 ? (
+          <CorpsDefilant className="grid place-items-center">
             <EmptyState
               icon={<Icon name="person_add" size={22} />}
               title={(jobs.data ?? []).length === 0 ? 'Aucune offre' : 'Aucune offre ne correspond'}
@@ -92,64 +89,75 @@ export default function CandidaturesPage() {
                   : 'Changez de recherche pour voir les autres offres.'
               }
             />
-          ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <Th>Référence</Th>
-                  <Th>Poste</Th>
-                  <Th>Type contrat</Th>
-                  <Th className="text-right">Postulants</Th>
-                  <Th className="w-8" />
-                </tr>
-              </THead>
-              <TBody>
-                {lignes.map((o) => {
-                  const n = postulants(o);
-                  return (
-                    // La ligne entière ouvre le pipeline : c'est le seul geste
-                    // de cet écran, il n'a pas à se chercher dans une cellule.
-                    <Tr
-                      key={o.id}
-                      onClick={() => router.push(`/recrutement/${o.id}`)}
-                      tabIndex={0}
-                      role="link"
-                      aria-label={`Voir les dossiers de ${o.title}`}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          router.push(`/recrutement/${o.id}`);
-                        }
-                      }}
-                      className="cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+          </CorpsDefilant>
+        ) : (
+          <Table pleine>
+            <THead>
+              <tr>
+                <Th>Référence</Th>
+                <Th>Poste</Th>
+                <Th>Type contrat</Th>
+                <Th className="text-right">Postulants</Th>
+                <Th className="w-8" />
+              </tr>
+            </THead>
+            <TBody>
+              {lignes.map((o) => {
+                const n = postulants(o);
+                return (
+                  // La ligne entière ouvre le pipeline : c'est le seul geste
+                  // de cet écran, il n'a pas à se chercher dans une cellule.
+                  <Tr
+                    key={o.id}
+                    onClick={() => router.push(`/recrutement/${o.id}`)}
+                    tabIndex={0}
+                    role="link"
+                    aria-label={`Voir les dossiers de ${o.title}`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        router.push(`/recrutement/${o.id}`);
+                      }
+                    }}
+                    className="cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+                  >
+                    <Td className="font-mono text-[11.5px] whitespace-nowrap text-ink-muted">
+                      {o.reference}
+                    </Td>
+                    <Td className="font-bold text-ink-strong">{o.title}</Td>
+                    <Td className="whitespace-nowrap">
+                      {CONTRACT_LABELS[o.contractType] ?? o.contractType}
+                    </Td>
+                    <Td
+                      className={cn(
+                        'text-right font-bold',
+                        n === 0 ? 'text-ink-muted' : 'text-primary',
+                      )}
+                      style={{ fontVariantNumeric: 'tabular-nums' }}
                     >
-                      <Td className="font-mono text-[11.5px] whitespace-nowrap text-ink-muted">
-                        {o.reference}
-                      </Td>
-                      <Td className="font-bold text-ink-strong">{o.title}</Td>
-                      <Td className="whitespace-nowrap">
-                        {CONTRACT_LABELS[o.contractType] ?? o.contractType}
-                      </Td>
-                      <Td
-                        className={cn(
-                          'text-right font-bold',
-                          n === 0 ? 'text-ink-muted' : 'text-primary',
-                        )}
-                        style={{ fontVariantNumeric: 'tabular-nums' }}
-                      >
-                        {n}
-                      </Td>
-                      <Td className="pl-0 text-right">
-                        <Icon name="chevron_right" size={15} className="text-ink-muted/60" />
-                      </Td>
-                    </Tr>
-                  );
-                })}
-              </TBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                      {n}
+                    </Td>
+                    <Td className="pl-0 text-right">
+                      <Icon name="chevron_right" size={15} className="text-ink-muted/60" />
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </TBody>
+          </Table>
+        )}
+        {lignes.length > 0 ? (
+          <PiedCarte
+            droite={
+              <span className="text-[11.5px] text-ink-muted">
+                {compte(total, 'dossier')} au total
+              </span>
+            }
+          >
+            {compte(lignes.length, 'offre')}
+          </PiedCarte>
+        ) : null}
+      </CartePleine>
+    </Page>
   );
 }

@@ -13,8 +13,6 @@ import type {
 } from '@teranga/contracts';
 import {
   Button,
-  Card,
-  CardContent,
   CardHeader,
   CardTitle,
   Checkbox,
@@ -36,6 +34,7 @@ import { EmployeeCreateModal } from '../../../components/employee-create-modal';
 import { Icon } from '../../../components/icons';
 import { Modal, ModalSection } from '../../../components/modal';
 import { Onglets, OngletsBandeau } from '../../../components/onglets-bandeau';
+import { CartePleine, compte, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
 
 /** Ce qu'on tape pour confirmer un effacement — court, mais pas cliquable. */
 const MOT_DE_CONFIRMATION = 'SUPPRIMER';
@@ -152,7 +151,7 @@ export default function EmployeesPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <Page>
       <EmployeeCreateModal open={createOpen} onClose={() => router.replace('/employees')} />
 
       <OngletsBandeau courant={onglet} onChange={changerOnglet} onglets={ONGLETS} />
@@ -165,16 +164,10 @@ export default function EmployeesPage() {
         className="mb-3 w-max md:hidden"
       />
 
-      <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+      <CartePleine>
+        <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
             <CardTitle>{TITRES[onglet]}</CardTitle>
-            <span
-              className="rounded-full bg-primary/[0.09] px-2 py-px text-[10.5px] font-extrabold text-primary"
-              style={{ fontVariantNumeric: 'tabular-nums' }}
-            >
-              {counts[onglet]}
-            </span>
             {/* La recherche est un outil du tableau : elle se tient sur sa
                 ligne de titre, pas au-dessus de la carte. */}
             <div className="relative">
@@ -231,7 +224,7 @@ export default function EmployeesPage() {
 
         {/* Les filtres : trois listes de ce que l'onglet contient réellement,
             plus de quoi tout relâcher d'un geste. */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-[18px] pb-3.5">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line-soft px-[18px] pb-3.5">
           <FiltreSelect
             label="Tous les postes"
             value={filtres.positionTitle}
@@ -257,14 +250,14 @@ export default function EmployeesPage() {
           ) : null}
         </div>
 
-        <CardContent className="px-0 pb-0">
-          {query.isLoading ? (
-            <div className="flex flex-col gap-3 p-5">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : items.length === 0 ? (
+        {query.isLoading ? (
+          <CorpsDefilant className="flex flex-col gap-3 p-5">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-10 w-full shrink-0" />
+            ))}
+          </CorpsDefilant>
+        ) : items.length === 0 ? (
+          <CorpsDefilant className="grid place-items-center">
             <EmptyState
               icon={<Icon name="group" size={22} />}
               title={
@@ -289,106 +282,112 @@ export default function EmployeesPage() {
                 ) : undefined
               }
             />
-          ) : (
-            <>
-              <Table>
-                <THead>
-                  <tr>
-                    <Th className="w-9 pr-0">
-                      <Checkbox
-                        aria-label="Tout sélectionner"
-                        checked={selection.length === items.length}
-                        onChange={toutBasculer}
-                      />
-                    </Th>
-                    <Th>Matricule</Th>
-                    <ThTri
-                      label="Nom"
-                      colonne="name"
-                      sort={sort}
-                      dir={dir}
-                      onClick={() => trierPar('name', 'asc')}
-                    />
-                    <Th>Poste</Th>
-                    <Th>Manager</Th>
-                    <Th>Unité</Th>
-                    <ThTri
-                      label="Début contrat"
-                      colonne="contractStart"
-                      sort={sort}
-                      dir={dir}
-                      onClick={() => trierPar('contractStart', 'desc')}
-                    />
-                    <ThTri
-                      label="Fin contrat"
-                      colonne="contractEnd"
-                      sort={sort}
-                      dir={dir}
-                      onClick={() => trierPar('contractEnd', 'asc')}
-                    />
-                  </tr>
-                </THead>
-                <TBody>
-                  {items.map((e) => {
-                    const coche = selection.includes(e.id);
-                    return (
-                      <Tr
-                        key={e.id}
-                        className={cn('cursor-pointer', coche && 'bg-primary/[0.04]')}
-                        onClick={() => router.push(`/employees/${e.id}`)}
-                      >
-                        {/* La case ne suit pas la ligne : cliquer pour choisir
-                            ne doit pas quitter l'écran où l'on choisit. */}
-                        <Td className="pr-0" onClick={(ev) => ev.stopPropagation()}>
-                          <Checkbox
-                            aria-label={`Sélectionner ${e.givenName} ${e.familyName}`}
-                            checked={coche}
-                            onChange={() => bascule(e.id)}
-                          />
-                        </Td>
-                        <Td className="font-mono text-xs text-ink-muted">{e.employeeNumber}</Td>
-                        <Td className="font-medium text-ink-strong">
-                          {e.givenName} {e.familyName}
-                          {e.workEmail ? (
-                            <span className="block text-xs font-normal text-ink-muted">
-                              {e.workEmail}
-                            </span>
-                          ) : null}
-                        </Td>
-                        <Td>{e.positionTitle ?? '—'}</Td>
-                        <Td>{e.managerName ?? '—'}</Td>
-                        {/* L'abrégé tient dans une colonne, pas le nom complet :
-                            l'infobulle garde le nom entier pour qui hésite. */}
-                        <Td title={e.directionName ?? e.orgUnitName ?? undefined}>
-                          {e.directionShortName ?? e.directionName ?? e.orgUnitName ?? '—'}
-                        </Td>
-                        <Td className="whitespace-nowrap">
-                          {e.contractStartDate ? formatDate(e.contractStartDate) : '—'}
-                        </Td>
-                        <Td className="whitespace-nowrap">
-                          {e.contractEndDate ? formatDate(e.contractEndDate) : '—'}
-                        </Td>
-                      </Tr>
-                    );
-                  })}
-                </TBody>
-              </Table>
-              {query.hasNextPage ? (
-                <div className="border-t border-line-soft p-3 text-center">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={query.isFetchingNextPage}
-                    onClick={() => query.fetchNextPage()}
+          </CorpsDefilant>
+        ) : (
+          <Table pleine>
+            <THead>
+              <tr>
+                <Th className="w-9 pr-0">
+                  <Checkbox
+                    aria-label="Tout sélectionner"
+                    checked={selection.length === items.length}
+                    onChange={toutBasculer}
+                  />
+                </Th>
+                <Th>Matricule</Th>
+                <ThTri
+                  label="Nom"
+                  colonne="name"
+                  sort={sort}
+                  dir={dir}
+                  onClick={() => trierPar('name', 'asc')}
+                />
+                <Th>Poste</Th>
+                <Th>Manager</Th>
+                <Th>Unité</Th>
+                <ThTri
+                  label="Début contrat"
+                  colonne="contractStart"
+                  sort={sort}
+                  dir={dir}
+                  onClick={() => trierPar('contractStart', 'desc')}
+                />
+                <ThTri
+                  label="Fin contrat"
+                  colonne="contractEnd"
+                  sort={sort}
+                  dir={dir}
+                  onClick={() => trierPar('contractEnd', 'asc')}
+                />
+              </tr>
+            </THead>
+            <TBody>
+              {items.map((e) => {
+                const coche = selection.includes(e.id);
+                return (
+                  <Tr
+                    key={e.id}
+                    className={cn('cursor-pointer', coche && 'bg-primary/[0.04]')}
+                    onClick={() => router.push(`/employees/${e.id}`)}
                   >
-                    Charger plus
-                  </Button>
-                </div>
-              ) : null}
-            </>
-          )}
-        </CardContent>
-      </Card>
+                    {/* La case ne suit pas la ligne : cliquer pour choisir
+                            ne doit pas quitter l'écran où l'on choisit. */}
+                    <Td className="pr-0" onClick={(ev) => ev.stopPropagation()}>
+                      <Checkbox
+                        aria-label={`Sélectionner ${e.givenName} ${e.familyName}`}
+                        checked={coche}
+                        onChange={() => bascule(e.id)}
+                      />
+                    </Td>
+                    <Td className="font-mono text-xs text-ink-muted">{e.employeeNumber}</Td>
+                    <Td className="font-medium text-ink-strong">
+                      {e.givenName} {e.familyName}
+                      {e.workEmail ? (
+                        <span className="block text-xs font-normal text-ink-muted">
+                          {e.workEmail}
+                        </span>
+                      ) : null}
+                    </Td>
+                    <Td>{e.positionTitle ?? '—'}</Td>
+                    <Td>{e.managerName ?? '—'}</Td>
+                    {/* L'abrégé tient dans une colonne, pas le nom complet :
+                            l'infobulle garde le nom entier pour qui hésite. */}
+                    <Td title={e.directionName ?? e.orgUnitName ?? undefined}>
+                      {e.directionShortName ?? e.directionName ?? e.orgUnitName ?? '—'}
+                    </Td>
+                    <Td className="whitespace-nowrap">
+                      {e.contractStartDate ? formatDate(e.contractStartDate) : '—'}
+                    </Td>
+                    <Td className="whitespace-nowrap">
+                      {e.contractEndDate ? formatDate(e.contractEndDate) : '—'}
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </TBody>
+          </Table>
+        )}
+        {items.length > 0 ? (
+          <PiedCarte
+            droite={
+              query.hasNextPage ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={query.isFetchingNextPage}
+                  onClick={() => query.fetchNextPage()}
+                >
+                  Charger plus
+                </Button>
+              ) : null
+            }
+          >
+            {items.length < counts[onglet]
+              ? `${items.length} sur ${compte(counts[onglet], 'dossier')}`
+              : compte(counts[onglet], 'dossier')}
+          </PiedCarte>
+        ) : null}
+      </CartePleine>
 
       {panneau === 'supprimer' ? (
         <SupprimerModal
@@ -424,7 +423,7 @@ export default function EmployeesPage() {
           </ModalSection>
         </Modal>
       ) : null}
-    </div>
+    </Page>
   );
 }
 

@@ -33,6 +33,7 @@ import { StatutAbsence } from '../../../../components/statut-absence';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { resumeVisas, ROLE_LABELS } from '../../../../lib/absences';
 import { formatDate } from '../../../../lib/hooks';
+import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
 
 /* ————————————————————————————————————————————————————————————————
    Poser un congé, c'est trois questions dans l'ordre :
@@ -222,8 +223,8 @@ export default function MyLeavesPage() {
   const niveaux = chaine.data?.levels ?? [];
 
   return (
-    <div className="mx-auto max-w-[1000px]">
-      <div className="mb-4">
+    <Page>
+      <div className="shrink-0">
         <Link
           href="/moi"
           className="inline-flex items-center gap-1 text-[12.5px] text-ink-muted transition-colors hover:text-ink"
@@ -238,7 +239,7 @@ export default function MyLeavesPage() {
           min-content de la plus longue ligne de « Mes demandes » — qui est en
           `truncate`, donc insécable — et la page entière débordait de 150 px
           sur un téléphone. */}
-      <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_288px]">
+      <div className="grid min-h-0 flex-1 items-start gap-4 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_288px] lg:grid-rows-[auto_minmax(0,1fr)]">
         {/* ———— Le formulaire ———— */}
         <Card className="lg:order-1">
           <CardHeader>
@@ -433,8 +434,10 @@ export default function MyLeavesPage() {
         </aside>
 
         {/* ———— Mes demandes ———— */}
-        <Card className="lg:order-3 lg:col-span-2">
-          <CardHeader className="flex items-center justify-between gap-3">
+        {/* Le suivi ferme la page par le bas et prend ce qui reste : sans
+            cela, deux cents pixels de fond nu restaient sous lui. */}
+        <CartePleine className="lg:order-3 lg:col-span-2 lg:self-stretch">
+          <CardHeader className="flex shrink-0 items-center justify-between gap-3">
             <CardTitle>Mes demandes</CardTitle>
             {myRequests.length > 0 ? (
               <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
@@ -442,7 +445,7 @@ export default function MyLeavesPage() {
               </span>
             ) : null}
           </CardHeader>
-          <CardContent className="px-2 pb-2">
+          <CorpsDefilant className="px-2 pb-2">
             {requests.isLoading ? (
               <div className="flex flex-col gap-1 px-3">
                 {[0, 1, 2].map((i) => (
@@ -478,12 +481,12 @@ export default function MyLeavesPage() {
                 ))}
               </ul>
             )}
-          </CardContent>
-        </Card>
+          </CorpsDefilant>
+        </CartePleine>
       </div>
 
       <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
-    </div>
+    </Page>
   );
 }
 

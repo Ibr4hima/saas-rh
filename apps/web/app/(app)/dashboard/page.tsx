@@ -23,6 +23,7 @@ import {
 import { Icon, type IconName } from '../../../components/icons';
 import { api } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
+import { Page } from '../../../components/gabarit';
 
 /* ————————————————————————————————————————————————————————————————
    L'écran d'accueil répond à trois questions, dans l'ordre :
@@ -487,9 +488,9 @@ export default function DashboardPage() {
     : 0;
 
   return (
-    <div className="mx-auto max-w-[1240px]">
+    <Page>
       {/* ———— Indicateurs ———— */}
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <StatTile
           icon="group"
           label="Effectif actif"
@@ -692,7 +693,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ———— Les fériés, en frise ———— */}
-      <Card className="mt-4">
+      <Card>
         <CardHeader>
           <CardTitle>Calendrier des jours fériés</CardTitle>
         </CardHeader>
@@ -710,7 +711,7 @@ export default function DashboardPage() {
       </Card>
 
       {seesContracts ? (
-        <Card className="mt-4">
+        <Card>
           <CardHeader className="flex items-center justify-between gap-3">
             <CardTitle>Suivi des contrats</CardTitle>
             <TotalCarte>CDD et stages en cours</TotalCarte>
@@ -785,6 +786,6 @@ export default function DashboardPage() {
           )}
         </Card>
       ) : null}
-    </div>
+    </Page>
   );
 }

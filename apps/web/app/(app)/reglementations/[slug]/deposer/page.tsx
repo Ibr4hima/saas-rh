@@ -16,6 +16,7 @@ import { Button, Card, CardContent, Checkbox, Field, Input, Skeleton, Textarea }
 import { api, ApiError } from '../../../../../lib/api';
 import { useMe } from '../../../../../lib/hooks';
 import { Icon } from '../../../../../components/icons';
+import { Page } from '../../../../../components/gabarit';
 
 /**
  * Déposer un texte de référence.
@@ -116,7 +117,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
 
   if (me.isLoading || existant.isLoading) {
     return (
-      <div className="mx-auto w-full max-w-[980px]">
+      <Page>
         <Card>
           <CardContent className="flex flex-col gap-3 py-6">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -124,26 +125,26 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
             ))}
           </CardContent>
         </Card>
-      </div>
+      </Page>
     );
   }
 
   if (!peutDeposer) {
     return (
-      <div className="mx-auto w-full max-w-[980px]">
+      <Page>
         <Card>
           <CardContent className="py-10 text-center text-[13px] text-ink-muted">
             Seule la Direction du Capital Humain dépose les textes de référence.
           </CardContent>
         </Card>
-      </div>
+      </Page>
     );
   }
 
   const pretAEnregistrer = titre.trim().length >= 2 && analyse.chapters.length > 0;
 
   return (
-    <div className="mx-auto flex w-full max-w-[980px] flex-col gap-4">
+    <Page>
       <Card>
         <CardContent className="grid grid-cols-1 gap-4 py-5 sm:grid-cols-2">
           <Field label="Intitulé du texte" htmlFor="titre" required>
@@ -245,7 +246,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
           Enregistrer
         </Button>
       </div>
-    </div>
+    </Page>
   );
 }
 
