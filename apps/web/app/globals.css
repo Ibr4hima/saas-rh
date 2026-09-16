@@ -342,10 +342,11 @@ body {
     var(--tg-bg);
 }
 
-/* Les couches décoratives vivent dans un calque qui LES ROGNE.
-   Le voile dérive de 24 px : posé directement sur le dôme, il déborderait
-   d'autant à droite et ferait apparaître une barre de défilement horizontale
-   sur toute la page — un pixel de décor pour un défaut visible partout. */
+/* Les couches décoratives vivent dans leur propre calque, sous le contenu et
+   hors d'atteinte du curseur. Il les rognait aussi, du temps où le voile
+   dérivait de 24 px et débordait d'autant à droite ; le voile ne bouge plus,
+   mais un décor qui ne peut pas déborder de son calque reste la bonne
+   garantie pour celui qui y ajoutera une couche. */
 .login-decor {
   position: absolute;
   inset: 0;
@@ -369,8 +370,13 @@ body {
   -webkit-mask-image: radial-gradient(100% 52% at 50% -6%, #000 0%, transparent 76%);
 }
 
-/* Deux voiles clairs qui dérivent lentement dans le dôme. Sans eux le bleu
-   est un aplat ; avec eux il respire. */
+/* Deux voiles clairs dans le dôme. Sans eux le bleu est un aplat ; avec eux
+   il prend du relief.
+
+   Ils DÉRIVAIENT — quatorze secondes d'aller-retour, sans fin. Sur un écran
+   qu'on regarde le temps de taper un mot de passe, un fond qui bouge tout
+   seul se lit comme un battement : l'œil le suit au lieu de suivre le champ,
+   et l'on cherche ce qui cloche. Ils sont fixes. */
 .login-decor::after {
   content: '';
   position: absolute;
@@ -378,22 +384,6 @@ body {
   background-image:
     radial-gradient(38% 34% at 14% 2%, rgb(255 255 255 / 0.08) 0%, transparent 62%),
     radial-gradient(42% 38% at 88% 6%, rgb(90 165 235 / 0.28) 0%, transparent 64%);
-  animation: login-derive 14s ease-in-out infinite alternate;
-}
-
-@keyframes login-derive {
-  from {
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    transform: translate3d(24px, 12px, 0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .login-decor::after {
-    animation: none;
-  }
 }
 
 /* Entrée de l'écran de connexion : une montée de quelques pixels, échelonnée
