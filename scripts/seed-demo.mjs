@@ -141,24 +141,6 @@ const year = new Date().getFullYear();
 const tabaski = `${year}-08-26`;
 await call('POST', '/holidays', { year, day: tabaski, label: 'Tabaski' }).catch(() => {});
 
-// Les fêtes à date fixe du calendrier sénégalais, sur l'année en cours et la
-// suivante. Le tableau de bord montre une FENÊTRE de fériés — le dernier passé
-// et les trois à venir : avec deux dates en base, la démonstration ne montrait
-// jamais la frise complète, quel que soit le jour où le seed tourne.
-const FIXES = [
-  ['01-01', 'Nouvel an'],
-  ['04-04', "Fête de l'Indépendance"],
-  ['05-01', 'Fête du Travail'],
-  ['08-15', 'Assomption'],
-  ['11-01', 'Toussaint'],
-  ['12-25', 'Noël'],
-];
-for (const an of [year, year + 1]) {
-  for (const [jour, label] of FIXES) {
-    await call('POST', '/holidays', { year: an, day: `${an}-${jour}`, label }).catch(() => {});
-  }
-}
-
 // Fête mobile placée pour que la démo montre le rappel automatique : on prend
 // le premier jour ouvré à venir dont le rappel (J−2 reculé au dernier jour
 // ouvré) est déjà échu, quel que soit le jour où le seed tourne.
@@ -184,6 +166,19 @@ for (let ahead = 1; ahead <= 21 && !magalOn; ahead += 1) {
   magalOn = iso(day);
 }
 if (!magalOn) console.warn('  ⚠ aucun férié de démonstration placé (rappel non illustré)');
+
+// Le socle sénégalais — six dates civiles, huit fêtes mobiles — n'est PAS
+// saisi ici : c'est le produit qui le pose, à la première lecture d'une année
+// par la RH. Le poser à la main donnait des « Nouvel an » et des « Noël »
+// enregistrés comme fêtes MOBILES, puisque la création d'un férié ne déclare
+// pas la date civile — et la démonstration laissait alors déplacer Noël.
+// Deux années : le tableau de bord montre une fenêtre — le dernier férié passé
+// et les trois à venir — qu'une seule année ne remplit pas toujours.
+//
+// L'ordre compte : les fêtes datées ci-dessus portent des noms du socle, et
+// c'est leur présence qui empêche le produit d'en créer un second exemplaire
+// non daté.
+for (const an of [year, year + 1]) await call('GET', `/holidays?year=${an}`);
 await call('PUT', '/approval-chain', { levels: ['hr', 'admin'] });
 
 console.log('→ Portails employés : Awa, Moussa et Fatou activent leur compte');
