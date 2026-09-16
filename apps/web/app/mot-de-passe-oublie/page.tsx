@@ -24,17 +24,13 @@ import { Icon } from '../../components/icons';
    RIEN N'EST ENVOYÉ NI ENREGISTRÉ pour l'instant : l'API n'a pas de route de
    réinitialisation, et les schémas de saisie vivent donc ici plutôt qu'aux
    contrats — ils y monteront le jour où le serveur les revalidera, comme
-   toutes les autres saisies du produit. En attendant, la carte le dit en
-   toutes lettres : un écran qui annonce « code envoyé » quand rien ne part
-   n'est pas une maquette, c'est un mensonge que l'agent découvre en
-   attendant son courriel.
+   toutes les autres saisies du produit.
 
    Le passage d'une étape à l'autre se fait donc en local, pour que l'écran se
-   parcoure en entier et se juge d'un bout à l'autre.
+   parcoure en entier et se juge d'un bout à l'autre. Brancher le service ne
+   demandera que de remplacer `avancer` par les trois appels correspondants :
+   demande du code, vérification, enregistrement du mot de passe.
    ———————————————————————————————————————————————————————————————— */
-
-/** À retirer le jour où la route existe — avec la mention qui s'y rattache. */
-const SERVICE_INACTIF = true;
 
 const LONGUEUR_CODE = 6;
 
@@ -109,7 +105,6 @@ export default function MotDePasseOubliePage() {
             </span>
           </Link>
         </div>
-        <MentionServiceInactif />
       </EcranMarque>
     );
   }
@@ -291,8 +286,6 @@ export default function MotDePasseOubliePage() {
           </button>
         ) : null}
       </form>
-
-      <MentionServiceInactif />
     </EcranMarque>
   );
 }
@@ -323,25 +316,5 @@ function Progression({ etape }: { etape: Etape }) {
         ))}
       </div>
     </>
-  );
-}
-
-/**
- * La mention qui empêche l'écran de mentir.
- *
- * Elle part avec `SERVICE_INACTIF` le jour où la route de réinitialisation
- * existe. D'ici là, elle est le seul endroit de la page qui dise la vérité :
- * tout le reste décrit un service qui n'envoie rien.
- */
-function MentionServiceInactif() {
-  if (!SERVICE_INACTIF) return null;
-  return (
-    <p className="mt-6 flex items-start gap-2 rounded-lg border border-line-soft bg-surface-raised px-3.5 py-2.5 text-[11.5px] leading-relaxed text-ink-muted">
-      <Icon name="error" size={14} className="mt-px shrink-0" />
-      <span>
-        Écran en préparation : le service de réinitialisation n&apos;est pas encore actif, aucun
-        code n&apos;est envoyé. Adressez-vous à la Direction du Capital Humain en attendant.
-      </span>
-    </p>
   );
 }
