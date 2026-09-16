@@ -32,6 +32,13 @@ interface DashboardStats {
 interface NavChild {
   href: string;
   label: string;
+  /**
+   * Sous-page ÉTEINTE — même règle que pour une entrée de premier rang : elle
+   * garde sa place dans la liste, parce que l'ordre du menu est une carte
+   * qu'on mémorise et qu'en retirer une ligne la redessine, mais elle ne mène
+   * plus nulle part tant que l'écran n'est pas prêt.
+   */
+  desactive?: boolean;
 }
 
 /**
@@ -125,7 +132,7 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { href: '/absences', label: 'Gestion des demandes' },
       { href: '/absences/feries', label: 'Gestion des jours fériés' },
-      { href: '/absences/parametres', label: 'Paramètres des congés' },
+      { href: '/absences/parametres', label: 'Paramètres des congés', desactive: true },
     ],
   },
   {
@@ -531,13 +538,32 @@ function Rubrique({
         <div className="relative ml-[1.4rem] flex flex-col gap-px border-l border-line-soft pl-2.5">
           {enfants.map((c) => {
             const active = c.href === enfantActif;
+            const forme = 'relative rounded-[9px] px-2.5 py-[6.5px] text-[12px]';
+            // Éteinte, la sous-page n'est plus un lien DU TOUT : la griser sans
+            // la désarmer laisserait le clic passer, et le curseur promettrait
+            // une destination qui n'est pas prête.
+            if (c.desactive) {
+              return (
+                <span
+                  key={c.href}
+                  aria-disabled
+                  className={cn(
+                    forme,
+                    'cursor-not-allowed font-medium text-ink-muted/45 select-none',
+                  )}
+                >
+                  {c.label}
+                </span>
+              );
+            }
             return (
               <Link
                 key={c.href}
                 href={c.href}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'relative rounded-[9px] px-2.5 py-[6.5px] text-[12px] transition-colors duration-150',
+                  forme,
+                  'transition-colors duration-150',
                   active
                     ? 'bg-primary/[0.07] font-bold text-primary'
                     : 'font-medium text-ink-muted hover:bg-hover hover:text-ink',
@@ -634,12 +660,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
         i.desactive
           ? []
           : i.children
-            ? i.children.map((c) => ({
-                href: c.href,
-                label: c.label,
-                icon: i.icon,
-                chemin: i.label,
-              }))
+            ? // Une sous-page éteinte n'est pas une destination : la palette
+              // la proposerait sans que le menu la laisse ouvrir.
+              i.children
+                .filter((c) => !c.desactive)
+                .map((c) => ({
+                  href: c.href,
+                  label: c.label,
+                  icon: i.icon,
+                  chemin: i.label,
+                }))
             : [{ href: i.href, label: i.label, icon: i.icon }],
       ),
     [items],

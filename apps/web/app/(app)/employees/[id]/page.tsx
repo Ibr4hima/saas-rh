@@ -719,18 +719,16 @@ function BalancesCard({ employeeId, canEdit }: { employeeId: string; canEdit: bo
             </TBody>
           </Table>
           {/* Là où le droit se règle. Sans ce renvoi, on cherche le champ de
-              saisie sur cette carte — c'est là qu'il était. */}
+              saisie sur cette carte — c'est là qu'il était.
+              Le nom n'est plus un LIEN : « Paramètres des congés » est éteint
+              dans le menu en attendant d'être repris, et une phrase qui y
+              mène dirait le contraire de la navigation. Elle continue de dire
+              OÙ le droit se règle, ce qui est tout ce qu'on lui demande. */}
           {canEdit ? (
             <CardContent className="border-t border-line-soft py-3">
               <p className="text-[11.5px] text-ink-muted">
                 Le droit annuel se règle par type d&apos;absence dans{' '}
-                <Link
-                  href="/absences/parametres"
-                  className="font-semibold text-primary transition-colors hover:text-primary-hover hover:underline"
-                >
-                  Paramètres des congés
-                </Link>
-                .
+                <span className="font-semibold text-ink">Paramètres des congés</span>.
               </p>
             </CardContent>
           ) : null}
