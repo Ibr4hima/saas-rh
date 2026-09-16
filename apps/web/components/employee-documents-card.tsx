@@ -132,7 +132,10 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
   };
 
   const pieces = documents.data ?? [];
-  const aValider = pieces.filter((d) => d.status === 'pending').length;
+  // Ce qui attend MA décision, pas ce qui attend une décision : sur le portail
+  // de l'agent, ses propres dépôts en attente sont attendus par la RH — les
+  // compter ici lui réclamait un geste qui ne lui revient pas.
+  const aValider = pieces.filter((d) => d.canReview).length;
 
   return (
     <Card>

@@ -11,20 +11,21 @@ import type {
   RequestableDoc,
   SessionUser,
 } from '@teranga/contracts';
-import { DOC_REQUEST_STATUS_LABELS, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
+import {
+  DOC_REQUEST_STATUS_LABELS,
+  MAX_OPEN_DOCUMENT_REQUESTS,
+  OPEN_DOCUMENT_REQUEST_STATUSES,
+  REQUESTABLE_DOC_LABELS,
+} from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const MANAGE_ROLES = new Set(['admin', 'hr']);
-/**
- * Une demande non close bloque les nouvelles : évite les doublons de file.
- * « prête » n'en fait PAS partie — c'est l'état final depuis que la remise
- * n'est plus enregistrée : la compter bloquerait l'employé à vie.
- */
-const OPEN_STATUSES = ['received', 'processing'];
-const MAX_OPEN_REQUESTS = 3;
+/** Le garde-fou et sa définition vivent au contrat : le portail l'annonce. */
+const OPEN_STATUSES: string[] = OPEN_DOCUMENT_REQUEST_STATUSES;
+const MAX_OPEN_REQUESTS = MAX_OPEN_DOCUMENT_REQUESTS;
 
 /**
  * Transitions autorisées : le circuit ne peut pas remonter le temps.
@@ -86,7 +87,9 @@ export class DocumentRequestsService {
           422,
           'documents.too_many_open_requests',
           'Vous avez déjà plusieurs demandes en cours',
-          'Attendez leur traitement avant d’en formuler une nouvelle.',
+          // Le client n'affiche que le DÉTAIL : il doit se lire seul, sujet
+          // compris — « attendez leur traitement » ne disait pas de quoi.
+          `Vous portez déjà ${MAX_OPEN_REQUESTS} demandes de documents en cours : attendez leur traitement avant d’en formuler une nouvelle.`,
         );
       }
 

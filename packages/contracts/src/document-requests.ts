@@ -62,6 +62,23 @@ export const DOC_REQUEST_STATUS_TONES: Record<
   rejected: 'danger',
 };
 
+/**
+ * Statuts d'une demande encore OUVERTE — « prête » n'en fait pas partie :
+ * c'est l'état final depuis que la remise en main propre n'est plus
+ * enregistrée, et la compter bloquerait l'agent à vie.
+ */
+export const OPEN_DOCUMENT_REQUEST_STATUSES: DocumentRequestStatus[] = ['received', 'processing'];
+
+/**
+ * Nombre de demandes ouvertes qu'un agent peut porter à la fois — garde-fou
+ * contre les doublons de file.
+ *
+ * La règle vit ici, et pas seulement dans le service : le portail doit
+ * pouvoir l'ANNONCER avant l'envoi. Une limite qu'on ne découvre qu'en se
+ * faisant refuser n'est pas une règle, c'est une surprise.
+ */
+export const MAX_OPEN_DOCUMENT_REQUESTS = 3;
+
 export const createDocumentRequestSchema = z.object({
   /** Un ou plusieurs documents en une seule demande. */
   docTypes: z.array(requestableDocSchema).min(1).max(6),
