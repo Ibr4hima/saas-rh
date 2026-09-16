@@ -732,27 +732,25 @@ function AppShell({ children }: { children: React.ReactNode }) {
         <div id={ANCRE_ONGLETS} className="relative z-10 hidden shrink-0 md:flex" />
 
         <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
-          {/* La recherche a l'air d'un champ mais n'en est pas un : c'est un
-              bouton qui ouvre la palette, pour que la frappe se fasse dans
-              une fenêtre qui a la place d'afficher ce qu'elle trouve. Le
-              raccourci est écrit dessus — c'est ainsi qu'on l'apprend. */}
+          {action ? <HeaderAction action={action} /> : null}
+          <DateDuJour />
+          {/* La recherche avait l'air d'un champ sans en être un : c'était un
+              bouton déguisé, large de deux cent quarante pixels, qui invitait
+              à taper là où rien ne se tape — la frappe se fait dans la
+              palette, qui a la place d'afficher ce qu'elle trouve. Réduite à
+              son icône, elle rejoint les autres commandes du bandeau et cesse
+              de promettre ce qu'elle ne fait pas. Le raccourci n'est plus
+              écrit dessus : il reste dans l'infobulle et dans l'intitulé
+              accessible, et la palette l'affiche en grand quand on l'ouvre. */}
           <button
             type="button"
             onClick={() => setPalette(true)}
             aria-label={`Rechercher (${raccourci})`}
             title={`Rechercher — ${raccourci}`}
-            className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-white/30 bg-white/10 px-2.5 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none md:pr-2 md:pl-3 lg:w-60"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
           >
-            <Icon name="search" size={18} />
-            <span className="hidden flex-1 text-left text-xs font-medium text-hero-ink md:inline">
-              Rechercher…
-            </span>
-            <kbd className="hidden rounded-[6px] border border-white/25 bg-white/10 px-1.5 py-px font-sans text-[10px] font-semibold whitespace-nowrap text-hero-ink md:inline">
-              {raccourci}
-            </kbd>
+            <Icon name="search" size={20} />
           </button>
-          {action ? <HeaderAction action={action} /> : null}
-          <DateDuJour />
           <NotificationsBell />
           {/* Sur téléphone la colonne n'existe pas : sans ce menu, ni le
               thème ni la sortie ne seraient atteignables. */}
