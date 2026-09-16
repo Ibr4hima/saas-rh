@@ -33,9 +33,22 @@ interface NavChild {
   label: string;
 }
 
+/**
+ * Les familles de la navigation, dans l'ordre où on les lit.
+ *
+ * Elles ne s'écrivent nulle part : un intitulé au-dessus de chaque famille
+ * ajouterait cinq lignes à lire avant d'atteindre une destination. C'est le
+ * BLANC entre les familles qui les sépare — l'œil range tout seul quatre
+ * paquets de deux, là où neuf rangées à pas régulier ne disent rien de leur
+ * parenté.
+ */
+type GroupeNav = 'pilotage' | 'effectif' | 'quotidien' | 'croissance' | 'cadre';
+
 interface NavItem {
   href: string;
   label: string;
+  /** La famille à laquelle l'entrée appartient — sépare sans s'écrire. */
+  groupe?: GroupeNav;
   /** Libellé de la barre d'onglets mobile, où la place manque. */
   short?: string;
   icon: IconName;
@@ -55,19 +68,55 @@ interface NavItem {
 }
 
 /**
- * Navigation à plat : neuf entrées se parcourent d'un regard. Les regroupions
- * en rubriques ajoutait trois lignes de titre à lire avant d'atteindre la
- * première destination — du bruit pour une liste de cette taille.
+ * Navigation à plat, rangée par familles.
+ *
+ * L'ordre suit le métier plutôt que l'ordre d'écriture des écrans : ce qu'on
+ * regarde en arrivant, puis les gens, puis ce qui arrive tous les jours, puis
+ * ce qui fait grandir l'effectif, puis le cadre qui s'applique à tout. On ne
+ * regroupe toujours pas en rubriques titrées — neuf entrées se parcourent
+ * d'un regard — mais le blanc entre les familles fait le travail d'un titre
+ * sans en coûter la ligne.
  */
 const NAV_ITEMS: NavItem[] = [
-  { href: '/dashboard', label: 'Tableau de bord', short: 'Tableau', icon: 'dashboard' },
-  { href: '/employees', label: 'Gestion du personnel', short: 'Personnel', icon: 'group' },
+  {
+    href: '/dashboard',
+    label: 'Tableau de bord',
+    short: 'Tableau',
+    icon: 'dashboard',
+    groupe: 'pilotage',
+  },
+  {
+    // Le calendrier a aussi sa fenêtre dans le bandeau, et c'est le geste
+    // courant. Il garde une entrée de menu parce que la fenêtre ne se trouve
+    // que si l'on sait déjà qu'elle est derrière la date — une destination
+    // nommée est le seul endroit où l'on peut la DÉCOUVRIR.
+    href: '/calendrier',
+    label: 'Calendrier',
+    short: 'Calendrier',
+    icon: 'calendar_month',
+    groupe: 'pilotage',
+  },
+  {
+    href: '/employees',
+    label: 'Gestion du personnel',
+    short: 'Personnel',
+    icon: 'group',
+    groupe: 'effectif',
+  },
+  {
+    href: '/organisation',
+    label: 'Organigramme',
+    short: 'Organig.',
+    icon: 'family_history',
+    groupe: 'effectif',
+  },
   {
     href: '/absences',
     label: 'Absences & Congés',
     short: 'Congés',
     icon: 'free_cancellation',
     badge: 'pending',
+    groupe: 'quotidien',
     children: [
       { href: '/absences', label: 'Gestion des demandes' },
       { href: '/absences/feries', label: 'Gestion des jours fériés' },
@@ -80,12 +129,14 @@ const NAV_ITEMS: NavItem[] = [
     short: 'Demandes',
     icon: 'folder_managed',
     badge: 'docs',
+    groupe: 'quotidien',
   },
   {
     href: '/recrutement',
     label: 'Recrutement',
     short: 'Recrut.',
     icon: 'person_add',
+    groupe: 'croissance',
     children: [
       { href: '/recrutement', label: "Offres d'emploi" },
       { href: '/recrutement/candidatures', label: 'Dossiers de candidature' },
@@ -96,14 +147,15 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Évaluation des objectifs',
     short: 'Évaluation',
     icon: 'rule',
+    groupe: 'croissance',
     desactive: true,
   },
-  { href: '/organisation', label: 'Organigramme', short: 'Organig.', icon: 'family_history' },
   {
     href: '/reglementations',
     label: 'Lois & Règlementations',
     short: 'Lois',
     icon: 'gavel',
+    groupe: 'cadre',
     children: [
       { href: '/reglementations/code-du-travail', label: 'Code du travail' },
       { href: '/reglementations/reglement-interieur', label: 'Règlement intérieur' },
@@ -136,7 +188,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/moi': 'Mon espace',
   '/moi/conges': 'Mes congés',
   '/moi/documents': 'Mes documents',
-  '/moi/informations': 'Mes informations personnelles',
+  '/moi/informations': 'Mes informations',
 };
 
 function greeting(): string {
@@ -223,44 +275,80 @@ function staffNav(role: string): NavItem[] {
   return NAV_ITEMS.filter((i) => !MANAGE_ONLY_PATHS.some((p) => i.href.startsWith(p)));
 }
 
-/** Espace personnel : navigation réduite pour employés et managers. */
+/**
+ * Espace personnel : navigation réduite, rangée par les mêmes familles.
+ *
+ * Ce qu'on regarde (mon espace, le calendrier), ce qu'on demande (congés,
+ * documents), ce qu'on est (mes informations), le cadre (les textes). Les
+ * validations d'un manager tiennent à part : c'est le seul endroit où il
+ * décide pour un autre.
+ */
 function personalNav(role: string): NavItem[] {
   return [
-    { href: '/moi', label: 'Mon espace', short: 'Espace', icon: 'dashboard' },
-    { href: '/moi/conges', label: 'Mes congés', short: 'Congés', icon: 'free_cancellation' },
+    { href: '/moi', label: 'Mon espace', short: 'Espace', icon: 'dashboard', groupe: 'pilotage' },
+    {
+      href: '/calendrier',
+      label: 'Calendrier',
+      short: 'Calendrier',
+      icon: 'calendar_month',
+      groupe: 'pilotage',
+    },
+    {
+      href: '/moi/conges',
+      label: 'Mes congés',
+      short: 'Congés',
+      icon: 'free_cancellation',
+      groupe: 'quotidien',
+    },
     {
       href: '/moi/documents',
       label: 'Mes documents',
       short: 'Documents',
       icon: 'folder_managed',
+      groupe: 'quotidien',
     },
     {
       href: '/moi/informations',
-      label: 'Mes informations personnelles',
+      label: 'Mes informations',
       short: 'Infos',
       icon: 'badge',
+      groupe: 'quotidien',
+    },
+    // Le seul endroit où un manager décide pour un autre : il tient sa
+    // famille à lui, entre ce qui le concerne et ce qu'il consulte.
+    ...(role === 'manager'
+      ? [
+          {
+            href: '/absences',
+            label: 'Validations',
+            short: 'Visas',
+            icon: 'how_to_reg' as const,
+            badge: 'pending' as const,
+            groupe: 'croissance' as const,
+          },
+        ]
+      : []),
+    // L'organigramme rejoint les textes de référence : côté agent, ce n'est
+    // pas un outil de travail, c'est quelque chose qu'on CONSULTE — comme le
+    // Code du travail ou le règlement intérieur.
+    {
+      href: '/organisation',
+      label: 'Organigramme',
+      short: 'Organig.',
+      icon: 'family_history',
+      groupe: 'cadre',
     },
     {
       href: '/reglementations',
       label: 'Lois & Règlementations',
       short: 'Lois',
       icon: 'gavel',
+      groupe: 'cadre',
       children: [
         { href: '/reglementations/code-du-travail', label: 'Code du travail' },
         { href: '/reglementations/reglement-interieur', label: 'Règlement intérieur' },
       ],
     },
-    ...(role === 'manager'
-      ? [
-          {
-            href: '/absences',
-            label: 'Validations',
-            icon: 'how_to_reg' as const,
-            badge: 'pending' as const,
-          },
-        ]
-      : []),
-    { href: '/organisation', label: 'Organigramme', short: 'Organig.', icon: 'family_history' },
   ];
 }
 
@@ -295,7 +383,7 @@ function RangeeNav({
   );
 
   const forme =
-    'flex items-center gap-2.5 rounded-[7px] px-2.5 py-[7px] text-[12.5px] transition-colors duration-150';
+    'relative flex items-center gap-2.5 rounded-[10px] py-[8px] pr-2.5 pl-3.5 text-[12.5px] transition-colors duration-150';
 
   // Éteinte, la rangée n'est plus un lien DU TOUT : la griser sans la
   // désarmer laisserait le clic passer, et le curseur promettrait une
@@ -320,8 +408,25 @@ function RangeeNav({
         active ? 'bg-primary/[0.07] font-bold text-primary' : 'font-medium text-ink hover:bg-hover',
       )}
     >
+      {/* Le repère de l'entrée courante. L'aplat pâle et le gras la
+          désignaient déjà ; le trait vertical la désigne DE LOIN, avant même
+          qu'on lise — c'est lui qu'on suit du regard en revenant à la colonne
+          après avoir travaillé à droite. Bleu, comme toute la structure du
+          produit : l'orange de la charte est réservé à ce qui attend un
+          geste, et une position dans un menu n'attend rien. */}
+      {active ? <RepereActif /> : null}
       {contenu}
     </Link>
+  );
+}
+
+/** Le trait vertical de l'entrée courante — 2,5 px, arrondi, centré. */
+function RepereActif() {
+  return (
+    <span
+      aria-hidden
+      className="absolute top-1/2 left-[4px] h-[15px] w-[2.5px] -translate-y-1/2 rounded-full bg-primary"
+    />
   );
 }
 
@@ -382,7 +487,7 @@ function Rubrique({
         onClick={() => setOuverte((v) => !v)}
         aria-expanded={ouverte}
         className={cn(
-          'flex items-center gap-2 rounded-[7px] px-2.5 py-[7px] text-left text-[12.5px] transition-colors duration-150',
+          'relative flex items-center gap-2 rounded-[10px] py-[8px] pr-2.5 pl-3.5 text-left text-[12.5px] transition-colors duration-150',
           // Repliée sur la page courante, la rubrique porte l'état actif ;
           // dépliée, elle le laisse à la sous-page pour ne pas l'allumer deux
           // fois sur la même colonne.
@@ -396,6 +501,7 @@ function Rubrique({
               : 'font-medium text-ink hover:bg-hover',
         )}
       >
+        {contientLaPage && !ouverte ? <RepereActif /> : null}
         <Icon name={item.icon} size={17} fill={contientLaPage} />
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
         {/* Le compteur reste sur le parent : replié, c'est le seul endroit où
@@ -426,7 +532,7 @@ function Rubrique({
                 href={c.href}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'rounded-[7px] px-2.5 py-[6px] text-[12px] transition-colors duration-150',
+                  'relative rounded-[9px] px-2.5 py-[6.5px] text-[12px] transition-colors duration-150',
                   active
                     ? 'bg-primary/[0.07] font-bold text-primary'
                     : 'font-medium text-ink-muted hover:bg-hover hover:text-ink',
@@ -445,9 +551,12 @@ function Rubrique({
 /**
  * La date du jour, dans le bandeau — et le calendrier derrière.
  *
- * Elle a quitté le menu : consulter le planning est un geste d'un instant, pas
- * une destination. On l'ouvre là où on lit la date, on referme, et on est
- * revenu exactement où l'on était — ce qu'une page ne permet pas.
+ * C'est le geste COURANT : on ouvre le planning là où on lit la date, on
+ * referme, et on est revenu exactement où l'on était — ce qu'une page ne
+ * permet pas. Le menu porte malgré tout une entrée « Calendrier », parce
+ * qu'une fenêtre cachée derrière une date ne se trouve que si l'on sait
+ * déjà qu'elle est là. Le raccourci sert ceux qui savent ; la destination
+ * nommée sert ceux qui apprennent.
  */
 function DateDuJour() {
   const [ouvert, setOuvert] = useState(false);
@@ -656,44 +765,64 @@ function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        {/* Barre latérale — grammaire de la plateforme APIX : un intitulé de
-            rubrique en très petites capitales grises, des rangées serrées, et
-            l'entrée courante teintée à peine plutôt que peinte. La navigation
-            est un instrument, pas une affiche. */}
-        <aside className="flex w-[16.5rem] shrink-0 flex-col border-r border-line bg-surface max-lg:hidden">
-          <div className="border-b border-line-soft px-4 pt-3.5 pb-2.5">
-            <span className="text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
-              {isStaff ? 'Navigation' : 'Mon espace'}
-            </span>
-          </div>
+        {/* ———— Le menu, POSÉ sur la page ————
 
-          <nav className="flex-1 overflow-y-auto px-2.5 py-3">
-            <div className="flex flex-col gap-px">
-              {items.map((item) =>
-                item.children ? (
-                  <Rubrique
-                    key={item.href}
-                    item={item}
-                    contientLaPageCourante={isActive(item.href)}
-                    badge={badgeCount(item.badge)}
-                    estActive={isChildActive}
-                  />
-                ) : (
-                  <RangeeNav
-                    key={item.href}
-                    href={item.href}
-                    label={item.label}
-                    icon={item.icon}
-                    active={isActive(item.href)}
-                    badge={badgeCount(item.badge)}
-                    desactive={item.desactive}
-                  />
-                ),
-              )}
+            Une colonne blanche collée au bord de la fenêtre, séparée par un
+            filet, se lit comme une pièce du cadre — au même titre qu'une
+            barre de défilement. Posée en carte — coins arrondis, filet pâle,
+            ombre d'un pixel — elle se lit comme un OBJET, dans la grammaire
+            exacte des cartes de contenu à sa droite : l'application cesse
+            d'avoir deux vocabulaires selon le côté de l'écran.
+
+            Le blanc de la page passe tout autour, et c'est lui qui fait le
+            relief — pas une ombre portée, qui ferait flotter la colonne
+            au-dessus du contenu au lieu de la poser à côté. */}
+        <aside className="hidden w-[17rem] shrink-0 flex-col gap-3 py-3.5 pl-3.5 lg:flex">
+          {/* La carte épouse SES rangées : étirée sur toute la hauteur, elle
+              laissait sous la dernière entrée un panneau blanc de trois cents
+              pixels qui ne disait rien. Elle ne s'étire que si la liste
+              dépasse l'écran, et défile alors à l'intérieur. */}
+          <nav className="flex min-h-0 flex-col overflow-hidden rounded-[18px] border border-card-line bg-surface shadow-xs">
+            <p className="shrink-0 px-4 pt-4 pb-2 text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
+              {isStaff ? 'Navigation' : 'Mon espace'}
+            </p>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+              {items.map((item, i) => {
+                // Le blanc entre deux familles vaut un intitulé, et ne coûte
+                // pas de ligne. Il se calcule sur l'entrée PRÉCÉDENTE RENDUE,
+                // pas sur l'ordre d'écriture : la navigation d'un rôle paie
+                // est amputée de deux entrées, et une famille réduite à rien
+                // ne doit pas laisser un trou derrière elle.
+                const changeDeFamille = i > 0 && item.groupe !== items[i - 1]!.groupe;
+                return (
+                  <div key={item.href} className={cn(changeDeFamille && 'mt-3')}>
+                    {item.children ? (
+                      <Rubrique
+                        item={item}
+                        contientLaPageCourante={isActive(item.href)}
+                        badge={badgeCount(item.badge)}
+                        estActive={isChildActive}
+                      />
+                    ) : (
+                      <RangeeNav
+                        href={item.href}
+                        label={item.label}
+                        icon={item.icon}
+                        active={isActive(item.href)}
+                        badge={badgeCount(item.badge)}
+                        desactive={item.desactive}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </nav>
 
-          <div className="flex items-center gap-2.5 border-t border-line-soft px-4 py-3">
+          {/* Qui je suis, dans sa propre carte : ce n'est pas une destination
+              de plus au bas de la liste, c'est l'identité de la session. */}
+          <div className="mt-auto flex shrink-0 items-center gap-2.5 rounded-[18px] border border-card-line bg-surface px-3 py-2.5 shadow-xs">
             <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-primary/[0.09] text-[10.5px] font-bold text-primary">
               {initials}
             </span>
@@ -709,7 +838,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               title="Se déconnecter"
               aria-label="Se déconnecter"
-              className="rounded-[7px] p-1.5 text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
+              className="rounded-[9px] p-1.5 text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
               onClick={async () => {
                 await api('/auth/logout', { method: 'POST' });
                 router.replace('/login');
