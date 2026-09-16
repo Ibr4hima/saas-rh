@@ -156,17 +156,20 @@ function Legende({ className }: { className?: string }) {
 /**
  * La grille du mois.
  *
- * `fixe` fait tenir le mois dans une hauteur DONNÉE plutôt que de la réclamer :
- * les rangées se partagent la place, et une journée chargée fait défiler sa
- * case au lieu de pousser toute la fenêtre. C'est ce qu'exige une fenêtre —
- * un mois de cinq semaines et un mois de six ne doivent pas la faire sauter
- * d'un cran à chaque flèche. Sur la page, où la place ne manque pas, les
- * cases gardent leur plancher et la colonne s'allonge.
+ * Le mois tient dans une hauteur DONNÉE plutôt que de la réclamer : les
+ * rangées se partagent la place, et une journée chargée fait défiler sa case
+ * au lieu de pousser toute la fenêtre. C'est ce qu'exige une fenêtre — un
+ * mois de cinq semaines et un mois de six ne doivent pas la faire sauter d'un
+ * cran à chaque flèche.
+ *
+ * La variante « à hauteur libre » a disparu avec la page qui l'employait : la
+ * grille ne sert plus qu'en fenêtre, et un paramètre dont il ne reste qu'une
+ * valeur n'est plus un paramètre.
  */
-function Grille({ cal, fixe = false }: { cal: Cal; fixe?: boolean }) {
-  if (cal.loading) return <Skeleton className={fixe ? 'h-full' : 'm-[18px] h-96'} />;
+function Grille({ cal }: { cal: Cal }) {
+  if (cal.loading) return <Skeleton className="h-full" />;
   return (
-    <div className={cn('flex flex-col', fixe && 'h-full')}>
+    <div className="flex h-full flex-col">
       <div className="grid shrink-0 grid-cols-7 border-y border-line-soft bg-bg">
         {WEEKDAYS.map((d) => (
           <div
@@ -177,14 +180,11 @@ function Grille({ cal, fixe = false }: { cal: Cal; fixe?: boolean }) {
           </div>
         ))}
       </div>
-      <div className={cn('flex flex-col', fixe && 'min-h-0 flex-1')}>
+      <div className="flex min-h-0 flex-1 flex-col">
         {cal.weeks.map((week, wi) => (
           <div
             key={wi}
-            className={cn(
-              'grid grid-cols-7 border-b border-line-soft last:border-b-0',
-              fixe && 'min-h-0 flex-1',
-            )}
+            className="grid min-h-0 flex-1 grid-cols-7 border-b border-line-soft last:border-b-0"
           >
             {week.map((day) => {
               const inMonth = new Date(`${day}T00:00:00Z`).getUTCMonth() === cal.month;
@@ -197,8 +197,7 @@ function Grille({ cal, fixe = false }: { cal: Cal; fixe?: boolean }) {
                 <div
                   key={day}
                   className={cn(
-                    'flex flex-col overflow-hidden border-r border-line-soft p-1.5 last:border-r-0',
-                    fixe ? 'min-h-0' : 'min-h-[6.5rem]',
+                    'flex min-h-0 flex-col overflow-hidden border-r border-line-soft p-1.5 last:border-r-0',
                     !inMonth
                       ? 'bg-bg opacity-40'
                       : holiday
@@ -261,29 +260,6 @@ function Grille({ cal, fixe = false }: { cal: Cal; fixe?: boolean }) {
   );
 }
 
-/** Le calendrier en pleine page — /calendrier. */
-export function Calendrier() {
-  const cal = useCalendrier();
-  if (cal.failed) {
-    return <LoadFailure error={cal.failed.error} onRetry={() => void cal.failed!.refetch()} />;
-  }
-  return (
-    <Card className="overflow-hidden">
-      <CardHeader>
-        <CommandesMois cal={cal} />
-      </CardHeader>
-      <CardContent className="px-0 pb-0">
-        <Grille cal={cal} />
-      </CardContent>
-      {/* La légende se lit APRÈS la grille : on y revient quand une pastille
-          intrigue, pas avant de l'avoir vue. */}
-      <div className="border-t border-line-soft px-[18px] py-2.5">
-        <Legende />
-      </div>
-    </Card>
-  );
-}
-
 /**
  * Le calendrier en fenêtre, depuis la date du bandeau.
  *
@@ -313,7 +289,7 @@ export function CalendrierModal({ open, onClose }: { open: boolean; onClose: () 
         // la fenêtre n'ait JAMAIS à défiler : un calendrier qu'on fait défiler
         // ne montre plus le mois, ce qui est tout son objet.
         <div className="h-[min(32rem,92vh_-_11.5rem)] shrink-0 overflow-hidden rounded-[14px] border border-line-soft bg-surface">
-          <Grille cal={cal} fixe />
+          <Grille cal={cal} />
         </div>
       )}
     </Modal>

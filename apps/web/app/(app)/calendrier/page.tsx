@@ -1,23 +1,23 @@
 'use client';
 
-import { Calendrier } from '../../../components/calendrier';
 import { FriseFeries } from '../../../components/frise-feries';
 
 /**
- * Le calendrier a sa fenêtre depuis le bandeau — c'est le geste courant.
- * Cette page reste pour qui arrive par le menu, par un lien, ou veut la
- * pleine largeur.
+ * Le calendrier de l'année : ses jours fériés, en frise.
  *
- * Elle porte deux lectures du même temps, et l'ordre compte : la grille du
- * mois répond à « qui est absent le 12 ? », la frise à « quand tombe le
- * prochain férié et qu'est-ce qui reste avant la fin de l'année ? ». La
- * première est l'outil de travail, la seconde la vue d'ensemble — on la
- * déroule quand on la cherche.
+ * La grille du mois a quitté cette page. Elle y répétait la même absence sur
+ * trente cases — un congé de maternité couvrait tout septembre, et le mois
+ * n'était plus qu'une colonne du même libellé quinze fois de suite. Le
+ * planning des absences se lit là où on le cherche : dans la fenêtre du
+ * bandeau, d'un clic sur la date, et dans « Calendrier des absences » sur la
+ * page des demandes, où il porte les noms sans les répéter.
+ *
+ * Reste ici ce qu'aucun autre écran ne montrait : l'année entière de fériés,
+ * dans l'ordre, avec ce qui les sépare d'aujourd'hui.
  */
 export default function CalendrierPage() {
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <Calendrier />
+    <div className="mx-auto max-w-6xl">
       <FriseFeries />
     </div>
   );
