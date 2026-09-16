@@ -13,6 +13,7 @@
     "chevron_right",
     "close",
     "content_copy",
+    "dark_mode",
     "dashboard",
     "delete",
     "description",
@@ -29,10 +30,12 @@
     "group",
     "how_to_reg",
     "inbox",
+    "light_mode",
     "lock",
     "logout",
     "mail",
     "notifications",
+    "person",
     "person_add",
     "place",
     "print",
@@ -48,5 +51,5 @@
     "visibility_off"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 50216
+  "bytes": 53960
 }

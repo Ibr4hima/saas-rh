@@ -164,18 +164,19 @@ body {
   }
 }
 
-/* Voile des notifications : la page RECULE, elle ne disparaît pas.
+/* Voile des panneaux surgissants — notifications, menu du compte : la page
+   RECULE, elle ne disparaît pas.
    Le flou fait tout le travail — un aplat opaque par-dessus la page ferait de
    ce panneau un dialogue modal, ce qu'il n'est pas : on doit pouvoir cliquer
    à côté pour revenir à son écran, et voir que l'écran est toujours là. */
-.notif-voile {
+.tg-voile {
   background: var(--tg-veil);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
-  animation: notif-voile 160ms ease-out;
+  animation: tg-voile 160ms ease-out;
 }
 
-@keyframes notif-voile {
+@keyframes tg-voile {
   from {
     opacity: 0;
   }
@@ -185,7 +186,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .notif-voile {
+  .tg-voile {
     animation: none;
   }
 }

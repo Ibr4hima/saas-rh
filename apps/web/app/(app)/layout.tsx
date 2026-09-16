@@ -8,6 +8,7 @@ import { cn, Skeleton } from '@teranga/ui';
 import { BrandMark, BrandWordmark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
 import { PageTitleProvider, usePageTitleOverride } from '../../components/page-title';
+import { MenuCompte } from '../../components/menu-compte';
 import { NotificationsBell } from '../../components/notifications-bell';
 import { CalendrierModal } from '../../components/calendrier';
 import { ANCRE_ONGLETS } from '../../components/onglets-bandeau';
@@ -753,18 +754,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
           {action ? <HeaderAction action={action} /> : null}
           <DateDuJour />
           <NotificationsBell />
-          <button
-            type="button"
-            title="Se déconnecter"
-            aria-label="Se déconnecter"
-            className="flex size-9 items-center justify-center rounded-full border border-white/30 bg-white/10 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 lg:hidden"
-            onClick={async () => {
-              await api('/auth/logout', { method: 'POST' });
-              router.replace('/login');
-            }}
-          >
-            <Icon name="logout" size={18} />
-          </button>
+          {/* Sur téléphone la colonne n'existe pas : sans ce menu, ni le
+              thème ni la sortie ne seraient atteignables. */}
+          <span className="lg:hidden">
+            <MenuCompte variante="bandeau" />
+          </span>
         </div>
       </header>
 
@@ -838,18 +832,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                 {ROLE_LABELS[user.role] ?? user.role}
               </span>
             </span>
-            <button
-              type="button"
-              title="Se déconnecter"
-              aria-label="Se déconnecter"
-              className="rounded-[9px] p-1.5 text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
-              onClick={async () => {
-                await api('/auth/logout', { method: 'POST' });
-                router.replace('/login');
-              }}
-            >
-              <Icon name="logout" size={17} />
-            </button>
+            <MenuCompte variante="colonne" />
           </div>
         </aside>
 

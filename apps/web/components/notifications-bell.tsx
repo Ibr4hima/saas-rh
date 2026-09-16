@@ -251,7 +251,7 @@ function PanneauNotifications({
       <div
         aria-hidden
         onClick={onFermer}
-        className="notif-voile fixed inset-0 z-[55]"
+        className="tg-voile fixed inset-0 z-[55]"
         style={{ top: pos.top - 8 }}
       />
       <div

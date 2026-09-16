@@ -10,7 +10,9 @@ import manifest from './icon-font.manifest.json';
  * même écran — la barre latérale et le tableau de bord se regardent.
  *
  * La police est SOUS-ENSEMBLÉE aux seules icônes listées ci-dessous et servie
- * depuis /fonts (23 Ko) : aucune requête vers un tiers à l'exécution. Cette
+ * depuis /fonts : aucune requête vers un tiers à l'exécution. Son poids exact
+ * est inscrit dans le manifeste, qui se régénère avec elle — l'écrire ici le
+ * rendrait faux à la première icône ajoutée. Cette
  * liste est la source de vérité — `scripts/fetch-icon-font.mjs` la lit pour
  * fabriquer la police. Après y avoir ajouté une icône :
  *
@@ -32,6 +34,7 @@ export const ICON_NAMES = [
   'chevron_right',
   'close',
   'content_copy',
+  'dark_mode',
   'dashboard',
   'delete',
   'description',
@@ -48,10 +51,12 @@ export const ICON_NAMES = [
   'group',
   'how_to_reg',
   'inbox',
+  'light_mode',
   'lock',
   'logout',
   'mail',
   'notifications',
+  'person',
   'person_add',
   'place',
   'print',
