@@ -73,7 +73,8 @@ export function FriseFeries() {
 
   const entete = (
     <EnTete
-      annee={suivante ? anneeCourante + 1 : anneeCourante}
+      affichee={annee}
+      cible={suivante ? anneeCourante + 1 : anneeCourante}
       sens={suivante ? 'suivante' : 'precedente'}
       onAller={() => setAnnee(suivante ? anneeCourante + 1 : anneeCourante)}
     />
@@ -181,25 +182,31 @@ export function FriseFeries() {
  * revient au seul geste que l'écran peut offrir, feuilleter d'une année.
  */
 function EnTete({
-  annee,
+  affichee,
+  cible,
   sens,
   onAller,
 }: {
-  /** L'année vers laquelle le bouton emmène — pas celle qui est affichée. */
-  annee: number;
+  /** L'année que la frise montre. */
+  affichee: number;
+  /** L'année vers laquelle le bouton emmène — l'autre. */
+  cible: number;
   sens: 'suivante' | 'precedente';
   onAller: () => void;
 }) {
   const enAvant = sens === 'suivante';
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-      <h2 className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
-        Calendrier des jours fériés
+      <h2
+        className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase"
+        style={TABULAIRE}
+      >
+        Jours fériés {affichee}
       </h2>
       <button
         type="button"
         onClick={onAller}
-        aria-label={`Voir les jours fériés de ${annee}`}
+        aria-label={`Voir les jours fériés de ${cible}`}
         className={cn(
           // Le chevron avance d'un cheveu au survol : le bouton dit alors dans
           // quel sens il emmène, sans qu'on ait à lire son intitulé.
@@ -215,7 +222,7 @@ function EnTete({
             className="shrink-0 text-ink-muted transition-transform duration-150 group-hover:-translate-x-0.5 group-hover:text-primary"
           />
         )}
-        {annee}
+        {cible}
         {enAvant ? (
           <Icon
             name="chevron_right"
