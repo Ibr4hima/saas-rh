@@ -37,15 +37,20 @@ export default function LoginPage() {
           <span className="font-semibold text-ink">@apix.sn</span>
         </>
       }
+      // « Créer une organisation » n'avait rien à faire là : l'APIX a la
+      // sienne, et un agent qui arrive sur cet écran n'en fonde pas une
+      // seconde — il a oublié son mot de passe. La place revient au seul
+      // besoin réel de qui ne parvient pas à entrer.
       pied={
         <>
-          Pas encore de compte ?{' '}
+          Mot de passe oublié ?{' '}
           <Link
-            href="/register"
+            href="/mot-de-passe-oublie"
             className="font-bold text-primary underline-offset-4 hover:underline"
           >
-            Créer une organisation
+            Réinitialisez-le
           </Link>
+          .
         </>
       }
     >
