@@ -14,6 +14,13 @@
  */
 
 :root {
+  /* Les contrôles NATIFS — sélecteur de date, ascenseurs, champ de recherche —
+     sont peints par le navigateur, pas par nos tokens. Sans cette déclaration
+     il les peint en clair quoi qu'il arrive : de nuit, l'icône de calendrier
+     d'un champ date devenait un gris sombre sur un fond sombre, et le
+     calendrier surgissait en blanc éclatant au milieu de l'écran. */
+  color-scheme: light;
+
   /* --- Couleurs sémantiques (light) --- */
   /* Surfaces reprises de la plateforme APIX (--champ / --carte / --carte-douce) :
      des gris CHAUDS, pas bleutés — c'est ce qui donne à l'ensemble sa lumière
@@ -174,6 +181,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
+    color-scheme: dark;
     --tg-bg: #101927;
     --tg-surface: #151e2e;
     --tg-surface-raised: #1b2536;
@@ -232,6 +240,7 @@
 }
 
 :root[data-theme='dark'] {
+  color-scheme: dark;
   --tg-bg: #101927;
   --tg-surface: #151e2e;
   --tg-surface-raised: #1b2536;

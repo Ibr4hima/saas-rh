@@ -23,31 +23,10 @@ import {
 import { api, ApiError, apiUrl } from '../../../lib/api';
 import { type ViewableDoc } from '../../../components/doc-viewer';
 import { FenetreDocument } from '../../../components/fenetre-document';
-import { ROLE_LABELS } from '../../../lib/absences';
+import { resumeVisas } from '../../../lib/absences';
 import { StatutAbsence } from '../../../components/statut-absence';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
-
-/**
- * Le circuit de visa, en toutes lettres, au survol du statut.
- *
- * La colonne de pastilles qui le montrait a disparu : sur sept colonnes, trois
- * points gris ne disaient rien à qui ne connaissait pas le code, et prenaient
- * la place d'une information qu'on lit vraiment. Le détail reste ici, à un
- * survol du statut — il ne coûte plus une colonne à tout le monde.
- */
-function resumeVisas(r: AbsenceRequestView): string | undefined {
-  if (r.chainLevels.length === 0) return undefined;
-  return r.chainLevels
-    .map((role, i) => {
-      const qui = ROLE_LABELS[role] ?? role;
-      const visa = r.approvals.find((a) => a.level === i);
-      if (visa?.decision === 'approved') return `${qui} — visé par ${visa.decidedByName}`;
-      if (visa?.decision === 'rejected') return `${qui} — refusé par ${visa.decidedByName}`;
-      return `${qui} — en attente`;
-    })
-    .join('\n');
-}
 
 /**
  * Un geste de décision : viser, ou refuser.
