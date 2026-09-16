@@ -578,7 +578,8 @@ function DateDuJour() {
       <button
         type="button"
         onClick={() => setOuvert(true)}
-        title="Ouvrir le calendrier des absences"
+        // Plus « des absences » : la fenêtre ne les porte plus.
+        title="Calendrier"
         aria-label={`${libelle} — ouvrir le calendrier`}
         className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none lg:px-3.5"
       >

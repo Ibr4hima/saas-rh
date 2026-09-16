@@ -4,7 +4,7 @@ import { SCRIPT_AMORCAGE } from '../components/theme';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: 'Teranga RH',
+  title: 'SGRH · APIX S.A',
   description: 'La gestion RH et la paie de la zone UEMOA, au niveau des meilleurs SaaS mondiaux.',
 };
 

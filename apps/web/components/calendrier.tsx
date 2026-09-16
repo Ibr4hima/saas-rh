@@ -100,24 +100,35 @@ function useCalendrier() {
 
 type Cal = ReturnType<typeof useCalendrier>;
 
-/** Navigation entre les mois — même cible tactile des deux côtés. */
+/**
+ * Navigation entre les mois — même cible tactile des deux côtés.
+ *
+ * « Aujourd'hui » n'apparaît qu'une fois qu'on s'est éloigné, et il tenait en
+ * BOUT de rangée : son arrivée poussait les deux flèches et le nom du mois de
+ * quatre-vingt-dix pixels, si bien qu'on cliquait à côté de la flèche qu'on
+ * visait au coup d'après. Il passe en tête, dans une case de largeur FIXE
+ * qu'il occupe ou non : la navigation ne bouge plus, ni quand le bouton
+ * paraît, ni quand il disparaît.
+ */
 function CommandesMois({ cal }: { cal: Cal }) {
   return (
     <div className="flex items-center gap-1">
+      <span className="flex w-24 shrink-0 justify-end">
+        {cal.surLeMoisCourant ? null : (
+          <button
+            type="button"
+            onClick={cal.revenirAujourdhui}
+            className="mr-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold text-primary transition-colors hover:bg-primary/[0.07]"
+          >
+            Aujourd&apos;hui
+          </button>
+        )}
+      </span>
       <FlecheMois direction="précédent" onClick={() => cal.naviguer(-1)} />
       <span className="w-[9.5rem] text-center text-[13px] font-bold text-ink-strong capitalize">
         {cal.monthLabel}
       </span>
       <FlecheMois direction="suivant" onClick={() => cal.naviguer(1)} />
-      {cal.surLeMoisCourant ? null : (
-        <button
-          type="button"
-          onClick={cal.revenirAujourdhui}
-          className="ml-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold text-primary transition-colors hover:bg-primary/[0.07]"
-        >
-          Aujourd&apos;hui
-        </button>
-      )}
     </div>
   );
 }
