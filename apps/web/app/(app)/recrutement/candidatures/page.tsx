@@ -24,6 +24,7 @@ import { CONTRACT_LABELS } from '../../../../lib/recruitment';
 import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../../components/gabarit';
 import { compte } from '../../../../lib/mots';
 import { SqueletteTableau, ThTri, useTriLocal } from '../../../../components/tableau';
+import { formatDate } from '../../../../lib/hooks';
 
 /** Le nombre de dossiers reçus, toutes étapes confondues — refus compris. */
 function postulants(offre: JobPostingView): number {
@@ -58,12 +59,22 @@ export default function CandidaturesPage() {
     filtrees,
     {
       reference: (o) => o.reference,
+      // On trie sur l'horodatage COMPLET, pas sur la date affichée : deux
+      // offres publiées le même jour gardent leur ordre réel.
+      createdAt: (o) => o.createdAt,
       title: (o) => o.title,
       contractType: (o) => CONTRACT_LABELS[o.contractType] ?? o.contractType,
       postulants: (o) => postulants(o),
     },
     { colonne: 'postulants', sens: 'desc' },
-    { postulants: 'desc', reference: 'asc', title: 'asc', contractType: 'asc' },
+    {
+      postulants: 'desc',
+      // La plus récente d'abord : c'est la campagne qu'on vient d'ouvrir.
+      createdAt: 'desc',
+      reference: 'asc',
+      title: 'asc',
+      contractType: 'asc',
+    },
   );
   const lignes = tri.lignes;
 
@@ -109,6 +120,13 @@ export default function CandidaturesPage() {
                 <ThTri
                   label="Référence"
                   colonne="reference"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Date publication"
+                  colonne="createdAt"
                   courant={tri.colonne}
                   sens={tri.sens}
                   onTrier={tri.trier}
@@ -160,6 +178,13 @@ export default function CandidaturesPage() {
                   >
                     <Td className="font-mono text-[11.5px] whitespace-nowrap text-ink-muted">
                       {o.reference}
+                    </Td>
+                    {/* La DATE, et non l'âge : cet écran se lit à côté d'un
+                        dossier papier daté, où « il y a 21 jours » ne se
+                        recoupe avec rien. Le tableau des offres, lui, garde
+                        son ancienneté — on y cherche ce qu'il faut relancer. */}
+                    <Td className="whitespace-nowrap text-ink-muted">
+                      {formatDate(o.createdAt.slice(0, 10))}
                     </Td>
                     <Td className="font-bold text-ink-strong">{o.title}</Td>
                     <Td className="whitespace-nowrap">
