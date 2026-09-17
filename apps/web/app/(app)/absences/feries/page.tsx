@@ -23,12 +23,15 @@ import {
 } from '@teranga/ui';
 import { Icon } from '../../../../components/icons';
 import { Modal, ModalGrid, ModalSection } from '../../../../components/modal';
-import { Actions, FenetreSuppression } from '../../../../components/reglages-absences';
-import { api, detailErreur } from '../../../../lib/api';
+import {
+  Actions,
+  FenetreSuppression,
+  messageErreur,
+} from '../../../../components/reglages-absences';
+import { api } from '../../../../lib/api';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import { Page } from '../../../../components/gabarit';
 import { SqueletteTableau } from '../../../../components/tableau';
-import { useToast } from '../../../../components/toasts';
 
 /** Dakar vit à UTC : la date du jour se lit sans décalage. */
 function aujourdhui(): string {
@@ -88,7 +91,6 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
   });
   const [edition, setEdition] = useState<Holiday | 'nouveau' | null>(null);
   const [aSupprimer, setASupprimer] = useState<Holiday | null>(null);
-  const toast = useToast();
   const rafraichir = () => void queryClient.invalidateQueries({ queryKey: ['holidays'] });
 
   const jour = aujourdhui();
@@ -225,10 +227,8 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
           annee={annee}
           onClose={() => setEdition(null)}
           onEnregistre={() => {
-            const dater = edition !== 'nouveau' && edition.day == null;
             setEdition(null);
             rafraichir();
-            toast.succes(dater ? 'Jour férié daté' : 'Jour férié enregistré');
           }}
         />
       ) : null}
@@ -245,12 +245,8 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
           chemin={`/holidays/${aSupprimer.id}`}
           onClose={() => setASupprimer(null)}
           onSupprime={() => {
-            const nom = aSupprimer.label;
             setASupprimer(null);
             rafraichir();
-            toast.succes(`« ${nom} » retiré`, {
-              detail: 'Ce jour redevient ouvré pour les décomptes.',
-            });
           }}
         >
           <p className="text-[12.5px] leading-relaxed text-ink">
@@ -301,7 +297,7 @@ function FenetreFerie({
           });
     },
     onSuccess: onEnregistre,
-    onError: (err) => setErreur(detailErreur(err, 'Enregistrement impossible.')),
+    onError: (err) => setErreur(messageErreur(err, 'Enregistrement impossible.')),
   });
 
   const aDater = cible != null && cible.day == null;

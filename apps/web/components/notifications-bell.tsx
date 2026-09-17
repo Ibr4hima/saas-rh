@@ -8,8 +8,6 @@ import type { NotificationScope, NotificationView, NotificationsPage } from '@te
 import { cn, EmptyState } from '@teranga/ui';
 import { api } from '../lib/api';
 import { Icon, type IconName } from './icons';
-import { dansUnToast, useToast } from './toasts';
-import { accorde, compte } from '../lib/mots';
 
 function relativeTime(iso: string): string {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
@@ -57,39 +55,22 @@ export function NotificationsBell() {
     mutationFn: (id: string) => api(`/notifications/${id}/read`, { method: 'POST' }),
     onSuccess: rafraichir,
   });
-  const toast = useToast();
   const markAll = useMutation({
     mutationFn: () => api('/notifications/read-all', { method: 'POST' }),
+    onSuccess: rafraichir,
+  });
+  const ranger = useMutation({
+    mutationFn: (ids: string[]) => api('/notifications/archive', { method: 'POST', body: { ids } }),
     onSuccess: rafraichir,
   });
   const ressortir = useMutation({
     mutationFn: (ids: string[]) =>
       api('/notifications/unarchive', { method: 'POST', body: { ids } }),
-    onSuccess: (_r, ids) => {
-      rafraichir();
-      toast.succes(`${compte(ids.length, 'notification')} ${accorde(ids.length, 'remis', true)}`);
-    },
-  });
-  // Ranger se DÉFAIT — la route inverse existe — et c'est le geste qu'on fait
-  // le plus vite, souvent d'un doigt de trop.
-  const ranger = useMutation({
-    mutationFn: (ids: string[]) => api('/notifications/archive', { method: 'POST', body: { ids } }),
-    onSuccess: (_r, ids) => {
-      rafraichir();
-      toast.succes(`${compte(ids.length, 'notification')} ${accorde(ids.length, 'rangé', true)}`, {
-        action: { libelle: 'Annuler', onAction: () => ressortir.mutate(ids) },
-      });
-    },
+    onSuccess: rafraichir,
   });
   const toutArchiver = useMutation({
     mutationFn: () => api('/notifications/archive-all', { method: 'POST' }),
-    onSuccess: () => {
-      rafraichir();
-      // Pas d'annulation : « tout ranger » ne dit pas au client CE qu'il a
-      // rangé, et rétablir à l'aveugle ressortirait aussi ce qui dormait
-      // dans les archives depuis des mois.
-      toast.succes('Notifications rangées');
-    },
+    onSuccess: rafraichir,
   });
 
   useEffect(() => {
@@ -97,7 +78,6 @@ export function NotificationsBell() {
     const onClick = (e: MouseEvent) => {
       const cible = e.target as Node;
       if (boutonRef.current?.contains(cible) || panneauRef.current?.contains(cible)) return;
-      if (dansUnToast(e.target)) return;
       setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {

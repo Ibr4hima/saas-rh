@@ -30,12 +30,11 @@ import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Icon } from '../../../../components/icons';
 import { StatutAbsence } from '../../../../components/statut-absence';
-import { api, ApiError, apiUrl, detailErreur } from '../../../../lib/api';
+import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { resumeVisas, ROLE_LABELS } from '../../../../lib/absences';
 import { formatDate } from '../../../../lib/hooks';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
 import { compte } from '../../../../lib/mots';
-import { useToast } from '../../../../components/toasts';
 
 /* ————————————————————————————————————————————————————————————————
    Poser un congé, c'est trois questions dans l'ordre :
@@ -175,8 +174,6 @@ export default function MyLeavesPage() {
   const restantApres = balance ? balance.remainingDays - days : 0;
   const insufficient = decompte && restantApres < 0;
 
-  const toast = useToast();
-
   const submit = useMutation({
     mutationFn: () =>
       api<{ id: string; daysCount: number }>('/absence-requests', {
@@ -213,11 +210,9 @@ export default function MyLeavesPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['my-requests'] });
       void queryClient.invalidateQueries({ queryKey: ['balances'] });
-      // Le seul geste de cet écran qui ne disait rien : la ligne changeait de
-      // badge et le solde se recalculait, sans un mot.
-      toast.succes('Demande annulée', { detail: 'Les jours retournent à votre solde.' });
     },
-    onError: (err) => toast.erreur('Annulation impossible', { detail: detailErreur(err) }),
+    onError: (err) =>
+      setServerError(err instanceof ApiError ? err.message : 'Annulation impossible.'),
   });
 
   const myRequests = (requests.data ?? []).filter((r) => r.employeeId === employeeId);

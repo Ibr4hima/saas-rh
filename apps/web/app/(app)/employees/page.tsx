@@ -26,14 +26,14 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
-import { api, ApiError, detailErreur } from '../../../lib/api';
+import { api, ApiError } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
 import { EmployeeCreateModal } from '../../../components/employee-create-modal';
 import { Icon } from '../../../components/icons';
 import { Modal, ModalSection } from '../../../components/modal';
 import { Onglets, OngletsBandeau } from '../../../components/onglets-bandeau';
 import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
-import { accorde, compte } from '../../../lib/mots';
+import { compte } from '../../../lib/mots';
 import {
   BarreSelection,
   BoutonExport,
@@ -46,7 +46,6 @@ import {
   useSelection,
   type Sens,
 } from '../../../components/tableau';
-import { useToast } from '../../../components/toasts';
 
 /** Ce qu'on tape pour confirmer un effacement — court, mais pas cliquable. */
 const MOT_DE_CONFIRMATION = 'SUPPRIMER';
@@ -119,7 +118,6 @@ export default function EmployeesPage() {
   const counts = derniere?.counts ?? { active: 0, archived: 0 };
   const facets = derniere?.facets ?? { positions: [], managers: [], units: [] };
 
-  const toast = useToast();
   const sel = useSelection(items);
   const choisis = sel.choisis;
   const actifsChoisis = choisis.filter((e) => e.status === 'active');
@@ -183,35 +181,13 @@ export default function EmployeesPage() {
     if (res.skipped.length > 0) setEcartes(res.skipped);
   };
 
-  /**
-   * Désactiver ou réactiver, et pouvoir se reprendre.
-   *
-   * La mutation reçoit les IDENTIFIANTS plutôt que de les relire dans la
-   * sélection : celle-ci est relâchée dès l'action faite, et l'annulation
-   * doit pouvoir rejouer le lot exact. Elle ne porte que sur ce qui est
-   * réellement passé — le serveur peut écarter un dossier, et rétablir ce
-   * qu'il n'a pas touché n'aurait aucun sens.
-   */
   const archiver = useMutation({
-    mutationFn: ({ ids, archived }: { ids: string[]; archived: boolean; retour?: boolean }) =>
+    mutationFn: (archived: boolean) =>
       api<EmployeeBatchResult>('/employees/archive', {
         method: 'POST',
-        body: { ids, archived },
+        body: { ids: (archived ? actifsChoisis : archivesChoisis).map((e) => e.id), archived },
       }),
-    onSuccess: async (res, { ids, archived, retour }) => {
-      await apresLot(res);
-      const traites = ids.filter((id) => !res.skipped.some((s) => s.id === id));
-      if (traites.length === 0) return;
-      const quoi = compte(traites.length, 'dossier');
-      if (retour) return toast.succes(`${quoi} rétabli${traites.length > 1 ? 's' : ''}`);
-      toast.succes(`${quoi} ${accorde(traites.length, archived ? 'désactivé' : 'réactivé')}`, {
-        action: {
-          libelle: 'Annuler',
-          onAction: () => archiver.mutate({ ids: traites, archived: !archived, retour: true }),
-        },
-      });
-    },
-    onError: (err) => toast.erreur('Le lot n’a pas pu être traité', { detail: detailErreur(err) }),
+    onSuccess: apresLot,
   });
 
   const filtreActif = Boolean(
@@ -273,9 +249,7 @@ export default function EmployeesPage() {
                 size="sm"
                 variant="secondary"
                 loading={archiver.isPending}
-                onClick={() =>
-                  archiver.mutate({ ids: actifsChoisis.map((e) => e.id), archived: true })
-                }
+                onClick={() => archiver.mutate(true)}
               >
                 Désactiver le profil
                 {actifsChoisis.length < choisis.length ? ` (${actifsChoisis.length})` : ''}
@@ -286,9 +260,7 @@ export default function EmployeesPage() {
                 size="sm"
                 variant="secondary"
                 loading={archiver.isPending}
-                onClick={() =>
-                  archiver.mutate({ ids: archivesChoisis.map((e) => e.id), archived: false })
-                }
+                onClick={() => archiver.mutate(false)}
               >
                 Réactiver
                 {archivesChoisis.length < choisis.length ? ` (${archivesChoisis.length})` : ''}
@@ -454,11 +426,7 @@ export default function EmployeesPage() {
           onClose={() => setPanneau(null)}
           onFini={async (res) => {
             setPanneau(null);
-            const n = res.done;
             await apresLot(res);
-            // Pas d'annulation offerte : la fenêtre l'a dit en toutes lettres
-            // avant d'agir, et le serveur ne sait pas défaire un effacement.
-            if (n > 0) toast.succes(`${compte(n, 'dossier')} ${accorde(n, 'supprimé')}`);
           }}
         />
       ) : null}

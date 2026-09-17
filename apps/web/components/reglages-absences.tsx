@@ -5,13 +5,17 @@ import { useMutation } from '@tanstack/react-query';
 import { Button } from '@teranga/ui';
 import { Icon } from './icons';
 import { Modal, ModalSection } from './modal';
-import { api, detailErreur } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 
 /**
  * Ce que les écrans de paramétrage des congés ont en commun — les types
  * d'absences et les jours fériés se règlent sur deux pages, avec les mêmes
  * gestes de ligne et la même fenêtre de retrait.
  */
+
+export function messageErreur(err: unknown, defaut: string): string {
+  return err instanceof ApiError ? err.message : defaut;
+}
 
 /**
  * Deux gestes par ligne, en gris tant qu'on ne les vise pas.
@@ -78,7 +82,7 @@ export function FenetreSuppression({
   const supprimer = useMutation({
     mutationFn: () => api(chemin, { method: 'DELETE' }),
     onSuccess: onSupprime,
-    onError: (err) => setErreur(detailErreur(err, 'Suppression impossible.')),
+    onError: (err) => setErreur(messageErreur(err, 'Suppression impossible.')),
   });
 
   return (

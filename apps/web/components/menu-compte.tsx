@@ -7,7 +7,6 @@ import { cn } from '@teranga/ui';
 import { api } from '../lib/api';
 import { Icon, type IconName } from './icons';
 import { usePreferences } from './preferences';
-import { dansUnToast } from './toasts';
 
 /* ————————————————————————————————————————————————————————————————
    Le menu du compte.
@@ -46,7 +45,6 @@ export function MenuCompte({ variante }: { variante: 'colonne' | 'bandeau' }) {
     const auClic = (e: PointerEvent) => {
       const cible = e.target as Node;
       if (bouton.current?.contains(cible) || panneau.current?.contains(cible)) return;
-      if (dansUnToast(e.target)) return;
       setOuvert(false);
     };
     const auClavier = (e: KeyboardEvent) => {

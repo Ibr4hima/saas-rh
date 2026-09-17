@@ -8,22 +8,6 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * Ce qu'on montre d'une erreur, en une phrase.
- *
- * `ApiError.message` porte le `detail` du problème RFC 9457 : la phrase que le
- * serveur a écrite pour être lue. Le reste — réseau coupé, réponse illisible,
- * requête interrompue — n'a pas de phrase à lui, et « [object Object] » n'en
- * est pas une : on en fournit une.
- *
- * Le motif était recopié trente-trois fois dans le produit, avec trente-trois
- * formulations de secours.
- */
-export function detailErreur(err: unknown, secours = 'Réessayez dans un instant.'): string {
-  if (err instanceof ApiError) return err.message;
-  return err instanceof Error && err.message ? err.message : secours;
-}
-
 /** Client API unique : cookies de session inclus, erreurs RFC 9457 typées. */
 export async function api<T>(
   path: string,

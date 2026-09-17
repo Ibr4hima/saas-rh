@@ -12,7 +12,6 @@ import { formatDate } from '../lib/hooks';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
 import { composeWorkEmail, WorkEmailInput } from './work-email-input';
-import { useToast } from './toasts';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const tomorrowIso = () => {
@@ -30,7 +29,6 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const toast = useToast();
 
   // État civil
   const [givenName, setGivenName] = useState('');
@@ -138,9 +136,6 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
       // La liste derrière la fenêtre doit montrer l'arrivant à la fermeture.
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
       onClose();
-      toast.succes(`Dossier de ${givenName} ${familyName} créé`, {
-        detail: `Matricule ${employeeNumber}.`,
-      });
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : 'Enregistrement impossible.');
       setSaving(false);

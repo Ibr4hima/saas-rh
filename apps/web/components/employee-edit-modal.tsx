@@ -16,7 +16,6 @@ import { maritalLabels, maxBirthDate } from '../lib/person';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
 import { composeWorkEmail, localWorkEmail, WorkEmailInput } from './work-email-input';
-import { useToast } from './toasts';
 
 /**
  * Un téléphone dans ce formulaire.
@@ -192,8 +191,6 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
   const watchedIdType = form.watch('idDocumentType');
   const marital = maritalLabels(watchedGender || undefined);
 
-  const toast = useToast();
-
   const onSubmit = form.handleSubmit(async (v) => {
     setServerError(null);
     const dirty = form.formState.dirtyFields;
@@ -224,9 +221,6 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
       await queryClient.invalidateQueries({ queryKey: ['employee', employee.id] });
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
       onClose();
-      toast.succes(
-        `Fiche de ${employee.person.givenName} ${employee.person.familyName} enregistrée`,
-      );
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : 'Enregistrement impossible.');
     }

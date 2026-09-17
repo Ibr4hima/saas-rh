@@ -25,7 +25,6 @@ import { Icon } from './icons';
 import { formatDate } from '../lib/hooks';
 import { type ViewableDoc } from './doc-viewer';
 import { FenetreDocument } from './fenetre-document';
-import { useToast } from './toasts';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'À valider',
@@ -69,8 +68,6 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
     queryFn: () => api<EmployeeDocumentView[]>(`/employees/${employeeId}/documents`),
   });
 
-  const toast = useToast();
-
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['employee-documents', employeeId] });
     void queryClient.invalidateQueries({ queryKey: ['notifications'] });
@@ -88,7 +85,6 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
       setError(null);
       setDepotOuvert(false);
       invalidate();
-      toast.succes('Pièce déposée');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Dépôt impossible.'),
   });
@@ -99,22 +95,18 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
         method: 'POST',
         body: { decision: input.decision, comment: input.comment },
       }),
-    onSuccess: (_res, input) => {
+    onSuccess: () => {
       setRejectingId(null);
       setRejectComment('');
       setError(null);
       invalidate();
-      toast.succes(input.decision === 'approved' ? 'Pièce validée' : 'Pièce refusée');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Action impossible.'),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/employee-documents/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      invalidate();
-      toast.succes('Pièce retirée');
-    },
+    onSuccess: invalidate,
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Suppression impossible.'),
   });
 
