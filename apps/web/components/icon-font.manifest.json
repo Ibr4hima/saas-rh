@@ -17,6 +17,7 @@
     "dashboard",
     "delete",
     "description",
+    "download",
     "edit",
     "error",
     "event",
@@ -25,6 +26,7 @@
     "family_history",
     "flag",
     "folder_managed",
+    "format_line_spacing",
     "free_cancellation",
     "gavel",
     "group",
@@ -51,5 +53,5 @@
     "visibility_off"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 53960
+  "bytes": 54916
 }

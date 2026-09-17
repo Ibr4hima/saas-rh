@@ -35,6 +35,7 @@ import { Icon } from '../../../../components/icons';
 import { formatDate } from '../../../../lib/hooks';
 import { LoadFailure } from '../../../../components/load-failure';
 import { Page } from '../../../../components/gabarit';
+import { compte } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    « Mes documents » traite deux mouvements contraires, et l'écran doit les
@@ -61,10 +62,6 @@ const REQUESTABLE: RequestableDoc[] = [
 ];
 
 const TABULAIRE = { fontVariantNumeric: 'tabular-nums' } as const;
-
-function pluriel(n: number, mot: string): string {
-  return `${n} ${mot}${n > 1 ? 's' : ''}`;
-}
 
 /** « a, b et c » — la virgule pour la liste, « et » pour le dernier. */
 function enumerer(mots: string[]): string {
@@ -200,7 +197,7 @@ export default function MyDocumentsPage() {
               <div className="-mx-5 border-t border-line-soft px-5 pt-4 pb-1">
                 {fileSaturee ? (
                   <p className="text-[12.5px] leading-snug text-accent-text">
-                    Vous portez déjà {pluriel(enCours, 'demande')} en cours. La Direction du Capital
+                    Vous portez déjà {compte(enCours, 'demande')} en cours. La Direction du Capital
                     Humain doit les traiter avant que vous puissiez en formuler une nouvelle.
                   </p>
                 ) : selected.length === 0 ? (
@@ -210,7 +207,7 @@ export default function MyDocumentsPage() {
                 ) : (
                   <p className="text-[12.5px] leading-snug text-ink">
                     <span className="font-semibold text-ink-strong">
-                      Vous demandez {pluriel(selected.length, 'document')}
+                      Vous demandez {compte(selected.length, 'document')}
                     </span>{' '}
                     {/* Les libellés gardent leur majuscule : « et autre document »
                       en bas de casse se lit comme une phrase inachevée, alors
@@ -261,7 +258,7 @@ export default function MyDocumentsPage() {
                 ) : null}
                 {demandes.length > 0 ? (
                   <span className="text-[11.5px] text-ink-muted" style={TABULAIRE}>
-                    {pluriel(demandes.length, 'demande')}
+                    {compte(demandes.length, 'demande')}
                   </span>
                 ) : null}
               </div>
@@ -298,7 +295,7 @@ export default function MyDocumentsPage() {
               <CardTitle>Mes justificatifs d&apos;absence</CardTitle>
               {withDocument.length > 0 ? (
                 <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-                  {pluriel(withDocument.length, 'pièce')}
+                  {compte(withDocument.length, 'pièce')}
                 </span>
               ) : null}
             </CardHeader>

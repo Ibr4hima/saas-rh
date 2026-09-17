@@ -9,10 +9,8 @@ import {
   Button,
   CardHeader,
   CardTitle,
-  Checkbox,
   cn,
   EmptyState,
-  Skeleton,
   TBody,
   Td,
   Th,
@@ -26,8 +24,21 @@ import { Icon } from '../../../components/icons';
 import { JobModal } from '../../../components/job-modal';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalSection } from '../../../components/modal';
-import { CartePleine, compte, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
-import { CONTRACT_LABELS } from '../../../lib/recruitment';
+import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
+import { CONTRACT_LABELS, JOB_STATUS_LABELS } from '../../../lib/recruitment';
+import { compte } from '../../../lib/mots';
+import {
+  BarreSelection,
+  BoutonExport,
+  exporterCSV,
+  LIGNE_COCHEE,
+  SqueletteTableau,
+  TdCase,
+  ThCases,
+  ThTri,
+  useSelection,
+  useTriLocal,
+} from '../../../components/tableau';
 
 /** « il y a 3 jours » — l'âge d'une offre dit s'il faut la relancer. */
 function depuis(iso: string): string {
@@ -45,18 +56,31 @@ export default function OffresPage() {
   const router = useRouter();
   const params = useSearchParams();
   const queryClient = useQueryClient();
-  const [selection, setSelection] = useState<string[]>([]);
   const [panneau, setPanneau] = useState<'modifier' | 'supprimer' | null>(null);
   const [ecartees, setEcartees] = useState<DeleteJobPostingsResult['skipped']>([]);
 
   const jobs = useQuery({ queryKey: ['jobs'], queryFn: () => api<JobPostingView[]>('/jobs') });
-  const offres = useMemo(() => jobs.data ?? [], [jobs.data]);
-  // La sélection ne survit pas à la disparition d'une ligne : une offre
-  // supprimée ailleurs ne doit pas rester cochée dans un lot invisible.
-  const choisies = useMemo(
-    () => offres.filter((o) => selection.includes(o.id)),
-    [offres, selection],
+  const brutes = useMemo(() => jobs.data ?? [], [jobs.data]);
+
+  /** L'ordre de la liste : la référence par défaut, le reste au clic. */
+  const tri = useTriLocal(
+    brutes,
+    {
+      reference: (o) => o.reference,
+      title: (o) => o.title,
+      contractType: (o) => CONTRACT_LABELS[o.contractType] ?? o.contractType,
+      // On trie sur la DATE, pas sur « il y a trois jours » : un texte se
+      // classerait par ordre alphabétique, et « il y a 2 mois » précéderait
+      // « il y a 3 jours ».
+      createdAt: (o) => o.createdAt,
+      deadline: (o) => o.deadline,
+    },
+    { colonne: 'createdAt', sens: 'desc' },
+    { createdAt: 'desc', deadline: 'asc', reference: 'asc', title: 'asc', contractType: 'asc' },
   );
+  const offres = tri.lignes;
+  const sel = useSelection(offres);
+  const choisies = sel.choisis;
   const seule = choisies.length === 1 ? choisies[0] : undefined;
 
   // Le « + » du bandeau ouvre la fenêtre : une URL plutôt qu'un état local,
@@ -82,67 +106,55 @@ export default function OffresPage() {
     return <LoadFailure error={jobs.error} onRetry={() => void jobs.refetch()} />;
   }
 
-  const bascule = (id: string) =>
-    setSelection((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const toutBasculer = () =>
-    setSelection((s) => (s.length === offres.length ? [] : offres.map((o) => o.id)));
-
   return (
     <Page>
       <CartePleine>
         <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
           <CardTitle>Offres d&apos;emploi</CardTitle>
-          {/* La barre d'action n'apparaît qu'avec une sélection : au repos,
-              des boutons désactivés en permanence ne feraient que du bruit. */}
-          {choisies.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11.5px] font-semibold text-ink-muted">
-                {choisies.length} sélectionnée{choisies.length > 1 ? 's' : ''}
-              </span>
-              {seule && seule.status === 'draft' ? (
-                <Button
-                  size="sm"
-                  loading={changerStatut.isPending}
-                  onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
-                >
-                  Publier
-                </Button>
-              ) : null}
-              {seule ? (
-                <Button size="sm" variant="secondary" onClick={() => setPanneau('modifier')}>
-                  <Icon name="edit" size={15} />
-                  Modifier
-                </Button>
-              ) : null}
-              {seule && seule.status === 'published' ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  loading={changerStatut.isPending}
-                  onClick={() => changerStatut.mutate({ id: seule.id, status: 'closed' })}
-                >
-                  Archiver
-                </Button>
-              ) : null}
-              {seule && seule.status === 'closed' ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  loading={changerStatut.isPending}
-                  onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
-                >
-                  Rouvrir
-                </Button>
-              ) : null}
-              <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
-                Supprimer
+          <BarreSelection sel={sel} quoi="offre" feminin>
+            {seule && seule.status === 'draft' ? (
+              <Button
+                size="sm"
+                loading={changerStatut.isPending}
+                onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
+              >
+                Publier
               </Button>
-            </div>
-          ) : null}
+            ) : null}
+            {seule ? (
+              <Button size="sm" variant="secondary" onClick={() => setPanneau('modifier')}>
+                <Icon name="edit" size={15} />
+                Modifier
+              </Button>
+            ) : null}
+            {seule && seule.status === 'published' ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={changerStatut.isPending}
+                onClick={() => changerStatut.mutate({ id: seule.id, status: 'closed' })}
+              >
+                Archiver
+              </Button>
+            ) : null}
+            {seule && seule.status === 'closed' ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={changerStatut.isPending}
+                onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
+              >
+                Rouvrir
+              </Button>
+            ) : null}
+            <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
+              Supprimer
+            </Button>
+          </BarreSelection>
         </CardHeader>
         {jobs.isLoading ? (
-          <CorpsDefilant className="px-5 pb-5">
-            <Skeleton className="h-full min-h-24" />
+          <CorpsDefilant>
+            <SqueletteTableau />
           </CorpsDefilant>
         ) : offres.length === 0 ? (
           <CorpsDefilant className="grid place-items-center">
@@ -161,69 +173,114 @@ export default function OffresPage() {
           <Table pleine>
             <THead>
               <tr>
-                <Th className="w-9 pr-0">
-                  <Checkbox
-                    aria-label="Tout sélectionner"
-                    checked={selection.length > 0 && choisies.length === offres.length}
-                    indeterminate={choisies.length > 0 && choisies.length < offres.length}
-                    onChange={toutBasculer}
-                  />
-                </Th>
-                <Th>Référence</Th>
-                <Th>Poste</Th>
-                <Th>Type contrat</Th>
-                <Th>Publiée il y a</Th>
-                <Th>Date limite</Th>
+                <ThCases sel={sel} />
+                <ThTri
+                  label="Référence"
+                  colonne="reference"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Poste"
+                  colonne="title"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Type contrat"
+                  colonne="contractType"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Publiée il y a"
+                  colonne="createdAt"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Date limite"
+                  colonne="deadline"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
                 <Th>Lien</Th>
               </tr>
             </THead>
             <TBody>
-              {offres.map((o) => {
-                const coche = selection.includes(o.id);
-                return (
-                  <Tr key={o.id} className={cn(coche && 'bg-primary/[0.04]')}>
-                    <Td className="pr-0">
-                      <Checkbox
-                        aria-label={`Sélectionner ${o.title}`}
-                        checked={coche}
-                        onChange={() => bascule(o.id)}
-                      />
-                    </Td>
-                    <Td className="font-mono text-[11.5px] whitespace-nowrap text-ink-muted">
-                      {o.reference}
-                    </Td>
-                    <Td>
-                      <Link
-                        href={`/recrutement/${o.id}`}
-                        className="font-bold text-ink-strong hover:underline"
-                      >
-                        {o.title}
-                      </Link>
-                    </Td>
-                    <Td className="whitespace-nowrap">
-                      {CONTRACT_LABELS[o.contractType] ?? o.contractType}
-                    </Td>
-                    <Td className="whitespace-nowrap text-ink-muted">{depuis(o.createdAt)}</Td>
-                    <Td
-                      className={cn(
-                        'whitespace-nowrap',
-                        o.deadline && o.deadline < new Date().toISOString().slice(0, 10)
-                          ? 'font-semibold text-danger'
-                          : 'text-ink-muted',
-                      )}
+              {offres.map((o) => (
+                <Tr key={o.id} className={cn(sel.coche(o.id) && LIGNE_COCHEE)}>
+                  <TdCase sel={sel} id={o.id} quoi={o.title} />
+                  <Td className="font-mono text-[11.5px] whitespace-nowrap text-ink-muted">
+                    {o.reference}
+                  </Td>
+                  <Td>
+                    <Link
+                      href={`/recrutement/${o.id}`}
+                      className="font-bold text-ink-strong hover:underline"
                     >
-                      {o.deadline ? formatDate(o.deadline) : '—'}
-                    </Td>
-                    <Td>
-                      <LienPublic offre={o} />
-                    </Td>
-                  </Tr>
-                );
-              })}
+                      {o.title}
+                    </Link>
+                  </Td>
+                  <Td className="whitespace-nowrap">
+                    {CONTRACT_LABELS[o.contractType] ?? o.contractType}
+                  </Td>
+                  <Td className="whitespace-nowrap text-ink-muted">{depuis(o.createdAt)}</Td>
+                  <Td
+                    className={cn(
+                      'whitespace-nowrap',
+                      o.deadline && o.deadline < new Date().toISOString().slice(0, 10)
+                        ? 'font-semibold text-danger'
+                        : 'text-ink-muted',
+                    )}
+                  >
+                    {o.deadline ? formatDate(o.deadline) : '—'}
+                  </Td>
+                  <Td>
+                    <LienPublic offre={o} />
+                  </Td>
+                </Tr>
+              ))}
             </TBody>
           </Table>
         )}
-        {offres.length > 0 ? <PiedCarte>{compte(offres.length, 'offre')}</PiedCarte> : null}
+        {offres.length > 0 ? (
+          <PiedCarte
+            droite={
+              <BoutonExport
+                quoi="les offres"
+                onClick={() =>
+                  exporterCSV(
+                    'offres-emploi',
+                    [
+                      'Référence',
+                      'Poste',
+                      'Type de contrat',
+                      'Publiée le',
+                      'Date limite',
+                      'Statut',
+                    ],
+                    offres.map((o) => [
+                      o.reference,
+                      o.title,
+                      CONTRACT_LABELS[o.contractType] ?? o.contractType,
+                      o.createdAt.slice(0, 10),
+                      o.deadline,
+                      JOB_STATUS_LABELS[o.status] ?? o.status,
+                    ]),
+                  )
+                }
+              />
+            }
+          >
+            {compte(offres.length, 'offre')}
+          </PiedCarte>
+        ) : null}
       </CartePleine>
 
       {creation ? <JobModal open onClose={fermerCreation} /> : null}
@@ -236,12 +293,12 @@ export default function OffresPage() {
           onClose={() => setPanneau(null)}
           onEcartees={(s) => {
             setPanneau(null);
-            setSelection([]);
+            sel.vider();
             setEcartees(s);
           }}
           onFini={() => {
             setPanneau(null);
-            setSelection([]);
+            sel.vider();
           }}
         />
       ) : null}

@@ -126,8 +126,3 @@ export function PiedCarte({
     </div>
   );
 }
-
-/** « 3 agents », « 1 offre » — le pluriel sans le dire deux fois. */
-export function compte(n: number, singulier: string, pluriel = `${singulier}s`): string {
-  return `${n} ${n > 1 ? pluriel : singulier}`;
-}

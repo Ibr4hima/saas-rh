@@ -14,7 +14,6 @@ import {
   Field,
   Input,
   Select,
-  Skeleton,
   TBody,
   THead,
   Table,
@@ -32,6 +31,7 @@ import {
 import { api } from '../../../../lib/api';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import { Page } from '../../../../components/gabarit';
+import { SqueletteTableau } from '../../../../components/tableau';
 
 /** Dakar vit à UTC : la date du jour se lit sans décalage. */
 function aujourdhui(): string {
@@ -125,11 +125,7 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
 
       <CardContent className="px-0 pb-0">
         {feries.isLoading ? (
-          <div className="flex flex-col gap-3 p-5">
-            {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
+          <SqueletteTableau />
         ) : !feries.data ? (
           <EmptyState
             icon={<Icon name="error" size={22} />}

@@ -21,6 +21,7 @@ import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES } from '../../../lib/absenc
 import { formatDate, useMe } from '../../../lib/hooks';
 import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
 import { ProchainsFeries } from '../../../components/prochains-feries';
+import { compte } from '../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    L'espace de l'agent répond à trois questions, dans cet ordre :
@@ -40,10 +41,6 @@ function greeting(): string {
   if (h < 12) return 'Bonjour';
   if (h < 18) return 'Bon après-midi';
   return 'Bonsoir';
-}
-
-function plural(n: number, mot: string): string {
-  return `${n} ${mot}${n > 1 ? 's' : ''}`;
 }
 
 export default function MySpacePage() {
@@ -195,7 +192,7 @@ export default function MySpacePage() {
                           style={TABULAIRE}
                         >
                           {formatDate(r.startDate)} → {formatDate(r.endDate)} ·{' '}
-                          {plural(r.daysCount, 'jour')}
+                          {compte(r.daysCount, 'jour')}
                         </span>
                       </span>
                       <Badge
@@ -221,7 +218,7 @@ export default function MySpacePage() {
             )}
           </CorpsDefilant>
           {myRequests.length > 0 ? (
-            <PiedCarte>{plural(myRequests.length, 'demande')}</PiedCarte>
+            <PiedCarte>{compte(myRequests.length, 'demande')}</PiedCarte>
           ) : null}
         </CartePleine>
 

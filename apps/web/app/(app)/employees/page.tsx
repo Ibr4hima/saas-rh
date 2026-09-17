@@ -15,12 +15,10 @@ import {
   Button,
   CardHeader,
   CardTitle,
-  Checkbox,
   cn,
   EmptyState,
   Input,
   Select,
-  Skeleton,
   Table,
   TBody,
   Td,
@@ -34,7 +32,20 @@ import { EmployeeCreateModal } from '../../../components/employee-create-modal';
 import { Icon } from '../../../components/icons';
 import { Modal, ModalSection } from '../../../components/modal';
 import { Onglets, OngletsBandeau } from '../../../components/onglets-bandeau';
-import { CartePleine, compte, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
+import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
+import { compte } from '../../../lib/mots';
+import {
+  BarreSelection,
+  BoutonExport,
+  exporterCSV,
+  LIGNE_COCHEE,
+  SqueletteTableau,
+  ThCases,
+  ThTri,
+  TdCase,
+  useSelection,
+  type Sens,
+} from '../../../components/tableau';
 
 /** Ce qu'on tape pour confirmer un effacement — court, mais pas cliquable. */
 const MOT_DE_CONFIRMATION = 'SUPPRIMER';
@@ -51,6 +62,20 @@ interface Filtres {
 }
 const SANS_FILTRE: Filtres = { positionTitle: '', managerId: '', unit: '' };
 
+/**
+ * Le sens du PREMIER clic sur chaque colonne.
+ *
+ * Un nom se lit de A à Z ; un début de contrat, du plus récent au plus ancien
+ * — on cherche les arrivées, pas les fondateurs ; une fin de contrat, de la
+ * plus proche à la plus lointaine — on cherche ce qui arrive à échéance.
+ */
+const PREMIER_SENS: Record<EmployeeSort, Sens> = {
+  recent: 'desc',
+  name: 'asc',
+  contractStart: 'desc',
+  contractEnd: 'asc',
+};
+
 export default function EmployeesPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -63,8 +88,7 @@ export default function EmployeesPage() {
   const [onglet, setOnglet] = useState<EmployeeStatus>('active');
   const [filtres, setFiltres] = useState<Filtres>(SANS_FILTRE);
   const [sort, setSort] = useState<EmployeeSort>('recent');
-  const [dir, setDir] = useState<'asc' | 'desc'>('desc');
-  const [selection, setSelection] = useState<string[]>([]);
+  const [dir, setDir] = useState<Sens>('desc');
   const [panneau, setPanneau] = useState<'supprimer' | null>(null);
   const [ecartes, setEcartes] = useState<EmployeeBatchResult['skipped']>([]);
 
@@ -94,33 +118,66 @@ export default function EmployeesPage() {
   const counts = derniere?.counts ?? { active: 0, archived: 0 };
   const facets = derniere?.facets ?? { positions: [], managers: [], units: [] };
 
-  const choisis = useMemo(() => items.filter((e) => selection.includes(e.id)), [items, selection]);
+  const sel = useSelection(items);
+  const choisis = sel.choisis;
   const actifsChoisis = choisis.filter((e) => e.status === 'active');
   const archivesChoisis = choisis.filter((e) => e.status === 'archived');
 
-  const bascule = (id: string) =>
-    setSelection((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const toutBasculer = () =>
-    setSelection((s) => (s.length === items.length ? [] : items.map((e) => e.id)));
-
   /**
    * Un clic sur une colonne : on trie dessus, ou l'on retourne le sens si
-   * c'est déjà elle. Le premier sens dépend de la colonne — un nom se lit de
-   * A à Z, une date se lit de la plus récente à la plus ancienne.
+   * c'est déjà elle. Le tri part au SERVEUR : la liste se pagine, et trier la
+   * page affichée trierait un échantillon.
    */
-  const trierPar = (colonne: EmployeeSort, premierSens: 'asc' | 'desc') => {
+  const trierPar = (colonne: EmployeeSort) => {
     if (sort === colonne) setDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
       setSort(colonne);
-      setDir(premierSens);
+      setDir(PREMIER_SENS[colonne]);
     }
-    setSelection([]);
+    sel.vider();
   };
+
+  /**
+   * La liste telle qu'elle est À L'ÉCRAN, dans un fichier.
+   *
+   * Ce sont les lignes CHARGÉES qui partent, pas la base entière : l'export
+   * doit rendre ce que la RH voit — son onglet, sa recherche, ses filtres et
+   * son tri. Un bouton qui exporterait silencieusement autre chose que
+   * l'écran serait un piège.
+   */
+  const exporter = () =>
+    exporterCSV(
+      `personnel-${onglet === 'active' ? 'actif' : 'inactif'}`,
+      [
+        'Matricule',
+        'Prénom',
+        'Nom',
+        'Poste',
+        'Manager',
+        'Direction',
+        'Unité',
+        'Début de contrat',
+        'Fin de contrat',
+        'Email professionnel',
+      ],
+      items.map((e) => [
+        e.employeeNumber,
+        e.givenName,
+        e.familyName,
+        e.positionTitle,
+        e.managerName,
+        e.directionName,
+        e.orgUnitName,
+        e.contractStartDate,
+        e.contractEndDate,
+        e.workEmail,
+      ]),
+    );
 
   const apresLot = async (res: EmployeeBatchResult) => {
     await queryClient.invalidateQueries({ queryKey: ['employees'] });
     await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    setSelection([]);
+    sel.vider();
     if (res.skipped.length > 0) setEcartes(res.skipped);
   };
 
@@ -147,7 +204,7 @@ export default function EmployeesPage() {
     // n'existe que chez les actifs viderait l'onglet des archivés sans qu'on
     // comprenne pourquoi.
     setFiltres(SANS_FILTRE);
-    setSelection([]);
+    sel.vider();
   };
 
   return (
@@ -186,40 +243,33 @@ export default function EmployeesPage() {
             </div>
           </div>
 
-          {/* La barre d'action n'apparaît qu'avec une sélection : au repos,
-              des boutons désactivés en permanence ne feraient que du bruit. */}
-          {choisis.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11.5px] font-semibold text-ink-muted">
-                {choisis.length} sélectionné{choisis.length > 1 ? 's' : ''}
-              </span>
-              {actifsChoisis.length > 0 ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  loading={archiver.isPending}
-                  onClick={() => archiver.mutate(true)}
-                >
-                  Désactiver le profil
-                  {actifsChoisis.length < choisis.length ? ` (${actifsChoisis.length})` : ''}
-                </Button>
-              ) : null}
-              {archivesChoisis.length > 0 ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  loading={archiver.isPending}
-                  onClick={() => archiver.mutate(false)}
-                >
-                  Réactiver
-                  {archivesChoisis.length < choisis.length ? ` (${archivesChoisis.length})` : ''}
-                </Button>
-              ) : null}
-              <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
-                Supprimer
+          <BarreSelection sel={sel} quoi="dossier">
+            {actifsChoisis.length > 0 ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={archiver.isPending}
+                onClick={() => archiver.mutate(true)}
+              >
+                Désactiver le profil
+                {actifsChoisis.length < choisis.length ? ` (${actifsChoisis.length})` : ''}
               </Button>
-            </div>
-          ) : null}
+            ) : null}
+            {archivesChoisis.length > 0 ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={archiver.isPending}
+                onClick={() => archiver.mutate(false)}
+              >
+                Réactiver
+                {archivesChoisis.length < choisis.length ? ` (${archivesChoisis.length})` : ''}
+              </Button>
+            ) : null}
+            <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
+              Supprimer
+            </Button>
+          </BarreSelection>
         </CardHeader>
 
         {/* Les filtres : trois listes de ce que l'onglet contient réellement,
@@ -251,10 +301,8 @@ export default function EmployeesPage() {
         </div>
 
         {query.isLoading ? (
-          <CorpsDefilant className="flex flex-col gap-3 p-5">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-10 w-full shrink-0" />
-            ))}
+          <CorpsDefilant>
+            <SqueletteTableau />
           </CorpsDefilant>
         ) : items.length === 0 ? (
           <CorpsDefilant className="grid place-items-center">
@@ -287,58 +335,38 @@ export default function EmployeesPage() {
           <Table pleine>
             <THead>
               <tr>
-                <Th className="w-9 pr-0">
-                  <Checkbox
-                    aria-label="Tout sélectionner"
-                    checked={selection.length === items.length}
-                    onChange={toutBasculer}
-                  />
-                </Th>
+                <ThCases sel={sel} />
                 <Th>Matricule</Th>
-                <ThTri
-                  label="Nom"
-                  colonne="name"
-                  sort={sort}
-                  dir={dir}
-                  onClick={() => trierPar('name', 'asc')}
-                />
+                <ThTri label="Nom" colonne="name" courant={sort} sens={dir} onTrier={trierPar} />
                 <Th>Poste</Th>
                 <Th>Manager</Th>
                 <Th>Unité</Th>
                 <ThTri
                   label="Début contrat"
                   colonne="contractStart"
-                  sort={sort}
-                  dir={dir}
-                  onClick={() => trierPar('contractStart', 'desc')}
+                  courant={sort}
+                  sens={dir}
+                  onTrier={trierPar}
                 />
                 <ThTri
                   label="Fin contrat"
                   colonne="contractEnd"
-                  sort={sort}
-                  dir={dir}
-                  onClick={() => trierPar('contractEnd', 'asc')}
+                  courant={sort}
+                  sens={dir}
+                  onTrier={trierPar}
                 />
               </tr>
             </THead>
             <TBody>
               {items.map((e) => {
-                const coche = selection.includes(e.id);
+                const coche = sel.coche(e.id);
                 return (
                   <Tr
                     key={e.id}
-                    className={cn('cursor-pointer', coche && 'bg-primary/[0.04]')}
+                    className={cn('cursor-pointer', coche && LIGNE_COCHEE)}
                     onClick={() => router.push(`/employees/${e.id}`)}
                   >
-                    {/* La case ne suit pas la ligne : cliquer pour choisir
-                            ne doit pas quitter l'écran où l'on choisit. */}
-                    <Td className="pr-0" onClick={(ev) => ev.stopPropagation()}>
-                      <Checkbox
-                        aria-label={`Sélectionner ${e.givenName} ${e.familyName}`}
-                        checked={coche}
-                        onChange={() => bascule(e.id)}
-                      />
-                    </Td>
+                    <TdCase sel={sel} id={e.id} quoi={`${e.givenName} ${e.familyName}`} />
                     <Td className="font-mono text-xs text-ink-muted">{e.employeeNumber}</Td>
                     <Td className="font-medium text-ink-strong">
                       {e.givenName} {e.familyName}
@@ -370,16 +398,19 @@ export default function EmployeesPage() {
         {items.length > 0 ? (
           <PiedCarte
             droite={
-              query.hasNextPage ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  loading={query.isFetchingNextPage}
-                  onClick={() => query.fetchNextPage()}
-                >
-                  Charger plus
-                </Button>
-              ) : null
+              <span className="flex items-center gap-1.5">
+                <BoutonExport quoi="la liste du personnel" onClick={exporter} />
+                {query.hasNextPage ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={query.isFetchingNextPage}
+                    onClick={() => query.fetchNextPage()}
+                  >
+                    Charger plus
+                  </Button>
+                ) : null}
+              </span>
             }
           >
             {items.length < counts[onglet]
@@ -424,54 +455,6 @@ export default function EmployeesPage() {
         </Modal>
       ) : null}
     </Page>
-  );
-}
-
-/**
- * Un en-tête qui trie.
- *
- * La flèche n'apparaît que sur la colonne active : trois flèches grises en
- * permanence ne diraient plus laquelle commande l'ordre à l'écran.
- */
-function ThTri({
-  label,
-  colonne,
-  sort,
-  dir,
-  onClick,
-}: {
-  label: string;
-  colonne: EmployeeSort;
-  sort: EmployeeSort;
-  dir: 'asc' | 'desc';
-  onClick: () => void;
-}) {
-  const actif = sort === colonne;
-  return (
-    <Th className="p-0">
-      <button
-        type="button"
-        onClick={onClick}
-        aria-sort={actif ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-        className={cn(
-          'flex w-full items-center gap-1 px-3.5 py-[11px] text-left tracking-[0.12em] uppercase transition-colors',
-          'focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
-          actif ? 'text-primary' : 'text-ink-muted hover:text-ink',
-        )}
-      >
-        {label}
-        <Icon
-          name="chevron_right"
-          size={13}
-          aria-hidden
-          className={cn(
-            'transition-[transform,opacity] duration-150',
-            actif ? 'opacity-100' : 'opacity-0',
-            dir === 'asc' ? '-rotate-90' : 'rotate-90',
-          )}
-        />
-      </button>
-    </Th>
   );
 }
 

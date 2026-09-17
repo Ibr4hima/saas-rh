@@ -6,13 +6,11 @@ import type { AbsenceRequestView } from '@teranga/contracts';
 import {
   Badge,
   Card,
-  CardContent,
   CardHeader,
   CardTitle,
   cn,
   EmptyState,
   Select,
-  Skeleton,
   Table,
   TBody,
   Td,
@@ -23,11 +21,19 @@ import {
 import { api, ApiError, apiUrl } from '../../../lib/api';
 import { type ViewableDoc } from '../../../components/doc-viewer';
 import { FenetreDocument } from '../../../components/fenetre-document';
-import { resumeVisas } from '../../../lib/absences';
+import { ABSENCE_STATUS_LABELS, resumeVisas } from '../../../lib/absences';
 import { StatutAbsence } from '../../../components/statut-absence';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
-import { CartePleine, CorpsDefilant, Page, PiedCarte, compte } from '../../../components/gabarit';
+import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
+import { compte } from '../../../lib/mots';
+import {
+  BoutonExport,
+  exporterCSV,
+  SqueletteTableau,
+  ThTri,
+  useTriLocal,
+} from '../../../components/tableau';
 
 /**
  * Un geste de décision : viser, ou refuser.
@@ -126,7 +132,22 @@ export default function AbsencesPage() {
   });
   const canManage = me.data && ['admin', 'hr'].includes(me.data.role);
   const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
-  const items = requests.data ?? [];
+  /**
+   * L'ordre des demandes : les plus anciennes d'abord — une demande qui
+   * attend depuis dix jours passe avant celle d'hier. Le reste au clic.
+   */
+  const tri = useTriLocal(
+    requests.data ?? [],
+    {
+      employeeName: (r) => r.employeeName,
+      absenceTypeName: (r) => r.absenceTypeName,
+      startDate: (r) => r.startDate,
+      daysCount: (r) => r.daysCount,
+    },
+    { colonne: 'startDate', sens: 'asc' },
+    { startDate: 'asc', daysCount: 'desc', employeeName: 'asc', absenceTypeName: 'asc' },
+  );
+  const items = tri.lignes;
 
   return (
     <Page>
@@ -148,8 +169,8 @@ export default function AbsencesPage() {
           </Select>
         </CardHeader>
         {requests.isLoading ? (
-          <CorpsDefilant className="px-5 pb-5">
-            <Skeleton className="h-full min-h-24 w-full" />
+          <CorpsDefilant>
+            <SqueletteTableau />
           </CorpsDefilant>
         ) : items.length === 0 ? (
           <CorpsDefilant className="grid place-items-center">
@@ -163,10 +184,35 @@ export default function AbsencesPage() {
           <Table pleine>
             <THead>
               <tr>
-                <Th>Employé</Th>
-                <Th>Type</Th>
-                <Th>Période</Th>
-                <Th className="text-right">Jours</Th>
+                <ThTri
+                  label="Employé"
+                  colonne="employeeName"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Type"
+                  colonne="absenceTypeName"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Période"
+                  colonne="startDate"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Jours"
+                  colonne="daysCount"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                  droite
+                />
                 <Th>Justificatif</Th>
                 <Th>Statut</Th>
                 <Th className="text-right">Décision</Th>
@@ -252,7 +298,42 @@ export default function AbsencesPage() {
             </TBody>
           </Table>
         )}
-        {items.length > 0 ? <PiedCarte>{compte(items.length, 'demande')}</PiedCarte> : null}
+        {items.length > 0 ? (
+          <PiedCarte
+            droite={
+              <BoutonExport
+                quoi="les demandes"
+                onClick={() =>
+                  exporterCSV(
+                    `demandes-absence${status ? `-${status}` : ''}`,
+                    [
+                      'Matricule',
+                      'Employé',
+                      'Type',
+                      'Début',
+                      'Fin',
+                      'Jours ouvrés',
+                      'Statut',
+                      'Motif',
+                    ],
+                    items.map((r) => [
+                      r.employeeNumber,
+                      r.employeeName,
+                      r.absenceTypeName,
+                      r.startDate,
+                      r.endDate,
+                      r.daysCount,
+                      ABSENCE_STATUS_LABELS[r.status] ?? r.status,
+                      r.reason ?? null,
+                    ]),
+                  )
+                }
+              />
+            }
+          >
+            {compte(items.length, 'demande')}
+          </PiedCarte>
+        ) : null}
       </CartePleine>
 
       {/* L'horizon des absences : un complément, pas la file de travail. Il
@@ -262,9 +343,7 @@ export default function AbsencesPage() {
           <CardTitle>Calendrier des absences</CardTitle>
         </CardHeader>
         {upcoming.isLoading ? (
-          <CardContent>
-            <Skeleton className="h-12 w-full" />
-          </CardContent>
+          <SqueletteTableau lignes={3} />
         ) : (upcoming.data ?? []).length === 0 ? (
           // Le même état vide que sur le tableau de bord, qui dit la même
           // chose : une phrase grise dans une carte à plat se lisait comme

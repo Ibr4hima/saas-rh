@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cn, Skeleton } from '@teranga/ui';
-import { BrandMark, BrandWordmark } from '../../components/brand-mark';
+import { BrandMark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
 import { PageTitleProvider, usePageTitleOverride } from '../../components/page-title';
 import { MenuCompte } from '../../components/menu-compte';

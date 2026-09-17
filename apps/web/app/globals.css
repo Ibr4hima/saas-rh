@@ -71,6 +71,37 @@ body {
   color: var(--tg-ink-strong);
 }
 
+/* ————————————————————————————————————————————————————————————————
+   Densité des tableaux.
+
+   Trois agents tiennent à l'aise dans des lignes de 56 px ; trois cents ne
+   s'y lisent plus — on passe la moitié du temps à faire défiler. Le mode
+   compact resserre la garde haute et basse des cellules et rapproche les
+   intitulés de colonne : quatorze lignes visibles au lieu de dix, sans rien
+   retirer de ce qui est écrit.
+
+   Écrit HORS de toute couche Tailwind, à dessein : les utilitaires vivent
+   dans `@layer utilities`, et une règle sans couche l'emporte sur une règle
+   en couche quelle que soit sa spécificité. C'est ce qui permet de reprendre
+   le `py-3.5` des cellules sans avoir à surcharger chaque tableau.
+   ———————————————————————————————————————————————————————————————— */
+[data-densite='compact'] td {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+
+[data-densite='compact'] th {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+
+/* Un en-tête de colonne qui trie porte son rembourrage sur le BOUTON, la
+   cellule étant à zéro : c'est donc lui qu'il faut resserrer. */
+[data-densite='compact'] th > button {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+
 /* Barres de défilement discrètes : le contenu prime sur la chromiure. */
 * {
   scrollbar-width: thin;

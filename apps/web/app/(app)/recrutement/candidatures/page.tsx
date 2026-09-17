@@ -10,7 +10,6 @@ import {
   cn,
   EmptyState,
   Input,
-  Skeleton,
   TBody,
   Td,
   Th,
@@ -22,13 +21,9 @@ import { api } from '../../../../lib/api';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
 import { CONTRACT_LABELS } from '../../../../lib/recruitment';
-import {
-  CartePleine,
-  compte,
-  CorpsDefilant,
-  Page,
-  PiedCarte,
-} from '../../../../components/gabarit';
+import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../../components/gabarit';
+import { compte } from '../../../../lib/mots';
+import { SqueletteTableau, ThTri, useTriLocal } from '../../../../components/tableau';
 
 /** Le nombre de dossiers reçus, toutes étapes confondues — refus compris. */
 function postulants(offre: JobPostingView): number {
@@ -48,12 +43,29 @@ export default function CandidaturesPage() {
 
   const jobs = useQuery({ queryKey: ['jobs'], queryFn: () => api<JobPostingView[]>('/jobs') });
 
-  const lignes = useMemo(() => {
+  const filtrees = useMemo(() => {
     const terme = q.trim().toLowerCase();
     const tout = jobs.data ?? [];
     if (!terme) return tout;
     return tout.filter((o) => `${o.reference} ${o.title}`.toLowerCase().includes(terme));
   }, [jobs.data, q]);
+
+  /**
+   * L'ordre des campagnes : les plus FOURNIES d'abord, parce que c'est là
+   * qu'il y a du travail. Une offre sans dossier n'appelle rien.
+   */
+  const tri = useTriLocal(
+    filtrees,
+    {
+      reference: (o) => o.reference,
+      title: (o) => o.title,
+      contractType: (o) => CONTRACT_LABELS[o.contractType] ?? o.contractType,
+      postulants: (o) => postulants(o),
+    },
+    { colonne: 'postulants', sens: 'desc' },
+    { postulants: 'desc', reference: 'asc', title: 'asc', contractType: 'asc' },
+  );
+  const lignes = tri.lignes;
 
   if (jobs.isError) {
     return <LoadFailure error={jobs.error} onRetry={() => void jobs.refetch()} />;
@@ -75,8 +87,8 @@ export default function CandidaturesPage() {
           />
         </CardHeader>
         {jobs.isLoading ? (
-          <CorpsDefilant className="px-5 pb-5">
-            <Skeleton className="h-full min-h-24" />
+          <CorpsDefilant>
+            <SqueletteTableau />
           </CorpsDefilant>
         ) : lignes.length === 0 ? (
           <CorpsDefilant className="grid place-items-center">
@@ -94,10 +106,35 @@ export default function CandidaturesPage() {
           <Table pleine>
             <THead>
               <tr>
-                <Th>Référence</Th>
-                <Th>Poste</Th>
-                <Th>Type contrat</Th>
-                <Th className="text-right">Postulants</Th>
+                <ThTri
+                  label="Référence"
+                  colonne="reference"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Poste"
+                  colonne="title"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Type contrat"
+                  colonne="contractType"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Postulants"
+                  colonne="postulants"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                  droite
+                />
                 <Th className="w-8" />
               </tr>
             </THead>

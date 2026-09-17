@@ -1,14 +1,17 @@
 import Link from 'next/link';
-import { Badge, Card, CardContent } from '@teranga/ui';
-import { Page } from '../../../components/gabarit';
+import { Badge, CardContent } from '@teranga/ui';
+import { CartePleine, Page } from '../../../components/gabarit';
 
 export default function EvaluationPage() {
   return (
     <Page>
-      <div className="mb-6">
+      <div className="shrink-0">
         <Badge tone="primary">Bientôt disponible</Badge>
       </div>
-      <Card>
+      {/* L'écran d'un module à venir n'est pas une exception au gabarit : sa
+          carte occupe la page comme les autres, et son contenu se centre
+          dedans plutôt que de se tasser en haut d'un fond nu. */}
+      <CartePleine className="justify-center">
         <CardContent className="flex flex-col gap-3 py-8 text-sm text-ink">
           <p className="font-medium text-ink-strong">
             Le module évaluation des performances arrive dans une prochaine version.
@@ -27,7 +30,7 @@ export default function EvaluationPage() {
             </Link>
           </p>
         </CardContent>
-      </Card>
+      </CartePleine>
     </Page>
   );
 }

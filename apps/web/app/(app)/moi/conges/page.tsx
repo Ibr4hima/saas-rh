@@ -34,6 +34,7 @@ import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { resumeVisas, ROLE_LABELS } from '../../../../lib/absences';
 import { formatDate } from '../../../../lib/hooks';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
+import { compte } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    Poser un congé, c'est trois questions dans l'ordre :
@@ -60,10 +61,6 @@ function aujourdhui(): string {
   const d = new Date();
   const mois = String(d.getMonth() + 1).padStart(2, '0');
   return `${d.getFullYear()}-${mois}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function pluriel(n: number, mot: string): string {
-  return `${n} ${mot}${n > 1 ? 's' : ''}`;
 }
 
 /** « mercredi 16 septembre » : écrit sous le champ, il évite de poser un congé
@@ -192,7 +189,7 @@ export default function MyLeavesPage() {
       }),
     onSuccess: (r) => {
       setSuccess(
-        `Demande envoyée — ${pluriel(r.daysCount, 'jour')}. Elle suit maintenant le circuit de validation.`,
+        `Demande envoyée — ${compte(r.daysCount, 'jour')}. Elle suit maintenant le circuit de validation.`,
       );
       setReason('');
       setDoc(null);
@@ -441,7 +438,7 @@ export default function MyLeavesPage() {
             <CardTitle>Mes demandes</CardTitle>
             {myRequests.length > 0 ? (
               <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-                {pluriel(myRequests.length, 'demande')}
+                {compte(myRequests.length, 'demande')}
               </span>
             ) : null}
           </CardHeader>
@@ -538,14 +535,14 @@ function Decompte({
   }
 
   const retires: string[] = [];
-  if (weekEnd > 0) retires.push(pluriel(weekEnd, 'jour') + ' de week-end');
+  if (weekEnd > 0) retires.push(compte(weekEnd, 'jour') + ' de week-end');
   if (feries.length > 0) {
     const noms = feries
       .map((f) => f.label)
       .filter(Boolean)
       .join(', ');
     retires.push(
-      `${pluriel(feries.length, 'jour')} férié${feries.length > 1 ? 's' : ''}${noms ? ` (${noms})` : ''}`,
+      `${compte(feries.length, 'jour')} férié${feries.length > 1 ? 's' : ''}${noms ? ` (${noms})` : ''}`,
     );
   }
   const insuffisant = solde !== undefined && restantApres < 0;
@@ -574,7 +571,7 @@ function Decompte({
             </p>
           ) : retires.length > 0 ? (
             <p className="mt-1.5 text-[11.5px] leading-snug text-ink-muted" style={TABULAIRE}>
-              Sur {pluriel(calendaires, 'jour')} de calendrier, {retires.join(' et ')} ne comptent
+              Sur {compte(calendaires, 'jour')} de calendrier, {retires.join(' et ')} ne comptent
               pas.
             </p>
           ) : null}
@@ -603,7 +600,7 @@ function Decompte({
 
       {insuffisant ? (
         <p className="mt-2.5 text-[12px] leading-snug text-danger">
-          Solde insuffisant : il manque {pluriel(-restantApres, 'jour')} à votre solde de{' '}
+          Solde insuffisant : il manque {compte(-restantApres, 'jour')} à votre solde de{' '}
           {solde!.absenceTypeName.toLowerCase()}. Raccourcissez la période, ou rapprochez-vous de la
           Direction du Capital Humain.
         </p>
@@ -646,7 +643,7 @@ function LigneDemande({
       <div className="min-w-0 flex-1 basis-52">
         <p className="truncate text-[13px] font-semibold text-ink-strong">{r.absenceTypeName}</p>
         <p className="mt-0.5 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-          {formatDate(r.startDate)} → {formatDate(r.endDate)} · {pluriel(r.daysCount, 'jour')}
+          {formatDate(r.startDate)} → {formatDate(r.endDate)} · {compte(r.daysCount, 'jour')}
         </p>
         {attendu || r.reason ? (
           <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-ink-muted">

@@ -3,7 +3,13 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
 /* ————————————————————————————————————————————————————————————————
-   Le thème appartient au PRODUIT, plus au navigateur.
+   Les préférences d'AFFICHAGE : le thème, et la densité des tableaux.
+
+   Deux réglages de même nature — ils ne changent rien aux données, ils
+   changent la façon de les regarder —, gardés au même endroit, amorcés par
+   le même script et offerts dans le même menu.
+
+   ——— Le thème appartient au PRODUIT, plus au navigateur.
 
    Jusqu'ici l'application suivait `prefers-color-scheme` : on ouvrait la
    plateforme en sombre parce que le système l'était, sans jamais l'avoir
@@ -20,19 +26,40 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 
    La feuille de tokens fait le reste : `[data-theme="dark"]` allume la nuit,
    `[data-theme="light"]` neutralise la préférence système.
+
+   ——— La densité est un réglage GLOBAL, pas un réglage par tableau.
+
+   Quatorze tableaux, quatorze petits sélecteurs de densité dans quatorze
+   pieds de carte : personne ne règle sa densité tableau par tableau, et
+   quatorze contrôles identiques ne sont pas quatorze réglages, c'est le même
+   réglage répété. Il vit donc à côté du thème, dans le menu du compte, et
+   `[data-densite="compact"]` resserre les lignes partout d'un coup.
    ———————————————————————————————————————————————————————————————— */
 
 export type Theme = 'clair' | 'sombre';
+export type Densite = 'confort' | 'compact';
 
 export const CLE_THEME = 'teranga-theme';
+export const CLE_DENSITE = 'teranga-densite';
 
 /** Le script inline du <head>. Écrit en une ligne, sans dépendance, et
-    tolérant à l'échec : en navigation privée, `localStorage` peut lever. */
-export const SCRIPT_AMORCAGE = `try{document.documentElement.dataset.theme=localStorage.getItem('${CLE_THEME}')==='sombre'?'dark':'light'}catch(e){}`;
+    tolérant à l'échec : en navigation privée, `localStorage` peut lever.
 
-const Contexte = createContext<{ theme: Theme; basculer: () => void }>({
+    La densité s'amorce ELLE AUSSI avant le premier pixel : appliquée après
+    hydratation, elle ferait sauter de dix pixels par ligne un tableau qu'on
+    est déjà en train de lire. */
+export const SCRIPT_AMORCAGE = `try{var d=document.documentElement.dataset;d.theme=localStorage.getItem('${CLE_THEME}')==='sombre'?'dark':'light';d.densite=localStorage.getItem('${CLE_DENSITE}')==='compact'?'compact':'confort'}catch(e){}`;
+
+const Contexte = createContext<{
+  theme: Theme;
+  basculer: () => void;
+  densite: Densite;
+  basculerDensite: () => void;
+}>({
   theme: 'clair',
   basculer: () => {},
+  densite: 'confort',
+  basculerDensite: () => {},
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -40,8 +67,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // premier effet relit l'attribut que le script d'amorçage a déjà posé. Ce
   // n'est pas une seconde source de vérité — c'est la même, lue une fois.
   const [theme, setTheme] = useState<Theme>('clair');
+  const [densite, setDensite] = useState<Densite>('confort');
   useEffect(() => {
-    setTheme(document.documentElement.dataset.theme === 'dark' ? 'sombre' : 'clair');
+    const d = document.documentElement.dataset;
+    setTheme(d.theme === 'dark' ? 'sombre' : 'clair');
+    setDensite(d.densite === 'compact' ? 'compact' : 'confort');
   }, []);
 
   const basculer = useCallback(() => {
@@ -58,9 +88,26 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  return <Contexte.Provider value={{ theme, basculer }}>{children}</Contexte.Provider>;
+  const basculerDensite = useCallback(() => {
+    setDensite((actuelle) => {
+      const suivante: Densite = actuelle === 'confort' ? 'compact' : 'confort';
+      document.documentElement.dataset.densite = suivante;
+      try {
+        localStorage.setItem(CLE_DENSITE, suivante);
+      } catch {
+        // Même tolérance que pour le thème : le réglage tient pour la session.
+      }
+      return suivante;
+    });
+  }, []);
+
+  return (
+    <Contexte.Provider value={{ theme, basculer, densite, basculerDensite }}>
+      {children}
+    </Contexte.Provider>
+  );
 }
 
-export function useTheme() {
+export function usePreferences() {
   return useContext(Contexte);
 }

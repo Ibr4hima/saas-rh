@@ -21,7 +21,6 @@ import {
   Field,
   Input,
   Select,
-  Skeleton,
   TBody,
   THead,
   Table,
@@ -39,7 +38,9 @@ import {
 import { ROLE_LABELS } from '../../../../lib/absences';
 import { api } from '../../../../lib/api';
 import { useMe } from '../../../../lib/hooks';
-import { Page } from '../../../../components/gabarit';
+import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../../components/gabarit';
+import { SqueletteTableau } from '../../../../components/tableau';
+import { compte } from '../../../../lib/mots';
 
 const CHAIN_ROLES: MembershipRole[] = ['manager', 'hr', 'payroll', 'admin'];
 
@@ -54,10 +55,10 @@ export default function AbsenceSettingsPage() {
 
   return (
     <Page>
-      <div className="flex flex-col gap-6">
-        <TypesCard peutGerer={peutGerer} />
-        <CircuitCard isAdmin={isAdmin} />
-      </div>
+      {/* Le catalogue des types prend la hauteur qui reste ; le circuit, qui
+          tient en deux listes, garde la sienne. */}
+      <TypesCard peutGerer={peutGerer} />
+      <CircuitCard isAdmin={isAdmin} />
     </Page>
   );
 }
@@ -86,9 +87,11 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
     void queryClient.invalidateQueries({ queryKey: ['balances'] });
   };
 
+  const liste = types.data ?? [];
+
   return (
-    <Card>
-      <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+    <CartePleine>
+      <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <CardTitle>Types d&apos;absences</CardTitle>
           <p className="text-[12px] text-ink-muted">
@@ -103,14 +106,12 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
         ) : null}
       </CardHeader>
 
-      <CardContent className="px-0 pb-0">
-        {types.isLoading ? (
-          <div className="flex flex-col gap-3 p-5">
-            {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        ) : (types.data ?? []).length === 0 ? (
+      {types.isLoading ? (
+        <CorpsDefilant>
+          <SqueletteTableau />
+        </CorpsDefilant>
+      ) : liste.length === 0 ? (
+        <CorpsDefilant className="grid place-items-center">
           <EmptyState
             icon={<Icon name="event_busy" size={22} />}
             title="Aucun type d’absence"
@@ -123,62 +124,65 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
               ) : undefined
             }
           />
-        ) : (
-          <Table>
-            <THead>
-              <tr>
-                <Th>Type d&apos;absence</Th>
-                <Th className="text-right">Jours autorisés</Th>
-                <Th>Fréquence</Th>
-                <Th>Règles</Th>
-                {peutGerer ? <Th className="w-20 text-right">Actions</Th> : null}
-              </tr>
-            </THead>
-            <TBody>
-              {(types.data ?? []).map((t) => (
-                <Tr key={t.id} className="group">
-                  <Td className="font-semibold text-ink-strong">{t.name}</Td>
-                  <Td className="text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {t.allowanceDays == null ? (
-                      <span className="text-ink-muted">—</span>
+        </CorpsDefilant>
+      ) : (
+        <Table pleine>
+          <THead>
+            <tr>
+              <Th>Type d&apos;absence</Th>
+              <Th className="text-right">Jours autorisés</Th>
+              <Th>Fréquence</Th>
+              <Th>Règles</Th>
+              {peutGerer ? <Th className="w-20 text-right">Actions</Th> : null}
+            </tr>
+          </THead>
+          <TBody>
+            {(types.data ?? []).map((t) => (
+              <Tr key={t.id} className="group">
+                <Td className="font-semibold text-ink-strong">{t.name}</Td>
+                <Td className="text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {t.allowanceDays == null ? (
+                    <span className="text-ink-muted">—</span>
+                  ) : (
+                    <>
+                      {t.allowanceDays} <span className="text-ink-muted">j</span>
+                    </>
+                  )}
+                </Td>
+                <Td>
+                  {t.allowanceDays == null && t.frequency === 'none' ? (
+                    <span className="text-ink-muted">—</span>
+                  ) : (
+                    ABSENCE_FREQUENCY_LABELS[t.frequency]
+                  )}
+                </Td>
+                <Td>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {t.deductsBalance ? (
+                      <Badge tone="primary">Décompté du solde</Badge>
                     ) : (
-                      <>
-                        {t.allowanceDays} <span className="text-ink-muted">j</span>
-                      </>
+                      <Badge tone="neutral">Suivi seul</Badge>
                     )}
+                    {t.requiresDocument ? <Badge tone="warning">Justificatif</Badge> : null}
+                  </div>
+                </Td>
+                {peutGerer ? (
+                  <Td className="text-right">
+                    <Actions
+                      nom={t.name}
+                      onModifier={() => setEdition(t)}
+                      onSupprimer={() => setASupprimer(t)}
+                    />
                   </Td>
-                  <Td>
-                    {t.allowanceDays == null && t.frequency === 'none' ? (
-                      <span className="text-ink-muted">—</span>
-                    ) : (
-                      ABSENCE_FREQUENCY_LABELS[t.frequency]
-                    )}
-                  </Td>
-                  <Td>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {t.deductsBalance ? (
-                        <Badge tone="primary">Décompté du solde</Badge>
-                      ) : (
-                        <Badge tone="neutral">Suivi seul</Badge>
-                      )}
-                      {t.requiresDocument ? <Badge tone="warning">Justificatif</Badge> : null}
-                    </div>
-                  </Td>
-                  {peutGerer ? (
-                    <Td className="text-right">
-                      <Actions
-                        nom={t.name}
-                        onModifier={() => setEdition(t)}
-                        onSupprimer={() => setASupprimer(t)}
-                      />
-                    </Td>
-                  ) : null}
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-        )}
-      </CardContent>
+                ) : null}
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
+      )}
+      {liste.length > 0 ? (
+        <PiedCarte>{compte(liste.length, "type d'absence", "types d'absence")}</PiedCarte>
+      ) : null}
 
       {edition ? (
         <FenetreType
@@ -215,7 +219,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
           ) : null}
         </FenetreSuppression>
       ) : null}
-    </Card>
+    </CartePleine>
   );
 }
 

@@ -39,6 +39,7 @@ import { LoadFailure } from '../../../../components/load-failure';
 import { PhoneInput } from '../../../../components/phone-input';
 import { formatTelephone, Telephone, valeurSignalee } from '../../../../components/telephone';
 import { Page } from '../../../../components/gabarit';
+import { compte } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    Mes informations personnelles, en trois temps :
@@ -54,10 +55,6 @@ import { Page } from '../../../../components/gabarit';
    ———————————————————————————————————————————————————————————————— */
 
 type Draft = Partial<Record<ProfileChangeField, string>>;
-
-function pluriel(n: number, mot: string): string {
-  return `${n} ${mot}${n > 1 ? 's' : ''}`;
-}
 
 /** « a, b et c » — la virgule pour la liste, « et » pour le dernier. */
 function enumerer(mots: string[]): string {
@@ -335,7 +332,7 @@ export default function MyInformationsPage() {
                     ) : (
                       <>
                         <p className="text-[12.5px] font-semibold text-ink-strong">
-                          Vous signalez {pluriel(modifies.length, 'changement')}
+                          Vous signalez {compte(modifies.length, 'changement')}
                         </p>
                         <ul className="mt-2 flex flex-col gap-1.5">
                           {modifies.map((f) => (
@@ -374,7 +371,7 @@ export default function MyInformationsPage() {
                     onClick={() => submit.mutate()}
                   >
                     {modifies.length > 0
-                      ? `Signaler ${pluriel(modifies.length, 'changement')}`
+                      ? `Signaler ${compte(modifies.length, 'changement')}`
                       : 'Signaler un changement'}
                   </Button>
                 </>
@@ -391,7 +388,7 @@ export default function MyInformationsPage() {
                   className="shrink-0 text-[11.5px] text-ink-muted"
                   style={{ fontVariantNumeric: 'tabular-nums' }}
                 >
-                  {pluriel(signalements.length, 'signalement')}
+                  {compte(signalements.length, 'signalement')}
                 </span>
               ) : null}
             </CardHeader>

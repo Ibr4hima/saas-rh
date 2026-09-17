@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import { cn } from '@teranga/ui';
 import { api } from '../lib/api';
 import { Icon, type IconName } from './icons';
-import { useTheme } from './theme';
+import { usePreferences } from './preferences';
 
 /* ————————————————————————————————————————————————————————————————
    Le menu du compte.
@@ -15,10 +15,10 @@ import { useTheme } from './theme';
    déconnexion, à côté d'un nom. C'était une action isolée là où il en
    faudrait plusieurs — et le thème n'avait nulle part où vivre.
 
-   Une silhouette ouvre donc un menu. Deux gestes seulement, parce qu'il n'y
-   en a que deux : changer de thème, et partir. La déconnexion se range en
-   bas, derrière un filet, en rouge au survol : c'est le geste qu'on ne veut
-   pas faire par erreur en visant celui d'au-dessus.
+   Une silhouette ouvre donc un menu. Deux réglages d'affichage — le thème,
+   la densité des tableaux — et la sortie. La déconnexion se range en bas,
+   derrière un filet, en rouge au survol : c'est le geste qu'on ne veut pas
+   faire par erreur en visant celui d'au-dessus.
 
    Il s'ouvre comme le panneau des notifications, et pour la même raison : la
    page RECULE derrière un voile flouté. Un menu posé sur un tableau de bord
@@ -30,7 +30,7 @@ import { useTheme } from './theme';
 
 export function MenuCompte({ variante }: { variante: 'colonne' | 'bandeau' }) {
   const router = useRouter();
-  const { theme, basculer } = useTheme();
+  const { theme, basculer, densite, basculerDensite } = usePreferences();
   const [ouvert, setOuvert] = useState(false);
   const bouton = useRef<HTMLButtonElement>(null);
   // Le panneau vit dans un portail : il n'est plus DANS le bouton, et le
@@ -106,6 +106,17 @@ export function MenuCompte({ variante }: { variante: 'colonne' | 'bandeau' }) {
             libelle={nuit ? 'Mode clair' : 'Mode sombre'}
             onClick={() => {
               basculer();
+              setOuvert(false);
+            }}
+          />
+          {/* La densité des tableaux se règle une fois pour tout le produit :
+              elle est de la même nature que le thème — elle ne change pas les
+              données, elle change la façon de les regarder. */}
+          <Rangee
+            icone="format_line_spacing"
+            libelle={densite === 'confort' ? 'Tableaux compacts' : 'Tableaux confortables'}
+            onClick={() => {
+              basculerDensite();
               setOuvert(false);
             }}
           />

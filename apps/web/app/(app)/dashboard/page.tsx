@@ -24,6 +24,8 @@ import { Icon, type IconName } from '../../../components/icons';
 import { api } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { Page } from '../../../components/gabarit';
+import { compte } from '../../../lib/mots';
+import { SqueletteTableau } from '../../../components/tableau';
 
 /* ————————————————————————————————————————————————————————————————
    L'écran d'accueil répond à trois questions, dans l'ordre :
@@ -55,10 +57,6 @@ function inDays(iso: string): string {
   return days < 0 ? `il y a ${-days} j` : `dans ${days} j`;
 }
 
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n > 1 ? 's' : ''}`;
-}
-
 /**
  * Jour courant au format ISO, dans le calendrier LOCAL de l'utilisateur.
  * `toISOString()` donnerait la date UTC : à Dakar (UTC+0) c'est identique,
@@ -80,10 +78,10 @@ function deadlineLabel(daysLeft: number | null): {
   tone: 'danger' | 'warning' | 'neutral';
 } {
   if (daysLeft === null) return { text: 'À préciser', tone: 'danger' };
-  if (daysLeft < 0) return { text: `Échu · il y a ${plural(-daysLeft, 'jour')}`, tone: 'danger' };
+  if (daysLeft < 0) return { text: `Échu · il y a ${compte(-daysLeft, 'jour')}`, tone: 'danger' };
   if (daysLeft === 0) return { text: "Échoit aujourd'hui", tone: 'danger' };
   if (daysLeft === 1) return { text: 'Échoit demain', tone: 'warning' };
-  return { text: `Dans ${plural(daysLeft, 'jour')}`, tone: daysLeft <= 30 ? 'warning' : 'neutral' };
+  return { text: `Dans ${compte(daysLeft, 'jour')}`, tone: daysLeft <= 30 ? 'warning' : 'neutral' };
 }
 
 /* ———— Pièces communes ———— */
@@ -271,7 +269,7 @@ function DirectionBar({
   );
   const forme = '-mx-2 flex items-center gap-3 rounded-[7px] px-2 py-1';
   return (
-    <li title={`${title} — ${plural(value, 'agent')} · ${part} %`}>
+    <li title={`${title} — ${compte(value, 'agent')} · ${part} %`}>
       {id ? (
         <Link
           href={`/organisation?unite=${id}`}
@@ -411,7 +409,7 @@ function Parite({ femmes, hommes }: { femmes: number; hommes: number }) {
         ].map((x) => (
           <li key={x.mot} className="flex items-center gap-1.5 text-xs text-ink-muted">
             <span aria-hidden className={cn('size-2 shrink-0 rounded-full', x.teinte)} />
-            {plural(x.n, x.mot)}
+            {compte(x.n, x.mot)}
           </li>
         ))}
       </ul>
@@ -499,8 +497,8 @@ export default function DashboardPage() {
           context={
             d
               ? d.hiredLast90d > 0
-                ? `dont ${plural(d.hiredLast90d, 'recruté')} en 90 j`
-                : `${plural(d.women, 'femme')} · ${plural(d.men, 'homme')}`
+                ? `dont ${compte(d.hiredLast90d, 'recruté')} en 90 j`
+                : `${compte(d.women, 'femme')} · ${compte(d.men, 'homme')}`
               : undefined
           }
           href="/employees"
@@ -578,9 +576,7 @@ export default function DashboardPage() {
               <CardTitle>Calendrier des absences</CardTitle>
             </CardHeader>
             {upcoming.isLoading ? (
-              <CardContent>
-                <Skeleton className="h-20 w-full" />
-              </CardContent>
+              <SqueletteTableau lignes={3} />
             ) : absences.length === 0 ? (
               <EmptyState
                 className="py-7"
@@ -632,7 +628,7 @@ export default function DashboardPage() {
                 {absencesEnPlus > 0 ? (
                   <CardContent className="border-t border-line-soft py-3">
                     <p className="text-xs text-ink-muted">
-                      {plural(absencesEnPlus, 'autre')} sous 30 jours — le calendrier les montre
+                      {compte(absencesEnPlus, 'autre')} sous 30 jours — le calendrier les montre
                       toutes.
                     </p>
                   </CardContent>
@@ -717,9 +713,7 @@ export default function DashboardPage() {
             <TotalCarte>CDD et stages en cours</TotalCarte>
           </CardHeader>
           {stats.isLoading ? (
-            <CardContent>
-              <Skeleton className="h-20 w-full" />
-            </CardContent>
+            <SqueletteTableau lignes={3} />
           ) : (d?.contractFollowUp ?? []).length === 0 ? (
             <EmptyState
               className="py-7"

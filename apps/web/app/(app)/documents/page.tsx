@@ -12,11 +12,8 @@ import type {
 import { GENERATED_DOCS, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
 import {
   Button,
-  Card,
-  CardContent,
   CardHeader,
   CardTitle,
-  Checkbox,
   cn,
   EmptyState,
   Field,
@@ -35,7 +32,22 @@ import { CONTRACT_LABELS } from '../../../lib/recruitment';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
-import { CartePleine, CorpsDefilant, Page, PiedCarte, compte } from '../../../components/gabarit';
+import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
+import { compte } from '../../../lib/mots';
+import {
+  BarreSelection,
+  BoutonExport,
+  exporterCSV,
+  LIGNE_COCHEE,
+  SqueletteTableau,
+  TdCase,
+  TdGouttiere,
+  ThCases,
+  ThGouttiere,
+  ThTri,
+  useSelection,
+  useTriLocal,
+} from '../../../components/tableau';
 
 /** Demandes encore à la charge de la RH — celles qui peuplent le premier tableau. */
 const OPEN = ['received', 'processing'];
@@ -74,17 +86,10 @@ export default function DocumentRequestsPage() {
     queryFn: () => api<DocumentRequestView[]>('/document-requests'),
   });
 
-  const [selection, setSelection] = useState<string[]>([]);
   const [panneau, setPanneau] = useState<'traiter' | 'decliner' | null>(null);
 
   const items = useMemo(() => requests.data ?? [], [requests.data]);
-  const aTraiter = useMemo(() => {
-    // Les plus anciennes d'abord : la file se lit du plus urgent au plus frais,
-    // à l'inverse de l'historique.
-    return items
-      .filter((r) => OPEN.includes(r.status))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  }, [items]);
+  const ouvertes = useMemo(() => items.filter((r) => OPEN.includes(r.status)), [items]);
   const traitees = useMemo(() => {
     // Un historique se lit du plus récent au plus ancien. Annoncer le retrait
     // CLÔT le travail de la RH : l'employé est prévenu et vient chercher son
@@ -94,21 +99,51 @@ export default function DocumentRequestsPage() {
       .sort((a, b) => (b.handledAt ?? b.createdAt).localeCompare(a.handledAt ?? a.createdAt));
   }, [items]);
 
-  // La sélection ne survit pas à la disparition d'une ligne : une demande
-  // traitée ailleurs ne doit pas rester cochée dans un lot invisible.
-  const selectionnees = useMemo(
-    () => aTraiter.filter((r) => selection.includes(r.id)),
-    [aTraiter, selection],
+  /**
+   * L'ordre de la file : les plus ANCIENNES d'abord par défaut — la file se
+   * lit du plus urgent au plus frais, à l'inverse de l'historique. Les autres
+   * colonnes se trient au clic.
+   */
+  const tri = useTriLocal(
+    ouvertes,
+    {
+      employeeNumber: (r) => r.employeeNumber,
+      employeeName: (r) => r.employeeName,
+      requete: (r) => docLabels(r),
+      createdAt: (r) => r.createdAt,
+    },
+    { colonne: 'createdAt', sens: 'asc' },
+    { createdAt: 'desc', employeeNumber: 'asc', employeeName: 'asc', requete: 'asc' },
   );
+  const aTraiter = tri.lignes;
+  const sel = useSelection(aTraiter);
+  const selectionnees = sel.choisis;
+
+  /**
+   * Une file dans un fichier.
+   *
+   * Les deux tableaux exportent les MÊMES colonnes : c'est la même demande,
+   * vue avant et après. Le statut dit où elle en est, la date de traitement
+   * est vide tant qu'elle attend.
+   */
+  const exporter = (lignes: DocumentRequestView[], nom: string) =>
+    exporterCSV(
+      nom,
+      ['Matricule', 'Demandeur', 'Requête', 'Demandée le', 'Traitée le', 'Statut', 'Motif'],
+      lignes.map((r) => [
+        r.employeeNumber,
+        r.employeeName,
+        docLabels(r),
+        r.createdAt.slice(0, 10),
+        r.handledAt ? r.handledAt.slice(0, 10) : null,
+        r.status,
+        r.note ?? null,
+      ]),
+    );
 
   if (requests.isError) {
     return <LoadFailure error={requests.error} onRetry={() => void requests.refetch()} />;
   }
-
-  const bascule = (id: string) =>
-    setSelection((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const toutBasculer = () =>
-    setSelection((s) => (s.length === aTraiter.length ? [] : aTraiter.map((r) => r.id)));
 
   return (
     <Page>
@@ -118,26 +153,19 @@ export default function DocumentRequestsPage() {
       <CartePleine className="flex-[2]">
         <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
           <CardTitle>À traiter</CardTitle>
-          {/* La barre d'action n'apparaît qu'avec une sélection : au repos,
-              deux boutons désactivés en permanence ne feraient que du bruit. */}
-          {selectionnees.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11.5px] font-semibold text-ink-muted">
-                {selectionnees.length} sélectionnée{selectionnees.length > 1 ? 's' : ''}
-              </span>
-              <Button size="sm" onClick={() => setPanneau('traiter')}>
-                <Icon name="folder_managed" size={15} />
-                Prévisualiser
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => setPanneau('decliner')}>
-                Décliner
-              </Button>
-            </div>
-          ) : null}
+          <BarreSelection sel={sel} quoi="demande" feminin>
+            <Button size="sm" onClick={() => setPanneau('traiter')}>
+              <Icon name="folder_managed" size={15} />
+              Prévisualiser
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setPanneau('decliner')}>
+              Décliner
+            </Button>
+          </BarreSelection>
         </CardHeader>
         {requests.isLoading ? (
-          <CorpsDefilant className="px-5 pb-5">
-            <Skeleton className="h-full min-h-24" />
+          <CorpsDefilant>
+            <SqueletteTableau />
           </CorpsDefilant>
         ) : aTraiter.length === 0 ? (
           <CorpsDefilant className="grid place-items-center">
@@ -151,36 +179,47 @@ export default function DocumentRequestsPage() {
           <Table pleine>
             <THead>
               <tr>
-                <Th className="w-9 pr-0">
-                  <Checkbox
-                    aria-label="Tout sélectionner"
-                    checked={selection.length > 0 && selectionnees.length === aTraiter.length}
-                    indeterminate={
-                      selectionnees.length > 0 && selectionnees.length < aTraiter.length
-                    }
-                    onChange={toutBasculer}
-                  />
-                </Th>
-                <Th>Matricule</Th>
-                <Th>Demandeur</Th>
-                <Th>Requête</Th>
-                <Th>Date</Th>
+                <ThCases sel={sel} />
+                <ThTri
+                  label="Matricule"
+                  colonne="employeeNumber"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Demandeur"
+                  colonne="employeeName"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Requête"
+                  colonne="requete"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                <ThTri
+                  label="Date"
+                  colonne="createdAt"
+                  courant={tri.colonne}
+                  sens={tri.sens}
+                  onTrier={tri.trier}
+                />
+                {/* Le temps écoulé se trie PAR LA DATE, colonne « Date » : deux
+                    en-têtes pour le même ordre seraient deux fois le même
+                    bouton. Celui-ci reste un intitulé. */}
                 <Th className="text-right">Temps écoulé</Th>
               </tr>
             </THead>
             <TBody>
               {aTraiter.map((r) => {
-                const coche = selection.includes(r.id);
                 const h = hoursSince(r.createdAt);
                 return (
-                  <Tr key={r.id} className={cn(coche && 'bg-primary/[0.04]')}>
-                    <Td className="pr-0">
-                      <Checkbox
-                        aria-label={`Sélectionner la demande de ${r.employeeName}`}
-                        checked={coche}
-                        onChange={() => bascule(r.id)}
-                      />
-                    </Td>
+                  <Tr key={r.id} className={cn(sel.coche(r.id) && LIGNE_COCHEE)}>
+                    <TdCase sel={sel} id={r.id} quoi={`la demande de ${r.employeeName}`} />
                     <Td className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</Td>
                     <Td>
                       <Link
@@ -219,7 +258,16 @@ export default function DocumentRequestsPage() {
           </Table>
         )}
         {aTraiter.length > 0 ? (
-          <PiedCarte>{compte(aTraiter.length, 'demande')} en attente</PiedCarte>
+          <PiedCarte
+            droite={
+              <BoutonExport
+                quoi="la file"
+                onClick={() => exporter(aTraiter, 'demandes-a-traiter')}
+              />
+            }
+          >
+            {compte(aTraiter.length, 'demande')} en attente
+          </PiedCarte>
         ) : null}
       </CartePleine>
 
@@ -228,8 +276,8 @@ export default function DocumentRequestsPage() {
           <CardTitle>Traitées</CardTitle>
         </CardHeader>
         {requests.isLoading ? (
-          <CorpsDefilant className="px-5 pb-5">
-            <Skeleton className="h-full min-h-24" />
+          <CorpsDefilant>
+            <SqueletteTableau />
           </CorpsDefilant>
         ) : traitees.length === 0 ? (
           <CorpsDefilant className="grid place-items-center">
@@ -243,6 +291,7 @@ export default function DocumentRequestsPage() {
           <Table pleine>
             <THead>
               <tr>
+                <ThGouttiere />
                 <Th>Matricule</Th>
                 <Th>Demandeur</Th>
                 <Th>Requête</Th>
@@ -254,6 +303,7 @@ export default function DocumentRequestsPage() {
             <TBody>
               {traitees.map((r) => (
                 <Tr key={r.id}>
+                  <TdGouttiere />
                   <Td className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</Td>
                   <Td>
                     <Link
@@ -298,7 +348,18 @@ export default function DocumentRequestsPage() {
             </TBody>
           </Table>
         )}
-        {traitees.length > 0 ? <PiedCarte>{compte(traitees.length, 'demande')}</PiedCarte> : null}
+        {traitees.length > 0 ? (
+          <PiedCarte
+            droite={
+              <BoutonExport
+                quoi="l'historique"
+                onClick={() => exporter(traitees, 'demandes-traitees')}
+              />
+            }
+          >
+            {compte(traitees.length, 'demande')}
+          </PiedCarte>
+        ) : null}
       </CartePleine>
 
       {panneau === 'traiter' ? (
@@ -307,7 +368,7 @@ export default function DocumentRequestsPage() {
           onClose={() => setPanneau(null)}
           onDone={() => {
             setPanneau(null);
-            setSelection([]);
+            sel.vider();
           }}
         />
       ) : null}
@@ -317,7 +378,7 @@ export default function DocumentRequestsPage() {
           onClose={() => setPanneau(null)}
           onDone={() => {
             setPanneau(null);
-            setSelection([]);
+            sel.vider();
           }}
         />
       ) : null}
