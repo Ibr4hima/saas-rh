@@ -33,9 +33,11 @@ import {
   type UpdateEmployeeInput,
   type UpdateOrgUnitInput,
 } from '@teranga/contracts';
+import { problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { Roles, RolesGuard } from '../auth/roles.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
+import { ImportEmployesService } from './import.service';
 import { OrgUnitsService } from './org-units.service';
 import { PeopleService } from './people.service';
 
@@ -45,6 +47,7 @@ export class PeopleController {
   constructor(
     @Inject(PeopleService) private readonly people: PeopleService,
     @Inject(OrgUnitsService) private readonly orgUnits: OrgUnitsService,
+    @Inject(ImportEmployesService) private readonly imports: ImportEmployesService,
   ) {}
 
   // ---------- Employés ----------
@@ -56,6 +59,24 @@ export class PeopleController {
     @Query(new ZodValidationPipe(listEmployeesQuerySchema)) query: ListEmployeesQuery,
   ) {
     return this.people.list(req.sessionUser, query);
+  }
+
+  /**
+   * L'import d'un fichier d'effectif.
+   *
+   * Le classeur arrive en BINAIRE (un .xlsx est une archive), et le même
+   * envoi sert deux fois : `?apercu=1` lit et rend le compte rendu sans rien
+   * écrire, sans le paramètre il applique. Déclarée AVANT « employees/:id »,
+   * comme les autres routes nommées : Nest apparie dans l'ordre.
+   */
+  @Post('employees/import')
+  @Roles('admin', 'hr')
+  importerEmployes(@Req() req: AuthenticatedRequest, @Query('apercu') apercu: string | undefined) {
+    const fichier = (req as unknown as { body?: unknown }).body;
+    if (!Buffer.isBuffer(fichier) || fichier.length === 0) {
+      problem(415, 'import.corps_absent', 'Envoyez le classeur .xlsx en corps de requête');
+    }
+    return this.imports.importer(req.sessionUser, fichier, apercu !== '1');
   }
 
   @Post('employees')

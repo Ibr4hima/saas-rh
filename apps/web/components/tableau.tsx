@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Checkbox, cn, Skeleton, Td, Th } from '@teranga/ui';
 import { accorde, compte } from '../lib/mots';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
    Le socle des tableaux.
@@ -346,17 +346,44 @@ export function exporterCSV(nom: string, entetes: string[], lignes: (string | nu
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-/** Le bouton qui déclenche l'export, à sa place : le pied du tableau. */
-export function BoutonExport({ onClick, quoi }: { onClick: () => void; quoi: string }) {
+/**
+ * Un geste du PIED de tableau : discret par construction.
+ *
+ * Le pied porte les gestes qui s'appliquent au tableau entier — exporter,
+ * importer, charger la suite. Ce ne sont pas les actions principales de
+ * l'écran : elles s'écrivent en gris, à hauteur de la ligne de décompte, et ne
+ * prennent leur couleur qu'au survol. Un aplat bleu au bas de chaque liste
+ * disputerait l'attention au bouton du bandeau.
+ */
+export function BoutonPied({
+  onClick,
+  icone,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  icone: IconName;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`Exporter ${quoi} au format CSV`}
+      title={title}
       className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold text-ink-muted transition-colors hover:bg-hover hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
     >
-      <Icon name="download" size={14} />
-      Exporter
+      <Icon name={icone} size={14} />
+      {children}
     </button>
+  );
+}
+
+/** Le bouton qui déclenche l'export, à sa place : le pied du tableau. */
+export function BoutonExport({ onClick, quoi }: { onClick: () => void; quoi: string }) {
+  return (
+    <BoutonPied onClick={onClick} icone="download" title={`Exporter ${quoi} au format CSV`}>
+      Exporter
+    </BoutonPied>
   );
 }

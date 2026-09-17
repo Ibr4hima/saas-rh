@@ -15,6 +15,12 @@ export const genderSchema = z.enum(['female', 'male']);
 export const employeeStatusSchema = z.enum(['active', 'archived']);
 export type EmployeeStatus = z.infer<typeof employeeStatusSchema>;
 export const contractTypeSchema = z.enum(['cdi', 'cdd', 'stage', 'consultant', 'detachement']);
+
+/* Les trois vocabulaires d'état civil et celui des contrats, nommés : l'import
+   d'un fichier RH traduit « Homme » en `male` et doit pouvoir le TYPER. */
+export type Gender = z.infer<typeof genderSchema>;
+export type MaritalStatus = z.infer<typeof maritalStatusSchema>;
+export type ContractType = z.infer<typeof contractTypeSchema>;
 export const orgUnitTypeSchema = z.enum(['direction', 'department', 'service']);
 export type OrgUnitType = z.infer<typeof orgUnitTypeSchema>;
 

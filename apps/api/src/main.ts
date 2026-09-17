@@ -26,6 +26,20 @@ async function bootstrap(): Promise<void> {
   // Partout ailleurs la limite reste petite : un corps volumineux non
   // authentifié ne doit jamais être bufferisé (revue adverse du lot).
   app.use('/v1/public/jobs', json({ limit: '40mb' }));
+  // Le classeur d'effectif arrive en BINAIRE, comme le Journal officiel plus
+  // bas et pour la même raison : un .xlsx est une archive, et l'encoder en
+  // base64 pour le faire traverser `JSON.parse` gonflerait d'un tiers un
+  // fichier qui peut porter plusieurs milliers de lignes. Déclaré avant
+  // l'analyseur JSON du même préfixe, qui laisse passer ce qui n'est pas du
+  // JSON.
+  //
+  // Le type déclaré par le client NE FILTRE RIEN : c'est le contenu qui
+  // tranche. Un même classeur part en `…spreadsheetml.sheet` depuis un poste,
+  // en `application/vnd.ms-excel` depuis un autre et sans type du tout quand
+  // il vient d'une clé USB — refuser sur le type aurait écarté de vrais
+  // classeurs, et rendu au client « corps absent » pour un fichier bien
+  // présent. Le lecteur, lui, reconnaît une archive en deux octets.
+  app.use('/v1/employees/import', raw({ type: () => true, limit: '12mb' }));
   // Justificatifs d'absence (PDF ≤ 5 Mo en base64) — route authentifiée.
   app.use('/v1/absence-requests', json({ limit: '8mb' }));
   // Pièces justificatives du dossier (PDF/images ≤ 5 Mo en base64).

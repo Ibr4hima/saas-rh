@@ -8,6 +8,7 @@
 export * from './core';
 export * from './dashboard';
 export * from './employees';
+export * from './import-employes';
 export * from './absences';
 export * from './portal';
 export * from './recruitment';

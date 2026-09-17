@@ -27,8 +27,9 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
-import { formatDate } from '../../../lib/hooks';
+import { formatDate, useMe } from '../../../lib/hooks';
 import { EmployeeCreateModal } from '../../../components/employee-create-modal';
+import { FenetreImportEmployes } from '../../../components/import-employes';
 import { Icon } from '../../../components/icons';
 import { Modal, ModalSection } from '../../../components/modal';
 import { Onglets, OngletsBandeau } from '../../../components/onglets-bandeau';
@@ -37,6 +38,7 @@ import { compte } from '../../../lib/mots';
 import {
   BarreSelection,
   BoutonExport,
+  BoutonPied,
   exporterCSV,
   LIGNE_COCHEE,
   SqueletteTableau,
@@ -79,6 +81,9 @@ const PREMIER_SENS: Record<EmployeeSort, Sens> = {
 export default function EmployeesPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  // La liste s'ouvre aussi à la paie, l'import non : il écrit des dossiers.
+  const me = useMe();
+  const peutImporter = Boolean(me.data && ['admin', 'hr'].includes(me.data.role));
   // L'ouverture passe par l'URL (?nouveau) : le bouton de la barre supérieure
   // est un lien, la fenêtre se partage, et le bouton Retour la referme au lieu
   // de quitter la liste.
@@ -90,6 +95,9 @@ export default function EmployeesPage() {
   const [sort, setSort] = useState<EmployeeSort>('recent');
   const [dir, setDir] = useState<Sens>('desc');
   const [panneau, setPanneau] = useState<'supprimer' | null>(null);
+  // L'import ne passe PAS par l'URL, contrairement à la création : on y arrive
+  // avec un fichier en main, et un lien partagé rouvrirait une fenêtre vide.
+  const [importOuvert, setImportOuvert] = useState(false);
   const [ecartes, setEcartes] = useState<EmployeeBatchResult['skipped']>([]);
 
   useEffect(() => {
@@ -210,6 +218,7 @@ export default function EmployeesPage() {
   return (
     <Page>
       <EmployeeCreateModal open={createOpen} onClose={() => router.replace('/employees')} />
+      {importOuvert ? <FenetreImportEmployes onClose={() => setImportOuvert(false)} /> : null}
 
       <OngletsBandeau courant={onglet} onChange={changerOnglet} onglets={ONGLETS} />
       {/* Reprise du même contrôle là où le bandeau n'a plus la place de le
@@ -319,14 +328,27 @@ export default function EmployeesPage() {
                 filtreActif
                   ? 'Essayez une autre recherche ou retirez les filtres.'
                   : onglet === 'active'
-                    ? 'Créez votre premier employé pour démarrer le dossier du personnel.'
+                    ? 'Créez le premier dossier, ou importez d’un coup le classeur de la Direction du Capital Humain.'
                     : 'Les dossiers désactivés se rangent ici, et se réactivent d’un geste.'
               }
               action={
                 !filtreActif && onglet === 'active' ? (
-                  <Link href="/employees/new">
-                    <Button size="sm">Nouvel employé</Button>
-                  </Link>
+                  // Le second point d'entrée de l'import, et le plus utile :
+                  // le pied ne s'affiche qu'à partir d'une ligne, or c'est
+                  // justement sur une plateforme VIDE qu'on importe le
+                  // classeur. Sans ce bouton, l'écran d'accueil du personnel
+                  // ne proposerait que la saisie une par une.
+                  <span className="flex flex-wrap items-center justify-center gap-2">
+                    <Link href="/employees/new">
+                      <Button size="sm">Nouvel employé</Button>
+                    </Link>
+                    {peutImporter ? (
+                      <Button size="sm" variant="secondary" onClick={() => setImportOuvert(true)}>
+                        <Icon name="upload_file" size={15} />
+                        Importer un fichier
+                      </Button>
+                    ) : null}
+                  </span>
                 ) : undefined
               }
             />
@@ -399,6 +421,15 @@ export default function EmployeesPage() {
           <PiedCarte
             droite={
               <span className="flex items-center gap-1.5">
+                {peutImporter ? (
+                  <BoutonPied
+                    onClick={() => setImportOuvert(true)}
+                    icone="upload_file"
+                    title="Importer l’effectif depuis un classeur .xlsx"
+                  >
+                    Importer
+                  </BoutonPied>
+                ) : null}
                 <BoutonExport quoi="la liste du personnel" onClick={exporter} />
                 {query.hasNextPage ? (
                   <Button

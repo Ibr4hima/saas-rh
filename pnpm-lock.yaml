@@ -41,6 +41,9 @@ importers:
       drizzle-orm:
         specifier: ^0.44.0
         version: 0.44.7(@types/pg@8.23.0)(pg@8.23.0)
+      libphonenumber-js:
+        specifier: ^1.13.13
+        version: 1.13.13
       pdfkit:
         specifier: ^0.19.1
         version: 0.19.1

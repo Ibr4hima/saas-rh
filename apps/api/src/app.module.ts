@@ -17,6 +17,7 @@ import { AuthService } from './modules/auth/auth.service';
 import { RolesGuard } from './modules/auth/roles.guard';
 import { SessionGuard } from './modules/auth/session.guard';
 import { HealthController } from './modules/health/health.controller';
+import { ImportEmployesService } from './modules/people/import.service';
 import { OrgUnitsService } from './modules/people/org-units.service';
 import { PeopleController } from './modules/people/people.controller';
 import { PeopleService } from './modules/people/people.service';
@@ -61,6 +62,7 @@ import { AbsencesService } from './modules/time/absences.service';
     SessionGuard,
     RolesGuard,
     PeopleService,
+    ImportEmployesService,
     OrgUnitsService,
     AbsencesService,
     InvitationsService,
