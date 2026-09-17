@@ -49,12 +49,34 @@ function ecartJours(iso: string): number {
 }
 
 /** « hier », « aujourd'hui », « dans 12 j » — l'écart parle mieux que la date. */
+/**
+ * « 2 hommes · 4 femmes » sous l'effectif.
+ *
+ * Remplace le « dont N recrutés en 90 j » qui n'apparaissait qu'en période de
+ * recrutement : la carte changeait de sujet sans prévenir, et la répartition
+ * — qu'on cite dans tout rapport d'activité — ne se voyait qu'une fois les
+ * arrivées passées.
+ *
+ * Le SEXE NON RENSEIGNÉ se dit quand il y en a. L'API compte par genre et
+ * range les dossiers vides à part : sans cette mention, « 2 hommes · 3
+ * femmes » s'écrirait sous un effectif de 6 et l'addition serait fausse à
+ * l'œil de qui la fait.
+ */
+function repartition(d: DashboardView): string {
+  const parts = [compte(d.men, 'homme'), compte(d.women, 'femme')];
+  const sansSexe = d.activeEmployees - d.men - d.women;
+  if (sansSexe > 0) parts.push(`${sansSexe} non précisé${sansSexe > 1 ? 's' : ''}`);
+  return parts.join(' · ');
+}
+
 function inDays(iso: string): string {
   const days = ecartJours(iso);
   if (days === 0) return "aujourd'hui";
   if (days === 1) return 'demain';
   if (days === -1) return 'hier';
-  return days < 0 ? `il y a ${-days} j` : `dans ${days} j`;
+  // « dans 45 jours », pas « dans 45 j » : l'abréviation se lisait comme une
+  // unité de mesure dans une phrase qui, elle, est écrite en français.
+  return days < 0 ? `il y a ${compte(-days, 'jour')}` : `dans ${compte(days, 'jour')}`;
 }
 
 /**
@@ -163,8 +185,12 @@ function StatTile({
             {value}
           </p>
         )}
+        {/* `title` parce que la ligne est TRONQUÉE sur grand écran : sans lui,
+            ce qui dépasse de la carte est simplement perdu. */}
         {context ? (
-          <p className="mt-2 text-[11.5px] text-ink-muted sm:truncate sm:pr-5">{context}</p>
+          <p title={context} className="mt-2 text-[11.5px] text-ink-muted sm:truncate sm:pr-5">
+            {context}
+          </p>
         ) : null}
         <Icon
           name="arrow_forward"
@@ -494,13 +520,7 @@ export default function DashboardPage() {
           label="Effectif actif"
           short="Effectif"
           value={d?.activeEmployees}
-          context={
-            d
-              ? d.hiredLast90d > 0
-                ? `dont ${compte(d.hiredLast90d, 'recruté')} en 90 j`
-                : `${compte(d.women, 'femme')} · ${compte(d.men, 'homme')}`
-              : undefined
-          }
+          context={d ? repartition(d) : undefined}
           href="/employees"
         />
         <StatTile
@@ -513,10 +533,10 @@ export default function DashboardPage() {
         />
         <StatTile
           icon="event_busy"
-          label="Absents aujourd'hui"
+          label="Abs. aujourd'hui"
           short="Absents"
           value={d?.absentToday}
-          context={d ? `${d.upcomingAbsences} à venir sous 30 j` : undefined}
+          context={d ? `${d.upcomingAbsences} à venir sous 30 jours` : undefined}
           href="/calendrier"
         />
         <StatTile
