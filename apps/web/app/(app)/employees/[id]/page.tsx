@@ -43,6 +43,7 @@ import { formatDate, useMe } from '../../../../lib/hooks';
 import type { DocumentRequestView, OrgUnit } from '@teranga/contracts';
 import { LoadFailure } from '../../../../components/load-failure';
 import { Page } from '../../../../components/gabarit';
+import { useToast } from '../../../../components/toasts';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Actif',
@@ -491,6 +492,7 @@ function AssignmentsCard({
     enabled: canManage && open,
   });
 
+  const toast = useToast();
   const create = useMutation({
     mutationFn: () =>
       api(`/employees/${employeeId}/assignments`, {
@@ -502,6 +504,7 @@ function AssignmentsCard({
       setPositionTitle('');
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+      toast.succes('Affectation enregistrée');
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
@@ -764,6 +767,7 @@ function PortalCard({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const toast = useToast();
   const generate = useMutation({
     mutationFn: () =>
       api<InviteResult>(`/employees/${employeeId}/invite`, { method: 'POST', body: { role } }),
@@ -772,6 +776,9 @@ function PortalCard({
       setError(null);
       setCopied(false);
       void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+      // Le lien s'affiche juste en dessous : le toast dit seulement que
+      // l'invitation existe, il ne répète pas ce qui est déjà à l'écran.
+      toast.succes('Invitation créée');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Génération impossible.'),
   });

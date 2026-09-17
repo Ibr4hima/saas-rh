@@ -30,17 +30,14 @@ import {
 } from '@teranga/ui';
 import { Icon } from '../../../../components/icons';
 import { Modal, ModalGrid, ModalSection } from '../../../../components/modal';
-import {
-  Actions,
-  FenetreSuppression,
-  messageErreur,
-} from '../../../../components/reglages-absences';
+import { Actions, FenetreSuppression } from '../../../../components/reglages-absences';
 import { ROLE_LABELS } from '../../../../lib/absences';
-import { api } from '../../../../lib/api';
+import { api, detailErreur } from '../../../../lib/api';
 import { useMe } from '../../../../lib/hooks';
 import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../../components/gabarit';
 import { SqueletteTableau } from '../../../../components/tableau';
 import { compte } from '../../../../lib/mots';
+import { useToast } from '../../../../components/toasts';
 
 const CHAIN_ROLES: MembershipRole[] = ['manager', 'hr', 'payroll', 'admin'];
 
@@ -87,6 +84,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
     void queryClient.invalidateQueries({ queryKey: ['balances'] });
   };
 
+  const toast = useToast();
   const liste = types.data ?? [];
 
   return (
@@ -189,8 +187,10 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
           cible={edition === 'nouveau' ? null : edition}
           onClose={() => setEdition(null)}
           onEnregistre={() => {
+            const nouveau = edition === 'nouveau';
             setEdition(null);
             rafraichir();
+            toast.succes(nouveau ? 'Type d’absence créé' : 'Type d’absence enregistré');
           }}
         />
       ) : null}
@@ -203,8 +203,10 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
           chemin={`/absence-types/${aSupprimer.id}`}
           onClose={() => setASupprimer(null)}
           onSupprime={() => {
+            const nom = aSupprimer.name;
             setASupprimer(null);
             rafraichir();
+            toast.succes(`« ${nom} » supprimé`);
           }}
         >
           <p className="text-[12.5px] leading-relaxed text-ink">
@@ -268,7 +270,7 @@ function FenetreType({
         : api('/absence-types', { method: 'POST', body });
     },
     onSuccess: onEnregistre,
-    onError: (err) => setErreur(messageErreur(err, 'Enregistrement impossible.')),
+    onError: (err) => setErreur(detailErreur(err, 'Enregistrement impossible.')),
   });
 
   return (
@@ -405,10 +407,17 @@ function CircuitCard({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => {
     if (chain.data) setLevels(chain.data.levels);
   }, [chain.data]);
+  const toast = useToast();
+
   const saveChain = useMutation({
     mutationFn: () => api('/approval-chain', { method: 'PUT', body: { levels } }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['approval-chain'] }),
-    onError: (err) => setErreur(messageErreur(err, 'Enregistrement impossible.')),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['approval-chain'] });
+      toast.succes('Circuit enregistré', {
+        detail: 'Il s’applique aux demandes déposées à partir de maintenant.',
+      });
+    },
+    onError: (err) => setErreur(detailErreur(err, 'Enregistrement impossible.')),
   });
 
   return (

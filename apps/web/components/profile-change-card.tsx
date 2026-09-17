@@ -8,6 +8,7 @@ import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '
 import { api, ApiError } from '../lib/api';
 import { timeAgo } from './document-request-list';
 import { valeurSignalee } from './telephone';
+import { useToast } from './toasts';
 
 /** Le tiret cadratin reste local : l'agent, lui, lit « non renseigné ». */
 const lisible = (champ: string, valeur: string | null | undefined) =>
@@ -32,13 +33,19 @@ export function ProfileChangeCard({ employeeId }: { employeeId: string }) {
     queryFn: () => api<ProfileChangeRequestView[]>(`/profile-changes?employeeId=${employeeId}`),
   });
 
+  const toast = useToast();
   const decide = useMutation({
     mutationFn: (input: { id: string; decision: 'approve' | 'reject'; message?: string }) =>
       api(`/profile-changes/${input.id}/decide`, {
         method: 'POST',
         body: { decision: input.decision, message: input.message },
       }),
-    onSuccess: () => {
+    onSuccess: (_res, input) => {
+      toast.succes(
+        input.decision === 'approve'
+          ? 'Changement appliqué au dossier'
+          : 'Signalement refusé — l’agent est prévenu',
+      );
       setRejectOpen(null);
       setReason('');
       setError(null);

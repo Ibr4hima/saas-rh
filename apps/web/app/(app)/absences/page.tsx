@@ -18,7 +18,7 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
-import { api, ApiError, apiUrl } from '../../../lib/api';
+import { api, apiUrl, detailErreur } from '../../../lib/api';
 import { type ViewableDoc } from '../../../components/doc-viewer';
 import { FenetreDocument } from '../../../components/fenetre-document';
 import { ABSENCE_STATUS_LABELS, resumeVisas } from '../../../lib/absences';
@@ -34,6 +34,7 @@ import {
   ThTri,
   useTriLocal,
 } from '../../../components/tableau';
+import { useToast } from '../../../components/toasts';
 
 /**
  * Un geste de décision : viser, ou refuser.
@@ -99,8 +100,8 @@ function BoutonDecision({
 export default function AbsencesPage() {
   const queryClient = useQueryClient();
   const me = useMe();
+  const toast = useToast();
   const [status, setStatus] = useState('pending');
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const requests = useQuery({
     queryKey: ['absence-requests', status],
@@ -124,11 +125,29 @@ export default function AbsencesPage() {
     void queryClient.invalidateQueries({ queryKey: ['absences-upcoming'] });
   };
 
+  /**
+   * Viser une demande.
+   *
+   * AUCUNE annulation proposée, et ce n'est pas un oubli : le serveur répond
+   * « cette demande a déjà été traitée » à qui revient dessus. Un visa est un
+   * acte, pas un réglage — le toast confirme, il ne promet rien.
+   */
   const decide = useMutation({
-    mutationFn: ({ id, decision }: { id: string; decision: 'approved' | 'rejected' }) =>
-      api(`/absence-requests/${id}/decision`, { method: 'POST', body: { decision } }),
-    onSuccess: refresh,
-    onError: (err) => setActionError(err instanceof ApiError ? err.message : 'Action impossible.'),
+    mutationFn: ({
+      id,
+      decision,
+    }: {
+      id: string;
+      decision: 'approved' | 'rejected';
+      quoi: string;
+    }) => api(`/absence-requests/${id}/decision`, { method: 'POST', body: { decision } }),
+    onSuccess: (_res, { decision, quoi }) => {
+      refresh();
+      toast.succes(
+        decision === 'approved' ? `Congé de ${quoi} approuvé` : `Demande de ${quoi} refusée`,
+      );
+    },
+    onError: (err) => toast.erreur('Le visa n’a pas pu être posé', { detail: detailErreur(err) }),
   });
   const canManage = me.data && ['admin', 'hr'].includes(me.data.role);
   const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
@@ -151,12 +170,6 @@ export default function AbsencesPage() {
 
   return (
     <Page>
-      {actionError ? (
-        <p className="shrink-0 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
-          {actionError}
-        </p>
-      ) : null}
-
       <CartePleine>
         <CardHeader className="flex shrink-0 items-center justify-between">
           <CardTitle>Demandes</CardTitle>
@@ -273,7 +286,13 @@ export default function AbsencesPage() {
                             decide.variables.decision === 'approved'
                           }
                           bloque={decide.isPending}
-                          onClick={() => decide.mutate({ id: r.id, decision: 'approved' })}
+                          onClick={() =>
+                            decide.mutate({
+                              id: r.id,
+                              decision: 'approved',
+                              quoi: r.employeeName,
+                            })
+                          }
                         />
                         <BoutonDecision
                           geste="refuser"
@@ -284,7 +303,13 @@ export default function AbsencesPage() {
                             decide.variables.decision === 'rejected'
                           }
                           bloque={decide.isPending}
-                          onClick={() => decide.mutate({ id: r.id, decision: 'rejected' })}
+                          onClick={() =>
+                            decide.mutate({
+                              id: r.id,
+                              decision: 'rejected',
+                              quoi: r.employeeName,
+                            })
+                          }
                         />
                       </div>
                     ) : (

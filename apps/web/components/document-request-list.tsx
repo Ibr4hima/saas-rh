@@ -14,6 +14,7 @@ import { Badge, Button, cn, Input } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../lib/api';
 import { formatDate } from '../lib/hooks';
 import { Icon } from './icons';
+import { useToast } from './toasts';
 
 /** « il y a 3 jours » — l'ancienneté compte autant que la date en RH. */
 export function timeAgo(iso: string): string {
@@ -33,6 +34,13 @@ export function timeAgo(iso: string): string {
  * « Prête » clôt la demande : la RH ne voit pas l'employé passer chez la
  * personne qui détient le document, elle ne peut donc rien attester de plus.
  */
+/** Ce que dit le toast pour chaque étape franchie. */
+const ANNONCE_STATUT: Record<string, string> = {
+  processing: 'Demande prise en charge',
+  ready: 'Document prêt — le demandeur est prévenu',
+  rejected: 'Demande déclinée',
+};
+
 export function DocumentRequestRow({
   request: r,
   showEmployee,
@@ -50,13 +58,15 @@ export function DocumentRequestRow({
   const [readyMessage, setReadyMessage] = useState('');
   const [rejectReason, setRejectReason] = useState('');
 
+  const toast = useToast();
+
   const advance = useMutation({
     mutationFn: (input: {
       status: DocumentRequestStatus;
       pickupContact?: string;
       message?: string;
     }) => api(`/document-requests/${r.id}/advance`, { method: 'POST', body: input }),
-    onSuccess: () => {
+    onSuccess: (_res, input) => {
       setReadyOpen(false);
       setRejectOpen(false);
       setReadyMessage('');
@@ -64,6 +74,7 @@ export function DocumentRequestRow({
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ['document-requests'] });
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      toast.succes(ANNONCE_STATUT[input.status] ?? 'Demande mise à jour');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Action impossible.'),
   });

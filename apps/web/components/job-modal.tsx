@@ -7,6 +7,7 @@ import { Button, Field, Input, Select, Textarea } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { Icon } from './icons';
 import { Modal, ModalGrid, ModalSection } from './modal';
+import { useToast } from './toasts';
 
 /**
  * Ce qu'on demande à un candidat, et rien de plus.
@@ -72,6 +73,8 @@ export function JobModal({
       v.documents.includes(doc) ? v.documents.filter((d) => d !== doc) : [...v.documents, doc],
     );
 
+  const toast = useToast();
+
   const enregistrer = useMutation({
     mutationFn: async () => {
       const corps = {
@@ -91,6 +94,9 @@ export function JobModal({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
       onClose();
+      toast.succes(offre ? 'Offre enregistrée' : 'Offre créée', {
+        detail: offre ? undefined : 'Elle reste en brouillon jusqu’à sa publication.',
+      });
     },
     onError: (err) =>
       setErreur(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),

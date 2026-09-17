@@ -33,7 +33,7 @@ import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
 import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
-import { compte } from '../../../lib/mots';
+import { accorde, compte } from '../../../lib/mots';
 import {
   BarreSelection,
   BoutonExport,
@@ -48,6 +48,7 @@ import {
   useSelection,
   useTriLocal,
 } from '../../../components/tableau';
+import { useToast } from '../../../components/toasts';
 
 /** Demandes encore à la charge de la RH — celles qui peuplent le premier tableau. */
 const OPEN = ['received', 'processing'];
@@ -492,6 +493,7 @@ function TraiterModal({
   const aVerifier = pieces.filter((p) => p.generable);
   const restantes = aVerifier.filter((p) => !vues.includes(p.key)).length;
 
+  const toast = useToast();
   const marquerVue = useCallback((key: string) => {
     setVues((v) => (v.includes(key) ? v : [...v, key]));
   }, []);
@@ -520,6 +522,12 @@ function TraiterModal({
         return;
       }
       onDone();
+      // Le toast dit ce que l'agent vient d'apprendre de son côté : la
+      // notification lui est partie, et c'est ce qui clôt le travail.
+      const n = requests.length;
+      toast.succes(`${compte(n, 'demande')} ${accorde(n, 'prêt', true)}`, {
+        detail: n > 1 ? 'Les agents sont prévenus du retrait.' : 'L’agent est prévenu du retrait.',
+      });
     },
     onError: (err) =>
       setErreur(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
@@ -909,6 +917,7 @@ function DeclinerModal({
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [motif, setMotif] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -925,6 +934,10 @@ function DeclinerModal({
       // ça elle continue d'annoncer un travail qui vient d'être fait.
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       onDone();
+      const n = requests.length;
+      toast.succes(`${compte(n, 'demande')} ${accorde(n, 'décliné', true)}`, {
+        detail: 'Le motif est transmis au demandeur.',
+      });
     },
     onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Refus impossible.'),
   });

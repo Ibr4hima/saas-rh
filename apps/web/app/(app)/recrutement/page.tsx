@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import type { DeleteJobPostingsResult, JobPostingView } from '@teranga/contracts';
+import type { DeleteJobPostingsResult, JobPostingView, JobStatus } from '@teranga/contracts';
 import {
   Button,
   CardHeader,
@@ -18,7 +18,7 @@ import {
   Table,
   Tr,
 } from '@teranga/ui';
-import { api, ApiError } from '../../../lib/api';
+import { api, ApiError, detailErreur } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
 import { JobModal } from '../../../components/job-modal';
@@ -26,7 +26,7 @@ import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalSection } from '../../../components/modal';
 import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
 import { CONTRACT_LABELS, JOB_STATUS_LABELS } from '../../../lib/recruitment';
-import { compte } from '../../../lib/mots';
+import { accorde, compte } from '../../../lib/mots';
 import {
   BarreSelection,
   BoutonExport,
@@ -39,6 +39,7 @@ import {
   useSelection,
   useTriLocal,
 } from '../../../components/tableau';
+import { useToast } from '../../../components/toasts';
 
 /** « il y a 3 jours » — l'âge d'une offre dit s'il faut la relancer. */
 function depuis(iso: string): string {
@@ -51,6 +52,13 @@ function depuis(iso: string): string {
   const ans = Math.floor(mois / 12);
   return `${ans} an${ans > 1 ? 's' : ''}`;
 }
+
+/** Ce que dit le toast pour chaque statut — au participe, pas à l'infinitif. */
+const ANNONCE: Record<JobStatus, string> = {
+  draft: 'remise en brouillon',
+  published: 'publiée',
+  closed: 'archivée',
+};
 
 export default function OffresPage() {
   const router = useRouter();
@@ -79,6 +87,7 @@ export default function OffresPage() {
     { createdAt: 'desc', deadline: 'asc', reference: 'asc', title: 'asc', contractType: 'asc' },
   );
   const offres = tri.lignes;
+  const toast = useToast();
   const sel = useSelection(offres);
   const choisies = sel.choisis;
   const seule = choisies.length === 1 ? choisies[0] : undefined;
@@ -97,9 +106,23 @@ export default function OffresPage() {
    * close se rouvre.
    */
   const changerStatut = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: 'published' | 'closed' }) =>
+    mutationFn: ({ id, status }: { id: string; status: JobStatus; avant?: JobStatus }) =>
       api(`/jobs/${id}`, { method: 'PATCH', body: { status } }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['jobs'] }),
+    onSuccess: async (_res, { id, status, avant }) => {
+      await queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      // Le statut se DÉFAIT : c'est le même appel dans l'autre sens. On ne
+      // le propose donc pas seulement par politesse — publier une campagne
+      // envoie son lien au monde, et se reprendre doit tenir en un clic.
+      if (!avant) return toast.succes(`Offre ${ANNONCE[status]}`);
+      toast.succes(`Offre ${ANNONCE[status]}`, {
+        action: {
+          libelle: 'Annuler',
+          onAction: () => changerStatut.mutate({ id, status: avant }),
+        },
+      });
+    },
+    onError: (err) =>
+      toast.erreur('Le statut n’a pas pu être changé', { detail: detailErreur(err) }),
   });
 
   if (jobs.isError) {
@@ -116,7 +139,9 @@ export default function OffresPage() {
               <Button
                 size="sm"
                 loading={changerStatut.isPending}
-                onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
+                onClick={() =>
+                  changerStatut.mutate({ id: seule.id, status: 'published', avant: seule.status })
+                }
               >
                 Publier
               </Button>
@@ -132,7 +157,9 @@ export default function OffresPage() {
                 size="sm"
                 variant="secondary"
                 loading={changerStatut.isPending}
-                onClick={() => changerStatut.mutate({ id: seule.id, status: 'closed' })}
+                onClick={() =>
+                  changerStatut.mutate({ id: seule.id, status: 'closed', avant: seule.status })
+                }
               >
                 Archiver
               </Button>
@@ -142,7 +169,9 @@ export default function OffresPage() {
                 size="sm"
                 variant="secondary"
                 loading={changerStatut.isPending}
-                onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
+                onClick={() =>
+                  changerStatut.mutate({ id: seule.id, status: 'published', avant: seule.status })
+                }
               >
                 Rouvrir
               </Button>
@@ -296,9 +325,10 @@ export default function OffresPage() {
             sel.vider();
             setEcartees(s);
           }}
-          onFini={() => {
+          onFini={(n) => {
             setPanneau(null);
             sel.vider();
+            if (n > 0) toast.succes(`${compte(n, 'offre')} ${accorde(n, 'supprimé', true)}`);
           }}
         />
       ) : null}
@@ -337,6 +367,7 @@ export default function OffresPage() {
  */
 function LienPublic({ offre }: { offre: JobPostingView }) {
   const [copie, setCopie] = useState(false);
+  const toast = useToast();
   if (offre.status === 'closed') {
     return <span className="text-[11.5px] font-semibold text-ink-muted">Archivée</span>;
   }
@@ -348,11 +379,17 @@ function LienPublic({ offre }: { offre: JobPostingView }) {
       size="sm"
       variant={copie ? 'ghost' : 'secondary'}
       onClick={async () => {
-        await navigator.clipboard.writeText(
-          `${window.location.origin}/postuler/${offre.publicSlug}`,
-        );
-        setCopie(true);
-        setTimeout(() => setCopie(false), 2000);
+        const lien = `${window.location.origin}/postuler/${offre.publicSlug}`;
+        // Le presse-papiers n'est pas toujours accessible — un réseau
+        // d'administration servi en clair le refuse. Le bouton ne doit pas
+        // rester muet : on montre le lien à recopier à la main.
+        try {
+          await navigator.clipboard.writeText(lien);
+          setCopie(true);
+          setTimeout(() => setCopie(false), 2000);
+        } catch {
+          toast.erreur('Copie impossible depuis ce navigateur', { detail: lien });
+        }
       }}
     >
       <Icon name={copie ? 'check' : 'content_copy'} size={15} />
@@ -371,7 +408,7 @@ function SupprimerModal({
   offres: JobPostingView[];
   onClose: () => void;
   onEcartees: (s: DeleteJobPostingsResult['skipped']) => void;
-  onFini: () => void;
+  onFini: (supprimees: number) => void;
 }) {
   const queryClient = useQueryClient();
   const [erreur, setErreur] = useState<string | null>(null);
@@ -385,7 +422,7 @@ function SupprimerModal({
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: ['jobs'] });
       if (res.skipped.length > 0) onEcartees(res.skipped);
-      else onFini();
+      else onFini(res.deleted);
     },
     onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Suppression impossible.'),
   });

@@ -36,6 +36,7 @@ import { Icon } from '../../../components/icons';
 import { Modal } from '../../../components/modal';
 import { Organigramme } from '../../../components/organigramme';
 import { CartePleine, Page } from '../../../components/gabarit';
+import { useToast } from '../../../components/toasts';
 
 const TYPE_LABELS = ORG_UNIT_TYPE_LABELS;
 
@@ -193,6 +194,7 @@ function UnitPanel({
   const [parentId, setParentId] = useState(unit.parentId ?? '');
   const [shortName, setShortName] = useState(unit.shortName ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const toast = useToast();
   const [reassignTo, setReassignTo] = useState('');
 
   const save = useMutation({
@@ -210,6 +212,7 @@ function UnitPanel({
       setError(null);
       setEditing(false);
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
+      toast.succes(`« ${name} » enregistrée`);
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
@@ -224,6 +227,9 @@ function UnitPanel({
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
       onClose();
+      // Pas d'annulation : une unité supprimée l'est avec ses rattachements,
+      // et le serveur ne sait pas la remonter telle qu'elle était.
+      toast.succes(`« ${unit.name} » supprimée`);
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Suppression impossible.'),
   });
@@ -250,6 +256,11 @@ function UnitPanel({
     onSuccess: () => {
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
+      toast.succes(
+        managerId
+          ? `Responsable de « ${unit.name} » mis à jour`
+          : `« ${unit.name} » n’a plus de responsable désigné`,
+      );
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
@@ -608,6 +619,7 @@ function FenetreNouvelleUnite({
       parentId: parent?.id,
     },
   });
+  const toast = useToast();
   const selectedType = (form.watch('unitType') ?? 'direction') as OrgUnitType;
   const allowedParents = parentOptions(units, selectedType);
   const racinePossible = ORG_UNIT_ROOT_TYPES.includes(selectedType);
@@ -621,9 +633,10 @@ function FenetreNouvelleUnite({
   const create = useMutation({
     mutationFn: (input: CreateOrgUnitInput) =>
       api<{ id: string }>('/org-units', { method: 'POST', body: input }),
-    onSuccess: () => {
+    onSuccess: (_res, input) => {
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
       onClose();
+      toast.succes(`« ${input.name} » créée`);
     },
     onError: (err) =>
       setServerError(err instanceof ApiError ? err.message : 'Création impossible.'),
