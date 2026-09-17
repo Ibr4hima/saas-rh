@@ -340,6 +340,28 @@ export class PeopleService {
           positionTitle: t.assignments.positionTitle,
           orgUnitId: t.assignments.orgUnitId,
           orgUnitName: t.orgUnits.name,
+          // La direction ne se lit pas sur l'unité : il faut REMONTER l'arbre
+          // jusqu'au premier ancêtre de type « direction ». Même remontée que
+          // dans la liste du personnel, où la colonne « Unité » affiche déjà
+          // l'abrégé.
+          directionShortName: sql<string | null>`(
+            WITH RECURSIVE remontee AS (
+              SELECT id, parent_id, unit_type, short_name
+              FROM org_units WHERE id = ${t.assignments.orgUnitId}
+              UNION ALL
+              SELECT u.id, u.parent_id, u.unit_type, u.short_name
+              FROM org_units u JOIN remontee r ON u.id = r.parent_id
+            )
+            SELECT short_name FROM remontee WHERE unit_type = 'direction' LIMIT 1)`,
+          directionName: sql<string | null>`(
+            WITH RECURSIVE remontee AS (
+              SELECT id, parent_id, unit_type, name
+              FROM org_units WHERE id = ${t.assignments.orgUnitId}
+              UNION ALL
+              SELECT u.id, u.parent_id, u.unit_type, u.name
+              FROM org_units u JOIN remontee r ON u.id = r.parent_id
+            )
+            SELECT name FROM remontee WHERE unit_type = 'direction' LIMIT 1)`,
           validity: t.assignments.validity,
           current: sql<boolean>`${t.assignments.validity} @> CURRENT_DATE`,
           validFrom: sql<string>`lower(${t.assignments.validity})::text`,
@@ -406,6 +428,8 @@ export class PeopleService {
           positionTitle: a.positionTitle,
           orgUnitId: a.orgUnitId,
           orgUnitName: a.orgUnitName,
+          directionShortName: a.directionShortName,
+          directionName: a.directionName,
           validFrom: a.validFrom,
           validTo: a.validTo,
           current: a.current,

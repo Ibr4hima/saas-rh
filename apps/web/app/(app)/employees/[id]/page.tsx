@@ -244,7 +244,21 @@ export default function EmployeePage() {
             couper en morceaux. */}
         <div className="@container border-t border-line-soft px-5 py-4">
           <dl className="grid grid-cols-2 gap-x-6 gap-y-5 @[44rem]:grid-cols-4 @[44rem]:gap-x-0 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:border-l @[44rem]:[&>*+*]:border-line-soft @[44rem]:[&>*+*]:pl-5">
-            <Repere label="Direction affectée" valeur={current?.orgUnitName} />
+            {/* L'ABRÉGÉ, comme dans la colonne « Unité » de la liste : « DIPE »
+                tient sur une ligne où « Direction de l'Intelligence et des
+                Perspectives Économiques » se coupait en deux et finissait en
+                points de suspension. Le nom complet reste en infobulle, et
+                l'unité d'affectation exacte — département ou service — se lit
+                juste en dessous dans la carte des affectations. */}
+            <Repere
+              label="Direction affectée"
+              titre={current?.directionName ?? current?.orgUnitName ?? undefined}
+              // Repli en cascade : l'abrégé, sinon le nom de la direction, sinon
+              // l'unité elle-même — une direction dont l'abrégé n'est pas
+              // renseigné vaut mieux qu'un « Service Comptabilité » qui ne
+              // répond pas à la question posée par l'intitulé.
+              valeur={current?.directionShortName ?? current?.directionName ?? current?.orgUnitName}
+            />
             <Repere
               label="Téléphone portable"
               titre={e.person.phone ?? undefined}

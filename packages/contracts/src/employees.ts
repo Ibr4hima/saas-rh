@@ -484,6 +484,14 @@ export interface AssignmentView {
   positionTitle: string;
   orgUnitId: string | null;
   orgUnitName: string | null;
+  /**
+   * La DIRECTION de rattachement, remontée depuis l'unité d'affectation quel
+   * que soit son niveau : un agent du Service Comptabilité relève de la DFC.
+   * L'abrégé pour la lire d'un coup d'œil, le nom complet pour l'infobulle —
+   * exactement ce que la liste du personnel remonte déjà.
+   */
+  directionShortName: string | null;
+  directionName: string | null;
   validFrom: string;
   validTo: string | null;
   current: boolean;
