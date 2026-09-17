@@ -38,9 +38,8 @@ import {
 import { ROLE_LABELS } from '../../../../lib/absences';
 import { api } from '../../../../lib/api';
 import { useMe } from '../../../../lib/hooks';
-import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../../components/gabarit';
+import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
 import { SqueletteTableau } from '../../../../components/tableau';
-import { compte } from '../../../../lib/mots';
 
 const CHAIN_ROLES: MembershipRole[] = ['manager', 'hr', 'payroll', 'admin'];
 
@@ -180,10 +179,6 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
           </TBody>
         </Table>
       )}
-      {liste.length > 0 ? (
-        <PiedCarte>{compte(liste.length, "type d'absence", "types d'absence")}</PiedCarte>
-      ) : null}
-
       {edition ? (
         <FenetreType
           cible={edition === 'nouveau' ? null : edition}

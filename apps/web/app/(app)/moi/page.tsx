@@ -19,7 +19,7 @@ import { Icon } from '../../../components/icons';
 import { api, ApiError } from '../../../lib/api';
 import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES } from '../../../lib/absences';
 import { formatDate, useMe } from '../../../lib/hooks';
-import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
+import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import { ProchainsFeries } from '../../../components/prochains-feries';
 import { compte } from '../../../lib/mots';
 
@@ -217,9 +217,6 @@ export default function MySpacePage() {
               </ul>
             )}
           </CorpsDefilant>
-          {myRequests.length > 0 ? (
-            <PiedCarte>{compte(myRequests.length, 'demande')}</PiedCarte>
-          ) : null}
         </CartePleine>
 
         {/* ———— La colonne d'à côté : le guichet des documents, puis les

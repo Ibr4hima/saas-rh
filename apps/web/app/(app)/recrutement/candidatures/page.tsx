@@ -21,8 +21,7 @@ import { api } from '../../../../lib/api';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
 import { CONTRACT_LABELS } from '../../../../lib/recruitment';
-import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../../components/gabarit';
-import { compte } from '../../../../lib/mots';
+import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
 import { SqueletteTableau, ThTri, useTriLocal } from '../../../../components/tableau';
 import { formatDate } from '../../../../lib/hooks';
 
@@ -208,17 +207,6 @@ export default function CandidaturesPage() {
             </TBody>
           </Table>
         )}
-        {lignes.length > 0 ? (
-          <PiedCarte
-            droite={
-              <span className="text-[11.5px] text-ink-muted">
-                {compte(total, 'dossier')} au total
-              </span>
-            }
-          >
-            {compte(lignes.length, 'offre')}
-          </PiedCarte>
-        ) : null}
       </CartePleine>
     </Page>
   );

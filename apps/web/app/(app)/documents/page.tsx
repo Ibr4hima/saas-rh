@@ -32,12 +32,9 @@ import { CONTRACT_LABELS } from '../../../lib/recruitment';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
-import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
-import { compte } from '../../../lib/mots';
+import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import {
   BarreSelection,
-  BoutonExport,
-  exporterCSV,
   LIGNE_COCHEE,
   SqueletteTableau,
   TdCase,
@@ -118,28 +115,6 @@ export default function DocumentRequestsPage() {
   const aTraiter = tri.lignes;
   const sel = useSelection(aTraiter);
   const selectionnees = sel.choisis;
-
-  /**
-   * Une file dans un fichier.
-   *
-   * Les deux tableaux exportent les MÊMES colonnes : c'est la même demande,
-   * vue avant et après. Le statut dit où elle en est, la date de traitement
-   * est vide tant qu'elle attend.
-   */
-  const exporter = (lignes: DocumentRequestView[], nom: string) =>
-    exporterCSV(
-      nom,
-      ['Matricule', 'Demandeur', 'Requête', 'Demandée le', 'Traitée le', 'Statut', 'Motif'],
-      lignes.map((r) => [
-        r.employeeNumber,
-        r.employeeName,
-        docLabels(r),
-        r.createdAt.slice(0, 10),
-        r.handledAt ? r.handledAt.slice(0, 10) : null,
-        r.status,
-        r.note ?? null,
-      ]),
-    );
 
   if (requests.isError) {
     return <LoadFailure error={requests.error} onRetry={() => void requests.refetch()} />;
@@ -257,18 +232,6 @@ export default function DocumentRequestsPage() {
             </TBody>
           </Table>
         )}
-        {aTraiter.length > 0 ? (
-          <PiedCarte
-            droite={
-              <BoutonExport
-                quoi="la file"
-                onClick={() => exporter(aTraiter, 'demandes-a-traiter')}
-              />
-            }
-          >
-            {compte(aTraiter.length, 'demande')} en attente
-          </PiedCarte>
-        ) : null}
       </CartePleine>
 
       <CartePleine className="flex-[1]">
@@ -348,18 +311,6 @@ export default function DocumentRequestsPage() {
             </TBody>
           </Table>
         )}
-        {traitees.length > 0 ? (
-          <PiedCarte
-            droite={
-              <BoutonExport
-                quoi="l'historique"
-                onClick={() => exporter(traitees, 'demandes-traitees')}
-              />
-            }
-          >
-            {compte(traitees.length, 'demande')}
-          </PiedCarte>
-        ) : null}
       </CartePleine>
 
       {panneau === 'traiter' ? (

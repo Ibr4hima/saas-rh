@@ -25,15 +25,8 @@ import { ABSENCE_STATUS_LABELS, resumeVisas } from '../../../lib/absences';
 import { StatutAbsence } from '../../../components/statut-absence';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
-import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
-import { compte } from '../../../lib/mots';
-import {
-  BoutonExport,
-  exporterCSV,
-  SqueletteTableau,
-  ThTri,
-  useTriLocal,
-} from '../../../components/tableau';
+import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
+import { SqueletteTableau, ThTri, useTriLocal } from '../../../components/tableau';
 
 /**
  * Un geste de décision : viser, ou refuser.
@@ -298,42 +291,6 @@ export default function AbsencesPage() {
             </TBody>
           </Table>
         )}
-        {items.length > 0 ? (
-          <PiedCarte
-            droite={
-              <BoutonExport
-                quoi="les demandes"
-                onClick={() =>
-                  exporterCSV(
-                    `demandes-absence${status ? `-${status}` : ''}`,
-                    [
-                      'Matricule',
-                      'Employé',
-                      'Type',
-                      'Début',
-                      'Fin',
-                      'Jours ouvrés',
-                      'Statut',
-                      'Motif',
-                    ],
-                    items.map((r) => [
-                      r.employeeNumber,
-                      r.employeeName,
-                      r.absenceTypeName,
-                      r.startDate,
-                      r.endDate,
-                      r.daysCount,
-                      ABSENCE_STATUS_LABELS[r.status] ?? r.status,
-                      r.reason ?? null,
-                    ]),
-                  )
-                }
-              />
-            }
-          >
-            {compte(items.length, 'demande')}
-          </PiedCarte>
-        ) : null}
       </CartePleine>
 
       {/* L'horizon des absences : un complément, pas la file de travail. Il

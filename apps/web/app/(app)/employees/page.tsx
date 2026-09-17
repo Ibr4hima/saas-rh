@@ -34,12 +34,8 @@ import { Icon } from '../../../components/icons';
 import { Modal, ModalSection } from '../../../components/modal';
 import { Onglets, OngletsBandeau } from '../../../components/onglets-bandeau';
 import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
-import { compte } from '../../../lib/mots';
 import {
   BarreSelection,
-  BoutonExport,
-  BoutonPied,
-  exporterCSV,
   LIGNE_COCHEE,
   SqueletteTableau,
   ThCases,
@@ -145,43 +141,6 @@ export default function EmployeesPage() {
     sel.vider();
   };
 
-  /**
-   * La liste telle qu'elle est À L'ÉCRAN, dans un fichier.
-   *
-   * Ce sont les lignes CHARGÉES qui partent, pas la base entière : l'export
-   * doit rendre ce que la RH voit — son onglet, sa recherche, ses filtres et
-   * son tri. Un bouton qui exporterait silencieusement autre chose que
-   * l'écran serait un piège.
-   */
-  const exporter = () =>
-    exporterCSV(
-      `personnel-${onglet === 'active' ? 'actif' : 'inactif'}`,
-      [
-        'Matricule',
-        'Prénom',
-        'Nom',
-        'Poste',
-        'Manager',
-        'Direction',
-        'Unité',
-        'Début de contrat',
-        'Fin de contrat',
-        'Email professionnel',
-      ],
-      items.map((e) => [
-        e.employeeNumber,
-        e.givenName,
-        e.familyName,
-        e.positionTitle,
-        e.managerName,
-        e.directionName,
-        e.orgUnitName,
-        e.contractStartDate,
-        e.contractEndDate,
-        e.workEmail,
-      ]),
-    );
-
   const apresLot = async (res: EmployeeBatchResult) => {
     await queryClient.invalidateQueries({ queryKey: ['employees'] });
     await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -251,6 +210,24 @@ export default function EmployeesPage() {
               />
             </div>
           </div>
+
+          {/* À DROITE de la ligne du titre : c'est là qu'on cherche le
+              geste qui remplit la liste, pas au pied du tableau. Il se
+              retire quand des lignes sont cochées — la barre de sélection
+              prend alors la place, et deux séries d'actions sur la même
+              ligne feraient hésiter. */}
+          {peutImporter && choisis.length === 0 ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-8"
+              onClick={() => setImportOuvert(true)}
+              title="Importer l’effectif depuis un classeur .xlsx"
+            >
+              <Icon name="upload_file" size={15} />
+              Importer
+            </Button>
+          ) : null}
 
           <BarreSelection sel={sel} quoi="dossier">
             {actifsChoisis.length > 0 ? (
@@ -417,37 +394,22 @@ export default function EmployeesPage() {
             </TBody>
           </Table>
         )}
-        {items.length > 0 ? (
+        {/* Le pied ne sert plus qu'à demander la suite : le décompte des
+            lignes est déjà sur les onglets (« Actifs 16 »), et le répéter en
+            bas de chaque tableau n'ajoutait rien. */}
+        {query.hasNextPage ? (
           <PiedCarte
             droite={
-              <span className="flex items-center gap-1.5">
-                {peutImporter ? (
-                  <BoutonPied
-                    onClick={() => setImportOuvert(true)}
-                    icone="upload_file"
-                    title="Importer l’effectif depuis un classeur .xlsx"
-                  >
-                    Importer
-                  </BoutonPied>
-                ) : null}
-                <BoutonExport quoi="la liste du personnel" onClick={exporter} />
-                {query.hasNextPage ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={query.isFetchingNextPage}
-                    onClick={() => query.fetchNextPage()}
-                  >
-                    Charger plus
-                  </Button>
-                ) : null}
-              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={query.isFetchingNextPage}
+                onClick={() => query.fetchNextPage()}
+              >
+                Charger plus
+              </Button>
             }
-          >
-            {items.length < counts[onglet]
-              ? `${items.length} sur ${compte(counts[onglet], 'dossier')}`
-              : compte(counts[onglet], 'dossier')}
-          </PiedCarte>
+          />
         ) : null}
       </CartePleine>
 

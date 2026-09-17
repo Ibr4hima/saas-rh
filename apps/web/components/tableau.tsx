@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Checkbox, cn, Skeleton, Td, Th } from '@teranga/ui';
 import { accorde, compte } from '../lib/mots';
-import { Icon, type IconName } from './icons';
+import { Icon } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
    Le socle des tableaux.
@@ -21,7 +21,7 @@ import { Icon, type IconName } from './icons';
    liens, des badges, des délais colorés, des infobulles : une API de
    colonnes aurait enfermé ce JSX dans des objets, et l'écran serait devenu
    illisible pour économiser des balises. Ce sont donc des PIÈCES — la
-   colonne de cases, l'en-tête qui trie, la barre de sélection, l'export —
+   colonne de cases, l'en-tête qui trie, la barre de sélection, l'attente —
    que les écrans assemblent en gardant leur JSX explicite.
    ———————————————————————————————————————————————————————————————— */
 
@@ -312,78 +312,5 @@ export function SqueletteTableau({ lignes = 6 }: { lignes?: number }) {
         <Skeleton key={i} className="h-9 w-full shrink-0" />
       ))}
     </div>
-  );
-}
-
-/* ——————————————————————— L'export ——————————————————————— */
-
-/**
- * Le tableau à l'écran, dans un fichier.
- *
- * La RH exporte : c'est le geste qui finit une liste — pour la joindre à un
- * dossier, la faire viser, la porter en réunion. Trois détails décident si
- * le fichier s'ouvre correctement à Dakar :
- *   — le SÉPARATEUR est le point-virgule. Excel en configuration française
- *     range une ligne séparée par des virgules dans une seule colonne.
- *   — le BOM UTF-8 en tête, sans quoi « Ndiaye Aïssatou » s'ouvre en
- *     « NdiayeÂ AÃ¯ssatou ».
- *   — les fins de ligne CRLF, que les vieux tableurs attendent encore.
- */
-export function exporterCSV(nom: string, entetes: string[], lignes: (string | number | null)[][]) {
-  const cellule = (v: string | number | null) => {
-    const t = v === null || v === undefined ? '' : String(v);
-    return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-  };
-  const texte =
-    '﻿' + [entetes, ...lignes].map((r) => r.map(cellule).join(';')).join('\r\n') + '\r\n';
-  const url = URL.createObjectURL(new Blob([texte], { type: 'text/csv;charset=utf-8' }));
-  const lien = document.createElement('a');
-  lien.href = url;
-  lien.download = `${nom}-${new Date().toISOString().slice(0, 10)}.csv`;
-  lien.click();
-  // Révoqué au tour suivant : révoqué tout de suite, le téléchargement part
-  // sur une URL déjà morte dans certains navigateurs.
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-/**
- * Un geste du PIED de tableau : discret par construction.
- *
- * Le pied porte les gestes qui s'appliquent au tableau entier — exporter,
- * importer, charger la suite. Ce ne sont pas les actions principales de
- * l'écran : elles s'écrivent en gris, à hauteur de la ligne de décompte, et ne
- * prennent leur couleur qu'au survol. Un aplat bleu au bas de chaque liste
- * disputerait l'attention au bouton du bandeau.
- */
-export function BoutonPied({
-  onClick,
-  icone,
-  title,
-  children,
-}: {
-  onClick: () => void;
-  icone: IconName;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold text-ink-muted transition-colors hover:bg-hover hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-    >
-      <Icon name={icone} size={14} />
-      {children}
-    </button>
-  );
-}
-
-/** Le bouton qui déclenche l'export, à sa place : le pied du tableau. */
-export function BoutonExport({ onClick, quoi }: { onClick: () => void; quoi: string }) {
-  return (
-    <BoutonPied onClick={onClick} icone="download" title={`Exporter ${quoi} au format CSV`}>
-      Exporter
-    </BoutonPied>
   );
 }

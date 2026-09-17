@@ -24,13 +24,10 @@ import { Icon } from '../../../components/icons';
 import { JobModal } from '../../../components/job-modal';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalSection } from '../../../components/modal';
-import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
+import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import { CONTRACT_LABELS, JOB_STATUS_LABELS } from '../../../lib/recruitment';
-import { compte } from '../../../lib/mots';
 import {
   BarreSelection,
-  BoutonExport,
-  exporterCSV,
   LIGNE_COCHEE,
   SqueletteTableau,
   TdCase,
@@ -241,38 +238,6 @@ export default function OffresPage() {
             </TBody>
           </Table>
         )}
-        {offres.length > 0 ? (
-          <PiedCarte
-            droite={
-              <BoutonExport
-                quoi="les offres"
-                onClick={() =>
-                  exporterCSV(
-                    'offres-emploi',
-                    [
-                      'Référence',
-                      'Poste',
-                      'Type de contrat',
-                      'Publiée le',
-                      'Date limite',
-                      'Statut',
-                    ],
-                    offres.map((o) => [
-                      o.reference,
-                      o.title,
-                      CONTRACT_LABELS[o.contractType] ?? o.contractType,
-                      o.createdAt.slice(0, 10),
-                      o.deadline,
-                      JOB_STATUS_LABELS[o.status] ?? o.status,
-                    ]),
-                  )
-                }
-              />
-            }
-          >
-            {compte(offres.length, 'offre')}
-          </PiedCarte>
-        ) : null}
       </CartePleine>
 
       {creation ? <JobModal open onClose={fermerCreation} /> : null}
