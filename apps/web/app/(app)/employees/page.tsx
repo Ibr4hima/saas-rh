@@ -1,6 +1,6 @@
 'use client';
 
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -33,7 +33,8 @@ import { FenetreImportEmployes } from '../../../components/import-employes';
 import { Icon } from '../../../components/icons';
 import { Modal, ModalSection } from '../../../components/modal';
 import { Onglets, OngletsBandeau } from '../../../components/onglets-bandeau';
-import { CartePleine, CorpsDefilant, Page, PiedCarte } from '../../../components/gabarit';
+import { Pagination } from '../../../components/pagination';
+import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import {
   BarreSelection,
   LIGNE_COCHEE,
@@ -47,6 +48,16 @@ import {
 
 /** Ce qu'on tape pour confirmer un effacement — court, mais pas cliquable. */
 const MOT_DE_CONFIRMATION = 'SUPPRIMER';
+
+/**
+ * Quinze lignes par page.
+ *
+ * Quinze tiennent dans un écran d'ordinateur portable sans faire défiler le
+ * tableau, et c'est ce qui permet de comparer deux lignes éloignées d'un coup
+ * d'œil. Vingt-cinq — la valeur d'avant, héritée du « Charger plus » — en
+ * cachait toujours une partie.
+ */
+const PAR_PAGE = 15;
 
 const TITRES: Record<EmployeeStatus, string> = {
   active: 'Personnel actif',
@@ -95,35 +106,73 @@ export default function EmployeesPage() {
   // avec un fichier en main, et un lien partagé rouvrirait une fenêtre vide.
   const [importOuvert, setImportOuvert] = useState(false);
   const [ecartes, setEcartes] = useState<EmployeeBatchResult['skipped']>([]);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const id = setTimeout(() => setDebounced(search.trim()), 250);
     return () => clearTimeout(id);
   }, [search]);
 
-  const query = useInfiniteQuery({
-    queryKey: ['employees', debounced, onglet, filtres, sort, dir],
-    queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ status: onglet, sort, dir, limit: '25' });
+  // Toute requête NOUVELLE repart de la première page : rester à la page 4
+  // après avoir tapé trois lettres montrerait le milieu d'un résultat dont on
+  // n'a pas vu le début.
+  useEffect(() => setPage(1), [debounced, onglet, filtres, sort, dir]);
+
+  const query = useQuery({
+    queryKey: ['employees', debounced, onglet, filtres, sort, dir, page],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        status: onglet,
+        sort,
+        dir,
+        limit: String(PAR_PAGE),
+        offset: String((page - 1) * PAR_PAGE),
+      });
       if (debounced) params.set('q', debounced);
       if (filtres.positionTitle) params.set('positionTitle', filtres.positionTitle);
       if (filtres.managerId) params.set('managerId', filtres.managerId);
       if (filtres.unit) params.set('unit', filtres.unit);
-      if (pageParam) params.set('offset', String(pageParam));
       return api<EmployeeListPage>(`/employees?${params.toString()}`);
     },
-    initialPageParam: 0,
-    getNextPageParam: (last) => last.nextOffset ?? undefined,
+    // La page précédente RESTE à l'écran pendant que la suivante arrive : sans
+    // cela, chaque clic sur un numéro fait clignoter six lignes de squelette
+    // pour deux cents millisecondes de réseau.
+    placeholderData: keepPreviousData,
   });
 
-  const pages = query.data?.pages ?? [];
-  const items = useMemo(() => pages.flatMap((p) => p.items), [pages]);
-  const derniere = pages[pages.length - 1];
-  const counts = derniere?.counts ?? { active: 0, archived: 0 };
-  const facets = derniere?.facets ?? { positions: [], managers: [], units: [] };
+  const donnees = query.data;
+  const items = useMemo(() => donnees?.items ?? [], [donnees]);
+  const counts = donnees?.counts ?? { active: 0, archived: 0 };
+  const facets = donnees?.facets ?? { positions: [], managers: [], units: [] };
+  const nbPages = Math.max(1, Math.ceil((donnees?.total ?? 0) / PAR_PAGE));
+
+  /**
+   * On ne reste pas sur une page qui n'existe plus.
+   *
+   * Filtrer depuis la page 5 d'une liste qui n'en compte plus que deux
+   * afficherait un tableau vide sous une barre qui montre cinq pages. Le
+   * serveur rend le total quelle que soit la page demandée : on retombe donc
+   * sur la dernière page réelle.
+   */
+  useEffect(() => {
+    if (page > nbPages) setPage(nbPages);
+  }, [page, nbPages]);
 
   const sel = useSelection(items);
   const choisis = sel.choisis;
+
+  /**
+   * Changer de page relâche la sélection.
+   *
+   * Les cases cochées appartiennent aux lignes AFFICHÉES : les garder d'une
+   * page à l'autre ferait réapparaître « 3 dossiers sélectionnés » en
+   * revenant, et un lot supprimé depuis une autre page est un lot qu'on n'a
+   * pas relu.
+   */
+  const allerPage = (p: number) => {
+    sel.vider();
+    setPage(p);
+  };
   const actifsChoisis = choisis.filter((e) => e.status === 'active');
   const archivesChoisis = choisis.filter((e) => e.status === 'archived');
 
@@ -175,7 +224,13 @@ export default function EmployeesPage() {
   };
 
   return (
-    <Page>
+    // `h-full` et non le seul `min-h-full` du gabarit : la barre de pagination
+    // doit rester SOUS LES YEUX. Sans hauteur fixée, la carte grandit avec ses
+    // quinze lignes, la page dépasse le panneau et la barre passe sous la
+    // ligne de flottaison — on paginerait une liste dont la pagination
+    // demande à faire défiler. Avec elle, la carte prend ce qui reste et c'est
+    // le tableau qui défile, sous ses intitulés de colonne.
+    <Page className="h-full">
       <EmployeeCreateModal open={createOpen} onClose={() => router.replace('/employees')} />
       {importOuvert ? <FenetreImportEmployes onClose={() => setImportOuvert(false)} /> : null}
 
@@ -331,7 +386,7 @@ export default function EmployeesPage() {
             />
           </CorpsDefilant>
         ) : (
-          <Table pleine>
+          <Table pleine key={page}>
             <THead>
               <tr>
                 <ThCases sel={sel} />
@@ -394,24 +449,11 @@ export default function EmployeesPage() {
             </TBody>
           </Table>
         )}
-        {/* Le pied ne sert plus qu'à demander la suite : le décompte des
-            lignes est déjà sur les onglets (« Actifs 16 »), et le répéter en
-            bas de chaque tableau n'ajoutait rien. */}
-        {query.hasNextPage ? (
-          <PiedCarte
-            droite={
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={query.isFetchingNextPage}
-                onClick={() => query.fetchNextPage()}
-              >
-                Charger plus
-              </Button>
-            }
-          />
-        ) : null}
       </CartePleine>
+
+      {/* La barre vit SOUS la carte, centrée : elle navigue entre les pages,
+          elle n'appartient donc pas au tableau qu'elle remplace. */}
+      <Pagination page={page} pages={nbPages} onPage={allerPage} />
 
       {panneau === 'supprimer' ? (
         <SupprimerModal

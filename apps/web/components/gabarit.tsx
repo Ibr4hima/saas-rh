@@ -16,8 +16,13 @@ import { Card, cn } from '@teranga/ui';
    sur les demandes d'absence — parce qu'une carte épouse ses lignes : trois
    lignes laissaient sept cents pixels de fond nu sous elles. Le vide ne
    disparaît pas (il n'y a que trois offres) ; il rentre DANS la carte, sous
-   un en-tête qui tient et au-dessus d'un pied qui compte. C'est la différence
-   entre un tableau qui attend ses lignes et un écran qu'on a oublié de finir.
+   un en-tête qui tient. C'est la différence entre un tableau qui attend ses
+   lignes et un écran qu'on a oublié de finir.
+
+   La carte a longtemps porté un PIED, qui comptait ses lignes. Il est parti
+   avec les décomptes : l'onglet les dit déjà, et la pagination du personnel
+   vit sous la carte — elle navigue entre les pages, elle n'appartient pas au
+   tableau qu'elle feuillette.
    ———————————————————————————————————————————————————————————————— */
 
 /**
@@ -92,37 +97,4 @@ export function CorpsDefilant({
   children?: React.ReactNode;
 }) {
   return <div className={cn('min-h-0 flex-1 overflow-auto', className)}>{children}</div>;
-}
-
-/**
- * Le pied de carte : ce qui ferme le tableau par le bas.
- *
- * Il porte le DÉCOMPTE, qui quittait le titre en même temps : « Personnel
- * actif 3 » sous un bandeau « Gestion du personnel » et un onglet « Actifs 3 »
- * écrivait le même chiffre trois fois dans un même écran. En haut on nomme,
- * en bas on compte.
- */
-export function PiedCarte({
-  children,
-  droite,
-  className,
-}: {
-  children?: React.ReactNode;
-  /** Ce qui se pose à l'opposé du décompte — un lien, un bouton discret. */
-  droite?: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        'flex shrink-0 items-center justify-between gap-3 border-t border-line-soft bg-surface-raised/50 px-5 py-2.5',
-        className,
-      )}
-    >
-      <span className="min-w-0 truncate text-[11.5px] font-semibold text-ink-muted">
-        {children}
-      </span>
-      {droite ? <span className="shrink-0">{droite}</span> : null}
-    </div>
-  );
 }

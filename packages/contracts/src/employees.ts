@@ -424,6 +424,15 @@ export interface EmployeeListPage {
   /** Décalage de la page suivante ; null quand il n'y en a plus. */
   nextOffset: number | null;
   /**
+   * Le nombre de lignes que la requête trouve EN TOUT — onglet, recherche et
+   * filtres compris. C'est lui qui donne le nombre de pages, et c'est
+   * pourquoi il ne se confond pas avec `counts` : les effectifs des onglets
+   * ignorent volontairement l'onglet ET les filtres, pour dire « il y en a
+   * trois de l'autre côté ». Compter les pages avec eux afficherait des
+   * pages vides dès qu'un filtre est posé.
+   */
+  total: number;
+  /**
    * Effectifs par statut À RECHERCHE ÉGALE, mais sans tenir compte de l'onglet :
    * c'est ce qui permet aux onglets de dire où se trouve ce qu'on cherche.
    */

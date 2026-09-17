@@ -280,5 +280,38 @@ describe('tri, filtres et effectifs', () => {
     const p2 = await lister({ sort: 'name', dir: 'asc', limit: 2, offset: 2 });
     expect(p2.items.map((i) => i.employeeNumber)).toEqual(['CARLA']);
     expect(p2.nextOffset).toBeNull();
+    // Le total ne bouge pas d'une page à l'autre : c'est le nombre de pages.
+    expect([p1.total, p2.total]).toEqual([3, 3]);
+  });
+
+  it('donne un TOTAL qui tient compte de l’onglet et des filtres', async () => {
+    // `counts` répond à « combien de l'autre côté ? » et ignore donc l'onglet
+    // comme les filtres. `total` répond à « combien de pages ? » et doit
+    // suivre la requête exactement — sinon la liste propose des pages vides.
+    await affecter(alice, 'Comptable', null);
+    await affecter(bruno, 'Comptable', null);
+    await affecter(carla, 'Analyste', null);
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [carla]);
+
+    const actifs = await lister({ status: 'active' });
+    expect(actifs.total).toBe(2);
+    expect(actifs.counts).toEqual({ active: 2, archived: 1 });
+
+    const comptables = await lister({ status: 'active', positionTitle: 'Comptable' });
+    expect(comptables.total).toBe(2);
+
+    const analystes = await lister({ status: 'active', positionTitle: 'Analyste' });
+    expect(analystes.total).toBe(0);
+    // Les effectifs, eux, n'ont pas bougé : ils ignorent le filtre.
+    expect(analystes.counts).toEqual({ active: 2, archived: 1 });
+
+    const cherche = await lister({ q: 'CARLA', status: 'archived' });
+    expect(cherche.total).toBe(1);
+
+    // Une page au-delà de la fin rend zéro ligne, mais toujours le bon total :
+    // c'est ce qui permet à la liste de renvoyer vers la dernière page.
+    const trop = await lister({ status: 'active', offset: 50 });
+    expect(trop.items).toHaveLength(0);
+    expect(trop.total).toBe(2);
   });
 });

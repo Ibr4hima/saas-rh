@@ -193,6 +193,16 @@ export class PeopleService {
       const trop = lignes.rows.length > query.limit;
       const page = trop ? lignes.rows.slice(0, query.limit) : lignes.rows;
 
+      // Le total de CETTE requête-là, filtres compris : c'est le nombre de
+      // pages. Une requête de plus, sur la même vue — `count(*) OVER ()`
+      // l'aurait donnée avec les lignes, mais serait revenue vide sur une
+      // page au-delà de la fin, précisément le cas où la pagination a besoin
+      // de savoir combien de pages il reste.
+      const totalRows = await tx.execute<{ n: string }>(sql`
+        ${socle}
+        SELECT count(*)::text AS n FROM vue ${ou}
+      `);
+
       // Les effectifs ignorent l'onglet — c'est leur raison d'être : dire
       // combien il y en a DE L'AUTRE CÔTÉ.
       const effectifs = await tx.execute<{ status: string; n: string }>(sql`
@@ -241,6 +251,7 @@ export class PeopleService {
           managerName: r.manager_name,
         })),
         nextOffset: trop ? query.offset + query.limit : null,
+        total: Number(totalRows.rows[0]?.n ?? 0),
         counts: { active: compte('active'), archived: compte('archived') },
         facets: {
           positions: facettes.rows.filter((f) => f.kind === 'position').map((f) => f.value),
