@@ -39,23 +39,15 @@ import {
   useSelection,
   useTriLocal,
 } from '../../../components/tableau';
-
-/** « il y a 3 jours » — l'âge d'une offre dit s'il faut la relancer. */
-function depuis(iso: string): string {
-  const jours = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  if (jours <= 0) return "aujourd'hui";
-  if (jours === 1) return 'hier';
-  if (jours < 31) return `${jours} jours`;
-  const mois = Math.floor(jours / 30);
-  if (mois < 12) return `${mois} mois`;
-  const ans = Math.floor(mois / 12);
-  return `${ans} an${ans > 1 ? 's' : ''}`;
-}
+import { anciennete, useHorlogeMinute } from '../../../lib/temps';
 
 export default function OffresPage() {
   const router = useRouter();
   const params = useSearchParams();
   const queryClient = useQueryClient();
+  // Les âges affichés avancent tout seuls : sans cela, « 3 minutes » resterait
+  // écrit une heure plus tard sur un écran qu'on laisse ouvert.
+  useHorlogeMinute();
   const [panneau, setPanneau] = useState<'modifier' | 'supprimer' | null>(null);
   const [ecartees, setEcartees] = useState<DeleteJobPostingsResult['skipped']>([]);
 
@@ -230,7 +222,7 @@ export default function OffresPage() {
                   <Td className="whitespace-nowrap">
                     {CONTRACT_LABELS[o.contractType] ?? o.contractType}
                   </Td>
-                  <Td className="whitespace-nowrap text-ink-muted">{depuis(o.createdAt)}</Td>
+                  <Td className="whitespace-nowrap text-ink-muted">{anciennete(o.createdAt)}</Td>
                   <Td
                     className={cn(
                       'whitespace-nowrap',

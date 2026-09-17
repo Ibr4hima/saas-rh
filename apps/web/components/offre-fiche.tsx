@@ -31,21 +31,6 @@ export function joursRestants(iso: string): number {
 }
 
 /**
- * L'âge de l'offre, en une durée nue — l'intitulé porte déjà « publiée il y
- * a ». Au-delà d'une semaine on cesse de compter en jours : « il y a 34
- * jours » demande un calcul mental que « il y a 5 semaines » épargne.
- */
-export function anciennete(iso: string): string {
-  const jours = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
-  if (jours === 0) return "moins d'un jour";
-  if (jours === 1) return '1 jour';
-  if (jours < 7) return `${jours} jours`;
-  const semaines = Math.floor(jours / 7);
-  if (jours < 61) return semaines === 1 ? '1 semaine' : `${semaines} semaines`;
-  return `${Math.floor(jours / 30)} mois`;
-}
-
-/**
  * La description telle qu'on l'a tapée, rendue telle qu'on l'a pensée.
  *
  * La RH écrit ses missions en tirets, comme dans un traitement de texte. Sortie

@@ -19,12 +19,12 @@ import { PhoneInput } from '../../../components/phone-input';
 import { composePhone, DEFAULT_COUNTRY } from '../../../lib/countries';
 import { CONTRACT_LABELS } from '../../../lib/recruitment';
 import {
-  anciennete,
   DescriptionOffre,
   FaitOffre,
   joursRestants,
   jourFr,
 } from '../../../components/offre-fiche';
+import { anciennete, useHorlogeMinute } from '../../../lib/temps';
 
 const INVALID_MESSAGES: Record<string, string> = {
   closed: "La date limite de candidature est passée — cette offre n'accepte plus de dossiers.",
@@ -287,6 +287,9 @@ export default function ApplyPage() {
   });
 
   const offre = info.data?.valid ? info.data : null;
+  // Le candidat lit la page sans se presser : l'âge de l'offre ne doit pas
+  // rester figé sur la minute où elle s'est ouverte.
+  useHorlogeMinute();
 
   useEffect(() => {
     if (offre) document.title = `${offre.title} — ${offre.organizationName}`;

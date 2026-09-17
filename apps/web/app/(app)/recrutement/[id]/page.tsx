@@ -12,17 +12,13 @@ import { ApercuDocument, type ViewableDoc } from '../../../../components/doc-vie
 import { formatDate } from '../../../../lib/hooks';
 import { Telephone, telHref } from '../../../../components/telephone';
 import { CONTRACT_LABELS, libelleDocument } from '../../../../lib/recruitment';
-import {
-  anciennete,
-  DescriptionOffre,
-  FaitOffre,
-  jourFr,
-} from '../../../../components/offre-fiche';
+import { DescriptionOffre, FaitOffre, jourFr } from '../../../../components/offre-fiche';
 import { LoadFailure } from '../../../../components/load-failure';
 import { Icon, type IconName } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { usePageTitle } from '../../../../components/page-title';
 import { Page } from '../../../../components/gabarit';
+import { anciennete, useHorlogeMinute } from '../../../../lib/temps';
 
 /**
  * Une offre et ses candidatures.
@@ -142,6 +138,8 @@ export default function JobPage() {
  * avant de postuler, et non une seconde mise en forme qui en diverge.
  */
 function CarteOffre({ offre: j }: { offre: JobPostingView }) {
+  // L'âge affiché avance tout seul : une fiche reste ouverte longtemps.
+  useHorlogeMinute();
   const [deplie, setDeplie] = useState(false);
   // Au-delà de cette longueur, la description repousserait les candidatures
   // hors de l'écran : on en montre l'amorce, le reste au clic.
