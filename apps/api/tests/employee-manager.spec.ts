@@ -162,17 +162,31 @@ describe('boucles hiérarchiques', () => {
 });
 
 describe('liste des employés', () => {
-  it('remonte le nom du manager', async () => {
+  it('remonte le MATRICULE du manager, et son nom pour l’infobulle', async () => {
+    // C'est le matricule que la colonne affiche : il est unique, là où deux
+    // agents peuvent porter le même nom. Le nom reste disponible pour
+    // l'infobulle.
     await setManager(bruno, alice);
     const page = await people.list(user, { limit: 25, sort: 'recent', dir: 'desc', offset: 0 });
     const ligne = page.items.find((i) => i.employeeNumber === 'BRUNO')!;
+    expect(ligne.managerNumber).toBe('ALICE');
     expect(ligne.managerName).toBe('ALICE Test');
     expect(ligne.managerId).toBe(alice);
   });
 
+  it('nomme ET numérote les managers dans la liste de filtre', async () => {
+    // Deux homonymes y étaient indiscernables : c'est le défaut même qu'on
+    // corrige en affichant le matricule.
+    await setManager(bruno, alice);
+    const page = await people.list(user, { limit: 25, sort: 'recent', dir: 'desc', offset: 0 });
+    expect(page.facets.managers).toEqual([{ id: alice, name: 'ALICE Test (ALICE)' }]);
+  });
+
   it('laisse le manager vide quand il n’y en a pas', async () => {
     const page = await people.list(user, { limit: 25, sort: 'recent', dir: 'desc', offset: 0 });
-    expect(page.items.find((i) => i.employeeNumber === 'ALICE')!.managerName).toBeNull();
+    const ligne = page.items.find((i) => i.employeeNumber === 'ALICE')!;
+    expect(ligne.managerName).toBeNull();
+    expect(ligne.managerNumber).toBeNull();
   });
 });
 

@@ -53,6 +53,7 @@ interface LigneListe extends Record<string, unknown> {
   contract_end_date: string | null;
   manager_employee_id: string | null;
   manager_name: string | null;
+  manager_number: string | null;
   unite: string | null;
 }
 
@@ -144,7 +145,12 @@ export class PeopleService {
             (SELECT mp.given_name || ' ' || mp.family_name
                FROM employees me JOIN persons mp ON mp.id = me.person_id
               WHERE me.id = e.manager_employee_id)
-                                        AS manager_name
+                                        AS manager_name,
+            -- Le matricule du n+1 : c'est LUI que la liste affiche, un nom
+            -- pouvant être porté par deux agents.
+            (SELECT me.employee_number FROM employees me
+              WHERE me.id = e.manager_employee_id)
+                                        AS manager_number
           FROM employees e
           JOIN persons p ON p.id = e.person_id
           LEFT JOIN assignments a
@@ -227,7 +233,8 @@ export class PeopleService {
         SELECT 'unit', unite, unite
           FROM vue WHERE unite IS NOT NULL ${cadre}
         UNION
-        SELECT 'manager', manager_employee_id::text, manager_name
+        SELECT 'manager', manager_employee_id::text,
+               manager_name || ' (' || manager_number || ')'
           FROM vue WHERE manager_employee_id IS NOT NULL ${cadre}
         ORDER BY 3
       `);
@@ -249,6 +256,7 @@ export class PeopleService {
           contractEndDate: r.contract_end_date,
           managerId: r.manager_employee_id,
           managerName: r.manager_name,
+          managerNumber: r.manager_number,
         })),
         nextOffset: trop ? query.offset + query.limit : null,
         total: Number(totalRows.rows[0]?.n ?? 0),

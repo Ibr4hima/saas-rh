@@ -500,6 +500,14 @@ export interface EmployeeListItem {
   contractStartDate: string | null;
   contractEndDate: string | null;
   managerId: string | null;
+  /**
+   * Le MATRICULE du responsable hiérarchique.
+   *
+   * C'est lui que la liste affiche, et non le nom : un matricule est unique
+   * là où deux agents peuvent porter le même nom. Le nom reste en infobulle,
+   * pour qu'on sache de qui il s'agit sans quitter la ligne.
+   */
+  managerNumber: string | null;
   managerName: string | null;
   workEmail: string | null;
 }

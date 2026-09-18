@@ -404,7 +404,11 @@ export default function EmployeesPage() {
                 <Th>Matricule</Th>
                 <ThTri label="Nom" colonne="name" courant={sort} sens={dir} onTrier={trierPar} />
                 <Th>Poste</Th>
-                <Th>Manager</Th>
+                {/* Le MATRICULE du n+1, pas son nom : un matricule est
+                    unique, deux agents peuvent porter le même nom. Le nom
+                    reste en infobulle — on sait de qui il s'agit sans quitter
+                    la ligne. */}
+                <Th>Matricule N+1</Th>
                 <Th>Unité</Th>
                 <ThTri
                   label="Début contrat"
@@ -442,7 +446,13 @@ export default function EmployeesPage() {
                       ) : null}
                     </Td>
                     <Td>{e.positionTitle ?? '—'}</Td>
-                    <Td>{e.managerName ?? '—'}</Td>
+                    <Td className="font-mono text-[11.5px] whitespace-nowrap">
+                      {e.managerNumber ? (
+                        <span title={e.managerName ?? undefined}>{e.managerNumber}</span>
+                      ) : (
+                        <span className="font-sans text-ink-muted/60">—</span>
+                      )}
+                    </Td>
                     {/* L'abrégé tient dans une colonne, pas le nom complet :
                             l'infobulle garde le nom entier pour qui hésite. */}
                     <Td title={e.directionName ?? e.orgUnitName ?? undefined}>
