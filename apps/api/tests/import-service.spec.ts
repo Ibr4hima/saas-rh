@@ -53,6 +53,7 @@ const COLONNES = [
   'Début du contrat',
   'Durée (mois)',
   'Sexe',
+  'Matricule du responsable',
 ] as const;
 
 type Ligne = Partial<Record<(typeof COLONNES)[number], string>>;
@@ -103,7 +104,10 @@ const AGENT = (n: number, plus: Ligne = {}): Ligne => ({
 async function dossier(matricule: string) {
   const r = await raw(
     `SELECT p.given_name, p.family_name, p.gender, e.hired_on,
-            a.position_title, a.org_unit_id, c.contract_type, c.start_date, c.end_date
+            a.position_title, a.org_unit_id, c.contract_type, c.start_date, c.end_date,
+            (SELECT rp.given_name || ' ' || rp.family_name
+               FROM employees re JOIN persons rp ON rp.id = re.person_id
+              WHERE re.id = e.manager_employee_id) AS responsable
        FROM employees e
        JOIN persons p ON p.id = e.person_id
        LEFT JOIN assignments a ON a.employee_id = e.id
@@ -122,6 +126,7 @@ async function dossier(matricule: string) {
         contract_type: string | null;
         start_date: Date | null;
         end_date: Date | null;
+        responsable: string | null;
       }
     | undefined;
 }
@@ -280,8 +285,16 @@ describe('l’écriture', () => {
     expect(r.crees).toBe(2);
     expect(r.sansUnite).toBe(1);
     const ligne = r.lignes.find((l) => l.matricule === 'APIX-0001');
-    expect(ligne?.colonne).toBe('Direction affectée');
-    expect(ligne?.motif).toContain('Abrégé inconnu');
+    // Un abrégé inconnu n'est pas un refus : la ligne reste « à créer » et
+    // porte un AVERTISSEMENT — ce qui manquera au dossier, pas pourquoi il
+    // n'existe pas. `motif` est réservé aux lignes refusées ou ignorées.
+    expect(ligne?.motif).toBeNull();
+    expect(ligne?.avertissements).toEqual([
+      {
+        colonne: 'Direction affectée',
+        texte: 'Abrégé inconnu dans l’organigramme : dossier sans rattachement',
+      },
+    ]);
     expect(ligne?.uniteResolue).toBeNull();
     expect((await dossier('APIX-0001'))?.org_unit_id).toBeNull();
     // L'agent entre quand même avec son poste : c'est le dossier qui compte.
@@ -360,5 +373,147 @@ describe('une ligne fautive', () => {
     expect(erreur).toBeInstanceOf(ProblemException);
     expect((erreur as ProblemException).problem.code).toBe('import.illisible');
     expect(await compteDossiers()).toBe(0);
+  });
+});
+
+describe('le responsable hiérarchique', () => {
+  it('rattache à un agent DÉJÀ en base, par son matricule', async () => {
+    const chef = await imports.importer(admin, classeurDe([AGENT(1)]), true);
+    expect(chef.crees).toBe(1);
+
+    const r = await imports.importer(
+      admin,
+      classeurDe([AGENT(2, { 'Matricule du responsable': 'APIX-0001' })]),
+      true,
+    );
+    expect(r.rattaches).toBe(1);
+    expect(r.sansResponsable).toBe(0);
+    expect((await dossier('APIX-0002'))?.responsable).toBe('Agent1 Diop');
+  });
+
+  it('rattache à un agent créé PLUS BAS dans le même fichier', async () => {
+    // Le fichier du RH n'est pas trié : le chef peut venir après ses équipes.
+    const r = await imports.importer(
+      admin,
+      classeurDe([AGENT(1, { 'Matricule du responsable': 'APIX-0009' }), AGENT(9)]),
+      true,
+    );
+    expect(r.crees).toBe(2);
+    expect(r.rattaches).toBe(1);
+    expect((await dossier('APIX-0001'))?.responsable).toBe('Agent9 Diop');
+  });
+
+  it('retrouve le matricule malgré la casse et les séparateurs', async () => {
+    await imports.importer(admin, classeurDe([AGENT(1)]), true);
+    const r = await imports.importer(
+      admin,
+      classeurDe([AGENT(2, { 'Matricule du responsable': ' apix0001 ' })]),
+      true,
+    );
+    expect(r.rattaches).toBe(1);
+    expect((await dossier('APIX-0002'))?.responsable).toBe('Agent1 Diop');
+  });
+
+  it('crée le dossier SANS n+1 quand le matricule est introuvable, et le dit', async () => {
+    const r = await imports.importer(
+      admin,
+      classeurDe([AGENT(1, { 'Matricule du responsable': 'APIX-9999' })]),
+      true,
+    );
+    expect(r.crees).toBe(1);
+    expect(r.sansResponsable).toBe(1);
+    expect(r.rattaches).toBe(0);
+    const ligne = r.lignes[0];
+    expect(ligne?.etat).toBe('a-creer');
+    expect(ligne?.avertissements).toEqual([
+      {
+        colonne: 'Matricule du responsable',
+        texte: 'Matricule « APIX-9999 » introuvable : dossier créé sans n+1',
+      },
+    ]);
+    expect((await dossier('APIX-0001'))?.responsable).toBeNull();
+  });
+
+  it('refuse qu’un agent soit son propre responsable', async () => {
+    const r = await imports.importer(
+      admin,
+      classeurDe([AGENT(1, { 'Matricule du responsable': 'APIX-0001' })]),
+      true,
+    );
+    expect(r.crees).toBe(1);
+    expect(r.sansResponsable).toBe(1);
+    expect(r.lignes[0]?.avertissements[0]?.texte).toContain('son propre responsable');
+    expect((await dossier('APIX-0001'))?.responsable).toBeNull();
+  });
+
+  it('garde le dossier quand la RÈGLE DE DIRECTION refuse le rattachement', async () => {
+    // Le n+1 est à la DCH, l'agent à la DIPE : la règle de l'APIX l'interdit.
+    // Le dossier entre quand même — c'est le rattachement qui échoue.
+    const dipe = randomUUID();
+    await raw(
+      `INSERT INTO org_units (id, tenant_id, unit_type, name, short_name)
+       VALUES ($1,$2,'direction','Direction de l’Intelligence','DIPE')`,
+      [dipe, tenantId],
+    );
+    // Un directeur en place à la DCH et à la DIPE : sans tête, le chemin
+    // « rattachement au DG » resterait ouvert et la règle ne mordrait pas.
+    const r1 = await imports.importer(
+      admin,
+      classeurDe([AGENT(1), AGENT(5, { 'Direction affectée': 'DIPE' })]),
+      true,
+    );
+    expect(r1.crees).toBe(2);
+    const chefDCH = (await raw(`SELECT id FROM employees WHERE employee_number = 'APIX-0001'`))
+      .rows[0] as { id: string };
+    const chefDIPE = (await raw(`SELECT id FROM employees WHERE employee_number = 'APIX-0005'`))
+      .rows[0] as { id: string };
+    await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [dchId, chefDCH.id]);
+    await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [dipe, chefDIPE.id]);
+
+    const r = await imports.importer(
+      admin,
+      classeurDe([
+        AGENT(2, { 'Direction affectée': 'DIPE', 'Matricule du responsable': 'APIX-0001' }),
+      ]),
+      true,
+    );
+    expect(r.crees).toBe(1);
+    expect(r.sansResponsable).toBe(1);
+    expect(r.lignes[0]?.avertissements[0]?.texte).toContain('même direction');
+    expect((await dossier('APIX-0002'))?.responsable).toBeNull();
+  });
+
+  it('cumule DEUX avertissements : direction inconnue et responsable introuvable', async () => {
+    const r = await imports.importer(
+      admin,
+      classeurDe([
+        AGENT(1, { 'Direction affectée': 'XYZ', 'Matricule du responsable': 'APIX-9999' }),
+      ]),
+      false,
+    );
+    expect(r.lignes[0]?.avertissements.map((a) => a.colonne)).toEqual([
+      'Direction affectée',
+      'Matricule du responsable',
+    ]);
+  });
+
+  it('annonce les rattachements DÈS L’APERÇU, sans rien écrire', async () => {
+    const r = await imports.importer(
+      admin,
+      classeurDe([AGENT(1), AGENT(2, { 'Matricule du responsable': 'APIX-0001' })]),
+      false,
+    );
+    expect(r.applique).toBe(false);
+    expect(r.rattaches).toBe(1);
+    expect(r.sansResponsable).toBe(1);
+    expect(r.lignes[1]?.responsableResolu).toBe('Agent1 Diop');
+    expect(await compteDossiers()).toBe(0);
+  });
+
+  it('compte comme sans responsable une colonne laissée vide', async () => {
+    const r = await imports.importer(admin, classeurDe([AGENT(1), AGENT(2)]), true);
+    expect(r.sansResponsable).toBe(2);
+    expect(r.rattaches).toBe(0);
+    expect(r.lignes.every((l) => l.responsable === null)).toBe(true);
   });
 });

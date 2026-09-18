@@ -16,6 +16,21 @@ export type EtatLigneImport =
   /** Une donnée manque ou ne se comprend pas : la ligne ne crée rien. */
   | 'erreur';
 
+/**
+ * Ce qui MANQUERA au dossier créé, sans empêcher sa création.
+ *
+ * À ne pas confondre avec le motif d'un refus : celui-ci dit pourquoi rien
+ * n'est écrit, ceux-là disent ce que le dossier n'aura pas. Une même ligne
+ * peut en porter plusieurs — un abrégé de direction inconnu ET un matricule
+ * de responsable introuvable —, et n'en montrer qu'un ferait corriger la
+ * moitié du problème.
+ */
+export interface AvertissementImport {
+  /** L'intitulé de la colonne en cause, pour retrouver la case du tableur. */
+  colonne: string;
+  texte: string;
+}
+
 export interface LigneImport {
   /** Numéro de ligne DANS LE FICHIER — la RH corrige dans son tableur. */
   ligne: number;
@@ -26,11 +41,17 @@ export interface LigneImport {
   uniteAbrege: string | null;
   /** L'unité retrouvée dans l'organigramme, ou null si l'abrégé est inconnu. */
   uniteResolue: string | null;
+  /** Le matricule du responsable hiérarchique, tel que le fichier l'écrit. */
+  responsable: string | null;
+  /** Le nom du responsable retrouvé, ou null si le matricule est introuvable. */
+  responsableResolu: string | null;
   etat: EtatLigneImport;
-  /** Pour une erreur ou un abrégé inconnu : ce qui cloche, en une phrase. */
+  /** Pour une ligne refusée ou ignorée : ce qui cloche, en une phrase. */
   motif: string | null;
   /** L'intitulé de la colonne fautive, quand une seule est en cause. */
   colonne: string | null;
+  /** Ce qui manquera au dossier, sans l'empêcher d'exister. */
+  avertissements: AvertissementImport[];
 }
 
 export interface RapportImportEmployes {
@@ -45,8 +66,17 @@ export interface RapportImportEmployes {
   aCreer: number;
   ignores: number;
   erreurs: number;
-  /** Dossiers créés sans rattachement, faute d'un abrégé connu. */
+  /** Dossiers créés sans rattachement d'unité, faute d'un abrégé connu. */
   sansUnite: number;
+  /** Dossiers dont le responsable hiérarchique a été retrouvé et rattaché. */
+  rattaches: number;
+  /**
+   * Dossiers qui entrent SANS responsable hiérarchique — colonne vide ou
+   * matricule introuvable. Ils ne pourront ni recevoir d'objectifs ni être
+   * évalués avant qu'on leur en désigne un : c'est le contrôle de la chaîne
+   * hiérarchique qui les reprend ensuite.
+   */
+  sansResponsable: number;
   /** Faux en aperçu : rien n'a été écrit dans la base. */
   applique: boolean;
   crees: number;

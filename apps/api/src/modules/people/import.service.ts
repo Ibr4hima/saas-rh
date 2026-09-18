@@ -76,6 +76,8 @@ export class ImportEmployesService {
       ignores: 0,
       erreurs: 0,
       sansUnite: 0,
+      rattaches: 0,
+      sansResponsable: 0,
       applique: false,
       crees: 0,
     };
@@ -84,7 +86,7 @@ export class ImportEmployesService {
     // qu'une — « la colonne Matricule manque » — noie la seule qui compte.
     if (manquantes.length > 0) return vide;
 
-    const { matriculesExistants, unitesParAbrege } = await this.contexte(user);
+    const { employesParMatricule, unitesParAbrege } = await this.contexte(user);
 
     // Les matricules vus DANS LE FICHIER : deux lignes ne peuvent pas créer
     // le même dossier, et la deuxième s'ignore comme un doublon de base.
@@ -108,21 +110,24 @@ export class ImportEmployesService {
           poste: null,
           uniteAbrege: null,
           uniteResolue: null,
+          responsable: null,
+          responsableResolu: null,
           etat: 'erreur',
           motif: converti.refus.motif,
           colonne: converti.refus.colonne,
+          avertissements: [],
         });
         return;
       }
 
-      const { matricule, nom, poste, uniteAbrege } = converti.ok;
+      const { matricule, nom, poste, uniteAbrege, responsableMatricule } = converti.ok;
       // L'unité se résout AVANT qu'on sache si la ligne sera écrite : la
       // colonne « Direction » du compte rendu dit ce que la plateforme a
       // compris de l'abrégé, et une ligne ignorée pour doublon n'a pas pour
       // autant une direction inconnue. Sans cela, le rejeu d'un fichier déjà
       // importé affichait TOUS ses abrégés comme introuvables.
       const unite = uniteAbrege ? unitesParAbrege.get(normaliser(uniteAbrege)) : undefined;
-      const dejaLa = matriculesExistants.has(matricule);
+      const dejaLa = employesParMatricule.has(cleMatricule(matricule));
       const dejaVu = vusDansLeFichier.get(matricule);
       if (dejaLa || dejaVu !== undefined) {
         lignes.push({
@@ -132,11 +137,14 @@ export class ImportEmployesService {
           poste,
           uniteAbrege,
           uniteResolue: unite?.nom ?? null,
+          responsable: responsableMatricule,
+          responsableResolu: null,
           etat: 'ignore',
           motif: dejaLa
             ? 'Ce matricule existe déjà dans la plateforme — le dossier reste inchangé'
             : `Ce matricule apparaît déjà à la ligne ${dejaVu}`,
           colonne: 'Matricule',
+          avertissements: [],
         });
         return;
       }
@@ -149,42 +157,94 @@ export class ImportEmployesService {
         poste,
         uniteAbrege,
         uniteResolue: unite?.nom ?? null,
+        responsable: responsableMatricule,
+        // Résolu dans une seconde passe : le responsable peut se trouver PLUS
+        // BAS dans le même fichier, et l'on ne le sait qu'après avoir lu
+        // toutes les lignes.
+        responsableResolu: null,
         etat: 'a-creer',
-        // Sans temps : le même motif se relit dans l'aperçu (« sera créé »)
-        // et dans le compte rendu d'après (« a été créé »).
-        motif:
+        motif: null,
+        colonne: null,
+        avertissements:
           uniteAbrege && !unite
-            ? `Abrégé inconnu dans l’organigramme : dossier sans rattachement`
-            : null,
-        colonne: uniteAbrege && !unite ? 'Direction affectée' : null,
+            ? [
+                {
+                  colonne: 'Direction affectée',
+                  // Sans temps : le même texte se relit dans l'aperçu
+                  // (« sera créé ») et dans le compte rendu d'après.
+                  texte: 'Abrégé inconnu dans l’organigramme : dossier sans rattachement',
+                },
+              ]
+            : [],
       });
       aCreer.push({ ligne: numero, converti });
+    });
+
+    // ——— Les responsables hiérarchiques, une fois TOUTES les lignes lues ———
+    //
+    // Le n+1 d'un agent peut se trouver plus bas dans le même fichier : on ne
+    // peut donc pas le résoudre à la volée. Deux sources, dans cet ordre :
+    // l'effectif déjà en base, puis les dossiers que ce fichier va créer.
+    const aNaitre = new Map<string, string>();
+    for (const l of lignes) {
+      if (l.etat === 'a-creer' && l.matricule && l.nom)
+        aNaitre.set(cleMatricule(l.matricule), l.nom);
+    }
+    for (const l of lignes) {
+      if (l.etat !== 'a-creer' || !l.responsable) continue;
+      const cle = cleMatricule(l.responsable);
+      if (l.matricule && cle === cleMatricule(l.matricule)) {
+        l.avertissements.push({
+          colonne: NOM_COLONNE_RESPONSABLE,
+          texte: 'Un agent ne peut pas être son propre responsable : dossier créé sans n+1',
+        });
+        continue;
+      }
+      const nom = employesParMatricule.get(cle)?.nom ?? aNaitre.get(cle) ?? null;
+      if (nom) {
+        l.responsableResolu = nom;
+      } else {
+        l.avertissements.push({
+          colonne: NOM_COLONNE_RESPONSABLE,
+          texte: `Matricule « ${l.responsable} » introuvable : dossier créé sans n+1`,
+        });
+      }
+    }
+
+    const compter = (lignesRapport: LigneImport[]) => ({
+      aCreer: lignesRapport.filter((l) => l.etat === 'a-creer').length,
+      ignores: lignesRapport.filter((l) => l.etat === 'ignore').length,
+      erreurs: lignesRapport.filter((l) => l.etat === 'erreur').length,
+      sansUnite: lignesRapport.filter(
+        (l) => l.etat === 'a-creer' && l.uniteAbrege && !l.uniteResolue,
+      ).length,
+      rattaches: lignesRapport.filter((l) => l.etat === 'a-creer' && l.responsableResolu).length,
+      sansResponsable: lignesRapport.filter((l) => l.etat === 'a-creer' && !l.responsableResolu)
+        .length,
     });
 
     const rapport: RapportImportEmployes = {
       ...vide,
       lignes,
       total: lignes.length,
-      aCreer: lignes.filter((l) => l.etat === 'a-creer').length,
-      ignores: lignes.filter((l) => l.etat === 'ignore').length,
-      erreurs: lignes.filter((l) => l.etat === 'erreur').length,
-      sansUnite: lignes.filter((l) => l.etat === 'a-creer' && l.uniteAbrege && !l.uniteResolue)
-        .length,
+      ...compter(lignes),
     };
     if (!appliquer) return rapport;
 
-    // ——— L'écriture, dossier par dossier ———
+    // ——— L'écriture : on crée TOUT, puis on rattache ———
+    //
+    // Deux passes, et c'est le fichier qui l'impose : la ligne 3 peut relever
+    // de la ligne 40, qui n'existe pas encore quand on écrit la troisième.
+    // Créer d'abord, rattacher ensuite, c'est le seul ordre qui marche sans
+    // demander au RH de trier son classeur.
     let crees = 0;
+    const nes = new Map<string, string>();
     for (const { ligne, converti } of aCreer) {
       if (!('ok' in converti)) continue;
-      const { entree, uniteAbrege } = converti.ok;
+      const { entree, uniteAbrege, matricule } = converti.ok;
       const unite = uniteAbrege ? unitesParAbrege.get(normaliser(uniteAbrege)) : undefined;
       try {
-        // Sans responsable hiérarchique : le classeur du RH ne porte pas
-        // encore la colonne, et la création l'accepte. Ces dossiers sortent
-        // dans le contrôle de la chaîne, et restent hors du champ de
-        // l'évaluation tant qu'on ne leur en a pas désigné un.
-        await this.people.create(user, {
+        const { id } = await this.people.create(user, {
           ...entree,
           ...(entree.assignment
             ? {
@@ -196,6 +256,7 @@ export class ImportEmployesService {
               }
             : {}),
         });
+        nes.set(cleMatricule(matricule), id);
         crees++;
       } catch (err) {
         // La ligne échoue seule. Le cas courant : un matricule créé entre
@@ -209,10 +270,27 @@ export class ImportEmployesService {
       }
     }
 
+    // ——— Seconde passe : les rattachements ———
+    for (const l of rapport.lignes) {
+      if (l.etat !== 'a-creer' || !l.responsable || !l.responsableResolu || !l.matricule) continue;
+      const id = nes.get(cleMatricule(l.matricule));
+      const cleResp = cleMatricule(l.responsable);
+      const responsableId = employesParMatricule.get(cleResp)?.id ?? nes.get(cleResp) ?? null;
+      if (!id || !responsableId) continue;
+      try {
+        await this.people.update(user, id, { employee: { managerEmployeeId: responsableId } });
+      } catch (err) {
+        // Le dossier RESTE : seul le rattachement échoue. Le cas courant est
+        // la règle de direction — un responsable d'une autre direction —, et
+        // c'est exactement ce que la RH doit lire pour corriger son classeur.
+        l.responsableResolu = null;
+        l.avertissements.push({ colonne: NOM_COLONNE_RESPONSABLE, texte: messageDErreur(err) });
+      }
+    }
+
     return {
       ...rapport,
-      aCreer: rapport.lignes.filter((l) => l.etat === 'a-creer').length,
-      erreurs: rapport.lignes.filter((l) => l.etat === 'erreur').length,
+      ...compter(rapport.lignes),
       applique: true,
       crees,
     };
@@ -235,9 +313,18 @@ export class ImportEmployesService {
    */
   private async contexte(user: SessionUser) {
     return this.db.withTenant(ctxOf(user), async (tx: Tx) => {
+      // Le nom et l'identifiant en plus du matricule : le fichier désigne le
+      // n+1 par son matricule, et le compte rendu doit pouvoir écrire son nom
+      // — puis le rattachement, son identifiant.
       const employes = await tx
-        .select({ numero: t.employees.employeeNumber })
+        .select({
+          id: t.employees.id,
+          numero: t.employees.employeeNumber,
+          prenom: t.persons.givenName,
+          nom: t.persons.familyName,
+        })
         .from(t.employees)
+        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
         .where(eq(t.employees.tenantId, user.tenantId));
       const unites = await tx
         .select({
@@ -257,16 +344,39 @@ export class ImportEmployesService {
         if (u.abrege) unitesParAbrege.set(normaliser(u.abrege), valeur);
         unitesParAbrege.set(normaliser(u.nom), valeur);
       }
-      return {
-        matriculesExistants: new Set(employes.map((e: { numero: string }) => e.numero)),
-        unitesParAbrege,
-      };
+      const employesParMatricule = new Map<string, { id: string; nom: string }>();
+      for (const e of employes) {
+        employesParMatricule.set(cleMatricule(e.numero), {
+          id: e.id,
+          nom: `${e.prenom} ${e.nom}`,
+        });
+      }
+      return { employesParMatricule, unitesParAbrege };
     });
   }
 }
 
 function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
   return { tenantId: user.tenantId, userId: user.userId };
+}
+
+/** L'intitulé du fichier type, pour situer les avertissements du n+1. */
+const NOM_COLONNE_RESPONSABLE = 'Matricule du responsable';
+
+/**
+ * La clé d'un matricule : ce qui doit se retrouver malgré la frappe.
+ *
+ * « APIX-0001 », « apix 0001 » et « APIX0001 » désignent la même personne dans
+ * un classeur tenu à la main depuis des années — et c'est par ce matricule
+ * qu'on rattache un agent à son n+1. On compare donc les lettres et les
+ * chiffres, sans la casse ni les séparateurs.
+ */
+function cleMatricule(texte: string): string {
+  return texte
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 }
 
 /** Même squelette que les intitulés de colonnes : « D.C.H » vaut « dch ». */

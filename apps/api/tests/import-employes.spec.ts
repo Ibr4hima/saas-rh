@@ -135,6 +135,53 @@ describe('correspondance des colonnes', () => {
   });
 });
 
+describe('la colonne du responsable hiérarchique', () => {
+  it('reconnaît les intitulés qu’un classeur tenu à la main emploie', () => {
+    for (const intitule of [
+      'Matricule du responsable',
+      'MATRICULE RESPONSABLE',
+      'Responsable hiérarchique',
+      'Matricule du supérieur',
+      'n+1',
+    ]) {
+      const { colonnes, inconnues } = correspondre([
+        'Prénom',
+        'Nom',
+        'Matricule',
+        "Date d'embauche",
+        intitule,
+      ]);
+      expect(inconnues, intitule).toEqual([]);
+      expect(colonnes.responsable, intitule).toBe(4);
+    }
+  });
+
+  it('rend le matricule du n+1 TEL QUEL, à résoudre plus tard', () => {
+    const { colonnes } = correspondre([
+      'Prénom',
+      'Nom',
+      'Matricule',
+      'Début du contrat',
+      'Matricule du responsable',
+    ]);
+    const r = convertirLigne(['Awa', 'Diop', 'APIX-0002', '01/03/2024', ' apix-0001 '], colonnes);
+    expect('ok' in r && r.ok.responsableMatricule).toBe('apix-0001');
+  });
+
+  it('ne réclame pas la colonne : elle est facultative', () => {
+    const { manquantes, colonnes } = correspondre([
+      'Prénom',
+      'Nom',
+      'Matricule',
+      'Début du contrat',
+    ]);
+    expect(manquantes).toEqual([]);
+    expect(colonnes.responsable).toBeUndefined();
+    const r = convertirLigne(['Awa', 'Diop', 'APIX-0002', '01/03/2024'], colonnes);
+    expect('ok' in r && r.ok.responsableMatricule).toBeNull();
+  });
+});
+
 describe('fin d’un contrat à durée déterminée', () => {
   it('douze mois depuis le 20 mai 2024 s’achèvent le 19 mai 2025', () => {
     expect(finDeContrat('2024-05-20', 12)).toBe('2025-05-19');

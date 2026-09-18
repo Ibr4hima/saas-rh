@@ -133,7 +133,9 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
           </p>
         )
       }
-      maxWidth="max-w-4xl"
+      // Sept colonnes depuis que le responsable s'y trouve : quatre pouces de
+      // plus, et les noms cessent de se couper en deux lignes.
+      maxWidth="max-w-5xl"
       footer={
         etape === 'apercu' && rapport ? (
           <>
@@ -213,6 +215,12 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
               l’ordre des colonnes n’a pas d’importance. La direction se désigne par son abrégé («
               DCH ») ou par son nom complet. Rien n’est écrit avant que vous ne validiez l’aperçu.
             </p>
+            <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
+              Une colonne <b>Matricule du responsable</b> rattache chaque agent à son n+1, et le
+              fichier n’a pas besoin d’être trié : un chef peut figurer plus bas que son équipe.
+              Sans elle, les dossiers entrent sans responsable — ils ne pourront alors ni recevoir
+              d’objectifs ni être évalués avant qu’on leur en désigne un.
+            </p>
           </ModalSection>
         </>
       ) : null}
@@ -238,7 +246,7 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
           {rapport.colonnesManquantes.join(', ')}. Ajoutez-les à la première ligne du classeur.
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
           <Chiffre
             valeur={rapport.applique ? rapport.crees : rapport.aCreer}
             libelle={rapport.applique ? 'dossiers créés' : 'dossiers à créer'}
@@ -246,11 +254,13 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
           />
           <Chiffre valeur={rapport.ignores} libelle="lignes ignorées" ton="neutre" />
           <Chiffre valeur={rapport.erreurs} libelle="lignes en erreur" ton="danger" />
-          {/* L'orange pour le SEUL chiffre qui laisse du travail : ces agents
-              entrent sans direction, et quelqu'un devra les rattacher. Une
-              ligne ignorée, elle, n'attend rien — le dossier existe déjà et
-              reste intact. */}
-          <Chiffre valeur={rapport.sansUnite} libelle="sans rattachement" ton="warning" />
+          {/* L'orange pour les deux chiffres qui laissent du travail : ces
+              agents entrent sans direction ou sans n+1, et quelqu'un devra
+              les rattacher. Sans n+1, ils ne pourront d'ailleurs ni recevoir
+              d'objectifs ni être évalués. Une ligne ignorée, elle, n'attend
+              rien — le dossier existe déjà et reste intact. */}
+          <Chiffre valeur={rapport.sansUnite} libelle="sans direction" ton="warning" />
+          <Chiffre valeur={rapport.sansResponsable} libelle="sans n+1" ton="warning" />
         </div>
       )}
 
@@ -280,6 +290,7 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
                     toute façon en clair. */}
                 <Th className="hidden md:table-cell">Poste</Th>
                 <Th className="hidden md:table-cell">Direction</Th>
+                <Th className="hidden lg:table-cell">Responsable</Th>
                 <Th>État</Th>
               </tr>
             </THead>
@@ -311,6 +322,28 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
                         <span className="text-ink-muted/60">—</span>
                       )}
                     </Td>
+                    {/* Le n+1 : le nom quand le matricule a été retrouvé, le
+                        matricule en orange quand il ne l'a pas été — c'est
+                        alors lui qu'on corrige dans le tableur. */}
+                    <Td className="hidden whitespace-nowrap lg:table-cell">
+                      {l.responsableResolu ? (
+                        <span title={l.responsable ?? undefined}>{l.responsableResolu}</span>
+                      ) : l.responsable ? (
+                        // Le matricule ne s'allume que si le rattachement
+                        // MANQUERA vraiment : sur une ligne ignorée, rien
+                        // n'est écrit et il n'y a donc rien en attente.
+                        <span
+                          className={cn(
+                            'font-mono text-[11.5px]',
+                            l.etat === 'a-creer' && 'text-accent-text',
+                          )}
+                        >
+                          {l.responsable}
+                        </span>
+                      ) : (
+                        <span className="text-ink-muted/60">—</span>
+                      )}
+                    </Td>
                     <Td>
                       <span className="flex flex-col items-start gap-1">
                         <Badge tone={TONS[l.etat]} className="whitespace-nowrap">
@@ -326,14 +359,39 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
                             {l.motif}
                           </span>
                         ) : null}
+                        {l.avertissements.map((a) => (
+                          <span
+                            key={a.colonne}
+                            className="hidden text-[11px] leading-snug text-ink-muted md:inline"
+                          >
+                            <b>{a.colonne} — </b>
+                            {a.texte}
+                          </span>
+                        ))}
                       </span>
                     </Td>
                   </Tr>
-                  {l.motif ? (
+                  {l.motif || l.avertissements.length > 0 ? (
                     <tr className="md:hidden">
-                      <td colSpan={4} className="px-4 pb-3 text-[11px] leading-snug text-ink-muted">
-                        {l.colonne ? <b>{l.colonne} — </b> : null}
-                        {l.motif}
+                      {/* `display:flex` sur un <td> lui fait perdre son
+                          `colspan` : la cellule cesse de couvrir les quatre
+                          colonnes et le texte se tasse dans la largeur de la
+                          première. La pile vit donc DANS la cellule. */}
+                      <td colSpan={4} className="px-4 pb-3">
+                        <span className="flex flex-col gap-1 text-[11px] leading-snug text-ink-muted">
+                          {l.motif ? (
+                            <span>
+                              {l.colonne ? <b>{l.colonne} — </b> : null}
+                              {l.motif}
+                            </span>
+                          ) : null}
+                          {l.avertissements.map((a) => (
+                            <span key={a.colonne}>
+                              <b>{a.colonne} — </b>
+                              {a.texte}
+                            </span>
+                          ))}
+                        </span>
                       </td>
                     </tr>
                   ) : null}
