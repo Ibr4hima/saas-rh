@@ -264,6 +264,19 @@ export class PeopleService {
     });
   }
 
+  /**
+   * Un dossier neuf.
+   *
+   * Le responsable hiérarchique n'est PAS exigé ici, et c'est un choix : on
+   * crée souvent un dossier avant de savoir de qui l'agent relèvera, et un
+   * import n'en sait rien du tout. La règle de l'APIX — un n+1 pour chacun —
+   * ne se tient donc pas par un refus mais par un AVERTISSEMENT (le contrôle
+   * de la chaîne hiérarchique) et par une conséquence : sans n+1, ni
+   * objectifs ni évaluation.
+   *
+   * Ce qui est vérifié, en revanche, c'est le rattachement QUAND il est
+   * donné : même direction, responsable actif, pas de boucle.
+   */
   async create(user: SessionUser, input: CreateEmployeeInput): Promise<{ id: string }> {
     const employeeId = uuidv7();
     const personId = uuidv7();
@@ -278,7 +291,12 @@ export class PeopleService {
           nationalIdEncrypted: nationalId ? this.crypto.encrypt(nationalId) : null,
         });
         if (input.employee.managerEmployeeId) {
-          await this.assertManagerValid(tx, employeeId, input.employee.managerEmployeeId);
+          await this.assertManagerValid(
+            tx,
+            employeeId,
+            input.employee.managerEmployeeId,
+            await this.directionDeUnite(tx, input.assignment?.orgUnitId ?? null),
+          );
         }
         await tx.insert(t.employees).values({
           id: employeeId,
@@ -511,7 +529,12 @@ export class PeopleService {
         }
         if (input.employee && Object.keys(input.employee).length > 0) {
           if (input.employee.managerEmployeeId) {
-            await this.assertManagerValid(tx, id, input.employee.managerEmployeeId);
+            await this.assertManagerValid(
+              tx,
+              id,
+              input.employee.managerEmployeeId,
+              await this.directionDeEmploye(tx, id),
+            );
           }
           // Les colonnes sont nommées une à une, jamais l'objet reçu en bloc.
           // Le schéma Zod ne laisse déjà rien passer d'autre, mais il ne
@@ -551,7 +574,17 @@ export class PeopleService {
    * organigramme). La contrainte CHECK couvre le cas « soi-même » ; les boucles
    * plus longues demandent de remonter, donc c'est ici.
    */
-  private async assertManagerValid(tx: Tx, employeeId: string, managerId: string): Promise<void> {
+  private async assertManagerValid(
+    tx: Tx,
+    employeeId: string,
+    managerId: string,
+    /**
+     * La direction de l'agent APRÈS l'écriture en cours. On la reçoit plutôt
+     * que de la lire : à la création, l'affectation n'est pas encore posée, et
+     * lors d'une mutation c'est la nouvelle unité qui compte, pas l'ancienne.
+     */
+    directionCible: { id: string; nom: string } | null,
+  ): Promise<void> {
     if (managerId === employeeId) {
       problem(422, 'people.manager_is_self', 'Un employé ne peut pas être son propre manager');
     }
@@ -587,6 +620,146 @@ export class PeopleService {
         'Cette personne relève déjà, directement ou non, de l’employé concerné.',
       );
     }
+
+    // ——— La règle de l'APIX : le n+1 est dans la MÊME DIRECTION.
+    //
+    // Un directeur fait exception : il relève du directeur général, qui siège
+    // à la Direction Générale — donc dans une autre direction que la sienne.
+    // C'est la seule exception, et elle se déduit de l'organigramme.
+    const dg = await this.directeurGeneral(tx);
+    if (await this.dirigeUneDirection(tx, employeeId)) {
+      if (dg === null) {
+        problem(
+          422,
+          'people.aucun_directeur_general',
+          'Aucun directeur général n’est désigné',
+          'Un directeur relève du directeur général : désignez d’abord le responsable de l’unité racine dans l’organigramme.',
+        );
+      }
+      if (managerId !== dg) {
+        problem(
+          422,
+          'people.directeur_hors_dg',
+          'Un directeur relève du directeur général',
+          'Cet agent dirige une direction : son responsable hiérarchique ne peut être que le directeur général.',
+        );
+      }
+      return;
+    }
+    // Le directeur général lui-même n'a pas de n+1 à valider ; s'il en reçoit
+    // un, aucune règle de direction ne s'applique à lui.
+    if (employeeId === dg) return;
+
+    const directionDuResponsable = await this.directionDeEmploye(tx, managerId);
+    // Deux trous rendent la règle invérifiable : un agent sans affectation, un
+    // responsable sans affectation. On laisse alors passer — le contrôle de la
+    // chaîne hiérarchique les signale, et refuser ici empêcherait de remplir
+    // un dossier importé sans direction connue.
+    if (!directionCible || !directionDuResponsable) return;
+    if (directionDuResponsable.id === directionCible.id) return;
+
+    // ——— Une direction SANS directeur n'a personne d'autre au-dessus que le
+    // directeur général. C'est ainsi, et seulement ainsi, qu'on crée un
+    // directeur : son dossier n'existe pas encore quand on le rattache, il ne
+    // dirige donc rien, et la règle de direction lui refuserait le DG. Dès
+    // qu'un responsable est désigné sur la direction, ce chemin se referme —
+    // et le contrôle de la chaîne signale ceux qui y seraient restés.
+    if (managerId === dg && !(await this.directionADejaUnResponsable(tx, directionCible.id))) {
+      return;
+    }
+    problem(
+      422,
+      'people.manager_autre_direction',
+      'Le responsable doit appartenir à la même direction',
+      `L’agent relève de « ${directionCible.nom} », le responsable désigné de « ${directionDuResponsable.nom} ».`,
+    );
+  }
+
+  /**
+   * La direction d'une unité : elle-même si c'en est une, sinon son aïeule.
+   *
+   * On remonte l'organigramme jusqu'au premier ancêtre de type « direction ».
+   * Un service de la DFC rend donc la DFC ; la DFC rend la DFC ; une unité
+   * rattachée directement à la Direction Générale rend la DG.
+   */
+  private async directionDeUnite(
+    tx: Tx,
+    orgUnitId: string | null,
+  ): Promise<{ id: string; nom: string } | null> {
+    if (!orgUnitId) return null;
+    const r = await tx.execute<{ id: string; name: string }>(sql`
+      WITH RECURSIVE remontee AS (
+        SELECT id, parent_id, unit_type, name, 0 AS prof
+          FROM org_units WHERE id = ${orgUnitId} AND deleted_at IS NULL
+        UNION ALL
+        SELECT o.id, o.parent_id, o.unit_type, o.name, r.prof + 1
+          FROM remontee r JOIN org_units o ON o.id = r.parent_id AND o.deleted_at IS NULL
+      )
+      SELECT id, name FROM remontee WHERE unit_type = 'direction' ORDER BY prof LIMIT 1`);
+    const ligne = r.rows[0];
+    return ligne ? { id: ligne.id, nom: ligne.name } : null;
+  }
+
+  /** La direction d'un agent, via son affectation du jour. */
+  private async directionDeEmploye(
+    tx: Tx,
+    employeeId: string,
+  ): Promise<{ id: string; nom: string } | null> {
+    const [affectation] = await tx
+      .select({ orgUnitId: t.assignments.orgUnitId })
+      .from(t.assignments)
+      .where(
+        and(
+          eq(t.assignments.employeeId, employeeId),
+          sql`${t.assignments.validity} @> CURRENT_DATE`,
+        ),
+      )
+      .limit(1);
+    return this.directionDeUnite(tx, affectation?.orgUnitId ?? null);
+  }
+
+  /**
+   * Le directeur général : le responsable de l'unité RACINE.
+   *
+   * Il n'est ni désigné par un rôle ni marqué d'une case à cocher —
+   * l'organigramme le dit déjà, et deux sources finiraient par se
+   * contredire. C'est le seul agent sans n+1, et celui auquel les directeurs
+   * se rattachent.
+   */
+  private async directeurGeneral(tx: Tx): Promise<string | null> {
+    const [racine] = await tx
+      .select({ managerId: t.orgUnits.managerEmployeeId })
+      .from(t.orgUnits)
+      .where(and(isNull(t.orgUnits.parentId), isNull(t.orgUnits.deletedAt)))
+      .limit(1);
+    return racine?.managerId ?? null;
+  }
+
+  /** Cette direction a-t-elle un responsable désigné ? */
+  private async directionADejaUnResponsable(tx: Tx, directionId: string): Promise<boolean> {
+    const [unite] = await tx
+      .select({ managerId: t.orgUnits.managerEmployeeId })
+      .from(t.orgUnits)
+      .where(and(eq(t.orgUnits.id, directionId), isNull(t.orgUnits.deletedAt)))
+      .limit(1);
+    return Boolean(unite?.managerId);
+  }
+
+  /** L'agent dirige-t-il une direction ? (hors unité racine : c'est le DG) */
+  private async dirigeUneDirection(tx: Tx, employeeId: string): Promise<boolean> {
+    const [unite] = await tx
+      .select({ id: t.orgUnits.id })
+      .from(t.orgUnits)
+      .where(
+        and(
+          eq(t.orgUnits.managerEmployeeId, employeeId),
+          eq(t.orgUnits.unitType, 'direction'),
+          sql`${t.orgUnits.parentId} IS NOT NULL`,
+          isNull(t.orgUnits.deletedAt),
+        ),
+      )
+      .limit(1);
+    return Boolean(unite);
   }
 
   /**
@@ -669,6 +842,45 @@ export class PeopleService {
               'people.manager_cannot_leave_unit',
               `Cet employé dirige « ${headed.name} »`,
               'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
+            );
+          }
+        }
+
+        // ——— Le rattachement doit survivre à la mutation.
+        //
+        // Changer de direction rend le n+1 caduc : il reste dans l'ancienne.
+        // On ne peut pas non plus le corriger avant — la règle refuserait un
+        // responsable d'une autre direction que celle où l'agent se trouve
+        // encore. Les deux gestes n'en font donc qu'un, et c'est la seule
+        // façon d'éviter l'impasse.
+        const directionCible = await this.directionDeUnite(tx, input.orgUnitId ?? null);
+        if (input.managerEmployeeId) {
+          await this.assertManagerValid(tx, id, input.managerEmployeeId, directionCible);
+          await tx
+            .update(t.employees)
+            .set({ managerEmployeeId: input.managerEmployeeId, updatedAt: new Date() })
+            .where(eq(t.employees.id, id));
+        } else {
+          const [dossier] = await tx
+            .select({ managerId: t.employees.managerEmployeeId })
+            .from(t.employees)
+            .where(eq(t.employees.id, id))
+            .limit(1);
+          const directionDuResponsable = dossier?.managerId
+            ? await this.directionDeEmploye(tx, dossier.managerId)
+            : null;
+          const directeur = await this.dirigeUneDirection(tx, id);
+          if (
+            !directeur &&
+            directionCible &&
+            directionDuResponsable &&
+            directionDuResponsable.id !== directionCible.id
+          ) {
+            problem(
+              422,
+              'people.responsable_hors_nouvelle_direction',
+              'Le responsable actuel n’appartient pas à la nouvelle direction',
+              `Il relève de « ${directionDuResponsable.nom} », l’agent rejoint « ${directionCible.nom} » : désignez son nouveau responsable dans la même opération.`,
             );
           }
         }

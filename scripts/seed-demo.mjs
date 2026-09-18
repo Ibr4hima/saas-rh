@@ -91,6 +91,15 @@ await call('PUT', '/reference-texts/reglement-interieur', REGLEMENT_INTERIEUR);
 await call('PUT', '/reference-texts/code-du-travail', CODE_DU_TRAVAIL);
 
 console.log('→ Employés');
+/**
+ * L'agence se peuple DE HAUT EN BAS, et ce n'est pas un choix d'écriture.
+ *
+ * La règle hiérarchique de l'APIX exige un n+1 pour chaque agent — seul le
+ * directeur général n'en a pas — et ce n+1 dans la même direction. On crée
+ * donc le directeur général, on le désigne à la tête de la Direction
+ * Générale, puis chaque directeur (rattaché au DG pendant que sa direction
+ * est sans tête), puis les agents sous leur directeur.
+ */
 const seedEmployee = (person, employee, positionTitle, orgUnitId, contract) =>
   call('POST', '/employees', {
     person,
@@ -98,15 +107,60 @@ const seedEmployee = (person, employee, positionTitle, orgUnitId, contract) =>
     assignment: { positionTitle, orgUnitId, startDate: employee.hiredOn },
     contract: contract ?? { contractType: 'cdi', startDate: employee.hiredOn },
   });
+
+/** Un directeur : son dossier, puis sa désignation à la tête de sa direction. */
+async function seedDirecteur(person, employee, positionTitle, uniteId, dgId) {
+  const dossier = await seedEmployee(
+    person,
+    { ...employee, ...(dgId ? { managerEmployeeId: dgId } : {}) },
+    positionTitle,
+    uniteId,
+  );
+  await call('PATCH', `/org-units/${uniteId}`, { managerEmployeeId: dossier.id });
+  return dossier;
+}
+
+const dgAgent = await seedDirecteur(
+  { givenName: 'Cheikh', familyName: 'Mbaye', gender: 'male', phone: '770000001', city: 'Dakar' },
+  { employeeNumber: 'EMP-000', hiredOn: '2019-03-01', workEmail: 'c.mbaye@apix.sn' },
+  'Directeur général',
+  dg.id,
+  null,
+);
+const directriceRh = await seedDirecteur(
+  { givenName: 'Mariama', familyName: 'Cissé', gender: 'female', phone: '770000002' },
+  { employeeNumber: 'EMP-004', hiredOn: '2021-09-01', workEmail: 'm.cisse@apix.sn' },
+  'Directrice du Capital Humain',
+  drh.id,
+  dgAgent.id,
+);
+const directeurFin = await seedDirecteur(
+  { givenName: 'Ousmane', familyName: 'Fall', gender: 'male', phone: '770000003' },
+  { employeeNumber: 'EMP-005', hiredOn: '2020-11-02', workEmail: 'o.fall@apix.sn' },
+  'Directeur financier et comptable',
+  dfin.id,
+  dgAgent.id,
+);
+
 const awa = await seedEmployee(
   { givenName: 'Awa', familyName: 'Diop', gender: 'female', phone: '771234567', city: 'Dakar' },
-  { employeeNumber: 'EMP-001', hiredOn: '2024-01-15', workEmail: 'a.diop@apix.sn' },
+  {
+    employeeNumber: 'EMP-001',
+    hiredOn: '2024-01-15',
+    workEmail: 'a.diop@apix.sn',
+    managerEmployeeId: directriceRh.id,
+  },
   'Cheffe de service études',
   etudes.id,
 );
 const moussa = await seedEmployee(
   { givenName: 'Moussa', familyName: 'Ndiaye', gender: 'male', phone: '779876543' },
-  { employeeNumber: 'EMP-002', hiredOn: '2023-06-01', workEmail: 'm.ndiaye@apix.sn' },
+  {
+    employeeNumber: 'EMP-002',
+    hiredOn: '2023-06-01',
+    workEmail: 'm.ndiaye@apix.sn',
+    managerEmployeeId: awa.id,
+  },
   "Chargé d'études",
   etudes.id,
 );
@@ -115,20 +169,16 @@ const moussa = await seedEmployee(
 const in20Days = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
 const fatou = await seedEmployee(
   { givenName: 'Fatou', familyName: 'Sall', gender: 'female' },
-  { employeeNumber: 'EMP-003', hiredOn: '2025-02-01', workEmail: 'f.sall@apix.sn' },
+  {
+    employeeNumber: 'EMP-003',
+    hiredOn: '2025-02-01',
+    workEmail: 'f.sall@apix.sn',
+    managerEmployeeId: directeurFin.id,
+  },
   'Comptable',
   compta.id,
   { contractType: 'cdd', startDate: '2025-02-01', endDate: in20Days },
 );
-
-console.log('→ Rattachements hiérarchiques');
-// Awa encadre Moussa (même département) ; Fatou relève d'Awa.
-await call('PATCH', `/employees/${moussa.id}`, {
-  employee: { managerEmployeeId: awa.id },
-});
-await call('PATCH', `/employees/${fatou.id}`, {
-  employee: { managerEmployeeId: awa.id },
-});
 
 console.log('→ Responsables des unités');
 await call('PATCH', `/org-units/${etudes.id}`, { managerEmployeeId: awa.id });

@@ -37,6 +37,7 @@ import { problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { Roles, RolesGuard } from '../auth/roles.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
+import { HierarchieService } from './hierarchie.service';
 import { ImportEmployesService } from './import.service';
 import { OrgUnitsService } from './org-units.service';
 import { PeopleService } from './people.service';
@@ -48,7 +49,24 @@ export class PeopleController {
     @Inject(PeopleService) private readonly people: PeopleService,
     @Inject(OrgUnitsService) private readonly orgUnits: OrgUnitsService,
     @Inject(ImportEmployesService) private readonly imports: ImportEmployesService,
+    @Inject(HierarchieService) private readonly hierarchie: HierarchieService,
   ) {}
+
+  // ---------- Chaîne hiérarchique ----------
+
+  /**
+   * Le contrôle de la chaîne : qui n'a pas de n+1, qui en a un hors de sa
+   * direction, quelles boucles existent.
+   *
+   * En lecture seule, et volontairement : il SIGNALE, il ne corrige rien
+   * d'office. Les dossiers déjà créés sans responsable restent en place — on
+   * leur en désigne un, dossier par dossier.
+   */
+  @Get('hierarchie/controle')
+  @Roles('admin', 'hr')
+  controleHierarchie(@Req() req: AuthenticatedRequest) {
+    return this.hierarchie.controle(req.sessionUser);
+  }
 
   // ---------- Employés ----------
 

@@ -180,6 +180,10 @@ export class ImportEmployesService {
       const { entree, uniteAbrege } = converti.ok;
       const unite = uniteAbrege ? unitesParAbrege.get(normaliser(uniteAbrege)) : undefined;
       try {
+        // Sans responsable hiérarchique : le classeur du RH ne porte pas
+        // encore la colonne, et la création l'accepte. Ces dossiers sortent
+        // dans le contrôle de la chaîne, et restent hors du champ de
+        // l'évaluation tant qu'on ne leur en a pas désigné un.
         await this.people.create(user, {
           ...entree,
           ...(entree.assignment

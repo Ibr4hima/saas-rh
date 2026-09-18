@@ -112,7 +112,11 @@ describe('désignation', () => {
     expect(detail.managerName).toBe('ALICE Test');
   });
 
-  it('accepte l’absence de manager — un directeur général n’en a pas', async () => {
+  it('accepte l’absence de manager — elle se signale, elle ne se refuse pas', async () => {
+    // La règle de l'APIX veut un n+1 pour chacun, mais elle ne se tient pas
+    // par un refus : on crée souvent un dossier avant de savoir de qui
+    // l'agent relèvera. C'est le contrôle de la chaîne hiérarchique qui le
+    // signale (`hierarchie-regle.spec.ts`), et l'évaluation qui s'en abstient.
     await setManager(bruno, alice);
     await setManager(bruno, null);
     expect((await people.detail(user, bruno)).managerId).toBeNull();

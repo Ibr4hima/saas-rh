@@ -367,6 +367,16 @@ export const newAssignmentSchema = z.object({
   positionTitle: trimmed(120),
   orgUnitId: z.uuid().nullish(),
   startDate: isoDate,
+  /**
+   * Le nouveau responsable hiérarchique, dans la même opération.
+   *
+   * Muter un agent d'une direction à l'autre rend son n+1 caduc — il reste
+   * dans l'ancienne direction. Et l'on ne peut pas le changer AVANT la
+   * mutation : la règle refuserait un responsable d'une autre direction. Les
+   * deux gestes n'en font donc qu'un. Absent, le n+1 courant est conservé, à
+   * condition qu'il tienne encore après la mutation.
+   */
+  managerEmployeeId: z.uuid().optional(),
 });
 export type NewAssignmentInput = z.infer<typeof newAssignmentSchema>;
 
