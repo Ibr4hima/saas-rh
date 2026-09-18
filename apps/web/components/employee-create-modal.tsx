@@ -8,6 +8,7 @@ import { Button, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../lib/countries';
 import { contractEnd, maritalLabels, maxBirthDate } from '../lib/person';
+import { useResponsablesPossibles } from '../lib/responsables';
 import { formatDate } from '../lib/hooks';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
@@ -63,13 +64,13 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
     queryFn: () => api<OrgUnitView[]>('/org-units'),
   });
   const directions = (orgUnits.data ?? []).filter((u) => u.unitType === 'direction');
-  // Seuls les dossiers ACTIFS peuvent encadrer : le serveur refuse les autres,
-  // autant ne pas les proposer.
-  const managerQuery = useQuery({
-    queryKey: ['employees', 'managers'],
-    queryFn: () => api<EmployeeListPage>('/employees?status=active&limit=100'),
-  });
-  const managers = managerQuery.data?.items ?? [];
+  const directionChoisie = directions.find((u) => u.id === directionId);
+  // Les responsables possibles : ceux de la direction choisie, plus le
+  // directeur général — de qui relève un directeur, et lui seul quand la
+  // direction n'a pas encore de tête.
+  const { options: managers } = useResponsablesPossibles(
+    directionChoisie ? (directionChoisie.shortName ?? directionChoisie.name) : null,
+  );
   const marital = maritalLabels(gender || undefined);
 
   const needsDuration = contractType === 'cdd' || contractType === 'stage';
@@ -135,6 +136,9 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
       });
       // La liste derrière la fenêtre doit montrer l'arrivant à la fermeture.
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
+      // Le bandeau de la chaîne hiérarchique se recompte : un rattachement
+      // vient peut-être de disparaître de ses anomalies.
+      await queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
       onClose();
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : 'Enregistrement impossible.');
@@ -371,7 +375,13 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             <Select
               id="directionId"
               value={directionId}
-              onChange={(e) => setDirectionId(e.target.value)}
+              onChange={(e) => {
+                // Le responsable appartenait à l'ancienne direction : le
+                // garder ferait échouer l'enregistrement sur une règle qu'on
+                // vient de rendre fausse sous ses pieds.
+                setDirectionId(e.target.value);
+                setManagerId('');
+              }}
             >
               <option value="">—</option>
               {directions.map((u) => (
@@ -381,13 +391,21 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               ))}
             </Select>
           </Field>
-          <Field label="Manager" htmlFor="managerId">
+          <Field
+            label="Responsable hiérarchique (n+1)"
+            htmlFor="managerId"
+            hint={
+              directionChoisie
+                ? `Les agents de ${directionChoisie.shortName ?? directionChoisie.name}, et le directeur général.`
+                : 'Choisissez d’abord la direction pour voir les responsables possibles.'
+            }
+          >
             <Select id="managerId" value={managerId} onChange={(e) => setManagerId(e.target.value)}>
-              <option value="">— Aucun</option>
+              <option value="">— À désigner plus tard</option>
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.givenName} {m.familyName}
-                  {m.positionTitle ? ` — ${m.positionTitle}` : ''}
+                  {m.nom}
+                  {m.poste ? ` — ${m.poste}` : ''}
                 </option>
               ))}
             </Select>

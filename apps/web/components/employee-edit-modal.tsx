@@ -7,12 +7,14 @@ import type {
   EmployeeDetail,
   EmployeeListItem,
   EmployeeListPage,
+  OrgUnitView,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
 import { Button, Field, Input, Select, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { composePhone, COUNTRIES, splitPhone } from '../lib/countries';
 import { maritalLabels, maxBirthDate } from '../lib/person';
+import { useResponsablesPossibles } from '../lib/responsables';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
 import { composeWorkEmail, localWorkEmail, WorkEmailInput } from './work-email-input';
@@ -179,11 +181,14 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const managerQuery = useQuery({
-    queryKey: ['employees', 'managers'],
-    queryFn: () => api<EmployeeListPage>('/employees?status=active&limit=100'),
-  });
-  const managers = managerQuery.data?.items ?? [];
+  // C'est dans cette fenêtre qu'on corrige les dossiers signalés par le
+  // bandeau de la chaîne hiérarchique : elle doit guider, pas piéger.
+  const affectation = employee.assignments.find((a) => a.current);
+  const direction = affectation?.directionName ?? null;
+  const { options: managers } = useResponsablesPossibles(
+    affectation?.directionShortName ?? affectation?.directionName ?? null,
+    employee.id,
+  );
 
   const form = useForm<FormValues>({ defaultValues: toDefaults(employee) });
   const errors = form.formState.errors;
@@ -220,6 +225,9 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
       await api(`/employees/${employee.id}`, { method: 'PATCH', body });
       await queryClient.invalidateQueries({ queryKey: ['employee', employee.id] });
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
+      // Le bandeau de la chaîne hiérarchique se recompte : un rattachement
+      // vient peut-être de disparaître de ses anomalies.
+      await queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
       onClose();
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : 'Enregistrement impossible.');
@@ -361,17 +369,23 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               {...form.register('employeeNumber', { required: 'Le matricule est requis' })}
             />
           </Field>
-          <Field label="Manager" htmlFor="managerEmployeeId">
+          <Field
+            label="Responsable hiérarchique (n+1)"
+            htmlFor="managerEmployeeId"
+            hint={
+              direction
+                ? `Les agents de ${direction}, et le directeur général.`
+                : 'Sans affectation, aucune direction ne limite le choix.'
+            }
+          >
             <Select id="managerEmployeeId" {...form.register('managerEmployeeId')}>
-              <option value="">— Aucun</option>
-              {managers
-                .filter((m) => m.id !== employee.id)
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.givenName} {m.familyName}
-                    {m.positionTitle ? ` — ${m.positionTitle}` : ''}
-                  </option>
-                ))}
+              <option value="">— À désigner plus tard</option>
+              {managers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nom}
+                  {m.poste ? ` — ${m.poste}` : ''}
+                </option>
+              ))}
             </Select>
           </Field>
           <Field

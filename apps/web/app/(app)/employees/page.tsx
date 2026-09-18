@@ -29,6 +29,7 @@ import {
 import { api, ApiError } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { EmployeeCreateModal } from '../../../components/employee-create-modal';
+import { BandeauHierarchie } from '../../../components/bandeau-hierarchie';
 import { FenetreImportEmployes } from '../../../components/import-employes';
 import { Icon } from '../../../components/icons';
 import { Modal, ModalSection } from '../../../components/modal';
@@ -234,6 +235,11 @@ export default function EmployeesPage() {
     <Page>
       <EmployeeCreateModal open={createOpen} onClose={() => router.replace('/employees')} />
       {importOuvert ? <FenetreImportEmployes onClose={() => setImportOuvert(false)} /> : null}
+
+      {/* L'avertissement de la chaîne hiérarchique se tient ICI, au-dessus de
+          la liste : c'est sur les fiches qu'on corrige, et c'est donc de cet
+          écran qu'on part. Il ne s'affiche que s'il a quelque chose à dire. */}
+      <BandeauHierarchie />
 
       <OngletsBandeau courant={onglet} onChange={changerOnglet} onglets={ONGLETS} />
       {/* Reprise du même contrôle là où le bandeau n'a plus la place de le

@@ -73,6 +73,9 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
         await queryClient.invalidateQueries({ queryKey: ['employees'] });
         await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
         await queryClient.invalidateQueries({ queryKey: ['org-units'] });
+        // Dix dossiers importés sans n+1, c'est dix anomalies de plus : le
+        // bandeau doit le dire avant qu'on quitte l'écran.
+        await queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
       }
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Lecture impossible — réessayez.');
