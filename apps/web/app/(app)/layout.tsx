@@ -59,6 +59,12 @@ interface NavItem {
   groupe?: GroupeNav;
   /** Libellé de la barre d'onglets mobile, où la place manque. */
   short?: string;
+  /**
+   * Le nom ENTIER, quand le libellé du menu est un abrégé. Il ne s'affiche
+   * nulle part : il sert à retrouver l'écran dans la palette, où l'on tape le
+   * mot qu'on a en tête plutôt que celui qui a été rogné pour tenir.
+   */
+  motsCles?: string;
   icon: IconName;
   badge?: 'pending' | 'docs';
   /**
@@ -161,8 +167,13 @@ const NAV_ITEMS: NavItem[] = [
   // sans rien entre elles.
   {
     href: '/competences',
-    label: 'Cartographie des compétences',
+    // Abrégé DANS LE MENU seulement : la colonne a 190 px, et le nom complet
+    // s'y coupait dès que la page était courante — le libellé passe alors en
+    // gras. La barre supérieure, elle, garde « Cartographie des compétences »
+    // en entier : c'est là qu'on lit le nom de l'écran où l'on se trouve.
+    label: 'Cart. des compétences',
     short: 'Compét.',
+    motsCles: 'Cartographie des compétences',
     icon: 'hub',
     groupe: 'croissance',
   },
@@ -680,7 +691,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // rubrique n'a pas de page à elle : seules ses sous-pages sont des écrans.
   const ecrans = useMemo<EcranPalette[]>(
     () =>
-      items.flatMap((i) =>
+      items.flatMap((i): EcranPalette[] =>
         i.desactive
           ? []
           : i.children
@@ -694,7 +705,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   icon: i.icon,
                   chemin: i.label,
                 }))
-            : [{ href: i.href, label: i.label, icon: i.icon }],
+            : [{ href: i.href, label: i.label, icon: i.icon, motsCles: i.motsCles }],
       ),
     [items],
   );

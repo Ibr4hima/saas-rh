@@ -29,6 +29,15 @@ export interface EcranPalette {
   icon: IconName;
   /** « Absences & Congés › Gestion des demandes » — le chemin qu'on aurait suivi. */
   chemin?: string;
+  /**
+   * Des mots par lesquels l'écran se trouve SANS s'afficher.
+   *
+   * Le menu abrège parfois — « Cart. des compétences » tient dans la colonne,
+   * « Cartographie des compétences » non. On cherche pourtant avec le mot
+   * entier : c'est celui qu'on a en tête, pas celui qui a été rogné pour
+   * tenir.
+   */
+  motsCles?: string;
 }
 
 type Resultat =
@@ -142,7 +151,12 @@ export function Palette({
   const resultats = useMemo<Resultat[]>(() => {
     const contient = (texte: string) => q === '' || normaliser(texte).includes(q);
     const ecransTrouves: Resultat[] = ecrans
-      .filter((e) => contient(e.label) || (e.chemin ? contient(e.chemin) : false))
+      .filter(
+        (e) =>
+          contient(e.label) ||
+          (e.chemin ? contient(e.chemin) : false) ||
+          (e.motsCles ? contient(e.motsCles) : false),
+      )
       .slice(0, q === '' ? 6 : 5)
       .map((e) => ({
         type: 'ecran',
