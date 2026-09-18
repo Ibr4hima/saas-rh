@@ -132,7 +132,7 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { href: '/absences', label: 'Gestion des demandes' },
       { href: '/absences/feries', label: 'Gestion des jours fériés' },
-      { href: '/absences/parametres', label: 'Paramètres des congés', desactive: true },
+      { href: '/absences/parametres', label: 'Paramètres des congés' },
     ],
   },
   {
@@ -154,13 +154,31 @@ const NAV_ITEMS: NavItem[] = [
       { href: '/recrutement/candidatures', label: 'Dossiers de candidature' },
     ],
   },
+  // ——— Ce qui fait grandir l'effectif, dans l'ordre du cycle : on recrute,
+  // on regarde ce que les gens savent faire, on comble ce qui manque, on
+  // mesure. La cartographie et les formations sont les deux moitiés du même
+  // travail — l'une constate l'écart, l'autre le referme — et se suivent donc
+  // sans rien entre elles.
+  {
+    href: '/competences',
+    label: 'Cartographie des compétences',
+    short: 'Compét.',
+    icon: 'hub',
+    groupe: 'croissance',
+  },
+  {
+    href: '/formations',
+    label: 'Formations',
+    short: 'Format.',
+    icon: 'school',
+    groupe: 'croissance',
+  },
   {
     href: '/evaluation',
     label: 'Évaluation des objectifs',
     short: 'Évaluation',
     icon: 'rule',
     groupe: 'croissance',
-    desactive: true,
   },
   {
     href: '/reglementations',
@@ -193,6 +211,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/recrutement': "Offres d'emploi",
   '/recrutement/candidatures': 'Dossiers de candidature',
   '/recrutement/nouvelle': 'Nouvelle offre',
+  '/competences': 'Cartographie des compétences',
+  '/formations': 'Formations',
   '/evaluation': 'Évaluation des objectifs',
   '/organisation': 'Organigramme',
   '/reglementations/code-du-travail': 'Code du travail',
@@ -394,8 +414,12 @@ function RangeeNav({
     </>
   );
 
+  // `gap-2` comme les rubriques dépliables juste en dessous : les deux sortes
+  // de rangées s'écartaient de deux pixels, ce qui ne se voyait pas — jusqu'à
+  // ce que « Cartographie des compétences », en gras sur la page courante,
+  // manque exactement ces deux pixels et se coupe.
   const forme =
-    'relative flex items-center gap-2.5 rounded-[10px] py-[8px] pr-2.5 pl-3.5 text-[12.5px] transition-colors duration-150';
+    'relative flex items-center gap-2 rounded-[10px] py-[8px] pr-2.5 pl-3.5 text-[12.5px] transition-colors duration-150';
 
   // Éteinte, la rangée n'est plus un lien DU TOUT : la griser sans la
   // désarmer laisserait le clic passer, et le curseur promettrait une

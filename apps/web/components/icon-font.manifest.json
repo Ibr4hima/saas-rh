@@ -31,6 +31,7 @@
     "gavel",
     "group",
     "how_to_reg",
+    "hub",
     "inbox",
     "light_mode",
     "lock",
@@ -44,6 +45,7 @@
     "remove",
     "rule",
     "schedule",
+    "school",
     "search",
     "settings",
     "task_alt",
@@ -53,5 +55,5 @@
     "visibility_off"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 54916
+  "bytes": 59384
 }
