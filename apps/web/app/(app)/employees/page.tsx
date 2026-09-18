@@ -162,16 +162,23 @@ export default function EmployeesPage() {
   const choisis = sel.choisis;
 
   /**
-   * Changer de page relâche la sélection.
+   * Changer de page : on relâche la sélection et l'on remonte en haut.
    *
-   * Les cases cochées appartiennent aux lignes AFFICHÉES : les garder d'une
-   * page à l'autre ferait réapparaître « 3 dossiers sélectionnés » en
+   * La sélection d'abord — les cases cochées appartiennent aux lignes
+   * AFFICHÉES, les garder ferait réapparaître « 3 dossiers sélectionnés » en
    * revenant, et un lot supprimé depuis une autre page est un lot qu'on n'a
    * pas relu.
+   *
+   * La remontée ensuite : on clique sur la barre EN BAS de la liste, et la
+   * page suivante commence en haut. Sans ce geste, on atterrirait sous la
+   * quinzième ligne d'un tableau qu'on n'a pas encore lu. C'est le panneau de
+   * l'application qui défile, pas la fenêtre — d'où `data-scroll-root`, que
+   * le gabarit pose sur lui.
    */
   const allerPage = (p: number) => {
     sel.vider();
     setPage(p);
+    document.querySelector('[data-scroll-root]')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const actifsChoisis = choisis.filter((e) => e.status === 'active');
   const archivesChoisis = choisis.filter((e) => e.status === 'archived');
@@ -224,13 +231,7 @@ export default function EmployeesPage() {
   };
 
   return (
-    // `h-full` et non le seul `min-h-full` du gabarit : la barre de pagination
-    // doit rester SOUS LES YEUX. Sans hauteur fixée, la carte grandit avec ses
-    // quinze lignes, la page dépasse le panneau et la barre passe sous la
-    // ligne de flottaison — on paginerait une liste dont la pagination
-    // demande à faire défiler. Avec elle, la carte prend ce qui reste et c'est
-    // le tableau qui défile, sous ses intitulés de colonne.
-    <Page className="h-full">
+    <Page>
       <EmployeeCreateModal open={createOpen} onClose={() => router.replace('/employees')} />
       {importOuvert ? <FenetreImportEmployes onClose={() => setImportOuvert(false)} /> : null}
 
@@ -386,7 +387,11 @@ export default function EmployeesPage() {
             />
           </CorpsDefilant>
         ) : (
-          <Table pleine key={page}>
+          // Pas de `pleine` ici, et c'est délibéré : le tableau ne défile
+          // PAS dans une boîte à lui. Il s'étend sur toute sa hauteur, la
+          // page descend avec lui, et la barre de pagination attend à la fin
+          // de la liste — là où l'on arrive quand on a fini de lire.
+          <Table>
             <THead>
               <tr>
                 <ThCases sel={sel} />
