@@ -22,7 +22,10 @@ import type {
   BeatInput,
   MoveInput,
   PrepareVideoInput,
+  QuestionInput,
+  QuizSettingsInput,
   SaveCourseInput,
+  SubmitAttemptInput,
   TitleInput,
 } from '@teranga/contracts';
 import {
@@ -30,7 +33,10 @@ import {
   moveSchema,
   prepareVideoSchema,
   publishCourseSchema,
+  questionSchema,
+  quizSettingsSchema,
   saveCourseSchema,
+  submitAttemptSchema,
   supportQuerySchema,
   titleSchema,
 } from '@teranga/contracts';
@@ -38,6 +44,7 @@ import { problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { Roles, RolesGuard } from '../auth/roles.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
+import { AcademyEvaluationService } from './academy-evaluation.service';
 import { AcademyService } from './academy.service';
 
 /**
@@ -50,7 +57,10 @@ import { AcademyService } from './academy.service';
 @Controller('academy')
 @UseGuards(SessionGuard, RolesGuard)
 export class AcademyController {
-  constructor(@Inject(AcademyService) private readonly academy: AcademyService) {}
+  constructor(
+    @Inject(AcademyService) private readonly academy: AcademyService,
+    @Inject(AcademyEvaluationService) private readonly evaluation: AcademyEvaluationService,
+  ) {}
 
   // ———————————— catalogue et lecture
 
@@ -262,6 +272,119 @@ export class AcademyController {
   @Roles('admin', 'hr')
   supprimerSupport(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.academy.supprimerSupport(req.sessionUser, id);
+  }
+
+  // ———————————— l'évaluation finale : la banque (RH)
+
+  @Put('courses/:id/evaluation')
+  @Roles('admin', 'hr')
+  reglerEvaluation(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(quizSettingsSchema)) body: QuizSettingsInput,
+  ) {
+    return this.evaluation.reglerEvaluation(req.sessionUser, id, body);
+  }
+
+  @Post('courses/:id/questions')
+  @Roles('admin', 'hr')
+  creerQuestion(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(questionSchema)) body: QuestionInput,
+  ) {
+    return this.evaluation.creerQuestion(req.sessionUser, id, body);
+  }
+
+  @Put('questions/:id')
+  @Roles('admin', 'hr')
+  modifierQuestion(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(questionSchema)) body: QuestionInput,
+  ) {
+    return this.evaluation.modifierQuestion(req.sessionUser, id, body);
+  }
+
+  @Delete('questions/:id')
+  @Roles('admin', 'hr')
+  supprimerQuestion(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.evaluation.supprimerQuestion(req.sessionUser, id);
+  }
+
+  @Post('questions/:id/deplacer')
+  @Roles('admin', 'hr')
+  deplacerQuestion(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(moveSchema)) body: MoveInput,
+  ) {
+    return this.evaluation.deplacerQuestion(req.sessionUser, id, body.sens);
+  }
+
+  // ———————————— l'évaluation finale : la copie (agent)
+
+  @Post('courses/:id/tentatives')
+  demarrerTentative(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.evaluation.demarrer(req.sessionUser, id);
+  }
+
+  @Post('tentatives/:id/soumission')
+  soumettre(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(submitAttemptSchema)) body: SubmitAttemptInput,
+  ) {
+    return this.evaluation.soumettre(req.sessionUser, id, body);
+  }
+
+  // ———————————— les certificats
+
+  @Get('certificats')
+  mesCertificats(@Req() req: AuthenticatedRequest) {
+    return this.evaluation.mesCertificats(req.sessionUser);
+  }
+
+  @Get('employees/:id/certificats')
+  certificatsDe(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.evaluation.certificatsDe(req.sessionUser, id);
+  }
+
+  @Get('certificats/:id/pdf')
+  async certificatPdf(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('disposition') disposition: string | undefined,
+    @Res() res: Response,
+  ) {
+    const { filename, data } = await this.evaluation.pdf(req.sessionUser, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `${disposition === 'inline' ? 'inline' : 'attachment'}; filename="${filename}"`,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.end(data);
+  }
+}
+
+/**
+ * La vérification PUBLIQUE d'un certificat — sans compte.
+ *
+ * C'est la page que le QR code ouvre : un recruteur, un partenaire, une autre
+ * administration y confirme qu'un certificat présenté est authentique. Elle
+ * ne rend que ce que le certificat imprimé dit déjà : le titulaire, la
+ * formation, le score, les dates et le statut du jour.
+ */
+@Controller('public/certificats')
+export class PublicCertificatsController {
+  constructor(
+    @Inject(AcademyEvaluationService) private readonly evaluation: AcademyEvaluationService,
+  ) {}
+
+  @Get(':numero')
+  verifier(@Param('numero') numero: string) {
+    return this.evaluation.verifier(numero.slice(0, 40));
   }
 }
 

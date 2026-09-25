@@ -3,10 +3,11 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import type { AcademyCategory, CourseSummary } from '@teranga/contracts';
+import type { AcademyCategory, CertificateSummary, CourseSummary } from '@teranga/contracts';
 import { ACADEMY_CATEGORIES } from '@teranga/contracts';
 import { Button, Card, cn, EmptyState, Input, Skeleton } from '@teranga/ui';
 import { CarteFormation } from '../../../components/academy-carte';
+import { ListeCertificats } from '../../../components/academy-certificat';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
@@ -42,6 +43,11 @@ export default function AcademyPage() {
   const catalogue = useQuery({
     queryKey: ['academy', 'catalogue'],
     queryFn: () => api<CourseSummary[]>('/academy/courses'),
+  });
+  // Les certificats de l'agent connecté — aucun pour un compte sans dossier.
+  const certificats = useQuery({
+    queryKey: ['academy', 'certificats'],
+    queryFn: () => api<CertificateSummary[]>('/academy/certificats'),
   });
   const [filtre, setFiltre] = useState<Filtre>('toutes');
   const [recherche, setRecherche] = useState('');
@@ -112,6 +118,17 @@ export default function AcademyPage() {
         </Card>
       ) : (
         <>
+          {/* Ce que l'agent a obtenu, en tête : c'est ce qu'il vient chercher
+              quand on lui demande une preuve de formation. */}
+          {certificats.data && certificats.data.length > 0 ? (
+            <section className="flex flex-col gap-3">
+              <Intitule>Mes certificats</Intitule>
+              <Card className="px-5 py-1">
+                <ListeCertificats certificats={certificats.data} />
+              </Card>
+            </section>
+          ) : null}
+
           {/* « Reprendre » n'a de sens que si le catalogue ne tient plus d'un
               regard : à trois formations ou moins, elles sont toutes sous les
               yeux avec leur progression, et la rangée ne ferait que les

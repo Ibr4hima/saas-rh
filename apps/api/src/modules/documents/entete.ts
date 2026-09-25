@@ -59,7 +59,7 @@ function cheminEnteteRepublique(): string | null {
  * dessine sans lui : un document sans logo reste un document, une erreur de
  * génération n'est rien.
  */
-function cheminLogo(): string | null {
+export function cheminLogo(): string | null {
   const candidats = [
     join(RACINE, 'assets', 'logo-apix.png'),
     join(RACINE, '..', 'web', 'public', 'logo-apix.png'),

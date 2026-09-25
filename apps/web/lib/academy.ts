@@ -21,8 +21,12 @@ export function horloge(secondes: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/**
+ * Arrondi par défaut — 79,6 % ne s'affiche jamais « 80 % » —, avec la marge
+ * qu'il faut aux flottants : 29/50 × 100 vaut 57,999… et doit rester 58 %.
+ */
 export function pourcent(part: number): string {
-  return `${Math.floor(Math.min(1, Math.max(0, part)) * 100)} %`;
+  return `${Math.floor(Math.min(1, Math.max(0, part)) * 100 + 1e-9)} %`;
 }
 
 /**
@@ -97,3 +101,24 @@ export const MOTS_ETAT: Record<EtatLecon, string> = {
   en_cours: 'En cours',
   validee: 'Validée',
 };
+
+/**
+ * « aujourd'hui à 14 h 05 », « demain à 9 h 00 », « le 28 septembre à 9 h 00 » :
+ * l'heure d'une prochaine tentative, dite comme on la dirait.
+ */
+export function quandLisible(iso: string, maintenant = new Date()): string {
+  const d = new Date(iso);
+  const heure = `${d.getHours()} h ${String(d.getMinutes()).padStart(2, '0')}`;
+  const jour = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const ecart = Math.round((jour(d) - jour(maintenant)) / 86_400_000);
+  if (ecart === 0) return `aujourd’hui à ${heure}`;
+  if (ecart === 1) return `demain à ${heure}`;
+  return `le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} à ${heure}`;
+}
+
+export const STATUTS_CERTIFICAT = {
+  valide: { label: 'Valide', tone: 'success' },
+  // Un certificat expiré attend d'être renouvelé : c'est l'orange de l'attente.
+  expire: { label: 'Expiré', tone: 'warning' },
+  revoque: { label: 'Révoqué', tone: 'danger' },
+} as const;

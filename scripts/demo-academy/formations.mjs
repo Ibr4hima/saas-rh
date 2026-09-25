@@ -7,6 +7,9 @@
  * une barre qui avance) : elles ont la durée d'une vraie leçon, pas son
  * contenu.
  *
+ * Chacune porte sa banque de questions pour l'évaluation finale : huit
+ * questions, cinq tirées à chaque tentative.
+ *
  * Une seule source pour les deux scripts : `fabriquer-videos.mjs` en tire les
  * vidéos, `seed-academy.mjs` la structure. Un titre changé ici change les
  * deux.
@@ -19,6 +22,95 @@ export const FORMATIONS = [
     category: 'bureautique',
     summary:
       'Construire une présentation claire et professionnelle, du plan au diaporama. Structurer son message, soigner la mise en page avec le masque aux couleurs de l’APIX, animer avec sobriété et présenter avec aisance devant un comité ou un investisseur.',
+    evaluation: {
+      questionCount: 5,
+      questions: [
+        {
+          prompt:
+            'Quel mode d’affichage permet de réorganiser rapidement l’ordre des diapositives ?',
+          kind: 'unique',
+          options: [
+            ['La trieuse de diapositives', true],
+            ['Le mode Lecture', false],
+            ['La page de commentaires', false],
+            ['Le mode Présentateur', false],
+          ],
+        },
+        {
+          prompt:
+            'Où modifier une fois pour toutes la police et les couleurs de toutes les diapositives ?',
+          kind: 'unique',
+          options: [
+            ['Dans le masque des diapositives', true],
+            ['Dans l’onglet Transitions', false],
+            ['Dans le volet Animation', false],
+            ['Dans le mode Plan', false],
+          ],
+        },
+        {
+          prompt: 'Que doit dire le titre d’une diapositive efficace ?',
+          kind: 'unique',
+          options: [
+            ['Le message que la diapositive démontre', true],
+            ['Le sujet général de la présentation', false],
+            ['Le numéro de la section', false],
+            ['Le nom du service qui présente', false],
+          ],
+        },
+        {
+          prompt: 'Lesquelles de ces pratiques rendent une diapositive plus lisible ?',
+          kind: 'multiple',
+          options: [
+            ['Une seule idée par diapositive', true],
+            ['Trois à cinq points au plus', true],
+            ['Des paragraphes complets', false],
+            ['Plusieurs polices pour varier', false],
+          ],
+        },
+        {
+          prompt:
+            'Quel mode vous montre vos notes et la diapositive suivante, pendant que le public ne voit que la diapositive en cours ?',
+          kind: 'unique',
+          options: [
+            ['Le mode Présentateur', true],
+            ['Le mode Lecture', false],
+            ['La trieuse de diapositives', false],
+            ['Le mode Normal', false],
+          ],
+        },
+        {
+          prompt:
+            'Pour envoyer une présentation qui ne doit pas être modifiée, quel format choisir ?',
+          kind: 'unique',
+          options: [
+            ['PDF', true],
+            ['PPTX', false],
+            ['Le modèle .potx', false],
+            ['Texte brut', false],
+          ],
+        },
+        {
+          prompt: 'Selon la charte de l’APIX, quels usages des couleurs sont justes ?',
+          kind: 'multiple',
+          options: [
+            ['Le bleu APIX pour la structure', true],
+            ['L’orange avec parcimonie', true],
+            ['Une couleur différente par diapositive', false],
+            ['Le rouge pour tous les titres', false],
+          ],
+        },
+        {
+          prompt: 'Combien d’animations faut-il viser par diapositive, en règle générale ?',
+          kind: 'unique',
+          options: [
+            ['Aucune ou une seule, au service du propos', true],
+            ['Une par ligne de texte', false],
+            ['Le plus possible, pour capter l’attention', false],
+            ['Toujours trois', false],
+          ],
+        },
+      ],
+    },
     modules: [
       {
         title: 'Prendre en main PowerPoint',
@@ -79,6 +171,93 @@ export const FORMATIONS = [
     category: 'economie',
     summary:
       'Les notions essentielles pour lire une note de conjoncture et dialoguer avec un investisseur : le PIB et la croissance, l’inflation et la politique monétaire de la BCEAO, les finances publiques, la balance des paiements, et ce qui fait l’attractivité du Sénégal.',
+    evaluation: {
+      questionCount: 5,
+      questions: [
+        {
+          prompt: 'Que mesure le produit intérieur brut ?',
+          kind: 'unique',
+          options: [
+            ['La richesse créée sur le territoire en une année', true],
+            ['Le patrimoine total des ménages', false],
+            ['Les recettes fiscales de l’État', false],
+            ['La valeur des seules exportations', false],
+          ],
+        },
+        {
+          prompt: 'Quelles sont les trois optiques du PIB ?',
+          kind: 'multiple',
+          options: [
+            ['La production', true],
+            ['La demande', true],
+            ['Les revenus', true],
+            ['La dette publique', false],
+          ],
+        },
+        {
+          prompt: 'Le PIB réel se distingue du PIB nominal parce qu’il…',
+          kind: 'unique',
+          options: [
+            ['est corrigé de l’évolution des prix', true],
+            ['inclut l’économie informelle', false],
+            ['est exprimé en dollars', false],
+            ['ne compte que les exportations', false],
+          ],
+        },
+        {
+          prompt: 'Quelle est la cible d’inflation de la BCEAO ?',
+          kind: 'unique',
+          options: [
+            ['Entre 1 et 3 %', true],
+            ['0 %', false],
+            ['Entre 5 et 7 %', false],
+            ['Au moins 10 %', false],
+          ],
+        },
+        {
+          prompt: 'À quelle monnaie le franc CFA de l’UEMOA est-il arrimé à parité fixe ?',
+          kind: 'unique',
+          options: [
+            ['L’euro', true],
+            ['Le dollar américain', false],
+            ['Le yuan', false],
+            ['Le franc suisse', false],
+          ],
+        },
+        {
+          prompt: 'Combien d’États membres compte l’UEMOA ?',
+          kind: 'unique',
+          options: [
+            ['Huit', true],
+            ['Six', false],
+            ['Dix', false],
+            ['Quinze', false],
+          ],
+        },
+        {
+          prompt:
+            'À partir de quelle part du capital parle-t-on d’investissement direct étranger ?',
+          kind: 'unique',
+          options: [
+            ['10 %', true],
+            ['50 %', false],
+            ['1 %', false],
+            ['100 %', false],
+          ],
+        },
+        {
+          prompt:
+            'Parmi ces facteurs, lesquels renforcent l’attractivité d’un pays pour les investisseurs ?',
+          kind: 'multiple',
+          options: [
+            ['La stabilité politique et juridique', true],
+            ['La qualité des infrastructures', true],
+            ['Une main-d’œuvre qualifiée', true],
+            ['Des délais administratifs imprévisibles', false],
+          ],
+        },
+      ],
+    },
     modules: [
       {
         title: 'Les grands agrégats',

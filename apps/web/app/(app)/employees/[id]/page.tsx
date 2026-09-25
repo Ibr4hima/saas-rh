@@ -31,6 +31,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
+import { CarteCertificatsAgent } from '../../../../components/academy-certificat';
 import { EmployeeDocumentsCard } from '../../../../components/employee-documents-card';
 import { ProfileChangeCard } from '../../../../components/profile-change-card';
 import { DocumentRequestRow } from '../../../../components/document-request-list';
@@ -412,6 +413,8 @@ export default function EmployeePage() {
           {canSeeHistory ? <EmployeeDocumentsCard employeeId={e.id} /> : null}
 
           {canSeeHistory ? <DocumentRequestsCard employeeId={e.id} /> : null}
+
+          {canSeeHistory ? <CarteCertificatsAgent employeeId={e.id} /> : null}
 
           {/* Les soldes sont un TABLEAU : ils appartiennent à la colonne large.
               Serrés dans le tiers de droite, leurs colonnes débordaient. */}

@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import type { CourseDetail } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@teranga/ui';
 import { BarreProgression, Couverture, RetourAcademy } from '../../../../components/academy-carte';
+import { CarteEvaluation } from '../../../../components/academy-evaluation-carte';
 import { Programme } from '../../../../components/academy-programme';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
@@ -60,7 +61,18 @@ export default function FormationPage() {
       : suivi && f.completedLessons > 0
         ? 'Voir la leçon suivante'
         : 'Voir la première leçon';
-  const bouton = cible ? (
+  // Toutes les leçons vues et l'évaluation ouverte : le geste suivant est de
+  // la passer, et c'est lui que le bouton propose.
+  const evaluationOuverte =
+    suivi && (f.evaluation?.etat === 'ouverte' || f.evaluation?.etat === 'en_cours');
+  const bouton = evaluationOuverte ? (
+    <Link href={`/academy/${f.id}/evaluation`} className="shrink-0">
+      <Button className="w-full sm:w-auto">
+        <Icon name="quiz" size={17} />
+        {f.evaluation?.etat === 'en_cours' ? 'Reprendre l’évaluation' : 'Passer l’évaluation'}
+      </Button>
+    </Link>
+  ) : cible ? (
     <Link href={`/academy/${f.id}/lecon/${cible}`} className="shrink-0">
       <Button className="w-full sm:w-auto">
         <Icon
@@ -138,6 +150,8 @@ export default function FormationPage() {
           </div>
         </div>
       </Card>
+
+      <CarteEvaluation formation={f} />
 
       <Card className="pb-1">
         <CardHeader>

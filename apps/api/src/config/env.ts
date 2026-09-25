@@ -30,6 +30,11 @@ const envSchema = z.object({
    * répertoire des fichiers. Par défaut `apps/api/var/academy-media`.
    */
   ACADEMY_MEDIA_DIR: z.string().min(1).optional(),
+  /**
+   * L'adresse publique de l'application web — celle que porte le QR code d'un
+   * certificat, pour qu'un tiers le vérifie. En production : l'URL réelle.
+   */
+  PUBLIC_WEB_URL: z.string().url().default('http://localhost:3002'),
 });
 
 export type Env = z.infer<typeof envSchema>;

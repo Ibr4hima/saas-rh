@@ -221,6 +221,18 @@ export default function LeconPage() {
                   </Button>
                 </Link>
               ) : null}
+              {/* La dernière leçon validée ouvre l'évaluation : c'est le
+                  geste suivant, il prend la place de « Leçon suivante ». */}
+              {!l.suivante &&
+              suivi &&
+              (f.evaluation?.etat === 'ouverte' || f.evaluation?.etat === 'en_cours') ? (
+                <Link href={`/academy/${id}/evaluation`}>
+                  <Button size="sm">
+                    <Icon name="quiz" size={16} />
+                    Passer l’évaluation
+                  </Button>
+                </Link>
+              ) : null}
               {l.suivante ? (
                 <Button
                   size="sm"

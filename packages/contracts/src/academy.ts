@@ -178,11 +178,17 @@ export interface CourseSummary {
   /** Dernière activité de l'agent sur la formation, pour ranger « Reprendre ». */
   lastActivityAt: string | null;
   updatedAt: string;
+  /** La formation se conclut par une évaluation (sa banque a des questions). */
+  hasEvaluation: boolean;
+  /** L'agent connecté tient un certificat EN COURS DE VALIDITÉ pour elle. */
+  certified: boolean;
 }
 
 export interface CourseDetail extends CourseSummary {
   mode: ModeLecture;
   modules: ModuleView[];
+  /** L'évaluation finale, telle que l'agent la voit. Nulle sans banque de questions. */
+  evaluation: EvaluationView | null;
 }
 
 /** Ce qui empêche une formation d'être publiée, en mots de la RH. */
@@ -193,6 +199,7 @@ export interface ObstaclePublication {
 
 export interface CourseAdminView extends CourseDetail {
   obstacles: ObstaclePublication[];
+  quiz: QuizAdminView;
 }
 
 export interface CourseAdminSummary extends CourseSummary {
@@ -244,4 +251,166 @@ export interface VideoUploadTarget {
   mode: 'local' | 'cloudflare';
   url: string;
   method: 'PUT' | 'POST';
+}
+
+// =============================================================================
+// Étape 2 — l'évaluation finale et le certificat
+// =============================================================================
+
+/** 80 % de bonnes réponses : le seuil de réussite, décidé avec l'APIX. */
+export const SEUIL_REUSSITE = 0.8;
+
+/**
+ * Trois tentatives par période glissante de vingt-quatre heures. Au-delà,
+ * l'écran dit à quelle heure la suivante s'ouvre : on repasse l'évaluation
+ * après avoir revu les leçons, pas en rafale jusqu'à tomber juste.
+ */
+export const TENTATIVES_PAR_JOUR = 3;
+export const FENETRE_TENTATIVES_H = 24;
+
+/** Le temps accordé : deux minutes par question, décompté par le serveur. */
+export const SECONDES_PAR_QUESTION = 120;
+
+export const QUESTIONS_PAR_TENTATIVE_MAX = 50;
+export const OPTIONS_MIN = 2;
+export const OPTIONS_MAX = 6;
+
+/** Les durées de validité proposées à la RH, en mois. `null` : sans limite. */
+export const VALIDITES_CERTIFICAT = [null, 12, 24, 36] as const;
+
+export type TypeQuestion = 'unique' | 'multiple';
+
+export const questionSchema = z
+  .object({
+    prompt: z.string().trim().min(3, '3 caractères minimum').max(1000),
+    kind: z.enum(['unique', 'multiple']),
+    options: z
+      .array(
+        z.object({
+          text: z.string().trim().min(1, 'Un choix ne peut pas être vide').max(300),
+          correct: z.boolean(),
+        }),
+      )
+      .min(OPTIONS_MIN, `${OPTIONS_MIN} choix au moins`)
+      .max(OPTIONS_MAX, `${OPTIONS_MAX} choix au plus`),
+  })
+  .superRefine((q, ctx) => {
+    const bonnes = q.options.filter((o) => o.correct).length;
+    if (q.kind === 'unique' && bonnes !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['options'],
+        message: 'Cochez une seule bonne réponse',
+      });
+    }
+    if (q.kind === 'multiple' && bonnes < 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['options'],
+        message: 'Cochez au moins une bonne réponse',
+      });
+    }
+  });
+export type QuestionInput = z.infer<typeof questionSchema>;
+
+export const quizSettingsSchema = z.object({
+  questionCount: z.number().int().min(1).max(QUESTIONS_PAR_TENTATIVE_MAX),
+  certificateValidityMonths: z.number().int().min(1).max(120).nullable(),
+});
+export type QuizSettingsInput = z.infer<typeof quizSettingsSchema>;
+
+/** La copie : pour chaque question posée, les choix cochés. */
+export const submitAttemptSchema = z.object({
+  answers: z.record(z.string().max(64), z.array(z.string().max(64)).max(OPTIONS_MAX)),
+});
+export type SubmitAttemptInput = z.infer<typeof submitAttemptSchema>;
+
+export interface QuestionAdminView {
+  id: string;
+  position: number;
+  prompt: string;
+  kind: TypeQuestion;
+  options: Array<{ id: string; text: string; correct: boolean }>;
+}
+
+export interface QuizAdminView {
+  /** Questions tirées à chaque tentative (réglage de la RH). */
+  questionCount: number;
+  certificateValidityMonths: number | null;
+  questions: QuestionAdminView[];
+}
+
+export interface CertificateSummary {
+  id: string;
+  number: string;
+  courseId: string | null;
+  courseTitle: string;
+  courseCategory: AcademyCategory;
+  score: number;
+  issuedAt: string;
+  expiresAt: string | null;
+  /** valide, expiré, ou révoqué — dit à la date d'aujourd'hui. */
+  status: 'valide' | 'expire' | 'revoque';
+}
+
+/**
+ * L'évaluation d'une formation, vue par l'agent.
+ *
+ * `verrouillee` : des leçons restent à valider. `ouverte` : il peut composer.
+ * `en_cours` : une copie est ouverte et le temps court encore. `attente` :
+ * ses trois tentatives du jour sont passées. `reussie` : il tient un
+ * certificat valide.
+ */
+export interface EvaluationView {
+  /** Questions posées à chaque tentative : le réglage, borné par la banque. */
+  questionCount: number;
+  minutes: number;
+  seuil: number;
+  etat: 'verrouillee' | 'ouverte' | 'en_cours' | 'attente' | 'reussie';
+  tentativesRestantes: number;
+  /** Quand `attente` : l'heure à laquelle la prochaine tentative s'ouvre. */
+  prochaineTentative: string | null;
+  derniere: { score: number; passed: boolean; submittedAt: string } | null;
+  certificat: CertificateSummary | null;
+}
+
+/** Une copie ouverte : les questions, SANS les réponses. */
+export interface AttemptView {
+  id: string;
+  courseId: string;
+  courseTitle: string;
+  startedAt: string;
+  expiresAt: string;
+  questions: Array<{
+    id: string;
+    prompt: string;
+    kind: TypeQuestion;
+    options: Array<{ id: string; text: string }>;
+  }>;
+}
+
+export interface AttemptResult {
+  score: number;
+  passed: boolean;
+  correctCount: number;
+  total: number;
+  /** Pour chaque question : juste ou non. Jamais la bonne réponse. */
+  questions: Array<{ id: string; prompt: string; correct: boolean }>;
+  /** La copie est arrivée après la fin du temps : elle compte pour zéro. */
+  expired: boolean;
+  certificat: CertificateSummary | null;
+  evaluation: EvaluationView;
+}
+
+/** Ce que la page publique de vérification montre — et rien de plus. */
+export interface PublicCertificateView {
+  number: string;
+  status: 'valide' | 'expire' | 'revoque';
+  holderName: string;
+  courseTitle: string;
+  courseCategory: AcademyCategory;
+  organizationName: string;
+  score: number;
+  issuedAt: string;
+  expiresAt: string | null;
 }

@@ -473,6 +473,8 @@ export const academyCourses = pgTable('academy_courses', {
   createdByUserId: uuid('created_by_user_id').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  quizQuestionCount: integer('quiz_question_count').notNull().default(10),
+  certificateValidityMonths: integer('certificate_validity_months'),
 });
 
 export const academyModules = pgTable('academy_modules', {
@@ -534,4 +536,66 @@ export const academyViewers = pgTable('academy_viewers', {
   tokens: doublePrecision('tokens').notNull(),
   tokensAt: timestamp('tokens_at', { withTimezone: true }).notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- APIX Academy — évaluation et certificats (0027) ----------
+
+/** Un choix de réponse, tel que la banque le garde. */
+export interface OptionQuestion {
+  id: string;
+  text: string;
+  correct: boolean;
+}
+
+export const academyQuestions = pgTable('academy_questions', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  position: integer('position').notNull(),
+  prompt: text('prompt').notNull(),
+  kind: text('kind').notNull(),
+  options: jsonb('options').$type<OptionQuestion[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Une question telle qu'elle a été POSÉE : ordre des choix et bonnes réponses figés. */
+export interface QuestionPosee {
+  id: string;
+  prompt: string;
+  kind: 'unique' | 'multiple';
+  options: Array<{ id: string; text: string }>;
+  correct: string[];
+}
+
+export const academyQuizAttempts = pgTable('academy_quiz_attempts', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  questions: jsonb('questions').$type<QuestionPosee[]>().notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  answers: jsonb('answers').$type<Record<string, string[]>>(),
+  score: doublePrecision('score'),
+  passed: boolean('passed'),
+});
+
+export const academyCertificates = pgTable('academy_certificates', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  courseId: uuid('course_id'),
+  attemptId: uuid('attempt_id'),
+  number: text('number').notNull(),
+  holderName: text('holder_name').notNull(),
+  holderNumber: text('holder_number').notNull(),
+  courseTitle: text('course_title').notNull(),
+  courseCategory: text('course_category').notNull(),
+  organizationName: text('organization_name').notNull(),
+  score: doublePrecision('score').notNull(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
 });

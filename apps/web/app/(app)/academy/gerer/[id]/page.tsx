@@ -18,6 +18,7 @@ import {
 } from '@teranga/contracts';
 import { Badge, Button, Card, cn, Input, Skeleton } from '@teranga/ui';
 import { Couverture, RetourAcademy } from '../../../../../components/academy-carte';
+import { SectionEvaluation } from '../../../../../components/academy-evaluation-atelier';
 import { FormationModal } from '../../../../../components/academy-formation-modal';
 import { Page } from '../../../../../components/gabarit';
 import { Icon } from '../../../../../components/icons';
@@ -350,8 +351,10 @@ export default function AtelierFormationPage() {
         placeholder={f.modules.length === 0 ? 'Titre du premier module' : 'Titre du module suivant'}
         bouton="Ajouter un module"
         onAjout={(title) => agir(`/academy/courses/${f.id}/modules`, 'POST', { title })}
-        className="pb-4"
+        className="pb-2"
       />
+
+      <SectionEvaluation formation={f} />
 
       {edition ? <FormationModal open formation={f} onClose={() => setEdition(false)} /> : null}
 

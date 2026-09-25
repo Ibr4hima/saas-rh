@@ -256,7 +256,11 @@ export function LecteurVideo({
       aria-label={`Lecteur vidéo — ${lecture.title}`}
       className={cn(
         'group/lecteur relative isolate aspect-video w-full overflow-hidden bg-black select-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none',
-        pleinEcran ? 'rounded-none' : 'rounded-[16px]',
+        // Toute la largeur, mais pas toute la hauteur : au-delà de 62 % de
+        // l'écran, la vidéo repoussait sous la ligne de flottaison la leçon et
+        // ses boutons. Le cadre garde alors sa largeur, la vidéo se centre
+        // dedans sur fond noir — comme au cinéma.
+        pleinEcran ? 'rounded-none' : 'max-h-[62vh] rounded-[16px]',
         !montrerCommandes && 'cursor-none',
       )}
     >

@@ -64,6 +64,7 @@ export const ICON_NAMES = [
   'hub',
   'inbox',
   'light_mode',
+  'link',
   'lock',
   'logout',
   'mail',
@@ -76,6 +77,7 @@ export const ICON_NAMES = [
   'play_arrow',
   'play_circle',
   'print',
+  'quiz',
   'remove',
   'replay',
   'rule',
@@ -84,6 +86,7 @@ export const ICON_NAMES = [
   'search',
   'settings',
   'task_alt',
+  'timer',
   'translate',
   'trending_up',
   'unarchive',
@@ -93,6 +96,7 @@ export const ICON_NAMES = [
   'visibility_off',
   'volume_off',
   'volume_up',
+  'workspace_premium',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];

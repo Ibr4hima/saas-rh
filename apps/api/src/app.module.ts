@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common';
 import { EncryptionService } from './common/encryption.service';
-import { AcademyController, AcademyMediaController } from './modules/academy/academy.controller';
+import {
+  AcademyController,
+  AcademyMediaController,
+  PublicCertificatsController,
+} from './modules/academy/academy.controller';
+import { AcademyEvaluationService } from './modules/academy/academy-evaluation.service';
 import { AcademyService } from './modules/academy/academy.service';
 import { StockageVideoLocal } from './modules/academy/stockage-local';
 import { DashboardController } from './modules/analytics/dashboard.controller';
@@ -60,6 +65,7 @@ import { AbsencesService } from './modules/time/absences.service';
     ReferenceTextsController,
     AcademyController,
     AcademyMediaController,
+    PublicCertificatsController,
   ],
   providers: [
     TenantDb,
@@ -83,6 +89,7 @@ import { AbsencesService } from './modules/time/absences.service';
     ReferenceTextsService,
     StockageVideoLocal,
     AcademyService,
+    AcademyEvaluationService,
   ],
 })
 export class AppModule {}

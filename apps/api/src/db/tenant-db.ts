@@ -84,6 +84,19 @@ export class TenantDb implements OnModuleDestroy {
     });
   }
 
+  /**
+   * Contexte « vérification de certificat » : pour la page publique qui
+   * confirme qu'un certificat APIX Academy est authentique. Sans session ni
+   * tenant, la policy dédiée n'expose QUE le certificat dont l'appelant
+   * présente le numéro — jamais une liste.
+   */
+  async withCertificateNumber<T>(numero: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return this.global.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.certificate_number', ${numero}, true)`);
+      return fn(tx);
+    });
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.pool.end();
   }

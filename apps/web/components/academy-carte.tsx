@@ -107,10 +107,15 @@ export function CarteFormation({ formation }: { formation: CourseSummary }) {
           ) : null}
 
           <div className="mt-auto pt-2">
-            {terminee ? (
+            {formation.certified ? (
+              <Badge tone="success" className="gap-1">
+                <Icon name="workspace_premium" size={13} />
+                Certifiée
+              </Badge>
+            ) : terminee ? (
               <Badge tone="success" className="gap-1">
                 <Icon name="check_circle" size={13} fill />
-                Terminée
+                {formation.hasEvaluation ? 'Leçons terminées' : 'Terminée'}
               </Badge>
             ) : commencee ? (
               <div className="flex items-center gap-3">

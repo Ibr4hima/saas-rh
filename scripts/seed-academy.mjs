@@ -5,7 +5,8 @@
  *   · Macroéconomie (Économie) — 3 modules, 8 leçons, 3 supports.
  *
  * Tout passe par l'API, comme si la RH le faisait à l'écran : création,
- * modules, leçons, dépôt des vidéos, supports PDF, publication. Rien n'est
+ * modules, leçons, dépôt des vidéos, supports PDF, banque de questions de
+ * l'évaluation finale, publication. Rien n'est
  * écrit directement en base — les règles (12 minutes au plus, formation
  * complète avant publication) s'appliquent donc exactement comme en vrai.
  *
@@ -18,7 +19,8 @@
  * appartient à plusieurs organisations, préciser ACADEMY_ORG=<slug>.
  *
  * Relancer le script ne crée pas de doublon : une formation qui porte déjà
- * le même titre est laissée telle quelle.
+ * le même titre est laissée telle quelle — sauf si elle n'a pas encore de
+ * questions, auquel cas elle reçoit sa banque d'évaluation.
  *
  * Pour les retirer ensuite : Gérer le catalogue › la formation ›
  * « Retirer du catalogue », puis « Supprimer ».
@@ -173,9 +175,47 @@ await appel('POST', '/auth/login', {
 
 const existantes = await appel('GET', '/academy/gestion/courses');
 
+/** La banque de questions d'une formation, et son réglage. */
+async function chargerEvaluation(courseId, evaluation) {
+  await appel('PUT', `/academy/courses/${courseId}/evaluation`, {
+    questionCount: evaluation.questionCount,
+    certificateValidityMonths: null,
+  });
+  for (const q of evaluation.questions) {
+    await appel('POST', `/academy/courses/${courseId}/questions`, {
+      prompt: q.prompt,
+      kind: q.kind,
+      options: q.options.map(([text, correct]) => ({ text, correct })),
+    });
+  }
+  console.log(
+    `   ✓ évaluation : ${evaluation.questions.length} questions, ${evaluation.questionCount} par tentative`,
+  );
+}
+
+/**
+ * Le nom court d'une formation — ce qui précède les deux-points. Une formation
+ * renommée à la main (« Macroéconomie » au lieu du titre complet) reste
+ * reconnue, et ne se retrouve pas en double.
+ */
+const nomCourt = (titre) =>
+  titre
+    .split(/\s*:\s*/)[0]
+    .trim()
+    .toLocaleLowerCase('fr');
+
 for (const f of FORMATIONS) {
-  if (existantes.some((c) => c.title === f.title)) {
-    console.log(`= « ${f.title} » existe déjà — laissée telle quelle`);
+  const deja = existantes.find((c) => nomCourt(c.title) === nomCourt(f.title));
+  if (deja) {
+    // Une formation chargée avant l'évaluation reçoit sa banque — si elle
+    // n'en a pas encore : on ne double jamais les questions.
+    const vue = await appel('GET', `/academy/gestion/courses/${deja.id}`);
+    if (vue.quiz.questions.length === 0 && f.evaluation) {
+      console.log(`→ ${deja.title} (existante)`);
+      await chargerEvaluation(deja.id, f.evaluation);
+    } else {
+      console.log(`= « ${deja.title} » existe déjà — laissée telle quelle`);
+    }
     continue;
   }
   console.log(`→ ${f.title}`);
@@ -218,6 +258,7 @@ for (const f of FORMATIONS) {
     }
   }
 
+  if (f.evaluation) await chargerEvaluation(id, f.evaluation);
   await appel('POST', `/academy/courses/${id}/publication`, { published: true });
   console.log(`   ✔ publiée`);
 }

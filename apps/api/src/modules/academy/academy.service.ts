@@ -34,6 +34,13 @@ import {
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
+import {
+  employeActif,
+  formationsCertifiees,
+  quizAdmin,
+  taillesDesBanques,
+  vueEvaluation,
+} from './academy-evaluation.service';
 import { dureeMp4 } from './mp4';
 import { StockageVideoLocal, VideoTropLourde } from './stockage-local';
 import {
@@ -142,20 +149,8 @@ export class AcademyService {
   // ———————————————————————————— lectures de base
 
   /** Le dossier d'agent ACTIF relié au compte, s'il y en a un. */
-  private async employeDe(tx: Tx, user: SessionUser): Promise<string | null> {
-    const [row] = await tx
-      .select({ id: t.employees.id })
-      .from(t.employees)
-      .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-      .where(
-        and(
-          eq(t.persons.userId, user.userId),
-          isNull(t.persons.deletedAt),
-          eq(t.employees.status, 'active'),
-        ),
-      )
-      .limit(1);
-    return row?.id ?? null;
+  private employeDe(tx: Tx, user: SessionUser): Promise<string | null> {
+    return employeActif(tx, user.userId);
   }
 
   private async formation(tx: Tx, id: string): Promise<LigneFormation> {
@@ -316,6 +311,9 @@ export class AcademyService {
       resumeLessonId: courante?.lecon.id ?? null,
       lastActivityAt: activites.length ? new Date(Math.max(...activites)).toISOString() : null,
       updatedAt: f.updatedAt.toISOString(),
+      // Complétés par l'appelant, qui lit la banque et les certificats.
+      hasEvaluation: false,
+      certified: false,
     };
   }
 
@@ -343,7 +341,12 @@ export class AcademyService {
       }))
       // Un module sans leçon prête n'a rien à montrer à un agent.
       .filter((m) => gestion || m.lessons.length > 0);
-    return { ...this.resume(f, siens, etapes, gestion, leurs), mode, modules: vues };
+    return {
+      ...this.resume(f, siens, etapes, gestion, leurs),
+      mode,
+      modules: vues,
+      evaluation: null,
+    };
   }
 
   /** Ce qui empêche de publier, dans l'ordre où la RH le corrigera. */
@@ -390,13 +393,22 @@ export class AcademyService {
         lecons.map((l) => l.id),
       );
       const mode: ModeLecture = employeeId ? 'suivi' : 'apercu';
+      const banques = await taillesDesBanques(
+        tx,
+        formations.map((f) => f.id),
+      );
+      const certifiees = await formationsCertifiees(tx, employeeId, this.horloge());
       return (
         formations
           .map((f) => this.detailDe(f, modules, lecons, progres, mode, false))
           // Une formation publiée dont aucune vidéo n'est prête n'a rien à
           // offrir : elle ne s'affiche pas.
           .filter((d) => d.lessonCount > 0)
-          .map(({ modules: _m, mode: _mode, ...resume }) => resume)
+          .map(({ modules: _m, mode: _mode, evaluation: _e, ...resume }) => ({
+            ...resume,
+            hasEvaluation: (banques.get(resume.id) ?? 0) > 0,
+            certified: certifiees.has(resume.id),
+          }))
       );
     });
   }
@@ -412,7 +424,15 @@ export class AcademyService {
         employeeId,
         lecons.map((l) => l.id),
       );
-      return this.detailDe(f, modules, lecons, progres, employeeId ? 'suivi' : 'apercu', false);
+      const d = this.detailDe(f, modules, lecons, progres, employeeId ? 'suivi' : 'apercu', false);
+      const toutesValidees = d.lessonCount > 0 && d.completedLessons === d.lessonCount;
+      const evaluation = await vueEvaluation(tx, f, employeeId, toutesValidees, this.horloge());
+      return {
+        ...d,
+        evaluation,
+        hasEvaluation: evaluation !== null,
+        certified: evaluation?.etat === 'reussie',
+      };
     });
   }
 
@@ -429,15 +449,24 @@ export class AcademyService {
         tx,
         formations.map((f) => f.id),
       );
+      const banques = await taillesDesBanques(
+        tx,
+        formations.map((f) => f.id),
+      );
       return formations.map((f) => {
         const siens = modules.filter((m) => m.courseId === f.id);
         const leurs = lecons.filter((l) => l.courseId === f.id);
         const {
           modules: _m,
           mode: _mode,
+          evaluation: _e,
           ...resume
         } = this.detailDe(f, modules, lecons, new Map(), 'apercu', true);
-        return { ...resume, obstacleCount: this.obstacles(siens, leurs).length };
+        return {
+          ...resume,
+          hasEvaluation: (banques.get(f.id) ?? 0) > 0,
+          obstacleCount: this.obstacles(siens, leurs).length,
+        };
       });
     });
   }
@@ -447,9 +476,12 @@ export class AcademyService {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const f = await this.formation(tx, courseId);
       const { modules, lecons } = await this.structure(tx, [f.id]);
+      const quiz = await quizAdmin(tx, f);
       return {
         ...this.detailDe(f, modules, lecons, new Map(), 'apercu', true),
+        hasEvaluation: quiz.questions.length > 0,
         obstacles: this.obstacles(modules, lecons),
+        quiz,
       };
     });
   }
