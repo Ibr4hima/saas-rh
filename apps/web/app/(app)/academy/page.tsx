@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { AcademyCategory, CourseSummary } from '@teranga/contracts';
-import { ACADEMY_CATEGORIES, SEUIL_VISIONNAGE } from '@teranga/contracts';
+import { ACADEMY_CATEGORIES } from '@teranga/contracts';
 import { Button, Card, cn, EmptyState, Input, Skeleton } from '@teranga/ui';
 import { CarteFormation } from '../../../components/academy-carte';
 import { Page } from '../../../components/gabarit';
@@ -54,9 +54,6 @@ export default function AcademyPage() {
         .sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? '')),
     [formations],
   );
-  const terminees = formations.filter(
-    (f) => f.lessonCount > 0 && f.completedLessons === f.lessonCount,
-  ).length;
   const familles = ACADEMY_CATEGORIES.filter((c) => formations.some((f) => f.category === c));
   const visibles = useMemo(() => {
     const q = recherche.trim().toLocaleLowerCase('fr');
@@ -72,7 +69,7 @@ export default function AcademyPage() {
   if (catalogue.isPending) {
     return (
       <Page>
-        <Skeleton className="h-[92px] w-full shrink-0 rounded-[16px]" />
+        <Skeleton className="h-8 w-full shrink-0 rounded-full" />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-[260px] rounded-[16px]" />
@@ -91,31 +88,6 @@ export default function AcademyPage() {
 
   return (
     <Page>
-      {/* ———— L'entrée : ce qu'est l'Academy, et où l'agent en est ———— */}
-      <Card className="shrink-0">
-        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
-          <span className="hidden size-12 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary sm:grid">
-            <Icon name="school" size={26} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[19px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">
-              Se former, à son rythme
-            </h1>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-ink-muted">
-              Des leçons courtes, en vidéo, à suivre dans l’ordre. Une leçon est validée quand{' '}
-              {Math.round(SEUIL_VISIONNAGE * 100)} % de la vidéo a été regardée.
-            </p>
-          </div>
-          {formations.length > 0 ? (
-            <dl className="flex shrink-0 gap-6 sm:pl-2">
-              <Chiffre valeur={formations.length} label="au catalogue" />
-              <Chiffre valeur={enCours.length} label="en cours" />
-              <Chiffre valeur={terminees} label={terminees > 1 ? 'terminées' : 'terminée'} />
-            </dl>
-          ) : null}
-        </div>
-      </Card>
-
       {formations.length === 0 ? (
         <Card className="flex flex-1 items-center justify-center">
           <EmptyState
@@ -219,19 +191,5 @@ export default function AcademyPage() {
         </>
       )}
     </Page>
-  );
-}
-
-function Chiffre({ valeur, label }: { valeur: number; label: string }) {
-  return (
-    <div className="flex flex-col">
-      <dd
-        className="text-[20px] leading-none font-bold text-ink-strong"
-        style={{ fontVariantNumeric: 'tabular-nums' }}
-      >
-        {valeur}
-      </dd>
-      <dt className="order-last mt-1 text-[11px] font-semibold text-ink-muted">{label}</dt>
-    </div>
   );
 }

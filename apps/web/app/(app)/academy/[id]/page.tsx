@@ -72,14 +72,14 @@ export default function FormationPage() {
             </span>
           </Couverture>
           <div className="flex flex-col gap-3 p-5 md:p-6">
-            <div className="flex flex-wrap items-center gap-2">
-              {!f.published ? (
-                <Badge tone="neutral">Brouillon — invisible pour les agents</Badge>
-              ) : null}
-              {!suivi ? (
-                <Badge tone="primary">Aperçu : aucune progression n’est enregistrée</Badge>
-              ) : null}
-            </div>
+            {/* Le brouillon se dit — la RH doit savoir que les agents ne le
+                voient pas. Rien d'autre ne s'écrit au-dessus du titre : une
+                rangée vide y creusait un blanc de douze pixels. */}
+            {!f.published ? (
+              <Badge tone="neutral" className="w-fit">
+                Brouillon — invisible pour les agents
+              </Badge>
+            ) : null}
             <h1 className="text-[22px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">
               {f.title}
             </h1>
@@ -134,11 +134,8 @@ export default function FormationPage() {
       </Card>
 
       <Card className="pb-1">
-        <CardHeader className="flex items-center justify-between">
+        <CardHeader>
           <CardTitle>Programme</CardTitle>
-          <span className="text-[11.5px] font-semibold text-ink-muted">
-            Les leçons se suivent dans l’ordre
-          </span>
         </CardHeader>
         <CardContent>
           <Programme formation={f} />

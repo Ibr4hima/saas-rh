@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@teranga/ui';
+import { Icon } from './icons';
 import { Modal } from './modal';
 import { ApercuDocument, type ViewableDoc } from './doc-viewer';
 
@@ -20,11 +22,18 @@ export function FenetreDocument({
   doc,
   onClose,
   sousTitre,
+  telechargement,
 }: {
   doc: ViewableDoc | null;
   onClose: () => void;
   /** Le contexte de la pièce : de qui, de quand — quand l'appelant le sait. */
   sousTitre?: React.ReactNode;
+  /**
+   * L'adresse qui fait DESCENDRE le fichier, quand on veut le garder après
+   * l'avoir lu — un support de cours, par exemple. Absente : la fenêtre ne
+   * sert qu'à consulter, comme avant.
+   */
+  telechargement?: string;
 }) {
   if (!doc) return null;
   return (
@@ -34,6 +43,24 @@ export function FenetreDocument({
       title={doc.titre ?? doc.filename}
       subtitle={sousTitre}
       maxWidth="max-w-4xl"
+      footer={
+        telechargement ? (
+          <>
+            <Button variant="secondary" onClick={onClose}>
+              Fermer
+            </Button>
+            {/* Un lien, pas un bouton qui refait la requête : le serveur
+                répond « en pièce jointe », et le navigateur range le fichier
+                sous son vrai nom. */}
+            <a href={telechargement} download={doc.filename}>
+              <Button>
+                <Icon name="download" size={16} />
+                Télécharger
+              </Button>
+            </a>
+          </>
+        ) : undefined
+      }
     >
       {/* Hauteur fixée : la fenêtre se dimensionne sur son contenu, et un
           enfant qui réclame « toute la hauteur » d'un parent sans hauteur

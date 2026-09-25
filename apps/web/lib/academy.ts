@@ -44,10 +44,20 @@ export const FAMILLES: Record<
     icone: 'computer',
     degrade: 'linear-gradient(135deg, #004f91 0%, #0a6cc2 100%)',
   },
+  digital: {
+    label: ACADEMY_CATEGORY_LABELS.digital,
+    icone: 'devices',
+    degrade: 'linear-gradient(135deg, #03457a 0%, #1b7fc4 100%)',
+  },
   economie: {
     label: ACADEMY_CATEGORY_LABELS.economie,
     icone: 'trending_up',
     degrade: 'linear-gradient(135deg, #0b3a6b 0%, #1f5f9c 100%)',
+  },
+  droit: {
+    label: ACADEMY_CATEGORY_LABELS.droit,
+    icone: 'gavel',
+    degrade: 'linear-gradient(135deg, #1c2f55 0%, #34588f 100%)',
   },
   metier: {
     label: ACADEMY_CATEGORY_LABELS.metier,
@@ -58,6 +68,21 @@ export const FAMILLES: Record<
     label: ACADEMY_CATEGORY_LABELS.management,
     icone: 'group',
     degrade: 'linear-gradient(135deg, #1b3f73 0%, #3a6fb0 100%)',
+  },
+  projets: {
+    label: ACADEMY_CATEGORY_LABELS.projets,
+    icone: 'account_tree',
+    degrade: 'linear-gradient(135deg, #0d3b63 0%, #2667a8 100%)',
+  },
+  communication: {
+    label: ACADEMY_CATEGORY_LABELS.communication,
+    icone: 'campaign',
+    degrade: 'linear-gradient(135deg, #123f6e 0%, #2f7ab8 100%)',
+  },
+  langues: {
+    label: ACADEMY_CATEGORY_LABELS.langues,
+    icone: 'translate',
+    degrade: 'linear-gradient(135deg, #0d3566 0%, #3868a8 100%)',
   },
   conformite: {
     label: ACADEMY_CATEGORY_LABELS.conformite,

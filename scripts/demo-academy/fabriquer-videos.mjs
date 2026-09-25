@@ -29,9 +29,14 @@ const FFMPEG = process.env.FFMPEG ?? 'ffmpeg';
 
 const FAMILLES = {
   bureautique: 'BUREAUTIQUE',
+  digital: 'DIGITAL ET INFORMATIQUE',
   economie: 'ÉCONOMIE',
-  metier: 'MÉTIER APIX',
+  droit: 'DROIT ET FISCALITÉ',
+  metier: 'MÉTIER DE L’APIX',
   management: 'MANAGEMENT',
+  projets: 'GESTION DE PROJET',
+  communication: 'COMMUNICATION',
+  langues: 'LANGUES',
   conformite: 'CONFORMITÉ',
 };
 

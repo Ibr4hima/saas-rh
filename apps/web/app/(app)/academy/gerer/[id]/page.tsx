@@ -22,6 +22,7 @@ import { FormationModal } from '../../../../../components/academy-formation-moda
 import { Page } from '../../../../../components/gabarit';
 import { Icon } from '../../../../../components/icons';
 import { LoadFailure } from '../../../../../components/load-failure';
+import { FenetreDocument } from '../../../../../components/fenetre-document';
 import { FenetreSuppression } from '../../../../../components/reglages-absences';
 import { dureeLisible, FAMILLES, horloge } from '../../../../../lib/academy';
 import { api, ApiError, apiUrl } from '../../../../../lib/api';
@@ -668,6 +669,7 @@ function LigneLecon({
 }) {
   const choixVideo = useRef<HTMLInputElement>(null);
   const choixSupport = useRef<HTMLInputElement>(null);
+  const [apercu, setApercu] = useState(false);
   const envoie = envoi?.part !== undefined;
 
   let etatVideo: React.ReactNode;
@@ -772,15 +774,15 @@ function LigneLecon({
           />
           {l.support ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-line-soft py-0.5 pr-1 pl-2.5 text-[11.5px] font-semibold text-ink">
-              <a
-                href={apiUrl(`/academy/lessons/${l.id}/support?disposition=inline`)}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex max-w-40 items-center gap-1 hover:text-primary"
+              <button
+                type="button"
+                title="Voir le support"
+                onClick={() => setApercu(true)}
+                className="inline-flex max-w-40 items-center gap-1 rounded-full hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
               >
                 <Icon name="description" size={14} className="shrink-0 text-primary" />
                 <span className="truncate">{l.support.filename}</span>
-              </a>
+              </button>
               <button
                 type="button"
                 aria-label="Retirer le support"
@@ -824,6 +826,18 @@ function LigneLecon({
         >
           {explication}
         </p>
+      ) : null}
+      {apercu && l.support ? (
+        <FenetreDocument
+          doc={{
+            url: apiUrl(`/academy/lessons/${l.id}/support?disposition=inline`),
+            filename: l.support.filename,
+            contentType: 'application/pdf',
+            titre: `Support — ${l.title}`,
+          }}
+          telechargement={apiUrl(`/academy/lessons/${l.id}/support`)}
+          onClose={() => setApercu(false)}
+        />
       ) : null}
     </li>
   );

@@ -22,6 +22,7 @@ import manifest from './icon-font.manifest.json';
  * toutes lettres ; le garde de développement ci-dessous prévient avant.
  */
 export const ICON_NAMES = [
+  'account_tree',
   'add',
   'archive',
   'arrow_downward',
@@ -31,6 +32,7 @@ export const ICON_NAMES = [
   'business_center',
   'calendar_month',
   'call',
+  'campaign',
   'check',
   'check_circle',
   'chevron_left',
@@ -42,6 +44,7 @@ export const ICON_NAMES = [
   'dashboard',
   'delete',
   'description',
+  'devices',
   'download',
   'edit',
   'error',
@@ -81,6 +84,7 @@ export const ICON_NAMES = [
   'search',
   'settings',
   'task_alt',
+  'translate',
   'trending_up',
   'unarchive',
   'upload_file',

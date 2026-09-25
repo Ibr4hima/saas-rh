@@ -35,20 +35,38 @@ export const MAX_SUPPORT_BYTES = 10 * 1024 * 1024;
 /** Le plus gros fichier vidéo qu'accepte le stockage LOCAL (développement). */
 export const MAX_VIDEO_LOCALE_BYTES = 2 * 1024 * 1024 * 1024;
 
+/**
+ * Les familles de formations — dix, dans l'ordre où la RH les parcourt.
+ *
+ * Une liste FERMÉE plutôt que des familles saisies au fil de l'eau : chacune
+ * a son icône et sa couverture, et le catalogue reste lisible quand trois
+ * personnes l'enrichissent. Une onzième se prend par une migration — c'est ce
+ * qui la fait discuter plutôt qu'inventer.
+ */
 export const ACADEMY_CATEGORIES = [
   'bureautique',
+  'digital',
   'economie',
+  'droit',
   'metier',
   'management',
+  'projets',
+  'communication',
+  'langues',
   'conformite',
 ] as const;
 export type AcademyCategory = (typeof ACADEMY_CATEGORIES)[number];
 
 export const ACADEMY_CATEGORY_LABELS: Record<AcademyCategory, string> = {
   bureautique: 'Bureautique',
+  digital: 'Digital et informatique',
   economie: 'Économie',
-  metier: 'Métier APIX',
+  droit: 'Droit et fiscalité',
+  metier: 'Métier de l’APIX',
   management: 'Management',
+  projets: 'Gestion de projet',
+  communication: 'Communication',
+  langues: 'Langues',
   conformite: 'Conformité',
 };
 

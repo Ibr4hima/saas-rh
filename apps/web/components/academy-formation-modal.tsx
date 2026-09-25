@@ -124,7 +124,9 @@ export function FormationModal({
         <div
           role="radiogroup"
           aria-label="Famille"
-          className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+          // Deux colonnes : dix familles aux noms parfois longs (« Digital et
+          // informatique ») se lisent sur cinq rangées, sans césure.
+          className="grid grid-cols-2 gap-2"
         >
           {ACADEMY_CATEGORIES.map((c) => {
             const choisie = c === famille;
@@ -136,17 +138,17 @@ export function FormationModal({
                 aria-checked={choisie}
                 onClick={() => setFamille(c)}
                 className={cn(
-                  'flex items-center gap-2.5 rounded-[12px] border px-3 py-2.5 text-left text-[12.5px] font-semibold transition-colors',
+                  'flex items-center gap-2.5 rounded-[12px] border px-2.5 py-2 text-left text-[12.5px] leading-tight font-semibold transition-colors',
                   choisie
                     ? 'border-primary bg-primary-soft/60 text-primary'
                     : 'border-line-soft text-ink hover:border-line hover:bg-hover',
                 )}
               >
                 <span
-                  className="grid size-8 shrink-0 place-items-center rounded-[9px] text-white"
+                  className="grid size-7 shrink-0 place-items-center rounded-[8px] text-white"
                   style={{ background: FAMILLES[c].degrade }}
                 >
-                  <Icon name={FAMILLES[c].icone} size={17} />
+                  <Icon name={FAMILLES[c].icone} size={16} />
                 </span>
                 {FAMILLES[c].label}
               </button>

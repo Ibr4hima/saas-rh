@@ -18,6 +18,7 @@ import {
 } from '@teranga/ui';
 import { BarreProgression, RetourAcademy } from '../../../../../../components/academy-carte';
 import { Programme } from '../../../../../../components/academy-programme';
+import { FenetreDocument } from '../../../../../../components/fenetre-document';
 import { Page } from '../../../../../../components/gabarit';
 import { Icon } from '../../../../../../components/icons';
 import { LecteurVideo } from '../../../../../../components/lecteur-video';
@@ -45,6 +46,7 @@ export default function LeconPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const [ouverture, setOuverture] = useState(0);
+  const [supportOuvert, setSupportOuvert] = useState(false);
 
   const formation = useQuery({
     queryKey: ['academy', 'course', id],
@@ -192,25 +194,24 @@ export default function LeconPage() {
                     </p>
                   </div>
                 )
-              ) : (
-                <p className="text-[12px] text-ink-muted">
-                  Aperçu : la lecture est libre et rien n’est enregistré
-                  {f.published ? ' — ce compte n’est relié à aucun dossier d’agent.' : '.'}
-                </p>
-              )}
+              ) : null}
 
               <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4">
                 {ici?.support ? (
-                  <a
-                    href={apiUrl(`/academy/lessons/${lessonId}/support`)}
-                    className="mr-auto inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-[12px] font-semibold text-ink transition-colors hover:bg-hover"
+                  // Le support s'ouvre dans l'aperçu du produit, comme toute
+                  // pièce : on le lit sans quitter la leçon, et on le
+                  // télécharge de là si on veut le garder.
+                  <button
+                    type="button"
+                    onClick={() => setSupportOuvert(true)}
+                    className="mr-auto inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-[12px] font-semibold text-ink transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
                   >
                     <Icon name="description" size={16} className="text-primary" />
                     Support de la leçon
                     <span className="font-normal text-ink-muted">
                       PDF · {Math.max(1, Math.round(ici.support.size / 1024))} Ko
                     </span>
-                  </a>
+                  </button>
                 ) : (
                   <span className="mr-auto" />
                 )}
@@ -254,6 +255,19 @@ export default function LeconPage() {
           </CardContent>
         </Card>
       </div>
+      {supportOuvert && ici?.support ? (
+        <FenetreDocument
+          doc={{
+            url: apiUrl(`/academy/lessons/${lessonId}/support?disposition=inline`),
+            filename: ici.support.filename,
+            contentType: 'application/pdf',
+            titre: `Support — ${l.title}`,
+          }}
+          sousTitre={f.title}
+          telechargement={apiUrl(`/academy/lessons/${lessonId}/support`)}
+          onClose={() => setSupportOuvert(false)}
+        />
+      ) : null}
     </Page>
   );
 }
