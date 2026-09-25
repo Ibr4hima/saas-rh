@@ -36,12 +36,10 @@ function IconeEtat({ lecon, courante }: { lecon: LessonView; courante: boolean }
 export function Programme({
   formation,
   courante,
-  compact = false,
 }: {
   formation: CourseDetail;
   /** La leçon ouverte à l'écran, quand il y en a une. */
   courante?: string;
-  compact?: boolean;
 }) {
   let numero = 0;
   return (
@@ -81,13 +79,13 @@ export function Programme({
                       </span>
                       {l.title}
                     </span>
-                    {!compact && l.etat === 'en_cours' ? (
+                    {l.etat === 'en_cours' ? (
                       <span className="mt-0.5 block text-[11px] text-ink-muted">
                         Vue à {Math.floor(l.vu * 100)} %
                       </span>
                     ) : null}
                   </span>
-                  {l.support && !compact ? (
+                  {l.support ? (
                     <Icon
                       name="description"
                       size={15}
@@ -107,7 +105,7 @@ export function Programme({
               );
               const classes = cn(
                 'flex items-center gap-3 rounded-[10px] px-2.5',
-                compact ? 'py-2' : 'py-2.5',
+                'py-2.5',
                 ici && 'bg-primary-soft/70',
               );
               return (

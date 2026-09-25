@@ -478,11 +478,7 @@ export function LecteurVideo({
             >
               {validee ? 'Validée' : `Vue ${pourcent(vu)}`}
             </span>
-          ) : (
-            <span className="rounded-full bg-white/10 px-2.5 py-[3px] text-[11px] font-bold text-white/85 ring-1 ring-white/20">
-              Aperçu
-            </span>
-          )}
+          ) : null}
           <BoutonLecteur
             label={pleinEcran ? 'Quitter le plein écran' : 'Plein écran'}
             onClick={pleinEcranBascule}

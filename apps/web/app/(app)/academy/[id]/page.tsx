@@ -52,13 +52,26 @@ export default function FormationPage() {
   const terminee = f.lessonCount > 0 && f.completedLessons === f.lessonCount;
   const premiere = f.modules[0]?.lessons[0]?.id ?? null;
   const cible = terminee || !suivi ? premiere : (f.resumeLessonId ?? premiere);
-  const libelle = !suivi
-    ? 'Voir la première leçon'
-    : terminee
+  // Le bouton dit où il mène : la première leçon tant qu'aucune n'est
+  // validée, la suivante ensuite, le début une fois tout vu.
+  const libelle =
+    suivi && terminee
       ? 'Revoir la formation'
-      : f.lastActivityAt
-        ? 'Reprendre'
-        : 'Commencer';
+      : suivi && f.completedLessons > 0
+        ? 'Voir la leçon suivante'
+        : 'Voir la première leçon';
+  const bouton = cible ? (
+    <Link href={`/academy/${f.id}/lecon/${cible}`} className="shrink-0">
+      <Button className="w-full sm:w-auto">
+        <Icon
+          name={suivi && terminee ? 'replay' : 'play_arrow'}
+          size={17}
+          fill={!(suivi && terminee)}
+        />
+        {libelle}
+      </Button>
+    </Link>
+  ) : null;
 
   return (
     <Page>
@@ -80,9 +93,14 @@ export default function FormationPage() {
                 Brouillon — invisible pour les agents
               </Badge>
             ) : null}
-            <h1 className="text-[22px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">
-              {f.title}
-            </h1>
+            {/* Le titre et l'unique geste de l'écran, sur la même ligne : on
+                lit ce qu'on va suivre, et le bouton est déjà sous le regard. */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              <h1 className="min-w-0 text-[22px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">
+                {f.title}
+              </h1>
+              {bouton}
+            </div>
             {f.summary ? (
               <p className="max-w-[70ch] text-[13px] leading-relaxed whitespace-pre-line text-ink-muted">
                 {f.summary}
@@ -99,36 +117,24 @@ export default function FormationPage() {
               </span>
             </p>
 
-            <div className="mt-auto flex flex-col gap-3 pt-2 sm:flex-row sm:items-center">
-              {suivi ? (
-                <div className="flex flex-1 items-center gap-3">
-                  <BarreProgression
-                    part={f.lessonCount ? f.completedLessons / f.lessonCount : 0}
-                    className="max-w-72 flex-1"
-                  />
-                  <span className="text-[12px] font-semibold whitespace-nowrap text-ink-muted">
-                    {terminee ? (
-                      <span className="inline-flex items-center gap-1 text-success">
-                        <Icon name="check_circle" size={15} fill />
-                        Formation terminée
-                      </span>
-                    ) : (
-                      `${compte(f.completedLessons, 'leçon')} ${f.completedLessons > 1 ? 'validées' : 'validée'} sur ${f.lessonCount}`
-                    )}
-                  </span>
-                </div>
-              ) : (
-                <span className="flex-1" />
-              )}
-              {cible ? (
-                <Link href={`/academy/${f.id}/lecon/${cible}`}>
-                  <Button className="w-full sm:w-auto">
-                    <Icon name={terminee ? 'replay' : 'play_arrow'} size={17} fill={!terminee} />
-                    {libelle}
-                  </Button>
-                </Link>
-              ) : null}
-            </div>
+            {suivi ? (
+              <div className="mt-auto flex items-center gap-3 pt-2">
+                <BarreProgression
+                  part={f.lessonCount ? f.completedLessons / f.lessonCount : 0}
+                  className="max-w-72 flex-1"
+                />
+                <span className="text-[12px] font-semibold whitespace-nowrap text-ink-muted">
+                  {terminee ? (
+                    <span className="inline-flex items-center gap-1 text-success">
+                      <Icon name="check_circle" size={15} fill />
+                      Formation terminée
+                    </span>
+                  ) : (
+                    `${compte(f.completedLessons, 'leçon')} ${f.completedLessons > 1 ? 'validées' : 'validée'} sur ${f.lessonCount}`
+                  )}
+                </span>
+              </div>
+            ) : null}
           </div>
         </div>
       </Card>

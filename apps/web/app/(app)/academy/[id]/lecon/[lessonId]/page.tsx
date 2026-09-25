@@ -12,7 +12,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  cn,
   EmptyState,
   Skeleton,
 } from '@teranga/ui';
@@ -80,10 +79,8 @@ export default function LeconPage() {
     return (
       <Page>
         <Skeleton className="h-5 w-48 rounded-full" />
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <Skeleton className="aspect-video w-full rounded-[16px]" />
-          <Skeleton className="hidden h-[360px] rounded-[16px] lg:block" />
-        </div>
+        <Skeleton className="aspect-video w-full rounded-[16px]" />
+        <Skeleton className="h-[140px] w-full rounded-[16px]" />
       </Page>
     );
   }
@@ -146,102 +143,102 @@ export default function LeconPage() {
     <Page>
       <RetourAcademy href={`/academy/${id}`} label={f.title} />
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="flex min-w-0 flex-col gap-4">
-          <LecteurVideo
-            key={l.sessionId ?? `${l.lessonId}-${ouverture}`}
-            lecture={l}
-            onBattement={surBattement}
-            onReprendreIci={() => setOuverture((n) => n + 1)}
-            onSuivante={allerSuivante}
-          />
+      {/* Une seule colonne : la vidéo prend toute la largeur — c'est elle
+          qu'on regarde —, la leçon et le programme viennent dessous. */}
+      <div className="flex min-w-0 flex-col gap-4">
+        <LecteurVideo
+          key={l.sessionId ?? `${l.lessonId}-${ouverture}`}
+          lecture={l}
+          onBattement={surBattement}
+          onReprendreIci={() => setOuverture((n) => n + 1)}
+          onSuivante={allerSuivante}
+        />
 
-          <Card>
-            <div className="flex flex-col gap-4 p-5">
-              <div>
-                {ici ? (
-                  <p className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
-                    Module {ici.module} · Leçon {rang + 1} sur {toutes.length}
-                  </p>
-                ) : null}
-                <h1 className="mt-1.5 text-[19px] leading-snug font-bold tracking-[-0.015em] text-ink-strong">
-                  {l.title}
-                </h1>
-              </div>
-
-              {suivi ? (
-                validee ? (
-                  <p className="flex items-center gap-2 text-[12.5px] font-semibold text-success">
-                    <Icon name="check_circle" size={17} fill />
-                    Leçon validée
-                    {l.suivante ? ' — la suivante est ouverte.' : ' — c’était la dernière.'}
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    <div className="relative max-w-md">
-                      <BarreProgression part={vu} />
-                      {/* Le repère des 90 % : on voit la ligne d'arrivée. */}
-                      <span
-                        aria-hidden
-                        className="absolute -top-1 h-3.5 w-0.5 rounded-full bg-ink-strong/60"
-                        style={{ left: `${SEUIL_VISIONNAGE * 100}%` }}
-                      />
-                    </div>
-                    <p className="text-[12px] text-ink-muted">
-                      Vue à <b className="font-bold text-ink">{pourcent(vu)}</b> —{' '}
-                      {Math.round(SEUIL_VISIONNAGE * 100)} % pour valider la leçon et ouvrir la
-                      suivante.
-                    </p>
-                  </div>
-                )
+        <Card>
+          <div className="flex flex-col gap-4 p-5">
+            <div>
+              {ici ? (
+                <p className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
+                  Module {ici.module} · Leçon {rang + 1} sur {toutes.length}
+                </p>
               ) : null}
-
-              <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4">
-                {ici?.support ? (
-                  // Le support s'ouvre dans l'aperçu du produit, comme toute
-                  // pièce : on le lit sans quitter la leçon, et on le
-                  // télécharge de là si on veut le garder.
-                  <button
-                    type="button"
-                    onClick={() => setSupportOuvert(true)}
-                    className="mr-auto inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-[12px] font-semibold text-ink transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
-                  >
-                    <Icon name="description" size={16} className="text-primary" />
-                    Support de la leçon
-                    <span className="font-normal text-ink-muted">
-                      PDF · {Math.max(1, Math.round(ici.support.size / 1024))} Ko
-                    </span>
-                  </button>
-                ) : (
-                  <span className="mr-auto" />
-                )}
-                {l.precedente ? (
-                  <Link href={`/academy/${id}/lecon/${l.precedente}`}>
-                    <Button variant="secondary" size="sm">
-                      <Icon name="chevron_left" size={16} />
-                      Précédente
-                    </Button>
-                  </Link>
-                ) : null}
-                {l.suivante ? (
-                  <Button
-                    size="sm"
-                    disabled={!suivanteOuverte}
-                    title={
-                      suivanteOuverte ? undefined : 'Validez cette leçon pour ouvrir la suivante'
-                    }
-                    onClick={allerSuivante}
-                  >
-                    Leçon suivante
-                    <Icon name={suivanteOuverte ? 'chevron_right' : 'lock'} size={16} />
-                  </Button>
-                ) : null}
-              </div>
+              <h1 className="mt-1.5 text-[19px] leading-snug font-bold tracking-[-0.015em] text-ink-strong">
+                {l.title}
+              </h1>
             </div>
-          </Card>
-        </div>
 
-        <Card className={cn('lg:sticky lg:top-0')}>
+            {suivi ? (
+              validee ? (
+                <p className="flex items-center gap-2 text-[12.5px] font-semibold text-success">
+                  <Icon name="check_circle" size={17} fill />
+                  Leçon validée
+                  {l.suivante ? ' — la suivante est ouverte.' : ' — c’était la dernière.'}
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <div className="relative max-w-md">
+                    <BarreProgression part={vu} />
+                    {/* Le repère des 90 % : on voit la ligne d'arrivée. */}
+                    <span
+                      aria-hidden
+                      className="absolute -top-1 h-3.5 w-0.5 rounded-full bg-ink-strong/60"
+                      style={{ left: `${SEUIL_VISIONNAGE * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-[12px] text-ink-muted">
+                    Vue à <b className="font-bold text-ink">{pourcent(vu)}</b> —{' '}
+                    {Math.round(SEUIL_VISIONNAGE * 100)} % pour valider la leçon et ouvrir la
+                    suivante.
+                  </p>
+                </div>
+              )
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4">
+              {ici?.support ? (
+                // Le support s'ouvre dans l'aperçu du produit, comme toute
+                // pièce : on le lit sans quitter la leçon, et on le
+                // télécharge de là si on veut le garder.
+                <button
+                  type="button"
+                  onClick={() => setSupportOuvert(true)}
+                  className="mr-auto inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-[12px] font-semibold text-ink transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+                >
+                  <Icon name="description" size={16} className="text-primary" />
+                  Support de la leçon
+                  <span className="font-normal text-ink-muted">
+                    PDF · {Math.max(1, Math.round(ici.support.size / 1024))} Ko
+                  </span>
+                </button>
+              ) : (
+                <span className="mr-auto" />
+              )}
+              {l.precedente ? (
+                <Link href={`/academy/${id}/lecon/${l.precedente}`}>
+                  <Button variant="secondary" size="sm">
+                    <Icon name="chevron_left" size={16} />
+                    Précédente
+                  </Button>
+                </Link>
+              ) : null}
+              {l.suivante ? (
+                <Button
+                  size="sm"
+                  disabled={!suivanteOuverte}
+                  title={
+                    suivanteOuverte ? undefined : 'Validez cette leçon pour ouvrir la suivante'
+                  }
+                  onClick={allerSuivante}
+                >
+                  Leçon suivante
+                  <Icon name={suivanteOuverte ? 'chevron_right' : 'lock'} size={16} />
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </Card>
+
+        <Card className="pb-1">
           <CardHeader className="flex items-center justify-between gap-3">
             <CardTitle>Programme</CardTitle>
             {suivi ? (
@@ -250,8 +247,8 @@ export default function LeconPage() {
               </span>
             ) : null}
           </CardHeader>
-          <CardContent className="max-h-[70vh] overflow-y-auto">
-            <Programme formation={f} courante={lessonId} compact />
+          <CardContent>
+            <Programme formation={f} courante={lessonId} />
           </CardContent>
         </Card>
       </div>
