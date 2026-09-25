@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useState } from 'react';
 import type { CourseAdminView, QuestionAdminView, TypeQuestion } from '@teranga/contracts';
 import {
@@ -78,6 +79,15 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
     <Card className="shrink-0">
       <CardHeader className="flex flex-wrap items-center gap-3 border-b border-line-soft pb-3.5">
         <CardTitle className="flex-1">Évaluation finale</CardTitle>
+        {/* L'essai : l'épreuve telle qu'un agent la passera, sans rien enregistrer. */}
+        {f.quiz.questions.length > 0 ? (
+          <Link href={`/academy/gerer/${f.id}/essai`}>
+            <Button size="sm" variant="ghost">
+              <Icon name="play_arrow" size={16} fill />
+              Essayer l’évaluation
+            </Button>
+          </Link>
+        ) : null}
         <Button size="sm" variant="secondary" onClick={() => setEdition('nouvelle')}>
           <Icon name="add" size={16} />
           Ajouter une question

@@ -343,6 +343,99 @@ describe('la copie', () => {
   });
 });
 
+describe('l’essai de la RH', () => {
+  /** Les réponses d'après la BANQUE : les `justes` premières bonnes, les autres fausses. */
+  async function reponsesDeBanque(
+    ids: string[],
+    justes = Infinity,
+  ): Promise<Record<string, string[]>> {
+    const { rows } = await raw(`SELECT id, options FROM academy_questions WHERE id = ANY($1)`, [
+      ids,
+    ]);
+    const parId = new Map(
+      rows.map((r) => [r.id as string, r.options as Array<{ id: string; correct: boolean }>]),
+    );
+    return Object.fromEntries(
+      ids.map((id, i) => {
+        const o = parId.get(id)!;
+        return [
+          id,
+          i < justes
+            ? o.filter((x) => x.correct).map((x) => x.id)
+            : [o.find((x) => !x.correct)!.id],
+        ];
+      }),
+    );
+  }
+
+  const compter = async (table: string) =>
+    (await raw(`SELECT count(*)::int AS n FROM ${table} WHERE tenant_id = $1`, [tenantId])).rows[0]
+      .n as number;
+
+  it('tire une copie comme celle d’un agent — sans les réponses, et sans rien enregistrer', async () => {
+    const copie = await evaluation.essayer(rh, courseId);
+    expect(copie.questions).toHaveLength(5);
+    expect(JSON.stringify(copie)).not.toContain('"correct"');
+    expect(new Date(copie.expiresAt).getTime() - new Date(copie.startedAt).getTime()).toBe(
+      5 * 120 * 1000,
+    );
+    expect(await compter('academy_quiz_attempts')).toBe(0);
+  });
+
+  it('corrige avec la règle de l’épreuve, et rend les bonnes réponses', async () => {
+    const copie = await evaluation.essayer(rh, courseId);
+    const ids = copie.questions.map((q) => q.id);
+    const r = await evaluation.corrigerEssai(rh, courseId, {
+      questionIds: ids,
+      answers: await reponsesDeBanque(ids, 3),
+    });
+    expect(r).toMatchObject({ correctCount: 3, total: 5, score: 0.6, passed: false });
+    expect(r.questions.map((q) => q.id)).toEqual(ids);
+    expect(r.questions.map((q) => q.correct)).toEqual([true, true, true, false, false]);
+    for (const q of r.questions) expect(q.options.some((o) => o.correct)).toBe(true);
+    expect(r.questions[4]!.options.find((o) => o.chosen)?.correct).toBe(false);
+
+    const r2 = await evaluation.corrigerEssai(rh, courseId, {
+      questionIds: ids,
+      answers: await reponsesDeBanque(ids),
+    });
+    expect(r2.passed).toBe(true);
+    expect(await compter('academy_quiz_attempts')).toBe(0);
+    expect(await compter('academy_certificates')).toBe(0);
+  });
+
+  it('écarte une question supprimée entre le tirage et la correction', async () => {
+    const copie = await evaluation.essayer(rh, courseId);
+    const ids = copie.questions.map((q) => q.id);
+    await evaluation.supprimerQuestion(rh, ids[0]!);
+    const r = await evaluation.corrigerEssai(rh, courseId, {
+      questionIds: ids,
+      answers: await reponsesDeBanque(ids.slice(1)),
+    });
+    expect(r).toMatchObject({ total: 4, correctCount: 4, passed: true });
+  });
+
+  it('est réservé à la RH', async () => {
+    expect(await codeOf(() => evaluation.essayer(agent, courseId))).toBe('academy.forbidden');
+    expect(
+      await codeOf(() =>
+        evaluation.corrigerEssai(agent, courseId, { questionIds: [randomUUID()], answers: {} }),
+      ),
+    ).toBe('academy.forbidden');
+    expect(await codeOf(() => evaluation.specimen(agent, courseId, 1))).toBe('academy.forbidden');
+  });
+
+  it('le certificat spécimen sort en PDF — ni enregistré, ni vérifiable', async () => {
+    const pdf = await evaluation.specimen(rh, courseId, 0.8);
+    expect(pdf.data.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pdf.filename).toBe('Certificat specimen.pdf');
+    expect(await compter('academy_certificates')).toBe(0);
+    expect(await codeOf(() => evaluation.verifier('APX-XXXX-XXXX'))).toBe(
+      'academy.certificate_not_found',
+    );
+  });
+});
+
 describe('le rythme', () => {
   it('sans limite — le réglage actuel —, on recompose autant qu’il le faut', async () => {
     await validerLecons();

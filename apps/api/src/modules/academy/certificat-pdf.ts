@@ -29,7 +29,8 @@ const FILET = '#c9d6e6';
 export interface DonneesCertificat {
   numero: string;
   titulaire: string;
-  matricule: string;
+  /** Absent pour un spécimen tiré par un compte sans dossier d'agent. */
+  matricule: string | null;
   formation: string;
   famille: AcademyCategory;
   organisation: string;
@@ -38,6 +39,11 @@ export interface DonneesCertificat {
   expireLe: Date | null;
   /** L'adresse de la page de vérification, que porte le QR code. */
   urlVerification: string;
+  /**
+   * L'aperçu de la RH : barré « SPÉCIMEN » en travers de la page, et le pied
+   * dit qu'il ne se vérifie pas — un spécimen imprimé ne passe pour rien.
+   */
+  specimen?: boolean;
 }
 
 type Doc = typeof PDFDocument.prototype;
@@ -70,7 +76,9 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
     layout: 'landscape',
     margin: 0,
     info: {
-      Title: `Certificat ${d.numero} — ${d.formation}`,
+      Title: d.specimen
+        ? `Spécimen de certificat — ${d.formation}`
+        : `Certificat ${d.numero} — ${d.formation}`,
       Author: `${ENTETE.raisonSociale} — APIX Academy`,
       Subject: `Certificat de réussite de ${d.titulaire}`,
     },
@@ -148,7 +156,7 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
     .stroke();
   y = centre('décerné à', 12, 'italic', GRIS, y + 30);
   y = centre(d.titulaire, 30, 'bold', ENCRE, y + 6);
-  y = centre(`Matricule ${d.matricule}`, 10, 'normal', GRIS, y + 2);
+  if (d.matricule) y = centre(`Matricule ${d.matricule}`, 10, 'normal', GRIS, y + 2);
   y = centre('pour avoir suivi la formation en ligne', 12, 'normal', GRIS, y + 18);
   y = centre(`« ${d.formation} »`, 18, 'bold', ENCRE, y + 6);
   // Arrondi par défaut, comme partout : 79,6 % ne s'affiche jamais « 80 % ».
@@ -205,16 +213,36 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
     .font(police(doc, 'normal'))
     .fontSize(8.5)
     .fillColor(GRIS)
-    .text('Vérifiez ce certificat en scannant le code, ou sur', xQr - colonne - 14, doc.y + 4, {
-      width: colonne,
-      align: 'right',
-    });
-  doc
-    .fillColor(BLEU)
-    .text(d.urlVerification.replace(/^https?:\/\//, ''), xQr - colonne - 14, doc.y + 1, {
-      width: colonne,
-      align: 'right',
-    });
+    .text(
+      d.specimen
+        ? 'Spécimen : le numéro et le QR code sont attribués à la réussite de l’agent.'
+        : 'Vérifiez ce certificat en scannant le code, ou sur',
+      xQr - colonne - 14,
+      doc.y + 4,
+      { width: colonne, align: 'right' },
+    );
+  if (!d.specimen) {
+    doc
+      .fillColor(BLEU)
+      .text(d.urlVerification.replace(/^https?:\/\//, ''), xQr - colonne - 14, doc.y + 1, {
+        width: colonne,
+        align: 'right',
+      });
+  }
+
+  // ———— Le spécimen : en travers, par-dessus tout, assez pâle pour se lire
+  // dessous, assez grand pour ne jamais passer pour l'original.
+  if (d.specimen) {
+    doc.save();
+    doc.rotate(-18, { origin: [L / 2, H / 2] });
+    doc
+      .fillOpacity(0.09)
+      .font(police(doc, 'bold'))
+      .fontSize(118)
+      .fillColor(BLEU)
+      .text('SPÉCIMEN', 0, H / 2 - 66, { width: L, align: 'center', characterSpacing: 10 });
+    doc.restore();
+  }
 
   doc.end();
   return fini;

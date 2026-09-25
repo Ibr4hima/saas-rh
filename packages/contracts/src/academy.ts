@@ -328,6 +328,20 @@ export const submitAttemptSchema = z.object({
 });
 export type SubmitAttemptInput = z.infer<typeof submitAttemptSchema>;
 
+/**
+ * La copie d'ESSAI de la RH : rien n'est enregistré au tirage, la correction
+ * reçoit donc les questions posées — dans l'ordre — avec les choix cochés.
+ */
+export const submitTrialSchema = submitAttemptSchema.extend({
+  questionIds: z.array(z.string().uuid()).min(1).max(QUESTIONS_PAR_TENTATIVE_MAX),
+});
+export type SubmitTrialInput = z.infer<typeof submitTrialSchema>;
+
+/** Le score à imprimer sur le certificat spécimen — celui de l'essai. */
+export const specimenQuerySchema = z.object({
+  score: z.coerce.number().min(0).max(1).default(1),
+});
+
 export interface QuestionAdminView {
   id: string;
   position: number;
@@ -406,6 +420,26 @@ export interface AttemptResult {
   expired: boolean;
   certificat: CertificateSummary | null;
   evaluation: EvaluationView;
+}
+
+/**
+ * Le résultat d'une copie d'essai. À la différence de celui d'un agent, il
+ * montre les BONNES RÉPONSES : la RH les connaît, c'est elle qui les a écrites
+ * — l'essai sert justement à les relire dans les conditions de l'épreuve.
+ */
+export interface TrialResult {
+  score: number;
+  passed: boolean;
+  correctCount: number;
+  total: number;
+  seuil: number;
+  questions: Array<{
+    id: string;
+    prompt: string;
+    kind: TypeQuestion;
+    correct: boolean;
+    options: Array<{ id: string; text: string; correct: boolean; chosen: boolean }>;
+  }>;
 }
 
 /** Ce que la page publique de vérification montre — et rien de plus. */

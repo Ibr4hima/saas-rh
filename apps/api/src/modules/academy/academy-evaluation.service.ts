@@ -14,6 +14,8 @@ import type {
   QuizSettingsInput,
   SessionUser,
   SubmitAttemptInput,
+  SubmitTrialInput,
+  TrialResult,
 } from '@teranga/contracts';
 import { SEUIL_REUSSITE, TENTATIVES_PAR_JOUR } from '@teranga/contracts';
 import { problem } from '../../common/problem';
@@ -405,6 +407,155 @@ export class AcademyEvaluationService {
         .set({ position: q.position })
         .where(eq(t.academyQuestions.id, voisin.id));
     });
+  }
+
+  // ———————————————————————————— l'essai (RH)
+
+  /**
+   * Une copie d'ESSAI pour la RH : tirée, mélangée et minutée comme celle
+   * d'un agent — mais rien n'est enregistré, ni tentative ni certificat. La
+   * RH relit ainsi ses questions dans les conditions de l'épreuve, que la
+   * formation soit publiée ou non.
+   */
+  async essayer(user: SessionUser, courseId: string): Promise<AttemptView> {
+    this.exigerGestion(user);
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const f = await this.formation(tx, courseId);
+      const banque = await tx
+        .select()
+        .from(t.academyQuestions)
+        .where(eq(t.academyQuestions.courseId, courseId));
+      if (banque.length === 0) {
+        problem(409, 'academy.no_evaluation', 'Ajoutez d’abord des questions');
+      }
+      const posees = tirerQuestions(banque, f.quizQuestionCount, this.hasard);
+      const maintenant = this.horloge();
+      return {
+        id: uuidv7(),
+        courseId: f.id,
+        courseTitle: f.title,
+        startedAt: maintenant.toISOString(),
+        expiresAt: new Date(
+          maintenant.getTime() + dureeTentative(posees.length) * 1000,
+        ).toISOString(),
+        questions: posees.map(({ correct: _c, ...q }) => q),
+      };
+    });
+  }
+
+  /**
+   * Corrige une copie d'essai — avec la règle de l'épreuve, `corriger` — et
+   * rend les bonnes réponses. Sans instantané, la correction se fait contre
+   * la banque du moment : une question supprimée entre-temps sort du compte.
+   */
+  async corrigerEssai(
+    user: SessionUser,
+    courseId: string,
+    input: SubmitTrialInput,
+  ): Promise<TrialResult> {
+    this.exigerGestion(user);
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      await this.formation(tx, courseId);
+      const rows = await tx
+        .select()
+        .from(t.academyQuestions)
+        .where(
+          and(
+            eq(t.academyQuestions.courseId, courseId),
+            inArray(t.academyQuestions.id, input.questionIds),
+          ),
+        );
+      const parId = new Map(rows.map((q) => [q.id, q]));
+      const banque = [...new Set(input.questionIds)].flatMap((id) => {
+        const q = parId.get(id);
+        return q ? [q] : [];
+      });
+      const posees = banque.map((q) => ({
+        id: q.id,
+        prompt: q.prompt,
+        kind: q.kind === 'multiple' ? ('multiple' as const) : ('unique' as const),
+        options: q.options.map((o) => ({ id: o.id, text: o.text })),
+        correct: q.options.filter((o) => o.correct).map((o) => o.id),
+      }));
+      const c = corriger(posees, input.answers);
+      return {
+        score: c.score,
+        passed: c.passed,
+        correctCount: c.correctCount,
+        total: c.total,
+        seuil: SEUIL_REUSSITE,
+        questions: banque.map((q, i) => {
+          const cochees = input.answers[q.id] ?? [];
+          return {
+            id: q.id,
+            prompt: q.prompt,
+            kind: posees[i]!.kind,
+            correct: c.parQuestion[i]!.correct,
+            options: q.options.map((o) => ({
+              id: o.id,
+              text: o.text,
+              correct: o.correct,
+              chosen: cochees.includes(o.id),
+            })),
+          };
+        }),
+      };
+    });
+  }
+
+  /**
+   * Le certificat tel qu'un agent le recevra, au nom de la personne qui
+   * essaie — barré « SPÉCIMEN », sans numéro attribué, jamais enregistré ni
+   * vérifiable.
+   */
+  async specimen(
+    user: SessionUser,
+    courseId: string,
+    score: number,
+  ): Promise<{ filename: string; data: Buffer }> {
+    this.exigerGestion(user);
+    const d = await this.db.withTenant(this.ctx(user), async (tx) => {
+      const f = await this.formation(tx, courseId);
+      const [fiche] = await tx
+        .select({
+          givenName: t.persons.givenName,
+          familyName: t.persons.familyName,
+          number: t.employees.employeeNumber,
+        })
+        .from(t.persons)
+        .leftJoin(t.employees, eq(t.employees.personId, t.persons.id))
+        .where(eq(t.persons.userId, user.userId))
+        .limit(1);
+      const [compte] = fiche
+        ? [fiche]
+        : await tx
+            .select({ givenName: t.users.givenName, familyName: t.users.familyName })
+            .from(t.users)
+            .where(eq(t.users.id, user.userId))
+            .limit(1);
+      const [organisation] = await tx
+        .select({ name: t.tenants.name })
+        .from(t.tenants)
+        .where(eq(t.tenants.id, user.tenantId))
+        .limit(1);
+      return { f, compte, matricule: fiche?.number ?? null, organisation };
+    });
+    const maintenant = this.horloge();
+    const numero = 'APX-XXXX-XXXX';
+    const data = await genererCertificatPdf({
+      numero,
+      titulaire: d.compte ? `${d.compte.givenName} ${d.compte.familyName}` : 'Prénom Nom',
+      matricule: d.matricule,
+      formation: d.f.title,
+      famille: d.f.category as AcademyCategory,
+      organisation: d.organisation?.name ?? ENTETE.raisonSociale,
+      score,
+      emisLe: maintenant,
+      expireLe: expiration(maintenant, d.f.certificateValidityMonths),
+      urlVerification: `${loadEnv().PUBLIC_WEB_URL.replace(/\/$/, '')}/verifier/${numero}`,
+      specimen: true,
+    });
+    return { filename: 'Certificat specimen.pdf', data };
   }
 
   // ———————————————————————————— la copie (agent)

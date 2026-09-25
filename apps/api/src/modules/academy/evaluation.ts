@@ -24,8 +24,9 @@ import type { OptionQuestion, QuestionPosee } from '../../db/schema';
    · La CORRECTION. Une question compte si les choix cochés sont EXACTEMENT
      les bons — ni un de moins, ni un de plus. Cocher tout ne rapporte rien.
 
-   · Le RYTHME. Trois tentatives par vingt-quatre heures glissantes : on
-     repasse après avoir revu les leçons, pas en rafale jusqu'à tomber juste.
+   · Le RYTHME, quand une limite est fixée : tant de tentatives par
+     vingt-quatre heures glissantes — on repasse après avoir revu les leçons,
+     pas en rafale jusqu'à tomber juste. Pour le moment, l'APIX n'en fixe pas.
    ———————————————————————————————————————————————————————————————— */
 
 /** Un entier au hasard dans [0, n). */

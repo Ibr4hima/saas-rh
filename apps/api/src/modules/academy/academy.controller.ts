@@ -26,6 +26,7 @@ import type {
   QuizSettingsInput,
   SaveCourseInput,
   SubmitAttemptInput,
+  SubmitTrialInput,
   TitleInput,
 } from '@teranga/contracts';
 import {
@@ -36,7 +37,9 @@ import {
   questionSchema,
   quizSettingsSchema,
   saveCourseSchema,
+  specimenQuerySchema,
   submitAttemptSchema,
+  submitTrialSchema,
   supportQuerySchema,
   titleSchema,
 } from '@teranga/contracts';
@@ -320,6 +323,45 @@ export class AcademyController {
     @Body(new ZodValidationPipe(moveSchema)) body: MoveInput,
   ) {
     return this.evaluation.deplacerQuestion(req.sessionUser, id, body.sens);
+  }
+
+  // ———————————— l'évaluation finale : l'essai (RH) — rien n'est enregistré
+
+  @Post('courses/:id/essai')
+  @Roles('admin', 'hr')
+  essayer(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.evaluation.essayer(req.sessionUser, id);
+  }
+
+  @Post('courses/:id/essai/correction')
+  @Roles('admin', 'hr')
+  corrigerEssai(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(submitTrialSchema)) body: SubmitTrialInput,
+  ) {
+    return this.evaluation.corrigerEssai(req.sessionUser, id, body);
+  }
+
+  @Get('courses/:id/certificat-specimen')
+  @Roles('admin', 'hr')
+  async certificatSpecimen(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('score') score: string | undefined,
+    @Query('disposition') disposition: string | undefined,
+    @Res() res: Response,
+  ) {
+    const q = specimenQuerySchema.safeParse({ score });
+    if (!q.success) problem(400, 'academy.invalid_score', 'Score invalide');
+    const { filename, data } = await this.evaluation.specimen(req.sessionUser, id, q.data.score);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `${disposition === 'inline' ? 'inline' : 'attachment'}; filename="${filename}"`,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.end(data);
   }
 
   // ———————————— l'évaluation finale : la copie (agent)
