@@ -87,9 +87,13 @@ export class AcademyController {
   ) {
     const { filename, data } = await this.academy.support(req.sessionUser, id);
     res.setHeader('Content-Type', 'application/pdf');
+    // Le nom en deux formes : une version ASCII pour les vieux navigateurs, et
+    // la vraie, en UTF-8 (RFC 6266) — sans elle, « Le PIB et ses trois
+    // optiques.pdf » arrivait sous le nom « Le%20PIB%20et%20ses… ».
+    const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '');
     res.setHeader(
       'Content-Disposition',
-      `${disposition === 'inline' ? 'inline' : 'attachment'}; filename="${encodeURIComponent(filename)}"`,
+      `${disposition === 'inline' ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
     );
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.end(data);
