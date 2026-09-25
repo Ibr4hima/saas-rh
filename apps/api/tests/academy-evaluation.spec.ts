@@ -120,13 +120,18 @@ describe('le rythme des tentatives', () => {
   const T = new Date('2026-09-25T10:00:00Z');
   const il_y_a = (h: number) => new Date(T.getTime() - h * 3600 * 1000);
 
+  it('sans limite, rien ne se compte', () => {
+    const douze = Array.from({ length: 12 }, (_, k) => il_y_a(k / 2));
+    expect(fenetreTentatives(douze, T, null)).toEqual({ restantes: null, prochaine: null });
+  });
+
   it('trois tentatives par vingt-quatre heures glissantes', () => {
-    expect(fenetreTentatives([], T)).toEqual({ restantes: 3, prochaine: null });
-    expect(fenetreTentatives([il_y_a(2), il_y_a(1)], T).restantes).toBe(1);
+    expect(fenetreTentatives([], T, 3)).toEqual({ restantes: 3, prochaine: null });
+    expect(fenetreTentatives([il_y_a(2), il_y_a(1)], T, 3).restantes).toBe(1);
   });
 
   it('épuisées, la suivante s’ouvre quand la plus ancienne sort de la fenêtre', () => {
-    const r = fenetreTentatives([il_y_a(5), il_y_a(3), il_y_a(1)], T);
+    const r = fenetreTentatives([il_y_a(5), il_y_a(3), il_y_a(1)], T, 3);
     expect(r.restantes).toBe(0);
     expect(r.prochaine?.toISOString()).toBe(
       new Date(il_y_a(5).getTime() + 24 * 3600 * 1000).toISOString(),
@@ -134,7 +139,7 @@ describe('le rythme des tentatives', () => {
   });
 
   it('les tentatives de plus de vingt-quatre heures ne comptent plus', () => {
-    expect(fenetreTentatives([il_y_a(30), il_y_a(26), il_y_a(25)], T).restantes).toBe(3);
+    expect(fenetreTentatives([il_y_a(30), il_y_a(26), il_y_a(25)], T, 3).restantes).toBe(3);
   });
 });
 

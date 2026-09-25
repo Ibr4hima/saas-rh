@@ -167,8 +167,15 @@ beforeAll(async () => {
   await creerAgent(autreUserId, 'Moussa', 'EVA-002');
 });
 
+/** Fixe la limite de tentatives des deux services — `null` : sans limite. */
+function limiter(parJour: number | null): void {
+  academy.limiteTentatives = parJour;
+  evaluation.limiteTentatives = parJour;
+}
+
 beforeEach(async () => {
   horloge = Date.UTC(2026, 8, 25, 9, 0, 0);
+  limiter(null);
   await raw(`DELETE FROM academy_certificates WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM academy_courses WHERE tenant_id = $1`, [tenantId]);
   await formationPubliee();
@@ -224,7 +231,8 @@ describe('le verrou des leçons', () => {
       etat: 'ouverte',
       questionCount: 5,
       minutes: 10,
-      tentativesRestantes: 3,
+      tentativesParJour: null,
+      tentativesRestantes: null,
     });
   });
 
@@ -245,6 +253,7 @@ describe('la copie', () => {
   });
 
   it('un rechargement reprend la même copie : il ne coûte pas une tentative', async () => {
+    limiter(3);
     await validerLecons();
     const a = await evaluation.demarrer(agent, courseId);
     horloge += 60_000;
@@ -335,7 +344,20 @@ describe('la copie', () => {
 });
 
 describe('le rythme', () => {
-  it('trois tentatives par vingt-quatre heures, puis l’attente', async () => {
+  it('sans limite — le réglage actuel —, on recompose autant qu’il le faut', async () => {
+    await validerLecons();
+    for (let k = 0; k < 6; k += 1) {
+      const a = await evaluation.demarrer(agent, courseId);
+      await evaluation.soumettre(agent, a.id, { answers: {} });
+      horloge += 60_000;
+    }
+    const ev = (await academy.detail(agent, courseId)).evaluation!;
+    expect(ev).toMatchObject({ etat: 'ouverte', tentativesRestantes: null });
+    expect((await evaluation.demarrer(agent, courseId)).questions).toHaveLength(5);
+  });
+
+  it('avec une limite de trois par vingt-quatre heures, puis l’attente', async () => {
+    limiter(3);
     await validerLecons();
     for (let k = 0; k < 3; k += 1) {
       const a = await evaluation.demarrer(agent, courseId);

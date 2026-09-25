@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import type { CourseDetail, EvaluationView } from '@teranga/contracts';
-import { TENTATIVES_PAR_JOUR } from '@teranga/contracts';
 import { Button, Card, cn } from '@teranga/ui';
 import { pourcent, quandLisible } from '../lib/academy';
 import { formatDate } from '../lib/hooks';
@@ -22,6 +21,13 @@ import { Icon } from './icons';
    principale de la page, en haut à droite, et deux boutons identiques à
    deux cents pixels l'un de l'autre se font concurrence.
    ———————————————————————————————————————————————————————————————— */
+
+/** « 2 tentatives restent aujourd’hui. » — rien quand elles sont sans limite. */
+export function tentativesDuJour(ev: EvaluationView): string | null {
+  const n = ev.tentativesRestantes;
+  if (n === null) return null;
+  return `${compte(n, 'tentative')} ${n > 1 ? 'restent' : 'reste'} aujourd’hui.`;
+}
 
 export function reglesEvaluation(ev: EvaluationView): string {
   return `${compte(ev.questionCount, 'question')} · ${ev.minutes} min · ${Math.round(ev.seuil * 100)} % pour réussir`;
@@ -52,8 +58,8 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
   } else if (ev.etat === 'ouverte') {
     texte =
       ev.derniere && !ev.derniere.passed
-        ? `Dernière tentative : ${pourcent(ev.derniere.score)}. ${compte(ev.tentativesRestantes, 'tentative')} ${ev.tentativesRestantes > 1 ? 'restent' : 'reste'} aujourd’hui.`
-        : `La réussir délivre un certificat. ${TENTATIVES_PAR_JOUR} tentatives par jour.`;
+        ? `Dernière tentative : ${pourcent(ev.derniere.score)}. ${tentativesDuJour(ev) ?? 'Vous pouvez la repasser.'}`
+        : `La réussir délivre un certificat.${ev.tentativesParJour ? ` ${ev.tentativesParJour} tentatives par jour.` : ''}`;
   } else if (ev.etat === 'en_cours') {
     icone = 'timer';
     texte = 'Une copie est ouverte et le temps court encore.';
@@ -62,7 +68,7 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
     ton = 'bg-accent-soft text-accent-text';
     texte = (
       <>
-        Vos {TENTATIVES_PAR_JOUR} tentatives du jour sont passées. La prochaine s’ouvre{' '}
+        Vos {ev.tentativesParJour} tentatives du jour sont passées. La prochaine s’ouvre{' '}
         <b className="font-bold text-ink">
           {ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}
         </b>{' '}

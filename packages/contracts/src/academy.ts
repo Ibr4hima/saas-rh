@@ -261,11 +261,14 @@ export interface VideoUploadTarget {
 export const SEUIL_REUSSITE = 0.8;
 
 /**
- * Trois tentatives par période glissante de vingt-quatre heures. Au-delà,
- * l'écran dit à quelle heure la suivante s'ouvre : on repasse l'évaluation
- * après avoir revu les leçons, pas en rafale jusqu'à tomber juste.
+ * Le nombre de tentatives par période glissante de vingt-quatre heures.
+ *
+ * `null` : sans limite — la décision de l'APIX pour le moment. Le mécanisme
+ * reste en place : y mettre 3, et au-delà de trois copies en vingt-quatre
+ * heures l'écran dit à quelle heure la suivante s'ouvre — on repasse alors
+ * l'évaluation après avoir revu les leçons, pas en rafale jusqu'à tomber juste.
  */
-export const TENTATIVES_PAR_JOUR = 3;
+export const TENTATIVES_PAR_JOUR: number | null = null;
 export const FENETRE_TENTATIVES_H = 24;
 
 /** Le temps accordé : deux minutes par question, décompté par le serveur. */
@@ -358,7 +361,7 @@ export interface CertificateSummary {
  *
  * `verrouillee` : des leçons restent à valider. `ouverte` : il peut composer.
  * `en_cours` : une copie est ouverte et le temps court encore. `attente` :
- * ses trois tentatives du jour sont passées. `reussie` : il tient un
+ * quand une limite est fixée, ses tentatives du jour sont passées. `reussie` : il tient un
  * certificat valide.
  */
 export interface EvaluationView {
@@ -367,7 +370,10 @@ export interface EvaluationView {
   minutes: number;
   seuil: number;
   etat: 'verrouillee' | 'ouverte' | 'en_cours' | 'attente' | 'reussie';
-  tentativesRestantes: number;
+  /** La limite par vingt-quatre heures ; `null` : sans limite. */
+  tentativesParJour: number | null;
+  /** Ce qu'il en reste dans la fenêtre ; `null` : sans limite. */
+  tentativesRestantes: number | null;
   /** Quand `attente` : l'heure à laquelle la prochaine tentative s'ouvre. */
   prochaineTentative: string | null;
   derniere: { score: number; passed: boolean; submittedAt: string } | null;

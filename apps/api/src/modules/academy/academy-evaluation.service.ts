@@ -15,7 +15,7 @@ import type {
   SessionUser,
   SubmitAttemptInput,
 } from '@teranga/contracts';
-import { SEUIL_REUSSITE } from '@teranga/contracts';
+import { SEUIL_REUSSITE, TENTATIVES_PAR_JOUR } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { loadEnv } from '../../config/env';
 import * as t from '../../db/schema';
@@ -150,6 +150,7 @@ export async function vueEvaluation(
   employeeId: string | null,
   toutesValidees: boolean,
   maintenant: Date,
+  parJour: number | null = TENTATIVES_PAR_JOUR,
 ): Promise<EvaluationView | null> {
   const taille = (await taillesDesBanques(tx, [f.id])).get(f.id) ?? 0;
   if (taille === 0) return null;
@@ -158,12 +159,13 @@ export async function vueEvaluation(
     questionCount,
     minutes: Math.ceil(dureeTentative(questionCount) / 60),
     seuil: SEUIL_REUSSITE,
+    tentativesParJour: parJour,
   };
   if (!employeeId) {
     return {
       ...base,
       etat: 'verrouillee',
-      tentativesRestantes: 0,
+      tentativesRestantes: parJour,
       prochaineTentative: null,
       derniere: null,
       certificat: null,
@@ -205,6 +207,7 @@ export async function vueEvaluation(
   const { restantes, prochaine } = fenetreTentatives(
     tentatives.map((a) => a.startedAt),
     maintenant,
+    parJour,
   );
 
   const etat: EvaluationView['etat'] = valide
@@ -252,6 +255,8 @@ export class AcademyEvaluationService {
   /** L'horloge et le hasard du serveur — remplaçables dans les tests seulement. */
   horloge: () => Date = () => new Date();
   hasard: Hasard = hasardSur;
+  /** Tentatives par vingt-quatre heures (`null` : sans limite) — idem. */
+  limiteTentatives: number | null = TENTATIVES_PAR_JOUR;
 
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
 
@@ -478,12 +483,13 @@ export class AcademyEvaluationService {
       const { restantes, prochaine } = fenetreTentatives(
         debuts.map((d) => d.startedAt),
         maintenant,
+        this.limiteTentatives,
       );
       if (restantes === 0) {
         problem(
           429,
           'academy.attempts_exhausted',
-          'Vos trois tentatives du jour sont passées',
+          'Vos tentatives du jour sont passées',
           prochaine ? `Prochaine tentative possible : ${prochaine.toISOString()}` : undefined,
         );
       }
@@ -572,7 +578,14 @@ export class AcademyEvaluationService {
           maintenant,
         );
       }
-      const evaluation = await vueEvaluation(tx, f, employeeId, true, maintenant);
+      const evaluation = await vueEvaluation(
+        tx,
+        f,
+        employeeId,
+        true,
+        maintenant,
+        this.limiteTentatives,
+      );
       const libelles = new Map(a.questions.map((q) => [q.id, q.prompt]));
       return {
         score: c.score,

@@ -5,14 +5,16 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AttemptResult, AttemptView, CourseDetail } from '@teranga/contracts';
-import { TENTATIVES_PAR_JOUR } from '@teranga/contracts';
 import { Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { RetourAcademy } from '../../../../../components/academy-carte';
 import {
   ApercuCertificat,
   BoutonLienVerification,
 } from '../../../../../components/academy-certificat';
-import { reglesEvaluation } from '../../../../../components/academy-evaluation-carte';
+import {
+  reglesEvaluation,
+  tentativesDuJour,
+} from '../../../../../components/academy-evaluation-carte';
 import { Page } from '../../../../../components/gabarit';
 import { Icon, type IconName } from '../../../../../components/icons';
 import { LoadFailure } from '../../../../../components/load-failure';
@@ -260,7 +262,12 @@ function Accueil({
       'check_circle',
       `${Math.round(ev.seuil * 100)} % de bonnes réponses pour réussir. Quand plusieurs réponses sont justes, il faut les cocher toutes.`,
     ],
-    ['replay', `${TENTATIVES_PAR_JOUR} tentatives par jour.`],
+    [
+      'replay',
+      ev.tentativesParJour
+        ? `${ev.tentativesParJour} tentatives par jour.`
+        : 'En cas d’échec, vous pouvez la repasser.',
+    ],
   ];
   return (
     <Card className="mx-auto w-full max-w-2xl">
@@ -300,7 +307,9 @@ function Accueil({
                   ? `Vos tentatives du jour sont passées. La prochaine s’ouvre ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`
                   : ev.etat === 'reussie'
                     ? 'Vous avez déjà réussi cette évaluation.'
-                    : `${compte(ev.tentativesRestantes, 'tentative')} ${ev.tentativesRestantes > 1 ? 'restent' : 'reste'} aujourd’hui.`}
+                    : ev.etat === 'en_cours'
+                      ? 'Votre copie est ouverte : le temps court encore.'
+                      : tentativesDuJour(ev)}
           </p>
           <Button disabled={!ouvrable} loading={commence} onClick={onCommencer}>
             <Icon name="play_arrow" size={17} fill />
@@ -555,7 +564,9 @@ function Resultat({
           {!r.passed
             ? ev.etat === 'attente'
               ? ` Vos tentatives du jour sont passées : la prochaine s’ouvre ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`
-              : ` ${compte(ev.tentativesRestantes, 'tentative')} ${ev.tentativesRestantes > 1 ? 'restent' : 'reste'} aujourd’hui.`
+              : tentativesDuJour(ev)
+                ? ` ${tentativesDuJour(ev)}`
+                : ''
             : ''}
         </p>
 

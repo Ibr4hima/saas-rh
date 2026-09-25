@@ -111,21 +111,23 @@ export function dureeTentative(nombreDeQuestions: number): number {
  * suivante s'ouvre si elles sont épuisées.
  *
  * La fenêtre compte les tentatives COMMENCÉES dans les vingt-quatre dernières
- * heures. La prochaine s'ouvre quand la plus ancienne des trois dernières en
- * sort.
+ * heures. La prochaine s'ouvre quand la plus ancienne des `limite` dernières
+ * en sort. Sans limite (`null`), rien ne se compte : `restantes` vaut `null`.
  */
 export function fenetreTentatives(
   debuts: Date[],
   maintenant: Date,
-): { restantes: number; prochaine: Date | null } {
+  limite: number | null = TENTATIVES_PAR_JOUR,
+): { restantes: number | null; prochaine: Date | null } {
+  if (limite === null) return { restantes: null, prochaine: null };
   const duree = FENETRE_TENTATIVES_H * 3600 * 1000;
   const recentes = debuts
     .map((d) => d.getTime())
     .filter((t) => t > maintenant.getTime() - duree)
     .sort((a, b) => a - b);
-  const restantes = Math.max(0, TENTATIVES_PAR_JOUR - recentes.length);
+  const restantes = Math.max(0, limite - recentes.length);
   if (restantes > 0) return { restantes, prochaine: null };
-  const cle = recentes[recentes.length - TENTATIVES_PAR_JOUR]!;
+  const cle = recentes[recentes.length - limite]!;
   return { restantes: 0, prochaine: new Date(cle + duree) };
 }
 

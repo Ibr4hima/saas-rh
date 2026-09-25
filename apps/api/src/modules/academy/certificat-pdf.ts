@@ -104,7 +104,9 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
   // ———— L'en-tête : l'émetteur à gauche, l'Academy à droite.
   const logo = cheminLogo();
   if (logo) {
-    doc.image(logo, gauche, 62, { height: 42 });
+    // Borné dans les deux sens : un logo en largeur ou carré tient sa place
+    // sans toucher « APIX ACADEMY », à droite.
+    doc.image(logo, gauche, 62, { fit: [200, 46] });
   } else {
     doc.font(police(doc, 'bold')).fontSize(22).fillColor(BLEU).text('APIX', gauche, 68);
   }

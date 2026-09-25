@@ -30,6 +30,7 @@ import {
   MARGE_DUREE_S,
   MAX_SUPPORT_BYTES,
   MAX_VIDEO_LOCALE_BYTES,
+  TENTATIVES_PAR_JOUR,
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
@@ -125,6 +126,8 @@ function formatDuree(secondes: number): string {
 export class AcademyService {
   /** L'horloge du serveur — remplaçable dans les tests, jamais par le client. */
   horloge: () => Date = () => new Date();
+  /** Tentatives d'évaluation par vingt-quatre heures (`null` : sans limite) — idem. */
+  limiteTentatives: number | null = TENTATIVES_PAR_JOUR;
 
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
@@ -426,7 +429,14 @@ export class AcademyService {
       );
       const d = this.detailDe(f, modules, lecons, progres, employeeId ? 'suivi' : 'apercu', false);
       const toutesValidees = d.lessonCount > 0 && d.completedLessons === d.lessonCount;
-      const evaluation = await vueEvaluation(tx, f, employeeId, toutesValidees, this.horloge());
+      const evaluation = await vueEvaluation(
+        tx,
+        f,
+        employeeId,
+        toutesValidees,
+        this.horloge(),
+        this.limiteTentatives,
+      );
       return {
         ...d,
         evaluation,
