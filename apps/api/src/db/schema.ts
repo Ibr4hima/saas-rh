@@ -8,6 +8,7 @@ import {
   char,
   customType,
   date,
+  doublePrecision,
   inet,
   integer,
   jsonb,
@@ -458,4 +459,79 @@ export const referenceArticles = pgTable('reference_articles', {
   body: text('body').notNull().default(''),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- APIX Academy (0025) ----------
+
+export const academyCourses = pgTable('academy_courses', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  title: text('title').notNull(),
+  summary: text('summary'),
+  category: text('category').notNull(),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const academyModules = pgTable('academy_modules', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  position: integer('position').notNull(),
+  title: text('title').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const academyLessons = pgTable('academy_lessons', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  moduleId: uuid('module_id').notNull(),
+  position: integer('position').notNull(),
+  title: text('title').notNull(),
+  videoProvider: text('video_provider'),
+  videoUid: text('video_uid'),
+  videoStatus: text('video_status').notNull().default('absente'),
+  videoError: text('video_error'),
+  durationSeconds: doublePrecision('duration_seconds'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const academyLessonSupports = pgTable('academy_lesson_supports', {
+  lessonId: uuid('lesson_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  filename: text('filename').notNull(),
+  data: bytea('data').notNull(),
+  size: integer('size').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const academyLessonProgress = pgTable(
+  'academy_lesson_progress',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    lessonId: uuid('lesson_id').notNull(),
+    watched: jsonb('watched').$type<Array<[number, number]>>().notNull(),
+    watchedSeconds: doublePrecision('watched_seconds').notNull().default(0),
+    positionSeconds: doublePrecision('position_seconds').notNull().default(0),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.employeeId, t.lessonId] })],
+);
+
+export const academyViewers = pgTable('academy_viewers', {
+  employeeId: uuid('employee_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  sessionId: uuid('session_id').notNull(),
+  lessonId: uuid('lesson_id').notNull(),
+  tokens: doublePrecision('tokens').notNull(),
+  tokensAt: timestamp('tokens_at', { withTimezone: true }).notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
 });

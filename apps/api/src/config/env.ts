@@ -25,6 +25,11 @@ const envSchema = z.object({
     .string()
     .default('')
     .transform((v) => (v === '' ? undefined : /^\d+$/.test(v) ? Number(v) : v)),
+  /**
+   * APIX Academy, stockage vidéo LOCAL (développement, démonstration) : le
+   * répertoire des fichiers. Par défaut `apps/api/var/academy-media`.
+   */
+  ACADEMY_MEDIA_DIR: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

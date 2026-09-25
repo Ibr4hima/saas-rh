@@ -178,9 +178,13 @@ const NAV_ITEMS: NavItem[] = [
     groupe: 'croissance',
   },
   {
-    href: '/formations',
-    label: 'Formations',
-    short: 'Format.',
+    // Les formations de l'agence, en ligne : l'Academy a pris la place de la
+    // rubrique « Formations », qui n'annonçait qu'un écran à venir. Le mot
+    // reste dans la palette — c'est celui qu'on tape.
+    href: '/academy',
+    label: 'APIX Academy',
+    short: 'Academy',
+    motsCles: 'Formations cours vidéos certification e-learning',
     icon: 'school',
     groupe: 'croissance',
   },
@@ -223,7 +227,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/recrutement/candidatures': 'Dossiers de candidature',
   '/recrutement/nouvelle': 'Nouvelle offre',
   '/competences': 'Cartographie des compétences',
-  '/formations': 'Formations',
+  '/academy': 'APIX Academy',
+  '/academy/gerer': 'Gérer le catalogue',
   '/evaluation': 'Évaluation des objectifs',
   '/organisation': 'Organigramme',
   '/reglementations/code-du-travail': 'Code du travail',
@@ -252,6 +257,8 @@ function pageTitle(pathname: string, givenName: string): string {
     return pathname.endsWith('/modifier') ? 'Modifier la fiche' : 'Gestion du personnel';
   }
   if (pathname.startsWith('/recrutement/')) return 'Offre de recrutement';
+  if (pathname.startsWith('/academy/gerer/')) return 'Gérer le catalogue';
+  if (pathname.startsWith('/academy/')) return 'APIX Academy';
   if (pathname.endsWith('/deposer')) return 'Dépôt du texte';
   // Un troisième texte — convention collective, accord d'entreprise — entrera
   // sans qu'on ait à revenir ici.
@@ -282,6 +289,12 @@ function pageAction(pathname: string, role: string): ChromeAction | null {
   if (pathname === '/organisation') {
     return { href: '/organisation?nouvelle=1', icon: 'add', label: 'Nouvelle unité' };
   }
+  if (pathname === '/academy') {
+    return { href: '/academy/gerer', icon: 'settings', label: 'Gérer le catalogue' };
+  }
+  if (pathname === '/academy/gerer') {
+    return { href: '/academy/gerer?nouvelle=1', icon: 'add', label: 'Nouvelle formation' };
+  }
   const parts = pathname.split('/').filter(Boolean);
   // Un texte de référence — /reglementations/<slug> — et non son écran de
   // dépôt, qui a ses propres boutons.
@@ -311,7 +324,7 @@ function HeaderAction({ action }: { action: ChromeAction }) {
 
 const STAFF_ROLES = ['admin', 'hr', 'payroll'];
 /** Sections réservées admin/RH : cachées aux autres rôles staff (payroll). */
-const MANAGE_ONLY_PATHS = ['/recrutement', '/documents'];
+const MANAGE_ONLY_PATHS = ['/recrutement', '/documents', '/academy/gerer'];
 
 function staffNav(role: string): NavItem[] {
   if (role !== 'payroll') return NAV_ITEMS;
@@ -371,6 +384,16 @@ function personalNav(role: string): NavItem[] {
           },
         ]
       : []),
+    // L'Academy : ce qui fait grandir l'agent. Elle tient la famille de la
+    // croissance, juste après les validations d'un manager.
+    {
+      href: '/academy',
+      label: 'APIX Academy',
+      short: 'Academy',
+      motsCles: 'Formations cours vidéos certification e-learning',
+      icon: 'school',
+      groupe: 'croissance',
+    },
     // L'organigramme rejoint les textes de référence : côté agent, ce n'est
     // pas un outil de travail, c'est quelque chose qu'on CONSULTE — comme le
     // Code du travail ou le règlement intérieur.
@@ -729,6 +752,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
     // Les textes de référence aussi, et à plus forte raison : un règlement
     // intérieur que seule la RH peut ouvrir ne s'oppose à personne.
     if (path.startsWith('/reglementations')) return true;
+    // L'Academy est faite pour les agents. Son atelier, lui, reste à la RH.
+    if (path.startsWith('/academy')) return !path.startsWith('/academy/gerer');
     if (role === 'manager') {
       return path.startsWith('/absences') && !path.startsWith('/absences/parametres');
     }

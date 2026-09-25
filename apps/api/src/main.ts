@@ -52,6 +52,12 @@ async function bootstrap(): Promise<void> {
   // juste en dessous — le texte structuré d'un code entier y a sa place.
   app.use('/v1/reference-texts', raw({ type: 'application/pdf', limit: '80mb' }));
   app.use('/v1/reference-texts', json({ limit: '8mb' }));
+  // APIX Academy : le support PDF d'une leçon arrive en binaire brut, comme
+  // le Journal officiel ci-dessus. La VIDÉO, elle, n'est lue par aucun
+  // analyseur : son type n'est pas `application/pdf`, elle traverse sans être
+  // touchée et descend en flux jusqu'au disque (stockage local) — ou ne passe
+  // pas du tout par ici (Cloudflare).
+  app.use('/v1/academy', raw({ type: 'application/pdf', limit: '10mb' }));
   app.use(json({ limit: '1mb' }));
   app.use(cookieParser());
   app.useGlobalFilters(new ProblemFilter());

@@ -18,3 +18,4 @@ export * from './document-requests';
 export * from './nationalities';
 export * from './profile-changes';
 export * from './reference-texts';
+export * from './academy';

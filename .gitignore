@@ -21,3 +21,7 @@ coverage/
 apps/api/assets/entete-republique.*
 apps/api/assets/logo-apix.*
 apps/web/public/logo-apix.*
+
+# APIX Academy — vidéos du stockage LOCAL (développement). Jamais versionnées :
+# ce sont des fichiers de plusieurs centaines de mégaoctets.
+apps/api/var/

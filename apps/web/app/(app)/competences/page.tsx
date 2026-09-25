@@ -25,8 +25,8 @@ export default function CompetencesPage() {
         <>
           Demandé par la Direction du Capital Humain. Cadre de référence : la gestion prévisionnelle
           des emplois et des compétences (GPEC), dont cet écran est l’état des lieux et{' '}
-          <Link href="/formations" className="text-primary hover:underline">
-            le plan de formation
+          <Link href="/academy" className="text-primary hover:underline">
+            APIX Academy
           </Link>{' '}
           l’action.
         </>
