@@ -182,6 +182,8 @@ export interface CourseSummary {
   hasEvaluation: boolean;
   /** L'agent connecté tient un certificat EN COURS DE VALIDITÉ pour elle. */
   certified: boolean;
+  /** Le compte connecté l'a gardée dans « Ma liste ». */
+  bookmarked: boolean;
 }
 
 export interface CourseDetail extends CourseSummary {

@@ -317,6 +317,7 @@ export class AcademyService {
       // Complétés par l'appelant, qui lit la banque et les certificats.
       hasEvaluation: false,
       certified: false,
+      bookmarked: false,
     };
   }
 
@@ -401,6 +402,7 @@ export class AcademyService {
         formations.map((f) => f.id),
       );
       const certifiees = await formationsCertifiees(tx, employeeId, this.horloge());
+      const signets = await this.signetsDe(tx, user.userId);
       return (
         formations
           .map((f) => this.detailDe(f, modules, lecons, progres, mode, false))
@@ -411,6 +413,7 @@ export class AcademyService {
             ...resume,
             hasEvaluation: (banques.get(resume.id) ?? 0) > 0,
             certified: certifiees.has(resume.id),
+            bookmarked: signets.has(resume.id),
           }))
       );
     });
@@ -442,7 +445,64 @@ export class AcademyService {
         evaluation,
         hasEvaluation: evaluation !== null,
         certified: evaluation?.etat === 'reussie',
+        bookmarked: (await this.signetsDe(tx, user.userId)).has(f.id),
       };
+    });
+  }
+
+  // ———————————————————————————— « Ma liste »
+
+  /** Les formations que le compte garde de côté, et depuis quand. */
+  private async signetsDe(tx: Tx, userId: string): Promise<Map<string, Date>> {
+    const rows = await tx
+      .select({ courseId: t.academyBookmarks.courseId, createdAt: t.academyBookmarks.createdAt })
+      .from(t.academyBookmarks)
+      .where(eq(t.academyBookmarks.userId, userId));
+    return new Map(rows.map((r) => [r.courseId, r.createdAt]));
+  }
+
+  /**
+   * « Ma liste » : les formations gardées, la dernière gardée en tête. Une
+   * formation retirée du catalogue en sort d'elle-même — elle revient avec
+   * son signet si la RH la republie.
+   */
+  async maListe(user: SessionUser): Promise<CourseSummary[]> {
+    const formations = await this.catalogue(user);
+    const signets = await this.db.withTenant(this.ctx(user), (tx) =>
+      this.signetsDe(tx, user.userId),
+    );
+    return formations
+      .filter((f) => signets.has(f.id))
+      .sort((a, b) => signets.get(b.id)!.getTime() - signets.get(a.id)!.getTime());
+  }
+
+  /** Garder une formation dans « Ma liste ». Deux fois de suite ne double rien. */
+  async garder(user: SessionUser, courseId: string): Promise<{ bookmarked: boolean }> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const f = await this.formation(tx, courseId).catch(() => null);
+      if (!f || f.publishedAt === null) {
+        problem(404, 'academy.course_not_found', 'Formation introuvable');
+      }
+      await tx
+        .insert(t.academyBookmarks)
+        .values({ tenantId: user.tenantId, userId: user.userId, courseId })
+        .onConflictDoNothing();
+      return { bookmarked: true };
+    });
+  }
+
+  /** La retirer de « Ma liste ». Absente, rien à faire — ce n'est pas une erreur. */
+  async oublier(user: SessionUser, courseId: string): Promise<{ bookmarked: boolean }> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      await tx
+        .delete(t.academyBookmarks)
+        .where(
+          and(
+            eq(t.academyBookmarks.userId, user.userId),
+            eq(t.academyBookmarks.courseId, courseId),
+          ),
+        );
+      return { bookmarked: false };
     });
   }
 

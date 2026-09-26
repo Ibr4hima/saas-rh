@@ -15,8 +15,10 @@ import { usePreferences } from './preferences';
    déconnexion, à côté d'un nom. C'était une action isolée là où il en
    faudrait plusieurs — et le thème n'avait nulle part où vivre.
 
-   Une silhouette ouvre donc un menu. Deux réglages d'affichage — le thème,
-   la densité des tableaux — et la sortie. La déconnexion se range en bas,
+   Une silhouette ouvre donc un menu : ce qui appartient à la PERSONNE plutôt
+   qu'à un écran — ses certificats APIX Academy, le thème — et la sortie.
+   (La densité des tableaux y figurait ; elle a été retirée, les tableaux
+   sont confortables pour tous.) La déconnexion se range en bas,
    derrière un filet, en rouge au survol : c'est le geste qu'on ne veut pas
    faire par erreur en visant celui d'au-dessus.
 
@@ -30,7 +32,7 @@ import { usePreferences } from './preferences';
 
 export function MenuCompte({ variante }: { variante: 'colonne' | 'bandeau' }) {
   const router = useRouter();
-  const { theme, basculer, densite, basculerDensite } = usePreferences();
+  const { theme, basculer } = usePreferences();
   const [ouvert, setOuvert] = useState(false);
   const bouton = useRef<HTMLButtonElement>(null);
   // Le panneau vit dans un portail : il n'est plus DANS le bouton, et le
@@ -101,22 +103,21 @@ export function MenuCompte({ variante }: { variante: 'colonne' | 'bandeau' }) {
           dansLeBandeau={dansLeBandeau}
           onFermer={() => setOuvert(false)}
         >
+          {/* Ses certificats, où qu'on soit : c'est ce qu'on vient chercher
+              quand on vous demande une preuve de formation. */}
+          <Rangee
+            icone="workspace_premium"
+            libelle="Mes certificats"
+            onClick={() => {
+              setOuvert(false);
+              router.push('/academy/certificats');
+            }}
+          />
           <Rangee
             icone={nuit ? 'light_mode' : 'dark_mode'}
             libelle={nuit ? 'Mode clair' : 'Mode sombre'}
             onClick={() => {
               basculer();
-              setOuvert(false);
-            }}
-          />
-          {/* La densité des tableaux se règle une fois pour tout le produit :
-              elle est de la même nature que le thème — elle ne change pas les
-              données, elle change la façon de les regarder. */}
-          <Rangee
-            icone="format_line_spacing"
-            libelle={densite === 'confort' ? 'Tableaux compacts' : 'Tableaux confortables'}
-            onClick={() => {
-              basculerDensite();
               setOuvert(false);
             }}
           />

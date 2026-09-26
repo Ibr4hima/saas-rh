@@ -538,6 +538,15 @@ export const academyViewers = pgTable('academy_viewers', {
   startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ---------- APIX Academy — « Ma liste » (0028) ----------
+
+export const academyBookmarks = pgTable('academy_bookmarks', {
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- APIX Academy — évaluation et certificats (0027) ----------
 
 /** Un choix de réponse, tel que la banque le garde. */

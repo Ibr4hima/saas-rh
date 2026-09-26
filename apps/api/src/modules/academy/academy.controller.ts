@@ -72,6 +72,23 @@ export class AcademyController {
     return this.academy.catalogue(req.sessionUser);
   }
 
+  // ———————————— « Ma liste » : les formations gardées de côté
+
+  @Get('ma-liste')
+  maListe(@Req() req: AuthenticatedRequest) {
+    return this.academy.maListe(req.sessionUser);
+  }
+
+  @Put('courses/:id/signet')
+  garder(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.academy.garder(req.sessionUser, id);
+  }
+
+  @Delete('courses/:id/signet')
+  oublier(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.academy.oublier(req.sessionUser, id);
+  }
+
   @Get('courses/:id')
   detail(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.academy.detail(req.sessionUser, id);

@@ -322,6 +322,40 @@ function HeaderAction({ action }: { action: ChromeAction }) {
   );
 }
 
+/**
+ * L'espace APIX Academy, côté apprenant : le catalogue, les formations, les
+ * leçons, l'évaluation, « Ma liste », « Mes certificats ». On y vient pour
+ * apprendre — le bandeau s'y allège : ni date, ni recherche, ni cloche, et le
+ * signet de « Ma liste » à leur place. L'atelier de la RH (/academy/gerer)
+ * reste un écran de gestion, avec le bandeau de gestion.
+ */
+function espaceAcademy(pathname: string): boolean {
+  return (
+    pathname === '/academy' ||
+    (pathname.startsWith('/academy/') && !pathname.startsWith('/academy/gerer'))
+  );
+}
+
+/** Le signet du bandeau : « Ma liste », les formations gardées de côté. */
+function LienMaListe({ actif }: { actif: boolean }) {
+  return (
+    <Link
+      href="/academy/ma-liste"
+      title="Ma liste"
+      aria-label="Ma liste"
+      aria-current={actif ? 'page' : undefined}
+      className={cn(
+        'flex size-9 shrink-0 items-center justify-center rounded-full border text-hero-ink transition-all duration-200 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none',
+        actif
+          ? 'border-white/60 bg-white/25'
+          : 'border-white/30 bg-white/10 hover:border-white/55 hover:bg-white/20',
+      )}
+    >
+      <Icon name="bookmark" size={20} fill={actif} />
+    </Link>
+  );
+}
+
 const STAFF_ROLES = ['admin', 'hr', 'payroll'];
 /** Sections réservées admin/RH : cachées aux autres rôles staff (payroll). */
 const MANAGE_ONLY_PATHS = ['/recrutement', '/documents', '/academy/gerer'];
@@ -793,6 +827,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
   const title = titleOverride ?? pageTitle(pathname, user.givenName);
   const action = pageAction(pathname, user.role);
+  const academy = espaceAcademy(pathname);
   const isActive = (href: string) =>
     href === '/moi' ? pathname === '/moi' : pathname.startsWith(href);
   /** Une sous-page couvre son chemin et ce qui en descend. */
@@ -824,8 +859,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
           {action ? <HeaderAction action={action} /> : null}
-          <DateDuJour />
-          {/* La recherche avait l'air d'un champ sans en être un : c'était un
+          {academy ? (
+            <LienMaListe actif={pathname === '/academy/ma-liste'} />
+          ) : (
+            <>
+              <DateDuJour />
+              {/* La recherche avait l'air d'un champ sans en être un : c'était un
               bouton déguisé, large de deux cent quarante pixels, qui invitait
               à taper là où rien ne se tape — la frappe se fait dans la
               palette, qui a la place d'afficher ce qu'elle trouve. Réduite à
@@ -833,16 +872,18 @@ function AppShell({ children }: { children: React.ReactNode }) {
               de promettre ce qu'elle ne fait pas. Le raccourci n'est plus
               écrit dessus : il reste dans l'infobulle et dans l'intitulé
               accessible, et la palette l'affiche en grand quand on l'ouvre. */}
-          <button
-            type="button"
-            onClick={() => setPalette(true)}
-            aria-label={`Rechercher (${raccourci})`}
-            title={`Rechercher — ${raccourci}`}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
-          >
-            <Icon name="search" size={20} />
-          </button>
-          <NotificationsBell />
+              <button
+                type="button"
+                onClick={() => setPalette(true)}
+                aria-label={`Rechercher (${raccourci})`}
+                title={`Rechercher — ${raccourci}`}
+                className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
+              >
+                <Icon name="search" size={20} />
+              </button>
+              <NotificationsBell />
+            </>
+          )}
           {/* Sur téléphone la colonne n'existe pas : sans ce menu, ni le
               thème ni la sortie ne seraient atteignables. */}
           <span className="lg:hidden">

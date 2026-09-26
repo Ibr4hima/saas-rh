@@ -434,3 +434,43 @@ describe('le support et la vidéo', () => {
     expect(rows).toEqual([{ lesson_id: l1, validee: true }]);
   });
 });
+
+describe('« Ma liste »', () => {
+  it('garde une formation, la rend dernière gardée en tête, et l’oublie', async () => {
+    const a = await formationPubliee();
+    const b = await formationPubliee();
+    expect(await academy.maListe(agent)).toEqual([]);
+    await academy.garder(agent, a.courseId);
+    await academy.garder(agent, a.courseId);
+    await new Promise((r) => setTimeout(r, 5));
+    await academy.garder(agent, b.courseId);
+    expect((await academy.maListe(agent)).map((f) => f.id)).toEqual([b.courseId, a.courseId]);
+    expect((await academy.catalogue(agent)).every((f) => f.bookmarked)).toBe(true);
+    expect((await academy.detail(agent, a.courseId)).bookmarked).toBe(true);
+
+    await academy.oublier(agent, a.courseId);
+    await academy.oublier(agent, a.courseId);
+    expect((await academy.maListe(agent)).map((f) => f.id)).toEqual([b.courseId]);
+    expect((await academy.detail(agent, a.courseId)).bookmarked).toBe(false);
+  });
+
+  it('appartient au compte : la liste de l’agent n’est pas celle de la RH', async () => {
+    const { courseId } = await formationPubliee();
+    await academy.garder(agent, courseId);
+    expect(await academy.maListe(rh)).toEqual([]);
+    expect((await academy.catalogue(rh)).find((f) => f.id === courseId)?.bookmarked).toBe(false);
+    // Un compte sans dossier d'agent garde aussi : c'est un marque-page.
+    await academy.garder(rh, courseId);
+    expect((await academy.maListe(rh)).map((f) => f.id)).toEqual([courseId]);
+  });
+
+  it('un brouillon ne se garde pas ; retiré du catalogue, il sort de la liste — et y revient', async () => {
+    const { courseId } = await formationPubliee();
+    await academy.garder(agent, courseId);
+    await academy.publier(rh, courseId, false);
+    expect(await academy.maListe(agent)).toEqual([]);
+    expect(await codeOf(() => academy.garder(agent, courseId))).toBe('academy.course_not_found');
+    await academy.publier(rh, courseId, true);
+    expect((await academy.maListe(agent)).map((f) => f.id)).toEqual([courseId]);
+  });
+});

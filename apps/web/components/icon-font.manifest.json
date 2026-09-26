@@ -8,6 +8,7 @@
     "arrow_forward",
     "arrow_upward",
     "badge",
+    "bookmark",
     "business_center",
     "calendar_month",
     "call",
@@ -33,7 +34,6 @@
     "family_history",
     "flag",
     "folder_managed",
-    "format_line_spacing",
     "free_cancellation",
     "fullscreen",
     "fullscreen_exit",
@@ -78,5 +78,5 @@
     "workspace_premium"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 79504
+  "bytes": 79568
 }
