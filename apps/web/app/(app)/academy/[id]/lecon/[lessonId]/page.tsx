@@ -6,15 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useState } from 'react';
 import type { BeatResult, CourseDetail, LessonPlayback } from '@teranga/contracts';
 import { SEUIL_VISIONNAGE } from '@teranga/contracts';
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  EmptyState,
-  Skeleton,
-} from '@teranga/ui';
+import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
 import { BarreProgression, RetourAcademy } from '../../../../../../components/academy-carte';
 import { Programme } from '../../../../../../components/academy-programme';
 import { FenetreDocument } from '../../../../../../components/fenetre-document';
@@ -24,7 +16,6 @@ import { LecteurVideo } from '../../../../../../components/lecteur-video';
 import { LoadFailure } from '../../../../../../components/load-failure';
 import { pourcent } from '../../../../../../lib/academy';
 import { api, ApiError, apiUrl } from '../../../../../../lib/api';
-import { compte } from '../../../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    Une leçon : la vidéo, et tout ce qui dit où l'on en est.
@@ -250,19 +241,7 @@ export default function LeconPage() {
           </div>
         </Card>
 
-        <Card className="pb-1">
-          <CardHeader className="flex items-center justify-between gap-3">
-            <CardTitle>Programme</CardTitle>
-            {suivi ? (
-              <span className="text-[11.5px] font-semibold text-ink-muted">
-                {f.completedLessons} / {compte(f.lessonCount, 'leçon')}
-              </span>
-            ) : null}
-          </CardHeader>
-          <CardContent>
-            <Programme formation={f} courante={lessonId} />
-          </CardContent>
-        </Card>
+        <Programme formation={f} courante={lessonId} avancement />
       </div>
       {supportOuvert && ici?.support ? (
         <FenetreDocument

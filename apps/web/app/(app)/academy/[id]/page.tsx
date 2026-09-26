@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { CourseDetail } from '@teranga/contracts';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@teranga/ui';
+import { Badge, Button, Card, Skeleton } from '@teranga/ui';
 import { BarreProgression, Couverture, RetourAcademy } from '../../../../components/academy-carte';
 import { CarteEvaluation } from '../../../../components/academy-evaluation-carte';
 import { Programme } from '../../../../components/academy-programme';
@@ -153,14 +153,7 @@ export default function FormationPage() {
 
       <CarteEvaluation formation={f} />
 
-      <Card className="pb-1">
-        <CardHeader>
-          <CardTitle>Programme</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Programme formation={f} />
-        </CardContent>
-      </Card>
+      <Programme formation={f} />
     </Page>
   );
 }
