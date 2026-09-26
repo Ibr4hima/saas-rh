@@ -64,6 +64,45 @@ describe('la chaîne en règle', () => {
     expect(types([dg])).toEqual([]);
   });
 
+  it('signale un directeur général qui a un n+1 : il ne relève de personne', () => {
+    const dg = agent('dg', {
+      responsableId: 'a',
+      responsableNom: 'Agent A',
+      responsableActif: true,
+      responsableDirectionId: DG.id,
+      responsableDirectionNom: DG.nom,
+      directionId: DG.id,
+      directionNom: DG.nom,
+      dirigeUneDirection: true,
+      estDirecteurGeneral: true,
+    });
+    expect(types([dg])).toEqual(['dg:dg_rattache']);
+  });
+
+  it('une boucle qui passe par le DG ne désigne que lui : c’est son n+1 qui la ferme', () => {
+    const dg = agent('dg', {
+      responsableId: 'a',
+      responsableNom: 'Agent A',
+      responsableActif: true,
+      responsableDirectionId: DG.id,
+      responsableDirectionNom: DG.nom,
+      directionId: DG.id,
+      directionNom: DG.nom,
+      dirigeUneDirection: true,
+      estDirecteurGeneral: true,
+    });
+    const a = agent('a', {
+      responsableId: 'dg',
+      responsableNom: 'Le DG',
+      responsableActif: true,
+      responsableDirectionId: DG.id,
+      responsableDirectionNom: DG.nom,
+      directionId: DG.id,
+      directionNom: DG.nom,
+    });
+    expect(types([dg, a])).toEqual(['dg:dg_rattache']);
+  });
+
   it('accepte qu’un directeur relève du directeur général, hors de sa direction', () => {
     const directeur = agent('directeur', {
       responsableId: 'dg',
@@ -189,7 +228,7 @@ describe('l’ordre et les décomptes', () => {
     );
     expect(parType.sans_responsable).toBe(1);
     expect(parType.hors_direction).toBe(0);
-    expect(Object.keys(parType)).toHaveLength(6);
+    expect(Object.keys(parType)).toHaveLength(7);
   });
 
   it('dit lesquelles empêchent d’évaluer', () => {

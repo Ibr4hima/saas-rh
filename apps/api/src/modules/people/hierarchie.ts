@@ -37,9 +37,14 @@ export interface LigneHierarchie {
  * sur un effectif de plusieurs milliers. Seuls les membres DE la boucle sont
  * signalés — pas ceux qui y mènent : corriger la boucle les remet d'aplomb, et
  * les noyer dans la liste ferait chercher le vrai coupable.
+ *
+ * Une boucle qui passe par le directeur général n'en est pas une à signaler :
+ * elle n'existe que parce qu'il a reçu un n+1. Le coupable est ce lien-là, et
+ * c'est lui seul qu'on montre (« DG rattaché ») — le retirer répare tout.
  */
 function membresDesBoucles(lignes: LigneHierarchie[]): Set<string> {
   const parent = new Map(lignes.map((l) => [l.employeeId, l.responsableId]));
+  const dg = new Set(lignes.filter((l) => l.estDirecteurGeneral).map((l) => l.employeeId));
   const etat = new Map<string, 'en_cours' | 'fini'>();
   const boucles = new Set<string>();
 
@@ -55,7 +60,8 @@ function membresDesBoucles(lignes: LigneHierarchie[]): Set<string> {
       courant = parent.get(courant) ?? null;
     }
     if (courant !== null && etat.get(courant) === 'en_cours') {
-      for (const id of chemin.slice(chemin.indexOf(courant))) boucles.add(id);
+      const boucle = chemin.slice(chemin.indexOf(courant));
+      if (!boucle.some((id) => dg.has(id))) for (const id of boucle) boucles.add(id);
     }
     for (const id of chemin) etat.set(id, 'fini');
   }
@@ -75,9 +81,10 @@ function anomalieDe(
   boucles: Set<string>,
   directeurGeneralId: string | null,
 ): TypeAnomalieHierarchie | null {
+  // Le directeur général n'a pas de n+1 : c'est le seul, et c'est voulu. En
+  // avoir un n'est pas un détail — il entrerait dans l'équipe de quelqu'un.
+  if (l.estDirecteurGeneral) return l.responsableId === null ? null : 'dg_rattache';
   if (boucles.has(l.employeeId)) return 'boucle';
-  // Le directeur général n'a pas de n+1 : c'est le seul, et c'est voulu.
-  if (l.estDirecteurGeneral) return null;
   if (l.responsableId === null) return 'sans_responsable';
   if (l.responsableActif === false) return 'responsable_archive';
   if (l.dirigeUneDirection) {
@@ -93,6 +100,7 @@ function anomalieDe(
 
 export const TYPES_ANOMALIE: TypeAnomalieHierarchie[] = [
   'boucle',
+  'dg_rattache',
   'sans_responsable',
   'responsable_archive',
   'directeur_mal_rattache',

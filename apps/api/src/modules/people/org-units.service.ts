@@ -298,7 +298,11 @@ export class OrgUnitsService {
         }
 
         const [before] = await tx
-          .select({ unitType: t.orgUnits.unitType, parentId: t.orgUnits.parentId })
+          .select({
+            unitType: t.orgUnits.unitType,
+            parentId: t.orgUnits.parentId,
+            managerEmployeeId: t.orgUnits.managerEmployeeId,
+          })
           .from(t.orgUnits)
           .where(eq(t.orgUnits.id, id))
           .limit(1);
@@ -321,6 +325,21 @@ export class OrgUnitsService {
 
         if (input.managerEmployeeId) {
           await this.assertManagerEligible(tx, id, input.managerEmployeeId);
+        }
+
+        // Diriger l'unité RACINE, c'est être le directeur général — et le
+        // directeur général ne relève de personne. Qu'on le désigne, ou qu'on
+        // fasse de son unité la racine, il ne doit pas avoir de n+1.
+        const prochainResponsable =
+          input.managerEmployeeId !== undefined
+            ? input.managerEmployeeId
+            : before!.managerEmployeeId;
+        if (
+          nextParent === null &&
+          prochainResponsable &&
+          (input.managerEmployeeId !== undefined || input.parentId !== undefined)
+        ) {
+          await this.assertSansResponsable(tx, prochainResponsable);
         }
 
         // Re-rattacher une unité déplace TOUT son sous-arbre : un responsable
@@ -485,6 +504,23 @@ export class OrgUnitsService {
         'org.manager_would_leave_unit',
         `${rompu.given_name} ${rompu.family_name} dirige « ${rompu.name} »`,
         'Ce changement le sortirait de son unité. Désignez d’abord un successeur.',
+      );
+    }
+  }
+
+  /** Le futur directeur général ne doit relever de personne. */
+  private async assertSansResponsable(tx: Tx, employeeId: string): Promise<void> {
+    const [agent] = await tx
+      .select({ responsable: t.employees.managerEmployeeId })
+      .from(t.employees)
+      .where(eq(t.employees.id, employeeId))
+      .limit(1);
+    if (agent?.responsable) {
+      problem(
+        422,
+        'org.dg_a_un_responsable',
+        'Le directeur général ne relève de personne',
+        'Cet agent a un n+1 dans sa fiche : retirez-le d’abord, puis désignez-le à la tête de l’unité racine.',
       );
     }
   }

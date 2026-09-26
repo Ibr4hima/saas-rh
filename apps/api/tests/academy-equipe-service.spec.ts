@@ -3,11 +3,14 @@
  *
  * L'organigramme du test : Mariama encadre Awa, qui encadre Moussa et un
  * ancien agent archivé. Fatou est ailleurs. Le compte RH n'a pas de dossier.
+ * Le directeur général, lui, a reçu Awa pour n+1 — une donnée fausse, comme
+ * un import ancien a pu en laisser.
  *
- * On vérifie que l'équipe descend toute la chaîne et s'arrête là, qu'un
- * agent hors de la chaîne est introuvable — vers le haut comme de côté — et
- * que chaque état d'une formation se lit juste, du premier clic au
- * certificat, expiré ou tenu d'une formation retirée depuis.
+ * On vérifie que l'équipe s'arrête aux DIRECTS, qu'un agent hors de
+ * l'équipe est introuvable — plus bas, plus haut ou de côté —, que le
+ * directeur général n'est dans l'équipe de personne, et que chaque état
+ * d'une formation se lit juste, du premier clic au certificat, expiré ou
+ * tenu d'une formation retirée depuis.
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -36,6 +39,7 @@ const agents = {
   moussa: randomUUID(),
   fatou: randomUUID(),
   ancien: randomUUID(),
+  dg: randomUUID(),
 };
 const session = (userId: string) => ({ userId, tenantId, role: 'employee' }) as SessionUser;
 const rh = { userId: comptes.rh, tenantId, role: 'hr' } as SessionUser;
@@ -182,6 +186,14 @@ beforeAll(async () => {
   await agent(agents.awa, 'Awa', 'Diop', 'EQ-002', comptes.awa, agents.mariama);
   await agent(agents.moussa, 'Moussa', 'Ndiaye', 'EQ-003', comptes.moussa, agents.awa);
   await agent(agents.ancien, 'Ancien', 'Agent', 'EQ-009', null, agents.awa, 'archived');
+  // Le DG est le responsable de l'unité RACINE. Son n+1 est posé en SQL : la
+  // saisie le refuserait.
+  await agent(agents.dg, 'Mouhammad', 'Fall', 'EQ-000', null, agents.awa);
+  await raw(
+    `INSERT INTO org_units (id, tenant_id, unit_type, name, manager_employee_id)
+     VALUES ($1,$2,'direction','Direction Générale',$3)`,
+    [randomUUID(), tenantId, agents.dg],
+  );
 
   const unite = randomUUID();
   await raw(
@@ -225,21 +237,22 @@ afterAll(async () => {
 });
 
 describe('qui fait partie de l’équipe', () => {
-  it('l’organigramme, sur toute la chaîne : Mariama voit Awa, et Moussa par Awa', async () => {
+  it('les directs seulement : Mariama voit Awa, pas l’équipe d’Awa', async () => {
     const vue = await equipe.equipe(session(comptes.mariama));
-    expect(
-      vue.members.map((m) => [m.givenName, m.level, m.manager.name, m.manager.employeeId]),
-    ).toEqual([
-      ['Awa', 1, 'Mariama Cissé', agents.mariama],
-      ['Moussa', 2, 'Awa Diop', agents.awa],
-    ]);
-    expect(await equipe.effectif(session(comptes.mariama))).toEqual({ total: 2, direct: 1 });
+    expect(vue.members.map((m) => m.givenName)).toEqual(['Awa']);
+    expect(await equipe.effectif(session(comptes.mariama))).toEqual({ total: 1 });
+    expect(await codeOf(() => equipe.agent(session(comptes.mariama), agents.moussa))).toBe(
+      'academy.team_member_not_found',
+    );
   });
 
-  it('un dossier archivé ne figure pas dans l’équipe', async () => {
+  it('ni un dossier archivé, ni le directeur général — même rattaché par erreur', async () => {
     const vue = await equipe.equipe(session(comptes.awa));
     expect(vue.members.map((m) => m.givenName)).toEqual(['Moussa']);
-    expect(await equipe.effectif(session(comptes.awa))).toEqual({ total: 1, direct: 1 });
+    expect(await equipe.effectif(session(comptes.awa))).toEqual({ total: 1 });
+    expect(await codeOf(() => equipe.agent(session(comptes.awa), agents.dg))).toBe(
+      'academy.team_member_not_found',
+    );
   });
 
   it('porte le poste et l’unité du jour', async () => {
@@ -252,12 +265,12 @@ describe('qui fait partie de l’équipe', () => {
   });
 
   it('personne sous soi, ou pas de dossier : pas d’équipe — le rôle n’y change rien', async () => {
-    expect(await equipe.effectif(session(comptes.moussa))).toEqual({ total: 0, direct: 0 });
-    expect(await equipe.effectif(rh)).toEqual({ total: 0, direct: 0 });
+    expect(await equipe.effectif(session(comptes.moussa))).toEqual({ total: 0 });
+    expect(await equipe.effectif(rh)).toEqual({ total: 0 });
     expect((await equipe.equipe(rh)).members).toEqual([]);
   });
 
-  it('hors de la chaîne, un agent est introuvable — de côté comme vers le haut', async () => {
+  it('hors de l’équipe, un agent est introuvable — de côté comme vers le haut', async () => {
     expect(await codeOf(() => equipe.agent(session(comptes.awa), agents.fatou))).toBe(
       'academy.team_member_not_found',
     );
@@ -273,8 +286,7 @@ describe('qui fait partie de l’équipe', () => {
     expect(await codeOf(() => equipe.agent(session(comptes.awa), agents.ancien))).toBe(
       'academy.team_member_not_found',
     );
-    // Deux niveaux plus bas, Moussa est bien dans l'équipe de Mariama.
-    expect((await equipe.agent(session(comptes.mariama), agents.moussa)).givenName).toBe('Moussa');
+    expect((await equipe.agent(session(comptes.awa), agents.moussa)).givenName).toBe('Moussa');
   });
 });
 

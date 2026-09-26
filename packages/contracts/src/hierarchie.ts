@@ -24,6 +24,8 @@
 export type TypeAnomalieHierarchie =
   /** L'agent appartient à une boucle : A relève de B qui relève de A. */
   | 'boucle'
+  /** Le directeur général a un n+1 : il entrerait dans l'équipe de quelqu'un. */
+  | 'dg_rattache'
   /** Actif, sans n+1, et ce n'est pas le directeur général. */
   | 'sans_responsable'
   /** Le n+1 désigné a un dossier archivé : il n'encadre plus personne. */

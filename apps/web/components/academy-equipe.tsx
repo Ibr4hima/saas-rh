@@ -83,20 +83,11 @@ function Chiffre({ n, attente = false }: { n: number; attente?: boolean }) {
   );
 }
 
-/**
- * L'en-tête des colonnes, sur écran large seulement. Sa première case porte
- * le nom du groupe — « Vos directs », « Équipe d'Awa Diop » — plutôt qu'un
- * « Agent » répété au-dessus de chaque carte.
- */
-export function EnteteColonnes({ titre, nombre }: { titre: string; nombre?: number }) {
+/** L'en-tête des colonnes, au-dessus des lignes d'agents — sur écran large seulement. */
+export function EnteteColonnes() {
   return (
     <div className="hidden items-center gap-4 border-b border-line-soft px-3 pb-2.5 text-[10.5px] font-bold tracking-[0.08em] whitespace-nowrap text-ink-muted uppercase sm:flex">
-      <span className="min-w-0 flex-1 truncate">
-        {titre}
-        {nombre !== undefined ? (
-          <span className="ml-2 font-semibold tracking-normal text-ink-muted/70">{nombre}</span>
-        ) : null}
-      </span>
+      <span className="min-w-0 flex-1">Agent</span>
       <span className="w-20 text-center">En cours</span>
       <span className="w-28 text-center">À l’évaluation</span>
       <span className="w-20 text-center">Obtenues</span>

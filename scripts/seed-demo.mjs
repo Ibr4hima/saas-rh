@@ -239,8 +239,8 @@ const PASSWORDS = {
   [awa.id]: ['a.diop@apix.sn', 'MotDePasseAwa1234!'],
   [moussa.id]: ['m.ndiaye@apix.sn', 'MotDePasseMoussa1!'],
   [fatou.id]: ['f.sall@apix.sn', 'MotDePasseFatou12!'],
-  // La n+1 d'Awa : de quoi voir, dans « Mon équipe » de l'Academy, une
-  // chaîne à deux niveaux (Awa en direct, Moussa par Awa).
+  // La n+1 d'Awa : dans « Mon équipe » de l'Academy, elle voit Awa — et pas
+  // Moussa, qui rend compte à Awa. Chacun ne voit que ses directs.
   [directriceRh.id]: ['m.cisse@apix.sn', 'MotDePasseMariama1!'],
 };
 const employeeCookies = {};

@@ -21,28 +21,23 @@ import { statutCertificat } from './evaluation';
    ceux qui lui rendent compte.
 
    L'équipe se lit dans l'ORGANIGRAMME, à partir du dossier d'agent relié au
-   compte : ceux dont il est le n+1, puis les leurs, jusqu'au bout de la
-   chaîne. Aucun rôle n'entre en compte — un agent qui encadre voit son
-   équipe, un compte RH sans équipe n'en voit aucune. Hors de cette chaîne,
-   un agent n'existe pas : sa fiche répond « introuvable », pas « interdit ».
+   compte : les agents dont il est le n+1 IMMÉDIAT, et eux seuls. Chacun
+   répond de sa propre équipe à son n+1 — le directeur général voit ses
+   directeurs, pas toute l'agence. Aucun rôle n'entre en compte : un agent
+   qui encadre voit son équipe, un compte RH sans équipe n'en voit aucune.
+   Hors de l'équipe, un agent n'existe pas : sa fiche répond « introuvable »,
+   pas « interdit ».
 
-   Tout se calcule en quelques requêtes pour l'équipe entière : une direction
-   de deux cents agents ne fait pas deux cents allers-retours.
+   Le directeur général ne figure dans AUCUNE équipe : il ne relève de
+   personne dans l'agence. La saisie le refuse ; une donnée ancienne qui lui
+   donnerait un n+1 est signalée par le contrôle de la chaîne, et ignorée ici.
+
+   Tout se calcule en quelques requêtes pour l'équipe entière : une équipe
+   de quarante agents ne fait pas quarante allers-retours.
    ———————————————————————————————————————————————————————————————— */
-
-/**
- * Garde-fou contre une boucle dans l'organigramme. La saisie les refuse
- * déjà ; une donnée importée à la main ne doit pas pour autant faire tourner
- * la requête sans fin.
- */
-const PROFONDEUR_MAX = 30;
 
 interface LigneAgent extends Record<string, unknown> {
   id: string;
-  niveau: number;
-  responsable_id: string;
-  responsable_prenom: string;
-  responsable_nom: string;
   employee_number: string;
   given_name: string;
   family_name: string;
@@ -64,8 +59,7 @@ export class AcademyEquipeService {
   /** Combien d'agents vous rendent compte — de quoi montrer l'entrée, ou pas. */
   async effectif(user: SessionUser): Promise<TeamSize> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
-      const agents = await this.agents(tx, user);
-      return { total: agents.length, direct: agents.filter((a) => a.niveau === 1).length };
+      return { total: (await this.agents(tx, user)).length };
     });
   }
 
@@ -98,35 +92,15 @@ export class AcademyEquipeService {
 
   // ———————————————————————————— lectures
 
-  /**
-   * Les agents ACTIFS de la chaîne descendante, avec leur poste du jour et
-   * leur n+1. Un agent qui rend compte à un dossier archivé reste dans la
-   * chaîne : l'organigramme a un trou, l'équipe n'en perd pas pour autant.
-   */
+  /** Les directs ACTIFS de l'appelant, avec leur poste du jour. */
   private async agents(tx: Tx, user: SessionUser): Promise<LigneAgent[]> {
     const moi = await employeActif(tx, user.userId);
     if (!moi) return [];
     const { rows } = await tx.execute<LigneAgent>(sql`
-      WITH RECURSIVE chaine AS (
-        SELECT e.id, e.manager_employee_id AS responsable_id, 1 AS niveau
-          FROM employees e
-         WHERE e.manager_employee_id = ${moi}
-        UNION ALL
-        SELECT e.id, e.manager_employee_id, c.niveau + 1
-          FROM employees e
-          JOIN chaine c ON e.manager_employee_id = c.id
-         WHERE c.niveau < ${PROFONDEUR_MAX} AND e.id <> ${moi}
-      )
-      SELECT DISTINCT ON (c.id)
-             c.id, c.niveau, c.responsable_id,
-             rp.given_name AS responsable_prenom, rp.family_name AS responsable_nom,
-             e.employee_number, p.given_name, p.family_name,
+      SELECT e.id, e.employee_number, p.given_name, p.family_name,
              a.position_title, o.name AS unite
-        FROM chaine c
-        JOIN employees e ON e.id = c.id AND e.status = 'active'
+        FROM employees e
         JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
-        JOIN employees re ON re.id = c.responsable_id
-        JOIN persons rp ON rp.id = re.person_id
         LEFT JOIN LATERAL (
           SELECT position_title, org_unit_id
             FROM assignments
@@ -135,15 +109,14 @@ export class AcademyEquipeService {
            LIMIT 1
         ) a ON true
         LEFT JOIN org_units o ON o.id = a.org_unit_id AND o.deleted_at IS NULL
-       ORDER BY c.id, c.niveau`);
-    return rows
-      .map((r) => ({ ...r, niveau: Number(r.niveau) }))
-      .sort(
-        (a, b) =>
-          a.niveau - b.niveau ||
-          a.family_name.localeCompare(b.family_name, 'fr') ||
-          a.given_name.localeCompare(b.given_name, 'fr'),
-      );
+       WHERE e.manager_employee_id = ${moi}
+         AND e.status = 'active'
+         AND e.id NOT IN (
+           SELECT manager_employee_id FROM org_units
+            WHERE parent_id IS NULL AND deleted_at IS NULL AND manager_employee_id IS NOT NULL
+         )
+       ORDER BY p.family_name, p.given_name`);
+    return rows;
   }
 
   /**
@@ -314,11 +287,6 @@ export class AcademyEquipeService {
       number: a.employee_number,
       positionTitle: a.position_title,
       unitName: a.unite,
-      manager: {
-        employeeId: a.responsable_id,
-        name: `${a.responsable_prenom} ${a.responsable_nom}`,
-      },
-      level: a.niveau,
       counts: compterStatuts(formations.map((f) => f.status)),
       lastActivityAt: activites.at(-1) ?? null,
     };

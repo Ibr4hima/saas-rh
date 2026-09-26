@@ -596,6 +596,18 @@ export class PeopleService {
     if (managerId === employeeId) {
       problem(422, 'people.manager_is_self', 'Un employé ne peut pas être son propre manager');
     }
+    // ——— La première règle de l'APIX : le directeur général ne relève de
+    // personne dans l'agence — il répond au conseil d'administration. Lui
+    // donner un n+1 le ferait entrer dans l'équipe de quelqu'un.
+    const dg = await this.directeurGeneral(tx);
+    if (employeeId === dg) {
+      problem(
+        422,
+        'people.dg_sans_responsable',
+        'Le directeur général ne relève de personne',
+        'Cet agent dirige l’unité racine de l’organigramme : il n’a pas de n+1 dans l’agence.',
+      );
+    }
     const [manager] = await tx
       .select({ status: t.employees.status })
       .from(t.employees)
@@ -634,7 +646,6 @@ export class PeopleService {
     // Un directeur fait exception : il relève du directeur général, qui siège
     // à la Direction Générale — donc dans une autre direction que la sienne.
     // C'est la seule exception, et elle se déduit de l'organigramme.
-    const dg = await this.directeurGeneral(tx);
     if (await this.dirigeUneDirection(tx, employeeId)) {
       if (dg === null) {
         problem(
@@ -654,9 +665,6 @@ export class PeopleService {
       }
       return;
     }
-    // Le directeur général lui-même n'a pas de n+1 à valider ; s'il en reçoit
-    // un, aucune règle de direction ne s'applique à lui.
-    if (employeeId === dg) return;
 
     const directionDuResponsable = await this.directionDeEmploye(tx, managerId);
     // Deux trous rendent la règle invérifiable : un agent sans affectation, un

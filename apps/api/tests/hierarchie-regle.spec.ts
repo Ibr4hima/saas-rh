@@ -26,6 +26,7 @@ import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
 import { HierarchieService } from '../src/modules/people/hierarchie.service';
+import { OrgUnitsService } from '../src/modules/people/org-units.service';
 import { PeopleService } from '../src/modules/people/people.service';
 
 const env = loadEnv();
@@ -38,6 +39,7 @@ let ownerPool: Pool;
 let db: TenantDb;
 let people: PeopleService;
 let hierarchie: HierarchieService;
+let organigramme: OrgUnitsService;
 
 /** L'organigramme du bac d'essai : la DG, et deux directions sous elle. */
 let uDG: string;
@@ -139,6 +141,7 @@ beforeAll(async () => {
   db = new TenantDb();
   people = new PeopleService(db, new EncryptionService());
   hierarchie = new HierarchieService(db);
+  organigramme = new OrgUnitsService(db);
   await raw(
     `INSERT INTO users (id, email, password_hash, given_name, family_name)
      VALUES ($1,$2,'x','Test','Admin')`,
@@ -281,6 +284,60 @@ describe('le cas des directeurs', () => {
         people.update(user, directeur, { employee: { managerEmployeeId: premier } }),
       ),
     ).toBe('people.aucun_directeur_general');
+  });
+});
+
+describe('le directeur général ne relève de personne', () => {
+  it('refuse de lui donner un n+1 depuis sa fiche', async () => {
+    const dg = await creerLeDG();
+    // Un agent sans lien avec lui : aucune boucle ne peut expliquer le refus.
+    const agent = await dossierBrut('A', uDSID);
+    expect(
+      await codeOf(() => people.update(user, dg, { employee: { managerEmployeeId: agent } })),
+    ).toBe('people.dg_sans_responsable');
+  });
+
+  it('laisse RETIRER le n+1 qu’une donnée ancienne lui a donné', async () => {
+    const dg = await creerLeDG();
+    const agent = await dossierBrut('A', uDSID);
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [dg, agent]);
+    await people.update(user, dg, { employee: { managerEmployeeId: null } });
+    expect((await people.detail(user, dg)).managerId).toBeNull();
+  });
+
+  it('refuse de nommer à la racine quelqu’un qui a un n+1 — puis l’accepte sans', async () => {
+    const futur = await dossierBrut('FUTUR', uDG);
+    const autre = await dossierBrut('AUTRE', uDG);
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [futur, autre]);
+    expect(await codeOf(() => organigramme.update(user, uDG, { managerEmployeeId: futur }))).toBe(
+      'org.dg_a_un_responsable',
+    );
+
+    await raw(`UPDATE employees SET manager_employee_id = NULL WHERE id = $1`, [futur]);
+    await organigramme.update(user, uDG, { managerEmployeeId: futur });
+    expect((await hierarchie.controle(user)).directeurGeneral?.employeeId).toBe(futur);
+  });
+
+  it('ne gêne pas la nomination d’un directeur, qui, lui, relève du DG', async () => {
+    const dg = await creerLeDG();
+    const directeur = (await people.create(user, dossier('DIR', uDSID, dg))).id;
+    await organigramme.update(user, uDSID, { managerEmployeeId: directeur });
+    expect((await people.detail(user, directeur)).managerId).toBe(dg);
+  });
+
+  it('le contrôle signale un DG rattaché — et lui seul, même s’il ferme une boucle', async () => {
+    const dg = await creerLeDG();
+    const agent = await dossierBrut('A', uDG);
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [agent, dg]);
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [dg, agent]);
+    // A relève du DG, qui relève de A : la boucle n'existe que par le n+1 du
+    // DG. C'est ce lien qu'il faut retirer, et c'est lui qu'on montre.
+    const c = await hierarchie.controle(user);
+    expect(c.anomalies.map((a) => `${a.matricule}:${a.type}`)).toEqual(['DG:dg_rattache']);
+    expect(c.anomalies[0]?.responsable).toBe('A Test');
+
+    await people.update(user, dg, { employee: { managerEmployeeId: null } });
+    expect((await hierarchie.controle(user)).anomalies).toEqual([]);
   });
 });
 

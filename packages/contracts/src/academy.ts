@@ -461,8 +461,9 @@ export interface PublicCertificateView {
    « Mon équipe » : la progression de ceux qui vous rendent compte.
 
    L'équipe se lit dans l'ORGANIGRAMME (le n+1 de chaque fiche agent), pas
-   dans un rôle : quiconque a au moins un agent sous lui la voit, et elle
-   descend toute la chaîne — une directrice voit sa direction entière.
+   dans un rôle : quiconque a au moins un agent sous lui la voit. Elle
+   s'arrête à ses DIRECTS — chacun répond de sa propre équipe à son n+1 ; un
+   directeur général n'a pas à parcourir toute l'agence.
 
    Des évaluations, le n+1 voit l'état et le score obtenu, pas le détail :
    ni le nombre de tentatives, ni les scores des échecs.
@@ -514,10 +515,6 @@ export interface TeamMember {
   number: string;
   positionTitle: string | null;
   unitName: string | null;
-  /** À qui l'agent rend compte : vous, ou l'un des vôtres. */
-  manager: { employeeId: string; name: string };
-  /** 1 pour vos directs, 2 pour leurs équipes, etc. */
-  level: number;
   /** Combien de formations dans chaque état (les « à commencer » comprises). */
   counts: Record<StatutSuivi, number>;
   lastActivityAt: string | null;
@@ -534,5 +531,4 @@ export interface TeamMemberDetail extends TeamMember {
 /** Assez pour savoir s'il faut montrer l'entrée « Mon équipe ». */
 export interface TeamSize {
   total: number;
-  direct: number;
 }

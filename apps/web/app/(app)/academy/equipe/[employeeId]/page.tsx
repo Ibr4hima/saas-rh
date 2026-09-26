@@ -95,11 +95,6 @@ function Fiche({ agent }: { agent: TeamMemberDetail }) {
             <p className="text-[12.5px] text-ink-muted sm:truncate">
               {[poste, agent.number].filter(Boolean).join(' · ')}
             </p>
-            {agent.level > 1 ? (
-              <p className="truncate text-[12px] text-ink-muted">
-                Rend compte à <b className="font-semibold text-ink">{agent.manager.name}</b>
-              </p>
-            ) : null}
           </div>
         </div>
         <div className="flex flex-col gap-0.5 border-t border-line-soft pt-3 text-[12px] text-ink-muted sm:items-end sm:border-t-0 sm:pt-0 sm:text-right">

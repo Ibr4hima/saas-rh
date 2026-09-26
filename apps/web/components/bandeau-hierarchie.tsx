@@ -37,7 +37,11 @@ import { Modal } from './modal';
 const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: string }> = {
   boucle: {
     court: 'Boucle',
-    explication: 'Deux agents relèvent l’un de l’autre : la chaîne ne remonte plus.',
+    explication: 'Sa chaîne de n+1 revient sur elle-même : elle ne remonte plus.',
+  },
+  dg_rattache: {
+    court: 'DG rattaché',
+    explication: 'Le directeur général ne relève de personne : retirez son n+1.',
   },
   sans_responsable: {
     court: 'Sans n+1',
