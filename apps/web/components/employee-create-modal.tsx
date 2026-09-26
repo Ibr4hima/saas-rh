@@ -72,6 +72,9 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
     directionChoisie ? (directionChoisie.shortName ?? directionChoisie.name) : null,
   );
   const marital = maritalLabels(gender || undefined);
+  // D'abord l'affectation, ensuite la hiérarchie. L'affectation ne part
+  // qu'avec un poste : sans direction ET poste, pas de n+1.
+  const peutChoisirLeN1 = Boolean(directionChoisie) && positionTitle.trim().length > 0;
 
   const needsDuration = contractType === 'cdd' || contractType === 'stage';
   const months = Number(durationMonths);
@@ -118,7 +121,8 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             hiredOn: contractStart,
             workEmail: composeWorkEmail(workEmail),
             workPhone: composePhone(workPhoneCountry, workPhoneLocal),
-            managerEmployeeId: managerId || undefined,
+            // Le n+1 part avec l'affectation, jamais sans elle.
+            managerEmployeeId: peutChoisirLeN1 && managerId ? managerId : undefined,
           },
           assignment: positionTitle.trim()
             ? {
@@ -395,12 +399,17 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             label="Responsable hiérarchique (n+1)"
             htmlFor="managerId"
             hint={
-              directionChoisie
+              peutChoisirLeN1 && directionChoisie
                 ? `Les agents de ${directionChoisie.shortName ?? directionChoisie.name}, et le directeur général.`
-                : 'Choisissez d’abord la direction pour voir les responsables possibles.'
+                : 'Renseignez d’abord le poste et la direction : le n+1 se choisit ensuite.'
             }
           >
-            <Select id="managerId" value={managerId} onChange={(e) => setManagerId(e.target.value)}>
+            <Select
+              id="managerId"
+              value={peutChoisirLeN1 ? managerId : ''}
+              disabled={!peutChoisirLeN1}
+              onChange={(e) => setManagerId(e.target.value)}
+            >
               <option value="">— À désigner plus tard</option>
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>

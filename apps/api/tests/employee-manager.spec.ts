@@ -63,6 +63,27 @@ async function creerEmploye(numero: string): Promise<string> {
 const setManager = (id: string, managerEmployeeId: string | null) =>
   people.update(user, id, { employee: { managerEmployeeId } });
 
+/**
+ * D'abord l'affectation, ensuite la hiérarchie : un n+1 ne se désigne
+ * qu'entre agents affectés à une direction. Les trois dossiers du test sont
+ * donc placés dans la même, avant tout rattachement.
+ */
+async function affecterDansUneDirection(...ids: string[]) {
+  const directionId = randomUUID();
+  await raw(
+    `INSERT INTO org_units (id, tenant_id, name, unit_type, short_name)
+     VALUES ($1,$2,'Direction des Études','direction','DET')`,
+    [directionId, tenantId],
+  );
+  for (const id of ids) {
+    await raw(
+      `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+       VALUES ($1,$2,$3,$4,'Analyste','[2024-01-01,)')`,
+      [randomUUID(), tenantId, id, directionId],
+    );
+  }
+}
+
 beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 3 });
@@ -105,6 +126,8 @@ afterAll(async () => {
 });
 
 describe('désignation', () => {
+  beforeEach(() => affecterDansUneDirection(alice, bruno, carla));
+
   it('rattache un employé à son manager', async () => {
     await setManager(bruno, alice);
     const detail = await people.detail(user, bruno);
@@ -127,12 +150,22 @@ describe('désignation', () => {
     expect(await codeOf(() => setManager(bruno, alice))).toBe('people.manager_not_active');
   });
 
+  it('refuse un n+1 tant que l’agent, ou le n+1, n’est affecté à aucune direction', async () => {
+    await raw(`DELETE FROM assignments WHERE employee_id = $1`, [bruno]);
+    expect(await codeOf(() => setManager(bruno, alice))).toBe('people.sans_affectation');
+    expect(await codeOf(() => setManager(alice, bruno))).toBe(
+      'people.responsable_sans_affectation',
+    );
+  });
+
   it('refuse un manager inexistant', async () => {
     expect(await codeOf(() => setManager(bruno, randomUUID()))).toBe('people.manager_not_found');
   });
 });
 
 describe('boucles hiérarchiques', () => {
+  beforeEach(() => affecterDansUneDirection(alice, bruno, carla));
+
   it('refuse d’être son propre manager', async () => {
     expect(await codeOf(() => setManager(bruno, bruno))).toBe('people.manager_is_self');
   });
@@ -162,6 +195,8 @@ describe('boucles hiérarchiques', () => {
 });
 
 describe('liste des employés', () => {
+  beforeEach(() => affecterDansUneDirection(alice, bruno, carla));
+
   it('remonte le MATRICULE du manager, et son nom pour l’infobulle', async () => {
     // C'est le matricule que la colonne affiche : il est unique, là où deux
     // agents peuvent porter le même nom. Le nom reste disponible pour
@@ -244,11 +279,12 @@ describe('tri, filtres et effectifs', () => {
     await affecter(alice, 'Comptable', uniteId);
     await affecter(bruno, 'Comptable', null);
     await affecter(carla, 'Analyste', uniteId);
-    await setManager(bruno, alice);
+    // Bruno n'a pas de direction : il ne peut relever de personne. Carla, si.
+    await setManager(carla, alice);
 
     expect((await lister({ positionTitle: 'Comptable' })).items).toHaveLength(2);
     expect((await lister({ managerId: alice })).items.map((i) => i.employeeNumber)).toEqual([
-      'BRUNO',
+      'CARLA',
     ]);
     // L'unité se filtre sur ce que la colonne AFFICHE — l'abrégé de la direction.
     expect((await lister({ unit: 'DFC' })).items.map((i) => i.employeeNumber).sort()).toEqual([

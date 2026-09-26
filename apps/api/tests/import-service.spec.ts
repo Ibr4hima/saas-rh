@@ -414,6 +414,26 @@ describe('le responsable hiérarchique', () => {
     expect((await dossier('APIX-0002'))?.responsable).toBe('Agent1 Diop');
   });
 
+  it('sans direction affectée, crée le dossier SANS n+1 — l’affectation vient d’abord', async () => {
+    const r = await imports.importer(
+      admin,
+      classeurDe([
+        AGENT(1),
+        AGENT(2, { 'Direction affectée': '', 'Matricule du responsable': 'APIX-0001' }),
+      ]),
+      true,
+    );
+    expect(r.crees).toBe(2);
+    expect(r.rattaches).toBe(0);
+    expect(r.lignes[1]?.avertissements).toEqual([
+      {
+        colonne: 'Matricule du responsable',
+        texte: 'Sans direction affectée : dossier créé sans n+1 — affectez-le d’abord',
+      },
+    ]);
+    expect((await dossier('APIX-0002'))?.responsable).toBeNull();
+  });
+
   it('crée le dossier SANS n+1 quand le matricule est introuvable, et le dit', async () => {
     const r = await imports.importer(
       admin,

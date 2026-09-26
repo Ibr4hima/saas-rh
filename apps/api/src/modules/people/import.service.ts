@@ -192,6 +192,15 @@ export class ImportEmployesService {
     }
     for (const l of lignes) {
       if (l.etat !== 'a-creer' || !l.responsable) continue;
+      // D'abord l'affectation, ensuite la hiérarchie : sans direction
+      // reconnue, le n+1 ne se pose pas — l'aperçu le dit avant l'import.
+      if (!l.uniteResolue) {
+        l.avertissements.push({
+          colonne: NOM_COLONNE_RESPONSABLE,
+          texte: 'Sans direction affectée : dossier créé sans n+1 — affectez-le d’abord',
+        });
+        continue;
+      }
       const cle = cleMatricule(l.responsable);
       if (l.matricule && cle === cleMatricule(l.matricule)) {
         l.avertissements.push({

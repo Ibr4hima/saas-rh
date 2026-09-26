@@ -185,10 +185,31 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
   // bandeau de la chaîne hiérarchique : elle doit guider, pas piéger.
   const affectation = employee.assignments.find((a) => a.current);
   const direction = affectation?.directionName ?? null;
-  const { options: managers } = useResponsablesPossibles(
+  const { options: possibles } = useResponsablesPossibles(
     affectation?.directionShortName ?? affectation?.directionName ?? null,
     employee.id,
   );
+  // D'abord l'affectation, ensuite la hiérarchie : sans direction, le n+1 ne
+  // se choisit pas — et le directeur général n'en a jamais. Dans ces deux
+  // cas, le champ ne garde que le n+1 actuel, pour qu'on puisse le RETIRER :
+  // c'est ainsi qu'on corrige un dossier signalé.
+  const unites = useQuery({
+    queryKey: ['org-units'],
+    queryFn: () => api<OrgUnitView[]>('/org-units'),
+  });
+  const estDG = (unites.data ?? []).some(
+    (u) => u.parentId === null && u.managerEmployeeId === employee.id,
+  );
+  const peutChoisir = Boolean(direction) && !estDG;
+  const actuel =
+    employee.managerId && employee.managerName
+      ? { id: employee.managerId, nom: employee.managerName, poste: null }
+      : null;
+  const managers = peutChoisir
+    ? [...possibles, ...(actuel && !possibles.some((m) => m.id === actuel.id) ? [actuel] : [])]
+    : actuel
+      ? [actuel]
+      : [];
 
   const form = useForm<FormValues>({ defaultValues: toDefaults(employee) });
   const errors = form.formState.errors;
@@ -373,13 +394,15 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
             label="Responsable hiérarchique (n+1)"
             htmlFor="managerEmployeeId"
             hint={
-              direction
-                ? `Les agents de ${direction}, et le directeur général.`
-                : 'Sans affectation, aucune direction ne limite le choix.'
+              estDG
+                ? 'Le directeur général ne relève de personne.'
+                : direction
+                  ? `Les agents de ${direction}, et le directeur général.`
+                  : 'Affectez d’abord l’agent à une direction : le n+1 se choisit ensuite.'
             }
           >
             <Select id="managerEmployeeId" {...form.register('managerEmployeeId')}>
-              <option value="">— À désigner plus tard</option>
+              <option value="">{peutChoisir ? '— À désigner plus tard' : '— Aucun'}</option>
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.nom}

@@ -235,11 +235,42 @@ describe('le responsable est dans la même direction', () => {
     );
   });
 
-  it('laisse passer quand l’agent n’a pas d’affectation — la règle n’est pas vérifiable', async () => {
+  it('refuse un n+1 à un agent qui n’est affecté à aucune direction', async () => {
     const dg = await creerLeDG();
     const rh = await creerUnDirecteur('RH', uDCH, dg);
-    const { id } = await people.create(user, dossier('A', null, rh));
-    expect((await people.detail(user, id)).managerId).toBe(rh);
+    expect(await codeOf(() => people.create(user, dossier('A', null, rh)))).toBe(
+      'people.sans_affectation',
+    );
+    // Le dossier, lui, se crée sans n+1 — on le rattachera une fois affecté.
+    const { id } = await people.create(user, dossier('A', null));
+    expect(
+      await codeOf(() => people.update(user, id, { employee: { managerEmployeeId: rh } })),
+    ).toBe('people.sans_affectation');
+  });
+
+  it('refuse un n+1 qui n’est lui-même affecté à aucune direction', async () => {
+    await creerLeDG();
+    const sansAffectation = await dossierBrut('SANS', null);
+    expect(await codeOf(() => people.create(user, dossier('A', uDCH, sansAffectation)))).toBe(
+      'people.responsable_sans_affectation',
+    );
+  });
+
+  it('refuse de sortir de toute direction un agent qui a un n+1, ou qui en est un', async () => {
+    const dg = await creerLeDG();
+    const chef = await creerUnDirecteur('CHEF', uDCH, dg);
+    const encadrant = (await people.create(user, dossier('ENC', uDCH, chef))).id;
+    const agent = (await people.create(user, dossier('A', uDCH, encadrant))).id;
+    const sortir = (id: string) =>
+      people.newAssignment(user, id, {
+        positionTitle: 'Chargé de mission',
+        orgUnitId: null,
+        startDate: '2025-06-01',
+      } as never);
+    expect(await codeOf(() => sortir(agent))).toBe('people.mutation_sans_direction');
+    // Sans son n+1, Encadrant reste celui d'A : il ne sort pas non plus.
+    await people.update(user, encadrant, { employee: { managerEmployeeId: null } });
+    expect(await codeOf(() => sortir(encadrant))).toBe('people.mutation_sans_direction');
   });
 
   it('accepte le directeur général pendant qu’une direction est sans tête, puis refuse', async () => {

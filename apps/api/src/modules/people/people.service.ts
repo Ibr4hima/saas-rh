@@ -641,6 +641,28 @@ export class PeopleService {
       );
     }
 
+    // ——— D'abord l'affectation, ensuite la hiérarchie. Un n+1 ne se désigne
+    // qu'entre deux agents AFFECTÉS À UNE DIRECTION : sans elle, la règle de
+    // direction ne se vérifie pas, et un rattachement posé à l'aveugle est
+    // exactement ce qui finit par mélanger les équipes.
+    if (!directionCible) {
+      problem(
+        422,
+        'people.sans_affectation',
+        'Affectez d’abord l’agent à une direction',
+        'Le n+1 se désigne ensuite : c’est la direction qui dit parmi qui le choisir.',
+      );
+    }
+    const directionDuResponsable = await this.directionDeEmploye(tx, managerId);
+    if (!directionDuResponsable) {
+      problem(
+        422,
+        'people.responsable_sans_affectation',
+        'Le n+1 désigné n’est affecté à aucune direction',
+        'Affectez-le d’abord à une direction ; ses agents pourront ensuite lui être rattachés.',
+      );
+    }
+
     // ——— La règle de l'APIX : le n+1 est dans la MÊME DIRECTION.
     //
     // Un directeur fait exception : il relève du directeur général, qui siège
@@ -666,12 +688,6 @@ export class PeopleService {
       return;
     }
 
-    const directionDuResponsable = await this.directionDeEmploye(tx, managerId);
-    // Deux trous rendent la règle invérifiable : un agent sans affectation, un
-    // responsable sans affectation. On laisse alors passer — le contrôle de la
-    // chaîne hiérarchique les signale, et refuser ici empêcherait de remplir
-    // un dossier importé sans direction connue.
-    if (!directionCible || !directionDuResponsable) return;
     if (directionDuResponsable.id === directionCible.id) return;
 
     // ——— Une direction SANS directeur n'a personne d'autre au-dessus que le
@@ -882,6 +898,31 @@ export class PeopleService {
             .from(t.employees)
             .where(eq(t.employees.id, id))
             .limit(1);
+          // Hors de toute direction, un rattachement ne tient plus : ni le
+          // sien, ni celui des agents qui relèvent de lui.
+          if (!directionCible) {
+            if (dossier?.managerId) {
+              problem(
+                422,
+                'people.mutation_sans_direction',
+                'Un agent rattaché à un n+1 reste affecté à une direction',
+                'Choisissez une unité rattachée à une direction, ou retirez d’abord son n+1.',
+              );
+            }
+            const [encadre] = await tx
+              .select({ id: t.employees.id })
+              .from(t.employees)
+              .where(and(eq(t.employees.managerEmployeeId, id), eq(t.employees.status, 'active')))
+              .limit(1);
+            if (encadre) {
+              problem(
+                422,
+                'people.mutation_sans_direction',
+                'Un n+1 reste affecté à une direction',
+                'Des agents relèvent de lui : choisissez une unité rattachée à une direction.',
+              );
+            }
+          }
           const directionDuResponsable = dossier?.managerId
             ? await this.directionDeEmploye(tx, dossier.managerId)
             : null;
