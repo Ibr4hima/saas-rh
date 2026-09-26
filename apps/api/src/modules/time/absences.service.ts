@@ -6,15 +6,12 @@ import type {
   AbsenceRequestView,
   AbsenceType,
   BalanceView,
-  ChoisirDelegationInput,
   CompteursValidations,
   CreateAbsenceRequestInput,
   CreateAbsenceTypeInput,
   CreateHolidayInput,
   DecideAbsenceRequestInput,
   EtapeCircuitView,
-  EtatDelegation,
-  MembreDCH,
   Holiday,
   ListAbsenceRequestsQuery,
   SessionUser,
@@ -23,6 +20,7 @@ import type {
   UpdateHolidayInput,
 } from '@teranga/contracts';
 import {
+  peut,
   MAX_JUSTIFICATIF_BYTES,
   SENEGAL_FIXED_HOLIDAYS,
   SENEGAL_MOBILE_HOLIDAYS,
@@ -33,22 +31,19 @@ import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayDedupeKey } from '../notifications/notifications.service';
 import { DG } from '../people/chaine';
-import { directionDeLUnite, uniteEnVigueur } from '../people/chaine';
 import { notifier } from '../notifications/notifier';
+import { detenteursDe, directionDuPersonnel, membreDCH, nomDe, nomsDe } from '../acces/dch';
+import { aTraiterPar, voitToutLaFile } from '../acces/demandes';
 import {
   annoncerLeVerdict,
   attendu,
-  choixDuDirecteur,
-  directionDuPersonnel,
   lireCircuit,
   lireDemande,
-  membreDCH,
   NIVEAU_DCH,
   NIVEAU_N1,
   reconcilierDemande,
   reconcilierLeCircuit,
   type Attendu,
-  type DirectionDuPersonnel,
 } from './visas';
 import { countWorkdays } from './workdays';
 
@@ -100,15 +95,6 @@ const DEFAULT_TYPES: DefaultType[] = [
     requiresDocument: true,
   },
 ];
-
-const MANAGE_ROLES = new Set(['admin', 'hr']);
-/**
- * Qui voit les demandes de TOUTE l'agence : la RH, et la paie qui en tire
- * les retenues. Les autres voient les leurs et celles de leurs agents
- * directs — celles qu'ils visent. Un type d'absence (maladie, maternité) est
- * une donnée sensible : le rôle ne suffit pas à l'ouvrir à tous.
- */
-const VOIENT_TOUT = new Set(['admin', 'hr', 'payroll']);
 
 function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
   return { tenantId: user.tenantId, userId: user.userId };
@@ -171,7 +157,7 @@ export class AbsencesService {
   async listTypes(user: SessionUser): Promise<AbsenceType[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       let rows = await this.selectTypes(tx);
-      if (rows.length === 0 && MANAGE_ROLES.has(user.role)) {
+      if (rows.length === 0 && peut(user, 'conges.parametres')) {
         for (const d of DEFAULT_TYPES) {
           await tx.insert(t.absenceTypes).values({
             id: uuidv7(),
@@ -297,7 +283,7 @@ export class AbsencesService {
 
   async listHolidays(user: SessionUser, year?: number): Promise<Holiday[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      if (year && MANAGE_ROLES.has(user.role)) await this.semerAnnee(tx, user, year);
+      if (year && peut(user, 'conges.parametres')) await this.semerAnnee(tx, user, year);
       const rows = await tx
         .select({
           id: t.holidays.id,
@@ -556,210 +542,48 @@ export class AbsencesService {
   async compteurs(user: SessionUser): Promise<CompteursValidations> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       const moi = await this.selfEmployeeId(tx, user);
-      if (!moi) return { equipe: 0, aViser: 0, traitement: false, aTraiter: 0 };
+      const rien = { documents: 0, informations: 0, pieces: 0, conges: 0 };
+      if (!moi) return { equipe: 0, aViser: 0, aTraiter: rien };
       const { rows } = await tx.execute<{ equipe: number }>(sql`
         SELECT count(*)::int AS equipe FROM employees e
          WHERE e.manager_employee_id = ${moi} AND e.status = 'active'
            AND e.id IS DISTINCT FROM ${DG}`);
       const equipe = rows[0]?.equipe ?? 0;
-      const traitement = await this.traiteLesDemandes(tx, moi);
-      if (equipe === 0 && !traitement) return { equipe, aViser: 0, traitement, aTraiter: 0 };
       // Qui est attendu, demande par demande : c'est le circuit qui le dit
-      // — un N+1 en congé, un délégué parti ne comptent pas.
+      // — un N+1 en congé, un membre parti ne comptent pas.
       const enAttente = await tx.execute<{ id: string }>(sql`
-        SELECT r.id FROM absence_requests r JOIN employees e ON e.id = r.employee_id
-         WHERE r.status = 'pending'
-           ${traitement ? sql`` : sql`AND e.manager_employee_id = ${moi}`}`);
+        SELECT id FROM absence_requests WHERE status = 'pending'`);
       let aViser = 0;
-      let aTraiter = 0;
+      let conges = 0;
       for (const { id } of enAttente.rows) {
         const demande = await lireCircuit(tx, id);
         const att = demande ? await attendu(tx, demande) : null;
-        if (att?.valideur?.employeeId !== moi) continue;
+        if (!att?.valideurs.some((v) => v.employeeId === moi)) continue;
         if (att.etape === 'n1') aViser += 1;
-        else aTraiter += 1;
+        else conges += 1;
       }
-      return { equipe, aViser, traitement, aTraiter };
+      return { equipe, aViser, aTraiter: { conges, ...(await aTraiterPar(tx, moi)) } };
     });
   }
 
   /**
-   * L'agent traite-t-il pour la DCH ? Il la dirige, il en a reçu la
-   * délégation — ou une demande lui a été confiée.
+   * Voit toutes les demandes de congé : qui les traite pour la DCH (son
+   * directeur, les membres habilités) et qui consulte les dossiers.
    */
-  private async traiteLesDemandes(tx: Tx, moi: string): Promise<boolean> {
-    const dch = await directionDuPersonnel(tx);
-    if (!dch) return false;
-    if (dch.directeurEmployeeId === moi) return true;
-    if (dch.directeurEmployeeId) {
-      const choix = await choixDuDirecteur(tx, dch.directeurEmployeeId);
-      if (choix?.delegueEmployeeId === moi && (await membreDCH(tx, dch, moi)) !== 'parti') {
-        return true;
-      }
-    }
-    const { rows } = await tx.execute(sql`
-      SELECT 1 FROM absence_requests
-       WHERE status = 'pending' AND confiee_a_employee_id = ${moi} LIMIT 1`);
-    return rows.length > 0;
-  }
-
-  /** Voit toutes les demandes : la RH, la paie, et qui traite pour la DCH. */
-  private async voitTout(tx: Tx, user: SessionUser): Promise<boolean> {
-    if (VOIENT_TOUT.has(user.role)) return true;
-    const moi = await this.selfEmployeeId(tx, user);
-    if (!moi) return false;
-    const dch = await directionDuPersonnel(tx);
-    if (!dch?.directeurEmployeeId) return false;
-    if (dch.directeurEmployeeId === moi) return true;
-    const choix = await choixDuDirecteur(tx, dch.directeurEmployeeId);
-    return choix?.delegueEmployeeId === moi && (await membreDCH(tx, dch, moi)) !== 'parti';
-  }
-
-  // ---------- Délégations du directeur du Capital Humain ----------
-
-  /** Les membres actifs de la DCH à qui l'on peut confier (hors directeur). */
-  private async membresDCH(tx: Tx, dch: DirectionDuPersonnel): Promise<MembreDCH[]> {
-    const { rows } = await tx.execute<{ id: string; nom: string; poste: string | null }>(sql`
-      SELECT e.id, p.given_name || ' ' || p.family_name AS nom,
-             (SELECT a.position_title FROM assignments a
-               WHERE a.employee_id = e.id
-                 AND (a.validity @> CURRENT_DATE OR lower(a.validity) > CURRENT_DATE)
-               ORDER BY lower(a.validity) LIMIT 1) AS poste
-        FROM employees e
-        JOIN persons p ON p.id = e.person_id AND p.user_id IS NOT NULL AND p.deleted_at IS NULL
-        JOIN users u ON u.id = p.user_id AND u.status = 'active'
-        JOIN user_tenant_memberships m ON m.user_id = u.id AND m.tenant_id = e.tenant_id
-       WHERE e.status = 'active'
-         AND e.id IS DISTINCT FROM ${dch.directeurEmployeeId}
-         AND ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'id')} = ${dch.uniteId}
-       ORDER BY p.family_name, p.given_name`);
-    return rows.map((r) => ({ employeeId: r.id, nom: r.nom, poste: r.poste }));
-  }
-
-  async etatDelegation(user: SessionUser): Promise<EtatDelegation> {
-    return this.db.withTenant(ctxOf(user), async (tx) => {
-      const moi = await this.selfEmployeeId(tx, user);
-      const dch = await directionDuPersonnel(tx);
-      const directeurId = dch?.directeurEmployeeId ?? null;
-      const estDirecteur = Boolean(moi && directeurId === moi);
-      const choix = directeurId ? await choixDuDirecteur(tx, directeurId) : null;
-      let delegue: EtatDelegation['delegue'] = null;
-      let delegueIndisponible: EtatDelegation['delegueIndisponible'] = null;
-      if (dch && choix?.delegueEmployeeId) {
-        const m = await membreDCH(tx, dch, choix.delegueEmployeeId);
-        const { rows } = await tx.execute<{ nom: string }>(sql`
-          SELECT p.given_name || ' ' || p.family_name AS nom
-            FROM employees e JOIN persons p ON p.id = e.person_id
-           WHERE e.id = ${choix.delegueEmployeeId}`);
-        delegue = { employeeId: choix.delegueEmployeeId, nom: rows[0]?.nom ?? '' };
-        delegueIndisponible = m === 'parti' ? 'parti' : m.absent ? 'absent' : null;
-      }
-      const { rows: nomDirecteur } = directeurId
-        ? await tx.execute<{ nom: string }>(sql`
-            SELECT p.given_name || ' ' || p.family_name AS nom
-              FROM employees e JOIN persons p ON p.id = e.person_id WHERE e.id = ${directeurId}`)
-        : { rows: [] as { nom: string }[] };
-      return {
-        estDirecteur,
-        estDelegue: Boolean(moi && delegue?.employeeId === moi && delegueIndisponible !== 'parti'),
-        directeur: directeurId
-          ? { employeeId: directeurId, nom: nomDirecteur[0]?.nom ?? '' }
-          : null,
-        choix: !choix ? 'aucun' : choix.delegueEmployeeId ? 'delegue' : 'moi',
-        delegue,
-        delegueIndisponible,
-        membres: estDirecteur && dch ? await this.membresDCH(tx, dch) : [],
-      };
-    });
-  }
-
-  /**
-   * Le directeur du Capital Humain choisit : il confie un type de demande à
-   * un membre de sa direction, ou il le traite lui-même. Le choix remplace le
-   * précédent (qui est clos, pas effacé) ; les demandes qui l'attendaient
-   * suivent aussitôt, et le membre est prévenu.
-   */
-  async choisirDelegation(user: SessionUser, input: ChoisirDelegationInput): Promise<void> {
-    await this.db.withTenant(ctxOf(user), async (tx) => {
-      const moi = await this.selfEmployeeId(tx, user);
-      const dch = await directionDuPersonnel(tx);
-      if (!dch || !moi || dch.directeurEmployeeId !== moi) {
-        problem(
-          403,
-          'absence.reserve_au_directeur_dch',
-          'Seul le directeur du Capital Humain confie les demandes',
-        );
-      }
-      const nouveau = input.delegueEmployeeId;
-      if (nouveau) {
-        const m = await membreDCH(tx, dch, nouveau);
-        if (m === 'parti' || nouveau === moi) {
-          problem(
-            422,
-            'absence.pas_membre_dch',
-            'Choisissez un membre de la DCH',
-            'Les demandes se confient à un agent actif de votre direction, qui a accès au portail.',
-          );
-        }
-      }
-      const avant = await choixDuDirecteur(tx, moi, input.typeDemande);
-      if (avant && avant.delegueEmployeeId === nouveau) return;
-      if (avant) {
-        await tx.execute(sql`UPDATE delegations SET fin_at = now() WHERE id = ${avant.id}`);
-      }
-      const delegationId = uuidv7();
-      await tx.insert(t.delegations).values({
-        id: delegationId,
-        tenantId: user.tenantId,
-        typeDemande: input.typeDemande,
-        directeurEmployeeId: moi,
-        delegueEmployeeId: nouveau,
-      });
-      const nomDirecteur = `${user.givenName} ${user.familyName}`;
-      const prevenir = async (employeeId: string, titre: string, corps: string, cle: string) => {
-        const { rows } = await tx.execute<{ user_id: string | null }>(sql`
-          SELECT p.user_id FROM employees e JOIN persons p ON p.id = e.person_id
-           WHERE e.id = ${employeeId}`);
-        if (rows[0]?.user_id) {
-          await notifier(tx, user.tenantId, rows[0].user_id, {
-            type: 'delegation',
-            title: titre,
-            body: corps,
-            link: '/moi/dch',
-            dedupeKey: `delegation:${delegationId}:${cle}`,
-          });
-        }
-      };
-      if (nouveau) {
-        await prevenir(
-          nouveau,
-          'Les demandes de congé vous sont confiées',
-          `${nomDirecteur}, qui dirige la DCH, vous confie les demandes de congé : elles vous arrivent directement, une fois visées par le N+1.`,
-          'confiee',
-        );
-      }
-      if (avant?.delegueEmployeeId && avant.delegueEmployeeId !== nouveau) {
-        await prevenir(
-          avant.delegueEmployeeId,
-          'Les demandes de congé ne vous sont plus confiées',
-          `${nomDirecteur} reprend les demandes de congé${nouveau ? ' et les confie à un autre membre' : ''}. Celles qui vous étaient déjà confiées restent chez vous.`,
-          'retiree',
-        );
-      }
-      await reconcilierLeCircuit(tx, user.tenantId);
-    });
+  private voitTout(tx: Tx, user: SessionUser): Promise<boolean> {
+    return voitToutLaFile(tx, user, 'conges', peut(user, 'personnel.consulter'));
   }
 
   /**
    * Confier UNE demande à un membre de la DCH — ou la reprendre (`null`).
-   * Rend `proposerRegle` : le directeur vient de confier à la main ; l'écran
-   * lui demande s'il veut confier les suivantes à la même personne.
+   * Rend `proposerHabilitation` : le membre n'est pas habilité aux congés ;
+   * l'écran propose au directeur de lui confier aussi les suivantes.
    */
   async confier(
     user: SessionUser,
     requestId: string,
     employeeId: string | null,
-  ): Promise<{ proposerRegle: boolean }> {
+  ): Promise<{ proposerHabilitation: boolean }> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       const [request] = await tx
         .select()
@@ -813,8 +637,11 @@ export class AbsencesService {
         .set({ confieeAEmployeeId: employeeId ?? moi })
         .where(eq(t.absenceRequests.id, requestId));
       await reconcilierDemande(tx, requestId);
-      const choix = await choixDuDirecteur(tx, moi);
-      return { proposerRegle: Boolean(employeeId && choix?.delegueEmployeeId !== employeeId) };
+      return {
+        proposerHabilitation: Boolean(
+          employeeId && !(await detenteursDe(tx, 'demandes.conges')).includes(employeeId),
+        ),
+      };
     });
   }
 
@@ -1158,22 +985,22 @@ export class AbsencesService {
       const att = (await attendu(tx, demande))!;
       const directeur = att.dch?.directeur ?? null;
       const estDirecteur = directeur?.userId === user.userId;
-      const estAttendu = att.valideur?.userId === user.userId;
+      const estAttendu = att.valideurs.some((v) => v.userId === user.userId);
       if (!estAttendu && !(att.etape === 'dch' && estDirecteur)) {
         if (att.etape === 'n1') {
           problem(
             403,
             'absence.reservee_au_n1',
             'Cette demande attend le visa de son N+1',
-            `${att.valideur?.nom ?? 'Son N+1'} la vise d’abord ; la DCH la reçoit ensuite.`,
+            `${nomsDe(att.valideurs) ?? 'Son N+1'} la vise d’abord ; la DCH la reçoit ensuite.`,
           );
         }
         problem(
           403,
           'absence.reservee_a_la_dch',
           'Cette demande attend la Direction du Capital Humain',
-          att.valideur
-            ? `${att.valideur.nom} la traite.`
+          att.valideurs.length > 0
+            ? `${nomsDe(att.valideurs)} la traite.`
             : 'Personne ne traite pour la DCH en ce moment : l’administrateur est prévenu.',
         );
       }
@@ -1214,13 +1041,10 @@ export class AbsencesService {
           .where(eq(t.absenceRequests.id, requestId));
         const suite = await attendu(tx, { ...demande, currentLevel: NIVEAU_DCH });
         // Le même, attendu aux deux étapes : un seul visa.
-        const aussiDCH =
-          suite?.valideur?.userId === user.userId || suite?.dch?.directeur?.userId === user.userId;
+        const traiteAussi = Boolean(suite?.valideurs.some((v) => v.userId === user.userId));
+        const aussiDCH = traiteAussi || suite?.dch?.directeur?.userId === user.userId;
         if (aussiDCH) {
-          const pourLeCompteDe =
-            suite?.valideur?.userId === user.userId
-              ? (suite.parDelegationDe?.employeeId ?? null)
-              : null;
+          const pourLeCompteDe = traiteAussi ? (suite?.parDelegationDe?.employeeId ?? null) : null;
           await viser(NIVEAU_DCH, pourLeCompteDe);
           await clore(NIVEAU_DCH, `${nom}, votre N+1`);
           return;
@@ -1249,16 +1073,14 @@ export class AbsencesService {
   ): Promise<void> {
     const dch = att.dch;
     if (!dch?.directeur || dch.directeur.employeeId !== demande.employeeId) return;
-    const choix = await choixDuDirecteur(tx, dch.directeur.employeeId);
-    if (choix?.delegueEmployeeId) {
-      const m = await membreDCH(tx, dch, choix.delegueEmployeeId);
-      if (m !== 'parti') return;
+    for (const id of await detenteursDe(tx, 'demandes.conges')) {
+      if ((await membreDCH(tx, dch, id)) !== 'parti') return;
     }
     await notifier(tx, user.tenantId, dch.directeur.userId, {
       type: 'delegation',
       title: 'Pendant votre congé',
       body: 'Personne ne traite les demandes de congé à votre place : elles vous attendront jusqu’à votre retour. Vous pouvez les confier à un membre de la DCH d’ici là.',
-      link: '/moi/dch',
+      link: '/moi/delegations',
       dedupeKey: `delegation:absence:${demande.id}`,
     });
   }
@@ -1274,9 +1096,10 @@ export class AbsencesService {
       if (!request) {
         problem(404, 'absence.request_not_found', 'Demande introuvable');
       }
-      if (!MANAGE_ROLES.has(user.role)) {
+      if (!(await voitToutLaFile(tx, user, 'conges', false))) {
         // Le titulaire du dossier peut annuler sa demande en attente, même si
-        // c'est la RH qui l'avait saisie pour lui.
+        // c'est la DCH qui l'avait saisie pour lui. La DCH (son directeur,
+        // les membres habilités aux congés) annule aussi un congé à venir.
         const self = await this.selfEmployeeId(tx, user);
         const isOwnPending =
           (request.requestedByUserId === user.userId || request.employeeId === self) &&
@@ -1310,7 +1133,7 @@ export class AbsencesService {
     });
   }
 
-  /** Justificatif d'une demande — admin/RH ou titulaire du dossier uniquement. */
+  /** Justificatif d'une demande — la DCH (données sensibles) ou le titulaire. */
   async document(
     user: SessionUser,
     requestId: string,
@@ -1327,13 +1150,13 @@ export class AbsencesService {
       if (!request) {
         problem(404, 'absence.request_not_found', 'Demande introuvable');
       }
-      if (!MANAGE_ROLES.has(user.role)) {
+      if (!peut(user, 'personnel.sensible')) {
         const self = await this.selfEmployeeId(tx, user);
-        // Le titulaire ; et qui traite pour la DCH — son directeur, le
-        // membre à qui la demande est confiée. Jamais le N+1.
-        const dch = self ? await directionDuPersonnel(tx) : null;
+        // Le titulaire ; et qui traite pour la DCH — son directeur, les
+        // membres habilités aux congés, le membre à qui la demande est
+        // confiée. Jamais le N+1.
         const traite = Boolean(
-          self && (dch?.directeurEmployeeId === self || request.confieeA === self),
+          self && (request.confieeA === self || (await voitToutLaFile(tx, user, 'conges', false))),
         );
         if (self !== request.employeeId && !traite) {
           // Données de santé potentielles : ni managers ni paie n'y accèdent.
@@ -1373,9 +1196,9 @@ export class AbsencesService {
     return row?.id ?? null;
   }
 
-  /** Gestionnaires : accès à tout dossier ; autres rôles : uniquement le leur. */
+  /** Qui consulte les dossiers, ou gère les soldes : tout dossier ; les autres, le leur. */
   private async assertEmployeeScope(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
-    if (MANAGE_ROLES.has(user.role) || user.role === 'payroll') return;
+    if (peut(user, 'personnel.consulter') || peut(user, 'conges.soldes')) return;
     const self = await this.selfEmployeeId(tx, user);
     if (self !== employeeId) {
       problem(403, 'people.forbidden_scope', 'Accès limité à votre propre dossier');
@@ -1554,7 +1377,7 @@ export class AbsencesService {
       const etapeN1 =
         signe(NIVEAU_N1) ??
         (att?.etape === 'n1'
-          ? vide('n1', 'attendue', att.valideur?.nom ?? null)
+          ? vide('n1', 'attendue', nomsDe(att.valideurs))
           : request.status === 'cancelled' && request.currentLevel === NIVEAU_N1
             ? vide('n1', 'sans_objet', null)
             : vide('n1', 'passee', null));
@@ -1564,7 +1387,7 @@ export class AbsencesService {
       const etapeDCH =
         signe(NIVEAU_DCH) ??
         (att?.etape === 'dch'
-          ? vide('dch', 'attendue', att.valideur?.nom ?? null)
+          ? vide('dch', 'attendue', nomsDe(att.valideurs))
           : enAttente && !att?.demandeDuDirecteur
             ? vide('dch', 'a_venir', null)
             : vide('dch', 'sans_objet', null));
@@ -1575,9 +1398,23 @@ export class AbsencesService {
         moi !== request.employeeId &&
         Boolean(
           att &&
-          (att.valideur?.userId === user.userId ||
+          (att.valideurs.some((v) => v.userId === user.userId) ||
             (att.etape === 'dch' && estDirecteur && !att.demandeDuDirecteur)),
         );
+      const confieeA = request.confieeAEmployeeId;
+      const traitement =
+        att?.etape === 'dch'
+          ? {
+              traitants: nomsDe(att.valideurs),
+              confiee:
+                confieeA && confieeA !== att.dch?.directeurEmployeeId
+                  ? { employeeId: confieeA, nom: await nomDe(tx, confieeA) }
+                  : null,
+              peutConfier: estDirecteur && !att.demandeDuDirecteur,
+              aConfier: false,
+              pourMoi: att.valideurs.some((v) => v.employeeId === moi),
+            }
+          : null;
 
       vues.push({
         id: request.id,
@@ -1597,12 +1434,7 @@ export class AbsencesService {
         etapeAttendue: att?.etape ?? null,
         circuit: [etapeN1, etapeDCH],
         canDecide,
-        traitant:
-          att?.etape === 'dch' && att.valideur
-            ? { employeeId: att.valideur.employeeId, nom: att.valideur.nom }
-            : null,
-        confiee: Boolean(att?.etape === 'dch' && att.parDelegationDe),
-        peutConfier: Boolean(enAttente && att?.etape === 'dch' && estDirecteur),
+        traitement,
         documentName: documentRows.find((d) => d.requestId === request.id)?.filename ?? null,
         approvals: visas.map((a) => ({
           level: a.level,

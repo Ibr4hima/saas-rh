@@ -25,7 +25,7 @@ import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
 import { SESSION_COOKIE } from '../auth/auth.constants';
 import { loadEnv } from '../../config/env';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { InvitationsService } from './invitations.service';
 import { quiViseraPour } from '../time/visas';
@@ -40,8 +40,8 @@ export class PortalController {
   // ---------- Côté gestionnaire (session requise) ----------
 
   @Post('employees/:id/invite')
-  @UseGuards(SessionGuard, RolesGuard)
-  @Roles('admin', 'hr')
+  @UseGuards(SessionGuard, AccesGuard)
+  @Peut('personnel.gerer')
   invite(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,

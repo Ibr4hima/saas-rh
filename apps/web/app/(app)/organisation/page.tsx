@@ -17,6 +17,7 @@ import {
   type OrgUnitMember,
   type OrgUnitType,
   type OrgUnitView,
+  peut,
 } from '@teranga/contracts';
 import {
   Button,
@@ -91,8 +92,9 @@ function typeEnfantPropose(parent: OrgUnitView): OrgUnitType {
 export default function OrganisationPage() {
   const me = useMe();
   const router = useRouter();
-  const canManage = Boolean(me.data && ['admin', 'hr'].includes(me.data.role));
-  const isStaff = Boolean(me.data && ['admin', 'hr', 'payroll'].includes(me.data.role));
+  const canManage = peut(me.data, 'organigramme');
+  // Ouvrir la fiche d'un agent depuis l'organigramme : qui consulte les dossiers.
+  const isStaff = peut(me.data, 'personnel.consulter');
   const parametres = useSearchParams();
   // L'unité peut être désignée par l'URL (?unite=<id>) : c'est ainsi que la
   // palette et le tableau de bord ouvrent l'organigramme directement sur elle.

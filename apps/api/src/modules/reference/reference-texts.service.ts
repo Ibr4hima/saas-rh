@@ -9,6 +9,7 @@ import type {
   SessionUser,
 } from '@teranga/contracts';
 import {
+  peut,
   MAX_REFERENCE_PDF_BYTES,
   numeroArticle,
   numeroChapitre,
@@ -38,9 +39,9 @@ export class ReferenceTextsService {
     return { tenantId: user.tenantId, userId: user.userId };
   }
 
-  /** Qui dépose et rédige : la RH et l'administration, personne d'autre. */
+  /** Qui dépose et rédige : la DCH (ou qui elle habilite), et l'administration. */
   private redige(user: SessionUser): boolean {
-    return user.role === 'admin' || user.role === 'hr';
+    return peut(user, 'textes');
   }
 
   /**

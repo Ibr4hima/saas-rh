@@ -23,8 +23,8 @@ const tenantId = randomUUID();
 const autreTenantId = randomUUID();
 const rhUserId = randomUUID();
 
-const rh = { userId: rhUserId, tenantId, role: 'hr' } as SessionUser;
-const rhAilleurs = { userId: rhUserId, tenantId: autreTenantId, role: 'hr' } as SessionUser;
+const rh = { userId: rhUserId, tenantId, role: 'admin' } as SessionUser;
+const rhAilleurs = { userId: rhUserId, tenantId: autreTenantId, role: 'admin' } as SessionUser;
 
 let ownerPool: Pool;
 let db: TenantDb;
@@ -63,7 +63,7 @@ beforeAll(async () => {
     ]);
     await raw(
       `INSERT INTO user_tenant_memberships (id, tenant_id, user_id, role)
-       VALUES ($1,$2,$3,'hr')`,
+       VALUES ($1,$2,$3,'admin')`,
       [randomUUID(), id, rhUserId],
     );
   }

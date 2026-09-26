@@ -259,6 +259,31 @@ for (const [employeeId, [, password]] of Object.entries(PASSWORDS)) {
   employeeCookies[employeeId] = res.headers.get('set-cookie').split(';')[0];
 }
 
+/** Un appel au nom d'un agent, depuis son portail. */
+const enTantQue = async (employeeId, method, path, body) => {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', cookie: employeeCookies[employeeId] },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`${method} ${path} → ${res.status} : ${await res.text()}`);
+  const texte = await res.text();
+  return texte ? JSON.parse(texte) : undefined;
+};
+
+console.log('→ Délégations : Mariama confie les documents et les dossiers à Awa');
+// Tout le monde est agent ; ce qu'on fait de plus vient de l'organigramme.
+// Mariama dirige la DCH : tout lui revient. Elle confie à Awa, membre de sa
+// direction, les demandes de documents et la consultation des dossiers — le
+// reste (congés, informations, pièces…) reste chez elle.
+for (const capacite of ['demandes.documents', 'personnel.consulter']) {
+  await enTantQue(directriceRh.id, 'PUT', '/habilitations', {
+    employeeId: awa.id,
+    capacite,
+    accordee: true,
+  });
+}
+
 console.log('→ Demandes posées par les employés (2 approuvées, 2 en attente)');
 const echappe = (t) => t.replace(/([()\\])/g, '\\$1');
 
@@ -382,7 +407,7 @@ await request(
   'Mariage d’un proche à Saint-Louis',
 );
 
-console.log('→ Pièce justificative : Awa dépose une attestation (à valider par la RH)');
+console.log('→ Pièce justificative : Awa dépose une attestation (à vérifier par la DCH)');
 // Un VRAI PDF pour la démo : l'attestation de travail générée par la plateforme.
 const attRes = await fetch(`${BASE}/employees/${awa.id}/attestation`, {
   headers: { cookie },
@@ -484,29 +509,35 @@ const requestDocs = async (employeeId, docTypes, note) => {
   if (!res.ok) throw new Error(`demande documents → ${res.status} : ${data.title}`);
   return data;
 };
-// Awa : demande toute fraîche, en attente de traitement.
+// Awa : demande toute fraîche. Elle traite les documents, mais pas les
+// siens : sa demande va à Mariama, qui dirige la DCH.
 await requestDocs(awa.id, ['attestation_travail'], 'Pour ouvrir un compte bancaire.');
-// Moussa : prise en charge, en cours de préparation.
+// Moussa : prise en charge par Awa, en cours de préparation.
 const dr2 = await requestDocs(
   moussa.id,
   ['attestation_travail', 'attestation_salaire'],
   'Dossier de visa Schengen.',
 );
-await call('POST', `/document-requests/${dr2.id}/advance`, { status: 'processing' });
+await enTantQue(awa.id, 'POST', `/document-requests/${dr2.id}/advance`, {
+  status: 'processing',
+});
 // Fatou : prête, l'employée est prévenue du lieu de retrait.
 const dr3 = await requestDocs(fatou.id, ['contrat_travail'], 'Copie pour mes archives.');
-await call('POST', `/document-requests/${dr3.id}/advance`, { status: 'processing' });
-await call('POST', `/document-requests/${dr3.id}/advance`, {
+await enTantQue(awa.id, 'POST', `/document-requests/${dr3.id}/advance`, {
+  status: 'processing',
+});
+await enTantQue(awa.id, 'POST', `/document-requests/${dr3.id}/advance`, {
   status: 'ready',
-  pickupContact: 'Mme Fatou Sall',
+  pickupContact: 'Awa Diop',
   message: 'bureau 204, du lundi au vendredi 9h–16h',
 });
 
 console.log(`
 ✔ Démo prête.
   Admin       : ${ADMIN.email} / ${ADMIN.password}
+  DCH         : m.cisse@apix.sn / MotDePasseMariama1! (dirige la DCH — Délégations)
   Employés    : a.diop@apix.sn / MotDePasseAwa1234! (idem Moussa1!, Fatou12!)
   Employés    : Awa (EMP-001, ${awa.id}), Moussa (EMP-002, ${moussa.id}), Fatou (EMP-003, ${fatou.id})
   Recrutement : offre « Chargé d'affaires investissement » publiée
                 lien candidat → http://localhost:3002/postuler/${job.publicSlug}
-  À tester    : Documents → file d'attente RH ; espace employé → « Demander un document ».`);
+  À tester    : Mariama → « Demandes à traiter », « Délégations » ; Awa → documents confiés.`);

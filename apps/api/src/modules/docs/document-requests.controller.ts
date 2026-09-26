@@ -22,7 +22,7 @@ import {
 } from '@teranga/contracts';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { DocumentRequestsService } from './document-requests.service';
 
@@ -34,7 +34,7 @@ const listQuerySchema = z.object({
 });
 
 @Controller()
-@UseGuards(SessionGuard, RolesGuard)
+@UseGuards(SessionGuard, AccesGuard)
 export class DocumentRequestsController {
   constructor(
     @Inject(DocumentRequestsService) private readonly requests: DocumentRequestsService,
@@ -63,7 +63,6 @@ export class DocumentRequestsController {
    * sans quoi « batch-advance » serait lu comme un identifiant.
    */
   @Post('document-requests/batch-advance')
-  @Roles('admin', 'hr')
   batchAdvance(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(batchAdvanceDocumentRequestSchema))
@@ -73,7 +72,6 @@ export class DocumentRequestsController {
   }
 
   @Post('document-requests/:id/advance')
-  @Roles('admin', 'hr')
   @HttpCode(204)
   async advance(
     @Req() req: AuthenticatedRequest,

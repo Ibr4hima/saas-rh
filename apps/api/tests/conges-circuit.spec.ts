@@ -4,23 +4,26 @@
  * Décidé avec l'APIX : le N+1 de l'agent vise d'abord ; une fois visée, la
  * demande passe au directeur du Capital Humain — le responsable de la
  * direction du personnel —, qui la traite ou la confie à un membre de sa
- * direction. Chaque règle a son test : qui peut viser, qui est prévenu, ce
- * que le demandeur apprend.
+ * direction — une demande à la main, ou toutes, en habilitant des membres.
+ * Chaque règle a son test : qui peut viser, qui est prévenu, ce que le
+ * demandeur apprend.
  *
  * Le bac d'essai : la Direction Générale et son DG (Cheikh) ; la DCH, dirigée
  * par Mariama, avec Awa, Khady et Binta (N+1 : Awa) ; la DSID, où Moussa
- * relève d'Ousmane, et Fatou d'un N+1 sans accès au portail ; la RH (rôle,
- * sans dossier) et l'administrateur.
+ * relève d'Ousmane, et Fatou d'un N+1 sans accès au portail ; un compte sans
+ * dossier, et l'administrateur.
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionUser } from '@teranga/contracts';
+import { CAPACITES, CAPACITES_GESTION, type Capacite, type SessionUser } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
+import { capacitesDe } from '../src/modules/acces/dch';
+import { HabilitationsService } from '../src/modules/acces/habilitations.service';
 import { OrgUnitsService } from '../src/modules/people/org-units.service';
 import { PeopleService } from '../src/modules/people/people.service';
 import { AbsencesService } from '../src/modules/time/absences.service';
@@ -32,6 +35,7 @@ const tenantId = randomUUID();
 let ownerPool: Pool;
 let db: TenantDb;
 let absences: AbsencesService;
+let habilitations: HabilitationsService;
 let people: PeopleService;
 let organigramme: OrgUnitsService;
 let typeId: string;
@@ -116,7 +120,7 @@ let ousmane: Agent;
 let moussa: Agent;
 let sansCompte: Agent;
 let fatou: Agent;
-let rh: SessionUser;
+let sansDossier: SessionUser;
 let admin: SessionUser;
 
 let semaine = 0;
@@ -171,6 +175,10 @@ async function notif(prenom: string, cle: string): Promise<string | null> {
   return rows[0]?.body ?? null;
 }
 
+/** Mariama, qui dirige la DCH, confie les demandes de congé à ce membre. */
+const habiliter = (qui: Agent, accordee = true, capacite: Capacite = 'demandes.conges') =>
+  habilitations.accorder(mariama.session, { employeeId: qui.employeeId, capacite, accordee });
+
 const viser = (
   qui: Agent | SessionUser,
   id: string,
@@ -193,6 +201,7 @@ beforeAll(async () => {
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 3 });
   db = new TenantDb();
   absences = new AbsencesService(db);
+  habilitations = new HabilitationsService(db);
   people = new PeopleService(db, new EncryptionService());
   organigramme = new OrgUnitsService(db);
   await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1,'Circuit',$2)`, [
@@ -205,7 +214,7 @@ beforeAll(async () => {
      VALUES ($1,$2,'Congé annuel',true,300,'annual')`,
     [typeId, tenantId],
   );
-  rh = await compte('Rokhaya', 'hr');
+  sansDossier = await compte('Rokhaya', 'employee');
   admin = await compte('Ibrahima', 'admin');
 
   uDG = await unite('Direction Générale', null);
@@ -231,7 +240,7 @@ beforeEach(async () => {
   await raw(`DELETE FROM notifications WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM absence_approvals WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM absence_requests WHERE tenant_id = $1`, [tenantId]);
-  await raw(`DELETE FROM delegations WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM habilitations WHERE tenant_id = $1`, [tenantId]);
   // L'organigramme d'origine : Mariama dirige la DCH, chacun à sa place.
   await raw(
     `UPDATE org_units SET manager_employee_id = $2, direction_du_personnel = true WHERE id = $1`,
@@ -262,7 +271,7 @@ afterAll(async () => {
     'absence_approvals',
     'absence_requests',
     'absence_types',
-    'delegations',
+    'habilitations',
   ]) {
     await raw(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
   }
@@ -284,11 +293,11 @@ afterAll(async () => {
 });
 
 describe('le N+1 d’abord, puis la DCH', () => {
-  it('la demande attend le N+1, seul prévenu ; ni la RH ni l’administrateur ne visent à sa place', async () => {
+  it('la demande attend le N+1, seul prévenu ; ni un autre compte ni l’administrateur ne visent à sa place', async () => {
     const id = await poser(moussa);
     expect(await circuit(id)).toEqual(['n1:attendue:Ousmane Test', 'dch:a_venir:']);
     expect(await appels(id)).toEqual(['n1:Ousmane']);
-    expect(await codeOf(() => viser(rh, id))).toBe('absence.reservee_au_n1');
+    expect(await codeOf(() => viser(sansDossier, id))).toBe('absence.reservee_au_n1');
     expect(await codeOf(() => viser(admin, id))).toBe('absence.reservee_au_n1');
     expect(await codeOf(() => viser(mariama, id))).toBe('absence.reservee_au_n1');
   });
@@ -298,7 +307,7 @@ describe('le N+1 d’abord, puis la DCH', () => {
     await viser(ousmane, id);
     expect(await circuit(id)).toEqual(['n1:visee:Ousmane Test', 'dch:attendue:Mariama Test']);
     expect(await appels(id)).toEqual(['dch:Mariama']);
-    expect(await codeOf(() => viser(rh, id))).toBe('absence.reservee_a_la_dch');
+    expect(await codeOf(() => viser(sansDossier, id))).toBe('absence.reservee_a_la_dch');
     expect(await codeOf(() => viser(admin, id))).toBe('absence.reservee_a_la_dch');
     await viser(mariama, id);
     expect((await vue(id)).status).toBe('approved');
@@ -356,10 +365,7 @@ describe('les cas où une seule signature suffit', () => {
   });
 
   it('le N+1 est le membre qui traite pour la DCH : un seul visa', async () => {
-    await absences.choisirDelegation(mariama.session, {
-      typeDemande: 'conges',
-      delegueEmployeeId: awa.employeeId,
-    });
+    await habiliter(awa);
     const id = await poser(binta);
     await viser(awa, id);
     expect((await vue(id)).status).toBe('approved');
@@ -372,10 +378,12 @@ describe('le directeur confie une demande', () => {
     const id = await poser(moussa);
     await viser(ousmane, id);
     const r = await absences.confier(mariama.session, id, awa.employeeId);
-    expect(r.proposerRegle).toBe(true);
+    expect(r.proposerHabilitation).toBe(true);
     expect(await appels(id)).toEqual(['dch:Awa']);
-    expect((await vue(id)).traitant?.nom).toBe('Awa Test');
-    expect((await vue(id)).confiee).toBe(true);
+    expect((await vue(id)).traitement).toMatchObject({
+      traitants: 'Awa Test',
+      confiee: { nom: 'Awa Test' },
+    });
     await viser(awa, id);
     expect(await circuit(id)).toEqual(['n1:visee:Ousmane Test', 'dch:visee:Awa Test/Mariama Test']);
     expect(await notif('Moussa', `conge:${id}:verdict`)).toContain('Awa Test, pour la DCH');
@@ -406,49 +414,64 @@ describe('le directeur confie une demande', () => {
   });
 });
 
-describe('le directeur confie toutes les demandes', () => {
-  it('elles vont directement au délégué ; le directeur n’est plus prévenu, mais voit tout', async () => {
-    await absences.choisirDelegation(mariama.session, {
-      typeDemande: 'conges',
-      delegueEmployeeId: awa.employeeId,
-    });
-    expect(await notif('Awa', '%')).toContain('vous confie les demandes de congé');
+describe('le directeur habilite des membres de sa direction', () => {
+  it('les demandes vont directement au membre ; le directeur n’est plus prévenu, mais voit tout', async () => {
+    await habiliter(awa);
+    expect(await notif('Awa', 'habilitation:%:accordee')).toContain(
+      'vous confie : demandes de congé',
+    );
     const id = await poser(moussa);
     await viser(ousmane, id);
     expect(await appels(id)).toEqual(['dch:Awa']);
     expect((await vue(id, mariama.session)).canDecide).toBe(true);
-    const etat = await absences.etatDelegation(mariama.session);
-    expect(etat).toMatchObject({ estDirecteur: true, choix: 'delegue', delegueIndisponible: null });
-    expect(etat.membres.map((m) => m.nom)).toEqual(['Awa Test', 'Binta Test', 'Khady Test']);
+    const etat = await habilitations.etat(mariama.session);
+    expect(etat.estDirecteur).toBe(true);
+    expect(etat.membres.map((m) => `${m.nom}:${m.capacites.join(',')}`)).toEqual([
+      'Awa Test:demandes.conges',
+      'Binta Test:',
+      'Khady Test:',
+    ]);
   });
 
-  it('le délégué en congé : les demandes reviennent au directeur le temps de son absence', async () => {
-    await absences.choisirDelegation(mariama.session, {
-      typeDemande: 'conges',
-      delegueEmployeeId: khady.employeeId,
-    });
+  it('deux membres habilités : les deux sont appelés, le premier qui vise l’emporte', async () => {
+    await habiliter(awa);
+    await habiliter(khady);
+    const id = await poser(moussa);
+    await viser(ousmane, id);
+    expect(await appels(id)).toEqual(['dch:Awa', 'dch:Khady']);
+    expect(await circuit(id)).toEqual([
+      'n1:visee:Ousmane Test',
+      'dch:attendue:Awa Test ou Khady Test',
+    ]);
+    await viser(khady, id);
+    expect(await circuit(id)).toEqual([
+      'n1:visee:Ousmane Test',
+      'dch:visee:Khady Test/Mariama Test',
+    ]);
+    expect(await appels(id)).toEqual([]);
+  });
+
+  it('le membre en congé : les demandes vont aux autres, sinon au directeur', async () => {
+    await habiliter(khady);
     await enConge(khady);
     const id = await poser(moussa);
     await viser(ousmane, id);
     expect(await appels(id)).toEqual(['dch:Mariama']);
-    expect((await absences.etatDelegation(mariama.session)).delegueIndisponible).toBe('absent');
+    await habiliter(awa);
+    expect(await appels(id)).toEqual(['dch:Awa']);
+    const etat = await habilitations.etat(mariama.session);
+    expect(etat.membres.find((m) => m.nom === 'Khady Test')?.absent).toBe(true);
   });
 
-  it('le délégué ne traite pas sa propre demande : elle revient au directeur', async () => {
-    await absences.choisirDelegation(mariama.session, {
-      typeDemande: 'conges',
-      delegueEmployeeId: binta.employeeId,
-    });
+  it('le membre ne traite pas sa propre demande : elle revient au directeur', async () => {
+    await habiliter(binta);
     const id = await poser(binta);
     await viser(awa, id);
     expect(await appels(id)).toEqual(['dch:Mariama']);
   });
 
-  it('le délégué quitte la DCH : ses demandes reviennent au directeur, qui est prévenu', async () => {
-    await absences.choisirDelegation(mariama.session, {
-      typeDemande: 'conges',
-      delegueEmployeeId: awa.employeeId,
-    });
+  it('le membre quitte la DCH : ses habilitations tombent, le directeur est prévenu', async () => {
+    await habiliter(awa);
     const id = await poser(moussa);
     await viser(ousmane, id);
     expect(await appels(id)).toEqual(['dch:Awa']);
@@ -458,41 +481,76 @@ describe('le directeur confie toutes les demandes', () => {
     ]);
     await reconcilier();
     expect(await appels(id)).toEqual(['dch:Mariama']);
-    expect(await notif('Mariama', 'delegation:%:rompue')).toContain(
-      'ne fait plus partie de la Direction du Capital Humain',
+    expect(await notif('Mariama', 'habilitations:%:partie:%')).toContain(
+      'Ses habilitations sont retirées : demandes de congé',
     );
-    expect((await absences.etatDelegation(mariama.session)).delegueIndisponible).toBe('parti');
+    const { rows } = await raw(`SELECT fin_motif FROM habilitations WHERE employee_id = $1`, [
+      awa.employeeId,
+    ]);
+    expect(rows).toEqual([{ fin_motif: 'partie' }]);
   });
 
-  it('un nouveau directeur ne reprend pas le choix de l’ancien ; ce qui était confié le reste', async () => {
-    await absences.choisirDelegation(mariama.session, {
-      typeDemande: 'conges',
-      delegueEmployeeId: awa.employeeId,
-    });
+  it('retirée par le directeur : le membre l’apprend, les demandes reviennent', async () => {
+    await habiliter(awa);
+    const id = await poser(moussa);
+    await viser(ousmane, id);
+    await habiliter(awa, false);
+    expect(await appels(id)).toEqual(['dch:Mariama']);
+    expect(await notif('Awa', 'habilitation:%:retiree')).toContain('reprend');
+  });
+
+  it('un nouveau directeur trouve les délégations en place — elles sont à la DCH —, et en est prévenu', async () => {
+    await habiliter(awa);
     const dejaConfiee = await poser(moussa);
     await viser(ousmane, dejaConfiee);
     // Khady prend la tête de la DCH.
     await organigramme.update(admin, uDCH, { managerEmployeeId: khady.employeeId });
     expect(await appels(dejaConfiee)).toEqual(['dch:Awa']);
     const nouvelle = await poser(fatou);
-    expect(await appels(nouvelle)).toEqual(['dch:Khady']);
-    expect((await absences.etatDelegation(khady.session)).choix).toBe('aucun');
+    expect(await appels(nouvelle)).toEqual(['dch:Awa']);
+    expect(await notif('Khady', 'dch:directeur:%')).toContain(
+      'Les délégations en place sont maintenues — Awa Test : demandes de congé',
+    );
+    expect((await habilitations.etat(khady.session)).estDirecteur).toBe(true);
   });
 
-  it('seul le directeur choisit, et seulement parmi les membres de sa direction', async () => {
+  it('seul le directeur habilite, et seulement les membres de sa direction', async () => {
     expect(
       await codeOf(() =>
-        absences.choisirDelegation(awa.session, { typeDemande: 'conges', delegueEmployeeId: null }),
-      ),
-    ).toBe('absence.reserve_au_directeur_dch');
-    expect(
-      await codeOf(() =>
-        absences.choisirDelegation(mariama.session, {
-          typeDemande: 'conges',
-          delegueEmployeeId: moussa.employeeId,
+        habilitations.accorder(awa.session, {
+          employeeId: khady.employeeId,
+          capacite: 'demandes.conges',
+          accordee: true,
         }),
       ),
-    ).toBe('absence.pas_membre_dch');
+    ).toBe('habilitations.reserve_au_directeur_dch');
+    expect(await codeOf(() => habiliter(moussa))).toBe('habilitations.pas_membre_dch');
+    expect(await codeOf(() => habilitations.etat(awa.session))).toBe(
+      'habilitations.reserve_au_directeur_dch',
+    );
+  });
+});
+
+describe('les accès se lisent dans l’organigramme', () => {
+  const de = (qui: SessionUser) =>
+    db.withTenant({ tenantId, userId: qui.userId }, (tx) => capacitesDe(tx, qui.userId, qui.role));
+
+  it('le directeur a tout ; l’administrateur, la gestion sans les demandes ; un agent, rien', async () => {
+    expect((await de(mariama.session)).capacites.sort()).toEqual([...CAPACITES].sort());
+    expect((await de(admin)).capacites.sort()).toEqual([...CAPACITES_GESTION].sort());
+    expect(await de(moussa.session)).toEqual({ capacites: [], estAgent: true, dirigeLaDCH: false });
+    expect(await de(sansDossier)).toEqual({ capacites: [], estAgent: false, dirigeLaDCH: false });
+  });
+
+  it('un membre a ce qui lui est confié — tant qu’il est à la DCH', async () => {
+    await habiliter(awa, true, 'personnel.consulter');
+    expect((await de(awa.session)).capacites).toEqual(['personnel.consulter']);
+    await raw(`UPDATE assignments SET org_unit_id = $2 WHERE employee_id = $1`, [
+      awa.employeeId,
+      uDSID,
+    ]);
+    // Sans attendre la réconciliation : la session ne l'accorde plus.
+    expect((await de(awa.session)).capacites).toEqual([]);
   });
 });
 
@@ -547,12 +605,10 @@ describe('qui voit quoi', () => {
     expect(await absences.compteurs(ousmane.session)).toMatchObject({ equipe: 1, aViser: 1 });
     await viser(ousmane, id);
     expect(await absences.compteurs(mariama.session)).toMatchObject({
-      traitement: true,
-      aTraiter: 1,
+      aTraiter: { conges: 1 },
     });
     expect(await absences.compteurs(moussa.session)).toMatchObject({
-      traitement: false,
-      aTraiter: 0,
+      aTraiter: { conges: 0 },
     });
   });
 });

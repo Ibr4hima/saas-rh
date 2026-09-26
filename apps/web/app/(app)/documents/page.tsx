@@ -7,6 +7,7 @@ import type {
   BatchAdvanceResult,
   DocumentRequestView,
   EmployeeDetail,
+  MembreHabilite,
   RequestableDoc,
 } from '@teranga/contracts';
 import { GENERATED_DOCS, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
@@ -34,6 +35,16 @@ import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import {
+  BandeauMessage,
+  ModalConfier,
+  ModalLesSuivantes,
+  quiTraite,
+  texteErreur,
+  useConfier,
+  useMembresDCH,
+  type Message,
+} from '../../../components/traitement-dch';
+import {
   BarreSelection,
   LIGNE_COCHEE,
   SqueletteTableau,
@@ -46,7 +57,7 @@ import {
   useTriLocal,
 } from '../../../components/tableau';
 
-/** Demandes encore à la charge de la RH — celles qui peuplent le premier tableau. */
+/** Demandes encore à la charge de la DCH — celles qui peuplent le premier tableau. */
 const OPEN = ['received', 'processing'];
 
 function docLabels(r: DocumentRequestView): string {
@@ -83,10 +94,47 @@ export default function DocumentRequestsPage() {
     queryFn: () => api<DocumentRequestView[]>('/document-requests'),
   });
 
+  const queryClient = useQueryClient();
   const [panneau, setPanneau] = useState<'traiter' | 'decliner' | null>(null);
+  const [message, setMessage] = useState<Message>(null);
+  const [aConfier, setAConfier] = useState<DocumentRequestView | null>(null);
+  const [proposition, setProposition] = useState<MembreHabilite | null>(null);
+  const membres = useMembresDCH().data?.membres ?? [];
+  const confier = useConfier('documents', async () => {
+    await queryClient.invalidateQueries({ queryKey: ['document-requests'] });
+    await queryClient.invalidateQueries({ queryKey: ['validations-compteurs'] });
+  });
+  const confierA = (r: DocumentRequestView, employeeId: string | null) =>
+    confier.mutate(
+      { id: r.id, employeeId },
+      {
+        onSuccess: (res) => {
+          setAConfier(null);
+          const m = membres.find((x) => x.employeeId === employeeId);
+          setMessage({
+            ton: 'ok',
+            texte: m
+              ? `Demande de ${r.employeeName} confiée à ${m.nom} — une notification lui est envoyée.`
+              : `Vous reprenez la demande de ${r.employeeName}.`,
+          });
+          if (res?.proposerHabilitation && m) setProposition(m);
+        },
+        onError: (err) => setMessage({ ton: 'erreur', texte: texteErreur(err) }),
+      },
+    );
 
   const items = useMemo(() => requests.data ?? [], [requests.data]);
-  const ouvertes = useMemo(() => items.filter((r) => OPEN.includes(r.status)), [items]);
+  // Ce qui attend l'appelant : ce qu'il traite pour la DCH. Le reste de la
+  // file — confié à un autre membre — se suit à part.
+  const ouvertes = useMemo(
+    () => items.filter((r) => OPEN.includes(r.status) && r.traitement?.pourMoi),
+    [items],
+  );
+  const ailleurs = useMemo(
+    () => items.filter((r) => OPEN.includes(r.status) && !r.traitement?.pourMoi),
+    [items],
+  );
+  const dirige = items.some((r) => r.traitement?.peutConfier);
   const traitees = useMemo(() => {
     // Un historique se lit du plus récent au plus ancien. Annoncer le retrait
     // CLÔT le travail de la RH : l'employé est prévenu et vient chercher son
@@ -122,6 +170,7 @@ export default function DocumentRequestsPage() {
 
   return (
     <Page>
+      {message ? <BandeauMessage message={message} /> : null}
       {/* Deux files, deux poids : ce qui attend un geste prend les deux tiers
           de la hauteur, l'historique le tiers restant. Chacune défile chez
           elle, sous ses propres intitulés de colonne. */}
@@ -187,6 +236,7 @@ export default function DocumentRequestsPage() {
                     en-têtes pour le même ordre seraient deux fois le même
                     bouton. Celui-ci reste un intitulé. */}
                 <Th className="text-right">Temps écoulé</Th>
+                {dirige ? <Th className="w-24" /> : null}
               </tr>
             </THead>
             <TBody>
@@ -206,6 +256,11 @@ export default function DocumentRequestsPage() {
                     </Td>
                     <Td>
                       {docLabels(r)}
+                      {r.traitement?.aConfier ? (
+                        <span className="block text-[11px] font-semibold text-accent-text">
+                          Votre propre demande — à confier à un membre de la DCH
+                        </span>
+                      ) : null}
                       {r.note ? (
                         <span className="block text-[11px] text-ink-muted italic">
                           « {r.note} »
@@ -226,6 +281,22 @@ export default function DocumentRequestsPage() {
                     >
                       {heures(h)}
                     </Td>
+                    {dirige ? (
+                      <Td className="text-right">
+                        {r.traitement?.peutConfier && membres.length > 0 ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setMessage(null);
+                              setAConfier(r);
+                            }}
+                          >
+                            Confier
+                          </Button>
+                        ) : null}
+                      </Td>
+                    ) : null}
                   </Tr>
                 );
               })}
@@ -233,6 +304,46 @@ export default function DocumentRequestsPage() {
           </Table>
         )}
       </CartePleine>
+
+      {ailleurs.length > 0 ? (
+        <CartePleine className="flex-[1]">
+          <CardHeader className="shrink-0">
+            <CardTitle>{dirige ? 'Confiées' : 'Chez un autre membre de la DCH'}</CardTitle>
+          </CardHeader>
+          <CorpsDefilant className="px-2 pb-2">
+            <ul className="flex flex-col">
+              {ailleurs.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-2.5 transition-colors duration-150 hover:bg-hover"
+                >
+                  <div className="min-w-0 flex-1 basis-56">
+                    <p className="truncate text-[13px] font-semibold text-ink-strong">
+                      {r.employeeName}
+                    </p>
+                    <p className="mt-0.5 text-[11.5px] text-ink-muted">
+                      {docLabels(r)} · {quiTraite(r.traitement)}
+                    </p>
+                  </div>
+                  {r.traitement?.peutConfier ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={confier.isPending && confier.variables?.id === r.id}
+                      onClick={() => {
+                        setMessage(null);
+                        confierA(r, null);
+                      }}
+                    >
+                      Reprendre
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </CorpsDefilant>
+        </CartePleine>
+      ) : null}
 
       <CartePleine className="flex-[1]">
         <CardHeader className="shrink-0">
@@ -312,6 +423,29 @@ export default function DocumentRequestsPage() {
           </Table>
         )}
       </CartePleine>
+
+      {aConfier ? (
+        <ModalConfier
+          titre={`Confier la demande de ${aConfier.employeeName}`}
+          sousTitre={docLabels(aConfier)}
+          membres={membres}
+          exclure={aConfier.employeeId}
+          enCours={confier.isPending}
+          onConfier={(employeeId) => confierA(aConfier, employeeId)}
+          onClose={() => setAConfier(null)}
+        />
+      ) : null}
+      {proposition ? (
+        <ModalLesSuivantes
+          membre={proposition}
+          capacite="demandes.documents"
+          onFait={(texte) => {
+            setProposition(null);
+            setMessage({ ton: 'ok', texte });
+          }}
+          onClose={() => setProposition(null)}
+        />
+      ) : null}
 
       {panneau === 'traiter' ? (
         <TraiterModal

@@ -29,7 +29,7 @@ import {
 import { problem } from '../../common/problem';
 
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { ApplyService } from './apply.service';
 import { JobsService } from './jobs.service';
@@ -38,8 +38,8 @@ const SLUG_RE = /^[A-Za-z0-9_-]{10,64}$/;
 
 /** Face interne : gestion des offres et du pipeline (admin/RH). */
 @Controller()
-@UseGuards(SessionGuard, RolesGuard)
-@Roles('admin', 'hr')
+@UseGuards(SessionGuard, AccesGuard)
+@Peut('recrutement')
 export class RecruitmentController {
   constructor(@Inject(JobsService) private readonly jobs: JobsService) {}
 

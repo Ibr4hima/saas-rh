@@ -202,7 +202,7 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
                     </p>
                     <p className="truncate text-[11.5px] text-ink-muted">
                       {DOCUMENT_CATEGORY_LABELS[d.category]} · {d.uploadedByName}
-                      {d.uploadedBySide === 'hr' ? ' (RH)' : ''} ·{' '}
+                      {d.uploadedBySide === 'hr' ? ' (DCH)' : ''} ·{' '}
                       {formatDate(d.createdAt.slice(0, 10))}
                     </p>
                   </button>

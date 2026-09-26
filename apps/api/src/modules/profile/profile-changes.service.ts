@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   CreateProfileChangeRequestInput,
@@ -11,6 +11,7 @@ import type {
   SessionUser,
 } from '@teranga/contracts';
 import {
+  peut,
   PROFILE_CHANGE_ALL_LABELS,
   profileChangeValuesSchema,
   maritalLabelsFor,
@@ -19,8 +20,13 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
-
-const MANAGE_ROLES = new Set(['admin', 'hr']);
+import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
+import {
+  exigerDeTraiter,
+  reconcilierUneDemande,
+  vueDuTraitement,
+  voitToutLaFile,
+} from '../acces/demandes';
 
 /**
  * Colonne `persons` correspondant à chaque champ.
@@ -108,37 +114,45 @@ export class ProfileChangesService {
         status: 'pending',
       });
 
-      await this.notifications.notifyHr(tx, user.tenantId, {
-        type: 'profile_change_request',
-        title: `${self.givenName} ${self.familyName} signale un changement personnel`,
-        body: Object.keys(changes)
-          .map((f) => PROFILE_CHANGE_ALL_LABELS[f])
-          .join(', '),
-        link: `/employees/${self.employeeId}`,
-      });
+      // À qui la traite pour la DCH — et à eux seuls.
+      await reconcilierUneDemande(tx, 'informations', id);
     });
     return { id };
   }
 
   /**
-   * File RH (tout le tenant) ou historique personnel.
-   * `scope=mine` est honoré QUEL QUE SOIT le rôle : un membre RH est aussi
-   * salarié, son espace personnel doit rester personnel.
+   * La file de la DCH (tout le tenant) ou l'historique personnel.
+   * `scope=mine` est honoré QUELLES QUE SOIENT ses habilitations : un membre
+   * de la DCH est aussi agent, son espace personnel doit rester personnel.
+   *
+   * Voit toute la file qui la traite (le directeur, les membres habilités)
+   * ou consulte les dossiers ; un membre à qui une demande est confiée voit
+   * celle-là ; chacun voit les siennes.
    */
   async list(
     user: SessionUser,
     filters: { employeeId?: string; status?: ProfileChangeStatus; scope?: 'mine' },
   ): Promise<ProfileChangeRequestView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      const selfOnly = filters.scope === 'mine' || !MANAGE_ROLES.has(user.role);
-      const isManage = MANAGE_ROLES.has(user.role) && !selfOnly;
+      const moi = await agentDuCompte(tx, user.userId);
+      const selfOnly = filters.scope === 'mine';
+      const toute =
+        !selfOnly &&
+        (await voitToutLaFile(tx, user, 'informations', peut(user, 'personnel.consulter')));
       const conditions = [];
 
       if (selfOnly) {
         const self = await this.selfPerson(tx, user, true);
         if (!self) return [];
         conditions.push(eq(t.profileChangeRequests.employeeId, self.employeeId));
-      } else if (filters.employeeId) {
+      } else if (!toute) {
+        if (!moi) return [];
+        conditions.push(
+          sql`(${t.profileChangeRequests.employeeId} = ${moi}
+               OR ${t.profileChangeRequests.confieeAEmployeeId} = ${moi})`,
+        );
+      }
+      if (!selfOnly && filters.employeeId) {
         conditions.push(eq(t.profileChangeRequests.employeeId, filters.employeeId));
       }
       if (filters.status) conditions.push(eq(t.profileChangeRequests.status, filters.status));
@@ -162,28 +176,42 @@ export class ProfileChangesService {
         .orderBy(desc(t.profileChangeRequests.createdAt))
         .limit(100);
 
-      return rows.map((r) => ({
-        id: r.request.id,
-        employeeId: r.request.employeeId,
-        employeeName: `${r.givenName} ${r.familyName}`,
-        employeeNumber: r.employeeNumber,
-        status: r.request.status as ProfileChangeStatus,
-        note: r.request.note,
-        hrMessage: r.request.hrMessage,
-        handledByName: r.handlerGivenName ? `${r.handlerGivenName} ${r.handlerFamilyName}` : null,
-        createdAt: r.request.createdAt.toISOString(),
-        handledAt: r.request.handledAt?.toISOString() ?? null,
-        fields: this.describe(
-          r.request.changes as Record<string, unknown>,
-          r.request.previous as Record<string, unknown>,
-          r.gender,
-        ),
-        canDecide: isManage && r.request.status === 'pending',
-      }));
+      const dch = await directionDuPersonnel(tx);
+      const vues: ProfileChangeRequestView[] = [];
+      for (const r of rows) {
+        const d = { employeeId: r.request.employeeId, confieeA: r.request.confieeAEmployeeId };
+        const tr =
+          !selfOnly && r.request.status === 'pending'
+            ? await vueDuTraitement(tx, 'informations', d, moi, dch)
+            : null;
+        vues.push({
+          id: r.request.id,
+          employeeId: r.request.employeeId,
+          employeeName: `${r.givenName} ${r.familyName}`,
+          employeeNumber: r.employeeNumber,
+          status: r.request.status as ProfileChangeStatus,
+          note: r.request.note,
+          hrMessage: r.request.hrMessage,
+          handledByName: r.handlerGivenName ? `${r.handlerGivenName} ${r.handlerFamilyName}` : null,
+          createdAt: r.request.createdAt.toISOString(),
+          handledAt: r.request.handledAt?.toISOString() ?? null,
+          fields: this.describe(
+            r.request.changes as Record<string, unknown>,
+            r.request.previous as Record<string, unknown>,
+            r.gender,
+          ),
+          canDecide: Boolean(tr?.peutTraiter),
+          traitement: tr?.vue ?? null,
+        });
+      }
+      return vues;
     });
   }
 
-  /** La RH tranche. Confirmer applique les valeurs au dossier, immédiatement. */
+  /**
+   * Qui la traite pour la DCH tranche. Confirmer applique les valeurs au
+   * dossier, immédiatement.
+   */
   async decide(
     user: SessionUser,
     requestId: string,
@@ -211,6 +239,10 @@ export class ProfileChangesService {
           `État actuel : ${row.status}.`,
         );
       }
+      await exigerDeTraiter(tx, user, 'informations', {
+        employeeId: row.employeeId,
+        confieeA: row.confieeAEmployeeId,
+      });
 
       const [target] = await tx
         .select({ personId: t.employees.personId, userId: t.persons.userId })
@@ -256,6 +288,7 @@ export class ProfileChangesService {
           updatedAt: new Date(),
         })
         .where(eq(t.profileChangeRequests.id, requestId));
+      await reconcilierUneDemande(tx, 'informations', requestId);
 
       if (!target?.userId) return; // dossier sans compte portail : rien à notifier
       const drafts = {

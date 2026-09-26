@@ -20,6 +20,7 @@ import type {
   SessionUser,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
+import { peut } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
 import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
@@ -44,7 +45,6 @@ import { faireSuivreLesDemandes, reconcilierDemande, reconcilierLeCircuit } from
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 
 /** Rôles autorisés à lire les champs ultra-sensibles (CNI). */
-const SENSITIVE_ROLES = new Set(['admin', 'hr']);
 
 function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
   return { tenantId: user.tenantId, userId: user.userId };
@@ -383,8 +383,8 @@ export class PeopleService {
         problem(500, 'people.person_missing', 'Dossier incohérent : personne absente');
       }
 
-      // Périmètre : les gestionnaires voient tout ; les autres, leur dossier.
-      const isManage = ['admin', 'hr', 'payroll'].includes(user.role);
+      // Périmètre : qui consulte les dossiers voit tout ; les autres, le leur.
+      const isManage = peut(user, 'personnel.consulter');
       const isSelf = person.userId === user.userId;
       if (!isManage && !isSelf) {
         problem(403, 'people.forbidden_scope', 'Accès limité à votre propre dossier');
@@ -433,7 +433,7 @@ export class PeopleService {
         : [];
       const team = await equipeDe(tx, employee.id);
 
-      const canSeeSensitive = SENSITIVE_ROLES.has(user.role) || isSelf;
+      const canSeeSensitive = peut(user, 'personnel.sensible') || isSelf;
       return {
         id: employee.id,
         employeeNumber: employee.employeeNumber,

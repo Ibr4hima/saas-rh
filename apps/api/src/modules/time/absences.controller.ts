@@ -17,8 +17,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
-  choisirDelegationSchema,
-  confierDemandeSchema,
+  confierSchema,
   createAbsenceRequestSchema,
   createAbsenceTypeSchema,
   createHolidaySchema,
@@ -28,8 +27,7 @@ import {
   setBalanceSchema,
   updateAbsenceTypeSchema,
   updateHolidaySchema,
-  type ChoisirDelegationInput,
-  type ConfierDemandeInput,
+  type ConfierInput,
   type CreateAbsenceRequestInput,
   type CreateAbsenceTypeInput,
   type CreateHolidayInput,
@@ -41,7 +39,7 @@ import {
 } from '@teranga/contracts';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AbsencesService } from './absences.service';
 
@@ -50,7 +48,7 @@ const yearQuerySchema = z.object({
 });
 
 @Controller()
-@UseGuards(SessionGuard, RolesGuard)
+@UseGuards(SessionGuard, AccesGuard)
 export class AbsencesController {
   constructor(@Inject(AbsencesService) private readonly absences: AbsencesService) {}
 
@@ -62,7 +60,7 @@ export class AbsencesController {
   }
 
   @Post('absence-types')
-  @Roles('admin', 'hr')
+  @Peut('conges.parametres')
   createType(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(createAbsenceTypeSchema)) body: CreateAbsenceTypeInput,
@@ -71,7 +69,7 @@ export class AbsencesController {
   }
 
   @Patch('absence-types/:id')
-  @Roles('admin', 'hr')
+  @Peut('conges.parametres')
   @HttpCode(204)
   async updateType(
     @Req() req: AuthenticatedRequest,
@@ -82,7 +80,7 @@ export class AbsencesController {
   }
 
   @Delete('absence-types/:id')
-  @Roles('admin', 'hr')
+  @Peut('conges.parametres')
   @HttpCode(204)
   async deleteType(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     await this.absences.deleteType(req.sessionUser, id);
@@ -99,7 +97,7 @@ export class AbsencesController {
   }
 
   @Post('holidays')
-  @Roles('admin', 'hr')
+  @Peut('conges.parametres')
   createHoliday(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(createHolidaySchema)) body: CreateHolidayInput,
@@ -108,7 +106,7 @@ export class AbsencesController {
   }
 
   @Patch('holidays/:id')
-  @Roles('admin', 'hr')
+  @Peut('conges.parametres')
   @HttpCode(204)
   async updateHoliday(
     @Req() req: AuthenticatedRequest,
@@ -119,7 +117,7 @@ export class AbsencesController {
   }
 
   @Delete('holidays/:id')
-  @Roles('admin', 'hr')
+  @Peut('conges.parametres')
   @HttpCode(204)
   async deleteHoliday(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     await this.absences.deleteHoliday(req.sessionUser, id);
@@ -127,27 +125,12 @@ export class AbsencesController {
 
   // ---------- Circuit d'approbation ----------
 
-  // Fixé par l'APIX : le n+1, puis la RH (cf. CIRCUIT_CONGES aux contrats).
-  // Ce que le n+1 a devant lui — son équipe, ce qui attend son visa : c'est
-  // l'organigramme qui fait le n+1, pas le rôle, d'où la question au serveur.
+  // Ce que l'agent a devant lui — son équipe, ce qui attend son visa, ce
+  // qu'il traite pour la DCH, par type : c'est l'organigramme qui le dit,
+  // pas un rôle, d'où la question au serveur.
   @Get('absences/validations/compteurs')
   compteurs(@Req() req: AuthenticatedRequest) {
     return this.absences.compteurs(req.sessionUser);
-  }
-
-  /** Les délégations du directeur du Capital Humain : ce qu'il a confié, à qui. */
-  @Get('absences/delegation')
-  etatDelegation(@Req() req: AuthenticatedRequest) {
-    return this.absences.etatDelegation(req.sessionUser);
-  }
-
-  @Put('absences/delegation')
-  @HttpCode(204)
-  async choisirDelegation(
-    @Req() req: AuthenticatedRequest,
-    @Body(new ZodValidationPipe(choisirDelegationSchema)) body: ChoisirDelegationInput,
-  ) {
-    await this.absences.choisirDelegation(req.sessionUser, body);
   }
 
   /** Confier une demande à un membre de la DCH — ou la reprendre. */
@@ -156,7 +139,7 @@ export class AbsencesController {
   confier(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body(new ZodValidationPipe(confierDemandeSchema)) body: ConfierDemandeInput,
+    @Body(new ZodValidationPipe(confierSchema)) body: ConfierInput,
   ) {
     return this.absences.confier(req.sessionUser, id, body.employeeId);
   }
@@ -173,7 +156,7 @@ export class AbsencesController {
   }
 
   @Put('balances')
-  @Roles('admin', 'hr')
+  @Peut('conges.soldes')
   @HttpCode(204)
   async setBalance(
     @Req() req: AuthenticatedRequest,

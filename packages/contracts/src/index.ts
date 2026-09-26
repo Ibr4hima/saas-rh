@@ -5,6 +5,7 @@
  * Simple barrière de réexport : aucune définition ici, pour qu'aucun module
  * du paquet n'ait de raison d'importer « ./index » et de recréer un cycle.
  */
+export * from './acces';
 export * from './core';
 export * from './dashboard';
 export * from './employees';

@@ -30,7 +30,7 @@ const tenantId = randomUUID();
 const rhUserId = randomUUID();
 const agentUserId = randomUUID();
 const autreUserId = randomUUID();
-const rh = { userId: rhUserId, tenantId, role: 'hr' } as SessionUser;
+const rh = { userId: rhUserId, tenantId, role: 'admin' } as SessionUser;
 const agent = { userId: agentUserId, tenantId, role: 'employee' } as SessionUser;
 const autre = { userId: autreUserId, tenantId, role: 'employee' } as SessionUser;
 

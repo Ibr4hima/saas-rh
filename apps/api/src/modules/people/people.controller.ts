@@ -35,7 +35,7 @@ import {
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { HierarchieService } from './hierarchie.service';
 import { ImportEmployesService } from './import.service';
@@ -43,7 +43,7 @@ import { OrgUnitsService } from './org-units.service';
 import { PeopleService } from './people.service';
 
 @Controller()
-@UseGuards(SessionGuard, RolesGuard)
+@UseGuards(SessionGuard, AccesGuard)
 export class PeopleController {
   constructor(
     @Inject(PeopleService) private readonly people: PeopleService,
@@ -63,7 +63,7 @@ export class PeopleController {
    * leur en désigne un, dossier par dossier.
    */
   @Get('hierarchie/controle')
-  @Roles('admin', 'hr')
+  @Peut('organigramme', 'personnel.gerer', 'pilotage')
   controleHierarchie(@Req() req: AuthenticatedRequest) {
     return this.hierarchie.controle(req.sessionUser);
   }
@@ -71,7 +71,7 @@ export class PeopleController {
   // ---------- Employés ----------
 
   @Get('employees')
-  @Roles('admin', 'hr', 'payroll')
+  @Peut('personnel.consulter')
   listEmployees(
     @Req() req: AuthenticatedRequest,
     @Query(new ZodValidationPipe(listEmployeesQuerySchema)) query: ListEmployeesQuery,
@@ -88,7 +88,7 @@ export class PeopleController {
    * comme les autres routes nommées : Nest apparie dans l'ordre.
    */
   @Post('employees/import')
-  @Roles('admin', 'hr')
+  @Peut('personnel.gerer')
   importerEmployes(@Req() req: AuthenticatedRequest, @Query('apercu') apercu: string | undefined) {
     const fichier = (req as unknown as { body?: unknown }).body;
     if (!Buffer.isBuffer(fichier) || fichier.length === 0) {
@@ -98,7 +98,7 @@ export class PeopleController {
   }
 
   @Post('employees')
-  @Roles('admin', 'hr')
+  @Peut('personnel.gerer')
   createEmployee(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(createEmployeeSchema)) body: CreateEmployeeInput,
@@ -114,7 +114,7 @@ export class PeopleController {
    * paramétrée placée plus haut capterait « archive » comme un identifiant.
    */
   @Post('employees/archive')
-  @Roles('admin', 'hr')
+  @Peut('personnel.gerer')
   archiveEmployees(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(archiveEmployeesSchema)) body: ArchiveEmployeesInput,
@@ -122,9 +122,9 @@ export class PeopleController {
     return this.people.archive(req.sessionUser, body);
   }
 
-  /** Suppression définitive — réservée à l'administrateur. */
+  /** Suppression définitive — une habilitation à part, sensible. */
   @Post('employees/delete')
-  @Roles('admin')
+  @Peut('personnel.effacer')
   deleteEmployees(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(deleteEmployeesSchema)) body: DeleteEmployeesInput,
@@ -138,7 +138,7 @@ export class PeopleController {
   }
 
   @Patch('employees/:id')
-  @Roles('admin', 'hr')
+  @Peut('personnel.gerer')
   @HttpCode(204)
   async updateEmployee(
     @Req() req: AuthenticatedRequest,
@@ -150,7 +150,7 @@ export class PeopleController {
 
   /** Rend les rattachements changés au passage (reprise de son équipe). */
   @Post('employees/:id/assignments')
-  @Roles('admin', 'hr')
+  @Peut('personnel.gerer')
   @HttpCode(200)
   newAssignment(
     @Req() req: AuthenticatedRequest,
@@ -161,7 +161,7 @@ export class PeopleController {
   }
 
   @Get('employees/:id/history')
-  @Roles('admin', 'hr')
+  @Peut('personnel.consulter')
   history(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.people.history(req.sessionUser, id);
   }
@@ -174,7 +174,7 @@ export class PeopleController {
   }
 
   @Post('org-units')
-  @Roles('admin', 'hr')
+  @Peut('organigramme')
   createOrgUnit(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(createOrgUnitSchema)) body: CreateOrgUnitInput,
@@ -184,7 +184,7 @@ export class PeopleController {
 
   /** Rend ce que l'opération a fait à la chaîne hiérarchique (cascades, rattachements à revoir). */
   @Patch('org-units/:id')
-  @Roles('admin', 'hr')
+  @Peut('organigramme')
   updateOrgUnit(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -195,7 +195,7 @@ export class PeopleController {
 
   /** Ce que FERAIT la modification — jouée puis annulée, rien n'est écrit. */
   @Post('org-units/:id/apercu')
-  @Roles('admin', 'hr')
+  @Peut('organigramme')
   @HttpCode(200)
   apercuOrgUnit(
     @Req() req: AuthenticatedRequest,
@@ -207,7 +207,7 @@ export class PeopleController {
 
   /** Ce que FERAIT la dissolution — jouée puis annulée. */
   @Post('org-units/:id/apercu-suppression')
-  @Roles('admin', 'hr')
+  @Peut('organigramme')
   @HttpCode(200)
   apercuSuppressionOrgUnit(
     @Req() req: AuthenticatedRequest,
@@ -222,7 +222,7 @@ export class PeopleController {
    * l'unité désignée : personne ne se retrouve sans rattachement.
    */
   @Delete('org-units/:id')
-  @Roles('admin', 'hr')
+  @Peut('organigramme')
   deleteOrgUnit(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -233,7 +233,7 @@ export class PeopleController {
 
   /** Qui peut diriger cette unité : le sous-arbre actif, rien de plus. */
   @Get('org-units/:id/eligible-managers')
-  @Roles('admin', 'hr')
+  @Peut('organigramme')
   eligibleManagers(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.orgUnits.eligibleManagers(req.sessionUser, id);
   }

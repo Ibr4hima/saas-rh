@@ -10,18 +10,20 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AttestationService } from './attestation.service';
 
 @Controller()
-@UseGuards(SessionGuard, RolesGuard)
+@UseGuards(SessionGuard, AccesGuard)
 export class DocumentsController {
   constructor(@Inject(AttestationService) private readonly attestations: AttestationService) {}
 
-  /** Depuis la fiche : la RH génère l'attestation d'un employé. */
+  /**
+   * L'attestation d'un agent : depuis sa fiche (qui gère les dossiers), ou
+   * depuis la file des documents (qui traite sa demande).
+   */
   @Get('employees/:id/attestation')
-  @Roles('admin', 'hr')
   async employeeAttestation(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,

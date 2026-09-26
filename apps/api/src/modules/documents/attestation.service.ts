@@ -1,7 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import type { SessionUser } from '@teranga/contracts';
+import { peut, type SessionUser } from '@teranga/contracts';
+import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
+import { vueDuTraitement } from '../acces/demandes';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -76,14 +78,36 @@ export function rattachement(unite: string): string {
 export class AttestationService {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
 
-  /** Attestation générée par la RH depuis la fiche. */
+  /** L'attestation d'un agent — qui gère les dossiers, ou qui traite sa demande. */
   async forEmployee(
     user: SessionUser,
     employeeId: string,
   ): Promise<{ filename: string; pdf: Buffer }> {
-    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
-      this.build(tx, user.tenantId, employeeId),
-    );
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      if (!peut(user, 'personnel.gerer') && !(await this.traiteSaDemande(tx, user, employeeId))) {
+        problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+      }
+      return this.build(tx, user.tenantId, employeeId);
+    });
+  }
+
+  /** Une demande de documents de cet agent, que l'appelant traite (ou a traitée). */
+  private async traiteSaDemande(tx: Tx, user: SessionUser, employeeId: string): Promise<boolean> {
+    const moi = await agentDuCompte(tx, user.userId);
+    const dch = await directionDuPersonnel(tx);
+    const { rows } = await tx.execute<{
+      status: string;
+      confiee_a_employee_id: string | null;
+      handled_by_user_id: string | null;
+    }>(sql`
+      SELECT status, confiee_a_employee_id, handled_by_user_id FROM document_requests
+       WHERE employee_id = ${employeeId} AND status IN ('received', 'processing', 'ready')`);
+    for (const r of rows) {
+      if (r.handled_by_user_id === user.userId) return true;
+      const d = { employeeId, confieeA: r.confiee_a_employee_id };
+      if ((await vueDuTraitement(tx, 'documents', d, moi, dch)).peutTraiter) return true;
+    }
+    return false;
   }
 
   private async build(

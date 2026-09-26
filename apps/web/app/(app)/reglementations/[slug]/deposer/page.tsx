@@ -11,6 +11,7 @@ import {
   type ReferenceTextSlug,
   type ReferenceTextView,
   type SaveReferenceTextInput,
+  peut,
 } from '@teranga/contracts';
 import { Button, Card, CardContent, Checkbox, Field, Input, Skeleton, Textarea } from '@teranga/ui';
 import { api, ApiError } from '../../../../../lib/api';
@@ -34,7 +35,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
   const router = useRouter();
   const queryClient = useQueryClient();
   const me = useMe();
-  const peutDeposer = Boolean(me.data && ['admin', 'hr'].includes(me.data.role));
+  const peutDeposer = peut(me.data, 'textes');
 
   const existant = useQuery({
     queryKey: ['reference-text', slug],

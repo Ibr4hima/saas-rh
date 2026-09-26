@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { TraitementView } from './acces';
 
 /**
  * Demandes de documents administratifs (ADR-0012).
@@ -152,6 +153,8 @@ export interface DocumentRequestView {
    * correction du point de retrait ne la déplace pas.
    */
   handledAt: string | null;
-  /** true si l'utilisateur courant (RH) peut faire avancer la demande. */
+  /** true si l'utilisateur courant peut la faire avancer : il la traite pour la DCH. */
   canAdvance: boolean;
+  /** Qui la traite, tant qu'elle est ouverte (sinon null). */
+  traitement: TraitementView | null;
 }

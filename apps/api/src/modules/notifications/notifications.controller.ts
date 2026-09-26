@@ -18,12 +18,12 @@ import {
   notificationScopeQuerySchema,
 } from '@teranga/contracts';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { NotificationsService } from './notifications.service';
 
 @Controller()
-@UseGuards(SessionGuard, RolesGuard)
+@UseGuards(SessionGuard, AccesGuard)
 export class NotificationsController {
   constructor(@Inject(NotificationsService) private readonly notifications: NotificationsService) {}
 
@@ -78,7 +78,7 @@ export class NotificationsController {
 
   /** Les contrats sous l'œil de la RH jusqu'à leur expiration. */
   @Get('contracts/expiring')
-  @Roles('admin', 'hr', 'payroll')
+  @Peut('pilotage', 'personnel.consulter')
   expiring(@Req() req: AuthenticatedRequest) {
     return this.notifications.expiringContracts(req.sessionUser);
   }

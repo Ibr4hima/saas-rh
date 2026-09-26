@@ -21,7 +21,7 @@ import { ReferenceTextsService } from '../src/modules/reference/reference-texts.
 const env = loadEnv();
 const tenantId = randomUUID();
 const userId = randomUUID();
-const rh = { userId, tenantId, role: 'hr' } as SessionUser;
+const rh = { userId, tenantId, role: 'admin' } as SessionUser;
 const employe = { userId, tenantId, role: 'employee' } as SessionUser;
 
 let ownerPool: Pool;

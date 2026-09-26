@@ -20,7 +20,7 @@ import {
 } from '@teranga/contracts';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { ProfileChangesService } from './profile-changes.service';
 
@@ -32,7 +32,7 @@ const listQuerySchema = z.object({
 });
 
 @Controller()
-@UseGuards(SessionGuard, RolesGuard)
+@UseGuards(SessionGuard, AccesGuard)
 export class ProfileChangesController {
   constructor(@Inject(ProfileChangesService) private readonly requests: ProfileChangesService) {}
 
@@ -56,7 +56,6 @@ export class ProfileChangesController {
   }
 
   @Post('profile-changes/:id/decide')
-  @Roles('admin', 'hr')
   @HttpCode(204)
   async decide(
     @Req() req: AuthenticatedRequest,

@@ -1,9 +1,20 @@
-import { sql, type SQL } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import type { EtapeConge } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 import { notifier } from '../notifications/notifier';
-import { DG, directionDeEmploye } from '../people/chaine';
-import { DELAI_RELANCE_JOURS_OUVRES, joursOuvresEcoules } from './workdays';
+import { frDate, relancer, retirerLesAppels, tenirLesAppels } from '../acces/appels';
+import {
+  accueillirLeDirecteur,
+  directionDuPersonnel,
+  nomsDe,
+  traitementDe,
+  verifierLesHabilitations,
+  viseur,
+  type DirectionDuPersonnel,
+  type Viseur,
+} from '../acces/dch';
+import { compterLesBloquees, reconcilierLesDemandes } from '../acces/demandes';
+import { DG } from '../people/chaine';
 
 /* ————————————————————————————————————————————————————————————————
    Le circuit d'une demande d'absence : le N+1, puis la DCH.
@@ -19,12 +30,12 @@ import { DELAI_RELANCE_JOURS_OUVRES, joursOuvresEcoules } from './workdays';
         ou en congé aujourd'hui), la demande va directement à la DCH ;
      2. la DCH, c'est son directeur — le responsable de la direction du
         personnel dans l'organigramme. Il traite, ou il confie : une demande
-        à la fois, ou toutes, à un membre de sa direction. Confiée, la
-        demande va directement au membre, et le directeur n'est plus
-        prévenu ; il voit tout, et peut reprendre la main ;
+        à la main, ou toutes, en habilitant des membres de sa direction.
+        Confiée, la demande va directement aux membres, et le directeur
+        n'est plus prévenu ; il voit tout, et peut reprendre la main ;
      3. un membre qui ne peut plus traiter (parti de la DCH ou de l'agence,
-        sans accès, en congé aujourd'hui, ou demandeur lui-même) rend la
-        demande au directeur ;
+        sans accès, en congé aujourd'hui, ou demandeur lui-même) passe la
+        main aux autres membres habilités, sinon au directeur ;
      4. la demande du directeur du Capital Humain lui-même : le visa du DG
         suffit ;
      5. la même personne attendue aux deux étapes vise une seule fois ;
@@ -42,43 +53,6 @@ export const NIVEAU_DCH = 1;
 
 export const etapeDuNiveau = (niveau: number): EtapeConge => (niveau <= NIVEAU_N1 ? 'n1' : 'dch');
 
-/** Quelqu'un qui peut viser : actif, avec un compte ouvert dans l'organisation. */
-export interface Viseur {
-  employeeId: string;
-  userId: string;
-  nom: string;
-  /** En congé aujourd'hui (absence approuvée qui couvre ce jour). */
-  absent: boolean;
-}
-
-/** Absent aujourd'hui : une absence approuvée couvre ce jour. En SQL. */
-const estAbsent = (employeeId: SQL) => sql`EXISTS (
-  SELECT 1 FROM absence_requests ab
-   WHERE ab.employee_id = ${employeeId} AND ab.status = 'approved'
-     AND CURRENT_DATE BETWEEN ab.start_date AND ab.end_date)`;
-
-/** Un agent, s'il peut viser — sinon null. */
-export async function viseur(tx: Tx, employeeId: string | null): Promise<Viseur | null> {
-  if (!employeeId) return null;
-  const { rows } = await tx.execute<{
-    employee_id: string;
-    user_id: string;
-    nom: string;
-    absent: boolean;
-  }>(sql`
-    SELECT e.id AS employee_id, u.id AS user_id,
-           p.given_name || ' ' || p.family_name AS nom,
-           ${estAbsent(sql`e.id`)} AS absent
-      FROM employees e
-      JOIN persons p ON p.id = e.person_id AND p.user_id IS NOT NULL AND p.deleted_at IS NULL
-      JOIN users u ON u.id = p.user_id AND u.status = 'active'
-      JOIN user_tenant_memberships m ON m.user_id = u.id AND m.tenant_id = e.tenant_id
-     WHERE e.id = ${employeeId} AND e.status = 'active'
-     LIMIT 1`);
-  const r = rows[0];
-  return r ? { employeeId: r.employee_id, userId: r.user_id, nom: r.nom, absent: r.absent } : null;
-}
-
 /** Le N+1 de l'agent, s'il peut viser (présent ou non). Le DG n'en a pas. */
 export async function n1De(tx: Tx, employeeId: string): Promise<Viseur | null> {
   const { rows } = await tx.execute<{ n1: string | null }>(sql`
@@ -88,73 +62,14 @@ export async function n1De(tx: Tx, employeeId: string): Promise<Viseur | null> {
   return viseur(tx, rows[0]?.n1 ?? null);
 }
 
-// ———————————————————————————————————————————— la direction du personnel
-
-export interface DirectionDuPersonnel {
-  uniteId: string;
-  nom: string;
-  /** Son responsable, tel que l'organigramme le désigne (null : poste vacant). */
-  directeurEmployeeId: string | null;
-  /** Le même, s'il peut viser. */
-  directeur: Viseur | null;
-}
-
-/** La direction du personnel (la DCH), ou null si aucune n'est désignée. */
-export async function directionDuPersonnel(tx: Tx): Promise<DirectionDuPersonnel | null> {
-  const { rows } = await tx.execute<{
-    id: string;
-    name: string;
-    manager_employee_id: string | null;
-  }>(
-    sql`SELECT id, name, manager_employee_id FROM org_units
-         WHERE direction_du_personnel AND deleted_at IS NULL LIMIT 1`,
-  );
-  const u = rows[0];
-  if (!u) return null;
-  return {
-    uniteId: u.id,
-    nom: u.name,
-    directeurEmployeeId: u.manager_employee_id,
-    directeur: await viseur(tx, u.manager_employee_id),
-  };
-}
-
-/** Le choix en cours du directeur, pour ce type de demande. */
-export async function choixDuDirecteur(
-  tx: Tx,
-  directeurEmployeeId: string,
-  typeDemande = 'conges',
-): Promise<{ id: string; delegueEmployeeId: string | null } | null> {
-  const { rows } = await tx.execute<{ id: string; delegue_employee_id: string | null }>(sql`
-    SELECT id, delegue_employee_id FROM delegations
-     WHERE directeur_employee_id = ${directeurEmployeeId} AND type_demande = ${typeDemande}
-       AND fin_at IS NULL
-     LIMIT 1`);
-  const r = rows[0];
-  return r ? { id: r.id, delegueEmployeeId: r.delegue_employee_id } : null;
-}
-
-/**
- * Un membre de la DCH qui peut traiter : il peut viser, et sa direction est
- * la direction du personnel. `parti` quand il ne l'est plus — sorti de la
- * DCH, de l'agence, ou sans accès.
- */
-export async function membreDCH(
-  tx: Tx,
-  dch: DirectionDuPersonnel,
-  employeeId: string,
-): Promise<Viseur | 'parti'> {
-  const v = await viseur(tx, employeeId);
-  if (!v) return 'parti';
-  const direction = await directionDeEmploye(tx, employeeId);
-  return direction?.id === dch.uniteId ? v : 'parti';
-}
-
 /** Qui est attendu, pour quoi, et au nom de qui. */
 export interface Attendu {
   etape: EtapeConge;
-  /** Qui doit viser (null : personne — poste de directeur vacant). */
-  valideur: Viseur | null;
+  /**
+   * Qui peut viser — tous appelés, le premier qui vise l'emporte. Vide :
+   * personne (poste de directeur vacant, DG sans accès).
+   */
+  valideurs: Viseur[];
   /** Il vise pour le compte du directeur du Capital Humain. */
   parDelegationDe: Viseur | null;
   /** La demande vient du directeur du Capital Humain : le DG vise seul. */
@@ -171,28 +86,19 @@ interface DemandeCircuit {
   confieeAEmployeeId: string | null;
 }
 
-/**
- * Qui traite pour la DCH : le membre à qui la demande est confiée — à la
- * main, ou par la règle du directeur — s'il le peut ; sinon le directeur.
- */
+/** Qui traite pour la DCH — la règle commune à toutes les demandes. */
 async function traitantDCH(
   tx: Tx,
   demande: DemandeCircuit,
   dch: DirectionDuPersonnel | null,
-): Promise<{ valideur: Viseur | null; parDelegationDe: Viseur | null }> {
-  const directeur = dch?.directeur ?? null;
-  if (!dch || !directeur) return { valideur: null, parDelegationDe: null };
-  const choix = await choixDuDirecteur(tx, directeur.employeeId);
-  const confieA = demande.confieeAEmployeeId ?? choix?.delegueEmployeeId ?? null;
-  if (confieA && confieA !== directeur.employeeId && confieA !== demande.employeeId) {
-    const membre = await membreDCH(tx, dch, confieA);
-    if (membre !== 'parti' && !membre.absent) {
-      return { valideur: membre, parDelegationDe: directeur };
-    }
-  }
-  // Le directeur lui-même — jamais pour sa propre demande, que le DG vise seul.
-  if (directeur.employeeId === demande.employeeId) return { valideur: null, parDelegationDe: null };
-  return { valideur: directeur, parDelegationDe: null };
+): Promise<{ valideurs: Viseur[]; parDelegationDe: Viseur | null }> {
+  const t = await traitementDe(
+    tx,
+    'demandes.conges',
+    { employeeId: demande.employeeId, confieeA: demande.confieeAEmployeeId },
+    dch,
+  );
+  return { valideurs: t.traitants, parDelegationDe: t.parDelegationDe };
 }
 
 /** Qui est attendu sur cette demande, maintenant — null si elle n'attend plus rien. */
@@ -200,24 +106,29 @@ export async function attendu(tx: Tx, demande: DemandeCircuit): Promise<Attendu 
   if (demande.status !== 'pending') return null;
   const dch = await directionDuPersonnel(tx);
   const demandeDuDirecteur = Boolean(dch?.directeurEmployeeId === demande.employeeId);
+  const leN1 = (n1: Viseur | null): Attendu => ({
+    etape: 'n1',
+    valideurs: n1 ? [n1] : [],
+    parDelegationDe: null,
+    demandeDuDirecteur,
+    dch,
+  });
   if (demande.currentLevel <= NIVEAU_N1) {
     const n1 = await n1De(tx, demande.employeeId);
-    if (n1 && !n1.absent) {
-      return { etape: 'n1', valideur: n1, parDelegationDe: null, demandeDuDirecteur, dch };
-    }
+    if (n1 && !n1.absent) return leN1(n1);
     if (demandeDuDirecteur) {
       // Le directeur du Capital Humain : son N+1 (le DG) vise seul. Absent,
-      // c'est son délégué qui prend le relais — sinon on attend le DG.
+      // ce sont ses membres habilités qui prennent le relais — sinon on
+      // attend le DG.
       const t = await traitantDCH(tx, demande, dch);
-      if (t.valideur) return { etape: 'dch', ...t, demandeDuDirecteur, dch };
-      return { etape: 'n1', valideur: n1, parDelegationDe: null, demandeDuDirecteur, dch };
+      if (t.valideurs.length > 0) return { etape: 'dch', ...t, demandeDuDirecteur, dch };
+      return leN1(n1);
     }
   }
   const t = await traitantDCH(tx, demande, dch);
-  if (demandeDuDirecteur && !t.valideur) {
-    // Passée à son délégué, qui ne peut plus : elle revient au DG.
-    const n1 = await n1De(tx, demande.employeeId);
-    return { etape: 'n1', valideur: n1, parDelegationDe: null, demandeDuDirecteur, dch };
+  if (demandeDuDirecteur && t.valideurs.length === 0) {
+    // Passée à ses membres, qui ne peuvent plus : elle revient au DG.
+    return leN1(await n1De(tx, demande.employeeId));
   }
   return { etape: 'dch', ...t, demandeDuDirecteur, dch };
 }
@@ -296,16 +207,6 @@ export async function lireDemande(tx: Tx, requestId: string): Promise<Demande | 
     : null;
 }
 
-/** « 9 septembre 2026 » — jamais d'ISO brut dans un texte lu par un humain. */
-function frDate(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
-}
-
 function periode(d: Demande): string {
   const jours = `${d.jours} jour${d.jours > 1 ? 's' : ''}`;
   return d.debut === d.fin
@@ -347,10 +248,10 @@ async function viseParN1(tx: Tx, requestId: string): Promise<string | null> {
 }
 
 /**
- * Tient les appels à viser d'une demande d'accord avec le circuit : celui
- * qui est attendu a SON appel, et lui seul. Un appel adressé à quelqu'un qui
- * n'est plus attendu — N+1 remplacé, délégué parti, étape passée — s'en va.
- * Idempotente : la rejouer ne prévient personne deux fois.
+ * Tient les appels à viser d'une demande d'accord avec le circuit : ceux qui
+ * sont attendus ont LEUR appel, et eux seuls. Un appel adressé à quelqu'un
+ * qui n'est plus attendu — N+1 remplacé, membre parti, étape passée — s'en
+ * va. Idempotente : la rejouer ne prévient personne deux fois.
  */
 export async function reconcilierDemande(tx: Tx, requestId: string): Promise<void> {
   const demande = await lireCircuit(tx, requestId);
@@ -363,36 +264,21 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
       sql`UPDATE absence_requests SET current_level = ${NIVEAU_DCH} WHERE id = ${requestId}`,
     );
   }
-  // Confiée par la règle du directeur : elle est désormais À ce membre. Un
-  // nouveau directeur, ou une règle qui change, ne la lui reprend pas — ce
-  // qui est confié reste confié ; le directeur peut toujours la reprendre.
-  if (att?.etape === 'dch' && att.parDelegationDe && att.valideur && !demande.confieeAEmployeeId) {
-    await tx.execute(sql`
-      UPDATE absence_requests SET confiee_a_employee_id = ${att.valideur.employeeId}
-       WHERE id = ${requestId}`);
+  const d = att && att.valideurs.length > 0 ? await lireDemande(tx, requestId) : null;
+  const prefixe = `conge:${requestId}`;
+  if (!att || !d) {
+    await retirerLesAppels(tx, prefixe);
+    return;
   }
-  const cle = att?.valideur ? cleAppel(requestId, att.etape) : null;
-  // Les appels ET leurs rappels : ceux de qui n'est plus attendu s'en vont.
-  const cleRappel = cle ? cle.replace(':appel:', ':rappel:') : null;
-  await tx.execute(sql`
-    DELETE FROM notifications
-     WHERE (dedupe_key LIKE ${`conge:${requestId}:appel:%`}
-            OR dedupe_key LIKE ${`conge:${requestId}:rappel:%`})
-       AND (${cle}::text IS NULL
-            OR dedupe_key NOT IN (${cle}, ${cleRappel})
-            OR recipient_user_id <> ${att?.valideur?.userId ?? null}::uuid)`);
-  if (!att?.valideur || !cle) return;
-  const d = await lireDemande(tx, requestId);
-  if (!d) return;
+  const destinataires = att.valideurs.map((v) => v.userId);
   if (att.etape === 'n1') {
-    await notifier(tx, d.tenantId, att.valideur.userId, {
+    await tenirLesAppels(tx, d.tenantId, prefixe, 'n1', destinataires, {
       type: 'conge_a_viser',
       title: `Congé à valider : ${d.nom}`,
       body: att.demandeDuDirecteur
         ? `${periode(d)}. Vous êtes son N+1 : votre visa suffit.`
         : `${periode(d)}. Vous êtes son N+1 : la DCH la reçoit après votre visa.`,
       link: '/moi/equipe',
-      dedupeKey: cle,
     });
     return;
   }
@@ -400,14 +286,15 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
   const origine = n1
     ? `Visée par ${n1}, son N+1.`
     : 'Sans N+1 disponible, elle vient directement à la DCH.';
-  await notifier(tx, d.tenantId, att.valideur.userId, {
+  await tenirLesAppels(tx, d.tenantId, prefixe, 'dch', destinataires, {
     type: 'conge_a_viser',
     title: `Congé à traiter : ${d.nom}`,
     body: att.parDelegationDe
       ? `${periode(d)}. ${origine} Confiée par ${att.parDelegationDe.nom} (DCH).`
-      : `${periode(d)}. ${origine} Vous pouvez la traiter, ou la confier à un membre de la DCH.`,
+      : att.valideurs[0]?.employeeId === att.dch?.directeurEmployeeId
+        ? `${periode(d)}. ${origine} Vous pouvez la traiter, ou la confier à un membre de la DCH.`
+        : `${periode(d)}. ${origine}`,
     link: '/moi/dch',
-    dedupeKey: cle,
   });
 }
 
@@ -432,70 +319,13 @@ export async function faireSuivreLesDemandes(tx: Tx, employeeId: string): Promis
  * personne ne traite pour la DCH.
  */
 export async function reconcilierLeCircuit(tx: Tx, tenantId: string): Promise<void> {
+  await verifierLesHabilitations(tx, tenantId);
   const enAttente = await demandesEnAttente(tx);
   for (const id of enAttente) await reconcilierDemande(tx, id);
-  await verifierLaDelegation(tx, tenantId);
+  await reconcilierLesDemandes(tx, tenantId);
+  await accueillirLeDirecteur(tx, tenantId);
   await verifierLaVacance(tx, tenantId, enAttente);
   await relancer(tx, tenantId);
-}
-
-/**
- * Les relances : qui est attendu depuis plus de deux jours ouvrés reçoit un
- * rappel — une fois par étape. L'appel à viser porte la date où la personne
- * a été appelée ; il n'existe que tant qu'elle est attendue, donc le rappel
- * va toujours à la bonne personne. Un changement de traitant repart à zéro.
- */
-async function relancer(tx: Tx, tenantId: string): Promise<void> {
-  const { rows: appels } = await tx.execute<{
-    recipient_user_id: string;
-    dedupe_key: string;
-    le: string;
-    title: string;
-    body: string | null;
-    link: string | null;
-  }>(sql`
-    SELECT recipient_user_id, dedupe_key, (created_at AT TIME ZONE 'UTC')::date::text AS le,
-           title, body, link
-      FROM notifications WHERE dedupe_key LIKE '%:appel:%'`);
-  if (appels.length === 0) return;
-  const { rows: jours } = await tx.execute<{ jour: string; aujourdhui: string }>(sql`
-    SELECT day::text AS jour, CURRENT_DATE::text AS aujourdhui
-      FROM holidays WHERE day IS NOT NULL
-    UNION ALL SELECT NULL, CURRENT_DATE::text`);
-  const aujourdhui = jours[0]!.aujourdhui;
-  const feries = new Set(jours.map((j) => j.jour).filter((j): j is string => Boolean(j)));
-  for (const a of appels) {
-    if (joursOuvresEcoules(a.le, aujourdhui, feries) < DELAI_RELANCE_JOURS_OUVRES) continue;
-    await notifier(tx, tenantId, a.recipient_user_id, {
-      type: 'rappel',
-      title: `Rappel — ${a.title}`,
-      body: `En attente de vous depuis le ${frDate(a.le)}.${a.body ? ` ${a.body}` : ''}`,
-      link: a.link ?? undefined,
-      dedupeKey: a.dedupe_key.replace(':appel:', ':rappel:'),
-    });
-  }
-}
-
-/** Le délégué ne fait plus partie de la DCH : le directeur l'apprend, une fois. */
-async function verifierLaDelegation(tx: Tx, tenantId: string): Promise<void> {
-  const dch = await directionDuPersonnel(tx);
-  if (!dch?.directeur) return;
-  const choix = await choixDuDirecteur(tx, dch.directeur.employeeId);
-  if (!choix?.delegueEmployeeId) return;
-  const membre = await membreDCH(tx, dch, choix.delegueEmployeeId);
-  if (membre !== 'parti') return;
-  const { rows } = await tx.execute<{ nom: string }>(sql`
-    SELECT p.given_name || ' ' || p.family_name AS nom
-      FROM employees e JOIN persons p ON p.id = e.person_id
-     WHERE e.id = ${choix.delegueEmployeeId}`);
-  const nom = rows[0]?.nom ?? 'La personne désignée';
-  await notifier(tx, tenantId, dch.directeur.userId, {
-    type: 'delegation_rompue',
-    title: `${nom} ne traite plus les demandes de congé`,
-    body: `${nom} ne fait plus partie de la ${dch.nom} : les demandes de congé vous reviennent. Voulez-vous les confier à un autre membre de votre direction ?`,
-    link: '/moi/dch',
-    dedupeKey: `delegation:${choix.id}:rompue`,
-  });
 }
 
 /**
@@ -505,16 +335,13 @@ async function verifierLaDelegation(tx: Tx, tenantId: string): Promise<void> {
  * l'intérimaire. L'alerte s'efface d'elle-même dès que quelqu'un traite.
  */
 async function verifierLaVacance(tx: Tx, tenantId: string, enAttente: string[]): Promise<void> {
-  let bloquees = 0;
-  let dch: DirectionDuPersonnel | null = null;
+  let bloquees = await compterLesBloquees(tx);
   for (const id of enAttente) {
     const demande = await lireCircuit(tx, id);
     const att = demande ? await attendu(tx, demande) : null;
-    if (att?.etape === 'dch' && !att.valideur) {
-      bloquees += 1;
-      dch = att.dch;
-    }
+    if (att?.etape === 'dch' && att.valideurs.length === 0) bloquees += 1;
   }
+  const dch = await directionDuPersonnel(tx);
   if (bloquees === 0) {
     await tx.execute(sql`DELETE FROM notifications WHERE dedupe_key = 'dch:vacante'`);
     return;
@@ -527,7 +354,7 @@ async function verifierLaVacance(tx: Tx, tenantId: string, enAttente: string[]):
   for (const r of rows) {
     await notifier(tx, tenantId, r.user_id, {
       type: 'dch_vacante',
-      title: 'Des demandes de congé attendent la DCH',
+      title: 'Des demandes attendent la DCH',
       body: `${bloquees > 1 ? `${bloquees} demandes attendent` : 'Une demande attend'} : ${qui}. Désignez le responsable — ou l’intérimaire — dans l’organigramme.`,
       link: '/organisation',
       dedupeKey: 'dch:vacante',
@@ -579,7 +406,7 @@ export async function quiViseraPour(
   const t = await traitantDCH(tx, fictive, dch);
   return {
     n1: n1 && !n1.absent ? n1.nom : null,
-    dch: t.valideur?.nom ?? null,
+    dch: nomsDe(t.valideurs),
     demandeDuDirecteur: Boolean(dch?.directeurEmployeeId === employeeId),
   };
 }

@@ -84,15 +84,20 @@ export const orgUnits = pgTable('org_units', {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
-/** Les choix du directeur du Capital Humain : traiter, ou confier. */
-export const delegations = pgTable('delegations', {
+/**
+ * Ce que le directeur du Capital Humain confie aux membres de la DCH. Close
+ * (fin_at) quand elle est retirée ou que le membre quitte la direction —
+ * jamais effacée.
+ */
+export const habilitations = pgTable('habilitations', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
-  typeDemande: text('type_demande').notNull(),
-  directeurEmployeeId: uuid('directeur_employee_id').notNull(),
-  delegueEmployeeId: uuid('delegue_employee_id'),
+  capacite: text('capacite').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  accordeeParEmployeeId: uuid('accordee_par_employee_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   finAt: timestamp('fin_at', { withTimezone: true }),
+  finMotif: text('fin_motif'),
 });
 
 export const profileChangeRequests = pgTable('profile_change_requests', {
@@ -107,6 +112,7 @@ export const profileChangeRequests = pgTable('profile_change_requests', {
   handledByUserId: uuid('handled_by_user_id'),
   hrMessage: text('hr_message'),
   handledAt: timestamp('handled_at', { withTimezone: true }),
+  confieeAEmployeeId: uuid('confiee_a_employee_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -381,6 +387,7 @@ export const employeeDocuments = pgTable('employee_documents', {
   reviewedByUserId: uuid('reviewed_by_user_id'),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   reviewComment: text('review_comment'),
+  confieeAEmployeeId: uuid('confiee_a_employee_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -413,6 +420,7 @@ export const documentRequests = pgTable('document_requests', {
   processingAt: timestamp('processing_at', { withTimezone: true }),
   readyAt: timestamp('ready_at', { withTimezone: true }),
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  confieeAEmployeeId: uuid('confiee_a_employee_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

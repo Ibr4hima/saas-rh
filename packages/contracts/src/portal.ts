@@ -2,8 +2,11 @@ import { z } from 'zod';
 
 /** Contrats du portail employé : invitations et espace personnel. */
 
-/** Rôles attribuables par invitation — jamais admin par ce canal. */
-export const invitableRoleSchema = z.enum(['hr', 'payroll', 'manager', 'employee']);
+/**
+ * Tout le monde entre au portail comme AGENT : il n'y a plus de rôle à
+ * choisir. Ce qu'on peut faire de plus vient de l'organigramme (cf. acces.ts).
+ */
+export const invitableRoleSchema = z.enum(['employee']);
 export type InvitableRole = z.infer<typeof invitableRoleSchema>;
 
 export const inviteEmployeeSchema = z.object({

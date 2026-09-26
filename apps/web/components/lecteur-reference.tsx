@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import {
   decouperTexte,
+  peut,
   type ReferenceChapterView,
   type ReferenceSearchHit,
   type ReferenceTextView,
@@ -31,7 +32,7 @@ import { Icon } from './icons';
  */
 export function LecteurReference({ slug }: { slug: string }) {
   const me = useMe();
-  const peutDeposer = Boolean(me.data && ['admin', 'hr'].includes(me.data.role));
+  const peutDeposer = peut(me.data, 'textes');
   const texte = useQuery({
     queryKey: ['reference-text', slug],
     queryFn: () => api<ReferenceTextView>(`/reference-texts/${slug}`),

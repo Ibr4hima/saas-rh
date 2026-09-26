@@ -8,6 +8,9 @@
  * plutôt qu'une erreur globale. Le reste vérifie que le circuit de l'ADR-0012
  * est respecté (une demande « reçue » n'atterrit pas « prête » sans avoir été
  * traitée) et que l'employé n'est prévenu QU'UNE fois.
+ *
+ * Celui qui traite ici dirige la Direction du Capital Humain : c'est
+ * l'organigramme, pas un rôle, qui lui donne la file.
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -30,7 +33,7 @@ const moussaUserId = randomUUID();
 const rh = {
   userId: rhUserId,
   tenantId,
-  role: 'hr',
+  role: 'employee',
   givenName: 'Ibrahima',
   familyName: 'Ba',
 } as SessionUser;
@@ -94,12 +97,21 @@ beforeAll(async () => {
     tenantId,
     `lot-${tenantId.slice(0, 8)}`,
   ]);
+  for (const userId of [rhUserId, awaUserId, moussaUserId]) {
+    await raw(
+      `INSERT INTO user_tenant_memberships (id, tenant_id, user_id, role)
+       VALUES ($1,$2,$3,'employee')`,
+      [randomUUID(), tenantId, userId],
+    );
+  }
   await raw(
-    `INSERT INTO user_tenant_memberships (id, tenant_id, user_id, role)
-     VALUES ($1,$2,$3,'hr')`,
-    [randomUUID(), tenantId, rhUserId],
+    `INSERT INTO org_units (id, tenant_id, unit_type, name, direction_du_personnel)
+     VALUES ($1,$2,'direction','Direction du Capital Humain',true)`,
+    [dchId, tenantId],
   );
 });
+
+const dchId = randomUUID();
 
 let awaEmployeeId: string;
 let moussaEmployeeId: string;
@@ -107,14 +119,18 @@ let moussaEmployeeId: string;
 beforeEach(async () => {
   await raw(`DELETE FROM document_requests WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM notifications WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM assignments WHERE tenant_id = $1`, [tenantId]);
+  await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM employees WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM persons WHERE tenant_id = $1`, [tenantId]);
 
   awaEmployeeId = randomUUID();
   moussaEmployeeId = randomUUID();
+  const rhEmployeeId = randomUUID();
   for (const [personId, employeeId, userId, prenom, nom, matricule] of [
     [randomUUID(), awaEmployeeId, awaUserId, 'Awa', 'Diop', 'EMP-001'],
     [randomUUID(), moussaEmployeeId, moussaUserId, 'Moussa', 'Ndiaye', 'EMP-002'],
+    [randomUUID(), rhEmployeeId, rhUserId, 'Ibrahima', 'Ba', 'EMP-003'],
   ] as const) {
     await raw(
       `INSERT INTO persons (id, tenant_id, user_id, given_name, family_name)
@@ -127,12 +143,21 @@ beforeEach(async () => {
       [employeeId, tenantId, personId, matricule],
     );
   }
+  await raw(
+    `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+     VALUES ($1,$2,$3,$4,'Directeur', daterange('2024-01-01', NULL))`,
+    [randomUUID(), tenantId, rhEmployeeId, dchId],
+  );
+  await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [dchId, rhEmployeeId]);
 });
 
 afterAll(async () => {
+  await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
   for (const table of [
     'document_requests',
     'notifications',
+    'assignments',
+    'org_units',
     'employees',
     'persons',
     'user_tenant_memberships',

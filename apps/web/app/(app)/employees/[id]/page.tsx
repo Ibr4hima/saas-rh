@@ -8,9 +8,9 @@ import type {
   BalanceView,
   EmployeeDetail,
   EmployeeHistoryEntry,
-  InvitableRole,
   InviteResult,
 } from '@teranga/contracts';
+import { peut } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -150,7 +150,7 @@ export default function EmployeePage() {
   // le bouton de la barre supérieure reste un lien et que Retour referme.
   const editOpen = useSearchParams().get('modifier') !== null;
   const me = useMe();
-  const canSeeHistory = me.data && ['admin', 'hr'].includes(me.data.role);
+  const canSeeHistory = peut(me.data, 'personnel.consulter');
 
   const detail = useQuery({
     queryKey: ['employee', id],
@@ -898,14 +898,6 @@ function BalancesCard({ employeeId, canEdit }: { employeeId: string; canEdit: bo
   );
 }
 
-const PORTAL_ROLE_LABELS: Record<string, string> = {
-  hr: 'RH',
-  payroll: 'Gestionnaire de paie',
-  manager: 'Manager',
-  employee: 'Employé',
-  admin: 'Administrateur',
-};
-
 function PortalCard({
   employeeId,
   portal,
@@ -918,14 +910,13 @@ function PortalCard({
   gender: string | null;
 }) {
   const queryClient = useQueryClient();
-  const [role, setRole] = useState<InvitableRole>('employee');
   const [invite, setInvite] = useState<InviteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const generate = useMutation({
     mutationFn: () =>
-      api<InviteResult>(`/employees/${employeeId}/invite`, { method: 'POST', body: { role } }),
+      api<InviteResult>(`/employees/${employeeId}/invite`, { method: 'POST', body: {} }),
     onSuccess: (r) => {
       setInvite(r);
       setError(null);
@@ -968,7 +959,9 @@ function PortalCard({
           <div className="min-w-0 flex-1">
             <p className="text-[13px] leading-tight font-semibold text-ink-strong">
               {actif
-                ? `Connecté en tant que ${PORTAL_ROLE_LABELS[portal.role ?? ''] ?? portal.role ?? 'employé'}`
+                ? portal.role === 'admin'
+                  ? 'Compte actif · administration'
+                  : 'Compte actif'
                 : portal.status === 'invited'
                   ? 'Invitation envoyée, pas encore acceptée'
                   : 'Pas encore de compte'}
@@ -977,6 +970,8 @@ function PortalCard({
               {actif ? (
                 <>
                   {prenom} se connecte au portail et y gère ses demandes de congés et de documents.
+                  Ce qu&apos;on y fait de plus vient de sa place dans l&apos;organigramme — N+1
+                  d&apos;une équipe, Direction du Capital Humain — pas d&apos;un rôle.
                 </>
               ) : (
                 <>
@@ -995,23 +990,9 @@ function PortalCard({
 
         {actif ? null : (
           <>
-            {/* Le rôle et le bouton côte à côte dès que la carte a la largeur
-                — dans le rail de droite elle ne l'a pas, et un bouton à demi
-                coupé vaut moins qu'un bouton empilé. */}
+            {/* Pas de rôle à choisir : tout le monde entre comme agent, et
+                l'organigramme donne le reste. */}
             <div className="flex flex-col gap-3 @[24rem]:flex-row @[24rem]:items-end">
-              <div className="@[24rem]:w-44">
-                <Field label="Rôle" htmlFor="invite-role">
-                  <Select
-                    id="invite-role"
-                    value={role}
-                    onChange={(ev) => setRole(ev.target.value as InvitableRole)}
-                  >
-                    <option value="employee">Employé</option>
-                    <option value="manager">Manager</option>
-                    <option value="hr">RH</option>
-                  </Select>
-                </Field>
-              </div>
               <Button
                 onClick={() => generate.mutate()}
                 loading={generate.isPending}
@@ -1052,8 +1033,7 @@ function PortalCard({
                   {inviteUrl}
                 </p>
                 <p className="mt-2 text-[11px] text-ink-muted">
-                  Pour {invite.email} · rôle {PORTAL_ROLE_LABELS[invite.role] ?? invite.role} ·
-                  valable jusqu&apos;au {formatDate(invite.expiresAt)}
+                  Pour {invite.email} · valable jusqu&apos;au {formatDate(invite.expiresAt)}
                 </p>
               </div>
             ) : null}

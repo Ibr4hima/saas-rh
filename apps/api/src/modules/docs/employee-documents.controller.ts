@@ -21,12 +21,12 @@ import {
   type UploadEmployeeDocumentInput,
 } from '@teranga/contracts';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { RolesGuard } from '../auth/roles.guard';
+import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { EmployeeDocumentsService } from './employee-documents.service';
 
 @Controller()
-@UseGuards(SessionGuard, RolesGuard)
+@UseGuards(SessionGuard, AccesGuard)
 export class EmployeeDocumentsController {
   constructor(
     @Inject(EmployeeDocumentsService) private readonly documents: EmployeeDocumentsService,
@@ -39,6 +39,12 @@ export class EmployeeDocumentsController {
     @Body(new ZodValidationPipe(uploadEmployeeDocumentSchema)) body: UploadEmployeeDocumentInput,
   ) {
     return this.documents.upload(req.sessionUser, id, body);
+  }
+
+  /** La file de la DCH : les pièces déposées par les agents, à vérifier. */
+  @Get('employee-documents/a-verifier')
+  file(@Req() req: AuthenticatedRequest) {
+    return this.documents.file(req.sessionUser);
   }
 
   @Get('employees/:id/documents')

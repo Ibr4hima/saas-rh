@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { peut } from '@teranga/contracts';
 import { Skeleton } from '@teranga/ui';
 import { useMe } from '../lib/hooks';
 
@@ -10,8 +11,8 @@ export default function HomePage() {
   const me = useMe();
 
   useEffect(() => {
-    if (me.data)
-      router.replace(['admin', 'hr', 'payroll'].includes(me.data.role) ? '/dashboard' : '/moi');
+    // Qui pilote arrive sur le tableau de bord ; un agent, sur son espace.
+    if (me.data) router.replace(peut(me.data, 'pilotage') ? '/dashboard' : '/moi');
     else if (me.isError) router.replace('/login');
   }, [me.data, me.isError, router]);
 

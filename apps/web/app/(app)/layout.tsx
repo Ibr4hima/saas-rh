@@ -4,7 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CompteursValidations, TeamSize } from '@teranga/contracts';
+import {
+  gereQuelqueChose,
+  peut,
+  type CompteursValidations,
+  type SessionUser,
+  type TeamSize,
+} from '@teranga/contracts';
 import { cn, Skeleton } from '@teranga/ui';
 import { BrandMark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
@@ -29,14 +35,6 @@ import {
 } from '../../components/palette';
 import { api } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
-
-interface DashboardStats {
-  activeEmployees: number;
-  pendingRequests: number;
-  upcomingAbsences: number;
-  orgUnits: number;
-  pendingDocumentRequests: number;
-}
 
 interface NavChild {
   href: string;
@@ -75,7 +73,7 @@ interface NavItem {
    */
   motsCles?: string;
   icon: IconName;
-  badge?: 'pending' | 'docs' | 'visas' | 'traiter';
+  badge?: 'visas' | 'traiter';
   /**
    * Entrée ÉTEINTE : elle reste à sa place dans la liste — l'ordre du menu
    * est une carte qu'on mémorise, et retirer une ligne la redessine — mais
@@ -142,7 +140,6 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Absences & Congés',
     short: 'Congés',
     icon: 'free_cancellation',
-    badge: 'pending',
     groupe: 'quotidien',
     children: [
       { href: '/absences', label: 'Gestion des demandes' },
@@ -150,14 +147,8 @@ const NAV_ITEMS: NavItem[] = [
       { href: '/absences/parametres', label: 'Paramètres des congés' },
     ],
   },
-  {
-    href: '/documents',
-    label: 'Demandes à traiter',
-    short: 'Demandes',
-    icon: 'folder_managed',
-    badge: 'docs',
-    groupe: 'quotidien',
-  },
+  // « Demandes à traiter » et « Délégations » s'insèrent ici, selon ce que
+  // l'agent traite pour la DCH (cf. navigationGestion).
   {
     href: '/recrutement',
     label: 'Recrutement',
@@ -230,7 +221,10 @@ const PAGE_TITLES: Record<string, string> = {
   '/absences': 'Absences & Congés',
   '/absences/feries': 'Jours fériés',
   '/absences/parametres': 'Paramètres des congés',
-  '/documents': 'Demandes à traiter',
+  '/documents': 'Documents à traiter',
+  '/demandes/informations': 'Informations à traiter',
+  '/demandes/pieces': 'Pièces à vérifier',
+  '/moi/delegations': 'Délégations',
   '/calendrier': 'Calendrier · Jours fériés',
   '/recrutement': "Offres d'emploi",
   '/recrutement/candidatures': 'Dossiers de candidature',
@@ -290,28 +284,26 @@ interface ChromeAction {
   label: string;
 }
 
-function pageAction(pathname: string, role: string): ChromeAction | null {
-  const canManage = role === 'admin' || role === 'hr';
-  if (!canManage) return null;
-  if (pathname === '/employees') {
+function pageAction(pathname: string, user: SessionUser): ChromeAction | null {
+  if (pathname === '/employees' && peut(user, 'personnel.gerer')) {
     return { href: '/employees?nouveau=1', icon: 'add', label: 'Nouvel employé' };
   }
-  if (pathname === '/recrutement') {
+  if (pathname === '/recrutement' && peut(user, 'recrutement')) {
     return { href: '/recrutement?nouvelle=1', icon: 'add', label: 'Nouvelle offre' };
   }
-  if (pathname === '/organisation') {
+  if (pathname === '/organisation' && peut(user, 'organigramme')) {
     return { href: '/organisation?nouvelle=1', icon: 'add', label: 'Nouvelle unité' };
   }
-  if (pathname === '/academy') {
+  if (pathname === '/academy' && peut(user, 'academy')) {
     return { href: '/academy/gerer', icon: 'settings', label: 'Gérer le catalogue' };
   }
-  if (pathname === '/academy/gerer') {
+  if (pathname === '/academy/gerer' && peut(user, 'academy')) {
     return { href: '/academy/gerer?nouvelle=1', icon: 'add', label: 'Nouvelle formation' };
   }
   const parts = pathname.split('/').filter(Boolean);
   // Un texte de référence — /reglementations/<slug> — et non son écran de
   // dépôt, qui a ses propres boutons.
-  if (parts.length === 2 && parts[0] === 'reglementations') {
+  if (parts.length === 2 && parts[0] === 'reglementations' && peut(user, 'textes')) {
     return { href: `${pathname}/deposer`, icon: 'edit', label: 'Déposer le texte' };
   }
   return null;
@@ -339,7 +331,7 @@ function HeaderAction({ action }: { action: ChromeAction }) {
  * L'espace APIX Academy, côté apprenant : le catalogue, les formations, les
  * leçons, l'évaluation, « Ma liste », « Mes certificats ». On y vient pour
  * apprendre — le bandeau s'y allège : ni date, ni recherche, ni cloche, et le
- * signet de « Ma liste » à leur place. L'atelier de la RH (/academy/gerer)
+ * signet de « Ma liste » à leur place. L'atelier de la DCH (/academy/gerer)
  * reste un écran de gestion, avec le bandeau de gestion.
  */
 function espaceAcademy(pathname: string): boolean {
@@ -382,34 +374,170 @@ function LienBandeau({
   );
 }
 
-const STAFF_ROLES = ['admin', 'hr', 'payroll'];
-/** Sections réservées admin/RH : cachées aux autres rôles staff (payroll). */
-const MANAGE_ONLY_PATHS = ['/recrutement', '/documents', '/academy/gerer'];
+/* ————————————————————————————————————————————————————————————————
+   Qui voit quoi dans le menu : ce que l'organigramme donne, rien d'autre.
+
+   Pas de rôle « RH » ou « Manager » : tout le monde est agent. Le N+1 voit
+   les congés de son équipe ; le directeur du Capital Humain voit tout ; un
+   membre de la DCH voit ce qui lui est confié ; l'administrateur, la
+   gestion. Le serveur refuse de toute façon ce que le menu ne montre pas —
+   le menu ne fait que ne pas promettre ce qui serait refusé.
+   ———————————————————————————————————————————————————————————————— */
+
+/** Ce que l'agent a devant lui, par type de demande — les badges et les entrées. */
+type ATraiter = CompteursValidations['aTraiter'];
+
+/** Les files de la DCH : qui les traite, ou à qui une demande est confiée. */
+const FILES = [
+  {
+    type: 'conges',
+    capacite: 'demandes.conges',
+    href: '/moi/dch',
+    label: 'Congés',
+    seul: 'Congés à traiter',
+  },
+  {
+    type: 'documents',
+    capacite: 'demandes.documents',
+    href: '/documents',
+    label: 'Documents',
+    seul: 'Documents à traiter',
+  },
+  {
+    type: 'informations',
+    capacite: 'demandes.informations',
+    href: '/demandes/informations',
+    label: 'Informations',
+    seul: 'Informations à traiter',
+  },
+  {
+    type: 'pieces',
+    capacite: 'demandes.pieces',
+    href: '/demandes/pieces',
+    label: 'Pièces justificatives',
+    seul: 'Pièces à vérifier',
+  },
+] as const;
+
+/** Les files qu'il voit : celles qu'il traite, et celles où une demande l'attend. */
+function filesDe(user: SessionUser, aTraiter: ATraiter | undefined) {
+  return FILES.filter((f) => peut(user, f.capacite) || (aTraiter?.[f.type] ?? 0) > 0);
+}
+
+/** Voit toutes les demandes de congé : qui les traite pour la DCH, ou consulte les dossiers. */
+const voitLesConges = (user: SessionUser) =>
+  peut(user, 'demandes.conges') || peut(user, 'personnel.consulter');
+
+/** A-t-il un espace de gestion — une habilitation, ou une demande qui l'attend ? */
+function gere(user: SessionUser, aTraiter: ATraiter | undefined): boolean {
+  return gereQuelqueChose(user) || filesDe(user, aTraiter).length > 0;
+}
 
 /**
- * Les congés d'une équipe : l'entrée n'apparaît qu'à qui encadre quelqu'un —
- * c'est l'organigramme qui fait le n+1, pas le rôle.
+ * La navigation de qui gère : les écrans de ses habilitations, et son
+ * espace personnel en une entrée — l'espace est un carrefour, il mène à ses
+ * congés, ses documents, ses informations.
  */
-const CONGES_EQUIPE = { href: '/moi/equipe', label: 'Congés de l’équipe' };
-/**
- * Les congés que traite la DCH : l'entrée n'apparaît qu'à son directeur, et
- * au membre à qui il les confie.
- */
-const CONGES_A_TRAITER = { href: '/moi/dch', label: 'Congés à traiter' };
-
-function staffNav(role: string, aUneEquipe: boolean, traitement: boolean): NavItem[] {
-  const items =
-    role !== 'payroll'
-      ? NAV_ITEMS
-      : NAV_ITEMS.filter((i) => !MANAGE_ONLY_PATHS.some((p) => i.href.startsWith(p)));
-  const enPlus = [
-    ...(aUneEquipe ? [CONGES_EQUIPE] : []),
-    ...(traitement ? [CONGES_A_TRAITER] : []),
-  ];
-  if (enPlus.length === 0) return items;
-  return items.map((i) =>
-    i.href === '/absences' && i.children ? { ...i, children: [...i.children, ...enPlus] } : i,
-  );
+function navigationGestion(
+  user: SessionUser,
+  aUneEquipe: boolean,
+  aTraiter: ATraiter | undefined,
+): NavItem[] {
+  const files = filesDe(user, aTraiter);
+  const demandes: NavItem[] =
+    files.length === 0
+      ? []
+      : [
+          files.length === 1
+            ? {
+                href: files[0]!.href,
+                label: files[0]!.seul,
+                short: 'À traiter',
+                icon: 'how_to_reg',
+                badge: 'traiter',
+                groupe: 'quotidien',
+              }
+            : {
+                href: files[0]!.href,
+                label: 'Demandes à traiter',
+                short: 'Demandes',
+                motsCles: 'DCH congés documents attestations informations pièces',
+                icon: 'how_to_reg',
+                badge: 'traiter',
+                groupe: 'quotidien',
+                children: files.map((f) => ({ href: f.href, label: f.label })),
+              },
+        ];
+  // Le directeur les modifie ; l'administrateur y lit qui peut quoi.
+  const delegations: NavItem[] =
+    user.dirigeLaDCH || user.role === 'admin'
+      ? [
+          {
+            href: '/moi/delegations',
+            label: 'Délégations',
+            short: 'Délég.',
+            motsCles: 'Habilitations DCH confier accès',
+            icon: 'verified_user',
+            groupe: 'quotidien',
+          },
+        ]
+      : [];
+  const items: NavItem[] = [];
+  for (const i of NAV_ITEMS) {
+    switch (i.href) {
+      case '/dashboard':
+        if (peut(user, 'pilotage')) items.push(i);
+        if (user.estAgent) {
+          items.push({
+            href: '/moi',
+            label: 'Mon espace',
+            short: 'Espace',
+            motsCles: 'Mes congés mes documents mes informations',
+            icon: 'person',
+            groupe: 'pilotage',
+          });
+        }
+        break;
+      case '/employees':
+        if (peut(user, 'personnel.consulter')) items.push(i);
+        break;
+      case '/absences': {
+        const children = [
+          ...(voitLesConges(user) ? [{ href: '/absences', label: 'Gestion des demandes' }] : []),
+          ...(peut(user, 'conges.parametres') || voitLesConges(user)
+            ? (i.children ?? []).filter((c) => c.href !== '/absences')
+            : []),
+          ...(aUneEquipe ? [{ href: '/moi/equipe', label: 'Congés de l’équipe' }] : []),
+        ];
+        if (children.length > 0) {
+          items.push(
+            aUneEquipe && children.length === 1
+              ? {
+                  href: '/moi/equipe',
+                  label: 'Congés de l’équipe',
+                  short: 'Équipe',
+                  icon: 'groups',
+                  badge: 'visas',
+                  groupe: 'quotidien',
+                }
+              : { ...i, badge: aUneEquipe ? 'visas' : undefined, children },
+          );
+        }
+        items.push(...demandes, ...delegations);
+        break;
+      }
+      case '/recrutement':
+        if (peut(user, 'recrutement')) items.push(i);
+        break;
+      case '/competences':
+      case '/evaluation':
+        if (peut(user, 'pilotage')) items.push(i);
+        break;
+      default:
+        items.push(i);
+    }
+  }
+  return items;
 }
 
 /**
@@ -420,7 +548,7 @@ function staffNav(role: string, aUneEquipe: boolean, traitement: boolean): NavIt
  * validations d'un manager tiennent à part : c'est le seul endroit où il
  * décide pour un autre.
  */
-function personalNav(aUneEquipe: boolean, traitement: boolean): NavItem[] {
+function personalNav(aUneEquipe: boolean): NavItem[] {
   return [
     { href: '/moi', label: 'Mon espace', short: 'Espace', icon: 'dashboard', groupe: 'pilotage' },
     {
@@ -457,24 +585,11 @@ function personalNav(aUneEquipe: boolean, traitement: boolean): NavItem[] {
     ...(aUneEquipe
       ? [
           {
-            href: CONGES_EQUIPE.href,
-            label: CONGES_EQUIPE.label,
+            href: '/moi/equipe',
+            label: 'Congés de l’équipe',
             short: 'Équipe',
             icon: 'groups' as const,
             badge: 'visas' as const,
-            groupe: 'croissance' as const,
-          },
-        ]
-      : []),
-    // Ce que traite la DCH : son directeur, et le membre à qui il confie.
-    ...(traitement
-      ? [
-          {
-            href: CONGES_A_TRAITER.href,
-            label: CONGES_A_TRAITER.label,
-            short: 'À traiter',
-            icon: 'how_to_reg' as const,
-            badge: 'traiter' as const,
             groupe: 'croissance' as const,
           },
         ]
@@ -883,13 +998,13 @@ function DateDuJour() {
   );
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Administrateur',
-  hr: 'RH',
-  payroll: 'Gestionnaire de paie',
-  manager: 'Manager',
-  employee: 'Employé',
-};
+/** Ce que la carte du compte dit de l'utilisateur : sa place, pas un rôle. */
+function qualite(user: SessionUser): string {
+  if (user.dirigeLaDCH) return 'Dirige la DCH';
+  if (user.role === 'admin') return 'Administration';
+  if (user.capacites.length > 0) return 'Membre de la DCH';
+  return 'Agent';
+}
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -909,16 +1024,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => setBulle(null), [pathname, replie]);
   const titleOverride = usePageTitleOverride();
 
-  const role = me.data?.role ?? '';
-  const isStaff = STAFF_ROLES.includes(role);
   const [palette, setPalette] = useState(false);
   const ouvrirPalette = useCallback(() => setPalette(true), []);
   const fermerPalette = useCallback(() => setPalette(false), []);
   useRaccourciPalette(ouvrirPalette);
   const raccourci = useNomDuRaccourci();
 
-  // Ce que le n+1 a devant lui : son équipe (l'entrée n'existe que pour qui
-  // encadre), et ce qui attend son visa (le badge).
+  // Ce que l'agent a devant lui : son équipe (l'entrée n'existe que pour qui
+  // encadre), ce qui attend son visa, ce qu'il traite pour la DCH (badges).
   const validations = useQuery({
     queryKey: ['validations-compteurs'],
     queryFn: () => api<CompteursValidations>('/absences/validations/compteurs'),
@@ -926,11 +1039,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
     refetchInterval: 60_000,
   });
   const aUneEquipe = (validations.data?.equipe ?? 0) > 0;
-  const traitement = validations.data?.traitement ?? false;
+  const aTraiter = validations.data?.aTraiter;
+  const gestion = Boolean(me.data && gere(me.data, aTraiter));
   const items = useMemo(
-    () => (isStaff ? staffNav(role, aUneEquipe, traitement) : personalNav(aUneEquipe, traitement)),
-    [isStaff, role, aUneEquipe, traitement],
+    () =>
+      me.data && gestion
+        ? navigationGestion(me.data, aUneEquipe, aTraiter)
+        : personalNav(aUneEquipe),
+    [me.data, gestion, aUneEquipe, aTraiter],
   );
+  const accueil = me.data && peut(me.data, 'pilotage') ? '/dashboard' : '/moi';
   // Les écrans que la palette sait ouvrir : le menu, mis à plat, avec le
   // chemin qu'on aurait suivi pour y arriver — c'est ce qu'on tape. Une
   // rubrique n'a pas de page à elle : seules ses sous-pages sont des écrans.
@@ -955,14 +1073,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
     [items],
   );
 
-  const stats = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: () => api<DashboardStats>('/dashboard'),
-    // Réservé aux rôles qui y ont droit côté serveur — pas de 403 périodiques.
-    enabled: Boolean(me.data) && isStaff,
-    refetchInterval: 60_000,
-  });
-
   // « Mon équipe » ne s'affiche qu'à qui encadre quelqu'un : l'organigramme
   // en décide, pas le rôle — d'où cette question au serveur, dans l'Academy
   // seulement.
@@ -973,30 +1083,52 @@ function AppShell({ children }: { children: React.ReactNode }) {
     staleTime: 5 * 60_000,
   });
 
-  // Garde de routes : les non-gestionnaires restent dans leur espace.
-  const allowedForRole = (path: string): boolean => {
-    if (!me.data) return true;
-    if (role === 'payroll' && MANAGE_ONLY_PATHS.some((p) => path.startsWith(p))) return false;
-    if (isStaff) return true;
-    if (path.startsWith('/moi') || path.startsWith('/calendrier')) return true;
-    // L'organigramme est un annuaire interne : lisible par tous les rôles.
-    if (path.startsWith('/organisation')) return true;
-    // Les textes de référence aussi, et à plus forte raison : un règlement
-    // intérieur que seule la RH peut ouvrir ne s'oppose à personne.
-    if (path.startsWith('/reglementations')) return true;
-    // L'Academy est faite pour les agents. Son atelier, lui, reste à la RH.
-    if (path.startsWith('/academy')) return !path.startsWith('/academy/gerer');
+  // Garde de routes : chacun reste dans ce que ses habilitations ouvrent. Le
+  // serveur refuse de toute façon ; la garde évite d'ouvrir un écran vide.
+  const autorise = (path: string): boolean => {
+    const u = me.data;
+    if (!u) return true;
+    const commence = (p: string) => path === p || path.startsWith(`${p}/`);
+    // Ce que traite la DCH : attendre les compteurs, qui disent si une
+    // demande a été confiée à l'agent.
+    const file = FILES.find((f) => commence(f.href));
+    if (file) {
+      return (
+        !validations.data ||
+        peut(u, file.capacite) ||
+        (aTraiter?.[file.type] ?? 0) > 0 ||
+        (file.type !== 'conges' && peut(u, 'personnel.consulter'))
+      );
+    }
+    if (commence('/moi/delegations')) return u.dirigeLaDCH || u.role === 'admin';
+    if (commence('/moi') || commence('/calendrier')) return true;
+    // L'organigramme est un annuaire interne ; les textes de référence, le
+    // cadre de tous ; l'Academy est faite pour les agents.
+    if (commence('/organisation')) return true;
+    if (path.endsWith('/deposer')) return peut(u, 'textes');
+    if (commence('/reglementations')) return true;
+    if (commence('/academy/gerer')) return peut(u, 'academy');
+    if (commence('/academy')) return true;
+    if (commence('/dashboard') || commence('/competences') || commence('/evaluation')) {
+      return peut(u, 'pilotage');
+    }
+    if (commence('/employees/new') || path.endsWith('/modifier')) {
+      return peut(u, 'personnel.gerer');
+    }
+    if (commence('/employees')) return peut(u, 'personnel.consulter');
+    if (commence('/absences')) return voitLesConges(u) || peut(u, 'conges.parametres');
+    if (commence('/recrutement')) return peut(u, 'recrutement');
     return false;
   };
-  const allowed = allowedForRole(pathname);
+  const allowed = autorise(pathname);
 
   useEffect(() => {
     if (me.isError) router.replace('/login');
   }, [me.isError, router]);
 
   useEffect(() => {
-    if (me.data && !allowed) router.replace(isStaff ? '/dashboard' : '/moi');
-  }, [me.data, allowed, isStaff, router]);
+    if (me.data && !allowed) router.replace(accueil);
+  }, [me.data, allowed, accueil, router]);
 
   if (!me.data) {
     return (
@@ -1014,24 +1146,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   const user = me.data;
   const initials = `${user.givenName[0] ?? ''}${user.familyName[0] ?? ''}`.toUpperCase();
-  const pending = stats.data?.pendingRequests ?? 0;
-  const pendingDocs = stats.data?.pendingDocumentRequests ?? 0;
   const aViser = validations.data?.aViser ?? 0;
-  const aTraiter = validations.data?.aTraiter ?? 0;
-  const badgeCount = (badge?: 'pending' | 'docs' | 'visas' | 'traiter') =>
-    badge === 'pending'
-      ? pending
-      : badge === 'docs'
-        ? pendingDocs
-        : badge === 'visas'
-          ? aViser
-          : badge === 'traiter'
-            ? aTraiter
-            : 0;
+  const totalATraiter = aTraiter
+    ? aTraiter.conges + aTraiter.documents + aTraiter.informations + aTraiter.pieces
+    : 0;
+  const badgeCount = (badge?: 'visas' | 'traiter') =>
+    badge === 'visas' ? aViser : badge === 'traiter' ? totalATraiter : 0;
 
   // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
   const title = titleOverride ?? pageTitle(pathname, user.givenName);
-  const action = pageAction(pathname, user.role);
+  const action = pageAction(pathname, user);
   const academy = espaceAcademy(pathname);
   const isActive = (href: string) =>
     href === '/moi' ? pathname === '/moi' : pathname.startsWith(href);
@@ -1046,7 +1170,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       {/* ———— Bandeau de tête, d'un bord à l'autre ———— */}
       <header className="hero-bar z-30 flex h-[58px] shrink-0 items-center gap-3.5 px-4 lg:gap-4 lg:px-7">
         <Link
-          href={isStaff ? '/dashboard' : '/moi'}
+          href={accueil}
           aria-label="Accueil"
           className="relative z-10 flex shrink-0 items-center"
         >
@@ -1176,7 +1300,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
               </button>
               {!replie ? (
                 <p className="min-w-0 truncate text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
-                  {isStaff ? 'Navigation' : 'Mon espace'}
+                  {gestion ? 'Navigation' : 'Mon espace'}
                 </p>
               ) : null}
             </div>
@@ -1238,7 +1362,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                     {user.givenName} {user.familyName}
                   </span>
                   <span className="block truncate text-[10.5px] leading-tight text-ink-muted">
-                    {ROLE_LABELS[user.role] ?? user.role}
+                    {qualite(user)}
                   </span>
                 </span>
               </>
@@ -1306,7 +1430,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         ouverte={palette}
         onFermer={fermerPalette}
         ecrans={ecrans}
-        peutChercherLesAgents={isStaff}
+        peutChercherLesAgents={peut(user, 'personnel.consulter')}
       />
     </div>
   );

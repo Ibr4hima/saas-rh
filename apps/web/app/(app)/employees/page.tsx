@@ -11,6 +11,7 @@ import type {
   EmployeeSort,
   EmployeeStatus,
 } from '@teranga/contracts';
+import { peut } from '@teranga/contracts';
 import {
   Button,
   CardHeader,
@@ -98,7 +99,7 @@ export default function EmployeesPage() {
   const queryClient = useQueryClient();
   // La liste s'ouvre aussi à la paie, l'import non : il écrit des dossiers.
   const me = useMe();
-  const peutImporter = Boolean(me.data && ['admin', 'hr'].includes(me.data.role));
+  const peutImporter = peut(me.data, 'personnel.gerer');
   // L'ouverture passe par l'URL (?nouveau) : le bouton de la barre supérieure
   // est un lien, la fenêtre se partage, et le bouton Retour la referme au lieu
   // de quitter la liste.

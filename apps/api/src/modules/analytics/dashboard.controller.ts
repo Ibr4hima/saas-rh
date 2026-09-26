@@ -1,15 +1,15 @@
 import { Controller, Get, Inject, Req, UseGuards } from '@nestjs/common';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
-import type { DashboardView } from '@teranga/contracts';
+import { peut, type DashboardView } from '@teranga/contracts';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { AccesGuard, Peut } from '../auth/acces.guard';
 import { compterEnAttenteDCH } from '../time/visas';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 
 @Controller()
-@UseGuards(SessionGuard, RolesGuard)
-@Roles('admin', 'hr', 'payroll', 'manager')
+@UseGuards(SessionGuard, AccesGuard)
+@Peut('pilotage')
 export class DashboardController {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
 
@@ -21,10 +21,9 @@ export class DashboardController {
   @Get('dashboard')
   async stats(@Req() req: AuthenticatedRequest): Promise<DashboardView> {
     const user = req.sessionUser;
-    const isManage = ['admin', 'hr'].includes(user.role);
-    // Le suivi des contrats est une donnée de gestion : le manager voit son
-    // équipe dans les autres cartes, pas les échéances contractuelles.
-    const seesContracts = isManage || user.role === 'payroll';
+    // Les files de la DCH ne se comptent que pour qui les voit.
+    const isManage = peut(user, 'personnel.consulter');
+    const seesContracts = peut(user, 'pilotage') || isManage;
 
     /**
      * Contrats à durée limitée en cours. Le contrat retenu est le PLUS RÉCENT

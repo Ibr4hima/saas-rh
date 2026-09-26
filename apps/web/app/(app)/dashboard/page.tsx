@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import type { AbsenceRequestView, DashboardHoliday, DashboardView } from '@teranga/contracts';
+import { peut } from '@teranga/contracts';
 import {
   Badge,
   Card,
@@ -454,9 +455,9 @@ interface EntreeATraiter {
 
 export default function DashboardPage() {
   const me = useMe();
-  const role = me.data?.role;
-  const canManage = role === 'admin' || role === 'hr';
-  const seesContracts = canManage || role === 'payroll';
+  const canManage = peut(me.data, 'personnel.consulter');
+  const seesContracts = peut(me.data, 'pilotage') || canManage;
+  const traiteConges = peut(me.data, 'demandes.conges');
 
   const stats = useQuery({
     queryKey: ['dashboard'],
@@ -473,9 +474,11 @@ export default function DashboardPage() {
     {
       icon: 'free_cancellation',
       label: 'Demandes de congés',
-      detail: 'À viser — les soldes sont vérifiés, il ne manque que vous.',
+      detail: traiteConges
+        ? 'Visées par le N+1 — les soldes sont vérifiés, la DCH les traite.'
+        : 'Visées par le N+1, elles attendent la DCH.',
       count: d?.pendingRequests ?? 0,
-      href: '/absences',
+      href: traiteConges ? '/moi/dch' : '/absences',
       show: true,
     },
     {
@@ -489,9 +492,9 @@ export default function DashboardPage() {
     {
       icon: 'badge',
       label: 'Informations personnelles',
-      detail: 'Changements déclarés par les agents, à confirmer sur leur fiche.',
+      detail: 'Changements déclarés par les agents, à confirmer ou refuser.',
       count: d?.pendingProfileChanges ?? 0,
-      href: '/employees',
+      href: '/demandes/informations',
       show: canManage,
     },
   ];

@@ -45,7 +45,7 @@ import {
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AcademyEquipeService } from './academy-equipe.service';
 import { AcademyEvaluationService } from './academy-evaluation.service';
@@ -59,7 +59,7 @@ import { AcademyService } from './academy.service';
  * modules, leçons, vidéos, supports — est réservée à la RH.
  */
 @Controller('academy')
-@UseGuards(SessionGuard, RolesGuard)
+@UseGuards(SessionGuard, AccesGuard)
 export class AcademyController {
   constructor(
     @Inject(AcademyService) private readonly academy: AcademyService,
@@ -134,19 +134,19 @@ export class AcademyController {
   // ———————————— gestion du catalogue (RH)
 
   @Get('gestion/courses')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   gestionListe(@Req() req: AuthenticatedRequest) {
     return this.academy.gestionListe(req.sessionUser);
   }
 
   @Get('gestion/courses/:id')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   gestionDetail(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.academy.gestionDetail(req.sessionUser, id);
   }
 
   @Post('courses')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   creerFormation(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(saveCourseSchema)) body: SaveCourseInput,
@@ -155,7 +155,7 @@ export class AcademyController {
   }
 
   @Put('courses/:id')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   modifierFormation(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -165,13 +165,13 @@ export class AcademyController {
   }
 
   @Delete('courses/:id')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   supprimerFormation(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.academy.supprimerFormation(req.sessionUser, id);
   }
 
   @Post('courses/:id/publication')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   publier(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -181,7 +181,7 @@ export class AcademyController {
   }
 
   @Post('courses/:id/modules')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   creerModule(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -191,7 +191,7 @@ export class AcademyController {
   }
 
   @Patch('modules/:id')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   renommerModule(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -201,13 +201,13 @@ export class AcademyController {
   }
 
   @Delete('modules/:id')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   supprimerModule(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.academy.supprimerModule(req.sessionUser, id);
   }
 
   @Post('modules/:id/deplacer')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   deplacerModule(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -217,7 +217,7 @@ export class AcademyController {
   }
 
   @Post('modules/:id/lessons')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   creerLecon(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -227,7 +227,7 @@ export class AcademyController {
   }
 
   @Patch('lessons/:id')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   renommerLecon(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -237,13 +237,13 @@ export class AcademyController {
   }
 
   @Delete('lessons/:id')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   supprimerLecon(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.academy.supprimerLecon(req.sessionUser, id);
   }
 
   @Post('lessons/:id/deplacer')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   deplacerLecon(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -254,7 +254,7 @@ export class AcademyController {
 
   /** Préparer l'envoi : où l'écran doit envoyer le fichier. */
   @Post('lessons/:id/video')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   preparerVideo(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -270,14 +270,14 @@ export class AcademyController {
    * requête au disque par morceaux, sans jamais être entier en mémoire.
    */
   @Put('lessons/:id/video/fichier')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   recevoirVideo(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.academy.recevoirVideo(req.sessionUser, id, req);
   }
 
   /** Le support PDF arrive en binaire brut, le nom dans l'URL (cf. textes de référence). */
   @Post('lessons/:id/support')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   deposerSupport(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -291,7 +291,7 @@ export class AcademyController {
   }
 
   @Delete('lessons/:id/support')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   supprimerSupport(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.academy.supprimerSupport(req.sessionUser, id);
   }
@@ -299,7 +299,7 @@ export class AcademyController {
   // ———————————— l'évaluation finale : la banque (RH)
 
   @Put('courses/:id/evaluation')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   reglerEvaluation(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -309,7 +309,7 @@ export class AcademyController {
   }
 
   @Post('courses/:id/questions')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   creerQuestion(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -319,7 +319,7 @@ export class AcademyController {
   }
 
   @Put('questions/:id')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   modifierQuestion(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -329,13 +329,13 @@ export class AcademyController {
   }
 
   @Delete('questions/:id')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   supprimerQuestion(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.evaluation.supprimerQuestion(req.sessionUser, id);
   }
 
   @Post('questions/:id/deplacer')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   deplacerQuestion(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -347,13 +347,13 @@ export class AcademyController {
   // ———————————— l'évaluation finale : l'essai (RH) — rien n'est enregistré
 
   @Post('courses/:id/essai')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   essayer(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.evaluation.essayer(req.sessionUser, id);
   }
 
   @Post('courses/:id/essai/correction')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   corrigerEssai(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -363,7 +363,7 @@ export class AcademyController {
   }
 
   @Get('courses/:id/certificat-specimen')
-  @Roles('admin', 'hr')
+  @Peut('academy')
   async certificatSpecimen(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,

@@ -7,16 +7,16 @@ import type {
   NotificationsPage,
   SessionUser,
 } from '@teranga/contracts';
+import { peut } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayReminderDate } from '../time/workdays';
 import { reconcilierSiLeTempsEstVenu } from '../time/visas';
-import { notifier, notifierLaRH, type NotificationDraft } from './notifier';
+import { notifier, type NotificationDraft } from './notifier';
+import { notifierLaDCH } from '../acces/dch';
 
 export type { NotificationDraft } from './notifier';
-
-const HR_ROLES = ['admin', 'hr'];
 
 /** « 9 septembre 2026 » — jamais d'ISO brut dans un texte lu par un humain. */
 function frDate(iso: string, withWeekday = false): string {
@@ -90,16 +90,6 @@ export class NotificationsService {
     await notifier(tx, tenantId, userId, draft);
   }
 
-  /** Notifie toute la RH du tenant (fan-out : une ligne par admin/RH). */
-  async notifyHr(
-    tx: Tx,
-    tenantId: string,
-    draft: NotificationDraft,
-    excludeUserId?: string,
-  ): Promise<void> {
-    await notifierLaRH(tx, tenantId, draft, [excludeUserId]);
-  }
-
   /** Boîte de réception : génère d'abord les échéances (idempotent). */
   async list(user: SessionUser, scope: NotificationScope = 'inbox'): Promise<NotificationsPage> {
     const ctx = { tenantId: user.tenantId, userId: user.userId };
@@ -110,8 +100,8 @@ export class NotificationsService {
     // avorte tout le reste — la lecture comprise.
     try {
       await this.db.withTenant(ctx, async (tx) => {
-        // Les échéances de contrat ne concernent que ceux qui les traitent.
-        if (HR_ROLES.includes(user.role)) {
+        // Les échéances de contrat ne concernent que ceux qui les suivent.
+        if (peut(user, 'personnel.gerer') || peut(user, 'pilotage')) {
           await this.generateContractDeadlines(tx, user.tenantId);
         }
         // Les fériés concernent tout le monde : le rappel est créé pour
@@ -352,13 +342,13 @@ export class NotificationsService {
 
   /**
    * Échéances : contrat AVEC date de fin, employé actif, fin dans ≤ 30 jours
-   * (≤ 10 jours pour les contrats d'environ un mois) — notification RH
-   * idempotente par contrat, visible jusqu'à expiration via le tableau de bord.
+   * (≤ 10 jours pour les contrats d'environ un mois) — notification à la DCH
+   * (son directeur, qui gère les dossiers), idempotente par contrat, visible jusqu'à expiration via le tableau de bord.
    */
   private async generateContractDeadlines(tx: Tx, tenantId: string): Promise<void> {
     const rows = await this.selectExpiring(tx);
     for (const { daysLeft, ...r } of rows) {
-      await this.notifyHr(tx, tenantId, {
+      await notifierLaDCH(tx, tenantId, 'personnel.gerer', {
         type: 'contract_deadline',
         title: `Contrat de ${r.givenName} ${r.familyName} : échéance proche`,
         body: `${r.contractType.toUpperCase()} jusqu'au ${frDate(r.endDate)} — ${daysLeft} jour${daysLeft > 1 ? 's' : ''} restant${daysLeft > 1 ? 's' : ''}.`,

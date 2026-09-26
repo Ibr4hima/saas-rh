@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { capaciteSchema } from './acces';
 
 /**
  * Primitives partagées : erreurs, auth, pagination, santé.
@@ -122,7 +123,12 @@ export const loginInputSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginInputSchema>;
 
-export const membershipRoleSchema = z.enum(['admin', 'hr', 'payroll', 'manager', 'employee']);
+/**
+ * Deux sortes de comptes : l'administrateur (compte technique, hors
+ * organigramme) et l'agent. Le reste — viser, traiter, gérer — se lit dans
+ * l'organigramme et dans les délégations de la DCH (cf. acces.ts).
+ */
+export const membershipRoleSchema = z.enum(['admin', 'employee']);
 export type MembershipRole = z.infer<typeof membershipRoleSchema>;
 
 export const sessionUserSchema = z.object({
@@ -134,6 +140,15 @@ export const sessionUserSchema = z.object({
   organizationName: z.string(),
   organizationSlug: z.string(),
   role: membershipRoleSchema,
+  /**
+   * Ce qu'il peut faire de plus qu'un agent — calculé à chaque requête depuis
+   * l'organigramme et les délégations de la DCH.
+   */
+  capacites: z.array(capaciteSchema).default([]),
+  /** Il a un dossier d'agent (l'administrateur technique peut ne pas en avoir). */
+  estAgent: z.boolean().default(false),
+  /** Dirige la Direction du Capital Humain : toutes les habilitations, et les délégations. */
+  dirigeLaDCH: z.boolean().default(false),
 });
 export type SessionUser = z.infer<typeof sessionUserSchema>;
 

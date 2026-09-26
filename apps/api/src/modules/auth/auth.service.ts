@@ -8,6 +8,7 @@ import { loadEnv } from '../../config/env';
 import { TenantDb } from '../../db/tenant-db';
 import * as t from '../../db/schema';
 import { problem } from '../../common/problem';
+import { capacitesDe } from '../acces/dch';
 
 export interface IssuedSession {
   token: string;
@@ -207,6 +208,11 @@ export class AuthService {
           .where(eq(t.persons.userId, session.userId))
           .limit(1);
         if (dossier?.status === 'archived') return null;
+        const { capacites, estAgent, dirigeLaDCH } = await capacitesDe(
+          tx,
+          session.userId,
+          row.role,
+        );
         return {
           userId: session.userId,
           tenantId: session.tenantId,
@@ -216,6 +222,9 @@ export class AuthService {
           organizationName: row.organizationName,
           organizationSlug: row.organizationSlug,
           role: row.role as SessionUser['role'],
+          capacites,
+          estAgent,
+          dirigeLaDCH,
         };
       },
     );

@@ -12,17 +12,24 @@ import type {
   SessionUser,
 } from '@teranga/contracts';
 import {
+  peut,
   DOC_REQUEST_STATUS_LABELS,
   MAX_OPEN_DOCUMENT_REQUESTS,
   OPEN_DOCUMENT_REQUEST_STATUSES,
   REQUESTABLE_DOC_LABELS,
 } from '@teranga/contracts';
-import { problem } from '../../common/problem';
+import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
+import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
+import {
+  exigerDeTraiter,
+  reconcilierUneDemande,
+  vueDuTraitement,
+  voitToutLaFile,
+} from '../acces/demandes';
 
-const MANAGE_ROLES = new Set(['admin', 'hr']);
 /** Le garde-fou et sa définition vivent au contrat : le portail l'annonce. */
 const OPEN_STATUSES: string[] = OPEN_DOCUMENT_REQUEST_STATUSES;
 const MAX_OPEN_REQUESTS = MAX_OPEN_DOCUMENT_REQUESTS;
@@ -59,7 +66,7 @@ export class DocumentRequestsService {
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
   ) {}
 
-  /** L'employé demande ses documents depuis son espace (jamais la RH pour lui). */
+  /** L'agent demande ses documents depuis son espace (jamais la DCH pour lui). */
   async create(user: SessionUser, input: CreateDocumentRequestInput): Promise<{ id: string }> {
     const id = uuidv7();
     await this.db.withTenant(ctxOf(user), async (tx) => {
@@ -102,37 +109,44 @@ export class DocumentRequestsService {
         requestedByUserId: user.userId,
       });
 
-      await this.notifications.notifyHr(tx, user.tenantId, {
-        type: 'document_request',
-        title: `${self.givenName} ${self.familyName} demande des documents`,
-        body: labelList(input.docTypes),
-        link: '/documents',
-      });
+      // À qui la traite pour la DCH — et à eux seuls.
+      await reconcilierUneDemande(tx, 'documents', id);
     });
     return { id };
   }
 
   /**
-   * File d'attente RH (tout le tenant) ou historique personnel.
-   * `employeeId` restreint à un dossier — la RH s'en sert sur la fiche.
+   * La file de la DCH (tout le tenant) ou l'historique personnel.
+   * `employeeId` restreint à un dossier — la fiche s'en sert.
+   *
+   * Voit toute la file qui la traite (le directeur, les membres habilités)
+   * ou consulte les dossiers ; un membre à qui une demande est confiée voit
+   * celle-là ; chacun voit les siennes.
    */
   async list(
     user: SessionUser,
     filters: { employeeId?: string; status?: DocumentRequestStatus; scope?: 'mine' },
   ): Promise<DocumentRequestView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      // « scope=mine » est honoré QUEL QUE SOIT le rôle : l'espace personnel
-      // d'un membre RH doit rester personnel (il est aussi salarié). Le
-      // périmètre ne se déduit jamais du seul rôle de l'appelant.
-      const selfOnly = filters.scope === 'mine' || !MANAGE_ROLES.has(user.role);
-      const isManage = MANAGE_ROLES.has(user.role) && !selfOnly;
+      // « scope=mine » est honoré QUELLES QUE SOIENT ses habilitations :
+      // l'espace personnel d'un membre de la DCH doit rester personnel (il
+      // est aussi agent).
+      const moi = await agentDuCompte(tx, user.userId);
+      const selfOnly = filters.scope === 'mine';
+      const toute = !selfOnly && (await this.traiteLesDocuments(tx, user, true));
       const conditions = [];
 
       if (selfOnly) {
-        const self = await this.selfEmployee(tx, user);
-        if (!self) return [];
-        conditions.push(eq(t.documentRequests.employeeId, self.employeeId));
-      } else if (filters.employeeId) {
+        if (!moi) return [];
+        conditions.push(eq(t.documentRequests.employeeId, moi));
+      } else if (!toute) {
+        if (!moi) return [];
+        conditions.push(
+          sql`(${t.documentRequests.employeeId} = ${moi}
+               OR ${t.documentRequests.confieeAEmployeeId} = ${moi})`,
+        );
+      }
+      if (!selfOnly && filters.employeeId) {
         conditions.push(eq(t.documentRequests.employeeId, filters.employeeId));
       }
       if (filters.status) conditions.push(eq(t.documentRequests.status, filters.status));
@@ -156,33 +170,87 @@ export class DocumentRequestsService {
         .orderBy(desc(t.documentRequests.createdAt))
         .limit(100);
 
-      return rows.map((r) => ({
-        id: r.request.id,
-        employeeId: r.request.employeeId,
-        employeeName: `${r.givenName} ${r.familyName}`,
-        employeeNumber: r.employeeNumber,
-        employeeStatus: r.employeeStatus,
-        docTypes: r.request.docTypes as RequestableDoc[],
-        note: r.request.note,
-        status: r.request.status as DocumentRequestStatus,
-        pickupContact: r.request.pickupContact,
-        hrMessage: r.request.hrMessage,
-        handledByName: r.handlerGivenName ? `${r.handlerGivenName} ${r.handlerFamilyName}` : null,
-        createdAt: r.request.createdAt.toISOString(),
-        processingAt: r.request.processingAt?.toISOString() ?? null,
-        readyAt: r.request.readyAt?.toISOString() ?? null,
-        deliveredAt: r.request.deliveredAt?.toISOString() ?? null,
-        // Clôture : mise à disposition, remise, ou refus. Le refus n'a pas de
-        // colonne dédiée, mais rien ne suit un refus — `updatedAt` en date donc
-        // exactement. Une correction du point de retrait, elle, laisse
-        // `readyAt` en place : la durée de traitement ne rajeunit pas.
-        handledAt:
-          r.request.readyAt?.toISOString() ??
-          r.request.deliveredAt?.toISOString() ??
-          (r.request.status === 'rejected' ? r.request.updatedAt.toISOString() : null),
-        canAdvance: isManage && (ALLOWED_TRANSITIONS[r.request.status]?.length ?? 0) > 0,
-      }));
+      const dch = await directionDuPersonnel(tx);
+      const traiteLesDocuments = !selfOnly && (await this.traiteLesDocuments(tx, user, false));
+      const vues: DocumentRequestView[] = [];
+      for (const r of rows) {
+        const ouverte = ['received', 'processing'].includes(r.request.status);
+        const d = { employeeId: r.request.employeeId, confieeA: r.request.confieeAEmployeeId };
+        const tr =
+          !selfOnly && ouverte ? await vueDuTraitement(tx, 'documents', d, moi, dch) : null;
+        // Prête : on corrige le point de retrait — qui l'a traitée, ou la DCH.
+        const peutAvancer =
+          r.request.status === 'ready'
+            ? r.request.handledByUserId === user.userId ||
+              (traiteLesDocuments && r.request.employeeId !== moi)
+            : Boolean(tr?.peutTraiter);
+        vues.push({
+          id: r.request.id,
+          employeeId: r.request.employeeId,
+          employeeName: `${r.givenName} ${r.familyName}`,
+          employeeNumber: r.employeeNumber,
+          employeeStatus: r.employeeStatus,
+          docTypes: r.request.docTypes as RequestableDoc[],
+          note: r.request.note,
+          status: r.request.status as DocumentRequestStatus,
+          pickupContact: r.request.pickupContact,
+          hrMessage: r.request.hrMessage,
+          handledByName: r.handlerGivenName ? `${r.handlerGivenName} ${r.handlerFamilyName}` : null,
+          createdAt: r.request.createdAt.toISOString(),
+          processingAt: r.request.processingAt?.toISOString() ?? null,
+          readyAt: r.request.readyAt?.toISOString() ?? null,
+          deliveredAt: r.request.deliveredAt?.toISOString() ?? null,
+          // Clôture : mise à disposition, remise, ou refus. Le refus n'a pas de
+          // colonne dédiée, mais rien ne suit un refus — `updatedAt` en date donc
+          // exactement. Une correction du point de retrait, elle, laisse
+          // `readyAt` en place : la durée de traitement ne rajeunit pas.
+          handledAt:
+            r.request.readyAt?.toISOString() ??
+            r.request.deliveredAt?.toISOString() ??
+            (r.request.status === 'rejected' ? r.request.updatedAt.toISOString() : null),
+          canAdvance: peutAvancer && (ALLOWED_TRANSITIONS[r.request.status]?.length ?? 0) > 0,
+          traitement: tr?.vue ?? null,
+        });
+      }
+      return vues;
     });
+  }
+
+  /**
+   * Traite les demandes de documents : le directeur du Capital Humain, les
+   * membres habilités — et, pour les voir seulement, qui consulte les
+   * dossiers.
+   */
+  private traiteLesDocuments(tx: Tx, user: SessionUser, voir: boolean): Promise<boolean> {
+    return voitToutLaFile(tx, user, 'documents', voir && peut(user, 'personnel.consulter'));
+  }
+
+  /**
+   * Peut-il faire avancer cette demande ? Ouverte, qui la traite pour la
+   * DCH ; prête (correction du point de retrait), qui l'a traitée ou la DCH.
+   * Rend le motif du refus, ou null.
+   */
+  private async refus(
+    tx: Tx,
+    user: SessionUser,
+    row: typeof t.documentRequests.$inferSelect,
+  ): Promise<string | null> {
+    if (row.status === 'ready') {
+      const moi = await agentDuCompte(tx, user.userId);
+      if (row.handledByUserId === user.userId) return null;
+      if (row.employeeId !== moi && (await this.traiteLesDocuments(tx, user, false))) return null;
+      return 'Traitée par un autre membre de la DCH';
+    }
+    try {
+      await exigerDeTraiter(tx, user, 'documents', {
+        employeeId: row.employeeId,
+        confieeA: row.confieeAEmployeeId,
+      });
+      return null;
+    } catch (err) {
+      if (err instanceof ProblemException) return err.problem.title;
+      throw err;
+    }
   }
 
   /** Fait avancer la demande dans le circuit et notifie l'employé à chaque étape. */
@@ -208,6 +276,15 @@ export class DocumentRequestsService {
         .limit(1);
       if (!row) {
         problem(404, 'documents.request_not_found', 'Demande introuvable');
+      }
+      if (row.status === 'ready') {
+        const motif = await this.refus(tx, user, row);
+        if (motif) problem(403, 'demandes.pas_traitant', motif);
+      } else if (OPEN_STATUSES.includes(row.status)) {
+        await exigerDeTraiter(tx, user, 'documents', {
+          employeeId: row.employeeId,
+          confieeA: row.confieeAEmployeeId,
+        });
       }
       const allowed = ALLOWED_TRANSITIONS[row.status] ?? [];
       if (!allowed.includes(input.status)) {
@@ -237,7 +314,12 @@ export class DocumentRequestsService {
       } else if (input.message?.trim()) {
         changes.hrMessage = input.message.trim();
       }
-      if (input.status === 'processing') changes.processingAt = now;
+      if (input.status === 'processing') {
+        changes.processingAt = now;
+        // Qui la prend en charge la garde : les autres ne sont plus appelés.
+        changes.confieeAEmployeeId =
+          (await agentDuCompte(tx, user.userId)) ?? row.confieeAEmployeeId;
+      }
       if (input.status === 'ready') {
         // readyAt date la mise à disposition, pas la correction : une coquille
         // rectifiée ne doit pas rajeunir une demande qui attend depuis 3 semaines.
@@ -248,6 +330,7 @@ export class DocumentRequestsService {
       }
 
       await tx.update(t.documentRequests).set(changes).where(eq(t.documentRequests.id, requestId));
+      await reconcilierUneDemande(tx, 'documents', requestId);
 
       const [person] = await tx
         .select({ userId: t.persons.userId })
@@ -340,6 +423,12 @@ export class DocumentRequestsService {
           continue;
         }
 
+        const motif = await this.refus(tx, user, row);
+        if (motif) {
+          skipped.push({ id, employeeName: name, reason: motif });
+          continue;
+        }
+
         const changes: Partial<typeof t.documentRequests.$inferInsert> = {
           status: input.status,
           handledByUserId: user.userId,
@@ -358,6 +447,7 @@ export class DocumentRequestsService {
         }
 
         await tx.update(t.documentRequests).set(changes).where(eq(t.documentRequests.id, id));
+        await reconcilierUneDemande(tx, 'documents', id);
         advanced += 1;
 
         if (who?.userId) {

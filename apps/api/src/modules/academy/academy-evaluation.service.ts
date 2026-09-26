@@ -17,7 +17,7 @@ import type {
   SubmitTrialInput,
   TrialResult,
 } from '@teranga/contracts';
-import { SEUIL_REUSSITE, TENTATIVES_PAR_JOUR } from '@teranga/contracts';
+import { peut, SEUIL_REUSSITE, TENTATIVES_PAR_JOUR } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { loadEnv } from '../../config/env';
 import * as t from '../../db/schema';
@@ -267,12 +267,12 @@ export class AcademyEvaluationService {
   }
 
   private gere(user: SessionUser): boolean {
-    return user.role === 'admin' || user.role === 'hr';
+    return peut(user, 'academy');
   }
 
   private exigerGestion(user: SessionUser): void {
     if (!this.gere(user)) {
-      problem(403, 'academy.forbidden', 'Seule la RH gère le catalogue de l’Academy');
+      problem(403, 'academy.forbidden', 'Seule la DCH gère le catalogue de l’Academy');
     }
   }
 

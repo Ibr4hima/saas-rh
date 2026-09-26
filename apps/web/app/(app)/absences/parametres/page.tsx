@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import type { AbsenceFrequency, AbsenceType } from '@teranga/contracts';
-import { ABSENCE_FREQUENCY_LABELS } from '@teranga/contracts';
+import { ABSENCE_FREQUENCY_LABELS, peut } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -41,8 +41,7 @@ import { SqueletteTableau } from '../../../../components/tableau';
 
 export default function AbsenceSettingsPage() {
   const me = useMe();
-  const isAdmin = me.data?.role === 'admin';
-  const peutGerer = isAdmin || me.data?.role === 'hr';
+  const peutGerer = peut(me.data, 'conges.parametres');
 
   return (
     <Page>

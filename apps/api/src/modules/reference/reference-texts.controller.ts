@@ -20,7 +20,7 @@ import {
 } from '@teranga/contracts';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { problem } from '../../common/problem';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { ReferenceTextsService } from './reference-texts.service';
 
@@ -33,7 +33,7 @@ import { ReferenceTextsService } from './reference-texts.service';
  * droit ; le filtre qui reste est celui du brouillon, tenu par le service.
  */
 @Controller('reference-texts')
-@UseGuards(SessionGuard, RolesGuard)
+@UseGuards(SessionGuard, AccesGuard)
 export class ReferenceTextsController {
   constructor(@Inject(ReferenceTextsService) private readonly textes: ReferenceTextsService) {}
 
@@ -77,7 +77,7 @@ export class ReferenceTextsController {
 
   /** Le texte s'enregistre en entier : métadonnées et contenu, d'un bloc. */
   @Put(':slug')
-  @Roles('admin', 'hr')
+  @Peut('textes')
   save(
     @Req() req: AuthenticatedRequest,
     @Param('slug') slug: string,
@@ -95,7 +95,7 @@ export class ReferenceTextsController {
    * Le nom voyage donc dans l'URL, seul endroit qui reste.
    */
   @Post(':slug/pdf')
-  @Roles('admin', 'hr')
+  @Peut('textes')
   uploadPdf(
     @Req() req: AuthenticatedRequest,
     @Param('slug') slug: string,

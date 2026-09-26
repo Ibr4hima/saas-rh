@@ -6,6 +6,9 @@
  * la forme attendue, et une recopie naïve des clés serait une affectation de
  * masse — le chemin par lequel un employé écrirait son propre matricule ou son
  * statut. D'où la revalidation et la liste blanche, testées ici.
+ *
+ * Celui qui tranche dirige la Direction du Capital Humain : c'est
+ * l'organigramme, pas un rôle, qui lui donne la file.
  */
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
@@ -28,7 +31,8 @@ const agentUserId = randomUUID();
 let personId: string;
 let employeeId: string;
 
-const rh = { userId: rhUserId, tenantId, role: 'hr' } as SessionUser;
+const rh = { userId: rhUserId, tenantId, role: 'employee' } as SessionUser;
+const dchId = randomUUID();
 const agent = { userId: agentUserId, tenantId, role: 'employee' } as SessionUser;
 
 let ownerPool: Pool;
@@ -80,19 +84,46 @@ beforeAll(async () => {
     tenantId,
     `profil-${tenantId.slice(0, 8)}`,
   ]);
-  // Le membre RH doit exister comme destinataire du fan-out de notifications.
+  for (const userId of [rhUserId, agentUserId]) {
+    await raw(
+      `INSERT INTO user_tenant_memberships (id, tenant_id, user_id, role)
+       VALUES ($1,$2,$3,'employee')`,
+      [randomUUID(), tenantId, userId],
+    );
+  }
   await raw(
-    `INSERT INTO user_tenant_memberships (id, tenant_id, user_id, role)
-     VALUES ($1,$2,$3,'hr')`,
-    [randomUUID(), tenantId, rhUserId],
+    `INSERT INTO org_units (id, tenant_id, unit_type, name, direction_du_personnel)
+     VALUES ($1,$2,'direction','Direction du Capital Humain',true)`,
+    [dchId, tenantId],
   );
 });
 
 beforeEach(async () => {
   await raw(`DELETE FROM profile_change_requests WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM notifications WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM assignments WHERE tenant_id = $1`, [tenantId]);
+  await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM employees WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM persons WHERE tenant_id = $1`, [tenantId]);
+  // Qui dirige la DCH : il a un dossier, rattaché à la direction du personnel.
+  const rhPersonId = randomUUID();
+  const rhEmployeeId = randomUUID();
+  await raw(
+    `INSERT INTO persons (id, tenant_id, user_id, given_name, family_name)
+     VALUES ($1,$2,$3,'Mariama','Cissé')`,
+    [rhPersonId, tenantId, rhUserId],
+  );
+  await raw(
+    `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on)
+     VALUES ($1,$2,$3,'DCH-1','2020-01-01')`,
+    [rhEmployeeId, tenantId, rhPersonId],
+  );
+  await raw(
+    `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+     VALUES ($1,$2,$3,$4,'Directrice', daterange('2020-01-01', NULL))`,
+    [randomUUID(), tenantId, rhEmployeeId, dchId],
+  );
+  await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [dchId, rhEmployeeId]);
   personId = randomUUID();
   employeeId = randomUUID();
   await raw(
@@ -108,9 +139,12 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
   for (const table of [
     'profile_change_requests',
     'notifications',
+    'assignments',
+    'org_units',
     'employees',
     'persons',
     'user_tenant_memberships',
@@ -154,14 +188,15 @@ describe('signalement par l’employé', () => {
     );
   });
 
-  it('prévient la RH', async () => {
+  it('prévient la DCH — qui la dirige, faute de membre habilité', async () => {
     await service.create(agent, { changes: { city: 'Thiès' } });
     const { rows } = await raw(
-      `SELECT title, link FROM notifications WHERE recipient_user_id = $1 AND type = 'profile_change_request'`,
+      `SELECT title, link FROM notifications WHERE recipient_user_id = $1 AND type = 'demande_a_traiter'`,
       [rhUserId],
     );
     expect(rows).toHaveLength(1);
     expect((rows[0] as { title: string }).title).toContain('Awa Diop');
+    expect((rows[0] as { link: string }).link).toBe('/demandes/informations');
   });
 });
 
@@ -262,9 +297,9 @@ describe('affectation de masse', () => {
 });
 
 describe('périmètre de lecture', () => {
-  it('scope=mine reste personnel même pour un rôle RH', async () => {
+  it('scope=mine reste personnel même pour qui dirige la DCH', async () => {
     await service.create(agent, { changes: { city: 'Thiès' } });
-    // Le membre RH n'a pas de dossier employé : son espace personnel est vide.
+    // Elle n'a rien demandé pour elle-même : son espace personnel est vide.
     expect(await service.list(rh, { scope: 'mine' })).toEqual([]);
     expect(await service.list(rh, {})).toHaveLength(1);
   });

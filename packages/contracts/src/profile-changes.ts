@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { TraitementView } from './acces';
 import { maritalStatusSchema } from './employees';
 
 /**
@@ -150,4 +151,6 @@ export interface ProfileChangeRequestView {
   }[];
   /** true si l'utilisateur courant peut trancher cette demande. */
   canDecide: boolean;
+  /** Qui la traite, tant qu'elle est en attente (sinon null). */
+  traitement: TraitementView | null;
 }

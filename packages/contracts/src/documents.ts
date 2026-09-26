@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { TraitementView } from './acces';
 
 // ---------- Pièces justificatives du dossier employé ----------
 
@@ -61,6 +62,17 @@ export interface EmployeeDocumentView {
   /** true si l'utilisateur COURANT est la contrepartie attendue pour valider. */
   canReview: boolean;
   canDelete: boolean;
+  /**
+   * Déposée par l'agent et en attente : qui la vérifie pour la DCH (sinon
+   * null — une pièce déposée par la DCH, c'est l'agent qui la vérifie).
+   */
+  traitement: TraitementView | null;
+}
+
+/** Une pièce dans la file de la DCH : la même, avec son agent. */
+export interface PieceATraiterView extends EmployeeDocumentView {
+  employeeName: string;
+  employeeNumber: string;
 }
 
 // ---------- Notifications ----------

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { CompteursDemandes, TraitementView } from './acces';
 
 /** Contrats du module « congés & absences » (Lot 1). */
 
@@ -145,64 +146,14 @@ export interface EtapeCircuitView {
   comment: string | null;
 }
 
-/** Les types de demande que le directeur du Capital Humain peut confier. */
-export const TYPES_DEMANDE_DELEGABLES = ['conges'] as const;
-export type TypeDemandeDelegable = (typeof TYPES_DEMANDE_DELEGABLES)[number];
-
-/** Un membre de la DCH à qui l'on peut confier. */
-export interface MembreDCH {
-  employeeId: string;
-  nom: string;
-  poste: string | null;
-}
-
-/** Ce que voit le directeur du Capital Humain de ses délégations. */
-export interface EtatDelegation {
-  /** L'appelant dirige la direction du personnel. */
-  estDirecteur: boolean;
-  /** L'appelant traite les demandes par délégation. */
-  estDelegue: boolean;
-  /** Le directeur du Capital Humain en poste (null : poste vacant). */
-  directeur: { employeeId: string; nom: string } | null;
-  /**
-   * Son choix : il n'a pas encore choisi, il traite lui-même, ou il confie.
-   * Un choix de son prédécesseur ne vaut pas pour lui.
-   */
-  choix: 'aucun' | 'moi' | 'delegue';
-  delegue: { employeeId: string; nom: string } | null;
-  /**
-   * Le délégué ne peut plus traiter : parti de la DCH ou de l'agence, sans
-   * accès au portail — ou en congé aujourd'hui. Les demandes reviennent au
-   * directeur tant que cela dure.
-   */
-  delegueIndisponible: 'parti' | 'absent' | null;
-  /** À qui il peut confier : les membres actifs de sa direction. */
-  membres: MembreDCH[];
-}
-
-export const choisirDelegationSchema = z.object({
-  typeDemande: z.enum(TYPES_DEMANDE_DELEGABLES).default('conges'),
-  /** `null` : le directeur traite lui-même. */
-  delegueEmployeeId: z.uuid().nullable(),
-});
-export type ChoisirDelegationInput = z.infer<typeof choisirDelegationSchema>;
-
-export const confierDemandeSchema = z.object({
-  /** `null` : le directeur reprend la main. */
-  employeeId: z.uuid().nullable(),
-});
-export type ConfierDemandeInput = z.infer<typeof confierDemandeSchema>;
-
 /** Ce que l'appelant a devant lui : son équipe, ce qu'il vise, ce qu'il traite. */
 export interface CompteursValidations {
   /** Ses agents directs actifs (le DG n'est de l'équipe de personne). */
   equipe: number;
   /** Les demandes de ses agents qui attendent SON visa. */
   aViser: number;
-  /** Il traite pour la DCH : il la dirige, ou il en a reçu la délégation. */
-  traitement: boolean;
-  /** Les demandes qui attendent qu'IL les traite, pour la DCH. */
-  aTraiter: number;
+  /** Les demandes qui attendent qu'IL les traite pour la DCH, par type. */
+  aTraiter: CompteursDemandes;
 }
 
 // ---------- Soldes ----------
@@ -299,15 +250,8 @@ export interface AbsenceRequestView {
   circuit: EtapeCircuitView[];
   /** true si l'utilisateur courant peut viser l'étape attendue. */
   canDecide: boolean;
-  /** Qui traite pour la DCH, quand c'est l'étape attendue. */
-  traitant: { employeeId: string; nom: string } | null;
-  /** Confiée à la main par le directeur du Capital Humain. */
-  confiee: boolean;
-  /**
-   * L'appelant dirige la DCH et la demande est à l'étape de la DCH : il peut
-   * la confier à un membre, ou la reprendre.
-   */
-  peutConfier: boolean;
+  /** Qui traite pour la DCH — quand c'est l'étape attendue (sinon null). */
+  traitement: TraitementView | null;
   approvals: ApprovalView[];
   /** Nom du justificatif PDF joint, s'il y en a un. */
   documentName: string | null;

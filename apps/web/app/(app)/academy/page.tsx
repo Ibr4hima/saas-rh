@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { AcademyCategory, CourseSummary } from '@teranga/contracts';
-import { ACADEMY_CATEGORIES } from '@teranga/contracts';
+import { ACADEMY_CATEGORIES, peut } from '@teranga/contracts';
 import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
 import { CarteFormation } from '../../../components/academy-carte';
 import { DefilementHorizontal } from '../../../components/defilement-horizontal';
@@ -49,7 +49,7 @@ function Intitule({ children }: { children: React.ReactNode }) {
 
 export default function AcademyPage() {
   const me = useMe();
-  const gere = me.data?.role === 'admin' || me.data?.role === 'hr';
+  const gere = peut(me.data, 'academy');
   const catalogue = useQuery({
     queryKey: ['academy', 'catalogue'],
     queryFn: () => api<CourseSummary[]>('/academy/courses'),

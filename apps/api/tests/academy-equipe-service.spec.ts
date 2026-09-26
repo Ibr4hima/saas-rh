@@ -42,7 +42,7 @@ const agents = {
   dg: randomUUID(),
 };
 const session = (userId: string) => ({ userId, tenantId, role: 'employee' }) as SessionUser;
-const rh = { userId: comptes.rh, tenantId, role: 'hr' } as SessionUser;
+const rh = { userId: comptes.rh, tenantId, role: 'admin' } as SessionUser;
 
 let ownerPool: Pool;
 let db: TenantDb;

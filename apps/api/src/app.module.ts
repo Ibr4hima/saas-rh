@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { AccesController } from './modules/acces/acces.controller';
+import { HabilitationsService } from './modules/acces/habilitations.service';
 import { EncryptionService } from './common/encryption.service';
 import {
   AcademyController,
@@ -23,7 +25,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
 import { AttestationService } from './modules/documents/attestation.service';
 import { DocumentsController } from './modules/documents/documents.controller';
 import { AuthService } from './modules/auth/auth.service';
-import { RolesGuard } from './modules/auth/roles.guard';
+import { AccesGuard } from './modules/auth/acces.guard';
 import { SessionGuard } from './modules/auth/session.guard';
 import { HealthController } from './modules/health/health.controller';
 import { HierarchieService } from './modules/people/hierarchie.service';
@@ -51,6 +53,7 @@ import { AbsencesService } from './modules/time/absences.service';
 @Module({
   controllers: [
     HealthController,
+    AccesController,
     AuthController,
     PeopleController,
     AbsencesController,
@@ -72,8 +75,9 @@ import { AbsencesService } from './modules/time/absences.service';
     TenantDb,
     EncryptionService,
     AuthService,
+    HabilitationsService,
     SessionGuard,
-    RolesGuard,
+    AccesGuard,
     PeopleService,
     ImportEmployesService,
     HierarchieService,

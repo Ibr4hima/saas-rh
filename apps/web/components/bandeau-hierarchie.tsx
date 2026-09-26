@@ -8,6 +8,7 @@ import {
   type AnomalieHierarchie,
   type ControleHierarchie,
   type TypeAnomalieHierarchie,
+  peut,
 } from '@teranga/contracts';
 import { Badge, Button } from '@teranga/ui';
 import { api } from '../lib/api';
@@ -77,7 +78,8 @@ export function BandeauHierarchie() {
   const me = useMe();
   // La route est réservée à l'administration et à la RH : ne pas la demander
   // pour les autres évite un 403 périodique dans la console.
-  const autorise = Boolean(me.data && ['admin', 'hr'].includes(me.data.role));
+  const autorise =
+    peut(me.data, 'organigramme') || peut(me.data, 'personnel.gerer') || peut(me.data, 'pilotage');
   const controle = useQuery({
     queryKey: ['hierarchie-controle'],
     queryFn: () => api<ControleHierarchie>('/hierarchie/controle'),

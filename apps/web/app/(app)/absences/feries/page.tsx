@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { Holiday } from '@teranga/contracts';
-import { SENEGAL_MOBILE_HOLIDAYS } from '@teranga/contracts';
+import { SENEGAL_MOBILE_HOLIDAYS, peut } from '@teranga/contracts';
 import {
   Button,
   Card,
@@ -59,7 +59,7 @@ function statutDuJour(
 
 export default function JoursFeriesPage() {
   const me = useMe();
-  const peutGerer = me.data?.role === 'admin' || me.data?.role === 'hr';
+  const peutGerer = peut(me.data, 'conges.parametres');
 
   return (
     <Page>

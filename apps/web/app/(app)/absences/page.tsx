@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { AbsenceRequestView } from '@teranga/contracts';
+import { peut } from '@teranga/contracts';
 import {
   Badge,
   Card,
@@ -65,7 +66,8 @@ export default function AbsencesPage() {
     onSuccess: refresh,
     onError: (err) => setActionError(err instanceof ApiError ? err.message : 'Action impossible.'),
   });
-  const canManage = me.data && ['admin', 'hr'].includes(me.data.role);
+  // Le justificatif : une donnée de santé possible — la DCH seulement.
+  const canManage = peut(me.data, 'personnel.sensible') || peut(me.data, 'demandes.conges');
   const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
   /**
    * L'ordre des demandes : les plus anciennes d'abord — une demande qui
