@@ -159,7 +159,8 @@ function Panneau({
   const [pos, setPos] = useState<{
     top?: number;
     bottom?: number;
-    right: number;
+    right?: number;
+    left?: number;
     voile: number;
   } | null>(null);
 
@@ -173,6 +174,13 @@ function Panneau({
       const barre = ancre.current?.closest('header')?.getBoundingClientRect();
       const haut = (barre?.bottom ?? r.bottom) + 8;
       setPos({ top: haut, right: droite, voile: haut - 8 });
+      return;
+    }
+    // Colonne repliée en rail : le bouton est trop près du bord gauche pour
+    // que le panneau s'aligne sur sa droite — il partirait hors de l'écran.
+    // Il s'aligne alors sur sa gauche.
+    if (r.right < 240) {
+      setPos({ bottom: window.innerHeight - r.top + 8, left: Math.max(12, r.left), voile: 0 });
       return;
     }
     setPos({ bottom: window.innerHeight - r.top + 8, right: droite, voile: 0 });
@@ -200,7 +208,7 @@ function Panneau({
       <div
         ref={panneau}
         role="menu"
-        style={{ top: pos.top, bottom: pos.bottom, right: pos.right }}
+        style={{ top: pos.top, bottom: pos.bottom, right: pos.right, left: pos.left }}
         className="tg-menu fixed z-[60] min-w-[13.5rem] rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg"
       >
         {children}

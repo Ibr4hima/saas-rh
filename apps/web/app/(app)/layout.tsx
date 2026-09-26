@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn, Skeleton } from '@teranga/ui';
 import { BrandMark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
@@ -11,6 +11,13 @@ import { PageTitleProvider, usePageTitleOverride } from '../../components/page-t
 import { MenuCompte } from '../../components/menu-compte';
 import { NotificationsBell } from '../../components/notifications-bell';
 import { CalendrierModal } from '../../components/calendrier';
+import {
+  InfoBulle,
+  SousMenuFlottant,
+  survolAvecBulle,
+  useMenuReplie,
+  type Bulle,
+} from '../../components/colonne-repliable';
 import { ANCRE_ONGLETS } from '../../components/onglets-bandeau';
 import { RechercheAcademy } from '../../components/recherche-academy';
 import {
@@ -461,6 +468,8 @@ function RangeeNav({
   active,
   badge,
   desactive,
+  replie = false,
+  onBulle,
 }: {
   href: string;
   label: string;
@@ -468,20 +477,33 @@ function RangeeNav({
   active: boolean;
   badge?: number;
   desactive?: boolean;
+  /** Colonne repliée : l'icône seule, le libellé dans une bulle au survol. */
+  replie?: boolean;
+  onBulle?: (b: Bulle | null) => void;
 }) {
+  const aBadge = Boolean(badge && badge > 0);
   const contenu = (
     <>
       {/* Icône pleine sur l'entrée courante : la position dans le menu se lit
           sans dépendre de la seule couleur. */}
-      {icon ? <Icon name={icon} size={17} fill={active && !desactive} /> : null}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {badge && badge > 0 ? (
+      {icon ? (
+        <span className="relative flex shrink-0">
+          <Icon name={icon} size={17} fill={active && !desactive} />
+          {/* Repliée, la colonne n'a plus la place du compteur : un point
+              dit qu'il y a quelque chose, la bulle dit combien. */}
+          {replie && aBadge ? <PointAlerte /> : null}
+        </span>
+      ) : null}
+      <span className={replie ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{label}</span>
+      {!replie && aBadge ? (
         <span className="rounded-full bg-alert-soft px-[6px] py-px text-[10px] font-extrabold text-alert-text">
           {badge}
         </span>
       ) : null}
     </>
   );
+  const survol =
+    replie && onBulle ? survolAvecBulle(aBadge ? `${label} · ${badge}` : label, onBulle) : {};
 
   // `gap-2` comme les rubriques dépliables juste en dessous : les deux sortes
   // de rangées s'écartaient de deux pixels, ce qui ne se voyait pas — jusqu'à
@@ -497,6 +519,7 @@ function RangeeNav({
     return (
       <span
         aria-disabled
+        {...survol}
         className={cn(forme, 'cursor-not-allowed font-medium text-ink-muted/45 select-none')}
       >
         {contenu}
@@ -508,6 +531,7 @@ function RangeeNav({
     <Link
       href={href}
       aria-current={active ? 'page' : undefined}
+      {...survol}
       className={cn(
         forme,
         active ? 'bg-primary/[0.07] font-bold text-primary' : 'font-medium text-ink hover:bg-hover',
@@ -522,6 +546,16 @@ function RangeeNav({
       {active ? <RepereActif /> : null}
       {contenu}
     </Link>
+  );
+}
+
+/** Le point d'alerte posé sur l'icône, quand la colonne est repliée. */
+function PointAlerte() {
+  return (
+    <span
+      aria-hidden
+      className="absolute -top-0.5 -right-1 size-2 rounded-full bg-alert ring-2 ring-surface"
+    />
   );
 }
 
@@ -549,12 +583,17 @@ function Rubrique({
   contientLaPageCourante,
   badge,
   estActive,
+  replie = false,
+  onBulle,
 }: {
   item: NavItem;
   contientLaPageCourante: boolean;
   /** Le compteur de la rubrique : il vit sur la rangée parente, ouverte ou non. */
   badge?: number;
   estActive: (href: string) => boolean;
+  /** Colonne repliée : l'icône ouvre les sous-pages dans un menu flottant. */
+  replie?: boolean;
+  onBulle?: (b: Bulle | null) => void;
 }) {
   // Dépliée d'emblée : le menu montre d'un regard tout ce qu'il contient. Une
   // rubrique fermée cache des destinations que rien n'annonce, et il faut
@@ -584,6 +623,23 @@ function Rubrique({
       (long, c) => (long && long.length >= c.href.length ? long : c.href),
       null,
     );
+
+  if (replie) {
+    return (
+      <RubriqueRepliee
+        item={item}
+        badge={badge}
+        contientLaPage={contientLaPage}
+        liens={enfants.map((c) => ({
+          href: c.href,
+          label: c.label,
+          actif: c.href === enfantActif,
+          desactive: c.desactive,
+        }))}
+        onBulle={onBulle}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-px">
@@ -673,6 +729,67 @@ function Rubrique({
 }
 
 /**
+ * Une rubrique, colonne repliée : son icône seule. Un clic ouvre ses
+ * sous-pages à côté, dans un menu flottant — la colonne n'a plus la largeur
+ * de les dérouler. Tant qu'il est fermé, la bulle du survol dit son nom.
+ */
+function RubriqueRepliee({
+  item,
+  badge,
+  contientLaPage,
+  liens,
+  onBulle,
+}: {
+  item: NavItem;
+  badge?: number;
+  contientLaPage: boolean;
+  liens: { href: string; label: string; actif: boolean; desactive?: boolean }[];
+  onBulle?: (b: Bulle | null) => void;
+}) {
+  const [ouvert, setOuvert] = useState(false);
+  const bouton = useRef<HTMLButtonElement>(null);
+  const fermer = useCallback(() => setOuvert(false), []);
+  const aBadge = Boolean(badge && badge > 0);
+  const survol =
+    onBulle && !ouvert
+      ? survolAvecBulle(aBadge ? `${item.label} · ${badge}` : item.label, onBulle)
+      : {};
+  return (
+    <>
+      <button
+        ref={bouton}
+        type="button"
+        onClick={() => {
+          onBulle?.(null);
+          setOuvert((v) => !v);
+        }}
+        aria-haspopup="menu"
+        aria-expanded={ouvert}
+        aria-label={item.label}
+        {...survol}
+        className={cn(
+          'relative flex w-full items-center rounded-[10px] py-[8px] pl-3.5 text-[12.5px] transition-colors duration-150',
+          contientLaPage
+            ? 'bg-primary/[0.07] text-primary'
+            : ouvert
+              ? 'bg-hover text-ink'
+              : 'text-ink hover:bg-hover',
+        )}
+      >
+        {contientLaPage ? <RepereActif /> : null}
+        <span className="relative flex shrink-0">
+          <Icon name={item.icon} size={17} fill={contientLaPage} />
+          {aBadge ? <PointAlerte /> : null}
+        </span>
+      </button>
+      {ouvert ? (
+        <SousMenuFlottant ancre={bouton} titre={item.label} liens={liens} onFermer={fermer} />
+      ) : null}
+    </>
+  );
+}
+
+/**
  * La date du jour, dans le bandeau — et le calendrier derrière.
  *
  * C'est le geste COURANT : on ouvre le planning là où on lit la date, on
@@ -733,6 +850,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const me = useMe();
   const router = useRouter();
   const pathname = usePathname();
+  // La colonne repliée en rail d'icônes, et la bulle qui en dit les noms.
+  const [replie, basculerMenu] = useMenuReplie();
+  const [bulle, setBulle] = useState<Bulle | null>(null);
+  useEffect(() => setBulle(null), [pathname, replie]);
   const titleOverride = usePageTitleOverride();
 
   const role = me.data?.role ?? '';
@@ -913,7 +1034,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
             Le blanc de la page passe tout autour, et c'est lui qui fait le
             relief — pas une ombre portée, qui ferait flotter la colonne
             au-dessus du contenu au lieu de la poser à côté. */}
-        <aside className="hidden w-[17rem] shrink-0 flex-col gap-3 py-3.5 pl-3.5 lg:flex">
+        <aside
+          className={cn(
+            'hidden shrink-0 flex-col gap-3 py-3.5 pl-3.5 transition-[width] duration-200 ease-out lg:flex',
+            replie ? 'w-[4.85rem]' : 'w-[17rem]',
+          )}
+        >
           {/* La carte DESCEND jusqu'en bas.
 
               Elle épousait ses rangées, pour ne pas laisser sous la dernière
@@ -926,9 +1052,30 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
               Elle défile à l'intérieur si la liste dépasse. */}
           <nav className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[18px] border border-card-line bg-surface shadow-xs">
-            <p className="shrink-0 px-4 pt-4 pb-2 text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
-              {isStaff ? 'Navigation' : 'Mon espace'}
-            </p>
+            {/* Plier, déplier. Le bouton se tient dans l'axe des icônes : il
+                reste sous le pointeur quand la colonne se replie, et un second
+                clic la rouvre sans qu'on ait à le chercher. */}
+            <div className="flex shrink-0 items-center gap-1 px-2 pt-2.5 pb-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setBulle(null);
+                  basculerMenu();
+                }}
+                aria-label={replie ? 'Déplier le menu' : 'Replier le menu'}
+                aria-expanded={!replie}
+                title={replie ? undefined : 'Replier le menu'}
+                {...(replie ? survolAvecBulle('Déplier le menu', setBulle) : {})}
+                className="ml-[6.5px] grid size-8 shrink-0 place-items-center rounded-[9px] text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+              >
+                <Icon name={replie ? 'left_panel_open' : 'left_panel_close'} size={19} />
+              </button>
+              {!replie ? (
+                <p className="min-w-0 truncate text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
+                  {isStaff ? 'Navigation' : 'Mon espace'}
+                </p>
+              ) : null}
+            </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
               {items.map((item, i) => {
@@ -946,6 +1093,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
                         contientLaPageCourante={isActive(item.href)}
                         badge={badgeCount(item.badge)}
                         estActive={isChildActive}
+                        replie={replie}
+                        onBulle={setBulle}
                       />
                     ) : (
                       <RangeeNav
@@ -955,6 +1104,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
                         active={isActive(item.href)}
                         badge={badgeCount(item.badge)}
                         desactive={item.desactive}
+                        replie={replie}
+                        onBulle={setBulle}
                       />
                     )}
                   </div>
@@ -965,20 +1116,32 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Qui je suis, dans sa propre carte : ce n'est pas une destination
               de plus au bas de la liste, c'est l'identité de la session. */}
-          <div className="mt-auto flex shrink-0 items-center gap-2.5 rounded-[18px] border border-card-line bg-surface px-3 py-2.5 shadow-xs">
-            <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-primary/[0.09] text-[10.5px] font-bold text-primary">
-              {initials}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12.5px] leading-tight font-semibold text-ink-strong">
-                {user.givenName} {user.familyName}
-              </span>
-              <span className="block truncate text-[10.5px] leading-tight text-ink-muted">
-                {ROLE_LABELS[user.role] ?? user.role}
-              </span>
-            </span>
+          <div
+            className={cn(
+              'mt-auto flex shrink-0 items-center rounded-[18px] border border-card-line bg-surface py-2.5 shadow-xs',
+              replie ? 'justify-center' : 'gap-2.5 px-3',
+            )}
+          >
+            {/* Repliée, la carte ne garde que le menu du compte : le thème,
+                les certificats et la sortie doivent rester à un clic. */}
+            {!replie ? (
+              <>
+                <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-primary/[0.09] text-[10.5px] font-bold text-primary">
+                  {initials}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px] leading-tight font-semibold text-ink-strong">
+                    {user.givenName} {user.familyName}
+                  </span>
+                  <span className="block truncate text-[10.5px] leading-tight text-ink-muted">
+                    {ROLE_LABELS[user.role] ?? user.role}
+                  </span>
+                </span>
+              </>
+            ) : null}
             <MenuCompte variante="colonne" />
           </div>
+          {replie ? <InfoBulle bulle={bulle} /> : null}
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">

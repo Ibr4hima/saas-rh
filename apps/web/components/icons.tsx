@@ -63,6 +63,8 @@ export const ICON_NAMES = [
   'how_to_reg',
   'hub',
   'inbox',
+  'left_panel_close',
+  'left_panel_open',
   'light_mode',
   'link',
   'lock',

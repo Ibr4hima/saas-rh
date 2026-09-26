@@ -32,6 +32,11 @@ const nextConfig: NextConfig = {
   distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
   reactStrictMode: true,
   transpilePackages: ['@teranga/ui'],
+  // L'indicateur de développement de Next (le rond « N ») se posait en bas à
+  // gauche, sur la carte du compte — et, la colonne repliée, sur le bouton du
+  // menu du compte lui-même. Il n'existe qu'en développement ; en bas à
+  // droite, il ne cache plus rien d'utile.
+  devIndicators: { position: 'bottom-right' },
 };
 
 export default nextConfig;
