@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { countWorkdays, holidayReminderDate } from '../src/modules/time/workdays';
+import {
+  countWorkdays,
+  holidayReminderDate,
+  joursOuvresEcoules,
+} from '../src/modules/time/workdays';
 
 const noHolidays = new Set<string>();
 
@@ -77,5 +81,24 @@ describe('holidayReminderDate', () => {
       '2026-08-06',
     ]);
     expect(holidayReminderDate('2026-08-17', allOff)).toBeNull();
+  });
+});
+
+describe('joursOuvresEcoules — le délai avant un rappel', () => {
+  const aucun = new Set<string>();
+  it('arrivée lundi : mercredi, un jour plein ; jeudi, deux', () => {
+    // 28 septembre 2026 est un lundi.
+    expect(joursOuvresEcoules('2026-09-28', '2026-09-29', aucun)).toBe(0);
+    expect(joursOuvresEcoules('2026-09-28', '2026-09-30', aucun)).toBe(1);
+    expect(joursOuvresEcoules('2026-09-28', '2026-10-01', aucun)).toBe(2);
+  });
+
+  it('le week-end ne compte pas : arrivée vendredi, deux jours pleins le mercredi', () => {
+    expect(joursOuvresEcoules('2026-10-02', '2026-10-06', aucun)).toBe(1);
+    expect(joursOuvresEcoules('2026-10-02', '2026-10-07', aucun)).toBe(2);
+  });
+
+  it('un férié ne compte pas non plus', () => {
+    expect(joursOuvresEcoules('2026-09-28', '2026-10-01', new Set(['2026-09-29']))).toBe(1);
   });
 });

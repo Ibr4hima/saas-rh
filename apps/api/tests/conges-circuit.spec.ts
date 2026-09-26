@@ -572,3 +572,40 @@ describe('l’organigramme tient la direction du personnel', () => {
     expect(await codeOf(() => organigramme.remove(admin, uDCH, {}))).toBe('org.dch_indissoluble');
   });
 });
+
+describe('les relances', () => {
+  it('attendue depuis plus de deux jours ouvrés : la personne attendue reçoit un rappel, une fois', async () => {
+    const id = await poser(moussa);
+    // L'appel du N+1 date d'il y a dix jours.
+    await raw(
+      `UPDATE notifications SET created_at = now() - interval '10 days' WHERE dedupe_key = $1`,
+      [`conge:${id}:appel:n1`],
+    );
+    await reconcilier();
+    await reconcilier();
+    const { rows } = await raw(
+      `SELECT u.given_name AS qui, n.title FROM notifications n
+         JOIN users u ON u.id = n.recipient_user_id WHERE n.dedupe_key = $1`,
+      [`conge:${id}:rappel:n1`],
+    );
+    expect(rows).toEqual([{ qui: 'Ousmane', title: 'Rappel — Congé à valider : Moussa Test' }]);
+  });
+
+  it('pas de rappel avant le délai', async () => {
+    const id = await poser(moussa);
+    await reconcilier();
+    expect(await notif('Ousmane', `conge:${id}:rappel:%`)).toBeNull();
+  });
+
+  it('l’étape passée, le rappel s’en va avec l’appel ; le délai repart pour le suivant', async () => {
+    const id = await poser(moussa);
+    await raw(
+      `UPDATE notifications SET created_at = now() - interval '10 days' WHERE dedupe_key = $1`,
+      [`conge:${id}:appel:n1`],
+    );
+    await reconcilier();
+    await viser(ousmane, id);
+    expect(await notif('Ousmane', `conge:${id}:rappel:%`)).toBeNull();
+    expect(await notif('Mariama', `conge:${id}:rappel:%`)).toBeNull();
+  });
+});

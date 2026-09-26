@@ -3,6 +3,7 @@ import type { EtapeConge } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 import { notifier } from '../notifications/notifier';
 import { DG, directionDeEmploye } from '../people/chaine';
+import { DELAI_RELANCE_JOURS_OUVRES, joursOuvresEcoules } from './workdays';
 
 /* ————————————————————————————————————————————————————————————————
    Le circuit d'une demande d'absence : le N+1, puis la DCH.
@@ -371,10 +372,14 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
        WHERE id = ${requestId}`);
   }
   const cle = att?.valideur ? cleAppel(requestId, att.etape) : null;
+  // Les appels ET leurs rappels : ceux de qui n'est plus attendu s'en vont.
+  const cleRappel = cle ? cle.replace(':appel:', ':rappel:') : null;
   await tx.execute(sql`
     DELETE FROM notifications
-     WHERE dedupe_key LIKE ${`conge:${requestId}:appel:%`}
-       AND (${cle}::text IS NULL OR dedupe_key <> ${cle}
+     WHERE (dedupe_key LIKE ${`conge:${requestId}:appel:%`}
+            OR dedupe_key LIKE ${`conge:${requestId}:rappel:%`})
+       AND (${cle}::text IS NULL
+            OR dedupe_key NOT IN (${cle}, ${cleRappel})
             OR recipient_user_id <> ${att?.valideur?.userId ?? null}::uuid)`);
   if (!att?.valideur || !cle) return;
   const d = await lireDemande(tx, requestId);
@@ -431,6 +436,44 @@ export async function reconcilierLeCircuit(tx: Tx, tenantId: string): Promise<vo
   for (const id of enAttente) await reconcilierDemande(tx, id);
   await verifierLaDelegation(tx, tenantId);
   await verifierLaVacance(tx, tenantId, enAttente);
+  await relancer(tx, tenantId);
+}
+
+/**
+ * Les relances : qui est attendu depuis plus de deux jours ouvrés reçoit un
+ * rappel — une fois par étape. L'appel à viser porte la date où la personne
+ * a été appelée ; il n'existe que tant qu'elle est attendue, donc le rappel
+ * va toujours à la bonne personne. Un changement de traitant repart à zéro.
+ */
+async function relancer(tx: Tx, tenantId: string): Promise<void> {
+  const { rows: appels } = await tx.execute<{
+    recipient_user_id: string;
+    dedupe_key: string;
+    le: string;
+    title: string;
+    body: string | null;
+    link: string | null;
+  }>(sql`
+    SELECT recipient_user_id, dedupe_key, (created_at AT TIME ZONE 'UTC')::date::text AS le,
+           title, body, link
+      FROM notifications WHERE dedupe_key LIKE '%:appel:%'`);
+  if (appels.length === 0) return;
+  const { rows: jours } = await tx.execute<{ jour: string; aujourdhui: string }>(sql`
+    SELECT day::text AS jour, CURRENT_DATE::text AS aujourdhui
+      FROM holidays WHERE day IS NOT NULL
+    UNION ALL SELECT NULL, CURRENT_DATE::text`);
+  const aujourdhui = jours[0]!.aujourdhui;
+  const feries = new Set(jours.map((j) => j.jour).filter((j): j is string => Boolean(j)));
+  for (const a of appels) {
+    if (joursOuvresEcoules(a.le, aujourdhui, feries) < DELAI_RELANCE_JOURS_OUVRES) continue;
+    await notifier(tx, tenantId, a.recipient_user_id, {
+      type: 'rappel',
+      title: `Rappel — ${a.title}`,
+      body: `En attente de vous depuis le ${frDate(a.le)}.${a.body ? ` ${a.body}` : ''}`,
+      link: a.link ?? undefined,
+      dedupeKey: a.dedupe_key.replace(':appel:', ':rappel:'),
+    });
+  }
 }
 
 /** Le délégué ne fait plus partie de la DCH : le directeur l'apprend, une fois. */

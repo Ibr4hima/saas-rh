@@ -73,3 +73,22 @@ export function holidayReminderDate(
   }
   return null;
 }
+
+/**
+ * Les jours ouvrés ENTIERS écoulés depuis un jour, sans le compter, jusqu'à
+ * la veille d'aujourd'hui. Une demande arrivée lundi a attendu mardi et
+ * mercredi : jeudi matin, elle attend depuis deux jours ouvrés pleins.
+ */
+export function joursOuvresEcoules(
+  depuisIso: string,
+  aujourdhuiIso: string,
+  holidays: ReadonlySet<string>,
+): number {
+  const debut = shiftDays(depuisIso, 1);
+  const fin = shiftDays(aujourdhuiIso, -1);
+  if (fin < debut) return 0;
+  return countWorkdays(debut, fin, holidays).workingDays;
+}
+
+/** Au-delà de ce délai, qui est attendu reçoit un rappel. */
+export const DELAI_RELANCE_JOURS_OUVRES = 2;
