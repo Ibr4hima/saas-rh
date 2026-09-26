@@ -33,17 +33,20 @@ export function Onglets({
   onChange,
   sombre = false,
   className,
+  label = 'Filtrer le personnel',
 }: {
   onglets: Onglet[];
   courant: string;
   onChange: (cle: string) => void;
   sombre?: boolean;
   className?: string;
+  /** Ce que filtrent les onglets, pour les lecteurs d'écran. */
+  label?: string;
 }) {
   return (
     <div
       role="tablist"
-      aria-label="Filtrer le personnel"
+      aria-label={label}
       className={cn(
         'flex items-center gap-1 rounded-full border p-1',
         sombre ? 'border-white/20 bg-white/10' : 'border-line-soft bg-bg',

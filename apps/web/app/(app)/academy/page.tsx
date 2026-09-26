@@ -6,11 +6,13 @@ import { useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { AcademyCategory, CourseSummary } from '@teranga/contracts';
 import { ACADEMY_CATEGORIES } from '@teranga/contracts';
-import { Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
+import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
 import { CarteFormation } from '../../../components/academy-carte';
+import { DefilementHorizontal } from '../../../components/defilement-horizontal';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
+import { Onglets, type Onglet } from '../../../components/onglets-bandeau';
 import { FAMILLES } from '../../../lib/academy';
 import { api } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
@@ -64,16 +66,29 @@ export default function AcademyPage() {
     [formations],
   );
   const familles = ACADEMY_CATEGORIES.filter((c) => formations.some((f) => f.category === c));
-  const visibles = useMemo(() => {
+  // La recherche d'abord, la famille ensuite : les compteurs des onglets
+  // disent combien de formations TROUVÉES chaque famille contient.
+  const trouvees = useMemo(() => {
     const q = recherche.trim().toLocaleLowerCase('fr');
+    if (!q) return formations;
     return formations.filter(
       (f) =>
-        (filtre === 'toutes' || f.category === filtre) &&
-        (!q ||
-          f.title.toLocaleLowerCase('fr').includes(q) ||
-          (f.summary ?? '').toLocaleLowerCase('fr').includes(q)),
+        f.title.toLocaleLowerCase('fr').includes(q) ||
+        (f.summary ?? '').toLocaleLowerCase('fr').includes(q),
     );
-  }, [formations, filtre, recherche]);
+  }, [formations, recherche]);
+  const visibles = useMemo(
+    () => trouvees.filter((f) => filtre === 'toutes' || f.category === filtre),
+    [trouvees, filtre],
+  );
+  const onglets: Onglet[] = [
+    { cle: 'toutes', label: 'Toutes', compte: trouvees.length },
+    ...familles.map((c) => ({
+      cle: c,
+      label: FAMILLES[c].label,
+      compte: trouvees.filter((f) => f.category === c).length,
+    })),
+  ];
 
   if (catalogue.isPending) {
     return (
@@ -137,32 +152,18 @@ export default function AcademyPage() {
           ) : null}
 
           <section className="flex flex-col gap-3 pb-2">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
-              <Intitule>Catalogue</Intitule>
-              <div
-                role="tablist"
-                aria-label="Familles de formations"
-                className="flex flex-1 flex-wrap gap-1.5"
-              >
-                {(['toutes', ...familles] as Filtre[]).map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    role="tab"
-                    aria-selected={filtre === c}
-                    onClick={() => setFiltre(c)}
-                    className={cn(
-                      'rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
-                      filtre === c
-                        ? 'border-primary bg-primary text-primary-ink'
-                        : 'border-line-soft bg-surface text-ink-muted hover:border-line hover:text-ink',
-                    )}
-                  >
-                    {c === 'toutes' ? 'Toutes' : FAMILLES[c].label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Les familles, avec le nombre de formations de chacune — le
+                même contrôle que les onglets du personnel. Quand elles ne
+                tiennent plus sur la largeur, la rangée défile et le montre. */}
+            <DefilementHorizontal className="shrink-0">
+              <Onglets
+                onglets={onglets}
+                courant={filtre}
+                onChange={(cle) => setFiltre(cle as Filtre)}
+                label="Familles de formations"
+                className="w-max"
+              />
+            </DefilementHorizontal>
 
             {/* Le champ est dans le bandeau, loin des cartes : on redit ici
                 ce qui filtre, et comment l'enlever. */}
