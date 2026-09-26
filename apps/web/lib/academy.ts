@@ -1,4 +1,4 @@
-import type { AcademyCategory, EtatLecon } from '@teranga/contracts';
+import type { AcademyCategory, EtatLecon, StatutSuivi } from '@teranga/contracts';
 import { ACADEMY_CATEGORY_LABELS } from '@teranga/contracts';
 import type { IconName } from '../components/icons';
 
@@ -109,3 +109,21 @@ export const STATUTS_CERTIFICAT = {
   expire: { label: 'Expiré', tone: 'warning' },
   revoque: { label: 'Révoqué', tone: 'danger' },
 } as const;
+
+/**
+ * Où en est un agent sur une formation, vu par son n+1 : le mot, l'icône,
+ * et la teinte. L'orange ne sert qu'à ce qui ATTEND l'agent — une
+ * évaluation à passer ou à repasser ; ce qu'il a obtenu est vert, ce qu'il
+ * suit reste bleu, ce qu'il n'a pas ouvert reste neutre.
+ */
+export const ETATS_SUIVI: Record<
+  StatutSuivi,
+  { label: string; icone: IconName; ton: 'attente' | 'succes' | 'suivi' | 'neutre' }
+> = {
+  evaluation_a_passer: { label: 'Évaluation à passer', icone: 'quiz', ton: 'attente' },
+  non_reussie: { label: 'Pas encore réussie', icone: 'replay', ton: 'attente' },
+  en_cours: { label: 'En cours', icone: 'play_circle', ton: 'suivi' },
+  certifiee: { label: 'Certifiée', icone: 'workspace_premium', ton: 'succes' },
+  terminee: { label: 'Terminée', icone: 'check_circle', ton: 'succes' },
+  a_commencer: { label: 'Pas commencée', icone: 'schedule', ton: 'neutre' },
+};

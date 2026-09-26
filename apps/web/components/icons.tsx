@@ -62,6 +62,7 @@ export const ICON_NAMES = [
   'fullscreen_exit',
   'gavel',
   'group',
+  'groups',
   'how_to_reg',
   'hub',
   'inbox',

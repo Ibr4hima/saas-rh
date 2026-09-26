@@ -456,3 +456,83 @@ export interface PublicCertificateView {
   issuedAt: string;
   expiresAt: string | null;
 }
+
+/* ————————————————————————————————————————————————————————————————
+   « Mon équipe » : la progression de ceux qui vous rendent compte.
+
+   L'équipe se lit dans l'ORGANIGRAMME (le n+1 de chaque fiche agent), pas
+   dans un rôle : quiconque a au moins un agent sous lui la voit, et elle
+   descend toute la chaîne — une directrice voit sa direction entière.
+
+   Des évaluations, le n+1 voit l'état et le score obtenu, pas le détail :
+   ni le nombre de tentatives, ni les scores des échecs.
+   ———————————————————————————————————————————————————————————————— */
+
+/**
+ * Où en est un agent sur une formation.
+ * - `a_commencer` : aucune leçon ouverte.
+ * - `en_cours` : des leçons ouvertes, pas toutes validées.
+ * - `evaluation_a_passer` : leçons terminées, l'évaluation attend l'agent.
+ * - `non_reussie` : leçons terminées, évaluation tentée sans succès — pour
+ *   l'instant ; les tentatives restent ouvertes.
+ * - `terminee` : leçons terminées, et la formation n'a pas d'évaluation.
+ * - `certifiee` : certificat en cours de validité.
+ */
+export const STATUTS_SUIVI = [
+  'evaluation_a_passer',
+  'non_reussie',
+  'en_cours',
+  'certifiee',
+  'terminee',
+  'a_commencer',
+] as const;
+export type StatutSuivi = (typeof STATUTS_SUIVI)[number];
+
+export interface TeamCourseProgress {
+  /** Null pour le certificat d'une formation retirée depuis du catalogue. */
+  courseId: string | null;
+  title: string;
+  category: AcademyCategory;
+  lessonCount: number;
+  completedLessons: number;
+  lastActivityAt: string | null;
+  hasEvaluation: boolean;
+  status: StatutSuivi;
+  /** Le dernier certificat non révoqué — expiré compris, pour le dire. */
+  certificate: {
+    score: number;
+    issuedAt: string;
+    expiresAt: string | null;
+    status: 'valide' | 'expire';
+  } | null;
+}
+
+export interface TeamMember {
+  employeeId: string;
+  givenName: string;
+  familyName: string;
+  number: string;
+  positionTitle: string | null;
+  unitName: string | null;
+  /** À qui l'agent rend compte : vous, ou l'un des vôtres. */
+  manager: { employeeId: string; name: string };
+  /** 1 pour vos directs, 2 pour leurs équipes, etc. */
+  level: number;
+  /** Combien de formations dans chaque état (les « à commencer » comprises). */
+  counts: Record<StatutSuivi, number>;
+  lastActivityAt: string | null;
+}
+
+export interface TeamView {
+  members: TeamMember[];
+}
+
+export interface TeamMemberDetail extends TeamMember {
+  courses: TeamCourseProgress[];
+}
+
+/** Assez pour savoir s'il faut montrer l'entrée « Mon équipe ». */
+export interface TeamSize {
+  total: number;
+  direct: number;
+}

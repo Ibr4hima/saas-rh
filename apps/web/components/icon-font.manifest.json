@@ -41,6 +41,7 @@
     "fullscreen_exit",
     "gavel",
     "group",
+    "groups",
     "how_to_reg",
     "hub",
     "inbox",
@@ -82,5 +83,5 @@
     "workspace_premium"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 79544
+  "bytes": 82916
 }

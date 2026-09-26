@@ -231,7 +231,7 @@ if (!magalOn) console.warn('  ⚠ aucun férié de démonstration placé (rappel
 for (const an of [year, year + 1]) await call('GET', `/holidays?year=${an}`);
 await call('PUT', '/approval-chain', { levels: ['hr', 'admin'] });
 
-console.log('→ Portails employés : Awa, Moussa et Fatou activent leur compte');
+console.log('→ Portails employés : Awa, Moussa, Fatou et Mariama activent leur compte');
 // Les demandes sont posées par les employés EUX-MÊMES (aucune saisie RH) :
 // chaque dossier reçoit une invitation, le compte est activé, puis la
 // demande part depuis ce compte — avec justificatif PDF quand le type l'exige.
@@ -239,6 +239,9 @@ const PASSWORDS = {
   [awa.id]: ['a.diop@apix.sn', 'MotDePasseAwa1234!'],
   [moussa.id]: ['m.ndiaye@apix.sn', 'MotDePasseMoussa1!'],
   [fatou.id]: ['f.sall@apix.sn', 'MotDePasseFatou12!'],
+  // La n+1 d'Awa : de quoi voir, dans « Mon équipe » de l'Academy, une
+  // chaîne à deux niveaux (Awa en direct, Moussa par Awa).
+  [directriceRh.id]: ['m.cisse@apix.sn', 'MotDePasseMariama1!'],
 };
 const employeeCookies = {};
 for (const [employeeId, [, password]] of Object.entries(PASSWORDS)) {

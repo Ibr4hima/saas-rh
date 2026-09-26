@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { TeamSize } from '@teranga/contracts';
 import { cn, Skeleton } from '@teranga/ui';
 import { BrandMark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
@@ -237,6 +238,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/competences': 'Cartographie des compétences',
   '/academy': 'APIX Academy',
   '/academy/gerer': 'Gérer le catalogue',
+  '/academy/equipe': 'Mon équipe',
   '/evaluation': 'Évaluation des objectifs',
   '/organisation': 'Organigramme',
   '/reglementations/code-du-travail': 'Code du travail',
@@ -266,6 +268,7 @@ function pageTitle(pathname: string, givenName: string): string {
   }
   if (pathname.startsWith('/recrutement/')) return 'Offre de recrutement';
   if (pathname.startsWith('/academy/gerer/')) return 'Gérer le catalogue';
+  if (pathname.startsWith('/academy/equipe/')) return 'Mon équipe';
   if (pathname.startsWith('/academy/')) return 'APIX Academy';
   if (pathname.endsWith('/deposer')) return 'Dépôt du texte';
   // Un troisième texte — convention collective, accord d'entreprise — entrera
@@ -910,6 +913,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
     refetchInterval: 60_000,
   });
 
+  // « Mon équipe » ne s'affiche qu'à qui encadre quelqu'un : l'organigramme
+  // en décide, pas le rôle — d'où cette question au serveur, dans l'Academy
+  // seulement.
+  const equipe = useQuery({
+    queryKey: ['academy', 'equipe', 'effectif'],
+    queryFn: () => api<TeamSize>('/academy/equipe/effectif'),
+    enabled: Boolean(me.data) && espaceAcademy(pathname),
+    staleTime: 5 * 60_000,
+  });
+
   // Garde de routes : les non-gestionnaires restent dans leur espace.
   const allowedForRole = (path: string): boolean => {
     if (!me.data) return true;
@@ -1003,6 +1016,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
           {action ? <HeaderAction action={action} /> : null}
           {academy ? (
             <>
+              {(equipe.data?.total ?? 0) > 0 ? (
+                <LienBandeau
+                  href="/academy/equipe"
+                  icone="groups"
+                  libelle="Mon équipe"
+                  actif={pathname.startsWith('/academy/equipe')}
+                />
+              ) : null}
               <LienBandeau
                 href="/academy/certificats"
                 icone="workspace_premium"
