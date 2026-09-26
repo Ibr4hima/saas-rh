@@ -30,6 +30,7 @@ import { api, ApiError } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { EmployeeCreateModal } from '../../../components/employee-create-modal';
 import { BandeauHierarchie } from '../../../components/bandeau-hierarchie';
+import { aDesConsequences, ListeConsequences } from '../../../components/consequences-hierarchie';
 import { FenetreImportEmployes } from '../../../components/import-employes';
 import { Icon } from '../../../components/icons';
 import { Modal, ModalSection } from '../../../components/modal';
@@ -112,7 +113,10 @@ export default function EmployeesPage() {
   // L'import ne passe PAS par l'URL, contrairement à la création : on y arrive
   // avec un fichier en main, et un lien partagé rouvrirait une fenêtre vide.
   const [importOuvert, setImportOuvert] = useState(false);
-  const [ecartes, setEcartes] = useState<EmployeeBatchResult['skipped']>([]);
+  // Le compte rendu d'un lot : ce qu'il a laissé en place, les équipes
+  // reprises au passage, et ce qu'il a rendu faux (un dossier rouvert dont
+  // le n+1 est parti, par exemple).
+  const [bilanLot, setBilanLot] = useState<EmployeeBatchResult | null>(null);
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -208,7 +212,8 @@ export default function EmployeesPage() {
     await queryClient.invalidateQueries({ queryKey: ['employees'] });
     await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     sel.vider();
-    if (res.skipped.length > 0) setEcartes(res.skipped);
+    const consequences = { changements: res.changements ?? [], aRevoir: res.aRevoir ?? [] };
+    if (res.skipped.length > 0 || aDesConsequences(consequences)) setBilanLot(res);
   };
 
   const archiver = useMutation({
@@ -522,27 +527,45 @@ export default function EmployeesPage() {
         />
       ) : null}
 
-      {ecartes.length > 0 ? (
+      {bilanLot ? (
         <Modal
           open
-          onClose={() => setEcartes([])}
-          title="Dossiers laissés en place"
+          onClose={() => setBilanLot(null)}
+          title={
+            bilanLot.skipped.length > 0 ? 'Dossiers laissés en place' : 'Ce que le lot a changé'
+          }
           maxWidth="max-w-lg"
-          footer={<Button onClick={() => setEcartes([])}>J&apos;ai compris</Button>}
+          footer={<Button onClick={() => setBilanLot(null)}>J&apos;ai compris</Button>}
         >
-          <ModalSection title="Non traités">
-            <ul className="flex flex-col gap-1.5">
-              {ecartes.map((s) => (
-                <li key={s.id} className="flex items-start gap-2 text-[12.5px]">
-                  <Icon name="error" size={15} className="mt-0.5 shrink-0 text-warning" />
-                  <span>
-                    <span className="font-semibold text-ink-strong">{s.name}</span>
-                    <span className="text-ink-muted"> — {s.reason}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </ModalSection>
+          {bilanLot.skipped.length > 0 ? (
+            <ModalSection title="Non traités">
+              <ul className="flex flex-col gap-1.5">
+                {bilanLot.skipped.map((s) => (
+                  <li key={s.id} className="flex items-start gap-2 text-[12.5px]">
+                    <Icon name="error" size={15} className="mt-0.5 shrink-0 text-warning" />
+                    <span>
+                      <span className="font-semibold text-ink-strong">{s.name}</span>
+                      <span className="text-ink-muted"> — {s.reason}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </ModalSection>
+          ) : null}
+          {aDesConsequences({
+            changements: bilanLot.changements ?? [],
+            aRevoir: bilanLot.aRevoir ?? [],
+          }) ? (
+            <ModalSection title="La chaîne hiérarchique">
+              <ListeConsequences
+                consequences={{
+                  changements: bilanLot.changements ?? [],
+                  aRevoir: bilanLot.aRevoir ?? [],
+                }}
+                faites
+              />
+            </ModalSection>
+          ) : null}
         </Modal>
       ) : null}
     </Page>

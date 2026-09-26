@@ -38,6 +38,7 @@ function agent(id: string, plus: Partial<LigneHierarchie> = {}): LigneHierarchie
     dirigeUneDirection: false,
     estDirecteurGeneral: false,
     directionPourvue: true,
+    aLaDirectionGenerale: false,
     ...plus,
   };
 }
@@ -61,6 +62,7 @@ describe('la chaîne en règle', () => {
       directionNom: DG.nom,
       dirigeUneDirection: true,
       estDirecteurGeneral: true,
+      aLaDirectionGenerale: true,
     });
     expect(types([dg])).toEqual([]);
   });
@@ -76,8 +78,35 @@ describe('la chaîne en règle', () => {
       directionNom: DG.nom,
       dirigeUneDirection: true,
       estDirecteurGeneral: true,
+      aLaDirectionGenerale: true,
     });
     expect(types([dg])).toEqual(['dg:dg_rattache']);
+  });
+
+  it('signale un directeur général affecté hors de la Direction Générale', () => {
+    const dg = agent('dg', {
+      responsableId: null,
+      responsableNom: null,
+      responsableActif: null,
+      responsableDirectionId: null,
+      responsableDirectionNom: null,
+      estDirecteurGeneral: true,
+    });
+    expect(types([dg])).toEqual(['dg:dg_hors_direction_generale']);
+  });
+
+  it('signale un directeur général sans affectation', () => {
+    const dg = agent('dg', {
+      responsableId: null,
+      responsableNom: null,
+      responsableActif: null,
+      responsableDirectionId: null,
+      responsableDirectionNom: null,
+      directionId: null,
+      directionNom: null,
+      estDirecteurGeneral: true,
+    });
+    expect(types([dg])).toEqual(['dg:sans_direction']);
   });
 
   it('une boucle qui passe par le DG ne désigne que lui : c’est son n+1 qui la ferme', () => {
@@ -91,6 +120,7 @@ describe('la chaîne en règle', () => {
       directionNom: DG.nom,
       dirigeUneDirection: true,
       estDirecteurGeneral: true,
+      aLaDirectionGenerale: true,
     });
     const a = agent('a', {
       responsableId: 'dg',
@@ -157,10 +187,33 @@ describe('la règle de direction', () => {
     expect(types([directeur], null)).toEqual(['directeur:directeur_mal_rattache']);
   });
 
-  it('ne reproche pas à l’agent que SON n+1 soit sans affectation', () => {
-    // C'est le n+1 qui est en défaut, et sa propre ligne le dira.
+  it('signale un n+1 sans affectation — sous son nom, sans bloquer l’évaluation', () => {
+    // L'écriture refuse ce rattachement (d'abord l'affectation, pour le n+1
+    // aussi) : le contrôle le signale, et dit QUI affecter.
     const a = agent('a', { responsableDirectionId: null, responsableDirectionNom: null });
-    expect(types([a])).toEqual([]);
+    expect(types([a])).toEqual(['a:responsable_sans_direction']);
+    expect(bloqueLEvaluation('responsable_sans_direction')).toBe(false);
+  });
+
+  it('signale un directeur sans affectation, même bien rattaché au DG', () => {
+    const directeur = agent('directeur', {
+      responsableId: 'dg',
+      responsableDirectionId: DG.id,
+      dirigeUneDirection: true,
+      directionId: null,
+      directionNom: null,
+    });
+    expect(types([directeur])).toEqual(['directeur:sans_direction']);
+  });
+
+  it('accepte le DG comme n+1 dans une direction sans tête — pas dans une direction pourvue', () => {
+    const sansTete = agent('a', {
+      responsableId: 'dg',
+      responsableDirectionId: DG.id,
+      directionPourvue: false,
+    });
+    const pourvue = agent('b', { responsableId: 'dg', responsableDirectionId: DG.id });
+    expect(types([sansTete, pourvue])).toEqual(['b:hors_direction']);
   });
 });
 
@@ -194,6 +247,7 @@ describe('les boucles', () => {
       dirigeUneDirection: true,
       estDirecteurGeneral: true,
       directionId: DG.id,
+      aLaDirectionGenerale: true,
     });
     const directeur = agent('directeur', {
       responsableId: 'dg',
@@ -229,7 +283,7 @@ describe('l’ordre et les décomptes', () => {
     );
     expect(parType.sans_responsable).toBe(1);
     expect(parType.hors_direction).toBe(0);
-    expect(Object.keys(parType)).toHaveLength(7);
+    expect(Object.keys(parType)).toHaveLength(9);
   });
 
   it('dit lesquelles empêchent d’évaluer', () => {

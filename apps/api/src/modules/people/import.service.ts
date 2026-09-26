@@ -1,10 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import type { LigneImport, RapportImportEmployes, SessionUser } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { lirePremiereFeuille, XlsxIllisible } from '../../common/xlsx';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
+import { DG, directionDeLUnite, uniteEnVigueur } from './chaine';
 import { convertirLigne, correspondre } from './import-employes';
 import { PeopleService } from './people.service';
 
@@ -86,7 +87,7 @@ export class ImportEmployesService {
     // qu'une — « la colonne Matricule manque » — noie la seule qui compte.
     if (manquantes.length > 0) return vide;
 
-    const { employesParMatricule, unitesParAbrege } = await this.contexte(user);
+    const { employesParMatricule, unitesParAbrege, directionsPourvues } = await this.contexte(user);
 
     // Les matricules vus DANS LE FICHIER : deux lignes ne peuvent pas créer
     // le même dossier, et la deuxième s'ignore comme un doublon de base.
@@ -175,7 +176,16 @@ export class ImportEmployesService {
                   texte: 'Abrégé inconnu dans l’organigramme : dossier sans rattachement',
                 },
               ]
-            : [],
+            : unite && !poste
+              ? [
+                  {
+                    colonne: 'Poste',
+                    // L'affectation se crée avec son poste : sans lui, pas
+                    // d'affectation — et donc pas de direction.
+                    texte: 'Sans poste, l’agent n’est pas affecté : dossier sans direction',
+                  },
+                ]
+              : [],
       });
       aCreer.push({ ligne: numero, converti });
     });
@@ -185,39 +195,65 @@ export class ImportEmployesService {
     // Le n+1 d'un agent peut se trouver plus bas dans le même fichier : on ne
     // peut donc pas le résoudre à la volée. Deux sources, dans cet ordre :
     // l'effectif déjà en base, puis les dossiers que ce fichier va créer.
-    const aNaitre = new Map<string, string>();
+    //
+    // Et la règle, dès l'aperçu, exactement comme l'écriture l'appliquera :
+    // l'agent ET son n+1 affectés à une direction, le n+1 actif, dans la même
+    // direction — sauf le directeur général pour une direction sans tête.
+    // Un aperçu qui annonce « rattaché » ce que l'écriture refuse ensuite
+    // ferait approuver un compte rendu faux.
+    const directionDeLigne = (l: LigneImport) => {
+      if (!l.poste || !l.uniteAbrege) return null;
+      return unitesParAbrege.get(normaliser(l.uniteAbrege))?.direction ?? null;
+    };
+    const aNaitre = new Map<string, LigneImport>();
     for (const l of lignes) {
-      if (l.etat === 'a-creer' && l.matricule && l.nom)
-        aNaitre.set(cleMatricule(l.matricule), l.nom);
+      if (l.etat === 'a-creer' && l.matricule && l.nom) aNaitre.set(cleMatricule(l.matricule), l);
     }
+    const refuser = (l: LigneImport, texte: string) =>
+      l.avertissements.push({ colonne: NOM_COLONNE_RESPONSABLE, texte });
     for (const l of lignes) {
       if (l.etat !== 'a-creer' || !l.responsable) continue;
       // D'abord l'affectation, ensuite la hiérarchie : sans direction
       // reconnue, le n+1 ne se pose pas — l'aperçu le dit avant l'import.
-      if (!l.uniteResolue) {
-        l.avertissements.push({
-          colonne: NOM_COLONNE_RESPONSABLE,
-          texte: 'Sans direction affectée : dossier créé sans n+1 — affectez-le d’abord',
-        });
+      const directionAgent = directionDeLigne(l);
+      if (!directionAgent) {
+        refuser(l, 'Sans direction affectée : dossier créé sans n+1 — affectez-le d’abord');
         continue;
       }
       const cle = cleMatricule(l.responsable);
       if (l.matricule && cle === cleMatricule(l.matricule)) {
-        l.avertissements.push({
-          colonne: NOM_COLONNE_RESPONSABLE,
-          texte: 'Un agent ne peut pas être son propre responsable : dossier créé sans n+1',
-        });
+        refuser(l, 'Un agent ne peut pas être son propre responsable : dossier créé sans n+1');
         continue;
       }
-      const nom = employesParMatricule.get(cle)?.nom ?? aNaitre.get(cle) ?? null;
-      if (nom) {
-        l.responsableResolu = nom;
-      } else {
-        l.avertissements.push({
-          colonne: NOM_COLONNE_RESPONSABLE,
-          texte: `Matricule « ${l.responsable} » introuvable : dossier créé sans n+1`,
-        });
+      const existant = employesParMatricule.get(cle);
+      const ligneN1 = aNaitre.get(cle);
+      const n1 = existant
+        ? existant
+        : ligneN1
+          ? { nom: ligneN1.nom!, actif: true, direction: directionDeLigne(ligneN1), estDG: false }
+          : null;
+      if (!n1) {
+        refuser(l, `Matricule « ${l.responsable} » introuvable : dossier créé sans n+1`);
+        continue;
       }
+      if (!n1.actif) {
+        refuser(l, `${n1.nom} a un dossier archivé : dossier créé sans n+1`);
+        continue;
+      }
+      if (!n1.direction) {
+        refuser(l, `${n1.nom} n’est affecté à aucune direction : dossier créé sans n+1`);
+        continue;
+      }
+      const memeDirection = n1.direction.id === directionAgent.id;
+      const dgCouvre = n1.estDG && !directionsPourvues.has(directionAgent.id);
+      if (!memeDirection && !dgCouvre) {
+        refuser(
+          l,
+          `${n1.nom} relève de « ${n1.direction.nom} », l’agent de « ${directionAgent.nom} » : dossier créé sans n+1`,
+        );
+        continue;
+      }
+      l.responsableResolu = n1.nom;
     }
 
     const compter = (lignesRapport: LigneImport[]) => ({
@@ -324,43 +360,76 @@ export class ImportEmployesService {
     return this.db.withTenant(ctxOf(user), async (tx: Tx) => {
       // Le nom et l'identifiant en plus du matricule : le fichier désigne le
       // n+1 par son matricule, et le compte rendu doit pouvoir écrire son nom
-      // — puis le rattachement, son identifiant.
-      const employes = await tx
-        .select({
-          id: t.employees.id,
-          numero: t.employees.employeeNumber,
-          prenom: t.persons.givenName,
-          nom: t.persons.familyName,
-        })
-        .from(t.employees)
-        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-        .where(eq(t.employees.tenantId, user.tenantId));
-      const unites = await tx
-        .select({
-          id: t.orgUnits.id,
-          nom: t.orgUnits.name,
-          abrege: t.orgUnits.shortName,
-        })
-        .from(t.orgUnits)
-        .where(and(eq(t.orgUnits.tenantId, user.tenantId), isNull(t.orgUnits.deletedAt)));
+      // — puis le rattachement, son identifiant. Son statut et sa direction,
+      // lus avec les définitions de la chaîne, disent dès l'aperçu si le
+      // rattachement tiendra.
+      const { rows: employes } = await tx.execute<{
+        id: string;
+        numero: string;
+        prenom: string;
+        nom: string;
+        actif: boolean;
+        direction_id: string | null;
+        direction_nom: string | null;
+        est_dg: boolean;
+      }>(sql`
+        SELECT e.id, e.employee_number AS numero, p.given_name AS prenom, p.family_name AS nom,
+               e.status = 'active' AS actif,
+               ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'id')} AS direction_id,
+               ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'name')} AS direction_nom,
+               (e.id IS NOT DISTINCT FROM ${DG}) AS est_dg
+          FROM employees e JOIN persons p ON p.id = e.person_id`);
+      const { rows: unites } = await tx.execute<{
+        id: string;
+        nom: string;
+        abrege: string | null;
+        unit_type: string;
+        manager_employee_id: string | null;
+        direction_id: string | null;
+        direction_nom: string | null;
+      }>(sql`
+        SELECT o.id, o.name AS nom, o.short_name AS abrege, o.unit_type, o.manager_employee_id,
+               ${directionDeLUnite(sql`o.id`, 'id')} AS direction_id,
+               ${directionDeLUnite(sql`o.id`, 'name')} AS direction_nom
+          FROM org_units o WHERE o.deleted_at IS NULL`);
 
       // On accepte l'abrégé ET le nom complet : un fichier peut écrire
       // « DCH » comme « Direction du Capital Humain », et les deux désignent
       // la même unité.
-      const unitesParAbrege = new Map<string, { id: string; nom: string }>();
+      type Unite = { id: string; nom: string; direction: { id: string; nom: string } | null };
+      const unitesParAbrege = new Map<string, Unite>();
       for (const u of unites) {
-        const valeur = { id: u.id, nom: u.nom };
+        const valeur: Unite = {
+          id: u.id,
+          nom: u.nom,
+          direction: u.direction_id ? { id: u.direction_id, nom: u.direction_nom ?? '' } : null,
+        };
         if (u.abrege) unitesParAbrege.set(normaliser(u.abrege), valeur);
         unitesParAbrege.set(normaliser(u.nom), valeur);
       }
-      const employesParMatricule = new Map<string, { id: string; nom: string }>();
+      const directionsPourvues = new Set(
+        unites.filter((u) => u.unit_type === 'direction' && u.manager_employee_id).map((u) => u.id),
+      );
+      const employesParMatricule = new Map<
+        string,
+        {
+          id: string;
+          nom: string;
+          actif: boolean;
+          direction: { id: string; nom: string } | null;
+          estDG: boolean;
+        }
+      >();
       for (const e of employes) {
         employesParMatricule.set(cleMatricule(e.numero), {
           id: e.id,
           nom: `${e.prenom} ${e.nom}`,
+          actif: e.actif,
+          direction: e.direction_id ? { id: e.direction_id, nom: e.direction_nom ?? '' } : null,
+          estDG: e.est_dg,
         });
       }
-      return { employesParMatricule, unitesParAbrege };
+      return { employesParMatricule, unitesParAbrege, directionsPourvues };
     });
   }
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ChangementRattachement } from './hierarchie';
+import type { AnomalieHierarchie, ChangementRattachement } from './hierarchie';
 
 /** Contrats du module « dossier employé » (Lot 1). */
 
@@ -140,6 +140,13 @@ export interface OrgUnitView extends OrgUnit {
    */
   managerShortName: string | null;
   managerPosition: string | null;
+  /**
+   * L'unité est LE sommet de l'organigramme — la Direction Générale, dont le
+   * responsable est le directeur général. Dit par le serveur, avec la même
+   * définition que l'écriture : un vestige d'avant la règle (une seconde
+   * unité sans parent) n'est pas le sommet.
+   */
+  sommet: boolean;
   /** Effectif AFFICHÉ : les personnes actives qui y travaillent aujourd'hui. */
   headcount: number;
   /**
@@ -494,6 +501,11 @@ export interface EmployeeBatchResult {
   skipped: { id: string; name: string; reason: string }[];
   /** Les équipes reprises au passage. */
   changements?: ChangementRattachement[];
+  /**
+   * Les rattachements que le lot a rendus faux — un dossier rouvert dont le
+   * n+1 est parti, par exemple. À revoir, pas bloquant.
+   */
+  aRevoir?: AnomalieHierarchie[];
 }
 
 export interface EmployeeListItem {

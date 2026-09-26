@@ -51,6 +51,10 @@ export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: 
     court: 'n+1 archivé',
     explication: 'Son responsable a quitté l’agence : il faut le remplacer.',
   },
+  dg_hors_direction_generale: {
+    court: 'DG hors Direction Générale',
+    explication: 'Le directeur général siège à la Direction Générale : réaffectez-le.',
+  },
   directeur_mal_rattache: {
     court: 'Directeur mal rattaché',
     explication: 'Un directeur relève du directeur général, de personne d’autre.',
@@ -62,6 +66,10 @@ export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: 
   sans_direction: {
     court: 'Sans affectation',
     explication: 'Sans direction, la règle de rattachement ne peut pas être vérifiée.',
+  },
+  responsable_sans_direction: {
+    court: 'n+1 sans affectation',
+    explication: 'Son responsable n’est affecté à aucune direction : affectez-le d’abord.',
   },
 };
 

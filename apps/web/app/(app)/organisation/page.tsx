@@ -196,6 +196,10 @@ function UnitPanel({
   const [shortName, setShortName] = useState(unit.shortName ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [reassignTo, setReassignTo] = useState('');
+  // Le sommet ne se propose qu'à lui-même, ou quand il n'y en a pas encore.
+  const sommetLibre =
+    ORG_UNIT_ROOT_TYPES.includes(unitType) &&
+    (unit.sommet || !units.some((u) => u.sommet && u.id !== unit.id));
 
   // ——— Toute modification passe d'abord par l'aperçu : le serveur la joue
   // puis l'annule, et dit ce qu'elle changerait dans la chaîne hiérarchique.
@@ -319,7 +323,9 @@ function UnitPanel({
           <span>
             {units.find((u) => u.id === unit.parentId)
               ? `Rattachée à ${orgUnitLabel(units.find((u) => u.id === unit.parentId)!)}`
-              : 'Au sommet de l’organigramme'}
+              : unit.sommet
+                ? 'Au sommet de l’organigramme'
+                : 'Sans rattachement — à ranger sous la Direction Générale'}
           </span>
         </span>
       }
@@ -327,16 +333,22 @@ function UnitPanel({
       footer={
         canManage && !editing && !confirmDelete ? (
           <div className="flex w-full items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setError(null);
-                setConfirmDelete(true);
-              }}
-              className="text-[12px] font-semibold text-ink-muted transition-colors hover:text-danger"
-            >
-              Dissoudre l’unité
-            </button>
+            {/* Le sommet ne se dissout pas : sans lui, plus de directeur
+                général. On le renomme au besoin. */}
+            {unit.sommet ? (
+              <span />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setConfirmDelete(true);
+                }}
+                className="text-[12px] font-semibold text-ink-muted transition-colors hover:text-danger"
+              >
+                Dissoudre l’unité
+              </button>
+            )}
             <Button
               size="sm"
               variant="secondary"
@@ -403,10 +415,16 @@ function UnitPanel({
                 onChange={(e) => setName(e.target.value)}
               />
             </Field>
-            <Field label="Type" htmlFor={`edit-type-${unit.id}`} required>
+            <Field
+              label="Type"
+              htmlFor={`edit-type-${unit.id}`}
+              required
+              hint={unit.sommet ? 'Le sommet reste une direction.' : undefined}
+            >
               <Select
                 id={`edit-type-${unit.id}`}
                 value={unitType}
+                disabled={unit.sommet}
                 onChange={(e) => {
                   const next = e.target.value as OrgUnitType;
                   setUnitType(next);
@@ -424,20 +442,21 @@ function UnitPanel({
               label="Rattachée à"
               htmlFor={`edit-parent-${unit.id}`}
               hint={
-                ORG_UNIT_ROOT_TYPES.includes(unitType)
-                  ? 'Laissez vide pour une unité au sommet de l’organigramme.'
-                  : undefined
+                unit.sommet
+                  ? 'La Direction Générale reste au sommet : toutes les directions la rejoignent.'
+                  : sommetLibre
+                    ? 'Laissez vide pour une unité au sommet de l’organigramme.'
+                    : undefined
               }
-              required={!ORG_UNIT_ROOT_TYPES.includes(unitType)}
+              required={!sommetLibre}
             >
               <Select
                 id={`edit-parent-${unit.id}`}
                 value={parentId}
+                disabled={unit.sommet}
                 onChange={(e) => setParentId(e.target.value)}
               >
-                <option value="">
-                  {ORG_UNIT_ROOT_TYPES.includes(unitType) ? '— Au sommet' : '— Choisir'}
-                </option>
+                <option value="">{sommetLibre ? '— Au sommet' : '— Choisir'}</option>
                 {parents.map((u) => (
                   <option key={u.id} value={u.id}>
                     {pathLabel(units, u)}
@@ -579,9 +598,9 @@ function UnitPanel({
                 hint={
                   !eligible.isLoading && (eligible.data ?? []).length === 0
                     ? 'Personne n’est encore affecté à cette unité : affectez quelqu’un avant de le nommer responsable.'
-                    : unit.parentId === null
+                    : unit.sommet
                       ? 'Parmi les personnes affectées à la Direction Générale elle-même : le directeur général y siège.'
-                      : 'Parmi les personnes affectées à cette unité ou à une unité en dessous.'
+                      : 'Parmi les personnes affectées à cette unité ou en dessous — hors sous-directions, qui ont leur propre tête — et qui ne dirigent pas déjà une autre unité.'
                 }
               >
                 <div className="flex gap-2">
@@ -697,7 +716,8 @@ function FenetreNouvelleUnite({
   });
   const selectedType = (form.watch('unitType') ?? 'direction') as OrgUnitType;
   const allowedParents = parentOptions(units, selectedType);
-  const racinePossible = ORG_UNIT_ROOT_TYPES.includes(selectedType);
+  // Un seul sommet : dès qu'il existe, toute nouvelle unité se range dessous.
+  const racinePossible = ORG_UNIT_ROOT_TYPES.includes(selectedType) && !units.some((u) => u.sommet);
 
   // Le champ prend le focus à l'ouverture : la fenêtre n'attend qu'un nom.
   useEffect(() => {

@@ -29,6 +29,8 @@ export interface LigneHierarchie {
   estDirecteurGeneral: boolean;
   /** Sa direction a un responsable. Sans tête, c'est le DG qui la couvre. */
   directionPourvue: boolean;
+  /** Sa direction est la Direction Générale — le sommet. */
+  aLaDirectionGenerale: boolean;
 }
 
 /**
@@ -73,35 +75,42 @@ function membresDesBoucles(lignes: LigneHierarchie[]): Set<string> {
 /**
  * L'anomalie d'un agent, ou rien si sa chaîne est en règle.
  *
- * L'ordre des tests EST la priorité annoncée au contrat : une boucle avant un
- * n+1 manquant, un n+1 manquant avant un rattachement hors direction. Le
- * dernier cas — « sans direction » — n'est pas une faute de rattachement mais
- * un trou d'affectation : il empêche seulement de VÉRIFIER la règle.
+ * Les tests suivent l'ordre de l'écriture (`validerRattachement`) : ce que
+ * l'écriture refuse, le contrôle le signale, et sous le même nom. Une seule
+ * anomalie par agent — la première qui s'applique ; l'ordre des types au
+ * contrat en est la priorité d'affichage.
  */
 function anomalieDe(
   l: LigneHierarchie,
   boucles: Set<string>,
   directeurGeneralId: string | null,
 ): TypeAnomalieHierarchie | null {
-  // Le directeur général n'a pas de n+1 : c'est le seul, et c'est voulu. En
-  // avoir un n'est pas un détail — il entrerait dans l'équipe de quelqu'un.
-  if (l.estDirecteurGeneral) return l.responsableId === null ? null : 'dg_rattache';
+  // 1. Le directeur général ne relève de personne, et siège à la Direction
+  //    Générale. Avoir un n+1 n'est pas un détail — il entrerait dans
+  //    l'équipe de quelqu'un.
+  if (l.estDirecteurGeneral) {
+    if (l.responsableId !== null) return 'dg_rattache';
+    if (l.directionId === null) return 'sans_direction';
+    return l.aLaDirectionGenerale ? null : 'dg_hors_direction_generale';
+  }
   if (boucles.has(l.employeeId)) return 'boucle';
   if (l.responsableId === null) return 'sans_responsable';
   if (l.responsableActif === false) return 'responsable_archive';
+  // 2. D'abord l'affectation, ensuite le n+1 — pour l'agent comme pour son
+  //    n+1. Sans l'une ou l'autre, la règle de direction ne se vérifie pas.
+  if (l.directionId === null) return 'sans_direction';
+  if (l.responsableDirectionId === null) return 'responsable_sans_direction';
+  // 3. Un directeur relève du directeur général, de personne d'autre.
   if (l.dirigeUneDirection) {
     return l.responsableId === directeurGeneralId ? null : 'directeur_mal_rattache';
   }
-  if (l.directionId === null) return 'sans_direction';
-  // Une direction sans tête n'a personne d'autre au-dessus que le directeur
-  // général : ses agents lui sont rattachés en attendant, et c'est en règle —
-  // l'écriture l'accepte, le contrôle ne le reproche pas.
+  // 4. Le n+1 est de la même direction…
+  if (l.responsableDirectionId === l.directionId) return null;
+  // … sauf dans une direction sans tête : personne d'autre au-dessus que le
+  // directeur général, qui couvre ses agents en attendant — l'écriture
+  // l'accepte, le contrôle ne le reproche pas.
   if (l.responsableId === directeurGeneralId && !l.directionPourvue) return null;
-  // Un n+1 sans affectation ne prouve rien contre l'agent : c'est LE N+1 qui
-  // est en défaut, et sa propre ligne le dit déjà. Le signaler ici ferait
-  // corriger la mauvaise fiche.
-  if (l.responsableDirectionId === null) return null;
-  return l.responsableDirectionId === l.directionId ? null : 'hors_direction';
+  return 'hors_direction';
 }
 
 export const TYPES_ANOMALIE: TypeAnomalieHierarchie[] = [
@@ -109,9 +118,11 @@ export const TYPES_ANOMALIE: TypeAnomalieHierarchie[] = [
   'dg_rattache',
   'sans_responsable',
   'responsable_archive',
+  'dg_hors_direction_generale',
   'directeur_mal_rattache',
   'hors_direction',
   'sans_direction',
+  'responsable_sans_direction',
 ];
 
 export function classerAnomalies(

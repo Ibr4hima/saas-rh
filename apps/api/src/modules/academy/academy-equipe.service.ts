@@ -12,6 +12,7 @@ import type {
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
+import { DG } from '../people/chaine';
 import { employeActif, taillesDesBanques } from './academy-evaluation.service';
 import { compterStatuts, ordreDeSuivi, statutSuivi } from './equipe';
 import { statutCertificat } from './evaluation';
@@ -101,21 +102,21 @@ export class AcademyEquipeService {
              a.position_title, o.name AS unite
         FROM employees e
         JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
+        -- L'affectation qui fait foi : en cours, sinon la prochaine.
         LEFT JOIN LATERAL (
           SELECT position_title, org_unit_id
             FROM assignments
-           WHERE employee_id = e.id AND validity @> CURRENT_DATE
-           ORDER BY lower(validity) DESC
+           WHERE employee_id = e.id
+             AND (validity @> CURRENT_DATE OR lower(validity) > CURRENT_DATE)
+           ORDER BY lower(validity)
            LIMIT 1
         ) a ON true
         LEFT JOIN org_units o ON o.id = a.org_unit_id AND o.deleted_at IS NULL
        WHERE e.manager_employee_id = ${moi}
          AND e.status = 'active'
-         AND e.id NOT IN (
-           SELECT manager_employee_id FROM org_units
-            WHERE parent_id IS NULL AND deleted_at IS NULL AND manager_employee_id IS NOT NULL
-         )
-       ORDER BY p.family_name, p.given_name`);
+         -- Le DG n'est de l'équipe de personne, même par une donnée ancienne.
+         AND e.id IS DISTINCT FROM ${DG}
+       ORDER BY p.family_name, p.given_name, e.id`);
     return rows;
   }
 

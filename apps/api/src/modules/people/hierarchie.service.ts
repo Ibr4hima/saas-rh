@@ -1,7 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
-import { bloqueLEvaluation, type ControleHierarchie, type SessionUser } from '@teranga/contracts';
+import {
+  bloqueLEvaluation,
+  type AnomalieHierarchie,
+  type ControleHierarchie,
+  type SessionUser,
+} from '@teranga/contracts';
 import { TenantDb, type Tx } from '../../db/tenant-db';
+import { DG, SOMMET, uniteEnVigueur } from './chaine';
 import { classerAnomalies, compterParType, type LigneHierarchie } from './hierarchie';
 
 /* ————————————————————————————————————————————————————————————————
@@ -18,7 +24,10 @@ import { classerAnomalies, compterParType, type LigneHierarchie } from './hierar
    fonction pure — c'est elle qu'on éprouve, boucles comprises.
    ———————————————————————————————————————————————————————————————— */
 
-/** La direction d'une unité : elle-même si c'en est une, sinon son aïeule. */
+/**
+ * La direction d'une unité : elle-même si c'en est une, sinon son aïeule. La
+ * remontée s'arrête d'elle-même sur une boucle d'unités d'avant la règle.
+ */
 const DIRECTION_DES_UNITES = sql`
   remontee AS (
     SELECT id AS depart, id, parent_id, unit_type, name, 0 AS prof
@@ -27,6 +36,7 @@ const DIRECTION_DES_UNITES = sql`
     SELECT r.depart, o.id, o.parent_id, o.unit_type, o.name, r.prof + 1
       FROM remontee r
       JOIN org_units o ON o.id = r.parent_id AND o.deleted_at IS NULL
+     WHERE r.prof < 64
   ),
   direction_de AS (
     SELECT DISTINCT ON (depart) depart AS unite_id, id AS direction_id, name AS direction_nom
@@ -48,6 +58,7 @@ interface LigneBrute extends Record<string, unknown> {
   dirige_une_direction: boolean;
   est_directeur_general: boolean;
   direction_pourvue: boolean;
+  a_la_direction_generale: boolean;
 }
 
 @Injectable()
@@ -60,7 +71,7 @@ export class HierarchieService {
       const sommets = await tx.execute<{ name: string }>(sql`
         SELECT name FROM org_units
          WHERE parent_id IS NULL AND deleted_at IS NULL
-         ORDER BY created_at`);
+         ORDER BY created_at, id`);
       return {
         directeurGeneral: dg ? { employeeId: dg.employeeId, nom: dg.nom } : null,
         sommetsMultiples: sommets.rows.length > 1 ? sommets.rows.map((r) => r.name) : [],
@@ -87,23 +98,35 @@ export async function lireLaChaine(tx: Tx) {
   return { dg, lignes, anomalies: classerAnomalies(lignes, dg?.employeeId ?? null) };
 }
 
-/** La photo des agents ACTIFS : leur direction, leur n+1, et la sienne. */
+/**
+ * Les anomalies qu'une opération fait APPARAÎTRE — celles d'avant ne sont pas
+ * les siennes. Une anomalie « déjà là » qui change de n+1 ou de direction est
+ * nouvelle : c'est un autre rattachement faux, à revoir aussi.
+ */
+export function nouvellesAnomalies(
+  avant: { anomalies: AnomalieHierarchie[] },
+  apres: { anomalies: AnomalieHierarchie[] },
+): AnomalieHierarchie[] {
+  const cle = (a: AnomalieHierarchie) =>
+    `${a.employeeId}:${a.type}:${a.responsable ?? ''}:${a.direction ?? ''}:${a.directionDuResponsable ?? ''}`;
+  const connues = new Set(avant.anomalies.map(cle));
+  return apres.anomalies.filter((a) => !connues.has(cle(a)));
+}
+
+/**
+ * La photo des agents ACTIFS : leur direction, leur n+1, et la sienne — lues
+ * avec les MÊMES définitions que l'écriture (`chaine.ts`) : le sommet, le DG,
+ * les directeurs, l'affectation qui fait foi (en cours, sinon la prochaine).
+ * Un contrôle qui compterait autrement signalerait ce que l'écriture accepte.
+ */
 async function photo(tx: Tx): Promise<LigneHierarchie[]> {
   const rows = await tx.execute<LigneBrute>(sql`
     WITH RECURSIVE ${DIRECTION_DES_UNITES},
-    racine AS (
-      -- Le sommet est unique ; s'il en traîne deux d'avant la règle, le plus
-      -- ancien fait foi, comme à l'écriture.
-      SELECT manager_employee_id AS employee_id
-        FROM org_units
-       WHERE parent_id IS NULL AND deleted_at IS NULL AND manager_employee_id IS NOT NULL
-       ORDER BY created_at
-       LIMIT 1
-    ),
-    directions AS (
+    directeurs AS (
       SELECT DISTINCT manager_employee_id AS employee_id
         FROM org_units
        WHERE unit_type = 'direction' AND deleted_at IS NULL AND manager_employee_id IS NOT NULL
+         AND id IS DISTINCT FROM ${SOMMET}
     )
     SELECT
       e.id                                    AS employee_id,
@@ -116,18 +139,17 @@ async function photo(tx: Tx): Promise<LigneHierarchie[]> {
       r.status                                AS responsable_statut,
       rd.direction_id                         AS responsable_direction_id,
       rd.direction_nom                        AS responsable_direction_nom,
-      (e.id IN (SELECT employee_id FROM directions)) AS dirige_une_direction,
-      (e.id IN (SELECT employee_id FROM racine))     AS est_directeur_general,
-      (dd.manager_employee_id IS NOT NULL)           AS direction_pourvue
+      (e.id IN (SELECT employee_id FROM directeurs))     AS dirige_une_direction,
+      (e.id IS NOT DISTINCT FROM ${DG})                  AS est_directeur_general,
+      (dd.manager_employee_id IS NOT NULL)               AS direction_pourvue,
+      (d.direction_id IS NOT DISTINCT FROM ${SOMMET})    AS a_la_direction_generale
     FROM employees e
     JOIN persons p ON p.id = e.person_id
-    LEFT JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
-    LEFT JOIN direction_de d ON d.unite_id = a.org_unit_id
+    LEFT JOIN direction_de d ON d.unite_id = ${uniteEnVigueur(sql`e.id`)}
     LEFT JOIN org_units dd ON dd.id = d.direction_id
     LEFT JOIN employees r ON r.id = e.manager_employee_id
     LEFT JOIN persons rp ON rp.id = r.person_id
-    LEFT JOIN assignments ra ON ra.employee_id = r.id AND ra.validity @> CURRENT_DATE
-    LEFT JOIN direction_de rd ON rd.unite_id = ra.org_unit_id
+    LEFT JOIN direction_de rd ON rd.unite_id = ${uniteEnVigueur(sql`r.id`)}
     WHERE e.status = 'active'
     ORDER BY e.employee_number`);
 
@@ -145,5 +167,6 @@ async function photo(tx: Tx): Promise<LigneHierarchie[]> {
     dirigeUneDirection: r.dirige_une_direction,
     estDirecteurGeneral: r.est_directeur_general,
     directionPourvue: r.direction_pourvue,
+    aLaDirectionGenerale: r.a_la_direction_generale,
   }));
 }

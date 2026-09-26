@@ -248,7 +248,7 @@ describe('archivage', () => {
 
     const r = await people.archive(admin, { ids: [awa.employeeId], archived: true });
 
-    expect(r).toEqual({ done: 1, skipped: [], changements: [] });
+    expect(r).toEqual({ done: 1, skipped: [], changements: [], aRevoir: [] });
     const detail = await people.detail(admin, awa.employeeId);
     expect(detail.status).toBe('archived');
     expect(detail.archivedAt).not.toBeNull();
@@ -321,7 +321,7 @@ describe('suppression définitive', () => {
   it('ne laisse rien du dossier ni de ce qui pendait à lui', async () => {
     const { requestId } = await garnir(awa);
     const r = await people.remove(admin, { ids: [awa.employeeId] });
-    expect(r).toEqual({ done: 1, skipped: [], changements: [] });
+    expect(r).toEqual({ done: 1, skipped: [], changements: [], aRevoir: [] });
 
     expect(await compte('employees', 'id = $1', [awa.employeeId])).toBe(0);
     expect(await compte('persons', 'id = $1', [awa.personId])).toBe(0);
@@ -490,7 +490,7 @@ describe('suppression définitive', () => {
     );
 
     const r = await people.remove(admin, { ids: [employeeId] });
-    expect(r).toEqual({ done: 0, skipped: [], changements: [] }); // invisible, donc intouchable
+    expect(r).toEqual({ done: 0, skipped: [], changements: [], aRevoir: [] }); // invisible, donc intouchable
     expect(await compte('employees', 'id = $1', [employeeId])).toBe(1);
 
     await raw(`DELETE FROM employees WHERE tenant_id = $1`, [autreTenant]);

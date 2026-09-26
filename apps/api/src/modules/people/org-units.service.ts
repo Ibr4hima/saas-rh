@@ -25,9 +25,22 @@ import {
   apresNouveauDG,
   apresNouveauDirecteur,
   directeurGeneral,
-  directionDeEmploye,
+  perimetre,
+  SOMMET,
+  sortDuPerimetre,
+  uniteRacine,
+  verrouillerLaChaine,
 } from './chaine';
-import { lireLaChaine } from './hierarchie.service';
+import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
+
+interface TeteHorsPerimetre extends Record<string, unknown> {
+  unit_id: string;
+  name: string;
+  employee_id: string;
+  given_name: string;
+  family_name: string;
+  sommet: boolean;
+}
 
 /** Lancée pour annuler la transaction d'un aperçu, une fois tout mesuré. */
 class AnnulerLApercu extends Error {}
@@ -52,6 +65,14 @@ function mapUniqueViolation(err: unknown): never {
   }
   if (detail.includes('short_name_unique')) {
     problem(422, 'org.short_name_taken', 'Cet abrégé est déjà utilisé par une autre direction');
+  }
+  if (detail.includes('org_units_un_seul_sommet')) {
+    problem(
+      422,
+      'org.sommet_unique',
+      'L’organigramme a déjà son sommet',
+      'Rattachez cette unité sous la Direction Générale : il n’y a qu’un sommet, et son responsable est le directeur général.',
+    );
   }
   if (detail.includes('sibling_name_unique')) {
     problem(
@@ -89,6 +110,7 @@ export class OrgUnitsService {
           managerEmployeeId: t.orgUnits.managerEmployeeId,
           managerGivenName: managerPersons.givenName,
           managerFamilyName: managerPersons.familyName,
+          sommet: sql<boolean>`(org_units.id = ${SOMMET})`,
           managerPosition: sql<string | null>`(
             SELECT a.position_title FROM assignments a
             WHERE a.employee_id = org_units.manager_employee_id
@@ -128,6 +150,7 @@ export class OrgUnitsService {
           ? nomAbrege(r.managerGivenName, r.managerFamilyName ?? '')
           : null,
         managerPosition: r.managerPosition,
+        sommet: Boolean(r.sommet),
         headcount: r.headcount,
         attachedEmployees: r.attachedEmployees,
       }));
@@ -139,6 +162,7 @@ export class OrgUnitsService {
     this.assertShortNameAllowed(input.unitType, input.shortName ?? null);
     try {
       await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+        await verrouillerLaChaine(tx);
         await this.assertParentAllowed(tx, input.unitType, input.parentId ?? null);
         if (!input.parentId) await this.assertSommetLibre(tx, null);
         await tx.insert(t.orgUnits).values({
@@ -178,6 +202,18 @@ export class OrgUnitsService {
     input: DeleteOrgUnitInput,
   ): Promise<void> {
     await this.requireUnit(tx, id, 'org.unit_not_found');
+    const tetesAvant = await this.tetesHorsPerimetre(tx);
+
+    // ——— Le sommet ne se dissout pas : sans lui, plus de directeur général,
+    // et toute la chaîne perd son point d'arrivée. On le renomme au besoin.
+    if ((await uniteRacine(tx))?.id === id) {
+      problem(
+        422,
+        'org.sommet_indissoluble',
+        'La Direction Générale ne se dissout pas',
+        'Elle porte le sommet de l’organigramme et son responsable est le directeur général. Renommez-la au besoin.',
+      );
+    }
 
     // Une unité parente emporterait ses descendants dans sa chute : on exige
     // qu'ils soient rattachés ailleurs d'abord, décision par décision.
@@ -222,6 +258,7 @@ export class OrgUnitsService {
         // tard » : clore aujourd'hui une affectation commencée aujourd'hui
         // donne un intervalle VIDE, que la contrainte de la table refuse.
         sansHistorique: sql<boolean>`lower(${t.assignments.validity}) >= CURRENT_DATE`,
+        fin: sql<string | null>`upper(${t.assignments.validity})::text`,
       })
       .from(t.assignments)
       .where(
@@ -249,7 +286,6 @@ export class OrgUnitsService {
         await this.requireUnit(tx, accueil, 'org.reassign_target_not_found');
       }
 
-      const today = new Date().toISOString().slice(0, 10);
       for (const a of openAssignments) {
         if (a.sansHistorique) {
           // Pas encore vécue : on la redirige telle quelle.
@@ -263,18 +299,19 @@ export class OrgUnitsService {
         // nouvelle — sur l'unité d'accueil, ou sans unité. Réécrire
         // org_unit_id ferait dire au dossier que l'employé n'a jamais mis les
         // pieds ici : l'historique mentirait.
+        //
+        // La nouvelle garde l'ÉCHÉANCE de l'ancienne : un agent dont la
+        // mutation est déjà programmée ailleurs la garde, au lieu de la
+        // chevaucher. Et « aujourd'hui » est celui de la base, le même que
+        // celui des contrôles — pas celui de l'horloge du serveur.
         await tx
           .update(t.assignments)
-          .set({ validity: sql`daterange(lower(${t.assignments.validity}), ${today}::date)` })
+          .set({ validity: sql`daterange(lower(${t.assignments.validity}), CURRENT_DATE)` })
           .where(eq(t.assignments.id, a.id));
-        await tx.insert(t.assignments).values({
-          id: uuidv7(),
-          tenantId: user.tenantId,
-          employeeId: a.employeeId,
-          orgUnitId: accueil,
-          positionTitle: a.positionTitle,
-          validity: `[${today},)`,
-        });
+        await tx.execute(sql`
+          INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+          VALUES (${uuidv7()}, ${user.tenantId}, ${a.employeeId}, ${accueil}, ${a.positionTitle},
+                  daterange(CURRENT_DATE, ${a.fin}::date))`);
       }
     }
 
@@ -287,10 +324,7 @@ export class OrgUnitsService {
 
     // Invariant relu sur l'état final : dissoudre l'unité d'un chef pour le
     // faire atterrir ailleurs est exactement ce que la mutation refuse.
-    await this.assertManagersStillInScope(
-      tx,
-      openAssignments.map((a) => a.employeeId),
-    );
+    await this.assertAucuneTeteSortie(tx, tetesAvant);
   }
 
   /**
@@ -339,20 +373,25 @@ export class OrgUnitsService {
     let resultat: ConsequencesHierarchie = { changements: [], aRevoir: [] };
     try {
       await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+        await verrouillerLaChaine(tx);
         const avant = await lireLaChaine(tx);
         const journal: ChangementRattachement[] = [];
         await operation(tx, journal);
         const apres = await lireLaChaine(tx);
-        const connues = new Set(avant.anomalies.map((a) => `${a.employeeId}:${a.type}`));
-        resultat = {
-          changements: journal,
-          aRevoir: apres.anomalies.filter((a) => !connues.has(`${a.employeeId}:${a.type}`)),
-        };
+        resultat = { changements: journal, aRevoir: nouvellesAnomalies(avant, apres) };
         if (apercu) throw new AnnulerLApercu();
       });
     } catch (err) {
       if (err instanceof AnnulerLApercu) return resultat;
       if (pgCode(err) === '23505') mapUniqueViolation(err);
+      if (pgCode(err) === '23P01') {
+        problem(
+          409,
+          'org.affectations_chevauchantes',
+          'Deux affectations d’un même agent se chevaucheraient',
+          'Un agent concerné a déjà une affectation programmée sur la même période : ajustez-la d’abord.',
+        );
+      }
       throw err;
     }
     return resultat;
@@ -366,15 +405,45 @@ export class OrgUnitsService {
   ): Promise<void> {
     await this.requireUnit(tx, id, 'org.unit_not_found');
 
+    const [before] = await tx
+      .select({
+        unitType: t.orgUnits.unitType,
+        parentId: t.orgUnits.parentId,
+        managerEmployeeId: t.orgUnits.managerEmployeeId,
+      })
+      .from(t.orgUnits)
+      .where(eq(t.orgUnits.id, id))
+      .limit(1);
+    const nextType = (input.unitType ?? before!.unitType) as OrgUnitType;
+    const nextParent = input.parentId !== undefined ? input.parentId : before!.parentId;
+    const sommet = (await uniteRacine(tx))?.id ?? null;
+
+    // ——— Un seul sommet, et il reste au sommet. Le ranger sous une autre
+    // unité ferait d'elle — ou d'un vestige d'avant la règle — le sommet, et
+    // de son responsable le directeur général, sans que personne l'ait
+    // décidé.
+    if (id === sommet && nextParent !== null) {
+      problem(
+        422,
+        'org.sommet_fixe',
+        'La Direction Générale reste au sommet',
+        'C’est elle que toutes les directions rejoignent, et son responsable est le directeur général.',
+      );
+    }
+    if (nextParent === null && before!.parentId !== null) {
+      await this.assertSommetLibre(tx, id);
+    }
+
     if (input.parentId !== undefined && input.parentId !== null) {
       if (input.parentId === id) {
         problem(422, 'org.cycle', 'Une unité ne peut pas être rattachée à elle-même');
       }
-      // Anti-cycle : le nouveau parent ne doit pas être un descendant de l'unité.
+      // Anti-cycle : le nouveau parent ne doit pas être un descendant de
+      // l'unité. UNION : une boucle déjà présente arrête la remontée.
       const cycle = await tx.execute(sql`
           WITH RECURSIVE ancestors AS (
             SELECT id, parent_id FROM org_units WHERE id = ${input.parentId}
-            UNION ALL
+            UNION
             SELECT o.id, o.parent_id FROM org_units o
             JOIN ancestors anc ON o.id = anc.parent_id
           )
@@ -387,18 +456,6 @@ export class OrgUnitsService {
         );
       }
     }
-
-    const [before] = await tx
-      .select({
-        unitType: t.orgUnits.unitType,
-        parentId: t.orgUnits.parentId,
-        managerEmployeeId: t.orgUnits.managerEmployeeId,
-      })
-      .from(t.orgUnits)
-      .where(eq(t.orgUnits.id, id))
-      .limit(1);
-    const nextType = (input.unitType ?? before!.unitType) as OrgUnitType;
-    const nextParent = input.parentId !== undefined ? input.parentId : before!.parentId;
 
     // Le type et le rattachement se valident ENSEMBLE : changer l'un peut
     // rendre l'autre absurde (une direction rangée sous un service).
@@ -414,36 +471,38 @@ export class OrgUnitsService {
       input = { ...input, shortName: null };
     }
 
-    if (input.managerEmployeeId) {
-      await this.assertManagerEligible(tx, id, input.managerEmployeeId);
-    }
-
-    // ——— Un seul sommet : la Direction Générale.
-    if (nextParent === null && before!.parentId !== null) {
-      await this.assertSommetLibre(tx, id);
-    }
-
     const ancien = before!.managerEmployeeId;
     const prochain = input.managerEmployeeId !== undefined ? input.managerEmployeeId : ancien;
     const responsableChange = input.managerEmployeeId !== undefined && prochain !== ancien;
-    const estRacine = nextParent === null;
+    // Le sommet, après l'écriture : l'unité qui l'est déjà, ou celle qui le
+    // devient faute d'autre. Un vestige d'avant la règle — une seconde unité
+    // sans parent — n'est PAS le sommet : son responsable est un directeur.
+    const estSommet = nextParent === null && (sommet ?? id) === id;
+    const devientSommet = estSommet && before!.parentId !== null;
     const devientDirection =
       nextType === 'direction' && (input.unitType !== undefined || input.parentId !== undefined);
+    // Diriger le sommet, c'est être le directeur général.
+    const nouveauDG = estSommet && prochain !== null && (responsableChange || devientSommet);
+    const nouveauDirecteur =
+      !estSommet &&
+      nextType === 'direction' &&
+      prochain !== null &&
+      (responsableChange || devientDirection);
 
-    if (estRacine && responsableChange) {
-      // ——— Diriger la racine, c'est être le directeur général.
-      if (prochain === null) {
-        problem(
-          422,
-          'org.dg_requis',
-          'La Direction Générale garde toujours un responsable',
-          'On ne retire pas le directeur général : on désigne son successeur, qui reprend ce qui relevait de lui.',
-        );
-      }
-      // Il siège à la Direction Générale : c'est là que ses
-      // collaborateurs directs relèvent de lui, dans la même direction.
-      const direction = await directionDeEmploye(tx, prochain);
-      if (direction?.id !== id) {
+    if (estSommet && responsableChange && prochain === null) {
+      problem(
+        422,
+        'org.dg_requis',
+        'La Direction Générale garde toujours un responsable',
+        'On ne retire pas le directeur général : on désigne son successeur, qui reprend ce qui relevait de lui.',
+      );
+    }
+    if (nouveauDG) {
+      // Il siège à la Direction Générale — aujourd'hui, et sans mutation
+      // programmée ailleurs : c'est là que ses collaborateurs directs relèvent
+      // de lui, dans la même direction.
+      await this.assertEmployeActif(tx, prochain);
+      if (await sortDuPerimetre(tx, prochain, id)) {
         problem(
           422,
           'org.dg_hors_direction_generale',
@@ -451,44 +510,24 @@ export class OrgUnitsService {
           'D’abord l’affectation, ensuite la hiérarchie : il siège à la Direction Générale avant d’en prendre la tête.',
         );
       }
-    } else if (
-      !estRacine &&
-      nextType === 'direction' &&
-      prochain &&
-      (responsableChange || devientDirection)
-    ) {
+    } else if (input.managerEmployeeId) {
+      await this.assertManagerEligible(tx, id, input.managerEmployeeId);
+    }
+    if (nouveauDirecteur && !(await directeurGeneral(tx))) {
       // ——— Un directeur relève du directeur général : il en faut un.
-      if (!(await directeurGeneral(tx))) {
-        problem(
-          422,
-          'org.aucun_directeur_general',
-          'Désignez d’abord le directeur général',
-          'Un directeur relève du directeur général : la Direction Générale a son responsable avant les directions.',
-        );
-      }
+      problem(
+        422,
+        'org.aucun_directeur_general',
+        'Désignez d’abord le directeur général',
+        'Un directeur relève du directeur général : la Direction Générale a son responsable avant les directions.',
+      );
     }
 
-    // Re-rattacher une unité déplace TOUT son sous-arbre : un responsable
-    // affecté dedans peut se retrouver hors de l'unité qu'il dirige, sans
-    // qu'aucune mutation d'employé n'ait eu lieu. Même invariant, autre porte.
-    // Les employés concernés sont relevés AVANT le déplacement, l'invariant
-    // est vérifié APRÈS — sur l'arbre réel, pas sur une simulation.
-    const deplaces =
-      input.parentId !== undefined && input.parentId !== before!.parentId
-        ? (
-            await tx.execute<{ employee_id: string }>(sql`
-                  WITH RECURSIVE subtree AS (
-                    SELECT id FROM org_units WHERE id = ${id} AND deleted_at IS NULL
-                    UNION ALL
-                    SELECT o.id FROM org_units o
-                    JOIN subtree s ON o.parent_id = s.id
-                    WHERE o.deleted_at IS NULL
-                  )
-                  SELECT DISTINCT a.employee_id FROM assignments a
-                  WHERE a.org_unit_id IN (SELECT id FROM subtree)
-                    AND a.validity @> CURRENT_DATE`)
-          ).rows.map((r) => r.employee_id)
-        : [];
+    // Re-rattacher une unité, ou en changer le type, déplace des PÉRIMÈTRES :
+    // un responsable affecté dedans peut se retrouver hors de l'unité qu'il
+    // dirige sans qu'aucune mutation d'employé n'ait eu lieu. Même invariant,
+    // autre porte : relevé avant, vérifié après, sur l'arbre réel.
+    const tetesAvant = await this.tetesHorsPerimetre(tx);
 
     const changes: Partial<typeof t.orgUnits.$inferInsert> = {};
     if (input.name !== undefined) changes.name = input.name;
@@ -501,17 +540,12 @@ export class OrgUnitsService {
     if (Object.keys(changes).length === 0) return;
     changes.updatedAt = new Date();
     await tx.update(t.orgUnits).set(changes).where(eq(t.orgUnits.id, id));
-    await this.assertManagersStillInScope(tx, deplaces);
+    await this.assertAucuneTeteSortie(tx, tetesAvant);
 
     // ——— Les cascades : ce que la règle impose, une fois l'unité écrite.
-    if (estRacine && responsableChange && prochain) {
-      await apresNouveauDG(tx, journal, ancien, prochain);
-    } else if (
-      !estRacine &&
-      nextType === 'direction' &&
-      prochain &&
-      (responsableChange || devientDirection)
-    ) {
+    if (nouveauDG) {
+      await apresNouveauDG(tx, journal, estSommet && !devientSommet ? ancien : null, prochain);
+    } else if (nouveauDirecteur) {
       await apresNouveauDirecteur(tx, journal, id, responsableChange ? ancien : null, prochain);
     }
   }
@@ -594,51 +628,69 @@ export class OrgUnitsService {
   }
 
   /**
-   * Contrôle d'INVARIANT, joué APRÈS l'écriture : chaque employé cité qui
-   * dirige une unité doit toujours travailler dedans (ou en dessous).
+   * Les responsables qui ne travaillent pas dans le PÉRIMÈTRE de l'unité
+   * qu'ils dirigent — elle et ce qui en descend, sans ses sous-directions —,
+   * aujourd'hui ou d'après une affectation déjà programmée.
    *
-   * Vérifier avant l'écriture demandait de simuler l'arbre futur — et c'est
-   * précisément ce qui a laissé passer le re-rattachement : le sous-arbre lu
-   * était encore l'ancien. On écrit, on relit l'état réel, et on annule la
-   * transaction si l'invariant est rompu. La règle « un responsable travaille
-   * dans l'unité qu'il dirige » porte sur le COUPLE (affectation, unité) : la
-   * tenir seulement quand on mute l'employé laissait deux portes ouvertes —
-   * dissoudre son unité, ou re-rattacher celle-ci ailleurs.
+   * Contrôle d'INVARIANT, relevé avant l'écriture et relu APRÈS : vérifier
+   * seulement avant demandait de simuler l'arbre futur, et c'est précisément
+   * ce qui laissait passer un re-rattachement. On écrit, on relit l'état
+   * réel, et l'on annule si l'opération a fait sortir quelqu'un. Seuls les
+   * NOUVEAUX écarts arrêtent : une anomalie d'avant la règle ne bloque pas
+   * une opération qui n'y est pour rien — le contrôle la signale ailleurs.
    */
-  private async assertManagersStillInScope(tx: Tx, employeeIds: string[]): Promise<void> {
-    if (employeeIds.length === 0) return;
-    const rompus = await tx.execute<{ given_name: string; family_name: string; name: string }>(sql`
-      WITH heads AS (
-        SELECT o.id AS unit_id, o.name, o.manager_employee_id AS employee_id
-        FROM org_units o
-        WHERE o.manager_employee_id IN ${employeeIds} AND o.deleted_at IS NULL
+  private async tetesHorsPerimetre(tx: Tx): Promise<TeteHorsPerimetre[]> {
+    const { rows } = await tx.execute<TeteHorsPerimetre>(sql`
+      WITH RECURSIVE perim AS (
+        SELECT o.id AS tete, o.id FROM org_units o
+         WHERE o.manager_employee_id IS NOT NULL AND o.deleted_at IS NULL
+        UNION
+        SELECT p.tete, c.id FROM org_units c JOIN perim p ON c.parent_id = p.id
+         WHERE c.deleted_at IS NULL AND c.unit_type <> 'direction'
       )
-      SELECT p.given_name, p.family_name, h.name
-      FROM heads h
-      JOIN employees e ON e.id = h.employee_id
-      JOIN persons p ON p.id = e.person_id
-      WHERE NOT EXISTS (
-        WITH RECURSIVE subtree AS (
-          SELECT id FROM org_units WHERE id = h.unit_id AND deleted_at IS NULL
-          UNION ALL
-          SELECT o.id FROM org_units o
-          JOIN subtree s ON o.parent_id = s.id
-          WHERE o.deleted_at IS NULL
-        )
-        SELECT 1 FROM assignments a
-        WHERE a.employee_id = h.employee_id
-          AND a.validity @> CURRENT_DATE
-          AND a.org_unit_id IN (SELECT id FROM subtree)
-      )`);
-    const [rompu] = rompus.rows;
-    if (rompu) {
+      SELECT o.id AS unit_id, o.name, o.manager_employee_id AS employee_id,
+             pe.given_name, pe.family_name, (o.id = ${SOMMET}) AS sommet
+        FROM org_units o
+        JOIN employees e ON e.id = o.manager_employee_id
+        JOIN persons pe ON pe.id = e.person_id
+       WHERE o.deleted_at IS NULL
+         AND (
+           NOT EXISTS (
+             SELECT 1 FROM assignments a
+              WHERE a.employee_id = o.manager_employee_id
+                AND a.validity @> CURRENT_DATE
+                AND a.org_unit_id IN (SELECT id FROM perim WHERE tete = o.id))
+           OR EXISTS (
+             SELECT 1 FROM assignments a
+              WHERE a.employee_id = o.manager_employee_id
+                AND (upper_inf(a.validity) OR upper(a.validity) > CURRENT_DATE)
+                AND (a.org_unit_id IS NULL
+                     OR a.org_unit_id NOT IN (SELECT id FROM perim WHERE tete = o.id)))
+         )
+       ORDER BY o.name`);
+    return rows;
+  }
+
+  private async assertAucuneTeteSortie(tx: Tx, avant: TeteHorsPerimetre[]): Promise<void> {
+    const connus = new Set(avant.map((r) => `${r.unit_id}:${r.employee_id}`));
+    const rompu = (await this.tetesHorsPerimetre(tx)).find(
+      (r) => !connus.has(`${r.unit_id}:${r.employee_id}`),
+    );
+    if (!rompu) return;
+    if (rompu.sommet) {
       problem(
         422,
-        'org.manager_would_leave_unit',
-        `${rompu.given_name} ${rompu.family_name} dirige « ${rompu.name} »`,
-        'Ce changement le sortirait de son unité. Désignez d’abord un successeur.',
+        'org.dg_hors_direction_generale',
+        'Le directeur général sortirait de la Direction Générale',
+        'Il siège à la Direction Générale : ce changement l’en ferait sortir. Désignez d’abord son successeur.',
       );
     }
+    problem(
+      422,
+      'org.manager_would_leave_unit',
+      `${rompu.given_name} ${rompu.family_name} dirige « ${rompu.name} »`,
+      'Ce changement le sortirait de son unité. Désignez d’abord un successeur.',
+    );
   }
 
   /**
@@ -667,12 +719,7 @@ export class OrgUnitsService {
     }
   }
 
-  /**
-   * Un responsable doit être un employé ACTIF, et travailler dans l'unité qu'il
-   * dirige ou dans une unité en dessous. Sans quoi l'organigramme affiche un
-   * chef parti ailleurs — ou licencié.
-   */
-  private async assertManagerEligible(tx: Tx, unitId: string, employeeId: string): Promise<void> {
+  private async assertEmployeActif(tx: Tx, employeeId: string): Promise<void> {
     const [emp] = await tx
       .select({ id: t.employees.id, status: t.employees.status })
       .from(t.employees)
@@ -689,25 +736,23 @@ export class OrgUnitsService {
         'Ce dossier est suspendu ou clos.',
       );
     }
-    const inScope = await tx.execute(sql`
-      WITH RECURSIVE subtree AS (
-        SELECT id FROM org_units WHERE id = ${unitId} AND deleted_at IS NULL
-        UNION ALL
-        SELECT o.id FROM org_units o
-        JOIN subtree s ON o.parent_id = s.id
-        WHERE o.deleted_at IS NULL
-      )
-      SELECT 1 FROM assignments a
-      WHERE a.employee_id = ${employeeId}
-        AND a.validity @> CURRENT_DATE
-        AND a.org_unit_id IN (SELECT id FROM subtree)
-      LIMIT 1`);
-    if (inScope.rows.length === 0) {
+  }
+
+  /**
+   * Un responsable doit être un employé ACTIF, et travailler dans le
+   * PÉRIMÈTRE de l'unité qu'il dirige — elle ou ce qui en descend, sans ses
+   * sous-directions, qui ont leur propre tête — sans mutation déjà
+   * programmée ailleurs. Sans quoi l'organigramme affiche un chef parti
+   * ailleurs, et ses agents relèvent d'une autre direction que la leur.
+   */
+  private async assertManagerEligible(tx: Tx, unitId: string, employeeId: string): Promise<void> {
+    await this.assertEmployeActif(tx, employeeId);
+    if (await sortDuPerimetre(tx, employeeId, unitId)) {
       problem(
         422,
         'org.manager_outside_unit',
         'Un responsable doit travailler dans l’unité qu’il dirige',
-        'Affectez-le d’abord à cette unité (ou à une unité qui en dépend).',
+        'Affectez-le d’abord à cette unité, ou à une unité qui en dépend — et sans mutation programmée ailleurs.',
       );
     }
   }
@@ -740,21 +785,14 @@ export class OrgUnitsService {
   }
 
   /**
-   * Qui peut diriger cette unité : les employés ACTIFS affectés à l'unité ou à
-   * une unité en dessous. Exactement l'ensemble qu'accepte assertManagerEligible
-   * — le formulaire ne doit pas proposer ce que le serveur refusera.
+   * Qui peut diriger cette unité : exactement l'ensemble qu'accepte
+   * `assertManagerEligible` — le formulaire ne doit pas proposer ce que le
+   * serveur refusera. Actifs, affectés dans le périmètre, sans mutation
+   * programmée ailleurs, et qui ne dirigent pas déjà une autre unité.
    */
   async eligibleManagers(user: SessionUser, id: string): Promise<OrgUnitMember[]> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await this.requireUnit(tx, id, 'org.unit_not_found');
-      // La racine se dirige depuis la Direction Générale MÊME : le DG y
-      // siège. On ne descend donc pas dans les directions qu'elle chapeaute.
-      const [unite] = await tx
-        .select({ parentId: t.orgUnits.parentId })
-        .from(t.orgUnits)
-        .where(eq(t.orgUnits.id, id))
-        .limit(1);
-      const racine = unite?.parentId === null;
       const rows = await tx.execute<{
         employee_id: string;
         employee_number: string;
@@ -762,21 +800,23 @@ export class OrgUnitsService {
         family_name: string;
         position_title: string | null;
       }>(sql`
-        WITH RECURSIVE subtree AS (
-          SELECT id FROM org_units WHERE id = ${id} AND deleted_at IS NULL
-          UNION ALL
-          SELECT o.id FROM org_units o
-          JOIN subtree s ON o.parent_id = s.id
-          WHERE o.deleted_at IS NULL ${racine ? sql`AND o.unit_type <> 'direction'` : sql``}
-        )
+        ${perimetre(id)}
         SELECT e.id AS employee_id, e.employee_number, p.given_name, p.family_name,
                a.position_title
         FROM assignments a
         JOIN employees e ON e.id = a.employee_id
         JOIN persons p ON p.id = e.person_id
-        WHERE a.org_unit_id IN (SELECT id FROM subtree)
+        WHERE a.org_unit_id IN (SELECT id FROM perimetre)
           AND a.validity @> CURRENT_DATE
           AND e.status = 'active'
+          AND NOT EXISTS (
+            SELECT 1 FROM assignments ai
+             WHERE ai.employee_id = e.id
+               AND (upper_inf(ai.validity) OR upper(ai.validity) > CURRENT_DATE)
+               AND (ai.org_unit_id IS NULL OR ai.org_unit_id NOT IN (SELECT id FROM perimetre)))
+          AND NOT EXISTS (
+            SELECT 1 FROM org_units h
+             WHERE h.manager_employee_id = e.id AND h.deleted_at IS NULL AND h.id <> ${id})
         ORDER BY p.family_name, p.given_name`);
       return rows.rows.map((r) => ({
         employeeId: r.employee_id,

@@ -30,12 +30,16 @@ export type TypeAnomalieHierarchie =
   | 'sans_responsable'
   /** Le n+1 désigné a un dossier archivé : il n'encadre plus personne. */
   | 'responsable_archive'
+  /** Le directeur général est affecté hors de la Direction Générale. */
+  | 'dg_hors_direction_generale'
   /** Un directeur dont le n+1 n'est pas le directeur général. */
   | 'directeur_mal_rattache'
   /** Le n+1 appartient à une autre direction. */
   | 'hors_direction'
   /** Sans affectation : la règle de direction n'est pas vérifiable. */
-  | 'sans_direction';
+  | 'sans_direction'
+  /** Son n+1 n'est affecté à aucune direction : c'est lui qu'il faut affecter. */
+  | 'responsable_sans_direction';
 
 export interface AnomalieHierarchie {
   employeeId: string;

@@ -141,30 +141,40 @@ export class DashboardController {
           .where(eq(t.employees.status, 'active'))
           .groupBy(t.persons.gender),
         // Effectif par DIRECTION : l'affectation vise souvent un service — on
-        // remonte l'arbre jusqu'à la direction qui le coiffe.
+        // remonte l'arbre jusqu'à la PLUS PROCHE direction qui le coiffe, et
+        // chacun n'est compté qu'une fois. Descendre depuis chaque direction
+        // comptait un agent dans la sienne ET dans toutes celles au-dessus
+        // (la Direction Générale les avait tous) : la somme dépassait
+        // l'effectif, et « sans affectation » ne s'affichait jamais.
         tx.execute<{
           dir_id: string;
           name: string;
           short_name: string | null;
           headcount: number;
         }>(sql`
-          WITH RECURSIVE tree AS (
-            SELECT id AS dir_id, id AS unit_id, name, short_name
-            FROM org_units WHERE unit_type = 'direction' AND deleted_at IS NULL
+          WITH RECURSIVE remontee AS (
+            SELECT id AS depart, id, parent_id, unit_type, 0 AS prof
+              FROM org_units WHERE deleted_at IS NULL
             UNION ALL
-            SELECT tree.dir_id, o.id, tree.name, tree.short_name
-            FROM org_units o JOIN tree ON o.parent_id = tree.unit_id
-            WHERE o.deleted_at IS NULL
+            SELECT r.depart, o.id, o.parent_id, o.unit_type, r.prof + 1
+              FROM remontee r JOIN org_units o ON o.id = r.parent_id AND o.deleted_at IS NULL
+             WHERE r.prof < 50
+          ),
+          direction_de AS (
+            SELECT DISTINCT ON (depart) depart AS unite_id, id AS dir_id
+              FROM remontee WHERE unit_type = 'direction'
+             ORDER BY depart, prof
           )
-          SELECT tree.dir_id, tree.name, tree.short_name,
-                 count(e.id)::int AS headcount
-          FROM tree
+          SELECT d.id AS dir_id, d.name, d.short_name, count(e.id)::int AS headcount
+          FROM org_units d
+          LEFT JOIN direction_de dd ON dd.dir_id = d.id
           LEFT JOIN assignments a
-            ON a.org_unit_id = tree.unit_id AND a.validity @> CURRENT_DATE
+            ON a.org_unit_id = dd.unite_id AND a.validity @> CURRENT_DATE
           LEFT JOIN employees e
             ON e.id = a.employee_id AND e.status = 'active'
-          GROUP BY tree.dir_id, tree.name, tree.short_name
-          ORDER BY headcount DESC, tree.name`),
+          WHERE d.unit_type = 'direction' AND d.deleted_at IS NULL
+          GROUP BY d.id, d.name, d.short_name
+          ORDER BY headcount DESC, d.name`),
         // Une frise a besoin d'un avant : le férié qui vient de passer ancre
         // « aujourd'hui » quelque part sur le rail, au lieu de le laisser
         // flotter avant la première date. Un seul, et les trois qui viennent.

@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type {
   ArchiveEmployeesInput,
   ChangementRattachement,
+  ConsequencesHierarchie,
   EmployeeListPage,
   AssignmentView,
   CreateEmployeeInput,
@@ -24,15 +25,22 @@ import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import {
-  directeurGeneral,
+  appliquerReprise,
+  DG,
   directionDeEmploye,
+  directionDeLUnite,
   directionDeUnite,
-  dirigeUneDirection,
   equipeDe,
+  perimetre,
+  planifierReprise,
   reprendreEquipe,
+  sortDuPerimetre,
   uniteRacine,
   validerRattachement,
+  verrouillerLaChaine,
+  type PlanDeReprise,
 } from './chaine';
+import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 
 /** Rôles autorisés à lire les champs ultra-sensibles (CNI). */
 const SENSITIVE_ROLES = new Set(['admin', 'hr']);
@@ -129,24 +137,8 @@ export class PeopleService {
             e.created_at,
             a.position_title,
             o.name                      AS org_unit_name,
-            (WITH RECURSIVE remontee AS (
-               SELECT id, parent_id, unit_type, short_name, name
-               FROM org_units WHERE id = a.org_unit_id
-               UNION ALL
-               SELECT u.id, u.parent_id, u.unit_type, u.short_name, u.name
-               FROM org_units u JOIN remontee r ON u.id = r.parent_id
-             )
-             SELECT short_name FROM remontee WHERE unit_type = 'direction' LIMIT 1)
-                                        AS direction_short_name,
-            (WITH RECURSIVE remontee AS (
-               SELECT id, parent_id, unit_type, name
-               FROM org_units WHERE id = a.org_unit_id
-               UNION ALL
-               SELECT u.id, u.parent_id, u.unit_type, u.name
-               FROM org_units u JOIN remontee r ON u.id = r.parent_id
-             )
-             SELECT name FROM remontee WHERE unit_type = 'direction' LIMIT 1)
-                                        AS direction_name,
+            ${directionDeLUnite(sql`a.org_unit_id`, 'short_name')} AS direction_short_name,
+            ${directionDeLUnite(sql`a.org_unit_id`, 'name')}       AS direction_name,
             (SELECT c.start_date::text FROM contracts c
               WHERE c.employee_id = e.id ORDER BY c.start_date DESC LIMIT 1)
                                         AS contract_start_date,
@@ -164,13 +156,21 @@ export class PeopleService {
               WHERE me.id = e.manager_employee_id)
                                         AS manager_number,
             -- Ses agents directs actifs : qui part avec une équipe la confie.
+            -- Le DG n'est de l'équipe de personne, même par une donnée ancienne.
             (SELECT count(*)::int FROM employees s
-              WHERE s.manager_employee_id = e.id AND s.status = 'active')
+              WHERE s.manager_employee_id = e.id AND s.status = 'active'
+                AND s.id IS DISTINCT FROM ${DG})
                                         AS team_size
           FROM employees e
           JOIN persons p ON p.id = e.person_id
+          -- L'affectation qui fait foi — en cours, sinon la prochaine : un
+          -- agent qui n'a pas encore pris son poste est déjà de sa direction,
+          -- comme partout ailleurs dans la chaîne.
           LEFT JOIN assignments a
-            ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
+            ON a.id = (SELECT av.id FROM assignments av
+                        WHERE av.employee_id = e.id
+                          AND (av.validity @> CURRENT_DATE OR lower(av.validity) > CURRENT_DATE)
+                        ORDER BY lower(av.validity) LIMIT 1)
           LEFT JOIN org_units o ON o.id = a.org_unit_id
           WHERE ${
             like === null
@@ -308,6 +308,10 @@ export class PeopleService {
 
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
+        await verrouillerLaChaine(tx);
+        if (input.assignment?.orgUnitId) {
+          await this.requireLiveOrgUnit(tx, input.assignment.orgUnitId);
+        }
         const { nationalId, ...person } = input.person;
         await tx.insert(t.persons).values({
           id: personId,
@@ -347,9 +351,6 @@ export class PeopleService {
           });
         }
         if (input.assignment) {
-          if (input.assignment.orgUnitId) {
-            await this.requireLiveOrgUnit(tx, input.assignment.orgUnitId);
-          }
           await tx.insert(t.assignments).values({
             id: uuidv7(),
             tenantId: user.tenantId,
@@ -398,24 +399,12 @@ export class PeopleService {
           // jusqu'au premier ancêtre de type « direction ». Même remontée que
           // dans la liste du personnel, où la colonne « Unité » affiche déjà
           // l'abrégé.
-          directionShortName: sql<string | null>`(
-            WITH RECURSIVE remontee AS (
-              SELECT id, parent_id, unit_type, short_name
-              FROM org_units WHERE id = ${t.assignments.orgUnitId}
-              UNION ALL
-              SELECT u.id, u.parent_id, u.unit_type, u.short_name
-              FROM org_units u JOIN remontee r ON u.id = r.parent_id
-            )
-            SELECT short_name FROM remontee WHERE unit_type = 'direction' LIMIT 1)`,
-          directionName: sql<string | null>`(
-            WITH RECURSIVE remontee AS (
-              SELECT id, parent_id, unit_type, name
-              FROM org_units WHERE id = ${t.assignments.orgUnitId}
-              UNION ALL
-              SELECT u.id, u.parent_id, u.unit_type, u.name
-              FROM org_units u JOIN remontee r ON u.id = r.parent_id
-            )
-            SELECT name FROM remontee WHERE unit_type = 'direction' LIMIT 1)`,
+          directionShortName: sql<
+            string | null
+          >`${directionDeLUnite(sql`${t.assignments.orgUnitId}`, 'short_name')}`,
+          directionName: sql<
+            string | null
+          >`${directionDeLUnite(sql`${t.assignments.orgUnitId}`, 'name')}`,
           validity: t.assignments.validity,
           current: sql<boolean>`${t.assignments.validity} @> CURRENT_DATE`,
           validFrom: sql<string>`lower(${t.assignments.validity})::text`,
@@ -541,6 +530,7 @@ export class PeopleService {
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
         const employee = await this.requireEmployee(tx, id);
+        if (input.employee?.managerEmployeeId !== undefined) await verrouillerLaChaine(tx);
 
         if (input.person && Object.keys(input.person).length > 0) {
           const { nationalId, ...rest } = input.person;
@@ -614,19 +604,31 @@ export class PeopleService {
    * Nouvelle affectation effective-dated (ADR-0003) : clôt l'affectation
    * courante à startDate (borne exclusive) et ouvre la nouvelle [startDate,).
    * Jamais d'UPDATE destructif : l'historique reste intégralement lisible.
+   *
+   * La chaîne hiérarchique doit y survivre, et les refus viennent dans
+   * l'ordre où l'on corrige : d'abord qui dirige quoi (le DG, un responsable
+   * d'unité), puis la date, puis l'équipe, puis son propre n+1.
    */
   async newAssignment(
     user: SessionUser,
     id: string,
     input: NewAssignmentInput,
-  ): Promise<{ changements: ChangementRattachement[] }> {
-    const journal: ChangementRattachement[] = [];
+  ): Promise<ConsequencesHierarchie> {
+    let resultat: ConsequencesHierarchie = { changements: [], aRevoir: [] };
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
-        await this.requireEmployee(tx, id);
+        await verrouillerLaChaine(tx);
+        const [dossier] = await tx
+          .select({ managerId: t.employees.managerEmployeeId })
+          .from(t.employees)
+          .where(eq(t.employees.id, id))
+          .limit(1);
+        if (!dossier) problem(404, 'people.employee_not_found', 'Employé introuvable');
         if (input.orgUnitId) await this.requireLiveOrgUnit(tx, input.orgUnitId);
+        const avant = await lireLaChaine(tx);
+        const journal: ChangementRattachement[] = [];
 
-        // ——— Le directeur général siège à la Direction Générale : il n'en
+        // ——— 1. Le directeur général siège à la Direction Générale : il n'en
         // sort pas, sans quoi ses collaborateurs directs relèveraient d'une
         // autre direction que la leur.
         const racine = await uniteRacine(tx);
@@ -640,21 +642,80 @@ export class PeopleService {
           );
         }
 
-        // ——— Qui encadre une équipe et quitte sa direction la confie : ses
-        // agents, eux, y restent.
+        // ——— 2. Un responsable ne quitte pas le périmètre de l'unité qu'il
+        // dirige sans qu'un successeur soit désigné : sinon l'organigramme
+        // affiche un chef parti ailleurs. On refuse plutôt que de le retirer
+        // en douce — la RH décide qui reprend l'unité.
+        const [dirigee] = await tx
+          .select({ id: t.orgUnits.id, name: t.orgUnits.name })
+          .from(t.orgUnits)
+          .where(and(eq(t.orgUnits.managerEmployeeId, id), isNull(t.orgUnits.deletedAt)))
+          .limit(1);
+        if (dirigee) {
+          const dedans = input.orgUnitId
+            ? await tx.execute(sql`
+                ${perimetre(dirigee.id)}
+                SELECT 1 FROM perimetre WHERE id = ${input.orgUnitId} LIMIT 1`)
+            : { rows: [] };
+          if (dedans.rows.length === 0) {
+            problem(
+              422,
+              'people.manager_cannot_leave_unit',
+              `Cet employé dirige « ${dirigee.name} »`,
+              'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
+            );
+          }
+        }
+
+        // ——— 3. Le n+1 n'est pas daté : il vaut dès aujourd'hui. Une mutation
+        // PROGRAMMÉE vers une autre direction laisserait donc la chaîne
+        // fausse jusqu'à la date, ou fausse après — selon qu'on change le
+        // n+1 maintenant ou pas. Tant qu'elle touche à la hiérarchie, elle
+        // s'enregistre le jour où elle prend effet.
         const equipe = await equipeDe(tx, id);
         const directionActuelle = await directionDeEmploye(tx, id);
-        if (input.repreneurEquipeId) {
-          await reprendreEquipe(tx, journal, id, input.repreneurEquipeId);
-        } else if (equipe.length > 0 && directionVisee?.id !== directionActuelle?.id) {
+        const changeDeDirection = directionVisee?.id !== directionActuelle?.id;
+        const [{ futur }] = (
+          await tx.execute<{ futur: boolean }>(
+            sql`SELECT ${input.startDate}::date > CURRENT_DATE AS futur`,
+          )
+        ).rows as [{ futur: boolean }];
+        if (
+          futur &&
+          changeDeDirection &&
+          (dossier.managerId || input.managerEmployeeId || equipe.length > 0)
+        ) {
           problem(
             422,
-            'people.equipe_sans_repreneur',
-            `Cet agent encadre ${equipe.length > 1 ? `${equipe.length} agents` : 'un agent'}`,
-            'Ils restent dans leur direction : choisissez qui reprend son équipe, dans la même opération.',
+            'people.mutation_programmee_hors_direction',
+            'Une mutation vers une autre direction s’enregistre le jour où elle prend effet',
+            'Le n+1 vaut dès aujourd’hui : programmée, la mutation laisserait la chaîne hiérarchique fausse jusqu’à sa date. Enregistrez-la ce jour-là, avec son nouveau n+1.',
           );
         }
 
+        // Ce qui tenait AVANT la mutation doit tenir APRÈS. Une anomalie
+        // ancienne ne bloque pas une mutation qui n'y est pour rien : le
+        // contrôle de la chaîne continue de la signaler.
+        const tenait = async (agent: string, n1: string) => {
+          try {
+            await validerRattachement(tx, agent, n1, await directionDeEmploye(tx, agent));
+            return true;
+          } catch (err) {
+            if (err instanceof ProblemException) return false;
+            throw err;
+          }
+        };
+        const equipeEnRegle = new Set<string>();
+        for (const a of equipe) if (await tenait(a.id, id)) equipeEnRegle.add(a.id);
+        const n1Garde = input.managerEmployeeId ? null : dossier.managerId;
+        const n1GardeEnRegle = n1Garde ? await tenait(id, n1Garde) : false;
+
+        // ——— 4. L'équipe, confiée si l'on en désigne le repreneur.
+        if (input.repreneurEquipeId) {
+          await reprendreEquipe(tx, journal, id, input.repreneurEquipeId);
+        }
+
+        // ——— L'écriture : on clôt l'affectation courante, on ouvre la neuve.
         const [current] = await tx
           .select({
             id: t.assignments.id,
@@ -663,7 +724,6 @@ export class PeopleService {
           .from(t.assignments)
           .where(and(eq(t.assignments.employeeId, id), sql`upper_inf(${t.assignments.validity})`))
           .limit(1);
-
         if (current) {
           if (input.startDate <= current.validFrom) {
             problem(
@@ -680,102 +740,6 @@ export class PeopleService {
             })
             .where(eq(t.assignments.id, current.id));
         }
-
-        // Un responsable ne peut pas quitter l'unité qu'il dirige sans qu'un
-        // successeur soit désigné : sinon l'organigramme affiche un chef parti
-        // ailleurs. On refuse plutôt que de le retirer en douce — la RH doit
-        // décider qui reprend l'unité.
-        const [headed] = await tx
-          .select({ id: t.orgUnits.id, name: t.orgUnits.name })
-          .from(t.orgUnits)
-          .where(and(eq(t.orgUnits.managerEmployeeId, id), isNull(t.orgUnits.deletedAt)))
-          .limit(1);
-        if (headed) {
-          const stillInside = input.orgUnitId
-            ? await tx.execute(sql`
-                WITH RECURSIVE subtree AS (
-                  SELECT id FROM org_units WHERE id = ${headed.id} AND deleted_at IS NULL
-                  UNION ALL
-                  SELECT o.id FROM org_units o
-                  JOIN subtree s ON o.parent_id = s.id
-                  WHERE o.deleted_at IS NULL
-                )
-                SELECT 1 FROM subtree WHERE id = ${input.orgUnitId} LIMIT 1`)
-            : { rows: [] };
-          if (stillInside.rows.length === 0) {
-            problem(
-              422,
-              'people.manager_cannot_leave_unit',
-              `Cet employé dirige « ${headed.name} »`,
-              'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
-            );
-          }
-        }
-
-        // ——— Le rattachement doit survivre à la mutation.
-        //
-        // Changer de direction rend le n+1 caduc : il reste dans l'ancienne.
-        // On ne peut pas non plus le corriger avant — la règle refuserait un
-        // responsable d'une autre direction que celle où l'agent se trouve
-        // encore. Les deux gestes n'en font donc qu'un, et c'est la seule
-        // façon d'éviter l'impasse.
-        const directionCible = directionVisee;
-        if (input.managerEmployeeId) {
-          await validerRattachement(tx, id, input.managerEmployeeId, directionCible);
-          await tx
-            .update(t.employees)
-            .set({ managerEmployeeId: input.managerEmployeeId, updatedAt: new Date() })
-            .where(eq(t.employees.id, id));
-        } else {
-          const [dossier] = await tx
-            .select({ managerId: t.employees.managerEmployeeId })
-            .from(t.employees)
-            .where(eq(t.employees.id, id))
-            .limit(1);
-          // Hors de toute direction, un rattachement ne tient plus : ni le
-          // sien, ni celui des agents qui relèvent de lui.
-          if (!directionCible) {
-            if (dossier?.managerId) {
-              problem(
-                422,
-                'people.mutation_sans_direction',
-                'Un agent rattaché à un n+1 reste affecté à une direction',
-                'Choisissez une unité rattachée à une direction, ou retirez d’abord son n+1.',
-              );
-            }
-            const [encadre] = await tx
-              .select({ id: t.employees.id })
-              .from(t.employees)
-              .where(and(eq(t.employees.managerEmployeeId, id), eq(t.employees.status, 'active')))
-              .limit(1);
-            if (encadre) {
-              problem(
-                422,
-                'people.mutation_sans_direction',
-                'Un n+1 reste affecté à une direction',
-                'Des agents relèvent de lui : choisissez une unité rattachée à une direction.',
-              );
-            }
-          }
-          const directionDuResponsable = dossier?.managerId
-            ? await directionDeEmploye(tx, dossier.managerId)
-            : null;
-          const directeur = await dirigeUneDirection(tx, id);
-          if (
-            !directeur &&
-            directionCible &&
-            directionDuResponsable &&
-            directionDuResponsable.id !== directionCible.id
-          ) {
-            problem(
-              422,
-              'people.responsable_hors_nouvelle_direction',
-              'Le responsable actuel n’appartient pas à la nouvelle direction',
-              `Il relève de « ${directionDuResponsable.nom} », l’agent rejoint « ${directionCible.nom} » : désignez son nouveau responsable dans la même opération.`,
-            );
-          }
-        }
-
         await tx.insert(t.assignments).values({
           id: uuidv7(),
           tenantId: user.tenantId,
@@ -784,8 +748,70 @@ export class PeopleService {
           positionTitle: input.positionTitle,
           validity: `[${input.startDate},)`,
         });
+
+        // ——— Relu sur l'état écrit. Le responsable d'unité, d'abord : une
+        // affectation déjà programmée ailleurs le ferait sortir plus tard.
+        if (dirigee && (await sortDuPerimetre(tx, id, dirigee.id))) {
+          problem(
+            422,
+            'people.manager_cannot_leave_unit',
+            `Cet employé dirige « ${dirigee.name} »`,
+            'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
+          );
+        }
+
+        // L'équipe qui reste doit pouvoir le suivre ; sinon, un repreneur.
+        const restants = (await equipeDe(tx, id)).filter((a) => equipeEnRegle.has(a.id));
+        for (const a of restants) {
+          if (!(await tenait(a.id, id))) {
+            problem(
+              422,
+              'people.equipe_sans_repreneur',
+              `Cet agent encadre ${restants.length > 1 ? `${restants.length} agents` : 'un agent'}`,
+              'Ils restent dans leur direction : choisissez qui reprend son équipe, dans la même opération.',
+            );
+          }
+        }
+
+        // ——— 5. Son n+1 : le nouveau, désigné dans le même geste — changer de
+        // direction rend l'ancien caduc, et le corriger avant serait refusé
+        // (il ne serait pas encore de la direction de l'agent) —, ou celui
+        // qu'il garde, s'il tient toujours.
+        if (input.managerEmployeeId) {
+          await validerRattachement(
+            tx,
+            id,
+            input.managerEmployeeId,
+            await directionDeEmploye(tx, id),
+          );
+          await tx
+            .update(t.employees)
+            .set({ managerEmployeeId: input.managerEmployeeId, updatedAt: new Date() })
+            .where(eq(t.employees.id, id));
+        } else if (n1Garde && n1GardeEnRegle && !(await tenait(id, n1Garde))) {
+          const direction = await directionDeEmploye(tx, id);
+          if (!direction) {
+            problem(
+              422,
+              'people.mutation_sans_direction',
+              'Un agent rattaché à un n+1 reste affecté à une direction',
+              'Choisissez une unité rattachée à une direction, ou retirez d’abord son n+1.',
+            );
+          }
+          problem(
+            422,
+            'people.responsable_hors_nouvelle_direction',
+            'Le responsable actuel n’appartient pas à la nouvelle direction',
+            `L’agent rejoint « ${direction.nom} » : désignez son nouveau responsable dans la même opération.`,
+          );
+        }
+
+        resultat = {
+          changements: journal,
+          aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
+        };
       });
-      return { changements: journal };
+      return resultat;
     } catch (err) {
       if (pgCode(err) === '23P01') {
         problem(
@@ -859,21 +885,26 @@ export class PeopleService {
    */
   async archive(user: SessionUser, input: ArchiveEmployeesInput): Promise<EmployeeBatchResult> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
+      await verrouillerLaChaine(tx);
+      const avant = await lireLaChaine(tx);
       const cibles = await this.chargerCibles(tx, input.ids);
       const skipped: EmployeeBatchResult['skipped'] = [];
-      const retenus: typeof cibles = [];
-
-      const journal: ChangementRattachement[] = [];
+      const geste = input.archived ? 'archive' : 'reouverture';
+      let retenus: typeof cibles = [];
       for (const c of cibles) {
-        const motif =
-          (await this.motifDeRefus(tx, user, c, input.archived ? 'archive' : 'reouverture')) ??
-          (input.archived
-            ? await this.confierEquipe(tx, journal, c.id, input.ids, input.repreneurs)
-            : null);
+        const motif = await this.motifDeRefus(tx, user, c, geste);
         if (motif) skipped.push({ id: c.id, name: c.nom, reason: motif });
         else retenus.push(c);
       }
-      if (retenus.length === 0) return { done: 0, skipped, changements: journal };
+
+      const journal: ChangementRattachement[] = [];
+      if (input.archived) {
+        const depart = await this.planifierLesDeparts(tx, retenus, input.repreneurs);
+        skipped.push(...depart.refus);
+        retenus = depart.retenus;
+        for (const plan of depart.plans) await appliquerReprise(tx, journal, plan);
+      }
+      if (retenus.length === 0) return { done: 0, skipped, changements: journal, aRevoir: [] };
 
       const ids = retenus.map((c) => c.id);
       await tx
@@ -902,39 +933,68 @@ export class PeopleService {
             );
         }
       }
-      return { done: retenus.length, skipped, changements: journal };
+      // Un dossier rouvert revient avec le n+1 et l'affectation qu'il avait :
+      // l'un ou l'autre a pu changer depuis. Ce qu'il faut revoir se dit
+      // tout de suite, plutôt que d'attendre le prochain contrôle.
+      return {
+        done: retenus.length,
+        skipped,
+        changements: journal,
+        aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
+      };
     });
   }
 
   /**
-   * Qui part avec une équipe la confie. Les agents qui partent dans le même
-   * lot ne comptent pas : on ne confie pas une équipe qui s'en va aussi.
-   * Rend le motif du refus, ou `null` quand l'équipe est reprise — ou qu'il
-   * n'y en a pas.
+   * Qui part avec une équipe la confie : les reprises d'un LOT, vérifiées
+   * ensemble avant que rien ne s'écrive.
+   *
+   * Les agents qui partent dans le même lot ne comptent pas — on ne confie
+   * pas une équipe qui s'en va aussi, ni à quelqu'un qui s'en va. Mais un
+   * départ refusé change la donne pour les autres : l'agent qui reste
+   * redevient un membre d'équipe à confier, un repreneur possible, un n+1 à
+   * la place duquel on peut se mettre. On recommence donc jusqu'à ce que
+   * plus rien ne bouge — le lot ne fait que rétrécir, le calcul s'arrête.
    */
-  private async confierEquipe(
+  private async planifierLesDeparts<C extends { id: string; nom: string }>(
     tx: Tx,
-    journal: ChangementRattachement[],
-    partant: string,
-    lot: string[],
+    candidats: C[],
     repreneurs: Record<string, string> | undefined,
-  ): Promise<string | null> {
-    const equipe = (await equipeDe(tx, partant)).filter((a) => !lot.includes(a.id));
-    if (equipe.length === 0) return null;
-    const repreneur = repreneurs?.[partant];
-    const effectif = equipe.length > 1 ? `${equipe.length} agents` : 'un agent';
-    if (!repreneur) return `Encadre ${effectif} — choisissez qui reprend son équipe`;
-    if (lot.includes(repreneur)) return 'Son repreneur part dans le même lot';
-    try {
-      await reprendreEquipe(tx, journal, partant, repreneur);
-      return null;
-    } catch (err) {
-      // La reprise vérifie tout AVANT d'écrire : un refus ne laisse rien
-      // derrière lui, et le lot continue pour les autres.
-      if (err instanceof ProblemException) {
-        return [err.problem.title, err.problem.detail].filter(Boolean).join(' — ');
+  ): Promise<{ retenus: C[]; plans: PlanDeReprise[]; refus: EmployeeBatchResult['skipped'] }> {
+    let retenus = candidats;
+    const refus: EmployeeBatchResult['skipped'] = [];
+    for (;;) {
+      const partants = new Set(retenus.map((c) => c.id));
+      const plans: PlanDeReprise[] = [];
+      const tour: EmployeeBatchResult['skipped'] = [];
+      for (const c of retenus) {
+        const equipe = (await equipeDe(tx, c.id)).filter((a) => !partants.has(a.id));
+        if (equipe.length === 0) continue;
+        const repreneur = repreneurs?.[c.id];
+        const effectif = equipe.length > 1 ? `${equipe.length} agents` : 'un agent';
+        if (!repreneur) {
+          tour.push({
+            id: c.id,
+            name: c.nom,
+            reason: `Encadre ${effectif} — choisissez qui reprend son équipe`,
+          });
+          continue;
+        }
+        try {
+          plans.push(await planifierReprise(tx, c.id, repreneur, equipe, partants));
+        } catch (err) {
+          if (!(err instanceof ProblemException)) throw err;
+          tour.push({
+            id: c.id,
+            name: c.nom,
+            reason: [err.problem.title, err.problem.detail].filter(Boolean).join(' — '),
+          });
+        }
       }
-      throw err;
+      if (tour.length === 0) return { retenus, plans, refus };
+      refus.push(...tour);
+      const refuses = new Set(tour.map((r) => r.id));
+      retenus = retenus.filter((c) => !refuses.has(c.id));
     }
   }
 
@@ -956,40 +1016,49 @@ export class PeopleService {
    */
   async remove(user: SessionUser, input: DeleteEmployeesInput): Promise<EmployeeBatchResult> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
+      await verrouillerLaChaine(tx);
+      const avant = await lireLaChaine(tx);
       const cibles = await this.chargerCibles(tx, input.ids);
       const skipped: EmployeeBatchResult['skipped'] = [];
-      let done = 0;
+      const candidats: typeof cibles = [];
+      for (const c of cibles) {
+        const motif = await this.motifDeRefus(tx, user, c, 'suppression');
+        if (motif) skipped.push({ id: c.id, name: c.nom, reason: motif });
+        else candidats.push(c);
+      }
 
       const journal: ChangementRattachement[] = [];
-      for (const c of cibles) {
-        const motif =
-          (await this.motifDeRefus(tx, user, c, 'suppression')) ??
-          (await this.confierEquipe(tx, journal, c.id, input.ids, input.repreneurs));
-        if (motif) {
-          skipped.push({ id: c.id, name: c.nom, reason: motif });
-          continue;
-        }
-        await this.effacer(tx, user, c);
-        done += 1;
-      }
-      return { done, skipped, changements: journal };
+      const depart = await this.planifierLesDeparts(tx, candidats, input.repreneurs);
+      skipped.push(...depart.refus);
+      for (const plan of depart.plans) await appliquerReprise(tx, journal, plan);
+      for (const c of depart.retenus) await this.effacer(tx, user, c);
+      return {
+        done: depart.retenus.length,
+        skipped,
+        changements: journal,
+        aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
+      };
     });
   }
 
   /** Les dossiers visés, avec de quoi les nommer dans un message d'erreur. */
   private async chargerCibles(tx: Tx, ids: string[]) {
-    return tx
-      .select({
-        id: t.employees.id,
-        personId: t.employees.personId,
-        employeeNumber: t.employees.employeeNumber,
-        status: t.employees.status,
-        userId: t.persons.userId,
-        nom: sql<string>`${t.persons.givenName} || ' ' || ${t.persons.familyName}`,
-      })
-      .from(t.employees)
-      .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-      .where(inArray(t.employees.id, ids));
+    return (
+      tx
+        .select({
+          id: t.employees.id,
+          personId: t.employees.personId,
+          employeeNumber: t.employees.employeeNumber,
+          status: t.employees.status,
+          userId: t.persons.userId,
+          nom: sql<string>`${t.persons.givenName} || ' ' || ${t.persons.familyName}`,
+        })
+        .from(t.employees)
+        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+        .where(inArray(t.employees.id, ids))
+        // Un ordre fixe : deux essais du même lot rendent les mêmes refus.
+        .orderBy(t.employees.employeeNumber, t.employees.id)
+    );
   }
 
   /**

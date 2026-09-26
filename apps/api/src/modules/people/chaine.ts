@@ -1,26 +1,101 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { eq, sql, type SQL } from 'drizzle-orm';
 import type { ChangementRattachement, MotifChangement } from '@teranga/contracts';
 import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import type { Tx } from '../../db/tenant-db';
 
 /* ————————————————————————————————————————————————————————————————
-   La chaîne hiérarchique : les lectures et la validation d'un rattachement.
+   La chaîne hiérarchique : ses définitions, la validation d'un rattachement,
+   et les cascades.
 
-   Partagées par la fiche agent (création, modification, mutation) et par
-   l'organigramme (désignation d'un DG ou d'un directeur, réorganisation) :
-   une seule écriture de chaque règle, sinon deux portes finissent par ne
-   pas dire la même chose.
+   Partagées par la fiche agent (création, modification, mutation, départ),
+   par l'organigramme (désignation, réorganisation, dissolution), par le
+   contrôle de la chaîne et par l'Academy : UNE écriture de chaque notion,
+   sinon deux portes finissent par ne pas dire la même chose.
+
+   Les définitions :
+     — le SOMMET : la plus ancienne unité racine vivante (puis la plus petite
+       id, pour que l'ordre ne dépende jamais du hasard). Il n'y en a qu'un ;
+       s'il en traîne deux d'avant la règle, c'est lui qui fait foi ;
+     — le DG : le responsable du sommet ;
+     — un DIRECTEUR : le responsable d'une unité de type direction qui n'est
+       pas le sommet — sous-directions comprises ;
+     — le PÉRIMÈTRE d'une unité : elle et ce qui en descend, sans entrer dans
+       les directions qu'elle chapeaute — c'est là que travaille son
+       responsable ;
+     — l'affectation QUI FAIT FOI pour un agent : celle en cours, sinon la
+       prochaine (un agent qui n'a pas encore pris son poste est compté dans
+       la direction qu'il rejoint) ;
+     — la DIRECTION d'un agent : la plus proche direction au-dessus de
+       l'unité de cette affectation.
 
    Les règles de l'APIX, dans l'ordre où elles s'appliquent :
-     1. le directeur général (responsable de l'unité RACINE, unique) ne
-        relève de personne ;
+     1. le DG ne relève de personne, et siège à la Direction Générale ;
      2. d'abord l'affectation à une direction, ensuite le n+1 — pour l'agent
         comme pour son n+1 ;
      3. le n+1 est de la même direction — sauf pour un directeur, qui relève
         du DG, et pour l'agent d'une direction sans tête, que le DG couvre ;
      4. pas de boucle, et un n+1 actif.
+
+   Toutes les requêtes récursives se protègent des boucles : une donnée
+   ancienne qui en contiendrait une ne doit jamais faire tourner le serveur
+   sans fin.
    ———————————————————————————————————————————————————————————————— */
+
+/** L'id du sommet, en sous-requête SQL — la même partout. */
+export const SOMMET = sql`(SELECT so.id FROM org_units so
+  WHERE so.parent_id IS NULL AND so.deleted_at IS NULL
+  ORDER BY so.created_at, so.id LIMIT 1)`;
+
+/** L'id du DG, en sous-requête SQL (NULL s'il n'y en a pas). */
+export const DG = sql`(SELECT sd.manager_employee_id FROM org_units sd WHERE sd.id = ${SOMMET})`;
+
+/**
+ * L'unité de l'affectation qui fait foi pour un agent (en cours, sinon la
+ * prochaine), en sous-requête SQL.
+ */
+export const uniteEnVigueur = (employeeId: SQL) => sql`(SELECT av.org_unit_id
+  FROM assignments av
+  WHERE av.employee_id = ${employeeId}
+    AND (av.validity @> CURRENT_DATE OR lower(av.validity) > CURRENT_DATE)
+  ORDER BY lower(av.validity) LIMIT 1)`;
+
+/**
+ * Une colonne de la direction d'une unité (elle-même si c'en est une, sinon
+ * la plus proche aïeule de type direction), en sous-requête SQL. Les unités
+ * dissoutes comptent : l'historique d'un agent doit pouvoir nommer la
+ * direction d'une unité qui n'existe plus.
+ */
+export const directionDeLUnite = (uniteId: SQL, colonne: 'id' | 'name' | 'short_name') => sql`(
+  WITH RECURSIVE remontee AS (
+    SELECT id, parent_id, unit_type, name, short_name, 0 AS prof
+      FROM org_units WHERE id = ${uniteId}
+    UNION ALL
+    SELECT u.id, u.parent_id, u.unit_type, u.name, u.short_name, r.prof + 1
+      FROM org_units u JOIN remontee r ON u.id = r.parent_id
+     WHERE r.prof < 64
+  )
+  SELECT ${sql.raw(colonne)} FROM remontee WHERE unit_type = 'direction' ORDER BY prof LIMIT 1)`;
+
+/** Le périmètre d'une unité, en CTE `perimetre(id)` — sans ses sous-directions. */
+export const perimetre = (uniteId: string | SQL) => sql`WITH RECURSIVE perimetre AS (
+    SELECT id FROM org_units WHERE id = ${uniteId} AND deleted_at IS NULL
+    UNION
+    SELECT o.id FROM org_units o JOIN perimetre p ON o.parent_id = p.id
+     WHERE o.deleted_at IS NULL AND o.unit_type <> 'direction'
+  )`;
+
+/**
+ * Un seul changement de la chaîne à la fois, par organisation. Chaque règle
+ * lit puis écrit : deux requêtes simultanées (A sous B pendant que B passe
+ * sous A, deux sommets créés au même instant) passeraient chacune le
+ * contrôle de l'autre. Le verrou tient jusqu'à la fin de la transaction.
+ */
+export async function verrouillerLaChaine(tx: Tx): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('chaine:' || current_setting('app.tenant_id', true)))`,
+  );
+}
 
 /**
  * Le manager désigné doit être un employé ACTIF du tenant, différent de
@@ -71,10 +146,12 @@ export async function validerRattachement(
       'Ce dossier est archivé.',
     );
   }
+  // UNION, pas UNION ALL : sur une boucle déjà présente dans les données, la
+  // remontée s'arrête au lieu de tourner sans fin.
   const boucle = await tx.execute(sql`
     WITH RECURSIVE chaine AS (
       SELECT id, manager_employee_id FROM employees WHERE id = ${managerId}
-      UNION ALL
+      UNION
       SELECT e.id, e.manager_employee_id
       FROM employees e JOIN chaine c ON e.id = c.manager_employee_id
     )
@@ -141,8 +218,8 @@ export async function validerRattachement(
   // directeur général. C'est ainsi, et seulement ainsi, qu'on crée un
   // directeur : son dossier n'existe pas encore quand on le rattache, il ne
   // dirige donc rien, et la règle de direction lui refuserait le DG. Dès
-  // qu'un responsable est désigné sur la direction, ce chemin se referme —
-  // et le contrôle de la chaîne signale ceux qui y seraient restés.
+  // qu'un responsable est désigné sur la direction, la cascade rattache à
+  // lui ceux que le DG couvrait en attendant.
   if (managerId === dg && !(await directionADejaUnResponsable(tx, directionCible.id))) {
     return;
   }
@@ -155,11 +232,10 @@ export async function validerRattachement(
 }
 
 /**
- * La direction d'une unité : elle-même si c'en est une, sinon son aïeule.
- *
- * On remonte l'organigramme jusqu'au premier ancêtre de type « direction ».
- * Un service de la DFC rend donc la DFC ; la DFC rend la DFC ; une unité
- * rattachée directement à la Direction Générale rend la DG.
+ * La direction d'une unité : elle-même si c'en est une, sinon la plus proche
+ * aïeule de type direction. Un service de la DFC rend la DFC ; la DFC rend
+ * la DFC ; une unité rattachée directement à la Direction Générale rend la
+ * Direction Générale.
  */
 export async function directionDeUnite(
   tx: Tx,
@@ -173,29 +249,37 @@ export async function directionDeUnite(
       UNION ALL
       SELECT o.id, o.parent_id, o.unit_type, o.name, r.prof + 1
         FROM remontee r JOIN org_units o ON o.id = r.parent_id AND o.deleted_at IS NULL
+       WHERE r.prof < 64
     )
     SELECT id, name FROM remontee WHERE unit_type = 'direction' ORDER BY prof LIMIT 1`);
   const ligne = r.rows[0];
   return ligne ? { id: ligne.id, nom: ligne.name } : null;
 }
 
-/** La direction d'un agent, via son affectation du jour. */
+/** La direction d'un agent, via l'affectation qui fait foi (en cours, sinon la prochaine). */
 export async function directionDeEmploye(
   tx: Tx,
   employeeId: string,
 ): Promise<{ id: string; nom: string } | null> {
-  const [affectation] = await tx
-    .select({ orgUnitId: t.assignments.orgUnitId })
-    .from(t.assignments)
-    .where(
-      and(eq(t.assignments.employeeId, employeeId), sql`${t.assignments.validity} @> CURRENT_DATE`),
-    )
-    .limit(1);
-  return directionDeUnite(tx, affectation?.orgUnitId ?? null);
+  const { rows } = await tx.execute<{ unite: string | null }>(
+    sql`SELECT ${uniteEnVigueur(sql`${employeeId}`)} AS unite`,
+  );
+  return directionDeUnite(tx, rows[0]?.unite ?? null);
+}
+
+/** L'unité racine — la Direction Générale — et son responsable. */
+export async function uniteRacine(
+  tx: Tx,
+): Promise<{ id: string; managerId: string | null } | null> {
+  const { rows } = await tx.execute<{ id: string; manager_employee_id: string | null }>(
+    sql`SELECT id, manager_employee_id FROM org_units WHERE id = ${SOMMET}`,
+  );
+  const r = rows[0];
+  return r ? { id: r.id, managerId: r.manager_employee_id } : null;
 }
 
 /**
- * Le directeur général : le responsable de l'unité RACINE.
+ * Le directeur général : le responsable du sommet.
  *
  * Il n'est ni désigné par un rôle ni marqué d'une case à cocher —
  * l'organigramme le dit déjà, et deux sources finiraient par se
@@ -203,56 +287,70 @@ export async function directionDeEmploye(
  * se rattachent.
  */
 export async function directeurGeneral(tx: Tx): Promise<string | null> {
-  const [racine] = await tx
-    .select({ managerId: t.orgUnits.managerEmployeeId })
-    .from(t.orgUnits)
-    .where(and(isNull(t.orgUnits.parentId), isNull(t.orgUnits.deletedAt)))
-    // Le sommet est unique ; s'il en traîne deux d'avant la règle, le plus
-    // ancien fait foi — toujours le même, d'une lecture à l'autre.
-    .orderBy(asc(t.orgUnits.createdAt))
-    .limit(1);
-  return racine?.managerId ?? null;
+  return (await uniteRacine(tx))?.managerId ?? null;
 }
 
 /** Cette direction a-t-elle un responsable désigné ? */
 export async function directionADejaUnResponsable(tx: Tx, directionId: string): Promise<boolean> {
-  const [unite] = await tx
-    .select({ managerId: t.orgUnits.managerEmployeeId })
-    .from(t.orgUnits)
-    .where(and(eq(t.orgUnits.id, directionId), isNull(t.orgUnits.deletedAt)))
-    .limit(1);
-  return Boolean(unite?.managerId);
+  const { rows } = await tx.execute<{ oui: boolean }>(sql`
+    SELECT manager_employee_id IS NOT NULL AS oui
+      FROM org_units WHERE id = ${directionId} AND deleted_at IS NULL`);
+  return Boolean(rows[0]?.oui);
 }
 
-/** L'agent dirige-t-il une direction ? (hors unité racine : c'est le DG) */
+/** L'agent dirige-t-il une direction ? (hors sommet : c'est le DG) */
 export async function dirigeUneDirection(tx: Tx, employeeId: string): Promise<boolean> {
-  const [unite] = await tx
-    .select({ id: t.orgUnits.id })
-    .from(t.orgUnits)
-    .where(
-      and(
-        eq(t.orgUnits.managerEmployeeId, employeeId),
-        eq(t.orgUnits.unitType, 'direction'),
-        sql`${t.orgUnits.parentId} IS NOT NULL`,
-        isNull(t.orgUnits.deletedAt),
-      ),
-    )
-    .limit(1);
-  return Boolean(unite);
+  const { rows } = await tx.execute(sql`
+    SELECT 1 FROM org_units
+     WHERE manager_employee_id = ${employeeId} AND unit_type = 'direction'
+       AND deleted_at IS NULL AND id IS DISTINCT FROM ${SOMMET}
+     LIMIT 1`);
+  return rows.length > 0;
+}
+
+/**
+ * L'agent sort-il du périmètre d'une unité, aujourd'hui OU plus tard ?
+ * Toutes ses affectations en cours et à venir doivent y tomber, et au moins
+ * une doit être en vigueur : un responsable dont la mutation est déjà
+ * programmée ailleurs ne peut pas prendre une tête qu'il quitterait.
+ */
+export async function sortDuPerimetre(
+  tx: Tx,
+  employeeId: string,
+  uniteId: string,
+): Promise<boolean> {
+  const { rows } = await tx.execute<{ dedans: boolean; ailleurs: boolean }>(sql`
+    ${perimetre(uniteId)}
+    SELECT
+      EXISTS (SELECT 1 FROM assignments a
+               WHERE a.employee_id = ${employeeId}
+                 AND a.org_unit_id IN (SELECT id FROM perimetre)
+                 AND a.validity @> CURRENT_DATE) AS dedans,
+      EXISTS (SELECT 1 FROM assignments a
+               WHERE a.employee_id = ${employeeId}
+                 AND (upper_inf(a.validity) OR upper(a.validity) > CURRENT_DATE)
+                 AND (a.org_unit_id IS NULL OR a.org_unit_id NOT IN (SELECT id FROM perimetre)))
+        AS ailleurs`);
+  const r = rows[0];
+  return !r?.dedans || Boolean(r.ailleurs);
 }
 
 // ———————————————————————————————————————————— équipes et cascades
 
-/** Les agents ACTIFS dont il est le n+1, par ordre alphabétique. */
+/**
+ * Les agents ACTIFS dont il est le n+1, par ordre alphabétique. Le DG n'est
+ * de l'équipe de personne — même quand une donnée ancienne lui laisse un n+1.
+ */
 export async function equipeDe(
   tx: Tx,
   employeeId: string,
 ): Promise<{ id: string; name: string }[]> {
   const { rows } = await tx.execute<{ id: string; name: string }>(sql`
     SELECT e.id, p.given_name || ' ' || p.family_name AS name
-      FROM employees e JOIN persons p ON p.id = e.person_id
+      FROM employees e JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
      WHERE e.manager_employee_id = ${employeeId} AND e.status = 'active'
-     ORDER BY p.family_name, p.given_name`);
+       AND e.id IS DISTINCT FROM ${DG}
+     ORDER BY p.family_name, p.given_name, e.id`);
   return rows;
 }
 
@@ -303,7 +401,7 @@ export async function rattacher(
  * Comme `rattacher`, mais sous la règle : si le rattachement ne tient pas,
  * rien ne s'écrit et l'on rend `false`. Une cascade ne se laisse pas bloquer
  * par une anomalie ANCIENNE — l'agent reste où il était, et le contrôle de
- * la chaîne continue de le signaler.
+ * la chaîne continue de le signaler (l'aperçu le montre « à revoir »).
  */
 async function tenterRattachement(
   tx: Tx,
@@ -322,14 +420,15 @@ async function tenterRattachement(
   return true;
 }
 
-/** Les responsables ACTIFS des directions, hors unité racine. */
-async function directeurs(tx: Tx): Promise<{ id: string; uniteId: string }[]> {
-  const { rows } = await tx.execute<{ id: string; unite_id: string }>(sql`
-    SELECT DISTINCT o.manager_employee_id AS id, o.id AS unite_id
+/** Les responsables ACTIFS des directions, hors sommet. */
+async function directeurs(tx: Tx): Promise<string[]> {
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    SELECT DISTINCT o.manager_employee_id AS id
       FROM org_units o JOIN employees e ON e.id = o.manager_employee_id
-     WHERE o.unit_type = 'direction' AND o.parent_id IS NOT NULL
-       AND o.deleted_at IS NULL AND e.status = 'active'`);
-  return rows.map((r) => ({ id: r.id, uniteId: r.unite_id }));
+     WHERE o.unit_type = 'direction' AND o.deleted_at IS NULL
+       AND o.id IS DISTINCT FROM ${SOMMET} AND e.status = 'active'
+     ORDER BY 1`);
+  return rows.map((r) => r.id);
 }
 
 /**
@@ -338,7 +437,7 @@ async function directeurs(tx: Tx): Promise<{ id: string; uniteId: string }[]> {
  *   — ce qui relevait de l'ancien DG relève de lui ;
  *   — tout directeur relève de lui ;
  *   — l'ancien DG, s'il reste à la Direction Générale, relève de lui.
- * Le responsable de la racine est DÉJÀ écrit quand on arrive ici.
+ * Le responsable du sommet est DÉJÀ écrit quand on arrive ici.
  */
 export async function apresNouveauDG(
   tx: Tx,
@@ -354,7 +453,7 @@ export async function apresNouveauDG(
     }
   }
   for (const d of await directeurs(tx)) {
-    if (d.id !== nouveau) await tenterRattachement(tx, journal, d.id, nouveau, 'directeur');
+    if (d !== nouveau) await tenterRattachement(tx, journal, d, nouveau, 'directeur');
   }
   if (ancien && ancien !== nouveau) {
     const [a] = await tx
@@ -374,7 +473,9 @@ export async function apresNouveauDG(
  *   — les agents de la direction rattachés au DG EN ATTENDANT une tête
  *     relèvent désormais de lui ;
  *   — l'ancien directeur, s'il reste dans la direction, relève de lui.
- * Le responsable de l'unité est DÉJÀ écrit quand on arrive ici.
+ * Le responsable de l'unité est DÉJÀ écrit quand on arrive ici. (Le DG ne
+ * peut pas diriger une autre direction : il n'en sort pas, et une personne
+ * ne dirige qu'une unité.)
  */
 export async function apresNouveauDirecteur(
   tx: Tx,
@@ -385,27 +486,21 @@ export async function apresNouveauDirecteur(
 ): Promise<void> {
   const dg = await directeurGeneral(tx);
   if (!dg) return;
-  if (nouveau !== dg) await tenterRattachement(tx, journal, nouveau, dg, 'directeur');
+  await tenterRattachement(tx, journal, nouveau, dg, 'directeur');
 
   const { rows } = await tx.execute<{ id: string }>(sql`
-    WITH RECURSIVE sous_arbre AS (
-      SELECT id FROM org_units WHERE id = ${directionId} AND deleted_at IS NULL
-      UNION ALL
-      SELECT o.id FROM org_units o JOIN sous_arbre s ON o.parent_id = s.id
-       WHERE o.deleted_at IS NULL AND o.unit_type <> 'direction'
-    )
-    SELECT DISTINCT e.id
-      FROM employees e
-      JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
-     WHERE a.org_unit_id IN (SELECT id FROM sous_arbre)
-       AND e.status = 'active' AND e.manager_employee_id = ${dg}`);
+    ${perimetre(directionId)}
+    SELECT e.id FROM employees e
+     WHERE ${uniteEnVigueur(sql`e.id`)} IN (SELECT id FROM perimetre)
+       AND e.status = 'active' AND e.manager_employee_id = ${dg}
+     ORDER BY e.id`);
   for (const r of rows) {
     if (r.id === nouveau || r.id === ancien) continue;
     if (await dirigeUneDirection(tx, r.id)) continue;
     await tenterRattachement(tx, journal, r.id, nouveau, 'direction_pourvue');
   }
 
-  if (ancien && ancien !== nouveau && ancien !== dg) {
+  if (ancien && ancien !== nouveau) {
     const [a] = await tx
       .select({ status: t.employees.status, n1: t.employees.managerEmployeeId })
       .from(t.employees)
@@ -418,23 +513,38 @@ export async function apresNouveauDirecteur(
   }
 }
 
+/** Une reprise d'équipe vérifiée, prête à s'écrire. */
+export interface PlanDeReprise {
+  partant: string;
+  repreneur: string;
+  equipe: { id: string; name: string }[];
+  /** Le repreneur est pris dans l'équipe : il prend la place du partant, sous ce n+1. */
+  place: string | null;
+  priseDePlace: boolean;
+}
+
 /**
- * L'équipe d'un agent qui part passe à son repreneur.
+ * Vérifie qu'une équipe peut passer à son repreneur — sans rien écrire.
  *
- * Pris dans l'équipe, le repreneur PREND LA PLACE du partant : il relève
- * désormais du n+1 de celui-ci. Chaque rattachement passe par la règle, et
- * TOUS sont vérifiés avant qu'un seul ne s'écrive : un seul qui ne tient pas,
- * et rien n'a bougé — mieux vaut un refus clair qu'une équipe à moitié
- * reprise.
+ * Pris dans l'équipe, le repreneur PREND LA PLACE du partant : il relèvera
+ * du n+1 de celui-ci. Encore faut-il que ce n+1 existe et reste : sinon le
+ * repreneur se retrouverait sans n+1, ou sous quelqu'un qui part.
+ *
+ * @param equipe  l'équipe à reprendre — déjà privée de ceux qui partent aussi.
+ * @param partants tous ceux qui partent dans la même opération.
  */
-export async function reprendreEquipe(
+export async function planifierReprise(
   tx: Tx,
-  journal: ChangementRattachement[],
   partant: string,
   repreneur: string,
-): Promise<void> {
+  equipe: { id: string; name: string }[],
+  partants: ReadonlySet<string> = new Set([partant]),
+): Promise<PlanDeReprise> {
   if (repreneur === partant) {
     problem(422, 'people.repreneur_partant', 'Le repreneur ne peut pas être celui qui part');
+  }
+  if (partants.has(repreneur)) {
+    problem(422, 'people.repreneur_partant', 'Le repreneur part aussi');
   }
   const [r] = await tx
     .select({ status: t.employees.status })
@@ -444,39 +554,96 @@ export async function reprendreEquipe(
   if (!r || r.status !== 'active') {
     problem(422, 'people.repreneur_inactif', 'Le repreneur doit être un agent actif');
   }
-  const equipe = await equipeDe(tx, partant);
   const priseDePlace = equipe.some((a) => a.id === repreneur);
   const [p] = await tx
     .select({ n1: t.employees.managerEmployeeId })
     .from(t.employees)
     .where(eq(t.employees.id, partant))
     .limit(1);
-  const n1DuPartant = p?.n1 ?? null;
+  const place = p?.n1 ?? null;
 
-  // D'abord tout vérifier…
-  if (priseDePlace && n1DuPartant) {
-    await validerRattachement(tx, repreneur, n1DuPartant, await directionDeEmploye(tx, repreneur));
+  if (priseDePlace) {
+    if (!place) {
+      problem(
+        422,
+        'people.repreneur_sans_place',
+        'Le repreneur ne peut pas prendre sa place : il n’a pas de n+1',
+        'Pris dans l’équipe, le repreneur relèverait du n+1 du partant. Choisissez-le hors de l’équipe, ou désignez d’abord ce n+1.',
+      );
+    }
+    if (partants.has(place)) {
+      problem(
+        422,
+        'people.repreneur_sans_place',
+        'Le repreneur ne peut pas prendre sa place : son n+1 part aussi',
+        'Traitez d’abord le départ de ce n+1, ou choisissez un repreneur hors de l’équipe.',
+      );
+    }
+    await validerRattachement(tx, repreneur, place, await directionDeEmploye(tx, repreneur));
   }
   for (const a of equipe) {
     if (a.id === repreneur) continue;
     await validerRattachement(tx, a.id, repreneur, await directionDeEmploye(tx, a.id));
   }
-  // … puis tout écrire.
-  if (priseDePlace) await rattacher(tx, journal, repreneur, n1DuPartant, 'prend_la_place');
-  for (const a of equipe) {
-    if (a.id !== repreneur) await rattacher(tx, journal, a.id, repreneur, 'reprise_equipe');
+  return { partant, repreneur, equipe, place, priseDePlace };
+}
+
+/**
+ * Écrit une reprise vérifiée par `planifierReprise`. Chaque rattachement se
+ * revérifie au moment de s'écrire : dans un lot, deux reprises vérifiées
+ * chacune de leur côté peuvent former une boucle une fois toutes deux
+ * écrites. Le refus annule alors le lot entier — rien n'est à moitié repris.
+ */
+export async function appliquerReprise(
+  tx: Tx,
+  journal: ChangementRattachement[],
+  plan: PlanDeReprise,
+): Promise<void> {
+  if (plan.priseDePlace && plan.place) {
+    await validerRattachement(
+      tx,
+      plan.repreneur,
+      plan.place,
+      await directionDeEmploye(tx, plan.repreneur),
+    );
+    await rattacher(tx, journal, plan.repreneur, plan.place, 'prend_la_place');
+  }
+  for (const a of plan.equipe) {
+    if (a.id === plan.repreneur) continue;
+    await validerRattachement(tx, a.id, plan.repreneur, await directionDeEmploye(tx, a.id));
+    await rattacher(tx, journal, a.id, plan.repreneur, 'reprise_equipe');
   }
 }
 
-/** L'unité racine — la Direction Générale — et son responsable. */
-export async function uniteRacine(
+/**
+ * L'équipe d'un agent qui part passe à son repreneur : tout est vérifié
+ * avant que rien ne s'écrive — un seul rattachement qui ne tient pas, et
+ * rien n'a bougé. Mieux vaut un refus clair qu'une équipe à moitié reprise.
+ */
+export async function reprendreEquipe(
   tx: Tx,
-): Promise<{ id: string; managerId: string | null } | null> {
-  const [racine] = await tx
-    .select({ id: t.orgUnits.id, managerId: t.orgUnits.managerEmployeeId })
-    .from(t.orgUnits)
-    .where(and(isNull(t.orgUnits.parentId), isNull(t.orgUnits.deletedAt)))
-    .orderBy(asc(t.orgUnits.createdAt))
-    .limit(1);
-  return racine ?? null;
+  journal: ChangementRattachement[],
+  partant: string,
+  repreneur: string,
+): Promise<void> {
+  const plan = await planifierReprise(tx, partant, repreneur, await equipeDe(tx, partant));
+  await appliquerReprise(tx, journal, plan);
+}
+
+/**
+ * Le DG siège-t-il bien à la Direction Générale — aujourd'hui et dans ses
+ * affectations à venir ? Relu après toute opération qui peut déplacer des
+ * unités ou des agents : une réorganisation ne doit pas l'en faire sortir.
+ */
+export async function assertDGALaDirectionGenerale(tx: Tx): Promise<void> {
+  const racine = await uniteRacine(tx);
+  if (!racine?.managerId) return;
+  if (await sortDuPerimetre(tx, racine.managerId, racine.id)) {
+    problem(
+      422,
+      'org.dg_hors_direction_generale',
+      'Le directeur général resterait hors de la Direction Générale',
+      'Il siège à la Direction Générale : cette opération l’en ferait sortir. Désignez d’abord son successeur.',
+    );
+  }
 }

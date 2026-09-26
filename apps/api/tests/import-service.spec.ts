@@ -466,14 +466,37 @@ describe('le responsable hiérarchique', () => {
     expect((await dossier('APIX-0001'))?.responsable).toBeNull();
   });
 
+  it('annonce dès l’aperçu un n+1 archivé, et crée le dossier sans lui', async () => {
+    await imports.importer(admin, classeurDe([AGENT(1)]), true);
+    await raw(`UPDATE employees SET status = 'archived' WHERE employee_number = 'APIX-0001'`);
+    const apercu = await imports.importer(
+      admin,
+      classeurDe([AGENT(2, { 'Matricule du responsable': 'APIX-0001' })]),
+      false,
+    );
+    expect(apercu.rattaches).toBe(0);
+    expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain('dossier archivé');
+  });
+
+  it('prévient qu’une ligne sans poste ne sera affectée nulle part', async () => {
+    const apercu = await imports.importer(
+      admin,
+      classeurDe([AGENT(3, { Poste: '', 'Matricule du responsable': 'APIX-0001' })]),
+      false,
+    );
+    const textes = apercu.lignes[0]?.avertissements.map((a) => a.texte) ?? [];
+    expect(textes[0]).toContain('Sans poste');
+    expect(apercu.rattaches).toBe(0);
+  });
+
   it('garde le dossier quand la RÈGLE DE DIRECTION refuse le rattachement', async () => {
     // Le n+1 est à la DCH, l'agent à la DIPE : la règle de l'APIX l'interdit.
     // Le dossier entre quand même — c'est le rattachement qui échoue.
     const dipe = randomUUID();
     await raw(
-      `INSERT INTO org_units (id, tenant_id, unit_type, name, short_name)
-       VALUES ($1,$2,'direction','Direction de l’Intelligence','DIPE')`,
-      [dipe, tenantId],
+      `INSERT INTO org_units (id, tenant_id, unit_type, name, short_name, parent_id)
+       VALUES ($1,$2,'direction','Direction de l’Intelligence','DIPE',$3)`,
+      [dipe, tenantId, dchId],
     );
     // Un directeur en place à la DCH et à la DIPE : sans tête, le chemin
     // « rattachement au DG » resterait ouvert et la règle ne mordrait pas.
@@ -490,16 +513,23 @@ describe('le responsable hiérarchique', () => {
     await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [dchId, chefDCH.id]);
     await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [dipe, chefDIPE.id]);
 
-    const r = await imports.importer(
-      admin,
-      classeurDe([
-        AGENT(2, { 'Direction affectée': 'DIPE', 'Matricule du responsable': 'APIX-0001' }),
-      ]),
-      true,
+    const fichier = classeurDe([
+      AGENT(2, { 'Direction affectée': 'DIPE', 'Matricule du responsable': 'APIX-0001' }),
+    ]);
+    // L'APERÇU le dit déjà, sous la même règle que l'écriture : il n'annonce
+    // pas « rattaché » ce que l'import refusera ensuite.
+    const apercu = await imports.importer(admin, fichier, false);
+    expect(apercu.rattaches).toBe(0);
+    expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain(
+      'relève de « Direction du Capital Humain », l’agent de « Direction de l’Intelligence »',
     );
+
+    const r = await imports.importer(admin, fichier, true);
     expect(r.crees).toBe(1);
     expect(r.sansResponsable).toBe(1);
-    expect(r.lignes[0]?.avertissements[0]?.texte).toContain('même direction');
+    expect(r.lignes[0]?.avertissements[0]?.texte).toEqual(
+      apercu.lignes[0]?.avertissements[0]?.texte,
+    );
     expect((await dossier('APIX-0002'))?.responsable).toBeNull();
   });
 

@@ -41,8 +41,11 @@ import { Donnee, Groupe, Peremption } from '../../../../components/fiche';
 import { Icon } from '../../../../components/icons';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
-import type { ChangementRattachement, DocumentRequestView, OrgUnit } from '@teranga/contracts';
-import { ListeConsequences } from '../../../../components/consequences-hierarchie';
+import type { ConsequencesHierarchie, DocumentRequestView, OrgUnit } from '@teranga/contracts';
+import {
+  aDesConsequences,
+  ListeConsequences,
+} from '../../../../components/consequences-hierarchie';
 import { useResponsablesPossibles } from '../../../../lib/responsables';
 import { LoadFailure } from '../../../../components/load-failure';
 import { Page } from '../../../../components/gabarit';
@@ -375,6 +378,7 @@ export default function EmployeePage() {
             employeeId={e.id}
             assignments={e.assignments}
             team={e.team}
+            managerId={e.managerId}
             canManage={Boolean(canSeeHistory)}
           />
 
@@ -492,22 +496,42 @@ export default function EmployeePage() {
 /** La direction d'une unité : elle-même, ou sa plus proche aïeule de type direction. */
 function directionDe(unites: OrgUnit[], uniteId: string | null | undefined): OrgUnit | null {
   let u = unites.find((x) => x.id === uniteId) ?? null;
-  while (u && u.unitType !== 'direction') {
+  // Une boucle d'unités d'avant la règle ne doit pas figer l'écran.
+  const vus = new Set<string>();
+  while (u && u.unitType !== 'direction' && !vus.has(u.id)) {
+    vus.add(u.id);
     const parent: string | null = u.parentId;
     u = unites.find((x) => x.id === parent) ?? null;
   }
-  return u;
+  return u?.unitType === 'direction' ? u : null;
+}
+
+/**
+ * L'affectation qui fait foi — en cours, sinon la prochaine —, comme au
+ * serveur : un agent qui n'a pas encore pris son poste est déjà de sa
+ * direction.
+ */
+function affectationEnVigueur(assignments: EmployeeDetail['assignments']) {
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  return (
+    assignments.find((a) => a.current) ??
+    [...assignments]
+      .filter((a) => a.validFrom > aujourdhui)
+      .sort((a, b) => a.validFrom.localeCompare(b.validFrom))[0]
+  );
 }
 
 function AssignmentsCard({
   employeeId,
   assignments,
   team,
+  managerId,
   canManage,
 }: {
   employeeId: string;
   assignments: EmployeeDetail['assignments'];
   team: EmployeeDetail['team'];
+  managerId: string | null;
   canManage: boolean;
 }) {
   const queryClient = useQueryClient();
@@ -517,7 +541,7 @@ function AssignmentsCard({
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [nouveauN1, setNouveauN1] = useState('');
   const [repreneur, setRepreneur] = useState('');
-  const [bilan, setBilan] = useState<ChangementRattachement[]>([]);
+  const [bilan, setBilan] = useState<ConsequencesHierarchie | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const orgUnits = useQuery({
@@ -531,7 +555,7 @@ function AssignmentsCard({
   // ICI, dans la même opération : faits l'un après l'autre, chacun serait
   // refusé par la règle.
   const unites = orgUnits.data ?? [];
-  const actuelle = assignments.find((a) => a.current);
+  const actuelle = affectationEnVigueur(assignments);
   const directionActuelle = directionDe(unites, actuelle?.orgUnitId);
   const directionVisee = directionDe(unites, orgUnitId || null);
   const changeDeDirection =
@@ -543,10 +567,16 @@ function AssignmentsCard({
     employeeId,
   );
   const repreneurRequis = changeDeDirection && team.length > 0;
+  // Le n+1 n'est pas daté : il vaut dès aujourd'hui. Une mutation vers une
+  // autre direction qui touche à la hiérarchie s'enregistre donc le jour où
+  // elle prend effet — le serveur refuserait de la programmer.
+  const programmee = startDate > new Date().toISOString().slice(0, 10);
+  const bloqueeParLaDate =
+    programmee && changeDeDirection && Boolean(managerId || nouveauN1 || team.length > 0);
 
   const create = useMutation({
     mutationFn: () =>
-      api<{ changements: ChangementRattachement[] }>(`/employees/${employeeId}/assignments`, {
+      api<ConsequencesHierarchie>(`/employees/${employeeId}/assignments`, {
         method: 'POST',
         body: {
           positionTitle,
@@ -562,7 +592,7 @@ function AssignmentsCard({
       setNouveauN1('');
       setRepreneur('');
       setError(null);
-      setBilan(res?.changements ?? []);
+      setBilan(res ?? null);
       void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
       void queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
@@ -623,7 +653,12 @@ function AssignmentsCard({
             <Button
               onClick={() => create.mutate()}
               loading={create.isPending}
-              disabled={!positionTitle.trim() || !startDate || (repreneurRequis && !repreneur)}
+              disabled={
+                !positionTitle.trim() ||
+                !startDate ||
+                (repreneurRequis && !repreneur) ||
+                bloqueeParLaDate
+              }
             >
               Enregistrer
             </Button>
@@ -673,6 +708,16 @@ function AssignmentsCard({
               ) : null}
             </div>
           ) : null}
+          {bloqueeParLaDate ? (
+            <p className="mt-3 flex items-start gap-2 text-[12.5px] leading-relaxed text-ink">
+              <Icon name="event" size={16} className="mt-px shrink-0 text-primary" />
+              <span>
+                Une mutation vers une autre direction s’enregistre le jour où elle prend effet : le
+                n+1 vaut dès aujourd’hui, et la chaîne hiérarchique resterait fausse jusqu’à cette
+                date.
+              </span>
+            </p>
+          ) : null}
           <p className="mt-2 text-xs text-ink-muted">
             L&apos;affectation en cours sera automatiquement clôturée la veille — l&apos;historique
             reste intact.
@@ -682,9 +727,9 @@ function AssignmentsCard({
           ) : null}
         </CardContent>
       ) : null}
-      {bilan.length > 0 ? (
+      {aDesConsequences(bilan) ? (
         <CardContent className="border-b border-line-soft">
-          <ListeConsequences consequences={{ changements: bilan, aRevoir: [] }} faites />
+          <ListeConsequences consequences={bilan!} faites />
         </CardContent>
       ) : null}
       {assignments.length === 0 ? (

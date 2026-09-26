@@ -120,6 +120,13 @@ export default function MyInformationsPage() {
 
   const p = detail.data.person;
   const marital = maritalLabels(p.gender);
+  // L'affectation qui fait foi — en cours, sinon la prochaine.
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const affectation =
+    detail.data.assignments.find((a) => a.current) ??
+    [...detail.data.assignments]
+      .filter((a) => a.validFrom > aujourdhui)
+      .sort((a, b) => a.validFrom.localeCompare(b.validFrom))[0];
   const signalements = requests.data ?? [];
   const enAttente = signalements.find((r) => r.status === 'pending');
 
@@ -219,8 +226,14 @@ export default function MyInformationsPage() {
                   <span className="font-mono">{detail.data.employeeNumber}</span>
                 </Donnee>
                 <Donnee label="Poste">{me.data.positionTitle}</Donnee>
-                <Donnee label="Direction affectée">{me.data.orgUnitName}</Donnee>
-                <Donnee label="Manager">{detail.data.managerName}</Donnee>
+                {/* La direction se lit en remontant l'organigramme : l'unité
+                    d'affectation peut être un service ou un département. */}
+                <Donnee label="Direction">{affectation?.directionName ?? null}</Donnee>
+                {affectation?.orgUnitName &&
+                affectation.orgUnitName !== affectation.directionName ? (
+                  <Donnee label="Unité">{affectation.orgUnitName}</Donnee>
+                ) : null}
+                <Donnee label="Responsable (n+1)">{detail.data.managerName}</Donnee>
                 <Donnee label="Email professionnel">{detail.data.workEmail}</Donnee>
                 <Donnee label="Téléphone professionnel">
                   {detail.data.workPhone ? <Telephone valeur={detail.data.workPhone} /> : null}

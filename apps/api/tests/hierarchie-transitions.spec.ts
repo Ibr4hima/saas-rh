@@ -413,3 +413,206 @@ describe('les réorganisations', () => {
     expect(r.changements.map((c) => c.motif)).toEqual(['directeur']);
   });
 });
+
+/* ————————————————————————————————————————————————————————————————
+   Les cas trouvés par l'audit de bout en bout : un test par défaut.
+   ———————————————————————————————————————————————————————————————— */
+
+describe('les mutations, dans l’ordre où l’on corrige', () => {
+  it('un responsable d’unité apprend d’abord qu’il dirige — pas qu’il encadre', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const chef = await agent('CHEF', uEtudes, dsid);
+    await nommer(uEtudes, chef);
+    await agent('A', uEtudes, chef);
+    expect(await codeOf(() => muter(chef, uDCH))).toBe('people.manager_cannot_leave_unit');
+  });
+
+  it('refuse une mutation PROGRAMMÉE vers une autre direction tant qu’elle touche au n+1', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const dch = await unDirecteur('DCH', uDCH);
+    const a = await agent('A', uDSID, dsid);
+    expect(
+      await codeOf(() =>
+        people.newAssignment(user, a, {
+          positionTitle: 'Chargé RH',
+          orgUnitId: uDCH,
+          startDate: '2099-01-01',
+          managerEmployeeId: dch,
+        } as never),
+      ),
+    ).toBe('people.mutation_programmee_hors_direction');
+    expect(await n1(a)).toBe(dsid);
+  });
+
+  it('accepte une mutation programmée DANS la même direction', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const a = await agent('A', uDSID, dsid);
+    await people.newAssignment(user, a, {
+      positionTitle: 'Analyste principal',
+      orgUnitId: uEtudes,
+      startDate: '2099-01-01',
+    } as never);
+    expect(await n1(a)).toBe(dsid);
+    expect(await anomalies()).toEqual([]);
+  });
+
+  it('garde le DG comme n+1 d’un agent qui passe d’une direction sans tête à une autre', async () => {
+    const dg = await leDG();
+    const a = await agent('A', uDSID, dg);
+    const r = await muter(a, uDCH);
+    expect(await n1(a)).toBe(dg);
+    expect(r.aRevoir).toEqual([]);
+  });
+
+  it('rend ce que la mutation laisse à faire, sans attendre le contrôle', async () => {
+    await leDG();
+    await unDirecteur('DSID', uDSID);
+    const { id } = await people.create(user, {
+      person: { givenName: 'A', familyName: 'Test' },
+      employee: { employeeNumber: 'A', hiredOn: '2024-01-01' },
+    } as CreateEmployeeInput);
+    // Placé dans une direction, il lui faut maintenant son n+1 : c'est dit.
+    const r = await muter(id, uDSID);
+    expect(r.aRevoir.map((x) => `${x.matricule}:${x.type}:${x.direction}`)).toEqual([
+      'A:sans_responsable:Direction des Systèmes',
+    ]);
+  });
+});
+
+describe('les départs en lot', () => {
+  it('un départ refusé rend son équipe à confier : le lot se recalcule', async () => {
+    // B encadre C, qui encadre D. On archive B et C sans repreneur : C est
+    // refusé (D reste), donc C reste — et redevient l'équipe de B, qui ne
+    // peut plus partir sans repreneur. Avant, B partait et laissait C sous
+    // un n+1 archivé.
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const b = await agent('B', uDSID, dsid);
+    const c = await agent('C', uDSID, b);
+    await agent('D', uDSID, c);
+    const r = await people.archive(user, { ids: [b, c], archived: true });
+    expect(r.done).toBe(0);
+    expect(r.skipped.map((s) => s.name).sort()).toEqual(['B Test', 'C Test']);
+    expect(await anomalies()).toEqual([]);
+  });
+
+  it('deux reprises qui formeraient une boucle annulent le lot entier', async () => {
+    // B et D partent. S (équipe de B) est confié à R ; R (équipe de D) est
+    // confié à S. Chacune se tient seule ; écrites toutes deux, R et S
+    // relèveraient l'un de l'autre.
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const b = await agent('B', uDSID, dsid);
+    const d = await agent('D', uDSID, dsid);
+    const s = await agent('S', uDSID, b);
+    const r = await agent('R', uDSID, d);
+    expect(
+      await codeOf(() =>
+        people.archive(user, { ids: [b, d], archived: true, repreneurs: { [b]: r, [d]: s } }),
+      ),
+    ).toBe('people.manager_cycle');
+    expect(await n1(s)).toBe(b);
+    expect(await n1(r)).toBe(d);
+    expect((await people.detail(user, b)).status).toBe('active');
+  });
+
+  it('rouvrir un dossier dont le n+1 est parti le dit tout de suite', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const chef = await agent('CHEF', uDSID, dsid);
+    const a = await agent('A', uDSID, chef);
+    await people.archive(user, { ids: [a], archived: true });
+    await people.archive(user, { ids: [chef], archived: true });
+    const r = await people.archive(user, { ids: [a], archived: false });
+    expect(r.done).toBe(1);
+    expect(r.aRevoir?.map((x) => `${x.matricule}:${x.type}`)).toEqual(['A:responsable_archive']);
+  });
+
+  it('le nombre d’agents d’un encadrant ne compte jamais le DG', async () => {
+    // Une donnée d'avant la règle : le DG rattaché à un agent.
+    const dg = await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    await raw(`UPDATE employees SET manager_employee_id = $1 WHERE id = $2`, [dsid, dg]);
+    const page = await people.list(user, {
+      limit: 50,
+      offset: 0,
+      sort: 'name',
+      dir: 'asc',
+    } as never);
+    expect(page.items.find((i) => i.id === dsid)?.teamSize).toBe(0);
+    expect((await people.detail(user, dsid)).team).toEqual([]);
+    expect(await anomalies()).toEqual(['DG:dg_rattache']);
+  });
+});
+
+describe('le contrôle, avec les définitions de l’écriture', () => {
+  it('compte un agent pas encore arrivé dans la direction qu’il rejoint', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const futur = await people.create(user, {
+      person: { givenName: 'Futur', familyName: 'Test' },
+      employee: { employeeNumber: 'FUTUR', hiredOn: '2099-01-01', managerEmployeeId: dsid },
+      assignment: { positionTitle: 'Analyste', startDate: '2099-01-01', orgUnitId: uDSID },
+    } as CreateEmployeeInput);
+    expect(futur.id).toBeTruthy();
+    expect(await anomalies()).toEqual([]);
+  });
+
+  it('signale un DG affecté hors de la Direction Générale', async () => {
+    const dg = await leDG();
+    await raw(`UPDATE assignments SET org_unit_id = $1 WHERE employee_id = $2`, [uDSID, dg]);
+    expect(await anomalies()).toEqual(['DG:dg_hors_direction_generale']);
+  });
+
+  it('signale le rattachement à un n+1 sans affectation, sous le nom de l’agent', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const a = await agent('A', uDSID, dsid);
+    const b = await agent('B', uDSID, a);
+    await raw(`DELETE FROM assignments WHERE employee_id = $1`, [a]);
+    expect(b).toBeTruthy();
+    expect((await anomalies()).sort()).toEqual([
+      'A:sans_direction',
+      'B:responsable_sans_direction',
+    ]);
+  });
+
+  it('survit à une boucle d’unités d’avant la règle', async () => {
+    // Deux départements qui se contiennent l'un l'autre : impossible par
+    // l'application, possible dans une vieille base. Rien ne doit tourner
+    // sans fin.
+    await leDG();
+    const x = await unite('Boucle X', 'department', uDSID);
+    const y = await unite('Boucle Y', 'department', x);
+    await raw(`UPDATE org_units SET parent_id = $1 WHERE id = $2`, [y, x]);
+    await agent('A', y);
+    const controle = await hierarchie.controle(user);
+    expect(controle.anomalies.map((a) => `${a.matricule}:${a.type}`)).toContain(
+      'A:sans_responsable',
+    );
+    expect(
+      await codeOf(() =>
+        people.list(user, { limit: 5, offset: 0, sort: 'name', dir: 'asc' } as never),
+      ),
+    ).toBe('AUCUNE ERREUR');
+    await raw(`UPDATE org_units SET parent_id = $1 WHERE id = $2`, [uDSID, x]);
+  });
+});
+
+describe('deux gestes simultanés', () => {
+  it('A sous B pendant que B passe sous A : un seul passe, pas de boucle', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const a = await agent('A', uDSID, dsid);
+    const b = await agent('B', uDSID, dsid);
+    const resultats = await Promise.allSettled([
+      people.update(user, a, { employee: { managerEmployeeId: b } }),
+      people.update(user, b, { employee: { managerEmployeeId: a } }),
+    ]);
+    expect(resultats.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(await anomalies()).toEqual([]);
+  });
+});

@@ -37,6 +37,8 @@ let db: TenantDb;
 let service: OrgUnitsService;
 
 /** Identifiants recréés à chaque test : les cas se détruisent mutuellement. */
+let racine: string;
+let dgId: string;
 let direction: string;
 let departement: string;
 let serviceUnit: string;
@@ -119,8 +121,13 @@ beforeEach(async () => {
   await raw(`DELETE FROM persons WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM org_units WHERE tenant_id = $1`, [tenantId]);
 
-  direction = await creerUnite('Direction Mère', 'direction', null);
-  autreDirection = await creerUnite('Direction Voisine', 'direction', null);
+  // Un seul sommet — la Direction Générale, et son responsable le DG —, deux
+  // directions dessous : l'organigramme tel que la règle le veut.
+  racine = await creerUnite('Direction Générale', 'direction', null);
+  dgId = await creerEmploye('DG-1', racine);
+  await raw(`UPDATE org_units SET manager_employee_id = $1 WHERE id = $2`, [dgId, racine]);
+  direction = await creerUnite('Direction Mère', 'direction', racine);
+  autreDirection = await creerUnite('Direction Voisine', 'direction', racine);
   departement = await creerUnite('Département Fils', 'department', direction);
   serviceUnit = await creerUnite('Service Petit-Fils', 'service', departement);
   chefId = await creerEmploye('CHEF-1', serviceUnit);
@@ -149,19 +156,13 @@ describe('hiérarchie des types', () => {
     ).toBe('org.parent_type_invalid');
   });
 
-  it('accepte une direction sous une AUTRE direction — la Générale chapeaute', async () => {
-    const generale = await creerUnite('Direction Générale', 'direction', null);
-    await service.update(user, autreDirection, { parentId: generale });
+  it('accepte une direction sous une AUTRE direction — une sous-direction', async () => {
+    await service.update(user, autreDirection, { parentId: direction });
     const unites = await service.list(user);
-    expect(unites.find((u) => u.id === autreDirection)?.parentId).toBe(generale);
-    // Remise en place : les autres cas de ce fichier partent d'une voisine
-    // libre de tout rattachement. En SQL : le service, lui, refuse désormais
-    // un second sommet.
-    await raw(`UPDATE org_units SET parent_id = NULL WHERE id = $1`, [autreDirection]);
+    expect(unites.find((u) => u.id === autreDirection)?.parentId).toBe(direction);
   });
 
   it('refuse un second sommet, à la création comme au re-rattachement', async () => {
-    // Le bac d'essai en compte déjà — comme un tenant d'avant la règle.
     expect(
       await codeOf(() => service.create(user, { name: 'Direction Bis', unitType: 'direction' })),
     ).toBe('org.sommet_unique');
@@ -171,10 +172,23 @@ describe('hiérarchie des types', () => {
     );
   });
 
-  it('laisse une direction SANS rattachement : elle peut tenir le sommet', async () => {
-    const id = await creerUnite('Direction Racine', 'direction', null);
+  it('la base elle-même refuse un second sommet, quelle que soit la porte', async () => {
+    // Un script, un import, deux requêtes simultanées : l'index tient.
+    const err = await creerUnite('Direction Pirate', 'direction', null).catch(
+      (e: { constraint?: string }) => e.constraint,
+    );
+    expect(err).toBe('org_units_un_seul_sommet');
+  });
+
+  it('dit au client quelle unité est LE sommet', async () => {
     const unites = await service.list(user);
-    expect(unites.find((u) => u.id === id)?.parentId).toBeNull();
+    expect(unites.filter((u) => u.sommet).map((u) => u.id)).toEqual([racine]);
+  });
+
+  it('garde la Direction Générale au sommet', async () => {
+    expect(await codeOf(() => service.update(user, racine, { parentId: direction }))).toBe(
+      'org.sommet_fixe',
+    );
   });
 
   it('refuse de ranger une direction sous sa propre descendante', async () => {
@@ -219,6 +233,41 @@ describe('responsable', () => {
     ).toBe('org.manager_outside_unit');
   });
 
+  it('refuse un directeur affecté dans une SOUS-direction : elle a sa propre tête', async () => {
+    const fille = await creerUnite('Direction Fille', 'direction', direction);
+    const x = await creerEmploye('SOUS-1', fille);
+    expect(await codeOf(() => service.update(user, direction, { managerEmployeeId: x }))).toBe(
+      'org.manager_outside_unit',
+    );
+    const eligibles = await service.eligibleManagers(user, direction);
+    expect(eligibles.map((e) => e.employeeNumber)).not.toContain('SOUS-1');
+  });
+
+  it('refuse un responsable dont la mutation est déjà programmée ailleurs', async () => {
+    const x = await creerEmploye('PARTANT-1', serviceUnit);
+    await raw(
+      `UPDATE assignments SET validity = daterange('2024-01-01', CURRENT_DATE + 10)
+        WHERE employee_id = $1`,
+      [x],
+    );
+    await raw(
+      `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+       VALUES ($1,$2,$3,$4,'Agent', daterange(CURRENT_DATE + 10, NULL))`,
+      [randomUUID(), tenantId, x, autreDirection],
+    );
+    expect(await codeOf(() => service.update(user, serviceUnit, { managerEmployeeId: x }))).toBe(
+      'org.manager_outside_unit',
+    );
+    const eligibles = await service.eligibleManagers(user, serviceUnit);
+    expect(eligibles.map((e) => e.employeeNumber)).not.toContain('PARTANT-1');
+  });
+
+  it('ne propose pas qui dirige déjà une autre unité', async () => {
+    // chefId dirige le département et travaille dans le service.
+    const eligibles = await service.eligibleManagers(user, serviceUnit);
+    expect(eligibles.map((e) => e.employeeNumber)).not.toContain('CHEF-1');
+  });
+
   it('accepte un employé du sous-arbre', async () => {
     // chefId est affecté au service, petit-fils de la direction. On le libère
     // du département d'abord : un employé ne dirige qu'une unité.
@@ -256,6 +305,35 @@ describe('responsable', () => {
 describe('dissolution', () => {
   it('refuse tant que l’unité en contient d’autres', async () => {
     expect(await codeOf(() => service.remove(user, direction, {}))).toBe('org.unit_has_children');
+  });
+
+  it('ne dissout jamais la Direction Générale', async () => {
+    expect(await codeOf(() => service.remove(user, racine, {}))).toBe('org.sommet_indissoluble');
+  });
+
+  it('garde l’échéance d’une affectation, sans chevaucher la mutation déjà programmée', async () => {
+    // L'agent quitte le service dans 30 jours pour la direction voisine. On
+    // dissout le service vers le département : sa nouvelle affectation doit
+    // s'arrêter là où s'arrêtait l'ancienne — pas courir à l'infini et
+    // heurter la suivante.
+    await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [departement]);
+    await raw(
+      `UPDATE assignments SET validity = daterange('2024-01-01', CURRENT_DATE + 30)
+        WHERE employee_id = $1`,
+      [chefId],
+    );
+    await raw(
+      `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+       VALUES ($1,$2,$3,$4,'Agent', daterange(CURRENT_DATE + 30, NULL))`,
+      [randomUUID(), tenantId, chefId, autreDirection],
+    );
+    await service.remove(user, serviceUnit, { reassignTo: departement });
+    const { rows } = await raw(
+      `SELECT org_unit_id, (upper(validity) - CURRENT_DATE) AS reste
+         FROM assignments WHERE employee_id = $1 AND lower(validity) = CURRENT_DATE`,
+      [chefId],
+    );
+    expect(rows).toEqual([{ org_unit_id: departement, reste: 30 }]);
   });
 
   it('détache les employés quand aucune unité d’accueil n’est indiquée', async () => {
@@ -362,6 +440,25 @@ describe('dissolution', () => {
 });
 
 describe('re-rattachement', () => {
+  it('refuse un changement de type qui ferait sortir un responsable de son périmètre', async () => {
+    // chefId dirige la direction mère depuis le département : ériger le
+    // département en direction l'en ferait sortir — une sous-direction a
+    // sa propre tête.
+    await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [departement]);
+    await raw(`UPDATE org_units SET manager_employee_id = $1 WHERE id = $2`, [chefId, direction]);
+    expect(await codeOf(() => service.update(user, departement, { unitType: 'direction' }))).toBe(
+      'org.manager_would_leave_unit',
+    );
+  });
+
+  it('refuse une réorganisation qui ferait sortir le DG de la Direction Générale', async () => {
+    const cabinet = await creerUnite('Cabinet', 'department', racine);
+    await raw(`UPDATE assignments SET org_unit_id = $1 WHERE employee_id = $2`, [cabinet, dgId]);
+    expect(await codeOf(() => service.update(user, cabinet, { parentId: direction }))).toBe(
+      'org.dg_hors_direction_generale',
+    );
+  });
+
   it('refuse de faire sortir un responsable par déplacement de son unité', async () => {
     expect(
       await codeOf(() => service.update(user, serviceUnit, { parentId: autreDirection })),

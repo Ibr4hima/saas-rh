@@ -183,22 +183,33 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
 
   // C'est dans cette fenêtre qu'on corrige les dossiers signalés par le
   // bandeau de la chaîne hiérarchique : elle doit guider, pas piéger.
-  const affectation = employee.assignments.find((a) => a.current);
+  // L'affectation qui fait foi — en cours, sinon la prochaine —, comme au
+  // serveur : un agent qui n'a pas encore pris son poste est déjà de sa
+  // direction, et son n+1 s'y choisit.
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const affectation =
+    employee.assignments.find((a) => a.current) ??
+    [...employee.assignments]
+      .filter((a) => a.validFrom > aujourdhui)
+      .sort((a, b) => a.validFrom.localeCompare(b.validFrom))[0];
   const direction = affectation?.directionName ?? null;
-  const { options: possibles } = useResponsablesPossibles(
-    affectation?.directionShortName ?? affectation?.directionName ?? null,
-    employee.id,
-  );
   // D'abord l'affectation, ensuite la hiérarchie : sans direction, le n+1 ne
   // se choisit pas — et le directeur général n'en a jamais. Dans ces deux
   // cas, le champ ne garde que le n+1 actuel, pour qu'on puisse le RETIRER :
-  // c'est ainsi qu'on corrige un dossier signalé.
+  // c'est ainsi qu'on corrige un dossier signalé. Un directeur, lui, ne
+  // relève que du directeur général : c'est le seul choix proposé.
   const unites = useQuery({
     queryKey: ['org-units'],
     queryFn: () => api<OrgUnitView[]>('/org-units'),
   });
-  const estDG = (unites.data ?? []).some(
-    (u) => u.parentId === null && u.managerEmployeeId === employee.id,
+  const estDG = (unites.data ?? []).some((u) => u.sommet && u.managerEmployeeId === employee.id);
+  const estDirecteur = (unites.data ?? []).some(
+    (u) => u.unitType === 'direction' && !u.sommet && u.managerEmployeeId === employee.id,
+  );
+  const { options: possibles } = useResponsablesPossibles(
+    affectation?.directionShortName ?? affectation?.directionName ?? null,
+    employee.id,
+    estDirecteur,
   );
   const peutChoisir = Boolean(direction) && !estDG;
   const actuel =

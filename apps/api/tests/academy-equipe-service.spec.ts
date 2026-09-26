@@ -189,16 +189,18 @@ beforeAll(async () => {
   // Le DG est le responsable de l'unité RACINE. Son n+1 est posé en SQL : la
   // saisie le refuserait.
   await agent(agents.dg, 'Mouhammad', 'Fall', 'EQ-000', null, agents.awa);
+  const generale = randomUUID();
   await raw(
     `INSERT INTO org_units (id, tenant_id, unit_type, name, manager_employee_id)
      VALUES ($1,$2,'direction','Direction Générale',$3)`,
-    [randomUUID(), tenantId, agents.dg],
+    [generale, tenantId, agents.dg],
   );
 
   const unite = randomUUID();
   await raw(
-    `INSERT INTO org_units (id, tenant_id, unit_type, name) VALUES ($1,$2,'department','Département Études')`,
-    [unite, tenantId],
+    `INSERT INTO org_units (id, tenant_id, unit_type, name, parent_id)
+     VALUES ($1,$2,'department','Département Études',$3)`,
+    [unite, tenantId, generale],
   );
   await raw(
     `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)

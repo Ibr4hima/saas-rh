@@ -126,10 +126,20 @@ describe('un employé ne dirige qu’une unité', () => {
     });
     // L'unité dissoute ne compte plus : le même responsable redevient libre.
     const code = await tenter(
-      sql`INSERT INTO org_units (id, tenant_id, unit_type, name, manager_employee_id)
-          VALUES (${randomUUID()}, ${tenantId}, 'direction', 'Reprise', ${autre})`,
+      sql`INSERT INTO org_units (id, tenant_id, unit_type, name, manager_employee_id, parent_id)
+          VALUES (${randomUUID()}, ${tenantId}, 'direction', 'Reprise', ${autre}, ${directionId})`,
     );
     expect(code).toBeNull();
+  });
+});
+
+describe('un seul sommet', () => {
+  it('refuse une seconde unité sans parent dans la même organisation', async () => {
+    const code = await tenter(
+      sql`INSERT INTO org_units (id, tenant_id, unit_type, name)
+          VALUES (${randomUUID()}, ${tenantId}, 'direction', 'Second sommet')`,
+    );
+    expect(code).toBe('23505');
   });
 });
 
@@ -144,8 +154,8 @@ describe('abrégé', () => {
 
   it('refuse deux directions au même abrégé, quelle que soit la casse', async () => {
     const code = await tenter(
-      sql`INSERT INTO org_units (id, tenant_id, unit_type, name, short_name)
-          VALUES (${randomUUID()}, ${tenantId}, 'direction', 'Direction Bis', 'dts')`,
+      sql`INSERT INTO org_units (id, tenant_id, unit_type, name, short_name, parent_id)
+          VALUES (${randomUUID()}, ${tenantId}, 'direction', 'Direction Bis', 'dts', ${directionId})`,
     );
     expect(code).toBe('23505');
   });
@@ -153,9 +163,15 @@ describe('abrégé', () => {
 
 describe('noms', () => {
   it('refuse deux unités sœurs homonymes', async () => {
+    await withTenant(async (db) => {
+      await db.execute(
+        sql`INSERT INTO org_units (id, tenant_id, unit_type, name, parent_id)
+            VALUES (${randomUUID()}, ${tenantId}, 'service', 'Service Jumeau', ${directionId})`,
+      );
+    });
     const code = await tenter(
-      sql`INSERT INTO org_units (id, tenant_id, unit_type, name)
-          VALUES (${randomUUID()}, ${tenantId}, 'direction', 'direction test')`,
+      sql`INSERT INTO org_units (id, tenant_id, unit_type, name, parent_id)
+          VALUES (${randomUUID()}, ${tenantId}, 'service', 'service jumeau', ${directionId})`,
     );
     expect(code).toBe('23505');
   });
@@ -164,8 +180,8 @@ describe('noms', () => {
     const autreDirection = randomUUID();
     await withTenant(async (db) => {
       await db.execute(
-        sql`INSERT INTO org_units (id, tenant_id, unit_type, name)
-            VALUES (${autreDirection}, ${tenantId}, 'direction', 'Direction Voisine')`,
+        sql`INSERT INTO org_units (id, tenant_id, unit_type, name, parent_id)
+            VALUES (${autreDirection}, ${tenantId}, 'direction', 'Direction Voisine', ${directionId})`,
       );
       await db.execute(
         sql`INSERT INTO org_units (id, tenant_id, unit_type, name, parent_id)
