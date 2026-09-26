@@ -64,6 +64,12 @@ export interface MyEmployeeView {
   workEmail: string | null;
   positionTitle: string | null;
   orgUnitName: string | null;
+  /**
+   * Qui vise ses demandes de congé en premier : son n+1, s'il peut viser
+   * (actif, avec un accès au portail). `null` : elles vont directement à la
+   * RH.
+   */
+  valideurN1: string | null;
 }
 
 export type PortalStatus = 'none' | 'invited' | 'active';

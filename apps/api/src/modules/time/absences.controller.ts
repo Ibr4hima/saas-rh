@@ -25,7 +25,6 @@ import {
   previewAbsenceSchema,
   setBalanceSchema,
   updateAbsenceTypeSchema,
-  updateApprovalChainSchema,
   updateHolidaySchema,
   type CreateAbsenceRequestInput,
   type CreateAbsenceTypeInput,
@@ -34,7 +33,6 @@ import {
   type ListAbsenceRequestsQuery,
   type SetBalanceInput,
   type UpdateAbsenceTypeInput,
-  type UpdateApprovalChainInput,
   type UpdateHolidayInput,
 } from '@teranga/contracts';
 import { z } from 'zod';
@@ -125,18 +123,12 @@ export class AbsencesController {
 
   // ---------- Circuit d'approbation ----------
 
-  @Get('approval-chain')
-  getChain(@Req() req: AuthenticatedRequest) {
-    return this.absences.getChain(req.sessionUser);
-  }
-
-  @Put('approval-chain')
-  @Roles('admin')
-  updateChain(
-    @Req() req: AuthenticatedRequest,
-    @Body(new ZodValidationPipe(updateApprovalChainSchema)) body: UpdateApprovalChainInput,
-  ) {
-    return this.absences.updateChain(req.sessionUser, body.levels);
+  // Fixé par l'APIX : le n+1, puis la RH (cf. CIRCUIT_CONGES aux contrats).
+  // Ce que le n+1 a devant lui — son équipe, ce qui attend son visa : c'est
+  // l'organigramme qui fait le n+1, pas le rôle, d'où la question au serveur.
+  @Get('absences/validations/compteurs')
+  compteurs(@Req() req: AuthenticatedRequest) {
+    return this.absences.compteurs(req.sessionUser);
   }
 
   // ---------- Soldes ----------

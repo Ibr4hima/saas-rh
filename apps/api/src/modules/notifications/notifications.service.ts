@@ -74,6 +74,55 @@ export function holidayAlreadySentSql(userId: string) {
   )`;
 }
 
+/**
+ * Notifie un utilisateur précis, dans la transaction appelante. Une fonction
+ * autant qu'une méthode : le circuit des congés prévient ses valideurs depuis
+ * des opérations qui ne passent pas par l'injection (cascades de la chaîne
+ * hiérarchique).
+ */
+export async function notifier(
+  tx: Tx,
+  tenantId: string,
+  userId: string,
+  draft: NotificationDraft,
+): Promise<void> {
+  await tx
+    .insert(t.notifications)
+    .values({
+      id: uuidv7(),
+      tenantId,
+      recipientUserId: userId,
+      type: draft.type,
+      title: draft.title,
+      body: draft.body ?? null,
+      link: draft.link ?? null,
+      dedupeKey: draft.dedupeKey ?? null,
+    })
+    .onConflictDoNothing();
+}
+
+/** Notifie toute la RH du tenant (fan-out : une ligne par admin/RH). */
+export async function notifierLaRH(
+  tx: Tx,
+  tenantId: string,
+  draft: NotificationDraft,
+  exclure: ReadonlyArray<string | null | undefined> = [],
+): Promise<void> {
+  const recipients = await tx
+    .select({ userId: t.userTenantMemberships.userId })
+    .from(t.userTenantMemberships)
+    .where(
+      and(
+        eq(t.userTenantMemberships.tenantId, tenantId),
+        inArray(t.userTenantMemberships.role, HR_ROLES),
+      ),
+    );
+  for (const r of recipients) {
+    if (exclure.includes(r.userId)) continue;
+    await notifier(tx, tenantId, r.userId, draft);
+  }
+}
+
 /** Les trois prédicats qui reviennent partout, nommés une fois pour toutes. */
 const mien = (userId: string) => eq(t.notifications.recipientUserId, userId);
 const dansLaBoite = () => isNull(t.notifications.archivedAt);
@@ -92,19 +141,7 @@ export class NotificationsService {
     userId: string,
     draft: NotificationDraft,
   ): Promise<void> {
-    await tx
-      .insert(t.notifications)
-      .values({
-        id: uuidv7(),
-        tenantId,
-        recipientUserId: userId,
-        type: draft.type,
-        title: draft.title,
-        body: draft.body ?? null,
-        link: draft.link ?? null,
-        dedupeKey: draft.dedupeKey ?? null,
-      })
-      .onConflictDoNothing();
+    await notifier(tx, tenantId, userId, draft);
   }
 
   /** Notifie toute la RH du tenant (fan-out : une ligne par admin/RH). */
@@ -114,19 +151,7 @@ export class NotificationsService {
     draft: NotificationDraft,
     excludeUserId?: string,
   ): Promise<void> {
-    const recipients = await tx
-      .select({ userId: t.userTenantMemberships.userId })
-      .from(t.userTenantMemberships)
-      .where(
-        and(
-          eq(t.userTenantMemberships.tenantId, tenantId),
-          inArray(t.userTenantMemberships.role, HR_ROLES),
-        ),
-      );
-    for (const r of recipients) {
-      if (r.userId === excludeUserId) continue;
-      await this.notifyUser(tx, tenantId, r.userId, draft);
-    }
+    await notifierLaRH(tx, tenantId, draft, [excludeUserId]);
   }
 
   /** Boîte de réception : génère d'abord les échéances (idempotent). */

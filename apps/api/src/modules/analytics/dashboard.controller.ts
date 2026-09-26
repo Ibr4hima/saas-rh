@@ -4,6 +4,7 @@ import type { DashboardView } from '@teranga/contracts';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
 import { Roles, RolesGuard } from '../auth/roles.guard';
+import { aUnN1QuiPeutViser, NIVEAU_RH } from '../time/visas';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 
 @Controller()
@@ -98,8 +99,20 @@ export class DashboardController {
               ),
             ),
         ),
+        // Ce qui attend la RH — pas ce qui attend encore le n+1 : un badge
+        // qui compte une demande qu'on ne peut pas viser fait cliquer pour
+        // rien. Une demande dont le n+1 ne peut plus viser revient à la RH.
         count(
-          tx.select({ n }).from(t.absenceRequests).where(eq(t.absenceRequests.status, 'pending')),
+          tx
+            .select({ n })
+            .from(t.absenceRequests)
+            .where(
+              and(
+                eq(t.absenceRequests.status, 'pending'),
+                sql`(absence_requests.current_level >= ${NIVEAU_RH}
+                     OR NOT ${aUnN1QuiPeutViser(sql`absence_requests.employee_id`)})`,
+              ),
+            ),
         ),
         count(
           tx

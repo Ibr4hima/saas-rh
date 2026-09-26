@@ -31,6 +31,7 @@ import {
   uniteRacine,
   verrouillerLaChaine,
 } from './chaine';
+import { faireSuivreLesDemandes } from '../time/visas';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 
 interface TeteHorsPerimetre extends Record<string, unknown> {
@@ -380,6 +381,11 @@ export class OrgUnitsService {
         const apres = await lireLaChaine(tx);
         resultat = { changements: journal, aRevoir: nouvellesAnomalies(avant, apres) };
         if (apercu) throw new AnnulerLApercu();
+        // Les cascades ont changé des n+1 : les demandes de congé qui
+        // attendaient l'ancien passent au nouveau, qui est prévenu.
+        for (const id of new Set(journal.map((c) => c.employeeId))) {
+          await faireSuivreLesDemandes(tx, id);
+        }
       });
     } catch (err) {
       if (err instanceof AnnulerLApercu) return resultat;

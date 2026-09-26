@@ -212,14 +212,6 @@ export const absenceBalances = pgTable('absence_balances', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const approvalChains = pgTable('approval_chains', {
-  id: uuid('id').primaryKey(),
-  tenantId: uuid('tenant_id').notNull(),
-  requestType: text('request_type').notNull().default('absence'),
-  levels: text('levels').array().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
 export const absenceRequests = pgTable('absence_requests', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),

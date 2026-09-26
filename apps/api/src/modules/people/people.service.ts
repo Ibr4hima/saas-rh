@@ -40,6 +40,7 @@ import {
   verrouillerLaChaine,
   type PlanDeReprise,
 } from './chaine';
+import { faireSuivreLesDemandes, retirerLesAppels } from '../time/visas';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 
 /** Rôles autorisés à lire les champs ultra-sensibles (CNI). */
@@ -569,6 +570,14 @@ export class PeopleService {
             champs.updatedAt = new Date();
             await tx.update(t.employees).set(champs).where(eq(t.employees.id, id));
           }
+          // Un nouveau n+1 reprend les demandes de congé qui attendaient
+          // le visa de l'ancien.
+          if (
+            e.managerEmployeeId !== undefined &&
+            e.managerEmployeeId !== employee.managerEmployeeId
+          ) {
+            await faireSuivreLesDemandes(tx, id);
+          }
         }
       });
     } catch (err) {
@@ -806,6 +815,7 @@ export class PeopleService {
           );
         }
 
+        await this.faireSuivre(tx, journal, input.managerEmployeeId ? [id] : []);
         resultat = {
           changements: journal,
           aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
@@ -917,6 +927,20 @@ export class PeopleService {
         .where(inArray(t.employees.id, ids));
 
       if (input.archived) {
+        // Qui part ne prend plus de congé : ses demandes encore en attente
+        // sont annulées, et leurs appels à viser retirés des boîtes.
+        const annulees = await tx
+          .update(t.absenceRequests)
+          .set({ status: 'cancelled', decidedAt: new Date() })
+          .where(
+            and(
+              inArray(t.absenceRequests.employeeId, ids),
+              eq(t.absenceRequests.status, 'pending'),
+            ),
+          )
+          .returning({ id: t.absenceRequests.id });
+        for (const d of annulees) await retirerLesAppels(tx, d.id);
+        await this.faireSuivre(tx, journal);
         const comptes = retenus.map((c) => c.userId).filter((u): u is string => u !== null);
         if (comptes.length > 0) {
           // Dans CE tenant seulement : l'agent peut être employé ailleurs, et
@@ -943,6 +967,20 @@ export class PeopleService {
         aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
       };
     });
+  }
+
+  /**
+   * Les agents dont le n+1 vient de changer : leurs demandes de congé qui
+   * attendaient le visa de l'ancien passent au nouveau, qui est prévenu.
+   */
+  private async faireSuivre(
+    tx: Tx,
+    journal: ChangementRattachement[],
+    autres: string[] = [],
+  ): Promise<void> {
+    for (const id of new Set([...journal.map((c) => c.employeeId), ...autres])) {
+      await faireSuivreLesDemandes(tx, id);
+    }
   }
 
   /**
@@ -1032,6 +1070,7 @@ export class PeopleService {
       skipped.push(...depart.refus);
       for (const plan of depart.plans) await appliquerReprise(tx, journal, plan);
       for (const c of depart.retenus) await this.effacer(tx, user, c);
+      await this.faireSuivre(tx, journal);
       return {
         done: depart.retenus.length,
         skipped,

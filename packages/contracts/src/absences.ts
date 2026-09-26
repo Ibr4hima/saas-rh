@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { membershipRoleSchema } from './core';
 
 /** Contrats du module « congés & absences » (Lot 1). */
 
@@ -94,13 +93,54 @@ export interface Holiday {
 
 // ---------- Circuit d'approbation ----------
 
-export const updateApprovalChainSchema = z.object({
-  levels: z.array(membershipRoleSchema).min(1).max(5),
-});
-export type UpdateApprovalChainInput = z.infer<typeof updateApprovalChainSchema>;
+/**
+ * Le circuit d'une demande d'absence, décidé avec l'APIX : le N+1 de l'agent
+ * la vise d'abord ; une fois visée, la RH est prévenue et la vise à son tour.
+ *
+ * Il n'est pas paramétrable, et c'est voulu : « qui valide mes congés ? » a
+ * une seule réponse dans l'agence, lue dans l'organigramme — pas dans une
+ * liste de rôles qu'on réordonne.
+ *
+ *   — le n+1 est celui de l'agent AU MOMENT où il vise : une mutation, une
+ *     reprise d'équipe, une cascade font passer la demande au nouveau ;
+ *   — sans n+1 qui puisse viser (le directeur général, un n+1 archivé ou
+ *     sans compte), la demande va directement à la RH ;
+ *   — un n+1 qui a lui-même le rôle RH vise les deux étapes d'un coup ;
+ *   — personne ne vise sa propre demande.
+ */
+export const CIRCUIT_CONGES = ['n1', 'rh'] as const;
+export type EtapeConge = (typeof CIRCUIT_CONGES)[number];
 
-export interface ApprovalChain {
-  levels: string[];
+export const ETAPE_CONGE_LABELS: Record<EtapeConge, string> = {
+  n1: 'N+1',
+  rh: 'RH',
+};
+
+/**
+ * Où en est une étape du circuit :
+ *   — visée / refusée : quelqu'un a signé ;
+ *   — attendue : c'est elle qui bloque, en ce moment ;
+ *   — à venir : elle viendra après l'étape attendue ;
+ *   — passée : pas de n+1 qui puisse viser, la demande est allée à la RH ;
+ *   — sans objet : elle n'aura pas lieu (refus plus tôt, annulation).
+ */
+export type EtatEtapeConge = 'visee' | 'refusee' | 'attendue' | 'a_venir' | 'passee' | 'sans_objet';
+
+export interface EtapeCircuitView {
+  etape: EtapeConge;
+  etat: EtatEtapeConge;
+  /** Qui a signé ; ou, pour l'étape attendue du n+1, qui est attendu. */
+  qui: string | null;
+  decidedAt: string | null;
+  comment: string | null;
+}
+
+/** Ce que le n+1 a devant lui : son équipe, et ce qui attend son visa. */
+export interface CompteursValidations {
+  /** Ses agents directs actifs (le DG n'est de l'équipe de personne). */
+  equipe: number;
+  /** Les demandes de ses agents qui attendent SON visa. */
+  aViser: number;
 }
 
 // ---------- Soldes ----------
@@ -161,6 +201,8 @@ export type DecideAbsenceRequestInput = z.infer<typeof decideAbsenceRequestSchem
 export const listAbsenceRequestsQuerySchema = z.object({
   status: z.enum(['pending', 'approved', 'rejected', 'cancelled']).optional(),
   employeeId: z.uuid().optional(),
+  /** Les demandes des agents directs de l'appelant — celles qu'il vise. */
+  equipe: z.stringbool().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 export type ListAbsenceRequestsQuery = z.infer<typeof listAbsenceRequestsQuerySchema>;
@@ -187,10 +229,13 @@ export interface AbsenceRequestView {
   daysCount: number;
   reason: string | null;
   status: string;
+  /** L'étape en cours (0 : n+1, 1 : RH) — celle qui compte AUJOURD'HUI. */
   currentLevel: number;
-  /** Rôles de la chaîne, dans l'ordre ; longueur = nombre de niveaux. */
-  chainLevels: string[];
-  /** true si l'utilisateur courant peut viser le niveau en attente. */
+  /** L'étape qui attend un visa, tant que la demande est en attente. */
+  etapeAttendue: EtapeConge | null;
+  /** Le circuit, étape par étape : qui a signé, qui est attendu. */
+  circuit: EtapeCircuitView[];
+  /** true si l'utilisateur courant peut viser l'étape attendue. */
   canDecide: boolean;
   approvals: ApprovalView[];
   /** Nom du justificatif PDF joint, s'il y en a un. */

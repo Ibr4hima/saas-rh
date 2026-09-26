@@ -229,7 +229,8 @@ if (!magalOn) console.warn('  ⚠ aucun férié de démonstration placé (rappel
 // c'est leur présence qui empêche le produit d'en créer un second exemplaire
 // non daté.
 for (const an of [year, year + 1]) await call('GET', `/holidays?year=${an}`);
-await call('PUT', '/approval-chain', { levels: ['hr', 'admin'] });
+// Le circuit des congés n'est pas un réglage : le n+1 de l'agent vise
+// d'abord, puis la RH.
 
 console.log('→ Portails employés : Awa, Moussa, Fatou et Mariama activent leur compte');
 // Les demandes sont posées par les employés EUX-MÊMES (aucune saisie RH) :
@@ -256,7 +257,7 @@ for (const [employeeId, [, password]] of Object.entries(PASSWORDS)) {
   employeeCookies[employeeId] = res.headers.get('set-cookie').split(';')[0];
 }
 
-console.log('→ Demandes posées par les employés (2 approuvées, 1 en attente)');
+console.log('→ Demandes posées par les employés (2 approuvées, 2 en attente)');
 const echappe = (t) => t.replace(/([()\\])/g, '\\$1');
 
 /**
@@ -320,10 +321,17 @@ const request = async (employeeId, type, startDate, endDate, reason, document) =
   if (!res.ok) throw new Error(`demande ${type} → ${res.status} : ${data.title}`);
   return data;
 };
-const approve = async (id, times) => {
-  for (let i = 0; i < times; i += 1) {
-    await call('POST', `/absence-requests/${id}/decision`, { decision: 'approved' });
-  }
+/** Un visa, par le compte de qui vise : le n+1 (depuis son portail), puis la RH. */
+const viser = async (id, parEmployeeId) => {
+  const res = await fetch(`${BASE}/absence-requests/${id}/decision`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      cookie: parEmployeeId ? employeeCookies[parEmployeeId] : cookie,
+    },
+    body: JSON.stringify({ decision: 'approved' }),
+  });
+  if (!res.ok) throw new Error(`visa ${id} → ${res.status} : ${(await res.json()).title}`);
 };
 const r1 = await request(
   awa.id,
@@ -332,7 +340,9 @@ const r1 = await request(
   `${year}-08-28`,
   'Congés famille',
 );
-await approve(r1.id, 2);
+// Awa → Mariama (sa n+1), puis la RH.
+await viser(r1.id, directriceRh.id);
+await viser(r1.id);
 const r2 = await request(
   moussa.id,
   'Mission',
@@ -341,7 +351,11 @@ const r2 = await request(
   'Mission Thiès',
   fakePdfDoc('ordre-de-mission-thies.pdf'),
 );
-await approve(r2.id, 2);
+// Moussa → Awa (sa n+1), puis la RH.
+await viser(r2.id, awa.id);
+await viser(r2.id);
+// Le n+1 de Fatou (Ousmane Fall) n'a pas d'accès au portail : sa demande
+// va directement à la RH.
 await request(
   fatou.id,
   'Maladie',
@@ -349,6 +363,21 @@ await request(
   `${year}-09-02`,
   'Grippe',
   fakePdfDoc('attestation-medicale.pdf'),
+);
+// Et une demande qui attend son n+1 : Awa la trouve dans « Congés de
+// l'équipe », prévenue par une notification.
+const dansUnMois = new Date(Date.now() + 30 * 86_400_000);
+while ([0, 6].includes(dansUnMois.getUTCDay())) dansUnMois.setUTCDate(dansUnMois.getUTCDate() + 1);
+const finDansUnMois = new Date(dansUnMois);
+finDansUnMois.setUTCDate(finDansUnMois.getUTCDate() + 2);
+while ([0, 6].includes(finDansUnMois.getUTCDay()))
+  finDansUnMois.setUTCDate(finDansUnMois.getUTCDate() + 1);
+await request(
+  moussa.id,
+  'Congé annuel',
+  dansUnMois.toISOString().slice(0, 10),
+  finDansUnMois.toISOString().slice(0, 10),
+  'Mariage d’un proche à Saint-Louis',
 );
 
 console.log('→ Pièce justificative : Awa dépose une attestation (à valider par la RH)');

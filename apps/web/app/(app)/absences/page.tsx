@@ -21,73 +21,13 @@ import {
 import { api, ApiError, apiUrl } from '../../../lib/api';
 import { type ViewableDoc } from '../../../components/doc-viewer';
 import { FenetreDocument } from '../../../components/fenetre-document';
-import { ABSENCE_STATUS_LABELS, resumeVisas } from '../../../lib/absences';
+import { resumeVisas, visaAttendu } from '../../../lib/absences';
+import { BoutonDecision } from '../../../components/bouton-decision';
 import { StatutAbsence } from '../../../components/statut-absence';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { Icon } from '../../../components/icons';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import { SqueletteTableau, ThTri, useTriLocal } from '../../../components/tableau';
-
-/**
- * Un geste de décision : viser, ou refuser.
- *
- * Deux icônes plutôt que deux mots. « Approuver » et « Refuser » côte à côte
- * pesaient cent-soixante pixels sur chaque ligne d'un tableau qu'on parcourt,
- * et leurs deux aplats pleins tiraient l'œil avant les données. La coche et la
- * croix se reconnaissent sans se lire ; la couleur dit le sens, et le nom de
- * l'employé est repris dans l'intitulé accessible — « Approuver le congé de
- * Hawa Ba » — pour que la colonne reste utilisable sans la voir.
- *
- * Au repos une teinte pâle cerclée d'un filet ; au survol la teinte se remplit.
- * Pas d'aplat vif qui s'inverse en thème sombre : on n'a pas d'encre garantie
- * sur le vert ni sur le rouge, et un blanc posé dessus tomberait sous le seuil
- * de lisibilité la nuit.
- */
-function BoutonDecision({
-  geste,
-  employe,
-  enCours,
-  bloque,
-  onClick,
-}: {
-  geste: 'approuver' | 'refuser';
-  employe: string;
-  /** C'est CE bouton qui attend le serveur. */
-  enCours: boolean;
-  /** Une décision est en cours, quelle qu'elle soit : on ne clique plus. */
-  bloque: boolean;
-  onClick: () => void;
-}) {
-  const approuve = geste === 'approuver';
-  const intitule = `${approuve ? 'Approuver' : 'Refuser'} le congé de ${employe}`;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={bloque}
-      title={intitule}
-      aria-label={intitule}
-      className={cn(
-        'flex size-8 shrink-0 items-center justify-center rounded-full ring-1 ring-inset',
-        'transition-all duration-150 ease-out active:scale-95',
-        'focus-visible:outline-2 focus-visible:outline-offset-1',
-        'disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100',
-        approuve
-          ? 'bg-success-soft/55 text-success ring-success/30 hover:bg-success-soft hover:ring-success/60 focus-visible:outline-success'
-          : 'bg-danger-soft/55 text-danger ring-danger/30 hover:bg-danger-soft hover:ring-danger/60 focus-visible:outline-danger',
-      )}
-    >
-      {enCours ? (
-        <span
-          aria-hidden
-          className="size-4 animate-spin rounded-full border-2 border-current/30 border-t-current"
-        />
-      ) : (
-        <Icon name={approuve ? 'check' : 'close'} size={18} />
-      )}
-    </button>
-  );
-}
 
 export default function AbsencesPage() {
   const queryClient = useQueryClient();
@@ -115,6 +55,8 @@ export default function AbsencesPage() {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['absence-requests'] });
     void queryClient.invalidateQueries({ queryKey: ['absences-upcoming'] });
+    // Le badge du menu compte ce qui attend la RH : il redescend tout de suite.
+    void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
   };
 
   const decide = useMutation({
@@ -170,7 +112,7 @@ export default function AbsencesPage() {
             <EmptyState
               icon={<Icon name="free_cancellation" size={22} />}
               title="Aucune demande dans ce statut"
-              description="Les employés posent leurs demandes depuis leur portail — elles arrivent ici pour visa."
+              description="Les employés posent leurs demandes depuis leur portail. Leur n+1 les vise d’abord ; la RH est prévenue ensuite, et elles arrivent ici."
             />
           </CorpsDefilant>
         ) : (
@@ -253,6 +195,18 @@ export default function AbsencesPage() {
                   </Td>
                   <Td>
                     <StatutAbsence statut={r.status} titre={resumeVisas(r)} />
+                    {/* L'étape attendue : la RH lit d'un coup d'œil ce qui est
+                        à elle, et ce qui attend encore le n+1. */}
+                    {visaAttendu(r) ? (
+                      <span
+                        className={cn(
+                          'mt-1 block text-[11px] whitespace-nowrap',
+                          r.etapeAttendue === 'rh' ? 'font-semibold text-ink' : 'text-ink-muted',
+                        )}
+                      >
+                        {visaAttendu(r)}
+                      </span>
+                    ) : null}
                   </Td>
                   <Td>
                     {r.canDecide ? (

@@ -7,7 +7,6 @@ import type {
   AbsencePreview,
   AbsenceRequestView,
   AbsenceType,
-  ApprovalChain,
   BalanceView,
   MyEmployeeView,
 } from '@teranga/contracts';
@@ -31,7 +30,7 @@ import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Icon } from '../../../../components/icons';
 import { StatutAbsence } from '../../../../components/statut-absence';
 import { api, ApiError, apiUrl } from '../../../../lib/api';
-import { resumeVisas, ROLE_LABELS } from '../../../../lib/absences';
+import { resumeVisas } from '../../../../lib/absences';
 import { formatDate } from '../../../../lib/hooks';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
 import { compte } from '../../../../lib/mots';
@@ -124,10 +123,6 @@ export default function MyLeavesPage() {
     queryFn: () => api<AbsenceRequestView[]>(`/absence-requests?employeeId=${employeeId}&limit=50`),
     enabled: Boolean(employeeId),
   });
-  const chaine = useQuery({
-    queryKey: ['approval-chain'],
-    queryFn: () => api<ApprovalChain>('/approval-chain'),
-  });
 
   useEffect(() => {
     if (!typeId && types.data && types.data.length > 0) setTypeId(types.data[0]!.id);
@@ -217,7 +212,15 @@ export default function MyLeavesPage() {
 
   const myRequests = (requests.data ?? []).filter((r) => r.employeeId === employeeId);
   const deductibles = (balances.data ?? []).filter((b) => b.deductsBalance);
-  const niveaux = chaine.data?.levels ?? [];
+  // Le circuit, fixé par l'APIX : son n+1 d'abord, puis la RH. Sans n+1
+  // qui puisse viser, la demande va directement à la RH.
+  const valideurN1 = myEmployee.data?.valideurN1 ?? null;
+  const etapes = [
+    valideurN1
+      ? { titre: 'Votre n+1', qui: valideurN1 }
+      : { titre: 'Votre n+1', qui: 'Aucun pour viser : directement à la RH' },
+    { titre: 'La RH', qui: 'Prévenue dès que votre n+1 a visé' },
+  ];
 
   return (
     <Page>
@@ -394,16 +397,16 @@ export default function MyLeavesPage() {
             deductibles.map((b) => <CarteSolde key={b.absenceTypeId} solde={b} />)
           )}
 
-          {niveaux.length > 0 ? (
+          {myEmployee.data ? (
             <Card>
               <CardHeader>
                 <CardTitle>Circuit de validation</CardTitle>
               </CardHeader>
               <CardContent>
                 <ol className="flex flex-col">
-                  {niveaux.map((role, i) => (
-                    <li key={`${role}-${i}`} className="relative flex gap-2.5 pb-3 last:pb-0">
-                      {i < niveaux.length - 1 ? (
+                  {etapes.map((e, i) => (
+                    <li key={e.titre} className="relative flex gap-2.5 pb-3 last:pb-0">
+                      {i < etapes.length - 1 ? (
                         <span
                           aria-hidden
                           className="absolute top-[18px] left-[9px] h-[calc(100%-18px)] w-px bg-line-soft"
@@ -415,15 +418,20 @@ export default function MyLeavesPage() {
                       >
                         {i + 1}
                       </span>
-                      <span className="-mt-px min-w-0 text-[12.5px] font-semibold text-ink-strong">
-                        {ROLE_LABELS[role] ?? role}
+                      <span className="-mt-px min-w-0">
+                        <span className="block text-[12.5px] font-semibold text-ink-strong">
+                          {e.titre}
+                        </span>
+                        <span className="block text-[11.5px] leading-snug text-ink-muted">
+                          {e.qui}
+                        </span>
                       </span>
                     </li>
                   ))}
                 </ol>
                 <p className="mt-3 border-t border-line-soft pt-3 text-[11.5px] leading-snug text-ink-muted">
                   Chaque visa appelle le suivant. Tant que la demande est en attente, vous pouvez
-                  l&apos;annuler ; une fois visée, non.
+                  l&apos;annuler.
                 </p>
               </CardContent>
             </Card>
@@ -612,10 +620,9 @@ function Decompte({
 /**
  * Une demande, en une ligne.
  *
- * Ce qui a changé de l'ancienne liste : l'étape du visa s'écrit — « Visa 1/2
- * attendu : Manager » — au lieu de se deviner d'un « visa 1/2 » sans sujet,
- * et le justificatif devient un bouton visible plutôt qu'un mot souligné
- * noyé dans la ligne de dates.
+ * L'étape du visa s'écrit, avec son sujet — « Visa attendu : votre n+1
+ * (Awa Diop) », « Visa attendu : la RH » —, et le justificatif est un bouton
+ * visible plutôt qu'un mot souligné noyé dans la ligne de dates.
  */
 function LigneDemande({
   demande: r,
@@ -628,12 +635,13 @@ function LigneDemande({
   onAnnuler: () => void;
   annulationEnCours: boolean;
 }) {
+  const n1 = r.circuit.find((e) => e.etape === 'n1')?.qui;
   const attendu =
-    r.status === 'pending' && r.chainLevels.length > 0
-      ? `Visa${r.chainLevels.length > 1 ? ` ${r.currentLevel + 1}/${r.chainLevels.length}` : ''} attendu : ${
-          ROLE_LABELS[r.chainLevels[r.currentLevel] ?? ''] ?? r.chainLevels[r.currentLevel] ?? ''
-        }`
-      : null;
+    r.status !== 'pending'
+      ? null
+      : r.etapeAttendue === 'rh'
+        ? 'Visa attendu : la RH'
+        : `Visa attendu : votre n+1${n1 ? ` (${n1})` : ''}`;
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover">

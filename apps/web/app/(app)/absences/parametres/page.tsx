@@ -2,12 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import type {
-  AbsenceFrequency,
-  AbsenceType,
-  ApprovalChain,
-  MembershipRole,
-} from '@teranga/contracts';
+import type { AbsenceFrequency, AbsenceType } from '@teranga/contracts';
 import { ABSENCE_FREQUENCY_LABELS } from '@teranga/contracts';
 import {
   Badge,
@@ -35,13 +30,10 @@ import {
   FenetreSuppression,
   messageErreur,
 } from '../../../../components/reglages-absences';
-import { ROLE_LABELS } from '../../../../lib/absences';
 import { api } from '../../../../lib/api';
 import { useMe } from '../../../../lib/hooks';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
 import { SqueletteTableau } from '../../../../components/tableau';
-
-const CHAIN_ROLES: MembershipRole[] = ['manager', 'hr', 'payroll', 'admin'];
 
 // =============================================================================
 // Page
@@ -57,7 +49,7 @@ export default function AbsenceSettingsPage() {
       {/* Le catalogue des types prend la hauteur qui reste ; le circuit, qui
           tient en deux listes, garde la sienne. */}
       <TypesCard peutGerer={peutGerer} />
-      <CircuitCard isAdmin={isAdmin} />
+      <CircuitCard />
     </Page>
   );
 }
@@ -389,92 +381,55 @@ function FenetreType({
 // Circuit d'approbation
 // =============================================================================
 
-function CircuitCard({ isAdmin }: { isAdmin: boolean }) {
-  const queryClient = useQueryClient();
-  const chain = useQuery({
-    queryKey: ['approval-chain'],
-    queryFn: () => api<ApprovalChain>('/approval-chain'),
-  });
-  const [levels, setLevels] = useState<string[]>([]);
-  const [erreur, setErreur] = useState<string | null>(null);
-  useEffect(() => {
-    if (chain.data) setLevels(chain.data.levels);
-  }, [chain.data]);
-  const saveChain = useMutation({
-    mutationFn: () => api('/approval-chain', { method: 'PUT', body: { levels } }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['approval-chain'] }),
-    onError: (err) => setErreur(messageErreur(err, 'Enregistrement impossible.')),
-  });
-
+/**
+ * Le circuit, tel que l'APIX l'a fixé. Il ne se règle pas ici : « qui valide
+ * mes congés ? » a une seule réponse, lue dans l'organigramme. La carte le
+ * DIT, pour que personne ne cherche le réglage.
+ */
+function CircuitCard() {
+  const etapes = [
+    {
+      titre: 'Le n+1 de l’agent',
+      texte:
+        'Il est prévenu dès le dépôt et vise en premier — depuis « Congés de l’équipe ». Un refus s’arrête là.',
+    },
+    {
+      titre: 'La RH',
+      texte: 'Prévenue dès que le n+1 a visé, elle vise à son tour : la demande est approuvée.',
+    },
+  ];
   return (
-    <Card>
+    <Card className="shrink-0">
       <CardHeader className="flex flex-col gap-1">
-        <CardTitle>Circuit d&apos;approbation</CardTitle>
+        <CardTitle>Circuit de validation</CardTitle>
         <p className="text-[12px] text-ink-muted">
-          Chaque demande est visée niveau par niveau, dans l&apos;ordre. L&apos;administrateur peut
-          viser n&apos;importe quel niveau.
+          Le même pour toutes les demandes — il suit l&apos;organigramme.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {erreur ? (
-          <p className="rounded-[9px] bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
-            {erreur}
-          </p>
-        ) : null}
-        <div className="flex flex-wrap items-center gap-2">
-          {levels.map((role, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1"
-            >
-              <span className="text-xs text-ink-muted">{i + 1}.</span>
-              <Select
-                value={role}
-                disabled={!isAdmin}
-                aria-label={`Niveau ${i + 1}`}
-                onChange={(e) => setLevels(levels.map((l, j) => (j === i ? e.target.value : l)))}
-                className="h-7 w-36 border-0 bg-transparent"
-              >
-                {CHAIN_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {ROLE_LABELS[r]}
-                  </option>
-                ))}
-              </Select>
-              {isAdmin && levels.length > 1 ? (
-                <button
-                  type="button"
-                  aria-label={`Retirer le niveau ${i + 1}`}
-                  className="text-ink-muted hover:text-danger"
-                  onClick={() => setLevels(levels.filter((_, j) => j !== i))}
-                >
-                  ×
-                </button>
-              ) : null}
-            </div>
+        <ol className="grid gap-3 sm:grid-cols-2">
+          {etapes.map((e, i) => (
+            <li key={e.titre} className="flex gap-2.5 rounded-[12px] bg-bg px-3.5 py-3">
+              <span className="flex size-[20px] shrink-0 items-center justify-center rounded-full bg-primary/[0.08] text-[10.5px] font-bold text-primary">
+                {i + 1}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[12.5px] font-semibold text-ink-strong">{e.titre}</span>
+                <span className="mt-0.5 block text-[11.5px] leading-snug text-ink-muted">
+                  {e.texte}
+                </span>
+              </span>
+            </li>
           ))}
-          {isAdmin && levels.length < 5 ? (
-            <Button size="sm" variant="secondary" onClick={() => setLevels([...levels, 'hr'])}>
-              + Ajouter un niveau
-            </Button>
-          ) : null}
-        </div>
-        {isAdmin ? (
-          <div>
-            <Button
-              size="sm"
-              onClick={() => {
-                setErreur(null);
-                saveChain.mutate();
-              }}
-              loading={saveChain.isPending}
-            >
-              Enregistrer le circuit
-            </Button>
-          </div>
-        ) : (
-          <p className="text-xs text-ink-muted">Seul un administrateur peut modifier le circuit.</p>
-        )}
+        </ol>
+        <ul className="flex flex-col gap-1 text-[11.5px] leading-snug text-ink-muted">
+          <li>
+            Sans n+1 qui puisse viser — le directeur général, un n+1 parti ou sans accès au portail
+            — la demande va directement à la RH.
+          </li>
+          <li>Un n+1 qui a lui-même le rôle RH vise les deux étapes d’un coup.</li>
+          <li>Personne ne vise sa propre demande.</li>
+        </ul>
       </CardContent>
     </Card>
   );

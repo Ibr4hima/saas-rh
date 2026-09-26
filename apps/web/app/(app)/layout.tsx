@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { TeamSize } from '@teranga/contracts';
+import type { CompteursValidations, TeamSize } from '@teranga/contracts';
 import { cn, Skeleton } from '@teranga/ui';
 import { BrandMark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
@@ -75,7 +75,7 @@ interface NavItem {
    */
   motsCles?: string;
   icon: IconName;
-  badge?: 'pending' | 'docs';
+  badge?: 'pending' | 'docs' | 'visas';
   /**
    * Entrée ÉTEINTE : elle reste à sa place dans la liste — l'ordre du menu
    * est une carte qu'on mémorise, et retirer une ligne la redessine — mais
@@ -245,6 +245,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/reglementations/reglement-interieur': 'Règlement intérieur',
   '/moi': 'Mon espace',
   '/moi/conges': 'Mes congés',
+  '/moi/equipe': 'Congés de l’équipe',
   '/moi/documents': 'Mes documents',
   '/moi/informations': 'Mes informations',
 };
@@ -384,9 +385,21 @@ const STAFF_ROLES = ['admin', 'hr', 'payroll'];
 /** Sections réservées admin/RH : cachées aux autres rôles staff (payroll). */
 const MANAGE_ONLY_PATHS = ['/recrutement', '/documents', '/academy/gerer'];
 
-function staffNav(role: string): NavItem[] {
-  if (role !== 'payroll') return NAV_ITEMS;
-  return NAV_ITEMS.filter((i) => !MANAGE_ONLY_PATHS.some((p) => i.href.startsWith(p)));
+/**
+ * Les congés d'une équipe : l'entrée n'apparaît qu'à qui encadre quelqu'un —
+ * c'est l'organigramme qui fait le n+1, pas le rôle.
+ */
+const CONGES_EQUIPE = { href: '/moi/equipe', label: 'Congés de l’équipe' };
+
+function staffNav(role: string, aUneEquipe: boolean): NavItem[] {
+  const items =
+    role !== 'payroll'
+      ? NAV_ITEMS
+      : NAV_ITEMS.filter((i) => !MANAGE_ONLY_PATHS.some((p) => i.href.startsWith(p)));
+  if (!aUneEquipe) return items;
+  return items.map((i) =>
+    i.href === '/absences' && i.children ? { ...i, children: [...i.children, CONGES_EQUIPE] } : i,
+  );
 }
 
 /**
@@ -397,7 +410,7 @@ function staffNav(role: string): NavItem[] {
  * validations d'un manager tiennent à part : c'est le seul endroit où il
  * décide pour un autre.
  */
-function personalNav(role: string): NavItem[] {
+function personalNav(aUneEquipe: boolean): NavItem[] {
   return [
     { href: '/moi', label: 'Mon espace', short: 'Espace', icon: 'dashboard', groupe: 'pilotage' },
     {
@@ -428,16 +441,17 @@ function personalNav(role: string): NavItem[] {
       icon: 'badge',
       groupe: 'quotidien',
     },
-    // Le seul endroit où un manager décide pour un autre : il tient sa
-    // famille à lui, entre ce qui le concerne et ce qu'il consulte.
-    ...(role === 'manager'
+    // Le seul endroit où un agent décide pour un autre : les congés de son
+    // équipe, qu'il vise en premier. Il tient sa famille à lui, entre ce qui
+    // le concerne et ce qu'il consulte — et n'apparaît qu'à qui encadre.
+    ...(aUneEquipe
       ? [
           {
-            href: '/absences',
-            label: 'Validations',
-            short: 'Visas',
-            icon: 'how_to_reg' as const,
-            badge: 'pending' as const,
+            href: CONGES_EQUIPE.href,
+            label: CONGES_EQUIPE.label,
+            short: 'Équipe',
+            icon: 'groups' as const,
+            badge: 'visas' as const,
             groupe: 'croissance' as const,
           },
         ]
@@ -880,7 +894,19 @@ function AppShell({ children }: { children: React.ReactNode }) {
   useRaccourciPalette(ouvrirPalette);
   const raccourci = useNomDuRaccourci();
 
-  const items = useMemo(() => (isStaff ? staffNav(role) : personalNav(role)), [isStaff, role]);
+  // Ce que le n+1 a devant lui : son équipe (l'entrée n'existe que pour qui
+  // encadre), et ce qui attend son visa (le badge).
+  const validations = useQuery({
+    queryKey: ['validations-compteurs'],
+    queryFn: () => api<CompteursValidations>('/absences/validations/compteurs'),
+    enabled: Boolean(me.data),
+    refetchInterval: 60_000,
+  });
+  const aUneEquipe = (validations.data?.equipe ?? 0) > 0;
+  const items = useMemo(
+    () => (isStaff ? staffNav(role, aUneEquipe) : personalNav(aUneEquipe)),
+    [isStaff, role, aUneEquipe],
+  );
   // Les écrans que la palette sait ouvrir : le menu, mis à plat, avec le
   // chemin qu'on aurait suivi pour y arriver — c'est ce qu'on tape. Une
   // rubrique n'a pas de page à elle : seules ses sous-pages sont des écrans.
@@ -909,7 +935,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     queryKey: ['dashboard'],
     queryFn: () => api<DashboardStats>('/dashboard'),
     // Réservé aux rôles qui y ont droit côté serveur — pas de 403 périodiques.
-    enabled: Boolean(me.data) && (isStaff || role === 'manager'),
+    enabled: Boolean(me.data) && isStaff,
     refetchInterval: 60_000,
   });
 
@@ -936,9 +962,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (path.startsWith('/reglementations')) return true;
     // L'Academy est faite pour les agents. Son atelier, lui, reste à la RH.
     if (path.startsWith('/academy')) return !path.startsWith('/academy/gerer');
-    if (role === 'manager') {
-      return path.startsWith('/absences') && !path.startsWith('/absences/parametres');
-    }
     return false;
   };
   const allowed = allowedForRole(pathname);
@@ -969,8 +992,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const initials = `${user.givenName[0] ?? ''}${user.familyName[0] ?? ''}`.toUpperCase();
   const pending = stats.data?.pendingRequests ?? 0;
   const pendingDocs = stats.data?.pendingDocumentRequests ?? 0;
-  const badgeCount = (badge?: 'pending' | 'docs') =>
-    badge === 'pending' ? pending : badge === 'docs' ? pendingDocs : 0;
+  const aViser = validations.data?.aViser ?? 0;
+  const badgeCount = (badge?: 'pending' | 'docs' | 'visas') =>
+    badge === 'pending' ? pending : badge === 'docs' ? pendingDocs : badge === 'visas' ? aViser : 0;
 
   // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
   const title = titleOverride ?? pageTitle(pathname, user.givenName);

@@ -5,12 +5,13 @@ import type {
   AbsencePreview,
   AbsenceRequestView,
   AbsenceType,
-  ApprovalChain,
   BalanceView,
+  CompteursValidations,
   CreateAbsenceRequestInput,
   CreateAbsenceTypeInput,
   CreateHolidayInput,
   DecideAbsenceRequestInput,
+  EtapeCircuitView,
   Holiday,
   ListAbsenceRequestsQuery,
   SessionUser,
@@ -28,6 +29,21 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayDedupeKey } from '../notifications/notifications.service';
+import { DG } from '../people/chaine';
+import {
+  annoncerLeVerdict,
+  appelerLaRH,
+  appelerLeN1,
+  etapeDuNiveau,
+  lireDemande,
+  n1QuiPeutViser,
+  NIVEAU_N1,
+  NIVEAU_RH,
+  niveauEffectif,
+  retirerLesAppels,
+  ROLES_RH,
+  type ValideurN1,
+} from './visas';
 import { countWorkdays } from './workdays';
 
 type DefaultType = {
@@ -79,8 +95,14 @@ const DEFAULT_TYPES: DefaultType[] = [
   },
 ];
 
-const DEFAULT_CHAIN = ['hr'];
 const MANAGE_ROLES = new Set(['admin', 'hr']);
+/**
+ * Qui voit les demandes de TOUTE l'agence : la RH, et la paie qui en tire
+ * les retenues. Les autres voient les leurs et celles de leurs agents
+ * directs — celles qu'ils visent. Un type d'absence (maladie, maternité) est
+ * une donnée sensible : le rôle ne suffit pas à l'ouvrir à tous.
+ */
+const VOIENT_TOUT = new Set(['admin', 'hr', 'payroll']);
 
 function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
   return { tenantId: user.tenantId, userId: user.userId };
@@ -524,25 +546,22 @@ export class AbsencesService {
 
   // ---------- Circuit d'approbation ----------
 
-  async getChain(user: SessionUser): Promise<ApprovalChain> {
+  /** Ce que le n+1 a devant lui : son équipe, et ce qui attend son visa. */
+  async compteurs(user: SessionUser): Promise<CompteursValidations> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      const [row] = await tx.select().from(t.approvalChains).limit(1);
-      return { levels: row?.levels ?? DEFAULT_CHAIN };
-    });
-  }
-
-  async updateChain(user: SessionUser, levels: string[]): Promise<ApprovalChain> {
-    return this.db.withTenant(ctxOf(user), async (tx) => {
-      const [existing] = await tx.select().from(t.approvalChains).limit(1);
-      if (existing) {
-        await tx
-          .update(t.approvalChains)
-          .set({ levels })
-          .where(eq(t.approvalChains.id, existing.id));
-      } else {
-        await tx.insert(t.approvalChains).values({ id: uuidv7(), tenantId: user.tenantId, levels });
-      }
-      return { levels };
+      const moi = await this.selfEmployeeId(tx, user);
+      if (!moi) return { equipe: 0, aViser: 0 };
+      const { rows } = await tx.execute<{ equipe: number; a_viser: number }>(sql`
+        SELECT
+          (SELECT count(*)::int FROM employees e
+            WHERE e.manager_employee_id = ${moi} AND e.status = 'active'
+              AND e.id IS DISTINCT FROM ${DG}) AS equipe,
+          (SELECT count(*)::int FROM absence_requests r
+             JOIN employees e ON e.id = r.employee_id
+            WHERE e.manager_employee_id = ${moi} AND e.status = 'active'
+              AND e.id IS DISTINCT FROM ${DG}
+              AND r.status = 'pending' AND r.current_level = ${NIVEAU_N1}) AS a_viser`);
+      return { equipe: rows[0]?.equipe ?? 0, aViser: rows[0]?.a_viser ?? 0 };
     });
   }
 
@@ -718,6 +737,9 @@ export class AbsencesService {
           }
         }
 
+        // ——— Le circuit : le n+1 d'abord ; sans n+1 qui puisse viser, la
+        // demande part directement à la RH.
+        const n1 = await n1QuiPeutViser(tx, input.employeeId);
         await tx.insert(t.absenceRequests).values({
           id,
           tenantId: user.tenantId,
@@ -728,6 +750,7 @@ export class AbsencesService {
           daysCount: daysCount.toString(),
           reason: input.reason,
           requestedByUserId: user.userId,
+          currentLevel: n1 ? NIVEAU_N1 : NIVEAU_RH,
         });
         if (document) {
           await tx.insert(t.absenceDocuments).values({
@@ -738,6 +761,11 @@ export class AbsencesService {
             sizeBytes: document.data.length,
             data: document.data,
           });
+        }
+        const demande = await lireDemande(tx, id);
+        if (demande) {
+          if (n1) await appelerLeN1(tx, demande, n1);
+          else await appelerLaRH(tx, demande, null);
         }
       });
     } catch (err) {
@@ -761,9 +789,17 @@ export class AbsencesService {
       const conditions = [];
       if (query.status) conditions.push(eq(t.absenceRequests.status, query.status));
       if (query.employeeId) conditions.push(eq(t.absenceRequests.employeeId, query.employeeId));
-      // Le rôle employé ne voit que ses propres demandes ; les approbateurs
-      // (manager, paie) et gestionnaires voient tout.
-      if (user.role === 'employee') {
+      if (query.equipe) {
+        // Les demandes de SES agents directs — quel que soit son rôle :
+        // c'est l'organigramme qui fait le n+1, pas le rôle.
+        const self = await this.selfEmployeeId(tx, user);
+        if (!self) return [];
+        conditions.push(
+          eq(t.employees.managerEmployeeId, self),
+          sql`${t.employees.id} IS DISTINCT FROM ${DG}`,
+        );
+      } else if (!VOIENT_TOUT.has(user.role)) {
+        // Hors RH et paie, chacun ne voit que les siennes.
         const self = await this.selfEmployeeId(tx, user);
         if (!self) return [];
         conditions.push(eq(t.absenceRequests.employeeId, self));
@@ -793,14 +829,16 @@ export class AbsencesService {
 
   async upcoming(user: SessionUser): Promise<AbsenceRequestView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      // Même périmètre que listRequests : le rôle employé ne voit que ses
-      // propres absences (les types — maladie, maternité — sont des données
-      // sensibles) ; approbateurs et gestionnaires voient tout le tenant.
+      // Même périmètre que listRequests : la RH et la paie voient toute
+      // l'agence ; les autres, leurs absences et celles de leurs agents
+      // directs — le n+1 organise son équipe avec.
       const scope = [];
-      if (user.role === 'employee') {
+      if (!VOIENT_TOUT.has(user.role)) {
         const self = await this.selfEmployeeId(tx, user);
         if (!self) return [];
-        scope.push(eq(t.absenceRequests.employeeId, self));
+        scope.push(
+          sql`(${t.absenceRequests.employeeId} = ${self} OR ${t.employees.managerEmployeeId} = ${self})`,
+        );
       }
       const rows = await tx
         .select({
@@ -829,6 +867,17 @@ export class AbsencesService {
     });
   }
 
+  /**
+   * Viser une demande, à l'étape qui l'attend.
+   *
+   *   — l'étape du n+1 n'appartient qu'à lui : ni la RH ni l'administrateur
+   *     ne visent à sa place. Visée, elle passe à la RH, qui est prévenue ;
+   *     refusée, elle s'arrête là ;
+   *   — un n+1 qui a lui-même le rôle RH vise les deux étapes d'un coup :
+   *     le faire signer deux fois la même demande n'apprendrait rien ;
+   *   — l'étape de la RH appartient à la RH et à l'administrateur ;
+   *   — personne ne vise sa propre demande.
+   */
   async decide(
     user: SessionUser,
     requestId: string,
@@ -847,48 +896,83 @@ export class AbsencesService {
       if (request.status !== 'pending') {
         problem(422, 'absence.already_decided', 'Cette demande a déjà été traitée');
       }
-
-      const [chainRow] = await tx.select().from(t.approvalChains).limit(1);
-      const levels = chainRow?.levels ?? DEFAULT_CHAIN;
-      const requiredRole = levels[request.currentLevel] ?? levels[levels.length - 1];
-      if (user.role !== 'admin' && user.role !== requiredRole) {
-        problem(
-          403,
-          'absence.wrong_level',
-          'Ce niveau de visa ne relève pas de votre rôle',
-          `Le niveau ${request.currentLevel + 1}/${levels.length} attend le rôle « ${requiredRole} ».`,
-        );
+      if ((await this.selfEmployeeId(tx, user)) === request.employeeId) {
+        problem(403, 'absence.propre_demande', 'Vous ne pouvez pas viser votre propre demande');
       }
 
-      await tx.insert(t.absenceApprovals).values({
-        id: uuidv7(),
-        tenantId: user.tenantId,
-        requestId,
-        level: request.currentLevel,
-        decision: input.decision,
-        decidedByUserId: user.userId,
-        comment: input.comment,
-      });
+      const n1 = await n1QuiPeutViser(tx, request.employeeId);
+      const niveau = niveauEffectif(request.currentLevel, n1);
+      const nomDuValideur = `${user.givenName} ${user.familyName}`;
+      if (niveau === NIVEAU_N1) {
+        if (!n1 || n1.userId !== user.userId) {
+          problem(
+            403,
+            'absence.reservee_au_n1',
+            'Cette demande attend le visa de son n+1',
+            `${n1?.nom ?? 'Son n+1'} la vise d’abord ; la RH la reçoit ensuite.`,
+          );
+        }
+      } else if (!ROLES_RH.includes(user.role)) {
+        problem(403, 'absence.reservee_a_la_rh', 'Cette demande attend le visa de la RH');
+      }
 
-      if (input.decision === 'rejected') {
+      const viser = async (level: number) =>
+        tx.insert(t.absenceApprovals).values({
+          id: uuidv7(),
+          tenantId: user.tenantId,
+          requestId,
+          level,
+          decision: input.decision,
+          decidedByUserId: user.userId,
+          comment: input.comment,
+        });
+      const clore = async (status: 'approved' | 'rejected', level: number) =>
+        tx
+          .update(t.absenceRequests)
+          .set({ status, currentLevel: level, decidedAt: new Date() })
+          .where(eq(t.absenceRequests.id, requestId));
+      const demande = await lireDemande(tx, requestId);
+
+      if (niveau === NIVEAU_N1) {
+        const n1Valideur = n1 as ValideurN1;
+        await viser(NIVEAU_N1);
+        const aussiRH = ROLES_RH.includes(n1Valideur.role);
+        if (input.decision === 'rejected' || aussiRH) {
+          if (input.decision === 'approved') await viser(NIVEAU_RH);
+          await clore(input.decision, input.decision === 'approved' ? NIVEAU_RH : NIVEAU_N1);
+          await retirerLesAppels(tx, requestId);
+          if (demande) {
+            await annoncerLeVerdict(
+              tx,
+              demande,
+              input.decision,
+              { nom: nomDuValideur, etape: 'n1' },
+              input.comment,
+            );
+          }
+          return;
+        }
+        // Visée par le n+1 : la RH est prévenue, c'est à elle.
         await tx
           .update(t.absenceRequests)
-          .set({ status: 'rejected', decidedAt: new Date() })
+          .set({ currentLevel: NIVEAU_RH })
           .where(eq(t.absenceRequests.id, requestId));
+        await retirerLesAppels(tx, requestId, ['n1']);
+        if (demande) await appelerLaRH(tx, demande, nomDuValideur);
         return;
       }
 
-      const nextLevel = request.currentLevel + 1;
-      if (nextLevel >= levels.length) {
-        await tx
-          .update(t.absenceRequests)
-          .set({ status: 'approved', currentLevel: nextLevel, decidedAt: new Date() })
-          .where(eq(t.absenceRequests.id, requestId));
-      } else {
-        await tx
-          .update(t.absenceRequests)
-          .set({ currentLevel: nextLevel })
-          .where(eq(t.absenceRequests.id, requestId));
+      await viser(NIVEAU_RH);
+      await clore(input.decision, NIVEAU_RH);
+      await retirerLesAppels(tx, requestId);
+      if (demande) {
+        await annoncerLeVerdict(
+          tx,
+          demande,
+          input.decision,
+          { nom: nomDuValideur, etape: 'rh' },
+          input.comment,
+        );
       }
     });
   }
@@ -935,6 +1019,8 @@ export class AbsencesService {
         .update(t.absenceRequests)
         .set({ status: 'cancelled', decidedAt: new Date() })
         .where(eq(t.absenceRequests.id, requestId));
+      // Plus rien à viser : les appels restés dans les boîtes s'en vont.
+      await retirerLesAppels(tx, requestId);
     });
   }
 
@@ -1096,9 +1182,6 @@ export class AbsencesService {
   ): Promise<AbsenceRequestView[]> {
     if (rows.length === 0) return [];
 
-    const [chainRow] = await tx.select().from(t.approvalChains).limit(1);
-    const levels = chainRow?.levels ?? DEFAULT_CHAIN;
-
     const documentRows = await tx
       .select({ requestId: t.absenceDocuments.requestId, filename: t.absenceDocuments.filename })
       .from(t.absenceDocuments)
@@ -1129,9 +1212,63 @@ export class AbsencesService {
       )
       .orderBy(asc(t.absenceApprovals.level));
 
+    // Le n+1 qui peut viser, agent par agent — lu une fois par agent, pas
+    // une fois par demande.
+    const n1s = new Map<string, ValideurN1 | null>();
+    for (const r of rows) {
+      if (!n1s.has(r.request.employeeId)) {
+        n1s.set(r.request.employeeId, await n1QuiPeutViser(tx, r.request.employeeId));
+      }
+    }
+    const moi = await this.selfEmployeeId(tx, user);
+
     return rows.map(
       ({ request, givenName, familyName, employeeNumber, workEmail, typeName, deductsBalance }) => {
-        const requiredRole = levels[request.currentLevel] ?? levels[levels.length - 1];
+        const n1 = n1s.get(request.employeeId) ?? null;
+        const niveau = niveauEffectif(request.currentLevel, n1);
+        const enAttente = request.status === 'pending';
+        const visas = approvalRows.filter((a) => a.requestId === request.id);
+        const visaDe = (level: number) => visas.find((a) => a.level === level);
+        const signe = (level: number): EtapeCircuitView | null => {
+          const v = visaDe(level);
+          return v
+            ? {
+                etape: etapeDuNiveau(level),
+                etat: v.decision === 'approved' ? 'visee' : 'refusee',
+                qui: `${v.givenName} ${v.familyName}`,
+                decidedAt: v.decidedAt.toISOString(),
+                comment: v.comment,
+              }
+            : null;
+        };
+        const vide = (etape: 'n1' | 'rh', etat: EtapeCircuitView['etat'], qui: string | null) =>
+          ({ etape, etat, qui, decidedAt: null, comment: null }) satisfies EtapeCircuitView;
+
+        // L'étape du n+1 : signée ; attendue (on dit qui) ; passée, quand la
+        // demande est allée à la RH sans lui ; sans objet, si elle a été
+        // annulée avant qu'il vise.
+        const etapeN1 =
+          signe(NIVEAU_N1) ??
+          (enAttente
+            ? niveau === NIVEAU_N1
+              ? vide('n1', 'attendue', n1?.nom ?? null)
+              : vide('n1', 'passee', null)
+            : request.status === 'cancelled' && request.currentLevel === NIVEAU_N1
+              ? vide('n1', 'sans_objet', null)
+              : vide('n1', 'passee', null));
+        const etapeRH =
+          signe(NIVEAU_RH) ??
+          (enAttente
+            ? niveau === NIVEAU_RH
+              ? vide('rh', 'attendue', null)
+              : vide('rh', 'a_venir', null)
+            : vide('rh', 'sans_objet', null));
+
+        const canDecide =
+          enAttente &&
+          moi !== request.employeeId &&
+          (niveau === NIVEAU_N1 ? n1?.userId === user.userId : ROLES_RH.includes(user.role));
+
         return {
           id: request.id,
           employeeId: request.employeeId,
@@ -1146,20 +1283,18 @@ export class AbsencesService {
           daysCount: num(request.daysCount),
           reason: request.reason,
           status: request.status,
-          currentLevel: request.currentLevel,
-          chainLevels: levels,
-          canDecide:
-            request.status === 'pending' && (user.role === 'admin' || user.role === requiredRole),
+          currentLevel: niveau,
+          etapeAttendue: enAttente ? etapeDuNiveau(niveau) : null,
+          circuit: [etapeN1, etapeRH],
+          canDecide,
           documentName: documentRows.find((d) => d.requestId === request.id)?.filename ?? null,
-          approvals: approvalRows
-            .filter((a) => a.requestId === request.id)
-            .map((a) => ({
-              level: a.level,
-              decision: a.decision,
-              decidedByName: `${a.givenName} ${a.familyName}`,
-              comment: a.comment,
-              decidedAt: a.decidedAt.toISOString(),
-            })),
+          approvals: visas.map((a) => ({
+            level: a.level,
+            decision: a.decision,
+            decidedByName: `${a.givenName} ${a.familyName}`,
+            comment: a.comment,
+            decidedAt: a.decidedAt.toISOString(),
+          })),
           createdAt: request.createdAt.toISOString(),
         };
       },

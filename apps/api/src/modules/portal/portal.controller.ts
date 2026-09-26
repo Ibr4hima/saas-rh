@@ -28,6 +28,7 @@ import { loadEnv } from '../../config/env';
 import { Roles, RolesGuard } from '../auth/roles.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { InvitationsService } from './invitations.service';
+import { n1QuiPeutViser } from '../time/visas';
 
 @Controller()
 export class PortalController {
@@ -91,6 +92,7 @@ export class PortalController {
         ...row,
         positionTitle: row.positionTitle ?? null,
         orgUnitName: row.orgUnitName ?? null,
+        valideurN1: (await n1QuiPeutViser(tx, row.employeeId))?.nom ?? null,
       };
     });
   }
