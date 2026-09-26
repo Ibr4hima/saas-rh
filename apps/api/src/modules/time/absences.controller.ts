@@ -17,6 +17,8 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
+  choisirDelegationSchema,
+  confierDemandeSchema,
   createAbsenceRequestSchema,
   createAbsenceTypeSchema,
   createHolidaySchema,
@@ -26,6 +28,8 @@ import {
   setBalanceSchema,
   updateAbsenceTypeSchema,
   updateHolidaySchema,
+  type ChoisirDelegationInput,
+  type ConfierDemandeInput,
   type CreateAbsenceRequestInput,
   type CreateAbsenceTypeInput,
   type CreateHolidayInput,
@@ -129,6 +133,32 @@ export class AbsencesController {
   @Get('absences/validations/compteurs')
   compteurs(@Req() req: AuthenticatedRequest) {
     return this.absences.compteurs(req.sessionUser);
+  }
+
+  /** Les délégations du directeur du Capital Humain : ce qu'il a confié, à qui. */
+  @Get('absences/delegation')
+  etatDelegation(@Req() req: AuthenticatedRequest) {
+    return this.absences.etatDelegation(req.sessionUser);
+  }
+
+  @Put('absences/delegation')
+  @HttpCode(204)
+  async choisirDelegation(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(choisirDelegationSchema)) body: ChoisirDelegationInput,
+  ) {
+    await this.absences.choisirDelegation(req.sessionUser, body);
+  }
+
+  /** Confier une demande à un membre de la DCH — ou la reprendre. */
+  @Post('absence-requests/:id/confier')
+  @HttpCode(200)
+  confier(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(confierDemandeSchema)) body: ConfierDemandeInput,
+  ) {
+    return this.absences.confier(req.sessionUser, id, body.employeeId);
   }
 
   // ---------- Soldes ----------

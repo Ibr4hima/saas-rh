@@ -75,7 +75,7 @@ interface NavItem {
    */
   motsCles?: string;
   icon: IconName;
-  badge?: 'pending' | 'docs' | 'visas';
+  badge?: 'pending' | 'docs' | 'visas' | 'traiter';
   /**
    * Entrée ÉTEINTE : elle reste à sa place dans la liste — l'ordre du menu
    * est une carte qu'on mémorise, et retirer une ligne la redessine — mais
@@ -246,6 +246,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/moi': 'Mon espace',
   '/moi/conges': 'Mes congés',
   '/moi/equipe': 'Congés de l’équipe',
+  '/moi/dch': 'Congés à traiter',
   '/moi/documents': 'Mes documents',
   '/moi/informations': 'Mes informations',
 };
@@ -390,15 +391,24 @@ const MANAGE_ONLY_PATHS = ['/recrutement', '/documents', '/academy/gerer'];
  * c'est l'organigramme qui fait le n+1, pas le rôle.
  */
 const CONGES_EQUIPE = { href: '/moi/equipe', label: 'Congés de l’équipe' };
+/**
+ * Les congés que traite la DCH : l'entrée n'apparaît qu'à son directeur, et
+ * au membre à qui il les confie.
+ */
+const CONGES_A_TRAITER = { href: '/moi/dch', label: 'Congés à traiter' };
 
-function staffNav(role: string, aUneEquipe: boolean): NavItem[] {
+function staffNav(role: string, aUneEquipe: boolean, traitement: boolean): NavItem[] {
   const items =
     role !== 'payroll'
       ? NAV_ITEMS
       : NAV_ITEMS.filter((i) => !MANAGE_ONLY_PATHS.some((p) => i.href.startsWith(p)));
-  if (!aUneEquipe) return items;
+  const enPlus = [
+    ...(aUneEquipe ? [CONGES_EQUIPE] : []),
+    ...(traitement ? [CONGES_A_TRAITER] : []),
+  ];
+  if (enPlus.length === 0) return items;
   return items.map((i) =>
-    i.href === '/absences' && i.children ? { ...i, children: [...i.children, CONGES_EQUIPE] } : i,
+    i.href === '/absences' && i.children ? { ...i, children: [...i.children, ...enPlus] } : i,
   );
 }
 
@@ -410,7 +420,7 @@ function staffNav(role: string, aUneEquipe: boolean): NavItem[] {
  * validations d'un manager tiennent à part : c'est le seul endroit où il
  * décide pour un autre.
  */
-function personalNav(aUneEquipe: boolean): NavItem[] {
+function personalNav(aUneEquipe: boolean, traitement: boolean): NavItem[] {
   return [
     { href: '/moi', label: 'Mon espace', short: 'Espace', icon: 'dashboard', groupe: 'pilotage' },
     {
@@ -452,6 +462,19 @@ function personalNav(aUneEquipe: boolean): NavItem[] {
             short: 'Équipe',
             icon: 'groups' as const,
             badge: 'visas' as const,
+            groupe: 'croissance' as const,
+          },
+        ]
+      : []),
+    // Ce que traite la DCH : son directeur, et le membre à qui il confie.
+    ...(traitement
+      ? [
+          {
+            href: CONGES_A_TRAITER.href,
+            label: CONGES_A_TRAITER.label,
+            short: 'À traiter',
+            icon: 'how_to_reg' as const,
+            badge: 'traiter' as const,
             groupe: 'croissance' as const,
           },
         ]
@@ -903,9 +926,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
     refetchInterval: 60_000,
   });
   const aUneEquipe = (validations.data?.equipe ?? 0) > 0;
+  const traitement = validations.data?.traitement ?? false;
   const items = useMemo(
-    () => (isStaff ? staffNav(role, aUneEquipe) : personalNav(aUneEquipe)),
-    [isStaff, role, aUneEquipe],
+    () => (isStaff ? staffNav(role, aUneEquipe, traitement) : personalNav(aUneEquipe, traitement)),
+    [isStaff, role, aUneEquipe, traitement],
   );
   // Les écrans que la palette sait ouvrir : le menu, mis à plat, avec le
   // chemin qu'on aurait suivi pour y arriver — c'est ce qu'on tape. Une
@@ -993,8 +1017,17 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const pending = stats.data?.pendingRequests ?? 0;
   const pendingDocs = stats.data?.pendingDocumentRequests ?? 0;
   const aViser = validations.data?.aViser ?? 0;
-  const badgeCount = (badge?: 'pending' | 'docs' | 'visas') =>
-    badge === 'pending' ? pending : badge === 'docs' ? pendingDocs : badge === 'visas' ? aViser : 0;
+  const aTraiter = validations.data?.aTraiter ?? 0;
+  const badgeCount = (badge?: 'pending' | 'docs' | 'visas' | 'traiter') =>
+    badge === 'pending'
+      ? pending
+      : badge === 'docs'
+        ? pendingDocs
+        : badge === 'visas'
+          ? aViser
+          : badge === 'traiter'
+            ? aTraiter
+            : 0;
 
   // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
   const title = titleOverride ?? pageTitle(pathname, user.givenName);

@@ -22,6 +22,7 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   cn,
   DataBlock,
   DataGrid,
@@ -194,6 +195,7 @@ function UnitPanel({
   const [unitType, setUnitType] = useState<OrgUnitType>(unit.unitType as OrgUnitType);
   const [parentId, setParentId] = useState(unit.parentId ?? '');
   const [shortName, setShortName] = useState(unit.shortName ?? '');
+  const [personnel, setPersonnel] = useState(unit.directionDuPersonnel);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [reassignTo, setReassignTo] = useState('');
   // Le sommet ne se propose qu'à lui-même, ou quand il n'y en a pas encore.
@@ -252,6 +254,9 @@ function UnitPanel({
     unitType,
     parentId: parentId || null,
     shortName: unitType === 'direction' ? shortName.trim() || null : null,
+    ...(personnel !== unit.directionDuPersonnel
+      ? { directionDuPersonnel: unitType === 'direction' && personnel }
+      : {}),
   });
 
   const remove = useMutation({
@@ -327,6 +332,12 @@ function UnitPanel({
                 ? 'Au sommet de l’organigramme'
                 : 'Sans rattachement — à ranger sous la Direction Générale'}
           </span>
+          {unit.directionDuPersonnel ? (
+            <>
+              <span>·</span>
+              <span className="font-semibold text-primary">Direction du personnel</span>
+            </>
+          ) : null}
         </span>
       }
       maxWidth="max-w-2xl"
@@ -478,6 +489,23 @@ function UnitPanel({
                   onChange={(e) => setShortName(e.target.value.toUpperCase())}
                 />
               </Field>
+            ) : null}
+            {unitType === 'direction' ? (
+              <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px]">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={personnel}
+                  onChange={(e) => setPersonnel(e.target.checked)}
+                />
+                <span>
+                  <span className="font-semibold text-ink-strong">Direction du personnel</span>
+                  <span className="block text-ink-muted">
+                    Elle traite les demandes des agents — les congés, une fois visés par le N+1. Son
+                    responsable est le directeur du Capital Humain. Une seule dans l’organisation :
+                    la cocher ici la retire à l’autre.
+                  </span>
+                </span>
+              </label>
             ) : null}
             <div className="flex gap-2">
               <Button

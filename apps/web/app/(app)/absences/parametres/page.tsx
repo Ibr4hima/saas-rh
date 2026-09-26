@@ -389,13 +389,14 @@ function FenetreType({
 function CircuitCard() {
   const etapes = [
     {
-      titre: 'Le n+1 de l’agent',
+      titre: 'Le N+1 de l’agent',
       texte:
-        'Il est prévenu dès le dépôt et vise en premier — depuis « Congés de l’équipe ». Un refus s’arrête là.',
+        'Il reçoit la demande dès le dépôt et vise en premier — depuis « Congés de l’équipe ». Un refus s’arrête là.',
     },
     {
-      titre: 'La RH',
-      texte: 'Prévenue dès que le n+1 a visé, elle vise à son tour : la demande est approuvée.',
+      titre: 'La Direction du Capital Humain',
+      texte:
+        'Son directeur — le responsable de la direction du personnel dans l’organigramme — traite la demande, ou la confie à un membre de sa direction.',
     },
   ];
   return (
@@ -424,10 +425,17 @@ function CircuitCard() {
         </ol>
         <ul className="flex flex-col gap-1 text-[11.5px] leading-snug text-ink-muted">
           <li>
-            Sans n+1 qui puisse viser — le directeur général, un n+1 parti ou sans accès au portail
-            — la demande va directement à la RH.
+            Sans N+1 qui puisse viser — le DG, un N+1 parti, sans accès au portail ou en congé — la
+            demande va directement à la DCH.
           </li>
-          <li>Un n+1 qui a lui-même le rôle RH vise les deux étapes d’un coup.</li>
+          <li>
+            Le directeur du Capital Humain peut confier les demandes à un membre de sa direction :
+            elles lui arrivent directement. Absent ou parti, le membre les rend au directeur.
+          </li>
+          <li>
+            La demande du directeur du Capital Humain : le visa du DG suffit. La même personne
+            attendue aux deux étapes vise une seule fois.
+          </li>
           <li>Personne ne vise sa propre demande.</li>
         </ul>
       </CardContent>

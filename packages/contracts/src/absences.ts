@@ -95,25 +95,32 @@ export interface Holiday {
 
 /**
  * Le circuit d'une demande d'absence, décidé avec l'APIX : le N+1 de l'agent
- * la vise d'abord ; une fois visée, la RH est prévenue et la vise à son tour.
+ * la vise d'abord ; une fois visée, elle passe au DIRECTEUR DU CAPITAL
+ * HUMAIN (le responsable de la direction du personnel, dans l'organigramme),
+ * qui la traite ou la confie à un membre de sa direction.
  *
  * Il n'est pas paramétrable, et c'est voulu : « qui valide mes congés ? » a
  * une seule réponse dans l'agence, lue dans l'organigramme — pas dans une
  * liste de rôles qu'on réordonne.
  *
- *   — le n+1 est celui de l'agent AU MOMENT où il vise : une mutation, une
+ *   — le N+1 est celui de l'agent AU MOMENT où il vise : une mutation, une
  *     reprise d'équipe, une cascade font passer la demande au nouveau ;
- *   — sans n+1 qui puisse viser (le directeur général, un n+1 archivé ou
- *     sans compte), la demande va directement à la RH ;
- *   — un n+1 qui a lui-même le rôle RH vise les deux étapes d'un coup ;
+ *   — sans N+1 qui puisse viser (le DG, un N+1 archivé, sans accès au
+ *     portail, ou en congé), la demande va directement à la DCH ;
+ *   — le directeur du Capital Humain traite, ou confie : une demande à la
+ *     fois, ou toutes, à un membre de sa direction — il n'est alors plus
+ *     prévenu, mais il voit tout et peut reprendre la main ;
+ *   — la demande du directeur du Capital Humain lui-même : le visa du DG
+ *     suffit ;
+ *   — la même personne attendue aux deux étapes vise une seule fois ;
  *   — personne ne vise sa propre demande.
  */
-export const CIRCUIT_CONGES = ['n1', 'rh'] as const;
+export const CIRCUIT_CONGES = ['n1', 'dch'] as const;
 export type EtapeConge = (typeof CIRCUIT_CONGES)[number];
 
 export const ETAPE_CONGE_LABELS: Record<EtapeConge, string> = {
   n1: 'N+1',
-  rh: 'RH',
+  dch: 'DCH',
 };
 
 /**
@@ -121,26 +128,81 @@ export const ETAPE_CONGE_LABELS: Record<EtapeConge, string> = {
  *   — visée / refusée : quelqu'un a signé ;
  *   — attendue : c'est elle qui bloque, en ce moment ;
  *   — à venir : elle viendra après l'étape attendue ;
- *   — passée : pas de n+1 qui puisse viser, la demande est allée à la RH ;
- *   — sans objet : elle n'aura pas lieu (refus plus tôt, annulation).
+ *   — passée : pas de N+1 qui puisse viser, la demande est allée à la DCH ;
+ *   — sans objet : elle n'aura pas lieu (refus plus tôt, annulation, ou
+ *     demande du directeur du Capital Humain, que le DG vise seul).
  */
 export type EtatEtapeConge = 'visee' | 'refusee' | 'attendue' | 'a_venir' | 'passee' | 'sans_objet';
 
 export interface EtapeCircuitView {
   etape: EtapeConge;
   etat: EtatEtapeConge;
-  /** Qui a signé ; ou, pour l'étape attendue du n+1, qui est attendu. */
+  /** Qui a signé ; ou, pour l'étape attendue, qui est attendu. */
   qui: string | null;
+  /** Visée pour le compte du directeur du Capital Humain, par délégation. */
+  parDelegationDe: string | null;
   decidedAt: string | null;
   comment: string | null;
 }
 
-/** Ce que le n+1 a devant lui : son équipe, et ce qui attend son visa. */
+/** Les types de demande que le directeur du Capital Humain peut confier. */
+export const TYPES_DEMANDE_DELEGABLES = ['conges'] as const;
+export type TypeDemandeDelegable = (typeof TYPES_DEMANDE_DELEGABLES)[number];
+
+/** Un membre de la DCH à qui l'on peut confier. */
+export interface MembreDCH {
+  employeeId: string;
+  nom: string;
+  poste: string | null;
+}
+
+/** Ce que voit le directeur du Capital Humain de ses délégations. */
+export interface EtatDelegation {
+  /** L'appelant dirige la direction du personnel. */
+  estDirecteur: boolean;
+  /** L'appelant traite les demandes par délégation. */
+  estDelegue: boolean;
+  /** Le directeur du Capital Humain en poste (null : poste vacant). */
+  directeur: { employeeId: string; nom: string } | null;
+  /**
+   * Son choix : il n'a pas encore choisi, il traite lui-même, ou il confie.
+   * Un choix de son prédécesseur ne vaut pas pour lui.
+   */
+  choix: 'aucun' | 'moi' | 'delegue';
+  delegue: { employeeId: string; nom: string } | null;
+  /**
+   * Le délégué ne peut plus traiter : parti de la DCH ou de l'agence, sans
+   * accès au portail — ou en congé aujourd'hui. Les demandes reviennent au
+   * directeur tant que cela dure.
+   */
+  delegueIndisponible: 'parti' | 'absent' | null;
+  /** À qui il peut confier : les membres actifs de sa direction. */
+  membres: MembreDCH[];
+}
+
+export const choisirDelegationSchema = z.object({
+  typeDemande: z.enum(TYPES_DEMANDE_DELEGABLES).default('conges'),
+  /** `null` : le directeur traite lui-même. */
+  delegueEmployeeId: z.uuid().nullable(),
+});
+export type ChoisirDelegationInput = z.infer<typeof choisirDelegationSchema>;
+
+export const confierDemandeSchema = z.object({
+  /** `null` : le directeur reprend la main. */
+  employeeId: z.uuid().nullable(),
+});
+export type ConfierDemandeInput = z.infer<typeof confierDemandeSchema>;
+
+/** Ce que l'appelant a devant lui : son équipe, ce qu'il vise, ce qu'il traite. */
 export interface CompteursValidations {
   /** Ses agents directs actifs (le DG n'est de l'équipe de personne). */
   equipe: number;
   /** Les demandes de ses agents qui attendent SON visa. */
   aViser: number;
+  /** Il traite pour la DCH : il la dirige, ou il en a reçu la délégation. */
+  traitement: boolean;
+  /** Les demandes qui attendent qu'IL les traite, pour la DCH. */
+  aTraiter: number;
 }
 
 // ---------- Soldes ----------
@@ -237,6 +299,15 @@ export interface AbsenceRequestView {
   circuit: EtapeCircuitView[];
   /** true si l'utilisateur courant peut viser l'étape attendue. */
   canDecide: boolean;
+  /** Qui traite pour la DCH, quand c'est l'étape attendue. */
+  traitant: { employeeId: string; nom: string } | null;
+  /** Confiée à la main par le directeur du Capital Humain. */
+  confiee: boolean;
+  /**
+   * L'appelant dirige la DCH et la demande est à l'étape de la DCH : il peut
+   * la confier à un membre, ou la reprendre.
+   */
+  peutConfier: boolean;
   approvals: ApprovalView[];
   /** Nom du justificatif PDF joint, s'il y en a un. */
   documentName: string | null;

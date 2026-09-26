@@ -40,7 +40,7 @@ import {
   verrouillerLaChaine,
   type PlanDeReprise,
 } from './chaine';
-import { faireSuivreLesDemandes, retirerLesAppels } from '../time/visas';
+import { faireSuivreLesDemandes, reconcilierDemande, reconcilierLeCircuit } from '../time/visas';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 
 /** Rôles autorisés à lire les champs ultra-sensibles (CNI). */
@@ -815,7 +815,7 @@ export class PeopleService {
           );
         }
 
-        await this.faireSuivre(tx, journal, input.managerEmployeeId ? [id] : []);
+        await this.faireSuivre(tx, user.tenantId, journal);
         resultat = {
           changements: journal,
           aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
@@ -939,8 +939,7 @@ export class PeopleService {
             ),
           )
           .returning({ id: t.absenceRequests.id });
-        for (const d of annulees) await retirerLesAppels(tx, d.id);
-        await this.faireSuivre(tx, journal);
+        for (const d of annulees) await reconcilierDemande(tx, d.id);
         const comptes = retenus.map((c) => c.userId).filter((u): u is string => u !== null);
         if (comptes.length > 0) {
           // Dans CE tenant seulement : l'agent peut être employé ailleurs, et
@@ -957,6 +956,7 @@ export class PeopleService {
             );
         }
       }
+      await this.faireSuivre(tx, user.tenantId, journal);
       // Un dossier rouvert revient avec le n+1 et l'affectation qu'il avait :
       // l'un ou l'autre a pu changer depuis. Ce qu'il faut revoir se dit
       // tout de suite, plutôt que d'attendre le prochain contrôle.
@@ -970,17 +970,17 @@ export class PeopleService {
   }
 
   /**
-   * Les agents dont le n+1 vient de changer : leurs demandes de congé qui
-   * attendaient le visa de l'ancien passent au nouveau, qui est prévenu.
+   * L'organisation vient de bouger — des n+1 ont changé, un agent est parti
+   * ou a changé de direction : le circuit des congés se relit. Les demandes
+   * vont à qui les attend désormais, et le directeur du Capital Humain
+   * apprend que son délégué n'est plus là.
    */
   private async faireSuivre(
     tx: Tx,
-    journal: ChangementRattachement[],
-    autres: string[] = [],
+    tenantId: string,
+    _journal: ChangementRattachement[] = [],
   ): Promise<void> {
-    for (const id of new Set([...journal.map((c) => c.employeeId), ...autres])) {
-      await faireSuivreLesDemandes(tx, id);
-    }
+    await reconcilierLeCircuit(tx, tenantId);
   }
 
   /**
@@ -1070,7 +1070,7 @@ export class PeopleService {
       skipped.push(...depart.refus);
       for (const plan of depart.plans) await appliquerReprise(tx, journal, plan);
       for (const c of depart.retenus) await this.effacer(tx, user, c);
-      await this.faireSuivre(tx, journal);
+      await this.faireSuivre(tx, user.tenantId, journal);
       return {
         done: depart.retenus.length,
         skipped,

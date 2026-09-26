@@ -212,15 +212,24 @@ export default function MyLeavesPage() {
 
   const myRequests = (requests.data ?? []).filter((r) => r.employeeId === employeeId);
   const deductibles = (balances.data ?? []).filter((b) => b.deductsBalance);
-  // Le circuit, fixé par l'APIX : son n+1 d'abord, puis la RH. Sans n+1
-  // qui puisse viser, la demande va directement à la RH.
+  // Le circuit, fixé par l'APIX : son N+1 d'abord, puis la DCH. Sans N+1
+  // qui puisse viser (absent, sans accès), la demande va directement à la
+  // DCH ; celle du directeur du Capital Humain, le DG la vise seul.
   const valideurN1 = myEmployee.data?.valideurN1 ?? null;
-  const etapes = [
-    valideurN1
-      ? { titre: 'Votre n+1', qui: valideurN1 }
-      : { titre: 'Votre n+1', qui: 'Aucun pour viser : directement à la RH' },
-    { titre: 'La RH', qui: 'Prévenue dès que votre n+1 a visé' },
-  ];
+  const valideurDCH = myEmployee.data?.valideurDCH ?? null;
+  const etapes = myEmployee.data?.demandeDuDirecteur
+    ? [{ titre: 'Votre N+1', qui: valideurN1 ? `${valideurN1} — son visa suffit` : 'Le DG' }]
+    : [
+        valideurN1
+          ? { titre: 'Votre N+1', qui: valideurN1 }
+          : { titre: 'Votre N+1', qui: 'Personne pour viser : directement à la DCH' },
+        {
+          titre: 'La Direction du Capital Humain',
+          qui: valideurDCH
+            ? `${valideurDCH}, dès que votre N+1 a visé`
+            : 'Dès que votre N+1 a visé',
+        },
+      ];
 
   return (
     <Page>
@@ -620,8 +629,8 @@ function Decompte({
 /**
  * Une demande, en une ligne.
  *
- * L'étape du visa s'écrit, avec son sujet — « Visa attendu : votre n+1
- * (Awa Diop) », « Visa attendu : la RH » —, et le justificatif est un bouton
+ * L'étape du visa s'écrit, avec son sujet — « Visa attendu : votre N+1
+ * (Awa Diop) », « Visa attendu : la DCH » —, et le justificatif est un bouton
  * visible plutôt qu'un mot souligné noyé dans la ligne de dates.
  */
 function LigneDemande({
@@ -635,13 +644,13 @@ function LigneDemande({
   onAnnuler: () => void;
   annulationEnCours: boolean;
 }) {
-  const n1 = r.circuit.find((e) => e.etape === 'n1')?.qui;
+  const qui = r.circuit.find((e) => e.etape === r.etapeAttendue)?.qui;
   const attendu =
     r.status !== 'pending'
       ? null
-      : r.etapeAttendue === 'rh'
-        ? 'Visa attendu : la RH'
-        : `Visa attendu : votre n+1${n1 ? ` (${n1})` : ''}`;
+      : r.etapeAttendue === 'dch'
+        ? `Visa attendu : la DCH${qui ? ` (${qui})` : ''}`
+        : `Visa attendu : votre N+1${qui ? ` (${qui})` : ''}`;
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover">

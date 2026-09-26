@@ -76,6 +76,12 @@ export const updateOrgUnitSchema = z.object({
    * vide est traitée comme une ABSENCE (le formulaire web envoie `null`).
    */
   shortName: shortNameField.or(z.null()),
+  /**
+   * La direction du personnel (la DCH) : elle traite les demandes des agents,
+   * son responsable est le directeur du Capital Humain. Une seule : la
+   * marquer la retire à l'autre.
+   */
+  directionDuPersonnel: z.boolean().optional(),
 });
 export type UpdateOrgUnitInput = z.infer<typeof updateOrgUnitSchema>;
 
@@ -147,6 +153,8 @@ export interface OrgUnitView extends OrgUnit {
    * unité sans parent) n'est pas le sommet.
    */
   sommet: boolean;
+  /** La direction du personnel (la DCH) — une seule dans l'organisation. */
+  directionDuPersonnel: boolean;
   /** Effectif AFFICHÉ : les personnes actives qui y travaillent aujourd'hui. */
   headcount: number;
   /**

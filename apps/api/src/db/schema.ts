@@ -77,9 +77,22 @@ export const orgUnits = pgTable('org_units', {
   /** Abrégé d'une direction (« DCH ») — NULL pour les autres types. */
   shortName: text('short_name'),
   managerEmployeeId: uuid('manager_employee_id'),
+  /** La direction qui traite les demandes du personnel (la DCH) — une seule. */
+  directionDuPersonnel: boolean('direction_du_personnel').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
+/** Les choix du directeur du Capital Humain : traiter, ou confier. */
+export const delegations = pgTable('delegations', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  typeDemande: text('type_demande').notNull(),
+  directeurEmployeeId: uuid('directeur_employee_id').notNull(),
+  delegueEmployeeId: uuid('delegue_employee_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  finAt: timestamp('fin_at', { withTimezone: true }),
 });
 
 export const profileChangeRequests = pgTable('profile_change_requests', {
@@ -224,6 +237,8 @@ export const absenceRequests = pgTable('absence_requests', {
   status: text('status').notNull().default('pending'),
   currentLevel: integer('current_level').notNull().default(0),
   requestedByUserId: uuid('requested_by_user_id'),
+  /** Confiée à la main à un membre de la DCH ; NULL : la règle s'applique. */
+  confieeAEmployeeId: uuid('confiee_a_employee_id'),
   decidedAt: timestamp('decided_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -238,6 +253,8 @@ export const absenceApprovals = pgTable('absence_approvals', {
   decidedByUserId: uuid('decided_by_user_id').notNull(),
   comment: text('comment'),
   decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Visé pour le compte du directeur du Capital Humain, par délégation. */
+  parDelegationDe: uuid('par_delegation_de'),
 });
 
 export const invitations = pgTable('invitations', {

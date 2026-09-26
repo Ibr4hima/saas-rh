@@ -70,6 +70,10 @@ export interface MyEmployeeView {
    * RH.
    */
   valideurN1: string | null;
+  /** Qui la traiterait ensuite pour la DCH (null : personne en ce moment). */
+  valideurDCH: string | null;
+  /** Il dirige la DCH : le visa de son N+1 (le DG) suffit. */
+  demandeDuDirecteur: boolean;
 }
 
 export type PortalStatus = 'none' | 'invited' | 'active';

@@ -112,7 +112,7 @@ export default function AbsencesPage() {
             <EmptyState
               icon={<Icon name="free_cancellation" size={22} />}
               title="Aucune demande dans ce statut"
-              description="Les employés posent leurs demandes depuis leur portail. Leur n+1 les vise d’abord ; la RH est prévenue ensuite, et elles arrivent ici."
+              description="Les employés posent leurs demandes depuis leur portail. Leur N+1 les vise d’abord ; la DCH les traite ensuite. Toutes s’affichent ici."
             />
           </CorpsDefilant>
         ) : (
@@ -195,13 +195,13 @@ export default function AbsencesPage() {
                   </Td>
                   <Td>
                     <StatutAbsence statut={r.status} titre={resumeVisas(r)} />
-                    {/* L'étape attendue : la RH lit d'un coup d'œil ce qui est
-                        à elle, et ce qui attend encore le n+1. */}
+                    {/* L'étape attendue : on lit d'un coup d'œil ce qui attend
+                        le N+1, et ce qui attend la DCH — et qui. */}
                     {visaAttendu(r) ? (
                       <span
                         className={cn(
                           'mt-1 block text-[11px] whitespace-nowrap',
-                          r.etapeAttendue === 'rh' ? 'font-semibold text-ink' : 'text-ink-muted',
+                          r.canDecide ? 'font-semibold text-ink' : 'text-ink-muted',
                         )}
                       >
                         {visaAttendu(r)}

@@ -409,9 +409,12 @@ describe('le support et la vidéo', () => {
     const exp = url.searchParams.get('exp')!;
     const sig = url.searchParams.get('sig')!;
     expect(existsSync(academy.media(tenant!, uid!, exp, sig))).toBe(true);
-    expect(
-      await codeOf(async () => academy.media(tenant!, uid!, exp, `${sig.slice(0, -1)}A`)),
-    ).toBe('academy.media_forbidden');
+    // Un caractère CHANGÉ : remplacer le dernier par « A » ne change rien
+    // quand la signature finit déjà par « A » — une fois sur soixante-quatre.
+    const alteree = `${sig.slice(0, -1)}${sig.endsWith('A') ? 'B' : 'A'}`;
+    expect(await codeOf(async () => academy.media(tenant!, uid!, exp, alteree))).toBe(
+      'academy.media_forbidden',
+    );
     expect(await codeOf(async () => academy.media(tenant!, uid!, '1000', sig))).toBe(
       'academy.media_forbidden',
     );

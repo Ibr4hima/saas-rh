@@ -26,8 +26,8 @@ import { compte } from '../../../../lib/mots';
 /* ————————————————————————————————————————————————————————————————
    Les congés de l'équipe : ce que le n+1 vise.
 
-   Le circuit de l'APIX : le n+1 de l'agent vise d'abord ; la RH, prévenue
-   dès son visa, vise ensuite. Cet écran est la première étape — le seul
+   Le circuit de l'APIX : le N+1 de l'agent vise d'abord ; la DCH, prévenue
+   dès son visa, traite ensuite. Cet écran est la première étape — le seul
    endroit où un agent décide pour un autre. Il n'apparaît dans le menu qu'à
    qui encadre quelqu'un : c'est l'organigramme qui fait le n+1, pas le rôle.
 
@@ -68,7 +68,7 @@ export default function CongesEquipePage() {
         ton: 'ok',
         texte:
           v.decision === 'approved'
-            ? `Demande de ${v.demande.employeeName} visée — la RH est prévenue.`
+            ? `Demande de ${v.demande.employeeName} visée — la DCH est prévenue.`
             : `Demande de ${v.demande.employeeName} refusée — un message lui est envoyé.`,
       });
       await rafraichir();
@@ -120,7 +120,7 @@ export default function CongesEquipePage() {
               className="py-8"
               icon={<Icon name="how_to_reg" size={22} />}
               title="Rien à valider"
-              description="Quand un agent de votre équipe pose un congé, vous êtes prévenu et il arrive ici. Votre visa l’envoie à la RH."
+              description="Quand un agent de votre équipe pose un congé, il arrive ici, avec une notification. Votre visa l’envoie à la DCH."
             />
           ) : (
             <ul className="flex flex-col">
@@ -222,7 +222,7 @@ export default function CongesEquipePage() {
           <Field
             label="Motif"
             htmlFor="motif-refus"
-            hint="Facultatif — il est transmis à l’agent avec le refus. La demande s’arrête là : la RH n’est pas sollicitée."
+            hint="Facultatif — il est transmis à l’agent avec le refus. La demande s’arrête là : la DCH n’est pas sollicitée."
           >
             <Textarea
               id="motif-refus"

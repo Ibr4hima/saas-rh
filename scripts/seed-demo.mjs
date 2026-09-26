@@ -229,8 +229,10 @@ if (!magalOn) console.warn('  ⚠ aucun férié de démonstration placé (rappel
 // c'est leur présence qui empêche le produit d'en créer un second exemplaire
 // non daté.
 for (const an of [year, year + 1]) await call('GET', `/holidays?year=${an}`);
-// Le circuit des congés n'est pas un réglage : le n+1 de l'agent vise
-// d'abord, puis la RH.
+// Le circuit des congés n'est pas un réglage : le N+1 de l'agent vise
+// d'abord, puis la Direction du Capital Humain — la direction du personnel,
+// que l'organigramme désigne. Mariama, qui la dirige, traite les demandes.
+await call('PATCH', `/org-units/${drh.id}`, { directionDuPersonnel: true });
 
 console.log('→ Portails employés : Awa, Moussa, Fatou et Mariama activent leur compte');
 // Les demandes sont posées par les employés EUX-MÊMES (aucune saisie RH) :
@@ -340,9 +342,9 @@ const r1 = await request(
   `${year}-08-28`,
   'Congés famille',
 );
-// Awa → Mariama (sa n+1), puis la RH.
+// Awa → Mariama, sa N+1.
+// Sa N+1 dirige la DCH : un seul visa suffit.
 await viser(r1.id, directriceRh.id);
-await viser(r1.id);
 const r2 = await request(
   moussa.id,
   'Mission',
@@ -351,11 +353,11 @@ const r2 = await request(
   'Mission Thiès',
   fakePdfDoc('ordre-de-mission-thies.pdf'),
 );
-// Moussa → Awa (sa n+1), puis la RH.
+// Moussa → Awa (sa N+1), puis Mariama pour la DCH.
 await viser(r2.id, awa.id);
-await viser(r2.id);
-// Le n+1 de Fatou (Ousmane Fall) n'a pas d'accès au portail : sa demande
-// va directement à la RH.
+await viser(r2.id, directriceRh.id);
+// Le N+1 de Fatou (Ousmane Fall) n'a pas d'accès au portail : sa demande
+// va directement à la DCH, chez Mariama.
 await request(
   fatou.id,
   'Maladie',

@@ -31,7 +31,7 @@ import {
   uniteRacine,
   verrouillerLaChaine,
 } from './chaine';
-import { faireSuivreLesDemandes } from '../time/visas';
+import { reconcilierLeCircuit } from '../time/visas';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 
 interface TeteHorsPerimetre extends Record<string, unknown> {
@@ -112,6 +112,7 @@ export class OrgUnitsService {
           managerGivenName: managerPersons.givenName,
           managerFamilyName: managerPersons.familyName,
           sommet: sql<boolean>`(org_units.id = ${SOMMET})`,
+          directionDuPersonnel: t.orgUnits.directionDuPersonnel,
           managerPosition: sql<string | null>`(
             SELECT a.position_title FROM assignments a
             WHERE a.employee_id = org_units.manager_employee_id
@@ -152,6 +153,7 @@ export class OrgUnitsService {
           : null,
         managerPosition: r.managerPosition,
         sommet: Boolean(r.sommet),
+        directionDuPersonnel: r.directionDuPersonnel,
         headcount: r.headcount,
         attachedEmployees: r.attachedEmployees,
       }));
@@ -213,6 +215,22 @@ export class OrgUnitsService {
         'org.sommet_indissoluble',
         'La Direction Générale ne se dissout pas',
         'Elle porte le sommet de l’organigramme et son responsable est le directeur général. Renommez-la au besoin.',
+      );
+    }
+
+    // ——— La direction du personnel traite les demandes des agents : sans
+    // elle, plus personne pour les congés. On en désigne une autre d'abord.
+    const [unite] = await tx
+      .select({ dch: t.orgUnits.directionDuPersonnel })
+      .from(t.orgUnits)
+      .where(eq(t.orgUnits.id, id))
+      .limit(1);
+    if (unite?.dch) {
+      problem(
+        422,
+        'org.dch_indissoluble',
+        'La direction du personnel ne se dissout pas',
+        'Elle traite les demandes des agents : désignez d’abord une autre direction du personnel.',
       );
     }
 
@@ -381,11 +399,10 @@ export class OrgUnitsService {
         const apres = await lireLaChaine(tx);
         resultat = { changements: journal, aRevoir: nouvellesAnomalies(avant, apres) };
         if (apercu) throw new AnnulerLApercu();
-        // Les cascades ont changé des n+1 : les demandes de congé qui
-        // attendaient l'ancien passent au nouveau, qui est prévenu.
-        for (const id of new Set(journal.map((c) => c.employeeId))) {
-          await faireSuivreLesDemandes(tx, id);
-        }
+        // L'organigramme a bougé — des n+1, le directeur du Capital Humain,
+        // les membres de sa direction : les demandes de congé vont à qui les
+        // attend désormais, qui est prévenu.
+        await reconcilierLeCircuit(tx, user.tenantId);
       });
     } catch (err) {
       if (err instanceof AnnulerLApercu) return resultat;
@@ -416,6 +433,7 @@ export class OrgUnitsService {
         unitType: t.orgUnits.unitType,
         parentId: t.orgUnits.parentId,
         managerEmployeeId: t.orgUnits.managerEmployeeId,
+        dch: t.orgUnits.directionDuPersonnel,
       })
       .from(t.orgUnits)
       .where(eq(t.orgUnits.id, id))
@@ -468,6 +486,23 @@ export class OrgUnitsService {
     if (input.unitType !== undefined || input.parentId !== undefined) {
       await this.assertParentAllowed(tx, nextType, nextParent, id);
       await this.assertChildrenAllowed(tx, id, nextType);
+    }
+
+    // ——— La direction du personnel est une direction, et il n'y en a qu'une.
+    const seraDCH = input.directionDuPersonnel ?? before!.dch;
+    if (seraDCH && nextType !== 'direction') {
+      problem(
+        422,
+        'org.dch_est_une_direction',
+        'La direction du personnel reste une direction',
+        'Désignez d’abord une autre direction du personnel, puis changez le type de celle-ci.',
+      );
+    }
+    if (input.directionDuPersonnel) {
+      await tx
+        .update(t.orgUnits)
+        .set({ directionDuPersonnel: false, updatedAt: new Date() })
+        .where(and(eq(t.orgUnits.directionDuPersonnel, true), sql`${t.orgUnits.id} <> ${id}`));
     }
 
     if (input.shortName !== undefined) {
@@ -542,6 +577,9 @@ export class OrgUnitsService {
     if (input.shortName !== undefined) changes.shortName = input.shortName;
     if (input.managerEmployeeId !== undefined) {
       changes.managerEmployeeId = input.managerEmployeeId;
+    }
+    if (input.directionDuPersonnel !== undefined) {
+      changes.directionDuPersonnel = input.directionDuPersonnel;
     }
     if (Object.keys(changes).length === 0) return;
     changes.updatedAt = new Date();
