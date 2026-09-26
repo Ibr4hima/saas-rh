@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { AcademyCategory, CourseSummary } from '@teranga/contracts';
 import { Badge, CardInteractive, cn } from '@teranga/ui';
-import { dureeLisible, FAMILLES } from '../lib/academy';
+import { dureeLisible, FAMILLES, FOND_COUVERTURE } from '../lib/academy';
 import { compte } from '../lib/mots';
 import { BoutonSignet } from './academy-signet';
 import { Icon } from './icons';
@@ -11,8 +11,9 @@ import { Icon } from './icons';
 
    La couverture est DESSINÉE, pas téléversée : la RH n'a pas à chercher une
    image pour chaque formation, et le catalogue ne mélange pas dix styles de
-   photos. Une nuance de bleu par famille, son icône en filigrane — de loin,
-   on reconnaît la famille ; de près, on lit le titre.
+   photos. Le bleu de la bande supérieure pour toutes, l'icône de la famille
+   en filigrane — le catalogue se lit d'une seule couleur, la famille se
+   reconnaît à son nom et à son dessin.
    ———————————————————————————————————————————————————————————————— */
 
 export function Couverture({
@@ -28,7 +29,7 @@ export function Couverture({
   return (
     <div
       className={cn('relative overflow-hidden text-white', className)}
-      style={{ background: famille.degrade }}
+      style={{ background: FOND_COUVERTURE }}
     >
       {/* Le filigrane : grand, décalé, presque effacé. Il habille sans
           concurrencer ce qui s'écrit par-dessus. */}
@@ -36,16 +37,6 @@ export function Couverture({
         name={famille.icone}
         size={112}
         className="pointer-events-none absolute -right-3 -bottom-5 opacity-[0.14]"
-      />
-      {/* Une lumière douce en haut à gauche : sans elle, un dégradé plat
-          fait carton. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            'radial-gradient(120% 90% at 0% 0%, rgb(255 255 255 / 0.16) 0%, transparent 55%)',
-        }}
       />
       {children}
     </div>

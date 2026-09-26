@@ -30,68 +30,55 @@ export function pourcent(part: number): string {
 }
 
 /**
- * La famille d'une formation : son nom, son icône, et la nuance de sa
- * couverture.
- *
- * Toutes les couvertures restent dans le BLEU de la marque — c'est lui qui
- * structure. L'orange est réservé à ce qui attend une action : une couverture
- * orange dirait « à traiter » d'une formation qui n'attend rien. Les
- * familles se distinguent par leur icône, et par une nuance de bleu qui
- * suffit à l'œil sans rien lui faire lire.
+ * Le fond des couvertures : le bleu de la BANDE SUPÉRIEURE, exactement — le
+ * même jeton, qui suit donc le mode sombre. Une nuance par famille donnait
+ * un catalogue qui paraissait mal assorti plutôt que classé ; les familles se
+ * distinguent par leur nom et leur icône, pas par la couleur. L'orange reste
+ * réservé à ce qui attend une action.
  */
-export const FAMILLES: Record<
-  AcademyCategory,
-  { label: string; icone: IconName; degrade: string }
-> = {
+export const FOND_COUVERTURE = 'var(--tg-hero)';
+
+/** La famille d'une formation : son nom et son icône. */
+export const FAMILLES: Record<AcademyCategory, { label: string; icone: IconName }> = {
   bureautique: {
     label: ACADEMY_CATEGORY_LABELS.bureautique,
     icone: 'computer',
-    degrade: 'linear-gradient(135deg, #004f91 0%, #0a6cc2 100%)',
   },
   digital: {
     label: ACADEMY_CATEGORY_LABELS.digital,
     icone: 'devices',
-    degrade: 'linear-gradient(135deg, #03457a 0%, #1b7fc4 100%)',
   },
   economie: {
     label: ACADEMY_CATEGORY_LABELS.economie,
     icone: 'trending_up',
-    degrade: 'linear-gradient(135deg, #0b3a6b 0%, #1f5f9c 100%)',
   },
   droit: {
     label: ACADEMY_CATEGORY_LABELS.droit,
     icone: 'gavel',
-    degrade: 'linear-gradient(135deg, #1c2f55 0%, #34588f 100%)',
   },
   metier: {
     label: ACADEMY_CATEGORY_LABELS.metier,
     icone: 'business_center',
-    degrade: 'linear-gradient(135deg, #00325f 0%, #004f91 100%)',
   },
   management: {
     label: ACADEMY_CATEGORY_LABELS.management,
     icone: 'group',
-    degrade: 'linear-gradient(135deg, #1b3f73 0%, #3a6fb0 100%)',
   },
   projets: {
     label: ACADEMY_CATEGORY_LABELS.projets,
     icone: 'account_tree',
-    degrade: 'linear-gradient(135deg, #0d3b63 0%, #2667a8 100%)',
   },
   communication: {
     label: ACADEMY_CATEGORY_LABELS.communication,
     icone: 'campaign',
-    degrade: 'linear-gradient(135deg, #123f6e 0%, #2f7ab8 100%)',
   },
   langues: {
     label: ACADEMY_CATEGORY_LABELS.langues,
     icone: 'translate',
-    degrade: 'linear-gradient(135deg, #0d3566 0%, #3868a8 100%)',
   },
   conformite: {
     label: ACADEMY_CATEGORY_LABELS.conformite,
     icone: 'verified_user',
-    degrade: 'linear-gradient(135deg, #16294a 0%, #2d4d7e 100%)',
   },
 };
 

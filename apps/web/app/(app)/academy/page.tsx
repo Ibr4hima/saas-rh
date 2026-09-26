@@ -2,10 +2,11 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { AcademyCategory, CourseSummary } from '@teranga/contracts';
 import { ACADEMY_CATEGORIES } from '@teranga/contracts';
-import { Button, Card, cn, EmptyState, Input, Skeleton } from '@teranga/ui';
+import { Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { CarteFormation } from '../../../components/academy-carte';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
@@ -21,6 +22,9 @@ import { compte } from '../../../lib/mots';
    Deux questions, dans cet ordre. « Où en étais-je ? » : les formations
    commencées, en tête, pour reprendre en un clic. « Qu'est-ce que je pourrais
    apprendre ? » : le catalogue, par famille, avec une recherche.
+
+   La recherche vit dans la bande bleue (components/recherche-academy.tsx) ;
+   le mot cherché arrive ici par l'adresse, ?q=.
 
    Les certificats n'y sont plus : ils ont leur page, « Mes certificats »,
    ouverte depuis le menu du compte — où qu'on se trouve dans l'application.
@@ -49,7 +53,7 @@ export default function AcademyPage() {
     queryFn: () => api<CourseSummary[]>('/academy/courses'),
   });
   const [filtre, setFiltre] = useState<Filtre>('toutes');
-  const [recherche, setRecherche] = useState('');
+  const recherche = useSearchParams().get('q') ?? '';
 
   const formations = useMemo(() => catalogue.data ?? [], [catalogue.data]);
   const enCours = useMemo(
@@ -121,7 +125,7 @@ export default function AcademyPage() {
               regard : à trois formations ou moins, elles sont toutes sous les
               yeux avec leur progression, et la rangée ne ferait que les
               répéter. */}
-          {enCours.length > 0 && formations.length > 3 ? (
+          {enCours.length > 0 && formations.length > 3 && !recherche.trim() ? (
             <section className="flex flex-col gap-3">
               <Intitule>Reprendre là où vous en étiez</Intitule>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -138,7 +142,7 @@ export default function AcademyPage() {
               <div
                 role="tablist"
                 aria-label="Familles de formations"
-                className="flex flex-1 flex-wrap gap-1.5 md:justify-center"
+                className="flex flex-1 flex-wrap gap-1.5"
               >
                 {(['toutes', ...familles] as Filtre[]).map((c) => (
                   <button
@@ -158,21 +162,25 @@ export default function AcademyPage() {
                   </button>
                 ))}
               </div>
-              <div className="relative md:w-60">
-                <Icon
-                  name="search"
-                  size={15}
-                  className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-muted/70"
-                />
-                <Input
-                  placeholder="Rechercher une formation…"
-                  value={recherche}
-                  onChange={(e) => setRecherche(e.target.value)}
-                  aria-label="Rechercher une formation"
-                  className="h-8 w-full rounded-full pl-8 text-[12.5px]"
-                />
-              </div>
             </div>
+
+            {/* Le champ est dans le bandeau, loin des cartes : on redit ici
+                ce qui filtre, et comment l'enlever. */}
+            {recherche.trim() ? (
+              <p className="flex flex-wrap items-center gap-x-2 text-[12.5px] text-ink-muted">
+                <span>
+                  {visibles.length === 0 ? 'Aucun résultat' : compte(visibles.length, 'résultat')}{' '}
+                  pour <b className="font-bold text-ink-strong">« {recherche.trim()} »</b>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => window.history.replaceState(null, '', '/academy')}
+                  className="font-semibold text-primary hover:underline focus-visible:underline focus-visible:outline-none"
+                >
+                  Effacer
+                </button>
+              </p>
+            ) : null}
 
             {visibles.length === 0 ? (
               <Card>

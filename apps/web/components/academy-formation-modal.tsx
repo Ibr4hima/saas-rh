@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { AcademyCategory, CourseAdminView } from '@teranga/contracts';
 import { ACADEMY_CATEGORIES } from '@teranga/contracts';
 import { Button, cn, Field, Input, Textarea } from '@teranga/ui';
-import { FAMILLES } from '../lib/academy';
+import { FAMILLES, FOND_COUVERTURE } from '../lib/academy';
 import { api, ApiError } from '../lib/api';
 import { Icon } from './icons';
 import { Modal, ModalSection } from './modal';
@@ -146,7 +146,7 @@ export function FormationModal({
               >
                 <span
                   className="grid size-7 shrink-0 place-items-center rounded-[8px] text-white"
-                  style={{ background: FAMILLES[c].degrade }}
+                  style={{ background: FOND_COUVERTURE }}
                 >
                   <Icon name={FAMILLES[c].icone} size={16} />
                 </span>

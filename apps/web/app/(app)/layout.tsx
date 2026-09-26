@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { cn, Skeleton } from '@teranga/ui';
 import { BrandMark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
@@ -12,6 +12,7 @@ import { MenuCompte } from '../../components/menu-compte';
 import { NotificationsBell } from '../../components/notifications-bell';
 import { CalendrierModal } from '../../components/calendrier';
 import { ANCRE_ONGLETS } from '../../components/onglets-bandeau';
+import { RechercheAcademy } from '../../components/recherche-academy';
 import {
   Palette,
   useNomDuRaccourci,
@@ -858,6 +859,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
         <div id={ANCRE_ONGLETS} className="relative z-10 hidden shrink-0 md:flex" />
 
         <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
+          {/* La recherche du catalogue, dans le bandeau : elle lit et écrit
+              l'adresse (?q=), d'où la frontière Suspense qu'exige Next. */}
+          {academy ? (
+            <Suspense fallback={null}>
+              <RechercheAcademy />
+            </Suspense>
+          ) : null}
           {action ? <HeaderAction action={action} /> : null}
           {academy ? (
             <LienMaListe actif={pathname === '/academy/ma-liste'} />

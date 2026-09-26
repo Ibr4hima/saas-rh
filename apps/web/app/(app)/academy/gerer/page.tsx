@@ -24,7 +24,7 @@ import { RetourAcademy } from '../../../../components/academy-carte';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
-import { dureeLisible, FAMILLES } from '../../../../lib/academy';
+import { dureeLisible, FAMILLES, FOND_COUVERTURE } from '../../../../lib/academy';
 import { api } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/hooks';
 import { compte } from '../../../../lib/mots';
@@ -136,7 +136,7 @@ export default function GererCataloguePage() {
                     >
                       <span
                         className="grid size-9 shrink-0 place-items-center rounded-[10px] text-white"
-                        style={{ background: FAMILLES[f.category].degrade }}
+                        style={{ background: FOND_COUVERTURE }}
                       >
                         <Icon name={FAMILLES[f.category].icone} size={18} />
                       </span>

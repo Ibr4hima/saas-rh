@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { CertificateSummary } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, cn, Skeleton } from '@teranga/ui';
-import { FAMILLES, pourcent, STATUTS_CERTIFICAT } from '../lib/academy';
+import { FOND_COUVERTURE, pourcent, STATUTS_CERTIFICAT } from '../lib/academy';
 import { api, apiUrl } from '../lib/api';
 import { formatDate } from '../lib/hooks';
 import { FenetreDocument } from './fenetre-document';
@@ -95,7 +95,7 @@ export function ListeCertificats({
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span
                   className="grid size-9 shrink-0 place-items-center rounded-[10px] text-white"
-                  style={{ background: FAMILLES[c.courseCategory].degrade }}
+                  style={{ background: FOND_COUVERTURE }}
                 >
                   <Icon name="workspace_premium" size={19} />
                 </span>
