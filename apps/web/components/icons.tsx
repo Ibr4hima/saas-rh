@@ -36,6 +36,8 @@ export const ICON_NAMES = [
   'campaign',
   'check',
   'check_circle',
+  'chevron_backward',
+  'chevron_forward',
   'chevron_left',
   'chevron_right',
   'close',

@@ -73,6 +73,9 @@ export function LecteurVideo({
   const [muet, setMuet] = React.useState(false);
   const [volume, setVolume] = React.useState(1);
   const [pleinEcran, setPleinEcran] = React.useState(false);
+  // Les proportions de la vidéo, lues dans le fichier : le cadre les épouse.
+  // 16:9 tant qu'on ne les connaît pas — c'est le format de presque toutes.
+  const [format, setFormat] = React.useState(16 / 9);
   const [ailleurs, setAilleurs] = React.useState(false);
   const [erreurMedia, setErreurMedia] = React.useState(false);
   const [avis, setAvis] = React.useState<string | null>(null);
@@ -255,14 +258,19 @@ export function LecteurVideo({
       onMouseLeave={() => enLecture && setCommandes(false)}
       aria-label={`Lecteur vidéo — ${lecture.title}`}
       className={cn(
-        'group/lecteur relative isolate aspect-video w-full overflow-hidden bg-black select-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none',
-        // Toute la largeur, mais pas toute la hauteur : au-delà de 62 % de
-        // l'écran, la vidéo repoussait sous la ligne de flottaison la leçon et
-        // ses boutons. Le cadre garde alors sa largeur, la vidéo se centre
-        // dedans sur fond noir — comme au cinéma.
-        pleinEcran ? 'rounded-none' : 'max-h-[62vh] rounded-[16px]',
+        'group/lecteur relative isolate w-full overflow-hidden bg-black select-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none',
+        pleinEcran ? 'rounded-none' : 'mx-auto rounded-[16px]',
         !montrerCommandes && 'cursor-none',
       )}
+      // Le cadre a les proportions EXACTES de la vidéo : pas de bandes noires
+      // de part et d'autre. Sa hauteur reste plafonnée à 62 % de l'écran — au
+      // delà, la vidéo repoussait la leçon et ses boutons sous la ligne de
+      // flottaison — et c'est donc sa LARGEUR qui cède : 62vh × le format.
+      style={
+        pleinEcran
+          ? undefined
+          : { aspectRatio: format, maxWidth: `calc(62vh * ${format.toFixed(4)})` }
+      }
     >
       <video
         ref={video}
@@ -275,6 +283,8 @@ export function LecteurVideo({
         onClick={basculer}
         className="h-full w-full"
         onLoadedMetadata={(e) => {
+          const { videoWidth: largeur, videoHeight: hauteur } = e.currentTarget;
+          if (largeur > 0 && hauteur > 0) setFormat(largeur / hauteur);
           if (lecture.reprise > 1) {
             e.currentTarget.currentTime = lecture.reprise;
             direAvis(`Reprise à ${horloge(lecture.reprise)}`);

@@ -1,9 +1,31 @@
 'use client';
 
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '@teranga/ui';
 import { Icon } from './icons';
+
+/**
+ * La finesse de peinture : combien de pixels de toile par pixel d'écran.
+ *
+ * Jamais moins de 2, même sur un écran ordinaire : la page peinte au double
+ * puis réduite par le navigateur donne un texte net et lisse, là où une
+ * peinture au pixel près le laisse maigre et crénelé. Jusqu'à 4 sur les écrans
+ * très denses. Plafonnée à 16,7 millions de pixels par page — la limite que
+ * pdf.js s'impose lui-même —, au-delà de laquelle une page géante zoomée
+ * épuiserait la mémoire du navigateur.
+ */
+function finesseDe(largeur: number, hauteur: number): number {
+  const ecran = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+  let f = Math.min(4, Math.max(2, ecran));
+  while (f > 1 && largeur * hauteur * f * f > 16_777_216) f -= 0.25;
+  return f;
+}
+
+/** La taille d'une page à l'écran, en pixels ENTIERS — voir `peindre`. */
+function tailleAffichee(p: { width: number; height: number }, zoom: number) {
+  return { width: Math.round(p.width * zoom), height: Math.round(p.height * zoom) };
+}
 
 /**
  * Le lecteur de PDF du produit.
@@ -45,6 +67,7 @@ export function PdfViewer({
   const [echouee, setEchouee] = useState(false);
 
   const zone = useRef<HTMLDivElement>(null);
+  const feuillet = useRef<HTMLDivElement>(null);
   const cadres = useRef<(HTMLDivElement | null)[]>([]);
   const toiles = useRef<(HTMLCanvasElement | null)[]>([]);
   const doc = useRef<PDFDocumentProxy | null>(null);
@@ -130,20 +153,23 @@ export function PdfViewer({
 
     try {
       const p = await pdf.getPage(index + 1);
-      const vue = p.getViewport({ scale: echelle });
-      // Sur écran dense, peindre à la résolution PHYSIQUE : sinon le texte
-      // d'un CV sort crénelé, ce qui n'arrive dans aucun vrai lecteur.
-      const densite = Math.min(2, window.devicePixelRatio || 1);
-      toile.width = Math.floor(vue.width * densite);
-      toile.height = Math.floor(vue.height * densite);
+      const base = p.getViewport({ scale: 1 });
+      // La toile a EXACTEMENT la taille du cadre, multipliée par la finesse.
+      // Avant, sa largeur était arrondie à part (1142 pixels de toile pour un
+      // cadre qui en demandait 1142,6) : le navigateur l'étirait d'une
+      // fraction de pixel pour la faire tenir, et cet étirement suffisait à
+      // flouter tout le texte de la page.
+      const cadre = tailleAffichee(base, echelle);
+      const finesse = finesseDe(cadre.width, cadre.height);
+      toile.width = Math.round(cadre.width * finesse);
+      toile.height = Math.round(cadre.height * finesse);
+      // pdf.js peint directement à la taille de la toile : aucune
+      // transformation à ajouter, donc aucun arrondi de plus.
+      const vue = p.getViewport({ scale: toile.width / base.width });
 
       const ctx = toile.getContext('2d');
       if (!ctx) return;
-      const tache = p.render({
-        canvasContext: ctx,
-        viewport: vue,
-        transform: densite === 1 ? undefined : [densite, 0, 0, densite, 0, 0],
-      });
+      const tache = p.render({ canvasContext: ctx, viewport: vue });
       enCours.current.set(index, tache);
       await tache.promise;
       enCours.current.delete(index);
@@ -173,6 +199,45 @@ export function PdfViewer({
     for (const c of cadres.current) if (c) obs.observe(c);
     return () => obs.disconnect();
   }, [prete, zoom, pages.length, peindre]);
+
+  // ---- Les pages calées sur les pixels de l'écran -------------------------
+  //
+  // Une fenêtre centrée tombe volontiers à un demi-pixel près (y = 188,625) :
+  // le navigateur rééchantillonne alors la toile pour la poser entre deux
+  // pixels, et le texte perd sa netteté. On décale les pages de la fraction
+  // qui dépasse — jamais plus d'un pixel, invisible à l'œil, décisif pour le
+  // trait. Recalé après l'animation d'ouverture, au redimensionnement et au
+  // défilement, qui peut lui aussi s'arrêter entre deux pixels.
+  useLayoutEffect(() => {
+    const el = feuillet.current;
+    const z = zone.current;
+    if (!prete || !el || !z) return;
+    let brut = 0;
+    const caler = () => {
+      el.style.transform = '';
+      const r = el.getBoundingClientRect();
+      const d = window.devicePixelRatio || 1;
+      const fx = (((r.left * d) % 1) + 1) % 1;
+      const fy = (((r.top * d) % 1) + 1) % 1;
+      if (fx > 0.001 || fy > 0.001) {
+        el.style.transform = `translate(${-fx / d}px, ${-fy / d}px)`;
+      }
+    };
+    const plusTard = () => {
+      cancelAnimationFrame(brut);
+      brut = requestAnimationFrame(caler);
+    };
+    caler();
+    const apresOuverture = window.setTimeout(caler, 320);
+    window.addEventListener('resize', plusTard);
+    z.addEventListener('scroll', plusTard, { passive: true });
+    return () => {
+      window.clearTimeout(apresOuverture);
+      cancelAnimationFrame(brut);
+      window.removeEventListener('resize', plusTard);
+      z.removeEventListener('scroll', plusTard);
+    };
+  }, [prete, zoom]);
 
   // ---- Le numéro de page suit le défilement ------------------------------
   useEffect(() => {
@@ -271,7 +336,7 @@ export function PdfViewer({
             <span className="size-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
           </div>
         ) : (
-          <div className="mx-auto flex w-fit flex-col gap-3">
+          <div ref={feuillet} className="mx-auto flex w-fit flex-col gap-3">
             {pages.map((p, i) => (
               <div
                 key={i}
@@ -282,7 +347,7 @@ export function PdfViewer({
                 // Le cadre porte les dimensions AVANT peinture : sans cela, la
                 // hauteur du document changerait à chaque page rendue et le
                 // défilement sauterait sous le doigt.
-                style={{ width: p.width * zoom, height: p.height * zoom }}
+                style={tailleAffichee(p, zoom)}
                 className="overflow-hidden rounded-[6px] bg-white shadow-[0_1px_3px_rgb(16_24_40/0.12),0_1px_2px_rgb(16_24_40/0.08)]"
               >
                 {/* La toile appartient à React et vit DANS le document :

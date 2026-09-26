@@ -12,6 +12,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  cn,
   EmptyState,
   Skeleton,
 } from '@teranga/ui';
@@ -143,9 +144,11 @@ export default function LeconPage() {
     <Page>
       <RetourAcademy href={`/academy/${id}`} label={f.title} />
 
-      {/* Une seule colonne : la vidéo prend toute la largeur — c'est elle
-          qu'on regarde —, la leçon et le programme viennent dessous. */}
-      <div className="flex min-w-0 flex-col gap-4">
+      {/* Une seule colonne : la vidéo d'abord — c'est elle qu'on regarde —,
+          la leçon et le programme dessous. La colonne a la largeur d'une vidéo
+          16:9 haute de 62 % de l'écran : la leçon et le programme s'alignent
+          sur ses bords, au lieu de déborder de part et d'autre. */}
+      <div className="mx-auto flex w-full max-w-[calc(62vh*16/9)] min-w-0 flex-col gap-4">
         <LecteurVideo
           key={l.sessionId ?? `${l.lessonId}-${ouverture}`}
           lecture={l}
@@ -156,15 +159,54 @@ export default function LeconPage() {
 
         <Card>
           <div className="flex flex-col gap-4 p-5">
-            <div>
-              {ici ? (
-                <p className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
-                  Module {ici.module} · Leçon {rang + 1} sur {toutes.length}
-                </p>
-              ) : null}
-              <h1 className="mt-1.5 text-[19px] leading-snug font-bold tracking-[-0.015em] text-ink-strong">
-                {l.title}
-              </h1>
+            {/* Le titre et, sur sa ligne, tout ce qu'on fait de la leçon : son
+                support, puis reculer ou avancer d'une leçon. */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+              <div className="min-w-0">
+                {ici ? (
+                  <p className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
+                    Module {ici.module} · Leçon {rang + 1} sur {toutes.length}
+                  </p>
+                ) : null}
+                <h1 className="mt-1.5 text-[19px] leading-snug font-bold tracking-[-0.015em] text-ink-strong">
+                  {l.title}
+                </h1>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-3">
+                {ici?.support ? (
+                  // Le support s'ouvre dans l'aperçu du produit, comme toute
+                  // pièce : on le lit sans quitter la leçon, et on le
+                  // télécharge de là si on veut le garder.
+                  <button
+                    type="button"
+                    onClick={() => setSupportOuvert(true)}
+                    title={`${ici.support.filename} — PDF, ${Math.max(1, Math.round(ici.support.size / 1024))} Ko`}
+                    className="group inline-flex h-10 items-center gap-2.5 rounded-full border border-line-soft bg-surface pr-4 pl-1.5 text-[12.5px] font-semibold text-ink shadow-xs transition-all duration-150 hover:border-primary/35 hover:bg-primary-soft/40 hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+                  >
+                    <span className="grid size-7 place-items-center rounded-full bg-primary-soft text-primary transition-colors group-hover:bg-primary group-hover:text-primary-ink">
+                      <Icon name="description" size={16} />
+                    </span>
+                    Support de cours
+                  </button>
+                ) : null}
+                {ici?.support && (l.precedente || l.suivante) ? (
+                  <span aria-hidden className="h-6 w-px bg-line" />
+                ) : null}
+                {l.precedente || l.suivante ? (
+                  <div className="flex items-center gap-1.5">
+                    <NavLecon
+                      sens="precedente"
+                      href={l.precedente ? `/academy/${id}/lecon/${l.precedente}` : null}
+                    />
+                    <NavLecon
+                      sens="suivante"
+                      href={l.suivante ? `/academy/${id}/lecon/${l.suivante}` : null}
+                      verrou={Boolean(l.suivante) && !suivanteOuverte}
+                    />
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             {suivi ? (
@@ -194,59 +236,23 @@ export default function LeconPage() {
               )
             ) : null}
 
-            <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4">
-              {ici?.support ? (
-                // Le support s'ouvre dans l'aperçu du produit, comme toute
-                // pièce : on le lit sans quitter la leçon, et on le
-                // télécharge de là si on veut le garder.
-                <button
-                  type="button"
-                  onClick={() => setSupportOuvert(true)}
-                  className="mr-auto inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-[12px] font-semibold text-ink transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
-                >
-                  <Icon name="description" size={16} className="text-primary" />
-                  Support de la leçon
-                  <span className="font-normal text-ink-muted">
-                    PDF · {Math.max(1, Math.round(ici.support.size / 1024))} Ko
-                  </span>
-                </button>
-              ) : (
-                <span className="mr-auto" />
-              )}
-              {l.precedente ? (
-                <Link href={`/academy/${id}/lecon/${l.precedente}`}>
-                  <Button variant="secondary" size="sm">
-                    <Icon name="chevron_left" size={16} />
-                    Précédente
-                  </Button>
-                </Link>
-              ) : null}
-              {/* La dernière leçon validée ouvre l'évaluation : c'est le
-                  geste suivant, il prend la place de « Leçon suivante ». */}
-              {!l.suivante &&
-              suivi &&
-              (f.evaluation?.etat === 'ouverte' || f.evaluation?.etat === 'en_cours') ? (
-                <Link href={`/academy/${id}/evaluation`}>
+            {/* La dernière leçon validée ouvre l'évaluation : c'est le geste
+                suivant, et il n'a pas de flèche pour le dire. */}
+            {!l.suivante &&
+            suivi &&
+            (f.evaluation?.etat === 'ouverte' || f.evaluation?.etat === 'en_cours') ? (
+              <div className="flex items-center justify-between gap-3 border-t border-line-soft pt-4">
+                <p className="text-[12.5px] text-ink-muted">
+                  C’était la dernière leçon : l’évaluation finale est ouverte.
+                </p>
+                <Link href={`/academy/${id}/evaluation`} className="shrink-0">
                   <Button size="sm">
                     <Icon name="quiz" size={16} />
                     Passer l’évaluation
                   </Button>
                 </Link>
-              ) : null}
-              {l.suivante ? (
-                <Button
-                  size="sm"
-                  disabled={!suivanteOuverte}
-                  title={
-                    suivanteOuverte ? undefined : 'Validez cette leçon pour ouvrir la suivante'
-                  }
-                  onClick={allerSuivante}
-                >
-                  Leçon suivante
-                  <Icon name={suivanteOuverte ? 'chevron_right' : 'lock'} size={16} />
-                </Button>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
         </Card>
 
@@ -278,5 +284,55 @@ export default function LeconPage() {
         />
       ) : null}
     </Page>
+  );
+}
+
+/**
+ * Reculer ou avancer d'une leçon : une flèche ronde, sans libellé — son sens
+ * suffit, l'infobulle le dit. Verrouillée tant que la leçon n'est pas validée :
+ * elle le montre, et dit pourquoi.
+ */
+function NavLecon({
+  sens,
+  href,
+  verrou = false,
+}: {
+  sens: 'precedente' | 'suivante';
+  href: string | null;
+  verrou?: boolean;
+}) {
+  const libelle = sens === 'precedente' ? 'Leçon précédente' : 'Leçon suivante';
+  const forme =
+    'grid size-10 place-items-center rounded-full border transition-all duration-150 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none';
+  const icone = (
+    <Icon name={sens === 'precedente' ? 'chevron_backward' : 'chevron_forward'} size={20} />
+  );
+  if (!href || verrou) {
+    return (
+      <span
+        role="link"
+        aria-disabled
+        aria-label={verrou ? `${libelle} — validez d’abord celle-ci` : libelle}
+        title={verrou ? 'Validez cette leçon pour ouvrir la suivante' : undefined}
+        className={cn(forme, 'cursor-not-allowed border-line-soft text-ink-muted/40')}
+      >
+        {icone}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={href}
+      aria-label={libelle}
+      title={libelle}
+      className={cn(
+        forme,
+        sens === 'suivante'
+          ? 'border-primary bg-primary text-primary-ink shadow-xs hover:bg-primary/90'
+          : 'border-line-soft bg-surface text-ink shadow-xs hover:border-primary/35 hover:text-primary',
+      )}
+    >
+      {icone}
+    </Link>
   );
 }
