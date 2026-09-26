@@ -46,6 +46,30 @@ function premierTrou(intervalles: Intervalle[], duree: number): number {
 
 const arrondi = (s: number) => Math.round(s * 10) / 10;
 
+/* Le son choisi, gardé dans ce navigateur : une commodité de lecture. */
+const CLE_SON = 'teranga-lecteur-son';
+
+function lireSon(): { volume: number; muet: boolean } {
+  try {
+    const brut = JSON.parse(localStorage.getItem(CLE_SON) ?? 'null') as {
+      volume?: unknown;
+      muet?: unknown;
+    } | null;
+    const volume = typeof brut?.volume === 'number' ? Math.min(1, Math.max(0, brut.volume)) : 1;
+    return { volume, muet: brut?.muet === true };
+  } catch {
+    return { volume: 1, muet: false };
+  }
+}
+
+function ecrireSon(son: { volume: number; muet: boolean }): void {
+  try {
+    localStorage.setItem(CLE_SON, JSON.stringify(son));
+  } catch {
+    // Stockage refusé : le son tient pour la leçon.
+  }
+}
+
 export function LecteurVideo({
   lecture,
   onBattement,
@@ -70,8 +94,9 @@ export function LecteurVideo({
   const [enLecture, setEnLecture] = React.useState(false);
   const [attente, setAttente] = React.useState(false);
   const [fini, setFini] = React.useState(false);
-  const [muet, setMuet] = React.useState(false);
-  const [volume, setVolume] = React.useState(1);
+  // Le son se retrouve d'une leçon à l'autre : baissé une fois, il le reste.
+  const [muet, setMuet] = React.useState(() => lireSon().muet);
+  const [volume, setVolume] = React.useState(() => lireSon().volume);
   const [pleinEcran, setPleinEcran] = React.useState(false);
   // Les proportions de la vidéo, lues dans le fichier : le cadre les épouse.
   // 16:9 tant qu'on ne les connaît pas — c'est le format de presque toutes.
@@ -218,30 +243,66 @@ export function LecteurVideo({
     minuterieCommandes.current = setTimeout(() => setCommandes(false), 2600);
   };
 
-  const clavier = (e: React.KeyboardEvent) => {
-    if (e.target !== cadre.current) return;
-    if (e.key === ' ' || e.key === 'k') {
-      e.preventDefault();
-      basculer();
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      allerA((video.current?.currentTime ?? 0) - 5);
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      allerA((video.current?.currentTime ?? 0) + 5);
-    } else if (e.key === 'm') {
-      setMuet((m) => !m);
-    } else if (e.key === 'f') {
-      pleinEcranBascule();
+  /**
+   * Les raccourcis, sur TOUTE la page — pas seulement quand le cadre a le
+   * focus : sinon « F » ne faisait rien tant qu'on n'avait pas cliqué dans la
+   * vidéo, ni après un clic sur l'un de ses boutons.
+   *
+   *   F plein écran (et retour) · K ou Espace lecture/pause · M son
+   *   ← → cinq secondes · ↑ ↓ volume, quand le lecteur a le focus ou en plein
+   *   écran (ailleurs, ces flèches font défiler la page).
+   *
+   * Jamais pendant une saisie — la recherche du bandeau reçoit bien son « f » —,
+   * ni quand une fenêtre (le support PDF) est ouverte par-dessus.
+   */
+  const clavier = (e: KeyboardEvent) => {
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    const cible = e.target instanceof HTMLElement ? e.target : null;
+    if (cible?.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]')) {
+      return;
     }
+    if (document.querySelector('[role="dialog"]')) return;
+    const dansLeLecteur = Boolean(cible && cadre.current?.contains(cible));
+    const touche = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const volumeDe = (pas: number) => {
+      const v = Math.round(Math.min(1, Math.max(0, (muet ? 0 : volume) + pas)) * 20) / 20;
+      setVolume(v);
+      setMuet(v === 0);
+      direAvis(v === 0 ? 'Son coupé' : `Volume ${Math.round(v * 100)} %`);
+    };
+
+    if (touche === 'f') pleinEcranBascule();
+    else if (touche === 'k') basculer();
+    else if (touche === 'm') setMuet((m) => !m);
+    else if (touche === ' ') {
+      // L'espace active déjà le bouton ou le lien qui a le focus : on ne le
+      // prend que sur la page elle-même et sur le cadre du lecteur.
+      if (cible && cible !== document.body && cible !== cadre.current) return;
+      basculer();
+    } else if (touche === 'ArrowLeft') allerA((video.current?.currentTime ?? 0) - 5);
+    else if (touche === 'ArrowRight') allerA((video.current?.currentTime ?? 0) + 5);
+    else if ((touche === 'ArrowUp' || touche === 'ArrowDown') && (dansLeLecteur || pleinEcran)) {
+      volumeDe(touche === 'ArrowUp' ? 0.05 : -0.05);
+    } else return;
+    e.preventDefault();
     reveiller();
   };
+  // Le gestionnaire change à chaque rendu (il lit l'état courant) ; l'écoute,
+  // elle, est posée une fois et appelle toujours le dernier.
+  const clavierCourant = React.useRef(clavier);
+  clavierCourant.current = clavier;
+  React.useEffect(() => {
+    const ecoute = (e: KeyboardEvent) => clavierCourant.current(e);
+    document.addEventListener('keydown', ecoute);
+    return () => document.removeEventListener('keydown', ecoute);
+  }, []);
 
   React.useEffect(() => {
     if (video.current) {
       video.current.muted = muet;
       video.current.volume = volume;
     }
+    ecrireSon({ volume, muet });
   }, [muet, volume]);
 
   const vu = Math.min(1, intervalles.reduce((s, [de, a]) => s + (a - de), 0) / duree);
@@ -253,7 +314,6 @@ export function LecteurVideo({
     <div
       ref={cadre}
       tabIndex={0}
-      onKeyDown={clavier}
       onMouseMove={reveiller}
       onMouseLeave={() => enLecture && setCommandes(false)}
       aria-label={`Lecteur vidéo — ${lecture.title}`}

@@ -344,13 +344,26 @@ function espaceAcademy(pathname: string): boolean {
   );
 }
 
-/** Le signet du bandeau : « Ma liste », les formations gardées de côté. */
-function LienMaListe({ actif }: { actif: boolean }) {
+/**
+ * Un raccourci rond du bandeau de l'Academy : « Mes certificats », « Ma
+ * liste ». Plein quand on est sur sa page — on voit où l'on est.
+ */
+function LienBandeau({
+  href,
+  icone,
+  libelle,
+  actif,
+}: {
+  href: string;
+  icone: IconName;
+  libelle: string;
+  actif: boolean;
+}) {
   return (
     <Link
-      href="/academy/ma-liste"
-      title="Ma liste"
-      aria-label="Ma liste"
+      href={href}
+      title={libelle}
+      aria-label={libelle}
       aria-current={actif ? 'page' : undefined}
       className={cn(
         'flex size-9 shrink-0 items-center justify-center rounded-full border text-hero-ink transition-all duration-200 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none',
@@ -359,7 +372,7 @@ function LienMaListe({ actif }: { actif: boolean }) {
           : 'border-white/30 bg-white/10 hover:border-white/55 hover:bg-white/20',
       )}
     >
-      <Icon name="bookmark" size={20} fill={actif} />
+      <Icon name={icone} size={20} fill={actif} />
     </Link>
   );
 }
@@ -989,7 +1002,20 @@ function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
           {action ? <HeaderAction action={action} /> : null}
           {academy ? (
-            <LienMaListe actif={pathname === '/academy/ma-liste'} />
+            <>
+              <LienBandeau
+                href="/academy/certificats"
+                icone="workspace_premium"
+                libelle="Mes certificats"
+                actif={pathname === '/academy/certificats'}
+              />
+              <LienBandeau
+                href="/academy/ma-liste"
+                icone="bookmark"
+                libelle="Ma liste"
+                actif={pathname === '/academy/ma-liste'}
+              />
+            </>
           ) : (
             <>
               <DateDuJour />
