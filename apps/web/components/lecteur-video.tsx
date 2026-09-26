@@ -262,14 +262,15 @@ export function LecteurVideo({
         pleinEcran ? 'rounded-none' : 'mx-auto rounded-[16px]',
         !montrerCommandes && 'cursor-none',
       )}
-      // Le cadre a les proportions EXACTES de la vidéo : pas de bandes noires
-      // de part et d'autre. Sa hauteur reste plafonnée à 62 % de l'écran — au
-      // delà, la vidéo repoussait la leçon et ses boutons sous la ligne de
-      // flottaison — et c'est donc sa LARGEUR qui cède : 62vh × le format.
+      // Le cadre a les proportions EXACTES de la vidéo, et toute la largeur de
+      // la page : ni bandes noires, ni marges plus larges qu'ailleurs. Seul
+      // garde-fou, à 85 % de la hauteur d'écran : il ne joue que pour une
+      // vidéo en hauteur (tournée au téléphone) ou un écran très large, où la
+      // vidéo déborderait sinon de la fenêtre.
       style={
         pleinEcran
           ? undefined
-          : { aspectRatio: format, maxWidth: `calc(62vh * ${format.toFixed(4)})` }
+          : { aspectRatio: format, maxWidth: `calc(85vh * ${format.toFixed(4)})` }
       }
     >
       <video

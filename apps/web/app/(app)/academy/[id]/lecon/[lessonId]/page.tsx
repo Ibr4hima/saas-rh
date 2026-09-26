@@ -144,11 +144,9 @@ export default function LeconPage() {
     <Page>
       <RetourAcademy href={`/academy/${id}`} label={f.title} />
 
-      {/* Une seule colonne : la vidéo d'abord — c'est elle qu'on regarde —,
-          la leçon et le programme dessous. La colonne a la largeur d'une vidéo
-          16:9 haute de 62 % de l'écran : la leçon et le programme s'alignent
-          sur ses bords, au lieu de déborder de part et d'autre. */}
-      <div className="mx-auto flex w-full max-w-[calc(62vh*16/9)] min-w-0 flex-col gap-4">
+      {/* Une seule colonne, aux marges de toutes les pages : la vidéo d'abord
+          — c'est elle qu'on regarde —, la leçon et le programme dessous. */}
+      <div className="flex min-w-0 flex-col gap-4">
         <LecteurVideo
           key={l.sessionId ?? `${l.lessonId}-${ouverture}`}
           lecture={l}
