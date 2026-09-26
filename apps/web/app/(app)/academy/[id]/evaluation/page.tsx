@@ -7,10 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AttemptResult, AttemptView, CourseDetail } from '@teranga/contracts';
 import { Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { RetourAcademy } from '../../../../../components/academy-carte';
-import {
-  ApercuCertificat,
-  BoutonLienVerification,
-} from '../../../../../components/academy-certificat';
+import { ApercuCertificat } from '../../../../../components/academy-certificat';
 import {
   cocher,
   Copie,
@@ -355,13 +352,10 @@ function Resultat({
               <b className="font-mono font-bold tracking-tight">{r.certificat.number}</b> est prêt.
               Il se vérifie en ligne par son QR code.
             </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button onClick={() => setApercu(true)}>
-                <Icon name="workspace_premium" size={16} />
-                Voir le certificat
-              </Button>
-              <BoutonLienVerification numero={r.certificat.number} />
-            </div>
+            <Button onClick={() => setApercu(true)}>
+              <Icon name="workspace_premium" size={16} />
+              Voir le certificat
+            </Button>
           </div>
         ) : null}
         {erreur ? (

@@ -16,8 +16,8 @@ import { compte } from '../../../../lib/mots';
    « Mes certificats » : ce qu'on vient chercher quand on vous demande une
    preuve de formation. Ouverte depuis le menu du compte, où qu'on soit.
 
-   Chaque certificat se lit, se télécharge, et son lien de vérification se
-   copie pour être envoyé tel quel.
+   Chaque certificat se lit et se télécharge ; il se vérifie par le QR code
+   imprimé dessus.
    ———————————————————————————————————————————————————————————————— */
 
 export default function MesCertificatsPage() {

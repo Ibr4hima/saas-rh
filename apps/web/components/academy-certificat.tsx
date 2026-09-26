@@ -13,16 +13,10 @@ import { Icon } from './icons';
 /* ————————————————————————————————————————————————————————————————
    Les certificats d'APIX Academy, à l'écran.
 
-   Un certificat se CONSULTE dans l'aperçu du produit — comme toute pièce —,
-   se télécharge de là, et se partage par son lien de vérification : c'est
-   ce lien qu'un recruteur ou un partenaire ouvrira pour s'assurer qu'il est
-   authentique, sans compte.
+   Un certificat se CONSULTE dans l'aperçu du produit — comme toute pièce —
+   et se télécharge de là. Son authenticité se vérifie par le QR code
+   imprimé dessus : un recruteur ou un partenaire le scanne, sans compte.
    ———————————————————————————————————————————————————————————————— */
-
-export function lienVerification(numero: string): string {
-  const origine = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${origine}/verifier/${numero}`;
-}
 
 export function ApercuCertificat({
   certificat,
@@ -43,33 +37,6 @@ export function ApercuCertificat({
       telechargement={apiUrl(`/academy/certificats/${certificat.id}/pdf`)}
       onClose={onClose}
     />
-  );
-}
-
-/** Copie le lien de vérification, et le dit pendant deux secondes. */
-export function BoutonLienVerification({
-  numero,
-  className,
-}: {
-  numero: string;
-  className?: string;
-}) {
-  const [copie, setCopie] = useState(false);
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className={className}
-      onClick={() => {
-        void navigator.clipboard?.writeText(lienVerification(numero)).then(() => {
-          setCopie(true);
-          setTimeout(() => setCopie(false), 2000);
-        });
-      }}
-    >
-      <Icon name={copie ? 'check' : 'link'} size={15} />
-      {copie ? 'Lien copié' : 'Lien de vérification'}
-    </Button>
   );
 }
 
@@ -121,7 +88,6 @@ export function ListeCertificats({
                   <Icon name="visibility" size={15} />
                   Voir
                 </Button>
-                {c.status === 'valide' ? <BoutonLienVerification numero={c.number} /> : null}
               </div>
             </li>
           );

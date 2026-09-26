@@ -65,7 +65,7 @@ export function FormationModal({
       open
       onClose={onClose}
       title={formation ? 'Modifier la formation' : 'Nouvelle formation'}
-      subtitle={formation ? formation.title : 'Vous ajouterez ensuite les modules et les leçons.'}
+      subtitle={formation ? formation.title : undefined}
       maxWidth="max-w-2xl"
       footer={
         <>
@@ -98,17 +98,13 @@ export function FormationModal({
           <Field label="Titre" htmlFor="titre" required>
             <Input
               id="titre"
-              placeholder="Ex : Excel pour l’analyse de données"
+              placeholder="PowerPoint"
               value={titre}
               maxLength={160}
               onChange={(e) => setTitre(e.target.value)}
             />
           </Field>
-          <Field
-            label="Présentation"
-            htmlFor="presentation"
-            hint="Deux ou trois phrases : ce que l’agent saura faire à la fin."
-          >
+          <Field label="Description" htmlFor="presentation">
             <Textarea
               id="presentation"
               rows={4}
@@ -120,10 +116,10 @@ export function FormationModal({
         </div>
       </ModalSection>
 
-      <ModalSection title="Famille">
+      <ModalSection title="Catégorie">
         <div
           role="radiogroup"
-          aria-label="Famille"
+          aria-label="Catégorie"
           // Deux colonnes : dix familles aux noms parfois longs (« Digital et
           // informatique ») se lisent sur cinq rangées, sans césure.
           className="grid grid-cols-2 gap-2"

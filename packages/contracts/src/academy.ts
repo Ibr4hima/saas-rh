@@ -59,9 +59,9 @@ export type AcademyCategory = (typeof ACADEMY_CATEGORIES)[number];
 
 export const ACADEMY_CATEGORY_LABELS: Record<AcademyCategory, string> = {
   bureautique: 'Bureautique',
-  digital: 'Digital et informatique',
+  digital: 'Informatique',
   economie: 'Économie',
-  droit: 'Droit et fiscalité',
+  droit: 'Droit',
   metier: 'Métier de l’APIX',
   management: 'Management',
   projets: 'Gestion de projet',

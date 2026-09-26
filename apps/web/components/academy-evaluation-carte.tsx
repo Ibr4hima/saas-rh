@@ -6,7 +6,7 @@ import { Button, Card, cn } from '@teranga/ui';
 import { pourcent, quandLisible } from '../lib/academy';
 import { formatDate } from '../lib/hooks';
 import { compte } from '../lib/mots';
-import { ApercuCertificat, BoutonLienVerification } from './academy-certificat';
+import { ApercuCertificat } from './academy-certificat';
 import { Icon } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
@@ -81,13 +81,10 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
     titre = 'Évaluation réussie';
     texte = `Certificat obtenu le ${formatDate(ev.certificat.issuedAt)} avec ${pourcent(ev.certificat.score)}${ev.certificat.expiresAt ? `, valable jusqu’au ${formatDate(ev.certificat.expiresAt)}` : ''}.`;
     action = (
-      <div className="flex flex-wrap items-center gap-1.5">
-        <BoutonLienVerification numero={ev.certificat.number} />
-        <Button onClick={() => setApercu(true)}>
-          <Icon name="workspace_premium" size={16} />
-          Voir le certificat
-        </Button>
-      </div>
+      <Button onClick={() => setApercu(true)}>
+        <Icon name="workspace_premium" size={16} />
+        Voir le certificat
+      </Button>
     );
   }
 
