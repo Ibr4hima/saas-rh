@@ -223,26 +223,20 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
     characterSpacing: espacement,
   });
 
-  const colonne = 220;
-  const xTexte = xQr - colonne - 16;
-  doc.font(police(doc, 'normal')).fontSize(8.5).fillColor(GRIS);
+  // Le QR se suffit : il mène à la page de vérification, et le numéro dessous
+  // se saisit à la main. Seul le spécimen s'explique, pour la RH qui l'essaie.
   if (d.specimen) {
-    doc.text(
-      'Spécimen : le numéro et le QR code sont attribués à la réussite de l’agent.',
-      xTexte,
-      milieuQr - 12,
-      { width: colonne, align: 'right' },
-    );
-  } else {
-    doc.text('Scannez le code pour vérifier ce certificat,', xTexte, milieuQr - 12, {
-      width: colonne,
-      align: 'right',
-    });
-    doc.text('ou rendez-vous sur', xTexte, doc.y + 1, { width: colonne, align: 'right' });
-    doc.fillColor(BLEU).text(d.urlVerification.replace(/^https?:\/\//, ''), xTexte, doc.y + 1, {
-      width: colonne,
-      align: 'right',
-    });
+    const colonne = 220;
+    doc
+      .font(police(doc, 'normal'))
+      .fontSize(8.5)
+      .fillColor(GRIS)
+      .text(
+        'Spécimen : le numéro et le QR code sont attribués à la réussite de l’agent.',
+        xQr - colonne - 16,
+        milieuQr - 12,
+        { width: colonne, align: 'right' },
+      );
   }
 
   // ———— Le spécimen : en travers, par-dessus tout, assez pâle pour se lire
