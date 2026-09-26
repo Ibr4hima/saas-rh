@@ -12,6 +12,7 @@ import {
   ORG_UNIT_ROOT_TYPES,
   ORG_UNIT_TYPE_LABELS,
   orgUnitLabel,
+  type ConsequencesHierarchie,
   type CreateOrgUnitInput,
   type OrgUnitMember,
   type OrgUnitType,
@@ -32,6 +33,7 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
+import { aDesConsequences, ListeConsequences } from '../../../components/consequences-hierarchie';
 import { Icon } from '../../../components/icons';
 import { Modal } from '../../../components/modal';
 import { Organigramme } from '../../../components/organigramme';
@@ -195,24 +197,57 @@ function UnitPanel({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [reassignTo, setReassignTo] = useState('');
 
-  const save = useMutation({
-    mutationFn: () =>
-      api(`/org-units/${unit.id}`, {
-        method: 'PATCH',
-        body: {
-          name,
-          unitType,
-          parentId: parentId || null,
-          shortName: unitType === 'direction' ? shortName.trim() || null : null,
-        },
-      }),
-    onSuccess: () => {
+  // ——— Toute modification passe d'abord par l'aperçu : le serveur la joue
+  // puis l'annule, et dit ce qu'elle changerait dans la chaîne hiérarchique.
+  // Sans conséquence, on enregistre aussitôt ; sinon on montre, on attend
+  // une confirmation. Après coup, le bilan dit ce qui a été fait.
+  type Corps = Record<string, unknown>;
+  const [apercu, setApercu] = useState<{
+    corps: Corps;
+    consequences: ConsequencesHierarchie;
+  } | null>(null);
+  const [bilan, setBilan] = useState<ConsequencesHierarchie | null>(null);
+  const [verification, setVerification] = useState(false);
+
+  const appliquer = useMutation({
+    mutationFn: (corps: Corps) =>
+      api<ConsequencesHierarchie>(`/org-units/${unit.id}`, { method: 'PATCH', body: corps }),
+    onSuccess: (res) => {
       setError(null);
       setEditing(false);
+      setApercu(null);
+      setBilan(aDesConsequences(res) ? res : null);
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
+      void queryClient.invalidateQueries({ queryKey: ['employees'] });
+      void queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
+  });
+
+  const verifierPuisAppliquer = async (corps: Corps) => {
+    setError(null);
+    setBilan(null);
+    setVerification(true);
+    try {
+      const consequences = await api<ConsequencesHierarchie>(`/org-units/${unit.id}/apercu`, {
+        method: 'POST',
+        body: corps,
+      });
+      if (aDesConsequences(consequences)) setApercu({ corps, consequences });
+      else appliquer.mutate(corps);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.');
+    } finally {
+      setVerification(false);
+    }
+  };
+
+  const corpsEdition = (): Corps => ({
+    name,
+    unitType,
+    parentId: parentId || null,
+    shortName: unitType === 'direction' ? shortName.trim() || null : null,
   });
 
   const remove = useMutation({
@@ -223,6 +258,8 @@ function UnitPanel({
     onSuccess: () => {
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
+      void queryClient.invalidateQueries({ queryKey: ['employees'] });
+      void queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
       onClose();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Suppression impossible.'),
@@ -241,18 +278,15 @@ function UnitPanel({
     enabled: canManage,
   });
 
-  const saveManager = useMutation({
-    mutationFn: () =>
-      api(`/org-units/${unit.id}`, {
-        method: 'PATCH',
-        body: { managerEmployeeId: managerId || null },
-      }),
-    onSuccess: () => {
-      setError(null);
-      void queryClient.invalidateQueries({ queryKey: ['org-units'] });
-    },
-    onError: (err) =>
-      setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
+  // Ce que la dissolution rendrait faux, selon l'unité d'accueil choisie.
+  const apercuDissolution = useQuery({
+    queryKey: ['org-unit-apercu-suppression', unit.id, reassignTo],
+    queryFn: () =>
+      api<ConsequencesHierarchie>(
+        `/org-units/${unit.id}/apercu-suppression${reassignTo ? `?reassignTo=${reassignTo}` : ''}`,
+        { method: 'POST' },
+      ),
+    enabled: canManage && confirmDelete,
   });
 
   const direction = unit.unitType === 'direction';
@@ -317,6 +351,48 @@ function UnitPanel({
         ) : null
       }
     >
+      {apercu ? (
+        <Card className="border-primary/30">
+          <CardContent className="flex flex-col gap-3 py-4">
+            <p className="text-[13px] font-bold text-ink-strong">Avant de valider</p>
+            <ListeConsequences consequences={apercu.consequences} />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                loading={appliquer.isPending}
+                onClick={() => appliquer.mutate(apercu.corps)}
+              >
+                Confirmer
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setApercu(null)}>
+                Annuler
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {bilan ? (
+        <Card>
+          <CardContent className="flex flex-col gap-3 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="flex items-center gap-1.5 text-[13px] font-bold text-success">
+                <Icon name="check_circle" size={16} fill />
+                Enregistré
+              </p>
+              <button
+                type="button"
+                onClick={() => setBilan(null)}
+                className="text-[12px] font-semibold text-ink-muted hover:text-ink"
+              >
+                Masquer
+              </button>
+            </div>
+            <ListeConsequences consequences={bilan} faites />
+          </CardContent>
+        </Card>
+      ) : null}
+
       {editing ? (
         <Card>
           <CardContent className="flex flex-col gap-3 py-4">
@@ -385,7 +461,11 @@ function UnitPanel({
               </Field>
             ) : null}
             <div className="flex gap-2">
-              <Button size="sm" loading={save.isPending} onClick={() => save.mutate()}>
+              <Button
+                size="sm"
+                loading={verification || appliquer.isPending}
+                onClick={() => void verifierPuisAppliquer(corpsEdition())}
+              >
                 Enregistrer
               </Button>
               <Button
@@ -446,6 +526,9 @@ function UnitPanel({
                   : `${unit.attachedEmployees} personnes n’auront plus d’unité de rattachement : leur poste, leur dossier et leur historique sont conservés, et vous pourrez les rattacher ailleurs depuis leur fiche.`}
               </p>
             ) : null}
+            {apercuDissolution.data && aDesConsequences(apercuDissolution.data) ? (
+              <ListeConsequences consequences={apercuDissolution.data} />
+            ) : null}
             <div className="flex gap-2">
               <Button
                 size="sm"
@@ -496,7 +579,9 @@ function UnitPanel({
                 hint={
                   !eligible.isLoading && (eligible.data ?? []).length === 0
                     ? 'Personne n’est encore affecté à cette unité : affectez quelqu’un avant de le nommer responsable.'
-                    : 'Parmi les personnes affectées à cette unité ou à une unité en dessous.'
+                    : unit.parentId === null
+                      ? 'Parmi les personnes affectées à la Direction Générale elle-même : le directeur général y siège.'
+                      : 'Parmi les personnes affectées à cette unité ou à une unité en dessous.'
                 }
               >
                 <div className="flex gap-2">
@@ -516,9 +601,11 @@ function UnitPanel({
                   <Button
                     size="sm"
                     variant="secondary"
-                    loading={saveManager.isPending}
+                    loading={verification || appliquer.isPending}
                     disabled={(unit.managerEmployeeId ?? '') === managerId}
-                    onClick={() => saveManager.mutate()}
+                    onClick={() =>
+                      void verifierPuisAppliquer({ managerEmployeeId: managerId || null })
+                    }
                   >
                     OK
                   </Button>

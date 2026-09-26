@@ -4,6 +4,7 @@ import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   ArchiveEmployeesInput,
+  ChangementRattachement,
   EmployeeListPage,
   AssignmentView,
   CreateEmployeeInput,
@@ -19,9 +20,19 @@ import type {
   UpdateEmployeeInput,
 } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
-import { problem } from '../../common/problem';
+import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
+import {
+  directeurGeneral,
+  directionDeEmploye,
+  directionDeUnite,
+  dirigeUneDirection,
+  equipeDe,
+  reprendreEquipe,
+  uniteRacine,
+  validerRattachement,
+} from './chaine';
 
 /** Rôles autorisés à lire les champs ultra-sensibles (CNI). */
 const SENSITIVE_ROLES = new Set(['admin', 'hr']);
@@ -54,6 +65,7 @@ interface LigneListe extends Record<string, unknown> {
   manager_employee_id: string | null;
   manager_name: string | null;
   manager_number: string | null;
+  team_size: number;
   unite: string | null;
 }
 
@@ -150,7 +162,11 @@ export class PeopleService {
             -- pouvant être porté par deux agents.
             (SELECT me.employee_number FROM employees me
               WHERE me.id = e.manager_employee_id)
-                                        AS manager_number
+                                        AS manager_number,
+            -- Ses agents directs actifs : qui part avec une équipe la confie.
+            (SELECT count(*)::int FROM employees s
+              WHERE s.manager_employee_id = e.id AND s.status = 'active')
+                                        AS team_size
           FROM employees e
           JOIN persons p ON p.id = e.person_id
           LEFT JOIN assignments a
@@ -257,6 +273,7 @@ export class PeopleService {
           managerId: r.manager_employee_id,
           managerName: r.manager_name,
           managerNumber: r.manager_number,
+          teamSize: Number(r.team_size ?? 0),
         })),
         nextOffset: trop ? query.offset + query.limit : null,
         total: Number(totalRows.rows[0]?.n ?? 0),
@@ -299,11 +316,11 @@ export class PeopleService {
           nationalIdEncrypted: nationalId ? this.crypto.encrypt(nationalId) : null,
         });
         if (input.employee.managerEmployeeId) {
-          await this.assertManagerValid(
+          await validerRattachement(
             tx,
             employeeId,
             input.employee.managerEmployeeId,
-            await this.directionDeUnite(tx, input.assignment?.orgUnitId ?? null),
+            await directionDeUnite(tx, input.assignment?.orgUnitId ?? null),
           );
         }
         await tx.insert(t.employees).values({
@@ -424,6 +441,7 @@ export class PeopleService {
             .where(eq(t.employees.id, employee.managerEmployeeId))
             .limit(1)
         : [];
+      const team = await equipeDe(tx, employee.id);
 
       const canSeeSensitive = SENSITIVE_ROLES.has(user.role) || isSelf;
       return {
@@ -436,6 +454,7 @@ export class PeopleService {
         workPhone: employee.workPhone,
         managerId: employee.managerEmployeeId,
         managerName: managerRow ? `${managerRow.givenName} ${managerRow.familyName}` : null,
+        team,
         customFields: (employee.customFields ?? {}) as Record<string, unknown>,
         person: {
           id: person.id,
@@ -537,11 +556,11 @@ export class PeopleService {
         }
         if (input.employee && Object.keys(input.employee).length > 0) {
           if (input.employee.managerEmployeeId) {
-            await this.assertManagerValid(
+            await validerRattachement(
               tx,
               id,
               input.employee.managerEmployeeId,
-              await this.directionDeEmploye(tx, id),
+              await directionDeEmploye(tx, id),
             );
           }
           // Les colonnes sont nommées une à une, jamais l'objet reçu en bloc.
@@ -571,230 +590,6 @@ export class PeopleService {
   }
 
   /**
-   * Nouvelle affectation effective-dated (ADR-0003) : clôt l'affectation
-   * courante à startDate (borne exclusive) et ouvre la nouvelle [startDate,).
-   * Jamais d'UPDATE destructif : l'historique reste intégralement lisible.
-   */
-  /**
-   * Le manager désigné doit être un employé ACTIF du tenant, différent de
-   * l'intéressé, et ne pas relever lui-même de lui : une boucle hiérarchique
-   * ferait tourner sans fin toute remontée de chaîne (validation d'absence,
-   * organigramme). La contrainte CHECK couvre le cas « soi-même » ; les boucles
-   * plus longues demandent de remonter, donc c'est ici.
-   */
-  private async assertManagerValid(
-    tx: Tx,
-    employeeId: string,
-    managerId: string,
-    /**
-     * La direction de l'agent APRÈS l'écriture en cours. On la reçoit plutôt
-     * que de la lire : à la création, l'affectation n'est pas encore posée, et
-     * lors d'une mutation c'est la nouvelle unité qui compte, pas l'ancienne.
-     */
-    directionCible: { id: string; nom: string } | null,
-  ): Promise<void> {
-    if (managerId === employeeId) {
-      problem(422, 'people.manager_is_self', 'Un employé ne peut pas être son propre manager');
-    }
-    // ——— La première règle de l'APIX : le directeur général ne relève de
-    // personne dans l'agence — il répond au conseil d'administration. Lui
-    // donner un n+1 le ferait entrer dans l'équipe de quelqu'un.
-    const dg = await this.directeurGeneral(tx);
-    if (employeeId === dg) {
-      problem(
-        422,
-        'people.dg_sans_responsable',
-        'Le directeur général ne relève de personne',
-        'Cet agent dirige l’unité racine de l’organigramme : il n’a pas de n+1 dans l’agence.',
-      );
-    }
-    const [manager] = await tx
-      .select({ status: t.employees.status })
-      .from(t.employees)
-      .where(eq(t.employees.id, managerId))
-      .limit(1);
-    if (!manager) {
-      problem(422, 'people.manager_not_found', "Ce manager n'existe pas");
-    }
-    if (manager.status !== 'active') {
-      problem(
-        422,
-        'people.manager_not_active',
-        'Seul un employé actif peut être désigné manager',
-        'Ce dossier est archivé.',
-      );
-    }
-    const boucle = await tx.execute(sql`
-      WITH RECURSIVE chaine AS (
-        SELECT id, manager_employee_id FROM employees WHERE id = ${managerId}
-        UNION ALL
-        SELECT e.id, e.manager_employee_id
-        FROM employees e JOIN chaine c ON e.id = c.manager_employee_id
-      )
-      SELECT 1 FROM chaine WHERE id = ${employeeId} LIMIT 1`);
-    if (boucle.rows.length > 0) {
-      problem(
-        422,
-        'people.manager_cycle',
-        'Ce rattachement créerait une boucle hiérarchique',
-        'Cette personne relève déjà, directement ou non, de l’employé concerné.',
-      );
-    }
-
-    // ——— D'abord l'affectation, ensuite la hiérarchie. Un n+1 ne se désigne
-    // qu'entre deux agents AFFECTÉS À UNE DIRECTION : sans elle, la règle de
-    // direction ne se vérifie pas, et un rattachement posé à l'aveugle est
-    // exactement ce qui finit par mélanger les équipes.
-    if (!directionCible) {
-      problem(
-        422,
-        'people.sans_affectation',
-        'Affectez d’abord l’agent à une direction',
-        'Le n+1 se désigne ensuite : c’est la direction qui dit parmi qui le choisir.',
-      );
-    }
-    const directionDuResponsable = await this.directionDeEmploye(tx, managerId);
-    if (!directionDuResponsable) {
-      problem(
-        422,
-        'people.responsable_sans_affectation',
-        'Le n+1 désigné n’est affecté à aucune direction',
-        'Affectez-le d’abord à une direction ; ses agents pourront ensuite lui être rattachés.',
-      );
-    }
-
-    // ——— La règle de l'APIX : le n+1 est dans la MÊME DIRECTION.
-    //
-    // Un directeur fait exception : il relève du directeur général, qui siège
-    // à la Direction Générale — donc dans une autre direction que la sienne.
-    // C'est la seule exception, et elle se déduit de l'organigramme.
-    if (await this.dirigeUneDirection(tx, employeeId)) {
-      if (dg === null) {
-        problem(
-          422,
-          'people.aucun_directeur_general',
-          'Aucun directeur général n’est désigné',
-          'Un directeur relève du directeur général : désignez d’abord le responsable de l’unité racine dans l’organigramme.',
-        );
-      }
-      if (managerId !== dg) {
-        problem(
-          422,
-          'people.directeur_hors_dg',
-          'Un directeur relève du directeur général',
-          'Cet agent dirige une direction : son responsable hiérarchique ne peut être que le directeur général.',
-        );
-      }
-      return;
-    }
-
-    if (directionDuResponsable.id === directionCible.id) return;
-
-    // ——— Une direction SANS directeur n'a personne d'autre au-dessus que le
-    // directeur général. C'est ainsi, et seulement ainsi, qu'on crée un
-    // directeur : son dossier n'existe pas encore quand on le rattache, il ne
-    // dirige donc rien, et la règle de direction lui refuserait le DG. Dès
-    // qu'un responsable est désigné sur la direction, ce chemin se referme —
-    // et le contrôle de la chaîne signale ceux qui y seraient restés.
-    if (managerId === dg && !(await this.directionADejaUnResponsable(tx, directionCible.id))) {
-      return;
-    }
-    problem(
-      422,
-      'people.manager_autre_direction',
-      'Le responsable doit appartenir à la même direction',
-      `L’agent relève de « ${directionCible.nom} », le responsable désigné de « ${directionDuResponsable.nom} ».`,
-    );
-  }
-
-  /**
-   * La direction d'une unité : elle-même si c'en est une, sinon son aïeule.
-   *
-   * On remonte l'organigramme jusqu'au premier ancêtre de type « direction ».
-   * Un service de la DFC rend donc la DFC ; la DFC rend la DFC ; une unité
-   * rattachée directement à la Direction Générale rend la DG.
-   */
-  private async directionDeUnite(
-    tx: Tx,
-    orgUnitId: string | null,
-  ): Promise<{ id: string; nom: string } | null> {
-    if (!orgUnitId) return null;
-    const r = await tx.execute<{ id: string; name: string }>(sql`
-      WITH RECURSIVE remontee AS (
-        SELECT id, parent_id, unit_type, name, 0 AS prof
-          FROM org_units WHERE id = ${orgUnitId} AND deleted_at IS NULL
-        UNION ALL
-        SELECT o.id, o.parent_id, o.unit_type, o.name, r.prof + 1
-          FROM remontee r JOIN org_units o ON o.id = r.parent_id AND o.deleted_at IS NULL
-      )
-      SELECT id, name FROM remontee WHERE unit_type = 'direction' ORDER BY prof LIMIT 1`);
-    const ligne = r.rows[0];
-    return ligne ? { id: ligne.id, nom: ligne.name } : null;
-  }
-
-  /** La direction d'un agent, via son affectation du jour. */
-  private async directionDeEmploye(
-    tx: Tx,
-    employeeId: string,
-  ): Promise<{ id: string; nom: string } | null> {
-    const [affectation] = await tx
-      .select({ orgUnitId: t.assignments.orgUnitId })
-      .from(t.assignments)
-      .where(
-        and(
-          eq(t.assignments.employeeId, employeeId),
-          sql`${t.assignments.validity} @> CURRENT_DATE`,
-        ),
-      )
-      .limit(1);
-    return this.directionDeUnite(tx, affectation?.orgUnitId ?? null);
-  }
-
-  /**
-   * Le directeur général : le responsable de l'unité RACINE.
-   *
-   * Il n'est ni désigné par un rôle ni marqué d'une case à cocher —
-   * l'organigramme le dit déjà, et deux sources finiraient par se
-   * contredire. C'est le seul agent sans n+1, et celui auquel les directeurs
-   * se rattachent.
-   */
-  private async directeurGeneral(tx: Tx): Promise<string | null> {
-    const [racine] = await tx
-      .select({ managerId: t.orgUnits.managerEmployeeId })
-      .from(t.orgUnits)
-      .where(and(isNull(t.orgUnits.parentId), isNull(t.orgUnits.deletedAt)))
-      .limit(1);
-    return racine?.managerId ?? null;
-  }
-
-  /** Cette direction a-t-elle un responsable désigné ? */
-  private async directionADejaUnResponsable(tx: Tx, directionId: string): Promise<boolean> {
-    const [unite] = await tx
-      .select({ managerId: t.orgUnits.managerEmployeeId })
-      .from(t.orgUnits)
-      .where(and(eq(t.orgUnits.id, directionId), isNull(t.orgUnits.deletedAt)))
-      .limit(1);
-    return Boolean(unite?.managerId);
-  }
-
-  /** L'agent dirige-t-il une direction ? (hors unité racine : c'est le DG) */
-  private async dirigeUneDirection(tx: Tx, employeeId: string): Promise<boolean> {
-    const [unite] = await tx
-      .select({ id: t.orgUnits.id })
-      .from(t.orgUnits)
-      .where(
-        and(
-          eq(t.orgUnits.managerEmployeeId, employeeId),
-          eq(t.orgUnits.unitType, 'direction'),
-          sql`${t.orgUnits.parentId} IS NOT NULL`,
-          isNull(t.orgUnits.deletedAt),
-        ),
-      )
-      .limit(1);
-    return Boolean(unite);
-  }
-
-  /**
    * Une affectation ne peut viser qu'une unité VIVANTE. Seule la clé étrangère
    * protégeait : elle accepte une unité dissoute, ce qui annulait la garantie
    * de la dissolution (les membres réaffectés y revenaient aussitôt).
@@ -815,11 +610,50 @@ export class PeopleService {
     }
   }
 
-  async newAssignment(user: SessionUser, id: string, input: NewAssignmentInput): Promise<void> {
+  /**
+   * Nouvelle affectation effective-dated (ADR-0003) : clôt l'affectation
+   * courante à startDate (borne exclusive) et ouvre la nouvelle [startDate,).
+   * Jamais d'UPDATE destructif : l'historique reste intégralement lisible.
+   */
+  async newAssignment(
+    user: SessionUser,
+    id: string,
+    input: NewAssignmentInput,
+  ): Promise<{ changements: ChangementRattachement[] }> {
+    const journal: ChangementRattachement[] = [];
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
         await this.requireEmployee(tx, id);
         if (input.orgUnitId) await this.requireLiveOrgUnit(tx, input.orgUnitId);
+
+        // ——— Le directeur général siège à la Direction Générale : il n'en
+        // sort pas, sans quoi ses collaborateurs directs relèveraient d'une
+        // autre direction que la leur.
+        const racine = await uniteRacine(tx);
+        const directionVisee = await directionDeUnite(tx, input.orgUnitId ?? null);
+        if (racine?.managerId === id && directionVisee?.id !== racine.id) {
+          problem(
+            422,
+            'people.dg_quitte_la_dg',
+            'Le directeur général reste affecté à la Direction Générale',
+            'Pour lui confier une autre direction, désignez d’abord son successeur à la tête de la Direction Générale.',
+          );
+        }
+
+        // ——— Qui encadre une équipe et quitte sa direction la confie : ses
+        // agents, eux, y restent.
+        const equipe = await equipeDe(tx, id);
+        const directionActuelle = await directionDeEmploye(tx, id);
+        if (input.repreneurEquipeId) {
+          await reprendreEquipe(tx, journal, id, input.repreneurEquipeId);
+        } else if (equipe.length > 0 && directionVisee?.id !== directionActuelle?.id) {
+          problem(
+            422,
+            'people.equipe_sans_repreneur',
+            `Cet agent encadre ${equipe.length > 1 ? `${equipe.length} agents` : 'un agent'}`,
+            'Ils restent dans leur direction : choisissez qui reprend son équipe, dans la même opération.',
+          );
+        }
 
         const [current] = await tx
           .select({
@@ -885,9 +719,9 @@ export class PeopleService {
         // responsable d'une autre direction que celle où l'agent se trouve
         // encore. Les deux gestes n'en font donc qu'un, et c'est la seule
         // façon d'éviter l'impasse.
-        const directionCible = await this.directionDeUnite(tx, input.orgUnitId ?? null);
+        const directionCible = directionVisee;
         if (input.managerEmployeeId) {
-          await this.assertManagerValid(tx, id, input.managerEmployeeId, directionCible);
+          await validerRattachement(tx, id, input.managerEmployeeId, directionCible);
           await tx
             .update(t.employees)
             .set({ managerEmployeeId: input.managerEmployeeId, updatedAt: new Date() })
@@ -924,9 +758,9 @@ export class PeopleService {
             }
           }
           const directionDuResponsable = dossier?.managerId
-            ? await this.directionDeEmploye(tx, dossier.managerId)
+            ? await directionDeEmploye(tx, dossier.managerId)
             : null;
-          const directeur = await this.dirigeUneDirection(tx, id);
+          const directeur = await dirigeUneDirection(tx, id);
           if (
             !directeur &&
             directionCible &&
@@ -951,6 +785,7 @@ export class PeopleService {
           validity: `[${input.startDate},)`,
         });
       });
+      return { changements: journal };
     } catch (err) {
       if (pgCode(err) === '23P01') {
         problem(
@@ -1028,17 +863,17 @@ export class PeopleService {
       const skipped: EmployeeBatchResult['skipped'] = [];
       const retenus: typeof cibles = [];
 
+      const journal: ChangementRattachement[] = [];
       for (const c of cibles) {
-        const motif = await this.motifDeRefus(
-          tx,
-          user,
-          c,
-          input.archived ? 'archive' : 'reouverture',
-        );
+        const motif =
+          (await this.motifDeRefus(tx, user, c, input.archived ? 'archive' : 'reouverture')) ??
+          (input.archived
+            ? await this.confierEquipe(tx, journal, c.id, input.ids, input.repreneurs)
+            : null);
         if (motif) skipped.push({ id: c.id, name: c.nom, reason: motif });
         else retenus.push(c);
       }
-      if (retenus.length === 0) return { done: 0, skipped };
+      if (retenus.length === 0) return { done: 0, skipped, changements: journal };
 
       const ids = retenus.map((c) => c.id);
       await tx
@@ -1067,8 +902,40 @@ export class PeopleService {
             );
         }
       }
-      return { done: retenus.length, skipped };
+      return { done: retenus.length, skipped, changements: journal };
     });
+  }
+
+  /**
+   * Qui part avec une équipe la confie. Les agents qui partent dans le même
+   * lot ne comptent pas : on ne confie pas une équipe qui s'en va aussi.
+   * Rend le motif du refus, ou `null` quand l'équipe est reprise — ou qu'il
+   * n'y en a pas.
+   */
+  private async confierEquipe(
+    tx: Tx,
+    journal: ChangementRattachement[],
+    partant: string,
+    lot: string[],
+    repreneurs: Record<string, string> | undefined,
+  ): Promise<string | null> {
+    const equipe = (await equipeDe(tx, partant)).filter((a) => !lot.includes(a.id));
+    if (equipe.length === 0) return null;
+    const repreneur = repreneurs?.[partant];
+    const effectif = equipe.length > 1 ? `${equipe.length} agents` : 'un agent';
+    if (!repreneur) return `Encadre ${effectif} — choisissez qui reprend son équipe`;
+    if (lot.includes(repreneur)) return 'Son repreneur part dans le même lot';
+    try {
+      await reprendreEquipe(tx, journal, partant, repreneur);
+      return null;
+    } catch (err) {
+      // La reprise vérifie tout AVANT d'écrire : un refus ne laisse rien
+      // derrière lui, et le lot continue pour les autres.
+      if (err instanceof ProblemException) {
+        return [err.problem.title, err.problem.detail].filter(Boolean).join(' — ');
+      }
+      throw err;
+    }
   }
 
   /**
@@ -1093,8 +960,11 @@ export class PeopleService {
       const skipped: EmployeeBatchResult['skipped'] = [];
       let done = 0;
 
+      const journal: ChangementRattachement[] = [];
       for (const c of cibles) {
-        const motif = await this.motifDeRefus(tx, user, c, 'suppression');
+        const motif =
+          (await this.motifDeRefus(tx, user, c, 'suppression')) ??
+          (await this.confierEquipe(tx, journal, c.id, input.ids, input.repreneurs));
         if (motif) {
           skipped.push({ id: c.id, name: c.nom, reason: motif });
           continue;
@@ -1102,7 +972,7 @@ export class PeopleService {
         await this.effacer(tx, user, c);
         done += 1;
       }
-      return { done, skipped };
+      return { done, skipped, changements: journal };
     });
   }
 

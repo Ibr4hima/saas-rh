@@ -37,6 +37,7 @@ function agent(id: string, plus: Partial<LigneHierarchie> = {}): LigneHierarchie
     responsableDirectionNom: DSID.nom,
     dirigeUneDirection: false,
     estDirecteurGeneral: false,
+    directionPourvue: true,
     ...plus,
   };
 }

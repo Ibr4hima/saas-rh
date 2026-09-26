@@ -71,6 +71,47 @@ export const ANOMALIES_BLOQUANTES: TypeAnomalieHierarchie[] = [
   'responsable_archive',
 ];
 
+/**
+ * Pourquoi un rattachement a changé sans qu'on touche à la fiche : c'est une
+ * CASCADE, la conséquence qu'impose une règle quand l'organigramme bouge.
+ */
+export type MotifChangement =
+  /** Le nouveau directeur général perd son n+1 : il ne relève de personne. */
+  | 'devient_dg'
+  /** Relevait de l'ancien DG : relève du nouveau. */
+  | 'suit_le_dg'
+  /** Un directeur relève du directeur général. */
+  | 'directeur'
+  /** L'ancien DG, resté à la Direction Générale, relève du nouveau. */
+  | 'ancien_dg'
+  /** Rattaché au DG le temps que sa direction ait une tête : relève du directeur. */
+  | 'direction_pourvue'
+  /** L'ancien directeur, resté dans la direction, relève du nouveau. */
+  | 'ancien_directeur'
+  /** L'équipe d'un agent qui part passe à son repreneur. */
+  | 'reprise_equipe'
+  /** Le repreneur, pris dans l'équipe, prend la place du partant. */
+  | 'prend_la_place';
+
+export interface ChangementRattachement {
+  employeeId: string;
+  nom: string;
+  /** Le n+1 d'avant, et celui d'après — `null` : aucun. */
+  avant: string | null;
+  apres: string | null;
+  motif: MotifChangement;
+}
+
+/**
+ * Ce qu'une opération fait à la chaîne : les rattachements qu'elle change
+ * d'elle-même, et ceux qu'elle rend FAUX et qu'il faudra revoir. Sert deux
+ * fois : en aperçu, avant de valider ; en compte rendu, après.
+ */
+export interface ConsequencesHierarchie {
+  changements: ChangementRattachement[];
+  aRevoir: AnomalieHierarchie[];
+}
+
 export function bloqueLEvaluation(type: TypeAnomalieHierarchie): boolean {
   return ANOMALIES_BLOQUANTES.includes(type);
 }
@@ -78,6 +119,11 @@ export function bloqueLEvaluation(type: TypeAnomalieHierarchie): boolean {
 export interface ControleHierarchie {
   /** Le directeur général : le responsable de l'unité racine. */
   directeurGeneral: { employeeId: string; nom: string } | null;
+  /**
+   * Les unités au sommet, quand il y en a PLUSIEURS — vide sinon. Il n'en
+   * faut qu'une (la Direction Générale) : deux sommets, c'est deux « DG ».
+   */
+  sommetsMultiples: string[];
   /** Agents actifs examinés. */
   effectif: number;
   anomalies: AnomalieHierarchie[];

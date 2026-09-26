@@ -41,7 +41,9 @@ import { Donnee, Groupe, Peremption } from '../../../../components/fiche';
 import { Icon } from '../../../../components/icons';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
-import type { DocumentRequestView, OrgUnit } from '@teranga/contracts';
+import type { ChangementRattachement, DocumentRequestView, OrgUnit } from '@teranga/contracts';
+import { ListeConsequences } from '../../../../components/consequences-hierarchie';
+import { useResponsablesPossibles } from '../../../../lib/responsables';
 import { LoadFailure } from '../../../../components/load-failure';
 import { Page } from '../../../../components/gabarit';
 
@@ -372,6 +374,7 @@ export default function EmployeePage() {
           <AssignmentsCard
             employeeId={e.id}
             assignments={e.assignments}
+            team={e.team}
             canManage={Boolean(canSeeHistory)}
           />
 
@@ -486,13 +489,25 @@ export default function EmployeePage() {
   );
 }
 
+/** La direction d'une unité : elle-même, ou sa plus proche aïeule de type direction. */
+function directionDe(unites: OrgUnit[], uniteId: string | null | undefined): OrgUnit | null {
+  let u = unites.find((x) => x.id === uniteId) ?? null;
+  while (u && u.unitType !== 'direction') {
+    const parent: string | null = u.parentId;
+    u = unites.find((x) => x.id === parent) ?? null;
+  }
+  return u;
+}
+
 function AssignmentsCard({
   employeeId,
   assignments,
+  team,
   canManage,
 }: {
   employeeId: string;
   assignments: EmployeeDetail['assignments'];
+  team: EmployeeDetail['team'];
   canManage: boolean;
 }) {
   const queryClient = useQueryClient();
@@ -500,6 +515,9 @@ function AssignmentsCard({
   const [positionTitle, setPositionTitle] = useState('');
   const [orgUnitId, setOrgUnitId] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [nouveauN1, setNouveauN1] = useState('');
+  const [repreneur, setRepreneur] = useState('');
+  const [bilan, setBilan] = useState<ChangementRattachement[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const orgUnits = useQuery({
@@ -508,17 +526,46 @@ function AssignmentsCard({
     enabled: canManage && open,
   });
 
+  // ——— Changer de direction, c'est changer de n+1 — et, pour qui encadre,
+  // confier son équipe, qui reste dans l'ancienne. Les deux se décident
+  // ICI, dans la même opération : faits l'un après l'autre, chacun serait
+  // refusé par la règle.
+  const unites = orgUnits.data ?? [];
+  const actuelle = assignments.find((a) => a.current);
+  const directionActuelle = directionDe(unites, actuelle?.orgUnitId);
+  const directionVisee = directionDe(unites, orgUnitId || null);
+  const changeDeDirection =
+    open && orgUnits.isSuccess && directionVisee?.id !== directionActuelle?.id;
+  const libelle = (u: OrgUnit | null) => (u ? (u.shortName ?? u.name) : null);
+  const { options: n1Possibles } = useResponsablesPossibles(libelle(directionVisee), employeeId);
+  const { options: repreneursPossibles } = useResponsablesPossibles(
+    libelle(directionActuelle),
+    employeeId,
+  );
+  const repreneurRequis = changeDeDirection && team.length > 0;
+
   const create = useMutation({
     mutationFn: () =>
-      api(`/employees/${employeeId}/assignments`, {
+      api<{ changements: ChangementRattachement[] }>(`/employees/${employeeId}/assignments`, {
         method: 'POST',
-        body: { positionTitle, orgUnitId: orgUnitId || undefined, startDate },
+        body: {
+          positionTitle,
+          orgUnitId: orgUnitId || undefined,
+          startDate,
+          ...(changeDeDirection && nouveauN1 ? { managerEmployeeId: nouveauN1 } : {}),
+          ...(repreneurRequis && repreneur ? { repreneurEquipeId: repreneur } : {}),
+        },
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setOpen(false);
       setPositionTitle('');
+      setNouveauN1('');
+      setRepreneur('');
       setError(null);
+      setBilan(res?.changements ?? []);
       void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+      void queryClient.invalidateQueries({ queryKey: ['employees'] });
+      void queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
@@ -576,11 +623,56 @@ function AssignmentsCard({
             <Button
               onClick={() => create.mutate()}
               loading={create.isPending}
-              disabled={!positionTitle.trim() || !startDate}
+              disabled={!positionTitle.trim() || !startDate || (repreneurRequis && !repreneur)}
             >
               Enregistrer
             </Button>
           </div>
+          {changeDeDirection && directionVisee ? (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Field
+                label="Nouveau n+1"
+                htmlFor="asg-n1"
+                hint={`Dans ${libelle(directionVisee)}. Sans choix, le n+1 actuel est gardé s’il y appartient.`}
+              >
+                <Select
+                  id="asg-n1"
+                  value={nouveauN1}
+                  onChange={(ev) => setNouveauN1(ev.target.value)}
+                >
+                  <option value="">— Garder le n+1 actuel</option>
+                  {n1Possibles.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.nom}
+                      {m.poste ? ` — ${m.poste}` : ''}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              {repreneurRequis ? (
+                <Field
+                  label="Qui reprend son équipe"
+                  htmlFor="asg-repreneur"
+                  required
+                  hint={`${team.map((m) => m.name).join(', ')} ${team.length > 1 ? 'restent' : 'reste'} dans ${libelle(directionActuelle) ?? 'sa direction'}.`}
+                >
+                  <Select
+                    id="asg-repreneur"
+                    value={repreneur}
+                    onChange={(ev) => setRepreneur(ev.target.value)}
+                  >
+                    <option value="">— Choisir</option>
+                    {repreneursPossibles.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nom}
+                        {m.poste ? ` — ${m.poste}` : ''}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
+            </div>
+          ) : null}
           <p className="mt-2 text-xs text-ink-muted">
             L&apos;affectation en cours sera automatiquement clôturée la veille — l&apos;historique
             reste intact.
@@ -588,6 +680,11 @@ function AssignmentsCard({
           {error ? (
             <p className="mt-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
           ) : null}
+        </CardContent>
+      ) : null}
+      {bilan.length > 0 ? (
+        <CardContent className="border-b border-line-soft">
+          <ListeConsequences consequences={{ changements: bilan, aRevoir: [] }} faites />
         </CardContent>
       ) : null}
       {assignments.length === 0 ? (

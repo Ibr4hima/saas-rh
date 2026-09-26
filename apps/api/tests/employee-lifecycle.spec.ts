@@ -248,7 +248,7 @@ describe('archivage', () => {
 
     const r = await people.archive(admin, { ids: [awa.employeeId], archived: true });
 
-    expect(r).toEqual({ done: 1, skipped: [] });
+    expect(r).toEqual({ done: 1, skipped: [], changements: [] });
     const detail = await people.detail(admin, awa.employeeId);
     expect(detail.status).toBe('archived');
     expect(detail.archivedAt).not.toBeNull();
@@ -321,7 +321,7 @@ describe('suppression définitive', () => {
   it('ne laisse rien du dossier ni de ce qui pendait à lui', async () => {
     const { requestId } = await garnir(awa);
     const r = await people.remove(admin, { ids: [awa.employeeId] });
-    expect(r).toEqual({ done: 1, skipped: [] });
+    expect(r).toEqual({ done: 1, skipped: [], changements: [] });
 
     expect(await compte('employees', 'id = $1', [awa.employeeId])).toBe(0);
     expect(await compte('persons', 'id = $1', [awa.personId])).toBe(0);
@@ -413,7 +413,7 @@ describe('suppression définitive', () => {
     expect(await compte('absence_approvals', 'request_id = $1', [requestId])).toBe(1);
   });
 
-  it('détache les subordonnés et l’unité au lieu de les casser', async () => {
+  it('refuse d’effacer un chef d’équipe sans repreneur ; détache ses agents déjà partis', async () => {
     const subalterne = await creerDossier('BRUNO', false);
     await raw(`UPDATE employees SET manager_employee_id = $1 WHERE id = $2`, [
       awa.employeeId,
@@ -431,8 +431,14 @@ describe('suppression définitive', () => {
     ]);
     expect((await people.remove(admin, { ids: [awa.employeeId] })).done).toBe(0);
 
-    // …et une fois l'unité rendue, la suppression détache les subordonnés.
+    // …n+1 d'un agent actif : on refuse tant que personne ne reprend son équipe…
     await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [uniteId]);
+    const refus = await people.remove(admin, { ids: [awa.employeeId] });
+    expect(refus.done).toBe(0);
+    expect(refus.skipped[0]?.reason).toContain('choisissez qui reprend son équipe');
+
+    // …et d'un agent déjà archivé, la suppression le détache simplement.
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [subalterne.employeeId]);
     expect((await people.remove(admin, { ids: [awa.employeeId] })).done).toBe(1);
     const reste = await raw(`SELECT manager_employee_id FROM employees WHERE id = $1`, [
       subalterne.employeeId,
@@ -484,7 +490,7 @@ describe('suppression définitive', () => {
     );
 
     const r = await people.remove(admin, { ids: [employeeId] });
-    expect(r).toEqual({ done: 0, skipped: [] }); // invisible, donc intouchable
+    expect(r).toEqual({ done: 0, skipped: [], changements: [] }); // invisible, donc intouchable
     expect(await compte('employees', 'id = $1', [employeeId])).toBe(1);
 
     await raw(`DELETE FROM employees WHERE tenant_id = $1`, [autreTenant]);

@@ -148,15 +148,16 @@ export class PeopleController {
     await this.people.update(req.sessionUser, id, body);
   }
 
+  /** Rend les rattachements changés au passage (reprise de son équipe). */
   @Post('employees/:id/assignments')
   @Roles('admin', 'hr')
-  @HttpCode(204)
-  async newAssignment(
+  @HttpCode(200)
+  newAssignment(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(newAssignmentSchema)) body: NewAssignmentInput,
   ) {
-    await this.people.newAssignment(req.sessionUser, id, body);
+    return this.people.newAssignment(req.sessionUser, id, body);
   }
 
   @Get('employees/:id/history')
@@ -181,15 +182,39 @@ export class PeopleController {
     return this.orgUnits.create(req.sessionUser, body);
   }
 
+  /** Rend ce que l'opération a fait à la chaîne hiérarchique (cascades, rattachements à revoir). */
   @Patch('org-units/:id')
   @Roles('admin', 'hr')
-  @HttpCode(204)
-  async updateOrgUnit(
+  updateOrgUnit(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(updateOrgUnitSchema)) body: UpdateOrgUnitInput,
   ) {
-    await this.orgUnits.update(req.sessionUser, id, body);
+    return this.orgUnits.update(req.sessionUser, id, body);
+  }
+
+  /** Ce que FERAIT la modification — jouée puis annulée, rien n'est écrit. */
+  @Post('org-units/:id/apercu')
+  @Roles('admin', 'hr')
+  @HttpCode(200)
+  apercuOrgUnit(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateOrgUnitSchema)) body: UpdateOrgUnitInput,
+  ) {
+    return this.orgUnits.apercu(req.sessionUser, id, body);
+  }
+
+  /** Ce que FERAIT la dissolution — jouée puis annulée. */
+  @Post('org-units/:id/apercu-suppression')
+  @Roles('admin', 'hr')
+  @HttpCode(200)
+  apercuSuppressionOrgUnit(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(deleteOrgUnitSchema)) query: DeleteOrgUnitInput,
+  ) {
+    return this.orgUnits.apercuSuppression(req.sessionUser, id, query);
   }
 
   /**
@@ -198,13 +223,12 @@ export class PeopleController {
    */
   @Delete('org-units/:id')
   @Roles('admin', 'hr')
-  @HttpCode(204)
-  async deleteOrgUnit(
+  deleteOrgUnit(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
     @Query(new ZodValidationPipe(deleteOrgUnitSchema)) query: DeleteOrgUnitInput,
   ) {
-    await this.orgUnits.remove(req.sessionUser, id, query);
+    return this.orgUnits.remove(req.sessionUser, id, query);
   }
 
   /** Qui peut diriger cette unité : le sous-arbre actif, rien de plus. */

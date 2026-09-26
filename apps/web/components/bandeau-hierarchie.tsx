@@ -34,7 +34,7 @@ import { Modal } from './modal';
    avez cassé quelque chose », ce qui serait faux.
    ———————————————————————————————————————————————————————————————— */
 
-const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: string }> = {
+export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: string }> = {
   boucle: {
     court: 'Boucle',
     explication: 'Sa chaîne de n+1 revient sur elle-même : elle ne remonte plus.',
@@ -79,7 +79,7 @@ export function BandeauHierarchie() {
   const [ouvert, setOuvert] = useState(false);
 
   const c = controle.data;
-  if (!c || c.anomalies.length === 0) return null;
+  if (!c || (c.anomalies.length === 0 && c.sommetsMultiples.length === 0)) return null;
 
   const bloquantes = c.anomalies.filter((a) => bloqueLEvaluation(a.type)).length;
 
@@ -88,25 +88,40 @@ export function BandeauHierarchie() {
       <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[14px] border border-accent/25 bg-accent-soft/50 px-4 py-3">
         <Icon name="error" size={17} className="shrink-0 text-accent-text" />
         <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-ink">
-          <b className="font-bold text-accent-text">
-            {compte(c.anomalies.length, 'dossier')} à compléter
-          </b>{' '}
-          dans la chaîne hiérarchique
-          {bloquantes > 0 ? (
+          {c.sommetsMultiples.length > 1 ? (
             <>
-              {' '}
-              — dont {bloquantes} qui ne {bloquantes > 1 ? 'peuvent' : 'peut'} pas être
-              {bloquantes > 1 ? ' évalués' : ' évalué'} tant que le n+1 n’est pas désigné
+              <b className="font-bold text-accent-text">
+                L’organigramme a {c.sommetsMultiples.length} sommets
+              </b>{' '}
+              ({c.sommetsMultiples.join(', ')}) : rattachez-les sous la Direction Générale — il n’en
+              faut qu’un.{' '}
             </>
           ) : null}
-          .
+          {c.anomalies.length > 0 ? (
+            <>
+              <b className="font-bold text-accent-text">
+                {compte(c.anomalies.length, 'dossier')} à compléter
+              </b>{' '}
+              dans la chaîne hiérarchique
+              {bloquantes > 0 ? (
+                <>
+                  {' '}
+                  — dont {bloquantes} qui ne {bloquantes > 1 ? 'peuvent' : 'peut'} pas être
+                  {bloquantes > 1 ? ' évalués' : ' évalué'} tant que le n+1 n’est pas désigné
+                </>
+              ) : null}
+              .
+            </>
+          ) : null}
           {c.directeurGeneral === null ? (
             <> Aucun directeur général n’est désigné à la tête de l’organigramme.</>
           ) : null}
         </p>
-        <Button size="sm" variant="secondary" className="h-8" onClick={() => setOuvert(true)}>
-          Voir les dossiers
-        </Button>
+        {c.anomalies.length > 0 ? (
+          <Button size="sm" variant="secondary" className="h-8" onClick={() => setOuvert(true)}>
+            Voir les dossiers
+          </Button>
+        ) : null}
       </div>
 
       {ouvert ? <FenetreAnomalies controle={c} onClose={() => setOuvert(false)} /> : null}

@@ -155,8 +155,20 @@ describe('hiérarchie des types', () => {
     const unites = await service.list(user);
     expect(unites.find((u) => u.id === autreDirection)?.parentId).toBe(generale);
     // Remise en place : les autres cas de ce fichier partent d'une voisine
-    // libre de tout rattachement.
-    await service.update(user, autreDirection, { parentId: null });
+    // libre de tout rattachement. En SQL : le service, lui, refuse désormais
+    // un second sommet.
+    await raw(`UPDATE org_units SET parent_id = NULL WHERE id = $1`, [autreDirection]);
+  });
+
+  it('refuse un second sommet, à la création comme au re-rattachement', async () => {
+    // Le bac d'essai en compte déjà — comme un tenant d'avant la règle.
+    expect(
+      await codeOf(() => service.create(user, { name: 'Direction Bis', unitType: 'direction' })),
+    ).toBe('org.sommet_unique');
+    const fille = await creerUnite('Direction Fille', 'direction', direction);
+    expect(await codeOf(() => service.update(user, fille, { parentId: null }))).toBe(
+      'org.sommet_unique',
+    );
   });
 
   it('laisse une direction SANS rattachement : elle peut tenir le sommet', async () => {
@@ -376,8 +388,14 @@ describe('traductions d’erreurs SQL', () => {
   });
 
   it('deux unités sœurs homonymes deviennent un 422 lisible', async () => {
+    const jumeau = {
+      name: 'Département Jumeau',
+      unitType: 'department',
+      parentId: direction,
+    } as const;
+    await service.create(user, jumeau);
     expect(
-      await codeOf(() => service.create(user, { name: 'direction mère', unitType: 'direction' })),
+      await codeOf(() => service.create(user, { ...jumeau, name: 'département jumeau' })),
     ).toBe('org.name_taken');
   });
 

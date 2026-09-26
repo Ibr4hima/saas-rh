@@ -2,6 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
+  ChangementRattachement,
+  ConsequencesHierarchie,
   CreateOrgUnitInput,
   DeleteOrgUnitInput,
   OrgUnitMember,
@@ -19,6 +21,16 @@ import {
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
+import {
+  apresNouveauDG,
+  apresNouveauDirecteur,
+  directeurGeneral,
+  directionDeEmploye,
+} from './chaine';
+import { lireLaChaine } from './hierarchie.service';
+
+/** Lancée pour annuler la transaction d'un aperçu, une fois tout mesuré. */
+class AnnulerLApercu extends Error {}
 
 /** Drizzle enveloppe l'erreur pg : le code est sur la cause (cf. les autres services). */
 function pgCode(err: unknown): string | undefined {
@@ -128,6 +140,7 @@ export class OrgUnitsService {
     try {
       await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
         await this.assertParentAllowed(tx, input.unitType, input.parentId ?? null);
+        if (!input.parentId) await this.assertSommetLibre(tx, null);
         await tx.insert(t.orgUnits).values({
           id,
           tenantId: user.tenantId,
@@ -150,137 +163,215 @@ export class OrgUnitsService {
    * l'appelant désigne l'unité d'accueil, et le transfert est daté du jour
    * comme n'importe quelle mutation.
    */
-  async remove(user: SessionUser, id: string, input: DeleteOrgUnitInput): Promise<void> {
-    await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
-      await this.requireUnit(tx, id, 'org.unit_not_found');
-
-      // Une unité parente emporterait ses descendants dans sa chute : on exige
-      // qu'ils soient rattachés ailleurs d'abord, décision par décision.
-      const children = await tx
-        .select({ name: t.orgUnits.name })
-        .from(t.orgUnits)
-        .where(and(eq(t.orgUnits.parentId, id), isNull(t.orgUnits.deletedAt)));
-      if (children.length > 0) {
-        problem(
-          422,
-          'org.unit_has_children',
-          'Cette unité en contient d’autres',
-          `Rattachez d’abord ailleurs : ${children.map((c) => c.name).join(', ')}.`,
-        );
-      }
-
-      // Une offre de recrutement ouverte annoncerait une direction disparue —
-      // y compris sur la page publique de candidature.
-      const postings = await tx
-        .select({ title: t.jobPostings.title })
-        .from(t.jobPostings)
-        .where(and(eq(t.jobPostings.orgUnitId, id), sql`${t.jobPostings.status} <> 'closed'`));
-      if (postings.length > 0) {
-        problem(
-          422,
-          'org.unit_has_job_postings',
-          'Des offres de recrutement visent cette unité',
-          `Clôturez ou rattachez ailleurs : ${postings.map((j) => j.title).join(', ')}.`,
-        );
-      }
-
-      // TOUTES les affectations qui n'ont pas pris fin, quel que soit le statut
-      // de l'employé : une personne suspendue ou une affectation qui démarre le
-      // mois prochain resterait sinon rattachée à une unité fantôme.
-      const openAssignments = await tx
-        .select({
-          id: t.assignments.id,
-          employeeId: t.assignments.employeeId,
-          positionTitle: t.assignments.positionTitle,
-          // Rien à historiser tant que l'affectation n'a pas duré un jour.
-          // Le seuil est bien « aujourd'hui ou plus tard » et non « plus
-          // tard » : clore aujourd'hui une affectation commencée aujourd'hui
-          // donne un intervalle VIDE, que la contrainte de la table refuse.
-          sansHistorique: sql<boolean>`lower(${t.assignments.validity}) >= CURRENT_DATE`,
-        })
-        .from(t.assignments)
-        .where(
-          and(
-            eq(t.assignments.orgUnitId, id),
-            // Parenthèses OBLIGATOIRES : AND lie plus fort que OR, et sans
-            // elles la condition capturait les affectations des AUTRES unités
-            // dont la validité court encore.
-            sql`(upper_inf(${t.assignments.validity}) OR upper(${t.assignments.validity}) > CURRENT_DATE)`,
-          ),
-        );
-
-      if (openAssignments.length > 0) {
-        // Sans unité d'accueil, on DÉTACHE au lieu de refuser. Exiger une
-        // réaffectation bloquait la dissolution d'une direction vidée de sa
-        // substance dès qu'un seul agent — fût-il suspendu — y pendait encore,
-        // et obligeait à inventer un rattachement faux pour s'en sortir.
-        // Détachée, la personne garde son poste, son dossier et son historique ;
-        // elle n'a simplement plus d'unité, ce que l'écran annonce avant.
-        const accueil = input.reassignTo ?? null;
-        if (accueil !== null) {
-          if (accueil === id) {
-            problem(422, 'org.reassign_to_self', 'Impossible de réaffecter vers l’unité supprimée');
-          }
-          await this.requireUnit(tx, accueil, 'org.reassign_target_not_found');
-        }
-
-        const today = new Date().toISOString().slice(0, 10);
-        for (const a of openAssignments) {
-          if (a.sansHistorique) {
-            // Pas encore vécue : on la redirige telle quelle.
-            await tx
-              .update(t.assignments)
-              .set({ orgUnitId: accueil })
-              .where(eq(t.assignments.id, a.id));
-            continue;
-          }
-          // Affectation en cours : on la CLÔT aujourd'hui et on en ouvre une
-          // nouvelle — sur l'unité d'accueil, ou sans unité. Réécrire
-          // org_unit_id ferait dire au dossier que l'employé n'a jamais mis les
-          // pieds ici : l'historique mentirait.
-          await tx
-            .update(t.assignments)
-            .set({ validity: sql`daterange(lower(${t.assignments.validity}), ${today}::date)` })
-            .where(eq(t.assignments.id, a.id));
-          await tx.insert(t.assignments).values({
-            id: uuidv7(),
-            tenantId: user.tenantId,
-            employeeId: a.employeeId,
-            orgUnitId: accueil,
-            positionTitle: a.positionTitle,
-            validity: `[${today},)`,
-          });
-        }
-      }
-
-      // Les affectations closes gardent leur unité : l'historique doit rester
-      // lisible (« était au Service X, dissous depuis »).
-      await tx
-        .update(t.orgUnits)
-        .set({ deletedAt: new Date(), managerEmployeeId: null, updatedAt: new Date() })
-        .where(eq(t.orgUnits.id, id));
-
-      // Invariant relu sur l'état final : dissoudre l'unité d'un chef pour le
-      // faire atterrir ailleurs est exactement ce que la mutation refuse.
-      await this.assertManagersStillInScope(
-        tx,
-        openAssignments.map((a) => a.employeeId),
-      );
-    });
+  async remove(
+    user: SessionUser,
+    id: string,
+    input: DeleteOrgUnitInput,
+  ): Promise<ConsequencesHierarchie> {
+    return this.executer(user, (tx) => this.dissoudre(tx, user, id, input), false);
   }
 
-  /** Renommage, re-rattachement (anti-cycle) ou changement de responsable. */
-  async update(user: SessionUser, id: string, input: UpdateOrgUnitInput): Promise<void> {
+  private async dissoudre(
+    tx: Tx,
+    user: SessionUser,
+    id: string,
+    input: DeleteOrgUnitInput,
+  ): Promise<void> {
+    await this.requireUnit(tx, id, 'org.unit_not_found');
+
+    // Une unité parente emporterait ses descendants dans sa chute : on exige
+    // qu'ils soient rattachés ailleurs d'abord, décision par décision.
+    const children = await tx
+      .select({ name: t.orgUnits.name })
+      .from(t.orgUnits)
+      .where(and(eq(t.orgUnits.parentId, id), isNull(t.orgUnits.deletedAt)));
+    if (children.length > 0) {
+      problem(
+        422,
+        'org.unit_has_children',
+        'Cette unité en contient d’autres',
+        `Rattachez d’abord ailleurs : ${children.map((c) => c.name).join(', ')}.`,
+      );
+    }
+
+    // Une offre de recrutement ouverte annoncerait une direction disparue —
+    // y compris sur la page publique de candidature.
+    const postings = await tx
+      .select({ title: t.jobPostings.title })
+      .from(t.jobPostings)
+      .where(and(eq(t.jobPostings.orgUnitId, id), sql`${t.jobPostings.status} <> 'closed'`));
+    if (postings.length > 0) {
+      problem(
+        422,
+        'org.unit_has_job_postings',
+        'Des offres de recrutement visent cette unité',
+        `Clôturez ou rattachez ailleurs : ${postings.map((j) => j.title).join(', ')}.`,
+      );
+    }
+
+    // TOUTES les affectations qui n'ont pas pris fin, quel que soit le statut
+    // de l'employé : une personne suspendue ou une affectation qui démarre le
+    // mois prochain resterait sinon rattachée à une unité fantôme.
+    const openAssignments = await tx
+      .select({
+        id: t.assignments.id,
+        employeeId: t.assignments.employeeId,
+        positionTitle: t.assignments.positionTitle,
+        // Rien à historiser tant que l'affectation n'a pas duré un jour.
+        // Le seuil est bien « aujourd'hui ou plus tard » et non « plus
+        // tard » : clore aujourd'hui une affectation commencée aujourd'hui
+        // donne un intervalle VIDE, que la contrainte de la table refuse.
+        sansHistorique: sql<boolean>`lower(${t.assignments.validity}) >= CURRENT_DATE`,
+      })
+      .from(t.assignments)
+      .where(
+        and(
+          eq(t.assignments.orgUnitId, id),
+          // Parenthèses OBLIGATOIRES : AND lie plus fort que OR, et sans
+          // elles la condition capturait les affectations des AUTRES unités
+          // dont la validité court encore.
+          sql`(upper_inf(${t.assignments.validity}) OR upper(${t.assignments.validity}) > CURRENT_DATE)`,
+        ),
+      );
+
+    if (openAssignments.length > 0) {
+      // Sans unité d'accueil, on DÉTACHE au lieu de refuser. Exiger une
+      // réaffectation bloquait la dissolution d'une direction vidée de sa
+      // substance dès qu'un seul agent — fût-il suspendu — y pendait encore,
+      // et obligeait à inventer un rattachement faux pour s'en sortir.
+      // Détachée, la personne garde son poste, son dossier et son historique ;
+      // elle n'a simplement plus d'unité, ce que l'écran annonce avant.
+      const accueil = input.reassignTo ?? null;
+      if (accueil !== null) {
+        if (accueil === id) {
+          problem(422, 'org.reassign_to_self', 'Impossible de réaffecter vers l’unité supprimée');
+        }
+        await this.requireUnit(tx, accueil, 'org.reassign_target_not_found');
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      for (const a of openAssignments) {
+        if (a.sansHistorique) {
+          // Pas encore vécue : on la redirige telle quelle.
+          await tx
+            .update(t.assignments)
+            .set({ orgUnitId: accueil })
+            .where(eq(t.assignments.id, a.id));
+          continue;
+        }
+        // Affectation en cours : on la CLÔT aujourd'hui et on en ouvre une
+        // nouvelle — sur l'unité d'accueil, ou sans unité. Réécrire
+        // org_unit_id ferait dire au dossier que l'employé n'a jamais mis les
+        // pieds ici : l'historique mentirait.
+        await tx
+          .update(t.assignments)
+          .set({ validity: sql`daterange(lower(${t.assignments.validity}), ${today}::date)` })
+          .where(eq(t.assignments.id, a.id));
+        await tx.insert(t.assignments).values({
+          id: uuidv7(),
+          tenantId: user.tenantId,
+          employeeId: a.employeeId,
+          orgUnitId: accueil,
+          positionTitle: a.positionTitle,
+          validity: `[${today},)`,
+        });
+      }
+    }
+
+    // Les affectations closes gardent leur unité : l'historique doit rester
+    // lisible (« était au Service X, dissous depuis »).
+    await tx
+      .update(t.orgUnits)
+      .set({ deletedAt: new Date(), managerEmployeeId: null, updatedAt: new Date() })
+      .where(eq(t.orgUnits.id, id));
+
+    // Invariant relu sur l'état final : dissoudre l'unité d'un chef pour le
+    // faire atterrir ailleurs est exactement ce que la mutation refuse.
+    await this.assertManagersStillInScope(
+      tx,
+      openAssignments.map((a) => a.employeeId),
+    );
+  }
+
+  /**
+   * Renommage, re-rattachement (anti-cycle) ou changement de responsable —
+   * avec les cascades que la règle impose, et le compte de ce qu'elles ont
+   * fait.
+   */
+  async update(
+    user: SessionUser,
+    id: string,
+    input: UpdateOrgUnitInput,
+  ): Promise<ConsequencesHierarchie> {
+    return this.executer(user, (tx, journal) => this.modifier(tx, journal, id, input), false);
+  }
+
+  /** La même opération, jouée puis annulée : ce qu'elle FERAIT, avant de valider. */
+  async apercu(
+    user: SessionUser,
+    id: string,
+    input: UpdateOrgUnitInput,
+  ): Promise<ConsequencesHierarchie> {
+    return this.executer(user, (tx, journal) => this.modifier(tx, journal, id, input), true);
+  }
+
+  /** La dissolution, jouée puis annulée. */
+  async apercuSuppression(
+    user: SessionUser,
+    id: string,
+    input: DeleteOrgUnitInput,
+  ): Promise<ConsequencesHierarchie> {
+    return this.executer(user, (tx) => this.dissoudre(tx, user, id, input), true);
+  }
+
+  /**
+   * Joue une opération sur l'organigramme et mesure ce qu'elle fait à la
+   * chaîne hiérarchique : les rattachements changés par cascade (le
+   * journal), et les anomalies qu'elle fait APPARAÎTRE — celles d'avant ne
+   * sont pas les siennes. En aperçu, tout est annulé une fois mesuré :
+   * l'aperçu dit exactement ce que ferait l'opération, puisque c'est elle.
+   */
+  private async executer(
+    user: SessionUser,
+    operation: (tx: Tx, journal: ChangementRattachement[]) => Promise<void>,
+    apercu: boolean,
+  ): Promise<ConsequencesHierarchie> {
+    let resultat: ConsequencesHierarchie = { changements: [], aRevoir: [] };
     try {
       await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
-        await this.requireUnit(tx, id, 'org.unit_not_found');
+        const avant = await lireLaChaine(tx);
+        const journal: ChangementRattachement[] = [];
+        await operation(tx, journal);
+        const apres = await lireLaChaine(tx);
+        const connues = new Set(avant.anomalies.map((a) => `${a.employeeId}:${a.type}`));
+        resultat = {
+          changements: journal,
+          aRevoir: apres.anomalies.filter((a) => !connues.has(`${a.employeeId}:${a.type}`)),
+        };
+        if (apercu) throw new AnnulerLApercu();
+      });
+    } catch (err) {
+      if (err instanceof AnnulerLApercu) return resultat;
+      if (pgCode(err) === '23505') mapUniqueViolation(err);
+      throw err;
+    }
+    return resultat;
+  }
 
-        if (input.parentId !== undefined && input.parentId !== null) {
-          if (input.parentId === id) {
-            problem(422, 'org.cycle', 'Une unité ne peut pas être rattachée à elle-même');
-          }
-          // Anti-cycle : le nouveau parent ne doit pas être un descendant de l'unité.
-          const cycle = await tx.execute(sql`
+  private async modifier(
+    tx: Tx,
+    journal: ChangementRattachement[],
+    id: string,
+    input: UpdateOrgUnitInput,
+  ): Promise<void> {
+    await this.requireUnit(tx, id, 'org.unit_not_found');
+
+    if (input.parentId !== undefined && input.parentId !== null) {
+      if (input.parentId === id) {
+        problem(422, 'org.cycle', 'Une unité ne peut pas être rattachée à elle-même');
+      }
+      // Anti-cycle : le nouveau parent ne doit pas être un descendant de l'unité.
+      const cycle = await tx.execute(sql`
           WITH RECURSIVE ancestors AS (
             SELECT id, parent_id FROM org_units WHERE id = ${input.parentId}
             UNION ALL
@@ -288,69 +379,104 @@ export class OrgUnitsService {
             JOIN ancestors anc ON o.id = anc.parent_id
           )
           SELECT 1 FROM ancestors WHERE id = ${id} LIMIT 1`);
-          if (cycle.rows.length > 0) {
-            problem(
-              422,
-              'org.cycle',
-              'Rattachement impossible : cela créerait une boucle dans la structure',
-            );
-          }
-        }
+      if (cycle.rows.length > 0) {
+        problem(
+          422,
+          'org.cycle',
+          'Rattachement impossible : cela créerait une boucle dans la structure',
+        );
+      }
+    }
 
-        const [before] = await tx
-          .select({
-            unitType: t.orgUnits.unitType,
-            parentId: t.orgUnits.parentId,
-            managerEmployeeId: t.orgUnits.managerEmployeeId,
-          })
-          .from(t.orgUnits)
-          .where(eq(t.orgUnits.id, id))
-          .limit(1);
-        const nextType = (input.unitType ?? before!.unitType) as OrgUnitType;
-        const nextParent = input.parentId !== undefined ? input.parentId : before!.parentId;
+    const [before] = await tx
+      .select({
+        unitType: t.orgUnits.unitType,
+        parentId: t.orgUnits.parentId,
+        managerEmployeeId: t.orgUnits.managerEmployeeId,
+      })
+      .from(t.orgUnits)
+      .where(eq(t.orgUnits.id, id))
+      .limit(1);
+    const nextType = (input.unitType ?? before!.unitType) as OrgUnitType;
+    const nextParent = input.parentId !== undefined ? input.parentId : before!.parentId;
 
-        // Le type et le rattachement se valident ENSEMBLE : changer l'un peut
-        // rendre l'autre absurde (une direction rangée sous un service).
-        if (input.unitType !== undefined || input.parentId !== undefined) {
-          await this.assertParentAllowed(tx, nextType, nextParent, id);
-          await this.assertChildrenAllowed(tx, id, nextType);
-        }
+    // Le type et le rattachement se valident ENSEMBLE : changer l'un peut
+    // rendre l'autre absurde (une direction rangée sous un service).
+    if (input.unitType !== undefined || input.parentId !== undefined) {
+      await this.assertParentAllowed(tx, nextType, nextParent, id);
+      await this.assertChildrenAllowed(tx, id, nextType);
+    }
 
-        if (input.shortName !== undefined) {
-          this.assertShortNameAllowed(nextType, input.shortName);
-        } else if (input.unitType !== undefined && nextType !== 'direction') {
-          // Un département n'a pas d'abrégé : le déclassement l'efface.
-          input = { ...input, shortName: null };
-        }
+    if (input.shortName !== undefined) {
+      this.assertShortNameAllowed(nextType, input.shortName);
+    } else if (input.unitType !== undefined && nextType !== 'direction') {
+      // Un département n'a pas d'abrégé : le déclassement l'efface.
+      input = { ...input, shortName: null };
+    }
 
-        if (input.managerEmployeeId) {
-          await this.assertManagerEligible(tx, id, input.managerEmployeeId);
-        }
+    if (input.managerEmployeeId) {
+      await this.assertManagerEligible(tx, id, input.managerEmployeeId);
+    }
 
-        // Diriger l'unité RACINE, c'est être le directeur général — et le
-        // directeur général ne relève de personne. Qu'on le désigne, ou qu'on
-        // fasse de son unité la racine, il ne doit pas avoir de n+1.
-        const prochainResponsable =
-          input.managerEmployeeId !== undefined
-            ? input.managerEmployeeId
-            : before!.managerEmployeeId;
-        if (
-          nextParent === null &&
-          prochainResponsable &&
-          (input.managerEmployeeId !== undefined || input.parentId !== undefined)
-        ) {
-          await this.assertSansResponsable(tx, prochainResponsable);
-        }
+    // ——— Un seul sommet : la Direction Générale.
+    if (nextParent === null && before!.parentId !== null) {
+      await this.assertSommetLibre(tx, id);
+    }
 
-        // Re-rattacher une unité déplace TOUT son sous-arbre : un responsable
-        // affecté dedans peut se retrouver hors de l'unité qu'il dirige, sans
-        // qu'aucune mutation d'employé n'ait eu lieu. Même invariant, autre porte.
-        // Les employés concernés sont relevés AVANT le déplacement, l'invariant
-        // est vérifié APRÈS — sur l'arbre réel, pas sur une simulation.
-        const deplaces =
-          input.parentId !== undefined && input.parentId !== before!.parentId
-            ? (
-                await tx.execute<{ employee_id: string }>(sql`
+    const ancien = before!.managerEmployeeId;
+    const prochain = input.managerEmployeeId !== undefined ? input.managerEmployeeId : ancien;
+    const responsableChange = input.managerEmployeeId !== undefined && prochain !== ancien;
+    const estRacine = nextParent === null;
+    const devientDirection =
+      nextType === 'direction' && (input.unitType !== undefined || input.parentId !== undefined);
+
+    if (estRacine && responsableChange) {
+      // ——— Diriger la racine, c'est être le directeur général.
+      if (prochain === null) {
+        problem(
+          422,
+          'org.dg_requis',
+          'La Direction Générale garde toujours un responsable',
+          'On ne retire pas le directeur général : on désigne son successeur, qui reprend ce qui relevait de lui.',
+        );
+      }
+      // Il siège à la Direction Générale : c'est là que ses
+      // collaborateurs directs relèvent de lui, dans la même direction.
+      const direction = await directionDeEmploye(tx, prochain);
+      if (direction?.id !== id) {
+        problem(
+          422,
+          'org.dg_hors_direction_generale',
+          'Affectez d’abord le futur directeur général à la Direction Générale',
+          'D’abord l’affectation, ensuite la hiérarchie : il siège à la Direction Générale avant d’en prendre la tête.',
+        );
+      }
+    } else if (
+      !estRacine &&
+      nextType === 'direction' &&
+      prochain &&
+      (responsableChange || devientDirection)
+    ) {
+      // ——— Un directeur relève du directeur général : il en faut un.
+      if (!(await directeurGeneral(tx))) {
+        problem(
+          422,
+          'org.aucun_directeur_general',
+          'Désignez d’abord le directeur général',
+          'Un directeur relève du directeur général : la Direction Générale a son responsable avant les directions.',
+        );
+      }
+    }
+
+    // Re-rattacher une unité déplace TOUT son sous-arbre : un responsable
+    // affecté dedans peut se retrouver hors de l'unité qu'il dirige, sans
+    // qu'aucune mutation d'employé n'ait eu lieu. Même invariant, autre porte.
+    // Les employés concernés sont relevés AVANT le déplacement, l'invariant
+    // est vérifié APRÈS — sur l'arbre réel, pas sur une simulation.
+    const deplaces =
+      input.parentId !== undefined && input.parentId !== before!.parentId
+        ? (
+            await tx.execute<{ employee_id: string }>(sql`
                   WITH RECURSIVE subtree AS (
                     SELECT id FROM org_units WHERE id = ${id} AND deleted_at IS NULL
                     UNION ALL
@@ -361,25 +487,32 @@ export class OrgUnitsService {
                   SELECT DISTINCT a.employee_id FROM assignments a
                   WHERE a.org_unit_id IN (SELECT id FROM subtree)
                     AND a.validity @> CURRENT_DATE`)
-              ).rows.map((r) => r.employee_id)
-            : [];
+          ).rows.map((r) => r.employee_id)
+        : [];
 
-        const changes: Partial<typeof t.orgUnits.$inferInsert> = {};
-        if (input.name !== undefined) changes.name = input.name;
-        if (input.unitType !== undefined) changes.unitType = input.unitType;
-        if (input.parentId !== undefined) changes.parentId = input.parentId;
-        if (input.shortName !== undefined) changes.shortName = input.shortName;
-        if (input.managerEmployeeId !== undefined) {
-          changes.managerEmployeeId = input.managerEmployeeId;
-        }
-        if (Object.keys(changes).length === 0) return;
-        changes.updatedAt = new Date();
-        await tx.update(t.orgUnits).set(changes).where(eq(t.orgUnits.id, id));
-        await this.assertManagersStillInScope(tx, deplaces);
-      });
-    } catch (err) {
-      if (pgCode(err) === '23505') mapUniqueViolation(err);
-      throw err;
+    const changes: Partial<typeof t.orgUnits.$inferInsert> = {};
+    if (input.name !== undefined) changes.name = input.name;
+    if (input.unitType !== undefined) changes.unitType = input.unitType;
+    if (input.parentId !== undefined) changes.parentId = input.parentId;
+    if (input.shortName !== undefined) changes.shortName = input.shortName;
+    if (input.managerEmployeeId !== undefined) {
+      changes.managerEmployeeId = input.managerEmployeeId;
+    }
+    if (Object.keys(changes).length === 0) return;
+    changes.updatedAt = new Date();
+    await tx.update(t.orgUnits).set(changes).where(eq(t.orgUnits.id, id));
+    await this.assertManagersStillInScope(tx, deplaces);
+
+    // ——— Les cascades : ce que la règle impose, une fois l'unité écrite.
+    if (estRacine && responsableChange && prochain) {
+      await apresNouveauDG(tx, journal, ancien, prochain);
+    } else if (
+      !estRacine &&
+      nextType === 'direction' &&
+      prochain &&
+      (responsableChange || devientDirection)
+    ) {
+      await apresNouveauDirecteur(tx, journal, id, responsableChange ? ancien : null, prochain);
     }
   }
 
@@ -508,19 +641,28 @@ export class OrgUnitsService {
     }
   }
 
-  /** Le futur directeur général ne doit relever de personne. */
-  private async assertSansResponsable(tx: Tx, employeeId: string): Promise<void> {
-    const [agent] = await tx
-      .select({ responsable: t.employees.managerEmployeeId })
-      .from(t.employees)
-      .where(eq(t.employees.id, employeeId))
+  /**
+   * Un seul sommet : la Direction Générale. Un second ferait deux « DG », et
+   * toute la chaîne remonterait vers l'un ou l'autre au hasard.
+   */
+  private async assertSommetLibre(tx: Tx, sauf: string | null): Promise<void> {
+    const [sommet] = await tx
+      .select({ id: t.orgUnits.id, name: t.orgUnits.name })
+      .from(t.orgUnits)
+      .where(
+        and(
+          isNull(t.orgUnits.parentId),
+          isNull(t.orgUnits.deletedAt),
+          sauf ? sql`${t.orgUnits.id} <> ${sauf}` : sql`TRUE`,
+        ),
+      )
       .limit(1);
-    if (agent?.responsable) {
+    if (sommet) {
       problem(
         422,
-        'org.dg_a_un_responsable',
-        'Le directeur général ne relève de personne',
-        'Cet agent a un n+1 dans sa fiche : retirez-le d’abord, puis désignez-le à la tête de l’unité racine.',
+        'org.sommet_unique',
+        `L’organigramme a déjà son sommet : « ${sommet.name} »`,
+        'Rattachez cette unité sous la Direction Générale : il n’y a qu’un sommet, et son responsable est le directeur général.',
       );
     }
   }
@@ -605,6 +747,14 @@ export class OrgUnitsService {
   async eligibleManagers(user: SessionUser, id: string): Promise<OrgUnitMember[]> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await this.requireUnit(tx, id, 'org.unit_not_found');
+      // La racine se dirige depuis la Direction Générale MÊME : le DG y
+      // siège. On ne descend donc pas dans les directions qu'elle chapeaute.
+      const [unite] = await tx
+        .select({ parentId: t.orgUnits.parentId })
+        .from(t.orgUnits)
+        .where(eq(t.orgUnits.id, id))
+        .limit(1);
+      const racine = unite?.parentId === null;
       const rows = await tx.execute<{
         employee_id: string;
         employee_number: string;
@@ -617,7 +767,7 @@ export class OrgUnitsService {
           UNION ALL
           SELECT o.id FROM org_units o
           JOIN subtree s ON o.parent_id = s.id
-          WHERE o.deleted_at IS NULL
+          WHERE o.deleted_at IS NULL ${racine ? sql`AND o.unit_type <> 'direction'` : sql``}
         )
         SELECT e.id AS employee_id, e.employee_number, p.given_name, p.family_name,
                a.position_title

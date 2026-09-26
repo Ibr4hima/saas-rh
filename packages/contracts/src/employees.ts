@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ChangementRattachement } from './hierarchie';
 
 /** Contrats du module « dossier employé » (Lot 1). */
 
@@ -377,6 +378,12 @@ export const newAssignmentSchema = z.object({
    * condition qu'il tienne encore après la mutation.
    */
   managerEmployeeId: z.uuid().optional(),
+  /**
+   * Qui reprend l'équipe de l'agent, quand il en encadre une et quitte sa
+   * direction : ses agents, eux, y restent. Sans repreneur, la mutation est
+   * refusée — une équipe ne se retrouve pas rattachée hors de sa direction.
+   */
+  repreneurEquipeId: z.uuid().optional(),
 });
 export type NewAssignmentInput = z.infer<typeof newAssignmentSchema>;
 
@@ -457,9 +464,16 @@ export interface EmployeeListPage {
  * place. C'est ce qui permet de rouvrir l'accès sans rien redemander à
  * l'agent, six mois plus tard, avec les identifiants qu'il connaît déjà.
  */
+/**
+ * Qui reprend l'équipe de chaque agent qui part et en encadre une : partant →
+ * repreneur. Un encadrant sans repreneur reste de côté, avec le motif.
+ */
+const repreneursSchema = z.record(z.uuid(), z.uuid()).optional();
+
 export const archiveEmployeesSchema = z.object({
   ids: z.array(z.uuid()).min(1).max(100),
   archived: z.boolean(),
+  repreneurs: repreneursSchema,
 });
 export type ArchiveEmployeesInput = z.infer<typeof archiveEmployeesSchema>;
 
@@ -470,6 +484,7 @@ export type ArchiveEmployeesInput = z.infer<typeof archiveEmployeesSchema>;
  */
 export const deleteEmployeesSchema = z.object({
   ids: z.array(z.uuid()).min(1).max(50),
+  repreneurs: repreneursSchema,
 });
 export type DeleteEmployeesInput = z.infer<typeof deleteEmployeesSchema>;
 
@@ -477,6 +492,8 @@ export type DeleteEmployeesInput = z.infer<typeof deleteEmployeesSchema>;
 export interface EmployeeBatchResult {
   done: number;
   skipped: { id: string; name: string; reason: string }[];
+  /** Les équipes reprises au passage. */
+  changements?: ChangementRattachement[];
 }
 
 export interface EmployeeListItem {
@@ -510,6 +527,8 @@ export interface EmployeeListItem {
   managerNumber: string | null;
   managerName: string | null;
   workEmail: string | null;
+  /** Agents ACTIFS dont il est le n+1 : qui part avec une équipe doit la confier. */
+  teamSize: number;
 }
 
 export interface AssignmentView {
@@ -550,6 +569,8 @@ export interface EmployeeDetail {
   workPhone: string | null;
   managerId: string | null;
   managerName: string | null;
+  /** Ses agents directs, actifs — ceux qu'il faudra confier s'il part. */
+  team: { id: string; name: string }[];
   customFields: Record<string, unknown>;
   person: {
     id: string;

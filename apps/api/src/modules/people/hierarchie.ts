@@ -27,6 +27,8 @@ export interface LigneHierarchie {
   dirigeUneDirection: boolean;
   /** L'agent est responsable de l'unité RACINE : c'est le directeur général. */
   estDirecteurGeneral: boolean;
+  /** Sa direction a un responsable. Sans tête, c'est le DG qui la couvre. */
+  directionPourvue: boolean;
 }
 
 /**
@@ -91,6 +93,10 @@ function anomalieDe(
     return l.responsableId === directeurGeneralId ? null : 'directeur_mal_rattache';
   }
   if (l.directionId === null) return 'sans_direction';
+  // Une direction sans tête n'a personne d'autre au-dessus que le directeur
+  // général : ses agents lui sont rattachés en attendant, et c'est en règle —
+  // l'écriture l'accepte, le contrôle ne le reproche pas.
+  if (l.responsableId === directeurGeneralId && !l.directionPourvue) return null;
   // Un n+1 sans affectation ne prouve rien contre l'agent : c'est LE N+1 qui
   // est en défaut, et sa propre ligne le dit déjà. Le signaler ici ferait
   // corriger la mauvaise fiche.

@@ -268,9 +268,9 @@ describe('le responsable est dans la même direction', () => {
         startDate: '2025-06-01',
       } as never);
     expect(await codeOf(() => sortir(agent))).toBe('people.mutation_sans_direction');
-    // Sans son n+1, Encadrant reste celui d'A : il ne sort pas non plus.
+    // Sans son n+1, Encadrant reste celui d'A : son équipe ne le suit pas.
     await people.update(user, encadrant, { employee: { managerEmployeeId: null } });
-    expect(await codeOf(() => sortir(encadrant))).toBe('people.mutation_sans_direction');
+    expect(await codeOf(() => sortir(encadrant))).toBe('people.equipe_sans_repreneur');
   });
 
   it('accepte le directeur général pendant qu’une direction est sans tête, puis refuse', async () => {
@@ -336,17 +336,21 @@ describe('le directeur général ne relève de personne', () => {
     expect((await people.detail(user, dg)).managerId).toBeNull();
   });
 
-  it('refuse de nommer à la racine quelqu’un qui a un n+1 — puis l’accepte sans', async () => {
+  it('nommer à la racine quelqu’un qui a un n+1 le lui retire : il ne relève plus de personne', async () => {
     const futur = await dossierBrut('FUTUR', uDG);
     const autre = await dossierBrut('AUTRE', uDG);
     await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [futur, autre]);
-    expect(await codeOf(() => organigramme.update(user, uDG, { managerEmployeeId: futur }))).toBe(
-      'org.dg_a_un_responsable',
-    );
-
-    await raw(`UPDATE employees SET manager_employee_id = NULL WHERE id = $1`, [futur]);
-    await organigramme.update(user, uDG, { managerEmployeeId: futur });
+    const r = await organigramme.update(user, uDG, { managerEmployeeId: futur });
+    expect(r.changements).toEqual([
+      expect.objectContaining({
+        employeeId: futur,
+        avant: 'AUTRE Test',
+        apres: null,
+        motif: 'devient_dg',
+      }),
+    ]);
     expect((await hierarchie.controle(user)).directeurGeneral?.employeeId).toBe(futur);
+    expect((await people.detail(user, futur)).managerId).toBeNull();
   });
 
   it('ne gêne pas la nomination d’un directeur, qui, lui, relève du DG', async () => {
