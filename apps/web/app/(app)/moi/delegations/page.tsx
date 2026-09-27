@@ -43,6 +43,7 @@ const GROUPES: InfoCapacite['groupe'][] = [
   'Documents',
   'Personnel',
   'Congés',
+  'Recrutement',
   'Organisation',
 ];
 
@@ -52,8 +53,10 @@ const introGroupe = (groupe: InfoCapacite['groupe'], directeur: boolean): string
     Demandes: `Les demandes des agents vont directement aux membres choisis — tous sont prévenus, le premier qui la traite l’emporte. Sans membre disponible, elles ${directeur ? 'vous reviennent' : 'reviennent à qui dirige la DCH'}.`,
     Documents:
       'Chaque type de document se confie à part : les attestations de travail à l’un, les bulletins de salaire à l’autre. Chaque document demandé va à qui traite son type.',
-    Personnel: 'L’accès aux dossiers du personnel.',
-    Congés: 'Les soldes, les types d’absence et les jours fériés.',
+    Personnel: `L’accès aux dossiers du personnel, et les alertes d’échéance de contrat — elles vont aux membres choisis${directeur ? ' plutôt qu’à vous' : ''}, jamais à l’agent dont c’est le contrat.`,
+    Congés: 'Les soldes, les types d’absence et les jours fériés — chacun à part.',
+    Recrutement:
+      'Les offres et les dossiers se confient à part : qui rédige les offres ne lit pas forcément les candidatures.',
     Organisation:
       'Les autres espaces de gestion. Le catalogue de l’APIX Academy reste à l’administrateur : qui le gère voit les questions des évaluations.',
   })[groupe];

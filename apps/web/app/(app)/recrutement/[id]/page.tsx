@@ -5,11 +5,11 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { ApplicationView, JobPostingView } from '@teranga/contracts';
-import { nomAbrege } from '@teranga/contracts';
+import { nomAbrege, peut } from '@teranga/contracts';
 import { Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api, apiUrl } from '../../../../lib/api';
 import { ApercuDocument, type ViewableDoc } from '../../../../components/doc-viewer';
-import { formatDate } from '../../../../lib/hooks';
+import { formatDate, useMe } from '../../../../lib/hooks';
 import { Telephone, telHref } from '../../../../components/telephone';
 import { CONTRACT_LABELS, libelleDocument } from '../../../../lib/recruitment';
 import { DescriptionOffre, FaitOffre, jourFr } from '../../../../components/offre-fiche';
@@ -37,6 +37,8 @@ import { anciennete, useHorlogeMinute } from '../../../../lib/temps';
 export default function JobPage() {
   const { id } = useParams<{ id: string }>();
   const [ouvert, setOuvert] = useState<string | null>(null);
+  // Les dossiers se confient à part : qui rédige les offres voit le texte seul.
+  const lit = peut(useMe().data, 'recrutement.candidatures');
 
   const job = useQuery({
     queryKey: ['job', id],
@@ -45,12 +47,13 @@ export default function JobPage() {
   const applications = useQuery({
     queryKey: ['job-applications', id],
     queryFn: () => api<ApplicationView[]>(`/jobs/${id}/applications`),
+    enabled: lit,
   });
 
   // Le bandeau nomme l'ÉCRAN, pas l'offre : le titre de l'offre est le titre
   // de la carte, soixante pixels plus bas, et l'écrire deux fois de suite ne
   // dit pas deux fois plus.
-  usePageTitle('Dossiers de candidature');
+  usePageTitle(lit ? 'Dossiers de candidature' : 'Offre de recrutement');
 
   if (job.isLoading) {
     return (
@@ -72,58 +75,65 @@ export default function JobPage() {
   return (
     <Page>
       <Link
-        href="/recrutement/candidatures"
+        href={lit ? '/recrutement/candidatures' : '/recrutement'}
         className="inline-flex w-fit items-center gap-1 text-[12.5px] font-semibold text-ink-muted transition-colors hover:text-primary"
       >
         <Icon name="chevron_left" size={16} />
-        Dossiers de candidature
+        {lit ? 'Dossiers de candidature' : 'Offres d’emploi'}
       </Link>
 
       <CarteOffre offre={j} />
 
-      <section>
-        <div className="mb-3 flex items-center gap-2 px-0.5">
-          <h2 className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
-            Candidatures
-          </h2>
-          {dossiers.length > 0 ? (
-            <span
-              className="rounded-full bg-primary/[0.09] px-1.5 py-px text-[10px] font-extrabold text-primary"
-              style={{ fontVariantNumeric: 'tabular-nums' }}
-            >
-              {dossiers.length}
-            </span>
-          ) : null}
-        </div>
+      {!lit ? (
+        <p className="flex items-center gap-2 px-0.5 text-[12.5px] text-ink-muted">
+          <Icon name="lock" size={15} />
+          Les dossiers de candidature sont confiés à un autre membre de la DCH.
+        </p>
+      ) : (
+        <section>
+          <div className="mb-3 flex items-center gap-2 px-0.5">
+            <h2 className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
+              Candidatures
+            </h2>
+            {dossiers.length > 0 ? (
+              <span
+                className="rounded-full bg-primary/[0.09] px-1.5 py-px text-[10px] font-extrabold text-primary"
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                {dossiers.length}
+              </span>
+            ) : null}
+          </div>
 
-        {applications.isError ? (
-          <LoadFailure error={applications.error} onRetry={() => void applications.refetch()} />
-        ) : applications.isLoading ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Skeleton className="h-[100px] w-full" />
-            <Skeleton className="h-[100px] w-full" />
-          </div>
-        ) : dossiers.length === 0 ? (
-          <Card>
-            <EmptyState
-              className="py-10"
-              icon={<Icon name="person_add" size={22} />}
-              title="Aucune candidature"
-              description={
-                j.status === 'published'
-                  ? "Partagez le lien public de l'offre : les dossiers déposés arriveront ici."
-                  : "L'offre n'est pas encore publiée — personne ne peut y postuler."
-              }
-            />
-          </Card>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {dossiers.map((a) => (
-              <CarteCandidat key={a.id} dossier={a} onOuvrir={() => setOuvert(a.id)} />
-            ))}
-          </div>
-        )}
-      </section>
+          {applications.isError ? (
+            <LoadFailure error={applications.error} onRetry={() => void applications.refetch()} />
+          ) : applications.isLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Skeleton className="h-[100px] w-full" />
+              <Skeleton className="h-[100px] w-full" />
+            </div>
+          ) : dossiers.length === 0 ? (
+            <Card>
+              <EmptyState
+                className="py-10"
+                icon={<Icon name="person_add" size={22} />}
+                title="Aucune candidature"
+                description={
+                  j.status === 'published'
+                    ? "Partagez le lien public de l'offre : les dossiers déposés arriveront ici."
+                    : "L'offre n'est pas encore publiée — personne ne peut y postuler."
+                }
+              />
+            </Card>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {dossiers.map((a) => (
+                <CarteCandidat key={a.id} dossier={a} onOuvrir={() => setOuvert(a.id)} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <FenetreCandidat dossier={candidat} onClose={() => setOuvert(null)} />
     </Page>

@@ -52,10 +52,13 @@ export const CAPACITES_GESTION = [
   'personnel.gerer',
   'personnel.sensible',
   'personnel.effacer',
+  'contrats.echeances',
   'conges.soldes',
   'conges.parametres',
+  'feries',
   'organigramme',
-  'recrutement',
+  'recrutement.offres',
+  'recrutement.candidatures',
   'academy',
   'textes',
   'pilotage',
@@ -91,7 +94,7 @@ export const capaciteDuDocument = (doc: RequestableDoc): CapaciteDemande =>
 export interface InfoCapacite {
   libelle: string;
   description: string;
-  groupe: 'Demandes' | 'Documents' | 'Personnel' | 'Congés' | 'Organisation';
+  groupe: 'Demandes' | 'Documents' | 'Personnel' | 'Congés' | 'Recrutement' | 'Organisation';
   /** Données sensibles : à confier avec soin. */
   sensible?: boolean;
 }
@@ -169,6 +172,12 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
     groupe: 'Personnel',
     sensible: true,
   },
+  'contrats.echeances': {
+    libelle: 'Échéances de contrat',
+    description:
+      'Être prévenu des CDD et stages qui arrivent à leur terme — 30 jours avant, 10 pour un contrat court — et en suivre la liste.',
+    groupe: 'Personnel',
+  },
   'conges.soldes': {
     libelle: 'Soldes de congés',
     description: 'Ajouter ou retirer des jours sur les soldes des agents.',
@@ -176,7 +185,12 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   'conges.parametres': {
     libelle: 'Paramètres des congés',
-    description: 'Les types d’absence et les jours fériés.',
+    description: 'Les types d’absence : leurs droits, leur décompte, leurs justificatifs.',
+    groupe: 'Congés',
+  },
+  feries: {
+    libelle: 'Jours fériés',
+    description: 'Ajouter, déplacer ou retirer les jours fériés de l’année.',
     groupe: 'Congés',
   },
   organigramme: {
@@ -184,10 +198,16 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
     description: 'Créer, déplacer, dissoudre les unités ; désigner leurs responsables.',
     groupe: 'Organisation',
   },
-  recrutement: {
-    libelle: 'Recrutement',
-    description: 'Les offres d’emploi et les dossiers de candidature.',
-    groupe: 'Organisation',
+  'recrutement.offres': {
+    libelle: 'Offres d’emploi',
+    description: 'Créer, modifier, publier et clôturer les offres.',
+    groupe: 'Recrutement',
+  },
+  'recrutement.candidatures': {
+    libelle: 'Dossiers de candidature',
+    description: 'Lire les dossiers reçus — CV et pièces — et les faire avancer.',
+    groupe: 'Recrutement',
+    sensible: true,
   },
   academy: {
     libelle: 'APIX Academy',

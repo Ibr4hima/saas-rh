@@ -36,14 +36,19 @@ import { JobsService } from './jobs.service';
 
 const SLUG_RE = /^[A-Za-z0-9_-]{10,64}$/;
 
-/** Face interne : gestion des offres et du pipeline (admin/RH). */
+/**
+ * Face interne : les offres et les dossiers. Deux délégations distinctes —
+ * qui rédige les offres ne lit pas forcément les candidatures ; les unes et
+ * les autres voient la liste des offres, par où l'on entre.
+ */
 @Controller()
 @UseGuards(SessionGuard, AccesGuard)
-@Peut('recrutement')
+@Peut('recrutement.offres', 'recrutement.candidatures')
 export class RecruitmentController {
   constructor(@Inject(JobsService) private readonly jobs: JobsService) {}
 
   @Post('jobs')
+  @Peut('recrutement.offres')
   create(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(createJobPostingSchema)) body: CreateJobPostingInput,
@@ -62,6 +67,7 @@ export class RecruitmentController {
   }
 
   @Patch('jobs/:id')
+  @Peut('recrutement.offres')
   @HttpCode(204)
   async update(
     @Req() req: AuthenticatedRequest,
@@ -76,6 +82,7 @@ export class RecruitmentController {
    * unitaire à côté ferait deux chemins à garder d'accord pour un seul geste.
    */
   @Post('jobs/delete')
+  @Peut('recrutement.offres')
   remove(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(deleteJobPostingsSchema)) body: DeleteJobPostingsInput,
@@ -84,11 +91,13 @@ export class RecruitmentController {
   }
 
   @Get('jobs/:id/applications')
+  @Peut('recrutement.candidatures')
   applications(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.jobs.applications(req.sessionUser, id);
   }
 
   @Patch('applications/:id')
+  @Peut('recrutement.candidatures')
   @HttpCode(204)
   async updateApplication(
     @Req() req: AuthenticatedRequest,
@@ -99,6 +108,7 @@ export class RecruitmentController {
   }
 
   @Delete('applications/:id')
+  @Peut('recrutement.candidatures')
   @HttpCode(204)
   async deleteApplication(
     @Req() req: AuthenticatedRequest,
@@ -108,6 +118,7 @@ export class RecruitmentController {
   }
 
   @Get('application-documents/:id')
+  @Peut('recrutement.candidatures')
   async document(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,

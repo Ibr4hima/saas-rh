@@ -181,6 +181,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   for (const table of [
+    'contracts',
     'notifications',
     'document_requests',
     'profile_change_requests',
@@ -404,6 +405,81 @@ describe('les pièces justificatives', () => {
     await habiliter(khady, 'demandes.pieces');
     expect((await pieces.content(khady.session, id)).filename).toBe('master.pdf');
     expect((await pieces.content(moussa.session, id)).filename).toBe('master.pdf');
+  });
+});
+
+describe('les échéances de contrat', () => {
+  /** Qui a reçu l'alerte, pour le contrat de qui. */
+  async function alertes(): Promise<string[]> {
+    const { rows } = await raw(
+      `SELECT u.given_name AS qui, p.given_name AS de
+         FROM notifications n
+         JOIN users u ON u.id = n.recipient_user_id
+         JOIN contracts c ON n.dedupe_key = 'contract_deadline:' || c.id
+         JOIN employees e ON e.id = c.employee_id
+         JOIN persons p ON p.id = e.person_id
+        WHERE n.tenant_id = $1 AND n.type = 'contract_deadline'
+        ORDER BY 2, 1`,
+      [tenantId],
+    );
+    return rows.map((r) => `${r.de as string}→${r.qui as string}`);
+  }
+  const cdd = (qui: Agent, jours: number) =>
+    raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+       VALUES ($1,$2,$3,'cdd', CURRENT_DATE - 200, CURRENT_DATE + $4::int)`,
+      [randomUUID(), tenantId, qui.employeeId, jours],
+    );
+  /** L'alerte naît quand un gestionnaire relève ses notifications. */
+  const relever = () => new NotificationsService(db).list(admin);
+  const recommencer = () =>
+    raw(`DELETE FROM notifications WHERE tenant_id = $1 AND type = 'contract_deadline'`, [
+      tenantId,
+    ]);
+
+  it('vont à qui les suit, jamais à l’agent dont c’est le contrat ; sans personne, au directeur', async () => {
+    await cdd(moussa, 20);
+    await cdd(awa, 15);
+    try {
+      // Rien de confié : qui dirige la DCH.
+      await relever();
+      expect(await alertes()).toEqual(['Awa→Mariama', 'Moussa→Mariama']);
+
+      // Confié à Awa et Khady : elles seules — et Awa pas pour son propre contrat.
+      await recommencer();
+      await habiliter(awa, 'contrats.echeances');
+      await habiliter(khady, 'contrats.echeances');
+      await relever();
+      expect(await alertes()).toEqual(['Awa→Khady', 'Moussa→Awa', 'Moussa→Khady']);
+
+      // Awa seule à les suivre : son propre contrat revient au directeur.
+      await recommencer();
+      await habiliter(khady, 'contrats.echeances', false);
+      await relever();
+      expect(await alertes()).toEqual(['Awa→Mariama', 'Moussa→Awa']);
+    } finally {
+      await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
+    }
+  });
+
+  it('qui dirige la DCH tient les nouvelles délégations, et peut les confier une à une', async () => {
+    const { capacites } = await db.withTenant({ tenantId, userId: mariama.session.userId }, (tx) =>
+      capacitesDe(tx, mariama.session.userId, mariama.session.role),
+    );
+    for (const c of [
+      'contrats.echeances',
+      'feries',
+      'recrutement.offres',
+      'recrutement.candidatures',
+    ] as const) {
+      expect(capacites).toContain(c);
+    }
+    expect(capacites).not.toContain('recrutement');
+    await habiliter(khady, 'recrutement.offres');
+    const khadySeule = await db.withTenant({ tenantId, userId: khady.session.userId }, (tx) =>
+      capacitesDe(tx, khady.session.userId, khady.session.role),
+    );
+    expect(khadySeule.capacites).toEqual(['recrutement.offres']);
   });
 });
 

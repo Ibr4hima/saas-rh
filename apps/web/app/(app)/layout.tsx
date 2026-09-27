@@ -137,6 +137,15 @@ const NAV_ITEMS: NavItem[] = [
     groupe: 'effectif',
   },
   {
+    // Les CDD et stages qui arrivent à leur terme : l'alerte y mène.
+    href: '/contrats',
+    label: 'Échéances de contrat',
+    short: 'Contrats',
+    motsCles: 'CDD stages fin de contrat renouvellement',
+    icon: 'schedule',
+    groupe: 'effectif',
+  },
+  {
     href: '/organisation',
     label: 'Organigramme',
     short: 'Organig.',
@@ -226,6 +235,7 @@ const NAV_ITEMS: NavItem[] = [
 const PAGE_TITLES: Record<string, string> = {
   '/employees': 'Gestion du personnel',
   '/employees/new': 'Nouvel employé',
+  '/contrats': 'Échéances de contrat',
   '/absences': 'Absences & Congés',
   '/absences/feries': 'Jours fériés',
   '/absences/parametres': 'Paramètres des congés',
@@ -296,7 +306,7 @@ function pageAction(pathname: string, user: SessionUser, espace: Espace): Chrome
   if (pathname === '/employees' && peut(user, 'personnel.gerer')) {
     return { href: '/employees?nouveau=1', icon: 'add', label: 'Nouvel employé' };
   }
-  if (pathname === '/recrutement' && peut(user, 'recrutement')) {
+  if (pathname === '/recrutement' && peut(user, 'recrutement.offres')) {
     return { href: '/recrutement?nouvelle=1', icon: 'add', label: 'Nouvelle offre' };
   }
   // Les pages des deux espaces n'offrent leurs gestes de gestion que côté
@@ -506,20 +516,31 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
       case '/employees':
         if (peut(user, 'personnel.consulter')) items.push(i);
         break;
+      case '/contrats':
+        if (peut(user, 'contrats.echeances')) items.push(i);
+        break;
       case '/absences': {
-        const children = [
-          ...(voitLesConges(user) ? [{ href: '/absences', label: 'Gestion des demandes' }] : []),
-          ...(peut(user, 'conges.parametres') || voitLesConges(user)
-            ? (i.children ?? []).filter((c) => c.href !== '/absences')
-            : []),
-        ];
+        // Chaque sous-page à qui la gère — ou voit les congés, pour les lire.
+        const voit: Record<string, boolean> = {
+          '/absences': voitLesConges(user),
+          '/absences/feries': peut(user, 'feries') || voitLesConges(user),
+          '/absences/parametres': peut(user, 'conges.parametres') || voitLesConges(user),
+        };
+        const children = (i.children ?? []).filter((c) => voit[c.href]);
         if (children.length > 0) items.push({ ...i, children });
         items.push(...demandes, ...delegations);
         break;
       }
-      case '/recrutement':
-        if (peut(user, 'recrutement')) items.push(i);
+      case '/recrutement': {
+        // Les offres et les dossiers se confient à part.
+        const voit: Record<string, boolean> = {
+          '/recrutement': peut(user, 'recrutement.offres'),
+          '/recrutement/candidatures': peut(user, 'recrutement.candidatures'),
+        };
+        const children = (i.children ?? []).filter((c) => voit[c.href]);
+        if (children.length > 0) items.push({ ...i, children });
         break;
+      }
       case '/competences':
       case '/evaluation':
         if (peut(user, 'pilotage')) items.push(i);
@@ -1205,8 +1226,20 @@ function AppShell({ children }: { children: React.ReactNode }) {
       return peut(u, 'personnel.gerer');
     }
     if (commence('/employees')) return peut(u, 'personnel.consulter');
-    if (commence('/absences')) return voitLesConges(u) || peut(u, 'conges.parametres');
-    if (commence('/recrutement')) return peut(u, 'recrutement');
+    if (commence('/contrats')) return peut(u, 'contrats.echeances') || peut(u, 'pilotage');
+    if (commence('/absences/feries')) return peut(u, 'feries') || voitLesConges(u);
+    if (commence('/absences/parametres')) {
+      return peut(u, 'conges.parametres') || voitLesConges(u);
+    }
+    if (commence('/absences')) return voitLesConges(u);
+    if (commence('/recrutement/candidatures')) return peut(u, 'recrutement.candidatures');
+    if (path === '/recrutement' || commence('/recrutement/nouvelle')) {
+      return peut(u, 'recrutement.offres');
+    }
+    // Une offre : son texte pour qui les rédige, ses dossiers pour qui les lit.
+    if (commence('/recrutement')) {
+      return peut(u, 'recrutement.offres') || peut(u, 'recrutement.candidatures');
+    }
     return false;
   };
   const allowed = autorise(pathname);

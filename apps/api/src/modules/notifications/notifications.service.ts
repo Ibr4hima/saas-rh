@@ -14,7 +14,7 @@ import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayReminderDate } from '../time/workdays';
 import { reconcilierSiLeTempsEstVenu } from '../time/visas';
 import { notifier, type NotificationDraft } from './notifier';
-import { notifierLaDCH } from '../acces/dch';
+import { alerterLaDCH } from '../acces/dch';
 
 export type { NotificationDraft } from './notifier';
 
@@ -101,7 +101,7 @@ export class NotificationsService {
     try {
       await this.db.withTenant(ctx, async (tx) => {
         // Les échéances de contrat ne concernent que ceux qui les suivent.
-        if (peut(user, 'personnel.gerer') || peut(user, 'pilotage')) {
+        if (peut(user, 'contrats.echeances') || peut(user, 'pilotage')) {
           await this.generateContractDeadlines(tx, user.tenantId);
         }
         // Les fériés concernent tout le monde : le rappel est créé pour
@@ -342,19 +342,27 @@ export class NotificationsService {
 
   /**
    * Échéances : contrat AVEC date de fin, employé actif, fin dans ≤ 30 jours
-   * (≤ 10 jours pour les contrats d'environ un mois) — notification à la DCH
-   * (son directeur, qui gère les dossiers), idempotente par contrat, visible jusqu'à expiration via le tableau de bord.
+   * (≤ 10 jours pour les contrats d'environ un mois) — alerte à qui suit les
+   * échéances pour la DCH (sinon son directeur), jamais à l'agent dont c'est
+   * le contrat ; une par contrat, et la liste reste dans « Échéances de
+   * contrat » jusqu'au terme.
    */
   private async generateContractDeadlines(tx: Tx, tenantId: string): Promise<void> {
     const rows = await this.selectExpiring(tx);
     for (const { daysLeft, ...r } of rows) {
-      await notifierLaDCH(tx, tenantId, 'personnel.gerer', {
-        type: 'contract_deadline',
-        title: `Contrat de ${r.givenName} ${r.familyName} : échéance proche`,
-        body: `${r.contractType.toUpperCase()} jusqu'au ${frDate(r.endDate)} — ${daysLeft} jour${daysLeft > 1 ? 's' : ''} restant${daysLeft > 1 ? 's' : ''}.`,
-        link: `/employees/${r.employeeId}`,
-        dedupeKey: `contract_deadline:${r.contractId}`,
-      });
+      await alerterLaDCH(
+        tx,
+        tenantId,
+        'contrats.echeances',
+        {
+          type: 'contract_deadline',
+          title: `Contrat de ${r.givenName} ${r.familyName} : échéance proche`,
+          body: `${r.contractType.toUpperCase()} jusqu'au ${frDate(r.endDate)} — ${daysLeft} jour${daysLeft > 1 ? 's' : ''} restant${daysLeft > 1 ? 's' : ''}.`,
+          link: '/contrats',
+          dedupeKey: `contract_deadline:${r.contractId}`,
+        },
+        r.employeeId,
+      );
     }
   }
 

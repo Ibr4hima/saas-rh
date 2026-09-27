@@ -26,6 +26,7 @@ import { api } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { Page } from '../../../components/gabarit';
 import { compte } from '../../../lib/mots';
+import { deadlineLabel } from '../../../lib/contrats';
 import { SqueletteTableau } from '../../../components/tableau';
 
 /* ————————————————————————————————————————————————————————————————
@@ -89,22 +90,6 @@ function localToday(): string {
   const d = new Date();
   const p = (v: number) => String(v).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-/**
- * L'échéance de contrat, écrite comme on la dirait. « 16 j » obligeait à
- * deviner de quel côté de la date on se trouvait ; « Échu · il y a 16 jours »
- * ne se devine pas.
- */
-function deadlineLabel(daysLeft: number | null): {
-  text: string;
-  tone: 'danger' | 'warning' | 'neutral';
-} {
-  if (daysLeft === null) return { text: 'À préciser', tone: 'danger' };
-  if (daysLeft < 0) return { text: `Échu · il y a ${compte(-daysLeft, 'jour')}`, tone: 'danger' };
-  if (daysLeft === 0) return { text: "Échoit aujourd'hui", tone: 'danger' };
-  if (daysLeft === 1) return { text: 'Échoit demain', tone: 'warning' };
-  return { text: `Dans ${compte(daysLeft, 'jour')}`, tone: daysLeft <= 30 ? 'warning' : 'neutral' };
 }
 
 /* ———— Pièces communes ———— */
@@ -721,7 +706,7 @@ export default function DashboardPage() {
             <Skeleton className="h-28 w-full" />
           ) : fenetreFeries.length === 0 ? (
             <p className="py-3 text-sm text-ink-muted">
-              Aucun férié enregistré — la liste se gère dans les paramètres des congés.
+              Aucun férié enregistré — la liste se gère dans « Gestion des jours fériés ».
             </p>
           ) : (
             <Frise jours={fenetreFeries} />

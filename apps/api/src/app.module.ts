@@ -12,6 +12,7 @@ import { AcademyEvaluationService } from './modules/academy/academy-evaluation.s
 import { AcademyService } from './modules/academy/academy.service';
 import { StockageVideoLocal } from './modules/academy/stockage-local';
 import { DashboardController } from './modules/analytics/dashboard.controller';
+import { SuiviContratsController } from './modules/people/suivi-contrats.controller';
 import { TenantDb } from './db/tenant-db';
 import { AuthController } from './modules/auth/auth.controller';
 import { DocumentRequestsController } from './modules/docs/document-requests.controller';
@@ -58,6 +59,7 @@ import { AbsencesService } from './modules/time/absences.service';
     PeopleController,
     AbsencesController,
     DashboardController,
+    SuiviContratsController,
     PortalController,
     DocumentsController,
     EmployeeDocumentsController,

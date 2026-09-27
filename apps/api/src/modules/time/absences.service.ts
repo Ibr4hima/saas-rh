@@ -290,7 +290,7 @@ export class AbsencesService {
 
   async listHolidays(user: SessionUser, year?: number): Promise<Holiday[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      if (year && peut(user, 'conges.parametres')) await this.semerAnnee(tx, user, year);
+      if (year && peut(user, 'feries')) await this.semerAnnee(tx, user, year);
       const rows = await tx
         .select({
           id: t.holidays.id,

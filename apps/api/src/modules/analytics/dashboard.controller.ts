@@ -5,6 +5,7 @@ import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
 import { AccesGuard, Peut } from '../auth/acces.guard';
 import { compterEnAttenteDCH } from '../time/visas';
+import { compterLeSuiviDesContrats, suiviDesContrats } from '../people/suivi-contrats';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 
 @Controller()
@@ -24,33 +25,6 @@ export class DashboardController {
     // Les files de la DCH ne se comptent que pour qui les voit.
     const isManage = peut(user, 'personnel.consulter');
     const seesContracts = peut(user, 'pilotage') || isManage;
-
-    /**
-     * Contrats à durée limitée en cours. Le contrat retenu est le PLUS RÉCENT
-     * de l'employé (DISTINCT ON) : un CDD renouvelé en CDI quitte le suivi de
-     * lui-même. Les échéances dépassées remontent en tête — un CDD échu sur un
-     * dossier resté actif est l'anomalie la plus coûteuse de la liste.
-     */
-    const followUpSql = (limit: number | null) => sql`
-      WITH dernier AS (
-        SELECT DISTINCT ON (c.employee_id)
-               c.employee_id, c.contract_type, c.end_date
-        FROM contracts c
-        ORDER BY c.employee_id, c.start_date DESC, c.created_at DESC
-      )
-      SELECT e.id AS employee_id, e.employee_number,
-             p.given_name, p.family_name,
-             d.contract_type, d.end_date::text AS end_date,
-             (d.end_date - CURRENT_DATE)::int AS days_left,
-             (SELECT a.position_title FROM assignments a
-               WHERE a.employee_id = e.id AND a.validity @> CURRENT_DATE
-               LIMIT 1) AS position_title
-      FROM dernier d
-      JOIN employees e ON e.id = d.employee_id AND e.status = 'active'
-      JOIN persons p ON p.id = e.person_id
-      WHERE d.contract_type IN ('cdd', 'stage')
-      ORDER BY days_left ASC NULLS LAST, p.family_name, p.given_name
-      ${limit === null ? sql`` : sql`LIMIT ${limit}`}`;
 
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       const count = async (query: Promise<Array<{ n: number }>>) => (await query)[0]?.n ?? 0;
@@ -188,27 +162,8 @@ export class DashboardController {
           ORDER BY day`),
         // La carte n'affiche que les plus urgents ; le total suit, pour que le
         // reste soit annoncé plutôt que tu.
-        seesContracts
-          ? tx.execute<{
-              employee_id: string;
-              employee_number: string;
-              given_name: string;
-              family_name: string;
-              contract_type: string;
-              end_date: string | null;
-              days_left: number | null;
-              position_title: string | null;
-            }>(followUpSql(8))
-          : Promise.resolve({ rows: [] as never[] }),
-        seesContracts
-          ? count(
-              tx
-                .execute<{ n: number }>(
-                  sql`SELECT count(*)::int AS n FROM (${followUpSql(null)}) s`,
-                )
-                .then((r) => r.rows),
-            )
-          : Promise.resolve(0),
+        seesContracts ? suiviDesContrats(tx, 8) : Promise.resolve([]),
+        seesContracts ? compterLeSuiviDesContrats(tx) : Promise.resolve(0),
       ]);
 
       const byGender = Object.fromEntries(genders.map((g) => [g.gender ?? '?', g.n]));
@@ -231,15 +186,7 @@ export class DashboardController {
           headcount: d.headcount,
         })),
         holidayWindow: holidays.rows,
-        contractFollowUp: followUp.rows.map((c) => ({
-          employeeId: c.employee_id,
-          employeeNumber: c.employee_number,
-          name: `${c.given_name} ${c.family_name}`,
-          positionTitle: c.position_title,
-          contractType: c.contract_type,
-          endDate: c.end_date,
-          daysLeft: c.days_left,
-        })),
+        contractFollowUp: followUp,
         contractFollowUpTotal: followUpTotal,
       };
     });

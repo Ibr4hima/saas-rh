@@ -371,23 +371,29 @@ export async function accueillirLeDirecteur(tx: Tx, tenantId: string): Promise<v
 }
 
 /**
- * Prévient la DCH d'une affaire qui relève d'une habilitation : son
- * directeur, et les membres qui la détiennent. Sans DCH qui puisse l'être,
- * l'administrateur — pour que rien ne se perde.
+ * Une alerte de la DCH — l'échéance d'un contrat : elle va à qui en tient
+ * l'habilitation, sauf à l'agent qu'elle concerne (on ne suit pas son propre
+ * contrat) ; sans eux, à qui dirige la DCH ; sans lui, aux administrateurs.
+ * Comme une demande confiée : le directeur voit tout, mais n'est plus
+ * dérangé pour ce qu'il a confié.
  */
-export async function notifierLaDCH(
+export async function alerterLaDCH(
   tx: Tx,
   tenantId: string,
   capacite: Capacite,
   draft: NotificationDraft,
+  concerne: string | null,
 ): Promise<void> {
   const dch = await directionDuPersonnel(tx);
   const qui = new Set<string>();
-  if (dch?.directeur) qui.add(dch.directeur.userId);
   if (dch) {
     for (const id of await detenteursDe(tx, capacite)) {
+      if (id === concerne) continue;
       const m = await membreDCH(tx, dch, id);
       if (m !== 'parti') qui.add(m.userId);
+    }
+    if (qui.size === 0 && dch.directeur && dch.directeur.employeeId !== concerne) {
+      qui.add(dch.directeur.userId);
     }
   }
   if (qui.size === 0) {

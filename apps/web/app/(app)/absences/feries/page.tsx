@@ -59,7 +59,7 @@ function statutDuJour(
 
 export default function JoursFeriesPage() {
   const me = useMe();
-  const peutGerer = peut(me.data, 'conges.parametres');
+  const peutGerer = peut(me.data, 'feries');
 
   return (
     <Page>

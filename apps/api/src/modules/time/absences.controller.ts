@@ -97,7 +97,7 @@ export class AbsencesController {
   }
 
   @Post('holidays')
-  @Peut('conges.parametres')
+  @Peut('feries')
   createHoliday(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(createHolidaySchema)) body: CreateHolidayInput,
@@ -106,7 +106,7 @@ export class AbsencesController {
   }
 
   @Patch('holidays/:id')
-  @Peut('conges.parametres')
+  @Peut('feries')
   @HttpCode(204)
   async updateHoliday(
     @Req() req: AuthenticatedRequest,
@@ -117,7 +117,7 @@ export class AbsencesController {
   }
 
   @Delete('holidays/:id')
-  @Peut('conges.parametres')
+  @Peut('feries')
   @HttpCode(204)
   async deleteHoliday(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     await this.absences.deleteHoliday(req.sessionUser, id);
