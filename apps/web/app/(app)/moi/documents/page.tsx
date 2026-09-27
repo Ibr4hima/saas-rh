@@ -281,7 +281,7 @@ export default function MyDocumentsPage() {
           </Card>
 
           {/* ———— Mon dossier ———— */}
-          <EmployeeDocumentsCard employeeId={emp.employeeId} />
+          <EmployeeDocumentsCard employeeId={emp.employeeId} depot />
 
           <Card>
             <CardHeader className="flex items-center justify-between gap-3">

@@ -43,11 +43,10 @@ export class EmployeeDocumentsService {
   ) {}
 
   /**
-   * Dépôt par l'agent OU par la DCH (qui gère les dossiers). La contrepartie
-   * vérifie la conformité — la DCH (qui traite les pièces) pour un dépôt de
-   * l'agent, l'agent pour un dépôt de la DCH ; le document ne rejoint le
-   * dossier qu'une fois validé. Un dossier sans compte portail n'a pas de
-   * contrepartie : le dépôt de la DCH y est validé d'office.
+   * L'agent dépose SES pièces, depuis son espace — personne ne dépose sur le
+   * dossier d'un autre. La pièce part à la DCH : son directeur la vérifie,
+   * ou le membre à qui il a confié les pièces. Elle ne rejoint le dossier
+   * qu'une fois validée — jamais d'office, jamais par qui l'a déposée.
    */
   async upload(
     user: SessionUser,
@@ -69,18 +68,17 @@ export class EmployeeDocumentsService {
     }
 
     const id = uuidv7();
-    let status = 'pending';
+    const status = 'pending';
     await this.db.withTenant(ctxOf(user), async (tx) => {
       const target = await this.requireEmployeeWithPerson(tx, employeeId);
-      const isManage = peut(user, 'personnel.gerer');
-      if (!isManage && target.personUserId !== user.userId) {
-        problem(403, 'documents.self_only', 'Vous ne pouvez déposer que sur votre propre dossier');
+      if (target.personUserId !== user.userId) {
+        problem(
+          403,
+          'documents.self_only',
+          'Chaque agent dépose ses pièces depuis son espace',
+          'La DCH les vérifie ensuite : elle ne dépose pas à la place de l’agent.',
+        );
       }
-      // La titularité prime sur l'habilitation : un membre de la DCH qui
-      // dépose sur SON propre dossier est côté « agent » — la vérification
-      // revient à une AUTRE personne de la DCH (jamais d'auto-validation).
-      const side = isManage && target.personUserId !== user.userId ? 'hr' : 'employee';
-      if (side === 'hr' && !target.personUserId) status = 'approved';
 
       const [pendingCount] = await tx
         .select({ n: sql<number>`count(*)::int` })
@@ -112,25 +110,19 @@ export class EmployeeDocumentsService {
         data,
         status,
         uploadedByUserId: user.userId,
-        uploadedBySide: side,
+        uploadedBySide: 'employee',
       });
 
-      if (side === 'employee') {
-        // À qui vérifie les pièces pour la DCH — et à eux seuls.
-        await reconcilierUneDemande(tx, 'pieces', id);
-      } else if (target.personUserId && status === 'pending') {
-        await this.notifications.notifyUser(tx, user.tenantId, target.personUserId, {
-          type: 'document_uploaded',
-          title: `La DCH a déposé « ${input.label} » sur votre dossier`,
-          body: 'Vérifiez sa conformité puis validez-le.',
-          link: '/moi/documents',
-        });
-      }
+      // À qui vérifie les pièces pour la DCH — et à eux seuls.
+      await reconcilierUneDemande(tx, 'pieces', id);
     });
     return { id, status };
   }
 
-  /** Validation croisée : seule la partie qui n'a PAS déposé peut trancher. */
+  /**
+   * La vérification : qui traite les pièces pour la DCH — jamais le titulaire
+   * du dossier, jamais qui a déposé la pièce.
+   */
   async review(
     user: SessionUser,
     documentId: string,
@@ -147,21 +139,18 @@ export class EmployeeDocumentsService {
       if (doc.status !== 'pending') {
         problem(422, 'documents.already_reviewed', 'Ce document a déjà été traité');
       }
-      if (doc.uploadedByUserId === user.userId) {
-        problem(403, 'documents.wrong_reviewer', 'La contrepartie doit valider — pas le déposant');
-      }
-      if (doc.uploadedBySide === 'employee') {
-        await exigerDeTraiter(tx, user, 'demandes.pieces', {
-          employeeId: doc.employeeId,
-          confieeA: doc.confieeAEmployeeId,
-        });
-      } else if (!isOwner) {
+      if (isOwner || doc.uploadedByUserId === user.userId) {
         problem(
           403,
           'documents.wrong_reviewer',
-          'Ce document attend la validation du titulaire du dossier',
+          'Personne ne vérifie ses propres pièces',
+          'Elles vont aux membres de la DCH qui vérifient les pièces, ou à qui dirige la DCH.',
         );
       }
+      await exigerDeTraiter(tx, user, 'demandes.pieces', {
+        employeeId: doc.employeeId,
+        confieeA: doc.confieeAEmployeeId,
+      });
 
       await tx
         .update(t.employeeDocuments)
@@ -175,13 +164,16 @@ export class EmployeeDocumentsService {
       await reconcilierUneDemande(tx, 'pieces', documentId);
 
       const approved = input.decision === 'approved';
-      await this.notifications.notifyUser(tx, user.tenantId, doc.uploadedByUserId, {
+      // Le titulaire l'apprend — c'est son dossier, quel qu'ait été le
+      // déposant d'une pièce ancienne.
+      const destinataire = target.personUserId ?? doc.uploadedByUserId;
+      await this.notifications.notifyUser(tx, user.tenantId, destinataire, {
         type: 'document_reviewed',
         title: approved ? `« ${doc.label} » validé — ajouté au dossier` : `« ${doc.label} » rejeté`,
         body: approved
           ? undefined
           : (input.comment ?? 'Vérifiez le fichier puis déposez-le à nouveau.'),
-        link: doc.uploadedBySide === 'hr' ? `/employees/${doc.employeeId}` : '/moi/documents',
+        link: '/moi/documents',
       });
     });
   }
@@ -263,7 +255,6 @@ export class EmployeeDocumentsService {
         .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
         .where(
           and(
-            eq(t.employeeDocuments.uploadedBySide, 'employee'),
             sql`(${t.employeeDocuments.status} = 'pending'
                  OR ${t.employeeDocuments.reviewedAt} > now() - interval '30 days')`,
             toute ? undefined : eq(t.employeeDocuments.confieeAEmployeeId, moi!),
@@ -335,7 +326,7 @@ export class EmployeeDocumentsService {
     o: { reviewer?: { givenName: string; familyName: string }; isOwner: boolean },
   ): Promise<EmployeeDocumentView> {
     const reviewer = o.reviewer;
-    const enAttenteDCH = doc.status === 'pending' && doc.uploadedBySide === 'employee';
+    const enAttenteDCH = doc.status === 'pending';
     const tr = enAttenteDCH
       ? await vueDuTraitement(
           tx,
@@ -345,12 +336,15 @@ export class EmployeeDocumentsService {
           dch,
         )
       : null;
+    // Jamais ses propres pièces, jamais ce qu'on a déposé soi-même.
     const canReview =
-      doc.status === 'pending' &&
+      enAttenteDCH &&
+      !o.isOwner &&
       doc.uploadedByUserId !== user.userId &&
-      (enAttenteDCH ? Boolean(tr?.peutTraiter) : o.isOwner);
+      Boolean(tr?.peutTraiter);
+    // Retirer une pièce validée : qui gère les dossiers — pas sur le sien.
     const canDelete =
-      peut(user, 'personnel.gerer') ||
+      (peut(user, 'personnel.gerer') && !o.isOwner) ||
       (doc.uploadedByUserId === user.userId && doc.status !== 'approved');
     return {
       id: doc.id,
@@ -395,7 +389,9 @@ export class EmployeeDocumentsService {
   async remove(user: SessionUser, documentId: string): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
       const doc = await this.requireDocument(tx, documentId);
-      const isManage = peut(user, 'personnel.gerer');
+      const target = await this.requireEmployeeWithPerson(tx, doc.employeeId);
+      // Qui gère les dossiers retire une pièce validée — pas de SON dossier.
+      const isManage = peut(user, 'personnel.gerer') && target.personUserId !== user.userId;
       const isUploader = doc.uploadedByUserId === user.userId;
       if (!isManage && !(isUploader && doc.status !== 'approved')) {
         problem(

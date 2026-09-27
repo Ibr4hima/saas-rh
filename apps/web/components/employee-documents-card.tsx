@@ -27,7 +27,7 @@ import { type ViewableDoc } from './doc-viewer';
 import { FenetreDocument } from './fenetre-document';
 
 const STATUS_LABELS: Record<string, string> = {
-  pending: 'À valider',
+  pending: 'En vérification',
   approved: 'Au dossier',
   rejected: 'Rejeté',
 };
@@ -38,11 +38,20 @@ const STATUS_TONES: Record<string, 'warning' | 'success' | 'danger'> = {
 };
 
 /**
- * Pièces justificatives d'un dossier : dépôt (par l'employé ou la RH),
- * validation croisée par la contrepartie, aperçu dans la page.
- * Utilisée telle quelle sur la fiche (RH) et sur /moi/documents (employé).
+ * Pièces justificatives d'un dossier : l'agent dépose les siennes, la DCH
+ * les vérifie (son directeur, ou le membre à qui il confie les pièces) — une
+ * pièce ne rejoint le dossier qu'une fois validée, jamais par qui l'a
+ * déposée. Aperçu dans la page. Sur /moi/documents (l'agent, qui dépose) et
+ * sur la fiche (la DCH, qui vérifie ; elle ne dépose pas pour l'agent).
  */
-export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
+export function EmployeeDocumentsCard({
+  employeeId,
+  depot,
+}: {
+  employeeId: string;
+  /** Le dossier de l'appelant : lui seul y dépose ses pièces. */
+  depot: boolean;
+}) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [viewed, setViewed] = useState<ViewableDoc | null>(null);
@@ -154,13 +163,15 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
               chose de cette carte qui demande une action aujourd'hui. */}
           {aValider > 0 ? (
             <span className="rounded-full bg-warning-soft px-2 py-px text-[10.5px] font-bold text-warning">
-              {aValider} à valider
+              {aValider} à vérifier
             </span>
           ) : null}
         </div>
-        <Button variant="secondary" size="sm" onClick={() => setDepotOuvert(!depotOuvert)}>
-          {depotOuvert ? 'Fermer' : 'Déposer une pièce'}
-        </Button>
+        {depot ? (
+          <Button variant="secondary" size="sm" onClick={() => setDepotOuvert(!depotOuvert)}>
+            {depotOuvert ? 'Fermer' : 'Déposer une pièce'}
+          </Button>
+        ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {documents.isLoading ? (
@@ -171,7 +182,9 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
           </p>
         ) : pieces.length === 0 ? (
           <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
-            Aucune pièce au dossier — pièce d&apos;identité, diplômes et attestations sont attendus.
+            {depot
+              ? 'Aucune pièce au dossier — pièce d’identité, diplômes et attestations sont attendus.'
+              : 'Aucune pièce au dossier — l’agent les dépose depuis son espace, la DCH les vérifie.'}
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -267,7 +280,7 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
         )}
 
         {/* Le dépôt, quand on le demande. */}
-        {depotOuvert ? (
+        {depot && depotOuvert ? (
           <div className="flex flex-col gap-3 rounded-[11px] border border-line-soft bg-bg px-3.5 py-3.5">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Type de pièce" htmlFor={`doc-cat-${employeeId}`}>
@@ -330,7 +343,8 @@ export function EmployeeDocumentsCard({ employeeId }: { employeeId: string }) {
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-[11.5px] text-ink-muted">
-                La contrepartie vérifie la pièce, puis la valide : elle rejoint alors le dossier.
+                La Direction du Capital Humain vérifie la pièce, puis la valide : elle rejoint alors
+                votre dossier.
               </p>
               <Button
                 disabled={!label.trim() || !file}

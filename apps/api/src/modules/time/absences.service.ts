@@ -32,7 +32,14 @@ import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayDedupeKey } from '../notifications/notifications.service';
 import { DG } from '../people/chaine';
 import { notifier } from '../notifications/notifier';
-import { detenteursDe, directionDuPersonnel, membreDCH, nomDe, nomsDe } from '../acces/dch';
+import {
+  detenteursDe,
+  directionDuPersonnel,
+  membreDCH,
+  nomDe,
+  nomsDe,
+  pasSurSoi,
+} from '../acces/dch';
 import { aTraiterPar, voitToutLaFile } from '../acces/demandes';
 import {
   annoncerLeVerdict,
@@ -698,6 +705,7 @@ export class AbsencesService {
   async setBalance(user: SessionUser, input: SetBalanceInput): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
       await this.requireEmployee(tx, input.employeeId);
+      await pasSurSoi(tx, user.userId, [input.employeeId], 'modifier vos propres soldes de congés');
       await tx
         .insert(t.absenceBalances)
         .values({

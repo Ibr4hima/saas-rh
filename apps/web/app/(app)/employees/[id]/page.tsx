@@ -175,6 +175,10 @@ export default function EmployeePage() {
   }
   const e = detail.data!;
   const current = e.assignments.find((a) => a.current);
+  // Aucune habilitation de gestion ne s'applique à SON dossier : ce qui le
+  // concerne passe par ses demandes, traitées par quelqu'un d'autre.
+  const peutGerer = peut(me.data, 'personnel.gerer') && !e.soi;
+  const peutLesSoldes = peut(me.data, 'conges.soldes') && !e.soi;
 
   return (
     <Page>
@@ -189,6 +193,18 @@ export default function EmployeePage() {
       >
         ← Gestion du personnel
       </Link>
+      {e.soi ? (
+        <p className="mb-3 flex shrink-0 items-center gap-2 rounded-[12px] bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
+          <Icon name="lock" size={16} className="shrink-0 text-primary" />
+          <span className="min-w-0 flex-1">
+            Votre propre dossier : vous le consultez, mais ne le modifiez pas d’ici. Vos changements
+            passent par vos demandes, comme pour tout agent — un autre membre de la DCH les traite.
+          </span>
+          <Link href="/moi" className="shrink-0 font-semibold text-primary hover:underline">
+            Mon espace
+          </Link>
+        </p>
+      ) : null}
 
       {/* ———— Bande d'identité ————
           Ce qui permet de reconnaître un dossier en une seconde : le nom,
@@ -231,7 +247,7 @@ export default function EmployeePage() {
               {current?.positionTitle ? <> · {current.positionTitle}</> : null}
             </p>
           </div>
-          {canSeeHistory ? (
+          {peutGerer ? (
             <Link
               href={`/employees/${e.id}?modifier=1`}
               aria-label="Modifier la fiche"
@@ -379,7 +395,7 @@ export default function EmployeePage() {
             assignments={e.assignments}
             team={e.team}
             managerId={e.managerId}
-            canManage={Boolean(canSeeHistory)}
+            canManage={peutGerer}
           />
 
           <Card>
@@ -417,7 +433,7 @@ export default function EmployeePage() {
           {/* En tête des cartes de gauche : c'est ce qui attend une décision. */}
           {canSeeHistory ? <ProfileChangeCard employeeId={e.id} /> : null}
 
-          {canSeeHistory ? <EmployeeDocumentsCard employeeId={e.id} /> : null}
+          {canSeeHistory ? <EmployeeDocumentsCard employeeId={e.id} depot={e.soi} /> : null}
 
           {canSeeHistory ? <DocumentRequestsCard employeeId={e.id} /> : null}
 
@@ -425,12 +441,12 @@ export default function EmployeePage() {
 
           {/* Les soldes sont un TABLEAU : ils appartiennent à la colonne large.
               Serrés dans le tiers de droite, leurs colonnes débordaient. */}
-          <BalancesCard employeeId={e.id} canEdit={Boolean(canSeeHistory)} />
+          <BalancesCard employeeId={e.id} canEdit={peutLesSoldes} />
         </div>
 
         {/* ———— Colonne d'administration : accès et traces ———— */}
         <div className="flex min-w-0 flex-col gap-4">
-          {canSeeHistory ? (
+          {peutGerer ? (
             <PortalCard
               employeeId={e.id}
               portal={e.portal}

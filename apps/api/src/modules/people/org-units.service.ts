@@ -31,6 +31,7 @@ import {
   uniteRacine,
   verrouillerLaChaine,
 } from './chaine';
+import { pasSurSoi } from '../acces/dch';
 import { reconcilierLeCircuit } from '../time/visas';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 
@@ -356,7 +357,7 @@ export class OrgUnitsService {
     id: string,
     input: UpdateOrgUnitInput,
   ): Promise<ConsequencesHierarchie> {
-    return this.executer(user, (tx, journal) => this.modifier(tx, journal, id, input), false);
+    return this.executer(user, (tx, journal) => this.modifier(tx, user, journal, id, input), false);
   }
 
   /** La même opération, jouée puis annulée : ce qu'elle FERAIT, avant de valider. */
@@ -365,7 +366,7 @@ export class OrgUnitsService {
     id: string,
     input: UpdateOrgUnitInput,
   ): Promise<ConsequencesHierarchie> {
-    return this.executer(user, (tx, journal) => this.modifier(tx, journal, id, input), true);
+    return this.executer(user, (tx, journal) => this.modifier(tx, user, journal, id, input), true);
   }
 
   /** La dissolution, jouée puis annulée. */
@@ -422,6 +423,7 @@ export class OrgUnitsService {
 
   private async modifier(
     tx: Tx,
+    user: SessionUser,
     journal: ChangementRattachement[],
     id: string,
     input: UpdateOrgUnitInput,
@@ -438,6 +440,29 @@ export class OrgUnitsService {
       .from(t.orgUnits)
       .where(eq(t.orgUnits.id, id))
       .limit(1);
+
+    // ——— Personne ne se désigne lui-même responsable : il deviendrait le
+    // N+1 de toute l'unité, sans que personne l'ait décidé.
+    if (input.managerEmployeeId && input.managerEmployeeId !== before!.managerEmployeeId) {
+      await pasSurSoi(tx, user.userId, [input.managerEmployeeId], 'vous désigner responsable');
+    }
+    // ——— Qui dirige la DCH a TOUTES les habilitations. Le désigner — ou
+    // désigner la direction du personnel — revient à l'administrateur, hors
+    // de l'organigramme : un membre habilité à l'organigramme ne peut pas se
+    // donner, ni donner à un proche, toutes les habilitations.
+    const touchesALaDCH =
+      (input.directionDuPersonnel !== undefined && input.directionDuPersonnel !== before!.dch) ||
+      (before!.dch &&
+        input.managerEmployeeId !== undefined &&
+        input.managerEmployeeId !== before!.managerEmployeeId);
+    if (touchesALaDCH && user.role !== 'admin') {
+      problem(
+        403,
+        'org.dch_reservee_admin',
+        'Seul l’administrateur désigne la DCH et qui la dirige',
+        'Qui dirige la Direction du Capital Humain a toutes les habilitations : ce choix revient à l’administrateur.',
+      );
+    }
     const nextType = (input.unitType ?? before!.unitType) as OrgUnitType;
     const nextParent = input.parentId !== undefined ? input.parentId : before!.parentId;
     const sommet = (await uniteRacine(tx))?.id ?? null;

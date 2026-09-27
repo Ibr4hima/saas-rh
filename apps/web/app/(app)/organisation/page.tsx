@@ -14,6 +14,7 @@ import {
   orgUnitLabel,
   type ConsequencesHierarchie,
   type CreateOrgUnitInput,
+  type MyEmployeeView,
   type OrgUnitMember,
   type OrgUnitType,
   type OrgUnitView,
@@ -190,6 +191,17 @@ function UnitPanel({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const me = useMe();
+  // La DCH et qui la dirige : l'administrateur seul les désigne — qui la
+  // dirige a toutes les habilitations.
+  const estAdmin = me.data?.role === 'admin';
+  // Personne ne se désigne soi-même responsable.
+  const moi = useQuery({
+    queryKey: ['me-employee'],
+    queryFn: () => api<MyEmployeeView>('/me/employee'),
+    retry: false,
+    enabled: canManage && !estAdmin,
+  });
   const [managerId, setManagerId] = useState(unit.managerEmployeeId ?? '');
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -492,7 +504,7 @@ function UnitPanel({
                 />
               </Field>
             ) : null}
-            {unitType === 'direction' ? (
+            {unitType === 'direction' && estAdmin ? (
               <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px]">
                 <Checkbox
                   className="mt-0.5"
@@ -502,8 +514,8 @@ function UnitPanel({
                 <span>
                   <span className="font-semibold text-ink-strong">Direction du personnel</span>
                   <span className="block text-ink-muted">
-                    Elle traite les demandes des agents — les congés, une fois visés par le N+1. Son
-                    responsable est le directeur du Capital Humain. Une seule dans l’organisation :
+                    Elle traite les demandes des agents — les congés, une fois visés par le N+1. Qui
+                    la dirige a toutes les habilitations de la DCH. Une seule dans l’organisation :
                     la cocher ici la retire à l’autre.
                   </span>
                 </span>
@@ -620,7 +632,12 @@ function UnitPanel({
             </DataBlock>
           </DataGrid>
 
-          {canManage ? (
+          {canManage && unit.directionDuPersonnel && !estAdmin ? (
+            <p className="mt-3 border-t border-line-soft pt-3 text-[12px] text-ink-muted">
+              Qui dirige la Direction du Capital Humain a toutes les habilitations :
+              l’administrateur seul le désigne.
+            </p>
+          ) : canManage ? (
             <div className="mt-3 border-t border-line-soft pt-3">
               <Field
                 label="Désigner un responsable"
@@ -640,12 +657,14 @@ function UnitPanel({
                     onChange={(ev) => setManagerId(ev.target.value)}
                   >
                     <option value="">— Aucun</option>
-                    {(eligible.data ?? []).map((e) => (
-                      <option key={e.employeeId} value={e.employeeId}>
-                        {e.givenName} {e.familyName}
-                        {e.positionTitle ? ` — ${e.positionTitle}` : ''}
-                      </option>
-                    ))}
+                    {(eligible.data ?? [])
+                      .filter((e) => e.employeeId !== moi.data?.employeeId)
+                      .map((e) => (
+                        <option key={e.employeeId} value={e.employeeId}>
+                          {e.givenName} {e.familyName}
+                          {e.positionTitle ? ` — ${e.positionTitle}` : ''}
+                        </option>
+                      ))}
                   </Select>
                   <Button
                     size="sm"

@@ -41,6 +41,7 @@ import {
   verrouillerLaChaine,
   type PlanDeReprise,
 } from './chaine';
+import { pasSurSoi } from '../acces/dch';
 import { faireSuivreLesDemandes, reconcilierDemande, reconcilierLeCircuit } from '../time/visas';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 
@@ -436,6 +437,7 @@ export class PeopleService {
       const canSeeSensitive = peut(user, 'personnel.sensible') || isSelf;
       return {
         id: employee.id,
+        soi: isSelf,
         employeeNumber: employee.employeeNumber,
         status: employee.status,
         archivedAt: employee.archivedAt?.toISOString() ?? null,
@@ -531,6 +533,7 @@ export class PeopleService {
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
         const employee = await this.requireEmployee(tx, id);
+        await pasSurSoi(tx, user.userId, [id], 'modifier votre dossier');
         if (input.employee?.managerEmployeeId !== undefined) await verrouillerLaChaine(tx);
 
         if (input.person && Object.keys(input.person).length > 0) {
@@ -626,6 +629,7 @@ export class PeopleService {
     let resultat: ConsequencesHierarchie = { changements: [], aRevoir: [] };
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
+        await pasSurSoi(tx, user.userId, [id], 'changer votre propre affectation');
         await verrouillerLaChaine(tx);
         const [dossier] = await tx
           .select({ managerId: t.employees.managerEmployeeId })

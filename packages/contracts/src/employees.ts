@@ -580,6 +580,12 @@ export interface ContractView {
 
 export interface EmployeeDetail {
   id: string;
+  /**
+   * Le dossier de l'appelant lui-même : aucune habilitation de gestion ne
+   * s'y applique — ses changements passent par ses demandes, comme pour
+   * tout agent.
+   */
+  soi: boolean;
   employeeNumber: string;
   status: string;
   /** Date d'archivage — c'est elle qui fait courir le délai de conservation. */

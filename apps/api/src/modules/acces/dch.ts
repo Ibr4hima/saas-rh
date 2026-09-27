@@ -6,6 +6,7 @@ import {
   type Capacite,
   type CapaciteDemande,
 } from '@teranga/contracts';
+import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
 import { notifier, type NotificationDraft } from '../notifications/notifier';
 import { directionDeEmploye, directionDeLUnite, uniteEnVigueur } from '../people/chaine';
@@ -238,6 +239,29 @@ export async function membresDeLaDCH(
        AND ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'id')} = ${dch.uniteId}
      ORDER BY p.family_name, p.given_name`);
   return rows.map((r) => ({ employeeId: r.id, nom: r.nom, poste: r.poste, absent: r.absent }));
+}
+
+/**
+ * Personne n'agit sur SON dossier avec une habilitation de gestion : un
+ * membre de la DCH est aussi un agent, et ce qui le concerne passe par les
+ * mêmes demandes que pour tout agent — traitées par quelqu'un d'autre. Sans
+ * quoi il pourrait modifier son dossier, ses soldes, se désigner
+ * responsable… sans que personne ne le voie.
+ */
+export async function pasSurSoi(
+  tx: Tx,
+  userId: string,
+  employeeIds: readonly (string | null | undefined)[],
+  geste: string,
+): Promise<void> {
+  const moi = await agentDuCompte(tx, userId);
+  if (!moi || !employeeIds.includes(moi)) return;
+  problem(
+    403,
+    'acces.son_propre_dossier',
+    `Vous ne pouvez pas ${geste} vous-même`,
+    'Ce qui vous concerne passe par une demande, comme pour tout agent : un autre membre de la DCH — ou l’administrateur — s’en charge. Un changement d’informations se signale depuis « Mes informations ».',
+  );
 }
 
 /** L'agent relié à ce compte, s'il est actif. */

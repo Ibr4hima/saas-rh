@@ -89,9 +89,8 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
   pieces: {
     prefixe: 'piece',
     table: sql.raw('employee_documents'),
-    // Déposée par l'agent : la DCH la vérifie. Déposée par la DCH sur le
-    // dossier d'un agent, c'est l'agent qui la vérifie — hors de ce circuit.
-    enAttente: sql.raw(`r.status = 'pending' AND r.uploaded_by_side = 'employee'`),
+    // Déposée par l'agent sur son dossier : la DCH la vérifie.
+    enAttente: sql.raw(`r.status = 'pending'`),
     detail: sql.raw('to_jsonb(r.label)'),
     capacite: () => 'demandes.pieces',
     objet: (d) => `« ${String(d)} » — à vérifier, puis valider pour l’ajouter au dossier`,

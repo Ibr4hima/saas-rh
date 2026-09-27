@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { peut, type SessionUser } from '@teranga/contracts';
-import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
+import { agentDuCompte, directionDuPersonnel, pasSurSoi } from '../acces/dch';
 import { capaciteDesDocuments, vueDuTraitement } from '../acces/demandes';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
@@ -84,6 +84,8 @@ export class AttestationService {
     employeeId: string,
   ): Promise<{ filename: string; pdf: Buffer }> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      // La sienne se demande depuis « Mes documents », comme pour tout agent.
+      await pasSurSoi(tx, user.userId, [employeeId], 'établir votre propre attestation');
       if (!peut(user, 'personnel.gerer') && !(await this.traiteSaDemande(tx, user, employeeId))) {
         problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
       }

@@ -15,11 +15,17 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Capacite, SessionUser } from '@teranga/contracts';
+import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
+import { capacitesDe } from '../src/modules/acces/dch';
 import { HabilitationsService } from '../src/modules/acces/habilitations.service';
+import { AttestationService } from '../src/modules/documents/attestation.service';
+import { OrgUnitsService } from '../src/modules/people/org-units.service';
+import { PeopleService } from '../src/modules/people/people.service';
+import { AbsencesService } from '../src/modules/time/absences.service';
 import { confierLaDemande } from '../src/modules/acces/demandes';
 import { DocumentRequestsService } from '../src/modules/docs/document-requests.service';
 import { EmployeeDocumentsService } from '../src/modules/docs/employee-documents.service';
@@ -36,6 +42,11 @@ let documents: DocumentRequestsService;
 let informations: ProfileChangesService;
 let pieces: EmployeeDocumentsService;
 let habilitations: HabilitationsService;
+let people: PeopleService;
+let organigramme: OrgUnitsService;
+let absences: AbsencesService;
+let attestations: AttestationService;
+let uDSID: string;
 
 const raw = (q: string, p: unknown[] = []) => ownerPool.query(q, p as never[]);
 
@@ -134,6 +145,10 @@ beforeAll(async () => {
   informations = new ProfileChangesService(db, notifications);
   pieces = new EmployeeDocumentsService(db, notifications);
   habilitations = new HabilitationsService(db);
+  people = new PeopleService(db, new EncryptionService());
+  organigramme = new OrgUnitsService(db);
+  absences = new AbsencesService(db);
+  attestations = new AttestationService(db);
   await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1,'Demandes',$2)`, [
     tenantId,
     `demandes-${tenantId.slice(0, 8)}`,
@@ -141,7 +156,7 @@ beforeAll(async () => {
   admin = await compte('Ibrahima', 'admin');
   const uDG = await unite('Direction Générale', null);
   uDCH = await unite('Direction du Capital Humain', uDG, true);
-  const uDSID = await unite('Direction des Systèmes', uDG);
+  uDSID = await unite('Direction des Systèmes', uDG);
   mariama = await agent('Mariama', uDCH);
   awa = await agent('Awa', uDCH);
   khady = await agent('Khady', uDCH);
@@ -171,6 +186,8 @@ afterAll(async () => {
     'profile_change_requests',
     'employee_documents',
     'habilitations',
+    'absence_balances',
+    'absence_types',
   ]) {
     await raw(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
   }
@@ -387,5 +404,90 @@ describe('les pièces justificatives', () => {
     await habiliter(khady, 'demandes.pieces');
     expect((await pieces.content(khady.session, id)).filename).toBe('master.pdf');
     expect((await pieces.content(moussa.session, id)).filename).toBe('master.pdf');
+  });
+});
+
+describe('on ne contourne pas le système : rien sur soi-même', () => {
+  /** La session telle que le serveur la construit : avec les habilitations. */
+  const session = async (qui: Agent): Promise<SessionUser> => ({
+    ...qui.session,
+    ...(await db.withTenant({ tenantId, userId: qui.session.userId }, (tx) =>
+      capacitesDe(tx, qui.session.userId, qui.session.role),
+    )),
+  });
+
+  it('qui gère les dossiers ne touche pas au sien — celui d’un collègue, si', async () => {
+    await habiliter(awa, 'personnel.gerer');
+    const s = await session(awa);
+    expect(
+      await codeOf(() => people.update(s, awa.employeeId, { person: { phone: '770000001' } })),
+    ).toBe('acces.son_propre_dossier');
+    await people.update(s, moussa.employeeId, { person: { phone: '770000002' } });
+    expect((await people.detail(s, awa.employeeId)).soi).toBe(true);
+    expect((await people.detail(s, moussa.employeeId)).soi).toBe(false);
+  });
+
+  it('ni ses propres soldes de congés, ni sa propre attestation', async () => {
+    await habiliter(awa, 'conges.soldes');
+    await habiliter(awa, 'personnel.gerer');
+    const s = await session(awa);
+    const typeId = randomUUID();
+    await raw(
+      `INSERT INTO absence_types (id, tenant_id, name, deducts_balance, allowance_days, frequency)
+       VALUES ($1,$2,'Congé annuel',true,30,'annual')`,
+      [typeId, tenantId],
+    );
+    const solde = (employeeId: string) =>
+      absences.setBalance(s, { employeeId, absenceTypeId: typeId, year: 2027, entitledDays: 60 });
+    expect(await codeOf(() => solde(awa.employeeId))).toBe('acces.son_propre_dossier');
+    await solde(moussa.employeeId);
+    expect(await codeOf(() => attestations.forEmployee(s, awa.employeeId))).toBe(
+      'acces.son_propre_dossier',
+    );
+  });
+
+  it('personne ne se désigne responsable ; qui dirige la DCH, seul l’administrateur le désigne', async () => {
+    await habiliter(awa, 'organigramme');
+    const s = await session(awa);
+    const { id: service } = await organigramme.create(admin, {
+      name: 'Service Paie',
+      unitType: 'service',
+      parentId: uDCH,
+    });
+    expect(
+      await codeOf(() => organigramme.update(s, service, { managerEmployeeId: awa.employeeId })),
+    ).toBe('acces.son_propre_dossier');
+    expect(
+      await codeOf(() => organigramme.update(s, uDCH, { managerEmployeeId: khady.employeeId })),
+    ).toBe('org.dch_reservee_admin');
+    expect(await codeOf(() => organigramme.update(s, uDSID, { directionDuPersonnel: true }))).toBe(
+      'org.dch_reservee_admin',
+    );
+    await raw(`DELETE FROM org_units WHERE id = $1`, [service]);
+  });
+
+  it('les pièces : l’agent dépose les siennes ; qui les vérifie ne vérifie pas les siennes', async () => {
+    await habiliter(awa, 'demandes.pieces');
+    const piece = {
+      category: 'diplome' as const,
+      label: 'Licence',
+      filename: 'licence.pdf',
+      contentType: 'application/pdf' as const,
+      contentBase64: PDF,
+    };
+    // Personne ne dépose sur le dossier d'un autre — pas même qui dirige la DCH.
+    expect(await codeOf(() => pieces.upload(mariama.session, moussa.employeeId, piece))).toBe(
+      'documents.self_only',
+    );
+    const { id, status } = await pieces.upload(awa.session, awa.employeeId, piece);
+    expect(status).toBe('pending');
+    // Awa vérifie les pièces… mais pas les siennes : elles vont à Mariama.
+    expect(await appels('piece', id)).toEqual(['dch:Mariama']);
+    expect(await codeOf(() => pieces.review(awa.session, id, { decision: 'approved' }))).toBe(
+      'documents.wrong_reviewer',
+    );
+    const [vue] = await pieces.list(awa.session, awa.employeeId);
+    expect(vue).toMatchObject({ canReview: false });
+    await pieces.review(mariama.session, id, { decision: 'approved' });
   });
 });
