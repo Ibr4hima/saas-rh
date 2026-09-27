@@ -85,8 +85,8 @@ export const saveCourseSchema = z.object({
   category: z.enum(ACADEMY_CATEGORIES),
   /**
    * Qui a fait la formation — facultatif. Un agent de l'APIX (son dossier) :
-   * il la suit comme les autres, mais elle ne lui donne pas de certificat.
-   * Ou une personne extérieure : son nom seul.
+   * il en suit les leçons, mais n'en passe pas l'évaluation. Ou une
+   * personne extérieure : son nom seul.
    */
   formateurEmployeeId: z.uuid().nullish(),
   formateurNom: z.string().trim().max(160).nullish(),
@@ -409,8 +409,7 @@ export interface CertificateSummary {
  * `verrouillee` : des leçons restent à valider. `ouverte` : il peut composer.
  * `en_cours` : une copie est ouverte et le temps court encore. `attente` :
  * quand une limite est fixée, ses tentatives du jour sont passées. `reussie` : il tient un
- * certificat valide — ou, formateur, il l'a réussie sans certificat. `fermee` : il gère la
- * formation dans l'atelier, il en connaît les questions.
+ * certificat valide. `fermee` : elle ne le concerne pas — voir `fermeture`.
  */
 export interface EvaluationView {
   /** Questions posées à chaque tentative : le réglage, borné par la banque. */
@@ -419,11 +418,11 @@ export interface EvaluationView {
   seuil: number;
   etat: 'verrouillee' | 'ouverte' | 'en_cours' | 'attente' | 'reussie' | 'fermee';
   /**
-   * Pourquoi elle ne donnera pas de certificat à l'agent connecté :
-   * `formateur` — il a fait la formation, il peut la passer mais sans
-   * certificat ; `gestionnaire` — il la gère, elle lui est fermée.
+   * Pourquoi elle est fermée à l'agent connecté : `formateur` — il a fait la
+   * formation, il en suit les leçons mais ne la passe pas ; `gestion` — son
+   * compte gère le catalogue, il en connaît les questions.
    */
-  sansCertificat: 'formateur' | 'gestionnaire' | null;
+  fermeture: 'formateur' | 'gestion' | null;
   /** La limite par vingt-quatre heures ; `null` : sans limite. */
   tentativesParJour: number | null;
   /** Ce qu'il en reste dans la fenêtre ; `null` : sans limite. */

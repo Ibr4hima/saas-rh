@@ -16,7 +16,12 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { CAPACITES, CAPACITES_GESTION, type Capacite, type SessionUser } from '@teranga/contracts';
+import {
+  CAPACITES_DELEGABLES,
+  CAPACITES_GESTION,
+  type Capacite,
+  type SessionUser,
+} from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -535,8 +540,9 @@ describe('les accès se lisent dans l’organigramme', () => {
   const de = (qui: SessionUser) =>
     db.withTenant({ tenantId, userId: qui.userId }, (tx) => capacitesDe(tx, qui.userId, qui.role));
 
-  it('le directeur a tout ; l’administrateur, la gestion sans les demandes ; un agent, rien', async () => {
-    expect((await de(mariama.session)).capacites.sort()).toEqual([...CAPACITES].sort());
+  it('le directeur a tout, sauf l’Academy ; l’administrateur, la gestion sans les demandes ; un agent, rien', async () => {
+    expect((await de(mariama.session)).capacites.sort()).toEqual([...CAPACITES_DELEGABLES].sort());
+    expect((await de(mariama.session)).capacites).not.toContain('academy');
     expect((await de(admin)).capacites.sort()).toEqual([...CAPACITES_GESTION].sort());
     expect(await de(moussa.session)).toEqual({ capacites: [], estAgent: true, dirigeLaDCH: false });
     expect(await de(sansDossier)).toEqual({ capacites: [], estAgent: false, dirigeLaDCH: false });

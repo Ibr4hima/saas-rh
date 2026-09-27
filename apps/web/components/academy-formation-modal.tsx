@@ -27,9 +27,8 @@ const SORTES: { id: SorteFormateur; label: string }[] = [
  * elles sont cinq, et chacune porte l'icône qui habillera la couverture — la
  * RH voit ce que verront les agents avant de le décider.
  *
- * Le formateur est facultatif. Un agent de l'APIX suit la formation comme
- * les autres, mais n'en obtient pas le certificat ; son dossier dit qu'il
- * l'a animée.
+ * Le formateur est facultatif. Un agent de l'APIX en suit les leçons, pas
+ * l'évaluation ; son dossier dit qu'il l'a animée.
  */
 export function FormationModal({
   open,
@@ -158,9 +157,8 @@ export function FormationModal({
       <ModalSection title="Formateur">
         <div className="flex flex-col gap-3">
           <p className="text-[12px] leading-snug text-ink-muted">
-            Facultatif : qui a fait cette formation. Une personne de l’APIX la suit comme les autres
-            agents et peut en passer l’évaluation, sans obtenir de certificat ; son dossier indique
-            qu’elle l’a animée.
+            Facultatif : qui a fait cette formation. Une personne de l’APIX peut en suivre les
+            leçons, mais pas l’évaluation ; son dossier indique qu’elle l’a animée.
           </p>
           <div
             role="radiogroup"

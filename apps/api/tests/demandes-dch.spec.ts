@@ -416,6 +416,30 @@ describe('on ne contourne pas le système : rien sur soi-même', () => {
     )),
   });
 
+  it('l’Academy est à l’administrateur : ni le directeur ni une délégation ne la donnent', async () => {
+    const directeur = await session(mariama);
+    expect(directeur.dirigeLaDCH).toBe(true);
+    expect(directeur.capacites).toContain('pilotage');
+    expect(directeur.capacites).not.toContain('academy');
+    expect(await codeOf(() => habiliter(awa, 'academy'))).toBe('habilitations.reservee_admin');
+    // Une délégation d'avant la règle ne donne plus rien.
+    await raw(
+      `INSERT INTO habilitations (id, tenant_id, capacite, employee_id, accordee_par_employee_id)
+       VALUES ($1,$2,'academy',$3,$4)`,
+      [randomUUID(), tenantId, awa.employeeId, mariama.employeeId],
+    );
+    expect((await session(awa)).capacites).not.toContain('academy');
+    const etat = await habilitations.etat(admin);
+    expect(etat.membres.every((m) => !m.capacites.includes('academy'))).toBe(true);
+    expect(
+      (
+        await db.withTenant({ tenantId, userId: admin.userId }, (tx) =>
+          capacitesDe(tx, admin.userId, 'admin'),
+        )
+      ).capacites,
+    ).toContain('academy');
+  });
+
   it('qui gère les dossiers ne touche pas au sien — celui d’un collègue, si', async () => {
     await habiliter(awa, 'personnel.gerer');
     const s = await session(awa);

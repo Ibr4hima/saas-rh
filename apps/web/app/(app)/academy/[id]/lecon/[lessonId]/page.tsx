@@ -107,7 +107,7 @@ export default function LeconPage() {
               description={
                 code === 'academy.lesson_locked'
                   ? 'Les leçons se suivent dans l’ordre : terminez d’abord celles qui la précèdent.'
-                  : 'Elle sera disponible dès que la RH l’aura déposée.'
+                  : 'Elle sera disponible dès qu’elle aura été déposée.'
               }
               action={
                 <Link href={`/academy/${id}`}>

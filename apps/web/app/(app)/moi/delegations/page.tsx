@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import {
   CAPACITE_INFOS,
-  CAPACITES,
+  CAPACITES_DELEGABLES,
   type Capacite,
   type InfoCapacite,
   type MembreHabilite,
@@ -54,7 +54,8 @@ const introGroupe = (groupe: InfoCapacite['groupe'], directeur: boolean): string
       'Chaque type de document se confie à part : les attestations de travail à l’un, les bulletins de salaire à l’autre. Chaque document demandé va à qui traite son type.',
     Personnel: 'L’accès aux dossiers du personnel.',
     Congés: 'Les soldes, les types d’absence et les jours fériés.',
-    Organisation: 'Les autres espaces de gestion.',
+    Organisation:
+      'Les autres espaces de gestion. Le catalogue de l’APIX Academy reste à l’administrateur : qui le gère voit les questions des évaluations.',
   })[groupe];
 
 export default function DelegationsPage() {
@@ -150,23 +151,25 @@ export default function DelegationsPage() {
                     {introGroupe(groupe, modifiable)}
                   </p>
                   <ul className="mt-2 flex flex-col divide-y divide-line-soft">
-                    {CAPACITES.filter((c) => CAPACITE_INFOS[c].groupe === groupe).map((c) => (
-                      <LigneCapacite
-                        key={c}
-                        capacite={c}
-                        membres={d.membres}
-                        modifiable={modifiable}
-                        enCours={
-                          basculer.isPending && basculer.variables?.capacite === c
-                            ? basculer.variables.membre.employeeId
-                            : null
-                        }
-                        onBasculer={(membre, accordee) => {
-                          setMessage(null);
-                          basculer.mutate({ membre, capacite: c, accordee });
-                        }}
-                      />
-                    ))}
+                    {CAPACITES_DELEGABLES.filter((c) => CAPACITE_INFOS[c].groupe === groupe).map(
+                      (c) => (
+                        <LigneCapacite
+                          key={c}
+                          capacite={c}
+                          membres={d.membres}
+                          modifiable={modifiable}
+                          enCours={
+                            basculer.isPending && basculer.variables?.capacite === c
+                              ? basculer.variables.membre.employeeId
+                              : null
+                          }
+                          onBasculer={(membre, accordee) => {
+                            setMessage(null);
+                            basculer.mutate({ membre, capacite: c, accordee });
+                          }}
+                        />
+                      ),
+                    )}
                   </ul>
                 </section>
               ))}

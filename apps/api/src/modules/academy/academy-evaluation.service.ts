@@ -76,32 +76,20 @@ export async function employeActif(tx: Tx, userId: string): Promise<string | nul
 }
 
 /**
- * Qui ouvre une formation dans l'atelier — la crée, en voit la banque de
- * questions, en essaie l'évaluation — en connaît les réponses : il est
- * inscrit comme gestionnaire, et l'évaluation lui est fermée. On le reste :
- * perdre l'habilitation n'efface pas ce qu'on a vu. Un compte sans dossier
- * d'agent (l'administrateur) ne passe pas d'évaluation : rien à noter.
+ * Pourquoi l'évaluation est fermée à cet agent — s'il y a lieu.
+ *
+ * Le formateur a fait la formation : il en suit les leçons, il n'en passe
+ * pas l'évaluation. Un compte qui gère le catalogue (l'administrateur) en
+ * voit les questions : s'il est aussi agent, les évaluations lui sont
+ * fermées. Tous les autres la passent et obtiennent leur certificat.
  */
-export async function noterGestionnaire(tx: Tx, userId: string, courseId: string): Promise<void> {
-  const employeeId = await employeActif(tx, userId);
-  if (!employeeId) return;
-  await tx.execute(sql`
-    INSERT INTO academy_course_gestionnaires (tenant_id, course_id, employee_id)
-    SELECT tenant_id, id, ${employeeId} FROM academy_courses WHERE id = ${courseId}
-    ON CONFLICT DO NOTHING`);
-}
-
-/** Pourquoi une formation ne donnera pas de certificat à cet agent — s'il y a lieu. */
-export async function sansCertificat(
-  tx: Tx,
+export function fermeture(
   f: LigneFormation,
   employeeId: string | null,
-): Promise<'formateur' | 'gestionnaire' | null> {
+  gereLeCatalogue: boolean,
+): 'formateur' | 'gestion' | null {
   if (!employeeId) return null;
-  const { rows } = await tx.execute(sql`
-    SELECT 1 FROM academy_course_gestionnaires
-     WHERE course_id = ${f.id} AND employee_id = ${employeeId} LIMIT 1`);
-  if (rows.length > 0) return 'gestionnaire';
+  if (gereLeCatalogue) return 'gestion';
   return f.formateurEmployeeId === employeeId ? 'formateur' : null;
 }
 
@@ -182,6 +170,7 @@ export async function vueEvaluation(
   f: LigneFormation,
   employeeId: string | null,
   toutesValidees: boolean,
+  gereLeCatalogue: boolean,
   maintenant: Date,
   parJour: number | null = TENTATIVES_PAR_JOUR,
 ): Promise<EvaluationView | null> {
@@ -198,14 +187,14 @@ export async function vueEvaluation(
     return {
       ...base,
       etat: 'verrouillee',
-      sansCertificat: null,
+      fermeture: null,
       tentativesRestantes: parJour,
       prochaineTentative: null,
       derniere: null,
       certificat: null,
     };
   }
-  const raison = await sansCertificat(tx, f, employeeId);
+  const raison = fermeture(f, employeeId, gereLeCatalogue);
 
   const certificats = await tx
     .select()
@@ -245,27 +234,23 @@ export async function vueEvaluation(
     parJour,
   );
 
-  // Un certificat obtenu AVANT d'avoir eu la main sur la formation reste le
-  // sien. Sinon : qui la gère ne la passe pas ; le formateur qui l'a réussie
-  // l'a réussie — sans certificat.
+  // Un certificat obtenu AVANT d'être désigné formateur reste le sien.
   const etat: EvaluationView['etat'] = valide
     ? 'reussie'
-    : raison === 'gestionnaire'
+    : raison
       ? 'fermee'
-      : raison === 'formateur' && tentatives.some((a) => a.passed)
-        ? 'reussie'
-        : !toutesValidees
-          ? 'verrouillee'
-          : ouverte
-            ? 'en_cours'
-            : restantes === 0
-              ? 'attente'
-              : 'ouverte';
+      : !toutesValidees
+        ? 'verrouillee'
+        : ouverte
+          ? 'en_cours'
+          : restantes === 0
+            ? 'attente'
+            : 'ouverte';
 
   return {
     ...base,
     etat,
-    sansCertificat: valide ? null : raison,
+    fermeture: valide ? null : raison,
     tentativesRestantes: restantes,
     prochaineTentative: etat === 'attente' ? (prochaine?.toISOString() ?? null) : null,
     derniere,
@@ -313,7 +298,7 @@ export class AcademyEvaluationService {
 
   private exigerGestion(user: SessionUser): void {
     if (!this.gere(user)) {
-      problem(403, 'academy.forbidden', 'Seule la DCH gère le catalogue de l’Academy');
+      problem(403, 'academy.forbidden', 'Seul l’administrateur gère le catalogue de l’Academy');
     }
   }
 
@@ -340,7 +325,6 @@ export class AcademyEvaluationService {
     this.exigerGestion(user);
     await this.db.withTenant(this.ctx(user), async (tx) => {
       await this.formation(tx, courseId);
-      await noterGestionnaire(tx, user.userId, courseId);
       await tx
         .update(t.academyCourses)
         .set({
@@ -362,7 +346,6 @@ export class AcademyEvaluationService {
     const id = uuidv7();
     await this.db.withTenant(this.ctx(user), async (tx) => {
       await this.formation(tx, courseId);
-      await noterGestionnaire(tx, user.userId, courseId);
       const [rang] = await tx
         .select({ max: sql<number>`coalesce(max(${t.academyQuestions.position}), -1)::int` })
         .from(t.academyQuestions)
@@ -399,7 +382,6 @@ export class AcademyEvaluationService {
     this.exigerGestion(user);
     await this.db.withTenant(this.ctx(user), async (tx) => {
       const q = await this.question(tx, id);
-      await noterGestionnaire(tx, user.userId, q.courseId);
       await tx
         .update(t.academyQuestions)
         .set({
@@ -417,7 +399,6 @@ export class AcademyEvaluationService {
     this.exigerGestion(user);
     await this.db.withTenant(this.ctx(user), async (tx) => {
       const q = await this.question(tx, id);
-      await noterGestionnaire(tx, user.userId, q.courseId);
       await tx.delete(t.academyQuestions).where(eq(t.academyQuestions.id, id));
       await this.toucher(tx, q.courseId);
     });
@@ -427,7 +408,6 @@ export class AcademyEvaluationService {
     this.exigerGestion(user);
     await this.db.withTenant(this.ctx(user), async (tx) => {
       const q = await this.question(tx, id);
-      await noterGestionnaire(tx, user.userId, q.courseId);
       const [voisin] = await tx
         .select({ id: t.academyQuestions.id, position: t.academyQuestions.position })
         .from(t.academyQuestions)
@@ -467,7 +447,6 @@ export class AcademyEvaluationService {
     this.exigerGestion(user);
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const f = await this.formation(tx, courseId);
-      await noterGestionnaire(tx, user.userId, courseId);
       const banque = await tx
         .select()
         .from(t.academyQuestions)
@@ -503,7 +482,6 @@ export class AcademyEvaluationService {
     this.exigerGestion(user);
     return this.db.withTenant(this.ctx(user), async (tx) => {
       await this.formation(tx, courseId);
-      await noterGestionnaire(tx, user.userId, courseId);
       const rows = await tx
         .select()
         .from(t.academyQuestions)
@@ -564,7 +542,6 @@ export class AcademyEvaluationService {
     this.exigerGestion(user);
     const d = await this.db.withTenant(this.ctx(user), async (tx) => {
       const f = await this.formation(tx, courseId);
-      await noterGestionnaire(tx, user.userId, courseId);
       const [fiche] = await tx
         .select({
           givenName: t.persons.givenName,
@@ -639,13 +616,21 @@ export class AcademyEvaluationService {
       if (banque.length === 0) {
         problem(409, 'academy.no_evaluation', 'Cette formation n’a pas d’évaluation');
       }
-      const raison = await sansCertificat(tx, f, employeeId);
-      if (raison === 'gestionnaire') {
+      const raison = fermeture(f, employeeId, this.gere(user));
+      if (raison === 'formateur') {
         problem(
           403,
-          'academy.gestionnaire',
-          'Vous gérez cette formation : l’évaluation vous est fermée',
-          'Vous en connaissez les questions. Vous pouvez suivre les leçons librement.',
+          'academy.formateur',
+          'Vous êtes le formateur de cette formation : l’évaluation ne vous concerne pas',
+          'Vous pouvez en suivre les leçons librement.',
+        );
+      }
+      if (raison === 'gestion') {
+        problem(
+          403,
+          'academy.gestion',
+          'Vous gérez le catalogue : les évaluations vous sont fermées',
+          'Vous en connaissez les questions.',
         );
       }
       if (!(await toutesLeconsValidees(tx, courseId, employeeId))) {
@@ -655,22 +640,6 @@ export class AcademyEvaluationService {
       const certifiees = await formationsCertifiees(tx, employeeId, maintenant);
       if (certifiees.has(courseId)) {
         problem(409, 'academy.already_certified', 'Vous avez déjà réussi cette évaluation');
-      }
-      if (raison === 'formateur') {
-        const [reussie] = await tx
-          .select({ id: t.academyQuizAttempts.id })
-          .from(t.academyQuizAttempts)
-          .where(
-            and(
-              eq(t.academyQuizAttempts.employeeId, employeeId),
-              eq(t.academyQuizAttempts.courseId, courseId),
-              eq(t.academyQuizAttempts.passed, true),
-            ),
-          )
-          .limit(1);
-        if (reussie) {
-          problem(409, 'academy.already_certified', 'Vous avez déjà réussi cette évaluation');
-        }
       }
 
       const [ouverte] = await tx
@@ -796,8 +765,8 @@ export class AcademyEvaluationService {
 
       const f = await this.formation(tx, a.courseId);
       let certificat: CertificateSummary | null = null;
-      // Le formateur la réussit, sans certificat : il l'a faite.
-      if (c.passed && (await sansCertificat(tx, f, employeeId)) === null) {
+      // Désigné formateur pendant sa copie : elle compte, sans certificat.
+      if (c.passed && fermeture(f, employeeId, this.gere(user)) === null) {
         certificat = resumeCertificat(
           await this.emettre(tx, user, employeeId, f, a.id, c.score, maintenant),
           maintenant,
@@ -808,6 +777,7 @@ export class AcademyEvaluationService {
         f,
         employeeId,
         true,
+        this.gere(user),
         maintenant,
         this.limiteTentatives,
       );

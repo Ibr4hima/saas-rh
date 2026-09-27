@@ -3,7 +3,8 @@ import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
   CAPACITE_INFOS,
-  CAPACITES,
+  CAPACITES_DELEGABLES,
+  estDelegable,
   type AccorderInput,
   type Capacite,
   type EtatHabilitations,
@@ -78,7 +79,7 @@ export class HabilitationsService {
           nom: m.nom,
           poste: m.poste,
           absent: m.absent,
-          capacites: CAPACITES.filter((c) =>
+          capacites: CAPACITES_DELEGABLES.filter((c) =>
             rows.some((r) => r.employee_id === m.employeeId && r.capacite === c),
           ),
         })),
@@ -145,6 +146,14 @@ export class HabilitationsService {
       }
 
       if (enCours.length > 0) return;
+      if (!estDelegable(input.capacite)) {
+        problem(
+          422,
+          'habilitations.reservee_admin',
+          'Réservé à l’administrateur',
+          'Le catalogue de l’APIX Academy est géré par l’administrateur : qui le gère voit les questions des évaluations.',
+        );
+      }
       if (input.employeeId === moi) {
         problem(422, 'habilitations.directeur', 'Vous avez déjà toutes les habilitations');
       }

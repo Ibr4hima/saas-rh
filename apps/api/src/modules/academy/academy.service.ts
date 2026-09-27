@@ -42,7 +42,6 @@ import {
   formationsCertifiees,
   quizAdmin,
   taillesDesBanques,
-  noterGestionnaire,
   vueEvaluation,
 } from './academy-evaluation.service';
 import { dureeMp4 } from './mp4';
@@ -148,7 +147,7 @@ export class AcademyService {
 
   private exigerGestion(user: SessionUser): void {
     if (!this.gere(user)) {
-      problem(403, 'academy.forbidden', 'Seule la DCH gère le catalogue de l’Academy');
+      problem(403, 'academy.forbidden', 'Seul l’administrateur gère le catalogue de l’Academy');
     }
   }
 
@@ -441,6 +440,7 @@ export class AcademyService {
         f,
         employeeId,
         toutesValidees,
+        this.gere(user),
         this.horloge(),
         this.limiteTentatives,
       );
@@ -550,7 +550,6 @@ export class AcademyService {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const f = await this.formation(tx, courseId);
       // L'atelier montre la banque de questions : qui l'ouvre la connaît.
-      await noterGestionnaire(tx, user.userId, courseId);
       const { modules, lecons } = await this.structure(tx, [f.id]);
       const quiz = await quizAdmin(tx, f);
       return {
@@ -575,7 +574,6 @@ export class AcademyService {
         ...(await this.formateur(tx, input)),
         createdByUserId: user.userId,
       });
-      await noterGestionnaire(tx, user.userId, id);
     });
     return { id };
   }
@@ -644,7 +642,6 @@ export class AcademyService {
           updatedAt: new Date(),
         })
         .where(eq(t.academyCourses.id, id));
-      await noterGestionnaire(tx, user.userId, id);
     });
   }
 

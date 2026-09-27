@@ -1,7 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import {
   CAPACITE_INFOS,
-  CAPACITES,
+  CAPACITES_DELEGABLES,
   CAPACITES_GESTION,
   type Capacite,
   type CapaciteDemande,
@@ -288,13 +288,16 @@ export async function capacitesDe(
   if (!moi) return { capacites: [...base], estAgent: false, dirigeLaDCH: false };
   const dch = await directionDuPersonnel(tx);
   if (dch?.directeurEmployeeId === moi) {
-    return { capacites: [...CAPACITES], estAgent: true, dirigeLaDCH: true };
+    // Tout ce qui se délègue — l'Academy reste à l'administrateur.
+    return { capacites: [...CAPACITES_DELEGABLES], estAgent: true, dirigeLaDCH: true };
   }
   const { rows } = await tx.execute<{ capacite: string }>(sql`
     SELECT capacite FROM habilitations WHERE employee_id = ${moi} AND fin_at IS NULL`);
   if (rows.length > 0 && dch && (await membreDCH(tx, dch, moi)) !== 'parti') {
     for (const r of rows) {
-      if ((CAPACITES as readonly string[]).includes(r.capacite)) base.add(r.capacite as Capacite);
+      if ((CAPACITES_DELEGABLES as readonly string[]).includes(r.capacite)) {
+        base.add(r.capacite as Capacite);
+      }
     }
   }
   return { capacites: [...base], estAgent: true, dirigeLaDCH: false };

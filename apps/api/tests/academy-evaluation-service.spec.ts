@@ -541,10 +541,7 @@ describe('le certificat', () => {
   });
 });
 
-describe('qui gère la formation, qui l’a faite', () => {
-  /** Moussa, agent de la DCH à qui l'Academy est confiée. */
-  const gestionnaire = { ...autre, capacites: ['academy'] } as SessionUser;
-
+describe('le formateur, et qui gère le catalogue', () => {
   async function composer(qui: SessionUser, employeeId: string, justes = Infinity) {
     await validerLecons(employeeId);
     const copie = await evaluation.demarrer(qui, courseId);
@@ -553,76 +550,79 @@ describe('qui gère la formation, qui l’a faite', () => {
     });
   }
 
-  it('qui a ouvert la formation dans l’atelier ne passe pas son évaluation', async () => {
-    await validerLecons(autreEmployeeId);
-    // Il la suit comme tout le monde…
-    expect((await academy.detail(autre, courseId)).evaluation?.etat).toBe('ouverte');
-    // … mais dès qu'il en voit les questions, elle lui est fermée — pour de bon.
-    await academy.gestionDetail(gestionnaire, courseId);
-    const ev = (await academy.detail(gestionnaire, courseId)).evaluation!;
-    expect(ev).toMatchObject({ etat: 'fermee', sansCertificat: 'gestionnaire' });
-    expect(await codeOf(() => evaluation.demarrer(gestionnaire, courseId))).toBe(
-      'academy.gestionnaire',
-    );
-    // Retirer l'habilitation n'efface pas ce qu'il a vu.
-    expect(await codeOf(() => evaluation.demarrer(autre, courseId))).toBe('academy.gestionnaire');
-  });
-
-  it('créer, modifier, essayer : chaque geste de l’atelier inscrit le gestionnaire', async () => {
-    const inscrits = async (id: string) =>
-      (
-        await raw(`SELECT employee_id FROM academy_course_gestionnaires WHERE course_id = $1`, [id])
-      ).rows.map((r) => r.employee_id as string);
-    const { id } = await academy.creerFormation(gestionnaire, {
-      title: 'Excel avancé',
-      summary: null,
-      category: 'bureautique',
-    });
-    expect(await inscrits(id)).toEqual([autreEmployeeId]);
-    // Un compte sans dossier d'agent — l'administrateur — ne s'inscrit pas.
-    await evaluation.essayer(rh, courseId);
-    expect(await inscrits(courseId)).toEqual([]);
-    await evaluation.essayer(gestionnaire, courseId);
-    expect(await inscrits(courseId)).toEqual([autreEmployeeId]);
-  });
-
-  it('un certificat obtenu AVANT d’avoir eu la main reste le sien', async () => {
-    const r = await composer(autre, autreEmployeeId);
-    expect(r.certificat).not.toBeNull();
-    await academy.gestionDetail(gestionnaire, courseId);
-    expect((await academy.detail(autre, courseId)).evaluation).toMatchObject({
-      etat: 'reussie',
-      sansCertificat: null,
-    });
-  });
-
-  it('le formateur, agent de l’APIX, la passe — prévenu d’avance — sans certificat', async () => {
-    await academy.modifierFormation(rh, courseId, {
+  const designer = (formateurEmployeeId: string) =>
+    academy.modifierFormation(rh, courseId, {
       title: 'PowerPoint',
       summary: null,
       category: 'bureautique',
-      formateurEmployeeId: agentEmployeeId,
+      formateurEmployeeId,
     });
-    expect((await academy.detail(agent, courseId)).formateur).toEqual({
-      employeeId: agentEmployeeId,
-      nom: 'Awa Diop',
-    });
+
+  it('le formateur suit les leçons, mais l’évaluation lui est fermée', async () => {
+    await designer(agentEmployeeId);
+    const vue = await academy.detail(agent, courseId);
+    expect(vue.formateur).toEqual({ employeeId: agentEmployeeId, nom: 'Awa Diop' });
+    expect(vue.mode).toBe('suivi');
     await validerLecons();
     expect((await academy.detail(agent, courseId)).evaluation).toMatchObject({
-      etat: 'ouverte',
-      sansCertificat: 'formateur',
+      etat: 'fermee',
+      fermeture: 'formateur',
     });
-    const echec = await composer(agent, agentEmployeeId, 2);
-    expect(echec.evaluation.etat).toBe('ouverte');
-    const r = await composer(agent, agentEmployeeId);
-    expect(r).toMatchObject({ passed: true, certificat: null });
-    expect(r.evaluation).toMatchObject({ etat: 'reussie', sansCertificat: 'formateur' });
-    expect(await evaluation.mesCertificats(agent)).toEqual([]);
-    expect(await codeOf(() => evaluation.demarrer(agent, courseId))).toBe(
-      'academy.already_certified',
-    );
-    // Les autres agents, eux, obtiennent le leur.
+    expect(await codeOf(() => evaluation.demarrer(agent, courseId))).toBe('academy.formateur');
+    // Tous les autres la passent, et obtiennent leur certificat.
+    expect((await academy.detail(autre, courseId)).evaluation?.fermeture).toBeNull();
     expect((await composer(autre, autreEmployeeId)).certificat).not.toBeNull();
+  });
+
+  it('un certificat obtenu AVANT d’être désigné formateur reste le sien', async () => {
+    expect((await composer(agent, agentEmployeeId)).certificat).not.toBeNull();
+    await designer(agentEmployeeId);
+    expect((await academy.detail(agent, courseId)).evaluation).toMatchObject({
+      etat: 'reussie',
+      fermeture: null,
+    });
+  });
+
+  it('désigné formateur pendant sa copie : elle compte, sans certificat', async () => {
+    await validerLecons();
+    const copie = await evaluation.demarrer(agent, courseId);
+    await designer(agentEmployeeId);
+    const r = await evaluation.soumettre(agent, copie.id, {
+      answers: await bonnesReponses(copie.id),
+    });
+    expect(r).toMatchObject({ passed: true, certificat: null });
+    expect(r.evaluation).toMatchObject({ etat: 'fermee', fermeture: 'formateur' });
+    expect(await evaluation.mesCertificats(agent)).toEqual([]);
+  });
+
+  it('un compte qui gère le catalogue, s’il est aussi agent, ne passe pas d’évaluation', async () => {
+    // L'administrateur n'est d'ordinaire pas agent ; s'il l'était, il
+    // connaîtrait les réponses.
+    const adminAgent = { ...autre, role: 'admin' } as SessionUser;
+    await validerLecons(autreEmployeeId);
+    expect((await academy.detail(adminAgent, courseId)).evaluation).toMatchObject({
+      etat: 'fermee',
+      fermeture: 'gestion',
+    });
+    expect(await codeOf(() => evaluation.demarrer(adminAgent, courseId))).toBe('academy.gestion');
+    expect(await codeOf(() => evaluation.demarrer(autre, courseId))).toBe('AUCUNE ERREUR');
+  });
+
+  it('le catalogue n’est géré que par l’administrateur', async () => {
+    const membreDCH = { ...autre, capacites: ['personnel.consulter', 'pilotage'] } as SessionUser;
+    expect(await codeOf(() => academy.gestionDetail(membreDCH, courseId))).toBe(
+      'academy.forbidden',
+    );
+    expect(
+      await codeOf(() =>
+        academy.creerFormation(membreDCH, {
+          title: 'Excel',
+          summary: null,
+          category: 'bureautique',
+        }),
+      ),
+    ).toBe('academy.forbidden');
+    expect(await codeOf(() => evaluation.essayer(membreDCH, courseId))).toBe('academy.forbidden');
   });
 
   it('son dossier dit qu’il en est le formateur — et seuls lui et la DCH le lisent', async () => {

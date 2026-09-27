@@ -69,6 +69,21 @@ export type CapaciteDemande = (typeof CAPACITES_DEMANDES)[number];
 export const estCapaciteDemande = (c: string): c is CapaciteDemande =>
   (CAPACITES_DEMANDES as readonly string[]).includes(c);
 
+/**
+ * Réservées à l'administrateur : ni la direction de la DCH ni une délégation
+ * ne les donnent. Le catalogue de l'APIX Academy en est : qui le gère voit
+ * les questions des évaluations — confié à un agent, il le priverait de ses
+ * propres certificats.
+ */
+export const CAPACITES_ADMINISTRATEUR = ['academy'] as const satisfies readonly Capacite[];
+
+/** Ce qu'a qui dirige la DCH, et ce qu'il peut confier : tout, sauf ce qui est à l'administrateur. */
+export const CAPACITES_DELEGABLES: readonly Capacite[] = CAPACITES.filter(
+  (c) => !(CAPACITES_ADMINISTRATEUR as readonly string[]).includes(c),
+);
+
+export const estDelegable = (c: Capacite): boolean => CAPACITES_DELEGABLES.includes(c);
+
 /** Qui traite ce document-là : une habilitation par type de document. */
 export const capaciteDuDocument = (doc: RequestableDoc): CapaciteDemande =>
   `demandes.documents.${doc}`;
