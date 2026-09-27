@@ -37,6 +37,7 @@ import {
 import { api, ApiError } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
 import { aDesConsequences, ListeConsequences } from '../../../components/consequences-hierarchie';
+import { useEspace } from '../../../components/espace';
 import { Icon } from '../../../components/icons';
 import { Modal } from '../../../components/modal';
 import { Organigramme } from '../../../components/organigramme';
@@ -93,9 +94,12 @@ function typeEnfantPropose(parent: OrgUnitView): OrgUnitType {
 export default function OrganisationPage() {
   const me = useMe();
   const router = useRouter();
-  const canManage = peut(me.data, 'organigramme');
+  // Page des deux espaces : on la modifie, et on ouvre les dossiers depuis
+  // elle, côté Gestion RH ; dans « Mon espace », on la consulte.
+  const gestion = useEspace() === 'gestion';
+  const canManage = gestion && peut(me.data, 'organigramme');
   // Ouvrir la fiche d'un agent depuis l'organigramme : qui consulte les dossiers.
-  const isStaff = peut(me.data, 'personnel.consulter');
+  const isStaff = gestion && peut(me.data, 'personnel.consulter');
   const parametres = useSearchParams();
   // L'unité peut être désignée par l'URL (?unite=<id>) : c'est ainsi que la
   // palette et le tableau de bord ouvrent l'organigramme directement sur elle.

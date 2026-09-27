@@ -20,6 +20,13 @@ import { MenuCompte } from '../../components/menu-compte';
 import { NotificationsBell } from '../../components/notifications-bell';
 import { CalendrierModal } from '../../components/calendrier';
 import {
+  EspaceProvider,
+  espaceDeLaPage,
+  LIBELLES_ESPACE,
+  useEspaceChoisi,
+  type Espace,
+} from '../../components/espace';
+import {
   InfoBulle,
   SousMenuFlottant,
   survolAvecBulle,
@@ -285,17 +292,19 @@ interface ChromeAction {
   label: string;
 }
 
-function pageAction(pathname: string, user: SessionUser): ChromeAction | null {
+function pageAction(pathname: string, user: SessionUser, espace: Espace): ChromeAction | null {
   if (pathname === '/employees' && peut(user, 'personnel.gerer')) {
     return { href: '/employees?nouveau=1', icon: 'add', label: 'Nouvel employé' };
   }
   if (pathname === '/recrutement' && peut(user, 'recrutement')) {
     return { href: '/recrutement?nouvelle=1', icon: 'add', label: 'Nouvelle offre' };
   }
-  if (pathname === '/organisation' && peut(user, 'organigramme')) {
+  // Les pages des deux espaces n'offrent leurs gestes de gestion que côté
+  // Gestion RH : dans « Mon espace », on est un agent comme les autres.
+  if (pathname === '/organisation' && peut(user, 'organigramme') && espace === 'gestion') {
     return { href: '/organisation?nouvelle=1', icon: 'add', label: 'Nouvelle unité' };
   }
-  if (pathname === '/academy' && peut(user, 'academy')) {
+  if (pathname === '/academy' && peut(user, 'academy') && espace === 'gestion') {
     return { href: '/academy/gerer', icon: 'settings', label: 'Gérer le catalogue' };
   }
   if (pathname === '/academy/gerer' && peut(user, 'academy')) {
@@ -304,7 +313,12 @@ function pageAction(pathname: string, user: SessionUser): ChromeAction | null {
   const parts = pathname.split('/').filter(Boolean);
   // Un texte de référence — /reglementations/<slug> — et non son écran de
   // dépôt, qui a ses propres boutons.
-  if (parts.length === 2 && parts[0] === 'reglementations' && peut(user, 'textes')) {
+  if (
+    parts.length === 2 &&
+    parts[0] === 'reglementations' &&
+    peut(user, 'textes') &&
+    espace === 'gestion'
+  ) {
     return { href: `${pathname}/deposer`, icon: 'edit', label: 'Déposer le texte' };
   }
   return null;
@@ -438,15 +452,12 @@ function gere(user: SessionUser, aTraiter: ATraiter | undefined): boolean {
 }
 
 /**
- * La navigation de qui gère : les écrans de ses habilitations, et son
- * espace personnel en une entrée — l'espace est un carrefour, il mène à ses
- * congés, ses documents, ses informations.
+ * La navigation de « Gestion RH » : les écrans de ses habilitations, rien
+ * d'autre. Ni « Mon espace », ni les congés de son équipe, ni l'Academy pour
+ * apprendre : cela, il le fait dans son espace d'agent — comme tout le
+ * monde. Aucune demande ne se fait d'ici.
  */
-function navigationGestion(
-  user: SessionUser,
-  aUneEquipe: boolean,
-  aTraiter: ATraiter | undefined,
-): NavItem[] {
+function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): NavItem[] {
   const files = filesDe(user, aTraiter);
   const demandes: NavItem[] =
     files.length === 0
@@ -491,16 +502,6 @@ function navigationGestion(
     switch (i.href) {
       case '/dashboard':
         if (peut(user, 'pilotage')) items.push(i);
-        if (user.estAgent) {
-          items.push({
-            href: '/moi',
-            label: 'Mon espace',
-            short: 'Espace',
-            motsCles: 'Mes congés mes documents mes informations',
-            icon: 'person',
-            groupe: 'pilotage',
-          });
-        }
         break;
       case '/employees':
         if (peut(user, 'personnel.consulter')) items.push(i);
@@ -511,22 +512,8 @@ function navigationGestion(
           ...(peut(user, 'conges.parametres') || voitLesConges(user)
             ? (i.children ?? []).filter((c) => c.href !== '/absences')
             : []),
-          ...(aUneEquipe ? [{ href: '/moi/equipe', label: 'Congés de l’équipe' }] : []),
         ];
-        if (children.length > 0) {
-          items.push(
-            aUneEquipe && children.length === 1
-              ? {
-                  href: '/moi/equipe',
-                  label: 'Congés de l’équipe',
-                  short: 'Équipe',
-                  icon: 'groups',
-                  badge: 'visas',
-                  groupe: 'quotidien',
-                }
-              : { ...i, badge: aUneEquipe ? 'visas' : undefined, children },
-          );
-        }
+        if (children.length > 0) items.push({ ...i, children });
         items.push(...demandes, ...delegations);
         break;
       }
@@ -537,11 +524,30 @@ function navigationGestion(
       case '/evaluation':
         if (peut(user, 'pilotage')) items.push(i);
         break;
+      case '/academy':
+        // Apprendre se fait dans « Mon espace » ; ici, on gère le catalogue.
+        if (peut(user, 'academy')) {
+          items.push({ ...i, href: '/academy/gerer', motsCles: 'Gérer le catalogue formations' });
+        }
+        break;
       default:
         items.push(i);
     }
   }
   return items;
+}
+
+/**
+ * Où mène « Gestion RH » : le tableau de bord de qui pilote ; sinon les
+ * demandes qu'il traite ; sinon le premier écran de gestion.
+ */
+function accueilDeLaGestion(user: SessionUser, items: NavItem[]): string {
+  if (peut(user, 'pilotage')) return '/dashboard';
+  const cible = (i: NavItem) => i.children?.[0]?.href ?? i.href;
+  const demandes = items.find((i) => i.badge === 'traiter');
+  if (demandes) return cible(demandes);
+  const ecran = items.find((i) => espaceDeLaPage(cible(i)) === 'gestion');
+  return ecran ? cible(ecran) : '/moi';
 }
 
 /**
@@ -630,6 +636,53 @@ function personalNav(aUneEquipe: boolean): NavItem[] {
       ],
     },
   ];
+}
+
+/**
+ * « Mon espace | Gestion RH », en tête du menu. Le compteur dit, depuis
+ * l'autre espace, ce qui y attend : des demandes à traiter, des congés
+ * d'équipe à viser.
+ */
+function BasculeEspace({
+  espace,
+  alertes,
+  onChoisir,
+}: {
+  espace: Espace;
+  alertes: Record<Espace, number>;
+  onChoisir: (e: Espace) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Espace"
+      className="flex min-w-0 flex-1 gap-0.5 rounded-full border border-line-soft bg-bg p-[3px]"
+    >
+      {(['agent', 'gestion'] as const).map((e) => {
+        const actif = e === espace;
+        return (
+          <button
+            key={e}
+            type="button"
+            role="radio"
+            aria-checked={actif}
+            onClick={() => (actif ? undefined : onChoisir(e))}
+            className={cn(
+              'flex min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-1.5 py-[5px] text-[11.5px] font-bold whitespace-nowrap transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
+              actif ? 'bg-surface text-primary shadow-sm' : 'text-ink-muted hover:text-ink',
+            )}
+          >
+            {LIBELLES_ESPACE[e]}
+            {!actif && alertes[e] > 0 ? (
+              <span className="rounded-full bg-alert-soft px-[5px] py-px text-[9.5px] leading-none font-extrabold text-alert-text">
+                {alertes[e]}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 /** Une entrée simple de la barre latérale. */
@@ -1045,36 +1098,68 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const aUneEquipe = (validations.data?.equipe ?? 0) > 0;
   const aTraiter = validations.data?.aTraiter;
   const gestion = Boolean(me.data && gere(me.data, aTraiter));
-  const items = useMemo(
-    () =>
-      me.data && gestion
-        ? navigationGestion(me.data, aUneEquipe, aTraiter)
-        : personalNav(aUneEquipe),
-    [me.data, gestion, aUneEquipe, aTraiter],
+
+  // Un compte, deux espaces : l'agent qui gère passe de « Mon espace » à
+  // « Gestion RH ». L'administrateur, qui n'est pas agent, n'a que la
+  // gestion ; l'agent qui ne gère rien, que son espace.
+  const deuxEspaces = Boolean(me.data?.estAgent && gestion);
+  const [choix, choisir] = useEspaceChoisi();
+  const impose = espaceDeLaPage(pathname);
+  const espace: Espace = !gestion
+    ? 'agent'
+    : !me.data?.estAgent
+      ? 'gestion'
+      : (impose ?? choix ?? 'agent');
+  useEffect(() => {
+    // Une page d'un seul espace y fait entrer ; celles des deux s'en souviennent.
+    if (deuxEspaces && impose && impose !== choix) choisir(impose);
+  }, [deuxEspaces, impose, choix, choisir]);
+
+  const navAgent = useMemo(() => personalNav(aUneEquipe), [aUneEquipe]);
+  const navGestion = useMemo(
+    () => (me.data && gestion ? navigationGestion(me.data, aTraiter) : []),
+    [me.data, gestion, aTraiter],
   );
-  const accueil = me.data && peut(me.data, 'pilotage') ? '/dashboard' : '/moi';
+  const items = espace === 'gestion' ? navGestion : navAgent;
+  const accueilGestion = me.data ? accueilDeLaGestion(me.data, navGestion) : '/moi';
+  const accueil = espace === 'gestion' ? accueilGestion : '/moi';
+  /**
+   * Changer d'espace. Sur une page des deux (organigramme, textes…), on y
+   * reste — elle montre ou retire ses gestes de gestion ; ailleurs, on va à
+   * l'accueil de l'autre espace.
+   */
+  const allerA = (e: Espace) => {
+    choisir(e);
+    if (impose !== null) router.push(e === 'gestion' ? accueilGestion : '/moi');
+  };
   // Les écrans que la palette sait ouvrir : le menu, mis à plat, avec le
   // chemin qu'on aurait suivi pour y arriver — c'est ce qu'on tape. Une
   // rubrique n'a pas de page à elle : seules ses sous-pages sont des écrans.
+  // Les deux espaces : la palette ouvre n'importe quel écran, et y fait entrer.
   const ecrans = useMemo<EcranPalette[]>(
-    () =>
-      items.flatMap((i): EcranPalette[] =>
-        i.desactive
-          ? []
-          : i.children
-            ? // Une sous-page éteinte n'est pas une destination : la palette
-              // la proposerait sans que le menu la laisse ouvrir.
-              i.children
-                .filter((c) => !c.desactive)
-                .map((c) => ({
-                  href: c.href,
-                  label: c.label,
-                  icon: i.icon,
-                  chemin: i.label,
-                }))
-            : [{ href: i.href, label: i.label, icon: i.icon, motsCles: i.motsCles }],
-      ),
-    [items],
+    () => [
+      ...new Map(
+        (deuxEspaces ? [...navAgent, ...navGestion] : items)
+          .flatMap((i): EcranPalette[] =>
+            i.desactive
+              ? []
+              : i.children
+                ? // Une sous-page éteinte n'est pas une destination : la palette
+                  // la proposerait sans que le menu la laisse ouvrir.
+                  i.children
+                    .filter((c) => !c.desactive)
+                    .map((c) => ({
+                      href: c.href,
+                      label: c.label,
+                      icon: i.icon,
+                      chemin: i.label,
+                    }))
+                : [{ href: i.href, label: i.label, icon: i.icon, motsCles: i.motsCles }],
+          )
+          .map((e) => [e.href, e] as const),
+      ).values(),
+    ],
+    [deuxEspaces, navAgent, navGestion, items],
   );
 
   // « Mon équipe » ne s'affiche qu'à qui encadre quelqu'un : l'organigramme
@@ -1156,10 +1241,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
     : 0;
   const badgeCount = (badge?: 'visas' | 'traiter') =>
     badge === 'visas' ? aViser : badge === 'traiter' ? totalATraiter : 0;
+  // Ce qui attend dans chaque espace : les congés de l'équipe à viser, les
+  // demandes à traiter. L'autre espace le dit sur le sélecteur.
+  const alertes: Record<Espace, number> = { agent: aViser, gestion: totalATraiter };
+  const autre: Espace = espace === 'agent' ? 'gestion' : 'agent';
 
   // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
   const title = titleOverride ?? pageTitle(pathname, user.givenName);
-  const action = pageAction(pathname, user);
+  const action = pageAction(pathname, user, espace);
   const academy = espaceAcademy(pathname);
   const isActive = (href: string) =>
     href === '/moi' ? pathname === '/moi' : pathname.startsWith(href);
@@ -1302,12 +1391,32 @@ function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Icon name={replie ? 'left_panel_open' : 'left_panel_close'} size={19} />
               </button>
-              {!replie ? (
+              {replie ? null : deuxEspaces ? (
+                <BasculeEspace espace={espace} alertes={alertes} onChoisir={allerA} />
+              ) : (
                 <p className="min-w-0 truncate text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
-                  {gestion ? 'Navigation' : 'Mon espace'}
+                  {LIBELLES_ESPACE[espace]}
                 </p>
-              ) : null}
+              )}
             </div>
+            {/* Repliée : l'autre espace en une icône, sous le bouton du menu. */}
+            {replie && deuxEspaces ? (
+              <div className="flex shrink-0 px-2 pb-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulle(null);
+                    allerA(autre);
+                  }}
+                  aria-label={`Passer à ${LIBELLES_ESPACE[autre]}`}
+                  {...survolAvecBulle(`Passer à ${LIBELLES_ESPACE[autre]}`, setBulle)}
+                  className="relative ml-[6.5px] grid size-8 shrink-0 place-items-center rounded-[9px] bg-primary/[0.07] text-primary transition-colors duration-150 hover:bg-primary/[0.12] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+                >
+                  <Icon name={autre === 'gestion' ? 'business_center' : 'person'} size={18} />
+                  {alertes[autre] > 0 ? <PointAlerte /> : null}
+                </button>
+              </div>
+            ) : null}
 
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
               {items.map((item, i) => {
@@ -1383,13 +1492,29 @@ function AppShell({ children }: { children: React.ReactNode }) {
             data-scroll-root
             className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 pb-24 lg:px-7 lg:py-6 lg:pb-10"
           >
-            {children}
+            <EspaceProvider value={espace}>{children}</EspaceProvider>
           </main>
         </div>
       </div>
 
       {/* Barre d'onglets mobile */}
       <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line-soft bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">
+        {/* L'autre espace, en premier onglet : on le trouve sans faire
+            défiler la barre. Teinté, il se distingue des destinations. */}
+        {deuxEspaces ? (
+          <button
+            type="button"
+            onClick={() => allerA(autre)}
+            aria-label={`Passer à ${LIBELLES_ESPACE[autre]}`}
+            className="relative flex min-w-16 shrink-0 flex-col items-center gap-0.5 rounded-[10px] bg-primary/[0.07] px-2 py-1 text-[10px] font-semibold text-primary"
+          >
+            <Icon name={autre === 'gestion' ? 'business_center' : 'person'} size={22} />
+            {alertes[autre] > 0 ? (
+              <span className="absolute top-0 right-2 size-2 rounded-full bg-alert" />
+            ) : null}
+            <span className="truncate">{LIBELLES_ESPACE[autre]}</span>
+          </button>
+        ) : null}
         {items.map((item) => {
           const active = isActive(item.href);
           // Une rubrique n'a pas de page à elle : l'onglet mène à sa première

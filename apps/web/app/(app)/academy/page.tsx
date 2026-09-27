@@ -9,6 +9,7 @@ import { ACADEMY_CATEGORIES, peut } from '@teranga/contracts';
 import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
 import { CarteFormation } from '../../../components/academy-carte';
 import { DefilementHorizontal } from '../../../components/defilement-horizontal';
+import { useEspace } from '../../../components/espace';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
@@ -49,7 +50,8 @@ function Intitule({ children }: { children: React.ReactNode }) {
 
 export default function AcademyPage() {
   const me = useMe();
-  const gere = peut(me.data, 'academy');
+  // Gérer le catalogue est un geste de Gestion RH : dans « Mon espace », on apprend.
+  const gere = useEspace() === 'gestion' && peut(me.data, 'academy');
   const catalogue = useQuery({
     queryKey: ['academy', 'catalogue'],
     queryFn: () => api<CourseSummary[]>('/academy/courses'),
