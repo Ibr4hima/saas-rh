@@ -172,8 +172,8 @@ afterAll(async () => {
 
 describe('validation en lot', () => {
   it('fait passer plusieurs demandes de « reçue » à « prête » en une fois', async () => {
-    const { id: a } = await service.create(awa, { docTypes: ['attestation_travail'] });
-    const { id: b } = await service.create(moussa, { docTypes: ['contrat_travail'] });
+    const [a] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
+    const [b] = (await service.create(moussa, { docTypes: ['contrat_travail'] })).ids as [string];
 
     const res = await service.batchAdvance(rh, {
       ids: [a, b],
@@ -195,14 +195,14 @@ describe('validation en lot', () => {
   it('horodate le passage en traitement même quand la demande saute l’étape', async () => {
     // Le circuit de l'ADR-0012 reste vrai : une demande validée d'un coup a
     // bien été traitée, et la durée de traitement garde une borne de départ.
-    const { id } = await service.create(awa, { docTypes: ['attestation_travail'] });
+    const [id] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
     await service.batchAdvance(rh, { ids: [id], status: 'ready' });
     const row = await enBase(id);
     expect(row.processing_at).not.toBeNull();
   });
 
   it('ne prévient l’employé qu’une seule fois', async () => {
-    const { id } = await service.create(awa, { docTypes: ['attestation_travail'] });
+    const [id] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
     await service.batchAdvance(rh, { ids: [id], status: 'ready' });
     // Deux avis dans la même seconde — « en traitement » puis « disponibles » —
     // n'informeraient de rien : seul l'avis final part.
@@ -210,13 +210,13 @@ describe('validation en lot', () => {
   });
 
   it('reprend le nom du valideur quand aucun point de retrait n’est précisé', async () => {
-    const { id } = await service.create(awa, { docTypes: ['attestation_travail'] });
+    const [id] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
     await service.batchAdvance(rh, { ids: [id], status: 'ready' });
     expect((await enBase(id)).pickup_contact).toBe('Ibrahima Ba');
   });
 
   it('accepte une demande déjà prise en traitement', async () => {
-    const { id } = await service.create(awa, { docTypes: ['attestation_travail'] });
+    const [id] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
     await service.advance(rh, id, { status: 'processing' });
     const res = await service.batchAdvance(rh, { ids: [id], status: 'ready' });
     expect(res.advanced).toBe(1);
@@ -225,8 +225,8 @@ describe('validation en lot', () => {
 
 describe('lot qui n’est plus à jour', () => {
   it('écarte la demande déjà traitée et laisse partir les autres', async () => {
-    const { id: a } = await service.create(awa, { docTypes: ['attestation_travail'] });
-    const { id: b } = await service.create(moussa, { docTypes: ['contrat_travail'] });
+    const [a] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
+    const [b] = (await service.create(moussa, { docTypes: ['contrat_travail'] })).ids as [string];
     // Un collègue clôt la première pendant que l'écran est ouvert.
     await service.advance(rh, a, { status: 'processing' });
     await service.advance(rh, a, { status: 'ready' });
@@ -241,7 +241,7 @@ describe('lot qui n’est plus à jour', () => {
   });
 
   it('n’écrase pas le point de retrait posé par le collègue', async () => {
-    const { id } = await service.create(awa, { docTypes: ['attestation_travail'] });
+    const [id] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
     await service.advance(rh, id, { status: 'processing' });
     await service.advance(rh, id, { status: 'ready', pickupContact: 'M. Sow' });
     await service.batchAdvance(rh, { ids: [id], status: 'ready', pickupContact: 'Mme Fall' });
@@ -249,7 +249,7 @@ describe('lot qui n’est plus à jour', () => {
   });
 
   it('écarte un identifiant inconnu sans faire échouer le lot', async () => {
-    const { id } = await service.create(awa, { docTypes: ['attestation_travail'] });
+    const [id] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
     const fantome = randomUUID();
     const res = await service.batchAdvance(rh, { ids: [fantome, id], status: 'ready' });
     expect(res.advanced).toBe(1);
@@ -259,7 +259,7 @@ describe('lot qui n’est plus à jour', () => {
 
 describe('refus en lot', () => {
   it('exige un motif', async () => {
-    const { id } = await service.create(awa, { docTypes: ['bulletin_salaire'] });
+    const [id] = (await service.create(awa, { docTypes: ['bulletin_salaire'] })).ids as [string];
     expect(await codeOf(() => service.batchAdvance(rh, { ids: [id], status: 'rejected' }))).toBe(
       'documents.reject_reason_required',
     );
@@ -268,8 +268,8 @@ describe('refus en lot', () => {
   });
 
   it('enregistre le motif et le transmet à chaque employé', async () => {
-    const { id: a } = await service.create(awa, { docTypes: ['bulletin_salaire'] });
-    const { id: b } = await service.create(moussa, { docTypes: ['bulletin_salaire'] });
+    const [a] = (await service.create(awa, { docTypes: ['bulletin_salaire'] })).ids as [string];
+    const [b] = (await service.create(moussa, { docTypes: ['bulletin_salaire'] })).ids as [string];
     const res = await service.batchAdvance(rh, {
       ids: [a, b],
       status: 'rejected',
@@ -284,7 +284,7 @@ describe('refus en lot', () => {
 
 describe('durée de traitement', () => {
   it('date la clôture d’une demande validée', async () => {
-    const { id } = await service.create(awa, { docTypes: ['attestation_travail'] });
+    const [id] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
     await service.batchAdvance(rh, { ids: [id], status: 'ready' });
     const [vue] = await service.list(rh, {});
     expect(vue?.handledAt).not.toBeNull();
@@ -293,7 +293,7 @@ describe('durée de traitement', () => {
   it('date la clôture d’une demande refusée', async () => {
     // Le refus n'a pas de colonne d'horodatage : c'est `updated_at` qui fait
     // foi, et rien ne suit un refus, donc il ne dérive pas.
-    const { id } = await service.create(awa, { docTypes: ['bulletin_salaire'] });
+    const [id] = (await service.create(awa, { docTypes: ['bulletin_salaire'] })).ids as [string];
     await service.batchAdvance(rh, { ids: [id], status: 'rejected', message: 'Hors périmètre.' });
     const [vue] = await service.list(rh, {});
     expect(vue?.status).toBe('rejected');
@@ -307,7 +307,7 @@ describe('durée de traitement', () => {
   });
 
   it('ne rajeunit pas une demande dont on corrige le point de retrait', async () => {
-    const { id } = await service.create(awa, { docTypes: ['attestation_travail'] });
+    const [id] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
     await service.batchAdvance(rh, { ids: [id], status: 'ready' });
     const [avant] = await service.list(rh, {});
     await service.advance(rh, id, { status: 'ready', pickupContact: 'M. Diallo' });

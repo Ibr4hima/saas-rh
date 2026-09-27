@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  CAPACITES_DOCUMENTS,
   gereQuelqueChose,
   peut,
   type CompteursValidations,
@@ -391,28 +392,29 @@ type ATraiter = CompteursValidations['aTraiter'];
 const FILES = [
   {
     type: 'conges',
-    capacite: 'demandes.conges',
+    capacites: ['demandes.conges'],
     href: '/moi/dch',
     label: 'Congés',
     seul: 'Congés à traiter',
   },
   {
     type: 'documents',
-    capacite: 'demandes.documents',
+    // Une habilitation par type de document : la file est à qui en tient une.
+    capacites: CAPACITES_DOCUMENTS,
     href: '/documents',
     label: 'Documents',
     seul: 'Documents à traiter',
   },
   {
     type: 'informations',
-    capacite: 'demandes.informations',
+    capacites: ['demandes.informations'],
     href: '/demandes/informations',
     label: 'Informations',
     seul: 'Informations à traiter',
   },
   {
     type: 'pieces',
-    capacite: 'demandes.pieces',
+    capacites: ['demandes.pieces'],
     href: '/demandes/pieces',
     label: 'Pièces justificatives',
     seul: 'Pièces à vérifier',
@@ -421,7 +423,9 @@ const FILES = [
 
 /** Les files qu'il voit : celles qu'il traite, et celles où une demande l'attend. */
 function filesDe(user: SessionUser, aTraiter: ATraiter | undefined) {
-  return FILES.filter((f) => peut(user, f.capacite) || (aTraiter?.[f.type] ?? 0) > 0);
+  return FILES.filter(
+    (f) => f.capacites.some((c) => peut(user, c)) || (aTraiter?.[f.type] ?? 0) > 0,
+  );
 }
 
 /** Voit toutes les demandes de congé : qui les traite pour la DCH, ou consulte les dossiers. */
@@ -1095,7 +1099,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (file) {
       return (
         !validations.data ||
-        peut(u, file.capacite) ||
+        file.capacites.some((c) => peut(u, c)) ||
         (aTraiter?.[file.type] ?? 0) > 0 ||
         (file.type !== 'conges' && peut(u, 'personnel.consulter'))
       );

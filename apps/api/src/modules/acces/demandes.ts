@@ -1,8 +1,11 @@
 import { sql, type SQL } from 'drizzle-orm';
 import {
-  CAPACITE_DU_TYPE,
+  capaciteDuDocument,
+  capacitesDuType,
   PROFILE_CHANGE_ALL_LABELS,
   REQUESTABLE_DOC_LABELS,
+  type CapaciteDemande,
+  type RequestableDoc,
   type SessionUser,
   type TraitementView,
   type TypeDemande,
@@ -30,6 +33,8 @@ import {
    Pas de N+1 ici : la demande arrive à la DCH, et la règle commune
    (`traitementDe`) dit qui la traite — le membre à qui elle est confiée,
    les membres habilités à ce type, sinon le directeur du Capital Humain.
+   Pour les documents, le type est celui du DOCUMENT : chaque document
+   demandé est une demande à part, qui va à qui traite ce document-là.
    Ceux-là, et eux seuls, sont appelés ; le directeur voit tout, reprend la
    main quand il veut, et n'est pas dérangé pour ce qu'il a confié.
 
@@ -46,6 +51,8 @@ interface Definition {
   enAttente: SQL;
   /** Ce qu'elle demande, brut (alias `r`). */
   detail: SQL;
+  /** L'habilitation qui la traite. */
+  capacite: (detail: unknown) => CapaciteDemande;
   objet: (detail: unknown) => string;
   titre: (nom: string) => string;
   lien: string;
@@ -57,11 +64,13 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
     table: sql.raw('document_requests'),
     enAttente: sql.raw(`r.status IN ('received', 'processing')`),
     detail: sql.raw('to_jsonb(r.doc_types)'),
+    // Un document par demande (cf. DocumentRequestsService.create).
+    capacite: (d) => capaciteDuDocument((d as RequestableDoc[])[0]!),
     objet: (d) =>
       (d as string[])
         .map((x) => REQUESTABLE_DOC_LABELS[x as keyof typeof REQUESTABLE_DOC_LABELS] ?? x)
         .join(', '),
-    titre: (nom) => `Demande de documents : ${nom}`,
+    titre: (nom) => `Demande de document : ${nom}`,
     lien: '/documents',
   },
   informations: {
@@ -69,6 +78,7 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
     table: sql.raw('profile_change_requests'),
     enAttente: sql.raw(`r.status = 'pending'`),
     detail: sql.raw('r.changes'),
+    capacite: () => 'demandes.informations',
     objet: (d) =>
       `À mettre à jour : ${Object.keys(d as Record<string, unknown>)
         .map((k) => (PROFILE_CHANGE_ALL_LABELS[k] ?? k).toLowerCase())
@@ -83,6 +93,7 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
     // dossier d'un agent, c'est l'agent qui la vérifie — hors de ce circuit.
     enAttente: sql.raw(`r.status = 'pending' AND r.uploaded_by_side = 'employee'`),
     detail: sql.raw('to_jsonb(r.label)'),
+    capacite: () => 'demandes.pieces',
     objet: (d) => `« ${String(d)} » — à vérifier, puis valider pour l’ajouter au dossier`,
     titre: (nom) => `Pièce à vérifier : ${nom}`,
     lien: '/demandes/pieces',
@@ -98,6 +109,8 @@ export interface DemandeDCH {
   confieeA: string | null;
   nom: string;
   detail: unknown;
+  /** L'habilitation qui la traite. */
+  capacite: CapaciteDemande;
 }
 
 async function enAttente(tx: Tx, type: TypeDCH, id?: string): Promise<DemandeDCH[]> {
@@ -125,23 +138,18 @@ async function enAttente(tx: Tx, type: TypeDCH, id?: string): Promise<DemandeDCH
     confieeA: r.confiee_a_employee_id,
     nom: r.nom,
     detail: r.detail,
+    capacite: def.capacite(r.detail),
   }));
 }
 
-/** Qui traite cette demande, maintenant. */
-export function traitementDeLaDemande(
-  tx: Tx,
-  type: TypeDCH,
-  d: { employeeId: string; confieeA: string | null },
-  dch?: DirectionDuPersonnel | null,
-): Promise<Traitement> {
-  return traitementDe(tx, CAPACITE_DU_TYPE[type], d, dch);
-}
+/** L'habilitation qui traite un document : celle de son type. */
+export const capaciteDesDocuments = (docTypes: readonly string[]): CapaciteDemande =>
+  capaciteDuDocument(docTypes[0] as RequestableDoc);
 
 async function tenir(tx: Tx, d: DemandeDCH, dch: DirectionDuPersonnel | null): Promise<void> {
   const def = DEFINITIONS[d.type];
   const prefixe = `${def.prefixe}:${d.id}`;
-  const t = await traitementDeLaDemande(tx, d.type, d, dch);
+  const t = await traitementDe(tx, d.capacite, d, dch);
   const objet = def.objet(d.detail);
   if (t.aConfier && t.dch?.directeur) {
     await tenirLesAppels(tx, d.tenantId, prefixe, 'a-confier', [t.dch.directeur.userId], {
@@ -199,7 +207,7 @@ export async function compterLesBloquees(tx: Tx): Promise<number> {
   let n = 0;
   for (const type of TYPES_DCH) {
     for (const d of await enAttente(tx, type)) {
-      const t = await traitementDeLaDemande(tx, type, d, dch);
+      const t = await traitementDe(tx, d.capacite, d, dch);
       if (t.traitants.length === 0 && !t.aConfier) n += 1;
     }
   }
@@ -214,7 +222,7 @@ export async function aTraiterPar(tx: Tx, moi: string | null): Promise<Record<Ty
   if (!dch) return compte;
   for (const type of TYPES_DCH) {
     for (const d of await enAttente(tx, type)) {
-      const t = await traitementDeLaDemande(tx, type, d, dch);
+      const t = await traitementDe(tx, d.capacite, d, dch);
       const aConfier = t.aConfier && dch.directeurEmployeeId === moi;
       if (aConfier || t.traitants.some((v) => v.employeeId === moi)) compte[type] += 1;
     }
@@ -228,12 +236,12 @@ export async function aTraiterPar(tx: Tx, moi: string | null): Promise<Record<Ty
  */
 export async function vueDuTraitement(
   tx: Tx,
-  type: TypeDemande,
+  capacite: CapaciteDemande,
   d: { employeeId: string; confieeA: string | null },
   moi: string | null,
   dch: DirectionDuPersonnel | null,
 ): Promise<{ vue: TraitementView; peutTraiter: boolean }> {
-  const t = await traitementDe(tx, CAPACITE_DU_TYPE[type], d, dch);
+  const t = await traitementDe(tx, capacite, d, dch);
   const confiee =
     d.confieeA && d.confieeA !== dch?.directeurEmployeeId
       ? { employeeId: d.confieeA, nom: await nomDe(tx, d.confieeA) }
@@ -256,7 +264,8 @@ export async function vueDuTraitement(
 
 /**
  * Qui voit toute la file d'un type : le directeur, les membres habilités à
- * le traiter — et qui consulte les dossiers du personnel.
+ * le traiter (pour les documents : à l'un d'eux) — et qui consulte les
+ * dossiers du personnel.
  */
 export async function voitToutLaFile(
   tx: Tx,
@@ -270,7 +279,11 @@ export async function voitToutLaFile(
   const dch = await directionDuPersonnel(tx);
   if (!dch) return false;
   if (dch.directeurEmployeeId === moi) return true;
-  if (!(await detenteursDe(tx, CAPACITE_DU_TYPE[type])).includes(moi)) return false;
+  let habilite = false;
+  for (const c of capacitesDuType(type)) {
+    if ((await detenteursDe(tx, c)).includes(moi)) habilite = true;
+  }
+  if (!habilite) return false;
   return (await membreDCH(tx, dch, moi)) !== 'parti';
 }
 
@@ -278,7 +291,7 @@ export async function voitToutLaFile(
 export async function exigerDeTraiter(
   tx: Tx,
   user: SessionUser,
-  type: TypeDCH,
+  capacite: CapaciteDemande,
   d: { employeeId: string; confieeA: string | null },
 ): Promise<void> {
   const moi = await agentDuCompte(tx, user.userId);
@@ -290,7 +303,7 @@ export async function exigerDeTraiter(
       'Elle va aux membres de la DCH habilités, ou au directeur du Capital Humain.',
     );
   }
-  const t = await traitementDeLaDemande(tx, type, d);
+  const t = await traitementDe(tx, capacite, d);
   if (!decideur(t, moi, d.employeeId)) {
     const qui = nomsDe(t.traitants);
     problem(
@@ -364,7 +377,7 @@ export async function confierLaDemande(
   await reconcilierUneDemande(tx, type, id);
   return {
     proposerHabilitation: Boolean(
-      employeeId && !(await detenteursDe(tx, CAPACITE_DU_TYPE[type])).includes(employeeId),
+      employeeId && !(await detenteursDe(tx, d.capacite)).includes(employeeId),
     ),
   };
 }

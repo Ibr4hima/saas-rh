@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   BatchAdvanceResult,
+  CapaciteDemande,
   DocumentRequestView,
   EmployeeDetail,
   MembreHabilite,
   RequestableDoc,
 } from '@teranga/contracts';
-import { GENERATED_DOCS, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
+import { capaciteDuDocument, GENERATED_DOCS, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
 import {
   Button,
   CardHeader,
@@ -98,7 +99,11 @@ export default function DocumentRequestsPage() {
   const [panneau, setPanneau] = useState<'traiter' | 'decliner' | null>(null);
   const [message, setMessage] = useState<Message>(null);
   const [aConfier, setAConfier] = useState<DocumentRequestView | null>(null);
-  const [proposition, setProposition] = useState<MembreHabilite | null>(null);
+  /** Après un document confié à la main : confier aussi les suivants de ce type ? */
+  const [proposition, setProposition] = useState<{
+    membre: MembreHabilite;
+    capacite: CapaciteDemande;
+  } | null>(null);
   const membres = useMembresDCH().data?.membres ?? [];
   const confier = useConfier('documents', async () => {
     await queryClient.invalidateQueries({ queryKey: ['document-requests'] });
@@ -117,7 +122,9 @@ export default function DocumentRequestsPage() {
               ? `Demande de ${r.employeeName} confiée à ${m.nom} — une notification lui est envoyée.`
               : `Vous reprenez la demande de ${r.employeeName}.`,
           });
-          if (res?.proposerHabilitation && m) setProposition(m);
+          if (res?.proposerHabilitation && m) {
+            setProposition({ membre: m, capacite: capaciteDuDocument(r.docTypes[0]!) });
+          }
         },
         onError: (err) => setMessage({ ton: 'erreur', texte: texteErreur(err) }),
       },
@@ -437,8 +444,8 @@ export default function DocumentRequestsPage() {
       ) : null}
       {proposition ? (
         <ModalLesSuivantes
-          membre={proposition}
-          capacite="demandes.documents"
+          membre={proposition.membre}
+          capacite={proposition.capacite}
           onFait={(texte) => {
             setProposition(null);
             setMessage({ ton: 'ok', texte });

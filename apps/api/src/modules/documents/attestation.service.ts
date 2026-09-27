@@ -3,7 +3,7 @@ import PDFDocument from 'pdfkit';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { peut, type SessionUser } from '@teranga/contracts';
 import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
-import { vueDuTraitement } from '../acces/demandes';
+import { capaciteDesDocuments, vueDuTraitement } from '../acces/demandes';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -96,16 +96,17 @@ export class AttestationService {
     const moi = await agentDuCompte(tx, user.userId);
     const dch = await directionDuPersonnel(tx);
     const { rows } = await tx.execute<{
-      status: string;
+      doc_types: string[];
       confiee_a_employee_id: string | null;
       handled_by_user_id: string | null;
     }>(sql`
-      SELECT status, confiee_a_employee_id, handled_by_user_id FROM document_requests
+      SELECT doc_types, confiee_a_employee_id, handled_by_user_id FROM document_requests
        WHERE employee_id = ${employeeId} AND status IN ('received', 'processing', 'ready')`);
     for (const r of rows) {
       if (r.handled_by_user_id === user.userId) return true;
       const d = { employeeId, confieeA: r.confiee_a_employee_id };
-      if ((await vueDuTraitement(tx, 'documents', d, moi, dch)).peutTraiter) return true;
+      const capacite = capaciteDesDocuments(r.doc_types);
+      if ((await vueDuTraitement(tx, capacite, d, moi, dch)).peutTraiter) return true;
     }
     return false;
   }

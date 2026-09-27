@@ -9,11 +9,7 @@ import type {
   MyEmployeeView,
   RequestableDoc,
 } from '@teranga/contracts';
-import {
-  MAX_OPEN_DOCUMENT_REQUESTS,
-  OPEN_DOCUMENT_REQUEST_STATUSES,
-  REQUESTABLE_DOC_LABELS,
-} from '@teranga/contracts';
+import { documentsEnCours, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
 import {
   Button,
   Card,
@@ -75,7 +71,8 @@ export default function MyDocumentsPage() {
   const [selected, setSelected] = useState<RequestableDoc[]>([]);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
+  /** Le nombre de documents qui viennent de partir — chacun est une demande. */
+  const [sent, setSent] = useState(0);
 
   const myEmployee = useQuery({
     queryKey: ['me-employee'],
@@ -107,7 +104,7 @@ export default function MyDocumentsPage() {
       setSelected([]);
       setNote('');
       setError(null);
-      setSent(true);
+      setSent(selected.length);
       void queryClient.invalidateQueries({ queryKey: ['document-requests'] });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Envoi impossible.'),
@@ -129,14 +126,13 @@ export default function MyDocumentsPage() {
   const withDocument = (absences.data ?? []).filter((r) => r.documentName);
   const demandes = docRequests.data ?? [];
   const aRetirer = demandes.filter((r) => r.status === 'ready').length;
-  // Le serveur refuse au-delà de trois demandes ouvertes. Le dire ici évite à
-  // l'agent de composer une demande pour se la voir rejeter à l'envoi.
-  const enCours = demandes.filter((r) =>
-    (OPEN_DOCUMENT_REQUEST_STATUSES as string[]).includes(r.status),
-  ).length;
-  const fileSaturee = enCours >= MAX_OPEN_DOCUMENT_REQUESTS;
+  // Un document déjà demandé, et encore en cours, ne se redemande pas : le
+  // serveur le refuse, la pastille le dit avant — l'agent ne compose pas
+  // une demande pour se la voir rejeter à l'envoi.
+  const enCours = documentsEnCours(demandes);
   const toggle = (doc: RequestableDoc) => {
-    setSent(false);
+    if (enCours.has(doc)) return;
+    setSent(0);
     setSelected(selected.includes(doc) ? selected.filter((d) => d !== doc) : [...selected, doc]);
   };
 
@@ -176,6 +172,7 @@ export default function MyDocumentsPage() {
                     key={doc}
                     libelle={REQUESTABLE_DOC_LABELS[doc]}
                     choisi={selected.includes(doc)}
+                    enCours={enCours.has(doc)}
                     onToggle={() => toggle(doc)}
                   />
                 ))}
@@ -195,12 +192,7 @@ export default function MyDocumentsPage() {
                 Et quand rien n'est coché, le bouton grisé s'explique au lieu
                 de se subir. */}
               <div className="-mx-5 border-t border-line-soft px-5 pt-4 pb-1">
-                {fileSaturee ? (
-                  <p className="text-[12.5px] leading-snug text-accent-text">
-                    Vous portez déjà {compte(enCours, 'demande')} en cours. La Direction du Capital
-                    Humain doit les traiter avant que vous puissiez en formuler une nouvelle.
-                  </p>
-                ) : selected.length === 0 ? (
+                {selected.length === 0 ? (
                   <p className="text-[12px] text-ink-muted">
                     Choisissez au moins un document ci-dessus.
                   </p>
@@ -226,13 +218,14 @@ export default function MyDocumentsPage() {
               {sent ? (
                 <p className="flex items-start gap-2 rounded-[12px] bg-success-soft px-3.5 py-2.5 text-[12.5px] text-success ring-1 ring-current/15 ring-inset">
                   <Icon name="check_circle" size={15} className="mt-px shrink-0" />
-                  Demande envoyée — la Direction du Capital Humain a été prévenue. Son avancement se
-                  suit juste en dessous.
+                  {sent > 1
+                    ? `${sent} demandes envoyées — une par document, chacune à qui la traite à la Direction du Capital Humain. Leur avancement se suit juste en dessous.`
+                    : 'Demande envoyée — la Direction du Capital Humain a été prévenue. Son avancement se suit juste en dessous.'}
                 </p>
               ) : null}
 
               <Button
-                disabled={selected.length === 0 || fileSaturee}
+                disabled={selected.length === 0}
                 loading={submit.isPending}
                 onClick={() => submit.mutate()}
               >
@@ -374,22 +367,29 @@ export default function MyDocumentsPage() {
 function ChoixDocument({
   libelle,
   choisi,
+  enCours,
   onToggle,
 }: {
   libelle: string;
   choisi: boolean;
+  /** Déjà demandé, et pas encore prêt : il ne se redemande pas. */
+  enCours: boolean;
   onToggle: () => void;
 }) {
   return (
     <button
       type="button"
       aria-pressed={choisi}
+      disabled={enCours}
+      title={enCours ? 'Déjà demandé — la demande est en cours de traitement.' : undefined}
       onClick={onToggle}
       className={cn(
         'inline-flex items-center gap-2 rounded-full border py-[7px] pr-3.5 pl-2.5 text-[12.5px] transition-colors duration-150',
-        choisi
-          ? 'border-primary bg-primary-soft font-semibold text-primary'
-          : 'border-line text-ink hover:border-ink-muted/40 hover:bg-hover',
+        enCours
+          ? 'cursor-default border-line-soft text-ink-muted'
+          : choisi
+            ? 'border-primary bg-primary-soft font-semibold text-primary'
+            : 'border-line text-ink hover:border-ink-muted/40 hover:bg-hover',
       )}
     >
       <span
@@ -404,6 +404,7 @@ function ChoixDocument({
         {choisi ? <Icon name="check" size={11} /> : null}
       </span>
       {libelle}
+      {enCours ? <span className="text-[11px]">· en cours</span> : null}
     </button>
   );
 }

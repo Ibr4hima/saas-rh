@@ -18,7 +18,12 @@ import { agentDuCompte, directionDuPersonnel, membreDCH, membresDeLaDCH, nomDe }
 /** Où l'on exerce une habilitation — le lien de la notification qui l'annonce. */
 const LIEN: Record<Capacite, string> = {
   'demandes.conges': '/moi/dch',
-  'demandes.documents': '/documents',
+  'demandes.documents.attestation_travail': '/documents',
+  'demandes.documents.contrat_travail': '/documents',
+  'demandes.documents.bulletin_salaire': '/documents',
+  'demandes.documents.attestation_salaire': '/documents',
+  'demandes.documents.certificat_travail': '/documents',
+  'demandes.documents.autre': '/documents',
   'demandes.informations': '/demandes/informations',
   'demandes.pieces': '/demandes/pieces',
   'personnel.consulter': '/employees',

@@ -71,17 +71,26 @@ export const DOC_REQUEST_STATUS_TONES: Record<
 export const OPEN_DOCUMENT_REQUEST_STATUSES: DocumentRequestStatus[] = ['received', 'processing'];
 
 /**
- * Nombre de demandes ouvertes qu'un agent peut porter à la fois — garde-fou
- * contre les doublons de file.
+ * Le garde-fou contre les doublons de file : un document déjà demandé ne se
+ * redemande pas tant que la demande est ouverte. Chaque document demandé
+ * est une demande à part — il va à qui traite ce type de document —, si bien
+ * qu'un plafond sur le NOMBRE de demandes empêcherait de demander, d'un coup,
+ * les quatre pièces d'un dossier de visa.
  *
- * La règle vit ici, et pas seulement dans le service : le portail doit
- * pouvoir l'ANNONCER avant l'envoi. Une limite qu'on ne découvre qu'en se
- * faisant refuser n'est pas une règle, c'est une surprise.
+ * La règle vit ici : le portail l'annonce (le document en cours est grisé)
+ * avant de se faire refuser à l'envoi.
  */
-export const MAX_OPEN_DOCUMENT_REQUESTS = 3;
+export const documentsEnCours = (
+  demandes: ReadonlyArray<{ status: string; docTypes: readonly string[] }>,
+): Set<string> =>
+  new Set(
+    demandes
+      .filter((d) => (OPEN_DOCUMENT_REQUEST_STATUSES as string[]).includes(d.status))
+      .flatMap((d) => d.docTypes),
+  );
 
 export const createDocumentRequestSchema = z.object({
-  /** Un ou plusieurs documents en une seule demande. */
+  /** Un ou plusieurs documents : chacun devient une demande, qui va à qui le traite. */
   docTypes: z.array(requestableDocSchema).min(1).max(6),
   /** Période du bulletin, motif (banque, visa…) — facultatif mais utile à la RH. */
   note: z
@@ -92,6 +101,11 @@ export const createDocumentRequestSchema = z.object({
     .optional(),
 });
 export type CreateDocumentRequestInput = z.infer<typeof createDocumentRequestSchema>;
+
+/** Une demande par document demandé. */
+export interface CreateDocumentRequestResult {
+  ids: string[];
+}
 
 /** Transitions pilotées par la RH — « prête » clôt le circuit. */
 export const advanceDocumentRequestSchema = z.object({

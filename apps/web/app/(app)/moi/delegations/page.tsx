@@ -38,12 +38,20 @@ import { api } from '../../../../lib/api';
    où un tableau membres × habilitations déborderait.
    ———————————————————————————————————————————————————————————————— */
 
-const GROUPES: InfoCapacite['groupe'][] = ['Demandes', 'Personnel', 'Congés', 'Organisation'];
+const GROUPES: InfoCapacite['groupe'][] = [
+  'Demandes',
+  'Documents',
+  'Personnel',
+  'Congés',
+  'Organisation',
+];
 
 /** Ce que dit chaque famille — au directeur (« vous »), ou à qui ne fait que lire. */
 const introGroupe = (groupe: InfoCapacite['groupe'], directeur: boolean): string =>
   ({
     Demandes: `Les demandes des agents vont directement aux membres choisis — tous sont prévenus, le premier qui la traite l’emporte. Sans membre disponible, elles ${directeur ? 'vous reviennent' : 'reviennent à qui dirige la DCH'}.`,
+    Documents:
+      'Chaque type de document se confie à part : les attestations de travail à l’un, les bulletins de salaire à l’autre. Chaque document demandé va à qui traite son type.',
     Personnel: 'L’accès aux dossiers du personnel.',
     Congés: 'Les soldes, les types d’absence et les jours fériés.',
     Organisation: 'Les autres espaces de gestion.',

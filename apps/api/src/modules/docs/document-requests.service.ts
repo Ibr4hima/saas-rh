@@ -6,6 +6,7 @@ import type {
   BatchAdvanceDocumentRequestInput,
   BatchAdvanceResult,
   CreateDocumentRequestInput,
+  CreateDocumentRequestResult,
   DocumentRequestStatus,
   DocumentRequestView,
   RequestableDoc,
@@ -14,7 +15,7 @@ import type {
 import {
   peut,
   DOC_REQUEST_STATUS_LABELS,
-  MAX_OPEN_DOCUMENT_REQUESTS,
+  documentsEnCours,
   OPEN_DOCUMENT_REQUEST_STATUSES,
   REQUESTABLE_DOC_LABELS,
 } from '@teranga/contracts';
@@ -24,6 +25,7 @@ import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
 import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
 import {
+  capaciteDesDocuments,
   exigerDeTraiter,
   reconcilierUneDemande,
   vueDuTraitement,
@@ -32,7 +34,6 @@ import {
 
 /** Le garde-fou et sa définition vivent au contrat : le portail l'annonce. */
 const OPEN_STATUSES: string[] = OPEN_DOCUMENT_REQUEST_STATUSES;
-const MAX_OPEN_REQUESTS = MAX_OPEN_DOCUMENT_REQUESTS;
 
 /**
  * Transitions autorisées : le circuit ne peut pas remonter le temps.
@@ -66,9 +67,20 @@ export class DocumentRequestsService {
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
   ) {}
 
-  /** L'agent demande ses documents depuis son espace (jamais la DCH pour lui). */
-  async create(user: SessionUser, input: CreateDocumentRequestInput): Promise<{ id: string }> {
-    const id = uuidv7();
+  /**
+   * L'agent demande ses documents depuis son espace (jamais la DCH pour lui).
+   *
+   * Chaque document devient une demande à part : il va à qui traite CE type
+   * de document — les attestations de travail à l'un, les bulletins de
+   * salaire à l'autre. Un document déjà demandé, et encore en cours, ne se
+   * redemande pas.
+   */
+  async create(
+    user: SessionUser,
+    input: CreateDocumentRequestInput,
+  ): Promise<CreateDocumentRequestResult> {
+    const docTypes = [...new Set(input.docTypes)];
+    const ids = docTypes.map(() => uuidv7());
     await this.db.withTenant(ctxOf(user), async (tx) => {
       const self = await this.selfEmployee(tx, user);
       if (!self) {
@@ -80,8 +92,8 @@ export class DocumentRequestsService {
         );
       }
 
-      const [open] = await tx
-        .select({ n: sql<number>`count(*)::int` })
+      const ouvertes = await tx
+        .select({ status: t.documentRequests.status, docTypes: t.documentRequests.docTypes })
         .from(t.documentRequests)
         .where(
           and(
@@ -89,30 +101,32 @@ export class DocumentRequestsService {
             inArray(t.documentRequests.status, OPEN_STATUSES),
           ),
         );
-      if ((open?.n ?? 0) >= MAX_OPEN_REQUESTS) {
+      const enCours = documentsEnCours(ouvertes);
+      const doublons = docTypes.filter((d) => enCours.has(d));
+      if (doublons.length > 0) {
         problem(
           422,
-          'documents.too_many_open_requests',
-          'Vous avez déjà plusieurs demandes en cours',
-          // Le client n'affiche que le DÉTAIL : il doit se lire seul, sujet
-          // compris — « attendez leur traitement » ne disait pas de quoi.
-          `Vous portez déjà ${MAX_OPEN_REQUESTS} demandes de documents en cours : attendez leur traitement avant d’en formuler une nouvelle.`,
+          'documents.deja_en_cours',
+          'Ce document est déjà demandé',
+          // Le client n'affiche que le DÉTAIL : il doit se lire seul.
+          `${labelList(doublons)} : votre demande est déjà en cours de traitement. Vous serez prévenu dès qu’il sera prêt.`,
         );
       }
 
-      await tx.insert(t.documentRequests).values({
-        id,
-        tenantId: user.tenantId,
-        employeeId: self.employeeId,
-        docTypes: input.docTypes,
-        note: input.note ?? null,
-        requestedByUserId: user.userId,
-      });
-
-      // À qui la traite pour la DCH — et à eux seuls.
-      await reconcilierUneDemande(tx, 'documents', id);
+      for (const [i, docType] of docTypes.entries()) {
+        await tx.insert(t.documentRequests).values({
+          id: ids[i]!,
+          tenantId: user.tenantId,
+          employeeId: self.employeeId,
+          docTypes: [docType],
+          note: input.note ?? null,
+          requestedByUserId: user.userId,
+        });
+        // À qui traite ce document pour la DCH — et à eux seuls.
+        await reconcilierUneDemande(tx, 'documents', ids[i]!);
+      }
     });
-    return { id };
+    return { ids };
   }
 
   /**
@@ -177,7 +191,9 @@ export class DocumentRequestsService {
         const ouverte = ['received', 'processing'].includes(r.request.status);
         const d = { employeeId: r.request.employeeId, confieeA: r.request.confieeAEmployeeId };
         const tr =
-          !selfOnly && ouverte ? await vueDuTraitement(tx, 'documents', d, moi, dch) : null;
+          !selfOnly && ouverte
+            ? await vueDuTraitement(tx, capaciteDesDocuments(r.request.docTypes), d, moi, dch)
+            : null;
         // Prête : on corrige le point de retrait — qui l'a traitée, ou la DCH.
         const peutAvancer =
           r.request.status === 'ready'
@@ -242,7 +258,7 @@ export class DocumentRequestsService {
       return 'Traitée par un autre membre de la DCH';
     }
     try {
-      await exigerDeTraiter(tx, user, 'documents', {
+      await exigerDeTraiter(tx, user, capaciteDesDocuments(row.docTypes), {
         employeeId: row.employeeId,
         confieeA: row.confieeAEmployeeId,
       });
@@ -281,7 +297,7 @@ export class DocumentRequestsService {
         const motif = await this.refus(tx, user, row);
         if (motif) problem(403, 'demandes.pas_traitant', motif);
       } else if (OPEN_STATUSES.includes(row.status)) {
-        await exigerDeTraiter(tx, user, 'documents', {
+        await exigerDeTraiter(tx, user, capaciteDesDocuments(row.docTypes), {
           employeeId: row.employeeId,
           confieeA: row.confieeAEmployeeId,
         });

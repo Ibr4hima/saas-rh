@@ -182,7 +182,7 @@ export class ProfileChangesService {
         const d = { employeeId: r.request.employeeId, confieeA: r.request.confieeAEmployeeId };
         const tr =
           !selfOnly && r.request.status === 'pending'
-            ? await vueDuTraitement(tx, 'informations', d, moi, dch)
+            ? await vueDuTraitement(tx, 'demandes.informations', d, moi, dch)
             : null;
         vues.push({
           id: r.request.id,
@@ -239,7 +239,7 @@ export class ProfileChangesService {
           `État actuel : ${row.status}.`,
         );
       }
-      await exigerDeTraiter(tx, user, 'informations', {
+      await exigerDeTraiter(tx, user, 'demandes.informations', {
         employeeId: row.employeeId,
         confieeA: row.confieeAEmployeeId,
       });

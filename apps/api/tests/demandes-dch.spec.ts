@@ -3,7 +3,8 @@
  *
  * Décidé avec l'APIX : par défaut, le directeur du Capital Humain traite
  * toutes les demandes. Il peut en confier chaque type à des membres de sa
- * direction (habilitation), ou une demande à la fois. Les membres habilités
+ * direction (habilitation) — les documents, type de document par type de
+ * document —, ou une demande à la fois. Les membres habilités
  * sont appelés — pas lui ; il voit tout, et garde la main. Personne ne
  * traite sa propre demande.
  *
@@ -191,7 +192,8 @@ afterAll(async () => {
 
 describe('les demandes de documents', () => {
   it('par défaut, le directeur du Capital Humain : lui seul est appelé, lui seul traite', async () => {
-    const { id } = await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
     expect(await appels('document', id)).toEqual(['dch:Mariama']);
     expect(await codeOf(() => documents.advance(admin, id, { status: 'processing' }))).toBe(
       'demandes.pas_traitant',
@@ -205,9 +207,10 @@ describe('les demandes de documents', () => {
   });
 
   it('confiées à deux membres : les deux sont appelés ; qui la prend en charge la garde', async () => {
-    const { id } = await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
-    await habiliter(awa, 'demandes.documents');
-    await habiliter(khady, 'demandes.documents');
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
+    await habiliter(awa, 'demandes.documents.attestation_travail');
+    await habiliter(khady, 'demandes.documents.attestation_travail');
     expect(await appels('document', id)).toEqual(['dch:Awa', 'dch:Khady']);
     await documents.advance(awa.session, id, { status: 'processing' });
     expect(await appels('document', id)).toEqual(['dch:Awa']);
@@ -219,9 +222,60 @@ describe('les demandes de documents', () => {
     expect(await appels('document', id)).toEqual([]);
   });
 
+  it('les documents se confient type par type : chaque document demandé va à qui le traite', async () => {
+    await habiliter(awa, 'demandes.documents.attestation_travail');
+    await habiliter(khady, 'demandes.documents.bulletin_salaire');
+    const ids = (
+      await documents.create(moussa.session, {
+        docTypes: ['attestation_travail', 'bulletin_salaire', 'certificat_travail'],
+        note: 'Dossier de visa',
+      })
+    ).ids;
+    expect(ids).toHaveLength(3);
+    const [attestation, bulletin, certificat] = ids as [string, string, string];
+    expect(await appels('document', attestation)).toEqual(['dch:Awa']);
+    expect(await appels('document', bulletin)).toEqual(['dch:Khady']);
+    // Personne n'est habilité aux certificats : ils restent au directeur.
+    expect(await appels('document', certificat)).toEqual(['dch:Mariama']);
+    expect(
+      await codeOf(() => documents.advance(awa.session, bulletin, { status: 'processing' })),
+    ).toBe('demandes.pas_traitant');
+    await documents.advance(awa.session, attestation, { status: 'processing' });
+    const { rows } = await raw(
+      `SELECT doc_types, note FROM document_requests WHERE id = ANY($1) ORDER BY doc_types`,
+      [ids],
+    );
+    expect(rows).toEqual([
+      { doc_types: ['attestation_travail'], note: 'Dossier de visa' },
+      { doc_types: ['bulletin_salaire'], note: 'Dossier de visa' },
+      { doc_types: ['certificat_travail'], note: 'Dossier de visa' },
+    ]);
+  });
+
+  it('un document déjà demandé, et encore en cours, ne se redemande pas', async () => {
+    await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
+    expect(
+      await codeOf(() =>
+        documents.create(moussa.session, { docTypes: ['bulletin_salaire', 'attestation_travail'] }),
+      ),
+    ).toBe('documents.deja_en_cours');
+    // Rien n'est parti : le refus vaut pour tout l'envoi.
+    const { rows } = await raw(
+      `SELECT count(*)::int AS n FROM document_requests WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    expect(rows[0].n).toBe(1);
+    // Quatre documents d'un coup : aucun plafond ne s'y oppose.
+    const r = await documents.create(moussa.session, {
+      docTypes: ['bulletin_salaire', 'attestation_salaire', 'certificat_travail', 'autre'],
+    });
+    expect(r.ids).toHaveLength(4);
+  });
+
   it('chacun voit les siennes ; la file entière, qui la traite ou consulte les dossiers', async () => {
-    const { id } = await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
-    await habiliter(awa, 'demandes.documents');
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
+    await habiliter(awa, 'demandes.documents.attestation_travail');
     expect((await documents.list(moussa.session, {})).map((r) => r.id)).toEqual([id]);
     expect(await documents.list(khady.session, {})).toEqual([]);
     const [vueAwa] = await documents.list(awa.session, {});
@@ -236,7 +290,8 @@ describe('les demandes de documents', () => {
   });
 
   it('la demande du directeur lui-même : à lui de la confier, jamais de la traiter', async () => {
-    const { id } = await documents.create(mariama.session, { docTypes: ['attestation_travail'] });
+    const [id] = (await documents.create(mariama.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
     expect(await appels('document', id)).toEqual(['a-confier:Mariama']);
     expect(
       await codeOf(() => documents.advance(mariama.session, id, { status: 'processing' })),
@@ -250,7 +305,8 @@ describe('les demandes de documents', () => {
   });
 
   it('une demande en attente depuis plus de deux jours ouvrés : un rappel à qui la traite', async () => {
-    const { id } = await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
     await raw(
       `UPDATE notifications SET created_at = now() - interval '10 days' WHERE dedupe_key = $1`,
       [`document:${id}:appel:dch`],
@@ -266,7 +322,8 @@ describe('les demandes de documents', () => {
 
   it('personne à la DCH pour la traiter : l’administrateur est prévenu', async () => {
     await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [uDCH]);
-    const { id } = await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
     await reconcilier();
     expect(await appels('document', id)).toEqual([]);
     const { rows } = await raw(

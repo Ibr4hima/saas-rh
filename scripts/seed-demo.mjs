@@ -271,12 +271,18 @@ const enTantQue = async (employeeId, method, path, body) => {
   return texte ? JSON.parse(texte) : undefined;
 };
 
-console.log('→ Délégations : Mariama confie les documents et les dossiers à Awa');
+console.log('→ Délégations : Mariama confie à Awa une partie des documents, et les dossiers');
 // Tout le monde est agent ; ce qu'on fait de plus vient de l'organigramme.
 // Mariama dirige la DCH : tout lui revient. Elle confie à Awa, membre de sa
-// direction, les demandes de documents et la consultation des dossiers — le
-// reste (congés, informations, pièces…) reste chez elle.
-for (const capacite of ['demandes.documents', 'personnel.consulter']) {
+// direction, les attestations de travail, les contrats et les certificats,
+// et la consultation des dossiers. Les bulletins et attestations de salaire
+// — sensibles —, les congés, les informations, les pièces restent chez elle.
+for (const capacite of [
+  'demandes.documents.attestation_travail',
+  'demandes.documents.contrat_travail',
+  'demandes.documents.certificat_travail',
+  'personnel.consulter',
+]) {
   await enTantQue(directriceRh.id, 'PUT', '/habilitations', {
     employeeId: awa.id,
     capacite,
@@ -509,24 +515,28 @@ const requestDocs = async (employeeId, docTypes, note) => {
   if (!res.ok) throw new Error(`demande documents → ${res.status} : ${data.title}`);
   return data;
 };
-// Awa : demande toute fraîche. Elle traite les documents, mais pas les
-// siens : sa demande va à Mariama, qui dirige la DCH.
+// Awa : demande toute fraîche. Elle traite les attestations de travail,
+// mais pas la sienne : sa demande va à Mariama, qui dirige la DCH.
 await requestDocs(awa.id, ['attestation_travail'], 'Pour ouvrir un compte bancaire.');
-// Moussa : prise en charge par Awa, en cours de préparation.
-const dr2 = await requestDocs(
-  moussa.id,
-  ['attestation_travail', 'attestation_salaire'],
-  'Dossier de visa Schengen.',
-);
-await enTantQue(awa.id, 'POST', `/document-requests/${dr2.id}/advance`, {
+// Moussa : deux documents, donc deux demandes. L'attestation de travail
+// va à Awa, qui la prend en charge ; l'attestation de salaire reste chez
+// Mariama.
+const [attestationMoussa] = (
+  await requestDocs(
+    moussa.id,
+    ['attestation_travail', 'attestation_salaire'],
+    'Dossier de visa Schengen.',
+  )
+).ids;
+await enTantQue(awa.id, 'POST', `/document-requests/${attestationMoussa}/advance`, {
   status: 'processing',
 });
 // Fatou : prête, l'employée est prévenue du lieu de retrait.
-const dr3 = await requestDocs(fatou.id, ['contrat_travail'], 'Copie pour mes archives.');
-await enTantQue(awa.id, 'POST', `/document-requests/${dr3.id}/advance`, {
+const [dr3] = (await requestDocs(fatou.id, ['contrat_travail'], 'Copie pour mes archives.')).ids;
+await enTantQue(awa.id, 'POST', `/document-requests/${dr3}/advance`, {
   status: 'processing',
 });
-await enTantQue(awa.id, 'POST', `/document-requests/${dr3.id}/advance`, {
+await enTantQue(awa.id, 'POST', `/document-requests/${dr3}/advance`, {
   status: 'ready',
   pickupContact: 'Awa Diop',
   message: 'bureau 204, du lundi au vendredi 9h–16h',

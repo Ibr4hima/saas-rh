@@ -151,7 +151,7 @@ export class EmployeeDocumentsService {
         problem(403, 'documents.wrong_reviewer', 'La contrepartie doit valider — pas le déposant');
       }
       if (doc.uploadedBySide === 'employee') {
-        await exigerDeTraiter(tx, user, 'pieces', {
+        await exigerDeTraiter(tx, user, 'demandes.pieces', {
           employeeId: doc.employeeId,
           confieeA: doc.confieeAEmployeeId,
         });
@@ -339,7 +339,7 @@ export class EmployeeDocumentsService {
     const tr = enAttenteDCH
       ? await vueDuTraitement(
           tx,
-          'pieces',
+          'demandes.pieces',
           { employeeId: doc.employeeId, confieeA: doc.confieeAEmployeeId },
           moi,
           dch,

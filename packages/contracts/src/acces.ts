@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { RequestableDoc } from './document-requests';
 
 /**
  * Qui peut quoi — décidé avec l'APIX.
@@ -21,12 +22,26 @@ import { z } from 'zod';
  * change, elles restent en place pour que rien ne se bloque — le nouveau
  * directeur les trouve, et les modifie s'il le veut. Un membre qui quitte la
  * DCH perd les siennes, et le directeur en est prévenu.
+ *
+ * Les documents se confient TYPE PAR TYPE — les attestations de travail à
+ * l'un, les bulletins de salaire à l'autre : chaque document demandé est
+ * une demande à part, qui va à qui traite ce type-là.
  */
 
-/** Traiter un type de demande : la demande va directement au délégué. */
+/** Traiter un type de document : chaque document demandé va à qui le traite. */
+export const CAPACITES_DOCUMENTS = [
+  'demandes.documents.attestation_travail',
+  'demandes.documents.contrat_travail',
+  'demandes.documents.bulletin_salaire',
+  'demandes.documents.attestation_salaire',
+  'demandes.documents.certificat_travail',
+  'demandes.documents.autre',
+] as const satisfies readonly `demandes.documents.${RequestableDoc}`[];
+
+/** Traiter un type de demande : les demandes vont directement aux membres choisis. */
 export const CAPACITES_DEMANDES = [
   'demandes.conges',
-  'demandes.documents',
+  ...CAPACITES_DOCUMENTS,
   'demandes.informations',
   'demandes.pieces',
 ] as const;
@@ -54,10 +69,14 @@ export type CapaciteDemande = (typeof CAPACITES_DEMANDES)[number];
 export const estCapaciteDemande = (c: string): c is CapaciteDemande =>
   (CAPACITES_DEMANDES as readonly string[]).includes(c);
 
+/** Qui traite ce document-là : une habilitation par type de document. */
+export const capaciteDuDocument = (doc: RequestableDoc): CapaciteDemande =>
+  `demandes.documents.${doc}`;
+
 export interface InfoCapacite {
   libelle: string;
   description: string;
-  groupe: 'Demandes' | 'Personnel' | 'Congés' | 'Organisation';
+  groupe: 'Demandes' | 'Documents' | 'Personnel' | 'Congés' | 'Organisation';
   /** Données sensibles : à confier avec soin. */
   sensible?: boolean;
 }
@@ -68,10 +87,37 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
     description: 'Les traiter une fois visées par le N+1 : elles lui arrivent directement.',
     groupe: 'Demandes',
   },
-  'demandes.documents': {
-    libelle: 'Demandes de documents',
-    description: 'Attestations, bulletins, certificats : les préparer et les remettre.',
-    groupe: 'Demandes',
+  'demandes.documents.attestation_travail': {
+    libelle: 'Attestations de travail',
+    description: 'L’application les génère : les relire, les faire signer, annoncer leur retrait.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.contrat_travail': {
+    libelle: 'Copies de contrat de travail',
+    description: 'Retrouver le contrat au dossier, en remettre une copie.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.bulletin_salaire': {
+    libelle: 'Bulletins de salaire',
+    description: 'Les obtenir du système de paie, les remettre.',
+    groupe: 'Documents',
+    sensible: true,
+  },
+  'demandes.documents.attestation_salaire': {
+    libelle: 'Attestations de salaire',
+    description: 'Les établir à partir des éléments de paie, les faire signer.',
+    groupe: 'Documents',
+    sensible: true,
+  },
+  'demandes.documents.certificat_travail': {
+    libelle: 'Certificats de travail',
+    description: 'Les établir, les faire signer, les remettre.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.autre': {
+    libelle: 'Autres documents',
+    description: 'Ce que l’agent demande hors de la liste — sa précision dit quoi.',
+    groupe: 'Documents',
   },
   'demandes.informations': {
     libelle: 'Changements d’informations',
@@ -150,12 +196,19 @@ export const TYPES_DEMANDE = ['conges', 'documents', 'informations', 'pieces'] a
 export const typeDemandeSchema = z.enum(TYPES_DEMANDE);
 export type TypeDemande = z.infer<typeof typeDemandeSchema>;
 
-export const CAPACITE_DU_TYPE: Record<TypeDemande, CapaciteDemande> = {
-  conges: 'demandes.conges',
-  documents: 'demandes.documents',
-  informations: 'demandes.informations',
-  pieces: 'demandes.pieces',
-};
+/** Les habilitations qui traitent un type de demande — une par document pour les documents. */
+export function capacitesDuType(type: TypeDemande): readonly CapaciteDemande[] {
+  switch (type) {
+    case 'conges':
+      return ['demandes.conges'];
+    case 'documents':
+      return CAPACITES_DOCUMENTS;
+    case 'informations':
+      return ['demandes.informations'];
+    case 'pieces':
+      return ['demandes.pieces'];
+  }
+}
 
 /** Qui traite une demande, tel que l'écran le montre. */
 export interface TraitementView {
