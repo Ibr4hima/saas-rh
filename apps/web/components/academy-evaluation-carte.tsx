@@ -17,6 +17,10 @@ import { Icon } from './icons';
    prochaine s'ouvre — ou le certificat obtenu. L'orange n'y paraît que pour
    l'ATTENTE : les tentatives du jour épuisées.
 
+   Deux agents n'en obtiennent pas le certificat, et le savent AVANT :
+   qui gère la formation (il en connaît les questions — l'évaluation lui
+   est fermée), et son formateur (il la passe, sans certificat).
+
    Le bouton « Passer l'évaluation » n'y figure pas : il est déjà l'action
    principale de la page, en haut à droite, et deux boutons identiques à
    deux cents pixels l'un de l'autre se font concurrence.
@@ -38,8 +42,10 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
   const [apercu, setApercu] = useState(false);
   if (!ev) return null;
   const suivi = formation.mode === 'suivi';
+  const formateur = ev.sansCertificat === 'formateur';
+  const sansCertificat = 'Vous en êtes le formateur : vous pouvez la passer, sans certificat.';
 
-  let icone: 'lock' | 'quiz' | 'timer' | 'workspace_premium' = 'quiz';
+  let icone: 'lock' | 'quiz' | 'timer' | 'workspace_premium' | 'task_alt' = 'quiz';
   let ton = 'bg-primary-soft text-primary';
   let titre = 'Évaluation finale';
   let texte: React.ReactNode = null;
@@ -54,12 +60,21 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
     icone = 'lock';
     ton = 'bg-line-soft/70 text-ink-muted';
     const restantes = formation.lessonCount - formation.completedLessons;
-    texte = `Elle s’ouvre quand toutes les leçons sont validées — encore ${compte(restantes, 'leçon')}.`;
-  } else if (ev.etat === 'ouverte') {
+    texte = `Elle s’ouvre quand toutes les leçons sont validées — encore ${compte(restantes, 'leçon')}.${formateur ? ` ${sansCertificat}` : ''}`;
+  } else if (ev.etat === 'fermee') {
+    icone = 'lock';
+    ton = 'bg-line-soft/70 text-ink-muted';
     texte =
+      'Vous gérez cette formation et en connaissez les questions : l’évaluation vous est fermée. Les leçons restent ouvertes.';
+  } else if (ev.etat === 'ouverte') {
+    const echec =
       ev.derniere && !ev.derniere.passed
         ? `Dernière tentative : ${pourcent(ev.derniere.score)}. ${tentativesDuJour(ev) ?? 'Vous pouvez la repasser.'}`
-        : `La réussir délivre un certificat.${ev.tentativesParJour ? ` ${ev.tentativesParJour} tentatives par jour.` : ''}`;
+        : null;
+    texte = formateur
+      ? [echec, sansCertificat].filter(Boolean).join(' ')
+      : (echec ??
+        `La réussir délivre un certificat.${ev.tentativesParJour ? ` ${ev.tentativesParJour} tentatives par jour.` : ''}`);
   } else if (ev.etat === 'en_cours') {
     icone = 'timer';
     texte = 'Une copie est ouverte et le temps court encore.';
@@ -75,6 +90,11 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
         — le temps de revoir les leçons.
       </>
     );
+  } else if (ev.etat === 'reussie' && formateur) {
+    icone = 'task_alt';
+    ton = 'bg-success-soft text-success';
+    titre = 'Évaluation réussie';
+    texte = `${ev.derniere ? `Réussie avec ${pourcent(ev.derniere.score)}` : 'Réussie'} — sans certificat : vous êtes le formateur de cette formation. Votre dossier indique que vous l’avez animée.`;
   } else if (ev.etat === 'reussie' && ev.certificat) {
     icone = 'workspace_premium';
     ton = 'bg-success-soft text-success';

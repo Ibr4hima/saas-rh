@@ -2,9 +2,9 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { CertificateSummary } from '@teranga/contracts';
+import type { CertificateSummary, FormationAnimee } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, cn, Skeleton } from '@teranga/ui';
-import { FOND_COUVERTURE, pourcent, STATUTS_CERTIFICAT } from '../lib/academy';
+import { FAMILLES, FOND_COUVERTURE, pourcent, STATUTS_CERTIFICAT } from '../lib/academy';
 import { api, apiUrl } from '../lib/api';
 import { formatDate } from '../lib/hooks';
 import { FenetreDocument } from './fenetre-document';
@@ -100,12 +100,18 @@ export function ListeCertificats({
 
 /**
  * Les certificats d'un agent, dans son dossier : ce que la RH consulte
- * quand on lui demande qui est formé à quoi.
+ * quand on lui demande qui est formé à quoi. Et les formations qu'il a
+ * faites lui-même : il en est le formateur, elles ne lui donnent pas de
+ * certificat.
  */
 export function CarteCertificatsAgent({ employeeId }: { employeeId: string }) {
   const certificats = useQuery({
     queryKey: ['academy', 'certificats', employeeId],
     queryFn: () => api<CertificateSummary[]>(`/academy/employees/${employeeId}/certificats`),
+  });
+  const animees = useQuery({
+    queryKey: ['academy', 'formations-animees', employeeId],
+    queryFn: () => api<FormationAnimee[]>(`/academy/employees/${employeeId}/formations-animees`),
   });
   return (
     <Card>
@@ -123,6 +129,34 @@ export function CarteCertificatsAgent({ employeeId }: { employeeId: string }) {
         ) : (
           <ListeCertificats certificats={certificats.data} compact />
         )}
+        {animees.data && animees.data.length > 0 ? (
+          <section className="mt-4 border-t border-line-soft pt-4">
+            <h3 className="text-[11px] font-bold tracking-[0.08em] text-ink-muted uppercase">
+              Formateur
+            </h3>
+            <ul className="mt-1 flex flex-col">
+              {animees.data.map((a) => (
+                <li
+                  key={a.courseId}
+                  className="flex items-center gap-3 border-b border-line-soft py-3 last:border-b-0"
+                >
+                  <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-primary-soft text-primary">
+                    <Icon name="school" size={19} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-bold text-ink-strong">
+                      {a.title}
+                    </span>
+                    <span className="block text-[11.5px] text-ink-muted">
+                      Formateur de cette formation · {FAMILLES[a.category].label}
+                    </span>
+                  </span>
+                  {!a.published ? <Badge tone="neutral">Brouillon</Badge> : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </CardContent>
     </Card>
   );

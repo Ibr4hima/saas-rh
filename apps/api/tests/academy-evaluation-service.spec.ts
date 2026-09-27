@@ -41,6 +41,7 @@ let evaluation: AcademyEvaluationService;
 let repertoire: string;
 let horloge = Date.UTC(2026, 8, 25, 9, 0, 0);
 let agentEmployeeId: string;
+let autreEmployeeId: string;
 let courseId: string;
 let lecons: string[];
 
@@ -111,7 +112,7 @@ async function validerLecons(employeeId = agentEmployeeId): Promise<void> {
   for (const id of lecons) {
     await raw(
       `INSERT INTO academy_lesson_progress (tenant_id, employee_id, lesson_id, watched, watched_seconds, completed_at)
-       VALUES ($1,$2,$3,'[[0,60]]',60, now())`,
+       VALUES ($1,$2,$3,'[[0,60]]',60, now()) ON CONFLICT DO NOTHING`,
       [tenantId, employeeId, id],
     );
   }
@@ -164,7 +165,7 @@ beforeAll(async () => {
     );
   }
   agentEmployeeId = await creerAgent(agentUserId, 'Awa', 'EVA-001');
-  await creerAgent(autreUserId, 'Moussa', 'EVA-002');
+  autreEmployeeId = await creerAgent(autreUserId, 'Moussa', 'EVA-002');
 });
 
 /** Fixe la limite de tentatives des deux services — `null` : sans limite. */
@@ -537,5 +538,157 @@ describe('le certificat', () => {
       'academy.forbidden',
     );
     expect(await evaluation.certificatsDe(rh, agentEmployeeId)).toHaveLength(1);
+  });
+});
+
+describe('qui gère la formation, qui l’a faite', () => {
+  /** Moussa, agent de la DCH à qui l'Academy est confiée. */
+  const gestionnaire = { ...autre, capacites: ['academy'] } as SessionUser;
+
+  async function composer(qui: SessionUser, employeeId: string, justes = Infinity) {
+    await validerLecons(employeeId);
+    const copie = await evaluation.demarrer(qui, courseId);
+    return evaluation.soumettre(qui, copie.id, {
+      answers: await bonnesReponses(copie.id, justes),
+    });
+  }
+
+  it('qui a ouvert la formation dans l’atelier ne passe pas son évaluation', async () => {
+    await validerLecons(autreEmployeeId);
+    // Il la suit comme tout le monde…
+    expect((await academy.detail(autre, courseId)).evaluation?.etat).toBe('ouverte');
+    // … mais dès qu'il en voit les questions, elle lui est fermée — pour de bon.
+    await academy.gestionDetail(gestionnaire, courseId);
+    const ev = (await academy.detail(gestionnaire, courseId)).evaluation!;
+    expect(ev).toMatchObject({ etat: 'fermee', sansCertificat: 'gestionnaire' });
+    expect(await codeOf(() => evaluation.demarrer(gestionnaire, courseId))).toBe(
+      'academy.gestionnaire',
+    );
+    // Retirer l'habilitation n'efface pas ce qu'il a vu.
+    expect(await codeOf(() => evaluation.demarrer(autre, courseId))).toBe('academy.gestionnaire');
+  });
+
+  it('créer, modifier, essayer : chaque geste de l’atelier inscrit le gestionnaire', async () => {
+    const inscrits = async (id: string) =>
+      (
+        await raw(`SELECT employee_id FROM academy_course_gestionnaires WHERE course_id = $1`, [id])
+      ).rows.map((r) => r.employee_id as string);
+    const { id } = await academy.creerFormation(gestionnaire, {
+      title: 'Excel avancé',
+      summary: null,
+      category: 'bureautique',
+    });
+    expect(await inscrits(id)).toEqual([autreEmployeeId]);
+    // Un compte sans dossier d'agent — l'administrateur — ne s'inscrit pas.
+    await evaluation.essayer(rh, courseId);
+    expect(await inscrits(courseId)).toEqual([]);
+    await evaluation.essayer(gestionnaire, courseId);
+    expect(await inscrits(courseId)).toEqual([autreEmployeeId]);
+  });
+
+  it('un certificat obtenu AVANT d’avoir eu la main reste le sien', async () => {
+    const r = await composer(autre, autreEmployeeId);
+    expect(r.certificat).not.toBeNull();
+    await academy.gestionDetail(gestionnaire, courseId);
+    expect((await academy.detail(autre, courseId)).evaluation).toMatchObject({
+      etat: 'reussie',
+      sansCertificat: null,
+    });
+  });
+
+  it('le formateur, agent de l’APIX, la passe — prévenu d’avance — sans certificat', async () => {
+    await academy.modifierFormation(rh, courseId, {
+      title: 'PowerPoint',
+      summary: null,
+      category: 'bureautique',
+      formateurEmployeeId: agentEmployeeId,
+    });
+    expect((await academy.detail(agent, courseId)).formateur).toEqual({
+      employeeId: agentEmployeeId,
+      nom: 'Awa Diop',
+    });
+    await validerLecons();
+    expect((await academy.detail(agent, courseId)).evaluation).toMatchObject({
+      etat: 'ouverte',
+      sansCertificat: 'formateur',
+    });
+    const echec = await composer(agent, agentEmployeeId, 2);
+    expect(echec.evaluation.etat).toBe('ouverte');
+    const r = await composer(agent, agentEmployeeId);
+    expect(r).toMatchObject({ passed: true, certificat: null });
+    expect(r.evaluation).toMatchObject({ etat: 'reussie', sansCertificat: 'formateur' });
+    expect(await evaluation.mesCertificats(agent)).toEqual([]);
+    expect(await codeOf(() => evaluation.demarrer(agent, courseId))).toBe(
+      'academy.already_certified',
+    );
+    // Les autres agents, eux, obtiennent le leur.
+    expect((await composer(autre, autreEmployeeId)).certificat).not.toBeNull();
+  });
+
+  it('son dossier dit qu’il en est le formateur — et seuls lui et la DCH le lisent', async () => {
+    await academy.modifierFormation(rh, courseId, {
+      title: 'PowerPoint',
+      summary: null,
+      category: 'bureautique',
+      formateurEmployeeId: agentEmployeeId,
+    });
+    expect(await evaluation.formationsAnimees(rh, agentEmployeeId)).toEqual([
+      { courseId, title: 'PowerPoint', category: 'bureautique', published: true },
+    ]);
+    expect(await evaluation.formationsAnimees(agent, agentEmployeeId)).toHaveLength(1);
+    expect(await evaluation.formationsAnimees(rh, autreEmployeeId)).toEqual([]);
+    expect(await codeOf(() => evaluation.formationsAnimees(autre, agentEmployeeId))).toBe(
+      'academy.forbidden',
+    );
+  });
+
+  it('un formateur extérieur : son nom seul ; un agent inconnu est refusé', async () => {
+    await academy.modifierFormation(rh, courseId, {
+      title: 'PowerPoint',
+      summary: null,
+      category: 'bureautique',
+      formateurNom: '  Cabinet Sénégal Formation  ',
+    });
+    expect((await academy.detail(agent, courseId)).formateur).toEqual({
+      employeeId: null,
+      nom: 'Cabinet Sénégal Formation',
+    });
+    expect(
+      await codeOf(() =>
+        academy.modifierFormation(rh, courseId, {
+          title: 'PowerPoint',
+          summary: null,
+          category: 'bureautique',
+          formateurEmployeeId: randomUUID(),
+        }),
+      ),
+    ).toBe('academy.formateur_inconnu');
+    await academy.modifierFormation(rh, courseId, {
+      title: 'PowerPoint',
+      summary: null,
+      category: 'bureautique',
+    });
+    expect((await academy.detail(agent, courseId)).formateur).toBeNull();
+  });
+
+  it('le formateur qui a quitté l’APIX reste le formateur quand on retouche la formation', async () => {
+    await academy.modifierFormation(rh, courseId, {
+      title: 'PowerPoint',
+      summary: null,
+      category: 'bureautique',
+      formateurEmployeeId: autreEmployeeId,
+    });
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [autreEmployeeId]);
+    try {
+      await academy.modifierFormation(rh, courseId, {
+        title: 'PowerPoint 2',
+        summary: null,
+        category: 'bureautique',
+        formateurEmployeeId: autreEmployeeId,
+      });
+      expect((await academy.gestionDetail(rh, courseId)).formateur?.nom).toBe('Moussa Diop');
+    } finally {
+      await raw(`UPDATE employees SET status = 'active' WHERE id = $1`, [autreEmployeeId]);
+    }
   });
 });

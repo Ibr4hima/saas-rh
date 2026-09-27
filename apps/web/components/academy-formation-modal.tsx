@@ -1,21 +1,35 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { AcademyCategory, CourseAdminView } from '@teranga/contracts';
+import type { AcademyCategory, AgentAcademy, CourseAdminView } from '@teranga/contracts';
 import { ACADEMY_CATEGORIES } from '@teranga/contracts';
-import { Button, cn, Field, Input, Textarea } from '@teranga/ui';
+import { Button, cn, Field, Input, Select, Textarea } from '@teranga/ui';
 import { FAMILLES, FOND_COUVERTURE } from '../lib/academy';
 import { api, ApiError } from '../lib/api';
 import { Icon } from './icons';
 import { Modal, ModalSection } from './modal';
 
+/** Qui a fait la formation : on ne le dit pas, un agent de l'APIX, ou quelqu'un d'extérieur. */
+type SorteFormateur = 'aucun' | 'agent' | 'exterieur';
+
+const SORTES: { id: SorteFormateur; label: string }[] = [
+  { id: 'aucun', label: 'Non précisé' },
+  { id: 'agent', label: 'Agent APIX' },
+  { id: 'exterieur', label: 'Extérieur' },
+];
+
 /**
- * Créer une formation, ou reprendre son titre, sa famille, sa présentation.
+ * Créer une formation, ou reprendre son titre, sa famille, sa présentation,
+ * son formateur.
  *
  * La famille se choisit sur des tuiles plutôt que dans une liste déroulante :
  * elles sont cinq, et chacune porte l'icône qui habillera la couverture — la
  * RH voit ce que verront les agents avant de le décider.
+ *
+ * Le formateur est facultatif. Un agent de l'APIX suit la formation comme
+ * les autres, mais n'en obtient pas le certificat ; son dossier dit qu'il
+ * l'a animée.
  */
 export function FormationModal({
   open,
@@ -33,7 +47,30 @@ export function FormationModal({
   const [titre, setTitre] = useState(formation?.title ?? '');
   const [famille, setFamille] = useState<AcademyCategory>(formation?.category ?? 'bureautique');
   const [presentation, setPresentation] = useState(formation?.summary ?? '');
+  const [sorte, setSorte] = useState<SorteFormateur>(
+    !formation?.formateur ? 'aucun' : formation.formateur.employeeId ? 'agent' : 'exterieur',
+  );
+  const [agent, setAgent] = useState(formation?.formateur?.employeeId ?? '');
+  const [exterieur, setExterieur] = useState(
+    formation?.formateur && !formation.formateur.employeeId ? formation.formateur.nom : '',
+  );
   const [erreur, setErreur] = useState<string | null>(null);
+
+  const agents = useQuery({
+    queryKey: ['academy', 'gestion', 'agents'],
+    queryFn: () => api<AgentAcademy[]>('/academy/gestion/agents'),
+    enabled: open && sorte === 'agent',
+    staleTime: 60_000,
+  });
+  // L'agent désigné a pu quitter l'APIX depuis : il reste proposé.
+  const agentAbsent =
+    formation?.formateur?.employeeId &&
+    agents.data &&
+    !agents.data.some((a) => a.employeeId === formation.formateur?.employeeId)
+      ? formation.formateur
+      : null;
+  const formateurIncomplet =
+    (sorte === 'agent' && !agent) || (sorte === 'exterieur' && exterieur.trim().length < 2);
 
   const enregistrer = useMutation({
     mutationFn: async () => {
@@ -41,6 +78,8 @@ export function FormationModal({
         title: titre.trim(),
         category: famille,
         summary: presentation.trim() || null,
+        formateurEmployeeId: sorte === 'agent' ? agent : null,
+        formateurNom: sorte === 'exterieur' ? exterieur.trim() : null,
       };
       if (formation) {
         await api(`/academy/courses/${formation.id}`, { method: 'PUT', body: corps });
@@ -82,7 +121,7 @@ export function FormationModal({
           </Button>
           <Button
             loading={enregistrer.isPending}
-            disabled={titre.trim().length < 3}
+            disabled={titre.trim().length < 3 || formateurIncomplet}
             onClick={() => {
               setErreur(null);
               enregistrer.mutate();
@@ -113,6 +152,77 @@ export function FormationModal({
               onChange={(e) => setPresentation(e.target.value)}
             />
           </Field>
+        </div>
+      </ModalSection>
+
+      <ModalSection title="Formateur">
+        <div className="flex flex-col gap-3">
+          <p className="text-[12px] leading-snug text-ink-muted">
+            Facultatif : qui a fait cette formation. Une personne de l’APIX la suit comme les autres
+            agents et peut en passer l’évaluation, sans obtenir de certificat ; son dossier indique
+            qu’elle l’a animée.
+          </p>
+          <div
+            role="radiogroup"
+            aria-label="Formateur"
+            className="flex gap-1 rounded-full border border-line-soft bg-bg p-1 sm:w-fit"
+          >
+            {SORTES.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                role="radio"
+                aria-checked={sorte === o.id}
+                onClick={() => setSorte(o.id)}
+                className={cn(
+                  'flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
+                  sorte === o.id
+                    ? 'bg-surface text-primary shadow-sm'
+                    : 'text-ink-muted hover:text-ink',
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          {sorte === 'agent' ? (
+            <Field label="Agent" htmlFor="formateur-agent" required>
+              <Select
+                id="formateur-agent"
+                value={agent}
+                disabled={agents.isLoading}
+                onChange={(e) => setAgent(e.target.value)}
+              >
+                <option value="">{agents.isLoading ? 'Chargement…' : '— Choisir'}</option>
+                {agentAbsent?.employeeId ? (
+                  <option value={agentAbsent.employeeId}>
+                    {agentAbsent.nom} (a quitté l’APIX)
+                  </option>
+                ) : null}
+                {agents.data?.map((a) => (
+                  <option key={a.employeeId} value={a.employeeId}>
+                    {a.nom}
+                    {a.poste ? ` — ${a.poste}` : ''}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : sorte === 'exterieur' ? (
+            <Field
+              label="Nom"
+              htmlFor="formateur-exterieur"
+              required
+              hint="Une personne ou un organisme."
+            >
+              <Input
+                id="formateur-exterieur"
+                placeholder="Cabinet, intervenant…"
+                value={exterieur}
+                maxLength={160}
+                onChange={(e) => setExterieur(e.target.value)}
+              />
+            </Field>
+          ) : null}
         </div>
       </ModalSection>
 

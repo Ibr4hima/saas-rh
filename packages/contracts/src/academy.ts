@@ -83,8 +83,37 @@ export const saveCourseSchema = z.object({
     .nullish()
     .transform((v) => (v ? v : null)),
   category: z.enum(ACADEMY_CATEGORIES),
+  /**
+   * Qui a fait la formation — facultatif. Un agent de l'APIX (son dossier) :
+   * il la suit comme les autres, mais elle ne lui donne pas de certificat.
+   * Ou une personne extérieure : son nom seul.
+   */
+  formateurEmployeeId: z.uuid().nullish(),
+  formateurNom: z.string().trim().max(160).nullish(),
 });
 export type SaveCourseInput = z.infer<typeof saveCourseSchema>;
+
+/** Qui a fait la formation. */
+export interface FormateurView {
+  /** Son dossier, s'il est de l'APIX ; `null` : une personne extérieure. */
+  employeeId: string | null;
+  nom: string;
+}
+
+/** Un agent qu'on peut désigner formateur. */
+export interface AgentAcademy {
+  employeeId: string;
+  nom: string;
+  poste: string | null;
+}
+
+/** Une formation que l'agent a faite — son dossier le dit. */
+export interface FormationAnimee {
+  courseId: string;
+  title: string;
+  category: AcademyCategory;
+  published: boolean;
+}
 
 export const publishCourseSchema = z.object({ published: z.boolean() });
 
@@ -184,6 +213,8 @@ export interface CourseSummary {
   certified: boolean;
   /** Le compte connecté l'a gardée dans « Ma liste ». */
   bookmarked: boolean;
+  /** Qui a fait la formation, s'il est connu. */
+  formateur: FormateurView | null;
 }
 
 export interface CourseDetail extends CourseSummary {
@@ -378,14 +409,21 @@ export interface CertificateSummary {
  * `verrouillee` : des leçons restent à valider. `ouverte` : il peut composer.
  * `en_cours` : une copie est ouverte et le temps court encore. `attente` :
  * quand une limite est fixée, ses tentatives du jour sont passées. `reussie` : il tient un
- * certificat valide.
+ * certificat valide — ou, formateur, il l'a réussie sans certificat. `fermee` : il gère la
+ * formation dans l'atelier, il en connaît les questions.
  */
 export interface EvaluationView {
   /** Questions posées à chaque tentative : le réglage, borné par la banque. */
   questionCount: number;
   minutes: number;
   seuil: number;
-  etat: 'verrouillee' | 'ouverte' | 'en_cours' | 'attente' | 'reussie';
+  etat: 'verrouillee' | 'ouverte' | 'en_cours' | 'attente' | 'reussie' | 'fermee';
+  /**
+   * Pourquoi elle ne donnera pas de certificat à l'agent connecté :
+   * `formateur` — il a fait la formation, il peut la passer mais sans
+   * certificat ; `gestionnaire` — il la gère, elle lui est fermée.
+   */
+  sansCertificat: 'formateur' | 'gestionnaire' | null;
   /** La limite par vingt-quatre heures ; `null` : sans limite. */
   tentativesParJour: number | null;
   /** Ce qu'il en reste dans la fenêtre ; `null` : sans limite. */

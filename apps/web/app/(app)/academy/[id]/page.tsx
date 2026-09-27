@@ -127,6 +127,12 @@ export default function FormationPage() {
                 <Icon name="schedule" size={15} />
                 {dureeLisible(f.totalSeconds)} de vidéo
               </span>
+              {f.formateur ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon name="school" size={15} />
+                  Formateur : {f.formateur.nom}
+                </span>
+              ) : null}
             </p>
 
             {suivi ? (

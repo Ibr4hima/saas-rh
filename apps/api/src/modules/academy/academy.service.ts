@@ -6,6 +6,7 @@ import { and, asc, desc, eq, gt, inArray, isNull, lt, sql, type SQL } from 'driz
 import { v7 as uuidv7 } from 'uuid';
 import type {
   AcademyCategory,
+  AgentAcademy,
   BeatInput,
   BeatResult,
   CourseAdminSummary,
@@ -41,6 +42,7 @@ import {
   formationsCertifiees,
   quizAdmin,
   taillesDesBanques,
+  noterGestionnaire,
   vueEvaluation,
 } from './academy-evaluation.service';
 import { dureeMp4 } from './mp4';
@@ -319,6 +321,7 @@ export class AcademyService {
       hasEvaluation: false,
       certified: false,
       bookmarked: false,
+      formateur: f.formateurNom ? { employeeId: f.formateurEmployeeId, nom: f.formateurNom } : null,
     };
   }
 
@@ -546,6 +549,8 @@ export class AcademyService {
     this.exigerGestion(user);
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const f = await this.formation(tx, courseId);
+      // L'atelier montre la banque de questions : qui l'ouvre la connaît.
+      await noterGestionnaire(tx, user.userId, courseId);
       const { modules, lecons } = await this.structure(tx, [f.id]);
       const quiz = await quizAdmin(tx, f);
       return {
@@ -560,32 +565,86 @@ export class AcademyService {
   async creerFormation(user: SessionUser, input: SaveCourseInput): Promise<{ id: string }> {
     this.exigerGestion(user);
     const id = uuidv7();
-    await this.db.withTenant(this.ctx(user), (tx) =>
-      tx.insert(t.academyCourses).values({
+    await this.db.withTenant(this.ctx(user), async (tx) => {
+      await tx.insert(t.academyCourses).values({
         id,
         tenantId: user.tenantId,
         title: input.title,
         summary: input.summary ?? null,
         category: input.category,
+        ...(await this.formateur(tx, input)),
         createdByUserId: user.userId,
-      }),
-    );
+      });
+      await noterGestionnaire(tx, user.userId, id);
+    });
     return { id };
+  }
+
+  /**
+   * Qui a fait la formation : un agent de l'APIX — son nom est relu dans
+   * son dossier —, une personne extérieure, ou personne.
+   */
+  private async formateur(
+    tx: Tx,
+    input: SaveCourseInput,
+    actuel?: LigneFormation,
+  ): Promise<{ formateurEmployeeId: string | null; formateurNom: string | null }> {
+    // Le même agent qu'avant : son nom reste, même s'il a quitté l'APIX depuis.
+    if (input.formateurEmployeeId && input.formateurEmployeeId === actuel?.formateurEmployeeId) {
+      return { formateurEmployeeId: actuel.formateurEmployeeId, formateurNom: actuel.formateurNom };
+    }
+    if (input.formateurEmployeeId) {
+      const [agent] = await tx
+        .select({ givenName: t.persons.givenName, familyName: t.persons.familyName })
+        .from(t.employees)
+        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+        .where(and(eq(t.employees.id, input.formateurEmployeeId), eq(t.employees.status, 'active')))
+        .limit(1);
+      if (!agent) {
+        problem(
+          422,
+          'academy.formateur_inconnu',
+          'Ce formateur n’est pas un agent actif de l’APIX',
+        );
+      }
+      return {
+        formateurEmployeeId: input.formateurEmployeeId,
+        formateurNom: `${agent.givenName} ${agent.familyName}`,
+      };
+    }
+    return { formateurEmployeeId: null, formateurNom: input.formateurNom?.trim() || null };
+  }
+
+  /** Les agents qu'on peut désigner formateur. */
+  async agentsPourFormateur(user: SessionUser): Promise<AgentAcademy[]> {
+    this.exigerGestion(user);
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const { rows } = await tx.execute<{ id: string; nom: string; poste: string | null }>(sql`
+        SELECT e.id, p.given_name || ' ' || p.family_name AS nom,
+               (SELECT a.position_title FROM assignments a
+                 WHERE a.employee_id = e.id AND a.validity @> CURRENT_DATE LIMIT 1) AS poste
+          FROM employees e JOIN persons p ON p.id = e.person_id
+         WHERE e.status = 'active'
+         ORDER BY p.family_name, p.given_name`);
+      return rows.map((r) => ({ employeeId: r.id, nom: r.nom, poste: r.poste }));
+    });
   }
 
   async modifierFormation(user: SessionUser, id: string, input: SaveCourseInput): Promise<void> {
     this.exigerGestion(user);
     await this.db.withTenant(this.ctx(user), async (tx) => {
-      await this.formation(tx, id);
+      const f = await this.formation(tx, id);
       await tx
         .update(t.academyCourses)
         .set({
           title: input.title,
           summary: input.summary ?? null,
           category: input.category,
+          ...(await this.formateur(tx, input, f)),
           updatedAt: new Date(),
         })
         .where(eq(t.academyCourses.id, id));
+      await noterGestionnaire(tx, user.userId, id);
     });
   }
 

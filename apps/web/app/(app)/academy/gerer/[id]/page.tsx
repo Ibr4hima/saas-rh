@@ -258,6 +258,7 @@ export default function AtelierFormationPage() {
             <p className="text-[12px] font-semibold text-ink-muted">
               {compte(f.moduleCount, 'module')} · {compte(f.lessonCount, 'leçon')}
               {f.totalSeconds > 0 ? ` · ${dureeLisible(f.totalSeconds)} de vidéo` : ''}
+              {f.formateur ? ` · Formateur : ${f.formateur.nom}` : ''}
             </p>
             <div className="flex flex-wrap items-center gap-2 pt-1">
               {f.published ? (

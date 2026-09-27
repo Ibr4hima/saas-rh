@@ -139,6 +139,13 @@ export class AcademyController {
     return this.academy.gestionListe(req.sessionUser);
   }
 
+  /** Les agents qu'on peut désigner formateur d'une formation. */
+  @Get('gestion/agents')
+  @Peut('academy')
+  agentsPourFormateur(@Req() req: AuthenticatedRequest) {
+    return this.academy.agentsPourFormateur(req.sessionUser);
+  }
+
   @Get('gestion/courses/:id')
   @Peut('academy')
   gestionDetail(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
@@ -427,9 +434,20 @@ export class AcademyController {
     return this.evaluation.mesCertificats(req.sessionUser);
   }
 
+  @Get('formations-animees')
+  mesFormationsAnimees(@Req() req: AuthenticatedRequest) {
+    return this.evaluation.mesFormationsAnimees(req.sessionUser);
+  }
+
   @Get('employees/:id/certificats')
   certificatsDe(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.evaluation.certificatsDe(req.sessionUser, id);
+  }
+
+  /** Les formations qu'un agent a faites : il en est le formateur. */
+  @Get('employees/:id/formations-animees')
+  formationsAnimees(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.evaluation.formationsAnimees(req.sessionUser, id);
   }
 
   @Get('certificats/:id/pdf')

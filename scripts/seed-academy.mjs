@@ -174,6 +174,14 @@ await appel('POST', '/auth/login', {
 });
 
 const existantes = await appel('GET', '/academy/gestion/courses');
+const agents = await appel('GET', '/academy/gestion/agents');
+
+/** Le formateur d'une formation : un agent de l'APIX, retrouvé par son nom — ou personne. */
+function formateur(f) {
+  if (!f.formateur) return {};
+  const agent = agents.find((a) => a.nom === f.formateur);
+  return agent ? { formateurEmployeeId: agent.employeeId } : { formateurNom: f.formateur };
+}
 
 /** La banque de questions d'une formation, et son réglage. */
 async function chargerEvaluation(courseId, evaluation) {
@@ -223,6 +231,7 @@ for (const f of FORMATIONS) {
     title: f.title,
     summary: f.summary,
     category: f.category,
+    ...formateur(f),
   });
 
   for (const [i, m] of f.modules.entries()) {

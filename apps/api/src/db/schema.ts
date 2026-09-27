@@ -492,6 +492,17 @@ export const academyCourses = pgTable('academy_courses', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   quizQuestionCount: integer('quiz_question_count').notNull().default(10),
   certificateValidityMonths: integer('certificate_validity_months'),
+  /** Le formateur : un agent de l'APIX (son dossier), ou une personne extérieure (son nom). */
+  formateurEmployeeId: uuid('formateur_employee_id'),
+  formateurNom: text('formateur_nom'),
+});
+
+/** Qui a eu la main sur une formation dans l'atelier : l'évaluation lui est fermée. */
+export const academyCourseGestionnaires = pgTable('academy_course_gestionnaires', {
+  tenantId: uuid('tenant_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  premierAccesAt: timestamp('premier_acces_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const academyModules = pgTable('academy_modules', {

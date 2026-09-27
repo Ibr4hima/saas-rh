@@ -20,6 +20,8 @@ export const FORMATIONS = [
     cle: 'powerpoint',
     title: 'Microsoft PowerPoint : des présentations qui convainquent',
     category: 'bureautique',
+    // Un agent de l'APIX l'a faite : il la suit, sans certificat.
+    formateur: 'Moussa Ndiaye',
     summary:
       'Construire une présentation claire et professionnelle, du plan au diaporama. Structurer son message, soigner la mise en page avec le masque aux couleurs de l’APIX, animer avec sobriété et présenter avec aisance devant un comité ou un investisseur.',
     evaluation: {

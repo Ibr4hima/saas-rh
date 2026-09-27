@@ -259,6 +259,17 @@ function Accueil({
             </li>
           ))}
         </ul>
+        {/* Le formateur le sait avant de commencer : pas de certificat pour lui. */}
+        {f.mode === 'suivi' && ev.sansCertificat === 'formateur' && ev.etat !== 'reussie' ? (
+          <p className="flex gap-3 rounded-[12px] bg-primary-soft/60 px-4 py-3 text-[13px] leading-relaxed text-ink ring-1 ring-primary/15 ring-inset">
+            <Icon name="school" size={18} className="mt-0.5 shrink-0 text-primary" />
+            <span>
+              <b className="font-bold">Vous êtes le formateur de cette formation.</b> Vous pouvez
+              passer l’évaluation, mais elle ne vous délivrera pas de certificat. Votre dossier
+              indique que vous l’avez animée.
+            </span>
+          </p>
+        ) : null}
         {erreur ? (
           <p
             role="alert"
@@ -271,15 +282,17 @@ function Accueil({
           <p className="flex-1 text-[12.5px] text-ink-muted">
             {f.mode !== 'suivi'
               ? 'L’évaluation se passe depuis un compte d’agent.'
-              : ev.etat === 'verrouillee'
-                ? 'Validez d’abord toutes les leçons de la formation.'
-                : ev.etat === 'attente'
-                  ? `Vos tentatives du jour sont passées. La prochaine s’ouvre ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`
-                  : ev.etat === 'reussie'
-                    ? 'Vous avez déjà réussi cette évaluation.'
-                    : ev.etat === 'en_cours'
-                      ? 'Votre copie est ouverte : le temps court encore.'
-                      : tentativesDuJour(ev)}
+              : ev.etat === 'fermee'
+                ? 'Vous gérez cette formation et en connaissez les questions : l’évaluation vous est fermée.'
+                : ev.etat === 'verrouillee'
+                  ? 'Validez d’abord toutes les leçons de la formation.'
+                  : ev.etat === 'attente'
+                    ? `Vos tentatives du jour sont passées. La prochaine s’ouvre ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`
+                    : ev.etat === 'reussie'
+                      ? 'Vous avez déjà réussi cette évaluation.'
+                      : ev.etat === 'en_cours'
+                        ? 'Votre copie est ouverte : le temps court encore.'
+                        : tentativesDuJour(ev)}
           </p>
           <Button disabled={!ouvrable} loading={commence} onClick={onCommencer}>
             <Icon name="play_arrow" size={17} fill />
@@ -318,7 +331,10 @@ function Resultat({
             r.passed ? 'bg-success-soft text-success' : 'bg-line-soft text-ink-muted',
           )}
         >
-          <Icon name={r.passed ? 'workspace_premium' : 'replay'} size={28} />
+          <Icon
+            name={r.passed ? (r.certificat ? 'workspace_premium' : 'task_alt') : 'replay'}
+            size={28}
+          />
         </span>
         <p
           className={cn(
@@ -345,6 +361,12 @@ function Resultat({
             : ''}
         </p>
 
+        {r.passed && !r.certificat && ev.sansCertificat === 'formateur' ? (
+          <p className="mt-2 w-full rounded-[14px] border border-success/25 bg-success-soft/50 px-5 py-4 text-[13px] leading-relaxed text-ink">
+            Sans certificat : vous êtes le formateur de cette formation. Votre dossier indique que
+            vous l’avez animée.
+          </p>
+        ) : null}
         {r.passed && r.certificat ? (
           <div className="mt-2 flex w-full flex-col items-center gap-3 rounded-[14px] border border-success/25 bg-success-soft/50 px-5 py-4">
             <p className="text-[13px] leading-relaxed text-ink">
