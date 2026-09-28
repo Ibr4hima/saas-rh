@@ -18,7 +18,8 @@ import { usePreferences } from './preferences';
 
    Une silhouette ouvre donc un menu : ce qui appartient à la PERSONNE plutôt
    qu'à un écran — l'espace où elle travaille (« Mon espace » ou « Gestion
-   RH », pour qui a les deux), ses certificats APIX Academy, le thème — et la
+   RH », pour qui a les deux), ses certificats APIX Academy (dans Mon espace),
+   le thème — et la
    sortie. L'autre espace s'y choisit comme le thème : la rangée dit où l'on
    va, et un point sur la silhouette dit que quelque chose y attend.
    (La densité des tableaux y figurait ; elle a été retirée, les tableaux
@@ -44,9 +45,12 @@ export interface BasculeDEspace {
 export function MenuCompte({
   variante,
   bascule,
+  certificats,
 }: {
   variante: 'colonne' | 'bandeau';
   bascule?: BasculeDEspace;
+  /** « Mes certificats » : dans Mon espace seulement. */
+  certificats: boolean;
 }) {
   const router = useRouter();
   const { theme, basculer } = usePreferences();
@@ -142,16 +146,18 @@ export function MenuCompte({
               }}
             />
           ) : null}
-          {/* Ses certificats, où qu'on soit : c'est ce qu'on vient chercher
-              quand on vous demande une preuve de formation. */}
-          <Rangee
-            icone="workspace_premium"
-            libelle="Mes certificats"
-            onClick={() => {
-              setOuvert(false);
-              router.push('/academy/certificats');
-            }}
-          />
+          {/* Ses certificats, depuis Mon espace : c'est ce qu'on vient
+              chercher quand on vous demande une preuve de formation. */}
+          {certificats ? (
+            <Rangee
+              icone="workspace_premium"
+              libelle="Mes certificats"
+              onClick={() => {
+                setOuvert(false);
+                router.push('/academy/certificats');
+              }}
+            />
+          ) : null}
           <Rangee
             icone={nuit ? 'light_mode' : 'dark_mode'}
             libelle={nuit ? 'Mode clair' : 'Mode sombre'}

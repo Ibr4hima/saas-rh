@@ -1130,6 +1130,15 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (path.endsWith('/deposer')) return peut(u, 'textes');
     if (commence('/reglementations')) return true;
     if (commence('/academy/gerer')) return peut(u, 'academy');
+    // Ce qu'on garde de ses formations est à l'agent : l'administrateur, qui
+    // ne l'est pas, n'ouvre du côté apprenant que l'aperçu de l'atelier.
+    if (
+      commence('/academy/certificats') ||
+      commence('/academy/ma-liste') ||
+      commence('/academy/equipe')
+    ) {
+      return u.estAgent;
+    }
     if (commence('/academy')) return true;
     if (commence('/dashboard') || commence('/competences') || commence('/evaluation')) {
       return peut(u, 'pilotage');
@@ -1238,28 +1247,32 @@ function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
           {action ? <HeaderAction action={action} /> : null}
           {academy ? (
-            <>
-              {(equipe.data?.total ?? 0) > 0 ? (
+            // Les raccourcis de l'apprenant — l'administrateur, qui n'y vient
+            // que pour l'aperçu de l'atelier, n'en a pas.
+            espace === 'agent' ? (
+              <>
+                {(equipe.data?.total ?? 0) > 0 ? (
+                  <LienBandeau
+                    href="/academy/equipe"
+                    icone="groups"
+                    libelle="Mon équipe"
+                    actif={pathname.startsWith('/academy/equipe')}
+                  />
+                ) : null}
                 <LienBandeau
-                  href="/academy/equipe"
-                  icone="groups"
-                  libelle="Mon équipe"
-                  actif={pathname.startsWith('/academy/equipe')}
+                  href="/academy/certificats"
+                  icone="workspace_premium"
+                  libelle="Mes certificats"
+                  actif={pathname === '/academy/certificats'}
                 />
-              ) : null}
-              <LienBandeau
-                href="/academy/certificats"
-                icone="workspace_premium"
-                libelle="Mes certificats"
-                actif={pathname === '/academy/certificats'}
-              />
-              <LienBandeau
-                href="/academy/ma-liste"
-                icone="bookmark"
-                libelle="Ma liste"
-                actif={pathname === '/academy/ma-liste'}
-              />
-            </>
+                <LienBandeau
+                  href="/academy/ma-liste"
+                  icone="bookmark"
+                  libelle="Ma liste"
+                  actif={pathname === '/academy/ma-liste'}
+                />
+              </>
+            ) : null
           ) : (
             <>
               <DateDuJour />
@@ -1272,6 +1285,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <span className="lg:hidden">
             <MenuCompte
               variante="bandeau"
+              certificats={espace === 'agent'}
               bascule={
                 deuxEspaces
                   ? { vers: autre, alerte: alertes[autre], onBasculer: () => allerA(autre) }
@@ -1407,6 +1421,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             ) : null}
             <MenuCompte
               variante="colonne"
+              certificats={espace === 'agent'}
               bascule={
                 deuxEspaces
                   ? { vers: autre, alerte: alertes[autre], onBasculer: () => allerA(autre) }

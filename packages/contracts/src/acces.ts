@@ -328,7 +328,7 @@ export type Espace = 'agent' | 'gestion';
 
 /**
  * L'espace auquel une page appartient — `null` : elle est des deux (le
- * calendrier, l'organigramme, les textes, le catalogue de l'Academy).
+ * calendrier, l'organigramme, les textes).
  *
  * Une notification appartient à l'espace de la page où elle mène : c'est ainsi
  * que chaque espace a sa boîte (`espaceDeLaNotification`).
@@ -340,7 +340,9 @@ export function espaceDuChemin(chemin: string): Espace | null {
   if (sous('/moi/dch') || sous('/moi/delegations')) return 'gestion';
   if (sous('/moi')) return 'agent';
   if (sous('/academy/gerer')) return 'gestion';
-  if (sous('/academy') || sous('/calendrier') || sous('/organisation')) return null;
+  // Apprendre, ses certificats : Mon espace seulement (décision APIX).
+  if (sous('/academy')) return 'agent';
+  if (sous('/calendrier') || sous('/organisation')) return null;
   if (sous('/reglementations')) return path.endsWith('/deposer') ? 'gestion' : null;
   return 'gestion';
 }

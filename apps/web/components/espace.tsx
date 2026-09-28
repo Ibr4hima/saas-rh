@@ -17,9 +17,10 @@ import { espaceDuChemin, type Espace } from '@teranga/contracts';
 
    La page dit souvent d'elle-même où l'on est : « Mes congés » est à
    l'agent, « Documents à traiter » à la gestion. Quelques pages sont des
-   deux — le calendrier, l'organigramme, les textes, le catalogue de
-   l'Academy : elles restent dans l'espace qu'on a choisi, et n'y montrent
-   leurs gestes de gestion que côté Gestion RH.
+   deux — le calendrier, l'organigramme, les textes : elles restent dans
+   l'espace qu'on a choisi, et n'y montrent leurs gestes de gestion que côté
+   Gestion RH. L'Academy, elle, est à l'agent : y aller, c'est rentrer dans
+   Mon espace.
    ———————————————————————————————————————————————————————————————— */
 
 export type { Espace } from '@teranga/contracts';
