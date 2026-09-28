@@ -27,6 +27,7 @@ export const ICON_NAMES = [
   'archive',
   'arrow_downward',
   'arrow_forward',
+  'arrow_split',
   'arrow_upward',
   'badge',
   'bookmark',
@@ -103,6 +104,7 @@ export const ICON_NAMES = [
   'visibility_off',
   'volume_off',
   'volume_up',
+  'warning',
   'workspace_premium',
 ] as const;
 

@@ -242,7 +242,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/documents': 'Documents à traiter',
   '/demandes/informations': 'Informations à traiter',
   '/demandes/pieces': 'Pièces à vérifier',
-  '/moi/delegations': 'Délégations',
+  '/moi/delegations': 'Déléguer des tâches',
   '/calendrier': 'Calendrier · Jours fériés',
   '/recrutement': "Offres d'emploi",
   '/recrutement/candidatures': 'Dossiers de candidature',
@@ -501,8 +501,8 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
             href: '/moi/delegations',
             label: 'Délégations',
             short: 'Délég.',
-            motsCles: 'Habilitations DCH confier accès',
-            icon: 'verified_user',
+            motsCles: 'Habilitations DCH confier accès déléguer tâches',
+            icon: 'arrow_split',
             groupe: 'quotidien',
           },
         ]
@@ -657,53 +657,6 @@ function personalNav(aUneEquipe: boolean): NavItem[] {
       ],
     },
   ];
-}
-
-/**
- * « Mon espace | Gestion RH », en tête du menu. Le compteur dit, depuis
- * l'autre espace, ce qui y attend : des demandes à traiter, des congés
- * d'équipe à viser.
- */
-function BasculeEspace({
-  espace,
-  alertes,
-  onChoisir,
-}: {
-  espace: Espace;
-  alertes: Record<Espace, number>;
-  onChoisir: (e: Espace) => void;
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Espace"
-      className="flex min-w-0 flex-1 gap-0.5 rounded-full border border-line-soft bg-bg p-[3px]"
-    >
-      {(['agent', 'gestion'] as const).map((e) => {
-        const actif = e === espace;
-        return (
-          <button
-            key={e}
-            type="button"
-            role="radio"
-            aria-checked={actif}
-            onClick={() => (actif ? undefined : onChoisir(e))}
-            className={cn(
-              'flex min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-1.5 py-[5px] text-[11.5px] font-bold whitespace-nowrap transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
-              actif ? 'bg-surface text-primary shadow-sm' : 'text-ink-muted hover:text-ink',
-            )}
-          >
-            {LIBELLES_ESPACE[e]}
-            {!actif && alertes[e] > 0 ? (
-              <span className="rounded-full bg-alert-soft px-[5px] py-px text-[9.5px] leading-none font-extrabold text-alert-text">
-                {alertes[e]}
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
-    </div>
-  );
 }
 
 /** Une entrée simple de la barre latérale. */
@@ -1275,7 +1228,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const badgeCount = (badge?: 'visas' | 'traiter') =>
     badge === 'visas' ? aViser : badge === 'traiter' ? totalATraiter : 0;
   // Ce qui attend dans chaque espace : les congés de l'équipe à viser, les
-  // demandes à traiter. L'autre espace le dit sur le sélecteur.
+  // demandes à traiter. L'autre espace le dit dans le menu du compte.
   const alertes: Record<Espace, number> = { agent: aViser, gestion: totalATraiter };
   const autre: Espace = espace === 'agent' ? 'gestion' : 'agent';
 
@@ -1370,7 +1323,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
           {/* Sur téléphone la colonne n'existe pas : sans ce menu, ni le
               thème ni la sortie ne seraient atteignables. */}
           <span className="lg:hidden">
-            <MenuCompte variante="bandeau" />
+            <MenuCompte
+              variante="bandeau"
+              bascule={
+                deuxEspaces
+                  ? { vers: autre, alerte: alertes[autre], onBasculer: () => allerA(autre) }
+                  : undefined
+              }
+            />
           </span>
         </div>
       </header>
@@ -1424,33 +1384,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Icon name={replie ? 'left_panel_open' : 'left_panel_close'} size={19} />
               </button>
-              {replie ? null : deuxEspaces ? (
-                <BasculeEspace espace={espace} alertes={alertes} onChoisir={allerA} />
-              ) : (
+              {/* L'espace où l'on est ; l'autre se choisit dans le menu du compte. */}
+              {replie ? null : (
                 <p className="min-w-0 truncate text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
                   {LIBELLES_ESPACE[espace]}
                 </p>
               )}
             </div>
-            {/* Repliée : l'autre espace en une icône, sous le bouton du menu. */}
-            {replie && deuxEspaces ? (
-              <div className="flex shrink-0 px-2 pb-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBulle(null);
-                    allerA(autre);
-                  }}
-                  aria-label={`Passer à ${LIBELLES_ESPACE[autre]}`}
-                  {...survolAvecBulle(`Passer à ${LIBELLES_ESPACE[autre]}`, setBulle)}
-                  className="relative ml-[6.5px] grid size-8 shrink-0 place-items-center rounded-[9px] bg-primary/[0.07] text-primary transition-colors duration-150 hover:bg-primary/[0.12] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
-                >
-                  <Icon name={autre === 'gestion' ? 'business_center' : 'person'} size={18} />
-                  {alertes[autre] > 0 ? <PointAlerte /> : null}
-                </button>
-              </div>
-            ) : null}
-
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
               {items.map((item, i) => {
                 // Le blanc entre deux familles vaut un intitulé, et ne coûte
@@ -1513,7 +1453,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
                 </span>
               </>
             ) : null}
-            <MenuCompte variante="colonne" />
+            <MenuCompte
+              variante="colonne"
+              bascule={
+                deuxEspaces
+                  ? { vers: autre, alerte: alertes[autre], onBasculer: () => allerA(autre) }
+                  : undefined
+              }
+            />
           </div>
           {replie ? <InfoBulle bulle={bulle} /> : null}
         </aside>
@@ -1532,22 +1479,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Barre d'onglets mobile */}
       <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line-soft bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">
-        {/* L'autre espace, en premier onglet : on le trouve sans faire
-            défiler la barre. Teinté, il se distingue des destinations. */}
-        {deuxEspaces ? (
-          <button
-            type="button"
-            onClick={() => allerA(autre)}
-            aria-label={`Passer à ${LIBELLES_ESPACE[autre]}`}
-            className="relative flex min-w-16 shrink-0 flex-col items-center gap-0.5 rounded-[10px] bg-primary/[0.07] px-2 py-1 text-[10px] font-semibold text-primary"
-          >
-            <Icon name={autre === 'gestion' ? 'business_center' : 'person'} size={22} />
-            {alertes[autre] > 0 ? (
-              <span className="absolute top-0 right-2 size-2 rounded-full bg-alert" />
-            ) : null}
-            <span className="truncate">{LIBELLES_ESPACE[autre]}</span>
-          </button>
-        ) : null}
         {items.map((item) => {
           const active = isActive(item.href);
           // Une rubrique n'a pas de page à elle : l'onglet mène à sa première

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom';
 import { cn } from '@teranga/ui';
 import { api } from '../lib/api';
+import { LIBELLES_ESPACE, type Espace } from './espace';
 import { Icon, type IconName } from './icons';
 import { usePreferences } from './preferences';
 
@@ -16,7 +17,10 @@ import { usePreferences } from './preferences';
    faudrait plusieurs — et le thème n'avait nulle part où vivre.
 
    Une silhouette ouvre donc un menu : ce qui appartient à la PERSONNE plutôt
-   qu'à un écran — ses certificats APIX Academy, le thème — et la sortie.
+   qu'à un écran — l'espace où elle travaille (« Mon espace » ou « Gestion
+   RH », pour qui a les deux), ses certificats APIX Academy, le thème — et la
+   sortie. L'autre espace s'y choisit comme le thème : la rangée dit où l'on
+   va, et un point sur la silhouette dit que quelque chose y attend.
    (La densité des tableaux y figurait ; elle a été retirée, les tableaux
    sont confortables pour tous.) La déconnexion se range en bas,
    derrière un filet, en rouge au survol : c'est le geste qu'on ne veut pas
@@ -30,7 +34,20 @@ import { usePreferences } from './preferences';
    être rogné par la colonne ni par le bandeau qui le portent.
    ———————————————————————————————————————————————————————————————— */
 
-export function MenuCompte({ variante }: { variante: 'colonne' | 'bandeau' }) {
+/** L'autre espace, pour qui en a deux : où la rangée mène, et ce qui y attend. */
+export interface BasculeDEspace {
+  vers: Espace;
+  alerte: number;
+  onBasculer: () => void;
+}
+
+export function MenuCompte({
+  variante,
+  bascule,
+}: {
+  variante: 'colonne' | 'bandeau';
+  bascule?: BasculeDEspace;
+}) {
   const router = useRouter();
   const { theme, basculer } = usePreferences();
   const [ouvert, setOuvert] = useState(false);
@@ -93,7 +110,18 @@ export function MenuCompte({ variante }: { variante: 'colonne' | 'bandeau' }) {
               ),
         )}
       >
-        <Icon name="person" size={dansLeBandeau ? 19 : 18} fill={ouvert} />
+        <span className="relative flex">
+          <Icon name="person" size={dansLeBandeau ? 19 : 18} fill={ouvert} />
+          {bascule && bascule.alerte > 0 && !ouvert ? (
+            <span
+              aria-hidden
+              className={cn(
+                'absolute -top-0.5 -right-1 size-2 rounded-full bg-alert ring-2',
+                dansLeBandeau ? 'ring-[var(--tg-hero)]' : 'ring-surface',
+              )}
+            />
+          ) : null}
+        </span>
       </button>
 
       {ouvert ? (
@@ -103,6 +131,17 @@ export function MenuCompte({ variante }: { variante: 'colonne' | 'bandeau' }) {
           dansLeBandeau={dansLeBandeau}
           onFermer={() => setOuvert(false)}
         >
+          {bascule ? (
+            <Rangee
+              icone={bascule.vers === 'gestion' ? 'business_center' : 'person'}
+              libelle={LIBELLES_ESPACE[bascule.vers]}
+              badge={bascule.alerte}
+              onClick={() => {
+                setOuvert(false);
+                bascule.onBasculer();
+              }}
+            />
+          ) : null}
           {/* Ses certificats, où qu'on soit : c'est ce qu'on vient chercher
               quand on vous demande une preuve de formation. */}
           <Rangee
@@ -222,11 +261,14 @@ function Rangee({
   icone,
   libelle,
   danger,
+  badge,
   onClick,
 }: {
   icone: IconName;
   libelle: string;
   danger?: boolean;
+  /** Ce qui attend derrière la rangée (l'autre espace). */
+  badge?: number;
   onClick: () => void;
 }) {
   return (
@@ -244,7 +286,12 @@ function Rangee({
       {/* L'icône suit le mot au survol : sur la déconnexion, une flèche
           restée grise à côté d'un libellé rouge se lit comme une erreur. */}
       <Icon name={icone} size={17} className="shrink-0 text-ink-muted group-hover:text-current" />
-      {libelle}
+      <span className="flex-1">{libelle}</span>
+      {badge && badge > 0 ? (
+        <span className="rounded-full bg-alert-soft px-[6px] py-px text-[10px] font-extrabold text-alert-text">
+          {badge}
+        </span>
+      ) : null}
     </button>
   );
 }

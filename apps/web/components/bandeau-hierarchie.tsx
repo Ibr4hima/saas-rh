@@ -91,12 +91,10 @@ export function BandeauHierarchie() {
   const c = controle.data;
   if (!c || (c.anomalies.length === 0 && c.sommetsMultiples.length === 0)) return null;
 
-  const bloquantes = c.anomalies.filter((a) => bloqueLEvaluation(a.type)).length;
-
   return (
     <>
       <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[14px] border border-accent/25 bg-accent-soft/50 px-4 py-3">
-        <Icon name="error" size={17} className="shrink-0 text-accent-text" />
+        <Icon name="warning" size={17} className="shrink-0 text-accent-text" />
         <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-ink">
           {c.sommetsMultiples.length > 1 ? (
             <>
@@ -108,20 +106,9 @@ export function BandeauHierarchie() {
             </>
           ) : null}
           {c.anomalies.length > 0 ? (
-            <>
-              <b className="font-bold text-accent-text">
-                {compte(c.anomalies.length, 'dossier')} à compléter
-              </b>{' '}
-              dans la chaîne hiérarchique
-              {bloquantes > 0 ? (
-                <>
-                  {' '}
-                  — dont {bloquantes} qui ne {bloquantes > 1 ? 'peuvent' : 'peut'} pas être
-                  {bloquantes > 1 ? ' évalués' : ' évalué'} tant que le n+1 n’est pas désigné
-                </>
-              ) : null}
-              .
-            </>
+            <b className="font-bold text-accent-text">
+              {compte(c.anomalies.length, 'dossier')} à compléter
+            </b>
           ) : null}
           {c.directeurGeneral === null ? (
             <> Aucun directeur général n’est désigné à la tête de l’organigramme.</>

@@ -94,9 +94,9 @@ export default function DelegationsPage() {
       {message ? <BandeauMessage message={message} /> : null}
 
       <Card className="shrink-0">
-        <CardContent className="flex items-start gap-3 pt-5">
+        <CardContent className="flex items-center gap-3 pt-5">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-[11px] bg-primary/[0.07] text-primary">
-            <Icon name="verified_user" size={19} />
+            <Icon name="arrow_split" size={19} />
           </span>
           <div className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-ink">
             {etat.isLoading ? (
@@ -109,11 +109,7 @@ export default function DelegationsPage() {
                 </Link>
               </>
             ) : modifiable ? (
-              <>
-                Vous dirigez la <span className="font-semibold">{d.direction.nom}</span> : toutes
-                les demandes et tous les accès vous reviennent. Confiez-en aux membres de votre
-                direction. Ces délégations restent en place si la direction change de responsable.
-              </>
+              <>Déléguer les missions de la DCH à vos collaborateurs</>
             ) : (
               <>
                 Qui peut quoi à la <span className="font-semibold">{d.direction.nom}</span>
@@ -127,7 +123,7 @@ export default function DelegationsPage() {
 
       <CartePleine>
         <CardHeader className="shrink-0">
-          <CardTitle>{modifiable ? 'Ce que vous confiez' : 'Qui peut quoi'}</CardTitle>
+          <CardTitle>{modifiable ? 'Délégations' : 'Qui peut quoi'}</CardTitle>
         </CardHeader>
         <CorpsDefilant className="px-4 pb-4">
           {etat.isLoading ? (

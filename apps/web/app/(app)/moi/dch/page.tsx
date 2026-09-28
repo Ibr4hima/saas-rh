@@ -143,7 +143,7 @@ export default function CongesATraiterPage() {
 
       {estDirecteur ? (
         <p className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-[12px] bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
-          <Icon name="verified_user" size={16} className="shrink-0 text-primary" />
+          <Icon name="arrow_split" size={16} className="shrink-0 text-primary" />
           <span className="min-w-0 flex-1">
             {habilites.length > 0
               ? `Les demandes de congé vont directement à ${habilites.map((m) => m.nom).join(' et ')}, une fois visées par le N+1. Vous les voyez toutes, et gardez la main.`
