@@ -4,7 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { NotificationScope, NotificationView, NotificationsPage } from '@teranga/contracts';
+import type {
+  Espace,
+  NotificationScope,
+  NotificationView,
+  NotificationsPage,
+} from '@teranga/contracts';
 import { cn, EmptyState } from '@teranga/ui';
 import { api } from '../lib/api';
 import { Icon, type IconName } from './icons';
@@ -32,8 +37,14 @@ function iconOf(type: string): IconName {
   return 'notifications';
 }
 
-export function NotificationsBell() {
+/**
+ * @param espace Qui a deux espaces a deux boîtes : celle de l'espace où il se
+ *   trouve (les avis qui mènent à ses pages, et ceux des deux espaces, comme
+ *   les fériés). Sans espace, toute la boîte.
+ */
+export function NotificationsBell({ espace }: { espace?: Espace }) {
   const queryClient = useQueryClient();
+  const filtre = espace ? `espace=${espace}` : '';
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [vue, setVue] = useState<NotificationScope>('inbox');
@@ -41,8 +52,9 @@ export function NotificationsBell() {
   const panneauRef = useRef<HTMLDivElement>(null);
 
   const page = useQuery({
-    queryKey: ['notifications', vue],
-    queryFn: () => api<NotificationsPage>(`/notifications?scope=${vue}`),
+    queryKey: ['notifications', vue, espace ?? 'tout'],
+    queryFn: () =>
+      api<NotificationsPage>(`/notifications?scope=${vue}${filtre ? `&${filtre}` : ''}`),
     refetchInterval: 60_000,
   });
 
@@ -57,7 +69,8 @@ export function NotificationsBell() {
     onSuccess: rafraichir,
   });
   const markAll = useMutation({
-    mutationFn: () => api('/notifications/read-all', { method: 'POST' }),
+    mutationFn: () =>
+      api(`/notifications/read-all${filtre ? `?${filtre}` : ''}`, { method: 'POST' }),
     onSuccess: rafraichir,
   });
   const ranger = useMutation({
@@ -70,7 +83,8 @@ export function NotificationsBell() {
     onSuccess: rafraichir,
   });
   const toutArchiver = useMutation({
-    mutationFn: () => api('/notifications/archive-all', { method: 'POST' }),
+    mutationFn: () =>
+      api(`/notifications/archive-all${filtre ? `?${filtre}` : ''}`, { method: 'POST' }),
     onSuccess: rafraichir,
   });
 

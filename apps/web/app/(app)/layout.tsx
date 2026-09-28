@@ -1264,7 +1264,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <>
               <DateDuJour />
               {reglage ? <HeaderAction action={reglage} /> : null}
-              <NotificationsBell />
+              <NotificationsBell espace={deuxEspaces ? espace : undefined} />
             </>
           )}
           {/* Sur téléphone la colonne n'existe pas : sans ce menu, ni le

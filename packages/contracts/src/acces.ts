@@ -316,3 +316,52 @@ export function gereQuelqueChose(
 ): boolean {
   return CAPACITES_GESTION.some((c) => peut(user, c));
 }
+
+// ---------- Les deux espaces ----------
+
+/**
+ * Un compte, deux espaces : « Mon espace » (agent) et « Gestion RH »
+ * (gestion). Qui ne gère rien n'a que le premier ; l'administrateur, que le
+ * second.
+ */
+export type Espace = 'agent' | 'gestion';
+
+/**
+ * L'espace auquel une page appartient — `null` : elle est des deux (le
+ * calendrier, l'organigramme, les textes, le catalogue de l'Academy).
+ *
+ * Une notification appartient à l'espace de la page où elle mène : c'est ainsi
+ * que chaque espace a sa boîte (`espaceDeLaNotification`).
+ */
+export function espaceDuChemin(chemin: string): Espace | null {
+  const path = chemin.split(/[?#]/)[0] ?? '';
+  const sous = (p: string) => path === p || path.startsWith(`${p}/`);
+  // Traiter pour la DCH, confier : de la gestion, même rangé sous /moi.
+  if (sous('/moi/dch') || sous('/moi/delegations')) return 'gestion';
+  if (sous('/moi')) return 'agent';
+  if (sous('/academy/gerer')) return 'gestion';
+  if (sous('/academy') || sous('/calendrier') || sous('/organisation')) return null;
+  if (sous('/reglementations')) return path.endsWith('/deposer') ? 'gestion' : null;
+  return 'gestion';
+}
+
+/**
+ * Les avis de gestion qui mènent à une page commune — ou nulle part : une
+ * habilitation accordée pour l'organigramme, une habilitation retirée, la DCH
+ * sans responsable. Ils vont quand même à la boîte de Gestion RH.
+ */
+export const NOTIFICATIONS_DE_GESTION = ['delegation', 'delegation_rompue', 'dch_vacante'] as const;
+
+/**
+ * La boîte où va une notification : l'espace de la page où elle mène ; à
+ * défaut, celui de son type — `null` : les deux boîtes (un jour férié).
+ *
+ * Le serveur applique la même règle en SQL pour filtrer dans la base
+ * (notifications.service.ts, `espaceDeLaNotificationSql`) ; un test les garde
+ * d'accord.
+ */
+export function espaceDeLaNotification(n: { type: string; link: string | null }): Espace | null {
+  const espace = n.link ? espaceDuChemin(n.link) : null;
+  if (espace) return espace;
+  return (NOTIFICATIONS_DE_GESTION as readonly string[]).includes(n.type) ? 'gestion' : null;
+}

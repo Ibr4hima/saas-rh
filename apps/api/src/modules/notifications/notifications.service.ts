@@ -1,13 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
+  Espace,
   ExpiringContractView,
   NotificationScope,
   NotificationsPage,
   SessionUser,
 } from '@teranga/contracts';
-import { peut } from '@teranga/contracts';
+import { NOTIFICATIONS_DE_GESTION, peut } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -75,6 +76,36 @@ const mien = (userId: string) => eq(t.notifications.recipientUserId, userId);
 const dansLaBoite = () => isNull(t.notifications.archivedAt);
 const range = () => sql`${t.notifications.archivedAt} IS NOT NULL`;
 
+/**
+ * La boîte d'une notification : `espaceDeLaNotification` (contrats), écrite en
+ * SQL pour filtrer dans la base — l'espace de la page où elle mène, à défaut
+ * celui de son type ; NULL : les deux boîtes. Un test les garde d'accord.
+ */
+export const espaceDeLaNotificationSql = (
+  lien: SQL | typeof t.notifications.link,
+  type: SQL | typeof t.notifications.type,
+) => sql`(CASE
+  WHEN ${lien} ~ '^/moi/(dch|delegations)([/?#]|$)' THEN 'gestion'
+  WHEN ${lien} ~ '^/moi([/?#]|$)' THEN 'agent'
+  WHEN ${lien} ~ '^/academy/gerer([/?#]|$)' THEN 'gestion'
+  WHEN ${lien} ~ '^/reglementations/([^?#]*/)?deposer([?#]|$)' THEN 'gestion'
+  WHEN ${lien} <> ''
+   AND ${lien} !~ '^/(academy|calendrier|organisation|reglementations)([/?#]|$)' THEN 'gestion'
+  WHEN ${type} IN (${sql.join(
+    NOTIFICATIONS_DE_GESTION.map((x) => sql`${x}`),
+    sql`, `,
+  )}) THEN 'gestion'
+  END)`;
+
+/**
+ * La boîte d'un espace : ce qui y va, et ce qui va aux deux. Sans espace (qui
+ * n'en a qu'un), toute la boîte.
+ */
+const deLEspace = (espace: Espace | undefined) =>
+  espace
+    ? sql`${espaceDeLaNotificationSql(t.notifications.link, t.notifications.type)} IS DISTINCT FROM ${espace === 'agent' ? 'gestion' : 'agent'}`
+    : sql`TRUE`;
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -92,7 +123,11 @@ export class NotificationsService {
   }
 
   /** Boîte de réception : génère d'abord les échéances (idempotent). */
-  async list(user: SessionUser, scope: NotificationScope = 'inbox'): Promise<NotificationsPage> {
+  async list(
+    user: SessionUser,
+    scope: NotificationScope = 'inbox',
+    espace?: Espace,
+  ): Promise<NotificationsPage> {
     const ctx = { tenantId: user.tenantId, userId: user.userId };
 
     // Génération dans sa PROPRE transaction, et jamais bloquante : une écriture
@@ -127,7 +162,9 @@ export class NotificationsService {
       const items = await tx
         .select()
         .from(t.notifications)
-        .where(and(mien(user.userId), scope === 'archive' ? range() : dansLaBoite()))
+        .where(
+          and(mien(user.userId), deLEspace(espace), scope === 'archive' ? range() : dansLaBoite()),
+        )
         // Les archives se lisent par date de RANGEMENT : la dernière rangée est
         // celle qu'on vient de ranger, donc celle qu'on cherche à ressortir.
         .orderBy(
@@ -143,7 +180,7 @@ export class NotificationsService {
           archivees: sql<number>`count(*) FILTER (WHERE archived_at IS NOT NULL)::int`,
         })
         .from(t.notifications)
-        .where(mien(user.userId));
+        .where(and(mien(user.userId), deLEspace(espace)));
       return {
         unreadCount: compte?.nonLues ?? 0,
         archivedCount: compte?.archivees ?? 0,
@@ -209,12 +246,12 @@ export class NotificationsService {
    * toute façon pas destructeur : rien n'est effacé, rien n'est marqué lu,
    * tout est repris d'un clic depuis les archives.
    */
-  async archiveAll(user: SessionUser): Promise<void> {
+  async archiveAll(user: SessionUser, espace?: Espace): Promise<void> {
     await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
       tx
         .update(t.notifications)
         .set({ archivedAt: new Date() })
-        .where(and(mien(user.userId), dansLaBoite())),
+        .where(and(mien(user.userId), deLEspace(espace), dansLaBoite())),
     );
   }
 
@@ -255,14 +292,12 @@ export class NotificationsService {
     });
   }
 
-  async markAllRead(user: SessionUser): Promise<void> {
+  async markAllRead(user: SessionUser, espace?: Espace): Promise<void> {
     await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
       tx
         .update(t.notifications)
         .set({ readAt: new Date() })
-        .where(
-          and(eq(t.notifications.recipientUserId, user.userId), isNull(t.notifications.readAt)),
-        ),
+        .where(and(mien(user.userId), deLEspace(espace), isNull(t.notifications.readAt))),
     );
   }
 

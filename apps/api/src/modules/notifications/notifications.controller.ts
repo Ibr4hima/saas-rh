@@ -12,6 +12,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  type Espace,
+  notificationEspaceQuerySchema,
   type NotificationIdsInput,
   notificationIdsSchema,
   type NotificationScope,
@@ -30,9 +32,10 @@ export class NotificationsController {
   @Get('notifications')
   list(
     @Req() req: AuthenticatedRequest,
-    @Query(new ZodValidationPipe(notificationScopeQuerySchema)) query: { scope: NotificationScope },
+    @Query(new ZodValidationPipe(notificationScopeQuerySchema))
+    query: { scope: NotificationScope; espace?: Espace },
   ) {
-    return this.notifications.list(req.sessionUser, query.scope);
+    return this.notifications.list(req.sessionUser, query.scope, query.espace);
   }
 
   @Post('notifications/:id/read')
@@ -43,8 +46,11 @@ export class NotificationsController {
 
   @Post('notifications/read-all')
   @HttpCode(204)
-  async markAllRead(@Req() req: AuthenticatedRequest) {
-    await this.notifications.markAllRead(req.sessionUser);
+  async markAllRead(
+    @Req() req: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(notificationEspaceQuerySchema)) query: { espace?: Espace },
+  ) {
+    await this.notifications.markAllRead(req.sessionUser, query.espace);
   }
 
   /**
@@ -72,8 +78,11 @@ export class NotificationsController {
 
   @Post('notifications/archive-all')
   @HttpCode(204)
-  async archiveAll(@Req() req: AuthenticatedRequest) {
-    await this.notifications.archiveAll(req.sessionUser);
+  async archiveAll(
+    @Req() req: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(notificationEspaceQuerySchema)) query: { espace?: Espace },
+  ) {
+    await this.notifications.archiveAll(req.sessionUser, query.espace);
   }
 
   /** Les contrats sous l'œil de la RH jusqu'à leur expiration. */

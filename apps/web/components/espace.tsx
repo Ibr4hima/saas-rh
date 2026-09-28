@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useState } from 'react';
+import { espaceDuChemin, type Espace } from '@teranga/contracts';
 
 /* ————————————————————————————————————————————————————————————————
    Un compte, deux espaces.
@@ -21,7 +22,7 @@ import { createContext, useCallback, useContext, useState } from 'react';
    leurs gestes de gestion que côté Gestion RH.
    ———————————————————————————————————————————————————————————————— */
 
-export type Espace = 'agent' | 'gestion';
+export type { Espace } from '@teranga/contracts';
 
 export const LIBELLES_ESPACE: Record<Espace, string> = {
   agent: 'Mon espace',
@@ -29,16 +30,7 @@ export const LIBELLES_ESPACE: Record<Espace, string> = {
 };
 
 /** L'espace qu'une page impose — `null` : elle est des deux. */
-export function espaceDeLaPage(path: string): Espace | null {
-  const sous = (p: string) => path === p || path.startsWith(`${p}/`);
-  // Traiter pour la DCH, confier : de la gestion, même rangé sous /moi.
-  if (sous('/moi/dch') || sous('/moi/delegations')) return 'gestion';
-  if (sous('/moi')) return 'agent';
-  if (sous('/academy/gerer')) return 'gestion';
-  if (sous('/academy') || sous('/calendrier') || sous('/organisation')) return null;
-  if (sous('/reglementations')) return path.endsWith('/deposer') ? 'gestion' : null;
-  return 'gestion';
-}
+export const espaceDeLaPage = espaceDuChemin;
 
 const CLE = 'teranga-espace';
 

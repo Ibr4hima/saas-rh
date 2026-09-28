@@ -93,7 +93,19 @@ export interface NotificationView {
 export const notificationScopeSchema = z.enum(['inbox', 'archive']).default('inbox');
 export type NotificationScope = z.infer<typeof notificationScopeSchema>;
 
-export const notificationScopeQuerySchema = z.object({ scope: notificationScopeSchema });
+/**
+ * `espace` : la boîte de cet espace seulement (qui en a deux). Absent : toute
+ * la boîte.
+ */
+export const notificationEspaceSchema = z.enum(['agent', 'gestion']).optional();
+
+export const notificationScopeQuerySchema = z.object({
+  scope: notificationScopeSchema,
+  espace: notificationEspaceSchema,
+});
+
+/** Tout lire, tout ranger : dans la boîte d'un espace, ou dans toute la boîte. */
+export const notificationEspaceQuerySchema = z.object({ espace: notificationEspaceSchema });
 
 /** Ranger ou ressortir : toujours une LISTE, même pour une seule ligne. */
 export const notificationIdsSchema = z.object({
