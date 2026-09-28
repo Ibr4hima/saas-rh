@@ -96,6 +96,8 @@ export const ICON_NAMES = [
   'trending_up',
   'unarchive',
   'upload_file',
+  'verified',
+  'verified_off',
   'verified_user',
   'visibility',
   'visibility_off',

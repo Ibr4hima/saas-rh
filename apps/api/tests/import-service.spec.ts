@@ -466,7 +466,7 @@ describe('le responsable hiérarchique', () => {
     expect((await dossier('APIX-0001'))?.responsable).toBeNull();
   });
 
-  it('annonce dès l’aperçu un n+1 archivé, et crée le dossier sans lui', async () => {
+  it('annonce dès l’aperçu un n+1 inactif, et crée le dossier sans lui', async () => {
     await imports.importer(admin, classeurDe([AGENT(1)]), true);
     await raw(`UPDATE employees SET status = 'archived' WHERE employee_number = 'APIX-0001'`);
     const apercu = await imports.importer(
@@ -475,7 +475,7 @@ describe('le responsable hiérarchique', () => {
       false,
     );
     expect(apercu.rattaches).toBe(0);
-    expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain('dossier archivé');
+    expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain('est inactif');
   });
 
   it('prévient qu’une ligne sans poste ne sera affectée nulle part', async () => {

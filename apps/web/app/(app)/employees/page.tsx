@@ -307,7 +307,8 @@ export default function EmployeesPage() {
               retire quand des lignes sont cochées — la barre de sélection
               prend alors la place, et deux séries d'actions sur la même
               ligne feraient hésiter. */}
-          {peutImporter && choisis.length === 0 ? (
+          {/* On importe des agents en poste : l'onglet des inactifs n'en reçoit pas. */}
+          {peutImporter && onglet === 'active' && choisis.length === 0 ? (
             <Button
               size="sm"
               variant="secondary"
@@ -350,32 +351,35 @@ export default function EmployeesPage() {
         </CardHeader>
 
         {/* Les filtres : trois listes de ce que l'onglet contient réellement,
-            plus de quoi tout relâcher d'un geste. */}
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line-soft px-[18px] pb-3.5">
-          <FiltreSelect
-            label="Tous les postes"
-            value={filtres.positionTitle}
-            options={facets.positions.map((p) => ({ value: p, label: p }))}
-            onChange={(v) => setFiltres((f) => ({ ...f, positionTitle: v }))}
-          />
-          <FiltreSelect
-            label="Tous les managers"
-            value={filtres.managerId}
-            options={facets.managers.map((m) => ({ value: m.id, label: m.name }))}
-            onChange={(v) => setFiltres((f) => ({ ...f, managerId: v }))}
-          />
-          <FiltreSelect
-            label="Toutes les unités"
-            value={filtres.unit}
-            options={facets.units.map((u) => ({ value: u, label: u }))}
-            onChange={(v) => setFiltres((f) => ({ ...f, unit: v }))}
-          />
-          {filtres.positionTitle || filtres.managerId || filtres.unit ? (
-            <Button size="sm" variant="ghost" onClick={() => setFiltres(SANS_FILTRE)}>
-              Tout afficher
-            </Button>
-          ) : null}
-        </div>
+            plus de quoi tout relâcher d'un geste. Les inactifs n'ont plus ni
+            poste ni unité : la recherche suffit. */}
+        {onglet === 'active' ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line-soft px-[18px] pb-3.5">
+            <FiltreSelect
+              label="Tous les postes"
+              value={filtres.positionTitle}
+              options={facets.positions.map((p) => ({ value: p, label: p }))}
+              onChange={(v) => setFiltres((f) => ({ ...f, positionTitle: v }))}
+            />
+            <FiltreSelect
+              label="Tous les managers"
+              value={filtres.managerId}
+              options={facets.managers.map((m) => ({ value: m.id, label: m.name }))}
+              onChange={(v) => setFiltres((f) => ({ ...f, managerId: v }))}
+            />
+            <FiltreSelect
+              label="Toutes les unités"
+              value={filtres.unit}
+              options={facets.units.map((u) => ({ value: u, label: u }))}
+              onChange={(v) => setFiltres((f) => ({ ...f, unit: v }))}
+            />
+            {filtres.positionTitle || filtres.managerId || filtres.unit ? (
+              <Button size="sm" variant="ghost" onClick={() => setFiltres(SANS_FILTRE)}>
+                Tout afficher
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
         {query.isLoading ? (
           <CorpsDefilant>
@@ -432,17 +436,13 @@ export default function EmployeesPage() {
                 <ThCases sel={sel} />
                 <Th>Matricule</Th>
                 <ThTri label="Nom" colonne="name" courant={sort} sens={dir} onTrier={trierPar} />
-                <Th>Poste</Th>
+                {onglet === 'archived' ? null : <Th>Poste</Th>}
                 {/* Le MATRICULE du n+1, pas son nom : un matricule est
                     unique, deux agents peuvent porter le même nom. Le nom
                     reste en infobulle — on sait de qui il s'agit sans quitter
                     la ligne. */}
                 {onglet === 'archived' ? (
-                  <>
-                    <Th>Unité</Th>
-                    <Th>Motif</Th>
-                    <Th>Inactif depuis</Th>
-                  </>
+                  <Th>Motif</Th>
                 ) : (
                   <>
                     <Th>Matricule N+1</Th>
@@ -484,7 +484,7 @@ export default function EmployeesPage() {
                         </span>
                       ) : null}
                     </Td>
-                    <Td>{e.positionTitle ?? '—'}</Td>
+                    {onglet === 'archived' ? null : <Td>{e.positionTitle ?? '—'}</Td>}
                     {onglet === 'archived' ? null : (
                       <Td className="font-mono text-[11.5px] whitespace-nowrap">
                         {e.managerNumber ? (
@@ -494,28 +494,25 @@ export default function EmployeesPage() {
                         )}
                       </Td>
                     )}
-                    {/* L'abrégé tient dans une colonne, pas le nom complet :
-                            l'infobulle garde le nom entier pour qui hésite. */}
-                    <Td title={e.directionName ?? e.orgUnitName ?? undefined}>
-                      {e.directionShortName ?? e.directionName ?? e.orgUnitName ?? '—'}
-                    </Td>
                     {onglet === 'archived' ? (
+                      <Td className="whitespace-nowrap">
+                        {e.inactiviteMotif ? (
+                          MOTIF_INACTIVITE_LABELS[e.inactiviteMotif]
+                        ) : (
+                          <span className="text-ink-muted/60">Non précisé</span>
+                        )}
+                      </Td>
+                    ) : (
                       <>
-                        <Td className="whitespace-nowrap">
-                          {e.inactiviteMotif ? (
-                            MOTIF_INACTIVITE_LABELS[e.inactiviteMotif]
-                          ) : (
-                            <span className="text-ink-muted/60">Non précisé</span>
-                          )}
+                        {/* L'abrégé tient dans une colonne, pas le nom complet :
+                            l'infobulle garde le nom entier pour qui hésite. */}
+                        <Td title={e.directionName ?? e.orgUnitName ?? undefined}>
+                          {e.directionShortName ?? e.directionName ?? e.orgUnitName ?? '—'}
                         </Td>
                         <Td className="whitespace-nowrap">
-                          {e.archivedAt ? formatDate(e.archivedAt.slice(0, 10)) : '—'}
+                          {e.contractStartDate ? formatDate(e.contractStartDate) : '—'}
                         </Td>
                       </>
-                    ) : (
-                      <Td className="whitespace-nowrap">
-                        {e.contractStartDate ? formatDate(e.contractStartDate) : '—'}
-                      </Td>
                     )}
                     <Td className="whitespace-nowrap">
                       {e.contractEndDate ? formatDate(e.contractEndDate) : '—'}

@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import type { ChangementRattachement } from '@teranga/contracts';
 import { ProblemException } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
@@ -20,6 +20,61 @@ import { dernierContrat } from './en-activite';
    ———————————————————————————————————————————————————————————————— */
 
 const TYPES: Record<string, string> = { cdd: 'CDD', stage: 'Stage' };
+
+/**
+ * L'activité s'arrête : le dernier jour se note au dossier, et sa dernière
+ * affectation s'arrête ce jour-là — une affectation prévue après n'aura pas
+ * lieu. `fin` : le dernier jour, en SQL (une date).
+ */
+export async function arreterLActivite(tx: Tx, employeeId: string, fin: SQL): Promise<void> {
+  await tx.execute(sql`UPDATE employees SET fin_activite = ${fin} WHERE id = ${employeeId}`);
+  await tx.execute(sql`
+    DELETE FROM assignments WHERE employee_id = ${employeeId} AND lower(validity) > ${fin}`);
+  await tx.execute(sql`
+    UPDATE assignments SET validity = daterange(lower(validity), (${fin})::date + 1)
+     WHERE employee_id = ${employeeId}
+       AND (upper_inf(validity) OR upper(validity) > (${fin})::date + 1)`);
+}
+
+/**
+ * L'activité reprend : l'agent retrouve le poste et l'unité de sa dernière
+ * affectation — une affectation neuve, qui commence au lendemain de son
+ * dernier jour, ou au début de son nouveau contrat s'il est plus tard. Une
+ * unité dissoute entre-temps ne revient pas : l'affectation est alors sans
+ * unité, et le contrôle de la chaîne le signale.
+ */
+export async function reprendreLActivite(
+  tx: Tx,
+  tenantId: string,
+  employeeId: string,
+): Promise<void> {
+  const { rows } = await tx.execute<{
+    fin: string | null;
+    poste: string | null;
+    unite: string | null;
+    debut: string | null;
+  }>(sql`
+    SELECT e.fin_activite::text AS fin, a.position_title AS poste,
+           (SELECT o.id FROM org_units o WHERE o.id = a.org_unit_id AND o.deleted_at IS NULL) AS unite,
+           GREATEST(e.fin_activite + 1,
+                    (SELECT c.start_date FROM contracts c WHERE c.id = ${dernierContrat(employeeId)}))::text
+             AS debut
+      FROM employees e
+      LEFT JOIN assignments a ON a.id = (SELECT ax.id FROM assignments ax WHERE ax.employee_id = e.id
+                                          ORDER BY lower(ax.validity) DESC LIMIT 1)
+     WHERE e.id = ${employeeId}`);
+  const r = rows[0];
+  await tx.execute(sql`UPDATE employees SET fin_activite = NULL WHERE id = ${employeeId}`);
+  if (!r?.fin || !r.poste || !r.debut) return;
+  const { rows: ouverte } = await tx.execute(sql`
+    SELECT 1 FROM assignments WHERE employee_id = ${employeeId}
+       AND (upper_inf(validity) OR upper(validity) > CURRENT_DATE) LIMIT 1`);
+  if (ouverte.length > 0) return;
+  await tx.execute(sql`
+    INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+    VALUES (gen_random_uuid(), ${tenantId}, ${employeeId}, ${r.unite}, ${r.poste},
+            daterange(${r.debut}::date, NULL))`);
+}
 
 /**
  * Les contrats arrivés à terme : leurs agents passent dans les inactifs.
@@ -64,6 +119,7 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
          SET status = 'archived', inactivite_motif = 'fin_de_contrat',
              archived_at = (${a.fin}::date + 1)::timestamptz, updated_at = now()
        WHERE id = ${a.id}`);
+    await arreterLActivite(tx, a.id, sql`${a.fin}::date`);
     const { rows: unites } = await tx.execute<{ name: string }>(sql`
       UPDATE org_units SET manager_employee_id = NULL, updated_at = now()
        WHERE manager_employee_id = ${a.id} AND deleted_at IS NULL

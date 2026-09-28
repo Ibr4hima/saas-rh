@@ -688,7 +688,10 @@ describe('le formateur, et qui gère le catalogue', () => {
       });
       expect((await academy.gestionDetail(rh, courseId)).formateur?.nom).toBe('Moussa Diop');
     } finally {
-      await raw(`UPDATE employees SET status = 'active' WHERE id = $1`, [autreEmployeeId]);
+      await raw(
+        `UPDATE employees SET status = 'active', fin_activite = NULL, inactivite_motif = NULL WHERE id = $1`,
+        [autreEmployeeId],
+      );
     }
   });
 });

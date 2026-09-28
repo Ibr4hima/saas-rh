@@ -46,7 +46,7 @@ import {
 import { frDate } from '../acces/appels';
 import { pasSurSoi } from '../acces/dch';
 import { faireSuivreLesDemandes, reconcilierDemande, reconcilierLeCircuit } from '../time/visas';
-import { inactiverLesContratsEchus } from './activite';
+import { arreterLActivite, inactiverLesContratsEchus, reprendreLActivite } from './activite';
 import { dernierContrat, exigerEnActivite, finDeContratPassee } from './en-activite';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 
@@ -166,8 +166,11 @@ export class PeopleService {
             (SELECT c.start_date::text FROM contracts c
               WHERE c.employee_id = e.id ORDER BY c.start_date DESC LIMIT 1)
                                         AS contract_start_date,
-            (SELECT c.end_date::text FROM contracts c
-              WHERE c.employee_id = e.id ORDER BY c.start_date DESC LIMIT 1)
+            -- Inactif : son dernier jour d'activité — la fin de son contrat, ou
+            -- le jour où il est parti.
+            COALESCE(CASE WHEN e.status = 'archived' THEN e.fin_activite::text END,
+                     (SELECT c.end_date::text FROM contracts c
+                       WHERE c.employee_id = e.id ORDER BY c.start_date DESC LIMIT 1))
                                         AS contract_end_date,
             e.manager_employee_id,
             (SELECT mp.given_name || ' ' || mp.family_name
@@ -466,6 +469,7 @@ export class PeopleService {
         status: employee.status,
         archivedAt: employee.archivedAt?.toISOString() ?? null,
         inactiviteMotif: (employee.inactiviteMotif as MotifInactivite | null) ?? null,
+        finActivite: employee.finActivite ?? null,
         hiredOn: employee.hiredOn,
         workEmail: employee.workEmail,
         workPhone: employee.workPhone,
@@ -559,6 +563,14 @@ export class PeopleService {
       await this.db.withTenant(ctxOf(user), async (tx) => {
         const employee = await this.requireEmployee(tx, id);
         await pasSurSoi(tx, user.userId, [id], 'modifier votre dossier');
+        if (employee.status !== 'active') {
+          problem(
+            422,
+            'people.dossier_inactif',
+            'Ce dossier est inactif',
+            'La fiche d’un agent inactif ne se modifie pas : réactivez-la d’abord.',
+          );
+        }
         if (input.employee?.managerEmployeeId !== undefined) await verrouillerLaChaine(tx);
 
         if (input.person && Object.keys(input.person).length > 0) {
@@ -1015,6 +1027,11 @@ export class PeopleService {
       if (retenus.length === 0) return { done: 0, skipped, changements: journal, aRevoir: [] };
 
       const ids = retenus.map((c) => c.id);
+      // Rouvert, il retrouve son poste et son unité — avant de redevenir
+      // actif : un dossier actif n'a pas de dernier jour.
+      if (!input.archived) {
+        for (const c of retenus) await reprendreLActivite(tx, user.tenantId, c.id);
+      }
       await tx
         .update(t.employees)
         .set({
@@ -1026,6 +1043,8 @@ export class PeopleService {
         .where(inArray(t.employees.id, ids));
 
       if (input.archived) {
+        // Son dernier jour, c'est aujourd'hui : sa dernière affectation s'arrête là.
+        for (const c of retenus) await arreterLActivite(tx, c.id, sql`CURRENT_DATE`);
         // Qui part ne prend plus de congé : ses demandes encore en attente
         // sont annulées, et leurs appels à viser retirés des boîtes.
         const annulees = await tx

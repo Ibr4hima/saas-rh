@@ -251,7 +251,11 @@ beforeEach(async () => {
     `UPDATE org_units SET manager_employee_id = $2, direction_du_personnel = true WHERE id = $1`,
     [uDCH, mariama.employeeId],
   );
-  await raw(`UPDATE employees SET status = 'active' WHERE tenant_id = $1`, [tenantId]);
+  await raw(
+    `UPDATE employees SET status = 'active', fin_activite = NULL, inactivite_motif = NULL
+      WHERE tenant_id = $1`,
+    [tenantId],
+  );
   await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [
     moussa.employeeId,
     ousmane.employeeId,

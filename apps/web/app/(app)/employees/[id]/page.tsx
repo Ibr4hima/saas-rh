@@ -83,9 +83,11 @@ function lastDay(exclusiveEnd: string): string {
 }
 
 /** Ancienneté en clair : « 3 ans et 2 mois », pas une date à soustraire. */
-function seniority(hiredOn: string): string {
+function seniority(hiredOn: string, jusquAu?: string | null): string {
   const start = new Date(`${hiredOn}T12:00:00Z`);
-  const months = Math.max(0, (Date.now() - start.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+  // Inactif : l'ancienneté s'arrête à son dernier jour, pas à aujourd'hui.
+  const fin = jusquAu ? new Date(`${jusquAu}T12:00:00Z`).getTime() : Date.now();
+  const months = Math.max(0, (fin - start.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
   const years = Math.floor(months / 12);
   const rest = Math.floor(months % 12);
   if (years === 0) return rest <= 1 ? '< 1 mois' : `${rest} mois`;
@@ -151,6 +153,7 @@ export default function EmployeePage() {
   // Même convention que la création : l'ouverture vit dans l'URL, si bien que
   // le bouton de la barre supérieure reste un lien et que Retour referme.
   const editOpen = useSearchParams().get('modifier') !== null;
+  const [refusReactivation, setRefusReactivation] = useState<string | null>(null);
   const me = useMe();
   const canSeeHistory = peut(me.data, 'personnel.consulter');
 
@@ -188,7 +191,7 @@ export default function EmployeePage() {
   return (
     <Page>
       <EmployeeEditModal
-        open={editOpen}
+        open={editOpen && actif}
         employeeId={id}
         onClose={() => router.replace(`/employees/${id}`)}
       />
@@ -210,8 +213,6 @@ export default function EmployeePage() {
           </Link>
         </p>
       ) : null}
-
-      {!actif && peutGerer ? <BandeauInactif employee={e} /> : null}
 
       {/* ———— Bande d'identité ————
           Ce qui permet de reconnaître un dossier en une seconde : le nom,
@@ -235,28 +236,36 @@ export default function EmployeePage() {
               <h1 className="text-[22px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">
                 {e.person.givenName} {e.person.familyName}
               </h1>
-              <Badge tone={e.status === 'active' ? 'success' : 'neutral'}>
-                {STATUS_LABELS[e.status] ?? e.status}
-              </Badge>
-              {/* Un dossier inactif porte son motif et sa date : c'est elle qui
-                  dit depuis combien de temps on le conserve, et donc quand
-                  l'effacer. */}
-              {!actif && e.archivedAt ? (
-                <span className="text-[11.5px] text-ink-muted">
-                  {e.inactiviteMotif ? `${MOTIF_INACTIVITE_LABELS[e.inactiviteMotif]} · ` : ''}
-                  depuis le {formatDate(e.archivedAt.slice(0, 10))}
-                </span>
-              ) : null}
+              {/* L'état en un signe : vérifié, en vert, pour un agent actif ;
+                  barré, en gris, pour un inactif. Le mot reste pour les
+                  lecteurs d'écran et dans l'infobulle. */}
+              <span
+                role="img"
+                aria-label={STATUS_LABELS[e.status] ?? e.status}
+                title={STATUS_LABELS[e.status] ?? e.status}
+                className={cn('inline-flex', actif ? 'text-success' : 'text-ink-muted')}
+              >
+                <Icon name={actif ? 'verified' : 'verified_off'} size={22} />
+              </span>
             </div>
             {/* Sous le nom, les deux choses qui désignent la personne dans une
                 conversation : le matricule qu'on cite au téléphone, et le
                 poste qu'on occupe. La direction, elle, a sa colonne. */}
             <p className="mt-1.5 text-[12.5px] leading-tight text-ink-muted">
               <span className="font-mono tracking-tight">{e.employeeNumber}</span>
-              {current?.positionTitle ? <> · {current.positionTitle}</> : null}
+              {actif && current?.positionTitle ? <> · {current.positionTitle}</> : null}
             </p>
+            {refusReactivation ? (
+              <p role="alert" className="mt-2 text-[12px] font-semibold text-danger">
+                {refusReactivation}
+              </p>
+            ) : null}
           </div>
-          {peutGerer ? (
+          {/* Inactif : sa fiche ne se modifie plus — le geste qui reste est
+              de la réactiver, une fois son nouveau contrat enregistré. */}
+          {peutGerer && !actif ? (
+            <BoutonReactiver employeeId={e.id} onRefus={setRefusReactivation} />
+          ) : peutGerer ? (
             <Link
               href={`/employees/${e.id}?modifier=1`}
               aria-label="Modifier la fiche"
@@ -281,40 +290,82 @@ export default function EmployeePage() {
                 points de suspension. Le nom complet reste en infobulle, et
                 l'unité d'affectation exacte — département ou service — se lit
                 juste en dessous dans la carte des affectations. */}
-            <Repere
-              label="Direction affectée"
-              titre={current?.directionName ?? current?.orgUnitName ?? undefined}
-              // Repli en cascade : l'abrégé, sinon le nom de la direction, sinon
-              // l'unité elle-même — une direction dont l'abrégé n'est pas
-              // renseigné vaut mieux qu'un « Service Comptabilité » qui ne
-              // répond pas à la question posée par l'intitulé.
-              valeur={current?.directionShortName ?? current?.directionName ?? current?.orgUnitName}
-            />
-            <Repere
-              label="Téléphone portable"
-              titre={e.person.phone ?? undefined}
-              valeur={e.person.phone ? <Telephone valeur={e.person.phone} /> : null}
-            />
-            <Repere
-              label="Email professionnel"
-              titre={e.workEmail ?? undefined}
-              valeur={
-                e.workEmail ? (
-                  // Comme le numéro juste avant : une adresse qu'on ne peut
-                  // que recopier à la main est la seule donnée inerte d'une
-                  // bande qui sert à joindre quelqu'un.
-                  <a
-                    href={`mailto:${e.workEmail}`}
-                    className="break-all transition-colors hover:text-primary hover:underline"
-                  >
-                    {e.workEmail}
-                  </a>
-                ) : null
-              }
-            />
-            <Repere label="Ancienneté" valeur={seniority(e.hiredOn)}>
-              Depuis le {formatDate(e.hiredOn)}
-            </Repere>
+            {actif ? (
+              <>
+                <Repere
+                  label="Direction affectée"
+                  titre={current?.directionName ?? current?.orgUnitName ?? undefined}
+                  // Repli en cascade : l'abrégé, sinon le nom de la direction, sinon
+                  // l'unité elle-même — une direction dont l'abrégé n'est pas
+                  // renseigné vaut mieux qu'un « Service Comptabilité » qui ne
+                  // répond pas à la question posée par l'intitulé.
+                  valeur={
+                    current?.directionShortName ?? current?.directionName ?? current?.orgUnitName
+                  }
+                />
+                <Repere
+                  label="Téléphone portable"
+                  titre={e.person.phone ?? undefined}
+                  valeur={e.person.phone ? <Telephone valeur={e.person.phone} /> : null}
+                />
+                <Repere
+                  label="Email professionnel"
+                  titre={e.workEmail ?? undefined}
+                  valeur={
+                    e.workEmail ? (
+                      // Comme le numéro juste avant : une adresse qu'on ne peut
+                      // que recopier à la main est la seule donnée inerte d'une
+                      // bande qui sert à joindre quelqu'un.
+                      <a
+                        href={`mailto:${e.workEmail}`}
+                        className="break-all transition-colors hover:text-primary hover:underline"
+                      >
+                        {e.workEmail}
+                      </a>
+                    ) : null
+                  }
+                />
+                <Repere label="Ancienneté" valeur={seniority(e.hiredOn)}>
+                  Depuis le {formatDate(e.hiredOn)}
+                </Repere>
+              </>
+            ) : (
+              // Inactif : quand son contrat a pris fin et pourquoi, puis ce
+              // qu'il a fait à l'APIX — l'ancienneté arrêtée à son dernier jour.
+              <>
+                <Repere
+                  label="Fin contrat"
+                  valeur={e.finActivite ? formatDate(e.finActivite) : null}
+                >
+                  {e.inactiviteMotif ? MOTIF_INACTIVITE_LABELS[e.inactiviteMotif] : null}
+                </Repere>
+                <Repere label="Ancienneté" valeur={seniority(e.hiredOn, e.finActivite)}>
+                  Arrivée le {formatDate(e.hiredOn)}
+                </Repere>
+                <Repere
+                  label="Email professionnel"
+                  titre={e.workEmail ?? undefined}
+                  valeur={
+                    e.workEmail ? (
+                      // Comme le numéro juste avant : une adresse qu'on ne peut
+                      // que recopier à la main est la seule donnée inerte d'une
+                      // bande qui sert à joindre quelqu'un.
+                      <a
+                        href={`mailto:${e.workEmail}`}
+                        className="break-all transition-colors hover:text-primary hover:underline"
+                      >
+                        {e.workEmail}
+                      </a>
+                    ) : null
+                  }
+                />
+                <Repere
+                  label="Téléphone portable"
+                  titre={e.person.phone ?? undefined}
+                  valeur={e.person.phone ? <Telephone valeur={e.person.phone} /> : null}
+                />
+              </>
+            )}
           </dl>
         </div>
       </Card>
@@ -451,7 +502,7 @@ export default function EmployeePage() {
 
           {/* Les soldes sont un TABLEAU : ils appartiennent à la colonne large.
               Serrés dans le tiers de droite, leurs colonnes débordaient. */}
-          <BalancesCard employeeId={e.id} canEdit={peutLesSoldes} />
+          <BalancesCard employeeId={e.id} canEdit={peutLesSoldes && actif} />
         </div>
 
         {/* ———— Colonne d'administration : accès et traces ———— */}
@@ -1072,54 +1123,46 @@ function PortalCard({
 }
 
 /**
- * Le dossier est inactif : ce qui est fermé, et comment le rouvrir. Une fin
- * de contrat se rouvre par le nouveau contrat, puis la réactivation — le
- * serveur refuse de réactiver tant que le contrat est échu.
+ * Réactiver le dossier, à la place du stylo : la fiche d'un inactif ne se
+ * modifie pas. Le serveur refuse tant que le contrat est échu — la raison
+ * s'affiche sous le matricule.
  */
-function BandeauInactif({ employee: e }: { employee: EmployeeDetail }) {
+function BoutonReactiver({
+  employeeId,
+  onRefus,
+}: {
+  employeeId: string;
+  onRefus: (raison: string | null) => void;
+}) {
   const queryClient = useQueryClient();
-  const [message, setMessage] = useState<string | null>(null);
   const reactiver = useMutation({
     mutationFn: () =>
       api<EmployeeBatchResult>('/employees/archive', {
         method: 'POST',
-        body: { ids: [e.id], archived: false },
+        body: { ids: [employeeId], archived: false },
       }),
     onSuccess: async (r) => {
       if (r.done === 0) {
-        setMessage(r.skipped[0]?.reason ?? 'Réactivation impossible.');
+        onRefus(r.skipped[0]?.reason ?? 'Réactivation impossible.');
         return;
       }
-      setMessage(null);
-      await queryClient.invalidateQueries({ queryKey: ['employee', e.id] });
+      onRefus(null);
+      await queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
     },
-    onError: (err) =>
-      setMessage(err instanceof ApiError ? err.message : 'Réactivation impossible.'),
+    onError: (err) => onRefus(err instanceof ApiError ? err.message : 'Réactivation impossible.'),
   });
-  const finDeContrat = e.inactiviteMotif === 'fin_de_contrat';
   return (
-    <div className="mb-3 flex shrink-0 flex-col gap-2 rounded-[12px] bg-hover px-3.5 py-3 text-[12.5px] text-ink sm:flex-row sm:items-center">
-      <Icon name="archive" size={17} className="shrink-0 text-ink-muted" />
-      <span className="min-w-0 flex-1 leading-relaxed">
-        <b className="font-semibold">Dossier inactif.</b> Son accès au portail est fermé ; il ne
-        dirige aucune unité, n’est le n+1 de personne et ne reçoit pas d’affectation.
-        {finDeContrat
-          ? ' Pour le rouvrir : enregistrez son nouveau contrat, puis réactivez le dossier.'
-          : ' Le réactiver lui rend son accès, avec ses identifiants.'}
-        {message ? <span className="mt-1 block font-semibold text-danger">{message}</span> : null}
-      </span>
-      <Button
-        size="sm"
-        variant="secondary"
-        className="shrink-0"
-        loading={reactiver.isPending}
-        onClick={() => reactiver.mutate()}
-      >
-        <Icon name="unarchive" size={15} />
-        Réactiver
-      </Button>
-    </div>
+    <Button
+      size="sm"
+      variant="secondary"
+      className="shrink-0"
+      loading={reactiver.isPending}
+      onClick={() => reactiver.mutate()}
+    >
+      <Icon name="unarchive" size={15} />
+      Réactiver
+    </Button>
   );
 }
 

@@ -129,6 +129,17 @@ const statut = async (a: Agent) =>
     )
   ).rows[0] as { status: string; inactivite_motif: string | null; depuis: string | null };
 
+/** Ses affectations : poste, du, au (dernier jour inclus), la plus ancienne d'abord. */
+const affectations = async (a: Agent) =>
+  (
+    await raw(
+      `SELECT position_title AS poste, lower(validity)::text AS du,
+              CASE WHEN upper_inf(validity) THEN NULL ELSE (upper(validity) - 1)::text END AS au
+         FROM assignments WHERE employee_id = $1 ORDER BY lower(validity)`,
+      [a.employeeId],
+    )
+  ).rows as { poste: string; du: string; au: string | null }[];
+
 let dg: Agent;
 let mariama: Agent;
 let omar: Agent;
@@ -265,6 +276,21 @@ describe('la fin de contrat, d’elle-même', () => {
       inactivite_motif: 'fin_de_contrat',
       depuis: await jour(0),
     });
+    // Son dernier jour, noté au dossier ; sa dernière affectation s'arrête là.
+    const { rows: fin } = await raw(
+      `SELECT fin_activite::text AS fin FROM employees WHERE id = $1`,
+      [fatou.employeeId],
+    );
+    expect(fin[0].fin).toBe(await jour(-1));
+    expect(await affectations(fatou)).toEqual([
+      { poste: 'Poste', du: '2024-01-01', au: await jour(-1) },
+    ]);
+    // Et sa fiche ne se modifie plus.
+    expect(
+      await codeOf(() =>
+        people.update(admin, fatou.employeeId, { person: { phone: '770000009' } }),
+      ),
+    ).toBe('people.dossier_inactif');
     // Le service qu'elle dirigeait n'a plus de responsable ; son équipe
     // remonte d'un cran, à son propre n+1.
     const { rows: compta } = await raw(`SELECT manager_employee_id FROM org_units WHERE id = $1`, [
@@ -406,7 +432,13 @@ describe('désactiver, réactiver', () => {
     });
     expect(r.done).toBe(1);
     const fiche = await people.detail(admin, moussa.employeeId);
-    expect(fiche).toMatchObject({ status: 'archived', inactiviteMotif: 'demission' });
+    // Son dernier jour, c'est aujourd'hui : « Fin contrat » le dit, la liste aussi.
+    expect(fiche).toMatchObject({
+      status: 'archived',
+      inactiviteMotif: 'demission',
+      finActivite: await jour(0),
+    });
+    expect(fiche.assignments.every((a) => !a.current || a.validTo !== null)).toBe(true);
     const liste = await people.list(admin, {
       status: 'archived',
       limit: 20,
@@ -414,7 +446,8 @@ describe('désactiver, réactiver', () => {
       sort: 'name',
       dir: 'asc',
     } as never);
-    expect(liste.items.find((e) => e.id === moussa.employeeId)?.inactiviteMotif).toBe('demission');
+    const ligne = liste.items.find((e) => e.id === moussa.employeeId);
+    expect(ligne).toMatchObject({ inactiviteMotif: 'demission', contractEndDate: await jour(0) });
   });
 
   it('pas de réactivation tant que le contrat est échu : le nouveau contrat d’abord', async () => {
@@ -440,6 +473,15 @@ describe('désactiver, réactiver', () => {
     const ok = await people.archive(admin, { ids: [fatou.employeeId], archived: false });
     expect(ok.done).toBe(1);
     expect(await statut(fatou)).toMatchObject({ status: 'active', inactivite_motif: null });
+    // Elle retrouve son poste, à compter de son nouveau contrat.
+    expect(await affectations(fatou)).toEqual([
+      { poste: 'Poste', du: '2024-01-01', au: await jour(-1) },
+      { poste: 'Poste', du: await jour(0), au: null },
+    ]);
+    const { rows: fin } = await raw(`SELECT fin_activite FROM employees WHERE id = $1`, [
+      fatou.employeeId,
+    ]);
+    expect(fin[0].fin_activite).toBeNull();
   });
 
   it('un nouveau contrat arrête le précédent la veille, s’il courait encore', async () => {

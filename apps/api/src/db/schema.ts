@@ -156,6 +156,8 @@ export const employees = pgTable('employees', {
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   /** Pourquoi il est inactif — `fin_de_contrat` se pose d'elle-même. */
   inactiviteMotif: text('inactivite_motif'),
+  /** Inactif : son dernier jour d'activité — sa dernière affectation s'arrête là. */
+  finActivite: date('fin_activite'),
   workEmail: text('work_email'),
   workPhone: text('work_phone'),
   customFields: jsonb('custom_fields').notNull().default({}),

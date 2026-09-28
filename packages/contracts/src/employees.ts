@@ -641,6 +641,8 @@ export interface EmployeeDetail {
   archivedAt: string | null;
   /** Pourquoi il est inactif ; `null` quand il est actif, ou désactivé avant la règle. */
   inactiviteMotif: MotifInactivite | null;
+  /** Inactif : son dernier jour d'activité — fin de contrat ou jour du départ. */
+  finActivite: string | null;
   hiredOn: string;
   workEmail: string | null;
   workPhone: string | null;
