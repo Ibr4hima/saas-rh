@@ -223,8 +223,10 @@ function UnitPanel({
 
   // ——— Toute modification passe d'abord par l'aperçu : le serveur la joue
   // puis l'annule, et dit ce qu'elle changerait dans la chaîne hiérarchique.
-  // Sans conséquence, on enregistre aussitôt ; sinon on montre, on attend
-  // une confirmation. Après coup, le bilan dit ce qui a été fait.
+  // Les rattachements que la règle fait d'elle-même (un directeur relève du
+  // DG…) ne se confirment pas : c'est la logique, on enregistre aussitôt. On
+  // n'attend une confirmation que si l'opération laisserait des rattachements
+  // à revoir. Après coup, le bilan dit ce qui a été fait.
   type Corps = Record<string, unknown>;
   const [apercu, setApercu] = useState<{
     corps: Corps;
@@ -258,7 +260,7 @@ function UnitPanel({
         method: 'POST',
         body: corps,
       });
-      if (aDesConsequences(consequences)) setApercu({ corps, consequences });
+      if (consequences.aRevoir.length > 0) setApercu({ corps, consequences });
       else appliquer.mutate(corps);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.');
@@ -350,12 +352,6 @@ function UnitPanel({
                 ? 'Au sommet de l’organigramme'
                 : 'Sans rattachement — à ranger sous la Direction Générale'}
           </span>
-          {unit.directionDuPersonnel ? (
-            <>
-              <span>·</span>
-              <span className="font-semibold text-primary">Direction du personnel</span>
-            </>
-          ) : null}
         </span>
       }
       maxWidth="max-w-2xl"
@@ -649,9 +645,7 @@ function UnitPanel({
                 hint={
                   !eligible.isLoading && (eligible.data ?? []).length === 0
                     ? 'Personne n’est encore affecté à cette unité : affectez quelqu’un avant de le nommer responsable.'
-                    : unit.sommet
-                      ? 'Parmi les personnes affectées à la Direction Générale elle-même : le directeur général y siège.'
-                      : 'Parmi les personnes affectées à cette unité ou en dessous — hors sous-directions, qui ont leur propre tête — et qui ne dirigent pas déjà une autre unité.'
+                    : undefined
                 }
               >
                 <div className="flex gap-2">
