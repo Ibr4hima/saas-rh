@@ -1024,12 +1024,10 @@ function DateDuJour() {
   );
 }
 
-/** Ce que la carte du compte dit de l'utilisateur : sa place, pas un rôle. */
-function qualite(user: SessionUser): string {
-  if (user.dirigeLaDCH) return 'Dirige la DCH';
+/** Sous le nom : l'espace où l'on travaille ; pour l'administrateur, sa fonction. */
+function qualite(user: SessionUser, espace: Espace): string {
   if (user.role === 'admin') return 'Administration';
-  if (user.capacites.length > 0) return 'Membre de la DCH';
-  return 'Agent';
+  return espace === 'gestion' ? 'Espace RH' : 'Espace personnel';
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -1396,7 +1394,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                     {user.givenName} {user.familyName}
                   </span>
                   <span className="block truncate text-[10.5px] leading-tight text-ink-muted">
-                    {qualite(user)}
+                    {qualite(user, espace)}
                   </span>
                 </span>
               </>
