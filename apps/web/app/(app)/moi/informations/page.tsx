@@ -47,11 +47,11 @@ import { compte } from '../../../../lib/mots';
    1. « Qu'est-ce que l'APIX sait de moi ? »  → un registre, en lecture, dans
       la même écriture que la fiche que consulte la RH. Trois cartes de
       cartouches bleus n'en font plus qu'une, coupée par des filets.
-   2. « Qu'est-ce que je peux corriger ? »    → les cinq informations qui
+   2. « Qu'est-ce que je peux corriger ? »    → les quatre informations qui
       relèvent d'une déclaration, et rien d'autre : le reste s'appuie sur une
       pièce officielle ou sur le contrat.
    3. « Où en sont mes signalements ? »       → l'historique, qui écrit enfin
-      l'ancienne valeur et la nouvelle — « Ville : Dakar → Thiès ».
+      l'ancienne valeur et la nouvelle — « Adresse : Sicap → Mermoz ».
    ———————————————————————————————————————————————————————————————— */
 
 type Draft = Partial<Record<ProfileChangeField, string>>;
@@ -137,7 +137,6 @@ export default function MyInformationsPage() {
       personalEmail: p.personalEmail ?? '',
       phone: p.phone ?? '',
       addressLine: p.addressLine ?? '',
-      city: p.city ?? '',
     })[f];
 
   /** La valeur telle qu'elle SE LIT : un code d'état civil et un numéro brut
@@ -307,22 +306,13 @@ export default function MyInformationsPage() {
                     onChange={(v) => set('phone', v)}
                   />
 
-                  <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                    <Field label={PROFILE_CHANGE_LABELS.addressLine} htmlFor="addressLine">
-                      <Input
-                        id="addressLine"
-                        value={valueOf('addressLine')}
-                        onChange={(e) => set('addressLine', e.target.value)}
-                      />
-                    </Field>
-                    <Field label={PROFILE_CHANGE_LABELS.city} htmlFor="city">
-                      <Input
-                        id="city"
-                        value={valueOf('city')}
-                        onChange={(e) => set('city', e.target.value)}
-                      />
-                    </Field>
-                  </div>
+                  <Field label={PROFILE_CHANGE_LABELS.addressLine} htmlFor="addressLine">
+                    <Input
+                      id="addressLine"
+                      value={valueOf('addressLine')}
+                      onChange={(e) => set('addressLine', e.target.value)}
+                    />
+                  </Field>
 
                   <Field
                     label="Précision"
@@ -428,7 +418,7 @@ export default function MyInformationsPage() {
                     >
                       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
                         <div className="min-w-0 flex-1 basis-56">
-                          {/* La liste des champs ne suffisait pas : « Ville »
+                          {/* La liste des champs ne suffisait pas : « Adresse »
                             ne dit ni d'où l'on part ni où l'on va. */}
                           <ul className="flex flex-col gap-1">
                             {r.fields.map((f) => (

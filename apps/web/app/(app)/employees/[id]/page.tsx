@@ -440,9 +440,7 @@ export default function EmployeePage() {
                   ) : null}
                 </Donnee>
                 <Donnee label="Adresse" large>
-                  {e.person.addressLine
-                    ? `${e.person.addressLine}${e.person.city ? `, ${e.person.city}` : ''}`
-                    : e.person.city}
+                  {e.person.addressLine}
                 </Donnee>
               </Groupe>
             </CardContent>

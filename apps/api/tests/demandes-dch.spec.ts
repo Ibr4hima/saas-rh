@@ -354,7 +354,9 @@ describe('les demandes de documents', () => {
 
 describe('les changements d’informations', () => {
   it('vont au directeur, puis au membre habilité — qui tranche', async () => {
-    const { id } = await informations.create(moussa.session, { changes: { city: 'Thiès' } });
+    const { id } = await informations.create(moussa.session, {
+      changes: { addressLine: 'Cité Malick Sy' },
+    });
     expect(await appels('information', id)).toEqual(['dch:Mariama']);
     await habiliter(khady, 'demandes.informations');
     expect(await appels('information', id)).toEqual(['dch:Khady']);
@@ -366,7 +368,9 @@ describe('les changements d’informations', () => {
   });
 
   it('retirée, l’habilitation rend la demande au directeur', async () => {
-    const { id } = await informations.create(moussa.session, { changes: { city: 'Saint-Louis' } });
+    const { id } = await informations.create(moussa.session, {
+      changes: { addressLine: 'Mermoz' },
+    });
     await habiliter(khady, 'demandes.informations');
     await habiliter(khady, 'demandes.informations', false);
     expect(await appels('information', id)).toEqual(['dch:Mariama']);

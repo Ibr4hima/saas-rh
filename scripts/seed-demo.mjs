@@ -121,7 +121,7 @@ async function seedDirecteur(person, employee, positionTitle, uniteId, dgId) {
 }
 
 const dgAgent = await seedDirecteur(
-  { givenName: 'Cheikh', familyName: 'Mbaye', gender: 'male', phone: '770000001', city: 'Dakar' },
+  { givenName: 'Cheikh', familyName: 'Mbaye', gender: 'male', phone: '770000001' },
   { employeeNumber: 'EMP-000', hiredOn: '2019-03-01', workEmail: 'c.mbaye@apix.sn' },
   'Directeur général',
   dg.id,
@@ -143,7 +143,7 @@ const directeurFin = await seedDirecteur(
 );
 
 const awa = await seedEmployee(
-  { givenName: 'Awa', familyName: 'Diop', gender: 'female', phone: '771234567', city: 'Dakar' },
+  { givenName: 'Awa', familyName: 'Diop', gender: 'female', phone: '771234567' },
   {
     employeeNumber: 'EMP-001',
     hiredOn: '2024-01-15',

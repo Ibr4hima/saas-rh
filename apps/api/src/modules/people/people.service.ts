@@ -496,7 +496,6 @@ export class PeopleService {
           personalEmail: person.personalEmail,
           phone: person.phone,
           addressLine: person.addressLine,
-          city: person.city,
           emergencyContactName: person.emergencyContactName,
           emergencyContactPhone: person.emergencyContactPhone,
         },

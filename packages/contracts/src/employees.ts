@@ -295,7 +295,6 @@ export const personFieldsBaseSchema = z.object({
   personalEmail: z.email().optional(),
   phone: optionalTrimmed(30),
   addressLine: optionalTrimmed(200),
-  city: optionalTrimmed(80),
   emergencyContactName: optionalTrimmed(120),
   emergencyContactPhone: optionalTrimmed(30),
 });
@@ -383,7 +382,6 @@ export const updatePersonFieldsSchema = z
     personalEmail: z.email().nullable(),
     phone: clearableString(30),
     addressLine: clearableString(200),
-    city: clearableString(80),
     emergencyContactName: clearableString(120),
     emergencyContactPhone: clearableString(30),
   })
@@ -667,7 +665,6 @@ export interface EmployeeDetail {
     personalEmail: string | null;
     phone: string | null;
     addressLine: string | null;
-    city: string | null;
     emergencyContactName: string | null;
     emergencyContactPhone: string | null;
   };

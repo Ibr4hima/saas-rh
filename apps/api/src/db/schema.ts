@@ -128,7 +128,6 @@ export const persons = pgTable('persons', {
   personalEmail: text('personal_email'),
   phone: text('phone'),
   addressLine: text('address_line'),
-  city: text('city'),
   countryCode: char('country_code', { length: 2 }).notNull().default('SN'),
   maritalStatus: text('marital_status'),
   birthPlace: text('birth_place'),

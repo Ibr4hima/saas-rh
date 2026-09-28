@@ -21,7 +21,6 @@ export const PROFILE_CHANGE_FIELDS = [
   'personalEmail',
   'phone',
   'addressLine',
-  'city',
 ] as const;
 export type ProfileChangeField = (typeof PROFILE_CHANGE_FIELDS)[number];
 
@@ -31,7 +30,6 @@ export const PROFILE_CHANGE_LABELS: Record<ProfileChangeField, string> = {
   personalEmail: 'Email personnel',
   phone: 'Téléphone personnel',
   addressLine: 'Adresse',
-  city: 'Ville',
 };
 
 /**
@@ -76,7 +74,6 @@ export const profileChangeValuesSchema = z
       .nullable(),
     phone: clearable(30),
     addressLine: clearable(200),
-    city: clearable(120),
     // Plus proposés à la saisie, mais toujours validés : une demande en cours
     // de circuit doit s'appliquer ENTIÈRE le jour où la RH la valide, pas
     // amputée en silence des champs qu'on a cessé d'afficher entre-temps.

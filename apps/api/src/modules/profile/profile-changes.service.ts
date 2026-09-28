@@ -40,7 +40,6 @@ const COLUMN_OF: Record<string, keyof typeof t.persons.$inferInsert> = {
   personalEmail: 'personalEmail',
   phone: 'phone',
   addressLine: 'addressLine',
-  city: 'city',
   emergencyContactName: 'emergencyContactName',
   emergencyContactPhone: 'emergencyContactPhone',
 };
