@@ -193,13 +193,11 @@ function StatTile({
 function InboxRow({
   icon,
   label,
-  detail,
   count,
   href,
 }: {
   icon: IconName;
   label: string;
-  detail: string;
   count: number;
   href: string;
 }) {
@@ -212,10 +210,7 @@ function InboxRow({
         <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-primary/[0.07] text-primary">
           <Icon name={icon} size={18} />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[12.5px] font-semibold text-ink-strong">{label}</span>
-          <span className="block truncate text-[11.5px] text-ink-muted">{detail}</span>
-        </span>
+        <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-ink-strong">{label}</span>
         <span
           className="rounded-full bg-alert-soft px-2 py-px text-[11px] font-extrabold text-alert-text"
           style={TABULAIRE}
@@ -432,7 +427,6 @@ function Parite({ femmes, hommes }: { femmes: number; hommes: number }) {
 interface EntreeATraiter {
   icon: IconName;
   label: string;
-  detail: string;
   count: number;
   href: string;
   show: boolean;
@@ -458,10 +452,7 @@ export default function DashboardPage() {
   const inbox: EntreeATraiter[] = [
     {
       icon: 'free_cancellation',
-      label: 'Demandes de congés',
-      detail: traiteConges
-        ? 'Visées par le N+1 — les soldes sont vérifiés, la DCH les traite.'
-        : 'Visées par le N+1, elles attendent la DCH.',
+      label: 'Demandes d’absence',
       count: d?.pendingRequests ?? 0,
       href: traiteConges ? '/moi/dch' : '/absences',
       show: true,
@@ -469,7 +460,6 @@ export default function DashboardPage() {
     {
       icon: 'folder_managed',
       label: 'Demandes de documents',
-      detail: 'À générer, cacheter, signer puis annoncer le retrait.',
       count: d?.pendingDocumentRequests ?? 0,
       href: '/documents',
       show: canManage,
@@ -477,7 +467,6 @@ export default function DashboardPage() {
     {
       icon: 'badge',
       label: 'Informations personnelles',
-      detail: 'Changements déclarés par les agents, à confirmer ou refuser.',
       count: d?.pendingProfileChanges ?? 0,
       href: '/demandes/informations',
       show: canManage,
