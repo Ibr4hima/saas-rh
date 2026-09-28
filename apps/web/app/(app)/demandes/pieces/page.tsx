@@ -8,7 +8,6 @@ import {
   type PieceATraiterView,
 } from '@teranga/contracts';
 import {
-  Badge,
   Button,
   Card,
   CardHeader,
@@ -20,7 +19,7 @@ import {
 } from '@teranga/ui';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
-import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
+import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import {
@@ -125,7 +124,6 @@ export default function PiecesAVerifierPage() {
   const toutes = pieces.data ?? [];
   const aVerifier = toutes.filter((p) => p.status === 'pending' && p.traitement?.pourMoi);
   const ailleurs = toutes.filter((p) => p.status === 'pending' && !p.traitement?.pourMoi);
-  const verifiees = toutes.filter((p) => p.status !== 'pending');
   const dirige = toutes.some((p) => p.traitement?.peutConfier);
 
   return (
@@ -234,45 +232,6 @@ export default function PiecesAVerifierPage() {
           </ul>
         </Card>
       ) : null}
-
-      <CartePleine>
-        <CardHeader className="shrink-0">
-          <CardTitle>Vérifiées ces trente derniers jours</CardTitle>
-        </CardHeader>
-        <CorpsDefilant className="px-2 pb-2">
-          {pieces.isLoading ? (
-            <Squelette />
-          ) : verifiees.length === 0 ? (
-            <EmptyState
-              className="py-8"
-              icon={<Icon name="upload_file" size={22} />}
-              title="Aucune pièce vérifiée"
-              description="Les pièces validées ou rejetées s’afficheront ici."
-            />
-          ) : (
-            <ul className="flex flex-col">
-              {verifiees.map((p) => (
-                <li key={p.id} className={LIGNE}>
-                  <Resume
-                    piece={p}
-                    attendu={[
-                      p.reviewedByName ? `Par ${p.reviewedByName}` : null,
-                      p.status === 'rejected' && p.reviewComment
-                        ? `Motif : ${p.reviewComment}`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  />
-                  <Badge tone={p.status === 'approved' ? 'success' : 'danger'} className="ml-auto">
-                    {p.status === 'approved' ? 'Validée' : 'Rejetée'}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CorpsDefilant>
-      </CartePleine>
 
       {rejet ? (
         <Modal

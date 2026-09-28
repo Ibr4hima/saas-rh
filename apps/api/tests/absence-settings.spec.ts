@@ -34,7 +34,17 @@ const env = loadEnv();
 const tenantId = randomUUID();
 const adminUserId = randomUUID();
 const admin = { userId: adminUserId, tenantId, role: 'admin' } as SessionUser;
-const ANNEE = 2031;
+// L'année en cours : avec la suivante, la seule qu'on paramètre.
+const ANNEE = new Date().getUTCFullYear();
+
+/** Une semaine pleine de juin, du lundi au vendredi — sans férié civil. */
+const SEMAINE_DE_JUIN = (() => {
+  const lundi = new Date(Date.UTC(ANNEE, 5, 1));
+  while (lundi.getUTCDay() !== 1) lundi.setUTCDate(lundi.getUTCDate() + 1);
+  const jour = (decalage: number) =>
+    new Date(lundi.getTime() + decalage * 86_400_000).toISOString().slice(0, 10);
+  return { lundi: jour(0), mercredi: jour(2), vendredi: jour(4) };
+})();
 
 let ownerPool: Pool;
 let db: TenantDb;
@@ -293,7 +303,8 @@ describe('un férié sans date', () => {
     await absences.listHolidays(admin, ANNEE); // sème les huit fêtes non datées
     // Une semaine pleine de lundi à vendredi : cinq jours ouvrés, et aucune
     // des fêtes en attente ne doit en retirer.
-    const apercu = await absences.preview(admin, `${ANNEE}-06-02`, `${ANNEE}-06-06`);
+    const { lundi, vendredi } = SEMAINE_DE_JUIN;
+    const apercu = await absences.preview(admin, lundi, vendredi);
     expect(apercu.workingDays).toBe(5);
     expect(apercu.holidaysSkipped).toHaveLength(0);
   });
@@ -301,11 +312,12 @@ describe('un férié sans date', () => {
   it('se date ensuite, et devient un jour chômé', async () => {
     const liste = await absences.listHolidays(admin, ANNEE);
     const korite = liste.find((h) => h.label === 'Korité');
-    await absences.updateHoliday(admin, korite!.id, { day: `${ANNEE}-06-03`, label: 'Korité' });
+    const { lundi, mercredi, vendredi } = SEMAINE_DE_JUIN;
+    await absences.updateHoliday(admin, korite!.id, { day: mercredi, label: 'Korité' });
 
     const apres = (await absences.listHolidays(admin, ANNEE)).find((h) => h.id === korite!.id);
-    expect(apres?.day).toBe(`${ANNEE}-06-03`);
-    const apercu = await absences.preview(admin, `${ANNEE}-06-02`, `${ANNEE}-06-06`);
+    expect(apres?.day).toBe(mercredi);
+    const apercu = await absences.preview(admin, lundi, vendredi);
     expect(apercu.workingDays).toBe(4);
   });
 
@@ -325,6 +337,31 @@ describe('un férié sans date', () => {
         absences.createHoliday(admin, { year: ANNEE, day: null, label: 'journée de la femme' }),
       ),
     ).toBe('absence.holiday_label_exists');
+  });
+
+  it('ne se paramètre que pour l’année en cours et la suivante', async () => {
+    for (const year of [ANNEE - 1, ANNEE + 2]) {
+      expect(
+        await codeOf(() => absences.createHoliday(admin, { year, day: null, label: 'Korité' })),
+      ).toBe('absence.holiday_year_closed');
+    }
+    // Un férié d'une année close ne se modifie ni ne se retire.
+    const id = randomUUID();
+    await raw(
+      `INSERT INTO holidays (id, tenant_id, year, day, label) VALUES ($1,$2,$3,$4,'Korité')`,
+      [id, tenantId, ANNEE - 1, `${ANNEE - 1}-04-10`],
+    );
+    expect(
+      await codeOf(() =>
+        absences.updateHoliday(admin, id, { day: `${ANNEE - 1}-04-11`, label: 'Korité' }),
+      ),
+    ).toBe('absence.holiday_year_closed');
+    expect(await codeOf(() => absences.deleteHoliday(admin, id))).toBe(
+      'absence.holiday_year_closed',
+    );
+    await raw('DELETE FROM holidays WHERE id = $1', [id]);
+    // L'année suivante, elle, est ouverte.
+    await absences.createHoliday(admin, { year: ANNEE + 1, day: null, label: 'Journée test' });
   });
 
   it('refuse une date qui tombe hors de son année', async () => {

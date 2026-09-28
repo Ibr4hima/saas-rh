@@ -108,7 +108,7 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
             onChange={(e) => setAnnee(Number(e.target.value))}
             className="h-7 w-24 rounded-full text-[12px]"
           >
-            {[anneeCourante - 1, anneeCourante, anneeCourante + 1, anneeCourante + 2].map((y) => (
+            {[anneeCourante, anneeCourante + 1].map((y) => (
               <option key={y} value={y}>
                 {y}
               </option>

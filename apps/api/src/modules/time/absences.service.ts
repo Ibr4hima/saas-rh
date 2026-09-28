@@ -308,8 +308,26 @@ export class AbsencesService {
     });
   }
 
+  /**
+   * Seules l'année en cours et la suivante se paramètrent (décision APIX) :
+   * une année passée est close, une année lointaine n'est pas encore ouverte.
+   * Dakar vit à UTC : l'année du serveur est celle de l'agence.
+   */
+  private exigerAnneeOuverte(year: number): void {
+    const courante = new Date().getUTCFullYear();
+    if (year !== courante && year !== courante + 1) {
+      problem(
+        422,
+        'absence.holiday_year_closed',
+        'Cette année ne se paramètre pas',
+        `Les jours fériés se paramètrent pour ${courante} et ${courante + 1} seulement.`,
+      );
+    }
+  }
+
   async createHoliday(user: SessionUser, input: CreateHolidayInput): Promise<{ id: string }> {
     const id = uuidv7();
+    this.exigerAnneeOuverte(input.year);
     if (input.day && Number(input.day.slice(0, 4)) !== input.year) {
       problem(
         422,
@@ -344,6 +362,7 @@ export class AbsencesService {
   async updateHoliday(user: SessionUser, id: string, input: UpdateHolidayInput): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
       const row = await this.chargerFerie(tx, id);
+      this.exigerAnneeOuverte(row.year);
       const jour = input.day ?? null;
 
       // Une date civile se retire, mais ne se déplace pas : Noël déplacé d'un
@@ -392,6 +411,7 @@ export class AbsencesService {
   async deleteHoliday(user: SessionUser, id: string): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
       const row = await this.chargerFerie(tx, id);
+      this.exigerAnneeOuverte(row.year);
       await tx.delete(t.holidays).where(eq(t.holidays.id, id));
       // Le rappel déjà parti affirmerait qu'un jour ouvré est chômé : on le
       // retire de toutes les boîtes. Les fêtes mobiles se recalent souvent

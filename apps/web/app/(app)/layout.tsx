@@ -35,7 +35,6 @@ import {
 } from '../../components/colonne-repliable';
 import { ANCRE_ONGLETS } from '../../components/onglets-bandeau';
 import { RechercheAcademy } from '../../components/recherche-academy';
-import { Palette, useRaccourciPalette, type EcranPalette } from '../../components/palette';
 import { api } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 
@@ -69,12 +68,6 @@ interface NavItem {
   groupe?: GroupeNav;
   /** Libellé de la barre d'onglets mobile, où la place manque. */
   short?: string;
-  /**
-   * Le nom ENTIER, quand le libellé du menu est un abrégé. Il ne s'affiche
-   * nulle part : il sert à retrouver l'écran dans la palette, où l'on tape le
-   * mot qu'on a en tête plutôt que celui qui a été rogné pour tenir.
-   */
-  motsCles?: string;
   icon: IconName;
   badge?: 'visas' | 'traiter';
   /**
@@ -136,7 +129,6 @@ const NAV_ITEMS: NavItem[] = [
     href: '/contrats',
     label: 'Échéances de contrat',
     short: 'Contrats',
-    motsCles: 'CDD stages fin de contrat renouvellement',
     icon: 'schedule',
     groupe: 'effectif',
   },
@@ -184,18 +176,15 @@ const NAV_ITEMS: NavItem[] = [
     // en entier : c'est là qu'on lit le nom de l'écran où l'on se trouve.
     label: 'Cart. des compétences',
     short: 'Compét.',
-    motsCles: 'Cartographie des compétences',
     icon: 'hub',
     groupe: 'croissance',
   },
   {
     // Les formations de l'agence, en ligne : l'Academy a pris la place de la
-    // rubrique « Formations », qui n'annonçait qu'un écran à venir. Le mot
-    // reste dans la palette — c'est celui qu'on tape.
+    // rubrique « Formations », qui n'annonçait qu'un écran à venir.
     href: '/academy',
     label: 'APIX Academy',
     short: 'Academy',
-    motsCles: 'Formations cours vidéos certification e-learning',
     icon: 'school',
     groupe: 'croissance',
   },
@@ -496,7 +485,6 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
                 href: files[0]!.href,
                 label: 'Demandes à traiter',
                 short: 'Demandes',
-                motsCles: 'DCH congés documents attestations informations pièces',
                 icon: 'how_to_reg',
                 badge: 'traiter',
                 groupe: 'quotidien',
@@ -511,7 +499,6 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
             href: '/moi/delegations',
             label: 'Délégations',
             short: 'Délég.',
-            motsCles: 'Habilitations DCH confier accès déléguer tâches',
             icon: 'arrow_split',
             groupe: 'quotidien',
           },
@@ -557,7 +544,7 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
       case '/academy':
         // Apprendre se fait dans « Mon espace » ; ici, on gère le catalogue.
         if (peut(user, 'academy')) {
-          items.push({ ...i, href: '/academy/gerer', motsCles: 'Gérer le catalogue formations' });
+          items.push({ ...i, href: '/academy/gerer' });
         }
         break;
       default:
@@ -640,7 +627,6 @@ function personalNav(aUneEquipe: boolean): NavItem[] {
       href: '/academy',
       label: 'APIX Academy',
       short: 'Academy',
-      motsCles: 'Formations cours vidéos certification e-learning',
       icon: 'school',
       groupe: 'croissance',
     },
@@ -1064,11 +1050,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => setBulle(null), [pathname, replie]);
   const titleOverride = usePageTitleOverride();
 
-  const [palette, setPalette] = useState(false);
-  const ouvrirPalette = useCallback(() => setPalette(true), []);
-  const fermerPalette = useCallback(() => setPalette(false), []);
-  useRaccourciPalette(ouvrirPalette);
-
   // Ce que l'agent a devant lui : son équipe (l'entrée n'existe que pour qui
   // encadre), ce qui attend son visa, ce qu'il traite pour la DCH (badges).
   const validations = useQuery({
@@ -1114,48 +1095,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
     choisir(e);
     if (impose !== null) router.push(e === 'gestion' ? accueilGestion : '/moi');
   };
-  // Les écrans que la palette sait ouvrir : le menu, mis à plat, avec le
-  // chemin qu'on aurait suivi pour y arriver — c'est ce qu'on tape. Une
-  // rubrique n'a pas de page à elle : seules ses sous-pages sont des écrans.
-  // Les deux espaces : la palette ouvre n'importe quel écran, et y fait entrer.
-  const ecrans = useMemo<EcranPalette[]>(
-    () => [
-      ...new Map(
-        (deuxEspaces ? [...navAgent, ...navGestion] : items)
-          .flatMap((i): EcranPalette[] =>
-            i.desactive
-              ? []
-              : i.children
-                ? // Une sous-page éteinte n'est pas une destination : la palette
-                  // la proposerait sans que le menu la laisse ouvrir.
-                  i.children
-                    .filter((c) => !c.desactive)
-                    .map((c) => ({
-                      href: c.href,
-                      label: c.label,
-                      icon: i.icon,
-                      chemin: i.label,
-                    }))
-                : [{ href: i.href, label: i.label, icon: i.icon, motsCles: i.motsCles }],
-          )
-          .concat(
-            // Sans entrée dans le menu, elle reste une destination de la palette.
-            gestion && me.data && peutVoirLesFeries(me.data)
-              ? [
-                  {
-                    href: '/absences/feries',
-                    label: 'Gestion des jours fériés',
-                    icon: 'calendar_month',
-                    chemin: 'Calendrier · Fériés',
-                  },
-                ]
-              : [],
-          )
-          .map((e) => [e.href, e] as const),
-      ).values(),
-    ],
-    [deuxEspaces, navAgent, navGestion, items, gestion, me.data],
-  );
 
   // « Mon équipe » ne s'affiche qu'à qui encadre quelqu'un : l'organigramme
   // en décide, pas le rôle — d'où cette question au serveur, dans l'Academy
@@ -1527,13 +1466,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
           );
         })}
       </nav>
-
-      <Palette
-        ouverte={palette}
-        onFermer={fermerPalette}
-        ecrans={ecrans}
-        peutChercherLesAgents={peut(user, 'personnel.consulter')}
-      />
     </div>
   );
 }

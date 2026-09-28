@@ -101,8 +101,8 @@ export default function OrganisationPage() {
   // Ouvrir la fiche d'un agent depuis l'organigramme : qui consulte les dossiers.
   const isStaff = gestion && peut(me.data, 'personnel.consulter');
   const parametres = useSearchParams();
-  // L'unité peut être désignée par l'URL (?unite=<id>) : c'est ainsi que la
-  // palette et le tableau de bord ouvrent l'organigramme directement sur elle.
+  // L'unité peut être désignée par l'URL (?unite=<id>) : c'est ainsi que le
+  // tableau de bord ouvre l'organigramme directement sur elle.
   const uniteUrl = parametres.get('unite');
   const [selectedId, setSelectedId] = useState<string | null>(uniteUrl);
   useEffect(() => {
