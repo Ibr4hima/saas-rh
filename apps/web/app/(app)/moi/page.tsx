@@ -166,7 +166,6 @@ export default function MySpacePage() {
                 className="py-7"
                 icon={<Icon name="free_cancellation" size={22} />}
                 title="Aucune demande pour le moment"
-                description="Choisissez vos dates, le solde est vérifié pour vous, et la demande part à votre responsable."
                 action={
                   <Link href="/moi/conges">
                     <Button size="sm" variant="secondary">
@@ -233,10 +232,6 @@ export default function MySpacePage() {
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] leading-tight font-semibold text-ink-strong">
                   Attestation de travail, contrat, bulletin…
-                </p>
-                <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-                  La Direction du Capital Humain les prépare, les signe, et vous prévient dès
-                  qu&apos;ils sont à retirer.
                 </p>
               </div>
               <Link href="/moi/documents">

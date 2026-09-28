@@ -161,11 +161,6 @@ export default function MyDocumentsPage() {
               <CardTitle>Demander un document</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              <p className="max-w-[72ch] text-[12.5px] leading-relaxed text-ink-muted">
-                La Direction du Capital Humain prépare vos documents, les signe et les cachette. Ils
-                se retirent en main propre : vous êtes prévenu·e dès qu&apos;ils sont prêts.
-              </p>
-
               <div className="flex flex-wrap gap-2">
                 {REQUESTABLE.map((doc) => (
                   <ChoixDocument
@@ -178,25 +173,16 @@ export default function MyDocumentsPage() {
                 ))}
               </div>
 
-              <Field
-                label="Précision"
-                htmlFor="doc-note"
-                hint="Facultatif — la période, ou l'usage prévu. Ex. : bulletin de juillet 2026, pour un dossier bancaire."
-              >
+              <Field label="Précision" htmlFor="doc-note">
                 <Input id="doc-note" value={note} onChange={(e) => setNote(e.target.value)} />
               </Field>
 
               {/* ———— Ce qui part, en toutes lettres ————
                 Deux pastilles cochées se lisent d'un coup d'œil ; à quatre,
                 relire la ligne est plus sûr que recompter les bordures bleues.
-                Et quand rien n'est coché, le bouton grisé s'explique au lieu
-                de se subir. */}
-              <div className="-mx-5 border-t border-line-soft px-5 pt-4 pb-1">
-                {selected.length === 0 ? (
-                  <p className="text-[12px] text-ink-muted">
-                    Choisissez au moins un document ci-dessus.
-                  </p>
-                ) : (
+                Rien de coché, rien à dire : le bouton reste grisé. */}
+              {selected.length > 0 ? (
+                <div className="-mx-5 border-t border-line-soft px-5 pt-4 pb-1">
                   <p className="text-[12.5px] leading-snug text-ink">
                     <span className="font-semibold text-ink-strong">
                       Vous demandez {compte(selected.length, 'document')}
@@ -206,8 +192,8 @@ export default function MyDocumentsPage() {
                       que « et Autre document » se lit comme l'entrée cochée. */}
                     — {enumerer(selected.map((d) => REQUESTABLE_DOC_LABELS[d]))}.
                   </p>
-                )}
-              </div>
+                </div>
+              ) : null}
 
               {error ? (
                 <p className="flex items-start gap-2 rounded-[12px] bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger ring-1 ring-current/15 ring-inset">
@@ -302,8 +288,7 @@ export default function MyDocumentsPage() {
               ) : withDocument.length === 0 ? (
                 <p className="flex items-start gap-2.5 px-3 py-2.5 text-[12px] leading-snug text-ink-muted">
                   <Icon name="upload_file" size={17} className="mt-px shrink-0 text-ink-muted/60" />
-                  Aucun justificatif joint — ils se rangent ici dès que vous joignez un PDF à une
-                  demande d’absence (maladie, mission…).
+                  Aucun justificatif joint.
                 </p>
               ) : (
                 <ul className="flex flex-col">

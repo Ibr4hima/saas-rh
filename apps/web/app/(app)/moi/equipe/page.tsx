@@ -120,7 +120,6 @@ export default function CongesEquipePage() {
               className="py-8"
               icon={<Icon name="how_to_reg" size={22} />}
               title="Rien à valider"
-              description="Quand un agent de votre équipe pose un congé, il arrive ici, avec une notification. Votre visa l’envoie à la DCH."
             />
           ) : (
             <ul className="flex flex-col">
@@ -177,7 +176,6 @@ export default function CongesEquipePage() {
               className="py-8"
               icon={<Icon name="free_cancellation" size={22} />}
               title="Aucune demande à suivre"
-              description="Les demandes que vous avez visées, et les absences de votre équipe, s’afficheront ici avec l’état de leur visa."
             />
           ) : (
             <ul className="flex flex-col">

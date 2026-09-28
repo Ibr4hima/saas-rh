@@ -144,7 +144,6 @@ export default function InformationsATraiterPage() {
               className="py-8"
               icon={<Icon name="badge" size={22} />}
               title="Rien à traiter"
-              description="Quand un agent signale un changement d’informations, il arrive ici, avec une notification."
             />
           ) : (
             <ul className="flex flex-col">

@@ -82,12 +82,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
   return (
     <CartePleine>
       <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <CardTitle>Types d&apos;absences</CardTitle>
-          <p className="text-[12px] text-ink-muted">
-            Ce que l&apos;agent choisit au moment de déposer sa demande.
-          </p>
-        </div>
+        <CardTitle>Types d&apos;absences</CardTitle>
         {peutGerer ? (
           <Button size="sm" onClick={() => setEdition('nouveau')}>
             <Icon name="add" size={15} className="-ml-0.5" />
@@ -386,57 +381,23 @@ function FenetreType({
  * DIT, pour que personne ne cherche le réglage.
  */
 function CircuitCard() {
-  const etapes = [
-    {
-      titre: 'Le N+1 de l’agent',
-      texte:
-        'Il reçoit la demande dès le dépôt et vise en premier — depuis « Congés de l’équipe ». Un refus s’arrête là.',
-    },
-    {
-      titre: 'La Direction du Capital Humain',
-      texte:
-        'Son directeur — le responsable de la direction du personnel dans l’organigramme — traite la demande, ou la confie à un membre de sa direction.',
-    },
-  ];
+  const etapes = ['Le N+1 de l’agent', 'La Direction du Capital Humain'];
   return (
     <Card className="shrink-0">
-      <CardHeader className="flex flex-col gap-1">
+      <CardHeader>
         <CardTitle>Circuit de validation</CardTitle>
-        <p className="text-[12px] text-ink-muted">
-          Le même pour toutes les demandes — il suit l&apos;organigramme.
-        </p>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+      <CardContent>
         <ol className="grid gap-3 sm:grid-cols-2">
-          {etapes.map((e, i) => (
-            <li key={e.titre} className="flex gap-2.5 rounded-[12px] bg-bg px-3.5 py-3">
+          {etapes.map((titre, i) => (
+            <li key={titre} className="flex items-center gap-2.5 rounded-[12px] bg-bg px-3.5 py-3">
               <span className="flex size-[20px] shrink-0 items-center justify-center rounded-full bg-primary/[0.08] text-[10.5px] font-bold text-primary">
                 {i + 1}
               </span>
-              <span className="min-w-0">
-                <span className="block text-[12.5px] font-semibold text-ink-strong">{e.titre}</span>
-                <span className="mt-0.5 block text-[11.5px] leading-snug text-ink-muted">
-                  {e.texte}
-                </span>
-              </span>
+              <span className="min-w-0 text-[12.5px] font-semibold text-ink-strong">{titre}</span>
             </li>
           ))}
         </ol>
-        <ul className="flex flex-col gap-1 text-[11.5px] leading-snug text-ink-muted">
-          <li>
-            Sans N+1 qui puisse viser — le DG, un N+1 parti, sans accès au portail ou en congé — la
-            demande va directement à la DCH.
-          </li>
-          <li>
-            Le directeur du Capital Humain peut confier les demandes à un membre de sa direction :
-            elles lui arrivent directement. Absent ou parti, le membre les rend au directeur.
-          </li>
-          <li>
-            La demande du directeur du Capital Humain : le visa du DG suffit. La même personne
-            attendue aux deux étapes vise une seule fois.
-          </li>
-          <li>Personne ne vise sa propre demande.</li>
-        </ul>
       </CardContent>
     </Card>
   );

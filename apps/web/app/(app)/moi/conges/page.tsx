@@ -473,7 +473,6 @@ export default function MyLeavesPage() {
                 className="py-8"
                 icon={<Icon name="free_cancellation" size={22} />}
                 title="Aucune demande pour le moment"
-                description="Celles que vous enverrez s’afficheront ici, avec l’état de leur visa et le nom de qui les a signées."
               />
             ) : (
               <ul className="flex flex-col">

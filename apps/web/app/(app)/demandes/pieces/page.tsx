@@ -149,7 +149,6 @@ export default function PiecesAVerifierPage() {
               className="py-8"
               icon={<Icon name="upload_file" size={22} />}
               title="Rien à vérifier"
-              description="Quand un agent dépose une pièce sur son dossier, elle arrive ici, avec une notification."
             />
           ) : (
             <ul className="flex flex-col">

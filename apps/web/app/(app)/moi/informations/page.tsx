@@ -238,12 +238,6 @@ export default function MyInformationsPage() {
                   {detail.data.workPhone ? <Telephone valeur={detail.data.workPhone} /> : null}
                 </Donnee>
               </Groupe>
-
-              <p className="border-t border-line-soft pt-4 text-[11.5px] leading-relaxed text-ink-muted">
-                Ces informations s&apos;appuient sur une pièce officielle ou sur votre contrat :
-                leur correction passe par la Direction du Capital Humain. Ce que vous pouvez faire
-                rectifier vous-même se signale juste en dessous.
-              </p>
             </CardContent>
           </Card>
         </div>
@@ -254,10 +248,6 @@ export default function MyInformationsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Signaler un changement</CardTitle>
-              <p className="mt-1.5 max-w-[72ch] text-[12.5px] leading-relaxed text-ink-muted">
-                Déménagement, mariage, nouveau numéro : vous le savez avant nous. Corrigez ici — la
-                Direction du Capital Humain confirme avant que le dossier change.
-              </p>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {enAttente ? (
@@ -407,7 +397,6 @@ export default function MyInformationsPage() {
                   className="py-7"
                   icon={<Icon name="badge" size={22} />}
                   title="Aucun signalement pour le moment"
-                  description="Ceux que vous enverrez s’afficheront ici, avec l’ancienne valeur, la nouvelle, et la réponse de la Direction du Capital Humain."
                 />
               ) : (
                 <ul className="flex flex-col">
