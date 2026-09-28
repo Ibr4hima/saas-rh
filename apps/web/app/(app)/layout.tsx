@@ -35,12 +35,7 @@ import {
 } from '../../components/colonne-repliable';
 import { ANCRE_ONGLETS } from '../../components/onglets-bandeau';
 import { RechercheAcademy } from '../../components/recherche-academy';
-import {
-  Palette,
-  useNomDuRaccourci,
-  useRaccourciPalette,
-  type EcranPalette,
-} from '../../components/palette';
+import { Palette, useRaccourciPalette, type EcranPalette } from '../../components/palette';
 import { api } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 
@@ -160,7 +155,6 @@ const NAV_ITEMS: NavItem[] = [
     groupe: 'quotidien',
     children: [
       { href: '/absences', label: 'Gestion des demandes' },
-      { href: '/absences/feries', label: 'Gestion des jours fériés' },
       { href: '/absences/parametres', label: 'Paramètres des congés' },
     ],
   },
@@ -333,6 +327,22 @@ function pageAction(pathname: string, user: SessionUser, espace: Espace): Chrome
   }
   return null;
 }
+
+/**
+ * Le réglage d'un écran, dans le bandeau, juste avant la recherche : la
+ * gestion des jours fériés s'ouvre depuis le calendrier (elle n'a plus
+ * d'entrée dans le menu). Côté Gestion RH seulement, comme tout geste de
+ * gestion sur une page des deux espaces.
+ */
+function pageReglage(pathname: string, user: SessionUser, espace: Espace): ChromeAction | null {
+  if (pathname === '/calendrier' && espace === 'gestion' && peutVoirLesFeries(user)) {
+    return { href: '/absences/feries', icon: 'settings', label: 'Gestion des jours fériés' };
+  }
+  return null;
+}
+
+/** Qui gère les jours fériés, ou les lit avec les congés. */
+const peutVoirLesFeries = (user: SessionUser) => peut(user, 'feries') || voitLesConges(user);
 
 /**
  * Bouton d'action du bandeau : l'unique geste de l'écran. Verre translucide
@@ -523,7 +533,6 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
         // Chaque sous-page à qui la gère — ou voit les congés, pour les lire.
         const voit: Record<string, boolean> = {
           '/absences': voitLesConges(user),
-          '/absences/feries': peut(user, 'feries') || voitLesConges(user),
           '/absences/parametres': peut(user, 'conges.parametres') || voitLesConges(user),
         };
         const children = (i.children ?? []).filter((c) => voit[c.href]);
@@ -1059,7 +1068,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const ouvrirPalette = useCallback(() => setPalette(true), []);
   const fermerPalette = useCallback(() => setPalette(false), []);
   useRaccourciPalette(ouvrirPalette);
-  const raccourci = useNomDuRaccourci();
 
   // Ce que l'agent a devant lui : son équipe (l'entrée n'existe que pour qui
   // encadre), ce qui attend son visa, ce qu'il traite pour la DCH (badges).
@@ -1130,10 +1138,23 @@ function AppShell({ children }: { children: React.ReactNode }) {
                     }))
                 : [{ href: i.href, label: i.label, icon: i.icon, motsCles: i.motsCles }],
           )
+          .concat(
+            // Sans entrée dans le menu, elle reste une destination de la palette.
+            gestion && me.data && peutVoirLesFeries(me.data)
+              ? [
+                  {
+                    href: '/absences/feries',
+                    label: 'Gestion des jours fériés',
+                    icon: 'calendar_month',
+                    chemin: 'Calendrier · Fériés',
+                  },
+                ]
+              : [],
+          )
           .map((e) => [e.href, e] as const),
       ).values(),
     ],
-    [deuxEspaces, navAgent, navGestion, items],
+    [deuxEspaces, navAgent, navGestion, items, gestion, me.data],
   );
 
   // « Mon équipe » ne s'affiche qu'à qui encadre quelqu'un : l'organigramme
@@ -1235,11 +1256,15 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
   const title = titleOverride ?? pageTitle(pathname, user.givenName);
   const action = pageAction(pathname, user, espace);
+  const reglage = pageReglage(pathname, user, espace);
   const academy = espaceAcademy(pathname);
+  // Une page sans entrée dans le menu s'allume sous celle qui y mène : la
+  // gestion des jours fériés s'ouvre depuis le calendrier.
+  const cheminMenu = pathname.startsWith('/absences/feries') ? '/calendrier' : pathname;
   const isActive = (href: string) =>
-    href === '/moi' ? pathname === '/moi' : pathname.startsWith(href);
+    href === '/moi' ? cheminMenu === '/moi' : cheminMenu.startsWith(href);
   /** Une sous-page couvre son chemin et ce qui en descend. */
-  const isChildActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const isChildActive = (href: string) => cheminMenu === href || cheminMenu.startsWith(`${href}/`);
 
   return (
     /* Coquille d'application : la page elle-même ne défile pas. Le bandeau et
@@ -1300,23 +1325,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           ) : (
             <>
               <DateDuJour />
-              {/* La recherche avait l'air d'un champ sans en être un : c'était un
-              bouton déguisé, large de deux cent quarante pixels, qui invitait
-              à taper là où rien ne se tape — la frappe se fait dans la
-              palette, qui a la place d'afficher ce qu'elle trouve. Réduite à
-              son icône, elle rejoint les autres commandes du bandeau et cesse
-              de promettre ce qu'elle ne fait pas. Le raccourci n'est plus
-              écrit dessus : il reste dans l'infobulle et dans l'intitulé
-              accessible, et la palette l'affiche en grand quand on l'ouvre. */}
-              <button
-                type="button"
-                onClick={() => setPalette(true)}
-                aria-label={`Rechercher (${raccourci})`}
-                title={`Rechercher — ${raccourci}`}
-                className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
-              >
-                <Icon name="search" size={20} />
-              </button>
+              {reglage ? <HeaderAction action={reglage} /> : null}
               <NotificationsBell />
             </>
           )}
