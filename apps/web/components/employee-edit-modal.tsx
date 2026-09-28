@@ -75,7 +75,6 @@ interface FormValues {
   personalEmail: string;
   phone: string;
   addressLine: string;
-  city: string;
   employeeNumber: string;
   hiredOn: string;
   workEmail: string;
@@ -98,7 +97,6 @@ const PERSON_KEYS = [
   'personalEmail',
   'phone',
   'addressLine',
-  'city',
 ] as const;
 const EMPLOYEE_KEYS = [
   'employeeNumber',
@@ -125,7 +123,6 @@ function toDefaults(e: EmployeeDetail): FormValues {
     personalEmail: e.person.personalEmail ?? '',
     phone: e.person.phone ?? '',
     addressLine: e.person.addressLine ?? '',
-    city: e.person.city ?? '',
     employeeNumber: e.employeeNumber,
     hiredOn: e.hiredOn,
     workEmail: localWorkEmail(e.workEmail),
@@ -382,9 +379,6 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               <Input id="addressLine" {...form.register('addressLine')} />
             </Field>
           </div>
-          <Field label="Ville" htmlFor="city">
-            <Input id="city" {...form.register('city')} />
-          </Field>
         </ModalGrid>
       </ModalSection>
 
