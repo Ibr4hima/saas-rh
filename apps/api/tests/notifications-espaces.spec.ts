@@ -5,8 +5,8 @@
  * Décision APIX : « l'espace perso a ses notifs, l'espace RH a ses notifs ».
  * Une notification va à l'espace de la page où elle mène (un congé approuvé
  * mène à « Mes congés » : Mon espace ; une demande à traiter mène à la
- * gestion : Gestion RH) ; celle qui mène à une page commune — un jour férié,
- * vers le calendrier — va aux deux.
+ * gestion : Gestion RH). Le rappel d'un jour férié mène au calendrier, commun
+ * aux deux : il va pourtant à Mon espace seulement.
  *
  * Deux choses à garder :
  * 1. Le filtre SQL dit la même chose que la règle des contrats, lien par lien.
@@ -163,6 +163,7 @@ describe('la règle SQL dit la même chose que celle des contrats', () => {
     'delegation',
     'delegation_rompue',
     'dch_vacante',
+    'rappel',
   ];
 
   it('lien par lien, type par type', async () => {
@@ -195,46 +196,50 @@ describe('la règle SQL dit la même chose que celle des contrats', () => {
     expect(ou('delegation', '/moi/delegations')).toBe('gestion');
     expect(ou('delegation', '/organisation')).toBe('gestion');
     expect(ou('delegation', null)).toBe('gestion');
-    // Les deux : un jour férié.
-    expect(ou('holiday_reminder', '/calendrier')).toBeNull();
+    // Un jour férié : Mon espace seulement, bien que le calendrier soit des deux.
+    expect(ou('holiday_reminder', '/calendrier')).toBe('agent');
+    // Un avis qui mène à une page commune, sans type qui le range : les deux.
+    expect(ou('rappel', '/organisation')).toBeNull();
   });
 });
 
 describe('une boîte par espace', () => {
-  async function poserLesTrois() {
+  async function poserLaBoite() {
     return {
       agent: await poser('conge_a_viser', '/moi/conges'),
       gestion: await poser('demande_a_traiter', '/documents'),
       habilitation: await poser('delegation', null),
       ferie: await poser('holiday_reminder', '/calendrier'),
+      commun: await poser('rappel', '/organisation'),
     };
   }
   const ids = (page: { items: { id: string }[] }) => page.items.map((i) => i.id).sort();
 
-  it('Mon espace : ses avis et les fériés ; Gestion RH : les siens et les fériés', async () => {
+  it('Mon espace : ses avis et les fériés ; Gestion RH : les siens, sans les fériés', async () => {
     await viderLaBoite();
-    const n = await poserLesTrois();
+    const n = await poserLaBoite();
 
     const perso = await service.list(user, 'inbox', 'agent');
-    expect(ids(perso)).toEqual([n.agent, n.ferie].sort());
-    expect(perso.unreadCount).toBe(2);
+    expect(ids(perso)).toEqual([n.agent, n.ferie, n.commun].sort());
+    expect(perso.unreadCount).toBe(3);
 
     const rh = await service.list(user, 'inbox', 'gestion');
-    expect(ids(rh)).toEqual([n.gestion, n.habilitation, n.ferie].sort());
+    expect(ids(rh)).toEqual([n.gestion, n.habilitation, n.commun].sort());
     expect(rh.unreadCount).toBe(3);
 
     // Qui n'a qu'un espace voit toute sa boîte.
     const tout = await service.list(user, 'inbox');
     expect(ids(tout)).toEqual(Object.values(n).sort());
-    expect(tout.unreadCount).toBe(4);
+    expect(tout.unreadCount).toBe(5);
   });
 
   it('« tout marquer lu » ne lit que la boîte de l’espace', async () => {
     await viderLaBoite();
-    const n = await poserLesTrois();
+    const n = await poserLaBoite();
     await service.markAllRead(user, 'agent');
     expect((await etat(n.agent)).read_at).not.toBeNull();
     expect((await etat(n.ferie)).read_at).not.toBeNull();
+    expect((await etat(n.commun)).read_at).not.toBeNull();
     expect((await etat(n.gestion)).read_at).toBeNull();
     expect((await etat(n.habilitation)).read_at).toBeNull();
     expect((await service.list(user, 'inbox', 'gestion')).unreadCount).toBe(2);
@@ -242,16 +247,17 @@ describe('une boîte par espace', () => {
 
   it('« tout archiver » ne range que la boîte de l’espace', async () => {
     await viderLaBoite();
-    const n = await poserLesTrois();
+    const n = await poserLaBoite();
     await service.archiveAll(user, 'gestion');
     expect((await etat(n.gestion)).archived_at).not.toBeNull();
     expect((await etat(n.habilitation)).archived_at).not.toBeNull();
-    expect((await etat(n.ferie)).archived_at).not.toBeNull();
+    expect((await etat(n.commun)).archived_at).not.toBeNull();
     expect((await etat(n.agent)).archived_at).toBeNull();
+    expect((await etat(n.ferie)).archived_at).toBeNull();
 
     // Les archives aussi se lisent par espace.
-    expect(ids(await service.list(user, 'archive', 'agent'))).toEqual([n.ferie]);
+    expect(ids(await service.list(user, 'archive', 'agent'))).toEqual([n.commun]);
     expect((await service.list(user, 'inbox', 'agent')).archivedCount).toBe(1);
-    expect(ids(await service.list(user, 'inbox', 'agent'))).toEqual([n.agent]);
+    expect(ids(await service.list(user, 'inbox', 'agent'))).toEqual([n.agent, n.ferie].sort());
   });
 });

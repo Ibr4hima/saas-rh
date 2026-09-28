@@ -8,7 +8,7 @@ import type {
   NotificationsPage,
   SessionUser,
 } from '@teranga/contracts';
-import { NOTIFICATIONS_DE_GESTION, peut } from '@teranga/contracts';
+import { NOTIFICATIONS_DE_GESTION, NOTIFICATIONS_PERSONNELLES, peut } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -95,6 +95,10 @@ export const espaceDeLaNotificationSql = (
     NOTIFICATIONS_DE_GESTION.map((x) => sql`${x}`),
     sql`, `,
   )}) THEN 'gestion'
+  WHEN ${type} IN (${sql.join(
+    NOTIFICATIONS_PERSONNELLES.map((x) => sql`${x}`),
+    sql`, `,
+  )}) THEN 'agent'
   END)`;
 
 /**

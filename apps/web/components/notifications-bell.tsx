@@ -39,8 +39,7 @@ function iconOf(type: string): IconName {
 
 /**
  * @param espace Qui a deux espaces a deux boîtes : celle de l'espace où il se
- *   trouve (les avis qui mènent à ses pages, et ceux des deux espaces, comme
- *   les fériés). Sans espace, toute la boîte.
+ *   trouve (`espaceDeLaNotification`). Sans espace, toute la boîte.
  */
 export function NotificationsBell({ espace }: { espace?: Espace }) {
   const queryClient = useQueryClient();

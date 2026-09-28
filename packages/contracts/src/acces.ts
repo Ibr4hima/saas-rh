@@ -353,8 +353,14 @@ export function espaceDuChemin(chemin: string): Espace | null {
 export const NOTIFICATIONS_DE_GESTION = ['delegation', 'delegation_rompue', 'dch_vacante'] as const;
 
 /**
+ * Les avis personnels qui mènent à une page commune : le rappel d'un jour
+ * férié (vers le calendrier). Décision APIX : Mon espace seulement.
+ */
+export const NOTIFICATIONS_PERSONNELLES = ['holiday_reminder'] as const;
+
+/**
  * La boîte où va une notification : l'espace de la page où elle mène ; à
- * défaut, celui de son type — `null` : les deux boîtes (un jour férié).
+ * défaut, celui de son type — `null` : les deux boîtes.
  *
  * Le serveur applique la même règle en SQL pour filtrer dans la base
  * (notifications.service.ts, `espaceDeLaNotificationSql`) ; un test les garde
@@ -363,5 +369,7 @@ export const NOTIFICATIONS_DE_GESTION = ['delegation', 'delegation_rompue', 'dch
 export function espaceDeLaNotification(n: { type: string; link: string | null }): Espace | null {
   const espace = n.link ? espaceDuChemin(n.link) : null;
   if (espace) return espace;
-  return (NOTIFICATIONS_DE_GESTION as readonly string[]).includes(n.type) ? 'gestion' : null;
+  if ((NOTIFICATIONS_DE_GESTION as readonly string[]).includes(n.type)) return 'gestion';
+  if ((NOTIFICATIONS_PERSONNELLES as readonly string[]).includes(n.type)) return 'agent';
+  return null;
 }
