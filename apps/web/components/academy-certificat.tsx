@@ -122,10 +122,7 @@ export function CarteCertificatsAgent({ employeeId }: { employeeId: string }) {
         {certificats.isPending ? (
           <Skeleton className="h-12 w-full" />
         ) : !certificats.data || certificats.data.length === 0 ? (
-          <p className="text-[12.5px] text-ink-muted">
-            Aucun certificat pour l’instant. Ils apparaissent ici dès qu’une évaluation finale est
-            réussie.
-          </p>
+          <p className="text-[12.5px] text-ink-muted">Aucun certificat pour l’instant.</p>
         ) : (
           <ListeCertificats certificats={certificats.data} compact />
         )}

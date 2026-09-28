@@ -184,7 +184,7 @@ export function EmployeeDocumentsCard({
           <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
             {depot
               ? 'Aucune pièce au dossier — pièce d’identité, diplômes et attestations sont attendus.'
-              : 'Aucune pièce au dossier — l’agent les dépose depuis son espace, la DCH les vérifie.'}
+              : 'Aucune pièce ajoutée au dossier.'}
           </p>
         ) : (
           <ul className="flex flex-col gap-2">

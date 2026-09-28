@@ -11,7 +11,7 @@ import type {
   EmployeeHistoryEntry,
   InviteResult,
 } from '@teranga/contracts';
-import { MOTIF_INACTIVITE_LABELS, peut } from '@teranga/contracts';
+import { peut } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -336,9 +336,7 @@ export default function EmployeePage() {
                 <Repere
                   label="Fin contrat"
                   valeur={e.finActivite ? formatDate(e.finActivite) : null}
-                >
-                  {e.inactiviteMotif ? MOTIF_INACTIVITE_LABELS[e.inactiviteMotif] : null}
-                </Repere>
+                />
                 <Repere label="Ancienneté" valeur={seniority(e.hiredOn, e.finActivite)}>
                   Arrivée le {formatDate(e.hiredOn)}
                 </Repere>
@@ -517,57 +515,93 @@ export default function EmployeePage() {
             />
           ) : null}
 
-          {canSeeHistory ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Historique des modifications</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {history.isLoading ? (
-                  <Skeleton className="h-16 w-full" />
-                ) : !history.data || history.data.length === 0 ? (
-                  <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
-                    Aucune modification enregistrée.
-                  </p>
-                ) : (
-                  /* Une frise : le fil vertical relie les événements et fait
-                     lire la colonne comme une suite, pas comme un tableau de
-                     dates dont chaque ligne repartirait de zéro. */
-                  <ol className="relative flex flex-col gap-4 border-l border-line-soft pl-4">
-                    {history.data.map((h) => (
-                      <li key={h.id} className="relative">
-                        <span
-                          aria-hidden
-                          className="absolute top-[6px] -left-[21px] size-[7px] rounded-full bg-primary/40 ring-[3px] ring-surface"
-                        />
-                        <p className="text-[12.5px] leading-snug font-semibold text-ink-strong">
-                          {ACTION_LABELS[h.action] ?? h.action} ·{' '}
-                          {TABLE_LABELS[h.tableName] ?? h.tableName}
-                        </p>
-                        {h.changedFields.length > 0 ? (
-                          <p className="mt-0.5 text-[11.5px] leading-snug text-ink-muted">
-                            {h.changedFields.join(', ')}
-                          </p>
-                        ) : null}
-                        <p className="mt-0.5 text-[11px] text-ink-muted/80">
-                          {new Date(h.occurredAt).toLocaleString('fr-FR', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </p>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </CardContent>
-            </Card>
-          ) : null}
+          {canSeeHistory ? <CarteHistorique history={history} /> : null}
         </div>
       </div>
     </Page>
+  );
+}
+
+/**
+ * L'historique des modifications, PLIÉ par défaut : on le consulte quand on
+ * cherche qui a changé quoi, pas à chaque ouverture de la fiche. Le nombre
+ * d'événements se lit sur la rangée repliée. Chaque événement dit le geste
+ * et ce qu'il a touché — jamais les noms de colonnes de la base.
+ */
+function CarteHistorique({
+  history,
+}: {
+  history: { isLoading: boolean; data?: EmployeeHistoryEntry[] };
+}) {
+  const [ouvert, setOuvert] = useState(false);
+  const n = history.data?.length ?? 0;
+  return (
+    <Card>
+      <CardHeader className="p-0">
+        <button
+          type="button"
+          aria-expanded={ouvert}
+          onClick={() => setOuvert((o) => !o)}
+          className="flex w-full items-center gap-2 px-5 py-4 text-left focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+        >
+          <CardTitle className="min-w-0 flex-1">Historique des modifications</CardTitle>
+          {n > 0 ? (
+            <span
+              className="rounded-full bg-primary/[0.09] px-1.5 py-px text-[10px] font-extrabold text-primary"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            >
+              {n}
+            </span>
+          ) : null}
+          <Icon
+            name="chevron_right"
+            size={18}
+            className={cn(
+              'shrink-0 text-ink-muted transition-transform duration-200',
+              ouvert && 'rotate-90',
+            )}
+          />
+        </button>
+      </CardHeader>
+      {ouvert ? (
+        <CardContent>
+          {history.isLoading ? (
+            <Skeleton className="h-16 w-full" />
+          ) : n === 0 ? (
+            <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
+              Aucune modification enregistrée.
+            </p>
+          ) : (
+            /* Une frise : le fil vertical relie les événements et fait
+               lire la colonne comme une suite, pas comme un tableau de
+               dates dont chaque ligne repartirait de zéro. */
+            <ol className="relative flex flex-col gap-4 border-l border-line-soft pl-4">
+              {history.data!.map((h) => (
+                <li key={h.id} className="relative">
+                  <span
+                    aria-hidden
+                    className="absolute top-[6px] -left-[21px] size-[7px] rounded-full bg-primary/40 ring-[3px] ring-surface"
+                  />
+                  <p className="text-[12.5px] leading-snug font-semibold text-ink-strong">
+                    {ACTION_LABELS[h.action] ?? h.action} ·{' '}
+                    {TABLE_LABELS[h.tableName] ?? h.tableName}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-ink-muted/80">
+                    {new Date(h.occurredAt).toLocaleString('fr-FR', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          )}
+        </CardContent>
+      ) : null}
+    </Card>
   );
 }
 
@@ -878,7 +912,7 @@ function DocumentRequestsCard({ employeeId }: { employeeId: string }) {
           <Skeleton className="h-16 w-full" />
         ) : liste.length === 0 ? (
           <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
-            Aucune demande à ce jour — attestations et bulletins se demandent depuis le portail.
+            Aucune demande à ce jour.
           </p>
         ) : (
           <ul className="flex flex-col">
