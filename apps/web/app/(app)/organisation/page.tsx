@@ -226,23 +226,21 @@ function UnitPanel({
   // Les rattachements que la règle fait d'elle-même (un directeur relève du
   // DG…) ne se confirment pas : c'est la logique, on enregistre aussitôt. On
   // n'attend une confirmation que si l'opération laisserait des rattachements
-  // à revoir. Après coup, le bilan dit ce qui a été fait.
+  // à revoir. Rien ne s'affiche après coup : l'unité montre son nouvel état.
   type Corps = Record<string, unknown>;
   const [apercu, setApercu] = useState<{
     corps: Corps;
     consequences: ConsequencesHierarchie;
   } | null>(null);
-  const [bilan, setBilan] = useState<ConsequencesHierarchie | null>(null);
   const [verification, setVerification] = useState(false);
 
   const appliquer = useMutation({
     mutationFn: (corps: Corps) =>
       api<ConsequencesHierarchie>(`/org-units/${unit.id}`, { method: 'PATCH', body: corps }),
-    onSuccess: (res) => {
+    onSuccess: () => {
       setError(null);
       setEditing(false);
       setApercu(null);
-      setBilan(aDesConsequences(res) ? res : null);
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
       void queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
@@ -253,7 +251,6 @@ function UnitPanel({
 
   const verifierPuisAppliquer = async (corps: Corps) => {
     setError(null);
-    setBilan(null);
     setVerification(true);
     try {
       const consequences = await api<ConsequencesHierarchie>(`/org-units/${unit.id}/apercu`, {
@@ -405,27 +402,6 @@ function UnitPanel({
                 Annuler
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {bilan ? (
-        <Card>
-          <CardContent className="flex flex-col gap-3 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="flex items-center gap-1.5 text-[13px] font-bold text-success">
-                <Icon name="check_circle" size={16} fill />
-                Enregistré
-              </p>
-              <button
-                type="button"
-                onClick={() => setBilan(null)}
-                className="text-[12px] font-semibold text-ink-muted hover:text-ink"
-              >
-                Masquer
-              </button>
-            </div>
-            <ListeConsequences consequences={bilan} faites />
           </CardContent>
         </Card>
       ) : null}
