@@ -37,6 +37,22 @@ export interface DashboardContractFollowUp {
   daysLeft: number | null;
 }
 
+/** Un contrat arrivé à terme ces derniers mois : l'agent est passé dans les inactifs. */
+export interface ContratArriveATerme {
+  employeeId: string;
+  employeeNumber: string;
+  name: string;
+  contractType: string;
+  endDate: string;
+}
+
+/** « Échéances de contrat » : ce qui court encore, et ce qui vient de finir. */
+export interface SuiviDesContrats {
+  enCours: DashboardContractFollowUp[];
+  /** Les 90 derniers jours, le plus récent d'abord. */
+  arrivesATerme: ContratArriveATerme[];
+}
+
 export interface DashboardView {
   activeEmployees: number;
   /** Recrutés au cours des 90 derniers jours — le pouls des arrivées. */

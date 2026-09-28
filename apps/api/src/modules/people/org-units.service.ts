@@ -31,6 +31,7 @@ import {
   uniteRacine,
   verrouillerLaChaine,
 } from './chaine';
+import { contratEchu, exigerEnActivite } from './en-activite';
 import { pasSurSoi } from '../acces/dch';
 import { reconcilierLeCircuit } from '../time/visas';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
@@ -802,9 +803,12 @@ export class OrgUnitsService {
         422,
         'org.manager_not_active',
         'Seul un employé actif peut diriger une unité',
-        'Ce dossier est suspendu ou clos.',
+        'Ce dossier est inactif.',
       );
     }
+    // Son contrat arrivé à terme, il n'est plus de l'APIX — même si son
+    // dossier n'est pas encore passé dans les inactifs.
+    await exigerEnActivite(tx, employeeId, 'diriger une unité');
   }
 
   /**
@@ -878,6 +882,7 @@ export class OrgUnitsService {
         WHERE a.org_unit_id IN (SELECT id FROM perimetre)
           AND a.validity @> CURRENT_DATE
           AND e.status = 'active'
+          AND NOT ${contratEchu(sql`e.id`)}
           AND NOT EXISTS (
             SELECT 1 FROM assignments ai
              WHERE ai.employee_id = e.id

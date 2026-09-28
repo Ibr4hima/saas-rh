@@ -49,7 +49,7 @@ export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: 
     explication: 'Personne ne peut lui fixer d’objectifs ni l’évaluer.',
   },
   responsable_archive: {
-    court: 'n+1 archivé',
+    court: 'n+1 inactif',
     explication: 'Son responsable a quitté l’agence : il faut le remplacer.',
   },
   dg_hors_direction_generale: {

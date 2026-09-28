@@ -55,6 +55,7 @@ import {
   RESERVE_MAX_S,
   totalVu,
 } from './visionnage';
+import { contratEchu } from '../people/en-activite';
 
 /* ————————————————————————————————————————————————————————————————
    APIX Academy.
@@ -622,7 +623,7 @@ export class AcademyService {
                (SELECT a.position_title FROM assignments a
                  WHERE a.employee_id = e.id AND a.validity @> CURRENT_DATE LIMIT 1) AS poste
           FROM employees e JOIN persons p ON p.id = e.person_id
-         WHERE e.status = 'active'
+         WHERE e.status = 'active' AND NOT ${contratEchu(sql`e.id`)}
          ORDER BY p.family_name, p.given_name`);
       return rows.map((r) => ({ employeeId: r.id, nom: r.nom, poste: r.poste }));
     });

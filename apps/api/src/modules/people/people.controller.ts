@@ -21,6 +21,7 @@ import {
   deleteOrgUnitSchema,
   listEmployeesQuerySchema,
   newAssignmentSchema,
+  newContractSchema,
   updateEmployeeSchema,
   updateOrgUnitSchema,
   type ArchiveEmployeesInput,
@@ -30,6 +31,7 @@ import {
   type CreateOrgUnitInput,
   type DeleteOrgUnitInput,
   type NewAssignmentInput,
+  type NewContractInput,
   type UpdateEmployeeInput,
   type UpdateOrgUnitInput,
 } from '@teranga/contracts';
@@ -158,6 +160,17 @@ export class PeopleController {
     @Body(new ZodValidationPipe(newAssignmentSchema)) body: NewAssignmentInput,
   ) {
     return this.people.newAssignment(req.sessionUser, id, body);
+  }
+
+  /** Un nouveau contrat — renouvellement, changement de type. */
+  @Post('employees/:id/contracts')
+  @Peut('personnel.gerer')
+  newContract(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(newContractSchema)) body: NewContractInput,
+  ) {
+    return this.people.newContract(req.sessionUser, id, body);
   }
 
   @Get('employees/:id/history')

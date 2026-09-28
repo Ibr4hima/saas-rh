@@ -15,6 +15,7 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
 import { AuthService, IssuedSession } from '../auth/auth.service';
+import { finDeContratPassee } from '../people/en-activite';
 
 const INVITATION_TTL_DAYS = 7;
 
@@ -73,8 +74,16 @@ export class InvitationsService {
         problem(
           422,
           'portal.employee_archived',
-          'Ce dossier est archivé',
-          'Ce dossier est archivé : réactivez-le avant d’ouvrir un accès au portail.',
+          'Ce dossier est inactif',
+          'Un agent inactif n’a pas accès au portail : réactivez son dossier d’abord.',
+        );
+      }
+      if (await finDeContratPassee(tx, employeeId)) {
+        problem(
+          422,
+          'portal.contrat_echu',
+          'Son contrat est arrivé à terme',
+          'Un agent dont le contrat a pris fin n’a pas accès au portail : enregistrez d’abord son nouveau contrat.',
         );
       }
       email = emailOverride ?? row.workEmail ?? row.personalEmail ?? '';

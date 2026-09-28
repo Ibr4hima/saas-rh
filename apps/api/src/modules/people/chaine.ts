@@ -3,6 +3,7 @@ import type { ChangementRattachement, MotifChangement } from '@teranga/contracts
 import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import type { Tx } from '../../db/tenant-db';
+import { exigerEnActivite } from './en-activite';
 
 /* ————————————————————————————————————————————————————————————————
    La chaîne hiérarchique : ses définitions, la validation d'un rattachement,
@@ -143,9 +144,12 @@ export async function validerRattachement(
       422,
       'people.manager_not_active',
       'Seul un employé actif peut être désigné manager',
-      'Ce dossier est archivé.',
+      'Ce dossier est inactif.',
     );
   }
+  // Un n+1 dont le contrat est arrivé à terme n'est plus de l'APIX, même si
+  // son dossier n'est pas encore passé dans les inactifs.
+  await exigerEnActivite(tx, managerId, 'être n+1');
   // UNION, pas UNION ALL : sur une boucle déjà présente dans les données, la
   // remontée s'arrête au lieu de tourner sans fin.
   const boucle = await tx.execute(sql`
@@ -554,6 +558,7 @@ export async function planifierReprise(
   if (!r || r.status !== 'active') {
     problem(422, 'people.repreneur_inactif', 'Le repreneur doit être un agent actif');
   }
+  await exigerEnActivite(tx, repreneur, 'reprendre une équipe');
   const priseDePlace = equipe.some((a) => a.id === repreneur);
   const [p] = await tx
     .select({ n1: t.employees.managerEmployeeId })

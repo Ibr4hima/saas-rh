@@ -8,6 +8,7 @@ import { TenantDb, type Tx } from '../../db/tenant-db';
 import { DG, directionDeLUnite, uniteEnVigueur } from './chaine';
 import { convertirLigne, correspondre } from './import-employes';
 import { PeopleService } from './people.service';
+import { contratEchu } from './en-activite';
 
 /* ————————————————————————————————————————————————————————————————
    L'import d'un fichier d'effectif.
@@ -237,7 +238,7 @@ export class ImportEmployesService {
         continue;
       }
       if (!n1.actif) {
-        refuser(l, `${n1.nom} a un dossier archivé : dossier créé sans n+1`);
+        refuser(l, `${n1.nom} est inactif : dossier créé sans n+1`);
         continue;
       }
       if (!n1.direction) {
@@ -374,7 +375,7 @@ export class ImportEmployesService {
         est_dg: boolean;
       }>(sql`
         SELECT e.id, e.employee_number AS numero, p.given_name AS prenom, p.family_name AS nom,
-               e.status = 'active' AS actif,
+               (e.status = 'active' AND NOT ${contratEchu(sql`e.id`)}) AS actif,
                ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'id')} AS direction_id,
                ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'name')} AS direction_nom,
                (e.id IS NOT DISTINCT FROM ${DG}) AS est_dg

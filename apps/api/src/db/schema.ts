@@ -154,6 +154,8 @@ export const employees = pgTable('employees', {
   status: text('status').notNull().default('active'),
   /** Quand le dossier a été archivé — le délai de conservation part de là. */
   archivedAt: timestamp('archived_at', { withTimezone: true }),
+  /** Pourquoi il est inactif — `fin_de_contrat` se pose d'elle-même. */
+  inactiviteMotif: text('inactivite_motif'),
   workEmail: text('work_email'),
   workPhone: text('work_phone'),
   customFields: jsonb('custom_fields').notNull().default({}),

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
@@ -16,7 +16,9 @@ import type {
   EmployeeHistoryEntry,
   EmployeeListItem,
   ListEmployeesQuery,
+  MotifInactivite,
   NewAssignmentInput,
+  NewContractInput,
   SessionUser,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
@@ -41,8 +43,11 @@ import {
   verrouillerLaChaine,
   type PlanDeReprise,
 } from './chaine';
+import { frDate } from '../acces/appels';
 import { pasSurSoi } from '../acces/dch';
 import { faireSuivreLesDemandes, reconcilierDemande, reconcilierLeCircuit } from '../time/visas';
+import { inactiverLesContratsEchus } from './activite';
+import { dernierContrat, exigerEnActivite, finDeContratPassee } from './en-activite';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 
 /** Rôles autorisés à lire les champs ultra-sensibles (CNI). */
@@ -77,6 +82,8 @@ interface LigneListe extends Record<string, unknown> {
   manager_number: string | null;
   team_size: number;
   unite: string | null;
+  inactivite_motif: string | null;
+  archived_at: string | null;
 }
 
 interface Cursor {
@@ -100,6 +107,8 @@ function decodeCursor(raw: string): Cursor {
 
 @Injectable()
 export class PeopleService {
+  private readonly logger = new Logger(PeopleService.name);
+
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(EncryptionService) private readonly crypto: EncryptionService,
@@ -118,6 +127,17 @@ export class PeopleService {
    * listes déroulantes — s'appuie dessus.
    */
   async list(user: SessionUser, query: ListEmployeesQuery): Promise<EmployeeListPage> {
+    // Les contrats arrivés à terme passent d'abord dans les inactifs : la
+    // liste se lit juste. Dans sa propre transaction, et sans bloquer : un
+    // échec ici ne doit pas priver la DCH de la liste.
+    try {
+      await this.db.withTenant(ctxOf(user), (tx) => inactiverLesContratsEchus(tx, user.tenantId));
+    } catch (err) {
+      this.logger.error(
+        `Fin des contrats échus impossible (tenant ${user.tenantId}) : la liste est servie sans elle.`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
     return this.db.withTenant(ctxOf(user), async (tx) => {
       const like = query.q ? `%${query.q}%` : null;
 
@@ -134,6 +154,8 @@ export class PeopleService {
             p.given_name,
             p.family_name,
             e.status,
+            e.inactivite_motif,
+            e.archived_at::text         AS archived_at,
             e.hired_on::text            AS hired_on,
             e.work_email,
             e.created_at,
@@ -276,6 +298,8 @@ export class PeopleService {
           managerName: r.manager_name,
           managerNumber: r.manager_number,
           teamSize: Number(r.team_size ?? 0),
+          inactiviteMotif: (r.inactivite_motif as MotifInactivite | null) ?? null,
+          archivedAt: r.archived_at ? new Date(r.archived_at).toISOString() : null,
         })),
         nextOffset: trop ? query.offset + query.limit : null,
         total: Number(totalRows.rows[0]?.n ?? 0),
@@ -441,6 +465,7 @@ export class PeopleService {
         employeeNumber: employee.employeeNumber,
         status: employee.status,
         archivedAt: employee.archivedAt?.toISOString() ?? null,
+        inactiviteMotif: (employee.inactiviteMotif as MotifInactivite | null) ?? null,
         hiredOn: employee.hiredOn,
         workEmail: employee.workEmail,
         workPhone: employee.workPhone,
@@ -550,6 +575,7 @@ export class PeopleService {
         }
         if (input.employee && Object.keys(input.employee).length > 0) {
           if (input.employee.managerEmployeeId) {
+            await exigerEnActivite(tx, id, 'recevoir de n+1');
             await validerRattachement(
               tx,
               id,
@@ -592,6 +618,59 @@ export class PeopleService {
   }
 
   /**
+   * Un nouveau contrat : un CDD renouvelé, un stage suivi d'un CDD, un CDI.
+   * Il commence après le précédent ; celui-ci, s'il courait encore, s'arrête
+   * la veille. Possible sur un dossier inactif : c'est ce qui permet de le
+   * réactiver quand le contrat reprend.
+   */
+  async newContract(
+    user: SessionUser,
+    id: string,
+    input: NewContractInput,
+  ): Promise<{ id: string }> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.requireEmployee(tx, id);
+      await pasSurSoi(tx, user.userId, [id], 'modifier votre propre contrat');
+      const [precedent] = await tx
+        .select({
+          id: t.contracts.id,
+          startDate: t.contracts.startDate,
+          endDate: t.contracts.endDate,
+        })
+        .from(t.contracts)
+        .where(eq(t.contracts.employeeId, id))
+        .orderBy(desc(t.contracts.startDate), desc(t.contracts.createdAt))
+        .limit(1);
+      if (precedent && input.startDate <= precedent.startDate) {
+        problem(
+          422,
+          'people.contrat_avant_le_precedent',
+          'Le nouveau contrat doit commencer après le précédent',
+          `Le contrat en place a commencé le ${frDate(precedent.startDate)}.`,
+        );
+      }
+      if (precedent && (precedent.endDate === null || precedent.endDate >= input.startDate)) {
+        await tx
+          .update(t.contracts)
+          .set({ endDate: sql`${input.startDate}::date - 1`, updatedAt: new Date() })
+          .where(eq(t.contracts.id, precedent.id));
+      }
+      const contractId = uuidv7();
+      await tx.insert(t.contracts).values({
+        id: contractId,
+        tenantId: user.tenantId,
+        employeeId: id,
+        contractType: input.contractType,
+        startDate: input.startDate,
+        endDate: input.endDate ?? null,
+        trialPeriodEnd: input.trialPeriodEnd ?? null,
+        notes: input.notes ?? null,
+      });
+      return { id: contractId };
+    });
+  }
+
+  /**
    * Une affectation ne peut viser qu'une unité VIVANTE. Seule la clé étrangère
    * protégeait : elle accepte une unité dissoute, ce qui annulait la garantie
    * de la dissolution (les membres réaffectés y revenaient aussitôt).
@@ -630,6 +709,7 @@ export class PeopleService {
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
         await pasSurSoi(tx, user.userId, [id], 'changer votre propre affectation');
+        await exigerEnActivite(tx, id, 'recevoir d’affectation');
         await verrouillerLaChaine(tx);
         const [dossier] = await tx
           .select({ managerId: t.employees.managerEmployeeId })
@@ -737,6 +817,20 @@ export class PeopleService {
           .from(t.assignments)
           .where(and(eq(t.assignments.employeeId, id), sql`upper_inf(${t.assignments.validity})`))
           .limit(1);
+        // Une affectation qui commencerait après la fin de son contrat ne
+        // prendrait jamais effet.
+        const { rows: finContrat } = await tx.execute<{ fin: string }>(sql`
+          SELECT c.end_date::text AS fin FROM contracts c
+           WHERE c.id = ${dernierContrat(id)} AND c.end_date IS NOT NULL
+             AND c.end_date < ${input.startDate}::date`);
+        if (finContrat[0]) {
+          problem(
+            422,
+            'people.affectation_apres_contrat',
+            'L’affectation commencerait après la fin de son contrat',
+            `Son contrat prend fin le ${frDate(finContrat[0].fin)}. Enregistrez d’abord son nouveau contrat.`,
+          );
+        }
         if (current) {
           if (input.startDate <= current.validFrom) {
             problem(
@@ -926,6 +1020,7 @@ export class PeopleService {
         .set({
           status: input.archived ? 'archived' : 'active',
           archivedAt: input.archived ? new Date() : null,
+          inactiviteMotif: input.archived ? (input.motif ?? null) : null,
           updatedAt: new Date(),
         })
         .where(inArray(t.employees.id, ids));
@@ -1146,6 +1241,14 @@ export class PeopleService {
         .limit(1);
       if (estAdmin && !autreAdmin) {
         return "Dernier administrateur de l'organisation";
+      }
+    }
+    // Rouvrir le dossier d'un contrat arrivé à terme : il repasserait aussitôt
+    // dans les inactifs. Le nouveau contrat d'abord.
+    if (geste === 'reouverture') {
+      const fin = await finDeContratPassee(tx, cible.id);
+      if (fin) {
+        return `Son contrat a pris fin le ${frDate(fin)} — enregistrez d’abord son nouveau contrat`;
       }
     }
     // Rouvrir un dossier ne décapite aucune unité : ce garde-fou ne vaut que

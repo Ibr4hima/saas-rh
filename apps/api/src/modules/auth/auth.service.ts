@@ -9,6 +9,7 @@ import { TenantDb } from '../../db/tenant-db';
 import * as t from '../../db/schema';
 import { problem } from '../../common/problem';
 import { capacitesDe } from '../acces/dch';
+import { contratEchu } from '../people/en-activite';
 
 export interface IssuedSession {
   token: string;
@@ -143,12 +144,17 @@ export class AuthService {
   private async dossierArchive(userId: string, tenantId: string): Promise<boolean> {
     return this.db.withTenant({ tenantId, userId }, async (tx) => {
       const [row] = await tx
-        .select({ status: t.employees.status })
+        .select({
+          status: t.employees.status,
+          // Son contrat arrivé à terme, la porte est fermée dès le lendemain —
+          // sans attendre que le dossier passe dans les inactifs.
+          echu: sql<boolean>`${contratEchu(sql`${t.employees.id}`)}`,
+        })
         .from(t.employees)
         .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
         .where(eq(t.persons.userId, userId))
         .limit(1);
-      return row?.status === 'archived';
+      return row?.status === 'archived' || Boolean(row?.echu);
     });
   }
 
@@ -202,12 +208,15 @@ export class AuthService {
         // l'archivage suffirait, mais elle ne couvre pas les sessions ouvertes
         // ailleurs entre-temps ; c'est ici que la porte se referme vraiment.
         const [dossier] = await tx
-          .select({ status: t.employees.status })
+          .select({
+            status: t.employees.status,
+            echu: sql<boolean>`${contratEchu(sql`${t.employees.id}`)}`,
+          })
           .from(t.employees)
           .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
           .where(eq(t.persons.userId, session.userId))
           .limit(1);
-        if (dossier?.status === 'archived') return null;
+        if (dossier?.status === 'archived' || dossier?.echu) return null;
         const { capacites, estAgent, dirigeLaDCH } = await capacitesDe(
           tx,
           session.userId,

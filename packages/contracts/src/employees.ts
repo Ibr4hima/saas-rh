@@ -15,6 +15,29 @@ export const genderSchema = z.enum(['female', 'male']);
  */
 export const employeeStatusSchema = z.enum(['active', 'archived']);
 export type EmployeeStatus = z.infer<typeof employeeStatusSchema>;
+
+/**
+ * Pourquoi un agent est devenu inactif. La fin de contrat se pose d'elle-même,
+ * le lendemain du dernier jour d'un CDD ou d'un stage ; les autres, la DCH
+ * les choisit en désactivant le dossier.
+ */
+export const MOTIFS_INACTIVITE = [
+  'fin_de_contrat',
+  'demission',
+  'licenciement',
+  'retraite',
+  'deces',
+] as const;
+export const motifInactiviteSchema = z.enum(MOTIFS_INACTIVITE);
+export type MotifInactivite = z.infer<typeof motifInactiviteSchema>;
+
+export const MOTIF_INACTIVITE_LABELS: Record<MotifInactivite, string> = {
+  fin_de_contrat: 'Fin de contrat',
+  demission: 'A quitté l’APIX',
+  licenciement: 'Licenciement',
+  retraite: 'Départ à la retraite',
+  deces: 'Décès',
+};
 export const contractTypeSchema = z.enum(['cdi', 'cdd', 'stage', 'consultant', 'detachement']);
 
 /* Les trois vocabulaires d'état civil et celui des contrats, nommés : l'import
@@ -299,6 +322,22 @@ export const initialContractSchema = z.object({
   notes: optionalTrimmed(2000),
 });
 
+/**
+ * Un nouveau contrat : un CDD renouvelé, un stage suivi d'un CDD, un CDI.
+ * Le précédent s'arrête la veille, s'il courait encore. Un CDD ou un stage a
+ * une date de fin — c'est elle qui fera passer l'agent dans les inactifs.
+ */
+export const newContractSchema = initialContractSchema
+  .refine((c) => !['cdd', 'stage'].includes(c.contractType) || c.endDate !== undefined, {
+    message: 'Un CDD ou un stage a une date de fin',
+    path: ['endDate'],
+  })
+  .refine((c) => !c.endDate || c.endDate >= c.startDate, {
+    message: 'La fin du contrat précède son début',
+    path: ['endDate'],
+  });
+export type NewContractInput = z.infer<typeof newContractSchema>;
+
 export const initialAssignmentSchema = z.object({
   positionTitle: trimmed(120),
   orgUnitId: z.uuid().optional(),
@@ -485,11 +524,18 @@ export interface EmployeeListPage {
  */
 const repreneursSchema = z.record(z.uuid(), z.uuid()).optional();
 
-export const archiveEmployeesSchema = z.object({
-  ids: z.array(z.uuid()).min(1).max(100),
-  archived: z.boolean(),
-  repreneurs: repreneursSchema,
-});
+export const archiveEmployeesSchema = z
+  .object({
+    ids: z.array(z.uuid()).min(1).max(100),
+    archived: z.boolean(),
+    /** Pourquoi il devient inactif — exigé pour désactiver, ignoré pour réactiver. */
+    motif: motifInactiviteSchema.optional(),
+    repreneurs: repreneursSchema,
+  })
+  .refine((v) => !v.archived || v.motif !== undefined, {
+    message: 'Précisez pourquoi le dossier devient inactif',
+    path: ['motif'],
+  });
 export type ArchiveEmployeesInput = z.infer<typeof archiveEmployeesSchema>;
 
 /**
@@ -549,6 +595,9 @@ export interface EmployeeListItem {
   workEmail: string | null;
   /** Agents ACTIFS dont il est le n+1 : qui part avec une équipe doit la confier. */
   teamSize: number;
+  /** Inactif : pourquoi (`null` : dossier désactivé avant qu'on le demande), et depuis quand. */
+  inactiviteMotif: MotifInactivite | null;
+  archivedAt: string | null;
 }
 
 export interface AssignmentView {
@@ -590,6 +639,8 @@ export interface EmployeeDetail {
   status: string;
   /** Date d'archivage — c'est elle qui fait courir le délai de conservation. */
   archivedAt: string | null;
+  /** Pourquoi il est inactif ; `null` quand il est actif, ou désactivé avant la règle. */
+  inactiviteMotif: MotifInactivite | null;
   hiredOn: string;
   workEmail: string | null;
   workPhone: string | null;

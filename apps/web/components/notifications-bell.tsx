@@ -26,6 +26,7 @@ function relativeTime(iso: string): string {
 function iconOf(type: string): IconName {
   if (type.startsWith('document_')) return 'folder_managed';
   if (type === 'contract_deadline') return 'schedule';
+  if (type === 'contract_ended') return 'event_busy';
   if (type === 'holiday_reminder') return 'flag';
   if (type === 'profile_change_request') return 'badge';
   return 'notifications';

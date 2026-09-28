@@ -6,11 +6,12 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import type {
   BalanceView,
+  EmployeeBatchResult,
   EmployeeDetail,
   EmployeeHistoryEntry,
   InviteResult,
 } from '@teranga/contracts';
-import { peut } from '@teranga/contracts';
+import { MOTIF_INACTIVITE_LABELS, peut } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -39,6 +40,7 @@ import { EmployeeEditModal } from '../../../../components/employee-edit-modal';
 import { Telephone } from '../../../../components/telephone';
 import { Donnee, Groupe, Peremption } from '../../../../components/fiche';
 import { Icon } from '../../../../components/icons';
+import { Modal } from '../../../../components/modal';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import type { ConsequencesHierarchie, DocumentRequestView, OrgUnit } from '@teranga/contracts';
@@ -52,7 +54,7 @@ import { Page } from '../../../../components/gabarit';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Actif',
-  archived: 'Archivé',
+  archived: 'Inactif',
 };
 const CONTRACT_LABELS: Record<string, string> = {
   cdi: 'CDI',
@@ -179,6 +181,9 @@ export default function EmployeePage() {
   // concerne passe par ses demandes, traitées par quelqu'un d'autre.
   const peutGerer = peut(me.data, 'personnel.gerer') && !e.soi;
   const peutLesSoldes = peut(me.data, 'conges.soldes') && !e.soi;
+  // Un agent inactif n'a ni portail, ni affectation nouvelle : sa fiche se
+  // consulte, son contrat se renouvelle, et le dossier se réactive.
+  const actif = e.status === 'active';
 
   return (
     <Page>
@@ -206,6 +211,8 @@ export default function EmployeePage() {
         </p>
       ) : null}
 
+      {!actif && peutGerer ? <BandeauInactif employee={e} /> : null}
+
       {/* ———— Bande d'identité ————
           Ce qui permet de reconnaître un dossier en une seconde : le nom,
           l'état, le matricule, le poste, et les quatre repères qu'on cherche
@@ -231,11 +238,13 @@ export default function EmployeePage() {
               <Badge tone={e.status === 'active' ? 'success' : 'neutral'}>
                 {STATUS_LABELS[e.status] ?? e.status}
               </Badge>
-              {/* Un dossier archivé porte sa date : c'est elle qui dit depuis
-                  combien de temps on le conserve, et donc quand l'effacer. */}
-              {e.archivedAt ? (
+              {/* Un dossier inactif porte son motif et sa date : c'est elle qui
+                  dit depuis combien de temps on le conserve, et donc quand
+                  l'effacer. */}
+              {!actif && e.archivedAt ? (
                 <span className="text-[11.5px] text-ink-muted">
-                  depuis le {formatDate(e.archivedAt)}
+                  {e.inactiviteMotif ? `${MOTIF_INACTIVITE_LABELS[e.inactiviteMotif]} · ` : ''}
+                  depuis le {formatDate(e.archivedAt.slice(0, 10))}
                 </span>
               ) : null}
             </div>
@@ -395,12 +404,13 @@ export default function EmployeePage() {
             assignments={e.assignments}
             team={e.team}
             managerId={e.managerId}
-            canManage={peutGerer}
+            canManage={peutGerer && actif}
           />
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex items-center justify-between">
               <CardTitle>Contrats</CardTitle>
+              {peutGerer ? <NouveauContrat employeeId={e.id} /> : null}
             </CardHeader>
             {e.contracts.length === 0 ? (
               <CardContent>
@@ -446,7 +456,8 @@ export default function EmployeePage() {
 
         {/* ———— Colonne d'administration : accès et traces ———— */}
         <div className="flex min-w-0 flex-col gap-4">
-          {peutGerer ? (
+          {/* Inactif : pas d'accès au portail, donc rien à lui transmettre. */}
+          {peutGerer && actif ? (
             <PortalCard
               employeeId={e.id}
               portal={e.portal}
@@ -1057,5 +1068,164 @@ function PortalCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Le dossier est inactif : ce qui est fermé, et comment le rouvrir. Une fin
+ * de contrat se rouvre par le nouveau contrat, puis la réactivation — le
+ * serveur refuse de réactiver tant que le contrat est échu.
+ */
+function BandeauInactif({ employee: e }: { employee: EmployeeDetail }) {
+  const queryClient = useQueryClient();
+  const [message, setMessage] = useState<string | null>(null);
+  const reactiver = useMutation({
+    mutationFn: () =>
+      api<EmployeeBatchResult>('/employees/archive', {
+        method: 'POST',
+        body: { ids: [e.id], archived: false },
+      }),
+    onSuccess: async (r) => {
+      if (r.done === 0) {
+        setMessage(r.skipped[0]?.reason ?? 'Réactivation impossible.');
+        return;
+      }
+      setMessage(null);
+      await queryClient.invalidateQueries({ queryKey: ['employee', e.id] });
+      await queryClient.invalidateQueries({ queryKey: ['employees'] });
+    },
+    onError: (err) =>
+      setMessage(err instanceof ApiError ? err.message : 'Réactivation impossible.'),
+  });
+  const finDeContrat = e.inactiviteMotif === 'fin_de_contrat';
+  return (
+    <div className="mb-3 flex shrink-0 flex-col gap-2 rounded-[12px] bg-hover px-3.5 py-3 text-[12.5px] text-ink sm:flex-row sm:items-center">
+      <Icon name="archive" size={17} className="shrink-0 text-ink-muted" />
+      <span className="min-w-0 flex-1 leading-relaxed">
+        <b className="font-semibold">Dossier inactif.</b> Son accès au portail est fermé ; il ne
+        dirige aucune unité, n’est le n+1 de personne et ne reçoit pas d’affectation.
+        {finDeContrat
+          ? ' Pour le rouvrir : enregistrez son nouveau contrat, puis réactivez le dossier.'
+          : ' Le réactiver lui rend son accès, avec ses identifiants.'}
+        {message ? <span className="mt-1 block font-semibold text-danger">{message}</span> : null}
+      </span>
+      <Button
+        size="sm"
+        variant="secondary"
+        className="shrink-0"
+        loading={reactiver.isPending}
+        onClick={() => reactiver.mutate()}
+      >
+        <Icon name="unarchive" size={15} />
+        Réactiver
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * Un nouveau contrat : un CDD renouvelé, un stage suivi d'un CDD, un CDI. Le
+ * précédent s'arrête la veille. Un CDD ou un stage a une date de fin — c'est
+ * elle qui, le lendemain, fera passer l'agent dans les inactifs.
+ */
+function NouveauContrat({ employeeId }: { employeeId: string }) {
+  const queryClient = useQueryClient();
+  const [ouvert, setOuvert] = useState(false);
+  const [type, setType] = useState('cdd');
+  const [debut, setDebut] = useState(new Date().toISOString().slice(0, 10));
+  const [fin, setFin] = useState('');
+  const [erreur, setErreur] = useState<string | null>(null);
+  const finRequise = type === 'cdd' || type === 'stage';
+  const enregistrer = useMutation({
+    mutationFn: () =>
+      api(`/employees/${employeeId}/contracts`, {
+        method: 'POST',
+        body: { contractType: type, startDate: debut, ...(fin ? { endDate: fin } : {}) },
+      }),
+    onSuccess: async () => {
+      setOuvert(false);
+      setFin('');
+      setErreur(null);
+      await queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+      await queryClient.invalidateQueries({ queryKey: ['employees'] });
+      await queryClient.invalidateQueries({ queryKey: ['contrats'] });
+    },
+    onError: (err) =>
+      setErreur(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
+  });
+  return (
+    <>
+      <Button variant="secondary" size="sm" onClick={() => setOuvert(true)}>
+        Nouveau contrat
+      </Button>
+      <Modal
+        open={ouvert}
+        onClose={() => setOuvert(false)}
+        title="Nouveau contrat"
+        subtitle="Renouvellement, ou changement de contrat. Le contrat en cours s’arrête la veille."
+        maxWidth="max-w-lg"
+        footer={
+          <>
+            {erreur ? (
+              <p
+                role="alert"
+                className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+              >
+                {erreur}
+              </p>
+            ) : null}
+            <Button variant="secondary" onClick={() => setOuvert(false)}>
+              Annuler
+            </Button>
+            <Button
+              loading={enregistrer.isPending}
+              disabled={!debut || (finRequise && !fin)}
+              onClick={() => {
+                setErreur(null);
+                enregistrer.mutate();
+              }}
+            >
+              Enregistrer
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <Field label="Type" htmlFor="contrat-type" required>
+            <Select id="contrat-type" value={type} onChange={(ev) => setType(ev.target.value)}>
+              {Object.entries(CONTRACT_LABELS).map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            <Field label="Début" htmlFor="contrat-debut" required>
+              <Input
+                id="contrat-debut"
+                type="date"
+                value={debut}
+                onChange={(ev) => setDebut(ev.target.value)}
+              />
+            </Field>
+            <Field
+              label="Fin"
+              htmlFor="contrat-fin"
+              required={finRequise}
+              hint={finRequise ? undefined : 'Facultative pour ce type de contrat.'}
+            >
+              <Input
+                id="contrat-fin"
+                type="date"
+                value={fin}
+                min={debut}
+                onChange={(ev) => setFin(ev.target.value)}
+              />
+            </Field>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }

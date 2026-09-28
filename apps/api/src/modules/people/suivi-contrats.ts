@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import type { DashboardContractFollowUp } from '@teranga/contracts';
+import type { ContratArriveATerme, DashboardContractFollowUp } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 
 /**
@@ -62,4 +62,32 @@ export async function compterLeSuiviDesContrats(tx: Tx): Promise<number> {
     sql`SELECT count(*)::int AS n FROM (${requeteSuiviDesContrats(null)}) s`,
   );
   return rows[0]?.n ?? 0;
+}
+
+/** Les contrats arrivés à terme ces 90 derniers jours — leurs agents sont inactifs. */
+export async function contratsArrivesATerme(tx: Tx): Promise<ContratArriveATerme[]> {
+  const { rows } = await tx.execute<{
+    employee_id: string;
+    employee_number: string;
+    given_name: string;
+    family_name: string;
+    contract_type: string;
+    end_date: string;
+  }>(sql`
+    SELECT e.id AS employee_id, e.employee_number, p.given_name, p.family_name,
+           c.contract_type, c.end_date::text AS end_date
+      FROM employees e
+      JOIN persons p ON p.id = e.person_id
+      JOIN contracts c ON c.id = (SELECT dc.id FROM contracts dc WHERE dc.employee_id = e.id
+                                   ORDER BY dc.start_date DESC, dc.created_at DESC LIMIT 1)
+     WHERE e.status = 'archived' AND e.inactivite_motif = 'fin_de_contrat'
+       AND c.end_date >= CURRENT_DATE - 90
+     ORDER BY c.end_date DESC, p.family_name, p.given_name`);
+  return rows.map((r) => ({
+    employeeId: r.employee_id,
+    employeeNumber: r.employee_number,
+    name: `${r.given_name} ${r.family_name}`,
+    contractType: r.contract_type,
+    endDate: r.end_date,
+  }));
 }

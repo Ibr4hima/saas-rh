@@ -10,14 +10,16 @@ import type {
   EmployeeListPage,
   EmployeeSort,
   EmployeeStatus,
+  MotifInactivite,
 } from '@teranga/contracts';
-import { peut } from '@teranga/contracts';
+import { MOTIF_INACTIVITE_LABELS, MOTIFS_INACTIVITE, peut } from '@teranga/contracts';
 import {
   Button,
   CardHeader,
   CardTitle,
   cn,
   EmptyState,
+  Field,
   Input,
   Select,
   Table,
@@ -220,9 +222,11 @@ export default function EmployeesPage() {
   const archiver = useMutation({
     mutationFn: ({
       archived,
+      motif,
       repreneurs,
     }: {
       archived: boolean;
+      motif?: MotifInactivite;
       repreneurs?: Record<string, string>;
     }) =>
       api<EmployeeBatchResult>('/employees/archive', {
@@ -230,6 +234,7 @@ export default function EmployeesPage() {
         body: {
           ids: (archived ? actifsChoisis : archivesChoisis).map((e) => e.id),
           archived,
+          motif,
           repreneurs,
         },
       }),
@@ -244,12 +249,12 @@ export default function EmployeesPage() {
 
   const ONGLETS = [
     { cle: 'active', label: 'Actifs', compte: counts.active },
-    { cle: 'archived', label: 'Archivés', compte: counts.archived },
+    { cle: 'archived', label: 'Inactifs', compte: counts.archived },
   ];
   const changerOnglet = (cle: string) => {
     setOnglet(cle as EmployeeStatus);
     // Les filtres portent sur des valeurs propres à l'onglet : un poste qui
-    // n'existe que chez les actifs viderait l'onglet des archivés sans qu'on
+    // n'existe que chez les actifs viderait l'onglet des inactifs sans qu'on
     // comprenne pourquoi.
     setFiltres(SANS_FILTRE);
     sel.vider();
@@ -267,7 +272,7 @@ export default function EmployeesPage() {
 
       <OngletsBandeau courant={onglet} onChange={changerOnglet} onglets={ONGLETS} />
       {/* Reprise du même contrôle là où le bandeau n'a plus la place de le
-          porter : sans elle, l'écran étroit perdrait l'accès aux archives. */}
+          porter : sans elle, l'écran étroit perdrait l'accès aux inactifs. */}
       <Onglets
         courant={onglet}
         onChange={changerOnglet}
@@ -321,11 +326,7 @@ export default function EmployeesPage() {
                 size="sm"
                 variant="secondary"
                 loading={archiver.isPending}
-                onClick={() =>
-                  aConfier.length > 0
-                    ? setPanneau('desactiver')
-                    : archiver.mutate({ archived: true })
-                }
+                onClick={() => setPanneau('desactiver')}
               >
                 Désactiver le profil
                 {actifsChoisis.length < choisis.length ? ` (${actifsChoisis.length})` : ''}
@@ -389,14 +390,14 @@ export default function EmployeesPage() {
                   ? 'Aucun résultat'
                   : onglet === 'active'
                     ? 'Aucun employé actif'
-                    : 'Aucun dossier archivé'
+                    : 'Aucun dossier inactif'
               }
               description={
                 filtreActif
                   ? 'Essayez une autre recherche ou retirez les filtres.'
                   : onglet === 'active'
                     ? 'Créez le premier dossier, ou importez d’un coup le classeur de la Direction du Capital Humain.'
-                    : 'Les dossiers désactivés se rangent ici, et se réactivent d’un geste.'
+                    : 'Les agents dont le contrat a pris fin, ou qui ont quitté l’APIX, se rangent ici. Un dossier se réactive d’un geste, une fois son nouveau contrat enregistré.'
               }
               action={
                 !filtreActif && onglet === 'active' ? (
@@ -436,15 +437,25 @@ export default function EmployeesPage() {
                     unique, deux agents peuvent porter le même nom. Le nom
                     reste en infobulle — on sait de qui il s'agit sans quitter
                     la ligne. */}
-                <Th>Matricule N+1</Th>
-                <Th>Unité</Th>
-                <ThTri
-                  label="Début contrat"
-                  colonne="contractStart"
-                  courant={sort}
-                  sens={dir}
-                  onTrier={trierPar}
-                />
+                {onglet === 'archived' ? (
+                  <>
+                    <Th>Unité</Th>
+                    <Th>Motif</Th>
+                    <Th>Inactif depuis</Th>
+                  </>
+                ) : (
+                  <>
+                    <Th>Matricule N+1</Th>
+                    <Th>Unité</Th>
+                    <ThTri
+                      label="Début contrat"
+                      colonne="contractStart"
+                      courant={sort}
+                      sens={dir}
+                      onTrier={trierPar}
+                    />
+                  </>
+                )}
                 <ThTri
                   label="Fin contrat"
                   colonne="contractEnd"
@@ -474,21 +485,38 @@ export default function EmployeesPage() {
                       ) : null}
                     </Td>
                     <Td>{e.positionTitle ?? '—'}</Td>
-                    <Td className="font-mono text-[11.5px] whitespace-nowrap">
-                      {e.managerNumber ? (
-                        <span title={e.managerName ?? undefined}>{e.managerNumber}</span>
-                      ) : (
-                        <span className="font-sans text-ink-muted/60">—</span>
-                      )}
-                    </Td>
+                    {onglet === 'archived' ? null : (
+                      <Td className="font-mono text-[11.5px] whitespace-nowrap">
+                        {e.managerNumber ? (
+                          <span title={e.managerName ?? undefined}>{e.managerNumber}</span>
+                        ) : (
+                          <span className="font-sans text-ink-muted/60">—</span>
+                        )}
+                      </Td>
+                    )}
                     {/* L'abrégé tient dans une colonne, pas le nom complet :
                             l'infobulle garde le nom entier pour qui hésite. */}
                     <Td title={e.directionName ?? e.orgUnitName ?? undefined}>
                       {e.directionShortName ?? e.directionName ?? e.orgUnitName ?? '—'}
                     </Td>
-                    <Td className="whitespace-nowrap">
-                      {e.contractStartDate ? formatDate(e.contractStartDate) : '—'}
-                    </Td>
+                    {onglet === 'archived' ? (
+                      <>
+                        <Td className="whitespace-nowrap">
+                          {e.inactiviteMotif ? (
+                            MOTIF_INACTIVITE_LABELS[e.inactiviteMotif]
+                          ) : (
+                            <span className="text-ink-muted/60">Non précisé</span>
+                          )}
+                        </Td>
+                        <Td className="whitespace-nowrap">
+                          {e.archivedAt ? formatDate(e.archivedAt.slice(0, 10)) : '—'}
+                        </Td>
+                      </>
+                    ) : (
+                      <Td className="whitespace-nowrap">
+                        {e.contractStartDate ? formatDate(e.contractStartDate) : '—'}
+                      </Td>
+                    )}
                     <Td className="whitespace-nowrap">
                       {e.contractEndDate ? formatDate(e.contractEndDate) : '—'}
                     </Td>
@@ -510,9 +538,9 @@ export default function EmployeesPage() {
           equipes={aConfier}
           enCours={archiver.isPending}
           onClose={() => setPanneau(null)}
-          onConfirmer={(repreneurs) => {
+          onConfirmer={(motif, repreneurs) => {
             setPanneau(null);
-            archiver.mutate({ archived: true, repreneurs });
+            archiver.mutate({ archived: true, motif, repreneurs });
           }}
         />
       ) : null}
@@ -739,8 +767,8 @@ function SupprimerModal({
 }
 
 /**
- * Désactiver des profils dont certains encadrent une équipe : avant de
- * fermer leur dossier, on désigne qui reprend chacune.
+ * Désactiver des profils : on dit pourquoi — il se lira dans la liste des
+ * inactifs — et, pour qui encadre une équipe, qui la reprend.
  */
 function DesactiverModal({
   lot,
@@ -753,18 +781,20 @@ function DesactiverModal({
   equipes: EquipeAConfier[];
   enCours: boolean;
   onClose: () => void;
-  onConfirmer: (repreneurs: Record<string, string>) => void;
+  onConfirmer: (motif: MotifInactivite, repreneurs: Record<string, string>) => void;
 }) {
+  const [motif, setMotif] = useState<MotifInactivite | ''>('');
   const [repreneurs, setRepreneurs] = useState<Record<string, string>>({});
+  const seul = lot.length === 1 ? lot[0] : null;
   return (
     <Modal
       open
       onClose={onClose}
-      title="Qui reprend leurs équipes ?"
+      title={lot.length > 1 ? `Désactiver ${lot.length} profils` : 'Désactiver le profil'}
       subtitle={
-        equipes.length > 1
-          ? `${equipes.length} des profils à désactiver encadrent des agents.`
-          : 'Un des profils à désactiver encadre des agents.'
+        seul
+          ? `${seul.givenName} ${seul.familyName} passe dans les inactifs : son accès au portail est fermé.`
+          : 'Ils passent dans les inactifs : leur accès au portail est fermé.'
       }
       maxWidth="max-w-lg"
       footer={
@@ -774,22 +804,47 @@ function DesactiverModal({
           </Button>
           <Button
             loading={enCours}
-            disabled={!toutesConfiees(equipes, repreneurs)}
-            onClick={() => onConfirmer(repreneurs)}
+            disabled={!motif || !toutesConfiees(equipes, repreneurs)}
+            onClick={() => motif && onConfirmer(motif, repreneurs)}
           >
-            Désactiver le profil
+            Désactiver
           </Button>
         </>
       }
     >
-      <ModalSection title="Leurs équipes">
-        <RepriseDesEquipes
-          equipes={equipes}
-          lot={lot}
-          repreneurs={repreneurs}
-          onChange={setRepreneurs}
-        />
+      <ModalSection title="Pourquoi ?">
+        <Field
+          label="Motif"
+          htmlFor="motif-inactivite"
+          required
+          hint="La fin d’un CDD ou d’un stage se pose d’elle-même, le lendemain du dernier jour."
+        >
+          <Select
+            id="motif-inactivite"
+            value={motif}
+            onChange={(e) => setMotif(e.target.value as MotifInactivite | '')}
+          >
+            <option value="">— Choisir</option>
+            {MOTIFS_INACTIVITE.map((m) => (
+              <option key={m} value={m}>
+                {MOTIF_INACTIVITE_LABELS[m]}
+              </option>
+            ))}
+          </Select>
+        </Field>
       </ModalSection>
+      {equipes.length > 0 ? (
+        <ModalSection
+          title={equipes.length > 1 ? 'Qui reprend leurs équipes ?' : 'Qui reprend son équipe ?'}
+        >
+          <RepriseDesEquipes
+            equipes={equipes}
+            lot={lot}
+            repreneurs={repreneurs}
+            onChange={setRepreneurs}
+          />
+        </ModalSection>
+      ) : null}
     </Modal>
   );
 }

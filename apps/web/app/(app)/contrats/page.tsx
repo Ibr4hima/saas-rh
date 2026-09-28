@@ -2,9 +2,10 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { peut, type DashboardContractFollowUp } from '@teranga/contracts';
+import { peut, type SuiviDesContrats } from '@teranga/contracts';
 import {
   Badge,
+  Card,
   CardHeader,
   CardTitle,
   EmptyState,
@@ -40,9 +41,10 @@ export default function EcheancesPage() {
   const consulte = peut(me.data, 'personnel.consulter');
   const suivi = useQuery({
     queryKey: ['contrats', 'suivi'],
-    queryFn: () => api<DashboardContractFollowUp[]>('/contrats/suivi'),
+    queryFn: () => api<SuiviDesContrats>('/contrats/suivi'),
   });
-  const contrats = suivi.data ?? [];
+  const contrats = suivi.data?.enCours ?? [];
+  const termines = suivi.data?.arrivesATerme ?? [];
 
   return (
     <Page>
@@ -119,6 +121,43 @@ export default function EcheancesPage() {
           </Table>
         )}
       </CartePleine>
+
+      {/* Ce qui vient de finir : l'agent est passé dans les inactifs, le
+          lendemain de son dernier jour. Un renouvellement s'enregistre sur
+          sa fiche, puis le dossier se réactive. */}
+      {termines.length > 0 ? (
+        <Card className="shrink-0">
+          <CardHeader>
+            <CardTitle>Arrivés à terme — 90 derniers jours</CardTitle>
+          </CardHeader>
+          <ul className="flex flex-col px-5 pb-3">
+            {termines.map((c) => (
+              <li
+                key={c.employeeId}
+                className="flex items-center gap-3 border-b border-line-soft py-2.5 text-[12.5px] last:border-b-0"
+              >
+                <span className="min-w-0 flex-1">
+                  {consulte ? (
+                    <Link
+                      href={`/employees/${c.employeeId}`}
+                      className="font-semibold text-ink-strong hover:underline"
+                    >
+                      {c.name}
+                    </Link>
+                  ) : (
+                    <span className="font-semibold text-ink-strong">{c.name}</span>
+                  )}
+                  <span className="text-ink-muted">
+                    {' '}
+                    · {c.contractType.toUpperCase()} terminé le {formatDate(c.endDate)}
+                  </span>
+                </span>
+                <Badge tone="neutral">Inactif</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
     </Page>
   );
 }

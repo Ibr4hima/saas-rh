@@ -15,6 +15,7 @@ import { holidayReminderDate } from '../time/workdays';
 import { reconcilierSiLeTempsEstVenu } from '../time/visas';
 import { notifier, type NotificationDraft } from './notifier';
 import { alerterLaDCH } from '../acces/dch';
+import { inactiverSiLeTempsEstVenu } from '../people/activite';
 
 export type { NotificationDraft } from './notifier';
 
@@ -104,6 +105,9 @@ export class NotificationsService {
         if (peut(user, 'contrats.echeances') || peut(user, 'pilotage')) {
           await this.generateContractDeadlines(tx, user.tenantId);
         }
+        // Les contrats arrivés à terme passent dans les inactifs — au plus une
+        // fois par minute, quelle que soit la session qui relève.
+        await inactiverSiLeTempsEstVenu(tx, user.tenantId);
         // Les fériés concernent tout le monde : le rappel est créé pour
         // l'utilisateur qui consulte (une ligne, idempotente par férié).
         await this.generateHolidayReminders(tx, user.tenantId, user.userId);
