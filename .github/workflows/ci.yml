@@ -7,7 +7,8 @@ on:
 
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    # Version fixée : « ubuntu-latest » change de système sans prévenir.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     services:
@@ -26,13 +27,13 @@ jobs:
           --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
+      # La version de pnpm est celle du champ « packageManager » de package.json :
+      # la redonner ici fait échouer l'action (« Multiple versions of pnpm »).
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
