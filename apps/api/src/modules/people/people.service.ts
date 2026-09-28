@@ -35,7 +35,10 @@ import {
   directionDeUnite,
   equipeDe,
   perimetre,
+  n1DOffice,
   planifierReprise,
+  rattacher,
+  rattacherDOffice,
   reprendreEquipe,
   sortDuPerimetre,
   uniteRacine,
@@ -323,10 +326,11 @@ export class PeopleService {
    *
    * Le responsable hiérarchique n'est PAS exigé ici, et c'est un choix : on
    * crée souvent un dossier avant de savoir de qui l'agent relèvera, et un
-   * import n'en sait rien du tout. La règle de l'APIX — un n+1 pour chacun —
-   * ne se tient donc pas par un refus mais par un AVERTISSEMENT (le contrôle
-   * de la chaîne hiérarchique) et par une conséquence : sans n+1, ni
-   * objectifs ni évaluation.
+   * import n'en sait rien du tout. Sans n+1 choisi, l'agent relève d'office du
+   * responsable de sa direction s'il y en a un ; sinon, la règle de l'APIX —
+   * un n+1 pour chacun — se tient par un AVERTISSEMENT (le contrôle de la
+   * chaîne hiérarchique) et par une conséquence : sans n+1, ni objectifs ni
+   * évaluation.
    *
    * Ce qui est vérifié, en revanche, c'est le rattachement QUAND il est
    * donné : même direction, responsable actif, pas de boucle.
@@ -389,6 +393,8 @@ export class PeopleService {
             validity: `[${input.assignment.startDate},)`,
           });
         }
+        // Sans n+1 choisi, il relève d'office du responsable de sa direction.
+        if (!input.employee.managerEmployeeId) await rattacherDOffice(tx, [], employeeId);
       });
     } catch (err) {
       if (pgCode(err) === '23505') {
@@ -610,6 +616,9 @@ export class PeopleService {
             champs.updatedAt = new Date();
             await tx.update(t.employees).set(champs).where(eq(t.employees.id, id));
           }
+          // Vidé, le n+1 revient d'office au responsable de sa direction,
+          // s'il en a un : dans une direction pourvue, personne n'est sans n+1.
+          if (e.managerEmployeeId === null) await rattacherDOffice(tx, [], id);
           // Un nouveau n+1 reprend les demandes de congé qui attendaient
           // le visa de l'ancien.
           if (
@@ -894,7 +903,8 @@ export class PeopleService {
         // ——— 5. Son n+1 : le nouveau, désigné dans le même geste — changer de
         // direction rend l'ancien caduc, et le corriger avant serait refusé
         // (il ne serait pas encore de la direction de l'agent) —, ou celui
-        // qu'il garde, s'il tient toujours.
+        // qu'il garde, s'il tient toujours. Sinon, le responsable de sa
+        // nouvelle direction le reprend d'office, s'il y en a un.
         if (input.managerEmployeeId) {
           await validerRattachement(
             tx,
@@ -916,12 +926,18 @@ export class PeopleService {
               'Choisissez une unité rattachée à une direction, ou retirez d’abord son n+1.',
             );
           }
-          problem(
-            422,
-            'people.responsable_hors_nouvelle_direction',
-            'Le responsable actuel n’appartient pas à la nouvelle direction',
-            `L’agent rejoint « ${direction.nom} » : désignez son nouveau responsable dans la même opération.`,
-          );
+          const tete = await n1DOffice(tx, id);
+          if (!tete || !(await tenait(id, tete.id))) {
+            problem(
+              422,
+              'people.responsable_hors_nouvelle_direction',
+              'Le responsable actuel n’appartient pas à la nouvelle direction',
+              `L’agent rejoint « ${direction.nom} » : désignez son nouveau responsable dans la même opération.`,
+            );
+          }
+          await rattacher(tx, journal, id, tete.id, tete.motif);
+        } else if (!dossier.managerId && !futur) {
+          await rattacherDOffice(tx, journal, id);
         }
 
         await this.faireSuivre(tx, user.tenantId, journal);
@@ -1040,6 +1056,10 @@ export class PeopleService {
           updatedAt: new Date(),
         })
         .where(inArray(t.employees.id, ids));
+      // Réactivé sans n+1, il relève d'office du responsable de sa direction.
+      if (!input.archived) {
+        for (const c of retenus) await rattacherDOffice(tx, journal, c.id);
+      }
 
       if (input.archived) {
         // Son dernier jour, c'est aujourd'hui : sa dernière affectation s'arrête là.
@@ -1186,7 +1206,10 @@ export class PeopleService {
       const depart = await this.planifierLesDeparts(tx, candidats, input.repreneurs);
       skipped.push(...depart.refus);
       for (const plan of depart.plans) await appliquerReprise(tx, journal, plan);
-      for (const c of depart.retenus) await this.effacer(tx, user, c);
+      const detaches: string[] = [];
+      for (const c of depart.retenus) detaches.push(...(await this.effacer(tx, user, c)));
+      // Qui s'est retrouvé sans n+1 relève d'office du responsable de sa direction.
+      for (const id of detaches) await rattacherDOffice(tx, journal, id);
       await this.faireSuivre(tx, user.tenantId, journal);
       return {
         done: depart.retenus.length,
@@ -1296,7 +1319,7 @@ export class PeopleService {
     tx: Tx,
     user: SessionUser,
     cible: { id: string; personId: string; userId: string | null; nom: string },
-  ): Promise<void> {
+  ): Promise<string[]> {
     const { id, personId, userId, nom } = cible;
     const traces: string[] = [];
     const recolter = (lignes: { id: string }[]) => {
@@ -1371,11 +1394,13 @@ export class PeopleService {
 
     // Ce qui POINTE vers lui se détache — un successeur se nomme, il ne se
     // devine pas. Les subordonnés remontent sans manager plutôt que de
-    // désigner un dossier qui n'existe plus.
-    await tx
+    // désigner un dossier qui n'existe plus ; l'appelant les rend ensuite au
+    // responsable de leur direction.
+    const detaches = await tx
       .update(t.employees)
       .set({ managerEmployeeId: null })
-      .where(eq(t.employees.managerEmployeeId, id));
+      .where(eq(t.employees.managerEmployeeId, id))
+      .returning({ id: t.employees.id });
     await tx
       .update(t.orgUnits)
       .set({ managerEmployeeId: null })
@@ -1474,6 +1499,7 @@ export class PeopleService {
     await tx.execute(
       sql`SELECT erase_audit_payload(string_to_array(${traces.join(',')}, ',')::uuid[])`,
     );
+    return detaches.map((d) => d.id).filter((d) => d !== id);
   }
 
   private async requireEmployee(tx: Tx, id: string) {

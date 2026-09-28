@@ -36,7 +36,11 @@ import { exigerEnActivite } from './en-activite';
         comme pour son n+1 ;
      3. le n+1 est de la même direction — sauf pour un directeur, qui relève
         du DG, et pour l'agent d'une direction sans tête, que le DG couvre ;
-     4. pas de boucle, et un n+1 actif.
+     4. pas de boucle, et un n+1 actif ;
+     5. le directeur coiffe sa direction : qui n'y a pas de n+1 relève
+        d'office de lui (le DG, à la Direction Générale ; le DG, pour un
+        directeur). Qui en a un le garde — le directeur est alors au bout de
+        sa chaîne, n+2 ou plus haut.
 
    Toutes les requêtes récursives se protègent des boucles : une donnée
    ancienne qui en contiendrait une ne doit jamais faire tourner le serveur
@@ -436,6 +440,67 @@ async function directeurs(tx: Tx): Promise<string[]> {
 }
 
 /**
+ * Les agents ACTIFS sans n+1 du périmètre d'une direction, hors ceux qui
+ * dirigent une direction (ils relèvent du DG, cf. apresNouveauDG).
+ */
+async function sansN1DansLaDirection(tx: Tx, directionId: string | SQL): Promise<string[]> {
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    ${perimetre(directionId)}
+    SELECT e.id FROM employees e
+     WHERE ${uniteEnVigueur(sql`e.id`)} IN (SELECT id FROM perimetre)
+       AND e.status = 'active' AND e.manager_employee_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM org_units od
+                        WHERE od.manager_employee_id = e.id AND od.unit_type = 'direction'
+                          AND od.deleted_at IS NULL AND od.id IS DISTINCT FROM ${SOMMET})
+     ORDER BY e.id`);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Le n+1 qui revient d'office à un agent qui n'en a pas (règle 5) : pour un
+ * directeur, le DG ; sinon le responsable ACTIF de sa direction — le DG pour
+ * la Direction Générale. `null` : il est le DG, il n'a pas de direction, ou
+ * sa direction attend sa tête.
+ */
+export async function n1DOffice(
+  tx: Tx,
+  employeeId: string,
+): Promise<{ id: string; motif: MotifChangement } | null> {
+  const dg = await directeurGeneral(tx);
+  if (employeeId === dg) return null;
+  if (await dirigeUneDirection(tx, employeeId)) return dg ? { id: dg, motif: 'directeur' } : null;
+  const direction = await directionDeEmploye(tx, employeeId);
+  if (!direction) return null;
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    SELECT o.manager_employee_id AS id FROM org_units o
+      JOIN employees e ON e.id = o.manager_employee_id AND e.status = 'active'
+     WHERE o.id = ${direction.id} AND o.deleted_at IS NULL`);
+  const tete = rows[0]?.id ?? null;
+  return tete && tete !== employeeId ? { id: tete, motif: 'responsable_de_sa_direction' } : null;
+}
+
+/**
+ * Un agent actif SANS n+1 relève d'office du responsable de sa direction
+ * (règle 5), si elle en a un et que le rattachement tient. Rend `true` s'il
+ * a été écrit. Qui a déjà un n+1 n'est pas touché.
+ */
+export async function rattacherDOffice(
+  tx: Tx,
+  journal: ChangementRattachement[],
+  employeeId: string,
+): Promise<boolean> {
+  const [dossier] = await tx
+    .select({ n1: t.employees.managerEmployeeId, status: t.employees.status })
+    .from(t.employees)
+    .where(eq(t.employees.id, employeeId))
+    .limit(1);
+  if (!dossier || dossier.status !== 'active' || dossier.n1 !== null) return false;
+  const cible = await n1DOffice(tx, employeeId);
+  if (!cible) return false;
+  return tenterRattachement(tx, journal, employeeId, cible.id, cible.motif);
+}
+
+/**
  * Un nouveau directeur général. Ce que la règle impose, dans l'ordre :
  *   — il ne relève plus de personne ;
  *   — ce qui relevait de l'ancien DG relève de lui ;
@@ -469,13 +534,19 @@ export async function apresNouveauDG(
       await tenterRattachement(tx, journal, ancien, nouveau, 'ancien_dg');
     }
   }
+  // La Direction Générale est la direction du DG : qui y est sans n+1 relève de lui.
+  for (const id of await sansN1DansLaDirection(tx, SOMMET)) {
+    if (id !== nouveau && id !== ancien) {
+      await tenterRattachement(tx, journal, id, nouveau, 'responsable_de_sa_direction');
+    }
+  }
 }
 
 /**
  * Une direction reçoit un (nouveau) responsable. Ce que la règle impose :
  *   — il relève du directeur général ;
- *   — les agents de la direction rattachés au DG EN ATTENDANT une tête
- *     relèvent désormais de lui ;
+ *   — les agents de la direction rattachés au DG EN ATTENDANT une tête,
+ *     et ceux qui n'avaient pas de n+1, relèvent désormais de lui ;
  *   — l'ancien directeur, s'il reste dans la direction, relève de lui.
  * Le responsable de l'unité est DÉJÀ écrit quand on arrive ici. (Le DG ne
  * peut pas diriger une autre direction : il n'en sort pas, et une personne
@@ -496,7 +567,8 @@ export async function apresNouveauDirecteur(
     ${perimetre(directionId)}
     SELECT e.id FROM employees e
      WHERE ${uniteEnVigueur(sql`e.id`)} IN (SELECT id FROM perimetre)
-       AND e.status = 'active' AND e.manager_employee_id = ${dg}
+       AND e.status = 'active'
+       AND (e.manager_employee_id = ${dg} OR e.manager_employee_id IS NULL)
      ORDER BY e.id`);
   for (const r of rows) {
     if (r.id === nouveau || r.id === ancien) continue;

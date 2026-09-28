@@ -218,8 +218,9 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
             <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
               Une colonne <b>Matricule du responsable</b> rattache chaque agent à son n+1, et le
               fichier n’a pas besoin d’être trié : un chef peut figurer plus bas que son équipe.
-              Sans elle, les dossiers entrent sans responsable — ils ne pourront alors ni recevoir
-              d’objectifs ni être évalués avant qu’on leur en désigne un.
+              Sans elle, chaque agent relève du directeur de sa direction ; dans une direction sans
+              directeur, il entre sans n+1 et ne pourra ni recevoir d’objectifs ni être évalué avant
+              qu’on lui en désigne un.
             </p>
           </ModalSection>
         </>

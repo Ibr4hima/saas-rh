@@ -1,5 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
-import type { ChangementRattachement } from '@teranga/contracts';
+import type { ChangementRattachement, MotifChangement } from '@teranga/contracts';
 import { ProblemException } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
 import { frDate } from '../acces/appels';
@@ -8,6 +8,7 @@ import { reconcilierDemande, reconcilierLeCircuit } from '../time/visas';
 import {
   directionDeEmploye,
   equipeDe,
+  n1DOffice,
   rattacher,
   validerRattachement,
   verrouillerLaChaine,
@@ -84,7 +85,8 @@ export async function reprendreLActivite(
  *   — une unité qu'il dirigeait reste sans responsable (le contrôle de la
  *     chaîne la signale) ;
  *   — son équipe remonte d'un cran, à son propre n+1, si la règle le
- *     permet ; sinon elle attend un n+1 ;
+ *     permet ; sinon au responsable de sa direction ; sinon elle attend
+ *     un n+1 ;
  *   — ses demandes de congé en attente sont annulées, ses sessions fermées.
  * Qui suit les échéances pour la DCH l'apprend, avec ce qui reste à faire.
  * Rend le nombre de dossiers passés dans les inactifs.
@@ -125,15 +127,22 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
        WHERE manager_employee_id = ${a.id} AND deleted_at IS NULL
       RETURNING name`);
 
-    // L'équipe remonte d'un cran — rattachement par rattachement, sous la règle.
+    // L'équipe remonte d'un cran — rattachement par rattachement, sous la
+    // règle —, ou passe au responsable de sa direction.
     const journal: ChangementRattachement[] = [];
     let reprise = 0;
-    if (a.n1) {
-      for (const m of equipe) {
+    for (const m of equipe) {
+      const candidats: [string | null, MotifChangement][] = [
+        [a.n1, 'reprise_equipe'],
+        [(await n1DOffice(tx, m.id))?.id ?? null, 'responsable_de_sa_direction'],
+      ];
+      for (const [cible, motif] of candidats) {
+        if (!cible || cible === a.id) continue;
         try {
-          await validerRattachement(tx, m.id, a.n1, await directionDeEmploye(tx, m.id));
-          await rattacher(tx, journal, m.id, a.n1, 'reprise_equipe');
+          await validerRattachement(tx, m.id, cible, await directionDeEmploye(tx, m.id));
+          await rattacher(tx, journal, m.id, cible, motif);
           reprise += 1;
+          break;
         } catch (err) {
           if (!(err instanceof ProblemException)) throw err;
         }
@@ -157,10 +166,10 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
       suite.push(`${noms} n’a plus de responsable : nommez un successeur.`);
     }
     if (equipe.length > 0) {
-      const n1 = reprise > 0 ? journal[0]?.apres : null;
+      const repreneurs = [...new Set(journal.map((c) => c.apres).filter(Boolean))];
       suite.push(
-        reprise === equipe.length && n1
-          ? `Son équipe relève désormais de ${n1}.`
+        reprise === equipe.length && repreneurs.length > 0
+          ? `Son équipe relève désormais de ${repreneurs.join(' et de ')}.`
           : `Son équipe attend un nouveau n+1 (${equipe.length - reprise} agent${equipe.length - reprise > 1 ? 's' : ''}).`,
       );
     }

@@ -14,7 +14,7 @@ import { Button, Field, Input, Select, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { composePhone, COUNTRIES, splitPhone } from '../lib/countries';
 import { maritalLabels, maxBirthDate } from '../lib/person';
-import { useResponsablesPossibles } from '../lib/responsables';
+import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
 import { composeWorkEmail, localWorkEmail, WorkEmailInput } from './work-email-input';
@@ -209,6 +209,9 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
     estDirecteur,
   );
   const peutChoisir = Boolean(direction) && !estDG;
+  // Dans une direction pourvue, personne n'est sans n+1 : vidé, le champ
+  // reviendrait d'office au directeur. On ne propose donc pas de le vider.
+  const dOffice = n1DOffice(unites.data ?? [], affectation?.orgUnitId, employee.id);
   const actuel =
     employee.managerId && employee.managerName
       ? { id: employee.managerId, nom: employee.managerName, poste: null }
@@ -407,7 +410,9 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
             }
           >
             <Select id="managerEmployeeId" {...form.register('managerEmployeeId')}>
-              <option value="">{peutChoisir ? '— À désigner plus tard' : '— Aucun'}</option>
+              {peutChoisir && dOffice ? null : (
+                <option value="">{peutChoisir ? '— À désigner plus tard' : '— Aucun'}</option>
+              )}
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.nom}

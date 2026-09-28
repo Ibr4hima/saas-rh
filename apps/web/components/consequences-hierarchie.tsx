@@ -22,6 +22,7 @@ const MOTIFS: Record<MotifChangement, string> = {
   ancien_directeur: 'ancien directeur, resté dans la direction',
   reprise_equipe: 'reprise de l’équipe',
   prend_la_place: 'prend la place de celui qui part',
+  responsable_de_sa_direction: 'relève d’office du responsable de sa direction',
 };
 
 export function aDesConsequences(c: ConsequencesHierarchie | null | undefined): boolean {

@@ -467,18 +467,79 @@ describe('les mutations, dans l’ordre où l’on corrige', () => {
     expect(r.aRevoir).toEqual([]);
   });
 
-  it('rend ce que la mutation laisse à faire, sans attendre le contrôle', async () => {
+  it('placé dans une direction pourvue, un agent sans n+1 relève d’office du directeur', async () => {
     await leDG();
-    await unDirecteur('DSID', uDSID);
+    const dsid = await unDirecteur('DSID', uDSID);
     const { id } = await people.create(user, {
       person: { givenName: 'A', familyName: 'Test' },
       employee: { employeeNumber: 'A', hiredOn: '2024-01-01' },
     } as CreateEmployeeInput);
-    // Placé dans une direction, il lui faut maintenant son n+1 : c'est dit.
+    const r = await muter(id, uDSID);
+    expect(await n1(id)).toBe(dsid);
+    expect(r.aRevoir).toEqual([]);
+  });
+
+  it('rend ce que la mutation laisse à faire, sans attendre le contrôle', async () => {
+    await leDG();
+    const { id } = await people.create(user, {
+      person: { givenName: 'A', familyName: 'Test' },
+      employee: { employeeNumber: 'A', hiredOn: '2024-01-01' },
+    } as CreateEmployeeInput);
+    // Placé dans une direction SANS tête, il lui faut encore son n+1 : c'est dit.
     const r = await muter(id, uDSID);
     expect(r.aRevoir.map((x) => `${x.matricule}:${x.type}:${x.direction}`)).toEqual([
       'A:sans_responsable:Direction des Systèmes',
     ]);
+  });
+});
+
+describe('le directeur coiffe sa direction', () => {
+  it('nommé, il reprend qui n’avait pas de n+1 ; les autres gardent le leur', async () => {
+    const dg = await leDG();
+    // Sans directeur, personne ne leur donne de n+1 d'office.
+    const d = await agent('D', uDSID);
+    const a = await agent('A', uEtudes);
+    const c = await agent('C', uDSID);
+    const b = await agent('B', uDSID, c);
+    expect([await n1(a), await n1(c), await n1(b)]).toEqual([null, null, c]);
+
+    const r = await nommer(uDSID, d);
+    expect(await n1(d)).toBe(dg);
+    expect(await n1(a)).toBe(d);
+    expect(await n1(c)).toBe(d);
+    // B garde C : le directeur est son n+2.
+    expect(await n1(b)).toBe(c);
+    expect(r.changements.map((x) => `${x.nom}:${x.motif}`).sort()).toEqual([
+      'A Test:direction_pourvue',
+      'C Test:direction_pourvue',
+      'D Test:directeur',
+    ]);
+    expect(await anomalies()).toEqual([]);
+  });
+
+  it('un agent créé sans n+1 dans une direction pourvue relève du directeur', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    expect(await n1(await agent('A', uDSID))).toBe(dsid);
+    // Dans un département de la direction aussi.
+    const b = await agent('B', uEtudes);
+    expect(await n1(b)).toBe(dsid);
+    // Un n+1 choisi est gardé.
+    expect(await n1(await agent('C', uEtudes, b))).toBe(b);
+  });
+
+  it('sans directeur, un agent créé sans n+1 le reste — et le contrôle le signale', async () => {
+    await leDG();
+    const a = await agent('A', uDSID);
+    expect(await n1(a)).toBeNull();
+    expect(await anomalies()).toEqual(['A:sans_responsable']);
+  });
+
+  it('à la Direction Générale, le DG reprend qui n’a pas de n+1', async () => {
+    const x = await agent('X', uDG);
+    const dg = await leDG();
+    expect(await n1(x)).toBe(dg);
+    expect(await n1(await agent('Y', uDG))).toBe(dg);
   });
 });
 

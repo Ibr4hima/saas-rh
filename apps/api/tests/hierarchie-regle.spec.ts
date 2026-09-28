@@ -184,10 +184,19 @@ describe('le rattachement peut venir plus tard', () => {
     expect((await people.detail(user, id)).managerId).toBeNull();
   });
 
-  it('accepte de RETIRER un responsable : c’est le contrôle qui le signale', async () => {
+  it('retirer le n+1, dans une direction pourvue, le rend au directeur', async () => {
     const dg = await creerLeDG();
     const chef = await creerUnDirecteur('CHEF', uDSID, dg);
-    const a = (await people.create(user, dossier('A', uDSID, chef))).id;
+    const b = (await people.create(user, dossier('B', uDSID, chef))).id;
+    const a = (await people.create(user, dossier('A', uDSID, b))).id;
+    await people.update(user, a, { employee: { managerEmployeeId: null } });
+    expect((await people.detail(user, a)).managerId).toBe(chef);
+    expect((await hierarchie.controle(user)).anomalies).toEqual([]);
+  });
+
+  it('accepte de RETIRER un responsable dans une direction sans tête : c’est le contrôle qui le signale', async () => {
+    const dg = await creerLeDG();
+    const a = (await people.create(user, dossier('A', uDSID, dg))).id;
     await people.update(user, a, { employee: { managerEmployeeId: null } });
     expect((await people.detail(user, a)).managerId).toBeNull();
     // Rien n'est perdu : l'agent réapparaît dans les anomalies, et sort du
@@ -348,6 +357,13 @@ describe('le directeur général ne relève de personne', () => {
         apres: null,
         motif: 'devient_dg',
       }),
+      // AUTRE, lui, n'avait pas de n+1 : à la Direction Générale, il relève du DG.
+      expect.objectContaining({
+        employeeId: autre,
+        avant: null,
+        apres: 'FUTUR Test',
+        motif: 'responsable_de_sa_direction',
+      }),
     ]);
     expect((await hierarchie.controle(user)).directeurGeneral?.employeeId).toBe(futur);
     expect((await people.detail(user, futur)).managerId).toBeNull();
@@ -377,10 +393,26 @@ describe('le directeur général ne relève de personne', () => {
 });
 
 describe('la mutation d’une direction à l’autre', () => {
-  it('refuse de laisser l’agent avec un responsable de son ancienne direction', async () => {
+  it('confie l’agent au directeur de sa nouvelle direction quand on ne choisit pas', async () => {
     const dg = await creerLeDG();
     const chefDSID = await creerUnDirecteur('CHEF', uDSID, dg);
-    await creerUnDirecteur('RH', uDCH, dg);
+    const chefDCH = await creerUnDirecteur('RH', uDCH, dg);
+    const a = (await people.create(user, dossier('A', uDSID, chefDSID))).id;
+    const r = await people.newAssignment(user, a, {
+      positionTitle: 'Juriste',
+      orgUnitId: uDCH,
+      startDate: '2025-01-01',
+    });
+    expect((await people.detail(user, a)).managerId).toBe(chefDCH);
+    expect(r.changements).toEqual([
+      expect.objectContaining({ employeeId: a, motif: 'responsable_de_sa_direction' }),
+    ]);
+    expect(r.aRevoir).toEqual([]);
+  });
+
+  it('refuse de laisser l’agent avec un responsable de son ancienne direction, quand la nouvelle n’a pas de tête', async () => {
+    const dg = await creerLeDG();
+    const chefDSID = await creerUnDirecteur('CHEF', uDSID, dg);
     const a = (await people.create(user, dossier('A', uDSID, chefDSID))).id;
     expect(
       await codeOf(() =>

@@ -88,7 +88,8 @@ export class ImportEmployesService {
     // qu'une — « la colonne Matricule manque » — noie la seule qui compte.
     if (manquantes.length > 0) return vide;
 
-    const { employesParMatricule, unitesParAbrege, directionsPourvues } = await this.contexte(user);
+    const { employesParMatricule, unitesParAbrege, directionsPourvues, directeurs } =
+      await this.contexte(user);
 
     // Les matricules vus DANS LE FICHIER : deux lignes ne peuvent pas créer
     // le même dossier, et la deuxième s'ignore comme un doublon de base.
@@ -212,6 +213,9 @@ export class ImportEmployesService {
     }
     const refuser = (l: LigneImport, texte: string) =>
       l.avertissements.push({ colonne: NOM_COLONNE_RESPONSABLE, texte });
+    // Un refus de rattachement : ce qu'il advient du dossier (sans n+1, ou
+    // repris par le directeur) ne se sait qu'une fois toutes les lignes lues.
+    const refus = new Map<LigneImport, string>();
     for (const l of lignes) {
       if (l.etat !== 'a-creer' || !l.responsable) continue;
       // D'abord l'affectation, ensuite la hiérarchie : sans direction
@@ -223,7 +227,7 @@ export class ImportEmployesService {
       }
       const cle = cleMatricule(l.responsable);
       if (l.matricule && cle === cleMatricule(l.matricule)) {
-        refuser(l, 'Un agent ne peut pas être son propre responsable : dossier créé sans n+1');
+        refus.set(l, 'Un agent ne peut pas être son propre responsable');
         continue;
       }
       const existant = employesParMatricule.get(cle);
@@ -234,27 +238,48 @@ export class ImportEmployesService {
           ? { nom: ligneN1.nom!, actif: true, direction: directionDeLigne(ligneN1), estDG: false }
           : null;
       if (!n1) {
-        refuser(l, `Matricule « ${l.responsable} » introuvable : dossier créé sans n+1`);
+        refus.set(l, `Matricule « ${l.responsable} » introuvable`);
         continue;
       }
       if (!n1.actif) {
-        refuser(l, `${n1.nom} est inactif : dossier créé sans n+1`);
+        refus.set(l, `${n1.nom} est inactif`);
         continue;
       }
       if (!n1.direction) {
-        refuser(l, `${n1.nom} n’est affecté à aucune direction : dossier créé sans n+1`);
+        refus.set(l, `${n1.nom} n’est affecté à aucune direction`);
         continue;
       }
       const memeDirection = n1.direction.id === directionAgent.id;
       const dgCouvre = n1.estDG && !directionsPourvues.has(directionAgent.id);
       if (!memeDirection && !dgCouvre) {
-        refuser(
+        refus.set(
           l,
-          `${n1.nom} relève de « ${n1.direction.nom} », l’agent de « ${directionAgent.nom} » : dossier créé sans n+1`,
+          `${n1.nom} relève de « ${n1.direction.nom} », l’agent de « ${directionAgent.nom} »`,
         );
         continue;
       }
       l.responsableResolu = n1.nom;
+    }
+
+    // ——— Sans n+1 qui tienne, le directeur de sa direction le reprend
+    // d'office (règle 5 de la chaîne) : l'aperçu le dit comme l'écriture le
+    // fera, à la création du dossier.
+    const parDefaut = new Set<LigneImport>();
+    for (const l of lignes) {
+      if (l.etat !== 'a-creer' || l.responsableResolu) continue;
+      const direction = directionDeLigne(l);
+      const directeur = direction ? directeurs.get(direction.id) : undefined;
+      if (!directeur) continue;
+      l.responsableResolu = directeur;
+      parDefaut.add(l);
+    }
+    for (const [l, raison] of refus) {
+      refuser(
+        l,
+        parDefaut.has(l)
+          ? `${raison} : rattaché d’office à ${l.responsableResolu}, qui dirige sa direction`
+          : `${raison} : dossier créé sans n+1`,
+      );
     }
 
     const compter = (lignesRapport: LigneImport[]) => ({
@@ -319,6 +344,8 @@ export class ImportEmployesService {
     // ——— Seconde passe : les rattachements ———
     for (const l of rapport.lignes) {
       if (l.etat !== 'a-creer' || !l.responsable || !l.responsableResolu || !l.matricule) continue;
+      // Repris d'office par son directeur à la création : rien à rattacher.
+      if (parDefaut.has(l)) continue;
       const id = nes.get(cleMatricule(l.matricule));
       const cleResp = cleMatricule(l.responsable);
       const responsableId = employesParMatricule.get(cleResp)?.id ?? nes.get(cleResp) ?? null;
@@ -430,7 +457,16 @@ export class ImportEmployesService {
           estDG: e.est_dg,
         });
       }
-      return { employesParMatricule, unitesParAbrege, directionsPourvues };
+      // Le directeur ACTIF de chaque direction pourvue : c'est de lui que
+      // relève d'office un agent sans n+1 (règle 5 de la chaîne).
+      const actifs = new Map(employes.filter((e) => e.actif).map((e) => [e.id, e]));
+      const directeurs = new Map<string, string>();
+      for (const u of unites) {
+        const d = u.unit_type === 'direction' && u.manager_employee_id;
+        const tete = d ? actifs.get(u.manager_employee_id!) : undefined;
+        if (tete) directeurs.set(u.id, `${tete.prenom} ${tete.nom}`);
+      }
+      return { employesParMatricule, unitesParAbrege, directionsPourvues, directeurs };
     });
   }
 }

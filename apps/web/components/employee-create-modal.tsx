@@ -8,7 +8,7 @@ import { Button, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../lib/countries';
 import { contractEnd, maritalLabels, maxBirthDate } from '../lib/person';
-import { useResponsablesPossibles } from '../lib/responsables';
+import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { formatDate } from '../lib/hooks';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
@@ -75,6 +75,8 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   // D'abord l'affectation, ensuite la hiérarchie. L'affectation ne part
   // qu'avec un poste : sans direction ET poste, pas de n+1.
   const peutChoisirLeN1 = Boolean(directionChoisie) && positionTitle.trim().length > 0;
+  // Le directeur coiffe sa direction : pourvue, il est le n+1 d'office.
+  const directeur = n1DOffice(orgUnits.data ?? [], directionId || null);
 
   const needsDuration = contractType === 'cdd' || contractType === 'stage';
   const months = Number(durationMonths);
@@ -382,9 +384,10 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               onChange={(e) => {
                 // Le responsable appartenait à l'ancienne direction : le
                 // garder ferait échouer l'enregistrement sur une règle qu'on
-                // vient de rendre fausse sous ses pieds.
+                // vient de rendre fausse sous ses pieds. Le directeur de la
+                // nouvelle le remplace d'office.
                 setDirectionId(e.target.value);
-                setManagerId('');
+                setManagerId(n1DOffice(orgUnits.data ?? [], e.target.value || null) ?? '');
               }}
             >
               <option value="">—</option>
@@ -410,7 +413,9 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               disabled={!peutChoisirLeN1}
               onChange={(e) => setManagerId(e.target.value)}
             >
-              <option value="">— À désigner plus tard</option>
+              {!peutChoisirLeN1 || !directeur ? (
+                <option value="">— À désigner plus tard</option>
+              ) : null}
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.nom}

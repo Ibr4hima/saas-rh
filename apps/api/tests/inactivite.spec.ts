@@ -327,6 +327,21 @@ describe('la fin de contrat, d’elle-même', () => {
     expect(await inactiver()).toBe(0);
   });
 
+  it('son équipe, que son propre n+1 ne peut pas reprendre, passe au directeur de sa direction', async () => {
+    // Une donnée d'avant la règle : Fatou n'a pas de n+1 — rien à remonter.
+    await raw(`UPDATE employees SET manager_employee_id = NULL WHERE id = $1`, [fatou.employeeId]);
+    expect(await inactiver()).toBe(1);
+    const { rows: n1 } = await raw(`SELECT manager_employee_id FROM employees WHERE id = $1`, [
+      ibou.employeeId,
+    ]);
+    expect(n1[0].manager_employee_id).toBe(omar.employeeId);
+    const { rows: alertes } = await raw(
+      `SELECT body FROM notifications WHERE tenant_id = $1 AND type = 'contract_ended'`,
+      [tenantId],
+    );
+    expect(alertes[0].body).toContain('Son équipe relève désormais de Omar Test');
+  });
+
   it('un contrat qui finit aujourd’hui court encore ; un renouvellement enregistré d’avance compte', async () => {
     await raw(`UPDATE contracts SET end_date = CURRENT_DATE WHERE employee_id = $1`, [
       fatou.employeeId,

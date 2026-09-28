@@ -518,19 +518,20 @@ describe('le responsable hiérarchique', () => {
     ]);
     // L'APERÇU le dit déjà, sous la même règle que l'écriture : il n'annonce
     // pas « rattaché » ce que l'import refusera ensuite.
+    // Et ce qu'il en advient : la direction a sa tête, qui reprend l'agent
+    // d'office (le directeur coiffe sa direction).
     const apercu = await imports.importer(admin, fichier, false);
-    expect(apercu.rattaches).toBe(0);
+    expect(apercu.rattaches).toBe(1);
     expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain(
       'relève de « Direction du Capital Humain », l’agent de « Direction de l’Intelligence »',
     );
+    expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain('rattaché d’office à Agent5 Diop');
 
     const r = await imports.importer(admin, fichier, true);
     expect(r.crees).toBe(1);
-    expect(r.sansResponsable).toBe(1);
-    expect(r.lignes[0]?.avertissements[0]?.texte).toEqual(
-      apercu.lignes[0]?.avertissements[0]?.texte,
-    );
-    expect((await dossier('APIX-0002'))?.responsable).toBeNull();
+    expect(r.sansResponsable).toBe(0);
+    expect(r.lignes[0]?.avertissements).toEqual(apercu.lignes[0]?.avertissements);
+    expect((await dossier('APIX-0002'))?.responsable).toBe('Agent5 Diop');
   });
 
   it('cumule DEUX avertissements : direction inconnue et responsable introuvable', async () => {

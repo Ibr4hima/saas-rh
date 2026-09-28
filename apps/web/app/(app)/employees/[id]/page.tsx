@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   BalanceView,
   EmployeeBatchResult,
@@ -43,12 +43,17 @@ import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../../../../lib/person';
 import { formatDate, useMe } from '../../../../lib/hooks';
-import type { ConsequencesHierarchie, DocumentRequestView, OrgUnit } from '@teranga/contracts';
+import type {
+  ConsequencesHierarchie,
+  DocumentRequestView,
+  OrgUnit,
+  OrgUnitView,
+} from '@teranga/contracts';
 import {
   aDesConsequences,
   ListeConsequences,
 } from '../../../../components/consequences-hierarchie';
-import { useResponsablesPossibles } from '../../../../lib/responsables';
+import { n1DOffice, useResponsablesPossibles } from '../../../../lib/responsables';
 import { LoadFailure } from '../../../../components/load-failure';
 import { Page } from '../../../../components/gabarit';
 
@@ -656,7 +661,7 @@ function AssignmentsCard({
 
   const orgUnits = useQuery({
     queryKey: ['org-units'],
-    queryFn: () => api<OrgUnit[]>('/org-units'),
+    queryFn: () => api<OrgUnitView[]>('/org-units'),
     enabled: canManage && open,
   });
 
@@ -677,6 +682,11 @@ function AssignmentsCard({
     employeeId,
   );
   const repreneurRequis = changeDeDirection && team.length > 0;
+  // Le directeur de la direction visée est son n+1 d'office : proposé d'emblée.
+  const directeurVise = changeDeDirection ? n1DOffice(unites, orgUnitId || null, employeeId) : null;
+  useEffect(() => {
+    setNouveauN1(directeurVise ?? '');
+  }, [directeurVise]);
   // Le n+1 n'est pas daté : il vaut dès aujourd'hui. Une mutation vers une
   // autre direction qui touche à la hiérarchie s'enregistre donc le jour où
   // elle prend effet — le serveur refuserait de la programmer.
@@ -775,11 +785,7 @@ function AssignmentsCard({
           </div>
           {changeDeDirection && directionVisee ? (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Field
-                label="Nouveau n+1"
-                htmlFor="asg-n1"
-                hint={`Dans ${libelle(directionVisee)}. Sans choix, le n+1 actuel est gardé s’il y appartient.`}
-              >
+              <Field label="Nouveau n+1" htmlFor="asg-n1" hint={`Dans ${libelle(directionVisee)}.`}>
                 <Select
                   id="asg-n1"
                   value={nouveauN1}
