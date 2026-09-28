@@ -7,6 +7,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import {
   CAPACITES_DOCUMENTS,
   gereQuelqueChose,
+  nomCourt,
   peut,
   type CompteursValidations,
   type SessionUser,
@@ -1390,8 +1391,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   {initials}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12.5px] leading-tight font-semibold text-ink-strong">
-                    {user.givenName} {user.familyName}
+                  {/* Plusieurs prénoms : le premier, l'initiale du deuxième, le nom
+                      (« Mouhamadou M. Ba ») ; le nom entier au survol. */}
+                  <span
+                    title={`${user.givenName} ${user.familyName}`}
+                    className="block truncate text-[12.5px] leading-tight font-semibold text-ink-strong"
+                  >
+                    {nomCourt(user.givenName, user.familyName)}
                   </span>
                   <span className="block truncate text-[10.5px] leading-tight text-ink-muted">
                     {qualite(user, espace)}

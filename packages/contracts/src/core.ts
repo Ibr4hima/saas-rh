@@ -223,3 +223,16 @@ export function nomAbrege(givenName: string, familyName: string): string {
   const initiales = suivants.map((p) => `${[...p][0]!.toLocaleUpperCase('fr')}.`);
   return [premier, ...initiales, nom].filter(Boolean).join(' ');
 }
+
+/**
+ * Plus court encore, pour la carte du compte : le premier prénom, l'initiale
+ * du deuxième seulement, le nom — « Mouhamadou Moustapha Amine Ba » devient
+ * « Mouhamadou M. Ba ».
+ */
+export function nomCourt(givenName: string, familyName: string): string {
+  const nom = familyName.trim();
+  const [premier, second] = givenName.trim().split(/\s+/).filter(Boolean);
+  if (!premier) return nom;
+  const initiale = second ? `${[...second][0]!.toLocaleUpperCase('fr')}.` : null;
+  return [premier, initiale, nom].filter(Boolean).join(' ');
+}

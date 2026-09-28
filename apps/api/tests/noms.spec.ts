@@ -7,7 +7,7 @@
  * premier prénom entier, les suivants en initiales, nom de famille intact.
  */
 import { describe, expect, it } from 'vitest';
-import { nomAbrege } from '@teranga/contracts';
+import { nomAbrege, nomCourt } from '@teranga/contracts';
 
 describe('nomAbrege', () => {
   it('laisse intact un prénom unique', () => {
@@ -33,5 +33,21 @@ describe('nomAbrege', () => {
 
   it('rend le seul nom de famille quand le prénom manque', () => {
     expect(nomAbrege('', 'Kane')).toBe('Kane');
+  });
+});
+
+describe('nomCourt', () => {
+  it('garde le premier prénom et l’initiale du deuxième seulement', () => {
+    expect(nomCourt('Mouhamadou Moustapha Amine', 'Ba')).toBe('Mouhamadou M. Ba');
+    expect(nomCourt('Mouhamadou Moustapha', 'Ba')).toBe('Mouhamadou M. Ba');
+  });
+
+  it('laisse intact un prénom unique, composé ou non', () => {
+    expect(nomCourt('Awa', 'Diop')).toBe('Awa Diop');
+    expect(nomCourt('Jean-Baptiste', 'Ndiaye')).toBe('Jean-Baptiste Ndiaye');
+  });
+
+  it('met l’initiale en capitale et absorbe les espaces en trop', () => {
+    expect(nomCourt('  Awa   élisabeth  ', ' Sow ')).toBe('Awa É. Sow');
   });
 });
