@@ -122,7 +122,8 @@ describe('préconditions', () => {
         AND c.relname IN ('tenants', 'user_tenant_memberships', 'org_units', 'contracts',
                           'persons', 'employees', 'assignments', 'audit_log',
                           'absence_types', 'holidays', 'holiday_seeds', 'absence_balances',
-                          'absence_requests', 'absence_approvals', 'invitations')
+                          'absence_requests', 'absence_approvals', 'invitations',
+                          'objectifs')
         AND NOT (c.relrowsecurity AND c.relforcerowsecurity)
     `);
     expect(rows).toEqual([]);

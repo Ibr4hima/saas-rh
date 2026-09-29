@@ -631,3 +631,26 @@ export const academyCertificates = pgTable('academy_certificates', {
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 });
+
+// ---------- Objectifs (0042) ----------
+
+export const objectifs = pgTable('objectifs', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  niveau: text('niveau').notNull(),
+  annee: integer('annee').notNull(),
+  diffusion: text('diffusion'),
+  directionId: uuid('direction_id'),
+  employeeId: uuid('employee_id'),
+  nature: text('nature').notNull().default('libre'),
+  courseId: uuid('course_id'),
+  titre: text('titre').notNull(),
+  description: text('description'),
+  echeance: date('echeance'),
+  evaluation: text('evaluation'),
+  evalueLe: timestamp('evalue_le', { withTimezone: true }),
+  commentaire: text('commentaire'),
+  auteurEmployeeId: uuid('auteur_employee_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

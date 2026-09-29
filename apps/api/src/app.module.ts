@@ -8,6 +8,8 @@ import {
   PublicCertificatsController,
 } from './modules/academy/academy.controller';
 import { AcademyEquipeService } from './modules/academy/academy-equipe.service';
+import { ObjectifsController } from './modules/objectifs/objectifs.controller';
+import { ObjectifsService } from './modules/objectifs/objectifs.service';
 import { AcademyEvaluationService } from './modules/academy/academy-evaluation.service';
 import { AcademyService } from './modules/academy/academy.service';
 import { StockageVideoLocal } from './modules/academy/stockage-local';
@@ -72,6 +74,7 @@ import { AbsencesService } from './modules/time/absences.service';
     AcademyController,
     AcademyMediaController,
     PublicCertificatsController,
+    ObjectifsController,
   ],
   providers: [
     TenantDb,
@@ -98,6 +101,7 @@ import { AbsencesService } from './modules/time/absences.service';
     AcademyService,
     AcademyEvaluationService,
     AcademyEquipeService,
+    ObjectifsService,
   ],
 })
 export class AppModule {}

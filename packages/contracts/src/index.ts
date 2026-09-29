@@ -20,3 +20,4 @@ export * from './nationalities';
 export * from './profile-changes';
 export * from './reference-texts';
 export * from './academy';
+export * from './objectifs';

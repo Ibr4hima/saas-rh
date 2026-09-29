@@ -217,7 +217,7 @@ export class AuthService {
           .where(eq(t.persons.userId, session.userId))
           .limit(1);
         if (dossier?.status === 'archived' || dossier?.echu) return null;
-        const { capacites, estAgent, dirigeLaDCH } = await capacitesDe(
+        const { capacites, estAgent, dirigeLaDCH, estDG } = await capacitesDe(
           tx,
           session.userId,
           row.role,
@@ -234,6 +234,7 @@ export class AuthService {
           capacites,
           estAgent,
           dirigeLaDCH,
+          estDG,
         };
       },
     );

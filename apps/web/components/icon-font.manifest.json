@@ -63,6 +63,7 @@
     "play_circle",
     "print",
     "quiz",
+    "rate_review",
     "remove",
     "replay",
     "rule",
@@ -87,5 +88,5 @@
     "workspace_premium"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 87880
+  "bytes": 89648
 }

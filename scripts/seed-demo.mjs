@@ -234,7 +234,7 @@ for (const an of [year, year + 1]) await call('GET', `/holidays?year=${an}`);
 // que l'organigramme désigne. Mariama, qui la dirige, traite les demandes.
 await call('PATCH', `/org-units/${drh.id}`, { directionDuPersonnel: true });
 
-console.log('→ Portails employés : Awa, Moussa, Fatou et Mariama activent leur compte');
+console.log('→ Portails employés : Awa, Moussa, Fatou, Mariama et le DG activent leur compte');
 // Les demandes sont posées par les employés EUX-MÊMES (aucune saisie RH) :
 // chaque dossier reçoit une invitation, le compte est activé, puis la
 // demande part depuis ce compte — avec justificatif PDF quand le type l'exige.
@@ -245,6 +245,8 @@ const PASSWORDS = {
   // La n+1 d'Awa : dans « Mon équipe » de l'Academy, elle voit Awa — et pas
   // Moussa, qui rend compte à Awa. Chacun ne voit que ses directs.
   [directriceRh.id]: ['m.cisse@apix.sn', 'MotDePasseMariama1!'],
+  // Le directeur général : il fixe les objectifs de l'APIX et des directions.
+  [dgAgent.id]: ['c.mbaye@apix.sn', 'MotDePasseCheikh1!'],
 };
 const employeeCookies = {};
 for (const [employeeId, [, password]] of Object.entries(PASSWORDS)) {
@@ -542,9 +544,63 @@ await enTantQue(awa.id, 'POST', `/document-requests/${dr3}/advance`, {
   message: 'bureau 204, du lundi au vendredi 9h–16h',
 });
 
+console.log(
+  '→ Objectifs : le DG fixe ceux de l’APIX et des directions ; les n+1, ceux de leurs agents',
+);
+// Ils descendent l'organigramme : les orientations de l'APIX (à tous, ou aux
+// directeurs seulement), les objectifs de chaque direction, puis ceux que
+// chaque n+1 fixe à ses directs.
+const anneeObjectifs = new Date().getFullYear();
+for (const o of [
+  {
+    niveau: 'apix',
+    diffusion: 'tous',
+    titre: 'Faire de l’APIX le guichet unique de référence de l’investisseur',
+    description: 'Un seul interlocuteur, de l’intention d’investir à l’installation.',
+  },
+  {
+    niveau: 'apix',
+    diffusion: 'directeurs',
+    titre: 'Ramener à 30 jours le délai moyen de traitement des dossiers d’agrément',
+  },
+  {
+    niveau: 'direction',
+    directionId: drh.id,
+    titre: 'Former chaque agent au moins une fois dans l’année',
+    echeance: `${anneeObjectifs}-12-31`,
+  },
+  {
+    niveau: 'direction',
+    directionId: drh.id,
+    titre: 'Mettre en place l’entretien annuel d’évaluation',
+    echeance: `${anneeObjectifs}-11-30`,
+  },
+  {
+    niveau: 'direction',
+    directionId: dfin.id,
+    titre: `Clôturer les comptes ${anneeObjectifs} avant le 31 mars ${anneeObjectifs + 1}`,
+  },
+]) {
+  await enTantQue(dgAgent.id, 'POST', '/objectifs', o);
+}
+await enTantQue(directriceRh.id, 'POST', '/objectifs', {
+  niveau: 'individuel',
+  employeeId: awa.id,
+  titre: 'Livrer l’étude sur l’attractivité des zones économiques spéciales',
+  echeance: `${anneeObjectifs}-12-15`,
+});
+await enTantQue(awa.id, 'POST', '/objectifs', {
+  niveau: 'individuel',
+  employeeId: moussa.id,
+  titre: 'Produire la note de conjoncture trimestrielle',
+  description: 'Données du troisième trimestre, avec les intentions d’investissement.',
+  echeance: `${anneeObjectifs}-10-31`,
+});
+
 console.log(`
 ✔ Démo prête.
   Admin       : ${ADMIN.email} / ${ADMIN.password}
+  DG          : c.mbaye@apix.sn / MotDePasseCheikh1! (Objectifs de l’APIX)
   DCH         : m.cisse@apix.sn / MotDePasseMariama1! (dirige la DCH — Délégations)
   Employés    : a.diop@apix.sn / MotDePasseAwa1234! (idem Moussa1!, Fatou12!)
   Employés    : Awa (EMP-001, ${awa.id}), Moussa (EMP-002, ${moussa.id}), Fatou (EMP-003, ${fatou.id})

@@ -34,6 +34,7 @@ function iconOf(type: string): IconName {
   if (type === 'contract_ended') return 'event_busy';
   if (type === 'holiday_reminder') return 'flag';
   if (type === 'profile_change_request') return 'badge';
+  if (type === 'objectif') return 'task_alt';
   return 'notifications';
 }
 

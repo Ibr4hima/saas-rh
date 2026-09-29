@@ -84,6 +84,7 @@ export const ICON_NAMES = [
   'play_circle',
   'print',
   'quiz',
+  'rate_review',
   'remove',
   'replay',
   'rule',

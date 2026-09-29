@@ -9,7 +9,12 @@ import {
 import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
 import { notifier, type NotificationDraft } from '../notifications/notifier';
-import { directionDeEmploye, directionDeLUnite, uniteEnVigueur } from '../people/chaine';
+import {
+  directeurGeneral,
+  directionDeEmploye,
+  directionDeLUnite,
+  uniteEnVigueur,
+} from '../people/chaine';
 
 /* ————————————————————————————————————————————————————————————————
    La Direction du Capital Humain, et ce qu'elle confie.
@@ -282,14 +287,15 @@ export async function capacitesDe(
   tx: Tx,
   userId: string,
   role: string,
-): Promise<{ capacites: Capacite[]; estAgent: boolean; dirigeLaDCH: boolean }> {
+): Promise<{ capacites: Capacite[]; estAgent: boolean; dirigeLaDCH: boolean; estDG: boolean }> {
   const base = new Set<Capacite>(role === 'admin' ? CAPACITES_GESTION : []);
   const moi = await agentDuCompte(tx, userId);
-  if (!moi) return { capacites: [...base], estAgent: false, dirigeLaDCH: false };
+  if (!moi) return { capacites: [...base], estAgent: false, dirigeLaDCH: false, estDG: false };
+  const estDG = (await directeurGeneral(tx)) === moi;
   const dch = await directionDuPersonnel(tx);
   if (dch?.directeurEmployeeId === moi) {
     // Tout ce qui se délègue — l'Academy reste à l'administrateur.
-    return { capacites: [...CAPACITES_DELEGABLES], estAgent: true, dirigeLaDCH: true };
+    return { capacites: [...CAPACITES_DELEGABLES], estAgent: true, dirigeLaDCH: true, estDG };
   }
   const { rows } = await tx.execute<{ capacite: string }>(sql`
     SELECT capacite FROM habilitations WHERE employee_id = ${moi} AND fin_at IS NULL`);
@@ -300,7 +306,7 @@ export async function capacitesDe(
       }
     }
   }
-  return { capacites: [...base], estAgent: true, dirigeLaDCH: false };
+  return { capacites: [...base], estAgent: true, dirigeLaDCH: false, estDG };
 }
 
 const libelles = (capacites: string[]) =>

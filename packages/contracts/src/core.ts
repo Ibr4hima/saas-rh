@@ -149,6 +149,8 @@ export const sessionUserSchema = z.object({
   estAgent: z.boolean().default(false),
   /** Dirige la Direction du Capital Humain : toutes les habilitations, et les délégations. */
   dirigeLaDCH: z.boolean().default(false),
+  /** Directeur général : il fixe les objectifs de l'APIX et de ses directions. */
+  estDG: z.boolean().default(false),
 });
 export type SessionUser = z.infer<typeof sessionUserSchema>;
 

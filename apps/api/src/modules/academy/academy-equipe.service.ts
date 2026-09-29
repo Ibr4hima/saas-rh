@@ -124,7 +124,7 @@ export class AcademyEquipeService {
    * Où en est chaque agent sur chaque formation du catalogue — plus les
    * certificats valides de formations retirées depuis, qu'il tient toujours.
    */
-  private async suivi(tx: Tx, employeeIds: string[]): Promise<Map<string, TeamCourseProgress[]>> {
+  async suivi(tx: Tx, employeeIds: string[]): Promise<Map<string, TeamCourseProgress[]>> {
     if (employeeIds.length === 0) return new Map();
     const maintenant = this.horloge();
 

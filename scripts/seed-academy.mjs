@@ -272,6 +272,31 @@ for (const f of FORMATIONS) {
   console.log(`   ✔ publiée`);
 }
 
+// Sur la démo APIX, une formation à suivre : Awa la fixe à Moussa, son direct,
+// avec une échéance — elle apparaît dans « Mes objectifs » de Moussa, et se
+// dit atteinte quand il l'a terminée.
+if (!process.env.ACADEMY_EMAIL) {
+  try {
+    await appel('POST', '/auth/login', { email: 'a.diop@apix.sn', password: 'MotDePasseAwa1234!' });
+    const proposables = await appel('GET', '/objectifs/formations');
+    const macro = proposables.find((f) => f.title.startsWith('Macroéconomie'));
+    const equipe = await appel('GET', '/objectifs/equipe');
+    const moussa = equipe.membres.find((m) => m.givenName === 'Moussa');
+    if (macro && moussa) {
+      await appel('POST', '/objectifs', {
+        niveau: 'individuel',
+        employeeId: moussa.employeeId,
+        nature: 'formation',
+        courseId: macro.id,
+        echeance: `${new Date().getFullYear()}-11-30`,
+      });
+      console.log('→ Objectifs : « Macroéconomie » à suivre par Moussa, fixée par Awa');
+    }
+  } catch (err) {
+    console.log(`   (formation à suivre non fixée : ${err.message})`);
+  }
+}
+
 console.log(`
 ✔ Academy prête.
   Catalogue  : http://localhost:3002/academy

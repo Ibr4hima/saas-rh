@@ -548,8 +548,18 @@ describe('les accès se lisent dans l’organigramme', () => {
     expect((await de(mariama.session)).capacites.sort()).toEqual([...CAPACITES_DELEGABLES].sort());
     expect((await de(mariama.session)).capacites).not.toContain('academy');
     expect((await de(admin)).capacites.sort()).toEqual([...CAPACITES_GESTION].sort());
-    expect(await de(moussa.session)).toEqual({ capacites: [], estAgent: true, dirigeLaDCH: false });
-    expect(await de(sansDossier)).toEqual({ capacites: [], estAgent: false, dirigeLaDCH: false });
+    expect(await de(moussa.session)).toEqual({
+      capacites: [],
+      estAgent: true,
+      dirigeLaDCH: false,
+      estDG: false,
+    });
+    expect(await de(sansDossier)).toEqual({
+      capacites: [],
+      estAgent: false,
+      dirigeLaDCH: false,
+      estDG: false,
+    });
   });
 
   it('un membre a ce qui lui est confié — tant qu’il est à la DCH', async () => {
