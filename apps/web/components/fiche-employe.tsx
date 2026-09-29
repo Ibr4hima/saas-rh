@@ -38,7 +38,7 @@ import { ProfileChangeCard } from './profile-change-card';
 import { DocumentRequestRow } from './document-request-list';
 import { EmployeeEditModal } from './employee-edit-modal';
 import { Telephone } from './telephone';
-import { Donnee, Groupe, Peremption } from './fiche';
+import { Donnee, EnTete, Groupe, Peremption, Repere } from './fiche';
 import { Icon } from './icons';
 import { Modal } from './modal';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../lib/person';
@@ -96,58 +96,6 @@ function seniority(hiredOn: string, jusquAu?: string | null): string {
   if (years === 0) return rest <= 1 ? '< 1 mois' : `${rest} mois`;
   const y = `${years} an${years > 1 ? 's' : ''}`;
   return rest === 0 ? y : `${y} et ${rest} mois`;
-}
-
-/**
- * Une donnée du dossier : intitulé discret, valeur lisible.
- *
- * Pas une pastille. Les pastilles conviennent aux QUELQUES repères qu'on
- * cherche du regard — matricule, direction, ancienneté — et c'est ce que la
- * bande de tête en fait. Ici, treize champs en pastilles donnaient un mur de
- * cadres où plus rien ne ressortait ; un filet et de l'air suffisent, et
- * l'état civil se lit comme ce qu'il est : un registre.
- */
-/**
- * Un repère de la bande d'identité : l'intitulé au-dessus, petit et gris, la
- * valeur en dessous. Pas de cadre — c'est le filet de la colonne voisine qui
- * sépare, et le blanc qui aère.
- *
- * Un intitulé de poste ou de direction peut être très long (« Direction de
- * l'Intelligence et des Perspectives Économiques ») : on le borne à deux
- * lignes, et l'infobulle rend le nom entier à qui en a besoin.
- */
-function Repere({
-  label,
-  valeur,
-  titre,
-  children,
-}: {
-  label: string;
-  /** Un texte, ou un composant quand la valeur s'actionne (un numéro, une adresse). */
-  valeur?: React.ReactNode;
-  /** L'infobulle, quand la valeur n'est pas un texte qu'on puisse y recopier. */
-  titre?: string;
-  /** Une seconde ligne, plus discrète — la date d'embauche sous l'ancienneté. */
-  children?: React.ReactNode;
-}) {
-  const vide = valeur === null || valeur === undefined || valeur === '';
-  return (
-    <div className="min-w-0">
-      <dt className="text-[9.5px] font-bold tracking-[0.11em] text-ink-muted uppercase">{label}</dt>
-      <dd
-        className={cn(
-          'mt-1.5 line-clamp-2 text-[13.5px] leading-snug font-semibold break-words',
-          vide ? 'text-ink-muted/45' : 'text-ink-strong',
-        )}
-        title={titre ?? (typeof valeur === 'string' ? valeur : undefined)}
-      >
-        {vide ? '—' : valeur}
-      </dd>
-      {children ? (
-        <dd className="mt-1 text-[11.5px] leading-tight font-normal text-ink-muted">{children}</dd>
-      ) : null}
-    </div>
-  );
 }
 
 /**
@@ -246,43 +194,41 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
           cadres bleus alignés pesaient plus lourd que les valeurs qu'ils
           portaient. Un filet d'un pixel entre les colonnes sépare aussi bien,
           et rend son blanc à la carte. */}
-      <Card className="mb-4">
-        {/* Sur un écran étroit, « Signaler un changement » passe sous le nom
-            plutôt que de le serrer sur deux lignes ; le stylo, lui, tient. */}
-        <div className="flex flex-wrap items-start gap-4 p-5">
-          <div className="min-w-0 flex-1 basis-60">
-            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-              <h1 className="text-[22px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">
-                {e.person.givenName} {e.person.familyName}
-              </h1>
-              {/* L'état en un signe : vérifié, en vert, pour un agent actif ;
-                  barré, en gris, pour un inactif. Le mot reste pour les
-                  lecteurs d'écran et dans l'infobulle. */}
-              <span
-                role="img"
-                aria-label={STATUS_LABELS[e.status] ?? e.status}
-                title={STATUS_LABELS[e.status] ?? e.status}
-                className={cn('inline-flex', actif ? 'text-success' : 'text-ink-muted')}
-              >
-                <Icon name={actif ? 'verified' : 'verified_off'} size={22} />
-              </span>
-            </div>
-            {/* Sous le nom, les deux choses qui désignent la personne dans une
-                conversation : le matricule qu'on cite au téléphone, et le
-                poste qu'on occupe. La direction, elle, a sa colonne. */}
-            <p className="mt-1.5 text-[12.5px] leading-tight text-ink-muted">
-              <span className="font-mono tracking-tight">{e.employeeNumber}</span>
-              {actif && current?.positionTitle ? <> · {current.positionTitle}</> : null}
+      <EnTete
+        titre={`${e.person.givenName} ${e.person.familyName}`}
+        // L'état en un signe : vérifié, en vert, pour un agent actif ; barré,
+        // en gris, pour un inactif. Le mot reste pour les lecteurs d'écran et
+        // dans l'infobulle.
+        marque={
+          <span
+            role="img"
+            aria-label={STATUS_LABELS[e.status] ?? e.status}
+            title={STATUS_LABELS[e.status] ?? e.status}
+            className={cn('inline-flex', actif ? 'text-success' : 'text-ink-muted')}
+          >
+            <Icon name={actif ? 'verified' : 'verified_off'} size={22} />
+          </span>
+        }
+        // Sous le nom, les deux choses qui désignent la personne dans une
+        // conversation : le matricule qu'on cite au téléphone, et le poste
+        // qu'on occupe. La direction, elle, a sa colonne.
+        sousTitre={
+          <>
+            <span className="font-mono tracking-tight">{e.employeeNumber}</span>
+            {actif && current?.positionTitle ? <> · {current.positionTitle}</> : null}
+          </>
+        }
+        note={
+          refusReactivation ? (
+            <p role="alert" className="mt-2 text-[12px] font-semibold text-danger">
+              {refusReactivation}
             </p>
-            {refusReactivation ? (
-              <p role="alert" className="mt-2 text-[12px] font-semibold text-danger">
-                {refusReactivation}
-              </p>
-            ) : null}
-          </div>
-          {/* Inactif : sa fiche ne se modifie plus — le geste qui reste est
-              de la réactiver, une fois son nouveau contrat enregistré. */}
-          {soi ? (
+          ) : null
+        }
+        // Inactif : sa fiche ne se modifie plus — le geste qui reste est de la
+        // réactiver, une fois son nouveau contrat enregistré.
+        action={
+          soi ? (
             <Button variant="secondary" size="sm" onClick={() => setSignalement(true)}>
               <Icon name="edit" size={15} />
               Signaler un changement
@@ -298,99 +244,91 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
             >
               <Icon name="edit" size={18} />
             </Link>
-          ) : null}
-        </div>
-
-        {/* Quatre colonnes séparées par un filet, repliées en deux sur une
-            carte étroite — où le filet disparaît, deux valeurs empilées n'ayant
-            rien à séparer. Le seuil suit la largeur du CONTENEUR et non celle
-            de l'écran : la même bande servira un panneau latéral sans se
-            couper en morceaux. */}
-        <div className="@container border-t border-line-soft px-5 py-4">
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-5 @[44rem]:grid-cols-4 @[44rem]:gap-x-0 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:border-l @[44rem]:[&>*+*]:border-line-soft @[44rem]:[&>*+*]:pl-5">
-            {/* L'ABRÉGÉ, comme dans la colonne « Unité » de la liste : « DIPE »
-                tient sur une ligne où « Direction de l'Intelligence et des
-                Perspectives Économiques » se coupait en deux et finissait en
-                points de suspension. Le nom complet reste en infobulle, et
-                l'unité d'affectation exacte — département ou service — se lit
-                juste en dessous dans la carte des affectations. */}
-            {actif ? (
-              <>
-                <Repere
-                  label="Direction affectée"
-                  titre={current?.directionName ?? current?.orgUnitName ?? undefined}
-                  // Repli en cascade : l'abrégé, sinon le nom de la direction, sinon
-                  // l'unité elle-même — une direction dont l'abrégé n'est pas
-                  // renseigné vaut mieux qu'un « Service Comptabilité » qui ne
-                  // répond pas à la question posée par l'intitulé.
-                  valeur={
-                    current?.directionShortName ?? current?.directionName ?? current?.orgUnitName
-                  }
-                />
-                <Repere
-                  label="Téléphone portable"
-                  titre={e.person.phone ?? undefined}
-                  valeur={e.person.phone ? <Telephone valeur={e.person.phone} /> : null}
-                />
-                <Repere
-                  label="Email professionnel"
-                  titre={e.workEmail ?? undefined}
-                  valeur={
-                    e.workEmail ? (
-                      // Comme le numéro juste avant : une adresse qu'on ne peut
-                      // que recopier à la main est la seule donnée inerte d'une
-                      // bande qui sert à joindre quelqu'un.
-                      <a
-                        href={`mailto:${e.workEmail}`}
-                        className="break-all transition-colors hover:text-primary hover:underline"
-                      >
-                        {e.workEmail}
-                      </a>
-                    ) : null
-                  }
-                />
-                <Repere label="Ancienneté" valeur={seniority(e.hiredOn)}>
-                  Depuis le {formatDate(e.hiredOn)}
-                </Repere>
-              </>
-            ) : (
-              // Inactif : quand son contrat a pris fin et pourquoi, puis ce
-              // qu'il a fait à l'APIX — l'ancienneté arrêtée à son dernier jour.
-              <>
-                <Repere
-                  label="Fin contrat"
-                  valeur={e.finActivite ? formatDate(e.finActivite) : null}
-                />
-                <Repere label="Ancienneté" valeur={seniority(e.hiredOn, e.finActivite)}>
-                  Arrivée le {formatDate(e.hiredOn)}
-                </Repere>
-                <Repere
-                  label="Email professionnel"
-                  titre={e.workEmail ?? undefined}
-                  valeur={
-                    e.workEmail ? (
-                      // Comme le numéro juste avant : une adresse qu'on ne peut
-                      // que recopier à la main est la seule donnée inerte d'une
-                      // bande qui sert à joindre quelqu'un.
-                      <a
-                        href={`mailto:${e.workEmail}`}
-                        className="break-all transition-colors hover:text-primary hover:underline"
-                      >
-                        {e.workEmail}
-                      </a>
-                    ) : null
-                  }
-                />
-                <Repere
-                  label="Téléphone portable"
-                  titre={e.person.phone ?? undefined}
-                  valeur={e.person.phone ? <Telephone valeur={e.person.phone} /> : null}
-                />
-              </>
-            )}
-          </dl>
-        </div>
-      </Card>
+          ) : null
+        }
+        reperes={
+          /* L'ABRÉGÉ, comme dans la colonne « Unité » de la liste : « DIPE »
+              tient sur une ligne où « Direction de l'Intelligence et des
+              Perspectives Économiques » se coupait en deux et finissait en
+              points de suspension. Le nom complet reste en infobulle, et
+              l'unité d'affectation exacte — département ou service — se lit
+              juste en dessous dans la carte des affectations. */
+          actif ? (
+            <>
+              <Repere
+                label="Direction affectée"
+                titre={current?.directionName ?? current?.orgUnitName ?? undefined}
+                // Repli en cascade : l'abrégé, sinon le nom de la direction, sinon
+                // l'unité elle-même — une direction dont l'abrégé n'est pas
+                // renseigné vaut mieux qu'un « Service Comptabilité » qui ne
+                // répond pas à la question posée par l'intitulé.
+                valeur={
+                  current?.directionShortName ?? current?.directionName ?? current?.orgUnitName
+                }
+              />
+              <Repere
+                label="Téléphone portable"
+                titre={e.person.phone ?? undefined}
+                valeur={e.person.phone ? <Telephone valeur={e.person.phone} /> : null}
+              />
+              <Repere
+                label="Email professionnel"
+                titre={e.workEmail ?? undefined}
+                valeur={
+                  e.workEmail ? (
+                    // Comme le numéro juste avant : une adresse qu'on ne peut
+                    // que recopier à la main est la seule donnée inerte d'une
+                    // bande qui sert à joindre quelqu'un.
+                    <a
+                      href={`mailto:${e.workEmail}`}
+                      className="break-all transition-colors hover:text-primary hover:underline"
+                    >
+                      {e.workEmail}
+                    </a>
+                  ) : null
+                }
+              />
+              <Repere label="Ancienneté" valeur={seniority(e.hiredOn)}>
+                Depuis le {formatDate(e.hiredOn)}
+              </Repere>
+            </>
+          ) : (
+            // Inactif : quand son contrat a pris fin et pourquoi, puis ce
+            // qu'il a fait à l'APIX — l'ancienneté arrêtée à son dernier jour.
+            <>
+              <Repere
+                label="Fin contrat"
+                valeur={e.finActivite ? formatDate(e.finActivite) : null}
+              />
+              <Repere label="Ancienneté" valeur={seniority(e.hiredOn, e.finActivite)}>
+                Arrivée le {formatDate(e.hiredOn)}
+              </Repere>
+              <Repere
+                label="Email professionnel"
+                titre={e.workEmail ?? undefined}
+                valeur={
+                  e.workEmail ? (
+                    // Comme le numéro juste avant : une adresse qu'on ne peut
+                    // que recopier à la main est la seule donnée inerte d'une
+                    // bande qui sert à joindre quelqu'un.
+                    <a
+                      href={`mailto:${e.workEmail}`}
+                      className="break-all transition-colors hover:text-primary hover:underline"
+                    >
+                      {e.workEmail}
+                    </a>
+                  ) : null
+                }
+              />
+              <Repere
+                label="Téléphone portable"
+                titre={e.person.phone ?? undefined}
+                valeur={e.person.phone ? <Telephone valeur={e.person.phone} /> : null}
+              />
+            </>
+          )
+        }
+      />
 
       {/* Deux colonnes sur grand écran : à gauche ce qui décrit la personne
           et son emploi, à droite ce qui s'administre — accès, soldes, traces.
