@@ -173,7 +173,7 @@ export class EmployeeDocumentsService {
         body: approved
           ? undefined
           : (input.comment ?? 'Vérifiez le fichier puis déposez-le à nouveau.'),
-        link: '/moi/documents',
+        link: '/moi/documents/justificatifs',
       });
     });
   }

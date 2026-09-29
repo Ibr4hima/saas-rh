@@ -104,21 +104,6 @@ const NAV_ITEMS: NavItem[] = [
     groupe: 'pilotage',
   },
   {
-    // Le calendrier a aussi sa fenêtre dans le bandeau, et c'est le geste
-    // courant. Il garde une entrée de menu parce que la fenêtre ne se trouve
-    // que si l'on sait déjà qu'elle est derrière la date — une destination
-    // nommée est le seul endroit où l'on peut la DÉCOUVRIR.
-    href: '/calendrier',
-    // L'intitulé dit ce qu'on y trouve. « Calendrier » promettait le planning
-    // des absences, qui vit dans la fenêtre du bandeau ; la page, elle, ne
-    // porte que les fériés de l'année. La barre d'onglets du téléphone garde
-    // le mot court : sur cinquante-six pixels, rien d'autre ne tient.
-    label: 'Calendrier · Fériés',
-    short: 'Calendrier',
-    icon: 'calendar_month',
-    groupe: 'pilotage',
-  },
-  {
     href: '/employees',
     label: 'Gestion du personnel',
     short: 'Personnel',
@@ -197,6 +182,22 @@ const NAV_ITEMS: NavItem[] = [
     groupe: 'croissance',
   },
   {
+    // Le calendrier a aussi sa fenêtre dans le bandeau, et c'est le geste
+    // courant. Il garde une entrée de menu parce que la fenêtre ne se trouve
+    // que si l'on sait déjà qu'elle est derrière la date — une destination
+    // nommée est le seul endroit où l'on peut la DÉCOUVRIR. Il se range avec
+    // le cadre, juste au-dessus des textes : on le consulte comme eux.
+    href: '/calendrier',
+    // L'intitulé dit ce qu'on y trouve. « Calendrier » promettait le planning
+    // des absences, qui vit dans la fenêtre du bandeau ; la page, elle, ne
+    // porte que les fériés de l'année. La barre d'onglets du téléphone garde
+    // le mot court : sur cinquante-six pixels, rien d'autre ne tient.
+    label: 'Calendrier des jours fériés',
+    short: 'Calendrier',
+    icon: 'calendar_month',
+    groupe: 'cadre',
+  },
+  {
     href: '/reglementations',
     label: 'Lois & Règlementations',
     short: 'Lois',
@@ -227,7 +228,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/demandes/informations': 'Informations à traiter',
   '/demandes/pieces': 'Pièces à vérifier',
   '/moi/delegations': 'Déléguer des tâches',
-  '/calendrier': 'Calendrier · Fériés',
+  '/calendrier': 'Calendrier des jours fériés',
   '/recrutement': "Offres d'emploi",
   '/recrutement/candidatures': 'Dossiers de candidature',
   '/recrutement/nouvelle': 'Nouvelle offre',
@@ -239,13 +240,15 @@ const PAGE_TITLES: Record<string, string> = {
   '/organisation': 'Organigramme',
   '/reglementations/code-du-travail': 'Code du travail',
   '/reglementations/reglement-interieur': 'Règlement intérieur',
-  '/moi/conges': 'Absences & Congés',
+  '/moi/conges': 'Poser une demande',
+  '/moi/conges/historique': 'Historique',
   '/moi/equipe': 'Demandes à viser',
   '/moi/equipe/suivi': 'Suivi & Évaluation',
   '/moi/objectifs': 'Mes objectifs',
   '/moi/objectifs-apix': 'Objectifs de l’APIX',
   '/moi/dch': 'Congés à traiter',
   '/moi/documents': 'Demander un document',
+  '/moi/documents/justificatifs': 'Joindre un justificatif',
 };
 
 function greeting(): string {
@@ -583,8 +586,8 @@ function accueilDeLaGestion(user: SessionUser, items: NavItem[]): string {
 /**
  * Espace personnel : navigation réduite, rangée par les mêmes familles.
  *
- * Ce qu'on regarde (mon espace, le calendrier), ce qu'on demande (congés,
- * documents), ce qu'on est (mes informations), le cadre (les textes). Les
+ * Ce qu'on est (mes infos personnelles), ce qu'on demande (congés,
+ * documents), le cadre (l'organigramme, les fériés, les textes). Les
  * validations d'un manager tiennent à part : c'est le seul endroit où il
  * décide pour un autre.
  *
@@ -602,25 +605,28 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
       groupe: 'pilotage',
     },
     {
-      href: '/calendrier',
-      label: 'Calendrier · Fériés',
-      short: 'Calendrier',
-      icon: 'calendar_month',
-      groupe: 'pilotage',
-    },
-    {
       href: '/moi/conges',
       label: 'Absences & Congés',
       short: 'Congés',
       icon: 'free_cancellation',
       groupe: 'quotidien',
+      children: [
+        { href: '/moi/conges', label: 'Poser une demande' },
+        { href: '/moi/conges/historique', label: 'Historique' },
+      ],
     },
+    // Deux mouvements contraires : ce qu'on demande à la DCH, ce qu'on lui
+    // fournit.
     {
       href: '/moi/documents',
-      label: 'Demander un document',
+      label: 'Mes documents',
       short: 'Documents',
       icon: 'folder_managed',
       groupe: 'quotidien',
+      children: [
+        { href: '/moi/documents', label: 'Demander un document' },
+        { href: '/moi/documents/justificatifs', label: 'Joindre un justificatif' },
+      ],
     },
     // Ce que chacun doit atteindre cette année : ceux de l'APIX, de sa
     // direction, les siens. Le DG, lui, les fixe.
@@ -691,6 +697,13 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
       label: 'Organigramme',
       short: 'Organig.',
       icon: 'family_history',
+      groupe: 'cadre',
+    },
+    {
+      href: '/calendrier',
+      label: 'Calendrier des jours fériés',
+      short: 'Calendrier',
+      icon: 'calendar_month',
       groupe: 'cadre',
     },
     {
@@ -1269,6 +1282,17 @@ function AppShell({ children }: { children: React.ReactNode }) {
     href === '/moi' ? cheminMenu === '/moi' : cheminMenu.startsWith(href);
   /** Une sous-page couvre son chemin et ce qui en descend. */
   const isChildActive = (href: string) => cheminMenu === href || cheminMenu.startsWith(`${href}/`);
+  // Sur téléphone, l'onglet d'une rubrique mène à sa première sous-page : les
+  // autres se choisissent en tête de page — sans quoi « Historique » ou
+  // « Joindre un justificatif » n'auraient aucun chemin. La plus précise
+  // s'allume, comme dans la barre latérale.
+  const rubrique = items.find((i) => i.children?.some((c) => isChildActive(c.href)));
+  const sousPageActive = (rubrique?.children ?? [])
+    .filter((c) => isChildActive(c.href))
+    .reduce<string | null>(
+      (long, c) => (long && long.length >= c.href.length ? long : c.href),
+      null,
+    );
 
   return (
     /* Coquille d'application : la page elle-même ne défile pas. Le bandeau et
@@ -1496,6 +1520,30 @@ function AppShell({ children }: { children: React.ReactNode }) {
             data-scroll-root
             className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 pb-24 lg:px-7 lg:py-6 lg:pb-10"
           >
+            {rubrique && (rubrique.children?.length ?? 0) > 1 ? (
+              <nav
+                aria-label={rubrique.label}
+                className="-mt-1 mb-4 flex gap-1.5 overflow-x-auto lg:hidden"
+              >
+                {rubrique.children!.map((c) =>
+                  c.desactive ? null : (
+                    <Link
+                      key={c.href}
+                      href={c.href}
+                      aria-current={c.href === sousPageActive ? 'page' : undefined}
+                      className={cn(
+                        'shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors duration-150',
+                        c.href === sousPageActive
+                          ? 'border-primary bg-primary-soft font-semibold text-primary'
+                          : 'border-line text-ink-muted hover:bg-hover',
+                      )}
+                    >
+                      {c.label}
+                    </Link>
+                  ),
+                )}
+              </nav>
+            ) : null}
             <EspaceProvider value={espace}>{children}</EspaceProvider>
           </main>
         </div>

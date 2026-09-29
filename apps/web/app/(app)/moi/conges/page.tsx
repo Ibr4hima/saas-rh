@@ -1,14 +1,9 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import type {
-  AbsencePreview,
-  AbsenceRequestView,
-  AbsenceType,
-  BalanceView,
-  MyEmployeeView,
-} from '@teranga/contracts';
+import type { AbsencePreview, AbsenceType, BalanceView, MyEmployeeView } from '@teranga/contracts';
 import {
   Button,
   Card,
@@ -16,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
   cn,
-  EmptyState,
   Field,
   Input,
   Select,
@@ -24,14 +18,9 @@ import {
   Textarea,
 } from '@teranga/ui';
 import { CarteSolde } from '../../../../components/carte-solde';
-import { type ViewableDoc } from '../../../../components/doc-viewer';
-import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Icon } from '../../../../components/icons';
-import { StatutAbsence } from '../../../../components/statut-absence';
-import { api, ApiError, apiUrl } from '../../../../lib/api';
-import { resumeVisas } from '../../../../lib/absences';
-import { formatDate } from '../../../../lib/hooks';
-import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
+import { api, ApiError } from '../../../../lib/api';
+import { Page } from '../../../../components/gabarit';
 import { compte } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
@@ -90,7 +79,6 @@ export default function MyLeavesPage() {
     sizeBytes: number;
   } | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
-  const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -115,11 +103,6 @@ export default function MyLeavesPage() {
     queryKey: ['balances', employeeId, startDate.slice(0, 4)],
     queryFn: () =>
       api<BalanceView[]>(`/employees/${employeeId}/balances?year=${startDate.slice(0, 4)}`),
-    enabled: Boolean(employeeId),
-  });
-  const requests = useQuery({
-    queryKey: ['my-requests', employeeId],
-    queryFn: () => api<AbsenceRequestView[]>(`/absence-requests?employeeId=${employeeId}&limit=50`),
     enabled: Boolean(employeeId),
   });
 
@@ -199,17 +182,6 @@ export default function MyLeavesPage() {
       setServerError(err instanceof ApiError ? err.message : 'Envoi impossible — réessayez.'),
   });
 
-  const cancel = useMutation({
-    mutationFn: (id: string) => api(`/absence-requests/${id}/cancel`, { method: 'POST' }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['my-requests'] });
-      void queryClient.invalidateQueries({ queryKey: ['balances'] });
-    },
-    onError: (err) =>
-      setServerError(err instanceof ApiError ? err.message : 'Annulation impossible.'),
-  });
-
-  const myRequests = (requests.data ?? []).filter((r) => r.employeeId === employeeId);
   const deductibles = (balances.data ?? []).filter((b) => b.deductsBalance);
   // Le circuit, fixé par l'APIX : son N+1 d'abord, puis la DCH. Sans N+1
   // qui puisse viser (absent, sans accès), la demande va directement à la
@@ -234,10 +206,9 @@ export default function MyLeavesPage() {
     <Page>
       {/* `minmax(0,1fr)` dès la première colonne, et pas seulement en grand
           écran : sans plancher à zéro, la piste se dimensionne sur le
-          min-content de la plus longue ligne de « Mes demandes » — qui est en
-          `truncate`, donc insécable — et la page entière débordait de 150 px
-          sur un téléphone. */}
-      <div className="grid min-h-0 flex-1 items-start gap-4 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_288px] lg:grid-rows-[auto_minmax(0,1fr)]">
+          min-content de sa plus longue ligne insécable et la page entière
+          débordait sur un téléphone. */}
+      <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_288px]">
         {/* ———— Le formulaire ———— */}
         <Card className="lg:order-1">
           <CardHeader>
@@ -359,7 +330,12 @@ export default function MyLeavesPage() {
             {success ? (
               <p className="flex items-start gap-2 rounded-[12px] bg-success-soft px-3.5 py-2.5 text-[12.5px] text-success ring-1 ring-current/15 ring-inset">
                 <Icon name="check_circle" size={15} className="mt-px shrink-0" />
-                {success}
+                <span>
+                  {success}{' '}
+                  <Link href="/moi/conges/historique" className="font-semibold underline">
+                    Voir l&apos;historique
+                  </Link>
+                </span>
               </p>
             ) : null}
 
@@ -435,59 +411,7 @@ export default function MyLeavesPage() {
             </Card>
           ) : null}
         </aside>
-
-        {/* ———— Mes demandes ———— */}
-        {/* Le suivi ferme la page par le bas et prend ce qui reste : sans
-            cela, deux cents pixels de fond nu restaient sous lui. */}
-        <CartePleine className="lg:order-3 lg:col-span-2">
-          <CardHeader className="flex shrink-0 items-center justify-between gap-3">
-            <CardTitle>Mes demandes</CardTitle>
-            {myRequests.length > 0 ? (
-              <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-                {compte(myRequests.length, 'demande')}
-              </span>
-            ) : null}
-          </CardHeader>
-          <CorpsDefilant className="px-2 pb-2">
-            {requests.isLoading ? (
-              <div className="flex flex-col gap-1 px-3">
-                {[0, 1, 2].map((i) => (
-                  <span key={i} className="flex items-center gap-3 py-2.5">
-                    <Skeleton className="h-3 w-52" />
-                  </span>
-                ))}
-              </div>
-            ) : myRequests.length === 0 ? (
-              <EmptyState
-                className="py-8"
-                icon={<Icon name="free_cancellation" size={22} />}
-                title="Aucune demande pour le moment"
-              />
-            ) : (
-              <ul className="flex flex-col">
-                {myRequests.map((r) => (
-                  <LigneDemande
-                    key={r.id}
-                    demande={r}
-                    onJustificatif={() =>
-                      setViewedDoc({
-                        url: apiUrl(`/absence-requests/${r.id}/document`),
-                        filename: r.documentName!,
-                        contentType: 'application/pdf',
-                        titre: 'Justificatif',
-                      })
-                    }
-                    onAnnuler={() => cancel.mutate(r.id)}
-                    annulationEnCours={cancel.isPending && cancel.variables === r.id}
-                  />
-                ))}
-              </ul>
-            )}
-          </CorpsDefilant>
-        </CartePleine>
       </div>
-
-      <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
     </Page>
   );
 }
@@ -611,72 +535,5 @@ function Decompte({
         </p>
       ) : null}
     </div>
-  );
-}
-
-/**
- * Une demande, en une ligne.
- *
- * L'étape du visa s'écrit, avec son sujet — « Visa attendu : votre N+1
- * (Awa Diop) », « Visa attendu : la DCH » —, et le justificatif est un bouton
- * visible plutôt qu'un mot souligné noyé dans la ligne de dates.
- */
-function LigneDemande({
-  demande: r,
-  onJustificatif,
-  onAnnuler,
-  annulationEnCours,
-}: {
-  demande: AbsenceRequestView;
-  onJustificatif: () => void;
-  onAnnuler: () => void;
-  annulationEnCours: boolean;
-}) {
-  const qui = r.circuit.find((e) => e.etape === r.etapeAttendue)?.qui;
-  const attendu =
-    r.status !== 'pending'
-      ? null
-      : r.etapeAttendue === 'dch'
-        ? `Visa attendu : la DCH${qui ? ` (${qui})` : ''}`
-        : `Visa attendu : votre N+1${qui ? ` (${qui})` : ''}`;
-
-  return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover">
-      {/* Trois lignes empilées plutôt qu'une seule coupée : sur un téléphone,
-          une ligne unique en `truncate` perdait tout ce qui suit les dates —
-          l'étape du visa ET le motif. */}
-      <div className="min-w-0 flex-1 basis-52">
-        <p className="truncate text-[13px] font-semibold text-ink-strong">{r.absenceTypeName}</p>
-        <p className="mt-0.5 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-          {formatDate(r.startDate)} → {formatDate(r.endDate)} · {compte(r.daysCount, 'jour')}
-        </p>
-        {attendu || r.reason ? (
-          <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-ink-muted">
-            {[attendu, r.reason].filter(Boolean).join(' · ')}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="ml-auto flex shrink-0 items-center gap-2">
-        {r.documentName ? (
-          <button
-            type="button"
-            onClick={onJustificatif}
-            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-medium text-primary transition-colors hover:bg-primary-soft"
-          >
-            <Icon name="description" size={14} />
-            Justificatif
-          </button>
-        ) : null}
-
-        <StatutAbsence statut={r.status} titre={resumeVisas(r)} />
-
-        {r.status === 'pending' ? (
-          <Button size="sm" variant="ghost" onClick={onAnnuler} loading={annulationEnCours}>
-            Annuler
-          </Button>
-        ) : null}
-      </div>
-    </li>
   );
 }

@@ -2,12 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import type {
-  AbsenceRequestView,
-  DocumentRequestView,
-  MyEmployeeView,
-  RequestableDoc,
-} from '@teranga/contracts';
+import type { DocumentRequestView, RequestableDoc } from '@teranga/contracts';
 import { documentsEnCours, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
 import {
   Button,
@@ -21,30 +16,17 @@ import {
   Input,
   Skeleton,
 } from '@teranga/ui';
-import { api, ApiError, apiUrl } from '../../../../lib/api';
-import { EmployeeDocumentsCard } from '../../../../components/employee-documents-card';
+import { api, ApiError } from '../../../../lib/api';
 import { DocumentRequestRow } from '../../../../components/document-request-list';
-import { type ViewableDoc } from '../../../../components/doc-viewer';
-import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Icon } from '../../../../components/icons';
-import { formatDate } from '../../../../lib/hooks';
-import { LoadFailure } from '../../../../components/load-failure';
 import { Page } from '../../../../components/gabarit';
 import { compte } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
-   « Mes documents » traite deux mouvements contraires, et l'écran doit les
-   garder distincts :
-
-   — ce que JE DEMANDE à la Direction du Capital Humain (attestation, contrat,
-     bulletin) : je coche, j'envoie, je suis l'avancement ;
-   — ce que JE FOURNIS et qui reste à mon dossier (pièce d'identité, diplômes,
-     justificatifs d'absence).
-
-   D'où l'ordre des quatre cartes : les deux premières sont la demande et son
-   suivi, les deux dernières le dossier. La grammaire est celle du reste du
-   portail : intitulés en petites capitales, rangées, états vides dessinés,
-   aucun aplat teinté hors des messages.
+   « Demander un document » — ce que l'agent DEMANDE à la Direction du
+   Capital Humain (attestation, contrat, bulletin) : il coche, envoie, suit
+   l'avancement. Ce qu'il lui FOURNIT a sa propre page, « Joindre un
+   justificatif ».
    ———————————————————————————————————————————————————————————————— */
 
 const REQUESTABLE: RequestableDoc[] = [
@@ -66,26 +48,11 @@ function enumerer(mots: string[]): string {
 
 export default function MyDocumentsPage() {
   const queryClient = useQueryClient();
-  const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
   const [selected, setSelected] = useState<RequestableDoc[]>([]);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   /** Le nombre de documents qui viennent de partir — chacun est une demande. */
   const [sent, setSent] = useState(0);
-
-  const myEmployee = useQuery({
-    queryKey: ['me-employee'],
-    queryFn: () => api<MyEmployeeView>('/me/employee'),
-    retry: false,
-  });
-  const employeeId = myEmployee.data?.employeeId;
-
-  const absences = useQuery({
-    queryKey: ['my-requests', employeeId],
-    queryFn: () =>
-      api<AbsenceRequestView[]>(`/absence-requests?employeeId=${employeeId}&limit=100`),
-    enabled: Boolean(employeeId),
-  });
 
   const docRequests = useQuery({
     // scope=mine : l'espace personnel reste personnel même pour un membre RH.
@@ -109,20 +76,6 @@ export default function MyDocumentsPage() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Envoi impossible.'),
   });
 
-  if (myEmployee.isLoading) {
-    return (
-      <Page>
-        <Skeleton className="h-[280px] w-full rounded-[16px]" />
-        <Skeleton className="h-36 w-full rounded-[16px]" />
-      </Page>
-    );
-  }
-  if (myEmployee.isError || !myEmployee.data) {
-    return <LoadFailure error={myEmployee.error} onRetry={() => void myEmployee.refetch()} />;
-  }
-
-  const emp = myEmployee.data;
-  const withDocument = (absences.data ?? []).filter((r) => r.documentName);
   const demandes = docRequests.data ?? [];
   const aRetirer = demandes.filter((r) => r.status === 'ready').length;
   // Un document déjà demandé, et encore en cours, ne se redemande pas : le
@@ -254,77 +207,8 @@ export default function MyDocumentsPage() {
               )}
             </CardContent>
           </Card>
-
-          {/* ———— Mon dossier ———— */}
-          <EmployeeDocumentsCard employeeId={emp.employeeId} depot />
-
-          <Card>
-            <CardHeader className="flex items-center justify-between gap-3">
-              <CardTitle>Mes justificatifs d&apos;absence</CardTitle>
-              {withDocument.length > 0 ? (
-                <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-                  {compte(withDocument.length, 'pièce')}
-                </span>
-              ) : null}
-            </CardHeader>
-            <CardContent className="px-2 pb-2">
-              {absences.isLoading ? (
-                <div className="flex flex-col gap-3 px-3 py-1">
-                  {[0, 1].map((i) => (
-                    <Skeleton key={i} className="h-3 w-56" />
-                  ))}
-                </div>
-              ) : withDocument.length === 0 ? (
-                <p className="flex items-start gap-2.5 px-3 py-2.5 text-[12px] leading-snug text-ink-muted">
-                  <Icon name="upload_file" size={17} className="mt-px shrink-0 text-ink-muted/60" />
-                  Aucun justificatif joint.
-                </p>
-              ) : (
-                <ul className="flex flex-col">
-                  {withDocument.map((r) => (
-                    <li
-                      key={r.id}
-                      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover"
-                    >
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-primary/[0.07] text-primary">
-                        <Icon name="description" size={17} />
-                      </span>
-                      <div className="min-w-0 flex-1 basis-48">
-                        <p className="truncate text-[12.5px] font-semibold text-ink-strong">
-                          {r.documentName}
-                        </p>
-                        <p
-                          className="mt-0.5 truncate text-[11.5px] text-ink-muted"
-                          style={TABULAIRE}
-                        >
-                          {r.absenceTypeName} · {formatDate(r.startDate)} → {formatDate(r.endDate)}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="ml-auto shrink-0"
-                        onClick={() =>
-                          setViewedDoc({
-                            url: apiUrl(`/absence-requests/${r.id}/document`),
-                            filename: r.documentName!,
-                            contentType: 'application/pdf',
-                            titre: 'Justificatif',
-                          })
-                        }
-                      >
-                        Aperçu
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
-
-      <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
     </Page>
   );
 }

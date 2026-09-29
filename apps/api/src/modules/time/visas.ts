@@ -233,7 +233,7 @@ export async function annoncerLeVerdict(
     body: `${periode(d)}. ${verdict === 'approved' ? 'Approuvée' : 'Refusée'} par ${par}.${
       commentaire ? ` « ${commentaire} »` : ''
     }`,
-    link: '/moi/conges',
+    link: '/moi/conges/historique',
     dedupeKey: cleVerdict(d.id),
   });
 }
