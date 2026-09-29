@@ -37,7 +37,7 @@ export function ModuleAVenir({
       {/* La carte occupe la page comme les autres — un module à venir n'est
           pas une exception au gabarit — et son contenu se centre dedans
           plutôt que de se tasser en haut d'un fond nu. */}
-      <CartePleine className="justify-center">
+      <CartePleine etiree className="justify-center">
         <CardContent className="mx-auto flex w-full max-w-xl flex-col items-center gap-4 py-10 text-center">
           <span className="grid size-12 place-items-center rounded-full bg-primary-soft text-primary">
             <Icon name={icone} size={26} />

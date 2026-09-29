@@ -450,7 +450,7 @@ export default function MyLeavesPage() {
         {/* ———— Mes demandes ———— */}
         {/* Le suivi ferme la page par le bas et prend ce qui reste : sans
             cela, deux cents pixels de fond nu restaient sous lui. */}
-        <CartePleine className="lg:order-3 lg:col-span-2 lg:self-stretch">
+        <CartePleine className="lg:order-3 lg:col-span-2">
           <CardHeader className="flex shrink-0 items-center justify-between gap-3">
             <CardTitle>Mes demandes</CardTitle>
             {myRequests.length > 0 ? (

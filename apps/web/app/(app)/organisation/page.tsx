@@ -134,7 +134,7 @@ export default function OrganisationPage() {
       {/* Ni titre ni bouton ici : la barre supérieure porte déjà le nom de
           l'écran et son unique geste. Les répéter faisait lire deux fois la
           même chose avant d'atteindre l'organigramme. */}
-      <CartePleine>
+      <CartePleine etiree>
         {units.isLoading ? (
           <CardContent className="min-h-0 flex-1 py-6">
             <Skeleton className="h-full" />

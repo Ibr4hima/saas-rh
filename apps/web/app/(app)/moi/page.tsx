@@ -139,10 +139,10 @@ export default function MySpacePage() {
           Une seule colonne de cartes empilées laissait, sur un écran de
           quatorze cents pixels, quarante pour cent de la page vide sous la
           dernière — et huit cents pixels de large pour une liste de dates. Le
-          suivi des demandes prend les deux tiers et TOUTE la hauteur qui
-          reste ; le guichet des documents, qui n'est qu'un geste, tient dans
-          le tiers restant et garde sa taille. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
+          suivi des demandes prend les deux tiers ; le guichet des documents,
+          qui n'est qu'un geste, tient dans le tiers restant. Chaque carte
+          suit son contenu. */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <CartePleine className="lg:col-span-2">
           <CardHeader className="flex shrink-0 items-center justify-between gap-3">
             <CardTitle>Mes demandes</CardTitle>

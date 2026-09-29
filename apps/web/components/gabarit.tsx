@@ -11,13 +11,12 @@ import { Card, cn } from '@teranga/ui';
    de cent trente pixels d'une page à l'autre, et l'œil le voyait sans pouvoir
    le nommer.
 
-   La même enveloppe partout, donc, et elle occupe la HAUTEUR. Six écrans sur
-   treize étaient vides à plus de la moitié — 82 % sur les offres d'emploi, 68
-   sur les demandes d'absence — parce qu'une carte épouse ses lignes : trois
-   lignes laissaient sept cents pixels de fond nu sous elles. Le vide ne
-   disparaît pas (il n'y a que trois offres) ; il rentre DANS la carte, sous
-   un en-tête qui tient. C'est la différence entre un tableau qui attend ses
-   lignes et un écran qu'on a oublié de finir.
+   La même enveloppe partout, donc. Elle a longtemps occupé aussi toute la
+   HAUTEUR : la carte d'un tableau s'étirait jusqu'en bas de l'écran, et trois
+   lignes y laissaient six cents pixels de blanc. Décision APIX : une carte
+   suit son contenu. Le vide redevient le fond de la page, et un long tableau
+   fait défiler la page comme avant — l'étirement ne l'avait jamais fait
+   défiler dans sa carte.
 
    La carte a longtemps porté un PIED, qui comptait ses lignes. Il est parti
    avec les décomptes : l'onglet les dit déjà, et la pagination du personnel
@@ -62,21 +61,24 @@ export function Page({
 }
 
 /**
- * Une carte qui prend la place qui reste.
+ * La carte d'un tableau, d'une liste : elle suit son contenu.
  *
- * Elle ne grandit pas toute seule : c'est `Page` qui lui donne la hauteur, et
- * `flex-1` qui la lui fait prendre. Son contenu se range en trois étages —
- * en-tête fixe, corps défilant, pied fixe — parce qu'un tableau de deux cents
- * lignes dans une carte étirée doit défiler SOUS ses intitulés de colonne, et
- * non les emporter hors de vue au troisième tour de molette.
+ * Son contenu se range en étages — en-tête, corps, pied. `etiree` la fait
+ * prendre toute la hauteur qui reste, pour les rares écrans qui ne sont pas
+ * des listes : l'organigramme, un plan qu'on parcourt ; un module à venir,
+ * centré dans la page.
  */
 export function CartePleine({
+  etiree,
   className,
   children,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.HTMLAttributes<HTMLDivElement> & { etiree?: boolean }) {
   return (
-    <Card className={cn('flex min-h-0 flex-1 flex-col overflow-hidden', className)} {...props}>
+    <Card
+      className={cn('flex min-h-0 flex-col overflow-hidden', etiree && 'flex-1', className)}
+      {...props}
+    >
       {children}
     </Card>
   );

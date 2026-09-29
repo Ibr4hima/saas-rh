@@ -178,10 +178,7 @@ export default function DocumentRequestsPage() {
   return (
     <Page>
       {message ? <BandeauMessage message={message} /> : null}
-      {/* Deux files, deux poids : ce qui attend un geste prend les deux tiers
-          de la hauteur, l'historique le tiers restant. Chacune défile chez
-          elle, sous ses propres intitulés de colonne. */}
-      <CartePleine className="flex-[2]">
+      <CartePleine>
         <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
           <CardTitle>À traiter</CardTitle>
           <BarreSelection sel={sel} quoi="demande" feminin>
@@ -313,7 +310,7 @@ export default function DocumentRequestsPage() {
       </CartePleine>
 
       {ailleurs.length > 0 ? (
-        <CartePleine className="flex-[1]">
+        <CartePleine>
           <CardHeader className="shrink-0">
             <CardTitle>{dirige ? 'Confiées' : 'Chez un autre membre de la DCH'}</CardTitle>
           </CardHeader>
@@ -352,7 +349,7 @@ export default function DocumentRequestsPage() {
         </CartePleine>
       ) : null}
 
-      <CartePleine className="flex-[1]">
+      <CartePleine>
         <CardHeader className="shrink-0">
           <CardTitle>Traitées</CardTitle>
         </CardHeader>
