@@ -30,6 +30,7 @@ export function EnTete({
   note,
   action,
   reperes,
+  colonnes = 4,
 }: {
   titre: React.ReactNode;
   /** Un signe juste après le titre — l'état vérifié d'un agent. */
@@ -40,6 +41,8 @@ export function EnTete({
   action?: React.ReactNode;
   /** Des `<Repere>`, quatre au plus. */
   reperes?: React.ReactNode;
+  /** Trois repères se partagent la bande en trois, sans colonne vide. */
+  colonnes?: 3 | 4;
 }) {
   return (
     <Card className="mb-4">
@@ -66,7 +69,13 @@ export function EnTete({
           couper en morceaux. */}
       {reperes ? (
         <div className="@container border-t border-line-soft px-5 py-4">
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-5 @[44rem]:grid-cols-4 @[44rem]:gap-x-0 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:border-l @[44rem]:[&>*+*]:border-line-soft @[44rem]:[&>*+*]:pl-5">
+          <dl
+            className={
+              colonnes === 3
+                ? 'grid grid-cols-3 gap-x-0 gap-y-5 [&>*]:pr-4 [&>*+*]:border-l [&>*+*]:border-line-soft [&>*+*]:pl-4 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:pl-5'
+                : 'grid grid-cols-2 gap-x-6 gap-y-5 @[44rem]:grid-cols-4 @[44rem]:gap-x-0 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:border-l @[44rem]:[&>*+*]:border-line-soft @[44rem]:[&>*+*]:pl-5'
+            }
+          >
             {reperes}
           </dl>
         </div>
