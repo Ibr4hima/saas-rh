@@ -23,7 +23,6 @@ import { CalendrierModal } from '../../components/calendrier';
 import {
   EspaceProvider,
   espaceDeLaPage,
-  LIBELLES_ESPACE,
   useEspaceChoisi,
   type Espace,
 } from '../../components/espace';
@@ -1426,12 +1425,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
                 {...(replie ? survolAvecBulle('Déplier le menu', setBulle) : {})}
                 className="ml-[6.5px] grid size-8 shrink-0 place-items-center rounded-[9px] text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
               >
-                <Icon name={replie ? 'left_panel_open' : 'left_panel_close'} size={19} />
+                <Icon name={replie ? 'arrow_menu_open' : 'arrow_menu_close'} size={19} />
               </button>
-              {/* L'espace où l'on est ; l'autre se choisit dans le menu du compte. */}
+              {/* L'espace où l'on est se lit sous le nom, dans le bloc du compte. */}
               {replie ? null : (
                 <p className="min-w-0 truncate text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
-                  {LIBELLES_ESPACE[espace]}
+                  Menu
                 </p>
               )}
             </div>
