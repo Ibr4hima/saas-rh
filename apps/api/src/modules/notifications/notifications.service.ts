@@ -90,8 +90,9 @@ export const espaceDeLaNotificationSql = (
   WHEN ${lien} ~ '^/academy/gerer([/?#]|$)' THEN 'gestion'
   WHEN ${lien} ~ '^/academy([/?#]|$)' THEN 'agent'
   WHEN ${lien} ~ '^/reglementations/([^?#]*/)?deposer([?#]|$)' THEN 'gestion'
+  WHEN ${lien} ~ '^/reglementations([/?#]|$)' THEN 'agent'
   WHEN ${lien} <> ''
-   AND ${lien} !~ '^/(calendrier|organisation|reglementations)([/?#]|$)' THEN 'gestion'
+   AND ${lien} !~ '^/(calendrier|organisation)([/?#]|$)' THEN 'gestion'
   WHEN ${type} IN (${sql.join(
     NOTIFICATIONS_DE_GESTION.map((x) => sql`${x}`),
     sql`, `,

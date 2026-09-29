@@ -190,6 +190,7 @@ describe('la règle SQL dit la même chose que celle des contrats', () => {
     expect(ou('conge_a_viser', '/moi/equipe')).toBe('agent');
     expect(ou('document_reviewed', '/moi/documents')).toBe('agent');
     expect(ou('rappel', '/academy/certificats')).toBe('agent');
+    expect(ou('rappel', '/reglementations/code-du-travail')).toBe('agent');
     // Gestion RH : ce qu'on traite pour les autres.
     expect(ou('conge_a_viser', '/moi/dch')).toBe('gestion');
     expect(ou('demande_a_traiter', '/documents')).toBe('gestion');

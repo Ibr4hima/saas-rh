@@ -18,6 +18,7 @@ import { api, ApiError } from '../../../../../lib/api';
 import { useMe } from '../../../../../lib/hooks';
 import { Icon } from '../../../../../components/icons';
 import { Page } from '../../../../../components/gabarit';
+import { FenetreSuppression } from '../../../../../components/reglages-absences';
 
 /**
  * Déposer un texte de référence.
@@ -50,6 +51,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
   const [brut, setBrut] = useState('');
   const [fichier, setFichier] = useState<File | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [suppression, setSuppression] = useState(false);
   const prerempli = useRef(false);
 
   // Le formulaire se remplit UNE FOIS, à l'arrivée du texte : le refaire à
@@ -135,7 +137,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
       <Page>
         <Card>
           <CardContent className="py-10 text-center text-[13px] text-ink-muted">
-            Seule la Direction du Capital Humain dépose les textes de référence.
+            Seul l’administrateur dépose les textes de référence.
           </CardContent>
         </Card>
       </Page>
@@ -182,7 +184,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
               <span className="text-[12.5px] leading-snug text-ink">
                 Visible par tout le personnel
                 <span className="mt-0.5 block text-[11.5px] text-ink-muted">
-                  Tant que la case est décochée, le texte reste un brouillon que vous seule voyez.
+                  Tant que la case est décochée, le texte reste un brouillon, invisible des agents.
                 </span>
               </span>
             </label>
@@ -233,6 +235,17 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
       ) : null}
 
       <div className="flex items-center justify-end gap-2">
+        {existant.data ? (
+          <Button
+            variant="ghost"
+            className="mr-auto hover:bg-danger-soft hover:text-danger"
+            onClick={() => setSuppression(true)}
+          >
+            <Icon name="delete" size={16} />
+            <span className="sm:hidden">Supprimer</span>
+            <span className="hidden sm:inline">Supprimer le texte</span>
+          </Button>
+        ) : null}
         <Button variant="ghost" onClick={() => router.push(`/reglementations/${slug}`)}>
           Annuler
         </Button>
@@ -247,6 +260,25 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
           Enregistrer
         </Button>
       </div>
+
+      {suppression && existant.data ? (
+        <FenetreSuppression
+          titre="Supprimer le texte"
+          nom={existant.data.title}
+          bouton="Supprimer le texte"
+          chemin={`/reference-texts/${slug}`}
+          onClose={() => setSuppression(false)}
+          onSupprime={() => {
+            // Oublier le texte AVANT de partir : le relire rendrait un 404.
+            queryClient.removeQueries({ queryKey: ['reference-text', slug] });
+            router.push(`/reglementations/${slug}`);
+          }}
+        >
+          <p className="text-[13px] text-ink-muted">
+            Ses articles et son fichier officiel disparaissent de l’espace des agents.
+          </p>
+        </FenetreSuppression>
+      ) : null}
     </Page>
   );
 }

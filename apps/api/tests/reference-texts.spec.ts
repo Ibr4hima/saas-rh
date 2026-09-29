@@ -11,7 +11,11 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SaveReferenceTextInput, SessionUser } from '@teranga/contracts';
+import {
+  CAPACITES_DELEGABLES,
+  type SaveReferenceTextInput,
+  type SessionUser,
+} from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
@@ -23,6 +27,13 @@ const tenantId = randomUUID();
 const userId = randomUUID();
 const rh = { userId, tenantId, role: 'admin' } as SessionUser;
 const employe = { userId, tenantId, role: 'employee' } as SessionUser;
+/** Le directeur du Capital Humain : tout ce qui se délègue. */
+const directeurDCH = {
+  userId,
+  tenantId,
+  role: 'employee',
+  capacites: [...CAPACITES_DELEGABLES],
+} as SessionUser;
 
 let ownerPool: Pool;
 let db: TenantDb;
@@ -152,5 +163,55 @@ describe('enregistrement', () => {
     // Le surlignage voyage en marques convenues, jamais en balises.
     expect(hits[0]!.extract).toContain('[[');
     expect(hits[0]!.extract).not.toContain('<');
+  });
+});
+
+describe('l’administrateur seul', () => {
+  it('ni le directeur du Capital Humain ni une délégation ne déposent', async () => {
+    expect(CAPACITES_DELEGABLES).not.toContain('textes');
+    expect(await codeOf(() => service.save(directeurDCH, 'reglement-interieur', texte(true)))).toBe(
+      'reference.forbidden',
+    );
+  });
+
+  it('le directeur ne voit pas un brouillon : il le lit comme tout agent', async () => {
+    await service.save(rh, 'reglement-interieur', texte(false));
+    expect(await codeOf(() => service.get(directeurDCH, 'reglement-interieur'))).toBe(
+      'reference.not_found',
+    );
+  });
+});
+
+describe('suppression', () => {
+  it('efface le texte, ses chapitres et ses articles : il redevient « pas encore déposé »', async () => {
+    await service.save(rh, 'reglement-interieur', texte(true));
+    await service.remove(rh, 'reglement-interieur');
+    expect(await codeOf(() => service.get(employe, 'reglement-interieur'))).toBe(
+      'reference.not_found',
+    );
+    const { rows } = await raw(
+      `SELECT (SELECT count(*) FROM reference_chapters WHERE tenant_id = $1)::int AS chapitres,
+              (SELECT count(*) FROM reference_articles WHERE tenant_id = $1)::int AS articles`,
+      [tenantId],
+    );
+    expect(rows[0]).toEqual({ chapitres: 0, articles: 0 });
+    // Il se redépose comme au premier jour.
+    await service.save(rh, 'reglement-interieur', texte(true));
+    expect((await service.get(employe, 'reglement-interieur')).chapters).toHaveLength(1);
+  });
+
+  it('refuse qui n’est pas administrateur', async () => {
+    await service.save(rh, 'reglement-interieur', texte(true));
+    expect(await codeOf(() => service.remove(directeurDCH, 'reglement-interieur'))).toBe(
+      'reference.forbidden',
+    );
+    expect(await codeOf(() => service.remove(employe, 'reglement-interieur'))).toBe(
+      'reference.forbidden',
+    );
+    expect((await service.get(employe, 'reglement-interieur')).published).toBe(true);
+  });
+
+  it('un texte jamais déposé : introuvable', async () => {
+    expect(await codeOf(() => service.remove(rh, 'code-du-travail'))).toBe('reference.not_found');
   });
 });

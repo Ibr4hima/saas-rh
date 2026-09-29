@@ -39,7 +39,7 @@ export class ReferenceTextsService {
     return { tenantId: user.tenantId, userId: user.userId };
   }
 
-  /** Qui dépose et rédige : la DCH (ou qui elle habilite), et l'administration. */
+  /** Qui dépose, modifie et supprime : l'administrateur seul (décision APIX). */
   private redige(user: SessionUser): boolean {
     return peut(user, 'textes');
   }
@@ -258,7 +258,7 @@ export class ReferenceTextsService {
    */
   async save(user: SessionUser, slug: string, input: SaveReferenceTextInput): Promise<void> {
     if (!this.redige(user)) {
-      problem(403, 'reference.forbidden', 'Seule la RH dépose les textes de référence');
+      problem(403, 'reference.forbidden', 'Seul l’administrateur dépose les textes de référence');
     }
     if (!/^[a-z0-9-]{3,60}$/.test(slug)) {
       problem(422, 'reference.bad_slug', 'Identifiant de texte invalide');
@@ -445,7 +445,7 @@ export class ReferenceTextsService {
     data: Buffer,
   ): Promise<{ size: number }> {
     if (!this.redige(user)) {
-      problem(403, 'reference.forbidden', 'Seule la RH dépose les textes de référence');
+      problem(403, 'reference.forbidden', 'Seul l’administrateur dépose les textes de référence');
     }
     if (data.length === 0 || data.length > MAX_REFERENCE_PDF_BYTES) {
       problem(422, 'reference.too_large', 'Le fichier doit faire 80 Mo maximum');
@@ -469,6 +469,25 @@ export class ReferenceTextsService {
         problem(404, 'reference.not_found', 'Ce texte n’existe pas encore');
       }
       return { size: data.length };
+    });
+  }
+
+  /**
+   * Supprimer un texte : l'en-tête, ses chapitres, sections et articles (en
+   * cascade), et son fichier officiel. Il redevient « pas encore déposé ».
+   */
+  async remove(user: SessionUser, slug: string): Promise<void> {
+    if (!this.redige(user)) {
+      problem(403, 'reference.forbidden', 'Seul l’administrateur supprime les textes de référence');
+    }
+    await this.db.withTenant(this.ctx(user), async (tx) => {
+      const res = await tx
+        .delete(t.referenceTexts)
+        .where(eq(t.referenceTexts.slug, slug))
+        .returning({ id: t.referenceTexts.id });
+      if (res.length === 0) {
+        problem(404, 'reference.not_found', 'Ce texte n’existe pas encore');
+      }
     });
   }
 }

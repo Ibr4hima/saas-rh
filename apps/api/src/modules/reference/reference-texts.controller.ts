@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Inject,
   Param,
   Post,
@@ -106,5 +108,13 @@ export class ReferenceTextsController {
       problem(415, 'reference.bad_body', 'Le fichier doit être envoyé en application/pdf');
     }
     return this.textes.uploadPdf(req.sessionUser, slug, query.filename, octets);
+  }
+
+  /** Supprimer le texte et son fichier : il redevient « pas encore déposé ». */
+  @Delete(':slug')
+  @Peut('textes')
+  @HttpCode(204)
+  async remove(@Req() req: AuthenticatedRequest, @Param('slug') slug: string) {
+    await this.textes.remove(req.sessionUser, slug);
   }
 }

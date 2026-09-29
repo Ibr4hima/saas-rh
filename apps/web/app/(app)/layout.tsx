@@ -548,6 +548,11 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
           items.push({ ...i, href: '/academy/gerer' });
         }
         break;
+      case '/reglementations':
+        // Les textes se lisent dans « Mon espace » ; ici, l'administrateur
+        // les dépose.
+        if (peut(user, 'textes')) items.push(i);
+        break;
       default:
         items.push(i);
     }

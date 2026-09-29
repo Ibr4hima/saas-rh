@@ -102,7 +102,7 @@ export function LecteurReference({ slug }: { slug: string }) {
           description={
             peutDeposer
               ? 'Collez le texte en vigueur et joignez son fichier officiel : chacun pourra ensuite le consulter depuis son espace.'
-              : 'La Direction du Capital Humain dépose ici le texte en vigueur et son fichier officiel.'
+              : undefined
           }
           action={
             peutDeposer ? (

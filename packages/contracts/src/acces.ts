@@ -8,7 +8,7 @@ import type { RequestableDoc } from './document-requests';
  * qu'on peut faire de plus s'acquiert par sa place dans l'organigramme :
  *
  *   — tout agent a son espace (congés, documents, informations, Academy,
- *     organigramme, textes) ;
+ *     organigramme, textes — qu'il lit) ;
  *   — un N+1 vise les congés de son équipe et suit sa formation ;
  *   — le DIRECTEUR DU CAPITAL HUMAIN (le responsable de la direction du
  *     personnel) a TOUTES les habilitations ci-dessous. Il les délègue,
@@ -76,9 +76,14 @@ export const estCapaciteDemande = (c: string): c is CapaciteDemande =>
  * Réservées à l'administrateur : ni la direction de la DCH ni une délégation
  * ne les donnent. Le catalogue de l'APIX Academy en est : qui le gère voit
  * les questions des évaluations — confié à un agent, il le priverait de ses
- * propres certificats.
+ * propres certificats. Les textes de référence aussi (décision APIX) : un
+ * seul dépositaire, l'administrateur, qui les dépose, les modifie et les
+ * supprime ; les agents les lisent dans leur espace.
  */
-export const CAPACITES_ADMINISTRATEUR = ['academy'] as const satisfies readonly Capacite[];
+export const CAPACITES_ADMINISTRATEUR = [
+  'academy',
+  'textes',
+] as const satisfies readonly Capacite[];
 
 /** Ce qu'a qui dirige la DCH, et ce qu'il peut confier : tout, sauf ce qui est à l'administrateur. */
 export const CAPACITES_DELEGABLES: readonly Capacite[] = CAPACITES.filter(
@@ -216,7 +221,7 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   textes: {
     libelle: 'Textes de référence',
-    description: 'Déposer le Code du travail et le règlement intérieur.',
+    description: 'Déposer, modifier et supprimer le Code du travail et le règlement intérieur.',
     groupe: 'Organisation',
   },
   pilotage: {
@@ -328,7 +333,7 @@ export type Espace = 'agent' | 'gestion';
 
 /**
  * L'espace auquel une page appartient — `null` : elle est des deux (le
- * calendrier, l'organigramme, les textes).
+ * calendrier, l'organigramme).
  *
  * Une notification appartient à l'espace de la page où elle mène : c'est ainsi
  * que chaque espace a sa boîte (`espaceDeLaNotification`).
@@ -343,7 +348,8 @@ export function espaceDuChemin(chemin: string): Espace | null {
   // Apprendre, ses certificats : Mon espace seulement (décision APIX).
   if (sous('/academy')) return 'agent';
   if (sous('/calendrier') || sous('/organisation')) return null;
-  if (sous('/reglementations')) return path.endsWith('/deposer') ? 'gestion' : null;
+  // Les textes se lisent dans Mon espace ; seul l'administrateur les dépose.
+  if (sous('/reglementations')) return path.endsWith('/deposer') ? 'gestion' : 'agent';
   return 'gestion';
 }
 
