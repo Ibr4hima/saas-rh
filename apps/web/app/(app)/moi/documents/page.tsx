@@ -1,32 +1,21 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useState } from 'react';
 import type { DocumentRequestView, RequestableDoc } from '@teranga/contracts';
 import { documentsEnCours, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  cn,
-  EmptyState,
-  Field,
-  Input,
-  Skeleton,
-} from '@teranga/ui';
+import { Button, Card, CardContent, CardHeader, CardTitle, cn, Field, Input } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
-import { DocumentRequestRow } from '../../../../components/document-request-list';
 import { Icon } from '../../../../components/icons';
 import { Page } from '../../../../components/gabarit';
 import { compte } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    « Demander un document » — ce que l'agent DEMANDE à la Direction du
-   Capital Humain (attestation, contrat, bulletin) : il coche, envoie, suit
-   l'avancement. Ce qu'il lui FOURNIT a sa propre page, « Joindre un
-   justificatif ».
+   Capital Humain (attestation, contrat, bulletin) : il coche, il envoie.
+   L'avancement se suit dans « Suivi de mes demandes » ; ce qu'il FOURNIT a
+   sa page, « Joindre un justificatif ».
    ———————————————————————————————————————————————————————————————— */
 
 const REQUESTABLE: RequestableDoc[] = [
@@ -37,8 +26,6 @@ const REQUESTABLE: RequestableDoc[] = [
   'certificat_travail',
   'autre',
 ];
-
-const TABULAIRE = { fontVariantNumeric: 'tabular-nums' } as const;
 
 /** « a, b et c » — la virgule pour la liste, « et » pour le dernier. */
 function enumerer(mots: string[]): string {
@@ -77,7 +64,6 @@ export default function MyDocumentsPage() {
   });
 
   const demandes = docRequests.data ?? [];
-  const aRetirer = demandes.filter((r) => r.status === 'ready').length;
   // Un document déjà demandé, et encore en cours, ne se redemande pas : le
   // serveur le refuse, la pastille le dit avant — l'agent ne compose pas
   // une demande pour se la voir rejeter à l'envoi.
@@ -90,125 +76,76 @@ export default function MyDocumentsPage() {
 
   return (
     <Page>
-      {/* Deux colonnes, parce que la page en avait la place et ne s'en
-          servait pas : une seule pile de cartes dans huit cent quatre-vingts
-          pixels laissait un tiers de l'écran vide à droite et allongeait la
-          page de six cents pixels à défiler. */}
-      <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        {/* La colonne principale */}
-        <div className="flex min-w-0 flex-col gap-4">
-          {/* ———— Demander ———— */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Demander un document</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <div className="flex flex-wrap gap-2">
-                {REQUESTABLE.map((doc) => (
-                  <ChoixDocument
-                    key={doc}
-                    libelle={REQUESTABLE_DOC_LABELS[doc]}
-                    choisi={selected.includes(doc)}
-                    enCours={enCours.has(doc)}
-                    onToggle={() => toggle(doc)}
-                  />
-                ))}
-              </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Demander un document</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap gap-2">
+            {REQUESTABLE.map((doc) => (
+              <ChoixDocument
+                key={doc}
+                libelle={REQUESTABLE_DOC_LABELS[doc]}
+                choisi={selected.includes(doc)}
+                enCours={enCours.has(doc)}
+                onToggle={() => toggle(doc)}
+              />
+            ))}
+          </div>
 
-              <Field label="Précision" htmlFor="doc-note">
-                <Input id="doc-note" value={note} onChange={(e) => setNote(e.target.value)} />
-              </Field>
+          <Field label="Précision" htmlFor="doc-note">
+            <Input id="doc-note" value={note} onChange={(e) => setNote(e.target.value)} />
+          </Field>
 
-              {/* ———— Ce qui part, en toutes lettres ————
-                Deux pastilles cochées se lisent d'un coup d'œil ; à quatre,
-                relire la ligne est plus sûr que recompter les bordures bleues.
-                Rien de coché, rien à dire : le bouton reste grisé. */}
-              {selected.length > 0 ? (
-                <div className="-mx-5 border-t border-line-soft px-5 pt-4 pb-1">
-                  <p className="text-[12.5px] leading-snug text-ink">
-                    <span className="font-semibold text-ink-strong">
-                      Vous demandez {compte(selected.length, 'document')}
-                    </span>{' '}
-                    {/* Les libellés gardent leur majuscule : « et autre document »
-                      en bas de casse se lit comme une phrase inachevée, alors
-                      que « et Autre document » se lit comme l'entrée cochée. */}
-                    — {enumerer(selected.map((d) => REQUESTABLE_DOC_LABELS[d]))}.
-                  </p>
-                </div>
-              ) : null}
+          {/* ———— Ce qui part, en toutes lettres ————
+              Deux pastilles cochées se lisent d'un coup d'œil ; à quatre,
+              relire la ligne est plus sûr que recompter les bordures bleues. */}
+          {selected.length > 0 ? (
+            <p className="text-[12.5px] leading-snug text-ink">
+              <span className="font-semibold text-ink-strong">
+                Vous demandez {compte(selected.length, 'document')}
+              </span>{' '}
+              {/* Les libellés gardent leur majuscule : « et autre document »
+                  en bas de casse se lit comme une phrase inachevée, alors
+                  que « et Autre document » se lit comme l'entrée cochée. */}
+              — {enumerer(selected.map((d) => REQUESTABLE_DOC_LABELS[d]))}.
+            </p>
+          ) : null}
+        </CardContent>
 
-              {error ? (
-                <p className="flex items-start gap-2 rounded-[12px] bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger ring-1 ring-current/15 ring-inset">
-                  <Icon name="error" size={15} className="mt-px shrink-0" />
-                  {error}
-                </p>
-              ) : null}
-              {sent ? (
-                <p className="flex items-start gap-2 rounded-[12px] bg-success-soft px-3.5 py-2.5 text-[12.5px] text-success ring-1 ring-current/15 ring-inset">
-                  <Icon name="check_circle" size={15} className="mt-px shrink-0" />
-                  {sent > 1
-                    ? `${sent} demandes envoyées — une par document, chacune à qui la traite à la Direction du Capital Humain. Leur avancement se suit juste en dessous.`
-                    : 'Demande envoyée — la Direction du Capital Humain a été prévenue. Son avancement se suit juste en dessous.'}
-                </p>
-              ) : null}
-
-              <Button
-                disabled={selected.length === 0}
-                loading={submit.isPending}
-                onClick={() => submit.mutate()}
-              >
-                Envoyer ma demande
-              </Button>
-            </CardContent>
-          </Card>
+        {/* ———— L'envoi ———— */}
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line-soft px-5 py-4">
+          {error ? (
+            <p
+              role="alert"
+              className="flex min-w-0 flex-1 basis-60 items-start gap-2 text-[12.5px] font-semibold text-danger"
+            >
+              <Icon name="error" size={15} className="mt-px shrink-0" />
+              {error}
+            </p>
+          ) : sent ? (
+            <p
+              role="status"
+              className="flex min-w-0 flex-1 basis-60 items-start gap-2 text-[12.5px] font-semibold text-success"
+            >
+              <Icon name="check_circle" size={15} className="mt-px shrink-0" />
+              <span>
+                {sent > 1 ? `${sent} demandes envoyées.` : 'Demande envoyée.'}{' '}
+                <Link href="/moi/documents/suivi" className="underline">
+                  Suivre mes demandes
+                </Link>
+              </span>
+            </p>
+          ) : null}
+          <Button
+            disabled={selected.length === 0}
+            loading={submit.isPending}
+            onClick={() => submit.mutate()}
+          >
+            Envoyer ma demande
+          </Button>
         </div>
-
-        {/* La colonne d'à côté */}
-        <div className="flex min-w-0 flex-col gap-4">
-          {/* ———— Suivre ———— */}
-          <Card>
-            <CardHeader className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-              <CardTitle>Suivi de mes demandes</CardTitle>
-              <div className="flex shrink-0 items-center gap-2.5">
-                {/* La seule ligne de cette carte qui appelle un geste : aller
-                  chercher le document. Elle se dit dans le titre. */}
-                {aRetirer > 0 ? (
-                  <span className="rounded-full bg-primary/[0.09] px-2 py-px text-[10.5px] font-bold text-primary">
-                    {aRetirer} à retirer
-                  </span>
-                ) : null}
-                {demandes.length > 0 ? (
-                  <span className="text-[11.5px] text-ink-muted" style={TABULAIRE}>
-                    {compte(demandes.length, 'demande')}
-                  </span>
-                ) : null}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {docRequests.isLoading ? (
-                <div className="flex flex-col gap-3 py-1">
-                  {[0, 1].map((i) => (
-                    <Skeleton key={i} className="h-3 w-56" />
-                  ))}
-                </div>
-              ) : demandes.length === 0 ? (
-                <EmptyState
-                  className="py-7"
-                  icon={<Icon name="folder_managed" size={22} />}
-                  title="Aucune demande pour le moment"
-                  description="Cochez ce dont vous avez besoin ci-dessus : l’avancement s’affichera ici, jusqu’au lieu de retrait."
-                />
-              ) : (
-                <ul className="flex flex-col">
-                  {demandes.map((r) => (
-                    <DocumentRequestRow key={r.id} request={r} showEmployee={false} />
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      </Card>
     </Page>
   );
 }

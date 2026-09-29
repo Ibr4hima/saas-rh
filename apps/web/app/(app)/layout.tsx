@@ -192,7 +192,7 @@ const NAV_ITEMS: NavItem[] = [
     // des absences, qui vit dans la fenêtre du bandeau ; la page, elle, ne
     // porte que les fériés de l'année. La barre d'onglets du téléphone garde
     // le mot court : sur cinquante-six pixels, rien d'autre ne tient.
-    label: 'Calendrier des jours fériés',
+    label: 'Calendrier · Jours fériés',
     short: 'Calendrier',
     icon: 'calendar_month',
     groupe: 'cadre',
@@ -228,7 +228,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/demandes/informations': 'Informations à traiter',
   '/demandes/pieces': 'Pièces à vérifier',
   '/moi/delegations': 'Déléguer des tâches',
-  '/calendrier': 'Calendrier des jours fériés',
+  '/calendrier': 'Calendrier · Jours fériés',
   '/recrutement': "Offres d'emploi",
   '/recrutement/candidatures': 'Dossiers de candidature',
   '/recrutement/nouvelle': 'Nouvelle offre',
@@ -248,6 +248,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/moi/objectifs-apix': 'Objectifs de l’APIX',
   '/moi/dch': 'Congés à traiter',
   '/moi/documents': 'Demander un document',
+  '/moi/documents/suivi': 'Suivi de mes demandes',
   '/moi/documents/justificatifs': 'Joindre un justificatif',
 };
 
@@ -604,6 +605,27 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
       icon: 'badge',
       groupe: 'pilotage',
     },
+    // Ce que chacun doit atteindre cette année : ceux de l'APIX, de sa
+    // direction, les siens. Le DG, lui, les fixe.
+    ...(estDG
+      ? [
+          {
+            href: '/moi/objectifs-apix',
+            label: 'Objectifs de l’APIX',
+            short: 'Objectifs',
+            icon: 'trending_up' as const,
+            groupe: 'pilotage' as const,
+          },
+        ]
+      : [
+          {
+            href: '/moi/objectifs',
+            label: 'Mes objectifs',
+            short: 'Objectifs',
+            icon: 'flag' as const,
+            groupe: 'pilotage' as const,
+          },
+        ]),
     {
       href: '/moi/conges',
       label: 'Absences & Congés',
@@ -625,30 +647,10 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
       groupe: 'quotidien',
       children: [
         { href: '/moi/documents', label: 'Demander un document' },
+        { href: '/moi/documents/suivi', label: 'Suivi de mes demandes' },
         { href: '/moi/documents/justificatifs', label: 'Joindre un justificatif' },
       ],
     },
-    // Ce que chacun doit atteindre cette année : ceux de l'APIX, de sa
-    // direction, les siens. Le DG, lui, les fixe.
-    ...(estDG
-      ? [
-          {
-            href: '/moi/objectifs-apix',
-            label: 'Objectifs de l’APIX',
-            short: 'Objectifs',
-            icon: 'trending_up' as const,
-            groupe: 'croissance' as const,
-          },
-        ]
-      : [
-          {
-            href: '/moi/objectifs',
-            label: 'Mes objectifs',
-            short: 'Objectifs',
-            icon: 'flag' as const,
-            groupe: 'croissance' as const,
-          },
-        ]),
     // Le seul endroit où un agent décide pour un autre : son équipe — les
     // demandes qu'il vise en premier, les objectifs de ses directs. Le DG ne
     // garde que les demandes à viser : il fixe les objectifs de ses
@@ -701,7 +703,7 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
     },
     {
       href: '/calendrier',
-      label: 'Calendrier des jours fériés',
+      label: 'Calendrier · Jours fériés',
       short: 'Calendrier',
       icon: 'calendar_month',
       groupe: 'cadre',

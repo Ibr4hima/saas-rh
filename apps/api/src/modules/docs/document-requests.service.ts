@@ -519,7 +519,7 @@ export class DocumentRequestsService {
       type: `document_request_${e.status}`,
       title: draft.title,
       body: draft.body,
-      link: '/moi/documents',
+      link: '/moi/documents/suivi',
     });
   }
 

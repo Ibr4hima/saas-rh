@@ -104,11 +104,12 @@ export default function HistoriqueCongesPage() {
               {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
               <THead className="hidden sm:table-header-group">
                 <tr>
-                  <Th className="sm:w-[30%]">Type</Th>
-                  <Th className="sm:w-[32%]">Période</Th>
-                  <Th className="text-right sm:w-[12%]">Durée</Th>
-                  <Th className="sm:w-[14%]">Statut</Th>
-                  <Th className="sm:w-[12%]">
+                  <Th className="sm:w-[24%]">Type</Th>
+                  <Th className="sm:w-[28%]">Période</Th>
+                  <Th className="text-right sm:w-[10%]">Durée</Th>
+                  <Th className="sm:w-[15%]">Justificatif</Th>
+                  <Th className="sm:w-[13%]">Statut</Th>
+                  <Th className="sm:w-[10%]">
                     <span className="sr-only">Actions</span>
                   </Th>
                 </tr>
@@ -144,8 +145,9 @@ export default function HistoriqueCongesPage() {
 }
 
 /**
- * Une demande, sur une ligne. Sur téléphone, la période, la durée, le statut
- * et les gestes se rangent sous le type : cinq colonnes n'y tiennent pas.
+ * Une demande, sur une ligne. Sur téléphone, la période, la durée, le statut,
+ * le justificatif et l'annulation se rangent sous le type : six colonnes n'y
+ * tiennent pas.
  */
 function Ligne({
   demande: r,
@@ -160,14 +162,23 @@ function Ligne({
 }) {
   const periode = `${formatDate(r.startDate)} → ${formatDate(r.endDate)}`;
   const statut = <StatutAbsence statut={r.status} titre={resumeVisas(r)} />;
-  const gestes = (
-    <Gestes
-      demande={r}
-      onJustificatif={onJustificatif}
-      onAnnuler={onAnnuler}
-      annulationEnCours={annulationEnCours}
-    />
-  );
+  const justificatif = r.documentName ? (
+    <button
+      type="button"
+      onClick={onJustificatif}
+      title={r.documentName}
+      className="inline-flex items-center gap-1.5 rounded-full font-semibold text-primary transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+    >
+      <Icon name="description" size={16} />
+      Voir
+    </button>
+  ) : null;
+  const annuler =
+    r.status === 'pending' ? (
+      <Button size="sm" variant="ghost" onClick={onAnnuler} loading={annulationEnCours}>
+        Annuler
+      </Button>
+    ) : null;
   return (
     <Tr>
       <Td>
@@ -177,52 +188,21 @@ function Ligne({
         <p className="mt-0.5 text-[11.5px] text-ink-muted tabular-nums sm:hidden">
           {periode} · {compte(r.daysCount, 'jour')}
         </p>
-        <div className="mt-2.5 flex items-center justify-between gap-2 sm:hidden">
+        <div className="mt-2.5 flex items-center gap-3 sm:hidden">
           {statut}
-          {gestes}
+          {justificatif}
+          <span className="ml-auto">{annuler}</span>
         </div>
       </Td>
       <Td className="hidden tabular-nums sm:table-cell">{periode}</Td>
       <Td className="hidden text-right whitespace-nowrap tabular-nums sm:table-cell">
         {compte(r.daysCount, 'jour')}
       </Td>
+      <Td className="hidden sm:table-cell">
+        {justificatif ?? <span className="text-ink-muted/45">—</span>}
+      </Td>
       <Td className="hidden sm:table-cell">{statut}</Td>
-      <Td className="hidden sm:table-cell">{gestes}</Td>
+      <Td className="hidden text-right sm:table-cell">{annuler}</Td>
     </Tr>
-  );
-}
-
-/** Le justificatif, et l'annulation tant que la demande attend. */
-function Gestes({
-  demande: r,
-  onJustificatif,
-  onAnnuler,
-  annulationEnCours,
-}: {
-  demande: AbsenceRequestView;
-  onJustificatif: () => void;
-  onAnnuler: () => void;
-  annulationEnCours: boolean;
-}) {
-  if (!r.documentName && r.status !== 'pending') return null;
-  return (
-    <div className="flex items-center justify-end gap-1">
-      {r.documentName ? (
-        <button
-          type="button"
-          onClick={onJustificatif}
-          aria-label="Voir le justificatif"
-          title="Voir le justificatif"
-          className="flex size-8 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-primary-soft hover:text-primary"
-        >
-          <Icon name="description" size={17} />
-        </button>
-      ) : null}
-      {r.status === 'pending' ? (
-        <Button size="sm" variant="ghost" onClick={onAnnuler} loading={annulationEnCours}>
-          Annuler
-        </Button>
-      ) : null}
-    </div>
   );
 }
