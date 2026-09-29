@@ -31,11 +31,15 @@ export interface OptionResponsable {
  *   restreint rien.
  * @param exclure L'agent lui-même : on ne relève pas de soi.
  * @param directeur L'agent dirige une direction : il ne relève que du DG.
+ * @param actif Faux quand aucun choix n'est à faire (fiche en lecture) : la
+ *   liste du personnel n'est alors pas demandée — l'agent sur sa propre
+ *   fiche n'y a pas accès.
  */
 export function useResponsablesPossibles(
   unite: string | null,
   exclure?: string,
   directeur = false,
+  actif = true,
 ): { options: OptionResponsable[]; chargement: boolean } {
   const agents = useQuery({
     queryKey: ['employees', 'responsables', unite],
@@ -43,7 +47,7 @@ export function useResponsablesPossibles(
       api<EmployeeListPage>(
         `/employees?status=active&limit=100${unite ? `&unit=${encodeURIComponent(unite)}` : ''}`,
       ),
-    enabled: !directeur,
+    enabled: actif && !directeur,
   });
   // L'organigramme sert à deux choses ici. Le directeur général, d'abord :
   // c'est le responsable du SOMMET, que le serveur désigne. Il n'appartient à
@@ -54,6 +58,7 @@ export function useResponsablesPossibles(
   const unites = useQuery({
     queryKey: ['org-units'],
     queryFn: () => api<OrgUnitView[]>('/org-units'),
+    enabled: actif,
   });
 
   const sommet = (unites.data ?? []).find((u) => u.sommet);

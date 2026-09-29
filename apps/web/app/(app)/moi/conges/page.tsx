@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type {
   AbsencePreview,
@@ -233,16 +232,6 @@ export default function MyLeavesPage() {
 
   return (
     <Page>
-      <div className="shrink-0">
-        <Link
-          href="/moi"
-          className="inline-flex items-center gap-1 text-[12.5px] text-ink-muted transition-colors hover:text-ink"
-        >
-          <Icon name="chevron_left" size={15} />
-          Mon espace
-        </Link>
-      </div>
-
       {/* `minmax(0,1fr)` dès la première colonne, et pas seulement en grand
           écran : sans plancher à zéro, la piste se dimensionne sur le
           min-content de la plus longue ligne de « Mes demandes » — qui est en

@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import { useState } from 'react';
 import type {
   AbsenceRequestView,
@@ -138,16 +137,6 @@ export default function MyDocumentsPage() {
 
   return (
     <Page>
-      <div className="shrink-0">
-        <Link
-          href="/moi"
-          className="inline-flex items-center gap-1 text-[12.5px] text-ink-muted transition-colors hover:text-ink"
-        >
-          <Icon name="chevron_left" size={15} />
-          Mon espace
-        </Link>
-      </div>
-
       {/* Deux colonnes, parce que la page en avait la place et ne s'en
           servait pas : une seule pile de cartes dans huit cent quatre-vingts
           pixels laissait un tiers de l'écran vide à droite et allongeait la

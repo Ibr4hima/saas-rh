@@ -265,7 +265,7 @@ export async function pasSurSoi(
     403,
     'acces.son_propre_dossier',
     `Vous ne pouvez pas ${geste} vous-même`,
-    'Ce qui vous concerne passe par une demande, comme pour tout agent : un autre membre de la DCH — ou l’administrateur — s’en charge. Un changement d’informations se signale depuis « Mes informations ».',
+    'Ce qui vous concerne passe par une demande, comme pour tout agent : un autre membre de la DCH — ou l’administrateur — s’en charge. Un changement d’informations se signale depuis « Mes infos personnelles ».',
   );
 }
 

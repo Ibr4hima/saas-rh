@@ -239,7 +239,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/organisation': 'Organigramme',
   '/reglementations/code-du-travail': 'Code du travail',
   '/reglementations/reglement-interieur': 'Règlement intérieur',
-  '/moi': 'Mon espace',
   '/moi/conges': 'Absences & Congés',
   '/moi/equipe': 'Demandes à viser',
   '/moi/equipe/suivi': 'Suivi & Évaluation',
@@ -247,7 +246,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/moi/objectifs-apix': 'Objectifs de l’APIX',
   '/moi/dch': 'Congés à traiter',
   '/moi/documents': 'Demander un document',
-  '/moi/informations': 'Mes informations',
 };
 
 function greeting(): string {
@@ -258,7 +256,9 @@ function greeting(): string {
 }
 
 function pageTitle(pathname: string, givenName: string): string {
-  if (pathname === '/dashboard') return `${greeting()}, ${givenName}`;
+  // Les deux accueils — le tableau de bord, et « Mes infos personnelles » —
+  // saluent : c'est là qu'on arrive.
+  if (pathname === '/dashboard' || pathname === '/moi') return `${greeting()}, ${givenName}`;
   const exact = PAGE_TITLES[pathname];
   if (exact) return exact;
   // Une fiche garde le titre de sa SECTION : le dossier nomme déjà la personne
@@ -594,7 +594,13 @@ function accueilDeLaGestion(user: SessionUser, items: NavItem[]): string {
  */
 function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
   return [
-    { href: '/moi', label: 'Mon espace', short: 'Espace', icon: 'dashboard', groupe: 'pilotage' },
+    {
+      href: '/moi',
+      label: 'Mes infos personnelles',
+      short: 'Mes infos',
+      icon: 'badge',
+      groupe: 'pilotage',
+    },
     {
       href: '/calendrier',
       label: 'Calendrier · Fériés',
@@ -614,13 +620,6 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
       label: 'Demander un document',
       short: 'Documents',
       icon: 'folder_managed',
-      groupe: 'quotidien',
-    },
-    {
-      href: '/moi/informations',
-      label: 'Mes informations',
-      short: 'Infos',
-      icon: 'badge',
       groupe: 'quotidien',
     },
     // Ce que chacun doit atteindre cette année : ceux de l'APIX, de sa

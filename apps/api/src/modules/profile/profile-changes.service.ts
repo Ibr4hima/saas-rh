@@ -305,7 +305,7 @@ export class ProfileChangesService {
         type: `profile_change_${input.decision}`,
         title: draft.title,
         body: draft.body,
-        link: '/moi/informations',
+        link: '/moi',
       });
     });
   }
