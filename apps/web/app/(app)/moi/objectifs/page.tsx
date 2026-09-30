@@ -3,10 +3,10 @@
 import dynamic from 'next/dynamic';
 import { Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { titreDuSemestre, type MesObjectifs, type ObjectifView } from '@teranga/contracts';
+import type { MesObjectifs, ObjectifView } from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../lib/api';
-import { parAnnee, SeparateurAnnee, TitreFiche } from '../../../../components/fiches-semestres';
+import { FicheSemestre, parAnnee, SeparateurAnnee } from '../../../../components/fiches-semestres';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { CLE_OBJECTIFS, LigneObjectif } from '../../../../components/objectifs';
@@ -65,29 +65,27 @@ export default function MesObjectifsPage() {
         <Fragment key={groupe.annee}>
           <SeparateurAnnee annee={groupe.annee} />
           {groupe.fiches.map((f) => (
-            <div key={`${f.annee}-${f.semestre}`} className="flex flex-col gap-2.5">
-              <TitreFiche
-                note={
-                  <>
-                    {f.auteur ? `${f.auteur} · ` : ''}mis à jour le{' '}
-                    {new Date(f.majLe).toLocaleDateString('fr-FR', {
-                      day: 'numeric',
-                      month: 'long',
-                    })}
-                  </>
-                }
-              >
-                {titreDuSemestre(f.semestre, f.annee)}
-              </TitreFiche>
-              <Card className="overflow-visible">
-                <EditeurFicheObjectifs
-                  className="py-3.5"
-                  contenu={f.contenu}
-                  modifiable={false}
-                  formations={formations}
-                />
-              </Card>
-            </div>
+            <FicheSemestre
+              key={`${f.annee}-${f.semestre}`}
+              annee={f.annee}
+              semestre={f.semestre}
+              note={
+                <>
+                  {f.auteur ? `${f.auteur} · ` : ''}mis à jour le{' '}
+                  {new Date(f.majLe).toLocaleDateString('fr-FR', {
+                    day: 'numeric',
+                    month: 'long',
+                  })}
+                </>
+              }
+            >
+              <EditeurFicheObjectifs
+                className="pt-2.5 pb-3.5"
+                contenu={f.contenu}
+                modifiable={false}
+                formations={formations}
+              />
+            </FicheSemestre>
           ))}
           {groupe.annee === annee ? (
             <>

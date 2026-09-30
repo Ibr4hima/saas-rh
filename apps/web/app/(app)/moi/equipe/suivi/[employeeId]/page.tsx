@@ -4,7 +4,6 @@ import dynamic from 'next/dynamic';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  titreDuSemestre,
   type FicheSuivi,
   type FormationDeLaFiche,
   type FormationProposable,
@@ -17,9 +16,9 @@ import { EnTete, Repere } from '../../../../../../components/fiche';
 import {
   ChoixSemestre,
   cleDe,
+  FicheSemestre,
   parAnnee,
   SeparateurAnnee,
-  TitreFiche,
 } from '../../../../../../components/fiches-semestres';
 import { Page } from '../../../../../../components/gabarit';
 import { Telephone } from '../../../../../../components/telephone';
@@ -188,23 +187,25 @@ function FichesDuMembre({
   }, [focus]);
 
   return parAnnee(cartes, annee).map((groupe) => (
-    <section key={groupe.annee} className="flex flex-col gap-5">
+    <section key={groupe.annee} className="flex flex-col gap-6">
       <SeparateurAnnee annee={groupe.annee}>
         {groupe.annee === annee ? <ChoixSemestre fixes={fixes} onChoisir={choisir} /> : null}
       </SeparateurAnnee>
       {groupe.fiches.map((c) => (
-        <div key={cleDe(c)} id={`fiche-${cleDe(c)}`} className="flex scroll-mt-24 flex-col gap-2.5">
-          <TitreFiche>{titreDuSemestre(c.semestre, c.annee)}</TitreFiche>
-          <Card className="overflow-visible">
-            <ZoneFiche
-              employeeId={employeeId}
-              carte={c}
-              formations={formations}
-              catalogue={catalogue}
-              signal={focus.cle === cleDe(c) ? focus.n : 0}
-            />
-          </Card>
-        </div>
+        <FicheSemestre
+          key={cleDe(c)}
+          id={`fiche-${cleDe(c)}`}
+          annee={c.annee}
+          semestre={c.semestre}
+        >
+          <ZoneFiche
+            employeeId={employeeId}
+            carte={c}
+            formations={formations}
+            catalogue={catalogue}
+            signal={focus.cle === cleDe(c) ? focus.n : 0}
+          />
+        </FicheSemestre>
       ))}
     </section>
   ));

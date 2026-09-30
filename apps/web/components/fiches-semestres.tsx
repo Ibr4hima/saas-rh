@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Semestre } from '@teranga/contracts';
-import { Button, cn } from '@teranga/ui';
+import { Button, Card, cn } from '@teranga/ui';
 import { Icon } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
@@ -37,14 +37,13 @@ export function parAnnee<T extends Periode>(
     }));
 }
 
-/** Les repères du temps parlent d'une seule voix : « ANNÉE 2026 », « OBJECTIFS DU 1ER SEMESTRE DE 2026 » — en capitales bleues. */
-const REPERE = 'font-extrabold text-primary uppercase';
-
 /** « ANNÉE 2026 ——————— » et, au bout du filet, le geste de l'année s'il y en a un. */
 export function SeparateurAnnee({ annee, children }: { annee: number; children?: ReactNode }) {
   return (
     <div className="flex min-h-[30px] items-center gap-4">
-      <h2 className={cn('shrink-0 text-[11px] tracking-[0.14em]', REPERE)}>Année {annee}</h2>
+      <h2 className="shrink-0 text-[11px] font-extrabold tracking-[0.14em] text-primary uppercase">
+        Année {annee}
+      </h2>
       <span aria-hidden className="h-px min-w-6 flex-1 bg-line" />
       {children}
     </div>
@@ -52,24 +51,37 @@ export function SeparateurAnnee({ annee, children }: { annee: number; children?:
 }
 
 /**
- * Le titre d'une fiche, centré au-dessus d'elle, dans la voix de l'année et
- * bien plus grand qu'elle (18 px, la taille d'un titre) — c'est lui qu'on lit :
- * « OBJECTIFS DU 1ER SEMESTRE DE 2026 ». `note` : qui l'a rédigée, et quand.
+ * Une fiche de semestre : sa carte, et son titre dans un cadre posé à
+ * cheval sur le bord haut, au centre — comme la légende d'un encadré. Le
+ * titre appartient à SA carte : entre deux fiches, on ne se demande plus à
+ * laquelle il se rapporte. `note` : qui l'a rédigée, et quand.
  */
-export function TitreFiche({ children, note }: { children: ReactNode; note?: ReactNode }) {
+export function FicheSemestre({
+  annee,
+  semestre,
+  note,
+  id,
+  children,
+}: Periode & { note?: ReactNode; id?: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-1 px-4 text-center">
-      <h3
-        className={cn(
-          'text-[16px] leading-snug tracking-[0.06em] text-balance sm:text-[18px]',
-          REPERE,
-          // À 18 px, l'extra-gras des petites capitales devient massif.
-          'font-bold',
-        )}
-      >
+    <div id={id} className="scroll-mt-24">
+      <div className="relative z-10 flex justify-center px-2">
+        <h3 className="inline-flex max-w-full items-center gap-2.5 rounded-full border border-card-line bg-surface py-1.5 pr-5 pl-1.5 text-[14px] leading-tight whitespace-nowrap sm:text-[16px] font-bold tracking-[-0.01em] text-ink-strong shadow-[0_1px_3px_rgb(0_0_0/0.05)]">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
+            <Icon name="flag" size={15} />
+          </span>
+          <span>
+            Objectifs du{' '}
+            <span className="text-primary">{semestre === 1 ? '1er' : '2nd'} semestre</span> de{' '}
+            {annee}
+          </span>
+        </h3>
+      </div>
+      {/* La carte remonte sous le cadre de la moitié de sa hauteur (40 px). */}
+      <Card className="-mt-5 overflow-visible pt-5">
+        {note ? <p className="px-5 pt-2.5 text-center text-[11px] text-ink-muted">{note}</p> : null}
         {children}
-      </h3>
-      {note ? <p className="text-[11px] text-ink-muted">{note}</p> : null}
+      </Card>
     </div>
   );
 }
