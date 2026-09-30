@@ -87,6 +87,13 @@ export interface MembreSuivi {
   number: string;
   positionTitle: string | null;
   unitName: string | null;
+  /** La direction de son unité d'affectation — l'abrégé et le nom. */
+  directionShortName: string | null;
+  directionName: string | null;
+  workEmail: string | null;
+  workPhone: string | null;
+  /** Le téléphone portable. */
+  phone: string | null;
   total: number;
   atteints: number;
   enRetard: number;

@@ -311,9 +311,6 @@ function pageAction(pathname: string, user: SessionUser, espace: Espace): Chrome
   if (pathname === '/academy/gerer' && peut(user, 'academy')) {
     return { href: '/academy/gerer?nouvelle=1', icon: 'add', label: 'Nouvelle formation' };
   }
-  if (/^\/moi\/equipe\/suivi\/[^/]+$/.test(pathname)) {
-    return { href: `${pathname}?nouveau=1`, icon: 'add', label: 'Nouvel objectif' };
-  }
   const parts = pathname.split('/').filter(Boolean);
   // Un texte de référence — /reglementations/<slug> — et non son écran de
   // dépôt, qui a ses propres boutons.

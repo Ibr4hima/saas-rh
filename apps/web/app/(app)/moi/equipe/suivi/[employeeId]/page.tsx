@@ -7,9 +7,10 @@ import { useQuery } from '@tanstack/react-query';
 import type { FicheSuivi, ObjectifView } from '@teranga/contracts';
 import { Button, Card, CardHeader, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../../../lib/api';
-import { Initiales } from '../../../../../../components/academy-equipe';
 import { RetourAcademy } from '../../../../../../components/academy-carte';
+import { EnTete, Repere } from '../../../../../../components/fiche';
 import { Page } from '../../../../../../components/gabarit';
+import { Telephone } from '../../../../../../components/telephone';
 import { Icon } from '../../../../../../components/icons';
 import {
   CLE_OBJECTIFS,
@@ -73,19 +74,65 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
   return (
     <Page>
       <RetourAcademy href="/moi/equipe/suivi" label="Suivi & Évaluation" />
-      <Card>
-        <div className="flex items-center gap-4 p-5">
-          <Initiales prenom={m.givenName} nom={m.familyName} grand />
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[20px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">
-              {nom}
-            </h1>
-            <p className="mt-1 truncate text-[12.5px] text-ink-muted">
-              {[m.positionTitle, m.unitName].filter(Boolean).join(' · ') || m.number}
-            </p>
-          </div>
-        </div>
-      </Card>
+      {/* La même tête que le dossier du personnel ; à la place du stylo, le
+          geste du n+1 — fixer des objectifs. */}
+      <EnTete
+        titre={nom}
+        marque={
+          <span role="img" aria-label="Actif" title="Actif" className="inline-flex text-success">
+            <Icon name="verified" size={22} />
+          </span>
+        }
+        sousTitre={
+          <>
+            <span className="font-mono tracking-tight">{m.number}</span>
+            {m.positionTitle ? <> · {m.positionTitle}</> : null}
+          </>
+        }
+        action={
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => router.replace(`/moi/equipe/suivi/${employeeId}?nouveau=1`)}
+          >
+            <Icon name="flag" size={15} />
+            Fixer des objectifs
+          </Button>
+        }
+        reperes={
+          <>
+            <Repere
+              label="Direction"
+              titre={m.directionName ?? undefined}
+              valeur={m.directionShortName ?? m.directionName ?? m.unitName}
+            />
+            <Repere
+              label="Email professionnel"
+              titre={m.workEmail ?? undefined}
+              valeur={
+                m.workEmail ? (
+                  <a
+                    href={`mailto:${m.workEmail}`}
+                    className="break-all transition-colors hover:text-primary hover:underline"
+                  >
+                    {m.workEmail}
+                  </a>
+                ) : null
+              }
+            />
+            <Repere
+              label="Téléphone professionnel"
+              titre={m.workPhone ?? undefined}
+              valeur={m.workPhone ? <Telephone valeur={m.workPhone} /> : null}
+            />
+            <Repere
+              label="Téléphone portable"
+              titre={m.phone ?? undefined}
+              valeur={m.phone ? <Telephone valeur={m.phone} /> : null}
+            />
+          </>
+        }
+      />
 
       <Card>
         <CardHeader className="flex items-center justify-between gap-3">

@@ -75,6 +75,11 @@ interface LigneMembre extends Record<string, unknown> {
   family_name: string;
   position_title: string | null;
   unite: string | null;
+  direction_abrege: string | null;
+  direction_nom: string | null;
+  work_email: string | null;
+  work_phone: string | null;
+  phone: string | null;
 }
 
 const iso = (d: string | Date | null): string | null =>
@@ -454,7 +459,10 @@ export class ObjectifsService {
   private async directs(tx: Tx, moi: string): Promise<LigneMembre[]> {
     const { rows } = await tx.execute<LigneMembre>(sql`
       SELECT e.id, e.employee_number, p.given_name, p.family_name,
-             a.position_title, u.name AS unite
+             a.position_title, u.name AS unite,
+             ${directionDeLUnite(sql`a.org_unit_id`, 'short_name')} AS direction_abrege,
+             ${directionDeLUnite(sql`a.org_unit_id`, 'name')} AS direction_nom,
+             e.work_email, e.work_phone, p.phone
         FROM employees e
         JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
         LEFT JOIN LATERAL (
@@ -534,6 +542,11 @@ export class ObjectifsService {
       number: m.employee_number,
       positionTitle: m.position_title,
       unitName: m.unite,
+      directionShortName: m.direction_abrege,
+      directionName: m.direction_nom,
+      workEmail: m.work_email,
+      workPhone: m.work_phone,
+      phone: m.phone,
       total: objectifs.length,
       atteints: objectifs.filter((o) => o.atteint).length,
       enRetard: objectifs.filter((o) => o.enRetard).length,
