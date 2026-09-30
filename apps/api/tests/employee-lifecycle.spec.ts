@@ -197,6 +197,15 @@ beforeAll(async () => {
 });
 
 async function vider() {
+  // Les comptes de CE fichier seulement — ceux de ses dossiers et de son
+  // tenant. Effacer tous les « @test.local » emportait les comptes des autres
+  // fichiers, encore rattachés à leurs dossiers : l'effacement échouait dès
+  // qu'un fichier passait avant celui-ci.
+  const { rows: comptes } = await raw(
+    `SELECT user_id FROM persons WHERE tenant_id = $1 AND user_id IS NOT NULL
+     UNION SELECT user_id FROM user_tenant_memberships WHERE tenant_id = $1`,
+    [tenantId],
+  );
   await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
   await raw(`UPDATE employees SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
   for (const table of [
@@ -223,7 +232,10 @@ async function vider() {
     tenantId,
     adminUserId,
   ]);
-  await raw(`DELETE FROM users WHERE email LIKE '%@test.local' AND id <> $1`, [adminUserId]);
+  await raw(`DELETE FROM users WHERE id = ANY($1::uuid[]) AND id <> $2`, [
+    comptes.map((c: { user_id: string }) => c.user_id),
+    adminUserId,
+  ]);
   await raw(`DELETE FROM audit_log WHERE tenant_id = $1`, [tenantId]);
 }
 
