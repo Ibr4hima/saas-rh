@@ -53,13 +53,22 @@ export function SeparateurAnnee({ annee, children }: { annee: number; children?:
 
 /**
  * Le titre d'une fiche, centré au-dessus d'elle, dans la voix de l'année et
- * un cran plus grand qu'elle — c'est lui qu'on lit :
+ * bien plus grand qu'elle (18 px, la taille d'un titre) — c'est lui qu'on lit :
  * « OBJECTIFS DU 1ER SEMESTRE DE 2026 ». `note` : qui l'a rédigée, et quand.
  */
 export function TitreFiche({ children, note }: { children: ReactNode; note?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-1 px-4 text-center">
-      <h3 className={cn('text-[13.5px] tracking-[0.11em]', REPERE)}>{children}</h3>
+      <h3
+        className={cn(
+          'text-[16px] leading-snug tracking-[0.06em] text-balance sm:text-[18px]',
+          REPERE,
+          // À 18 px, l'extra-gras des petites capitales devient massif.
+          'font-bold',
+        )}
+      >
+        {children}
+      </h3>
       {note ? <p className="text-[11px] text-ink-muted">{note}</p> : null}
     </div>
   );
