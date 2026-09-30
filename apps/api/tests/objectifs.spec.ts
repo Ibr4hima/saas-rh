@@ -530,6 +530,162 @@ describe('la fiche d’objectifs', () => {
   });
 });
 
+describe('l’évaluation du semestre', () => {
+  const caseACocher = (id: string, texte: string) => ({
+    id,
+    type: 'checkListItem',
+    props: { checked: false },
+    content: [{ type: 'text', text: texte, styles: {} }],
+    children: [],
+  });
+  const periode = { annee: 2024, semestre: 1 as const };
+
+  it('l’agent s’auto-évalue au brouillon, l’envoie ; le n+1 évalue, valide ; l’agent signe', async () => {
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      ...periode,
+      contenu: [caseACocher('o1', 'Livrer la note'), caseACocher('o2', 'Former deux stagiaires')],
+    });
+    const aMoussa = async () =>
+      (await objectifs.mesObjectifs(session('moussa'))).fiches.find(
+        (f) => f.annee === 2024 && f.semestre === 1,
+      )!;
+    const aAwa = async () =>
+      (await objectifs.fiche(session('awa'), agents.moussa)).fiches.find(
+        (f) => f.annee === 2024 && f.semestre === 1,
+      )!;
+    expect(await aMoussa()).toMatchObject({ autoEvaluation: null, evaluation: null });
+
+    // Le brouillon de l'agent reste à l'agent.
+    const brouillon = {
+      objectifs: [
+        {
+          id: 'o1',
+          texte: 'Livrer la note',
+          statut: 'atteint' as const,
+          commentaire: 'Livrée le 12',
+        },
+      ],
+      commentaire: '',
+      note: null,
+    };
+    await objectifs.enregistrerAutoEvaluation(session('moussa'), 2024, 1, brouillon);
+    expect((await aMoussa()).autoEvaluation).toMatchObject({ envoyeeLe: null });
+    expect((await aAwa()).autoEvaluation).toBeNull();
+
+    // Chaque objectif a son statut, et l'appréciation d'ensemble est donnée.
+    expect(await codeOf(() => objectifs.envoyerAutoEvaluation(session('moussa'), 2024, 1))).toBe(
+      'objectifs.auto_incomplete',
+    );
+    await objectifs.enregistrerAutoEvaluation(session('moussa'), 2024, 1, {
+      ...brouillon,
+      objectifs: [
+        ...brouillon.objectifs,
+        { id: 'o2', texte: '', statut: 'partiel', commentaire: 'Un seul formé' },
+      ],
+    });
+    expect(await codeOf(() => objectifs.envoyerAutoEvaluation(session('moussa'), 2024, 1))).toBe(
+      'objectifs.auto_sans_note',
+    );
+    await objectifs.enregistrerAutoEvaluation(session('moussa'), 2024, 1, {
+      objectifs: [
+        ...brouillon.objectifs,
+        { id: 'o2', texte: '', statut: 'partiel', commentaire: 'Un seul formé' },
+      ],
+      commentaire: 'Un semestre chargé.',
+      note: 'B',
+    });
+    await objectifs.envoyerAutoEvaluation(session('moussa'), 2024, 1);
+
+    // Envoyée : le n+1 la lit, les objectifs figés avec leur texte ; l'agent n'y touche plus.
+    const recue = (await aAwa()).autoEvaluation!;
+    expect(recue.envoyeeLe).not.toBeNull();
+    expect(recue.note).toBe('B');
+    expect(recue.objectifs).toEqual([
+      { id: 'o1', texte: 'Livrer la note', statut: 'atteint', commentaire: 'Livrée le 12' },
+      {
+        id: 'o2',
+        texte: 'Former deux stagiaires',
+        statut: 'partiel',
+        commentaire: 'Un seul formé',
+      },
+    ]);
+    expect(
+      (await objectifs.suiviEquipe(session('awa'))).membres.find((m) => m.givenName === 'Moussa')!
+        .aEvaluer,
+    ).toBe(1);
+    expect(
+      await codeOf(() =>
+        objectifs.enregistrerAutoEvaluation(session('moussa'), 2024, 1, brouillon),
+      ),
+    ).toBe('objectifs.auto_envoyee');
+    expect((await notifications('awa')).map((n) => n.title)).toContain(
+      'Auto-évaluation de Moussa Ndiaye',
+    );
+
+    // Le brouillon du n+1 reste au n+1 ; seul le n+1 évalue.
+    await objectifs.enregistrerEvaluation(session('awa'), agents.moussa, 2024, 1, {
+      note: 'A',
+      commentaire: 'Très bon semestre.',
+    });
+    expect((await aMoussa()).evaluation).toBeNull();
+    expect(
+      await codeOf(() => objectifs.validerEvaluation(session('mariama'), agents.moussa, 2024, 1)),
+    ).toBe('objectifs.hors_equipe');
+    await objectifs.validerEvaluation(session('awa'), agents.moussa, 2024, 1);
+    expect((await aMoussa()).evaluation).toMatchObject({
+      note: 'A',
+      commentaire: 'Très bon semestre.',
+      evaluateur: 'Awa Diop',
+      signeeLe: null,
+    });
+    expect((await notifications('moussa')).map((n) => n.title)).toContain(
+      'Votre évaluation — 1er semestre 2024',
+    );
+
+    // Évaluée : ni les objectifs ni l'évaluation ne changent plus.
+    expect(
+      await codeOf(() =>
+        objectifs.enregistrerFiche(session('awa'), agents.moussa, { ...periode, contenu: [] }),
+      ),
+    ).toBe('objectifs.fiche_evaluee');
+    expect(
+      await codeOf(() =>
+        objectifs.enregistrerEvaluation(session('awa'), agents.moussa, 2024, 1, {
+          note: 'D',
+          commentaire: '',
+        }),
+      ),
+    ).toBe('objectifs.fiche_evaluee');
+
+    await objectifs.signerEvaluation(session('moussa'), 2024, 1);
+    expect((await aMoussa()).evaluation?.signeeLe).not.toBeNull();
+    expect((await notifications('awa')).map((n) => n.title)).toContain(
+      'Moussa Ndiaye a pris connaissance de son évaluation',
+    );
+    expect(
+      (await objectifs.suiviEquipe(session('awa'))).membres.find((m) => m.givenName === 'Moussa')!
+        .aEvaluer,
+    ).toBe(0);
+  });
+
+  it('pas de note, pas de validation ; pas d’évaluation, pas de signature', async () => {
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      annee: 2024,
+      semestre: 2,
+      contenu: [caseACocher('p1', 'Clore les comptes')],
+    });
+    expect(
+      await codeOf(() => objectifs.validerEvaluation(session('awa'), agents.moussa, 2024, 2)),
+    ).toBe('objectifs.evaluation_sans_note');
+    expect(await codeOf(() => objectifs.signerEvaluation(session('moussa'), 2024, 2))).toBe(
+      'objectifs.pas_evaluee',
+    );
+    expect(await codeOf(() => objectifs.envoyerAutoEvaluation(session('moussa'), 2023, 1))).toBe(
+      'objectifs.fiche_introuvable',
+    );
+  });
+});
+
 describe('la session', () => {
   it('dit qui est le directeur général', async () => {
     const estDG = (qui: Nom) =>

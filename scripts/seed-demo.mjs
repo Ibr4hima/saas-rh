@@ -5,6 +5,7 @@
  * Usage : node scripts/seed-demo.mjs [http://localhost:3001]
  * Idempotence : à lancer sur une base vide (sinon l'email admin existe déjà).
  */
+import { randomUUID } from 'node:crypto';
 import { CODE_DU_TRAVAIL, REGLEMENT_INTERIEUR } from './seed-textes.mjs';
 
 const BASE = (process.argv[2] ?? 'http://localhost:3001') + '/v1';
@@ -588,21 +589,38 @@ for (const o of [
 // échéances, du gras pour ce qui compte.
 const texte = (t, styles = {}) => ({ type: 'text', text: t, styles });
 const echeance = (date) => ({ type: 'echeance', props: { date } });
-const bloc = (type, contenu, props = {}) => ({ type, props, content: contenu, children: [] });
+const bloc = (type, contenu, props = {}, id = randomUUID()) => ({
+  id,
+  type,
+  props,
+  content: contenu,
+  children: [],
+});
 const semestreCourant = new Date().getMonth() < 6 ? 1 : 2;
 const precedent =
   semestreCourant === 2
     ? { annee: anneeObjectifs, semestre: 1 }
     : { annee: anneeObjectifs - 1, semestre: 2 };
+const objectifsAwa = [randomUUID(), randomUUID()];
 await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
   annee: anneeObjectifs,
   semestre: semestreCourant,
   contenu: [
-    bloc('checkListItem', [
-      texte('Livrer l’étude sur l’attractivité des zones économiques spéciales — pour le '),
-      echeance(`${anneeObjectifs}-12-15`),
-    ]),
-    bloc('checkListItem', [texte('Accompagner Moussa sur la note de conjoncture')]),
+    bloc(
+      'checkListItem',
+      [
+        texte('Livrer l’étude sur l’attractivité des zones économiques spéciales — pour le '),
+        echeance(`${anneeObjectifs}-12-15`),
+      ],
+      {},
+      objectifsAwa[0],
+    ),
+    bloc(
+      'checkListItem',
+      [texte('Accompagner Moussa sur la note de conjoncture')],
+      {},
+      objectifsAwa[1],
+    ),
   ],
 });
 await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
@@ -624,18 +642,99 @@ await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
     ]),
   ],
 });
+const objectifsPasses = [randomUUID(), randomUUID(), randomUUID()];
 await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
   ...precedent,
   contenu: [
-    bloc('checkListItem', [texte('Finaliser le rapport annuel sur les projets agréés')], {
-      checked: true,
-    }),
-    bloc('checkListItem', [texte('Former deux stagiaires à la base des projets')], {
-      checked: true,
-    }),
-    bloc('checkListItem', [texte('Rédiger la fiche pays pour la mission économique au Maroc')]),
+    bloc(
+      'checkListItem',
+      [texte('Finaliser le rapport annuel sur les projets agréés')],
+      { checked: true },
+      objectifsPasses[0],
+    ),
+    bloc(
+      'checkListItem',
+      [texte('Former deux stagiaires à la base des projets')],
+      { checked: true },
+      objectifsPasses[1],
+    ),
+    bloc(
+      'checkListItem',
+      [texte('Rédiger la fiche pays pour la mission économique au Maroc')],
+      {},
+      objectifsPasses[2],
+    ),
   ],
 });
+
+// L'évaluation. Le semestre passé de Moussa est bouclé : il s'est
+// auto-évalué, Awa a noté et validé, il en a pris connaissance. Pour le
+// semestre en cours, Awa a envoyé son auto-évaluation à Mariama, qui a donc
+// une évaluation à faire.
+console.log('→ Évaluations : Moussa, semestre passé bouclé ; Awa attend l’évaluation de Mariama');
+const periodePassee = `${precedent.annee}/${precedent.semestre}`;
+await enTantQue(moussa.id, 'PUT', `/objectifs/moi/fiches/${periodePassee}/auto-evaluation`, {
+  objectifs: [
+    {
+      id: objectifsPasses[0],
+      texte: '',
+      statut: 'atteint',
+      commentaire: 'Rapport remis au comité de direction le 28 juin.',
+    },
+    {
+      id: objectifsPasses[1],
+      texte: '',
+      statut: 'atteint',
+      commentaire: 'Les deux stagiaires saisissent seuls les nouveaux dossiers.',
+    },
+    {
+      id: objectifsPasses[2],
+      texte: '',
+      statut: 'non_atteint',
+      commentaire: 'Mission reportée par la direction : la fiche reste à écrire.',
+    },
+  ],
+  commentaire: 'Un semestre dense, centré sur le rapport annuel.',
+  note: 'B',
+});
+await enTantQue(moussa.id, 'POST', `/objectifs/moi/fiches/${periodePassee}/auto-evaluation/envoi`);
+await enTantQue(
+  awa.id,
+  'PUT',
+  `/objectifs/equipe/${moussa.id}/fiches/${periodePassee}/evaluation`,
+  {
+    note: 'B',
+    commentaire:
+      'Rapport annuel de qualité, livré à temps. La fiche pays sera à mener dès que la mission sera reprogrammée.',
+  },
+);
+await enTantQue(
+  awa.id,
+  'POST',
+  `/objectifs/equipe/${moussa.id}/fiches/${periodePassee}/evaluation/validation`,
+);
+await enTantQue(moussa.id, 'POST', `/objectifs/moi/fiches/${periodePassee}/signature`);
+
+const periodeCourante = `${anneeObjectifs}/${semestreCourant}`;
+await enTantQue(awa.id, 'PUT', `/objectifs/moi/fiches/${periodeCourante}/auto-evaluation`, {
+  objectifs: [
+    {
+      id: objectifsAwa[0],
+      texte: '',
+      statut: 'partiel',
+      commentaire: 'Première version remise ; la partie fiscale reste à consolider.',
+    },
+    {
+      id: objectifsAwa[1],
+      texte: '',
+      statut: 'atteint',
+      commentaire: 'Deux séances de relecture, note publiée à la date prévue.',
+    },
+  ],
+  commentaire: 'Bon rythme ; l’étude a pris plus de temps que prévu.',
+  note: 'B',
+});
+await enTantQue(awa.id, 'POST', `/objectifs/moi/fiches/${periodeCourante}/auto-evaluation/envoi`);
 
 console.log(`
 ✔ Démo prête.

@@ -65,8 +65,16 @@ function CarteMembre({ membre: m }: { membre: MembreSuivi }) {
         {m.familyName[0]}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-bold text-ink-strong">
-          {m.givenName} {m.familyName}
+        <span className="flex items-center gap-2">
+          <span className="truncate text-[13px] font-bold text-ink-strong">
+            {m.givenName} {m.familyName}
+          </span>
+          {/* Une auto-évaluation reçue attend son évaluation. */}
+          {m.aEvaluer > 0 ? (
+            <span className="shrink-0 rounded-full bg-accent-soft px-2 py-px text-[10.5px] font-semibold text-accent-text">
+              À évaluer
+            </span>
+          ) : null}
         </span>
         <span className="mt-1 flex flex-col gap-[3px]">
           <Ligne icon="badge">

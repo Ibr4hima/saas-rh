@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type FicheObjectifs,
   type FicheSuivi,
   type FormationDeLaFiche,
   type FormationProposable,
@@ -13,6 +14,12 @@ import { Card, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../../../lib/api';
 import { RetourAcademy } from '../../../../../../components/academy-carte';
 import { EnTete, Repere } from '../../../../../../components/fiche';
+import {
+  BarreFiche,
+  EvaluationN1,
+  StatutEvaluation,
+  type Onglet,
+} from '../../../../../../components/evaluation-semestre';
 import {
   ChoixSemestre,
   cleDe,
@@ -129,6 +136,7 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
 
       <FichesDuMembre
         employeeId={employeeId}
+        prenom={m.givenName}
         fiches={fiche.data.fiches}
         formations={fiche.data.formations}
         catalogue={catalogue.data ?? []}
@@ -151,11 +159,13 @@ interface Carte {
  */
 function FichesDuMembre({
   employeeId,
+  prenom,
   fiches,
   formations,
   catalogue,
 }: {
   employeeId: string;
+  prenom: string;
   fiches: FicheSuivi['fiches'];
   formations: FormationDeLaFiche[];
   catalogue: FormationProposable[];
@@ -192,23 +202,76 @@ function FichesDuMembre({
         {groupe.annee === annee ? <ChoixSemestre fixes={fixes} onChoisir={choisir} /> : null}
       </SeparateurAnnee>
       {groupe.fiches.map((c) => (
-        <FicheSemestre
+        <CarteSemestre
           key={cleDe(c)}
-          id={`fiche-${cleDe(c)}`}
-          annee={c.annee}
-          semestre={c.semestre}
-        >
-          <ZoneFiche
-            employeeId={employeeId}
-            carte={c}
-            formations={formations}
-            catalogue={catalogue}
-            signal={focus.cle === cleDe(c) ? focus.n : 0}
-          />
-        </FicheSemestre>
+          employeeId={employeeId}
+          prenom={prenom}
+          carte={c}
+          fiche={fiches.find((f) => cleDe(f) === cleDe(c)) ?? null}
+          formations={formations}
+          catalogue={catalogue}
+          signal={focus.cle === cleDe(c) ? focus.n : 0}
+        />
       ))}
     </section>
   ));
+}
+
+/**
+ * Un semestre : sa fiche, et son évaluation. Deux faces — Objectifs,
+ * Évaluation — et, en tête, où en est l'évaluation. Une fiche tout juste
+ * ouverte n'a que ses objectifs ; une fiche évaluée ne se modifie plus.
+ */
+function CarteSemestre({
+  employeeId,
+  prenom,
+  carte,
+  fiche,
+  formations,
+  catalogue,
+  signal,
+}: {
+  employeeId: string;
+  prenom: string;
+  carte: Carte;
+  /** La fiche enregistrée — `null` tant qu'elle n'a pas de texte. */
+  fiche: FicheObjectifs | null;
+  formations: FormationDeLaFiche[];
+  catalogue: FormationProposable[];
+  signal: number;
+}) {
+  // Une auto-évaluation reçue, pas encore évaluée : c'est là qu'on a à faire.
+  const [onglet, setOnglet] = useState<Onglet>(() =>
+    fiche?.autoEvaluation?.envoyeeLe && !fiche.evaluation?.valideeLe ? 'evaluation' : 'objectifs',
+  );
+  // « Fixer des objectifs » ramène aux objectifs.
+  useEffect(() => {
+    if (signal) setOnglet('objectifs');
+  }, [signal]);
+
+  return (
+    <FicheSemestre id={`fiche-${cleDe(carte)}`} annee={carte.annee} semestre={carte.semestre}>
+      {fiche ? (
+        <BarreFiche
+          statut={<StatutEvaluation fiche={fiche} vue="n1" prenom={prenom} />}
+          onglet={onglet}
+          onOnglet={setOnglet}
+        />
+      ) : null}
+      {onglet === 'evaluation' && fiche ? (
+        <EvaluationN1 employeeId={employeeId} prenom={prenom} fiche={fiche} />
+      ) : (
+        <ZoneFiche
+          employeeId={employeeId}
+          carte={carte}
+          verrouillee={Boolean(fiche?.evaluation?.valideeLe)}
+          formations={formations}
+          catalogue={catalogue}
+          signal={signal}
+        />
+      )}
+    </FicheSemestre>
+  );
 }
 
 /**
@@ -219,12 +282,15 @@ function FichesDuMembre({
 function ZoneFiche({
   employeeId,
   carte,
+  verrouillee,
   formations,
   catalogue,
   signal,
 }: {
   employeeId: string;
   carte: Carte;
+  /** Évaluée : la fiche se lit, elle ne s'écrit plus. */
+  verrouillee: boolean;
   formations: FormationDeLaFiche[];
   catalogue: FormationProposable[];
   signal: number;
@@ -256,7 +322,15 @@ function ZoneFiche({
             ...avant,
             fiches: [
               ...autres,
-              { annee, semestre, contenu: blocs, majLe: r.majLe, auteur: ancienne?.auteur ?? null },
+              {
+                annee,
+                semestre,
+                contenu: blocs,
+                majLe: r.majLe,
+                auteur: ancienne?.auteur ?? null,
+                autoEvaluation: ancienne?.autoEvaluation ?? null,
+                evaluation: ancienne?.evaluation ?? null,
+              },
             ],
           };
         });
@@ -318,9 +392,9 @@ function ZoneFiche({
         </p>
       ) : null}
       <EditeurFicheObjectifs
-        className="pt-4 pb-1"
+        className={verrouillee ? 'pt-3 pb-3.5' : 'pt-3 pb-1'}
         contenu={carte.contenu}
-        modifiable
+        modifiable={!verrouillee}
         formations={formations}
         catalogue={catalogue}
         onChange={onChange}
