@@ -37,14 +37,14 @@ export function parAnnee<T extends Periode>(
     }));
 }
 
-/** Les repères du temps parlent d'une seule voix : « ANNÉE 2026 », « OBJECTIFS DU 1ER SEMESTRE DE 2026 ». */
-const REPERE = 'text-[11px] font-extrabold tracking-[0.14em] text-primary uppercase';
+/** Les repères du temps parlent d'une seule voix : « ANNÉE 2026 », « OBJECTIFS DU 1ER SEMESTRE DE 2026 » — en capitales bleues. */
+const REPERE = 'font-extrabold text-primary uppercase';
 
 /** « ANNÉE 2026 ——————— » et, au bout du filet, le geste de l'année s'il y en a un. */
 export function SeparateurAnnee({ annee, children }: { annee: number; children?: ReactNode }) {
   return (
     <div className="flex min-h-[30px] items-center gap-4">
-      <h2 className={cn('shrink-0', REPERE)}>Année {annee}</h2>
+      <h2 className={cn('shrink-0 text-[11px] tracking-[0.14em]', REPERE)}>Année {annee}</h2>
       <span aria-hidden className="h-px min-w-6 flex-1 bg-line" />
       {children}
     </div>
@@ -52,13 +52,14 @@ export function SeparateurAnnee({ annee, children }: { annee: number; children?:
 }
 
 /**
- * Le titre d'une fiche, centré au-dessus d'elle, dans la voix de l'année :
+ * Le titre d'une fiche, centré au-dessus d'elle, dans la voix de l'année et
+ * un cran plus grand qu'elle — c'est lui qu'on lit :
  * « OBJECTIFS DU 1ER SEMESTRE DE 2026 ». `note` : qui l'a rédigée, et quand.
  */
 export function TitreFiche({ children, note }: { children: ReactNode; note?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-1 px-4 text-center">
-      <h3 className={REPERE}>{children}</h3>
+      <h3 className={cn('text-[13.5px] tracking-[0.11em]', REPERE)}>{children}</h3>
       {note ? <p className="text-[11px] text-ink-muted">{note}</p> : null}
     </div>
   );
