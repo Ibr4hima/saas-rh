@@ -104,12 +104,12 @@ export default function HistoriqueCongesPage() {
               {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
               <THead className="hidden sm:table-header-group">
                 <tr>
-                  <Th className="sm:w-[24%]">Type</Th>
-                  <Th className="sm:w-[28%]">Période</Th>
-                  <Th className="text-right sm:w-[10%]">Durée</Th>
-                  <Th className="sm:w-[15%]">Justificatif</Th>
-                  <Th className="sm:w-[13%]">Statut</Th>
-                  <Th className="sm:w-[10%]">
+                  <Th className="sm:w-[20%]">Type</Th>
+                  <Th className="sm:w-[26%]">Période</Th>
+                  <Th className="text-right sm:w-[9%]">Durée</Th>
+                  <Th className="sm:w-[14%]">Justificatif</Th>
+                  <Th className="sm:w-[19%]">Statut</Th>
+                  <Th className="sm:w-[12%]">
                     <span className="sr-only">Actions</span>
                   </Th>
                 </tr>
@@ -161,16 +161,15 @@ function Ligne({
   annulationEnCours: boolean;
 }) {
   const periode = `${formatDate(r.startDate)} → ${formatDate(r.endDate)}`;
-  const statut = <StatutAbsence statut={r.status} titre={resumeVisas(r)} />;
+  const statut = <StatutAbsence statut={r.status} etape={r.etapeAttendue} titre={resumeVisas(r)} />;
   const justificatif = r.documentName ? (
     <button
       type="button"
       onClick={onJustificatif}
       title={r.documentName}
-      className="inline-flex items-center gap-1.5 rounded-full font-semibold text-primary transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+      className="inline-flex items-center rounded-full border border-line px-2.5 py-[3px] text-[11px] font-semibold text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
     >
-      <Icon name="description" size={16} />
-      Voir
+      Prévisualiser
     </button>
   ) : null;
   const annuler =

@@ -53,14 +53,3 @@ export function resumeVisas(r: AbsenceRequestView): string | undefined {
     })
     .join('\n');
 }
-
-/**
- * Qui la demande attend, en une ligne — « Attend son N+1 · Awa Diop »,
- * « Attend la DCH · Mariama Cissé » — ou rien quand elle n'attend plus.
- */
-export function visaAttendu(r: AbsenceRequestView): string | null {
-  if (r.status !== 'pending' || !r.etapeAttendue) return null;
-  const qui = r.circuit.find((e) => e.etape === r.etapeAttendue)?.qui;
-  if (r.etapeAttendue === 'dch') return qui ? `Attend la DCH · ${qui}` : 'Attend la DCH';
-  return qui ? `Attend son N+1 · ${qui}` : 'Attend son N+1';
-}

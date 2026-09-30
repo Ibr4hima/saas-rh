@@ -18,7 +18,7 @@ import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { StatutAbsence } from '../../../../components/statut-absence';
-import { resumeVisas, visaAttendu } from '../../../../lib/absences';
+import { resumeVisas } from '../../../../lib/absences';
 import { api, ApiError } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/hooks';
 import { compte } from '../../../../lib/mots';
@@ -184,9 +184,13 @@ export default function CongesEquipePage() {
                   key={r.id}
                   className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover"
                 >
-                  <Resume demande={r} attendu={visaAttendu(r)} />
+                  <Resume demande={r} />
                   <div className="ml-auto flex shrink-0 items-center">
-                    <StatutAbsence statut={r.status} titre={resumeVisas(r)} />
+                    <StatutAbsence
+                      statut={r.status}
+                      etape={r.etapeAttendue}
+                      titre={resumeVisas(r)}
+                    />
                   </div>
                 </li>
               ))}
@@ -237,7 +241,7 @@ export default function CongesEquipePage() {
 }
 
 /** Qui, quoi, quand — et, s'il y a lieu, qui la demande attend. */
-function Resume({ demande: r, attendu }: { demande: AbsenceRequestView; attendu?: string | null }) {
+function Resume({ demande: r }: { demande: AbsenceRequestView }) {
   return (
     <div className="min-w-0 flex-1 basis-56">
       <p className="truncate text-[13px] font-semibold text-ink-strong">{r.employeeName}</p>
@@ -245,10 +249,8 @@ function Resume({ demande: r, attendu }: { demande: AbsenceRequestView; attendu?
         {r.absenceTypeName} · {formatDate(r.startDate)} → {formatDate(r.endDate)} ·{' '}
         {compte(r.daysCount, 'jour')}
       </p>
-      {attendu || r.reason ? (
-        <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-ink-muted">
-          {[attendu, r.reason].filter(Boolean).join(' · ')}
-        </p>
+      {r.reason ? (
+        <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-ink-muted">{r.reason}</p>
       ) : null}
     </div>
   );

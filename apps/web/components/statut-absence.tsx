@@ -1,5 +1,12 @@
+import type { EtapeConge } from '@teranga/contracts';
 import { cn } from '@teranga/ui';
 import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES } from '../lib/absences';
+
+/** Une demande en attente dit QUI elle attend — l'étape, pas la personne. */
+const EN_ATTENTE_DE: Record<EtapeConge, string> = {
+  n1: 'En attente du N+1',
+  dch: 'En attente de la DCH',
+};
 
 /**
  * Aplats doux, mesurés : chaque texte tient au moins 4,89:1 sur son fond, de
@@ -22,15 +29,22 @@ const FONDS: Record<string, string> = {
  */
 export function StatutAbsence({
   statut,
+  etape,
   titre,
   className,
 }: {
   statut: string;
+  /** L'étape qui attend un visa, pour une demande en attente. */
+  etape?: EtapeConge | null;
   /** Le détail du circuit de visa, au survol : niveau par niveau, qui a signé. */
   titre?: string;
   className?: string;
 }) {
   const ton = ABSENCE_STATUS_TONES[statut] ?? 'neutral';
+  const libelle =
+    statut === 'pending' && etape
+      ? EN_ATTENTE_DE[etape]
+      : (ABSENCE_STATUS_LABELS[statut] ?? statut);
   return (
     <span
       title={titre}
@@ -40,7 +54,7 @@ export function StatutAbsence({
         className,
       )}
     >
-      {ABSENCE_STATUS_LABELS[statut] ?? statut}
+      {libelle}
     </span>
   );
 }

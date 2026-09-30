@@ -9,7 +9,6 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  cn,
   EmptyState,
   Select,
   Table,
@@ -22,7 +21,7 @@ import {
 import { api, ApiError, apiUrl } from '../../../lib/api';
 import { type ViewableDoc } from '../../../components/doc-viewer';
 import { FenetreDocument } from '../../../components/fenetre-document';
-import { resumeVisas, visaAttendu } from '../../../lib/absences';
+import { resumeVisas } from '../../../lib/absences';
 import { BoutonDecision } from '../../../components/bouton-decision';
 import { StatutAbsence } from '../../../components/statut-absence';
 import { formatDate, useMe } from '../../../lib/hooks';
@@ -196,19 +195,11 @@ export default function AbsencesPage() {
                     )}
                   </Td>
                   <Td>
-                    <StatutAbsence statut={r.status} titre={resumeVisas(r)} />
-                    {/* L'étape attendue : on lit d'un coup d'œil ce qui attend
-                        le N+1, et ce qui attend la DCH — et qui. */}
-                    {visaAttendu(r) ? (
-                      <span
-                        className={cn(
-                          'mt-1 block text-[11px] whitespace-nowrap',
-                          r.canDecide ? 'font-semibold text-ink' : 'text-ink-muted',
-                        )}
-                      >
-                        {visaAttendu(r)}
-                      </span>
-                    ) : null}
+                    <StatutAbsence
+                      statut={r.status}
+                      etape={r.etapeAttendue}
+                      titre={resumeVisas(r)}
+                    />
                   </Td>
                   <Td>
                     {r.canDecide ? (

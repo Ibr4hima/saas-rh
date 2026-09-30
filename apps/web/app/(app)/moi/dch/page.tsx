@@ -31,7 +31,7 @@ import {
   useMembresDCH,
   type Message,
 } from '../../../../components/traitement-dch';
-import { resumeVisas, visaAttendu } from '../../../../lib/absences';
+import { resumeVisas } from '../../../../lib/absences';
 import { api, apiUrl } from '../../../../lib/api';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import { compte } from '../../../../lib/mots';
@@ -298,9 +298,13 @@ export default function CongesATraiterPage() {
             <ul className="flex flex-col">
               {suivi.map((r) => (
                 <li key={r.id} className={LIGNE}>
-                  <Resume demande={r} attendu={visaAttendu(r)} />
+                  <Resume demande={r} />
                   <div className="ml-auto flex shrink-0 items-center">
-                    <StatutAbsence statut={r.status} titre={resumeVisas(r)} />
+                    <StatutAbsence
+                      statut={r.status}
+                      etape={r.etapeAttendue}
+                      titre={resumeVisas(r)}
+                    />
                   </div>
                 </li>
               ))}
