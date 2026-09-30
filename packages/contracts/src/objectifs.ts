@@ -107,8 +107,7 @@ export function titreDuSemestre(semestre: Semestre, annee: number): string {
 
 /**
  * La fiche d'objectifs d'un agent pour un semestre : les blocs de l'éditeur,
- * tels qu'enregistrés (cases à cocher, échéances, formations…), et son
- * évaluation.
+ * tels qu'enregistrés (cases à cocher, échéances, formations…).
  */
 export interface FicheObjectifs {
   annee: number;
@@ -117,136 +116,6 @@ export interface FicheObjectifs {
   /** Dernière mise à jour, et par qui. */
   majLe: string;
   auteur: string | null;
-  /** L'auto-évaluation de l'agent — pour son n+1, seulement une fois envoyée. */
-  autoEvaluation: AutoEvaluation | null;
-  /** L'évaluation du n+1 — pour l'agent, seulement une fois validée. */
-  evaluation: EvaluationSemestre | null;
-}
-
-// ---------- Évaluation du semestre ----------
-
-/** La note globale d'un semestre. */
-export const NOTES_GLOBALES = ['A', 'B', 'C', 'D'] as const;
-export type NoteGlobale = (typeof NOTES_GLOBALES)[number];
-
-export const LIBELLES_NOTE: Record<NoteGlobale, string> = {
-  A: 'Dépasse les attentes',
-  B: 'Conforme aux attentes',
-  C: 'À améliorer',
-  D: 'Insuffisant',
-};
-
-/** Ce que l'agent dit d'un objectif de sa fiche. */
-export interface AutoEvaluationObjectif {
-  /** Le bloc « case à cocher » de la fiche. */
-  id: string;
-  /** Le texte de l'objectif — celui du jour de l'envoi, une fois envoyée. */
-  texte: string;
-  statut: EvaluationObjectif | null;
-  commentaire: string;
-}
-
-export interface AutoEvaluation {
-  objectifs: AutoEvaluationObjectif[];
-  commentaire: string;
-  /** L'appréciation que l'agent se donne. */
-  note: NoteGlobale | null;
-  /** `null` : encore au brouillon. */
-  envoyeeLe: string | null;
-}
-
-export interface EvaluationSemestre {
-  note: NoteGlobale | null;
-  commentaire: string;
-  /** `null` : encore au brouillon. */
-  valideeLe: string | null;
-  evaluateur: string | null;
-  /** L'agent en a pris connaissance. */
-  signeeLe: string | null;
-}
-
-export const autoEvaluationSchema = z.object({
-  objectifs: z
-    .array(
-      z.object({
-        id: z.string().min(1).max(100),
-        texte: z.string().max(2000),
-        statut: z.enum(EVALUATIONS_OBJECTIF).nullable(),
-        commentaire: z.string().max(2000),
-      }),
-    )
-    .max(300),
-  commentaire: z.string().max(4000),
-  note: z.enum(NOTES_GLOBALES).nullable(),
-});
-export type AutoEvaluationInput = z.infer<typeof autoEvaluationSchema>;
-
-export const evaluationSemestreSchema = z.object({
-  note: z.enum(NOTES_GLOBALES).nullable(),
-  commentaire: z.string().max(4000),
-});
-export type EvaluationSemestreInput = z.infer<typeof evaluationSemestreSchema>;
-
-/** L'année et le semestre d'une fiche, dans l'adresse. */
-export const periodeParamsSchema = z.object({
-  annee: z.coerce.number().int().min(2000).max(2100),
-  semestre: z.coerce
-    .number()
-    .int()
-    .refine((s): s is Semestre => s === 1 || s === 2, 'Semestre 1 ou 2'),
-});
-
-/** Un objectif de la fiche : une case à cocher, son texte, et si le n+1 l'a cochée. */
-export interface ObjectifDeLaFiche {
-  id: string;
-  texte: string;
-  fait: boolean;
-}
-
-function texteDe(contenu: unknown): string {
-  if (!Array.isArray(contenu)) return '';
-  return contenu
-    .map((c: Record<string, unknown>) => {
-      if (c.type === 'text') return String(c.text ?? '');
-      if (c.type === 'link') return texteDe(c.content);
-      if (c.type === 'echeance') {
-        const date = String((c.props as { date?: string } | undefined)?.date ?? '');
-        const d = new Date(`${date}T00:00:00`);
-        return Number.isNaN(d.getTime())
-          ? date
-          : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
-      }
-      return '';
-    })
-    .join('')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
- * Les objectifs d'une fiche : ses cases à cocher, dans l'ordre de lecture —
- * ce que l'agent évalue un à un. Un paragraphe n'en est pas un.
- */
-export function objectifsDeLaFiche(contenu: Record<string, unknown>[]): ObjectifDeLaFiche[] {
-  const tous: ObjectifDeLaFiche[] = [];
-  const parcourir = (blocs: unknown) => {
-    if (!Array.isArray(blocs)) return;
-    for (const b of blocs as Record<string, unknown>[]) {
-      if (b.type === 'checkListItem' && typeof b.id === 'string') {
-        const texte = texteDe(b.content);
-        if (texte) {
-          tous.push({
-            id: b.id,
-            texte,
-            fait: Boolean((b.props as { checked?: boolean } | undefined)?.checked),
-          });
-        }
-      }
-      parcourir(b.children);
-    }
-  };
-  parcourir(contenu);
-  return tous;
 }
 
 /** La fiche fait au plus 300 000 caractères une fois sérialisée. */
@@ -277,8 +146,6 @@ export interface MembreSuivi {
   total: number;
   atteints: number;
   enRetard: number;
-  /** Ses fiches auto-évaluées, envoyées, que le n+1 n'a pas encore évaluées. */
-  aEvaluer: number;
 }
 
 export interface SuiviEquipe {

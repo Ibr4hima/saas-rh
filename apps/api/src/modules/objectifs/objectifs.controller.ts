@@ -16,16 +16,11 @@ import {
 } from '@nestjs/common';
 import {
   anneeQuerySchema,
-  autoEvaluationSchema,
-  type AutoEvaluationInput,
   creerObjectifSchema,
   enregistrerFicheObjectifsSchema,
   type EnregistrerFicheObjectifsInput,
-  evaluationSemestreSchema,
-  type EvaluationSemestreInput,
   evaluerObjectifSchema,
   modifierObjectifSchema,
-  periodeParamsSchema,
   type CreerObjectifInput,
   type EvaluerObjectifInput,
   type ModifierObjectifInput,
@@ -34,12 +29,6 @@ import { ZodValidationPipe } from '../../common/zod.pipe';
 import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { ObjectifsService } from './objectifs.service';
-
-/** L'année et le semestre d'une fiche, lus dans l'adresse. */
-interface Periode {
-  annee: number;
-  semestre: 1 | 2;
-}
 
 /**
  * Les objectifs : ouverts à tout agent, bornés par l'organigramme — le
@@ -83,61 +72,6 @@ export class ObjectifsController {
     body: EnregistrerFicheObjectifsInput,
   ) {
     return this.objectifs.enregistrerFiche(req.sessionUser, employeeId, body);
-  }
-
-  // ———————————————————————— l'évaluation du semestre
-
-  @Put('moi/fiches/:annee/:semestre/auto-evaluation')
-  enregistrerAutoEvaluation(
-    @Req() req: AuthenticatedRequest,
-    @Param(new ZodValidationPipe(periodeParamsSchema)) p: Periode,
-    @Body(new ZodValidationPipe(autoEvaluationSchema)) body: AutoEvaluationInput,
-  ) {
-    return this.objectifs.enregistrerAutoEvaluation(req.sessionUser, p.annee, p.semestre, body);
-  }
-
-  @Post('moi/fiches/:annee/:semestre/auto-evaluation/envoi')
-  @HttpCode(204)
-  async envoyerAutoEvaluation(
-    @Req() req: AuthenticatedRequest,
-    @Param(new ZodValidationPipe(periodeParamsSchema)) p: Periode,
-  ) {
-    await this.objectifs.envoyerAutoEvaluation(req.sessionUser, p.annee, p.semestre);
-  }
-
-  @Post('moi/fiches/:annee/:semestre/signature')
-  @HttpCode(204)
-  async signerEvaluation(
-    @Req() req: AuthenticatedRequest,
-    @Param(new ZodValidationPipe(periodeParamsSchema)) p: Periode,
-  ) {
-    await this.objectifs.signerEvaluation(req.sessionUser, p.annee, p.semestre);
-  }
-
-  @Put('equipe/:employeeId/fiches/:annee/:semestre/evaluation')
-  enregistrerEvaluation(
-    @Req() req: AuthenticatedRequest,
-    @Param('employeeId', ParseUUIDPipe) employeeId: string,
-    @Param(new ZodValidationPipe(periodeParamsSchema)) p: Periode,
-    @Body(new ZodValidationPipe(evaluationSemestreSchema)) body: EvaluationSemestreInput,
-  ) {
-    return this.objectifs.enregistrerEvaluation(
-      req.sessionUser,
-      employeeId,
-      p.annee,
-      p.semestre,
-      body,
-    );
-  }
-
-  @Post('equipe/:employeeId/fiches/:annee/:semestre/evaluation/validation')
-  @HttpCode(204)
-  async validerEvaluation(
-    @Req() req: AuthenticatedRequest,
-    @Param('employeeId', ParseUUIDPipe) employeeId: string,
-    @Param(new ZodValidationPipe(periodeParamsSchema)) p: Periode,
-  ) {
-    await this.objectifs.validerEvaluation(req.sessionUser, employeeId, p.annee, p.semestre);
   }
 
   @Get('formations')

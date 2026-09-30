@@ -1,18 +1,12 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { Fragment, useState } from 'react';
+import { Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { FicheObjectifs, MesObjectifs, ObjectifView } from '@teranga/contracts';
+import type { MesObjectifs, ObjectifView } from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../lib/api';
 import { FicheSemestre, parAnnee, SeparateurAnnee } from '../../../../components/fiches-semestres';
-import {
-  BarreFiche,
-  EvaluationAgent,
-  StatutEvaluation,
-  type Onglet,
-} from '../../../../components/evaluation-semestre';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { CLE_OBJECTIFS, LigneObjectif } from '../../../../components/objectifs';
@@ -71,7 +65,27 @@ export default function MesObjectifsPage() {
         <Fragment key={groupe.annee}>
           <SeparateurAnnee annee={groupe.annee} />
           {groupe.fiches.map((f) => (
-            <CarteSemestre key={`${f.annee}-${f.semestre}`} fiche={f} formations={formations} />
+            <FicheSemestre
+              key={`${f.annee}-${f.semestre}`}
+              annee={f.annee}
+              semestre={f.semestre}
+              note={
+                <>
+                  {f.auteur ? `${f.auteur} · ` : ''}mis à jour le{' '}
+                  {new Date(f.majLe).toLocaleDateString('fr-FR', {
+                    day: 'numeric',
+                    month: 'long',
+                  })}
+                </>
+              }
+            >
+              <EditeurFicheObjectifs
+                className="pt-3 pb-4"
+                contenu={f.contenu}
+                modifiable={false}
+                formations={formations}
+              />
+            </FicheSemestre>
           ))}
           {groupe.annee === annee ? (
             <>
@@ -89,42 +103,6 @@ export default function MesObjectifsPage() {
         </Fragment>
       ))}
     </Page>
-  );
-}
-
-/**
- * Un semestre, vu par l'agent : ses objectifs, tels que son n+1 les a fixés,
- * et leur évaluation — la sienne d'abord, puis celle de son n+1.
- */
-function CarteSemestre({
-  fiche,
-  formations,
-}: {
-  fiche: FicheObjectifs;
-  formations: MesObjectifs['formations'];
-}) {
-  // Une évaluation validée, pas encore signée : c'est là qu'on a à faire.
-  const [onglet, setOnglet] = useState<Onglet>(
-    fiche.evaluation?.valideeLe && !fiche.evaluation.signeeLe ? 'evaluation' : 'objectifs',
-  );
-  return (
-    <FicheSemestre annee={fiche.annee} semestre={fiche.semestre}>
-      <BarreFiche
-        statut={<StatutEvaluation fiche={fiche} vue="agent" />}
-        onglet={onglet}
-        onOnglet={setOnglet}
-      />
-      {onglet === 'evaluation' ? (
-        <EvaluationAgent fiche={fiche} />
-      ) : (
-        <EditeurFicheObjectifs
-          className="pt-3 pb-4"
-          contenu={fiche.contenu}
-          modifiable={false}
-          formations={formations}
-        />
-      )}
-    </FicheSemestre>
   );
 }
 

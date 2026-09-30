@@ -667,18 +667,6 @@ export const objectifsFiches = pgTable('objectifs_fiches', {
   semestre: smallint('semestre').notNull(),
   contenu: jsonb('contenu').notNull().default([]),
   auteurEmployeeId: uuid('auteur_employee_id'),
-  // 0045 : l'évaluation du semestre.
-  autoObjectifs: jsonb('auto_objectifs').notNull().default([]),
-  autoCommentaire: text('auto_commentaire').notNull().default(''),
-  autoNote: text('auto_note'),
-  autoModifieeLe: timestamp('auto_modifiee_le', { withTimezone: true }),
-  autoEnvoyeeLe: timestamp('auto_envoyee_le', { withTimezone: true }),
-  evaluationNote: text('evaluation_note'),
-  evaluationCommentaire: text('evaluation_commentaire').notNull().default(''),
-  evaluationModifieeLe: timestamp('evaluation_modifiee_le', { withTimezone: true }),
-  evalueeLe: timestamp('evaluee_le', { withTimezone: true }),
-  evaluateurEmployeeId: uuid('evaluateur_employee_id'),
-  signeeLe: timestamp('signee_le', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

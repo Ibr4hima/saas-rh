@@ -13,11 +13,6 @@ import {
   type FicheObjectifs,
   FICHE_OBJECTIFS_MAX,
   type FormationDeLaFiche,
-  type AutoEvaluationInput,
-  type EvaluationSemestreInput,
-  type NoteGlobale,
-  objectifsDeLaFiche,
-  LIBELLES_NOTE,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
   type ObjectifView,
@@ -131,46 +126,6 @@ function formationsDe(progression: TeamCourseProgress[] | undefined): FormationD
     }));
 }
 
-/** Une fiche d'objectifs, telle que la base la garde. */
-type LigneFiche = {
-  annee: number;
-  semestre: number;
-  contenu: Record<string, unknown>[];
-  updated_at: string | Date;
-  auteur: string | null;
-  auto_objectifs: {
-    id: string;
-    texte: string;
-    statut: 'atteint' | 'partiel' | 'non_atteint' | null;
-    commentaire: string;
-  }[];
-  auto_commentaire: string;
-  auto_note: NoteGlobale | null;
-  auto_modifiee_le: string | Date | null;
-  auto_envoyee_le: string | Date | null;
-  evaluation_note: NoteGlobale | null;
-  evaluation_commentaire: string;
-  evaluation_modifiee_le: string | Date | null;
-  evaluee_le: string | Date | null;
-  evaluateur_employee_id: string | null;
-  evaluateur: string | null;
-  signee_le: string | Date | null;
-};
-
-const SELECTION_FICHE = sql`
-  SELECT f.id, f.annee, f.semestre, f.contenu, f.updated_at,
-         CASE WHEN pa.id IS NULL THEN NULL ELSE pa.given_name || ' ' || pa.family_name END AS auteur,
-         f.auto_objectifs, f.auto_commentaire, f.auto_note, f.auto_modifiee_le, f.auto_envoyee_le,
-         f.evaluation_note, f.evaluation_commentaire, f.evaluation_modifiee_le, f.evaluee_le,
-         f.evaluateur_employee_id,
-         CASE WHEN pv.id IS NULL THEN NULL ELSE pv.given_name || ' ' || pv.family_name END AS evaluateur,
-         f.signee_le
-    FROM objectifs_fiches f
-    LEFT JOIN employees ea ON ea.id = f.auteur_employee_id
-    LEFT JOIN persons pa ON pa.id = ea.person_id
-    LEFT JOIN employees ev ON ev.id = f.evaluateur_employee_id
-    LEFT JOIN persons pv ON pv.id = ev.person_id`;
-
 /** Les objectifs, avec le nom de qui les a fixés. */
 const SELECTION = sql`
   SELECT o.id, o.niveau, o.annee, o.diffusion, o.direction_id, o.employee_id, o.nature,
@@ -230,7 +185,7 @@ export class ObjectifsService {
       const progression = await this.progression(tx, [moi]);
       return {
         annee: an,
-        fiches: await this.lireFiches(tx, moi, 'agent'),
+        fiches: await this.lireFiches(tx, moi),
         formations: formationsDe(progression.get(moi)),
         apix: apix.map((o) => this.vue(o)),
         direction: direction
@@ -255,14 +210,6 @@ export class ObjectifsService {
           )
         : [];
       const progression = await this.progression(tx, ids);
-      const aEvaluer = new Map<string, number>();
-      if (ids.length) {
-        const { rows } = await tx.execute<{ employee_id: string; n: number }>(sql`
-          SELECT employee_id, count(*)::int AS n FROM objectifs_fiches
-           WHERE employee_id IN ${ids} AND auto_envoyee_le IS NOT NULL AND evaluee_le IS NULL
-           GROUP BY employee_id`);
-        for (const r of rows) aEvaluer.set(r.employee_id, r.n);
-      }
       return {
         annee: an,
         membres: membres.map((m) =>
@@ -271,7 +218,6 @@ export class ObjectifsService {
             objectifs
               .filter((o) => o.employee_id === m.id)
               .map((o) => this.vue(o, progression.get(m.id))),
-            aEvaluer.get(m.id) ?? 0,
           ),
         ),
       };
@@ -293,15 +239,11 @@ export class ObjectifsService {
           sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${membre.id}`,
         )
       ).map((o) => this.vue(o, progression.get(membre.id)));
-      const fiches = await this.lireFiches(tx, membre.id, 'n1');
-      const aEvaluer = fiches.filter(
-        (f) => f.autoEvaluation?.envoyeeLe && !f.evaluation?.valideeLe,
-      ).length;
       return {
         annee: an,
-        membre: this.membre(membre, objectifs, aEvaluer),
+        membre: this.membre(membre, objectifs),
         objectifs,
-        fiches,
+        fiches: await this.lireFiches(tx, membre.id),
         formations: formationsDe(progression.get(membre.id)),
       };
     });
@@ -338,16 +280,7 @@ export class ObjectifsService {
            SET contenu = EXCLUDED.contenu,
                auteur_employee_id = EXCLUDED.auteur_employee_id,
                updated_at = now()
-         WHERE objectifs_fiches.evaluee_le IS NULL
         RETURNING updated_at`);
-      // Une fiche évaluée garde les objectifs sur lesquels on l'a jugée.
-      if (!rows[0]) {
-        problem(
-          409,
-          'objectifs.fiche_evaluee',
-          'Cette fiche est évaluée : ses objectifs ne changent plus',
-        );
-      }
 
       if (ficheRemplie(contenu)) {
         const compte = await this.compteDe(tx, employeeId);
@@ -370,253 +303,31 @@ export class ObjectifsService {
     });
   }
 
-  /**
-   * Les fiches d'un agent, les plus récentes d'abord — sans les fiches vides.
-   * Chacun ne voit de l'autre que ce qu'il a envoyé : l'agent, l'évaluation
-   * une fois validée ; le n+1, l'auto-évaluation une fois envoyée. Les
-   * brouillons restent à qui les écrit.
-   */
-  private async lireFiches(
-    tx: Tx,
-    employeeId: string,
-    vue: 'agent' | 'n1',
-  ): Promise<FicheObjectifs[]> {
-    const { rows } = await tx.execute<LigneFiche>(sql`
-      ${SELECTION_FICHE}
+  /** Les fiches d'un agent, les plus récentes d'abord — sans les fiches vides. */
+  private async lireFiches(tx: Tx, employeeId: string): Promise<FicheObjectifs[]> {
+    const { rows } = await tx.execute<{
+      annee: number;
+      semestre: number;
+      contenu: Record<string, unknown>[];
+      updated_at: string | Date;
+      auteur: string | null;
+    }>(sql`
+      SELECT f.annee, f.semestre, f.contenu, f.updated_at,
+             CASE WHEN pa.id IS NULL THEN NULL ELSE pa.given_name || ' ' || pa.family_name END AS auteur
+        FROM objectifs_fiches f
+        LEFT JOIN employees ea ON ea.id = f.auteur_employee_id
+        LEFT JOIN persons pa ON pa.id = ea.person_id
        WHERE f.employee_id = ${employeeId}
        ORDER BY f.annee DESC, f.semestre DESC`);
-    return rows.filter((l) => ficheRemplie(l.contenu)).map((l) => this.vueFiche(l, vue));
-  }
-
-  private vueFiche(l: LigneFiche, vue: 'agent' | 'n1'): FicheObjectifs {
-    const autoVisible = vue === 'agent' ? l.auto_modifiee_le !== null : l.auto_envoyee_le !== null;
-    const evalVisible =
-      vue === 'n1'
-        ? l.evaluation_modifiee_le !== null || l.evaluee_le !== null
-        : l.evaluee_le !== null;
-    return {
-      annee: l.annee,
-      semestre: l.semestre === 1 ? 1 : 2,
-      contenu: l.contenu,
-      majLe: iso(l.updated_at)!,
-      auteur: l.auteur,
-      autoEvaluation: autoVisible
-        ? {
-            objectifs: l.auto_objectifs,
-            commentaire: l.auto_commentaire,
-            note: l.auto_note,
-            envoyeeLe: iso(l.auto_envoyee_le),
-          }
-        : null,
-      evaluation: evalVisible
-        ? {
-            note: l.evaluation_note,
-            commentaire: l.evaluation_commentaire,
-            valideeLe: iso(l.evaluee_le),
-            evaluateur: l.evaluateur,
-            signeeLe: iso(l.signee_le),
-          }
-        : null,
-    };
-  }
-
-  /** Une fiche, verrouillée le temps du geste — 404 si elle n'existe pas. */
-  private async uneFiche(
-    tx: Tx,
-    employeeId: string,
-    annee: number,
-    semestre: number,
-  ): Promise<LigneFiche & { id: string }> {
-    const { rows } = await tx.execute<LigneFiche & { id: string }>(sql`
-      ${SELECTION_FICHE}
-       WHERE f.employee_id = ${employeeId} AND f.annee = ${annee} AND f.semestre = ${semestre}
-       FOR UPDATE OF f`);
-    const ligne = rows[0];
-    if (!ligne || !ficheRemplie(ligne.contenu)) {
-      problem(404, 'objectifs.fiche_introuvable', 'Aucun objectif n’a été fixé pour ce semestre');
-    }
-    return ligne;
-  }
-
-  private async nomDe(tx: Tx, employeeId: string): Promise<string> {
-    const { rows } = await tx.execute<{ nom: string }>(sql`
-      SELECT p.given_name || ' ' || p.family_name AS nom
-        FROM employees e JOIN persons p ON p.id = e.person_id WHERE e.id = ${employeeId}`);
-    return rows[0]?.nom ?? '';
-  }
-
-  // ———————————————————————————— l'évaluation du semestre
-
-  /**
-   * L'agent rédige son auto-évaluation, au brouillon : elle s'enregistre à
-   * chaque pause, et son n+1 ne la voit pas avant l'envoi.
-   */
-  async enregistrerAutoEvaluation(
-    user: SessionUser,
-    annee: number,
-    semestre: number,
-    input: AutoEvaluationInput,
-  ): Promise<{ majLe: string }> {
-    return this.db.withTenant(this.ctx(user), async (tx) => {
-      const moi = await this.exigerAgent(tx, user);
-      const f = await this.uneFiche(tx, moi, annee, semestre);
-      this.exigerAutoOuverte(f);
-      const { rows } = await tx.execute<{ auto_modifiee_le: string | Date }>(sql`
-        UPDATE objectifs_fiches
-           SET auto_objectifs = ${JSON.stringify(input.objectifs)}::jsonb,
-               auto_commentaire = ${input.commentaire},
-               auto_note = ${input.note},
-               auto_modifiee_le = now()
-         WHERE id = ${f.id}
-        RETURNING auto_modifiee_le`);
-      return { majLe: iso(rows[0]!.auto_modifiee_le)! };
-    });
-  }
-
-  /**
-   * L'agent envoie son auto-évaluation : chaque objectif a son statut, et
-   * l'appréciation d'ensemble est donnée. Elle ne se modifie plus ; le n+1
-   * en est prévenu. Les objectifs y sont figés tels qu'ils sont ce jour-là.
-   */
-  async envoyerAutoEvaluation(user: SessionUser, annee: number, semestre: number): Promise<void> {
-    return this.db.withTenant(this.ctx(user), async (tx) => {
-      const moi = await this.exigerAgent(tx, user);
-      const f = await this.uneFiche(tx, moi, annee, semestre);
-      this.exigerAutoOuverte(f);
-      const dits = new Map(f.auto_objectifs.map((o) => [o.id, o]));
-      const objectifs = objectifsDeLaFiche(f.contenu).map((o) => ({
-        id: o.id,
-        texte: o.texte,
-        statut: dits.get(o.id)?.statut ?? null,
-        commentaire: dits.get(o.id)?.commentaire ?? '',
+    return rows
+      .filter((l) => ficheRemplie(l.contenu))
+      .map((l) => ({
+        annee: l.annee,
+        semestre: l.semestre === 1 ? 1 : 2,
+        contenu: l.contenu,
+        majLe: iso(l.updated_at)!,
+        auteur: l.auteur,
       }));
-      if (objectifs.some((o) => o.statut === null)) {
-        problem(422, 'objectifs.auto_incomplete', 'Chaque objectif attend son statut');
-      }
-      if (!f.auto_note) {
-        problem(422, 'objectifs.auto_sans_note', 'Donnez votre appréciation globale');
-      }
-      await tx.execute(sql`
-        UPDATE objectifs_fiches
-           SET auto_objectifs = ${JSON.stringify(objectifs)}::jsonb,
-               auto_envoyee_le = now(), auto_modifiee_le = now()
-         WHERE id = ${f.id}`);
-
-      const { rows } = await tx.execute<{ n1: string | null }>(sql`
-        SELECT manager_employee_id AS n1 FROM employees WHERE id = ${moi}`);
-      const n1 = rows[0]?.n1;
-      const compte = n1 ? await this.compteDe(tx, n1) : null;
-      if (compte) {
-        await notifier(tx, user.tenantId, compte, {
-          type: 'objectif',
-          title: `Auto-évaluation de ${await this.nomDe(tx, moi)}`,
-          body: `${titreDuSemestre(semestre === 1 ? 1 : 2, annee)} — à évaluer.`,
-          link: `/moi/equipe/suivi/${moi}`,
-          dedupeKey: `objectifs:auto:${moi}:${annee}:${semestre}`,
-        });
-      }
-    });
-  }
-
-  /** Le n+1 rédige son évaluation, au brouillon : l'agent ne la voit qu'une fois validée. */
-  async enregistrerEvaluation(
-    user: SessionUser,
-    employeeId: string,
-    annee: number,
-    semestre: number,
-    input: EvaluationSemestreInput,
-  ): Promise<{ majLe: string }> {
-    return this.db.withTenant(this.ctx(user), async (tx) => {
-      const moi = await this.exigerAgent(tx, user);
-      await this.exigerSonN1(tx, moi, employeeId);
-      const f = await this.uneFiche(tx, employeeId, annee, semestre);
-      this.exigerEvaluationOuverte(f);
-      const { rows } = await tx.execute<{ evaluation_modifiee_le: string | Date }>(sql`
-        UPDATE objectifs_fiches
-           SET evaluation_note = ${input.note},
-               evaluation_commentaire = ${input.commentaire},
-               evaluation_modifiee_le = now(),
-               evaluateur_employee_id = ${moi}
-         WHERE id = ${f.id}
-        RETURNING evaluation_modifiee_le`);
-      return { majLe: iso(rows[0]!.evaluation_modifiee_le)! };
-    });
-  }
-
-  /**
-   * Le n+1 valide son évaluation : la note globale est donnée. La fiche ne
-   * change plus — ni ses objectifs, ni l'auto-évaluation ; l'agent en est
-   * prévenu, et en prend connaissance.
-   */
-  async validerEvaluation(
-    user: SessionUser,
-    employeeId: string,
-    annee: number,
-    semestre: number,
-  ): Promise<void> {
-    return this.db.withTenant(this.ctx(user), async (tx) => {
-      const moi = await this.exigerAgent(tx, user);
-      await this.exigerSonN1(tx, moi, employeeId);
-      const f = await this.uneFiche(tx, employeeId, annee, semestre);
-      this.exigerEvaluationOuverte(f);
-      if (!f.evaluation_note) {
-        problem(422, 'objectifs.evaluation_sans_note', 'Donnez la note globale');
-      }
-      await tx.execute(sql`
-        UPDATE objectifs_fiches
-           SET evaluee_le = now(), evaluateur_employee_id = ${moi}
-         WHERE id = ${f.id}`);
-      const compte = await this.compteDe(tx, employeeId);
-      if (compte) {
-        await notifier(tx, user.tenantId, compte, {
-          type: 'objectif',
-          title: `Votre évaluation — ${semestre === 1 ? '1er' : '2nd'} semestre ${annee}`,
-          body: `${await this.nomDe(tx, moi)} l’a validée : ${f.evaluation_note} — ${LIBELLES_NOTE[f.evaluation_note]}.`,
-          link: '/moi/objectifs',
-          dedupeKey: `objectifs:evaluation:${employeeId}:${annee}:${semestre}`,
-        });
-      }
-    });
-  }
-
-  /** L'agent prend connaissance de son évaluation ; son n+1 le sait. */
-  async signerEvaluation(user: SessionUser, annee: number, semestre: number): Promise<void> {
-    return this.db.withTenant(this.ctx(user), async (tx) => {
-      const moi = await this.exigerAgent(tx, user);
-      const f = await this.uneFiche(tx, moi, annee, semestre);
-      if (!f.evaluee_le) {
-        problem(409, 'objectifs.pas_evaluee', 'Votre n+1 n’a pas encore validé l’évaluation');
-      }
-      if (f.signee_le) return;
-      await tx.execute(sql`UPDATE objectifs_fiches SET signee_le = now() WHERE id = ${f.id}`);
-      const compte = f.evaluateur_employee_id
-        ? await this.compteDe(tx, f.evaluateur_employee_id)
-        : null;
-      if (compte) {
-        await notifier(tx, user.tenantId, compte, {
-          type: 'objectif',
-          title: `${await this.nomDe(tx, moi)} a pris connaissance de son évaluation`,
-          body: titreDuSemestre(semestre === 1 ? 1 : 2, annee),
-          link: `/moi/equipe/suivi/${moi}`,
-          dedupeKey: `objectifs:signature:${moi}:${annee}:${semestre}`,
-        });
-      }
-    });
-  }
-
-  private exigerAutoOuverte(f: LigneFiche): void {
-    if (f.evaluee_le) {
-      problem(409, 'objectifs.fiche_evaluee', 'Cette fiche est déjà évaluée');
-    }
-    if (f.auto_envoyee_le) {
-      problem(409, 'objectifs.auto_envoyee', 'Votre auto-évaluation est déjà envoyée');
-    }
-  }
-
-  private exigerEvaluationOuverte(f: LigneFiche): void {
-    if (f.evaluee_le) {
-      problem(409, 'objectifs.fiche_evaluee', 'Cette évaluation est déjà validée');
-    }
   }
 
   /** Les formations publiées qu'un n+1 peut donner à suivre. */
@@ -951,7 +662,7 @@ export class ObjectifsService {
     };
   }
 
-  private membre(m: LigneMembre, objectifs: ObjectifView[], aEvaluer: number): MembreSuivi {
+  private membre(m: LigneMembre, objectifs: ObjectifView[]): MembreSuivi {
     return {
       employeeId: m.id,
       givenName: m.given_name,
@@ -967,7 +678,6 @@ export class ObjectifsService {
       total: objectifs.length,
       atteints: objectifs.filter((o) => o.atteint).length,
       enRetard: objectifs.filter((o) => o.enRetard).length,
-      aEvaluer,
     };
   }
 
