@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FicheObjectifs, FicheSuivi, FormationProposable } from '@teranga/contracts';
-import { Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
+import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../../../lib/api';
 import { RetourAcademy } from '../../../../../../components/academy-carte';
 import { EnTete, Repere } from '../../../../../../components/fiche';
@@ -154,8 +154,6 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
   );
 }
 
-type Etat = 'enregistre' | 'modifie' | 'enregistrement' | 'erreur';
-
 /**
  * La zone de rédaction. Chaque pause de la saisie enregistre — pas de
  * bouton : on ne perd pas une fiche parce qu'on a oublié de la sauver. Les
@@ -173,8 +171,7 @@ function ZoneFiche({
   signal: number;
 }) {
   const queryClient = useQueryClient();
-  const [etat, setEtat] = useState<Etat>('enregistre');
-  const [majLe, setMajLe] = useState(fiche.majLe);
+  const [echec, setEchec] = useState(false);
   const enAttente = useRef<Record<string, unknown>[] | null>(null);
   const minuterie = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const file = useRef<Promise<void>>(Promise.resolve());
@@ -184,21 +181,19 @@ function ZoneFiche({
       const blocs = enAttente.current;
       if (!blocs) return;
       enAttente.current = null;
-      setEtat('enregistrement');
       try {
         const r = await api<{ majLe: string }>(`/objectifs/equipe/${employeeId}/fiche`, {
           method: 'PUT',
           body: { annee: fiche.annee, contenu: blocs },
         });
-        setMajLe(r.majLe);
-        setEtat(enAttente.current ? 'modifie' : 'enregistre');
+        setEchec(false);
         // Revenir sur la page montre la fiche telle qu'on l'a laissée.
         queryClient.setQueryData<FicheSuivi>([...CLE_OBJECTIFS, 'equipe', employeeId], (avant) =>
           avant ? { ...avant, fiche: { ...avant.fiche, contenu: blocs, majLe: r.majLe } } : avant,
         );
       } catch {
         enAttente.current = enAttente.current ?? blocs;
-        setEtat('erreur');
+        setEchec(true);
       }
     });
     return file.current;
@@ -207,7 +202,6 @@ function ZoneFiche({
   const onChange = useCallback(
     (blocs: Record<string, unknown>[]) => {
       enAttente.current = blocs;
-      setEtat('modifie');
       clearTimeout(minuterie.current);
       minuterie.current = setTimeout(() => void enregistrer(), 700);
     },
@@ -229,10 +223,21 @@ function ZoneFiche({
 
   return (
     <Card className="overflow-visible">
-      <div className="flex min-h-9 items-center justify-end gap-2 px-5 pt-3 text-[11.5px]">
-        <EtatEnregistrement etat={etat} majLe={majLe} onReessayer={() => void enregistrer()} />
-      </div>
-      <div className="pt-1 pb-6">
+      {/* L'enregistrement ne se montre pas : il se fait. Seul un échec se
+          dit — une fiche ne se perd pas en silence. */}
+      {echec ? (
+        <p
+          role="alert"
+          className="flex items-center justify-end gap-1.5 px-5 pt-3 text-[11.5px] font-semibold text-danger"
+        >
+          <Icon name="error" size={14} />
+          Non enregistré
+          <button type="button" onClick={() => void enregistrer()} className="underline">
+            Réessayer
+          </button>
+        </p>
+      ) : null}
+      <div className="py-5">
         <EditeurFicheObjectifs
           contenu={fiche.contenu}
           modifiable
@@ -243,43 +248,5 @@ function ZoneFiche({
         />
       </div>
     </Card>
-  );
-}
-
-function EtatEnregistrement({
-  etat,
-  majLe,
-  onReessayer,
-}: {
-  etat: Etat;
-  majLe: string | null;
-  onReessayer: () => void;
-}) {
-  if (etat === 'erreur') {
-    return (
-      <span className="flex items-center gap-1.5 font-semibold text-danger">
-        <Icon name="error" size={14} />
-        Non enregistré
-        <button type="button" onClick={onReessayer} className="underline">
-          Réessayer
-        </button>
-      </span>
-    );
-  }
-  const enCours = etat === 'modifie' || etat === 'enregistrement';
-  return (
-    <span className={cn('flex items-center gap-1.5 text-ink-muted', enCours && 'opacity-80')}>
-      <Icon name={enCours ? 'schedule' : 'check_circle'} size={14} />
-      {enCours
-        ? 'Enregistrement…'
-        : majLe
-          ? `Enregistré · ${new Date(majLe).toLocaleString('fr-FR', {
-              day: 'numeric',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}`
-          : 'Enregistré automatiquement'}
-    </span>
   );
 }

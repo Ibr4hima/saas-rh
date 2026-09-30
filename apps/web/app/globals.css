@@ -435,7 +435,19 @@ body {
   --bn-colors-border: var(--tg-line);
   --bn-colors-side-menu: var(--tg-ink-muted);
   --bn-font-family: var(--tg-font-sans);
+  --mantine-font-family: var(--tg-font-sans);
   --bn-border-radius: 10px;
+}
+
+/* La police de la plateforme, Google Sans — BlockNote impose « Inter » et
+   16 px directement sur le texte de l'éditeur, sans passer par sa variable. */
+:root .bn-default-styles,
+:root .bn-root .bn-suggestion-menu,
+:root .bn-root .mantine-Menu-dropdown {
+  font-family: var(--tg-font-sans);
+}
+:root .fiche-objectifs .bn-default-styles {
+  font-size: 15px;
 }
 
 /* Les titres de la fiche : l'échelle de la plateforme — le nom de l'agent,
@@ -445,23 +457,18 @@ body {
   letter-spacing: -0.015em;
 }
 .fiche-objectifs [data-content-type='heading'] {
-  --level: 1.45em;
+  --level: 1.34em;
 }
 .fiche-objectifs [data-content-type='heading'][data-level='2'] {
-  --level: 1.25em;
+  --level: 1.17em;
 }
 .fiche-objectifs [data-content-type='heading'][data-level='3'] {
-  --level: 1.08em;
+  --level: 1.05em;
 }
 .fiche-objectifs input[type='checkbox'] {
   accent-color: var(--tg-primary);
 }
+/* Sans menu latéral, le texte s'aligne sur la marge des cartes. */
 .fiche-objectifs .bn-editor {
-  padding-inline: 44px 16px;
-  font-size: 14px;
-}
-@media (max-width: 640px) {
-  .fiche-objectifs .bn-editor {
-    padding-inline: 28px 4px;
-  }
+  padding-inline: 20px;
 }

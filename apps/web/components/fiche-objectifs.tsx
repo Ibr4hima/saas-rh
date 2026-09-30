@@ -6,7 +6,6 @@ import {
   defaultBlockSpecs,
   defaultInlineContentSpecs,
   filterSuggestionItems,
-  insertOrUpdateBlockForSlashMenu,
 } from '@blocknote/core';
 import { fr } from '@blocknote/core/locales';
 import { BlockNoteView } from '@blocknote/mantine';
@@ -293,34 +292,31 @@ const dictionnaire = {
   ...fr,
   placeholders: {
     ...fr.placeholders,
-    default: 'Tapez « / » pour un titre, une case à cocher, une échéance, une formation…',
-    emptyDocument: 'Tapez « / » pour un titre, une case à cocher, une échéance, une formation…',
+    default: 'Tapez « / » pour un titre ou une liste de tâches',
+    emptyDocument: 'Tapez « / » pour un titre ou une liste de tâches',
   },
 };
 
-/** Les entrées propres aux objectifs, en tête du menu « / ». */
-function entreesObjectifs(editeur: Editeur): DefaultReactSuggestionItem[] {
-  return [
-    {
-      title: 'Échéance',
-      subtext: 'Une date à tenir, dans le texte',
-      aliases: ['date', 'echeance', 'délai', 'delai', 'deadline', 'pour le'],
-      group: 'Objectifs',
-      icon: <Icon name="event" size={18} />,
-      onItemClick: () =>
-        editeur.insertInlineContent([{ type: 'echeance', props: { date: '' } }, ' ']),
-    },
-    {
-      title: 'Formation APIX Academy',
-      subtext: 'Une formation à suivre, et où il en est',
-      aliases: ['formation', 'academy', 'cours', 'apprendre'],
-      group: 'Objectifs',
-      icon: <Icon name="school" size={18} />,
-      onItemClick: () => {
-        insertOrUpdateBlockForSlashMenu(editeur, { type: 'formation' });
-      },
-    },
-  ];
+/**
+ * Le menu « / » : deux entrées, pas trente. Un titre, une liste de tâches —
+ * ce qu'une fiche d'objectifs demande. Le reste de l'éditeur (listes à
+ * puces avec « - », citations avec « > », gras avec Ctrl+B…) reste là pour
+ * qui le connaît, sans encombrer le menu de qui ne le connaît pas.
+ */
+const ENTREES_SLASH: Record<string, string> = {
+  heading: 'Un titre de section',
+  check_list: 'Des objectifs à cocher',
+};
+
+function entreesSlash(editeur: Editeur): DefaultReactSuggestionItem[] {
+  return getDefaultReactSlashMenuItems(editeur)
+    .filter((e) => (e as { key?: string }).key! in ENTREES_SLASH)
+    .map((e) => ({
+      ...e,
+      subtext: ENTREES_SLASH[(e as { key?: string }).key!],
+      // Un seul groupe : deux entrées n'ont pas besoin d'intitulés.
+      group: undefined,
+    }));
 }
 
 /** « @ » : une échéance en un mot. */
@@ -401,18 +397,16 @@ export function EditeurFicheObjectifs({
         // Le clair et le sombre de la plateforme, pas ceux du système : les
         // couleurs elles-mêmes viennent des variables (globals.css).
         theme={theme === 'sombre' ? 'dark' : 'light'}
+        // Ni poignée de déplacement ni « + » en marge : la fiche s'écrit au
+        // clavier, comme un texte.
+        sideMenu={false}
         slashMenu={false}
         onChange={() => onChange?.(editeur.document as unknown as Record<string, unknown>[])}
         className="fiche-objectifs"
       >
         <SuggestionMenuController
           triggerCharacter="/"
-          getItems={async (requete) =>
-            filterSuggestionItems(
-              [...entreesObjectifs(editeur), ...getDefaultReactSlashMenuItems(editeur)],
-              requete,
-            )
-          }
+          getItems={async (requete) => filterSuggestionItems(entreesSlash(editeur), requete)}
         />
         <SuggestionMenuController
           triggerCharacter="@"
