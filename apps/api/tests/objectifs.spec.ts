@@ -429,13 +429,11 @@ describe('la fiche d’objectifs', () => {
     children: [],
   });
 
-  it('le n+1 la rédige ; l’agent la lit dans « Mes objectifs », et en est prévenu une fois', async () => {
-    expect((await objectifs.mesObjectifs(session('moussa'))).fiche).toBeNull();
-    const vide = await objectifs.fiche(session('awa'), agents.moussa);
-    expect(vide.fiche).toMatchObject({ annee: 2026, contenu: [], majLe: null, auteur: null });
+  it('le n+1 la rédige par semestre ; l’agent la lit dans « Mes objectifs », prévenu une fois', async () => {
+    expect((await objectifs.mesObjectifs(session('moussa'))).fiches).toEqual([]);
+    expect((await objectifs.fiche(session('awa'), agents.moussa)).fiches).toEqual([]);
 
     const contenu = [
-      bloc('heading', 'Trimestre 4', { level: 2 }),
       bloc('checkListItem', 'Livrer la note de conjoncture', { checked: false }),
       {
         id: randomUUID(),
@@ -448,36 +446,63 @@ describe('la fiche d’objectifs', () => {
         children: [],
       },
     ];
-    await objectifs.enregistrerFiche(session('awa'), agents.moussa, { contenu });
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, { semestre: 2, contenu });
     await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      semestre: 2,
       contenu: [...contenu, bloc('paragraph', 'Et la synthèse annuelle.')],
     });
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      semestre: 1,
+      contenu: [bloc('checkListItem', 'Clore les comptes', { checked: true })],
+    });
+    // Une fiche ouverte puis vidée ne se montre pas.
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      annee: 2025,
+      semestre: 2,
+      contenu: [bloc('checkListItem', '')],
+    });
 
-    const lue = (await objectifs.mesObjectifs(session('moussa'))).fiche;
-    expect(lue?.contenu).toHaveLength(4);
-    expect(lue?.auteur).toBe('Awa Diop');
-    expect(lue?.contenu[2]).toMatchObject({
+    const { fiches } = await objectifs.mesObjectifs(session('moussa'));
+    // Le plus récent d'abord : le 2nd semestre, puis le 1er.
+    expect(fiches.map((f) => [f.annee, f.semestre])).toEqual([
+      [2026, 2],
+      [2026, 1],
+    ]);
+    expect(fiches[0]!.contenu).toHaveLength(3);
+    expect(fiches[0]!.auteur).toBe('Awa Diop');
+    expect(fiches[0]!.contenu[1]).toMatchObject({
       content: [{ text: 'Pour le ' }, { type: 'echeance', props: { date: '2026-10-31' } }],
     });
-    // Deux enregistrements le même jour : une seule notification.
-    expect((await notifications('moussa')).filter((n) => n.title === 'Vos objectifs 2026')).toEqual(
-      [{ title: 'Vos objectifs 2026', link: '/moi/objectifs' }],
-    );
+    expect((await objectifs.fiche(session('awa'), agents.moussa)).fiches).toHaveLength(2);
+    // Deux enregistrements le même jour : une notification par fiche, pas plus.
+    expect(
+      (await notifications('moussa')).filter((n) => n.title.startsWith('Objectifs du')),
+    ).toEqual([
+      { title: 'Objectifs du 2nd semestre de 2026', link: '/moi/objectifs' },
+      { title: 'Objectifs du 1er semestre de 2026', link: '/moi/objectifs' },
+    ]);
   });
 
   it('elle ne s’écrit que par le n+1, et ses liens ne mènent qu’à des adresses sûres', async () => {
     expect(
       await codeOf(() =>
-        objectifs.enregistrerFiche(session('mariama'), agents.moussa, { contenu: [] }),
+        objectifs.enregistrerFiche(session('mariama'), agents.moussa, {
+          semestre: 1,
+          contenu: [],
+        }),
       ),
     ).toBe('objectifs.hors_equipe');
     expect(
       await codeOf(() =>
-        objectifs.enregistrerFiche(session('moussa'), agents.moussa, { contenu: [] }),
+        objectifs.enregistrerFiche(session('moussa'), agents.moussa, {
+          semestre: 1,
+          contenu: [],
+        }),
       ),
     ).toBe('objectifs.hors_equipe');
 
     await objectifs.enregistrerFiche(session('mariama'), agents.awa, {
+      semestre: 1,
       contenu: [
         {
           id: randomUUID(),
@@ -495,8 +520,8 @@ describe('la fiche d’objectifs', () => {
         },
       ],
     });
-    const fiche = (await objectifs.fiche(session('mariama'), agents.awa)).fiche;
-    expect(fiche.contenu[0]).toMatchObject({
+    const [fiche] = (await objectifs.fiche(session('mariama'), agents.awa)).fiches;
+    expect(fiche!.contenu[0]).toMatchObject({
       content: [
         { type: 'link', href: '', content: [{ text: 'piège' }] },
         { type: 'link', href: 'https://apix.sn' },

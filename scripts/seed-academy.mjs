@@ -283,13 +283,23 @@ if (!process.env.ACADEMY_EMAIL) {
     const equipe = await appel('GET', '/objectifs/equipe');
     const moussa = equipe.membres.find((m) => m.givenName === 'Moussa');
     if (macro && moussa) {
-      // La formation rejoint la fiche d'objectifs de Moussa, sous un titre.
-      const { fiche } = await appel('GET', `/objectifs/equipe/${moussa.employeeId}`);
-      const texte = (t) => ({ type: 'text', text: t, styles: {} });
+      // La formation rejoint la fiche d'objectifs de Moussa pour le semestre en cours.
+      const { fiches } = await appel('GET', `/objectifs/equipe/${moussa.employeeId}`);
+      const annee = new Date().getFullYear();
+      const semestre = new Date().getMonth() < 6 ? 1 : 2;
+      const fiche = fiches.find((f) => f.annee === annee && f.semestre === semestre);
+      const texte = (t, styles = {}) => ({ type: 'text', text: t, styles });
       await appel('PUT', `/objectifs/equipe/${moussa.employeeId}/fiche`, {
+        annee,
+        semestre,
         contenu: [
-          ...fiche.contenu,
-          { type: 'heading', props: { level: 1 }, content: [texte('Se former')], children: [] },
+          ...(fiche?.contenu ?? []),
+          {
+            type: 'paragraph',
+            props: {},
+            content: [texte('Se former', { bold: true })],
+            children: [],
+          },
           {
             type: 'formation',
             props: { courseId: macro.id, titre: macro.title },
@@ -300,7 +310,7 @@ if (!process.env.ACADEMY_EMAIL) {
             props: {},
             content: [
               texte('À terminer pour le '),
-              { type: 'echeance', props: { date: `${new Date().getFullYear()}-11-30` } },
+              { type: 'echeance', props: { date: `${annee}-11-30` } },
             ],
             children: [],
           },

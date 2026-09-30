@@ -98,7 +98,6 @@ export const ICON_NAMES = [
   'settings',
   'task_alt',
   'timer',
-  'title',
   'translate',
   'trending_up',
   'unarchive',

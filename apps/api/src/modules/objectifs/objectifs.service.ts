@@ -12,12 +12,14 @@ import {
   type EnregistrerFicheObjectifsInput,
   type FicheObjectifs,
   FICHE_OBJECTIFS_MAX,
+  type FormationDeLaFiche,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
   type ObjectifView,
   type SessionUser,
   type SuiviEquipe,
   type TeamCourseProgress,
+  titreDuSemestre,
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { TenantDb, type Tx } from '../../db/tenant-db';
@@ -112,6 +114,18 @@ function ficheRemplie(contenu: unknown): boolean {
   return /"text":"\s*[^"\s]/.test(texte) || /"type":"(echeance|formation)"/.test(texte);
 }
 
+/** Où en est l'agent des formations commencées — ce que les blocs « Formation » affichent. */
+function formationsDe(progression: TeamCourseProgress[] | undefined): FormationDeLaFiche[] {
+  return (progression ?? [])
+    .filter((f): f is TeamCourseProgress & { courseId: string } => f.courseId !== null)
+    .map((f) => ({
+      courseId: f.courseId,
+      statut: f.status,
+      lecons: f.lessonCount,
+      validees: f.completedLessons,
+    }));
+}
+
 /** Les objectifs, avec le nom de qui les a fixés. */
 const SELECTION = sql`
   SELECT o.id, o.niveau, o.annee, o.diffusion, o.direction_id, o.employee_id, o.nature,
@@ -169,10 +183,10 @@ export class ObjectifsService {
         sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${moi}`,
       );
       const progression = await this.progression(tx, [moi]);
-      const fiche = await this.lireFiche(tx, moi, an, progression.get(moi));
       return {
         annee: an,
-        fiche: ficheRemplie(fiche.contenu) ? fiche : null,
+        fiches: await this.lireFiches(tx, moi),
+        formations: formationsDe(progression.get(moi)),
         apix: apix.map((o) => this.vue(o)),
         direction: direction
           ? { ...direction, objectifs: deLaDirection.map((o) => this.vue(o)) }
@@ -225,15 +239,20 @@ export class ObjectifsService {
           sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${membre.id}`,
         )
       ).map((o) => this.vue(o, progression.get(membre.id)));
-      const fiche = await this.lireFiche(tx, membre.id, an, progression.get(membre.id));
-      return { annee: an, membre: this.membre(membre, objectifs), objectifs, fiche };
+      return {
+        annee: an,
+        membre: this.membre(membre, objectifs),
+        objectifs,
+        fiches: await this.lireFiches(tx, membre.id),
+        formations: formationsDe(progression.get(membre.id)),
+      };
     });
   }
 
   /**
-   * Le n+1 enregistre la fiche d'objectifs de son direct — à chaque pause
-   * de la saisie. L'agent en est prévenu une fois par jour, pas à chaque
-   * enregistrement.
+   * Le n+1 enregistre la fiche d'objectifs de son direct pour un semestre —
+   * à chaque pause de la saisie. L'agent en est prévenu une fois par jour et
+   * par fiche, pas à chaque enregistrement.
    */
   async enregistrerFiche(
     user: SessionUser,
@@ -253,9 +272,11 @@ export class ObjectifsService {
         problem(404, 'objectifs.hors_equipe', 'Cet agent ne fait pas partie de votre équipe');
       }
       const { rows } = await tx.execute<{ updated_at: string | Date }>(sql`
-        INSERT INTO objectifs_fiches (id, tenant_id, employee_id, annee, contenu, auteur_employee_id)
-        VALUES (${uuidv7()}, ${user.tenantId}, ${employeeId}, ${an}, ${json}::jsonb, ${moi})
-        ON CONFLICT (tenant_id, employee_id, annee) DO UPDATE
+        INSERT INTO objectifs_fiches
+               (id, tenant_id, employee_id, annee, semestre, contenu, auteur_employee_id)
+        VALUES (${uuidv7()}, ${user.tenantId}, ${employeeId}, ${an}, ${input.semestre},
+                ${json}::jsonb, ${moi})
+        ON CONFLICT (tenant_id, employee_id, annee, semestre) DO UPDATE
            SET contenu = EXCLUDED.contenu,
                auteur_employee_id = EXCLUDED.auteur_employee_id,
                updated_at = now()
@@ -271,10 +292,10 @@ export class ObjectifsService {
           ).rows;
           await notifier(tx, user.tenantId, compte, {
             type: 'objectif',
-            title: `Vos objectifs ${an}`,
+            title: titreDuSemestre(input.semestre, an),
             body: `${auteur?.nom ?? 'Votre n+1'} les a mis à jour.`,
             link: '/moi/objectifs',
-            dedupeKey: `objectifs:fiche:${employeeId}:${an}:${this.aujourdhui()}`,
+            dedupeKey: `objectifs:fiche:${employeeId}:${an}:${input.semestre}:${this.aujourdhui()}`,
           });
         }
       }
@@ -282,39 +303,31 @@ export class ObjectifsService {
     });
   }
 
-  /** La fiche d'un agent pour l'année — vide si personne ne l'a encore rédigée. */
-  private async lireFiche(
-    tx: Tx,
-    employeeId: string,
-    an: number,
-    formations: TeamCourseProgress[] | undefined,
-  ): Promise<FicheObjectifs> {
+  /** Les fiches d'un agent, les plus récentes d'abord — sans les fiches vides. */
+  private async lireFiches(tx: Tx, employeeId: string): Promise<FicheObjectifs[]> {
     const { rows } = await tx.execute<{
+      annee: number;
+      semestre: number;
       contenu: Record<string, unknown>[];
       updated_at: string | Date;
       auteur: string | null;
     }>(sql`
-      SELECT f.contenu, f.updated_at,
+      SELECT f.annee, f.semestre, f.contenu, f.updated_at,
              CASE WHEN pa.id IS NULL THEN NULL ELSE pa.given_name || ' ' || pa.family_name END AS auteur
         FROM objectifs_fiches f
         LEFT JOIN employees ea ON ea.id = f.auteur_employee_id
         LEFT JOIN persons pa ON pa.id = ea.person_id
-       WHERE f.employee_id = ${employeeId} AND f.annee = ${an}`);
-    const ligne = rows[0];
-    return {
-      annee: an,
-      contenu: ligne?.contenu ?? [],
-      majLe: ligne ? iso(ligne.updated_at) : null,
-      auteur: ligne?.auteur ?? null,
-      formations: (formations ?? [])
-        .filter((f): f is TeamCourseProgress & { courseId: string } => f.courseId !== null)
-        .map((f) => ({
-          courseId: f.courseId,
-          statut: f.status,
-          lecons: f.lessonCount,
-          validees: f.completedLessons,
-        })),
-    };
+       WHERE f.employee_id = ${employeeId}
+       ORDER BY f.annee DESC, f.semestre DESC`);
+    return rows
+      .filter((l) => ficheRemplie(l.contenu))
+      .map((l) => ({
+        annee: l.annee,
+        semestre: l.semestre === 1 ? 1 : 2,
+        contenu: l.contenu,
+        majLe: iso(l.updated_at)!,
+        auteur: l.auteur,
+      }));
   }
 
   /** Les formations publiées qu'un n+1 peut donner à suivre. */

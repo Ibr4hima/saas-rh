@@ -31,11 +31,12 @@ import { Icon, type IconName } from './icons';
 import { usePreferences } from './preferences';
 
 /* ————————————————————————————————————————————————————————————————
-   La fiche d'objectifs — un éditeur de blocs, à la manière de Notion,
-   réduit à ce qu'une fiche demande : des titres, des objectifs à cocher, du
-   gras, de l'italique, du souligné. Le reste (listes « - », citations « > »,
-   annuler, coller du texte mis en forme) reste au clavier, sans menu. Et deux
-   blocs propres à la fiche :
+   La fiche d'objectifs d'un semestre — un éditeur de blocs, à la manière de
+   Notion, réduit à ce qu'une fiche demande : des objectifs à cocher, du
+   gras, de l'italique, du souligné. Le titre n'est pas à écrire : la page le
+   pose (« Objectifs du 1er semestre de 2026 »). Le reste (listes « - »,
+   citations « > », annuler, coller du texte mis en forme) reste au clavier,
+   sans menu. Et deux blocs propres à la fiche :
 
    — l'ÉCHÉANCE : une date posée dans le texte, qui se lit en pastille et se
      colore quand elle approche ou qu'elle est passée. « / Échéance », ou
@@ -114,7 +115,9 @@ function PuceEcheance({
         }}
         title={passee ? 'Échéance dépassée' : 'Échéance'}
         className={cn(
-          'mx-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-px text-[0.9em] font-semibold whitespace-nowrap ring-1 ring-inset transition-colors',
+          // Plus basse que la ligne (16 px contre 18,75) : la pastille ne
+          // l'agrandit pas, et la case à cocher reste en face du texte.
+          'mx-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0 text-[0.9em] leading-4 font-semibold whitespace-nowrap ring-1 ring-inset transition-colors',
           passee
             ? 'bg-danger-soft text-danger ring-danger/20'
             : proche
@@ -125,7 +128,7 @@ function PuceEcheance({
           modifiable ? 'cursor-pointer hover:brightness-95' : 'cursor-default',
         )}
       >
-        <Icon name="event" size={14} />
+        <Icon name="event" size={13} />
         {date ? dateLisible(date) : 'Choisir une date'}
       </button>
       {modifiable ? (
@@ -273,13 +276,13 @@ const Formation = createReactBlockSpec(
 // ———————————————————————————— le schéma
 
 /**
- * Les blocs d'une fiche. Pas d'image, de vidéo, de son ni de fichier : une
- * fiche d'objectifs n'en a pas besoin, et chacun demanderait où le stocker.
+ * Les blocs d'une fiche. Pas de titre — la page titre chaque semestre — ni
+ * d'image, de vidéo, de son ou de fichier : une fiche d'objectifs n'en a pas
+ * besoin, et chacun demanderait où le stocker.
  */
 const schema = BlockNoteSchema.create({
   blockSpecs: {
     paragraph: defaultBlockSpecs.paragraph,
-    heading: defaultBlockSpecs.heading,
     checkListItem: defaultBlockSpecs.checkListItem,
     bulletListItem: defaultBlockSpecs.bulletListItem,
     numberedListItem: defaultBlockSpecs.numberedListItem,
@@ -293,11 +296,32 @@ const schema = BlockNoteSchema.create({
 });
 type Editeur = typeof schema.BlockNoteEditor;
 
+type Bloc = Record<string, unknown> & { type?: unknown; content?: unknown; children?: unknown };
+
 /**
- * Aucune invite dans le texte : une ligne vide reste vide. Seul un titre vide
- * se signale — le « Titre » grisé vient de globals.css, qui ne le montre qu'à
- * la rédaction.
+ * Les fiches rédigées quand l'éditeur avait encore des titres les gardent
+ * lisibles : un titre y devient un paragraphe en gras — l'éditeur, qui ne
+ * connaît plus ce bloc, refuserait sinon d'ouvrir la fiche.
  */
+function sansTitres(blocs: Bloc[]): Bloc[] {
+  return blocs.map((b) => {
+    const enfants = Array.isArray(b.children) ? sansTitres(b.children as Bloc[]) : [];
+    if (b.type !== 'heading') return { ...b, children: enfants };
+    const contenu = Array.isArray(b.content)
+      ? (b.content as Bloc[]).map((c) =>
+          c.type === 'text'
+            ? { ...c, styles: { ...(c.styles as Record<string, unknown>), bold: true } }
+            : c,
+        )
+      : [];
+    return { id: b.id, type: 'paragraph', props: {}, content: contenu, children: enfants };
+  });
+}
+
+/** Une fiche neuve s'ouvre sur un objectif à cocher. */
+const FICHE_NEUVE: Bloc[] = [{ type: 'checkListItem' }];
+
+/** Aucune invite dans le texte : une ligne vide reste vide. */
 const dictionnaire = {
   ...fr,
   placeholders: {
@@ -313,12 +337,11 @@ const dictionnaire = {
 };
 
 /**
- * Le menu « / » : deux entrées, sans ligne d'explication ni raccourci. Un
- * titre, une liste de tâches — ce qu'une fiche d'objectifs demande. Les mots
- * qu'on tape après « / » les retrouvent : « /ti », « /tâche », « /obj »…
+ * Le menu « / » : la liste de tâches, sans ligne d'explication ni raccourci —
+ * pour repartir sur des cases à cocher après un paragraphe. « /tâche »,
+ * « /obj » la retrouvent aussi.
  */
 const ENTREES_SLASH: Record<string, { titre: string; icone: IconName; alias: string[] }> = {
-  heading: { titre: 'Titre', icone: 'title', alias: ['titre', 'section'] },
   check_list: {
     titre: 'Liste de tâches',
     icone: 'checklist',
@@ -455,19 +478,22 @@ export function EditeurFicheObjectifs({
   const editeur = useCreateBlockNote({
     schema,
     dictionary: dictionnaire,
-    // Un document vide n'est pas un contenu : l'éditeur démarre sur un
-    // paragraphe vide.
-    initialContent: contenu.length
-      ? (contenu as unknown as NonNullable<
-          Parameters<typeof useCreateBlockNote>[0]
-        >['initialContent'])
-      : undefined,
+    initialContent: (contenu.length ? sansTitres(contenu) : FICHE_NEUVE) as unknown as NonNullable<
+      Parameters<typeof useCreateBlockNote>[0]
+    >['initialContent'],
   });
 
   /** Le curseur au bout de la fiche : c'est là qu'on ajoute. */
   const ecrireALaFin = useCallback(() => {
     const dernier = editeur.document.at(-1);
-    if (dernier) editeur.setTextCursorPosition(dernier, 'end');
+    if (!dernier) return;
+    // Une formation n'a pas de texte où poser le curseur : une ligne s'ouvre
+    // sous elle.
+    const cible =
+      dernier.content === undefined
+        ? editeur.insertBlocks([{ type: 'paragraph' }], dernier, 'after')[0]!
+        : dernier;
+    editeur.setTextCursorPosition(cible, 'end');
     editeur.focus();
   }, [editeur]);
 

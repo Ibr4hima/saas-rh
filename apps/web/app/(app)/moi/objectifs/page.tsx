@@ -1,24 +1,26 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { MesObjectifs, ObjectifView } from '@teranga/contracts';
+import { titreDuSemestre, type MesObjectifs, type ObjectifView } from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../lib/api';
+import { parAnnee, SeparateurAnnee, TitreFiche } from '../../../../components/fiches-semestres';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { CLE_OBJECTIFS, LigneObjectif } from '../../../../components/objectifs';
 
-// L'éditeur, en lecture : la fiche telle que le n+1 l'a rédigée.
+// L'éditeur, en lecture : les fiches telles que le n+1 les a rédigées.
 const EditeurFicheObjectifs = dynamic(
   () => import('../../../../components/fiche-objectifs').then((m) => m.EditeurFicheObjectifs),
-  { ssr: false, loading: () => <Skeleton className="mx-5 my-4 h-24" /> },
+  { ssr: false, loading: () => <Skeleton className="mx-5 my-2 h-16" /> },
 );
 
 /**
- * Mes objectifs : ce que l'agent doit atteindre cette année — les
- * orientations de l'APIX qui lui sont diffusées, les objectifs de sa
- * direction, et les siens, fixés par son n+1.
+ * Mes objectifs, année par année : les fiches que le n+1 rédige pour chaque
+ * semestre — le plus récent d'abord —, puis, pour l'année en cours, les
+ * objectifs de la direction et les orientations de l'APIX qui sont diffusées.
  */
 export default function MesObjectifsPage() {
   const mes = useQuery({
@@ -35,13 +37,17 @@ export default function MesObjectifsPage() {
     );
   }
 
-  const { apix, direction, individuels, annee, fiche } = mes.data;
-  const rien =
-    !fiche && apix.length === 0 && !direction?.objectifs.length && individuels.length === 0;
+  const { apix, direction, individuels, annee, fiches, formations } = mes.data;
+  // Les objectifs posés un à un, avant les fiches, restent lisibles tant
+  // qu'aucune fiche ne les remplace.
+  const anciens = fiches.length === 0 ? individuels : [];
+  const autourDeLAnnee =
+    anciens.length > 0 || Boolean(direction?.objectifs.length) || apix.length > 0;
+  const groupes = parAnnee(fiches, autourDeLAnnee ? annee : undefined);
 
-  return (
-    <Page>
-      {rien ? (
+  if (groupes.length === 0) {
+    return (
+      <Page>
         <Card>
           <EmptyState
             className="py-14"
@@ -49,40 +55,51 @@ export default function MesObjectifsPage() {
             title={`Aucun objectif pour ${annee}`}
           />
         </Card>
-      ) : null}
-      {/* La fiche que le n+1 rédige ; les objectifs posés un à un avant elle
-          restent lisibles tant qu'il n'y en a pas. */}
-      {fiche ? (
-        <Card className="overflow-visible">
-          <CardHeader className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <CardTitle>Mes objectifs {annee}</CardTitle>
-            {fiche.majLe ? (
-              <span className="shrink-0 text-[11.5px] text-ink-muted">
-                {fiche.auteur ? `${fiche.auteur} · ` : ''}mis à jour le{' '}
-                {new Date(fiche.majLe).toLocaleDateString('fr-FR', {
-                  day: 'numeric',
-                  month: 'long',
-                })}
-              </span>
-            ) : null}
-          </CardHeader>
-          <div className="pb-5">
-            <EditeurFicheObjectifs
-              contenu={fiche.contenu}
-              modifiable={false}
-              formations={fiche.formations}
-            />
-          </div>
-        </Card>
-      ) : individuels.length ? (
-        <Section titre="Mes objectifs" objectifs={individuels} auteur lienFormation />
-      ) : null}
-      {direction?.objectifs.length ? (
-        <Section titre={direction.nom} objectifs={direction.objectifs} />
-      ) : null}
-      {apix.length ? (
-        <Section titre="Orientations de l’APIX" objectifs={apix} compteur={false} />
-      ) : null}
+      </Page>
+    );
+  }
+
+  return (
+    <Page>
+      {groupes.map((groupe) => (
+        <Fragment key={groupe.annee}>
+          <SeparateurAnnee annee={groupe.annee} />
+          {groupe.fiches.map((f) => (
+            <Card key={`${f.annee}-${f.semestre}`} className="overflow-visible">
+              <CardHeader className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 pb-1.5">
+                <TitreFiche>{titreDuSemestre(f.semestre, f.annee)}</TitreFiche>
+                <span className="shrink-0 text-[11.5px] text-ink-muted">
+                  {f.auteur ? `${f.auteur} · ` : ''}mis à jour le{' '}
+                  {new Date(f.majLe).toLocaleDateString('fr-FR', {
+                    day: 'numeric',
+                    month: 'long',
+                  })}
+                </span>
+              </CardHeader>
+              <div className="pb-5">
+                <EditeurFicheObjectifs
+                  contenu={f.contenu}
+                  modifiable={false}
+                  formations={formations}
+                />
+              </div>
+            </Card>
+          ))}
+          {groupe.annee === annee ? (
+            <>
+              {anciens.length ? (
+                <Section titre="Mes objectifs" objectifs={anciens} auteur lienFormation />
+              ) : null}
+              {direction?.objectifs.length ? (
+                <Section titre={direction.nom} objectifs={direction.objectifs} />
+              ) : null}
+              {apix.length ? (
+                <Section titre="Orientations de l’APIX" objectifs={apix} compteur={false} />
+              ) : null}
+            </>
+          ) : null}
+        </Fragment>
+      ))}
     </Page>
   );
 }

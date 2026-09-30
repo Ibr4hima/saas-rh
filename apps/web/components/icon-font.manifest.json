@@ -77,7 +77,6 @@
     "settings",
     "task_alt",
     "timer",
-    "title",
     "translate",
     "trending_up",
     "unarchive",
@@ -93,5 +92,5 @@
     "workspace_premium"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 90884
+  "bytes": 90776
 }

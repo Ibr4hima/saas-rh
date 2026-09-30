@@ -77,8 +77,11 @@ export interface MesObjectifs {
   apix: ObjectifView[];
   direction: { id: string; nom: string; objectifs: ObjectifView[] } | null;
   individuels: ObjectifView[];
-  /** La fiche que son n+1 a rédigée — `null` tant qu'elle est vide. */
-  fiche: FicheObjectifs | null;
+  /** Ses fiches, rédigées par son n+1 — les plus récentes d'abord ; une
+      fiche vide n'y figure pas. */
+  fiches: FicheObjectifs[];
+  /** Les formations qu'il a commencées, pour les blocs « Formation ». */
+  formations: FormationDeLaFiche[];
 }
 
 // ---------- Fiche d'objectifs (éditeur de blocs) ----------
@@ -94,18 +97,25 @@ export interface FormationDeLaFiche {
   validees: number;
 }
 
+/** Le semestre d'une fiche : le 1er (janvier-juin), le 2nd (juillet-décembre). */
+export type Semestre = 1 | 2;
+
+/** « Objectifs du 1er semestre de 2026 ». */
+export function titreDuSemestre(semestre: Semestre, annee: number): string {
+  return `Objectifs du ${semestre === 1 ? '1er' : '2nd'} semestre de ${annee}`;
+}
+
 /**
- * La fiche d'objectifs d'un agent pour une année : les blocs de l'éditeur,
- * tels qu'enregistrés (titres, cases à cocher, échéances, formations…).
+ * La fiche d'objectifs d'un agent pour un semestre : les blocs de l'éditeur,
+ * tels qu'enregistrés (cases à cocher, échéances, formations…).
  */
 export interface FicheObjectifs {
   annee: number;
+  semestre: Semestre;
   contenu: Record<string, unknown>[];
-  /** Dernière mise à jour, et par qui — `null` : jamais rédigée. */
-  majLe: string | null;
+  /** Dernière mise à jour, et par qui. */
+  majLe: string;
   auteur: string | null;
-  /** Les formations que l'agent a commencées, pour les blocs « Formation ». */
-  formations: FormationDeLaFiche[];
 }
 
 /** La fiche fait au plus 300 000 caractères une fois sérialisée. */
@@ -113,6 +123,7 @@ export const FICHE_OBJECTIFS_MAX = 300_000;
 
 export const enregistrerFicheObjectifsSchema = z.object({
   annee: z.number().int().min(2000).max(2100).optional(),
+  semestre: z.union([z.literal(1), z.literal(2)]),
   contenu: z.array(z.record(z.string(), z.unknown())).max(2000),
 });
 export type EnregistrerFicheObjectifsInput = z.infer<typeof enregistrerFicheObjectifsSchema>;
@@ -146,7 +157,10 @@ export interface FicheSuivi {
   annee: number;
   membre: MembreSuivi;
   objectifs: ObjectifView[];
-  fiche: FicheObjectifs;
+  /** Toutes ses fiches, les plus récentes d'abord ; une fiche vide n'y figure pas. */
+  fiches: FicheObjectifs[];
+  /** Les formations qu'il a commencées, pour les blocs « Formation ». */
+  formations: FormationDeLaFiche[];
 }
 
 /** « Objectifs de l'APIX » : ce que le directeur général fixe. */

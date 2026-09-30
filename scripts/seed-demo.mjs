@@ -583,14 +583,21 @@ for (const o of [
 ]) {
   await enTantQue(dgAgent.id, 'POST', '/objectifs', o);
 }
-// Les objectifs d'un agent : la fiche que son n+1 rédige, à la manière d'une
-// page Notion — des titres, des cases à cocher, des échéances.
-const texte = (t) => ({ type: 'text', text: t, styles: {} });
+// Les objectifs d'un agent : la fiche que son n+1 rédige pour chaque
+// semestre, à la manière d'une page Notion — des cases à cocher, des
+// échéances, du gras pour ce qui compte.
+const texte = (t, styles = {}) => ({ type: 'text', text: t, styles });
 const echeance = (date) => ({ type: 'echeance', props: { date } });
 const bloc = (type, contenu, props = {}) => ({ type, props, content: contenu, children: [] });
+const semestreCourant = new Date().getMonth() < 6 ? 1 : 2;
+const precedent =
+  semestreCourant === 2
+    ? { annee: anneeObjectifs, semestre: 1 }
+    : { annee: anneeObjectifs - 1, semestre: 2 };
 await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
+  annee: anneeObjectifs,
+  semestre: semestreCourant,
   contenu: [
-    bloc('heading', [texte('Études et veille')], { level: 1 }),
     bloc('checkListItem', [
       texte('Livrer l’étude sur l’attractivité des zones économiques spéciales — pour le '),
       echeance(`${anneeObjectifs}-12-15`),
@@ -599,8 +606,9 @@ await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
   ],
 });
 await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
+  annee: anneeObjectifs,
+  semestre: semestreCourant,
   contenu: [
-    bloc('heading', [texte('Priorités du quatrième trimestre')], { level: 1 }),
     bloc('checkListItem', [
       texte('Produire la note de conjoncture trimestrielle — pour le '),
       echeance(`${anneeObjectifs}-10-31`),
@@ -610,10 +618,22 @@ await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
       echeance(`${anneeObjectifs}-11-20`),
     ]),
     bloc('checkListItem', [texte('Mettre à jour la base des projets agréés')], { checked: true }),
-    bloc('heading', [texte('Critères de réussite')], { level: 1 }),
-    bloc('bulletListItem', [texte('Données du troisième trimestre, sources citées.')]),
-    bloc('bulletListItem', [texte('Intentions d’investissement ventilées par secteur.')]),
-    bloc('quote', [texte('Point d’étape avec Awa début novembre.')]),
+    bloc('paragraph', [
+      texte('Critères de réussite', { bold: true }),
+      texte(' : données du trimestre, sources citées ; intentions ventilées par secteur.'),
+    ]),
+  ],
+});
+await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
+  ...precedent,
+  contenu: [
+    bloc('checkListItem', [texte('Finaliser le rapport annuel sur les projets agréés')], {
+      checked: true,
+    }),
+    bloc('checkListItem', [texte('Former deux stagiaires à la base des projets')], {
+      checked: true,
+    }),
+    bloc('checkListItem', [texte('Rédiger la fiche pays pour la mission économique au Maroc')]),
   ],
 });
 

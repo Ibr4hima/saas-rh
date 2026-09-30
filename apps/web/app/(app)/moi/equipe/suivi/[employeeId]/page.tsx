@@ -3,11 +3,24 @@
 import dynamic from 'next/dynamic';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { FicheObjectifs, FicheSuivi, FormationProposable } from '@teranga/contracts';
-import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
+import {
+  titreDuSemestre,
+  type FicheSuivi,
+  type FormationDeLaFiche,
+  type FormationProposable,
+  type Semestre,
+} from '@teranga/contracts';
+import { Card, CardHeader, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../../../lib/api';
 import { RetourAcademy } from '../../../../../../components/academy-carte';
 import { EnTete, Repere } from '../../../../../../components/fiche';
+import {
+  ChoixSemestre,
+  cleDe,
+  parAnnee,
+  SeparateurAnnee,
+  TitreFiche,
+} from '../../../../../../components/fiches-semestres';
 import { Page } from '../../../../../../components/gabarit';
 import { Telephone } from '../../../../../../components/telephone';
 import { Icon } from '../../../../../../components/icons';
@@ -16,24 +29,16 @@ import { CLE_OBJECTIFS } from '../../../../../../components/objectifs';
 // L'éditeur ne vit que dans le navigateur, et ne se charge que sur cette page.
 const EditeurFicheObjectifs = dynamic(
   () => import('../../../../../../components/fiche-objectifs').then((m) => m.EditeurFicheObjectifs),
-  { ssr: false, loading: () => <Skeleton className="mx-5 my-4 h-24" /> },
+  { ssr: false, loading: () => <Skeleton className="mx-5 my-2 h-16" /> },
 );
 
-/** Une fiche dit quelque chose dès qu'un bloc porte du texte, une échéance ou une formation. */
-function ficheRemplie(contenu: unknown): boolean {
-  const texte = JSON.stringify(contenu);
-  return /"text":"\s*[^"\s]/.test(texte) || /"type":"(echeance|formation)"/.test(texte);
-}
-
 /**
- * La fiche d'un direct : la tête de son dossier, puis sa fiche d'objectifs —
- * que le n+1 rédige comme une page Notion, et qui s'enregistre d'elle-même.
+ * La fiche d'un direct : la tête de son dossier, puis ses objectifs, année
+ * par année — et dans l'année, semestre par semestre. Le n+1 les rédige comme
+ * une page Notion ; ils s'enregistrent d'eux-mêmes.
  */
 export default function FicheSuiviPage({ params }: { params: Promise<{ employeeId: string }> }) {
   const { employeeId } = use(params);
-  const [ouverte, setOuverte] = useState(false);
-  const [signal, setSignal] = useState(0);
-  const zone = useRef<HTMLDivElement>(null);
 
   const fiche = useQuery({
     queryKey: [...CLE_OBJECTIFS, 'equipe', employeeId],
@@ -70,14 +75,11 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
 
   const { membre: m } = fiche.data;
   const nom = `${m.givenName} ${m.familyName}`;
-  // Déjà rédigée, la fiche s'affiche d'emblée ; sinon, « Fixer des objectifs » l'ouvre.
-  const visible = ouverte || ficheRemplie(fiche.data.fiche.contenu);
 
   return (
     <Page>
       <RetourAcademy href="/moi/equipe/suivi" label="Suivi & Évaluation" />
-      {/* La même tête que le dossier du personnel ; à la place du stylo, le
-          geste du n+1 — fixer des objectifs. */}
+      {/* La même tête que le dossier du personnel. */}
       <EnTete
         titre={nom}
         marque={
@@ -90,20 +92,6 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
             <span className="font-mono tracking-tight">{m.number}</span>
             {m.positionTitle ? <> · {m.positionTitle}</> : null}
           </>
-        }
-        action={
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              setOuverte(true);
-              setSignal((n) => n + 1);
-              zone.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }}
-          >
-            <Icon name="flag" size={15} />
-            Fixer des objectifs
-          </Button>
         }
         reperes={
           <>
@@ -140,37 +128,108 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
         }
       />
 
-      <div ref={zone}>
-        {visible ? (
-          <ZoneFiche
-            employeeId={employeeId}
-            fiche={fiche.data.fiche}
-            catalogue={catalogue.data ?? []}
-            signal={signal}
-          />
-        ) : null}
-      </div>
+      <FichesDuMembre
+        employeeId={employeeId}
+        fiches={fiche.data.fiches}
+        formations={fiche.data.formations}
+        catalogue={catalogue.data ?? []}
+      />
     </Page>
   );
 }
 
+/** Une fiche à l'écran : enregistrée, ou tout juste ouverte par le n+1. */
+interface Carte {
+  annee: number;
+  semestre: Semestre;
+  contenu: Record<string, unknown>[];
+}
+
 /**
- * La zone de rédaction. Chaque pause de la saisie enregistre — pas de
- * bouton : on ne perd pas une fiche parce qu'on a oublié de la sauver. Les
- * enregistrements partent l'un après l'autre, dans l'ordre de la frappe.
+ * Les objectifs du direct, par année. L'année en cours porte le geste du
+ * n+1 — « Fixer des objectifs », pour le 1er ou le 2nd semestre ; les années
+ * passées gardent leurs fiches, toujours modifiables.
+ */
+function FichesDuMembre({
+  employeeId,
+  fiches,
+  formations,
+  catalogue,
+}: {
+  employeeId: string;
+  fiches: FicheSuivi['fiches'];
+  formations: FormationDeLaFiche[];
+  catalogue: FormationProposable[];
+}) {
+  const annee = new Date().getFullYear();
+  // Les semestres ouverts depuis le menu, pas encore enregistrés : ils
+  // rejoignent `fiches` à la première frappe.
+  const [ouvertes, setOuvertes] = useState<Carte[]>([]);
+  const [focus, setFocus] = useState({ cle: '', n: 0 });
+
+  const cartes: Carte[] = [
+    ...fiches,
+    ...ouvertes.filter((o) => !fiches.some((f) => cleDe(f) === cleDe(o))),
+  ];
+  const fixes = cartes.filter((c) => c.annee === annee).map((c) => c.semestre);
+
+  const choisir = (semestre: Semestre) => {
+    const cible: Carte = { annee, semestre, contenu: [] };
+    if (!fixes.includes(semestre)) setOuvertes((o) => [...o, cible]);
+    setFocus((f) => ({ cle: cleDe(cible), n: f.n + 1 }));
+  };
+
+  // La fiche choisie vient à l'écran — neuve ou déjà rédigée.
+  useEffect(() => {
+    if (focus.n === 0) return;
+    document
+      .getElementById(`fiche-${focus.cle}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [focus]);
+
+  return parAnnee(cartes, annee).map((groupe) => (
+    <section key={groupe.annee} className="flex flex-col gap-4">
+      <SeparateurAnnee annee={groupe.annee}>
+        {groupe.annee === annee ? <ChoixSemestre fixes={fixes} onChoisir={choisir} /> : null}
+      </SeparateurAnnee>
+      {groupe.fiches.map((c) => (
+        <Card key={cleDe(c)} id={`fiche-${cleDe(c)}`} className="scroll-mt-24 overflow-visible">
+          <CardHeader className="pb-1.5">
+            <TitreFiche>{titreDuSemestre(c.semestre, c.annee)}</TitreFiche>
+          </CardHeader>
+          <ZoneFiche
+            employeeId={employeeId}
+            carte={c}
+            formations={formations}
+            catalogue={catalogue}
+            signal={focus.cle === cleDe(c) ? focus.n : 0}
+          />
+        </Card>
+      ))}
+    </section>
+  ));
+}
+
+/**
+ * La zone de rédaction d'un semestre. Chaque pause de la saisie enregistre —
+ * pas de bouton : on ne perd pas une fiche parce qu'on a oublié de la sauver.
+ * Les enregistrements partent l'un après l'autre, dans l'ordre de la frappe.
  */
 function ZoneFiche({
   employeeId,
-  fiche,
+  carte,
+  formations,
   catalogue,
   signal,
 }: {
   employeeId: string;
-  fiche: FicheObjectifs;
+  carte: Carte;
+  formations: FormationDeLaFiche[];
   catalogue: FormationProposable[];
   signal: number;
 }) {
   const queryClient = useQueryClient();
+  const { annee, semestre } = carte;
   const [echec, setEchec] = useState(false);
   const enAttente = useRef<Record<string, unknown>[] | null>(null);
   const minuterie = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -184,20 +243,29 @@ function ZoneFiche({
       try {
         const r = await api<{ majLe: string }>(`/objectifs/equipe/${employeeId}/fiche`, {
           method: 'PUT',
-          body: { annee: fiche.annee, contenu: blocs },
+          body: { annee, semestre, contenu: blocs },
         });
         setEchec(false);
         // Revenir sur la page montre la fiche telle qu'on l'a laissée.
-        queryClient.setQueryData<FicheSuivi>([...CLE_OBJECTIFS, 'equipe', employeeId], (avant) =>
-          avant ? { ...avant, fiche: { ...avant.fiche, contenu: blocs, majLe: r.majLe } } : avant,
-        );
+        queryClient.setQueryData<FicheSuivi>([...CLE_OBJECTIFS, 'equipe', employeeId], (avant) => {
+          if (!avant) return avant;
+          const autres = avant.fiches.filter((f) => f.annee !== annee || f.semestre !== semestre);
+          const ancienne = avant.fiches.find((f) => f.annee === annee && f.semestre === semestre);
+          return {
+            ...avant,
+            fiches: [
+              ...autres,
+              { annee, semestre, contenu: blocs, majLe: r.majLe, auteur: ancienne?.auteur ?? null },
+            ],
+          };
+        });
       } catch {
         enAttente.current = enAttente.current ?? blocs;
         setEchec(true);
       }
     });
     return file.current;
-  }, [employeeId, fiche.annee, queryClient]);
+  }, [employeeId, annee, semestre, queryClient]);
 
   const onChange = useCallback(
     (blocs: Record<string, unknown>[]) => {
@@ -233,13 +301,13 @@ function ZoneFiche({
   }, [enregistrer]);
 
   return (
-    <Card className="overflow-visible">
+    <>
       {/* L'enregistrement ne se montre pas : il se fait. Seul un échec se
           dit — une fiche ne se perd pas en silence. */}
       {echec ? (
         <p
           role="alert"
-          className="flex items-center justify-end gap-1.5 px-5 pt-3 text-[11.5px] font-semibold text-danger"
+          className="flex items-center justify-end gap-1.5 px-5 text-[11.5px] font-semibold text-danger"
         >
           <Icon name="error" size={14} />
           Non enregistré
@@ -249,14 +317,14 @@ function ZoneFiche({
         </p>
       ) : null}
       <EditeurFicheObjectifs
-        className="min-h-44 py-5"
-        contenu={fiche.contenu}
+        className="pb-2.5"
+        contenu={carte.contenu}
         modifiable
-        formations={fiche.formations}
+        formations={formations}
         catalogue={catalogue}
         onChange={onChange}
         focusSignal={signal}
       />
-    </Card>
+    </>
   );
 }

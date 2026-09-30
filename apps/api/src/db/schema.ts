@@ -15,6 +15,7 @@ import {
   numeric,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uuid,
@@ -655,13 +656,15 @@ export const objectifs = pgTable('objectifs', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// ---------- Fiches d'objectifs (0043) ----------
+// ---------- Fiches d'objectifs (0043, par semestre depuis 0044) ----------
 
 export const objectifsFiches = pgTable('objectifs_fiches', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
   employeeId: uuid('employee_id').notNull(),
   annee: integer('annee').notNull(),
+  // 0044 : 1 ou 2 — une fiche par semestre.
+  semestre: smallint('semestre').notNull(),
   contenu: jsonb('contenu').notNull().default([]),
   auteurEmployeeId: uuid('auteur_employee_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

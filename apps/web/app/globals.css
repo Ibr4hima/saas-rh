@@ -456,7 +456,7 @@ body {
   font-family: var(--tg-font-sans);
 }
 :root .fiche-objectifs .bn-default-styles {
-  font-size: 15px;
+  font-size: 12.5px;
 }
 /* ProseMirror coupe les ligatures (« fi », « fl ») : « fiche » et « officiel »
    s'y dessinaient autrement qu'ailleurs sur la plateforme. On les rend. */
@@ -464,56 +464,27 @@ body {
   font-variant-ligatures: normal;
   font-feature-settings: normal;
 }
-
-/* Les titres de la fiche : l'échelle de la plateforme — le nom de l'agent,
-   en tête de page, reste le plus grand texte de l'écran. « Titre », le seul
-   du menu, fait 17,5 px ; « ## » et « ### » au clavier, à peine moins. */
-.fiche-objectifs .bn-block-content[data-content-type='heading'] {
-  color: var(--tg-ink-strong);
-  letter-spacing: -0.015em;
-}
-.fiche-objectifs [data-content-type='heading'] {
-  --level: 1.17em;
-}
-.fiche-objectifs [data-content-type='heading'][data-level='2'] {
-  --level: 1.07em;
-}
-.fiche-objectifs [data-content-type='heading'][data-level='3'] {
-  --level: 1em;
-}
-.fiche-objectifs input[type='checkbox'] {
-  accent-color: var(--tg-primary);
-}
 /* Sans menu latéral, le texte s'aligne sur la marge des cartes. */
 .fiche-objectifs .bn-editor {
   padding-inline: 20px;
 }
 
-/* Le rythme : un titre s'écarte de ce qui le précède et se rapproche de ce
-   qu'il annonce — plus d'air avant (18 px) qu'après (7 px), et plus après
-   qu'entre deux lignes (3 px). En tête de fiche, pas d'air à ajouter : la
-   carte en donne déjà. */
-.fiche-objectifs .bn-block-content[data-content-type='heading'] {
-  padding-bottom: 7px;
+/* La case à cocher : à la hauteur de SA ligne. BlockNote la cale sur 24 px,
+   la hauteur d'une ligne à 16 px — à 12,5 px, elle tombait sous le texte. */
+.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div:has(> input),
+.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input {
+  height: 1.5em;
 }
-.fiche-objectifs
-  .bn-block-group
-  > .bn-block-outer:first-child
-  > .bn-block
-  > .bn-block-content[data-content-type='heading'] {
-  padding-top: 3px;
+.fiche-objectifs input[type='checkbox'] {
+  accent-color: var(--tg-primary);
 }
 
-/* Une invite, une seule : « Titre » sur un titre encore vide, à la rédaction.
-   Droite et grisée, comme les invites de la plateforme — pas en italique. */
-:root .fiche-objectifs .bn-block-content:has(.ProseMirror-trailingBreak:only-child)::after {
-  font-style: normal;
-  color: var(--tg-ink-muted);
-  opacity: 0.6;
+/* Le bloc fantôme que BlockNote ajoute sous la fiche (un clic y ouvre une
+   ligne) : assez haut pour être visé, pas au point de creuser la carte. En
+   lecture, il n'a rien à offrir. */
+.fiche-objectifs .bn-trailing-block {
+  height: 12px;
 }
-:root
-  .fiche-objectifs
-  .bn-editor[contenteditable='true']
-  .bn-block-content[data-content-type='heading']:has(.ProseMirror-trailingBreak:only-child)::after {
-  content: 'Titre';
+.fiche-objectifs .bn-editor[contenteditable='false'] .bn-trailing-block {
+  display: none;
 }
