@@ -12,25 +12,30 @@ import { BlockNoteView } from '@blocknote/mantine';
 import {
   createReactBlockSpec,
   createReactInlineContentSpec,
+  FormattingToolbar,
+  FormattingToolbarController,
   getDefaultReactSlashMenuItems,
   SuggestionMenuController,
+  useBlockNoteEditor,
+  useComponentsContext,
   useCreateBlockNote,
+  useEditorState,
   type DefaultReactSuggestionItem,
 } from '@blocknote/react';
 import Link from 'next/link';
-import { createContext, useContext, useEffect, useMemo, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import type { FormationDeLaFiche, FormationProposable } from '@teranga/contracts';
 import { cn } from '@teranga/ui';
 import { PastilleEtat } from './academy-equipe';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 import { usePreferences } from './preferences';
 
 /* ————————————————————————————————————————————————————————————————
-   La fiche d'objectifs — un éditeur de blocs, à la manière de Notion.
-
-   Tout ce que l'éditeur sait faire d'ordinaire (titres, listes, cases à
-   cocher, citations, tableaux, séparateurs, glisser-déposer des blocs, menu
-   « / »), plus ce qu'une fiche d'objectifs demande en propre :
+   La fiche d'objectifs — un éditeur de blocs, à la manière de Notion,
+   réduit à ce qu'une fiche demande : des titres, des objectifs à cocher, du
+   gras, de l'italique, du souligné. Le reste (listes « - », citations « > »,
+   annuler, coller du texte mis en forme) reste au clavier, sans menu. Et deux
+   blocs propres à la fiche :
 
    — l'ÉCHÉANCE : une date posée dans le texte, qui se lit en pastille et se
      colore quand elle approche ou qu'elle est passée. « / Échéance », ou
@@ -288,35 +293,111 @@ const schema = BlockNoteSchema.create({
 });
 type Editeur = typeof schema.BlockNoteEditor;
 
+/**
+ * Aucune invite dans le texte : une ligne vide reste vide. Seul un titre vide
+ * se signale — le « Titre » grisé vient de globals.css, qui ne le montre qu'à
+ * la rédaction.
+ */
 const dictionnaire = {
   ...fr,
   placeholders: {
     ...fr.placeholders,
-    default: 'Tapez « / » pour un titre ou une liste de tâches',
-    emptyDocument: 'Tapez « / » pour un titre ou une liste de tâches',
+    default: '',
+    emptyDocument: '',
+    heading: '',
+    bulletListItem: '',
+    numberedListItem: '',
+    checkListItem: '',
+    toggleListItem: '',
   },
 };
 
 /**
- * Le menu « / » : deux entrées, pas trente. Un titre, une liste de tâches —
- * ce qu'une fiche d'objectifs demande. Le reste de l'éditeur (listes à
- * puces avec « - », citations avec « > », gras avec Ctrl+B…) reste là pour
- * qui le connaît, sans encombrer le menu de qui ne le connaît pas.
+ * Le menu « / » : deux entrées, sans ligne d'explication ni raccourci. Un
+ * titre, une liste de tâches — ce qu'une fiche d'objectifs demande. Les mots
+ * qu'on tape après « / » les retrouvent : « /ti », « /tâche », « /obj »…
  */
-const ENTREES_SLASH: Record<string, string> = {
-  heading: 'Un titre de section',
-  check_list: 'Des objectifs à cocher',
+const ENTREES_SLASH: Record<string, { titre: string; icone: IconName; alias: string[] }> = {
+  heading: { titre: 'Titre', icone: 'title', alias: ['titre', 'section'] },
+  check_list: {
+    titre: 'Liste de tâches',
+    icone: 'checklist',
+    alias: ['tache', 'tâche', 'objectif', 'case', 'cocher', 'todo'],
+  },
 };
 
 function entreesSlash(editeur: Editeur): DefaultReactSuggestionItem[] {
-  return getDefaultReactSlashMenuItems(editeur)
-    .filter((e) => (e as { key?: string }).key! in ENTREES_SLASH)
-    .map((e) => ({
-      ...e,
-      subtext: ENTREES_SLASH[(e as { key?: string }).key!],
-      // Un seul groupe : deux entrées n'ont pas besoin d'intitulés.
-      group: undefined,
-    }));
+  return getDefaultReactSlashMenuItems(editeur).flatMap((e) => {
+    const entree = ENTREES_SLASH[(e as { key?: string }).key ?? ''];
+    if (!entree) return [];
+    return [
+      {
+        ...e,
+        title: entree.titre,
+        aliases: [...(e.aliases ?? []), ...entree.alias],
+        icon: <Icon name={entree.icone} size={18} />,
+        subtext: undefined,
+        badge: undefined,
+        group: undefined,
+      },
+    ];
+  });
+}
+
+// ———————————————————————————— la barre de mise en forme
+
+const STYLES: { style: 'bold' | 'italic' | 'underline'; libelle: string; icone: IconName }[] = [
+  { style: 'bold', libelle: 'Gras', icone: 'format_bold' },
+  { style: 'italic', libelle: 'Italique', icone: 'format_italic' },
+  { style: 'underline', libelle: 'Souligné', icone: 'format_underlined' },
+];
+
+/** Un bouton de style : ni infobulle ni raccourci — B, I, U se lisent seuls. */
+function BoutonStyle({ style, libelle, icone }: (typeof STYLES)[number]) {
+  const Composants = useComponentsContext()!;
+  const editeur = useBlockNoteEditor(schema);
+  const actif = useEditorState({
+    editor: editeur,
+    selector: ({ editor }) => style in editor.getActiveStyles(),
+  });
+  return (
+    <Composants.FormattingToolbar.Button
+      className="bn-button"
+      label={libelle}
+      isSelected={actif}
+      onClick={() => {
+        editeur.focus();
+        editeur.toggleStyles({ [style]: true });
+      }}
+      icon={<Icon name={icone} size={18} />}
+    />
+  );
+}
+
+/**
+ * La barre qui paraît sur une sélection : trois boutons. Pas de type de bloc,
+ * de couleur, d'alignement ni de lien — une fiche d'objectifs n'en a pas
+ * besoin. En lecture (l'agent), ou sur une formation sélectionnée (un bloc
+ * sans texte), rien à mettre en forme : pas de barre.
+ */
+function BarreDeMiseEnForme() {
+  const editeur = useBlockNoteEditor(schema);
+  const texte = useEditorState({
+    editor: editeur,
+    selector: ({ editor }) =>
+      editor.isEditable &&
+      (editor.getSelection()?.blocks ?? [editor.getTextCursorPosition().block]).some(
+        (b) => b.content !== undefined,
+      ),
+  });
+  if (!texte) return null;
+  return (
+    <FormattingToolbar>
+      {STYLES.map((s) => (
+        <BoutonStyle key={s.style} {...s} />
+      ))}
+    </FormattingToolbar>
+  );
 }
 
 /** « @ » : une échéance en un mot. */
@@ -358,21 +439,24 @@ export function EditeurFicheObjectifs({
   catalogue = [],
   onChange,
   focusSignal = 0,
+  className,
 }: {
   contenu: Record<string, unknown>[];
   modifiable: boolean;
   formations: FormationDeLaFiche[];
   catalogue?: FormationProposable[];
   onChange?: (blocs: Record<string, unknown>[]) => void;
-  /** Chaque changement ramène le curseur dans la fiche (« Fixer des objectifs »). */
+  /** Chaque changement ramène le curseur en fin de fiche (« Fixer des objectifs »). */
   focusSignal?: number;
+  /** La marge autour du texte : un clic dedans, et l'on écrit en fin de fiche. */
+  className?: string;
 }) {
   const { theme } = usePreferences();
   const editeur = useCreateBlockNote({
     schema,
     dictionary: dictionnaire,
     // Un document vide n'est pas un contenu : l'éditeur démarre sur un
-    // paragraphe, qui porte l'invite.
+    // paragraphe vide.
     initialContent: contenu.length
       ? (contenu as unknown as NonNullable<
           Parameters<typeof useCreateBlockNote>[0]
@@ -380,9 +464,16 @@ export function EditeurFicheObjectifs({
       : undefined,
   });
 
+  /** Le curseur au bout de la fiche : c'est là qu'on ajoute. */
+  const ecrireALaFin = useCallback(() => {
+    const dernier = editeur.document.at(-1);
+    if (dernier) editeur.setTextCursorPosition(dernier, 'end');
+    editeur.focus();
+  }, [editeur]);
+
   useEffect(() => {
-    if (focusSignal > 0 && modifiable) editeur.focus();
-  }, [focusSignal, modifiable, editeur]);
+    if (focusSignal > 0 && modifiable) ecrireALaFin();
+  }, [focusSignal, modifiable, ecrireALaFin]);
 
   const contexte = useMemo(
     () => ({ formations, catalogue, lienAcademy: !modifiable }),
@@ -391,28 +482,43 @@ export function EditeurFicheObjectifs({
 
   return (
     <Contexte.Provider value={contexte}>
-      <BlockNoteView
-        editor={editeur}
-        editable={modifiable}
-        // Le clair et le sombre de la plateforme, pas ceux du système : les
-        // couleurs elles-mêmes viennent des variables (globals.css).
-        theme={theme === 'sombre' ? 'dark' : 'light'}
-        // Ni poignée de déplacement ni « + » en marge : la fiche s'écrit au
-        // clavier, comme un texte.
-        sideMenu={false}
-        slashMenu={false}
-        onChange={() => onChange?.(editeur.document as unknown as Record<string, unknown>[])}
-        className="fiche-objectifs"
+      <div
+        className={cn(modifiable && 'cursor-text', className)}
+        // Comme sur une page : cliquer sous le texte place le curseur en fin
+        // de fiche, au lieu de ne rien faire.
+        onMouseDown={(e) => {
+          if (!modifiable || e.target !== e.currentTarget) return;
+          e.preventDefault();
+          ecrireALaFin();
+        }}
       >
-        <SuggestionMenuController
-          triggerCharacter="/"
-          getItems={async (requete) => filterSuggestionItems(entreesSlash(editeur), requete)}
-        />
-        <SuggestionMenuController
-          triggerCharacter="@"
-          getItems={async (requete) => filterSuggestionItems(datesProposees(editeur), requete)}
-        />
-      </BlockNoteView>
+        <BlockNoteView
+          editor={editeur}
+          editable={modifiable}
+          // Le clair et le sombre de la plateforme, pas ceux du système : les
+          // couleurs elles-mêmes viennent des variables (globals.css).
+          theme={theme === 'sombre' ? 'dark' : 'light'}
+          // Ni poignée de déplacement ni « + » en marge : la fiche s'écrit au
+          // clavier, comme un texte. Pas d'émojis au « : » — en français, il
+          // suit chaque intitulé (« Objectif : … »).
+          sideMenu={false}
+          slashMenu={false}
+          formattingToolbar={false}
+          emojiPicker={false}
+          onChange={() => onChange?.(editeur.document as unknown as Record<string, unknown>[])}
+          className="fiche-objectifs"
+        >
+          <FormattingToolbarController formattingToolbar={BarreDeMiseEnForme} />
+          <SuggestionMenuController
+            triggerCharacter="/"
+            getItems={async (requete) => filterSuggestionItems(entreesSlash(editeur), requete)}
+          />
+          <SuggestionMenuController
+            triggerCharacter="@"
+            getItems={async (requete) => filterSuggestionItems(datesProposees(editeur), requete)}
+          />
+        </BlockNoteView>
+      </div>
     </Contexte.Provider>
   );
 }

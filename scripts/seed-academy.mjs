@@ -289,7 +289,7 @@ if (!process.env.ACADEMY_EMAIL) {
       await appel('PUT', `/objectifs/equipe/${moussa.employeeId}/fiche`, {
         contenu: [
           ...fiche.contenu,
-          { type: 'heading', props: { level: 2 }, content: [texte('Se former')], children: [] },
+          { type: 'heading', props: { level: 1 }, content: [texte('Se former')], children: [] },
           {
             type: 'formation',
             props: { courseId: macro.id, titre: macro.title },

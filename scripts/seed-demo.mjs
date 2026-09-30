@@ -590,7 +590,7 @@ const echeance = (date) => ({ type: 'echeance', props: { date } });
 const bloc = (type, contenu, props = {}) => ({ type, props, content: contenu, children: [] });
 await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
   contenu: [
-    bloc('heading', [texte('Études et veille')], { level: 2 }),
+    bloc('heading', [texte('Études et veille')], { level: 1 }),
     bloc('checkListItem', [
       texte('Livrer l’étude sur l’attractivité des zones économiques spéciales — pour le '),
       echeance(`${anneeObjectifs}-12-15`),
@@ -600,7 +600,7 @@ await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
 });
 await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
   contenu: [
-    bloc('heading', [texte('Priorités du quatrième trimestre')], { level: 2 }),
+    bloc('heading', [texte('Priorités du quatrième trimestre')], { level: 1 }),
     bloc('checkListItem', [
       texte('Produire la note de conjoncture trimestrielle — pour le '),
       echeance(`${anneeObjectifs}-10-31`),
@@ -610,7 +610,7 @@ await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
       echeance(`${anneeObjectifs}-11-20`),
     ]),
     bloc('checkListItem', [texte('Mettre à jour la base des projets agréés')], { checked: true }),
-    bloc('heading', [texte('Critères de réussite')], { level: 3 }),
+    bloc('heading', [texte('Critères de réussite')], { level: 1 }),
     bloc('bulletListItem', [texte('Données du troisième trimestre, sources citées.')]),
     bloc('bulletListItem', [texte('Intentions d’investissement ventilées par secteur.')]),
     bloc('quote', [texte('Point d’étape avec Awa début novembre.')]),

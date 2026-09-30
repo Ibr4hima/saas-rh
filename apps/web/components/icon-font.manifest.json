@@ -18,6 +18,7 @@
     "campaign",
     "check",
     "check_circle",
+    "checklist",
     "chevron_backward",
     "chevron_forward",
     "chevron_left",
@@ -39,6 +40,9 @@
     "family_history",
     "flag",
     "folder_managed",
+    "format_bold",
+    "format_italic",
+    "format_underlined",
     "free_cancellation",
     "fullscreen",
     "fullscreen_exit",
@@ -73,6 +77,7 @@
     "settings",
     "task_alt",
     "timer",
+    "title",
     "translate",
     "trending_up",
     "unarchive",
@@ -88,5 +93,5 @@
     "workspace_premium"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 89008
+  "bytes": 90884
 }

@@ -208,14 +208,25 @@ function ZoneFiche({
     [enregistrer],
   );
 
-  // Quitter la page n'abandonne pas la dernière phrase.
+  // Quitter la page n'abandonne pas la dernière phrase. Ctrl+S (⌘S)
+  // enregistre sur-le-champ, au lieu d'ouvrir « Enregistrer la page » du
+  // navigateur — le réflexe de qui vient d'un traitement de texte.
   useEffect(() => {
     const avantDePartir = (e: BeforeUnloadEvent) => {
       if (enAttente.current) e.preventDefault();
     };
+    const sauver = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        clearTimeout(minuterie.current);
+        void enregistrer();
+      }
+    };
     window.addEventListener('beforeunload', avantDePartir);
+    window.addEventListener('keydown', sauver);
     return () => {
       window.removeEventListener('beforeunload', avantDePartir);
+      window.removeEventListener('keydown', sauver);
       clearTimeout(minuterie.current);
       if (enAttente.current) void enregistrer();
     };
@@ -237,16 +248,15 @@ function ZoneFiche({
           </button>
         </p>
       ) : null}
-      <div className="py-5">
-        <EditeurFicheObjectifs
-          contenu={fiche.contenu}
-          modifiable
-          formations={fiche.formations}
-          catalogue={catalogue}
-          onChange={onChange}
-          focusSignal={signal}
-        />
-      </div>
+      <EditeurFicheObjectifs
+        className="min-h-44 py-5"
+        contenu={fiche.contenu}
+        modifiable
+        formations={fiche.formations}
+        catalogue={catalogue}
+        onChange={onChange}
+        focusSignal={signal}
+      />
     </Card>
   );
 }
