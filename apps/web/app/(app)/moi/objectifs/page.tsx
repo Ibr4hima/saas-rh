@@ -65,25 +65,29 @@ export default function MesObjectifsPage() {
         <Fragment key={groupe.annee}>
           <SeparateurAnnee annee={groupe.annee} />
           {groupe.fiches.map((f) => (
-            <Card key={`${f.annee}-${f.semestre}`} className="overflow-visible">
-              <CardHeader className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 pb-1.5">
-                <TitreFiche>{titreDuSemestre(f.semestre, f.annee)}</TitreFiche>
-                <span className="shrink-0 text-[11.5px] text-ink-muted">
-                  {f.auteur ? `${f.auteur} · ` : ''}mis à jour le{' '}
-                  {new Date(f.majLe).toLocaleDateString('fr-FR', {
-                    day: 'numeric',
-                    month: 'long',
-                  })}
-                </span>
-              </CardHeader>
-              <div className="pb-5">
+            <div key={`${f.annee}-${f.semestre}`} className="flex flex-col gap-2.5">
+              <TitreFiche
+                note={
+                  <>
+                    {f.auteur ? `${f.auteur} · ` : ''}mis à jour le{' '}
+                    {new Date(f.majLe).toLocaleDateString('fr-FR', {
+                      day: 'numeric',
+                      month: 'long',
+                    })}
+                  </>
+                }
+              >
+                {titreDuSemestre(f.semestre, f.annee)}
+              </TitreFiche>
+              <Card className="overflow-visible">
                 <EditeurFicheObjectifs
+                  className="py-3.5"
                   contenu={f.contenu}
                   modifiable={false}
                   formations={formations}
                 />
-              </div>
-            </Card>
+              </Card>
+            </div>
           ))}
           {groupe.annee === annee ? (
             <>

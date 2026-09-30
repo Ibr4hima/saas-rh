@@ -10,7 +10,7 @@ import {
   type FormationProposable,
   type Semestre,
 } from '@teranga/contracts';
-import { Card, CardHeader, EmptyState, Skeleton } from '@teranga/ui';
+import { Card, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../../../lib/api';
 import { RetourAcademy } from '../../../../../../components/academy-carte';
 import { EnTete, Repere } from '../../../../../../components/fiche';
@@ -188,23 +188,23 @@ function FichesDuMembre({
   }, [focus]);
 
   return parAnnee(cartes, annee).map((groupe) => (
-    <section key={groupe.annee} className="flex flex-col gap-4">
+    <section key={groupe.annee} className="flex flex-col gap-5">
       <SeparateurAnnee annee={groupe.annee}>
         {groupe.annee === annee ? <ChoixSemestre fixes={fixes} onChoisir={choisir} /> : null}
       </SeparateurAnnee>
       {groupe.fiches.map((c) => (
-        <Card key={cleDe(c)} id={`fiche-${cleDe(c)}`} className="scroll-mt-24 overflow-visible">
-          <CardHeader className="pb-1.5">
-            <TitreFiche>{titreDuSemestre(c.semestre, c.annee)}</TitreFiche>
-          </CardHeader>
-          <ZoneFiche
-            employeeId={employeeId}
-            carte={c}
-            formations={formations}
-            catalogue={catalogue}
-            signal={focus.cle === cleDe(c) ? focus.n : 0}
-          />
-        </Card>
+        <div key={cleDe(c)} id={`fiche-${cleDe(c)}`} className="flex scroll-mt-24 flex-col gap-2.5">
+          <TitreFiche>{titreDuSemestre(c.semestre, c.annee)}</TitreFiche>
+          <Card className="overflow-visible">
+            <ZoneFiche
+              employeeId={employeeId}
+              carte={c}
+              formations={formations}
+              catalogue={catalogue}
+              signal={focus.cle === cleDe(c) ? focus.n : 0}
+            />
+          </Card>
+        </div>
       ))}
     </section>
   ));
@@ -307,7 +307,7 @@ function ZoneFiche({
       {echec ? (
         <p
           role="alert"
-          className="flex items-center justify-end gap-1.5 px-5 text-[11.5px] font-semibold text-danger"
+          className="flex items-center justify-end gap-1.5 px-5 pt-3 text-[11.5px] font-semibold text-danger"
         >
           <Icon name="error" size={14} />
           Non enregistré
@@ -317,7 +317,7 @@ function ZoneFiche({
         </p>
       ) : null}
       <EditeurFicheObjectifs
-        className="pb-2.5"
+        className="pt-3.5 pb-1"
         contenu={carte.contenu}
         modifiable
         formations={formations}
