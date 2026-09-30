@@ -51,11 +51,11 @@ export function SeparateurAnnee({ annee, children }: { annee: number; children?:
 }
 
 /**
- * Une fiche de semestre : sa carte, et son titre dans un cadre posé à
- * cheval sur le bord haut, au centre — comme la légende d'un encadré, dans
- * la voix de l'année (capitales espacées) mais en encre et plus grand. Le
- * titre appartient à SA carte : entre deux fiches, on ne se demande plus à
- * laquelle il se rapporte. `note` : qui l'a rédigée, et quand.
+ * Une fiche de semestre : sa carte, et son titre sur une pastille bleue posée
+ * à cheval sur le bord haut, au centre — comme la légende d'un encadré, en
+ * petites capitales, la voix de l'année. Le titre appartient à SA carte :
+ * entre deux fiches, on ne se demande plus à laquelle il se rapporte.
+ * `note` : qui l'a rédigée, et quand.
  */
 export function FicheSemestre({
   annee,
@@ -67,12 +67,12 @@ export function FicheSemestre({
   return (
     <div id={id} className="scroll-mt-24">
       <div className="relative z-10 flex justify-center px-2">
-        <h3 className="rounded-full border border-card-line bg-surface px-4 py-[7px] text-[12px] leading-4 font-bold tracking-[0.1em] whitespace-nowrap text-ink-strong uppercase shadow-[0_1px_2px_rgb(0_0_0/0.04)] sm:px-5 sm:text-[13px]">
+        <h3 className="rounded-full bg-primary py-[7px] pr-[14.5px] pl-4 text-[11px] leading-4 font-extrabold tracking-[0.14em] whitespace-nowrap text-primary-ink uppercase shadow-[0_4px_12px_-4px_rgb(0_79_145/0.5)]">
           {titreDuSemestre(semestre, annee)}
         </h3>
       </div>
-      {/* La carte remonte sous le cadre de la moitié de sa hauteur (32 px). */}
-      <Card className="-mt-4 overflow-visible pt-4">
+      {/* La carte remonte sous le cadre de la moitié de sa hauteur (30 px). */}
+      <Card className="-mt-[15px] overflow-visible pt-[15px]">
         {note ? <p className="px-5 pt-3 text-center text-[11px] text-ink-muted">{note}</p> : null}
         {children}
       </Card>

@@ -318,7 +318,7 @@ function ZoneFiche({
         </p>
       ) : null}
       <EditeurFicheObjectifs
-        className="pt-4 pb-1.5"
+        className="pt-4 pb-1"
         contenu={carte.contenu}
         modifiable
         formations={formations}
