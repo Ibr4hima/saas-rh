@@ -469,14 +469,61 @@ body {
   padding-inline: 20px;
 }
 
-/* La case à cocher : à la hauteur de SA ligne. BlockNote la cale sur 24 px,
-   la hauteur d'une ligne à 16 px — à 12,5 px, elle tombait sous le texte. */
-.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div:has(> input),
-.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input {
+/* Les cases à cocher, dessinées par la plateforme plutôt que par le
+   navigateur : un carré arrondi au trait fin, plein de bleu et coché de blanc
+   une fois l'objectif tenu — pareil en lecture, où la case grisée « désactivée »
+   du navigateur faisait croire à une erreur. Calées au centre de LEUR ligne :
+   BlockNote les posait sur 24 px, la hauteur d'une ligne à 16 px. */
+.fiche-objectifs {
+  --coche: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.4l2.9 2.9 5.9-6.4' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+:root[data-theme='dark'] .fiche-objectifs {
+  --coche: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.4l2.9 2.9 5.9-6.4' fill='none' stroke='%2314172a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div:has(> input) {
+  display: flex;
+  align-items: center;
   height: 1.5em;
 }
-.fiche-objectifs input[type='checkbox'] {
-  accent-color: var(--tg-primary);
+.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input {
+  appearance: none;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0 10px 0 2px;
+  border: 1.5px solid color-mix(in srgb, var(--tg-ink-muted) 45%, transparent);
+  border-radius: 4.5px;
+  background: var(--tg-surface) center / 11px no-repeat;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
+}
+.fiche-objectifs
+  .bn-block-content[data-content-type='checkListItem']
+  > div
+  > input:hover:not(:disabled) {
+  border-color: var(--tg-primary);
+}
+.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input:checked {
+  border-color: var(--tg-primary);
+  background-color: var(--tg-primary);
+  background-image: var(--coche);
+}
+.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input:disabled {
+  cursor: default;
+}
+.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--tg-primary) 45%, transparent);
+  outline-offset: 2px;
+}
+/* Un objectif tenu s'efface d'un ton : barré, et gris — ce qui reste à faire
+   ressort seul. */
+.fiche-objectifs
+  .bn-block-content[data-content-type='checkListItem'][data-checked='true']
+  .bn-inline-content {
+  color: var(--tg-ink-muted);
+  text-decoration-color: color-mix(in srgb, var(--tg-ink-muted) 55%, transparent);
 }
 
 /* Le bloc fantôme que BlockNote ajoute sous la fiche (un clic y ouvre une

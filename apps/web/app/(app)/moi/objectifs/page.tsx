@@ -80,7 +80,7 @@ export default function MesObjectifsPage() {
               }
             >
               <EditeurFicheObjectifs
-                className="pt-2.5 pb-3.5"
+                className="pt-3 pb-4"
                 contenu={f.contenu}
                 modifiable={false}
                 formations={formations}

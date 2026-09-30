@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Semestre } from '@teranga/contracts';
+import { titreDuSemestre, type Semestre } from '@teranga/contracts';
 import { Button, Card, cn } from '@teranga/ui';
 import { Icon } from './icons';
 
@@ -52,7 +52,8 @@ export function SeparateurAnnee({ annee, children }: { annee: number; children?:
 
 /**
  * Une fiche de semestre : sa carte, et son titre dans un cadre posé à
- * cheval sur le bord haut, au centre — comme la légende d'un encadré. Le
+ * cheval sur le bord haut, au centre — comme la légende d'un encadré, dans
+ * la voix de l'année (capitales espacées) mais en encre et plus grand. Le
  * titre appartient à SA carte : entre deux fiches, on ne se demande plus à
  * laquelle il se rapporte. `note` : qui l'a rédigée, et quand.
  */
@@ -66,20 +67,13 @@ export function FicheSemestre({
   return (
     <div id={id} className="scroll-mt-24">
       <div className="relative z-10 flex justify-center px-2">
-        <h3 className="inline-flex max-w-full items-center gap-2.5 rounded-full border border-card-line bg-surface py-1.5 pr-5 pl-1.5 text-[14px] leading-tight whitespace-nowrap sm:text-[16px] font-bold tracking-[-0.01em] text-ink-strong shadow-[0_1px_3px_rgb(0_0_0/0.05)]">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
-            <Icon name="flag" size={15} />
-          </span>
-          <span>
-            Objectifs du{' '}
-            <span className="text-primary">{semestre === 1 ? '1er' : '2nd'} semestre</span> de{' '}
-            {annee}
-          </span>
+        <h3 className="rounded-full border border-card-line bg-surface px-4 py-[7px] text-[12px] leading-4 font-bold tracking-[0.1em] whitespace-nowrap text-ink-strong uppercase shadow-[0_1px_2px_rgb(0_0_0/0.04)] sm:px-5 sm:text-[13px]">
+          {titreDuSemestre(semestre, annee)}
         </h3>
       </div>
-      {/* La carte remonte sous le cadre de la moitié de sa hauteur (40 px). */}
-      <Card className="-mt-5 overflow-visible pt-5">
-        {note ? <p className="px-5 pt-2.5 text-center text-[11px] text-ink-muted">{note}</p> : null}
+      {/* La carte remonte sous le cadre de la moitié de sa hauteur (32 px). */}
+      <Card className="-mt-4 overflow-visible pt-4">
+        {note ? <p className="px-5 pt-3 text-center text-[11px] text-ink-muted">{note}</p> : null}
         {children}
       </Card>
     </div>

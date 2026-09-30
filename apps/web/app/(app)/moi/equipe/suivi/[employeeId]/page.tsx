@@ -187,7 +187,7 @@ function FichesDuMembre({
   }, [focus]);
 
   return parAnnee(cartes, annee).map((groupe) => (
-    <section key={groupe.annee} className="flex flex-col gap-6">
+    <section key={groupe.annee} className="flex flex-col gap-7">
       <SeparateurAnnee annee={groupe.annee}>
         {groupe.annee === annee ? <ChoixSemestre fixes={fixes} onChoisir={choisir} /> : null}
       </SeparateurAnnee>
@@ -318,7 +318,7 @@ function ZoneFiche({
         </p>
       ) : null}
       <EditeurFicheObjectifs
-        className="pt-3.5 pb-1"
+        className="pt-4 pb-1.5"
         contenu={carte.contenu}
         modifiable
         formations={formations}
