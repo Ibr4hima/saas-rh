@@ -411,3 +411,57 @@ body {
     animation: none;
   }
 }
+
+/* Fiche d'objectifs (BlockNote) : les couleurs de la plateforme plutôt que
+   celles de l'éditeur. Les variables suivent d'elles-mêmes le clair et le
+   sombre ; les menus flottants (« / », « @ », mise en forme) en héritent. */
+/* `:root` en tête : la feuille de BlockNote se charge après celle-ci, et
+   déclare les mêmes sélecteurs — il faut un cran de plus pour l'emporter. */
+:root .bn-root,
+:root .bn-root[data-color-scheme='dark'] {
+  --bn-colors-editor-text: var(--tg-ink);
+  --bn-colors-editor-background: transparent;
+  --bn-colors-menu-text: var(--tg-ink);
+  --bn-colors-menu-background: var(--tg-surface);
+  --bn-colors-tooltip-text: var(--tg-ink);
+  --bn-colors-tooltip-background: var(--tg-surface-raised);
+  --bn-colors-hovered-text: var(--tg-ink-strong);
+  --bn-colors-hovered-background: var(--tg-hover);
+  --bn-colors-selected-text: var(--tg-primary-ink);
+  --bn-colors-selected-background: var(--tg-primary);
+  --bn-colors-disabled-text: var(--tg-ink-muted);
+  --bn-colors-disabled-background: var(--tg-line-soft);
+  --bn-colors-shadow: var(--tg-line);
+  --bn-colors-border: var(--tg-line);
+  --bn-colors-side-menu: var(--tg-ink-muted);
+  --bn-font-family: var(--tg-font-sans);
+  --bn-border-radius: 10px;
+}
+
+/* Les titres de la fiche : l'échelle de la plateforme — le nom de l'agent,
+   en tête de page, reste le plus grand texte de l'écran. */
+.fiche-objectifs .bn-block-content[data-content-type='heading'] {
+  color: var(--tg-ink-strong);
+  letter-spacing: -0.015em;
+}
+.fiche-objectifs [data-content-type='heading'] {
+  --level: 1.45em;
+}
+.fiche-objectifs [data-content-type='heading'][data-level='2'] {
+  --level: 1.25em;
+}
+.fiche-objectifs [data-content-type='heading'][data-level='3'] {
+  --level: 1.08em;
+}
+.fiche-objectifs input[type='checkbox'] {
+  accent-color: var(--tg-primary);
+}
+.fiche-objectifs .bn-editor {
+  padding-inline: 44px 16px;
+  font-size: 14px;
+}
+@media (max-width: 640px) {
+  .fiche-objectifs .bn-editor {
+    padding-inline: 28px 4px;
+  }
+}

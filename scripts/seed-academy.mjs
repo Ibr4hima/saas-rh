@@ -283,14 +283,30 @@ if (!process.env.ACADEMY_EMAIL) {
     const equipe = await appel('GET', '/objectifs/equipe');
     const moussa = equipe.membres.find((m) => m.givenName === 'Moussa');
     if (macro && moussa) {
-      await appel('POST', '/objectifs', {
-        niveau: 'individuel',
-        employeeId: moussa.employeeId,
-        nature: 'formation',
-        courseId: macro.id,
-        echeance: `${new Date().getFullYear()}-11-30`,
+      // La formation rejoint la fiche d'objectifs de Moussa, sous un titre.
+      const { fiche } = await appel('GET', `/objectifs/equipe/${moussa.employeeId}`);
+      const texte = (t) => ({ type: 'text', text: t, styles: {} });
+      await appel('PUT', `/objectifs/equipe/${moussa.employeeId}/fiche`, {
+        contenu: [
+          ...fiche.contenu,
+          { type: 'heading', props: { level: 2 }, content: [texte('Se former')], children: [] },
+          {
+            type: 'formation',
+            props: { courseId: macro.id, titre: macro.title },
+            children: [],
+          },
+          {
+            type: 'paragraph',
+            props: {},
+            content: [
+              texte('À terminer pour le '),
+              { type: 'echeance', props: { date: `${new Date().getFullYear()}-11-30` } },
+            ],
+            children: [],
+          },
+        ],
       });
-      console.log('→ Objectifs : « Macroéconomie » à suivre par Moussa, fixée par Awa');
+      console.log('→ Objectifs : « Macroéconomie » à suivre par Moussa, dans sa fiche');
     }
   } catch (err) {
     console.log(`   (formation à suivre non fixée : ${err.message})`);

@@ -9,6 +9,9 @@ import {
   type FormationProposable,
   type MembreSuivi,
   type MesObjectifs,
+  type EnregistrerFicheObjectifsInput,
+  type FicheObjectifs,
+  FICHE_OBJECTIFS_MAX,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
   type ObjectifView,
@@ -87,6 +90,28 @@ const iso = (d: string | Date | null): string | null =>
 const jour = (d: string | Date | null): string | null =>
   d === null ? null : typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10);
 
+/**
+ * Une fiche vient du navigateur : on n'y garde que des liens qu'on peut
+ * suivre sans risque — http(s) et mailto. Un « javascript: » glissé dans un
+ * bloc perdrait sa cible, le texte reste.
+ */
+function assainir(valeur: unknown): unknown {
+  if (Array.isArray(valeur)) return valeur.map(assainir);
+  if (valeur === null || typeof valeur !== 'object') return valeur;
+  const objet: Record<string, unknown> = {};
+  for (const [cle, v] of Object.entries(valeur)) objet[cle] = assainir(v);
+  if (objet.type === 'link' && typeof objet.href === 'string') {
+    objet.href = /^(https?:|mailto:)/i.test(objet.href.trim()) ? objet.href.trim() : '';
+  }
+  return objet;
+}
+
+/** Une fiche dit quelque chose dès qu'un bloc porte du texte, une échéance ou une formation. */
+function ficheRemplie(contenu: unknown): boolean {
+  const texte = JSON.stringify(contenu);
+  return /"text":"\s*[^"\s]/.test(texte) || /"type":"(echeance|formation)"/.test(texte);
+}
+
 /** Les objectifs, avec le nom de qui les a fixés. */
 const SELECTION = sql`
   SELECT o.id, o.niveau, o.annee, o.diffusion, o.direction_id, o.employee_id, o.nature,
@@ -144,8 +169,10 @@ export class ObjectifsService {
         sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${moi}`,
       );
       const progression = await this.progression(tx, [moi]);
+      const fiche = await this.lireFiche(tx, moi, an, progression.get(moi));
       return {
         annee: an,
+        fiche: ficheRemplie(fiche.contenu) ? fiche : null,
         apix: apix.map((o) => this.vue(o)),
         direction: direction
           ? { ...direction, objectifs: deLaDirection.map((o) => this.vue(o)) }
@@ -198,8 +225,96 @@ export class ObjectifsService {
           sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${membre.id}`,
         )
       ).map((o) => this.vue(o, progression.get(membre.id)));
-      return { annee: an, membre: this.membre(membre, objectifs), objectifs };
+      const fiche = await this.lireFiche(tx, membre.id, an, progression.get(membre.id));
+      return { annee: an, membre: this.membre(membre, objectifs), objectifs, fiche };
     });
+  }
+
+  /**
+   * Le n+1 enregistre la fiche d'objectifs de son direct — à chaque pause
+   * de la saisie. L'agent en est prévenu une fois par jour, pas à chaque
+   * enregistrement.
+   */
+  async enregistrerFiche(
+    user: SessionUser,
+    employeeId: string,
+    input: EnregistrerFicheObjectifsInput,
+  ): Promise<{ majLe: string }> {
+    const an = input.annee ?? this.anneeCourante();
+    const contenu = assainir(input.contenu);
+    const json = JSON.stringify(contenu);
+    if (json.length > FICHE_OBJECTIFS_MAX) {
+      problem(400, 'objectifs.fiche_trop_longue', 'La fiche est trop longue pour être enregistrée');
+    }
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const moi = await this.exigerAgent(tx, user);
+      const membre = (await this.directs(tx, moi)).find((m) => m.id === employeeId);
+      if (!membre) {
+        problem(404, 'objectifs.hors_equipe', 'Cet agent ne fait pas partie de votre équipe');
+      }
+      const { rows } = await tx.execute<{ updated_at: string | Date }>(sql`
+        INSERT INTO objectifs_fiches (id, tenant_id, employee_id, annee, contenu, auteur_employee_id)
+        VALUES (${uuidv7()}, ${user.tenantId}, ${employeeId}, ${an}, ${json}::jsonb, ${moi})
+        ON CONFLICT (tenant_id, employee_id, annee) DO UPDATE
+           SET contenu = EXCLUDED.contenu,
+               auteur_employee_id = EXCLUDED.auteur_employee_id,
+               updated_at = now()
+        RETURNING updated_at`);
+
+      if (ficheRemplie(contenu)) {
+        const compte = await this.compteDe(tx, employeeId);
+        if (compte) {
+          const [auteur] = (
+            await tx.execute<{ nom: string }>(sql`
+              SELECT p.given_name || ' ' || p.family_name AS nom
+                FROM employees e JOIN persons p ON p.id = e.person_id WHERE e.id = ${moi}`)
+          ).rows;
+          await notifier(tx, user.tenantId, compte, {
+            type: 'objectif',
+            title: `Vos objectifs ${an}`,
+            body: `${auteur?.nom ?? 'Votre n+1'} les a mis à jour.`,
+            link: '/moi/objectifs',
+            dedupeKey: `objectifs:fiche:${employeeId}:${an}:${this.aujourdhui()}`,
+          });
+        }
+      }
+      return { majLe: iso(rows[0]!.updated_at)! };
+    });
+  }
+
+  /** La fiche d'un agent pour l'année — vide si personne ne l'a encore rédigée. */
+  private async lireFiche(
+    tx: Tx,
+    employeeId: string,
+    an: number,
+    formations: TeamCourseProgress[] | undefined,
+  ): Promise<FicheObjectifs> {
+    const { rows } = await tx.execute<{
+      contenu: Record<string, unknown>[];
+      updated_at: string | Date;
+      auteur: string | null;
+    }>(sql`
+      SELECT f.contenu, f.updated_at,
+             CASE WHEN pa.id IS NULL THEN NULL ELSE pa.given_name || ' ' || pa.family_name END AS auteur
+        FROM objectifs_fiches f
+        LEFT JOIN employees ea ON ea.id = f.auteur_employee_id
+        LEFT JOIN persons pa ON pa.id = ea.person_id
+       WHERE f.employee_id = ${employeeId} AND f.annee = ${an}`);
+    const ligne = rows[0];
+    return {
+      annee: an,
+      contenu: ligne?.contenu ?? [],
+      majLe: ligne ? iso(ligne.updated_at) : null,
+      auteur: ligne?.auteur ?? null,
+      formations: (formations ?? [])
+        .filter((f): f is TeamCourseProgress & { courseId: string } => f.courseId !== null)
+        .map((f) => ({
+          courseId: f.courseId,
+          statut: f.status,
+          lecons: f.lessonCount,
+          validees: f.completedLessons,
+        })),
+    };
   }
 
   /** Les formations publiées qu'un n+1 peut donner à suivre. */

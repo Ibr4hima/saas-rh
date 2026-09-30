@@ -123,7 +123,7 @@ describe('préconditions', () => {
                           'persons', 'employees', 'assignments', 'audit_log',
                           'absence_types', 'holidays', 'holiday_seeds', 'absence_balances',
                           'absence_requests', 'absence_approvals', 'invitations',
-                          'objectifs')
+                          'objectifs', 'objectifs_fiches')
         AND NOT (c.relrowsecurity AND c.relforcerowsecurity)
     `);
     expect(rows).toEqual([]);

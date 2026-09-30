@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -16,6 +17,8 @@ import {
 import {
   anneeQuerySchema,
   creerObjectifSchema,
+  enregistrerFicheObjectifsSchema,
+  type EnregistrerFicheObjectifsInput,
   evaluerObjectifSchema,
   modifierObjectifSchema,
   type CreerObjectifInput,
@@ -59,6 +62,16 @@ export class ObjectifsController {
     @Query(new ZodValidationPipe(anneeQuerySchema)) q: { annee?: number },
   ) {
     return this.objectifs.fiche(req.sessionUser, employeeId, q.annee);
+  }
+
+  @Put('equipe/:employeeId/fiche')
+  enregistrerFiche(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Body(new ZodValidationPipe(enregistrerFicheObjectifsSchema))
+    body: EnregistrerFicheObjectifsInput,
+  ) {
+    return this.objectifs.enregistrerFiche(req.sessionUser, employeeId, body);
   }
 
   @Get('formations')

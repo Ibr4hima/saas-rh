@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import type { MesObjectifs, ObjectifView } from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
@@ -7,6 +8,12 @@ import { api } from '../../../../lib/api';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { CLE_OBJECTIFS, LigneObjectif } from '../../../../components/objectifs';
+
+// L'éditeur, en lecture : la fiche telle que le n+1 l'a rédigée.
+const EditeurFicheObjectifs = dynamic(
+  () => import('../../../../components/fiche-objectifs').then((m) => m.EditeurFicheObjectifs),
+  { ssr: false, loading: () => <Skeleton className="mx-5 my-4 h-24" /> },
+);
 
 /**
  * Mes objectifs : ce que l'agent doit atteindre cette année — les
@@ -28,8 +35,9 @@ export default function MesObjectifsPage() {
     );
   }
 
-  const { apix, direction, individuels, annee } = mes.data;
-  const rien = apix.length === 0 && !direction?.objectifs.length && individuels.length === 0;
+  const { apix, direction, individuels, annee, fiche } = mes.data;
+  const rien =
+    !fiche && apix.length === 0 && !direction?.objectifs.length && individuels.length === 0;
 
   return (
     <Page>
@@ -42,7 +50,31 @@ export default function MesObjectifsPage() {
           />
         </Card>
       ) : null}
-      {individuels.length ? (
+      {/* La fiche que le n+1 rédige ; les objectifs posés un à un avant elle
+          restent lisibles tant qu'il n'y en a pas. */}
+      {fiche ? (
+        <Card className="overflow-visible">
+          <CardHeader className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <CardTitle>Mes objectifs {annee}</CardTitle>
+            {fiche.majLe ? (
+              <span className="shrink-0 text-[11.5px] text-ink-muted">
+                {fiche.auteur ? `${fiche.auteur} · ` : ''}mis à jour le{' '}
+                {new Date(fiche.majLe).toLocaleDateString('fr-FR', {
+                  day: 'numeric',
+                  month: 'long',
+                })}
+              </span>
+            ) : null}
+          </CardHeader>
+          <div className="pb-5">
+            <EditeurFicheObjectifs
+              contenu={fiche.contenu}
+              modifiable={false}
+              formations={fiche.formations}
+            />
+          </div>
+        </Card>
+      ) : individuels.length ? (
         <Section titre="Mes objectifs" objectifs={individuels} auteur lienFormation />
       ) : null}
       {direction?.objectifs.length ? (

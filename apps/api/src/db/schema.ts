@@ -654,3 +654,16 @@ export const objectifs = pgTable('objectifs', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------- Fiches d'objectifs (0043) ----------
+
+export const objectifsFiches = pgTable('objectifs_fiches', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  annee: integer('annee').notNull(),
+  contenu: jsonb('contenu').notNull().default([]),
+  auteurEmployeeId: uuid('auteur_employee_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

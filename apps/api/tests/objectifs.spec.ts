@@ -420,6 +420,91 @@ describe('Suivi & Évaluation', () => {
   });
 });
 
+describe('la fiche d’objectifs', () => {
+  const bloc = (type: string, texte: string, props: Record<string, unknown> = {}) => ({
+    id: randomUUID(),
+    type,
+    props,
+    content: [{ type: 'text', text: texte, styles: {} }],
+    children: [],
+  });
+
+  it('le n+1 la rédige ; l’agent la lit dans « Mes objectifs », et en est prévenu une fois', async () => {
+    expect((await objectifs.mesObjectifs(session('moussa'))).fiche).toBeNull();
+    const vide = await objectifs.fiche(session('awa'), agents.moussa);
+    expect(vide.fiche).toMatchObject({ annee: 2026, contenu: [], majLe: null, auteur: null });
+
+    const contenu = [
+      bloc('heading', 'Trimestre 4', { level: 2 }),
+      bloc('checkListItem', 'Livrer la note de conjoncture', { checked: false }),
+      {
+        id: randomUUID(),
+        type: 'paragraph',
+        props: {},
+        content: [
+          { type: 'text', text: 'Pour le ', styles: {} },
+          { type: 'echeance', props: { date: '2026-10-31' } },
+        ],
+        children: [],
+      },
+    ];
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, { contenu });
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      contenu: [...contenu, bloc('paragraph', 'Et la synthèse annuelle.')],
+    });
+
+    const lue = (await objectifs.mesObjectifs(session('moussa'))).fiche;
+    expect(lue?.contenu).toHaveLength(4);
+    expect(lue?.auteur).toBe('Awa Diop');
+    expect(lue?.contenu[2]).toMatchObject({
+      content: [{ text: 'Pour le ' }, { type: 'echeance', props: { date: '2026-10-31' } }],
+    });
+    // Deux enregistrements le même jour : une seule notification.
+    expect((await notifications('moussa')).filter((n) => n.title === 'Vos objectifs 2026')).toEqual(
+      [{ title: 'Vos objectifs 2026', link: '/moi/objectifs' }],
+    );
+  });
+
+  it('elle ne s’écrit que par le n+1, et ses liens ne mènent qu’à des adresses sûres', async () => {
+    expect(
+      await codeOf(() =>
+        objectifs.enregistrerFiche(session('mariama'), agents.moussa, { contenu: [] }),
+      ),
+    ).toBe('objectifs.hors_equipe');
+    expect(
+      await codeOf(() =>
+        objectifs.enregistrerFiche(session('moussa'), agents.moussa, { contenu: [] }),
+      ),
+    ).toBe('objectifs.hors_equipe');
+
+    await objectifs.enregistrerFiche(session('mariama'), agents.awa, {
+      contenu: [
+        {
+          id: randomUUID(),
+          type: 'paragraph',
+          props: {},
+          content: [
+            {
+              type: 'link',
+              href: 'javascript:alert(1)',
+              content: [{ type: 'text', text: 'piège', styles: {} }],
+            },
+            { type: 'link', href: 'https://apix.sn', content: [] },
+          ],
+          children: [],
+        },
+      ],
+    });
+    const fiche = (await objectifs.fiche(session('mariama'), agents.awa)).fiche;
+    expect(fiche.contenu[0]).toMatchObject({
+      content: [
+        { type: 'link', href: '', content: [{ text: 'piège' }] },
+        { type: 'link', href: 'https://apix.sn' },
+      ],
+    });
+  });
+});
+
 describe('la session', () => {
   it('dit qui est le directeur général', async () => {
     const estDG = (qui: Nom) =>

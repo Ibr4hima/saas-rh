@@ -77,7 +77,45 @@ export interface MesObjectifs {
   apix: ObjectifView[];
   direction: { id: string; nom: string; objectifs: ObjectifView[] } | null;
   individuels: ObjectifView[];
+  /** La fiche que son n+1 a rédigée — `null` tant qu'elle est vide. */
+  fiche: FicheObjectifs | null;
 }
+
+// ---------- Fiche d'objectifs (éditeur de blocs) ----------
+
+/**
+ * Où en est l'agent d'une formation de l'APIX Academy — ce qu'un bloc
+ * « Formation » de sa fiche affiche.
+ */
+export interface FormationDeLaFiche {
+  courseId: string;
+  statut: StatutSuivi;
+  lecons: number;
+  validees: number;
+}
+
+/**
+ * La fiche d'objectifs d'un agent pour une année : les blocs de l'éditeur,
+ * tels qu'enregistrés (titres, cases à cocher, échéances, formations…).
+ */
+export interface FicheObjectifs {
+  annee: number;
+  contenu: Record<string, unknown>[];
+  /** Dernière mise à jour, et par qui — `null` : jamais rédigée. */
+  majLe: string | null;
+  auteur: string | null;
+  /** Les formations que l'agent a commencées, pour les blocs « Formation ». */
+  formations: FormationDeLaFiche[];
+}
+
+/** La fiche fait au plus 300 000 caractères une fois sérialisée. */
+export const FICHE_OBJECTIFS_MAX = 300_000;
+
+export const enregistrerFicheObjectifsSchema = z.object({
+  annee: z.number().int().min(2000).max(2100).optional(),
+  contenu: z.array(z.record(z.string(), z.unknown())).max(2000),
+});
+export type EnregistrerFicheObjectifsInput = z.infer<typeof enregistrerFicheObjectifsSchema>;
 
 /** Un membre de l'équipe, et où en sont ses objectifs de l'année. */
 export interface MembreSuivi {
@@ -108,6 +146,7 @@ export interface FicheSuivi {
   annee: number;
   membre: MembreSuivi;
   objectifs: ObjectifView[];
+  fiche: FicheObjectifs;
 }
 
 /** « Objectifs de l'APIX » : ce que le directeur général fixe. */

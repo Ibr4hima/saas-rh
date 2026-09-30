@@ -583,18 +583,38 @@ for (const o of [
 ]) {
   await enTantQue(dgAgent.id, 'POST', '/objectifs', o);
 }
-await enTantQue(directriceRh.id, 'POST', '/objectifs', {
-  niveau: 'individuel',
-  employeeId: awa.id,
-  titre: 'Livrer l’étude sur l’attractivité des zones économiques spéciales',
-  echeance: `${anneeObjectifs}-12-15`,
+// Les objectifs d'un agent : la fiche que son n+1 rédige, à la manière d'une
+// page Notion — des titres, des cases à cocher, des échéances.
+const texte = (t) => ({ type: 'text', text: t, styles: {} });
+const echeance = (date) => ({ type: 'echeance', props: { date } });
+const bloc = (type, contenu, props = {}) => ({ type, props, content: contenu, children: [] });
+await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
+  contenu: [
+    bloc('heading', [texte('Études et veille')], { level: 2 }),
+    bloc('checkListItem', [
+      texte('Livrer l’étude sur l’attractivité des zones économiques spéciales — pour le '),
+      echeance(`${anneeObjectifs}-12-15`),
+    ]),
+    bloc('checkListItem', [texte('Accompagner Moussa sur la note de conjoncture')]),
+  ],
 });
-await enTantQue(awa.id, 'POST', '/objectifs', {
-  niveau: 'individuel',
-  employeeId: moussa.id,
-  titre: 'Produire la note de conjoncture trimestrielle',
-  description: 'Données du troisième trimestre, avec les intentions d’investissement.',
-  echeance: `${anneeObjectifs}-10-31`,
+await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
+  contenu: [
+    bloc('heading', [texte('Priorités du quatrième trimestre')], { level: 2 }),
+    bloc('checkListItem', [
+      texte('Produire la note de conjoncture trimestrielle — pour le '),
+      echeance(`${anneeObjectifs}-10-31`),
+    ]),
+    bloc('checkListItem', [
+      texte('Présenter les intentions d’investissement au comité de direction — pour le '),
+      echeance(`${anneeObjectifs}-11-20`),
+    ]),
+    bloc('checkListItem', [texte('Mettre à jour la base des projets agréés')], { checked: true }),
+    bloc('heading', [texte('Critères de réussite')], { level: 3 }),
+    bloc('bulletListItem', [texte('Données du troisième trimestre, sources citées.')]),
+    bloc('bulletListItem', [texte('Intentions d’investissement ventilées par secteur.')]),
+    bloc('quote', [texte('Point d’étape avec Awa début novembre.')]),
+  ],
 });
 
 console.log(`
