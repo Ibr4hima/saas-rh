@@ -275,6 +275,8 @@ export type CompteursDemandes = Record<TypeDemande, number>;
 export interface MembreHabilite {
   employeeId: string;
   nom: string;
+  /** Pour le nommer simplement — « Awa et Khady traiteront… ». */
+  prenom: string;
   poste: string | null;
   capacites: Capacite[];
   /** En congé aujourd'hui : ses demandes reviennent au directeur le temps de l'absence. */

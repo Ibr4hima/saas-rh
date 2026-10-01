@@ -1,8 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { peut, type AbsenceRequestView, type MembreHabilite } from '@teranga/contracts';
 import {
   Badge,
@@ -10,6 +9,7 @@ import {
   Card,
   CardHeader,
   CardTitle,
+  cn,
   EmptyState,
   Field,
   Skeleton,
@@ -24,7 +24,7 @@ import {
 import { BoutonDecision } from '../../../../components/bouton-decision';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
-import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
+import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { StatutAbsence } from '../../../../components/statut-absence';
@@ -141,35 +141,54 @@ export default function CongesATraiterPage() {
       )
     : [];
   // Qui traite les congés pour la DCH — ou se voit confier une demande. Les
-  // autres consultent : pas de file vide à leur montrer, mais tout le suivi.
+  // autres consultent : ils voient la file telle qu'elle est, sans geste.
   const traite = estDirecteur || peut(me.data, 'demandes.conges') || aTraiter.length > 0;
-  const suivi = toutes
-    .filter((r) => !aTraiter.includes(r) && !confiees.includes(r))
-    .filter((r) => r.status !== 'pending' || estDirecteur || !traite)
-    .slice(0, 40);
+  const enAttente = traite
+    ? aTraiter
+    : toutes
+        .filter((r) => r.status === 'pending' && r.etapeAttendue === 'dch')
+        .sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const traitees = toutes.filter((r) => r.status !== 'pending').slice(0, 40);
   const habilites = membres.filter((m) => m.capacites.includes('demandes.conges'));
+  // Le justificatif peut dire une maladie : à qui traite, ou lit les données sensibles.
+  const voitJustificatifs = traite || peut(me.data, 'personnel.sensible');
 
   const chargement = demandes.isLoading;
+
+  const justificatif = (r: AbsenceRequestView) =>
+    r.documentName && voitJustificatifs ? (
+      <BoutonJustificatif
+        onClick={() =>
+          setViewedDoc({
+            url: apiUrl(`/absence-requests/${r.id}/document`),
+            filename: r.documentName!,
+            contentType: 'application/pdf',
+            titre: 'Justificatif',
+          })
+        }
+      />
+    ) : (
+      <span className="text-ink-muted/60">—</span>
+    );
 
   return (
     <Page>
       {message ? <BandeauMessage message={message} /> : null}
 
       {estDirecteur ? (
-        <p className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-[12px] bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] bg-primary/[0.06] py-2 pr-2 pl-3.5 text-[12.5px] text-ink">
           <Icon name="arrow_split" size={16} className="shrink-0 text-primary" />
           <span className="min-w-0 flex-1">
             {habilites.length > 0
-              ? `Les demandes de congé vont directement à ${habilites.map((m) => m.nom).join(' et ')}, une fois visées par le N+1. Vous les voyez toutes, et gardez la main.`
-              : 'Vous traitez vous-même les demandes de congé. Vous pouvez les confier aux membres de votre direction.'}
+              ? `${listePrenoms(habilites)} ${habilites.length > 1 ? 'traitent' : 'traite'} les demandes d’absence et de congé.`
+              : 'Vous pouvez déléguer cette tâche à votre équipe.'}
           </span>
-          <Link
-            href="/moi/delegations"
-            className="shrink-0 font-semibold text-primary hover:underline"
-          >
-            Déléguer des tâches
-          </Link>
-        </p>
+          <Deleguer
+            membres={membres}
+            onFait={(texte) => setMessage({ ton: 'ok', texte })}
+            onErreur={echec}
+          />
+        </div>
       ) : peut(me.data, 'demandes.conges') ? (
         <p className="flex shrink-0 items-center gap-2 rounded-[12px] bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
           <Icon name="how_to_reg" size={16} className="shrink-0 text-primary" />
@@ -178,90 +197,106 @@ export default function CongesATraiterPage() {
         </p>
       ) : null}
 
-      {/* ———— À traiter ———— */}
-      {traite ? (
-        <Card className="shrink-0">
-          <CardHeader className="flex items-center justify-between gap-3">
-            <CardTitle>À traiter</CardTitle>
-            {aTraiter.length > 0 ? (
-              <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-                {compte(aTraiter.length, 'demande')}
-              </span>
-            ) : null}
-          </CardHeader>
+      {/* ———— Demandes à traiter ———— */}
+      <Card className="shrink-0">
+        <CardHeader className="flex items-center justify-between gap-3">
+          <CardTitle>Demandes à traiter</CardTitle>
+          {enAttente.length > 0 ? (
+            <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
+              {compte(enAttente.length, 'demande')}
+            </span>
+          ) : null}
+        </CardHeader>
+        {chargement ? (
           <div className="px-2 pb-2">
-            {chargement ? (
-              <Squelette />
-            ) : aTraiter.length === 0 ? (
-              <EmptyState
-                className="py-8"
-                icon={<Icon name="how_to_reg" size={22} />}
-                title="Rien à traiter"
-                description="Une fois visée par le N+1, une demande de congé arrive ici, avec une notification."
-              />
-            ) : (
-              <ul className="flex flex-col">
-                {aTraiter.map((r) => (
-                  <li key={r.id} className={LIGNE}>
-                    <Resume demande={r} />
-                    <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                      {r.documentName ? (
-                        <BoutonJustificatif
-                          onClick={() =>
-                            setViewedDoc({
-                              url: apiUrl(`/absence-requests/${r.id}/document`),
-                              filename: r.documentName!,
-                              contentType: 'application/pdf',
-                              titre: 'Justificatif',
-                            })
+            <Squelette />
+          </div>
+        ) : enAttente.length === 0 ? (
+          <EmptyState
+            className="py-8"
+            icon={<Icon name="how_to_reg" size={22} />}
+            title="Rien à traiter"
+            description="Une fois visée par le N+1, une demande d’absence ou de congé arrive ici, avec une notification."
+          />
+        ) : (
+          <Table>
+            <THead>
+              <tr>
+                <Th>Employé</Th>
+                <Th>Type</Th>
+                <Th>Période</Th>
+                <Th className="text-right">Jours</Th>
+                <Th>Justificatif</Th>
+                <Th className="text-right">{traite ? 'Décision' : 'Traitée par'}</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {enAttente.map((r) => (
+                <Tr key={r.id}>
+                  <Td>
+                    <CelluleEmploye demande={r} />
+                  </Td>
+                  <Td>
+                    <CelluleType demande={r} />
+                  </Td>
+                  <Td className="whitespace-nowrap tabular-nums">
+                    <Periode demande={r} />
+                  </Td>
+                  <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
+                  <Td>{justificatif(r)}</Td>
+                  <Td>
+                    {traite ? (
+                      <div className="flex items-center justify-end gap-1.5">
+                        {r.traitement?.peutConfier && membres.length > 0 ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setMessage(null);
+                              setAConfier(r);
+                            }}
+                          >
+                            Confier
+                          </Button>
+                        ) : null}
+                        <BoutonDecision
+                          geste="approuver"
+                          employe={r.employeeName}
+                          enCours={
+                            decider.isPending &&
+                            decider.variables?.demande.id === r.id &&
+                            decider.variables.decision === 'approved'
                           }
-                        />
-                      ) : null}
-                      {r.traitement?.peutConfier && membres.length > 0 ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
+                          bloque={decider.isPending}
                           onClick={() => {
                             setMessage(null);
-                            setAConfier(r);
+                            decider.mutate({ demande: r, decision: 'approved' });
                           }}
-                        >
-                          Confier
-                        </Button>
-                      ) : null}
-                      <BoutonDecision
-                        geste="approuver"
-                        employe={r.employeeName}
-                        enCours={
-                          decider.isPending &&
-                          decider.variables?.demande.id === r.id &&
-                          decider.variables.decision === 'approved'
-                        }
-                        bloque={decider.isPending}
-                        onClick={() => {
-                          setMessage(null);
-                          decider.mutate({ demande: r, decision: 'approved' });
-                        }}
-                      />
-                      <BoutonDecision
-                        geste="refuser"
-                        employe={r.employeeName}
-                        enCours={false}
-                        bloque={decider.isPending}
-                        onClick={() => {
-                          setMessage(null);
-                          setMotif('');
-                          setRefus(r);
-                        }}
-                      />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </Card>
-      ) : null}
+                        />
+                        <BoutonDecision
+                          geste="refuser"
+                          employe={r.employeeName}
+                          enCours={false}
+                          bloque={decider.isPending}
+                          onClick={() => {
+                            setMessage(null);
+                            setMotif('');
+                            setRefus(r);
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-right text-[12px] text-ink-muted">
+                        {quiTraite(r.traitement) ?? '—'}
+                      </p>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </Card>
 
       {/* ———— Confiées (le directeur) ———— */}
       {confiees.length > 0 ? (
@@ -272,64 +307,57 @@ export default function CongesATraiterPage() {
               {compte(confiees.length, 'demande')}
             </span>
           </CardHeader>
-          <ul className="flex flex-col px-2 pb-2">
-            {confiees.map((r) => (
-              <li key={r.id} className={LIGNE}>
-                <Resume demande={r} attendu={quiTraite(r.traitement)} />
-                <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    loading={confier.isPending && confier.variables?.id === r.id}
-                    onClick={() => {
-                      setMessage(null);
-                      confierA(r, null);
-                    }}
-                  >
-                    Reprendre
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <Table>
+            <THead>
+              <tr>
+                <Th>Employé</Th>
+                <Th>Type</Th>
+                <Th>Période</Th>
+                <Th className="text-right">Jours</Th>
+                <Th>Chez</Th>
+                <Th className="text-right">Reprendre</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {confiees.map((r) => (
+                <Tr key={r.id}>
+                  <Td>
+                    <CelluleEmploye demande={r} />
+                  </Td>
+                  <Td>
+                    <CelluleType demande={r} />
+                  </Td>
+                  <Td className="whitespace-nowrap tabular-nums">
+                    <Periode demande={r} />
+                  </Td>
+                  <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
+                  <Td className="text-[12px] text-ink-muted">{quiTraite(r.traitement) ?? '—'}</Td>
+                  <Td>
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        loading={confier.isPending && confier.variables?.id === r.id}
+                        onClick={() => {
+                          setMessage(null);
+                          confierA(r, null);
+                        }}
+                      >
+                        Reprendre
+                      </Button>
+                    </div>
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
         </Card>
       ) : null}
 
       <CalendrierDesAbsences />
 
-      {/* ———— Suivi ———— */}
-      <CartePleine>
-        <CardHeader className="flex shrink-0 items-center justify-between gap-3">
-          <CardTitle>Suivi</CardTitle>
-        </CardHeader>
-        <CorpsDefilant className="px-2 pb-2">
-          {chargement ? (
-            <Squelette />
-          ) : suivi.length === 0 ? (
-            <EmptyState
-              className="py-8"
-              icon={<Icon name="free_cancellation" size={22} />}
-              title="Rien à suivre pour le moment"
-              description="Les demandes traitées — et, pour le directeur, celles qui attendent encore leur N+1 — s’affichent ici."
-            />
-          ) : (
-            <ul className="flex flex-col">
-              {suivi.map((r) => (
-                <li key={r.id} className={LIGNE}>
-                  <Resume demande={r} />
-                  <div className="ml-auto flex shrink-0 items-center">
-                    <StatutAbsence
-                      statut={r.status}
-                      etape={r.etapeAttendue}
-                      titre={resumeVisas(r)}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CorpsDefilant>
-      </CartePleine>
+      {/* ———— Demandes traitées : pliées, on les ouvre quand on les cherche ———— */}
+      <DemandesTraitees demandes={traitees} chargement={chargement} />
 
       {/* ———— Refuser, avec un motif ———— */}
       {refus ? (
@@ -400,9 +428,6 @@ export default function CongesATraiterPage() {
   );
 }
 
-const LIGNE =
-  'flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover';
-
 function BoutonJustificatif({ onClick }: { onClick: () => void }) {
   return (
     <button
@@ -416,27 +441,315 @@ function BoutonJustificatif({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** Qui, quoi, quand — et, s'il y a lieu, qui la demande attend. */
-function Resume({ demande: r, attendu }: { demande: AbsenceRequestView; attendu?: string | null }) {
+/** « Awa », « Awa et Khady », « Awa, Khady et Moussa ». */
+function listePrenoms(membres: MembreHabilite[]): string {
+  const p = membres.map((m) => m.prenom);
+  return p.length > 1 ? `${p.slice(0, -1).join(', ')} et ${p[p.length - 1]}` : (p[0] ?? '');
+}
+
+/** Qui demande, et d'où vient la demande — visée par son N+1, ou sans N+1. */
+function CelluleEmploye({ demande: r }: { demande: AbsenceRequestView }) {
   const n1 = r.circuit.find((e) => e.etape === 'n1');
   const origine =
     r.status === 'pending' && r.etapeAttendue === 'dch'
       ? n1?.etat === 'visee'
-        ? `Visée par ${n1.qui}, son N+1`
+        ? `Visée par ${n1.qui}`
         : 'Sans N+1 disponible'
       : null;
   return (
-    <div className="min-w-0 flex-1 basis-56">
-      <p className="truncate text-[13px] font-semibold text-ink-strong">{r.employeeName}</p>
-      <p className="mt-0.5 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-        {r.absenceTypeName} · {formatDate(r.startDate)} → {formatDate(r.endDate)} ·{' '}
-        {compte(r.daysCount, 'jour')}
-      </p>
-      {attendu || origine || r.reason ? (
-        <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-ink-muted">
-          {[attendu ?? origine, r.reason].filter(Boolean).join(' · ')}
+    <>
+      <p className="font-semibold whitespace-nowrap text-ink-strong">{r.employeeName}</p>
+      {origine ? <p className="mt-0.5 text-[11px] text-ink-muted">{origine}</p> : null}
+    </>
+  );
+}
+
+/** Le type d'absence, et le motif que l'agent en donne. */
+function CelluleType({ demande: r }: { demande: AbsenceRequestView }) {
+  return (
+    <>
+      <p className="whitespace-nowrap">{r.absenceTypeName}</p>
+      {r.reason ? (
+        <p className="mt-0.5 line-clamp-1 max-w-56 text-[11px] text-ink-muted" title={r.reason}>
+          {r.reason}
         </p>
       ) : null}
+    </>
+  );
+}
+
+function Periode({ demande: r }: { demande: AbsenceRequestView }) {
+  return (
+    <>
+      {formatDate(r.startDate)} <span className="text-ink-muted">→</span> {formatDate(r.endDate)}
+    </>
+  );
+}
+
+/**
+ * Les demandes traitées — approuvées, refusées, annulées —, PLIÉES par
+ * défaut : on les consulte quand on cherche, pas à chaque ouverture.
+ */
+function DemandesTraitees({
+  demandes,
+  chargement,
+}: {
+  demandes: AbsenceRequestView[];
+  chargement: boolean;
+}) {
+  const [ouvert, setOuvert] = useState(false);
+  return (
+    <Card className="shrink-0">
+      <CardHeader className="p-0">
+        <button
+          type="button"
+          aria-expanded={ouvert}
+          onClick={() => setOuvert((o) => !o)}
+          className="flex w-full items-center gap-2 px-5 py-4 text-left focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+        >
+          <CardTitle className="min-w-0 flex-1">Demandes traitées</CardTitle>
+          {demandes.length > 0 ? (
+            <span
+              className="rounded-full bg-primary/[0.09] px-1.5 py-px text-[10px] font-extrabold text-primary"
+              style={TABULAIRE}
+            >
+              {demandes.length}
+            </span>
+          ) : null}
+          <Icon
+            name="chevron_right"
+            size={18}
+            className={cn(
+              'shrink-0 text-ink-muted transition-transform duration-200',
+              ouvert && 'rotate-90',
+            )}
+          />
+        </button>
+      </CardHeader>
+      {!ouvert ? null : chargement ? (
+        <div className="px-2 pb-2">
+          <Squelette />
+        </div>
+      ) : demandes.length === 0 ? (
+        <EmptyState
+          className="py-8"
+          icon={<Icon name="free_cancellation" size={22} />}
+          title="Aucune demande traitée"
+          description="Les demandes approuvées, refusées ou annulées s’affichent ici."
+        />
+      ) : (
+        <Table>
+          <THead>
+            <tr>
+              <Th>Employé</Th>
+              <Th>Type</Th>
+              <Th>Période</Th>
+              <Th className="text-right">Jours</Th>
+              <Th className="text-right">Statut</Th>
+            </tr>
+          </THead>
+          <TBody>
+            {demandes.map((r) => (
+              <Tr key={r.id}>
+                <Td className="font-semibold text-ink-strong">{r.employeeName}</Td>
+                <Td>
+                  <CelluleType demande={r} />
+                </Td>
+                <Td className="whitespace-nowrap tabular-nums">
+                  <Periode demande={r} />
+                </Td>
+                <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
+                <Td>
+                  <div className="flex justify-end">
+                    <StatutAbsence
+                      statut={r.status}
+                      etape={r.etapeAttendue}
+                      titre={resumeVisas(r)}
+                    />
+                  </div>
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * « Déléguer » : les membres de la DCH, à cocher — ceux qui traiteront les
+ * demandes d'absence et de congé. « Valider » demande confirmation, en les
+ * nommant, avant de rien changer.
+ */
+function Deleguer({
+  membres,
+  onFait,
+  onErreur,
+}: {
+  membres: MembreHabilite[];
+  onFait: (texte: string) => void;
+  onErreur: (err: unknown) => void;
+}) {
+  const queryClient = useQueryClient();
+  const actuels = membres.filter((m) => m.capacites.includes('demandes.conges'));
+  const [ouvert, setOuvert] = useState(false);
+  const [choix, setChoix] = useState<string[]>([]);
+  const [confirmer, setConfirmer] = useState(false);
+  const racine = useRef<HTMLDivElement>(null);
+
+  // Ouvert, le menu part de l'état réel ; Échap et un clic ailleurs le referment.
+  useEffect(() => {
+    if (!ouvert) return;
+    const auClic = (e: PointerEvent) => {
+      if (!racine.current?.contains(e.target as Node)) setOuvert(false);
+    };
+    const auClavier = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOuvert(false);
+    };
+    document.addEventListener('pointerdown', auClic);
+    document.addEventListener('keydown', auClavier);
+    return () => {
+      document.removeEventListener('pointerdown', auClic);
+      document.removeEventListener('keydown', auClavier);
+    };
+  }, [ouvert]);
+
+  const avant = new Set(actuels.map((m) => m.employeeId));
+  const apres = new Set(choix);
+  const change = membres.some((m) => avant.has(m.employeeId) !== apres.has(m.employeeId));
+  const retenus = membres.filter((m) => apres.has(m.employeeId));
+
+  const appliquer = useMutation({
+    mutationFn: async () => {
+      // Un membre à la fois : chacun l'apprend par sa propre notification.
+      for (const m of membres) {
+        const accordee = apres.has(m.employeeId);
+        if (accordee === avant.has(m.employeeId)) continue;
+        await api('/habilitations', {
+          method: 'PUT',
+          body: { employeeId: m.employeeId, capacite: 'demandes.conges', accordee },
+        });
+      }
+    },
+    onSuccess: async () => {
+      setConfirmer(false);
+      setOuvert(false);
+      onFait(
+        retenus.length > 0
+          ? `${listePrenoms(retenus)} ${retenus.length > 1 ? 'traiteront' : 'traitera'} désormais les demandes d’absence et de congé.`
+          : 'Vous traitez de nouveau vous-même les demandes d’absence et de congé.',
+      );
+      await queryClient.invalidateQueries({ queryKey: ['habilitations'] });
+      await queryClient.invalidateQueries({ queryKey: ['absence-requests'] });
+      await queryClient.invalidateQueries({ queryKey: ['validations-compteurs'] });
+    },
+    onError: (err) => {
+      setConfirmer(false);
+      onErreur(err);
+    },
+  });
+
+  return (
+    <div ref={racine} className="relative shrink-0">
+      <Button
+        size="sm"
+        variant="secondary"
+        aria-haspopup="true"
+        aria-expanded={ouvert}
+        onClick={() => {
+          if (!ouvert) setChoix(actuels.map((m) => m.employeeId));
+          setOuvert((o) => !o);
+        }}
+      >
+        Déléguer
+        <Icon
+          name="chevron_right"
+          size={16}
+          className={cn(
+            '-mr-1 text-ink-muted transition-transform duration-150',
+            ouvert ? '-rotate-90' : 'rotate-90',
+          )}
+        />
+      </Button>
+      {ouvert ? (
+        <div className="tg-menu absolute top-full right-0 z-30 mt-1.5 w-72 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg">
+          {membres.length === 0 ? (
+            <p className="px-2.5 py-3 text-[12px] text-ink-muted">
+              Aucun autre membre dans votre direction.
+            </p>
+          ) : (
+            <ul role="group" aria-label="Membres de la DCH" className="max-h-72 overflow-y-auto">
+              {membres.map((m) => {
+                const coche = apres.has(m.employeeId);
+                return (
+                  <li key={m.employeeId}>
+                    <label className="flex cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 transition-colors duration-150 hover:bg-hover">
+                      <input
+                        type="checkbox"
+                        checked={coche}
+                        onChange={() =>
+                          setChoix((c) =>
+                            coche ? c.filter((x) => x !== m.employeeId) : [...c, m.employeeId],
+                          )
+                        }
+                        className="size-4 shrink-0 accent-primary"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[12.5px] font-medium text-ink-strong">
+                          {m.nom}
+                        </span>
+                        {m.poste || m.absent ? (
+                          <span className="block truncate text-[11px] text-ink-muted">
+                            {[m.poste, m.absent ? 'Absent aujourd’hui' : null]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div className="mt-1 flex justify-end border-t border-line-soft px-1 pt-1.5">
+            <Button
+              size="sm"
+              disabled={!change}
+              onClick={() => {
+                setOuvert(false);
+                setConfirmer(true);
+              }}
+            >
+              Valider
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <Modal
+        open={confirmer}
+        onClose={() => setConfirmer(false)}
+        title="Déléguer les absences et congés"
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmer(false)}>
+              Annuler
+            </Button>
+            <Button loading={appliquer.isPending} onClick={() => appliquer.mutate()}>
+              Confirmer
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[13px] leading-relaxed text-ink">
+          {retenus.length > 0
+            ? `${listePrenoms(retenus)} ${retenus.length > 1 ? 'traiteront' : 'traitera'} désormais les demandes d’absence et de congé, une fois visées par le N+1, conformément au circuit de validation. Vous les verrez toutes et pourrez reprendre la main à tout moment.`
+            : 'Vous traiterez de nouveau vous-même les demandes d’absence et de congé, une fois visées par le N+1, conformément au circuit de validation.'}
+        </p>
+      </Modal>
     </div>
   );
 }

@@ -80,6 +80,7 @@ export class HabilitationsService {
         membres: membres.map((m) => ({
           employeeId: m.employeeId,
           nom: m.nom,
+          prenom: m.prenom,
           poste: m.poste,
           absent: m.absent,
           capacites: CAPACITES_DELEGABLES.filter((c) =>

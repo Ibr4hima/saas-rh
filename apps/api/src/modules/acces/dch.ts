@@ -222,14 +222,17 @@ export const nomsDe = (viseurs: readonly Viseur[]): string | null =>
 export async function membresDeLaDCH(
   tx: Tx,
   dch: DirectionDuPersonnel,
-): Promise<Array<{ employeeId: string; nom: string; poste: string | null; absent: boolean }>> {
+): Promise<
+  Array<{ employeeId: string; nom: string; prenom: string; poste: string | null; absent: boolean }>
+> {
   const { rows } = await tx.execute<{
     id: string;
     nom: string;
+    prenom: string;
     poste: string | null;
     absent: boolean;
   }>(sql`
-    SELECT e.id, p.given_name || ' ' || p.family_name AS nom,
+    SELECT e.id, p.given_name || ' ' || p.family_name AS nom, p.given_name AS prenom,
            (SELECT a.position_title FROM assignments a
              WHERE a.employee_id = e.id
                AND (a.validity @> CURRENT_DATE OR lower(a.validity) > CURRENT_DATE)
@@ -243,7 +246,13 @@ export async function membresDeLaDCH(
        AND e.id IS DISTINCT FROM ${dch.directeurEmployeeId}
        AND ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'id')} = ${dch.uniteId}
      ORDER BY p.family_name, p.given_name`);
-  return rows.map((r) => ({ employeeId: r.id, nom: r.nom, poste: r.poste, absent: r.absent }));
+  return rows.map((r) => ({
+    employeeId: r.id,
+    nom: r.nom,
+    prenom: r.prenom,
+    poste: r.poste,
+    absent: r.absent,
+  }));
 }
 
 /**
