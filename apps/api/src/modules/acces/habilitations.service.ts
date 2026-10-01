@@ -14,7 +14,7 @@ import { problem } from '../../common/problem';
 import { TenantDb } from '../../db/tenant-db';
 import { notifier } from '../notifications/notifier';
 import { reconcilierLeCircuit } from '../time/visas';
-import { agentDuCompte, directionDuPersonnel, membreDCH, membresDeLaDCH, nomDe } from './dch';
+import { agentDuCompte, directionDuPersonnel, estDeLaDCH, membresDeLaDCH, nomDe } from './dch';
 
 /** Où l'on exerce une habilitation — le lien de la notification qui l'annonce. */
 const LIEN: Record<Capacite, string> = {
@@ -83,6 +83,7 @@ export class HabilitationsService {
           prenom: m.prenom,
           poste: m.poste,
           absent: m.absent,
+          compte: m.compte,
           capacites: CAPACITES_DELEGABLES.filter((c) =>
             rows.some((r) => r.employee_id === m.employeeId && r.capacite === c),
           ),
@@ -161,13 +162,12 @@ export class HabilitationsService {
       if (input.employeeId === moi) {
         problem(422, 'habilitations.directeur', 'Vous avez déjà toutes les habilitations');
       }
-      const m = await membreDCH(tx, dch, input.employeeId);
-      if (m === 'parti') {
+      if (!(await estDeLaDCH(tx, dch, input.employeeId))) {
         problem(
           422,
           'habilitations.pas_membre_dch',
           'Choisissez un membre de la DCH',
-          'Les habilitations se confient aux agents actifs de votre direction, qui ont accès au portail.',
+          'Les habilitations se confient aux agents de votre direction, sous contrat.',
         );
       }
       const id = uuidv7();

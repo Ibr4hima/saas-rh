@@ -16,6 +16,7 @@ import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
 import { AuthService, IssuedSession } from '../auth/auth.service';
 import { finDeContratPassee } from '../people/en-activite';
+import { reconcilierLeCircuit } from '../time/visas';
 
 const INVITATION_TTL_DAYS = 7;
 
@@ -278,6 +279,10 @@ export class InvitationsService {
         if (linked.length === 0) {
           problem(409, 'portal.already_active', 'Ce dossier est déjà relié à un compte');
         }
+
+        // Ce que la DCH lui a délégué l'attendait : les demandes en cours
+        // vont désormais aussi à lui.
+        await reconcilierLeCircuit(tx, invitation.tenantId);
 
         return { existingUser: Boolean(existing), userId, tenantId: invitation.tenantId };
       })

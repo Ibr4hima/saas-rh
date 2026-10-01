@@ -281,6 +281,11 @@ export interface MembreHabilite {
   capacites: Capacite[];
   /** En congé aujourd'hui : ses demandes reviennent au directeur le temps de l'absence. */
   absent: boolean;
+  /**
+   * A activé son compte. Sans compte, on lui délègue déjà : il trouve ses
+   * tâches en l'activant — d'ici là, ses demandes vont au directeur.
+   */
+  compte: boolean;
 }
 
 /** L'espace du directeur du Capital Humain : ses délégations. */

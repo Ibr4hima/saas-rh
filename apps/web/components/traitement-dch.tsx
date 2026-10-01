@@ -228,10 +228,10 @@ export function ModalConfier({
           <Select id="confier-a" value={membre} onChange={(e) => setMembre(e.target.value)}>
             <option value="">— Choisir</option>
             {possibles.map((m) => (
-              <option key={m.employeeId} value={m.employeeId} disabled={m.absent}>
+              <option key={m.employeeId} value={m.employeeId} disabled={m.absent || !m.compte}>
                 {m.nom}
                 {m.poste ? ` — ${m.poste}` : ''}
-                {m.absent ? ' (en congé)' : ''}
+                {!m.compte ? ' (compte non activé)' : m.absent ? ' (en congé)' : ''}
               </option>
             ))}
           </Select>

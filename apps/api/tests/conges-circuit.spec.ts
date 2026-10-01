@@ -688,3 +688,38 @@ describe('les relances', () => {
     expect(await notif('Mariama', `conge:${id}:rappel:%`)).toBeNull();
   });
 });
+
+describe('un agent de la DCH qui n’a pas encore activé son compte', () => {
+  it('on lui délègue déjà ; il traite dès qu’il active son compte', async () => {
+    const nogaye = await agent('Nogaye', uDCH, mariama.employeeId, null);
+    try {
+      const etat = await habilitations.etat(mariama.session);
+      expect(etat.membres.find((m) => m.nom === 'Nogaye Test')).toMatchObject({ compte: false });
+      await habiliter(nogaye);
+      const id = await poser(moussa);
+      await viser(ousmane, id);
+      // Sans compte, personne à prévenir : la demande va au directeur.
+      expect(await appels(id)).toEqual(['dch:Mariama']);
+      await reconcilier();
+      // La délégation l'attend.
+      const { rows } = await raw(`SELECT fin_at FROM habilitations WHERE employee_id = $1`, [
+        nogaye.employeeId,
+      ]);
+      expect(rows).toEqual([{ fin_at: null }]);
+      // Il active son compte : la demande lui arrive.
+      const session = await compte('Nogaye', 'employee');
+      await raw(
+        `UPDATE persons SET user_id = $2 WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+        [nogaye.employeeId, session.userId],
+      );
+      await reconcilier();
+      expect(await appels(id)).toEqual(['dch:Nogaye']);
+      expect((await vue(id, session)).canDecide).toBe(true);
+    } finally {
+      await raw(`UPDATE assignments SET org_unit_id = $2 WHERE employee_id = $1`, [
+        nogaye.employeeId,
+        uDSID,
+      ]);
+    }
+  });
+});

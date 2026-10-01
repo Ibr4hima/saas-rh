@@ -119,6 +119,26 @@ export async function membreDCH(
   return direction?.id === dch.uniteId ? v : 'parti';
 }
 
+/**
+ * Un agent de la DCH, sous contrat — qu'il ait activé son compte ou non :
+ * c'est à lui que les tâches se délèguent, et sa délégation tient. Il ne
+ * TRAITE qu'une fois son compte ouvert (`membreDCH`) : il trouve alors ce
+ * qui lui est délégué.
+ */
+export async function estDeLaDCH(
+  tx: Tx,
+  dch: DirectionDuPersonnel,
+  employeeId: string,
+): Promise<boolean> {
+  const { rows } = await tx.execute<{ actif: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM employees e
+        JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
+       WHERE e.id = ${employeeId} AND e.status = 'active') AS actif`);
+  if (!rows[0]?.actif) return false;
+  return (await directionDeEmploye(tx, employeeId))?.id === dch.uniteId;
+}
+
 /** Les membres à qui une habilitation est confiée, en cours — du plus ancien au plus récent. */
 export async function detenteursDe(tx: Tx, capacite: Capacite): Promise<string[]> {
   const { rows } = await tx.execute<{ employee_id: string }>(sql`
@@ -218,12 +238,22 @@ export const nomsDe = (viseurs: readonly Viseur[]): string | null =>
           .map((v) => v.nom)
           .join(', ')} ou ${viseurs[viseurs.length - 1]!.nom}`;
 
-/** Les membres actifs de la DCH, directeur exclu : à qui l'on peut confier. */
+/**
+ * Les agents de la DCH sous contrat, directeur exclu : à qui l'on délègue —
+ * compte activé ou non (`compte`).
+ */
 export async function membresDeLaDCH(
   tx: Tx,
   dch: DirectionDuPersonnel,
 ): Promise<
-  Array<{ employeeId: string; nom: string; prenom: string; poste: string | null; absent: boolean }>
+  Array<{
+    employeeId: string;
+    nom: string;
+    prenom: string;
+    poste: string | null;
+    absent: boolean;
+    compte: boolean;
+  }>
 > {
   const { rows } = await tx.execute<{
     id: string;
@@ -231,17 +261,20 @@ export async function membresDeLaDCH(
     prenom: string;
     poste: string | null;
     absent: boolean;
+    compte: boolean;
   }>(sql`
     SELECT e.id, p.given_name || ' ' || p.family_name AS nom, p.given_name AS prenom,
            (SELECT a.position_title FROM assignments a
              WHERE a.employee_id = e.id
                AND (a.validity @> CURRENT_DATE OR lower(a.validity) > CURRENT_DATE)
              ORDER BY lower(a.validity) LIMIT 1) AS poste,
-           ${estAbsent(sql`e.id`)} AS absent
+           ${estAbsent(sql`e.id`)} AS absent,
+           EXISTS (
+             SELECT 1 FROM users u
+               JOIN user_tenant_memberships m ON m.user_id = u.id AND m.tenant_id = e.tenant_id
+              WHERE u.id = p.user_id AND u.status = 'active') AS compte
       FROM employees e
-      JOIN persons p ON p.id = e.person_id AND p.user_id IS NOT NULL AND p.deleted_at IS NULL
-      JOIN users u ON u.id = p.user_id AND u.status = 'active'
-      JOIN user_tenant_memberships m ON m.user_id = u.id AND m.tenant_id = e.tenant_id
+      JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
      WHERE e.status = 'active'
        AND e.id IS DISTINCT FROM ${dch.directeurEmployeeId}
        AND ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'id')} = ${dch.uniteId}
@@ -252,6 +285,7 @@ export async function membresDeLaDCH(
     prenom: r.prenom,
     poste: r.poste,
     absent: r.absent,
+    compte: r.compte,
   }));
 }
 
@@ -332,9 +366,10 @@ export async function nomDe(tx: Tx, employeeId: string): Promise<string> {
 }
 
 /**
- * Un membre qui n'est plus de la DCH — muté, parti, sans accès — perd ses
- * habilitations : elles se closent, et le directeur l'apprend. Ce qu'il
- * traitait revient au directeur.
+ * Un membre qui n'est plus de la DCH — muté, parti — perd ses habilitations :
+ * elles se closent, et le directeur l'apprend. Ce qu'il traitait revient au
+ * directeur. Un compte pas encore activé ne les fait pas tomber : elles
+ * l'attendent.
  */
 export async function verifierLesHabilitations(tx: Tx, tenantId: string): Promise<void> {
   const { rows } = await tx.execute<{ employee_id: string; capacites: string[] }>(sql`
@@ -343,8 +378,7 @@ export async function verifierLesHabilitations(tx: Tx, tenantId: string): Promis
   if (rows.length === 0) return;
   const dch = await directionDuPersonnel(tx);
   for (const r of rows) {
-    const membre = dch ? await membreDCH(tx, dch, r.employee_id) : 'parti';
-    if (membre !== 'parti') continue;
+    if (dch && (await estDeLaDCH(tx, dch, r.employee_id))) continue;
     await tx.execute(sql`
       UPDATE habilitations SET fin_at = now(), fin_motif = 'partie'
        WHERE employee_id = ${r.employee_id} AND fin_at IS NULL`);
