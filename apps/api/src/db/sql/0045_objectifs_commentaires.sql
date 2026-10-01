@@ -8,6 +8,23 @@
 -- sous chaque objectif, donne l'appréciation globale (A à D) et valide.
 SET lock_timeout = '5s';
 
+-- Une base qui a appliqué la première évaluation (0045_objectifs_evaluations,
+-- annulée et retirée du dépôt) en garde les colonnes : on les efface — avec
+-- leurs contraintes — avant de poser celles-ci. Sans effet ailleurs.
+ALTER TABLE objectifs_fiches
+  DROP COLUMN IF EXISTS auto_objectifs,
+  DROP COLUMN IF EXISTS auto_commentaire,
+  DROP COLUMN IF EXISTS auto_note,
+  DROP COLUMN IF EXISTS auto_modifiee_le,
+  DROP COLUMN IF EXISTS auto_envoyee_le,
+  DROP COLUMN IF EXISTS evaluation_note,
+  DROP COLUMN IF EXISTS evaluation_commentaire,
+  DROP COLUMN IF EXISTS evaluation_modifiee_le,
+  DROP COLUMN IF EXISTS evaluee_le,
+  DROP COLUMN IF EXISTS evaluateur_employee_id,
+  DROP COLUMN IF EXISTS signee_le;
+DELETE FROM schema_migrations WHERE name = '0045_objectifs_evaluations.sql';
+
 ALTER TABLE objectifs_fiches
   -- Les cases que l'agent a cochées : { "<id du bloc>": true }.
   ADD COLUMN coches jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(coches) = 'object'),
