@@ -17,9 +17,11 @@ import {
   type StatutObjectif,
   type CommentairesAgentInput,
   type EvaluationN1Input,
+  type EvaluationValidee,
   type NoteGlobale,
   objectifsDeLaFiche,
   LIBELLES_NOTE,
+  peut,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
   type ObjectifView,
@@ -623,6 +625,43 @@ export class ObjectifsService {
           dedupeKey: `objectifs:evaluation:${employeeId}:${annee}:${semestre}`,
         });
       }
+    });
+  }
+
+  /**
+   * Les évaluations validées d'un agent, la plus récente d'abord — ce que son
+   * dossier en garde. L'agent voit les siennes ; qui consulte les dossiers du
+   * personnel, celles de tous.
+   */
+  async evaluationsDe(user: SessionUser, employeeId: string): Promise<EvaluationValidee[]> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      if (
+        !peut(user, 'personnel.consulter') &&
+        (await employeActif(tx, user.userId)) !== employeeId
+      ) {
+        problem(403, 'objectifs.dossier_interdit', 'Ces évaluations ne sont pas les vôtres');
+      }
+      const { rows } = await tx.execute<{
+        annee: number;
+        semestre: number;
+        manager: string | null;
+        note: NoteGlobale;
+        validee_le: string | Date;
+      }>(sql`
+        SELECT f.annee, f.semestre, f.evaluation_note AS note, f.evaluation_validee_le AS validee_le,
+               CASE WHEN p.id IS NULL THEN NULL ELSE p.given_name || ' ' || p.family_name END AS manager
+          FROM objectifs_fiches f
+          LEFT JOIN employees e ON e.id = f.evaluateur_employee_id
+          LEFT JOIN persons p ON p.id = e.person_id
+         WHERE f.employee_id = ${employeeId} AND f.evaluation_validee_le IS NOT NULL
+         ORDER BY f.annee DESC, f.semestre DESC`);
+      return rows.map((r) => ({
+        annee: Number(r.annee),
+        semestre: r.semestre === 1 ? 1 : 2,
+        manager: r.manager,
+        note: r.note,
+        valideeLe: iso(r.validee_le)!,
+      }));
     });
   }
 

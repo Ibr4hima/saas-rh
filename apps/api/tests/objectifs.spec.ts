@@ -671,6 +671,18 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
       (await objectifs.suiviEquipe(session('awa'))).membres.find((m) => m.givenName === 'Moussa')!
         .aEvaluer,
     ).toBe(0);
+
+    // Validée, l'évaluation entre au dossier de l'agent : lui la lit, la DCH
+    // aussi ; un collègue, non.
+    const attendu = [
+      { annee: 2024, semestre: 1, manager: 'Awa Diop', note: 'B', valideeLe: expect.any(String) },
+    ];
+    expect(await objectifs.evaluationsDe(session('moussa'), agents.moussa)).toEqual(attendu);
+    const dch = { ...session('fatou'), capacites: ['personnel.consulter'] } as SessionUser;
+    expect(await objectifs.evaluationsDe(dch, agents.moussa)).toEqual(attendu);
+    expect(await codeOf(() => objectifs.evaluationsDe(session('ousmane'), agents.moussa))).toBe(
+      'objectifs.dossier_interdit',
+    );
   });
 
   it('pas de note, pas de validation', async () => {
@@ -687,6 +699,10 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
     expect(
       await codeOf(() => objectifs.validerEvaluation(session('awa'), agents.moussa, 2024, 2)),
     ).toBe('objectifs.evaluation_sans_note');
+    // Pas validée : rien au dossier pour ce semestre.
+    expect(
+      (await objectifs.evaluationsDe(session('moussa'), agents.moussa)).map((e) => e.semestre),
+    ).not.toContain(2);
     expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2023, 1))).toBe(
       'objectifs.fiche_introuvable',
     );

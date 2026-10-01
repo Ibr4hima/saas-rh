@@ -10,19 +10,35 @@ import {
   type ComponentProps,
   type ReactNode,
 } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   LIBELLES_NOTE,
   LIBELLES_STATUT,
   NOTES_GLOBALES,
   objectifsDeLaFiche,
   STATUTS_OBJECTIF,
+  type EvaluationValidee,
   type FicheObjectifs,
   type NoteGlobale,
   type ObjectifDeLaFiche,
   type StatutObjectif,
 } from '@teranga/contracts';
-import { Button, cn, Textarea } from '@teranga/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  cn,
+  Skeleton,
+  Table,
+  TBody,
+  Td,
+  Textarea,
+  Th,
+  THead,
+  Tr,
+} from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { Icon, type IconName } from './icons';
 import { Modal } from './modal';
@@ -756,6 +772,8 @@ export function EvaluationSemestre({
       }
       await api(`${base}/validation`, { method: 'POST' });
       await queryClient.invalidateQueries({ queryKey: cle });
+      // Validée, elle entre au dossier de l'agent.
+      void queryClient.invalidateQueries({ queryKey: [...CLE_OBJECTIFS, 'dossier', employeeId] });
     });
     if (ok) setConfirmer(false);
   };
@@ -851,5 +869,67 @@ export function EvaluationSemestre({
         {prenom} verra vos commentaires et votre appréciation. L’évaluation ne se modifie plus.
       </Confirmation>
     </div>
+  );
+}
+
+// ———————————————————————————— dans le dossier de l'agent
+
+/**
+ * La section « Évaluation » du dossier : une ligne par semestre évalué — dès
+ * que le n+1 valide —, avec qui l'a évalué et la note.
+ */
+export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
+  const evaluations = useQuery({
+    queryKey: [...CLE_OBJECTIFS, 'dossier', employeeId],
+    queryFn: () => api<EvaluationValidee[]>(`/objectifs/dossiers/${employeeId}/evaluations`),
+  });
+  const liste = evaluations.data ?? [];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Évaluation</CardTitle>
+      </CardHeader>
+      {evaluations.isPending ? (
+        <CardContent>
+          <Skeleton className="h-16 w-full" />
+        </CardContent>
+      ) : liste.length === 0 ? (
+        <CardContent>
+          <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
+            Aucune évaluation validée pour l’instant.
+          </p>
+        </CardContent>
+      ) : (
+        <Table>
+          <THead>
+            <tr>
+              <Th>Année</Th>
+              <Th>Période</Th>
+              <Th>Manager</Th>
+              <Th>Note</Th>
+            </tr>
+          </THead>
+          <TBody>
+            {liste.map((e) => (
+              <Tr key={`${e.annee}-${e.semestre}`}>
+                <Td className="font-medium text-ink-strong tabular-nums">{e.annee}</Td>
+                <Td>Semestre {e.semestre}</Td>
+                <Td>{e.manager ?? '—'}</Td>
+                <Td>
+                  <span className="inline-flex items-center gap-2" title={LIBELLES_NOTE[e.note]}>
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12px] font-extrabold text-primary">
+                      {e.note}
+                    </span>
+                    <span className="text-[12px] text-ink-muted max-sm:hidden">
+                      {LIBELLES_NOTE[e.note]}
+                    </span>
+                  </span>
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
+      )}
+    </Card>
   );
 }

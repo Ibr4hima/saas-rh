@@ -68,6 +68,15 @@ export class ObjectifsController {
     return this.objectifs.suiviEquipe(req.sessionUser, q.annee);
   }
 
+  /** Les évaluations validées d'un agent : la section « Évaluation » de son dossier. */
+  @Get('dossiers/:employeeId/evaluations')
+  evaluationsDe(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+  ) {
+    return this.objectifs.evaluationsDe(req.sessionUser, employeeId);
+  }
+
   @Get('equipe/:employeeId')
   fiche(
     @Req() req: AuthenticatedRequest,

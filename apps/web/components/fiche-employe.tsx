@@ -33,6 +33,7 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { CarteCertificatsAgent } from './academy-certificat';
+import { CarteEvaluationsAgent } from './evaluation-objectifs';
 import { EmployeeDocumentsCard } from './employee-documents-card';
 import { ProfileChangeCard } from './profile-change-card';
 import { DocumentRequestRow } from './document-request-list';
@@ -448,6 +449,9 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
               </Table>
             )}
           </Card>
+
+          {/* Les semestres évalués par le n+1, dès la validation. */}
+          {voitLeDossier ? <CarteEvaluationsAgent employeeId={e.id} /> : null}
 
           {/* En tête des cartes de gauche : c'est ce qui attend une décision. */}
           {canSeeHistory ? <ProfileChangeCard employeeId={e.id} /> : null}

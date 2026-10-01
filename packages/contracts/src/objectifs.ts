@@ -167,6 +167,19 @@ export interface EvaluationFiche {
   evaluateur: string | null;
 }
 
+/**
+ * Une évaluation validée, telle que le dossier de l'agent la garde : le
+ * semestre, qui l'a évalué, et la note.
+ */
+export interface EvaluationValidee {
+  annee: number;
+  semestre: Semestre;
+  /** Le n+1 qui l'a validée — `null` s'il n'a plus de dossier. */
+  manager: string | null;
+  note: NoteGlobale;
+  valideeLe: string;
+}
+
 const commentaires = z
   .record(z.string().min(1).max(100), z.string().max(2000))
   .refine((c) => Object.keys(c).length <= 300, 'Trop d’objectifs');
