@@ -586,8 +586,9 @@ for (const o of [
 }
 // Les objectifs d'un agent : la fiche que son n+1 rédige pour chaque
 // semestre, à la manière d'une page Notion — des cases à cocher, des
-// échéances, du gras pour ce qui compte. C'est l'agent qui coche ce qu'il a
-// atteint, puis commente chaque objectif et l'envoie à son n+1.
+// échéances, du gras pour ce qui compte. C'est l'agent qui s'auto-évalue :
+// chaque objectif atteint, partiellement ou non — la case en prend la
+// couleur —, commenté, puis envoyé à son n+1.
 const texte = (t, styles = {}) => ({ type: 'text', text: t, styles });
 const echeance = (date) => ({ type: 'echeance', props: { date } });
 const bloc = (type, contenu, props = {}, id = randomUUID()) => ({
@@ -669,17 +670,19 @@ await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
   ],
 });
 
-// Ce que les agents en font. Moussa : le semestre passé est bouclé — coché,
-// commenté, envoyé, évalué B par Awa ; le semestre en cours avance — une case
-// cochée, un commentaire au brouillon. Awa : son semestre est commenté et
-// envoyé à Mariama, qui a une évaluation à faire.
-console.log('→ Objectifs : Moussa coche et commente ; Awa attend l’évaluation de Mariama');
+// Ce que les agents en font. Moussa : le semestre passé est bouclé —
+// auto-évalué, envoyé, évalué B par Awa ; le semestre en cours avance — un
+// objectif atteint, un autre en partie, un commentaire au brouillon. Awa : son
+// auto-évaluation est envoyée à Mariama, qui a une évaluation à faire.
+console.log('→ Objectifs : Moussa s’auto-évalue ; Awa attend l’évaluation de Mariama');
 const pour = ({ annee, semestre }) => `/objectifs/moi/fiches/${annee}/${semestre}`;
 const passe = pour(precedent);
 const courant = pour({ annee: anneeObjectifs, semestre: semestreCourant });
-for (const id of [passeObj[0], passeObj[1]]) {
-  await enTantQue(moussa.id, 'PUT', `${passe}/coches`, { id, coche: true });
-}
+const statuer = (qui, fiche, id, statut) =>
+  enTantQue(qui, 'PUT', `${fiche}/statuts`, { id, statut });
+await statuer(moussa.id, passe, passeObj[0], 'atteint');
+await statuer(moussa.id, passe, passeObj[1], 'atteint');
+await statuer(moussa.id, passe, passeObj[2], 'non_atteint');
 await enTantQue(moussa.id, 'PUT', `${passe}/commentaires`, {
   commentaires: {
     [passeObj[0]]: 'Rapport remis au comité de direction le 28 juin, validé sans réserve.',
@@ -705,12 +708,14 @@ await enTantQue(
   'POST',
   `/objectifs/equipe/${moussa.id}/fiches/${precedent.annee}/${precedent.semestre}/evaluation/validation`,
 );
-await enTantQue(moussa.id, 'PUT', `${courant}/coches`, { id: moussaObj[2], coche: true });
+await statuer(moussa.id, courant, moussaObj[2], 'atteint');
+await statuer(moussa.id, courant, moussaObj[0], 'partiel');
 await enTantQue(moussa.id, 'PUT', `${courant}/commentaires`, {
   commentaires: { [moussaObj[2]]: 'Base à jour au 30 septembre : 214 projets agréés.' },
 });
 
-await enTantQue(awa.id, 'PUT', `${courant}/coches`, { id: awaObj[1], coche: true });
+await statuer(awa.id, courant, awaObj[0], 'partiel');
+await statuer(awa.id, courant, awaObj[1], 'atteint');
 await enTantQue(awa.id, 'PUT', `${courant}/commentaires`, {
   commentaires: {
     [awaObj[0]]: 'Première version remise ; la partie fiscale reste à consolider.',

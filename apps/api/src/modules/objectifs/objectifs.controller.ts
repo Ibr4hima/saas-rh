@@ -16,8 +16,8 @@ import {
 } from '@nestjs/common';
 import {
   anneeQuerySchema,
-  cocherObjectifSchema,
-  type CocherObjectifInput,
+  statutObjectifSchema,
+  type StatutObjectifInput,
   commentairesAgentSchema,
   type CommentairesAgentInput,
   creerObjectifSchema,
@@ -89,13 +89,13 @@ export class ObjectifsController {
 
   // ———————————————————————— le semestre : ce que l'agent en fait, ce que le n+1 en dit
 
-  @Put('moi/fiches/:annee/:semestre/coches')
-  cocher(
+  @Put('moi/fiches/:annee/:semestre/statuts')
+  statuer(
     @Req() req: AuthenticatedRequest,
     @Param(new ZodValidationPipe(periodeParamsSchema)) p: Periode,
-    @Body(new ZodValidationPipe(cocherObjectifSchema)) body: CocherObjectifInput,
+    @Body(new ZodValidationPipe(statutObjectifSchema)) body: StatutObjectifInput,
   ) {
-    return this.objectifs.cocher(req.sessionUser, p.annee, p.semestre, body);
+    return this.objectifs.statuer(req.sessionUser, p.annee, p.semestre, body);
   }
 
   @Put('moi/fiches/:annee/:semestre/commentaires')

@@ -9,6 +9,7 @@ import {
   type FormationDeLaFiche,
   type FormationProposable,
   type Semestre,
+  type StatutObjectif,
 } from '@teranga/contracts';
 import { Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../../../lib/api';
@@ -38,9 +39,10 @@ type Vue = 'objectifs' | 'evaluation';
 /**
  * La fiche d'un direct : la tête de son dossier, puis ses objectifs, année
  * par année — et dans l'année, semestre par semestre. Le n+1 les rédige comme
- * une page Notion ; ils s'enregistrent d'eux-mêmes. L'agent y coche ce qu'il a
- * atteint — le n+1 le voit à mesure. « Évaluation », en tête, montre ce que
- * l'agent en dit, objectif par objectif, et ce que le n+1 en dit à son tour.
+ * une page Notion ; ils s'enregistrent d'eux-mêmes. L'agent s'auto-évalue —
+ * chaque case prend la couleur de son statut, et le n+1 le voit à mesure.
+ * « Évaluation », en tête, montre ce que l'agent en dit, objectif par
+ * objectif, et ce que le n+1 en dit à son tour.
  */
 export default function FicheSuiviPage({ params }: { params: Promise<{ employeeId: string }> }) {
   const { employeeId } = use(params);
@@ -65,7 +67,7 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
     queryKey: [...CLE_OBJECTIFS, 'equipe', employeeId],
     queryFn: () => api<FicheSuivi>(`/objectifs/equipe/${employeeId}`),
     retry: false,
-    // Ce que l'agent coche se voit à mesure, sans recharger la page.
+    // L'auto-évaluation de l'agent se voit à mesure, sans recharger la page.
     refetchInterval: 4000,
   });
   const catalogue = useQuery({
@@ -274,8 +276,8 @@ function FichesDuMembre({
             <ZoneFiche
               employeeId={employeeId}
               carte={c}
-              coches={enregistree?.coches ?? []}
-              // L'agent a envoyé ses commentaires : ses objectifs ne changent plus.
+              statuts={enregistree?.statuts ?? {}}
+              // L'agent a envoyé son auto-évaluation : ses objectifs ne changent plus.
               verrouillee={Boolean(enregistree?.evaluation.envoyesLe)}
               formations={formations}
               catalogue={catalogue}
@@ -288,7 +290,7 @@ function FichesDuMembre({
   ));
 }
 
-/** Une fiche tout juste ouverte : ni coche, ni commentaire. */
+/** Une fiche tout juste ouverte : ni statut, ni commentaire. */
 const SANS_EVALUATION: FicheObjectifs['evaluation'] = {
   commentairesAgent: {},
   envoyesLe: null,
@@ -306,7 +308,7 @@ const SANS_EVALUATION: FicheObjectifs['evaluation'] = {
 function ZoneFiche({
   employeeId,
   carte,
-  coches,
+  statuts,
   verrouillee,
   formations,
   catalogue,
@@ -314,8 +316,8 @@ function ZoneFiche({
 }: {
   employeeId: string;
   carte: Carte;
-  /** Ce que l'agent a coché — la fiche le suit, sans que le n+1 puisse cocher. */
-  coches: string[];
+  /** L'auto-évaluation de l'agent — la fiche la suit, sans que le n+1 puisse cocher. */
+  statuts: Record<string, StatutObjectif>;
   /** L'agent a rendu compte : la fiche se lit, elle ne s'écrit plus. */
   verrouillee: boolean;
   formations: FormationDeLaFiche[];
@@ -355,7 +357,7 @@ function ZoneFiche({
                 contenu: blocs,
                 majLe: r.majLe,
                 auteur: ancienne?.auteur ?? null,
-                coches: ancienne?.coches ?? [],
+                statuts: ancienne?.statuts ?? {},
                 evaluation: ancienne?.evaluation ?? SANS_EVALUATION,
               },
             ],
@@ -426,7 +428,7 @@ function ZoneFiche({
         catalogue={catalogue}
         onChange={onChange}
         focusSignal={signal}
-        coches={coches}
+        statuts={statuts}
       />
     </>
   );

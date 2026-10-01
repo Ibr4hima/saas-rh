@@ -4,25 +4,30 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useQueryClient } from '@tanstack/react-query';
 import {
   LIBELLES_NOTE,
+  LIBELLES_STATUT,
   NOTES_GLOBALES,
   objectifsDeLaFiche,
+  STATUTS_OBJECTIF,
   type FicheObjectifs,
   type NoteGlobale,
   type ObjectifDeLaFiche,
+  type StatutObjectif,
 } from '@teranga/contracts';
 import { Button, cn, Textarea } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 import { Modal } from './modal';
 import { CLE_OBJECTIFS } from './objectifs';
 
 /* ————————————————————————————————————————————————————————————————
    Ce que l'agent fait de ses objectifs, et ce que son n+1 en dit.
 
-   L'agent coche ce qu'il a atteint, puis commente chaque objectif — ce
-   qu'il a fait, ce qui manque et pourquoi —, enregistre autant de fois qu'il
-   veut et envoie à son n+1 quand tout est commenté. Le n+1 lit, commente à
-   son tour sous chaque objectif, donne l'appréciation globale et valide.
+   L'agent s'auto-évalue : sous chaque objectif, il dit où il en est —
+   atteint, partiellement, non atteint ; la case en prend la couleur — et ce
+   qu'il a fait, ce qui manque et pourquoi. Il enregistre autant de fois qu'il
+   veut et envoie à son n+1 quand chaque objectif a son statut et son
+   commentaire. Le n+1 lit, commente à son tour sous chaque objectif, donne
+   l'appréciation globale et valide.
    ———————————————————————————————————————————————————————————————— */
 
 // ———————————————————————————— l'objectif, lu
@@ -83,46 +88,130 @@ function TexteObjectif({ contenu }: { contenu: Record<string, unknown>[] }) {
   );
 }
 
+// ———————————————————————————— le statut d'un objectif
+
+/** Chaque statut, sa couleur et son signe — ceux des cases de la fiche. */
+const DESSIN_STATUT: Record<
+  StatutObjectif,
+  { aplat: string; point: string; texte: string; signe: IconName }
+> = {
+  atteint: {
+    aplat: 'border-primary bg-primary',
+    point: 'bg-primary',
+    texte: 'text-primary-ink',
+    signe: 'check',
+  },
+  partiel: {
+    aplat: 'border-partiel-line bg-partiel',
+    point: 'bg-partiel',
+    texte: 'text-partiel-ink',
+    signe: 'remove',
+  },
+  non_atteint: {
+    aplat: 'border-danger bg-danger',
+    point: 'bg-danger',
+    texte: 'text-primary-ink',
+    signe: 'close',
+  },
+};
+
 /**
- * La case d'un objectif, dessinée comme celles de la fiche. Cochée, elle ne
- * barre pas le texte : ici, on rend compte de ce qui a été fait.
+ * La case d'un objectif, dessinée comme celles de la fiche, à la couleur de
+ * l'auto-évaluation. Elle ne barre pas le texte : ici, on rend compte.
  */
-function Case({ coche, onClick }: { coche: boolean; onClick?: () => void }) {
-  const dessin = (
+function Case({ statut }: { statut?: StatutObjectif }) {
+  const d = statut ? DESSIN_STATUT[statut] : null;
+  return (
     <span
-      aria-hidden
+      role="img"
+      aria-label={statut ? LIBELLES_STATUT[statut] : 'Sans statut'}
       className={cn(
-        'flex size-4 shrink-0 items-center justify-center rounded-[5px] border-[1.5px] transition-colors duration-150',
-        coche ? 'border-primary bg-primary text-primary-ink' : 'border-ink-muted/40 bg-surface',
-        onClick && !coche && 'group-hover:border-primary',
+        'mt-[2px] flex size-4 shrink-0 items-center justify-center rounded-[5px] border-[1.5px] transition-colors duration-150',
+        d ? cn(d.aplat, d.texte) : 'border-ink-muted/40 bg-surface',
       )}
     >
-      {coche ? <Icon name="check" size={13} weight={600} /> : null}
+      {d ? <Icon name={d.signe} size={13} weight={600} /> : null}
     </span>
-  );
-  if (!onClick) return <span className="mt-[2px] flex">{dessin}</span>;
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={coche}
-      onClick={onClick}
-      className="group mt-[2px] flex rounded-[5px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-    >
-      {dessin}
-    </button>
   );
 }
 
-/** Ce qu'une personne a écrit d'un objectif : son nom, son texte. */
+/** Le statut, en toutes lettres : une pastille à sa couleur. */
+function PastilleStatut({ statut }: { statut: StatutObjectif }) {
+  const d = DESSIN_STATUT[statut];
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full border px-2 py-px text-[10.5px] font-bold tracking-normal normal-case',
+        d.aplat,
+        d.texte,
+      )}
+    >
+      <Icon name={d.signe} size={12} weight={600} />
+      {LIBELLES_STATUT[statut]}
+    </span>
+  );
+}
+
+/** Atteint, Partiellement, Non atteint : le choix de l'agent, sous l'objectif. */
+function ChoixStatut({
+  objectif,
+  valeur,
+  onChange,
+}: {
+  objectif: string;
+  valeur?: StatutObjectif;
+  onChange: (s: StatutObjectif | null) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={`Statut — ${objectif}`}
+      className="flex flex-wrap items-center gap-1.5 max-sm:gap-1"
+    >
+      {STATUTS_OBJECTIF.map((s) => {
+        const choisi = valeur === s;
+        const d = DESSIN_STATUT[s];
+        return (
+          <button
+            key={s}
+            type="button"
+            role="radio"
+            aria-checked={choisi}
+            // Le reprendre retire le choix : rien n'oblige à trancher tout de suite.
+            onClick={() => onChange(choisi ? null : s)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full border py-[5px] pr-3 pl-2 text-[11.5px] font-semibold transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/35 max-sm:gap-1 max-sm:pr-2.5 max-sm:pl-1.5 max-sm:text-[11px]',
+              choisi
+                ? cn(d.aplat, d.texte, 'shadow-xs')
+                : 'border-line bg-surface text-ink hover:border-ink-muted/50 hover:bg-hover',
+            )}
+          >
+            {choisi ? (
+              <Icon name={d.signe} size={14} weight={600} />
+            ) : (
+              <span aria-hidden className={cn('mx-[3px] size-2 rounded-full', d.point)} />
+            )}
+            {LIBELLES_STATUT[s]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ———————————————————————————— l'objectif, commenté
+
+/** Ce qu'une personne a écrit d'un objectif : son nom, son texte — et le statut qu'elle a donné. */
 function Propos({
   qui,
   texte,
   ton = 'neutre',
+  statut,
 }: {
   qui: string;
   texte: string;
   ton?: 'neutre' | 'n1';
+  statut?: StatutObjectif;
 }) {
   return (
     <div
@@ -133,11 +222,12 @@ function Propos({
     >
       <p
         className={cn(
-          'text-[10.5px] font-bold tracking-[0.06em] uppercase',
+          'flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10.5px] font-bold tracking-[0.06em] uppercase',
           ton === 'n1' ? 'text-primary' : 'text-ink-muted',
         )}
       >
         {qui}
+        {statut ? <PastilleStatut statut={statut} /> : null}
       </p>
       <p className="mt-0.5 text-[12.5px] leading-relaxed whitespace-pre-line text-ink">{texte}</p>
     </div>
@@ -147,19 +237,17 @@ function Propos({
 /** Une ligne d'objectif : la case, le texte, puis ce qui s'en dit dessous. */
 function LigneObjectif({
   objectif,
-  coche,
-  onCocher,
+  statut,
   children,
 }: {
   objectif: ObjectifDeLaFiche;
-  coche: boolean;
-  onCocher?: () => void;
+  statut?: StatutObjectif;
   children?: ReactNode;
 }) {
   return (
     <li className="flex flex-col gap-2 py-3 first:pt-1">
       <div className="flex items-start gap-[11px]">
-        <Case coche={coche} onClick={onCocher} />
+        <Case statut={statut} />
         <p className="min-w-0 flex-1 text-[12.5px] leading-[1.5] text-ink-strong">
           <TexteObjectif contenu={objectif.contenu} />
         </p>
@@ -362,13 +450,22 @@ function BoutonEnregistrer({
   );
 }
 
-// ———————————————————————————— le bouton « Commentaires »
+// ———————————————————————————— le bouton « Auto-évaluation »
+
+/** Les objectifs que l'agent a entièrement auto-évalués : un statut et un commentaire. */
+function evalues(
+  objectifs: ObjectifDeLaFiche[],
+  statuts: Record<string, StatutObjectif>,
+  commentaires: Record<string, string>,
+): number {
+  return objectifs.filter((o) => statuts[o.id] && commentaires[o.id]?.trim()).length;
+}
 
 /**
- * En bas à droite de la fiche : le passage aux commentaires — et, d'un
- * coup d'œil, où ils en sont.
+ * En bas à droite de la fiche : le passage à l'auto-évaluation — et, d'un
+ * coup d'œil, où elle en est.
  */
-export function BoutonCommentaires({
+export function BoutonAutoEvaluation({
   fiche,
   actif,
   onClick,
@@ -379,14 +476,14 @@ export function BoutonCommentaires({
 }) {
   const ev = fiche.evaluation;
   const objectifs = objectifsDeLaFiche(fiche.contenu);
-  const commentes = objectifs.filter((o) => ev.commentairesAgent[o.id]?.trim()).length;
+  const faits = evalues(objectifs, fiche.statuts, ev.commentairesAgent);
   const etat = ev.valideeLe
     ? `Évaluation · ${ev.note}`
     : ev.envoyesLe
-      ? 'Commentaires envoyés'
-      : commentes > 0
-        ? `Commentaires · ${commentes}/${objectifs.length}`
-        : 'Commentaires';
+      ? 'Auto-évaluation envoyée'
+      : faits > 0
+        ? `Auto-évaluation · ${faits}/${objectifs.length}`
+        : 'Auto-évaluation';
   return (
     <button
       type="button"
@@ -401,7 +498,7 @@ export function BoutonCommentaires({
             : 'border-line bg-surface text-ink hover:border-primary/40 hover:text-primary',
       )}
     >
-      <Icon name={ev.envoyesLe && !actif ? 'check_circle' : 'chat_bubble'} size={15} />
+      <Icon name={ev.envoyesLe && !actif ? 'check_circle' : 'checklist'} size={15} />
       {etat}
     </button>
   );
@@ -410,19 +507,23 @@ export function BoutonCommentaires({
 // ———————————————————————————— côté agent
 
 /**
- * Les commentaires de l'agent, sous chacun de ses objectifs — à écrire, puis
- * envoyés ; et, une fois l'évaluation validée, ce qu'en dit son n+1.
+ * L'auto-évaluation de l'agent, sous chacun de ses objectifs — son statut,
+ * qui se voit aussitôt, et son commentaire, à enregistrer puis à envoyer ; et,
+ * une fois l'évaluation validée, ce qu'en dit son n+1.
  */
-export function CommentairesAgent({
+export function AutoEvaluationAgent({
   fiche,
-  coches,
-  onCocher,
+  statuts,
+  onStatuer,
+  erreurStatut,
   bascule,
 }: {
   fiche: FicheObjectifs;
-  coches: string[];
-  onCocher: (id: string, coche: boolean) => void;
-  /** Le bouton « Commentaires », rangé au bout de la barre d'actions. */
+  /** Les statuts tels que l'agent vient de les choisir — avant même la réponse du serveur. */
+  statuts: Record<string, StatutObjectif>;
+  onStatuer: (id: string, statut: StatutObjectif | null) => void;
+  erreurStatut: string | null;
+  /** Le bouton « Auto-évaluation », rangé au bout de la barre d'actions. */
   bascule: ReactNode;
 }) {
   const queryClient = useQueryClient();
@@ -435,7 +536,17 @@ export function CommentairesAgent({
   const base = `/objectifs/moi/fiches/${fiche.annee}/${fiche.semestre}/commentaires`;
   const cle = [...CLE_OBJECTIFS, 'moi'];
 
-  const manquants = objectifs.filter((o) => !brouillon.valeur[o.id]?.trim()).length;
+  const sansStatut = objectifs.filter((o) => !statuts[o.id]).length;
+  const sansCommentaire = objectifs.filter((o) => !brouillon.valeur[o.id]?.trim()).length;
+  const reste = [
+    sansStatut ? `${sansStatut} statut${sansStatut > 1 ? 's' : ''} à choisir` : null,
+    sansCommentaire
+      ? `${sansCommentaire} commentaire${sansCommentaire > 1 ? 's' : ''} à écrire`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const erreur = action.erreur ?? erreurStatut;
 
   const enregistrer = () =>
     action.lancer('enregistrer', async () => {
@@ -461,16 +572,11 @@ export function CommentairesAgent({
     <div className="flex flex-col gap-5 px-5 pt-3 pb-4">
       <ol className="flex flex-col divide-y divide-line-soft">
         {objectifs.map((o) => (
-          <LigneObjectif
-            key={o.id}
-            objectif={o}
-            coche={coches.includes(o.id)}
-            onCocher={envoyes ? undefined : () => onCocher(o.id, !coches.includes(o.id))}
-          >
+          <LigneObjectif key={o.id} objectif={o} statut={statuts[o.id]}>
             {envoyes ? (
               <>
                 {ev.commentairesAgent[o.id] ? (
-                  <Propos qui="Vous" texte={ev.commentairesAgent[o.id]!} />
+                  <Propos qui="Vous" texte={ev.commentairesAgent[o.id]!} statut={statuts[o.id]} />
                 ) : null}
                 {ev.valideeLe && ev.commentairesN1[o.id]?.trim() ? (
                   <Propos
@@ -481,14 +587,23 @@ export function CommentairesAgent({
                 ) : null}
               </>
             ) : (
-              <Textarea
-                aria-label={`Commentaire — ${o.texte}`}
-                placeholder="Ce que vous avez fait, ce qui reste…"
-                rows={2}
-                className="min-h-[54px] text-[12.5px]"
-                value={brouillon.valeur[o.id] ?? ''}
-                onChange={(e) => brouillon.changer({ ...brouillon.valeur, [o.id]: e.target.value })}
-              />
+              <>
+                <ChoixStatut
+                  objectif={o.texte}
+                  valeur={statuts[o.id]}
+                  onChange={(statut) => onStatuer(o.id, statut)}
+                />
+                <Textarea
+                  aria-label={`Commentaire — ${o.texte}`}
+                  placeholder="Ce que vous avez fait, ce qui reste…"
+                  rows={2}
+                  className="min-h-[54px] text-[12.5px]"
+                  value={brouillon.valeur[o.id] ?? ''}
+                  onChange={(e) =>
+                    brouillon.changer({ ...brouillon.valeur, [o.id]: e.target.value })
+                  }
+                />
+              </>
             )}
           </LigneObjectif>
         ))}
@@ -502,22 +617,18 @@ export function CommentairesAgent({
       ) : null}
 
       <div className="flex flex-wrap items-center justify-end gap-2.5">
-        {action.erreur && !confirmer ? (
+        {erreur && !confirmer ? (
           <p role="alert" className="mr-auto text-[12px] font-semibold text-danger">
-            {action.erreur}
+            {erreur}
           </p>
         ) : envoyes ? (
           <p className="mr-auto text-[11.5px] text-ink-muted">
             {ev.valideeLe
               ? `Évaluation validée le ${dateLongue(ev.valideeLe)}${ev.evaluateur ? ` par ${ev.evaluateur}` : ''}`
-              : `Envoyés le ${dateLongue(ev.envoyesLe!)}`}
+              : `Envoyée le ${dateLongue(ev.envoyesLe!)}`}
           </p>
-        ) : manquants > 0 ? (
-          <p className="mr-auto text-[11.5px] text-ink-muted">
-            {manquants > 1
-              ? `${manquants} objectifs sans commentaire`
-              : '1 objectif sans commentaire'}
-          </p>
+        ) : reste ? (
+          <p className="mr-auto text-[11.5px] text-ink-muted">{reste}</p>
         ) : null}
         {envoyes ? null : (
           <>
@@ -527,7 +638,7 @@ export function CommentairesAgent({
               enCours={action.enCours === 'enregistrer'}
               onClick={() => void enregistrer()}
             />
-            <Button size="sm" disabled={manquants > 0} onClick={() => setConfirmer(true)}>
+            <Button size="sm" disabled={Boolean(reste)} onClick={() => setConfirmer(true)}>
               <Icon name="send" size={15} />
               Envoyer à mon N+1
             </Button>
@@ -538,7 +649,7 @@ export function CommentairesAgent({
 
       <Confirmation
         ouverte={confirmer}
-        titre="Envoyer vos commentaires"
+        titre="Envoyer votre auto-évaluation"
         action="Envoyer"
         enCours={action.enCours === 'envoyer'}
         erreur={action.erreur}
@@ -548,7 +659,7 @@ export function CommentairesAgent({
         }}
         onConfirmer={() => void envoyer()}
       >
-        Une fois envoyés, vos commentaires et vos objectifs cochés ne se modifient plus.
+        Une fois envoyée, votre auto-évaluation — statuts et commentaires — ne se modifie plus.
       </Confirmation>
     </div>
   );
@@ -557,9 +668,9 @@ export function CommentairesAgent({
 // ———————————————————————————— côté n+1
 
 /**
- * L'évaluation d'un semestre, vue par le n+1 : chaque objectif — coché ou
- * non par l'agent —, ce qu'en dit l'agent, et dessous son propre commentaire ;
- * puis l'appréciation globale.
+ * L'évaluation d'un semestre, vue par le n+1 : chaque objectif, à la couleur
+ * du statut que l'agent lui donne, ce qu'en dit l'agent, et dessous son propre
+ * commentaire ; puis l'appréciation globale.
  */
 export function EvaluationSemestre({
   employeeId,
@@ -611,9 +722,13 @@ export function EvaluationSemestre({
     <div className="flex flex-col gap-5 px-5 pt-3 pb-4">
       <ol className="flex flex-col divide-y divide-line-soft">
         {objectifs.map((o) => (
-          <LigneObjectif key={o.id} objectif={o} coche={fiche.coches.includes(o.id)}>
+          <LigneObjectif key={o.id} objectif={o} statut={fiche.statuts[o.id]}>
             {envoyes && ev.commentairesAgent[o.id] ? (
-              <Propos qui={prenom} texte={ev.commentairesAgent[o.id]!} />
+              <Propos
+                qui={prenom}
+                texte={ev.commentairesAgent[o.id]!}
+                statut={fiche.statuts[o.id]}
+              />
             ) : null}
             {envoyes && !validee ? (
               <Textarea
@@ -640,7 +755,7 @@ export function EvaluationSemestre({
       {!envoyes ? (
         <p className="flex items-center gap-1.5 text-[12px] text-ink-muted">
           <Icon name="schedule" size={15} />
-          {prenom} n’a pas encore envoyé ses commentaires.
+          {prenom} n’a pas encore envoyé son auto-évaluation.
         </p>
       ) : validee ? (
         <div className="flex flex-col gap-2.5 border-t border-line-soft pt-4">

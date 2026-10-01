@@ -23,8 +23,8 @@ import {
   type DefaultReactSuggestionItem,
 } from '@blocknote/react';
 import Link from 'next/link';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
-import type { FormationDeLaFiche, FormationProposable } from '@teranga/contracts';
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef } from 'react';
+import type { FormationDeLaFiche, FormationProposable, StatutObjectif } from '@teranga/contracts';
 import { cn } from '@teranga/ui';
 import { PastilleEtat } from './academy-equipe';
 import { Icon, type IconName } from './icons';
@@ -455,6 +455,15 @@ function datesProposees(editeur: Editeur): DefaultReactSuggestionItem[] {
 
 // ———————————————————————————— l'éditeur
 
+/** Les couleurs d'une case que l'agent ne dit pas atteinte (globals.css, `.fiche-statuts`). */
+const DESSIN_DU_STATUT: Record<StatutObjectif, string> = {
+  atteint: '',
+  partiel:
+    '--statut-fond: var(--tg-partiel); --statut-filet: var(--tg-partiel-line); --statut-signe: var(--tiret);',
+  non_atteint:
+    '--statut-fond: var(--tg-danger); --statut-filet: var(--tg-danger); --statut-signe: var(--croix);',
+};
+
 export function EditeurFicheObjectifs({
   contenu,
   modifiable,
@@ -463,8 +472,7 @@ export function EditeurFicheObjectifs({
   onChange,
   focusSignal = 0,
   className,
-  coches,
-  onCocher,
+  statuts,
 }: {
   contenu: Record<string, unknown>[];
   modifiable: boolean;
@@ -476,12 +484,11 @@ export function EditeurFicheObjectifs({
   /** La marge autour du texte : un clic dedans, et l'on écrit en fin de fiche. */
   className?: string;
   /**
-   * Les objectifs que l'agent a cochés — c'est lui qui coche. La fiche les
-   * suit à mesure qu'ils changent ; ses cases ne se cliquent pas, sauf…
+   * Où l'agent dit en être de chaque objectif — c'est son auto-évaluation qui
+   * colore les cases : bleu (atteint, cochée), jaune (partiellement), rouge
+   * (non atteint). La fiche suit à mesure ; ses cases ne se cliquent pas.
    */
-  coches?: string[];
-  /** …chez l'agent, qui coche ce qu'il a atteint, dans une fiche qu'il ne rédige pas. */
-  onCocher?: (id: string, coche: boolean) => void;
+  statuts?: Record<string, StatutObjectif>;
 }) {
   const { theme } = usePreferences();
   const editeur = useCreateBlockNote({
@@ -510,18 +517,19 @@ export function EditeurFicheObjectifs({
     if (focusSignal > 0 && modifiable) ecrireALaFin();
   }, [focusSignal, modifiable, ecrireALaFin]);
 
-  // Les cases suivent les coches de l'agent. Les poser n'est pas une
-  // rédaction : `onChange` n'en est pas prévenu, rien ne s'enregistre.
+  // Les cases suivent l'auto-évaluation de l'agent : cochée, l'objectif est
+  // atteint. Les poser n'est pas une rédaction : `onChange` n'en est pas
+  // prévenu, rien ne s'enregistre.
   const enPose = useRef(false);
-  const cochesCle = coches?.join('|');
+  const statutsCle = statuts ? JSON.stringify(statuts) : undefined;
   useEffect(() => {
-    if (!coches) return;
-    const voulues = new Set(coches);
+    if (!statuts) return;
     const ecarts: { id: string; checked: boolean }[] = [];
     const parcourir = (blocs: typeof editeur.document) => {
       for (const b of blocs) {
-        if (b.type === 'checkListItem' && Boolean(b.props.checked) !== voulues.has(b.id)) {
-          ecarts.push({ id: b.id, checked: voulues.has(b.id) });
+        const voulue = statuts[b.id] === 'atteint';
+        if (b.type === 'checkListItem' && Boolean(b.props.checked) !== voulue) {
+          ecarts.push({ id: b.id, checked: voulue });
         }
         parcourir(b.children);
       }
@@ -536,9 +544,25 @@ export function EditeurFicheObjectifs({
     } finally {
       enPose.current = false;
     }
-    // `cochesCle` résume `coches` : un nouveau tableau de mêmes valeurs ne repose rien.
+    // `statutsCle` résume `statuts` : un nouvel objet de mêmes valeurs ne repose rien.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cochesCle, editeur]);
+  }, [statutsCle, editeur]);
+
+  // Partiellement, non atteint : la case, restée décochée, prend la couleur
+  // du choix — une règle par objectif, que BlockNote ne peut pas effacer en
+  // redessinant ses blocs.
+  const portee = useId();
+  const couleurs = useMemo(() => {
+    if (!statuts) return '';
+    return Object.entries(statuts)
+      .filter(([, s]) => s !== 'atteint')
+      .map(
+        ([id, s]) =>
+          `[data-statuts="${portee}"] [data-id="${CSS.escape(id)}"] > .bn-block-content[data-content-type='checkListItem'] > div > input { ${DESSIN_DU_STATUT[s]} }`,
+      )
+      .join('\n');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statutsCle, portee]);
 
   const contexte = useMemo(
     () => ({ formations, catalogue, lienAcademy: !modifiable }),
@@ -547,29 +571,16 @@ export function EditeurFicheObjectifs({
 
   return (
     <Contexte.Provider value={contexte}>
+      {couleurs ? <style>{couleurs}</style> : null}
       <div
-        className={cn(
-          modifiable && 'cursor-text',
-          coches && (onCocher ? 'fiche-cochable' : 'fiche-coches-figees'),
-          className,
-        )}
+        data-statuts={statuts ? portee : undefined}
+        className={cn(modifiable && 'cursor-text', statuts && 'fiche-statuts', className)}
         // Comme sur une page : cliquer sous le texte place le curseur en fin
         // de fiche, au lieu de ne rien faire.
         onMouseDown={(e) => {
           if (!modifiable || e.target !== e.currentTarget) return;
           e.preventDefault();
           ecrireALaFin();
-        }}
-        // L'agent coche dans une fiche en lecture : la case du navigateur y est
-        // désactivée, c'est son cadre qui reçoit le clic.
-        onClick={(e) => {
-          if (!onCocher || !coches) return;
-          const cadre = (e.target as HTMLElement).closest(
-            ".bn-block-content[data-content-type='checkListItem'] > div",
-          );
-          const id = cadre?.closest('[data-id]')?.getAttribute('data-id');
-          if (!cadre || !id || !cadre.querySelector('input')) return;
-          onCocher(id, !coches.includes(id));
         }}
       >
         <BlockNoteView

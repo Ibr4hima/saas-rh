@@ -3,10 +3,18 @@
 import dynamic from 'next/dynamic';
 import { Fragment, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { FicheObjectifs, MesObjectifs, ObjectifView } from '@teranga/contracts';
+import type {
+  FicheObjectifs,
+  MesObjectifs,
+  ObjectifView,
+  StatutObjectif,
+} from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
-import { BoutonCommentaires, CommentairesAgent } from '../../../../components/evaluation-objectifs';
+import {
+  AutoEvaluationAgent,
+  BoutonAutoEvaluation,
+} from '../../../../components/evaluation-objectifs';
 import { FicheSemestre, parAnnee, SeparateurAnnee } from '../../../../components/fiches-semestres';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
@@ -88,9 +96,10 @@ export default function MesObjectifsPage() {
 }
 
 /**
- * Un semestre, vu par l'agent. La fiche que son n+1 a rédigée, où il coche ce
- * qu'il a atteint ; en bas à droite, « Commentaires » : sous chaque objectif,
- * ce qu'il a fait, ce qui manque — à enregistrer, puis à envoyer.
+ * Un semestre, vu par l'agent. La fiche que son n+1 a rédigée, ses cases à la
+ * couleur de son auto-évaluation ; en bas à droite, « Auto-évaluation » : sous
+ * chaque objectif, atteint, partiellement ou non, ce qu'il a fait, ce qui
+ * manque — à enregistrer, puis à envoyer.
  */
 function CarteSemestre({
   fiche,
@@ -100,23 +109,25 @@ function CarteSemestre({
   formations: MesObjectifs['formations'];
 }) {
   const queryClient = useQueryClient();
-  const [commentaires, setCommentaires] = useState(false);
-  const [coches, setCoches] = useState(fiche.coches);
+  const [autoEvaluation, setAutoEvaluation] = useState(false);
+  const [statuts, setStatuts] = useState(fiche.statuts);
   const [erreur, setErreur] = useState<string | null>(null);
-  const envoyes = Boolean(fiche.evaluation.envoyesLe);
-  const cochesServeur = fiche.coches.join('|');
+  const statutsServeur = JSON.stringify(fiche.statuts);
   // Ce qui arrive du serveur fait foi — après un rechargement, par exemple.
-  useEffect(() => setCoches(fiche.coches), [cochesServeur]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setStatuts(fiche.statuts), [statutsServeur]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Cocher se voit tout de suite ; le serveur confirme, ou l'on revient en arrière. */
-  const cocher = async (id: string, coche: boolean) => {
-    const avant = coches;
-    setCoches(coche ? [...coches, id] : coches.filter((c) => c !== id));
+  /** Le choix se voit tout de suite ; le serveur confirme, ou l'on revient en arrière. */
+  const statuer = async (id: string, statut: StatutObjectif | null) => {
+    const avant = statuts;
+    const apres = { ...statuts };
+    if (statut) apres[id] = statut;
+    else delete apres[id];
+    setStatuts(apres);
     setErreur(null);
     try {
-      const r = await api<{ coches: string[] }>(
-        `/objectifs/moi/fiches/${fiche.annee}/${fiche.semestre}/coches`,
-        { method: 'PUT', body: { id, coche } },
+      const r = await api<{ statuts: Record<string, StatutObjectif> }>(
+        `/objectifs/moi/fiches/${fiche.annee}/${fiche.semestre}/statuts`,
+        { method: 'PUT', body: { id, statut } },
       );
       queryClient.setQueryData<MesObjectifs>([...CLE_OBJECTIFS, 'moi'], (d) =>
         d
@@ -124,23 +135,23 @@ function CarteSemestre({
               ...d,
               fiches: d.fiches.map((x) =>
                 x.annee === fiche.annee && x.semestre === fiche.semestre
-                  ? { ...x, coches: r.coches }
+                  ? { ...x, statuts: r.statuts }
                   : x,
               ),
             }
           : d,
       );
     } catch (e) {
-      setCoches(avant);
-      setErreur(e instanceof ApiError ? e.message : 'Case non enregistrée — réessayez.');
+      setStatuts(avant);
+      setErreur(e instanceof ApiError ? e.message : 'Statut non enregistré — réessayez.');
     }
   };
 
   const bascule = (
-    <BoutonCommentaires
-      fiche={fiche}
-      actif={commentaires}
-      onClick={() => setCommentaires((v) => !v)}
+    <BoutonAutoEvaluation
+      fiche={{ ...fiche, statuts }}
+      actif={autoEvaluation}
+      onClick={() => setAutoEvaluation((v) => !v)}
     />
   );
 
@@ -155,11 +166,12 @@ function CarteSemestre({
         </>
       }
     >
-      {commentaires ? (
-        <CommentairesAgent
+      {autoEvaluation ? (
+        <AutoEvaluationAgent
           fiche={fiche}
-          coches={coches}
-          onCocher={(id, coche) => void cocher(id, coche)}
+          statuts={statuts}
+          onStatuer={(id, statut) => void statuer(id, statut)}
+          erreurStatut={erreur}
           bascule={bascule}
         />
       ) : (
@@ -171,8 +183,7 @@ function CarteSemestre({
             contenu={fiche.contenu}
             modifiable={false}
             formations={formations}
-            coches={coches}
-            onCocher={envoyes ? undefined : (id, coche) => void cocher(id, coche)}
+            statuts={statuts}
           />
           <div className="flex flex-wrap items-center justify-end gap-3 px-5 pb-4">
             {erreur ? (

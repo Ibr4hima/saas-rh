@@ -530,7 +530,7 @@ describe('la fiche d’objectifs', () => {
   });
 });
 
-describe('le semestre : l’agent coche et commente, le n+1 évalue', () => {
+describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
   const caseACocher = (id: string, texte: string, checked = false) => ({
     id,
     type: 'checkListItem',
@@ -548,8 +548,8 @@ describe('le semestre : l’agent coche et commente, le n+1 évalue', () => {
   const vueN1 = async () =>
     de((await objectifs.fiche(session('awa'), agents.moussa)).fiches, 2024, 1);
 
-  it('l’agent coche, commente, envoie ; le n+1 voit, commente, note et valide', async () => {
-    // Ce que le n+1 aurait coché ne compte pas : c'est l'agent qui coche.
+  it('l’agent dit où il en est, commente, envoie ; le n+1 voit, commente, note et valide', async () => {
+    // Ce que le n+1 aurait coché ne compte pas : c'est l'agent qui dit où il en est.
     await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
       annee: 2024,
       semestre: 1,
@@ -558,18 +558,25 @@ describe('le semestre : l’agent coche et commente, le n+1 évalue', () => {
         caseACocher('o2', 'Former deux stagiaires'),
       ],
     });
-    expect((await vueAgent()).coches).toEqual([]);
+    expect((await vueAgent()).statuts).toEqual({});
+    expect((await vueAgent()).contenu[0]).toMatchObject({ props: { checked: false } });
 
-    // L'agent coche ; le n+1 le voit, dans la fiche même.
-    expect(await objectifs.cocher(session('moussa'), 2024, 1, { id: 'o1', coche: true })).toEqual({
-      coches: ['o1'],
-    });
+    // L'agent choisit, change d'avis ; le n+1 le voit, dans la fiche même —
+    // cochée, la case dit « atteint ».
+    await objectifs.statuer(session('moussa'), 2024, 1, { id: 'o1', statut: 'partiel' });
+    expect(
+      await objectifs.statuer(session('moussa'), 2024, 1, { id: 'o1', statut: 'atteint' }),
+    ).toEqual({ statuts: { o1: 'atteint' } });
+    await objectifs.statuer(session('moussa'), 2024, 1, { id: 'o2', statut: 'partiel' });
+    await objectifs.statuer(session('moussa'), 2024, 1, { id: 'o2', statut: null });
     const vue = await vueN1();
-    expect(vue.coches).toEqual(['o1']);
+    expect(vue.statuts).toEqual({ o1: 'atteint' });
     expect(vue.contenu[0]).toMatchObject({ props: { checked: true } });
     expect(vue.contenu[1]).toMatchObject({ props: { checked: false } });
     expect(
-      await codeOf(() => objectifs.cocher(session('moussa'), 2024, 1, { id: 'zz', coche: true })),
+      await codeOf(() =>
+        objectifs.statuer(session('moussa'), 2024, 1, { id: 'zz', statut: 'atteint' }),
+      ),
     ).toBe('objectifs.objectif_inconnu');
 
     // Ses commentaires restent à lui tant qu'il ne les envoie pas.
@@ -582,13 +589,17 @@ describe('le semestre : l’agent coche et commente, le n+1 évalue', () => {
     });
     expect((await vueN1()).evaluation.commentairesAgent).toEqual({});
 
-    // Chaque objectif commenté, atteint ou non.
+    // Chaque objectif a son statut et son commentaire, atteint ou non.
     expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2024, 1))).toBe(
-      'objectifs.commentaires_incomplets',
+      'objectifs.auto_evaluation_incomplete',
     );
     await objectifs.enregistrerCommentaires(session('moussa'), 2024, 1, {
       commentaires: { o1: 'Note livrée le 12 mars.', o2: 'Reporté : recrutement gelé.' },
     });
+    expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2024, 1))).toBe(
+      'objectifs.auto_evaluation_incomplete',
+    );
+    await objectifs.statuer(session('moussa'), 2024, 1, { id: 'o2', statut: 'non_atteint' });
     expect(
       await codeOf(() =>
         objectifs.enregistrerEvaluation(session('awa'), agents.moussa, 2024, 1, {
@@ -596,24 +607,29 @@ describe('le semestre : l’agent coche et commente, le n+1 évalue', () => {
           note: 'B',
         }),
       ),
-    ).toBe('objectifs.commentaires_attendus');
+    ).toBe('objectifs.auto_evaluation_attendue');
     await objectifs.envoyerCommentaires(session('moussa'), 2024, 1);
 
-    // Envoyés : le n+1 les lit ; plus rien ne bouge, ni cases ni objectifs.
-    expect((await vueN1()).evaluation).toMatchObject({
-      commentairesAgent: { o1: 'Note livrée le 12 mars.', o2: 'Reporté : recrutement gelé.' },
+    // Envoyée : le n+1 la lit ; plus rien ne bouge, ni statuts ni objectifs.
+    expect(await vueN1()).toMatchObject({
+      statuts: { o1: 'atteint', o2: 'non_atteint' },
+      evaluation: {
+        commentairesAgent: { o1: 'Note livrée le 12 mars.', o2: 'Reporté : recrutement gelé.' },
+      },
     });
     expect((await vueN1()).evaluation.envoyesLe).not.toBeNull();
     expect((await notifications('awa')).map((n) => n.title)).toContain(
-      'Commentaires de Moussa Ndiaye',
+      'Auto-évaluation de Moussa Ndiaye',
     );
     expect(
       (await objectifs.suiviEquipe(session('awa'))).membres.find((m) => m.givenName === 'Moussa')!
         .aEvaluer,
     ).toBe(1);
     expect(
-      await codeOf(() => objectifs.cocher(session('moussa'), 2024, 1, { id: 'o2', coche: true })),
-    ).toBe('objectifs.commentaires_envoyes');
+      await codeOf(() =>
+        objectifs.statuer(session('moussa'), 2024, 1, { id: 'o2', statut: 'atteint' }),
+      ),
+    ).toBe('objectifs.auto_evaluation_envoyee');
     expect(
       await codeOf(() =>
         objectifs.enregistrerFiche(session('awa'), agents.moussa, {
@@ -663,6 +679,7 @@ describe('le semestre : l’agent coche et commente, le n+1 évalue', () => {
       semestre: 2,
       contenu: [caseACocher('p1', 'Clore les comptes')],
     });
+    await objectifs.statuer(session('moussa'), 2024, 2, { id: 'p1', statut: 'atteint' });
     await objectifs.enregistrerCommentaires(session('moussa'), 2024, 2, {
       commentaires: { p1: 'Comptes clos le 15 décembre.' },
     });

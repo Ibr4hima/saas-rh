@@ -13,7 +13,8 @@ import {
   type FicheObjectifs,
   FICHE_OBJECTIFS_MAX,
   type FormationDeLaFiche,
-  type CocherObjectifInput,
+  type StatutObjectifInput,
+  type StatutObjectif,
   type CommentairesAgentInput,
   type EvaluationN1Input,
   type NoteGlobale,
@@ -140,7 +141,7 @@ type LigneFiche = {
   contenu: Record<string, unknown>[];
   updated_at: string | Date;
   auteur: string | null;
-  coches: Record<string, boolean>;
+  statuts: Record<string, StatutObjectif>;
   commentaires_agent: Record<string, string>;
   commentaires_envoyes_le: string | Date | null;
   commentaires_n1: Record<string, string>;
@@ -152,7 +153,7 @@ type LigneFiche = {
 const SELECTION_FICHE = sql`
   SELECT f.id, f.annee, f.semestre, f.contenu, f.updated_at,
          CASE WHEN pa.id IS NULL THEN NULL ELSE pa.given_name || ' ' || pa.family_name END AS auteur,
-         f.coches, f.commentaires_agent, f.commentaires_envoyes_le, f.commentaires_n1,
+         f.statuts, f.commentaires_agent, f.commentaires_envoyes_le, f.commentaires_n1,
          f.evaluation_note, f.evaluation_validee_le,
          CASE WHEN pv.id IS NULL THEN NULL ELSE pv.given_name || ' ' || pv.family_name END AS evaluateur
     FROM objectifs_fiches f
@@ -161,15 +162,24 @@ const SELECTION_FICHE = sql`
     LEFT JOIN employees ev ON ev.id = f.evaluateur_employee_id
     LEFT JOIN persons pv ON pv.id = ev.person_id`;
 
-/** Les cases de la fiche, telles que l'agent les a cochées — c'est lui qui coche. */
-function avecLesCoches(blocs: unknown, coches: Record<string, boolean>): Record<string, unknown>[] {
+/**
+ * Les cases de la fiche disent ce que l'agent en dit : cochée, l'objectif est
+ * atteint. Ce que le n+1 aurait coché en rédigeant ne compte pas.
+ */
+function avecLesStatuts(
+  blocs: unknown,
+  statuts: Record<string, StatutObjectif>,
+): Record<string, unknown>[] {
   if (!Array.isArray(blocs)) return [];
   return (blocs as Record<string, unknown>[]).map((b) => {
-    const enfants = avecLesCoches(b.children, coches);
+    const enfants = avecLesStatuts(b.children, statuts);
     if (b.type !== 'checkListItem') return { ...b, children: enfants };
     return {
       ...b,
-      props: { ...(b.props as Record<string, unknown>), checked: Boolean(coches[String(b.id)]) },
+      props: {
+        ...(b.props as Record<string, unknown>),
+        checked: statuts[String(b.id)] === 'atteint',
+      },
       children: enfants,
     };
   });
@@ -182,10 +192,10 @@ function vueFiche(l: LigneFiche, vue: 'agent' | 'n1'): FicheObjectifs {
   return {
     annee: l.annee,
     semestre: l.semestre === 1 ? 1 : 2,
-    contenu: avecLesCoches(l.contenu, l.coches),
+    contenu: avecLesStatuts(l.contenu, l.statuts),
     majLe: iso(l.updated_at)!,
     auteur: l.auteur,
-    coches: Object.keys(l.coches),
+    statuts: l.statuts,
     evaluation: {
       commentairesAgent: vue === 'agent' || envoyes ? l.commentaires_agent : {},
       envoyesLe: iso(l.commentaires_envoyes_le),
@@ -208,7 +218,7 @@ function garderLesObjectifs(
 
 function exigerNonEnvoyee(f: LigneFiche): void {
   if (f.commentaires_envoyes_le) {
-    problem(409, 'objectifs.commentaires_envoyes', 'Vos commentaires sont déjà envoyés');
+    problem(409, 'objectifs.auto_evaluation_envoyee', 'Votre auto-évaluation est déjà envoyée');
   }
 }
 
@@ -216,8 +226,8 @@ function exigerEvaluable(f: LigneFiche): void {
   if (!f.commentaires_envoyes_le) {
     problem(
       409,
-      'objectifs.commentaires_attendus',
-      'L’agent n’a pas encore envoyé ses commentaires',
+      'objectifs.auto_evaluation_attendue',
+      'L’agent n’a pas encore envoyé son auto-évaluation',
     );
   }
   if (f.evaluation_validee_le) {
@@ -400,7 +410,7 @@ export class ObjectifsService {
         problem(
           409,
           'objectifs.fiche_verrouillee',
-          'L’agent a envoyé ses commentaires : ces objectifs ne changent plus',
+          'L’agent a envoyé son auto-évaluation : ces objectifs ne changent plus',
         );
       }
 
@@ -427,9 +437,10 @@ export class ObjectifsService {
 
   /**
    * Les fiches d'un agent, les plus récentes d'abord — sans les fiches vides.
-   * Les cases de la fiche disent ce que l'agent a coché. Chacun ne voit de
+   * Les cases de la fiche disent où l'agent en est. Chacun ne voit de
    * l'autre que ce qui est envoyé : le n+1, les commentaires de l'agent une
-   * fois envoyés ; l'agent, ceux du n+1 et la note une fois validés.
+   * fois son auto-évaluation envoyée ; l'agent, ceux du n+1 et la note une
+   * fois validés.
    */
   private async lireFiches(
     tx: Tx,
@@ -471,15 +482,16 @@ export class ObjectifsService {
   // ———————————————————————————— ce que l'agent en fait
 
   /**
-   * L'agent coche — ou décoche — un objectif, au fil de ses avancées. Son
-   * n+1 le voit à mesure. Ses commentaires envoyés, plus rien ne bouge.
+   * L'agent dit où en est un objectif — atteint, partiellement, non atteint —
+   * ou revient sur son choix (`null`). Son n+1 le voit à mesure. Son
+   * auto-évaluation envoyée, plus rien ne bouge.
    */
-  async cocher(
+  async statuer(
     user: SessionUser,
     annee: number,
     semestre: number,
-    input: CocherObjectifInput,
-  ): Promise<{ coches: string[] }> {
+    input: StatutObjectifInput,
+  ): Promise<{ statuts: Record<string, StatutObjectif> }> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
       const f = await this.uneFiche(tx, moi, annee, semestre);
@@ -487,12 +499,12 @@ export class ObjectifsService {
       if (!objectifsDeLaFiche(f.contenu).some((o) => o.id === input.id)) {
         problem(422, 'objectifs.objectif_inconnu', 'Cet objectif n’est pas dans la fiche');
       }
-      const { rows } = await tx.execute<{ coches: Record<string, boolean> }>(sql`
+      const { rows } = await tx.execute<{ statuts: Record<string, StatutObjectif> }>(sql`
         UPDATE objectifs_fiches
-           SET coches = ${input.coche ? sql`coches || jsonb_build_object(${input.id}::text, true)` : sql`coches - ${input.id}::text`}
+           SET statuts = ${input.statut ? sql`statuts || jsonb_build_object(${input.id}::text, ${input.statut}::text)` : sql`statuts - ${input.id}::text`}
          WHERE id = ${f.id}
-        RETURNING coches`);
-      return { coches: Object.keys(rows[0]!.coches) };
+        RETURNING statuts`);
+      return { statuts: rows[0]!.statuts };
     });
   }
 
@@ -515,25 +527,25 @@ export class ObjectifsService {
   }
 
   /**
-   * L'agent envoie ses commentaires à son n+1 — chaque objectif commenté,
-   * atteint ou non. Les objectifs, les cases et les commentaires ne changent
-   * plus ; le n+1 en est prévenu.
+   * L'agent envoie son auto-évaluation à son n+1 — chaque objectif avec son
+   * statut et son commentaire, atteint ou non. Les objectifs, les statuts et
+   * les commentaires ne changent plus ; le n+1 en est prévenu.
    */
   async envoyerCommentaires(user: SessionUser, annee: number, semestre: number): Promise<void> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
       const f = await this.uneFiche(tx, moi, annee, semestre);
       exigerNonEnvoyee(f);
-      const sansCommentaire = objectifsDeLaFiche(f.contenu).filter(
-        (o) => !f.commentaires_agent[o.id]?.trim(),
+      const restants = objectifsDeLaFiche(f.contenu).filter(
+        (o) => !f.statuts[o.id] || !f.commentaires_agent[o.id]?.trim(),
       ).length;
-      if (sansCommentaire > 0) {
+      if (restants > 0) {
         problem(
           422,
-          'objectifs.commentaires_incomplets',
-          sansCommentaire > 1
-            ? `${sansCommentaire} objectifs attendent encore votre commentaire`
-            : 'Un objectif attend encore votre commentaire',
+          'objectifs.auto_evaluation_incomplete',
+          restants > 1
+            ? `${restants} objectifs attendent encore leur statut ou votre commentaire`
+            : 'Un objectif attend encore son statut ou votre commentaire',
         );
       }
       await tx.execute(sql`
@@ -546,7 +558,7 @@ export class ObjectifsService {
       if (compte) {
         await notifier(tx, user.tenantId, compte, {
           type: 'objectif',
-          title: `Commentaires de ${await this.nomDe(tx, moi)}`,
+          title: `Auto-évaluation de ${await this.nomDe(tx, moi)}`,
           body: `${titreDuSemestre(f.semestre === 1 ? 1 : 2, annee)} — à évaluer.`,
           link: `/moi/equipe/suivi/${moi}?vue=evaluation`,
           dedupeKey: `objectifs:commentaires:${moi}:${annee}:${semestre}`,
@@ -559,7 +571,7 @@ export class ObjectifsService {
 
   /**
    * Le n+1 commente à son tour, sous chaque objectif, et donne la note — au
-   * brouillon, une fois les commentaires de l'agent reçus.
+   * brouillon, une fois l'auto-évaluation de l'agent reçue.
    */
   async enregistrerEvaluation(
     user: SessionUser,

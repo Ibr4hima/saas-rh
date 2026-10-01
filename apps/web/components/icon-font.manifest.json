@@ -16,7 +16,6 @@
     "calendar_month",
     "call",
     "campaign",
-    "chat_bubble",
     "check",
     "check_circle",
     "checklist",
@@ -94,5 +93,5 @@
     "workspace_premium"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 90700
+  "bytes": 91392
 }

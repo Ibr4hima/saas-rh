@@ -107,8 +107,8 @@ export function titreDuSemestre(semestre: Semestre, annee: number): string {
 
 /**
  * La fiche d'objectifs d'un agent pour un semestre : les blocs de l'éditeur,
- * tels qu'enregistrés (cases à cocher, échéances, formations…) — les cases
- * cochées par l'agent —, et son évaluation.
+ * tels qu'enregistrés (cases à cocher, échéances, formations…) — une case
+ * est cochée quand l'agent dit l'objectif atteint —, et son évaluation.
  */
 export interface FicheObjectifs {
   annee: number;
@@ -117,10 +117,23 @@ export interface FicheObjectifs {
   /** Dernière mise à jour, et par qui. */
   majLe: string;
   auteur: string | null;
-  /** Les objectifs que l'agent a cochés (les blocs « case à cocher »). */
-  coches: string[];
+  /** Par objectif (l'id du bloc) : où l'agent dit en être. */
+  statuts: Record<string, StatutObjectif>;
   evaluation: EvaluationFiche;
 }
+
+/**
+ * Où en est un objectif, selon l'agent : la case de la fiche en prend la
+ * couleur — bleu, jaune, rouge.
+ */
+export const STATUTS_OBJECTIF = EVALUATIONS_OBJECTIF;
+export type StatutObjectif = EvaluationObjectif;
+
+export const LIBELLES_STATUT: Record<StatutObjectif, string> = {
+  atteint: 'Atteint',
+  partiel: 'Partiellement',
+  non_atteint: 'Non atteint',
+};
 
 // ---------- Commentaires et évaluation du semestre ----------
 
@@ -138,12 +151,13 @@ export const LIBELLES_NOTE: Record<NoteGlobale, string> = {
 /**
  * Ce que l'agent et son n+1 disent des objectifs d'un semestre. Chacun ne
  * voit de l'autre que ce qui est envoyé : le n+1, les commentaires de l'agent
- * une fois envoyés ; l'agent, ceux du n+1 et la note une fois validés.
+ * une fois son auto-évaluation envoyée ; l'agent, ceux du n+1 et la note une
+ * fois validés. Les statuts, eux, se voient à mesure.
  */
 export interface EvaluationFiche {
   /** Par objectif (l'id du bloc) : ce qu'en dit l'agent. */
   commentairesAgent: Record<string, string>;
-  /** `null` : encore au brouillon. Envoyés, les objectifs ne changent plus. */
+  /** L'auto-évaluation envoyée au n+1 — `null` : encore au brouillon. Envoyée, plus rien ne change. */
   envoyesLe: string | null;
   /** Par objectif : ce qu'en dit le n+1. */
   commentairesN1: Record<string, string>;
@@ -157,11 +171,12 @@ const commentaires = z
   .record(z.string().min(1).max(100), z.string().max(2000))
   .refine((c) => Object.keys(c).length <= 300, 'Trop d’objectifs');
 
-export const cocherObjectifSchema = z.object({
+/** `statut: null` : l'agent revient sur son choix. */
+export const statutObjectifSchema = z.object({
   id: z.string().min(1).max(100),
-  coche: z.boolean(),
+  statut: z.enum(STATUTS_OBJECTIF).nullable(),
 });
-export type CocherObjectifInput = z.infer<typeof cocherObjectifSchema>;
+export type StatutObjectifInput = z.infer<typeof statutObjectifSchema>;
 
 export const commentairesAgentSchema = z.object({ commentaires });
 export type CommentairesAgentInput = z.infer<typeof commentairesAgentSchema>;
@@ -263,7 +278,7 @@ export interface MembreSuivi {
   total: number;
   atteints: number;
   enRetard: number;
-  /** Ses fiches dont les commentaires sont envoyés, pas encore évaluées. */
+  /** Ses fiches dont l'auto-évaluation est envoyée, pas encore évaluées. */
   aEvaluer: number;
 }
 

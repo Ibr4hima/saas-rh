@@ -37,7 +37,6 @@ export const ICON_NAMES = [
   'calendar_month',
   'call',
   'campaign',
-  'chat_bubble',
   'check',
   'check_circle',
   'checklist',
