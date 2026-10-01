@@ -68,6 +68,9 @@
   --tg-partiel: #e5a50a;
   --tg-partiel-line: #b98500;
   --tg-partiel-ink: #3d2b00;
+  /* Sa version légère : l'aplat pâle d'un badge, et son texte (5,3:1). */
+  --tg-partiel-soft: #fdf4d9;
+  --tg-partiel-text: #8a5c00;
 
   /* Le rouge des COMPTEURS de notification, décliné depuis #dc2626. Distinct
      de `danger`, qui dit l'erreur : ici rien n'est cassé, quelque chose
@@ -240,6 +243,8 @@
     --tg-partiel: #e9b949;
     --tg-partiel-line: #e9b949;
     --tg-partiel-ink: #14172a;
+    --tg-partiel-soft: #362c17;
+    --tg-partiel-text: #e9b949;
 
     /* La nuit, le rapport s'inverse : sur les surfaces sombres le badge
        devient un aplat rouge PROFOND à chiffre clair. Le bandeau, lui, reste
@@ -298,6 +303,8 @@
   --tg-partiel: #e9b949;
   --tg-partiel-line: #e9b949;
   --tg-partiel-ink: #14172a;
+  --tg-partiel-soft: #362c17;
+  --tg-partiel-text: #e9b949;
 
   --tg-alert: #f87171;
   --tg-alert-soft: #7a2422;

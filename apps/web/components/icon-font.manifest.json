@@ -74,7 +74,6 @@
     "schedule",
     "school",
     "search",
-    "send",
     "settings",
     "task_alt",
     "timer",
@@ -93,5 +92,5 @@
     "workspace_premium"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 91392
+  "bytes": 90776
 }

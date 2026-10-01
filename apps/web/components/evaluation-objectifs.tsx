@@ -1,6 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   LIBELLES_NOTE,
@@ -90,27 +99,33 @@ function TexteObjectif({ contenu }: { contenu: Record<string, unknown>[] }) {
 
 // ———————————————————————————— le statut d'un objectif
 
-/** Chaque statut, sa couleur et son signe — ceux des cases de la fiche. */
+/**
+ * Chaque statut, sa couleur et son signe : à plein dans la case (comme dans
+ * la fiche), en léger sur les badges — un aplat pâle, le texte à la couleur.
+ */
 const DESSIN_STATUT: Record<
   StatutObjectif,
-  { aplat: string; point: string; texte: string; signe: IconName }
+  { aplat: string; texte: string; leger: string; point: string; signe: IconName }
 > = {
   atteint: {
     aplat: 'border-primary bg-primary',
-    point: 'bg-primary',
     texte: 'text-primary-ink',
+    leger: 'border-primary/30 bg-primary-soft text-primary',
+    point: 'bg-primary',
     signe: 'check',
   },
   partiel: {
     aplat: 'border-partiel-line bg-partiel',
-    point: 'bg-partiel',
     texte: 'text-partiel-ink',
+    leger: 'border-partiel-line/35 bg-partiel-soft text-partiel-text',
+    point: 'bg-partiel',
     signe: 'remove',
   },
   non_atteint: {
     aplat: 'border-danger bg-danger',
-    point: 'bg-danger',
     texte: 'text-primary-ink',
+    leger: 'border-danger/25 bg-danger-soft text-danger',
+    point: 'bg-danger',
     signe: 'close',
   },
 };
@@ -142,8 +157,7 @@ function PastilleStatut({ statut }: { statut: StatutObjectif }) {
     <span
       className={cn(
         'inline-flex items-center gap-1 rounded-full border px-2 py-px text-[10.5px] font-bold tracking-normal normal-case',
-        d.aplat,
-        d.texte,
+        d.leger,
       )}
     >
       <Icon name={d.signe} size={12} weight={600} />
@@ -182,7 +196,7 @@ function ChoixStatut({
             className={cn(
               'inline-flex items-center gap-1.5 rounded-full border py-[5px] pr-3 pl-2 text-[11.5px] font-semibold transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/35 max-sm:gap-1 max-sm:pr-2.5 max-sm:pl-1.5 max-sm:text-[11px]',
               choisi
-                ? cn(d.aplat, d.texte, 'shadow-xs')
+                ? d.leger
                 : 'border-line bg-surface text-ink hover:border-ink-muted/50 hover:bg-hover',
             )}
           >
@@ -331,6 +345,36 @@ function Intitule({ children }: { children: ReactNode }) {
 }
 
 // ———————————————————————————— outils
+
+/**
+ * Une zone de commentaire qui grandit avec ce qu'on y écrit — on relit tout
+ * son texte sans faire défiler une petite boîte.
+ */
+function ZoneCommentaire({ className, ...props }: ComponentProps<typeof Textarea>) {
+  const cadre = useRef<HTMLDivElement>(null);
+  const ajuster = useCallback(() => {
+    const zone = cadre.current?.querySelector('textarea');
+    if (!zone) return;
+    zone.style.height = 'auto';
+    // La hauteur du texte, plus les deux filets du cadre.
+    zone.style.height = `${zone.scrollHeight + 2}px`;
+  }, []);
+  useLayoutEffect(ajuster, [props.value, ajuster]);
+  // Plus étroite, la zone remet ses lignes à la ligne : elle se remesure.
+  useEffect(() => {
+    window.addEventListener('resize', ajuster);
+    return () => window.removeEventListener('resize', ajuster);
+  }, [ajuster]);
+  return (
+    <div ref={cadre}>
+      <Textarea
+        rows={2}
+        className={cn('min-h-[54px] resize-none overflow-hidden text-[12.5px]', className)}
+        {...props}
+      />
+    </div>
+  );
+}
 
 /** Enregistrer puis, peut-être, envoyer : l'état d'un brouillon qu'on garde à la main. */
 function useBrouillon<T>(depart: T) {
@@ -593,11 +637,9 @@ export function AutoEvaluationAgent({
                   valeur={statuts[o.id]}
                   onChange={(statut) => onStatuer(o.id, statut)}
                 />
-                <Textarea
+                <ZoneCommentaire
                   aria-label={`Commentaire — ${o.texte}`}
                   placeholder="Ce que vous avez fait, ce qui reste…"
-                  rows={2}
-                  className="min-h-[54px] text-[12.5px]"
                   value={brouillon.valeur[o.id] ?? ''}
                   onChange={(e) =>
                     brouillon.changer({ ...brouillon.valeur, [o.id]: e.target.value })
@@ -639,7 +681,6 @@ export function AutoEvaluationAgent({
               onClick={() => void enregistrer()}
             />
             <Button size="sm" disabled={Boolean(reste)} onClick={() => setConfirmer(true)}>
-              <Icon name="send" size={15} />
               Envoyer à mon N+1
             </Button>
           </>
@@ -659,7 +700,8 @@ export function AutoEvaluationAgent({
         }}
         onConfirmer={() => void envoyer()}
       >
-        Une fois envoyée, votre auto-évaluation — statuts et commentaires — ne se modifie plus.
+        Une fois envoyée, votre manager procédera à l’évaluation en fonction des objectifs fixés.
+        Vous ne serez plus en mesure de modifier votre auto-évaluation après soumission.
       </Confirmation>
     </div>
   );
@@ -731,11 +773,9 @@ export function EvaluationSemestre({
               />
             ) : null}
             {envoyes && !validee ? (
-              <Textarea
+              <ZoneCommentaire
                 aria-label={`Votre commentaire — ${o.texte}`}
                 placeholder="Votre commentaire"
-                rows={2}
-                className="min-h-[54px] text-[12.5px]"
                 value={brouillon.valeur.commentaires[o.id] ?? ''}
                 onChange={(e) =>
                   brouillon.changer({
