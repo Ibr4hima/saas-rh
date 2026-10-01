@@ -72,6 +72,12 @@
   --tg-partiel-soft: #fdf4d9;
   --tg-partiel-text: #8a5c00;
 
+  /* Les notes, du vert au rouge : A le vert du succès, B ce vert-olive, C le
+     jaune de « partiellement », D le rouge — chacune en aplat pâle et texte
+     soutenu (B : 5,4:1). */
+  --tg-note-b: #4f6b00;
+  --tg-note-b-soft: #eef5d8;
+
   /* Le rouge des COMPTEURS de notification, décliné depuis #dc2626. Distinct
      de `danger`, qui dit l'erreur : ici rien n'est cassé, quelque chose
      attend d'être vu.
@@ -245,6 +251,8 @@
     --tg-partiel-ink: #14172a;
     --tg-partiel-soft: #362c17;
     --tg-partiel-text: #e9b949;
+    --tg-note-b: #b5d36a;
+    --tg-note-b-soft: #283217;
 
     /* La nuit, le rapport s'inverse : sur les surfaces sombres le badge
        devient un aplat rouge PROFOND à chiffre clair. Le bandeau, lui, reste
@@ -305,6 +313,8 @@
   --tg-partiel-ink: #14172a;
   --tg-partiel-soft: #362c17;
   --tg-partiel-text: #e9b949;
+  --tg-note-b: #b5d36a;
+  --tg-note-b-soft: #283217;
 
   --tg-alert: #f87171;
   --tg-alert-soft: #7a2422;

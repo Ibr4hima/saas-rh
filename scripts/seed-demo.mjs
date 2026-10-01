@@ -724,6 +724,50 @@ await enTantQue(awa.id, 'PUT', `${courant}/commentaires`, {
 });
 await enTantQue(awa.id, 'POST', `${courant}/commentaires/envoi`);
 
+// L'année d'avant, bouclée : deux semestres évalués par Awa — A, puis C —,
+// pour que le dossier de Moussa ait un historique à parcourir.
+const anterieurs = [
+  [
+    1,
+    'A',
+    ['Publier le guide de l’investisseur', 'Animer deux ateliers avec les chambres consulaires'],
+  ],
+  [
+    2,
+    'C',
+    ['Refondre le tableau de bord des projets agréés', 'Former l’équipe à la nouvelle base'],
+  ],
+];
+for (const [semestre, note, objectifs] of anterieurs) {
+  const annee = anneeObjectifs - 1;
+  if (annee === precedent.annee && semestre === precedent.semestre) continue;
+  const ids = objectifs.map(() => randomUUID());
+  await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
+    annee,
+    semestre,
+    contenu: objectifs.map((t, i) => bloc('checkListItem', [texte(t)], {}, ids[i])),
+  });
+  const fiche = pour({ annee, semestre });
+  const statuts = note === 'A' ? ['atteint', 'atteint'] : ['partiel', 'non_atteint'];
+  for (const [i, id] of ids.entries()) await statuer(moussa.id, fiche, id, statuts[i]);
+  await enTantQue(moussa.id, 'PUT', `${fiche}/commentaires`, {
+    commentaires: Object.fromEntries(
+      ids.map((id, i) => [
+        id,
+        statuts[i] === 'atteint'
+          ? 'Fait dans les délais.'
+          : statuts[i] === 'partiel'
+            ? 'Maquette livrée ; la mise en production attend la nouvelle base.'
+            : 'Reporté : la base n’a été livrée qu’en décembre.',
+      ]),
+    ),
+  });
+  await enTantQue(moussa.id, 'POST', `${fiche}/commentaires/envoi`);
+  const evaluation = `/objectifs/equipe/${moussa.id}/fiches/${annee}/${semestre}/evaluation`;
+  await enTantQue(awa.id, 'PUT', evaluation, { commentaires: {}, note });
+  await enTantQue(awa.id, 'POST', `${evaluation}/validation`);
+}
+
 console.log(`
 ✔ Démo prête.
   Admin       : ${ADMIN.email} / ${ADMIN.password}

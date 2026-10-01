@@ -289,6 +289,31 @@ function LigneObjectif({
 
 // ———————————————————————————— la note
 
+/** Chaque note a sa couleur, du vert (A) au rouge (D) : un aplat pâle, un texte soutenu. */
+const COULEUR_NOTE: Record<NoteGlobale, { fond: string; texte: string; filet: string }> = {
+  A: { fond: 'bg-success-soft', texte: 'text-success', filet: 'border-success/40' },
+  B: { fond: 'bg-note-b-soft', texte: 'text-note-b', filet: 'border-note-b/40' },
+  C: { fond: 'bg-partiel-soft', texte: 'text-partiel-text', filet: 'border-partiel-line/45' },
+  D: { fond: 'bg-danger-soft', texte: 'text-danger', filet: 'border-danger/35' },
+};
+
+/** La lettre d'une note, dans sa pastille de couleur. */
+function LettreNote({ note, grande = false }: { note: NoteGlobale; grande?: boolean }) {
+  const c = COULEUR_NOTE[note];
+  return (
+    <span
+      className={cn(
+        'flex shrink-0 items-center justify-center rounded-full font-extrabold ring-1 ring-current/20 ring-inset',
+        grande ? 'size-9 text-[16px]' : 'size-6 text-[12px]',
+        c.fond,
+        c.texte,
+      )}
+    >
+      {note}
+    </span>
+  );
+}
+
 function ChoixNote({
   valeur,
   onChange,
@@ -314,14 +339,16 @@ function ChoixNote({
             className={cn(
               'flex items-center gap-2.5 rounded-[12px] border px-3 py-2.5 text-left transition-all duration-150',
               choisie
-                ? 'border-primary bg-primary-soft shadow-[0_0_0_3px_rgb(0_79_145/0.08)]'
-                : 'border-line hover:border-primary/40 hover:bg-hover',
+                ? cn(COULEUR_NOTE[n].filet, COULEUR_NOTE[n].fond)
+                : 'border-line hover:border-ink-muted/40 hover:bg-hover',
             )}
           >
             <span
               className={cn(
                 'flex size-8 shrink-0 items-center justify-center rounded-full text-[15px] font-extrabold transition-colors duration-150',
-                choisie ? 'bg-primary text-primary-ink' : 'bg-line-soft text-ink-strong',
+                choisie
+                  ? cn('bg-surface ring-1 ring-current/25', COULEUR_NOTE[n].texte)
+                  : 'bg-line-soft text-ink-strong',
               )}
             >
               {n}
@@ -329,7 +356,7 @@ function ChoixNote({
             <span
               className={cn(
                 'text-[12px] leading-tight font-semibold',
-                choisie ? 'text-primary' : 'text-ink',
+                choisie ? COULEUR_NOTE[n].texte : 'text-ink',
               )}
             >
               {LIBELLES_NOTE[n]}
@@ -344,9 +371,7 @@ function ChoixNote({
 function NoteDonnee({ note }: { note: NoteGlobale }) {
   return (
     <span className="inline-flex items-center gap-2.5">
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-[16px] font-extrabold text-primary-ink">
-        {note}
-      </span>
+      <LettreNote note={note} grande />
       <span className="text-[13px] font-semibold text-ink-strong">{LIBELLES_NOTE[note]}</span>
     </span>
   );
@@ -866,7 +891,8 @@ export function EvaluationSemestre({
         }}
         onConfirmer={() => void valider()}
       >
-        {prenom} verra vos commentaires et votre appréciation. L’évaluation ne se modifie plus.
+        Votre évaluation et vos observations seront transmises à la DCH et à {prenom}. Vous ne serez
+        plus en mesure de les modifier.
       </Confirmation>
     </div>
   );
@@ -875,19 +901,53 @@ export function EvaluationSemestre({
 // ———————————————————————————— dans le dossier de l'agent
 
 /**
- * La section « Évaluation » du dossier : une ligne par semestre évalué — dès
- * que le n+1 valide —, avec qui l'a évalué et la note.
+ * La section « Évaluation » du dossier, année par année — l'année en cours
+ * d'abord, les précédentes d'une flèche : une ligne par semestre évalué, dès
+ * que le n+1 valide, avec qui l'a évalué, la note et son appréciation.
  */
 export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
   const evaluations = useQuery({
     queryKey: [...CLE_OBJECTIFS, 'dossier', employeeId],
     queryFn: () => api<EvaluationValidee[]>(`/objectifs/dossiers/${employeeId}/evaluations`),
   });
-  const liste = evaluations.data ?? [];
+  const courante = new Date().getFullYear();
+  const [annee, setAnnee] = useState(courante);
+  const toutes = evaluations.data ?? [];
+  // On remonte jusqu'à la première année évaluée ; on ne va pas au-delà de l'année en cours.
+  const premiere = Math.min(courante, ...toutes.map((e) => e.annee));
+  const liste = toutes.filter((e) => e.annee === annee);
+  const fleche =
+    'flex size-6 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-primary disabled:pointer-events-none disabled:opacity-30';
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex items-center gap-2">
         <CardTitle>Évaluation</CardTitle>
+        <div className="flex items-center" role="group" aria-label="Année">
+          <button
+            type="button"
+            aria-label="Année précédente"
+            disabled={annee <= premiere}
+            onClick={() => setAnnee((a) => a - 1)}
+            className={fleche}
+          >
+            <Icon name="chevron_left" size={18} />
+          </button>
+          <span
+            aria-live="polite"
+            className="min-w-[38px] text-center text-[10.5px] font-extrabold tracking-[0.14em] text-primary tabular-nums"
+          >
+            {annee}
+          </span>
+          <button
+            type="button"
+            aria-label="Année suivante"
+            disabled={annee >= courante}
+            onClick={() => setAnnee((a) => a + 1)}
+            className={fleche}
+          >
+            <Icon name="chevron_right" size={18} />
+          </button>
+        </div>
       </CardHeader>
       {evaluations.isPending ? (
         <CardContent>
@@ -896,34 +956,35 @@ export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
       ) : liste.length === 0 ? (
         <CardContent>
           <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
-            Aucune évaluation validée pour l’instant.
+            Aucune évaluation validée en {annee}.
           </p>
         </CardContent>
       ) : (
         <Table>
           <THead>
             <tr>
-              <Th>Année</Th>
+              {/* Sur un petit écran, l'année se lit dans l'en-tête : sa colonne
+                  laisse la place à l'appréciation. */}
+              <Th className="max-sm:hidden">Année</Th>
               <Th>Période</Th>
               <Th>Manager</Th>
               <Th>Note</Th>
+              <Th>Appréciation</Th>
             </tr>
           </THead>
           <TBody>
             {liste.map((e) => (
               <Tr key={`${e.annee}-${e.semestre}`}>
-                <Td className="font-medium text-ink-strong tabular-nums">{e.annee}</Td>
-                <Td>Semestre {e.semestre}</Td>
+                <Td className="font-medium text-ink-strong tabular-nums max-sm:hidden">
+                  {e.annee}
+                </Td>
+                <Td className="whitespace-nowrap">Semestre {e.semestre}</Td>
                 <Td>{e.manager ?? '—'}</Td>
                 <Td>
-                  <span className="inline-flex items-center gap-2" title={LIBELLES_NOTE[e.note]}>
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12px] font-extrabold text-primary">
-                      {e.note}
-                    </span>
-                    <span className="text-[12px] text-ink-muted max-sm:hidden">
-                      {LIBELLES_NOTE[e.note]}
-                    </span>
-                  </span>
+                  <LettreNote note={e.note} />
+                </Td>
+                <Td className={cn('font-semibold', COULEUR_NOTE[e.note].texte)}>
+                  {LIBELLES_NOTE[e.note]}
                 </Td>
               </Tr>
             ))}

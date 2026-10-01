@@ -37,6 +37,8 @@
   --color-partiel-ink: var(--tg-partiel-ink);
   --color-partiel-soft: var(--tg-partiel-soft);
   --color-partiel-text: var(--tg-partiel-text);
+  --color-note-b: var(--tg-note-b);
+  --color-note-b-soft: var(--tg-note-b-soft);
   --color-alert: var(--tg-alert);
   --color-alert-soft: var(--tg-alert-soft);
   --color-alert-text: var(--tg-alert-text);

@@ -71,7 +71,6 @@ export const ICON_NAMES = [
   'group',
   'groups',
   'how_to_reg',
-  'hub',
   'inbox',
   'light_mode',
   'link',

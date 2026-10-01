@@ -149,21 +149,7 @@ const NAV_ITEMS: NavItem[] = [
     ],
   },
   // ——— Ce qui fait grandir l'effectif, dans l'ordre du cycle : on recrute,
-  // on regarde ce que les gens savent faire, on comble ce qui manque, on
-  // mesure. La cartographie et les formations sont les deux moitiés du même
-  // travail — l'une constate l'écart, l'autre le referme — et se suivent donc
-  // sans rien entre elles.
-  {
-    href: '/competences',
-    // Abrégé DANS LE MENU seulement : la colonne a 190 px, et le nom complet
-    // s'y coupait dès que la page était courante — le libellé passe alors en
-    // gras. La barre supérieure, elle, garde « Cartographie des compétences »
-    // en entier : c'est là qu'on lit le nom de l'écran où l'on se trouve.
-    label: 'Cart. des compétences',
-    short: 'Compét.',
-    icon: 'hub',
-    groupe: 'croissance',
-  },
+  // on forme, on mesure.
   {
     // Les formations de l'agence, en ligne : l'Academy a pris la place de la
     // rubrique « Formations », qui n'annonçait qu'un écran à venir.
@@ -231,7 +217,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/recrutement': "Offres d'emploi",
   '/recrutement/candidatures': 'Dossiers de candidature',
   '/recrutement/nouvelle': 'Nouvelle offre',
-  '/competences': 'Cartographie des compétences',
   '/academy': 'APIX Academy',
   '/academy/gerer': 'Gérer le catalogue',
   '/academy/equipe': 'Mon équipe',
@@ -545,7 +530,6 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
         if (children.length > 0) items.push({ ...i, children });
         break;
       }
-      case '/competences':
       case '/evaluation':
         if (peut(user, 'pilotage')) items.push(i);
         break;
@@ -765,8 +749,8 @@ function RangeeNav({
 
   // `gap-2` comme les rubriques dépliables juste en dessous : les deux sortes
   // de rangées s'écartaient de deux pixels, ce qui ne se voyait pas — jusqu'à
-  // ce que « Cartographie des compétences », en gras sur la page courante,
-  // manque exactement ces deux pixels et se coupe.
+  // qu'un libellé long, en gras sur la page courante, manque exactement ces
+  // deux pixels et se coupe.
   const forme =
     'relative flex items-center gap-2 rounded-[10px] py-[8px] pr-2.5 pl-3.5 text-[12.5px] transition-colors duration-150';
 
@@ -1208,7 +1192,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       return u.estAgent;
     }
     if (commence('/academy')) return true;
-    if (commence('/dashboard') || commence('/competences') || commence('/evaluation')) {
+    if (commence('/dashboard') || commence('/evaluation')) {
       return peut(u, 'pilotage');
     }
     if (commence('/employees/new') || path.endsWith('/modifier')) {
