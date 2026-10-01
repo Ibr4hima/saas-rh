@@ -15,7 +15,7 @@ import { compte } from '../../../../lib/mots';
    « Demander un document » — ce que l'agent DEMANDE à la Direction du
    Capital Humain (attestation, contrat, bulletin) : il coche, il envoie.
    L'avancement se suit dans « Suivi de mes demandes » ; ce qu'il FOURNIT a
-   sa page, « Joindre un justificatif ».
+   sa page, « Joindre un document ».
    ———————————————————————————————————————————————————————————————— */
 
 const REQUESTABLE: RequestableDoc[] = [

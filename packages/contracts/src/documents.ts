@@ -1,31 +1,40 @@
 import { z } from 'zod';
 import type { TraitementView } from './acces';
 
-// ---------- Pièces justificatives du dossier employé ----------
+// ---------- Documents officiels du dossier employé ----------
 
+/** Ce qu'un agent dépose, dans l'ordre de la liste. */
 export const documentCategorySchema = z.enum([
-  'piece_identite',
+  'cni',
+  'passeport',
   'diplome',
+  'certification',
   'attestation_travail',
-  'autre',
+  'attestation_stage',
+  'cv',
 ]);
-export type DocumentCategory = z.infer<typeof documentCategorySchema>;
+/** Un type de document — `autre` ne se lit plus que sur les dépôts anciens. */
+export type DocumentCategory = z.infer<typeof documentCategorySchema> | 'autre';
 
 export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
-  piece_identite: "Pièce d'identité",
-  diplome: 'Diplôme / certification',
-  attestation_travail: 'Attestation de travail / stage',
+  cni: 'Carte Nationale d’Identité',
+  passeport: 'Passeport',
+  diplome: 'Diplôme',
+  certification: 'Certification',
+  attestation_travail: 'Attestation de travail',
+  attestation_stage: 'Attestation de stage',
+  cv: 'Curriculum Vitæ',
   autre: 'Autre document',
 };
 
 export const MAX_EMPLOYEE_DOCUMENT_BYTES = 5 * 1024 * 1024;
 
-/** Formats acceptés pour les pièces justificatives. */
+/** Formats acceptés pour les documents officiels. */
 export const EMPLOYEE_DOCUMENT_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 
 export const uploadEmployeeDocumentSchema = z.object({
   category: documentCategorySchema,
-  /** Ex : « CNI », « Master 2 Finance — UCAD », « Attestation APIX 2023 ». */
+  /** Le nom que l'agent donne au document — celui du fichier, s'il ne le change pas. */
   label: z.string().trim().min(1).max(120),
   filename: z.string().trim().min(1).max(200),
   contentType: z.enum(EMPLOYEE_DOCUMENT_TYPES),

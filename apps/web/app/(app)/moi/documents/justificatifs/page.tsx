@@ -9,13 +9,14 @@ import { LoadFailure } from '../../../../../components/load-failure';
 import { Page } from '../../../../../components/gabarit';
 
 /* ————————————————————————————————————————————————————————————————
-   « Joindre un justificatif » — ce que l'agent FOURNIT à la Direction du
-   Capital Humain : les pièces de son dossier (pièce d'identité, diplômes,
-   attestations), qu'elle vérifie avant de les y verser. Le justificatif
+   « Joindre un document » — ce que l'agent FOURNIT à la Direction du
+   Capital Humain : les documents officiels de son dossier (carte d'identité,
+   passeport, diplômes, attestations, CV), qu'elle vérifie avant de les y
+   verser. Le justificatif
    d'une absence, lui, se joint à la demande et se lit dans son historique.
    ———————————————————————————————————————————————————————————————— */
 
-export default function JoindreUnJustificatifPage() {
+export default function JoindreUnDocumentPage() {
   const myEmployee = useQuery({
     queryKey: ['me-employee'],
     queryFn: () => api<MyEmployeeView>('/me/employee'),

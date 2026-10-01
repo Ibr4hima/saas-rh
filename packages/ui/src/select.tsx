@@ -40,6 +40,11 @@ interface Choix {
       l'`<option>` quand il est posé, le libellé sinon. */
   court: string;
   desactive: boolean;
+  /**
+   * `<option hidden>` : une invite (« Choisir un type »), montrée dans le
+   * bouton tant que rien n'est choisi, jamais dans la liste.
+   */
+  invite: boolean;
 }
 
 /** Le texte d'un nœud, quel que soit son emballage : « {c.name} (+{c.dial}) ». */
@@ -66,7 +71,8 @@ function lireChoix(children: React.ReactNode): Choix[] {
       // `<option label="SEN">SEN · +221</option>` : l'attribut existe en HTML
       // pour cela, et le `<select>` caché s'en sert de la même façon.
       court: p.label ?? libelle,
-      desactive: Boolean(p.disabled),
+      desactive: Boolean(p.disabled) || Boolean(p.hidden),
+      invite: Boolean(p.hidden),
     });
   });
   return out;
@@ -329,7 +335,8 @@ export function Select({
         <span
           className={cn(
             'min-w-0 flex-1 truncate',
-            (libelleCourant === '' || libelleCourant === '—') && 'text-ink-muted',
+            (libelleCourant === '' || libelleCourant === '—' || choix[indexCourant]?.invite) &&
+              'text-ink-muted',
           )}
         >
           {libelleCourant || '—'}
@@ -356,6 +363,7 @@ export function Select({
               }}
             >
               {choix.map((c, i) => {
+                if (c.invite) return null;
                 const choisi = c.valeur === valeur;
                 return (
                   <div

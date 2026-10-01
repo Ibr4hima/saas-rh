@@ -216,7 +216,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/moi/dch': 'Congés à traiter',
   '/moi/documents': 'Demander un document',
   '/moi/documents/suivi': 'Suivi de mes demandes',
-  '/moi/documents/justificatifs': 'Joindre un justificatif',
+  '/moi/documents/justificatifs': 'Joindre un document',
 };
 
 function greeting(): string {
@@ -610,8 +610,8 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
       groupe: 'quotidien',
       children: [
         { href: '/moi/documents', label: 'Demander un document' },
+        { href: '/moi/documents/justificatifs', label: 'Joindre un document' },
         { href: '/moi/documents/suivi', label: 'Suivi de mes demandes' },
-        { href: '/moi/documents/justificatifs', label: 'Joindre un justificatif' },
       ],
     },
     // Le seul endroit où un agent décide pour un autre : son équipe — les
@@ -1242,7 +1242,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const isChildActive = (href: string) => cheminMenu === href || cheminMenu.startsWith(`${href}/`);
   // Sur téléphone, l'onglet d'une rubrique mène à sa première sous-page : les
   // autres se choisissent en tête de page — sans quoi « Historique » ou
-  // « Joindre un justificatif » n'auraient aucun chemin. La plus précise
+  // « Joindre un document » n'auraient aucun chemin. La plus précise
   // s'allume, comme dans la barre latérale.
   const rubrique = items.find((i) => i.children?.some((c) => isChildActive(c.href)));
   const sousPageActive = (rubrique?.children ?? [])

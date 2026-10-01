@@ -50,6 +50,7 @@
     "group",
     "groups",
     "how_to_reg",
+    "image",
     "inbox",
     "light_mode",
     "link",
@@ -61,6 +62,7 @@
     "pause",
     "person",
     "person_add",
+    "picture_as_pdf",
     "place",
     "play_arrow",
     "play_circle",
@@ -91,5 +93,5 @@
     "workspace_premium"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 87532
+  "bytes": 89296
 }
