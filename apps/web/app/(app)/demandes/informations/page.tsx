@@ -2,14 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { type MembreHabilite, type ProfileChangeRequestView } from '@teranga/contracts';
 import {
-  PROFILE_CHANGE_STATUS_LABELS,
-  PROFILE_CHANGE_STATUS_TONES,
-  type MembreHabilite,
-  type ProfileChangeRequestView,
-} from '@teranga/contracts';
-import {
-  Badge,
   Button,
   Card,
   CardHeader,
@@ -19,7 +13,7 @@ import {
   Skeleton,
   Textarea,
 } from '@teranga/ui';
-import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
+import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { valeurSignalee } from '../../../../components/telephone';
@@ -43,7 +37,8 @@ import { compte } from '../../../../lib/mots';
    Un agent signale un changement (adresse, téléphone, situation…) depuis
    son espace ; la DCH le confirme — le dossier est mis à jour aussitôt — ou
    le refuse, avec un motif. Ce qui attend l'appelant en haut ; ce qui est
-   confié à un autre membre ensuite ; les derniers traités en bas.
+   confié à un autre membre ensuite. Ce qui est traité ne s'affiche plus :
+   le dossier de l'agent le porte.
    ———————————————————————————————————————————————————————————————— */
 
 const TABULAIRE = { fontVariantNumeric: 'tabular-nums' } as const;
@@ -119,7 +114,6 @@ export default function InformationsATraiterPage() {
   const toutes = demandes.data ?? [];
   const aTraiter = toutes.filter((r) => r.status === 'pending' && r.traitement?.pourMoi);
   const ailleurs = toutes.filter((r) => r.status === 'pending' && !r.traitement?.pourMoi);
-  const traitees = toutes.filter((r) => r.status !== 'pending').slice(0, 40);
   const dirige = toutes.some((r) => r.traitement?.peutConfier);
 
   return (
@@ -226,44 +220,6 @@ export default function InformationsATraiterPage() {
           </ul>
         </Card>
       ) : null}
-
-      {/* ———— Traitées ———— */}
-      <CartePleine>
-        <CardHeader className="shrink-0">
-          <CardTitle>Traitées</CardTitle>
-        </CardHeader>
-        <CorpsDefilant className="px-2 pb-2">
-          {demandes.isLoading ? (
-            <Squelette />
-          ) : traitees.length === 0 ? (
-            <EmptyState
-              className="py-8"
-              icon={<Icon name="badge" size={22} />}
-              title="Aucun changement traité"
-              description="Les changements confirmés ou refusés s’afficheront ici."
-            />
-          ) : (
-            <ul className="flex flex-col">
-              {traitees.map((r) => (
-                <li key={r.id} className={LIGNE}>
-                  <Resume
-                    demande={r}
-                    attendu={[
-                      r.handledByName ? `Par ${r.handledByName}` : null,
-                      r.status === 'rejected' && r.hrMessage ? `Motif : ${r.hrMessage}` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  />
-                  <Badge tone={PROFILE_CHANGE_STATUS_TONES[r.status]} className="ml-auto">
-                    {PROFILE_CHANGE_STATUS_LABELS[r.status]}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CorpsDefilant>
-      </CartePleine>
 
       {refus ? (
         <Modal

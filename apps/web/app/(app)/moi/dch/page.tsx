@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { peut, type AbsenceRequestView, type MembreHabilite } from '@teranga/contracts';
 import {
+  Badge,
   Button,
   Card,
   CardHeader,
@@ -12,7 +13,13 @@ import {
   EmptyState,
   Field,
   Skeleton,
+  Table,
+  TBody,
+  Td,
   Textarea,
+  Th,
+  THead,
+  Tr,
 } from '@teranga/ui';
 import { BoutonDecision } from '../../../../components/bouton-decision';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
@@ -37,19 +44,23 @@ import { formatDate, useMe } from '../../../../lib/hooks';
 import { compte } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
-   Les congés à traiter pour la Direction du Capital Humain.
+   « Absences & Congés » — les demandes de congé, pour la Direction du
+   Capital Humain : la file à traiter et, sous elle, qui est absent.
 
    Le circuit de l'APIX : le N+1 vise d'abord ; la demande passe ensuite au
    directeur du Capital Humain, qui la traite — ou la confie : une à une
    (ici), ou toutes, en habilitant des membres de sa direction
-   (« Délégations »). Cet écran sert à tous :
+   (« Déléguer des tâches »). Cet écran sert à tous :
 
      — au DIRECTEUR : ce qui l'attend, et ce qu'il a confié (qu'il peut
        reprendre) ;
      — aux MEMBRES habilités, ou à qui une demande est confiée : ce qui les
-       attend, eux.
+       attend, eux ;
+     — à qui CONSULTE les dossiers : les demandes en cours et traitées, et
+       le calendrier des absences, sans décision à prendre.
 
-   Le menu ne le montre qu'à eux : c'est l'organigramme qui en décide.
+   Il remplace l'ancienne « Gestion des demandes » (/absences, qui y mène) :
+   une seule page pour les mêmes demandes.
    ———————————————————————————————————————————————————————————————— */
 
 const TABULAIRE = { fontVariantNumeric: 'tabular-nums' } as const;
@@ -129,9 +140,12 @@ export default function CongesATraiterPage() {
         (r) => r.status === 'pending' && r.etapeAttendue === 'dch' && !r.traitement?.pourMoi,
       )
     : [];
+  // Qui traite les congés pour la DCH — ou se voit confier une demande. Les
+  // autres consultent : pas de file vide à leur montrer, mais tout le suivi.
+  const traite = estDirecteur || peut(me.data, 'demandes.conges') || aTraiter.length > 0;
   const suivi = toutes
     .filter((r) => !aTraiter.includes(r) && !confiees.includes(r))
-    .filter((r) => r.status !== 'pending' || estDirecteur)
+    .filter((r) => r.status !== 'pending' || estDirecteur || !traite)
     .slice(0, 40);
   const habilites = membres.filter((m) => m.capacites.includes('demandes.conges'));
 
@@ -153,7 +167,7 @@ export default function CongesATraiterPage() {
             href="/moi/delegations"
             className="shrink-0 font-semibold text-primary hover:underline"
           >
-            Délégations
+            Déléguer des tâches
           </Link>
         </p>
       ) : peut(me.data, 'demandes.conges') ? (
@@ -165,87 +179,89 @@ export default function CongesATraiterPage() {
       ) : null}
 
       {/* ———— À traiter ———— */}
-      <Card className="shrink-0">
-        <CardHeader className="flex items-center justify-between gap-3">
-          <CardTitle>À traiter</CardTitle>
-          {aTraiter.length > 0 ? (
-            <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-              {compte(aTraiter.length, 'demande')}
-            </span>
-          ) : null}
-        </CardHeader>
-        <div className="px-2 pb-2">
-          {chargement ? (
-            <Squelette />
-          ) : aTraiter.length === 0 ? (
-            <EmptyState
-              className="py-8"
-              icon={<Icon name="how_to_reg" size={22} />}
-              title="Rien à traiter"
-              description="Une fois visée par le N+1, une demande de congé arrive ici, avec une notification."
-            />
-          ) : (
-            <ul className="flex flex-col">
-              {aTraiter.map((r) => (
-                <li key={r.id} className={LIGNE}>
-                  <Resume demande={r} />
-                  <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                    {r.documentName ? (
-                      <BoutonJustificatif
-                        onClick={() =>
-                          setViewedDoc({
-                            url: apiUrl(`/absence-requests/${r.id}/document`),
-                            filename: r.documentName!,
-                            contentType: 'application/pdf',
-                            titre: 'Justificatif',
-                          })
+      {traite ? (
+        <Card className="shrink-0">
+          <CardHeader className="flex items-center justify-between gap-3">
+            <CardTitle>À traiter</CardTitle>
+            {aTraiter.length > 0 ? (
+              <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
+                {compte(aTraiter.length, 'demande')}
+              </span>
+            ) : null}
+          </CardHeader>
+          <div className="px-2 pb-2">
+            {chargement ? (
+              <Squelette />
+            ) : aTraiter.length === 0 ? (
+              <EmptyState
+                className="py-8"
+                icon={<Icon name="how_to_reg" size={22} />}
+                title="Rien à traiter"
+                description="Une fois visée par le N+1, une demande de congé arrive ici, avec une notification."
+              />
+            ) : (
+              <ul className="flex flex-col">
+                {aTraiter.map((r) => (
+                  <li key={r.id} className={LIGNE}>
+                    <Resume demande={r} />
+                    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                      {r.documentName ? (
+                        <BoutonJustificatif
+                          onClick={() =>
+                            setViewedDoc({
+                              url: apiUrl(`/absence-requests/${r.id}/document`),
+                              filename: r.documentName!,
+                              contentType: 'application/pdf',
+                              titre: 'Justificatif',
+                            })
+                          }
+                        />
+                      ) : null}
+                      {r.traitement?.peutConfier && membres.length > 0 ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setMessage(null);
+                            setAConfier(r);
+                          }}
+                        >
+                          Confier
+                        </Button>
+                      ) : null}
+                      <BoutonDecision
+                        geste="approuver"
+                        employe={r.employeeName}
+                        enCours={
+                          decider.isPending &&
+                          decider.variables?.demande.id === r.id &&
+                          decider.variables.decision === 'approved'
                         }
-                      />
-                    ) : null}
-                    {r.traitement?.peutConfier && membres.length > 0 ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
+                        bloque={decider.isPending}
                         onClick={() => {
                           setMessage(null);
-                          setAConfier(r);
+                          decider.mutate({ demande: r, decision: 'approved' });
                         }}
-                      >
-                        Confier
-                      </Button>
-                    ) : null}
-                    <BoutonDecision
-                      geste="approuver"
-                      employe={r.employeeName}
-                      enCours={
-                        decider.isPending &&
-                        decider.variables?.demande.id === r.id &&
-                        decider.variables.decision === 'approved'
-                      }
-                      bloque={decider.isPending}
-                      onClick={() => {
-                        setMessage(null);
-                        decider.mutate({ demande: r, decision: 'approved' });
-                      }}
-                    />
-                    <BoutonDecision
-                      geste="refuser"
-                      employe={r.employeeName}
-                      enCours={false}
-                      bloque={decider.isPending}
-                      onClick={() => {
-                        setMessage(null);
-                        setMotif('');
-                        setRefus(r);
-                      }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Card>
+                      />
+                      <BoutonDecision
+                        geste="refuser"
+                        employe={r.employeeName}
+                        enCours={false}
+                        bloque={decider.isPending}
+                        onClick={() => {
+                          setMessage(null);
+                          setMotif('');
+                          setRefus(r);
+                        }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Card>
+      ) : null}
 
       {/* ———— Confiées (le directeur) ———— */}
       {confiees.length > 0 ? (
@@ -278,6 +294,8 @@ export default function CongesATraiterPage() {
           </ul>
         </Card>
       ) : null}
+
+      <CalendrierDesAbsences />
 
       {/* ———— Suivi ———— */}
       <CartePleine>
@@ -432,5 +450,79 @@ function Squelette() {
         </span>
       ))}
     </div>
+  );
+}
+
+/** Le jour courant, dans le calendrier LOCAL — `toISOString()` donnerait la date UTC. */
+function aujourdhui(): string {
+  const d = new Date();
+  const p2 = (v: number) => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+}
+
+/**
+ * Qui est absent, et qui le sera sous trente jours : un complément de la
+ * file, pas la file — la carte garde sa taille.
+ */
+function CalendrierDesAbsences() {
+  const absences = useQuery({
+    queryKey: ['absences-upcoming'],
+    queryFn: () => api<AbsenceRequestView[]>('/absences/upcoming'),
+  });
+  const jour = aujourdhui();
+  const liste = absences.data ?? [];
+  return (
+    <Card className="shrink-0">
+      <CardHeader>
+        <CardTitle>Calendrier des absences</CardTitle>
+      </CardHeader>
+      {absences.isLoading ? (
+        <div className="px-2 pb-2">
+          <Squelette />
+        </div>
+      ) : liste.length === 0 ? (
+        <EmptyState
+          className="py-8"
+          icon={<Icon name="event_busy" size={22} />}
+          title="Personne d'absent à l'horizon"
+          description="Aucune absence approuvée dans les 30 prochains jours."
+        />
+      ) : (
+        <Table>
+          <THead>
+            <tr>
+              <Th>Nom</Th>
+              <Th>Type</Th>
+              <Th>Début</Th>
+              <Th>Fin</Th>
+              <Th className="text-right">Jours</Th>
+              <Th>Statut</Th>
+            </tr>
+          </THead>
+          <TBody>
+            {liste.map((r) => (
+              <Tr key={r.id}>
+                <Td className="font-medium text-ink-strong">{r.employeeName}</Td>
+                <Td>{r.absenceTypeName}</Td>
+                <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
+                <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
+                <Td className="text-right tabular-nums">{r.daysCount}</Td>
+                <Td>
+                  {r.startDate <= jour ? (
+                    <Badge tone="success" className="whitespace-nowrap">
+                      En cours
+                    </Badge>
+                  ) : (
+                    <Badge tone="primary" className="whitespace-nowrap">
+                      À venir
+                    </Badge>
+                  )}
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
+      )}
+    </Card>
   );
 }

@@ -436,7 +436,6 @@ export default function DashboardPage() {
   const me = useMe();
   const canManage = peut(me.data, 'personnel.consulter');
   const seesContracts = peut(me.data, 'pilotage') || canManage;
-  const traiteConges = peut(me.data, 'demandes.conges');
 
   const stats = useQuery({
     queryKey: ['dashboard'],
@@ -454,7 +453,7 @@ export default function DashboardPage() {
       icon: 'free_cancellation',
       label: 'Demandes d’absence',
       count: d?.pendingRequests ?? 0,
-      href: traiteConges ? '/moi/dch' : '/absences',
+      href: '/moi/dch',
       show: true,
     },
     {
@@ -506,7 +505,7 @@ export default function DashboardPage() {
           short="À valider"
           value={d?.pendingRequests}
           context="congés en attente de visa"
-          href="/absences"
+          href="/moi/dch"
         />
         <StatTile
           icon="event_busy"

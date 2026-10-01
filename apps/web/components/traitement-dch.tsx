@@ -23,7 +23,7 @@ import { Modal } from './modal';
 
    Toutes les demandes du personnel relèvent de la DCH. Son directeur les
    traite, ou les confie : une à une (ici), ou toutes celles d'un type
-   (« Délégations »). Les membres habilités les reçoivent directement.
+   (« Déléguer des tâches »). Les membres habilités les reçoivent directement.
    ———————————————————————————————————————————————————————————————— */
 
 export type Message = { ton: 'ok' | 'erreur'; texte: string } | null;
@@ -212,7 +212,7 @@ export function ModalLesSuivantes({
       <p className="text-[13px] leading-relaxed text-ink">
         Les {libelle} iront directement à {membre.nom}. Vous ne recevrez plus de notification, mais
         vous les verrez toutes et pourrez reprendre la main à tout moment. Vous retrouverez ce choix
-        dans « Délégations ».
+        dans « Déléguer des tâches ».
       </p>
       {erreur ? <p className="mt-3 text-[12.5px] text-danger">{erreur}</p> : null}
     </Modal>

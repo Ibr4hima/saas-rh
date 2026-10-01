@@ -123,19 +123,17 @@ const NAV_ITEMS: NavItem[] = [
     icon: 'family_history',
     groupe: 'effectif',
   },
+  // « Déléguer des tâches » et « Demandes à traiter » s'insèrent ici, selon
+  // ce que l'agent traite pour la DCH (cf. navigationGestion). Les demandes de
+  // congé se traitent sous « Demandes à traiter › Absences & Congés » ; leurs
+  // réglages ont leur page.
   {
-    href: '/absences',
-    label: 'Absences & Congés',
-    short: 'Congés',
-    icon: 'free_cancellation',
+    href: '/absences/parametres',
+    label: 'Paramètres des congés',
+    short: 'Paramètres',
+    icon: 'settings',
     groupe: 'quotidien',
-    children: [
-      { href: '/absences', label: 'Gestion des demandes' },
-      { href: '/absences/parametres', label: 'Paramètres des congés' },
-    ],
   },
-  // « Demandes à traiter » et « Délégations » s'insèrent ici, selon ce que
-  // l'agent traite pour la DCH (cf. navigationGestion).
   {
     href: '/recrutement',
     label: 'Recrutement',
@@ -192,9 +190,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/absences': 'Absences & Congés',
   '/absences/feries': 'Jours fériés',
   '/absences/parametres': 'Paramètres des congés',
-  '/documents': 'Documents à traiter',
-  '/demandes/informations': 'Informations à traiter',
-  '/demandes/pieces': 'Pièces à vérifier',
+  '/documents': 'Demandes de documents',
+  '/demandes/informations': 'Mise à jour d’infos',
+  '/demandes/pieces': 'Vérification des documents',
   '/moi/delegations': 'Déléguer des tâches',
   '/calendrier': 'Calendrier · Jours fériés',
   '/recrutement': "Offres d'emploi",
@@ -213,7 +211,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/moi/equipe/suivi': 'Suivi & Évaluation',
   '/moi/objectifs': 'Mes objectifs',
   '/moi/objectifs-apix': 'Objectifs de l’APIX',
-  '/moi/dch': 'Congés à traiter',
+  '/moi/dch': 'Absences & Congés',
   '/moi/documents': 'Demander un document',
   '/moi/documents/suivi': 'Suivi de mes demandes',
   '/moi/documents/justificatifs': 'Joindre un document',
@@ -393,37 +391,48 @@ const FILES = [
     type: 'conges',
     capacites: ['demandes.conges'],
     href: '/moi/dch',
-    label: 'Congés',
-    seul: 'Congés à traiter',
+    label: 'Absences & Congés',
+    seul: 'Absences & Congés',
+    icone: 'free_cancellation',
   },
   {
     type: 'documents',
     // Une habilitation par type de document : la file est à qui en tient une.
     capacites: CAPACITES_DOCUMENTS,
     href: '/documents',
-    label: 'Documents',
-    seul: 'Documents à traiter',
+    label: 'Demandes de documents',
+    seul: 'Demandes de documents',
+    icone: 'folder_managed',
   },
   {
     type: 'informations',
     capacites: ['demandes.informations'],
     href: '/demandes/informations',
-    label: 'Informations',
-    seul: 'Informations à traiter',
+    label: 'Mise à jour d’infos',
+    seul: 'Mise à jour d’infos',
+    icone: 'badge',
   },
   {
     type: 'pieces',
     capacites: ['demandes.pieces'],
     href: '/demandes/pieces',
-    label: 'Pièces justificatives',
-    seul: 'Pièces à vérifier',
+    label: 'Vérification des documents',
+    seul: 'Vérification des documents',
+    icone: 'verified_user',
   },
 ] as const;
 
-/** Les files qu'il voit : celles qu'il traite, et celles où une demande l'attend. */
+/**
+ * Les files qu'il voit : celles qu'il traite, et celles où une demande
+ * l'attend. Les absences et congés, en outre, à qui consulte les dossiers :
+ * qui est absent, et pourquoi, fait partie du dossier.
+ */
 function filesDe(user: SessionUser, aTraiter: ATraiter | undefined) {
   return FILES.filter(
-    (f) => f.capacites.some((c) => peut(user, c)) || (aTraiter?.[f.type] ?? 0) > 0,
+    (f) =>
+      f.capacites.some((c) => peut(user, c)) ||
+      (aTraiter?.[f.type] ?? 0) > 0 ||
+      (f.type === 'conges' && voitLesConges(user)),
   );
 }
 
@@ -453,7 +462,9 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
                 href: files[0]!.href,
                 label: files[0]!.seul,
                 short: 'À traiter',
-                icon: 'how_to_reg',
+                // Seule, la file porte son propre signe : « Absences & Congés »
+                // se reconnaît mieux à son calendrier qu'au signe des demandes.
+                icon: files[0]!.icone,
                 badge: 'traiter',
                 groupe: 'quotidien',
               }
@@ -473,8 +484,8 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
       ? [
           {
             href: '/moi/delegations',
-            label: 'Délégations',
-            short: 'Délég.',
+            label: 'Déléguer des tâches',
+            short: 'Déléguer',
             icon: 'arrow_split',
             groupe: 'quotidien',
           },
@@ -492,17 +503,12 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
       case '/contrats':
         if (peut(user, 'contrats.echeances')) items.push(i);
         break;
-      case '/absences': {
-        // Chaque sous-page à qui la gère — ou voit les congés, pour les lire.
-        const voit: Record<string, boolean> = {
-          '/absences': voitLesConges(user),
-          '/absences/parametres': peut(user, 'conges.parametres') || voitLesConges(user),
-        };
-        const children = (i.children ?? []).filter((c) => voit[c.href]);
-        if (children.length > 0) items.push({ ...i, children });
-        items.push(...demandes, ...delegations);
+      case '/absences/parametres':
+        // Déléguer, puis traiter ; les réglages des congés ensuite, à qui les
+        // gère — ou voit les congés, pour les lire.
+        items.push(...delegations, ...demandes);
+        if (peut(user, 'conges.parametres') || voitLesConges(user)) items.push(i);
         break;
-      }
       case '/recrutement': {
         // Les offres et les dossiers se confient à part.
         const voit: Record<string, boolean> = {
@@ -829,8 +835,8 @@ function Rubrique({
   /**
    * Une seule sous-page s'allume : LA PLUS PRÉCISE.
    *
-   * « Gestion des demandes » vit à /absences et « Jours fériés » à
-   * /absences/feries : la règle par préfixe allumerait les deux, et la
+   * « Demander un document » vit à /moi/documents et « Joindre un document » à
+   * /moi/documents/justificatifs : la règle par préfixe allumerait les deux, et la
    * première mentirait sur l'endroit où l'on se trouve. On garde donc le
    * chemin correspondant le plus long — ce qui vaut pour toute rubrique dont
    * un enfant est la racine des autres, sans avoir à l'énumérer.
@@ -1142,7 +1148,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         !validations.data ||
         file.capacites.some((c) => peut(u, c)) ||
         (aTraiter?.[file.type] ?? 0) > 0 ||
-        (file.type !== 'conges' && peut(u, 'personnel.consulter'))
+        peut(u, 'personnel.consulter')
       );
     }
     if (commence('/moi/delegations')) return u.dirigeLaDCH || u.role === 'admin';
