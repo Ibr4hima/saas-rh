@@ -19,7 +19,6 @@ import { Icon, type IconName } from '../../components/icons';
 import { PageTitleProvider, usePageTitleOverride } from '../../components/page-title';
 import { MenuCompte } from '../../components/menu-compte';
 import { NotificationsBell } from '../../components/notifications-bell';
-import { CalendrierModal } from '../../components/calendrier';
 import {
   EspaceProvider,
   espaceDeLaPage,
@@ -165,22 +164,6 @@ const NAV_ITEMS: NavItem[] = [
     short: 'Évaluation',
     icon: 'rule',
     groupe: 'croissance',
-  },
-  {
-    // Le calendrier a aussi sa fenêtre dans le bandeau, et c'est le geste
-    // courant. Il garde une entrée de menu parce que la fenêtre ne se trouve
-    // que si l'on sait déjà qu'elle est derrière la date — une destination
-    // nommée est le seul endroit où l'on peut la DÉCOUVRIR. Il se range avec
-    // le cadre, juste au-dessus des textes : on le consulte comme eux.
-    href: '/calendrier',
-    // L'intitulé dit ce qu'on y trouve. « Calendrier » promettait le planning
-    // des absences, qui vit dans la fenêtre du bandeau ; la page, elle, ne
-    // porte que les fériés de l'année. La barre d'onglets du téléphone garde
-    // le mot court : sur cinquante-six pixels, rien d'autre ne tient.
-    label: 'Calendrier · Jours fériés',
-    short: 'Calendrier',
-    icon: 'calendar_month',
-    groupe: 'cadre',
   },
   {
     href: '/reglementations',
@@ -682,13 +665,6 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
       groupe: 'cadre',
     },
     {
-      href: '/calendrier',
-      label: 'Calendrier · Jours fériés',
-      short: 'Calendrier',
-      icon: 'calendar_month',
-      groupe: 'cadre',
-    },
-    {
       href: '/reglementations',
       label: 'Lois & Règlementations',
       short: 'Lois',
@@ -1032,17 +1008,16 @@ function RubriqueRepliee({
 }
 
 /**
- * La date du jour, dans le bandeau — et le calendrier derrière.
+ * La date du jour, dans le bandeau — et derrière elle, « Calendrier · Jours
+ * fériés » : le menu n'y mène plus, c'est la date qui y conduit. Allumée
+ * quand on y est, comme une entrée de menu.
  *
- * C'est le geste COURANT : on ouvre le planning là où on lit la date, on
- * referme, et on est revenu exactement où l'on était — ce qu'une page ne
- * permet pas. Le menu porte malgré tout une entrée « Calendrier », parce
- * qu'une fenêtre cachée derrière une date ne se trouve que si l'on sait
- * déjà qu'elle est là. Le raccourci sert ceux qui savent ; la destination
- * nommée sert ceux qui apprennent.
+ * La fenêtre du planning qu'elle ouvrait (CalendrierModal, dans
+ * components/calendrier.tsx) reste dans le dépôt, prête à resservir.
  */
 function DateDuJour() {
-  const [ouvert, setOuvert] = useState(false);
+  const pathname = usePathname();
+  const ici = pathname.startsWith('/calendrier') || pathname.startsWith('/absences/feries');
   const brut = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long',
     day: 'numeric',
@@ -1053,21 +1028,21 @@ function DateDuJour() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOuvert(true)}
-        // Plus « des absences » : la fenêtre ne les porte plus.
-        title="Calendrier"
-        aria-label={`${libelle} — ouvrir le calendrier`}
-        className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none lg:px-3.5"
+      <Link
+        href="/calendrier"
+        title="Calendrier · Jours fériés"
+        aria-label={`${libelle} — calendrier et jours fériés`}
+        aria-current={ici ? 'page' : undefined}
+        className={cn(
+          'flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none lg:px-3.5',
+          ici ? 'border-white/60 bg-white/20' : 'border-white/30 bg-white/10',
+        )}
       >
         <Icon name="calendar_month" size={18} />
         {/* Sous 1024 px, l'icône suffit : la date complète y mangerait la
             place du titre de l'écran. */}
         <span className="hidden text-xs font-semibold whitespace-nowrap lg:inline">{libelle}</span>
-      </button>
-
-      <CalendrierModal open={ouvert} onClose={() => setOuvert(false)} />
+      </Link>
     </>
   );
 }
@@ -1257,8 +1232,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const action = pageAction(pathname, user, espace);
   const reglage = pageReglage(pathname, user, espace);
   const academy = espaceAcademy(pathname);
-  // Une page sans entrée dans le menu s'allume sous celle qui y mène : la
-  // gestion des jours fériés s'ouvre depuis le calendrier.
+  // Une page sans entrée dans le menu s'allume sous celle qui y mène. La
+  // gestion des jours fériés s'ouvre depuis le calendrier, que la date du
+  // bandeau ouvre : rien ne s'allume dans le menu — surtout pas « Absences ».
   const cheminMenu = pathname.startsWith('/absences/feries') ? '/calendrier' : pathname;
   const isActive = (href: string) =>
     href === '/moi' ? cheminMenu === '/moi' : cheminMenu.startsWith(href);
