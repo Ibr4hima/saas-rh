@@ -563,3 +563,23 @@ body {
 .fiche-objectifs .bn-editor[contenteditable='false'] .bn-trailing-block {
   display: none;
 }
+
+/* Les cases appartiennent à l'agent. Chez lui, la fiche se lit mais se coche :
+   la case est désactivée par l'éditeur en lecture, c'est son cadre qui prend
+   le clic. Chez le n+1, elles suivent ce que l'agent a coché, sans se cliquer. */
+.fiche-cochable .bn-block-content[data-content-type='checkListItem'] > div > input {
+  pointer-events: none;
+}
+.fiche-cochable .bn-block-content[data-content-type='checkListItem'] > div:has(> input) {
+  cursor: pointer;
+}
+.fiche-cochable
+  .bn-block-content[data-content-type='checkListItem']
+  > div:hover
+  > input:not(:checked) {
+  border-color: var(--tg-primary);
+}
+.fiche-coches-figees .bn-block-content[data-content-type='checkListItem'] > div > input {
+  pointer-events: none;
+  cursor: default;
+}

@@ -530,6 +530,152 @@ describe('la fiche d’objectifs', () => {
   });
 });
 
+describe('le semestre : l’agent coche et commente, le n+1 évalue', () => {
+  const caseACocher = (id: string, texte: string, checked = false) => ({
+    id,
+    type: 'checkListItem',
+    props: { checked },
+    content: [{ type: 'text', text: texte, styles: {} }],
+    children: [],
+  });
+  const de = <T extends { annee: number; semestre: number }>(
+    fiches: T[],
+    annee: number,
+    semestre: number,
+  ) => fiches.find((f) => f.annee === annee && f.semestre === semestre)!;
+  const vueAgent = async () =>
+    de((await objectifs.mesObjectifs(session('moussa'))).fiches, 2024, 1);
+  const vueN1 = async () =>
+    de((await objectifs.fiche(session('awa'), agents.moussa)).fiches, 2024, 1);
+
+  it('l’agent coche, commente, envoie ; le n+1 voit, commente, note et valide', async () => {
+    // Ce que le n+1 aurait coché ne compte pas : c'est l'agent qui coche.
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      annee: 2024,
+      semestre: 1,
+      contenu: [
+        caseACocher('o1', 'Livrer la note', true),
+        caseACocher('o2', 'Former deux stagiaires'),
+      ],
+    });
+    expect((await vueAgent()).coches).toEqual([]);
+
+    // L'agent coche ; le n+1 le voit, dans la fiche même.
+    expect(await objectifs.cocher(session('moussa'), 2024, 1, { id: 'o1', coche: true })).toEqual({
+      coches: ['o1'],
+    });
+    const vue = await vueN1();
+    expect(vue.coches).toEqual(['o1']);
+    expect(vue.contenu[0]).toMatchObject({ props: { checked: true } });
+    expect(vue.contenu[1]).toMatchObject({ props: { checked: false } });
+    expect(
+      await codeOf(() => objectifs.cocher(session('moussa'), 2024, 1, { id: 'zz', coche: true })),
+    ).toBe('objectifs.objectif_inconnu');
+
+    // Ses commentaires restent à lui tant qu'il ne les envoie pas.
+    await objectifs.enregistrerCommentaires(session('moussa'), 2024, 1, {
+      commentaires: { o1: 'Note livrée le 12 mars.', o2: '', zz: 'hors fiche' },
+    });
+    expect((await vueAgent()).evaluation.commentairesAgent).toEqual({
+      o1: 'Note livrée le 12 mars.',
+      o2: '',
+    });
+    expect((await vueN1()).evaluation.commentairesAgent).toEqual({});
+
+    // Chaque objectif commenté, atteint ou non.
+    expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2024, 1))).toBe(
+      'objectifs.commentaires_incomplets',
+    );
+    await objectifs.enregistrerCommentaires(session('moussa'), 2024, 1, {
+      commentaires: { o1: 'Note livrée le 12 mars.', o2: 'Reporté : recrutement gelé.' },
+    });
+    expect(
+      await codeOf(() =>
+        objectifs.enregistrerEvaluation(session('awa'), agents.moussa, 2024, 1, {
+          commentaires: {},
+          note: 'B',
+        }),
+      ),
+    ).toBe('objectifs.commentaires_attendus');
+    await objectifs.envoyerCommentaires(session('moussa'), 2024, 1);
+
+    // Envoyés : le n+1 les lit ; plus rien ne bouge, ni cases ni objectifs.
+    expect((await vueN1()).evaluation).toMatchObject({
+      commentairesAgent: { o1: 'Note livrée le 12 mars.', o2: 'Reporté : recrutement gelé.' },
+    });
+    expect((await vueN1()).evaluation.envoyesLe).not.toBeNull();
+    expect((await notifications('awa')).map((n) => n.title)).toContain(
+      'Commentaires de Moussa Ndiaye',
+    );
+    expect(
+      (await objectifs.suiviEquipe(session('awa'))).membres.find((m) => m.givenName === 'Moussa')!
+        .aEvaluer,
+    ).toBe(1);
+    expect(
+      await codeOf(() => objectifs.cocher(session('moussa'), 2024, 1, { id: 'o2', coche: true })),
+    ).toBe('objectifs.commentaires_envoyes');
+    expect(
+      await codeOf(() =>
+        objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+          annee: 2024,
+          semestre: 1,
+          contenu: [caseACocher('o1', 'Autre chose')],
+        }),
+      ),
+    ).toBe('objectifs.fiche_verrouillee');
+
+    // Le n+1 commente et note au brouillon ; seul le n+1 évalue.
+    await objectifs.enregistrerEvaluation(session('awa'), agents.moussa, 2024, 1, {
+      commentaires: { o1: 'Note claire, livrée à temps.' },
+      note: 'B',
+    });
+    expect((await vueAgent()).evaluation).toMatchObject({ commentairesN1: {}, note: null });
+    expect(
+      await codeOf(() => objectifs.validerEvaluation(session('mariama'), agents.moussa, 2024, 1)),
+    ).toBe('objectifs.hors_equipe');
+
+    await objectifs.validerEvaluation(session('awa'), agents.moussa, 2024, 1);
+    expect((await vueAgent()).evaluation).toMatchObject({
+      commentairesN1: { o1: 'Note claire, livrée à temps.' },
+      note: 'B',
+      evaluateur: 'Awa Diop',
+    });
+    expect((await notifications('moussa')).map((n) => n.title)).toContain(
+      'Évaluation de vos objectifs — 1er semestre 2024',
+    );
+    expect(
+      await codeOf(() =>
+        objectifs.enregistrerEvaluation(session('awa'), agents.moussa, 2024, 1, {
+          commentaires: {},
+          note: 'D',
+        }),
+      ),
+    ).toBe('objectifs.evaluation_validee');
+    expect(
+      (await objectifs.suiviEquipe(session('awa'))).membres.find((m) => m.givenName === 'Moussa')!
+        .aEvaluer,
+    ).toBe(0);
+  });
+
+  it('pas de note, pas de validation', async () => {
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      annee: 2024,
+      semestre: 2,
+      contenu: [caseACocher('p1', 'Clore les comptes')],
+    });
+    await objectifs.enregistrerCommentaires(session('moussa'), 2024, 2, {
+      commentaires: { p1: 'Comptes clos le 15 décembre.' },
+    });
+    await objectifs.envoyerCommentaires(session('moussa'), 2024, 2);
+    expect(
+      await codeOf(() => objectifs.validerEvaluation(session('awa'), agents.moussa, 2024, 2)),
+    ).toBe('objectifs.evaluation_sans_note');
+    expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2023, 1))).toBe(
+      'objectifs.fiche_introuvable',
+    );
+  });
+});
+
 describe('la session', () => {
   it('dit qui est le directeur général', async () => {
     const estDG = (qui: Nom) =>

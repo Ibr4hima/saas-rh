@@ -463,6 +463,8 @@ export function EditeurFicheObjectifs({
   onChange,
   focusSignal = 0,
   className,
+  coches,
+  onCocher,
 }: {
   contenu: Record<string, unknown>[];
   modifiable: boolean;
@@ -473,6 +475,13 @@ export function EditeurFicheObjectifs({
   focusSignal?: number;
   /** La marge autour du texte : un clic dedans, et l'on écrit en fin de fiche. */
   className?: string;
+  /**
+   * Les objectifs que l'agent a cochés — c'est lui qui coche. La fiche les
+   * suit à mesure qu'ils changent ; ses cases ne se cliquent pas, sauf…
+   */
+  coches?: string[];
+  /** …chez l'agent, qui coche ce qu'il a atteint, dans une fiche qu'il ne rédige pas. */
+  onCocher?: (id: string, coche: boolean) => void;
 }) {
   const { theme } = usePreferences();
   const editeur = useCreateBlockNote({
@@ -501,6 +510,36 @@ export function EditeurFicheObjectifs({
     if (focusSignal > 0 && modifiable) ecrireALaFin();
   }, [focusSignal, modifiable, ecrireALaFin]);
 
+  // Les cases suivent les coches de l'agent. Les poser n'est pas une
+  // rédaction : `onChange` n'en est pas prévenu, rien ne s'enregistre.
+  const enPose = useRef(false);
+  const cochesCle = coches?.join('|');
+  useEffect(() => {
+    if (!coches) return;
+    const voulues = new Set(coches);
+    const ecarts: { id: string; checked: boolean }[] = [];
+    const parcourir = (blocs: typeof editeur.document) => {
+      for (const b of blocs) {
+        if (b.type === 'checkListItem' && Boolean(b.props.checked) !== voulues.has(b.id)) {
+          ecarts.push({ id: b.id, checked: voulues.has(b.id) });
+        }
+        parcourir(b.children);
+      }
+    };
+    parcourir(editeur.document);
+    if (!ecarts.length) return;
+    enPose.current = true;
+    try {
+      for (const e of ecarts) {
+        editeur.updateBlock(e.id, { type: 'checkListItem', props: { checked: e.checked } });
+      }
+    } finally {
+      enPose.current = false;
+    }
+    // `cochesCle` résume `coches` : un nouveau tableau de mêmes valeurs ne repose rien.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cochesCle, editeur]);
+
   const contexte = useMemo(
     () => ({ formations, catalogue, lienAcademy: !modifiable }),
     [formations, catalogue, modifiable],
@@ -509,13 +548,28 @@ export function EditeurFicheObjectifs({
   return (
     <Contexte.Provider value={contexte}>
       <div
-        className={cn(modifiable && 'cursor-text', className)}
+        className={cn(
+          modifiable && 'cursor-text',
+          coches && (onCocher ? 'fiche-cochable' : 'fiche-coches-figees'),
+          className,
+        )}
         // Comme sur une page : cliquer sous le texte place le curseur en fin
         // de fiche, au lieu de ne rien faire.
         onMouseDown={(e) => {
           if (!modifiable || e.target !== e.currentTarget) return;
           e.preventDefault();
           ecrireALaFin();
+        }}
+        // L'agent coche dans une fiche en lecture : la case du navigateur y est
+        // désactivée, c'est son cadre qui reçoit le clic.
+        onClick={(e) => {
+          if (!onCocher || !coches) return;
+          const cadre = (e.target as HTMLElement).closest(
+            ".bn-block-content[data-content-type='checkListItem'] > div",
+          );
+          const id = cadre?.closest('[data-id]')?.getAttribute('data-id');
+          if (!cadre || !id || !cadre.querySelector('input')) return;
+          onCocher(id, !coches.includes(id));
         }}
       >
         <BlockNoteView
@@ -531,7 +585,10 @@ export function EditeurFicheObjectifs({
           slashMenu={false}
           formattingToolbar={false}
           emojiPicker={false}
-          onChange={() => onChange?.(editeur.document as unknown as Record<string, unknown>[])}
+          onChange={() => {
+            if (enPose.current) return;
+            onChange?.(editeur.document as unknown as Record<string, unknown>[]);
+          }}
           className="fiche-objectifs"
         >
           <FormattingToolbarController formattingToolbar={BarreDeMiseEnForme} />

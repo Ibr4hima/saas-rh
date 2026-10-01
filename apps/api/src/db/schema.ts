@@ -667,6 +667,14 @@ export const objectifsFiches = pgTable('objectifs_fiches', {
   semestre: smallint('semestre').notNull(),
   contenu: jsonb('contenu').notNull().default([]),
   auteurEmployeeId: uuid('auteur_employee_id'),
+  // 0045 : ce que l'agent coche et commente, ce que le n+1 en dit.
+  coches: jsonb('coches').notNull().default({}),
+  commentairesAgent: jsonb('commentaires_agent').notNull().default({}),
+  commentairesEnvoyesLe: timestamp('commentaires_envoyes_le', { withTimezone: true }),
+  commentairesN1: jsonb('commentaires_n1').notNull().default({}),
+  evaluationNote: text('evaluation_note'),
+  evaluationValideeLe: timestamp('evaluation_validee_le', { withTimezone: true }),
+  evaluateurEmployeeId: uuid('evaluateur_employee_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

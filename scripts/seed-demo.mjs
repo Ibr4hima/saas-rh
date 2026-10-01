@@ -5,6 +5,7 @@
  * Usage : node scripts/seed-demo.mjs [http://localhost:3001]
  * Idempotence : à lancer sur une base vide (sinon l'email admin existe déjà).
  */
+import { randomUUID } from 'node:crypto';
 import { CODE_DU_TRAVAIL, REGLEMENT_INTERIEUR } from './seed-textes.mjs';
 
 const BASE = (process.argv[2] ?? 'http://localhost:3001') + '/v1';
@@ -585,57 +586,138 @@ for (const o of [
 }
 // Les objectifs d'un agent : la fiche que son n+1 rédige pour chaque
 // semestre, à la manière d'une page Notion — des cases à cocher, des
-// échéances, du gras pour ce qui compte.
+// échéances, du gras pour ce qui compte. C'est l'agent qui coche ce qu'il a
+// atteint, puis commente chaque objectif et l'envoie à son n+1.
 const texte = (t, styles = {}) => ({ type: 'text', text: t, styles });
 const echeance = (date) => ({ type: 'echeance', props: { date } });
-const bloc = (type, contenu, props = {}) => ({ type, props, content: contenu, children: [] });
+const bloc = (type, contenu, props = {}, id = randomUUID()) => ({
+  id,
+  type,
+  props,
+  content: contenu,
+  children: [],
+});
 const semestreCourant = new Date().getMonth() < 6 ? 1 : 2;
 const precedent =
   semestreCourant === 2
     ? { annee: anneeObjectifs, semestre: 1 }
     : { annee: anneeObjectifs - 1, semestre: 2 };
+const awaObj = [randomUUID(), randomUUID()];
 await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
   annee: anneeObjectifs,
   semestre: semestreCourant,
   contenu: [
-    bloc('checkListItem', [
-      texte('Livrer l’étude sur l’attractivité des zones économiques spéciales — pour le '),
-      echeance(`${anneeObjectifs}-12-15`),
-    ]),
-    bloc('checkListItem', [texte('Accompagner Moussa sur la note de conjoncture')]),
+    bloc(
+      'checkListItem',
+      [
+        texte('Livrer l’étude sur l’attractivité des zones économiques spéciales — pour le '),
+        echeance(`${anneeObjectifs}-12-15`),
+      ],
+      {},
+      awaObj[0],
+    ),
+    bloc('checkListItem', [texte('Accompagner Moussa sur la note de conjoncture')], {}, awaObj[1]),
   ],
 });
+const moussaObj = [randomUUID(), randomUUID(), randomUUID()];
 await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
   annee: anneeObjectifs,
   semestre: semestreCourant,
   contenu: [
-    bloc('checkListItem', [
-      texte('Produire la note de conjoncture trimestrielle — pour le '),
-      echeance(`${anneeObjectifs}-10-31`),
-    ]),
-    bloc('checkListItem', [
-      texte('Présenter les intentions d’investissement au comité de direction — pour le '),
-      echeance(`${anneeObjectifs}-11-20`),
-    ]),
-    bloc('checkListItem', [texte('Mettre à jour la base des projets agréés')], { checked: true }),
+    bloc(
+      'checkListItem',
+      [
+        texte('Produire la note de conjoncture trimestrielle — pour le '),
+        echeance(`${anneeObjectifs}-10-31`),
+      ],
+      {},
+      moussaObj[0],
+    ),
+    bloc(
+      'checkListItem',
+      [
+        texte('Présenter les intentions d’investissement au comité de direction — pour le '),
+        echeance(`${anneeObjectifs}-11-20`),
+      ],
+      {},
+      moussaObj[1],
+    ),
+    bloc('checkListItem', [texte('Mettre à jour la base des projets agréés')], {}, moussaObj[2]),
     bloc('paragraph', [
       texte('Critères de réussite', { bold: true }),
       texte(' : données du trimestre, sources citées ; intentions ventilées par secteur.'),
     ]),
   ],
 });
+const passeObj = [randomUUID(), randomUUID(), randomUUID()];
 await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
   ...precedent,
   contenu: [
-    bloc('checkListItem', [texte('Finaliser le rapport annuel sur les projets agréés')], {
-      checked: true,
-    }),
-    bloc('checkListItem', [texte('Former deux stagiaires à la base des projets')], {
-      checked: true,
-    }),
-    bloc('checkListItem', [texte('Rédiger la fiche pays pour la mission économique au Maroc')]),
+    bloc(
+      'checkListItem',
+      [texte('Finaliser le rapport annuel sur les projets agréés')],
+      {},
+      passeObj[0],
+    ),
+    bloc('checkListItem', [texte('Former deux stagiaires à la base des projets')], {}, passeObj[1]),
+    bloc(
+      'checkListItem',
+      [texte('Rédiger la fiche pays pour la mission économique au Maroc')],
+      {},
+      passeObj[2],
+    ),
   ],
 });
+
+// Ce que les agents en font. Moussa : le semestre passé est bouclé — coché,
+// commenté, envoyé, évalué B par Awa ; le semestre en cours avance — une case
+// cochée, un commentaire au brouillon. Awa : son semestre est commenté et
+// envoyé à Mariama, qui a une évaluation à faire.
+console.log('→ Objectifs : Moussa coche et commente ; Awa attend l’évaluation de Mariama');
+const pour = ({ annee, semestre }) => `/objectifs/moi/fiches/${annee}/${semestre}`;
+const passe = pour(precedent);
+const courant = pour({ annee: anneeObjectifs, semestre: semestreCourant });
+for (const id of [passeObj[0], passeObj[1]]) {
+  await enTantQue(moussa.id, 'PUT', `${passe}/coches`, { id, coche: true });
+}
+await enTantQue(moussa.id, 'PUT', `${passe}/commentaires`, {
+  commentaires: {
+    [passeObj[0]]: 'Rapport remis au comité de direction le 28 juin, validé sans réserve.',
+    [passeObj[1]]: 'Les deux stagiaires saisissent seuls les nouveaux dossiers depuis mai.',
+    [passeObj[2]]: 'Mission reportée par la direction : la fiche pays reste à écrire.',
+  },
+});
+await enTantQue(moussa.id, 'POST', `${passe}/commentaires/envoi`);
+await enTantQue(
+  awa.id,
+  'PUT',
+  `/objectifs/equipe/${moussa.id}/fiches/${precedent.annee}/${precedent.semestre}/evaluation`,
+  {
+    commentaires: {
+      [passeObj[0]]: 'Rapport de qualité, livré à temps.',
+      [passeObj[2]]: 'À reprendre dès que la mission sera reprogrammée.',
+    },
+    note: 'B',
+  },
+);
+await enTantQue(
+  awa.id,
+  'POST',
+  `/objectifs/equipe/${moussa.id}/fiches/${precedent.annee}/${precedent.semestre}/evaluation/validation`,
+);
+await enTantQue(moussa.id, 'PUT', `${courant}/coches`, { id: moussaObj[2], coche: true });
+await enTantQue(moussa.id, 'PUT', `${courant}/commentaires`, {
+  commentaires: { [moussaObj[2]]: 'Base à jour au 30 septembre : 214 projets agréés.' },
+});
+
+await enTantQue(awa.id, 'PUT', `${courant}/coches`, { id: awaObj[1], coche: true });
+await enTantQue(awa.id, 'PUT', `${courant}/commentaires`, {
+  commentaires: {
+    [awaObj[0]]: 'Première version remise ; la partie fiscale reste à consolider.',
+    [awaObj[1]]: 'Deux séances de relecture, note publiée à la date prévue.',
+  },
+});
+await enTantQue(awa.id, 'POST', `${courant}/commentaires/envoi`);
 
 console.log(`
 ✔ Démo prête.

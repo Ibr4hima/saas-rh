@@ -4,14 +4,16 @@ import dynamic from 'next/dynamic';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type FicheObjectifs,
   type FicheSuivi,
   type FormationDeLaFiche,
   type FormationProposable,
   type Semestre,
 } from '@teranga/contracts';
-import { Card, EmptyState, Skeleton } from '@teranga/ui';
+import { Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../../../lib/api';
 import { RetourAcademy } from '../../../../../../components/academy-carte';
+import { EvaluationSemestre } from '../../../../../../components/evaluation-objectifs';
 import { EnTete, Repere } from '../../../../../../components/fiche';
 import {
   ChoixSemestre,
@@ -31,18 +33,40 @@ const EditeurFicheObjectifs = dynamic(
   { ssr: false, loading: () => <Skeleton className="mx-5 my-2 h-16" /> },
 );
 
+type Vue = 'objectifs' | 'evaluation';
+
 /**
  * La fiche d'un direct : la tête de son dossier, puis ses objectifs, année
  * par année — et dans l'année, semestre par semestre. Le n+1 les rédige comme
- * une page Notion ; ils s'enregistrent d'eux-mêmes.
+ * une page Notion ; ils s'enregistrent d'eux-mêmes. L'agent y coche ce qu'il a
+ * atteint — le n+1 le voit à mesure. « Évaluation », en tête, montre ce que
+ * l'agent en dit, objectif par objectif, et ce que le n+1 en dit à son tour.
  */
 export default function FicheSuiviPage({ params }: { params: Promise<{ employeeId: string }> }) {
   const { employeeId } = use(params);
+  const [vue, setVue] = useState<Vue>('objectifs');
+
+  // « ?vue=evaluation » : on arrive d'une notification — des commentaires à évaluer.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('vue') === 'evaluation') {
+      setVue('evaluation');
+    }
+  }, []);
+  const changerDeVue = (v: Vue) => {
+    setVue(v);
+    window.history.replaceState(
+      null,
+      '',
+      v === 'evaluation' ? '?vue=evaluation' : window.location.pathname,
+    );
+  };
 
   const fiche = useQuery({
     queryKey: [...CLE_OBJECTIFS, 'equipe', employeeId],
     queryFn: () => api<FicheSuivi>(`/objectifs/equipe/${employeeId}`),
     retry: false,
+    // Ce que l'agent coche se voit à mesure, sans recharger la page.
+    refetchInterval: 4000,
   });
   const catalogue = useQuery({
     queryKey: [...CLE_OBJECTIFS, 'formations'],
@@ -92,6 +116,28 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
             {m.positionTitle ? <> · {m.positionTitle}</> : null}
           </>
         }
+        action={
+          vue === 'objectifs' ? (
+            <Button variant="secondary" size="sm" onClick={() => changerDeVue('evaluation')}>
+              <span className="relative flex">
+                <Icon name="rate_review" size={16} />
+                {/* Des commentaires attendent l'évaluation. */}
+                {m.aEvaluer > 0 ? (
+                  <span
+                    aria-hidden
+                    className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-accent ring-2 ring-surface"
+                  />
+                ) : null}
+              </span>
+              Évaluation
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={() => changerDeVue('objectifs')}>
+              <Icon name="flag" size={15} />
+              Objectifs
+            </Button>
+          )
+        }
         reperes={
           <>
             <Repere
@@ -129,6 +175,8 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
 
       <FichesDuMembre
         employeeId={employeeId}
+        prenom={m.givenName}
+        vue={vue}
         fiches={fiche.data.fiches}
         formations={fiche.data.formations}
         catalogue={catalogue.data ?? []}
@@ -151,11 +199,15 @@ interface Carte {
  */
 function FichesDuMembre({
   employeeId,
+  prenom,
+  vue,
   fiches,
   formations,
   catalogue,
 }: {
   employeeId: string;
+  prenom: string;
+  vue: Vue;
   fiches: FicheSuivi['fiches'];
   formations: FormationDeLaFiche[];
   catalogue: FormationProposable[];
@@ -186,30 +238,65 @@ function FichesDuMembre({
       ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [focus]);
 
+  // L'évaluation : les fiches enregistrées seulement, avec ce qu'en dit l'agent.
+  if (vue === 'evaluation') {
+    return parAnnee(fiches, annee).map((groupe) => (
+      <section key={groupe.annee} className="flex flex-col gap-7">
+        <SeparateurAnnee annee={groupe.annee} />
+        {groupe.fiches.map((f) => (
+          <FicheSemestre
+            key={cleDe(f)}
+            annee={f.annee}
+            semestre={f.semestre}
+            titre={`Évaluation des objectifs du ${f.semestre === 1 ? '1er' : '2nd'} semestre de ${f.annee}`}
+          >
+            <EvaluationSemestre employeeId={employeeId} prenom={prenom} fiche={f} />
+          </FicheSemestre>
+        ))}
+      </section>
+    ));
+  }
+
   return parAnnee(cartes, annee).map((groupe) => (
     <section key={groupe.annee} className="flex flex-col gap-7">
       <SeparateurAnnee annee={groupe.annee}>
         {groupe.annee === annee ? <ChoixSemestre fixes={fixes} onChoisir={choisir} /> : null}
       </SeparateurAnnee>
-      {groupe.fiches.map((c) => (
-        <FicheSemestre
-          key={cleDe(c)}
-          id={`fiche-${cleDe(c)}`}
-          annee={c.annee}
-          semestre={c.semestre}
-        >
-          <ZoneFiche
-            employeeId={employeeId}
-            carte={c}
-            formations={formations}
-            catalogue={catalogue}
-            signal={focus.cle === cleDe(c) ? focus.n : 0}
-          />
-        </FicheSemestre>
-      ))}
+      {groupe.fiches.map((c) => {
+        const enregistree = fiches.find((f) => cleDe(f) === cleDe(c));
+        return (
+          <FicheSemestre
+            key={cleDe(c)}
+            id={`fiche-${cleDe(c)}`}
+            annee={c.annee}
+            semestre={c.semestre}
+          >
+            <ZoneFiche
+              employeeId={employeeId}
+              carte={c}
+              coches={enregistree?.coches ?? []}
+              // L'agent a envoyé ses commentaires : ses objectifs ne changent plus.
+              verrouillee={Boolean(enregistree?.evaluation.envoyesLe)}
+              formations={formations}
+              catalogue={catalogue}
+              signal={focus.cle === cleDe(c) ? focus.n : 0}
+            />
+          </FicheSemestre>
+        );
+      })}
     </section>
   ));
 }
+
+/** Une fiche tout juste ouverte : ni coche, ni commentaire. */
+const SANS_EVALUATION: FicheObjectifs['evaluation'] = {
+  commentairesAgent: {},
+  envoyesLe: null,
+  commentairesN1: {},
+  note: null,
+  valideeLe: null,
+  evaluateur: null,
+};
 
 /**
  * La zone de rédaction d'un semestre. Chaque pause de la saisie enregistre —
@@ -219,12 +306,18 @@ function FichesDuMembre({
 function ZoneFiche({
   employeeId,
   carte,
+  coches,
+  verrouillee,
   formations,
   catalogue,
   signal,
 }: {
   employeeId: string;
   carte: Carte;
+  /** Ce que l'agent a coché — la fiche le suit, sans que le n+1 puisse cocher. */
+  coches: string[];
+  /** L'agent a rendu compte : la fiche se lit, elle ne s'écrit plus. */
+  verrouillee: boolean;
   formations: FormationDeLaFiche[];
   catalogue: FormationProposable[];
   signal: number;
@@ -256,7 +349,15 @@ function ZoneFiche({
             ...avant,
             fiches: [
               ...autres,
-              { annee, semestre, contenu: blocs, majLe: r.majLe, auteur: ancienne?.auteur ?? null },
+              {
+                annee,
+                semestre,
+                contenu: blocs,
+                majLe: r.majLe,
+                auteur: ancienne?.auteur ?? null,
+                coches: ancienne?.coches ?? [],
+                evaluation: ancienne?.evaluation ?? SANS_EVALUATION,
+              },
             ],
           };
         });
@@ -318,13 +419,14 @@ function ZoneFiche({
         </p>
       ) : null}
       <EditeurFicheObjectifs
-        className="pt-4 pb-1"
+        className={cn('pt-4', verrouillee ? 'pb-4' : 'pb-1')}
         contenu={carte.contenu}
-        modifiable
+        modifiable={!verrouillee}
         formations={formations}
         catalogue={catalogue}
         onChange={onChange}
         focusSignal={signal}
+        coches={coches}
       />
     </>
   );

@@ -13,6 +13,12 @@ import {
   type FicheObjectifs,
   FICHE_OBJECTIFS_MAX,
   type FormationDeLaFiche,
+  type CocherObjectifInput,
+  type CommentairesAgentInput,
+  type EvaluationN1Input,
+  type NoteGlobale,
+  objectifsDeLaFiche,
+  LIBELLES_NOTE,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
   type ObjectifView,
@@ -126,6 +132,99 @@ function formationsDe(progression: TeamCourseProgress[] | undefined): FormationD
     }));
 }
 
+/** Une fiche d'objectifs, telle que la base la garde. */
+type LigneFiche = {
+  id: string;
+  annee: number;
+  semestre: number;
+  contenu: Record<string, unknown>[];
+  updated_at: string | Date;
+  auteur: string | null;
+  coches: Record<string, boolean>;
+  commentaires_agent: Record<string, string>;
+  commentaires_envoyes_le: string | Date | null;
+  commentaires_n1: Record<string, string>;
+  evaluation_note: NoteGlobale | null;
+  evaluation_validee_le: string | Date | null;
+  evaluateur: string | null;
+};
+
+const SELECTION_FICHE = sql`
+  SELECT f.id, f.annee, f.semestre, f.contenu, f.updated_at,
+         CASE WHEN pa.id IS NULL THEN NULL ELSE pa.given_name || ' ' || pa.family_name END AS auteur,
+         f.coches, f.commentaires_agent, f.commentaires_envoyes_le, f.commentaires_n1,
+         f.evaluation_note, f.evaluation_validee_le,
+         CASE WHEN pv.id IS NULL THEN NULL ELSE pv.given_name || ' ' || pv.family_name END AS evaluateur
+    FROM objectifs_fiches f
+    LEFT JOIN employees ea ON ea.id = f.auteur_employee_id
+    LEFT JOIN persons pa ON pa.id = ea.person_id
+    LEFT JOIN employees ev ON ev.id = f.evaluateur_employee_id
+    LEFT JOIN persons pv ON pv.id = ev.person_id`;
+
+/** Les cases de la fiche, telles que l'agent les a cochées — c'est lui qui coche. */
+function avecLesCoches(blocs: unknown, coches: Record<string, boolean>): Record<string, unknown>[] {
+  if (!Array.isArray(blocs)) return [];
+  return (blocs as Record<string, unknown>[]).map((b) => {
+    const enfants = avecLesCoches(b.children, coches);
+    if (b.type !== 'checkListItem') return { ...b, children: enfants };
+    return {
+      ...b,
+      props: { ...(b.props as Record<string, unknown>), checked: Boolean(coches[String(b.id)]) },
+      children: enfants,
+    };
+  });
+}
+
+function vueFiche(l: LigneFiche, vue: 'agent' | 'n1'): FicheObjectifs {
+  const envoyes = l.commentaires_envoyes_le !== null;
+  const validee = l.evaluation_validee_le !== null;
+  const voitN1 = vue === 'n1' || validee;
+  return {
+    annee: l.annee,
+    semestre: l.semestre === 1 ? 1 : 2,
+    contenu: avecLesCoches(l.contenu, l.coches),
+    majLe: iso(l.updated_at)!,
+    auteur: l.auteur,
+    coches: Object.keys(l.coches),
+    evaluation: {
+      commentairesAgent: vue === 'agent' || envoyes ? l.commentaires_agent : {},
+      envoyesLe: iso(l.commentaires_envoyes_le),
+      commentairesN1: voitN1 ? l.commentaires_n1 : {},
+      note: voitN1 ? l.evaluation_note : null,
+      valideeLe: iso(l.evaluation_validee_le),
+      evaluateur: voitN1 ? l.evaluateur : null,
+    },
+  };
+}
+
+/** Des commentaires, réduits aux objectifs de la fiche — un objectif retiré emporte le sien. */
+function garderLesObjectifs(
+  f: LigneFiche,
+  commentaires: Record<string, string>,
+): Record<string, string> {
+  const ids = new Set(objectifsDeLaFiche(f.contenu).map((o) => o.id));
+  return Object.fromEntries(Object.entries(commentaires).filter(([id]) => ids.has(id)));
+}
+
+function exigerNonEnvoyee(f: LigneFiche): void {
+  if (f.commentaires_envoyes_le) {
+    problem(409, 'objectifs.commentaires_envoyes', 'Vos commentaires sont déjà envoyés');
+  }
+}
+
+function exigerEvaluable(f: LigneFiche): void {
+  if (!f.commentaires_envoyes_le) {
+    problem(
+      409,
+      'objectifs.commentaires_attendus',
+      'L’agent n’a pas encore envoyé ses commentaires',
+    );
+  }
+  if (f.evaluation_validee_le) {
+    problem(409, 'objectifs.evaluation_validee', 'Cette évaluation est déjà validée');
+  }
+}
+
 /** Les objectifs, avec le nom de qui les a fixés. */
 const SELECTION = sql`
   SELECT o.id, o.niveau, o.annee, o.diffusion, o.direction_id, o.employee_id, o.nature,
@@ -185,7 +284,7 @@ export class ObjectifsService {
       const progression = await this.progression(tx, [moi]);
       return {
         annee: an,
-        fiches: await this.lireFiches(tx, moi),
+        fiches: await this.lireFiches(tx, moi, 'agent'),
         formations: formationsDe(progression.get(moi)),
         apix: apix.map((o) => this.vue(o)),
         direction: direction
@@ -210,6 +309,15 @@ export class ObjectifsService {
           )
         : [];
       const progression = await this.progression(tx, ids);
+      const aEvaluer = new Map<string, number>();
+      if (ids.length) {
+        const { rows } = await tx.execute<{ employee_id: string; n: number }>(sql`
+          SELECT employee_id, count(*)::int AS n FROM objectifs_fiches
+           WHERE employee_id IN ${ids}
+             AND commentaires_envoyes_le IS NOT NULL AND evaluation_validee_le IS NULL
+           GROUP BY employee_id`);
+        for (const r of rows) aEvaluer.set(r.employee_id, r.n);
+      }
       return {
         annee: an,
         membres: membres.map((m) =>
@@ -218,6 +326,7 @@ export class ObjectifsService {
             objectifs
               .filter((o) => o.employee_id === m.id)
               .map((o) => this.vue(o, progression.get(m.id))),
+            aEvaluer.get(m.id) ?? 0,
           ),
         ),
       };
@@ -239,11 +348,15 @@ export class ObjectifsService {
           sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${membre.id}`,
         )
       ).map((o) => this.vue(o, progression.get(membre.id)));
+      const fiches = await this.lireFiches(tx, membre.id, 'n1');
+      const aEvaluer = fiches.filter(
+        (f) => f.evaluation.envoyesLe && !f.evaluation.valideeLe,
+      ).length;
       return {
         annee: an,
-        membre: this.membre(membre, objectifs),
+        membre: this.membre(membre, objectifs, aEvaluer),
         objectifs,
-        fiches: await this.lireFiches(tx, membre.id),
+        fiches,
         formations: formationsDe(progression.get(membre.id)),
       };
     });
@@ -280,7 +393,16 @@ export class ObjectifsService {
            SET contenu = EXCLUDED.contenu,
                auteur_employee_id = EXCLUDED.auteur_employee_id,
                updated_at = now()
+         WHERE objectifs_fiches.commentaires_envoyes_le IS NULL
         RETURNING updated_at`);
+      // L'agent a rendu compte de ces objectifs : ils ne changent plus.
+      if (!rows[0]) {
+        problem(
+          409,
+          'objectifs.fiche_verrouillee',
+          'L’agent a envoyé ses commentaires : ces objectifs ne changent plus',
+        );
+      }
 
       if (ficheRemplie(contenu)) {
         const compte = await this.compteDe(tx, employeeId);
@@ -303,31 +425,193 @@ export class ObjectifsService {
     });
   }
 
-  /** Les fiches d'un agent, les plus récentes d'abord — sans les fiches vides. */
-  private async lireFiches(tx: Tx, employeeId: string): Promise<FicheObjectifs[]> {
-    const { rows } = await tx.execute<{
-      annee: number;
-      semestre: number;
-      contenu: Record<string, unknown>[];
-      updated_at: string | Date;
-      auteur: string | null;
-    }>(sql`
-      SELECT f.annee, f.semestre, f.contenu, f.updated_at,
-             CASE WHEN pa.id IS NULL THEN NULL ELSE pa.given_name || ' ' || pa.family_name END AS auteur
-        FROM objectifs_fiches f
-        LEFT JOIN employees ea ON ea.id = f.auteur_employee_id
-        LEFT JOIN persons pa ON pa.id = ea.person_id
+  /**
+   * Les fiches d'un agent, les plus récentes d'abord — sans les fiches vides.
+   * Les cases de la fiche disent ce que l'agent a coché. Chacun ne voit de
+   * l'autre que ce qui est envoyé : le n+1, les commentaires de l'agent une
+   * fois envoyés ; l'agent, ceux du n+1 et la note une fois validés.
+   */
+  private async lireFiches(
+    tx: Tx,
+    employeeId: string,
+    vue: 'agent' | 'n1',
+  ): Promise<FicheObjectifs[]> {
+    const { rows } = await tx.execute<LigneFiche>(sql`
+      ${SELECTION_FICHE}
        WHERE f.employee_id = ${employeeId}
        ORDER BY f.annee DESC, f.semestre DESC`);
-    return rows
-      .filter((l) => ficheRemplie(l.contenu))
-      .map((l) => ({
-        annee: l.annee,
-        semestre: l.semestre === 1 ? 1 : 2,
-        contenu: l.contenu,
-        majLe: iso(l.updated_at)!,
-        auteur: l.auteur,
-      }));
+    return rows.filter((l) => ficheRemplie(l.contenu)).map((l) => vueFiche(l, vue));
+  }
+
+  /** Une fiche, verrouillée le temps du geste — 404 si elle n'existe pas. */
+  private async uneFiche(
+    tx: Tx,
+    employeeId: string,
+    annee: number,
+    semestre: number,
+  ): Promise<LigneFiche> {
+    const { rows } = await tx.execute<LigneFiche>(sql`
+      ${SELECTION_FICHE}
+       WHERE f.employee_id = ${employeeId} AND f.annee = ${annee} AND f.semestre = ${semestre}
+       FOR UPDATE OF f`);
+    const ligne = rows[0];
+    if (!ligne || !ficheRemplie(ligne.contenu)) {
+      problem(404, 'objectifs.fiche_introuvable', 'Aucun objectif n’a été fixé pour ce semestre');
+    }
+    return ligne;
+  }
+
+  private async nomDe(tx: Tx, employeeId: string): Promise<string> {
+    const { rows } = await tx.execute<{ nom: string }>(sql`
+      SELECT p.given_name || ' ' || p.family_name AS nom
+        FROM employees e JOIN persons p ON p.id = e.person_id WHERE e.id = ${employeeId}`);
+    return rows[0]?.nom ?? '';
+  }
+
+  // ———————————————————————————— ce que l'agent en fait
+
+  /**
+   * L'agent coche — ou décoche — un objectif, au fil de ses avancées. Son
+   * n+1 le voit à mesure. Ses commentaires envoyés, plus rien ne bouge.
+   */
+  async cocher(
+    user: SessionUser,
+    annee: number,
+    semestre: number,
+    input: CocherObjectifInput,
+  ): Promise<{ coches: string[] }> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const moi = await this.exigerAgent(tx, user);
+      const f = await this.uneFiche(tx, moi, annee, semestre);
+      exigerNonEnvoyee(f);
+      if (!objectifsDeLaFiche(f.contenu).some((o) => o.id === input.id)) {
+        problem(422, 'objectifs.objectif_inconnu', 'Cet objectif n’est pas dans la fiche');
+      }
+      const { rows } = await tx.execute<{ coches: Record<string, boolean> }>(sql`
+        UPDATE objectifs_fiches
+           SET coches = ${input.coche ? sql`coches || jsonb_build_object(${input.id}::text, true)` : sql`coches - ${input.id}::text`}
+         WHERE id = ${f.id}
+        RETURNING coches`);
+      return { coches: Object.keys(rows[0]!.coches) };
+    });
+  }
+
+  /** L'agent enregistre ses commentaires, au brouillon : son n+1 ne les voit pas encore. */
+  async enregistrerCommentaires(
+    user: SessionUser,
+    annee: number,
+    semestre: number,
+    input: CommentairesAgentInput,
+  ): Promise<void> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const moi = await this.exigerAgent(tx, user);
+      const f = await this.uneFiche(tx, moi, annee, semestre);
+      exigerNonEnvoyee(f);
+      await tx.execute(sql`
+        UPDATE objectifs_fiches
+           SET commentaires_agent = ${JSON.stringify(garderLesObjectifs(f, input.commentaires))}::jsonb
+         WHERE id = ${f.id}`);
+    });
+  }
+
+  /**
+   * L'agent envoie ses commentaires à son n+1 — chaque objectif commenté,
+   * atteint ou non. Les objectifs, les cases et les commentaires ne changent
+   * plus ; le n+1 en est prévenu.
+   */
+  async envoyerCommentaires(user: SessionUser, annee: number, semestre: number): Promise<void> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const moi = await this.exigerAgent(tx, user);
+      const f = await this.uneFiche(tx, moi, annee, semestre);
+      exigerNonEnvoyee(f);
+      const sansCommentaire = objectifsDeLaFiche(f.contenu).filter(
+        (o) => !f.commentaires_agent[o.id]?.trim(),
+      ).length;
+      if (sansCommentaire > 0) {
+        problem(
+          422,
+          'objectifs.commentaires_incomplets',
+          sansCommentaire > 1
+            ? `${sansCommentaire} objectifs attendent encore votre commentaire`
+            : 'Un objectif attend encore votre commentaire',
+        );
+      }
+      await tx.execute(sql`
+        UPDATE objectifs_fiches SET commentaires_envoyes_le = now() WHERE id = ${f.id}`);
+
+      const { rows } = await tx.execute<{ n1: string | null }>(sql`
+        SELECT manager_employee_id AS n1 FROM employees WHERE id = ${moi}`);
+      const n1 = rows[0]?.n1;
+      const compte = n1 ? await this.compteDe(tx, n1) : null;
+      if (compte) {
+        await notifier(tx, user.tenantId, compte, {
+          type: 'objectif',
+          title: `Commentaires de ${await this.nomDe(tx, moi)}`,
+          body: `${titreDuSemestre(f.semestre === 1 ? 1 : 2, annee)} — à évaluer.`,
+          link: `/moi/equipe/suivi/${moi}?vue=evaluation`,
+          dedupeKey: `objectifs:commentaires:${moi}:${annee}:${semestre}`,
+        });
+      }
+    });
+  }
+
+  // ———————————————————————————— ce que le n+1 en dit
+
+  /**
+   * Le n+1 commente à son tour, sous chaque objectif, et donne la note — au
+   * brouillon, une fois les commentaires de l'agent reçus.
+   */
+  async enregistrerEvaluation(
+    user: SessionUser,
+    employeeId: string,
+    annee: number,
+    semestre: number,
+    input: EvaluationN1Input,
+  ): Promise<void> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const moi = await this.exigerAgent(tx, user);
+      await this.exigerSonN1(tx, moi, employeeId);
+      const f = await this.uneFiche(tx, employeeId, annee, semestre);
+      exigerEvaluable(f);
+      await tx.execute(sql`
+        UPDATE objectifs_fiches
+           SET commentaires_n1 = ${JSON.stringify(garderLesObjectifs(f, input.commentaires))}::jsonb,
+               evaluation_note = ${input.note},
+               evaluateur_employee_id = ${moi}
+         WHERE id = ${f.id}`);
+    });
+  }
+
+  /** Le n+1 valide l'évaluation : la note est donnée ; l'agent en est prévenu et la lit. */
+  async validerEvaluation(
+    user: SessionUser,
+    employeeId: string,
+    annee: number,
+    semestre: number,
+  ): Promise<void> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const moi = await this.exigerAgent(tx, user);
+      await this.exigerSonN1(tx, moi, employeeId);
+      const f = await this.uneFiche(tx, employeeId, annee, semestre);
+      exigerEvaluable(f);
+      if (!f.evaluation_note) {
+        problem(422, 'objectifs.evaluation_sans_note', 'Donnez l’appréciation globale');
+      }
+      await tx.execute(sql`
+        UPDATE objectifs_fiches
+           SET evaluation_validee_le = now(), evaluateur_employee_id = ${moi}
+         WHERE id = ${f.id}`);
+      const compte = await this.compteDe(tx, employeeId);
+      if (compte) {
+        await notifier(tx, user.tenantId, compte, {
+          type: 'objectif',
+          title: `Évaluation de vos objectifs — ${semestre === 1 ? '1er' : '2nd'} semestre ${annee}`,
+          body: `${await this.nomDe(tx, moi)} l’a validée : ${f.evaluation_note} — ${LIBELLES_NOTE[f.evaluation_note]}.`,
+          link: '/moi/objectifs',
+          dedupeKey: `objectifs:evaluation:${employeeId}:${annee}:${semestre}`,
+        });
+      }
+    });
   }
 
   /** Les formations publiées qu'un n+1 peut donner à suivre. */
@@ -662,7 +946,7 @@ export class ObjectifsService {
     };
   }
 
-  private membre(m: LigneMembre, objectifs: ObjectifView[]): MembreSuivi {
+  private membre(m: LigneMembre, objectifs: ObjectifView[], aEvaluer: number): MembreSuivi {
     return {
       employeeId: m.id,
       givenName: m.given_name,
@@ -678,6 +962,7 @@ export class ObjectifsService {
       total: objectifs.length,
       atteints: objectifs.filter((o) => o.atteint).length,
       enRetard: objectifs.filter((o) => o.enRetard).length,
+      aEvaluer,
     };
   }
 

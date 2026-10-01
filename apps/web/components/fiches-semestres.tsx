@@ -63,19 +63,29 @@ export function FicheSemestre({
   note,
   id,
   children,
-}: Periode & { note?: ReactNode; id?: string; children: ReactNode }) {
+  titre,
+}: Periode & {
+  note?: ReactNode;
+  id?: string;
+  children: ReactNode;
+  /** À la place de « Objectifs du 1er semestre de 2026 » — l'évaluation, par exemple. */
+  titre?: string;
+}) {
+  // Trois rangées : le titre occupe les deux premières, qui se partagent sa
+  // hauteur ; le fond de la carte part de la deuxième. Le bord haut passe donc
+  // toujours au milieu du titre — sur une ligne comme sur deux (petit écran).
   return (
-    <div id={id} className="scroll-mt-24">
-      <div className="relative z-10 flex justify-center px-2">
-        <h3 className="rounded-full bg-primary py-[7px] pr-[14.5px] pl-4 text-[11px] leading-4 font-extrabold tracking-[0.14em] whitespace-nowrap text-primary-ink uppercase shadow-[0_4px_12px_-4px_rgb(0_79_145/0.5)]">
-          {titreDuSemestre(semestre, annee)}
+    <div id={id} className="grid scroll-mt-24">
+      <Card aria-hidden className="col-start-1 row-span-2 row-start-2" />
+      <div className="relative z-10 col-start-1 row-span-2 row-start-1 flex justify-center px-2">
+        <h3 className="rounded-full bg-primary py-[7px] pr-[14.5px] pl-4 text-center text-[11px] leading-4 font-extrabold tracking-[0.14em] text-balance text-primary-ink uppercase shadow-[0_4px_12px_-4px_rgb(0_79_145/0.5)] max-sm:pr-[11px] max-sm:pl-3 max-sm:text-[10px] max-sm:tracking-[0.08em] sm:whitespace-nowrap">
+          {titre ?? titreDuSemestre(semestre, annee)}
         </h3>
       </div>
-      {/* La carte remonte sous le cadre de la moitié de sa hauteur (30 px). */}
-      <Card className="-mt-[15px] overflow-visible pt-[15px]">
+      <div className="relative col-start-1 row-start-3 mx-px mb-px min-w-0">
         {note ? <p className="px-5 pt-3 text-center text-[11px] text-ink-muted">{note}</p> : null}
         {children}
-      </Card>
+      </div>
     </div>
   );
 }

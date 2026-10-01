@@ -16,11 +16,18 @@ import {
 } from '@nestjs/common';
 import {
   anneeQuerySchema,
+  cocherObjectifSchema,
+  type CocherObjectifInput,
+  commentairesAgentSchema,
+  type CommentairesAgentInput,
   creerObjectifSchema,
   enregistrerFicheObjectifsSchema,
   type EnregistrerFicheObjectifsInput,
+  evaluationN1Schema,
+  type EvaluationN1Input,
   evaluerObjectifSchema,
   modifierObjectifSchema,
+  periodeParamsSchema,
   type CreerObjectifInput,
   type EvaluerObjectifInput,
   type ModifierObjectifInput,
@@ -29,6 +36,12 @@ import { ZodValidationPipe } from '../../common/zod.pipe';
 import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { ObjectifsService } from './objectifs.service';
+
+/** L'année et le semestre d'une fiche, lus dans l'adresse. */
+interface Periode {
+  annee: number;
+  semestre: 1 | 2;
+}
 
 /**
  * Les objectifs : ouverts à tout agent, bornés par l'organigramme — le
@@ -72,6 +85,63 @@ export class ObjectifsController {
     body: EnregistrerFicheObjectifsInput,
   ) {
     return this.objectifs.enregistrerFiche(req.sessionUser, employeeId, body);
+  }
+
+  // ———————————————————————— le semestre : ce que l'agent en fait, ce que le n+1 en dit
+
+  @Put('moi/fiches/:annee/:semestre/coches')
+  cocher(
+    @Req() req: AuthenticatedRequest,
+    @Param(new ZodValidationPipe(periodeParamsSchema)) p: Periode,
+    @Body(new ZodValidationPipe(cocherObjectifSchema)) body: CocherObjectifInput,
+  ) {
+    return this.objectifs.cocher(req.sessionUser, p.annee, p.semestre, body);
+  }
+
+  @Put('moi/fiches/:annee/:semestre/commentaires')
+  @HttpCode(204)
+  async enregistrerCommentaires(
+    @Req() req: AuthenticatedRequest,
+    @Param(new ZodValidationPipe(periodeParamsSchema)) p: Periode,
+    @Body(new ZodValidationPipe(commentairesAgentSchema)) body: CommentairesAgentInput,
+  ) {
+    await this.objectifs.enregistrerCommentaires(req.sessionUser, p.annee, p.semestre, body);
+  }
+
+  @Post('moi/fiches/:annee/:semestre/commentaires/envoi')
+  @HttpCode(204)
+  async envoyerCommentaires(
+    @Req() req: AuthenticatedRequest,
+    @Param(new ZodValidationPipe(periodeParamsSchema)) p: Periode,
+  ) {
+    await this.objectifs.envoyerCommentaires(req.sessionUser, p.annee, p.semestre);
+  }
+
+  @Put('equipe/:employeeId/fiches/:annee/:semestre/evaluation')
+  @HttpCode(204)
+  async enregistrerEvaluation(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Param(new ZodValidationPipe(periodeParamsSchema)) p: Periode,
+    @Body(new ZodValidationPipe(evaluationN1Schema)) body: EvaluationN1Input,
+  ) {
+    await this.objectifs.enregistrerEvaluation(
+      req.sessionUser,
+      employeeId,
+      p.annee,
+      p.semestre,
+      body,
+    );
+  }
+
+  @Post('equipe/:employeeId/fiches/:annee/:semestre/evaluation/validation')
+  @HttpCode(204)
+  async validerEvaluation(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Param(new ZodValidationPipe(periodeParamsSchema)) p: Periode,
+  ) {
+    await this.objectifs.validerEvaluation(req.sessionUser, employeeId, p.annee, p.semestre);
   }
 
   @Get('formations')
