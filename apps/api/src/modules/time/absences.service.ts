@@ -577,7 +577,8 @@ export class AbsencesService {
            AND e.id IS DISTINCT FROM ${DG}`);
       const equipe = rows[0]?.equipe ?? 0;
       // Qui est attendu, demande par demande : c'est le circuit qui le dit
-      // — un N+1 en congé, un membre parti ne comptent pas.
+      // — un N+1 en congé, un membre parti ne comptent pas. Le directeur du
+      // Capital Humain compte aussi ce qu'il a délégué : il peut le traiter.
       const enAttente = await tx.execute<{ id: string }>(sql`
         SELECT id FROM absence_requests WHERE status = 'pending'`);
       let aViser = 0;
@@ -585,9 +586,17 @@ export class AbsencesService {
       for (const { id } of enAttente.rows) {
         const demande = await lireCircuit(tx, id);
         const att = demande ? await attendu(tx, demande) : null;
-        if (!att?.valideurs.some((v) => v.employeeId === moi)) continue;
-        if (att.etape === 'n1') aViser += 1;
-        else conges += 1;
+        if (!att) continue;
+        if (att.valideurs.some((v) => v.employeeId === moi)) {
+          if (att.etape === 'n1') aViser += 1;
+          else conges += 1;
+        } else if (
+          att.etape === 'dch' &&
+          !att.demandeDuDirecteur &&
+          att.dch?.directeurEmployeeId === moi
+        ) {
+          conges += 1;
+        }
       }
       return { equipe, aViser, aTraiter: { conges, ...(await aTraiterPar(tx, moi)) } };
     });

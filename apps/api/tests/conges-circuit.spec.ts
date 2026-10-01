@@ -433,6 +433,9 @@ describe('le directeur habilite des membres de sa direction', () => {
     await viser(ousmane, id);
     expect(await appels(id)).toEqual(['dch:Awa']);
     expect((await vue(id, mariama.session)).canDecide).toBe(true);
+    // Déléguer n'ôte rien : la demande reste dans sa file, et dans celle d'Awa.
+    expect(await absences.compteurs(mariama.session)).toMatchObject({ aTraiter: { conges: 1 } });
+    expect(await absences.compteurs(awa.session)).toMatchObject({ aTraiter: { conges: 1 } });
     const etat = await habilitations.etat(mariama.session);
     expect(etat.estDirecteur).toBe(true);
     expect(etat.membres.map((m) => `${m.nom}:${m.capacites.join(',')}`)).toEqual([

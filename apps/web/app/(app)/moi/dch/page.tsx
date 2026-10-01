@@ -9,6 +9,7 @@ import {
   Card,
   CardHeader,
   CardTitle,
+  Checkbox,
   cn,
   EmptyState,
   Field,
@@ -30,11 +31,8 @@ import { Modal } from '../../../../components/modal';
 import { StatutAbsence } from '../../../../components/statut-absence';
 import {
   BandeauMessage,
-  ModalConfier,
-  ModalLesSuivantes,
   quiTraite,
   texteErreur,
-  useConfier,
   useMembresDCH,
   type Message,
 } from '../../../../components/traitement-dch';
@@ -47,13 +45,12 @@ import { compte } from '../../../../lib/mots';
    « Absences & Congés » — les demandes de congé, pour la Direction du
    Capital Humain : la file à traiter et, sous elle, qui est absent.
 
-   Le circuit de l'APIX : le N+1 vise d'abord ; la demande passe ensuite au
-   directeur du Capital Humain, qui la traite — ou la confie : une à une
-   (ici), ou toutes, en habilitant des membres de sa direction
-   (« Déléguer des tâches »). Cet écran sert à tous :
+   Le circuit de l'APIX : le N+1 vise d'abord ; la demande passe ensuite à
+   la DCH. Son directeur peut DÉLÉGUER : les membres qu'il coche peuvent
+   traiter les demandes — et lui aussi, toujours. Retirer une délégation,
+   c'est décocher. Cet écran sert à tous :
 
-     — au DIRECTEUR : ce qui l'attend, et ce qu'il a confié (qu'il peut
-       reprendre) ;
+     — au DIRECTEUR : toutes les demandes à l'étape de la DCH ;
      — aux MEMBRES habilités, ou à qui une demande est confiée : ce qui les
        attend, eux ;
      — à qui CONSULTE les dossiers : les demandes en cours et traitées, et
@@ -79,9 +76,6 @@ export default function CongesATraiterPage() {
   const [message, setMessage] = useState<Message>(null);
   const [refus, setRefus] = useState<AbsenceRequestView | null>(null);
   const [motif, setMotif] = useState('');
-  const [aConfier, setAConfier] = useState<AbsenceRequestView | null>(null);
-  /** Après une demande confiée à la main : confier aussi les suivantes ? */
-  const [proposition, setProposition] = useState<MembreHabilite | null>(null);
   const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
 
   const rafraichir = async () => {
@@ -111,35 +105,12 @@ export default function CongesATraiterPage() {
     onError: echec,
   });
 
-  const confier = useConfier('conges', rafraichir);
-  const confierA = (demande: AbsenceRequestView, employeeId: string | null) =>
-    confier.mutate(
-      { id: demande.id, employeeId },
-      {
-        onSuccess: (res) => {
-          setAConfier(null);
-          const m = membres.find((x) => x.employeeId === employeeId);
-          setMessage({
-            ton: 'ok',
-            texte: m
-              ? `Demande de ${demande.employeeName} confiée à ${m.nom} — une notification lui est envoyée.`
-              : `Vous reprenez la demande de ${demande.employeeName}.`,
-          });
-          if (res?.proposerHabilitation && m) setProposition(m);
-        },
-        onError: echec,
-      },
-    );
-
+  // Ce que l'appelant peut décider à l'étape de la DCH — pour le directeur,
+  // tout, délégué ou non.
   const toutes = demandes.data ?? [];
   const aTraiter = toutes
-    .filter((r) => r.canDecide && r.etapeAttendue === 'dch' && r.traitement?.pourMoi)
+    .filter((r) => r.canDecide && r.etapeAttendue === 'dch')
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
-  const confiees = estDirecteur
-    ? toutes.filter(
-        (r) => r.status === 'pending' && r.etapeAttendue === 'dch' && !r.traitement?.pourMoi,
-      )
-    : [];
   // Qui traite les congés pour la DCH — ou se voit confier une demande. Les
   // autres consultent : ils voient la file telle qu'elle est, sans geste.
   const traite = estDirecteur || peut(me.data, 'demandes.conges') || aTraiter.length > 0;
@@ -180,14 +151,10 @@ export default function CongesATraiterPage() {
           <Icon name="arrow_split" size={16} className="shrink-0 text-primary" />
           <span className="min-w-0 flex-1">
             {habilites.length > 0
-              ? `${listePrenoms(habilites)} ${habilites.length > 1 ? 'traitent' : 'traite'} les demandes d’absence et de congé.`
+              ? `${listePrenoms(habilites)} ${habilites.length > 1 ? 'peuvent' : 'peut'} désormais traiter les demandes d’absence et de congé.`
               : 'Vous pouvez déléguer cette tâche à votre équipe.'}
           </span>
-          <Deleguer
-            membres={membres}
-            onFait={(texte) => setMessage({ ton: 'ok', texte })}
-            onErreur={echec}
-          />
+          <Deleguer membres={membres} onFait={() => setMessage(null)} onErreur={echec} />
         </div>
       ) : peut(me.data, 'demandes.conges') ? (
         <p className="flex shrink-0 items-center gap-2 rounded-[12px] bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
@@ -199,13 +166,9 @@ export default function CongesATraiterPage() {
 
       {/* ———— Demandes à traiter ———— */}
       <Card className="shrink-0">
-        <CardHeader className="flex items-center justify-between gap-3">
-          <CardTitle>Demandes à traiter</CardTitle>
-          {enAttente.length > 0 ? (
-            <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-              {compte(enAttente.length, 'demande')}
-            </span>
-          ) : null}
+        <CardHeader className="flex items-center gap-2">
+          <CardTitle className="min-w-0 flex-1">Demandes à traiter</CardTitle>
+          {enAttente.length > 0 ? <Pastille n={enAttente.length} /> : null}
         </CardHeader>
         {chargement ? (
           <div className="px-2 pb-2">
@@ -233,12 +196,10 @@ export default function CongesATraiterPage() {
             <TBody>
               {enAttente.map((r) => (
                 <Tr key={r.id}>
-                  <Td>
-                    <CelluleEmploye demande={r} />
+                  <Td className="font-semibold whitespace-nowrap text-ink-strong">
+                    {r.employeeName}
                   </Td>
-                  <Td>
-                    <CelluleType demande={r} />
-                  </Td>
+                  <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
                   <Td className="whitespace-nowrap tabular-nums">
                     <Periode demande={r} />
                   </Td>
@@ -247,18 +208,6 @@ export default function CongesATraiterPage() {
                   <Td>
                     {traite ? (
                       <div className="flex items-center justify-end gap-1.5">
-                        {r.traitement?.peutConfier && membres.length > 0 ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setMessage(null);
-                              setAConfier(r);
-                            }}
-                          >
-                            Confier
-                          </Button>
-                        ) : null}
                         <BoutonDecision
                           geste="approuver"
                           employe={r.employeeName}
@@ -297,62 +246,6 @@ export default function CongesATraiterPage() {
           </Table>
         )}
       </Card>
-
-      {/* ———— Confiées (le directeur) ———— */}
-      {confiees.length > 0 ? (
-        <Card className="shrink-0">
-          <CardHeader className="flex items-center justify-between gap-3">
-            <CardTitle>Confiées</CardTitle>
-            <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-              {compte(confiees.length, 'demande')}
-            </span>
-          </CardHeader>
-          <Table>
-            <THead>
-              <tr>
-                <Th>Employé</Th>
-                <Th>Type</Th>
-                <Th>Période</Th>
-                <Th className="text-right">Jours</Th>
-                <Th>Chez</Th>
-                <Th className="text-right">Reprendre</Th>
-              </tr>
-            </THead>
-            <TBody>
-              {confiees.map((r) => (
-                <Tr key={r.id}>
-                  <Td>
-                    <CelluleEmploye demande={r} />
-                  </Td>
-                  <Td>
-                    <CelluleType demande={r} />
-                  </Td>
-                  <Td className="whitespace-nowrap tabular-nums">
-                    <Periode demande={r} />
-                  </Td>
-                  <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
-                  <Td className="text-[12px] text-ink-muted">{quiTraite(r.traitement) ?? '—'}</Td>
-                  <Td>
-                    <div className="flex justify-end">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        loading={confier.isPending && confier.variables?.id === r.id}
-                        onClick={() => {
-                          setMessage(null);
-                          confierA(r, null);
-                        }}
-                      >
-                        Reprendre
-                      </Button>
-                    </div>
-                  </Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-        </Card>
-      ) : null}
 
       <CalendrierDesAbsences />
 
@@ -397,32 +290,6 @@ export default function CongesATraiterPage() {
         </Modal>
       ) : null}
 
-      {/* ———— Confier une demande ———— */}
-      {aConfier ? (
-        <ModalConfier
-          titre={`Confier la demande de ${aConfier.employeeName}`}
-          sousTitre={`${aConfier.absenceTypeName} · ${formatDate(aConfier.startDate)} → ${formatDate(aConfier.endDate)}`}
-          membres={membres}
-          exclure={aConfier.employeeId}
-          enCours={confier.isPending}
-          onConfier={(employeeId) => confierA(aConfier, employeeId)}
-          onClose={() => setAConfier(null)}
-        />
-      ) : null}
-
-      {/* ———— Et les suivantes ? ———— */}
-      {proposition ? (
-        <ModalLesSuivantes
-          membre={proposition}
-          capacite="demandes.conges"
-          onFait={(texte) => {
-            setProposition(null);
-            setMessage({ ton: 'ok', texte });
-          }}
-          onClose={() => setProposition(null)}
-        />
-      ) : null}
-
       <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
     </Page>
   );
@@ -447,34 +314,15 @@ function listePrenoms(membres: MembreHabilite[]): string {
   return p.length > 1 ? `${p.slice(0, -1).join(', ')} et ${p[p.length - 1]}` : (p[0] ?? '');
 }
 
-/** Qui demande, et d'où vient la demande — visée par son N+1, ou sans N+1. */
-function CelluleEmploye({ demande: r }: { demande: AbsenceRequestView }) {
-  const n1 = r.circuit.find((e) => e.etape === 'n1');
-  const origine =
-    r.status === 'pending' && r.etapeAttendue === 'dch'
-      ? n1?.etat === 'visee'
-        ? `Visée par ${n1.qui}`
-        : 'Sans N+1 disponible'
-      : null;
+/** Le nombre d'une liste, en pastille à côté de son titre. */
+function Pastille({ n }: { n: number }) {
   return (
-    <>
-      <p className="font-semibold whitespace-nowrap text-ink-strong">{r.employeeName}</p>
-      {origine ? <p className="mt-0.5 text-[11px] text-ink-muted">{origine}</p> : null}
-    </>
-  );
-}
-
-/** Le type d'absence, et le motif que l'agent en donne. */
-function CelluleType({ demande: r }: { demande: AbsenceRequestView }) {
-  return (
-    <>
-      <p className="whitespace-nowrap">{r.absenceTypeName}</p>
-      {r.reason ? (
-        <p className="mt-0.5 line-clamp-1 max-w-56 text-[11px] text-ink-muted" title={r.reason}>
-          {r.reason}
-        </p>
-      ) : null}
-    </>
+    <span
+      className="shrink-0 rounded-full bg-primary/[0.09] px-1.5 py-px text-[10px] font-extrabold text-primary"
+      style={TABULAIRE}
+    >
+      {n}
+    </span>
   );
 }
 
@@ -508,14 +356,7 @@ function DemandesTraitees({
           className="flex w-full items-center gap-2 px-5 py-4 text-left focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
         >
           <CardTitle className="min-w-0 flex-1">Demandes traitées</CardTitle>
-          {demandes.length > 0 ? (
-            <span
-              className="rounded-full bg-primary/[0.09] px-1.5 py-px text-[10px] font-extrabold text-primary"
-              style={TABULAIRE}
-            >
-              {demandes.length}
-            </span>
-          ) : null}
+          {demandes.length > 0 ? <Pastille n={demandes.length} /> : null}
           <Icon
             name="chevron_right"
             size={18}
@@ -551,10 +392,10 @@ function DemandesTraitees({
           <TBody>
             {demandes.map((r) => (
               <Tr key={r.id}>
-                <Td className="font-semibold text-ink-strong">{r.employeeName}</Td>
-                <Td>
-                  <CelluleType demande={r} />
+                <Td className="font-semibold whitespace-nowrap text-ink-strong">
+                  {r.employeeName}
                 </Td>
+                <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
                 <Td className="whitespace-nowrap tabular-nums">
                   <Periode demande={r} />
                 </Td>
@@ -578,8 +419,9 @@ function DemandesTraitees({
 }
 
 /**
- * « Déléguer » : les membres de la DCH, à cocher — ceux qui traiteront les
- * demandes d'absence et de congé. « Valider » demande confirmation, en les
+ * « Déléguer » : les membres de la DCH, à cocher — ceux qui pourront traiter
+ * les demandes d'absence et de congé ; le directeur le peut toujours.
+ * Décocher retire la délégation. « Valider » demande confirmation, en les
  * nommant, avant de rien changer.
  */
 function Deleguer({
@@ -588,7 +430,8 @@ function Deleguer({
   onErreur,
 }: {
   membres: MembreHabilite[];
-  onFait: (texte: string) => void;
+  /** Le bandeau dit déjà qui peut traiter : pas de message en plus. */
+  onFait: () => void;
   onErreur: (err: unknown) => void;
 }) {
   const queryClient = useQueryClient();
@@ -635,11 +478,7 @@ function Deleguer({
     onSuccess: async () => {
       setConfirmer(false);
       setOuvert(false);
-      onFait(
-        retenus.length > 0
-          ? `${listePrenoms(retenus)} ${retenus.length > 1 ? 'traiteront' : 'traitera'} désormais les demandes d’absence et de congé.`
-          : 'Vous traitez de nouveau vous-même les demandes d’absence et de congé.',
-      );
+      onFait();
       await queryClient.invalidateQueries({ queryKey: ['habilitations'] });
       await queryClient.invalidateQueries({ queryKey: ['absence-requests'] });
       await queryClient.invalidateQueries({ queryKey: ['validations-compteurs'] });
@@ -673,7 +512,7 @@ function Deleguer({
         />
       </Button>
       {ouvert ? (
-        <div className="tg-menu absolute top-full right-0 z-30 mt-1.5 w-72 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg">
+        <div className="tg-menu absolute top-full right-0 z-30 mt-1.5 w-64 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg">
           {membres.length === 0 ? (
             <p className="px-2.5 py-3 text-[12px] text-ink-muted">
               Aucun autre membre dans votre direction.
@@ -684,28 +523,28 @@ function Deleguer({
                 const coche = apres.has(m.employeeId);
                 return (
                   <li key={m.employeeId}>
-                    <label className="flex cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 transition-colors duration-150 hover:bg-hover">
-                      <input
-                        type="checkbox"
+                    <label
+                      className={cn(
+                        'flex cursor-pointer items-center gap-3 rounded-[10px] px-2.5 py-2.5 transition-colors duration-150',
+                        coche ? 'bg-primary/[0.06] hover:bg-primary/[0.09]' : 'hover:bg-hover',
+                      )}
+                    >
+                      <Checkbox
                         checked={coche}
                         onChange={() =>
                           setChoix((c) =>
                             coche ? c.filter((x) => x !== m.employeeId) : [...c, m.employeeId],
                           )
                         }
-                        className="size-4 shrink-0 accent-primary"
+                        className="size-[18px] [&>span]:rounded-[6px]"
                       />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12.5px] font-medium text-ink-strong">
-                          {m.nom}
-                        </span>
-                        {m.poste || m.absent ? (
-                          <span className="block truncate text-[11px] text-ink-muted">
-                            {[m.poste, m.absent ? 'Absent aujourd’hui' : null]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </span>
-                        ) : null}
+                      <span
+                        className={cn(
+                          'min-w-0 flex-1 truncate text-[13px] transition-colors duration-150',
+                          coche ? 'font-semibold text-ink-strong' : 'text-ink',
+                        )}
+                      >
+                        {m.nom}
                       </span>
                     </label>
                   </li>
@@ -746,8 +585,8 @@ function Deleguer({
       >
         <p className="text-[13px] leading-relaxed text-ink">
           {retenus.length > 0
-            ? `${listePrenoms(retenus)} ${retenus.length > 1 ? 'traiteront' : 'traitera'} désormais les demandes d’absence et de congé, une fois visées par le N+1, conformément au circuit de validation. Vous les verrez toutes et pourrez reprendre la main à tout moment.`
-            : 'Vous traiterez de nouveau vous-même les demandes d’absence et de congé, une fois visées par le N+1, conformément au circuit de validation.'}
+            ? `${listePrenoms(retenus)} ${retenus.length > 1 ? 'pourront' : 'pourra'} traiter désormais les demandes d’absence et de congé, une fois visées par son manager, conformément au circuit de validation.`
+            : 'Vous traiterez de vous-même toutes les demandes d’absence et de congé.'}
         </p>
       </Modal>
     </div>
