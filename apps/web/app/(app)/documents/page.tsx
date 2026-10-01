@@ -5,13 +5,16 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   BatchAdvanceResult,
-  CapaciteDemande,
   DocumentRequestView,
   EmployeeDetail,
-  MembreHabilite,
   RequestableDoc,
 } from '@teranga/contracts';
-import { capaciteDuDocument, GENERATED_DOCS, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
+import {
+  capaciteDuDocument,
+  GENERATED_DOCS,
+  peut,
+  REQUESTABLE_DOC_LABELS,
+} from '@teranga/contracts';
 import {
   Button,
   CardHeader,
@@ -29,19 +32,19 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../lib/api';
-import { formatDate } from '../../../lib/hooks';
+import { formatDate, useMe } from '../../../lib/hooks';
 import { CONTRACT_LABELS } from '../../../lib/recruitment';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
+import { DeleguerDocuments, DOCUMENTS_DELEGABLES } from '../../../components/deleguer-documents';
 import {
+  BandeauDelegation,
   BandeauMessage,
-  ModalConfier,
-  ModalLesSuivantes,
-  quiTraite,
-  texteErreur,
-  useConfier,
+  EnTetePliable,
+  listePrenoms,
+  Pastille,
   useMembresDCH,
   type Message,
 } from '../../../components/traitement-dch';
@@ -64,6 +67,16 @@ const OPEN = ['received', 'processing'];
 function docLabels(r: DocumentRequestView): string {
   return r.docTypes.map((d) => REQUESTABLE_DOC_LABELS[d] ?? d).join(' · ');
 }
+
+/** « d’attestation de travail », « de bulletin de salaire ». */
+const deDocument = (doc: RequestableDoc) => {
+  const l = REQUESTABLE_DOC_LABELS[doc].toLowerCase();
+  return /^[aeiouéh]/.test(l) ? `d’${l}` : `de ${l}`;
+};
+
+/** « a », « a et b », « a, b et c ». */
+const enumerer = (mots: string[]) =>
+  mots.length > 1 ? `${mots.slice(0, -1).join(', ')} et ${mots[mots.length - 1]}` : (mots[0] ?? '');
 
 /** Heures écoulées depuis un instant — l'unité de la file d'attente RH. */
 function hoursSince(iso: string): number {
@@ -95,53 +108,35 @@ export default function DocumentRequestsPage() {
     queryFn: () => api<DocumentRequestView[]>('/document-requests'),
   });
 
-  const queryClient = useQueryClient();
+  const me = useMe();
+  const estDirecteur = Boolean(me.data?.dirigeLaDCH);
   const [panneau, setPanneau] = useState<'traiter' | 'decliner' | null>(null);
   const [message, setMessage] = useState<Message>(null);
-  const [aConfier, setAConfier] = useState<DocumentRequestView | null>(null);
-  /** Après un document confié à la main : confier aussi les suivants de ce type ? */
-  const [proposition, setProposition] = useState<{
-    membre: MembreHabilite;
-    capacite: CapaciteDemande;
-  } | null>(null);
+  const [traiteesOuvertes, setTraiteesOuvertes] = useState(false);
   const membres = useMembresDCH().data?.membres ?? [];
-  const confier = useConfier('documents', async () => {
-    await queryClient.invalidateQueries({ queryKey: ['document-requests'] });
-    await queryClient.invalidateQueries({ queryKey: ['validations-compteurs'] });
-  });
-  const confierA = (r: DocumentRequestView, employeeId: string | null) =>
-    confier.mutate(
-      { id: r.id, employeeId },
-      {
-        onSuccess: (res) => {
-          setAConfier(null);
-          const m = membres.find((x) => x.employeeId === employeeId);
-          setMessage({
-            ton: 'ok',
-            texte: m
-              ? `Demande de ${r.employeeName} confiée à ${m.nom} — une notification lui est envoyée.`
-              : `Vous reprenez la demande de ${r.employeeName}.`,
-          });
-          if (res?.proposerHabilitation && m) {
-            setProposition({ membre: m, capacite: capaciteDuDocument(r.docTypes[0]!) });
-          }
-        },
-        onError: (err) => setMessage({ ton: 'erreur', texte: texteErreur(err) }),
-      },
-    );
+
+  // Le bandeau : au directeur, qui peut traiter ; au membre, ce qui lui est délégué.
+  const peutTraiterLeDoc = (m: { capacites: readonly string[] }, doc: RequestableDoc) =>
+    m.capacites.includes(capaciteDuDocument(doc));
+  const delegues = membres.filter((m) => DOCUMENTS_DELEGABLES.some((d) => peutTraiterLeDoc(m, d)));
+  const tousLesDocuments = delegues.every((m) =>
+    DOCUMENTS_DELEGABLES.every((d) => peutTraiterLeDoc(m, d)),
+  );
+  const miens = DOCUMENTS_DELEGABLES.filter((d) => peut(me.data, capaciteDuDocument(d)));
 
   const items = useMemo(() => requests.data ?? [], [requests.data]);
-  // Ce qui attend l'appelant : ce qu'il traite pour la DCH. Le reste de la
-  // file — confié à un autre membre — se suit à part.
+  // Ce que l'appelant peut traiter — le directeur, tout, délégué ou non —,
+  // et sa propre demande, qu'il délègue. Qui consulte seulement voit la file
+  // entière, sans geste.
+  const traite = estDirecteur || miens.length > 0 || items.some((r) => r.canAdvance);
   const ouvertes = useMemo(
-    () => items.filter((r) => OPEN.includes(r.status) && r.traitement?.pourMoi),
-    [items],
+    () =>
+      items.filter(
+        (r) =>
+          OPEN.includes(r.status) && (!traite || r.canAdvance || Boolean(r.traitement?.aConfier)),
+      ),
+    [items, traite],
   );
-  const ailleurs = useMemo(
-    () => items.filter((r) => OPEN.includes(r.status) && !r.traitement?.pourMoi),
-    [items],
-  );
-  const dirige = items.some((r) => r.traitement?.peutConfier);
   const traitees = useMemo(() => {
     // Un historique se lit du plus récent au plus ancien. Annoncer le retrait
     // CLÔT le travail de la RH : l'employé est prévenu et vient chercher son
@@ -178,18 +173,43 @@ export default function DocumentRequestsPage() {
   return (
     <Page>
       {message ? <BandeauMessage message={message} /> : null}
+
+      {estDirecteur ? (
+        <BandeauDelegation
+          icone="arrow_split"
+          texte={
+            delegues.length > 0
+              ? `${listePrenoms(delegues)} ${delegues.length > 1 ? 'peuvent' : 'peut'} désormais traiter ${tousLesDocuments ? 'les' : 'certaines'} demandes de documents.`
+              : 'Vous pouvez déléguer cette tâche à votre équipe.'
+          }
+          action={<DeleguerDocuments membres={membres} onFait={() => setMessage(null)} />}
+        />
+      ) : miens.length > 0 ? (
+        <BandeauDelegation
+          icone="how_to_reg"
+          texte={
+            miens.length === DOCUMENTS_DELEGABLES.length
+              ? 'La DCH vous a délégué le traitement des demandes de documents.'
+              : `La DCH vous a délégué le traitement des demandes ${enumerer(miens.map(deDocument))}.`
+          }
+        />
+      ) : null}
+
       <CartePleine>
-        <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-          <CardTitle>À traiter</CardTitle>
-          <BarreSelection sel={sel} quoi="demande" feminin>
-            <Button size="sm" onClick={() => setPanneau('traiter')}>
-              <Icon name="folder_managed" size={15} />
-              Prévisualiser
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => setPanneau('decliner')}>
-              Décliner
-            </Button>
-          </BarreSelection>
+        <CardHeader className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
+          <CardTitle className="min-w-0 flex-1">Demandes à traiter</CardTitle>
+          {traite ? (
+            <BarreSelection sel={sel} quoi="demande" feminin>
+              <Button size="sm" onClick={() => setPanneau('traiter')}>
+                <Icon name="folder_managed" size={15} />
+                Prévisualiser
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setPanneau('decliner')}>
+                Décliner
+              </Button>
+            </BarreSelection>
+          ) : null}
+          {aTraiter.length > 0 ? <Pastille n={aTraiter.length} /> : null}
         </CardHeader>
         {requests.isLoading ? (
           <CorpsDefilant>
@@ -207,7 +227,7 @@ export default function DocumentRequestsPage() {
           <Table pleine>
             <THead>
               <tr>
-                <ThCases sel={sel} />
+                {traite ? <ThCases sel={sel} /> : <ThGouttiere />}
                 <ThTri
                   label="Matricule"
                   colonne="employeeNumber"
@@ -240,7 +260,7 @@ export default function DocumentRequestsPage() {
                     en-têtes pour le même ordre seraient deux fois le même
                     bouton. Celui-ci reste un intitulé. */}
                 <Th className="text-right">Temps écoulé</Th>
-                {dirige ? <Th className="w-24" /> : null}
+                {traite ? null : <Th>Traitée par</Th>}
               </tr>
             </THead>
             <TBody>
@@ -248,7 +268,11 @@ export default function DocumentRequestsPage() {
                 const h = hoursSince(r.createdAt);
                 return (
                   <Tr key={r.id} className={cn(sel.coche(r.id) && LIGNE_COCHEE)}>
-                    <TdCase sel={sel} id={r.id} quoi={`la demande de ${r.employeeName}`} />
+                    {traite ? (
+                      <TdCase sel={sel} id={r.id} quoi={`la demande de ${r.employeeName}`} />
+                    ) : (
+                      <TdGouttiere />
+                    )}
                     <Td className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</Td>
                     <Td>
                       <Link
@@ -262,7 +286,7 @@ export default function DocumentRequestsPage() {
                       {docLabels(r)}
                       {r.traitement?.aConfier ? (
                         <span className="block text-[11px] font-semibold text-accent-text">
-                          Votre propre demande — à confier à un membre de la DCH
+                          Votre propre demande — à déléguer à un membre de la DCH
                         </span>
                       ) : null}
                       {r.note ? (
@@ -285,22 +309,11 @@ export default function DocumentRequestsPage() {
                     >
                       {heures(h)}
                     </Td>
-                    {dirige ? (
-                      <Td className="text-right">
-                        {r.traitement?.peutConfier && membres.length > 0 ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setMessage(null);
-                              setAConfier(r);
-                            }}
-                          >
-                            Confier
-                          </Button>
-                        ) : null}
+                    {traite ? null : (
+                      <Td className="text-[12px] text-ink-muted">
+                        {r.traitement?.traitants ?? '—'}
                       </Td>
-                    ) : null}
+                    )}
                   </Tr>
                 );
               })}
@@ -309,51 +322,14 @@ export default function DocumentRequestsPage() {
         )}
       </CartePleine>
 
-      {ailleurs.length > 0 ? (
-        <CartePleine>
-          <CardHeader className="shrink-0">
-            <CardTitle>{dirige ? 'Confiées' : 'Chez un autre membre de la DCH'}</CardTitle>
-          </CardHeader>
-          <CorpsDefilant className="px-2 pb-2">
-            <ul className="flex flex-col">
-              {ailleurs.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-2.5 transition-colors duration-150 hover:bg-hover"
-                >
-                  <div className="min-w-0 flex-1 basis-56">
-                    <p className="truncate text-[13px] font-semibold text-ink-strong">
-                      {r.employeeName}
-                    </p>
-                    <p className="mt-0.5 text-[11.5px] text-ink-muted">
-                      {docLabels(r)} · {quiTraite(r.traitement)}
-                    </p>
-                  </div>
-                  {r.traitement?.peutConfier ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      loading={confier.isPending && confier.variables?.id === r.id}
-                      onClick={() => {
-                        setMessage(null);
-                        confierA(r, null);
-                      }}
-                    >
-                      Reprendre
-                    </Button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </CorpsDefilant>
-        </CartePleine>
-      ) : null}
-
       <CartePleine>
-        <CardHeader className="shrink-0">
-          <CardTitle>Traitées</CardTitle>
-        </CardHeader>
-        {requests.isLoading ? (
+        <EnTetePliable
+          titre="Demandes traitées"
+          n={traitees.length}
+          ouvert={traiteesOuvertes}
+          onBasculer={() => setTraiteesOuvertes((o) => !o)}
+        />
+        {!traiteesOuvertes ? null : requests.isLoading ? (
           <CorpsDefilant>
             <SqueletteTableau />
           </CorpsDefilant>
@@ -427,29 +403,6 @@ export default function DocumentRequestsPage() {
           </Table>
         )}
       </CartePleine>
-
-      {aConfier ? (
-        <ModalConfier
-          titre={`Confier la demande de ${aConfier.employeeName}`}
-          sousTitre={docLabels(aConfier)}
-          membres={membres}
-          exclure={aConfier.employeeId}
-          enCours={confier.isPending}
-          onConfier={(employeeId) => confierA(aConfier, employeeId)}
-          onClose={() => setAConfier(null)}
-        />
-      ) : null}
-      {proposition ? (
-        <ModalLesSuivantes
-          membre={proposition.membre}
-          capacite={proposition.capacite}
-          onFait={(texte) => {
-            setProposition(null);
-            setMessage({ ton: 'ok', texte });
-          }}
-          onClose={() => setProposition(null)}
-        />
-      ) : null}
 
       {panneau === 'traiter' ? (
         <TraiterModal

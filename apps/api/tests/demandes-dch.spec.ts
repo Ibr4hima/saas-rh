@@ -26,7 +26,7 @@ import { AttestationService } from '../src/modules/documents/attestation.service
 import { OrgUnitsService } from '../src/modules/people/org-units.service';
 import { PeopleService } from '../src/modules/people/people.service';
 import { AbsencesService } from '../src/modules/time/absences.service';
-import { confierLaDemande } from '../src/modules/acces/demandes';
+import { aTraiterPar, confierLaDemande } from '../src/modules/acces/demandes';
 import { DocumentRequestsService } from '../src/modules/docs/document-requests.service';
 import { EmployeeDocumentsService } from '../src/modules/docs/employee-documents.service';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
@@ -230,6 +230,13 @@ describe('les demandes de documents', () => {
     await habiliter(awa, 'demandes.documents.attestation_travail');
     await habiliter(khady, 'demandes.documents.attestation_travail');
     expect(await appels('document', id)).toEqual(['dch:Awa', 'dch:Khady']);
+    // Déléguer n'ôte rien au directeur : la demande reste dans son compteur.
+    const aTraiter = (qui: Agent) =>
+      db.withTenant({ tenantId, userId: qui.session.userId }, (tx) =>
+        aTraiterPar(tx, qui.employeeId),
+      );
+    expect((await aTraiter(mariama)).documents).toBe(1);
+    expect((await aTraiter(awa)).documents).toBe(1);
     await documents.advance(awa.session, id, { status: 'processing' });
     expect(await appels('document', id)).toEqual(['dch:Awa']);
     expect(await codeOf(() => documents.advance(khady.session, id, { status: 'ready' }))).toBe(

@@ -30,7 +30,11 @@ import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { StatutAbsence } from '../../../../components/statut-absence';
 import {
+  BandeauDelegation,
   BandeauMessage,
+  EnTetePliable,
+  listePrenoms,
+  Pastille,
   quiTraite,
   texteErreur,
   useMembresDCH,
@@ -59,8 +63,6 @@ import { compte } from '../../../../lib/mots';
    Il remplace l'ancienne « Gestion des demandes » (/absences, qui y mène) :
    une seule page pour les mêmes demandes.
    ———————————————————————————————————————————————————————————————— */
-
-const TABULAIRE = { fontVariantNumeric: 'tabular-nums' } as const;
 
 export default function CongesATraiterPage() {
   const queryClient = useQueryClient();
@@ -147,21 +149,20 @@ export default function CongesATraiterPage() {
       {message ? <BandeauMessage message={message} /> : null}
 
       {estDirecteur ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] bg-primary/[0.06] py-2 pr-2 pl-3.5 text-[12.5px] text-ink">
-          <Icon name="arrow_split" size={16} className="shrink-0 text-primary" />
-          <span className="min-w-0 flex-1">
-            {habilites.length > 0
+        <BandeauDelegation
+          icone="arrow_split"
+          texte={
+            habilites.length > 0
               ? `${listePrenoms(habilites)} ${habilites.length > 1 ? 'peuvent' : 'peut'} désormais traiter les demandes d’absence et de congé.`
-              : 'Vous pouvez déléguer cette tâche à votre équipe.'}
-          </span>
-          <Deleguer membres={membres} onFait={() => setMessage(null)} onErreur={echec} />
-        </div>
+              : 'Vous pouvez déléguer cette tâche à votre équipe.'
+          }
+          action={<Deleguer membres={membres} onFait={() => setMessage(null)} onErreur={echec} />}
+        />
       ) : peut(me.data, 'demandes.conges') ? (
-        <p className="flex shrink-0 items-center gap-2 rounded-[12px] bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
-          <Icon name="how_to_reg" size={16} className="shrink-0 text-primary" />
-          La DCH vous confie les demandes de congé : elles vous arrivent directement, une fois
-          visées par le N+1.
-        </p>
+        <BandeauDelegation
+          icone="how_to_reg"
+          texte="La DCH vous a délégué le traitement des demandes d’absence et de congé."
+        />
       ) : null}
 
       {/* ———— Demandes à traiter ———— */}
@@ -308,24 +309,6 @@ function BoutonJustificatif({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** « Awa », « Awa et Khady », « Awa, Khady et Moussa ». */
-function listePrenoms(membres: MembreHabilite[]): string {
-  const p = membres.map((m) => m.prenom);
-  return p.length > 1 ? `${p.slice(0, -1).join(', ')} et ${p[p.length - 1]}` : (p[0] ?? '');
-}
-
-/** Le nombre d'une liste, en pastille à côté de son titre. */
-function Pastille({ n }: { n: number }) {
-  return (
-    <span
-      className="shrink-0 rounded-full bg-primary/[0.09] px-1.5 py-px text-[10px] font-extrabold text-primary"
-      style={TABULAIRE}
-    >
-      {n}
-    </span>
-  );
-}
-
 function Periode({ demande: r }: { demande: AbsenceRequestView }) {
   return (
     <>
@@ -348,25 +331,12 @@ function DemandesTraitees({
   const [ouvert, setOuvert] = useState(false);
   return (
     <Card className="shrink-0">
-      <CardHeader className="p-0">
-        <button
-          type="button"
-          aria-expanded={ouvert}
-          onClick={() => setOuvert((o) => !o)}
-          className="flex w-full items-center gap-2 px-5 py-4 text-left focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
-        >
-          <CardTitle className="min-w-0 flex-1">Demandes traitées</CardTitle>
-          {demandes.length > 0 ? <Pastille n={demandes.length} /> : null}
-          <Icon
-            name="chevron_right"
-            size={18}
-            className={cn(
-              'shrink-0 text-ink-muted transition-transform duration-200',
-              ouvert && 'rotate-90',
-            )}
-          />
-        </button>
-      </CardHeader>
+      <EnTetePliable
+        titre="Demandes traitées"
+        n={demandes.length}
+        ouvert={ouvert}
+        onBasculer={() => setOuvert((o) => !o)}
+      />
       {!ouvert ? null : chargement ? (
         <div className="px-2 pb-2">
           <Squelette />
