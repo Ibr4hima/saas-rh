@@ -21,14 +21,9 @@ import {
   voitToutLaFile,
 } from '../acces/demandes';
 
-/** Signatures binaires des formats acceptés — le contentType seul ne prouve rien. */
+/** La signature d'un PDF — le contentType seul ne prouve rien. */
 const MAGIC: Array<{ type: string; check: (b: Buffer) => boolean }> = [
   { type: 'application/pdf', check: (b) => b.subarray(0, 5).toString() === '%PDF-' },
-  { type: 'image/jpeg', check: (b) => b[0] === 0xff && b[1] === 0xd8 },
-  {
-    type: 'image/png',
-    check: (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
-  },
 ];
 
 function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
@@ -63,7 +58,7 @@ export class EmployeeDocumentsService {
         422,
         'documents.bad_format',
         'Le contenu ne correspond pas au format annoncé',
-        'Formats acceptés : PDF, JPG, PNG.',
+        'Seul le PDF est accepté.',
       );
     }
 

@@ -29,8 +29,8 @@ export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
 
 export const MAX_EMPLOYEE_DOCUMENT_BYTES = 5 * 1024 * 1024;
 
-/** Formats acceptés pour les documents officiels. */
-export const EMPLOYEE_DOCUMENT_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
+/** Les documents officiels se déposent en PDF, et en PDF seulement. */
+export const EMPLOYEE_DOCUMENT_TYPES = ['application/pdf'] as const;
 
 export const uploadEmployeeDocumentSchema = z.object({
   category: documentCategorySchema,

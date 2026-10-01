@@ -40,13 +40,7 @@ const STATUS_TONES: Record<string, 'warning' | 'success' | 'danger'> = {
   rejected: 'danger',
 };
 
-/** « 245 Ko », « 1,2 Mo ». */
-function poids(octets: number): string {
-  if (octets < 1024 * 1024) return `${Math.max(1, Math.round(octets / 1024))} Ko`;
-  return `${(octets / (1024 * 1024)).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo`;
-}
-
-/** Le signe d'un fichier : un PDF, ou une image. */
+/** Le signe d'un fichier : un PDF — ou une image, sur les dépôts anciens. */
 function SigneFichier({ contentType, grand = false }: { contentType: string; grand?: boolean }) {
   return (
     <span
@@ -206,7 +200,7 @@ export function EmployeeDocumentsCard({
                         {depot
                           ? ''
                           : ` · ${d.uploadedByName}${d.uploadedBySide === 'hr' ? ' (DCH)' : ''}`}{' '}
-                        · {formatDate(d.createdAt.slice(0, 10))} · {poids(d.sizeBytes)}
+                        · {formatDate(d.createdAt.slice(0, 10))}
                       </span>
                     </span>
                   </button>
@@ -296,17 +290,14 @@ export function EmployeeDocumentsCard({
 // ———————————————————————————— le dépôt
 
 interface FichierChoisi {
-  /** « .pdf », « .jpg »… ; l'agent renomme le document, pas son format. */
-  extension: string;
   contentType: string;
   contentBase64: string;
-  taille: number;
 }
 
-/** « CNI recto.verso.pdf » → [« CNI recto.verso », « .pdf »]. */
-function separerExtension(nom: string): [string, string] {
+/** « CNI recto.verso.pdf » → « CNI recto.verso » : l'agent nomme le document, pas son format. */
+function sansExtension(nom: string): string {
   const point = nom.lastIndexOf('.');
-  return point > 0 ? [nom.slice(0, point), nom.slice(point)] : [nom, ''];
+  return point > 0 ? nom.slice(0, point) : nom;
 }
 
 /**
@@ -346,7 +337,7 @@ function FenetreDepot({
         body: {
           category: type,
           label,
-          filename: `${label}${fichier!.extension}`,
+          filename: `${label}.pdf`,
           contentType: fichier!.contentType,
           contentBase64: fichier!.contentBase64,
         },
@@ -363,22 +354,19 @@ function FenetreDepot({
     setErreur(null);
     if (!f) return;
     if (!(EMPLOYEE_DOCUMENT_TYPES as readonly string[]).includes(f.type)) {
-      return setErreur('Formats acceptés : PDF, JPG ou PNG.');
+      return setErreur('Seul le PDF est accepté.');
     }
     if (f.size === 0 || f.size > MAX_EMPLOYEE_DOCUMENT_BYTES) {
       return setErreur('Le fichier doit faire entre 1 octet et 5 Mo.');
     }
     const reader = new FileReader();
     reader.onload = () => {
-      const [base, extension] = separerExtension(f.name);
       setFichier({
-        extension,
         contentType: f.type,
         contentBase64: String(reader.result).split(',')[1] ?? '',
-        taille: f.size,
       });
       // Le nom du fichier, proposé tel quel : l'agent le change s'il veut.
-      setNom(base.slice(0, 120));
+      setNom(sansExtension(f.name).slice(0, 120));
     };
     reader.onerror = () => setErreur('Impossible de lire ce fichier.');
     reader.readAsDataURL(f);
@@ -435,7 +423,7 @@ function FenetreDepot({
 
         {fichier ? (
           // Le fichier choisi : son nom se modifie sur place — c'est le nom
-          // sous lequel il entre au dossier ; son format, lui, reste.
+          // sous lequel il entre au dossier.
           <div className="flex items-center gap-3.5 rounded-[14px] border border-line bg-surface px-3.5 py-3">
             <SigneFichier contentType={fichier.contentType} grand />
             <div className="min-w-0 flex-1">
@@ -451,10 +439,8 @@ function FenetreDepot({
                   className="min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-ink-strong outline-none placeholder:text-ink-muted/60"
                   placeholder="Nom du document"
                 />
-                <span className="shrink-0 text-[12.5px] text-ink-muted">{fichier.extension}</span>
                 <Icon name="edit" size={15} className="shrink-0 text-ink-muted/70" />
               </div>
-              <p className="mt-1 text-[11px] text-ink-muted">{poids(fichier.taille)}</p>
             </div>
             <button
               type="button"
@@ -495,7 +481,7 @@ function FenetreDepot({
               id={`${id}-fichier`}
               type="file"
               className="sr-only"
-              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+              accept=".pdf,application/pdf"
               onChange={(e) => {
                 choisir(e.target.files?.[0]);
                 e.currentTarget.value = '';
@@ -510,7 +496,7 @@ function FenetreDepot({
                 parcourez
               </span>
             </span>
-            <span className="text-[11.5px] text-ink-muted">PDF, JPG ou PNG · 5 Mo maximum</span>
+            <span className="text-[11.5px] text-ink-muted">PDF · 5 Mo maximum</span>
           </label>
         )}
       </div>
