@@ -394,6 +394,8 @@ export const employeeDocuments = pgTable('employee_documents', {
   confieeAEmployeeId: uuid('confiee_a_employee_id'),
   /** CNI et passeport : la date d'expiration, que l'agent donne au dépôt. */
   expiresOn: date('expires_on'),
+  /** CNI et passeport : une nouvelle pièce, qui remplace celle de la fiche. */
+  renouvellement: boolean('renouvellement').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

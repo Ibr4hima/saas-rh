@@ -20,6 +20,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { BoutonDecision } from '../../../../components/bouton-decision';
+import { FenetreControleDuTitre } from '../../../../components/controle-titre';
 import { DeleguerPieces, TYPES_PIECES } from '../../../../components/deleguer-documents';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
@@ -61,6 +62,8 @@ export default function PiecesAVerifierPage() {
   const [rejet, setRejet] = useState<PieceATraiterView | null>(null);
   const [motif, setMotif] = useState('');
   const [apercu, setApercu] = useState<ViewableDoc | null>(null);
+  // Le titre d'identité de la fiche, en cours de vérification.
+  const [aControler, setAControler] = useState<PieceATraiterView | null>(null);
 
   const rafraichir = async () => {
     await queryClient.invalidateQueries({ queryKey: ['pieces'] });
@@ -175,7 +178,12 @@ export default function PiecesAVerifierPage() {
                   <Td className="font-semibold whitespace-nowrap text-ink-strong">
                     {p.employeeName}
                   </Td>
-                  <Td className="whitespace-nowrap">{DOCUMENT_CATEGORY_LABELS[p.category]}</Td>
+                  <Td className="whitespace-nowrap">
+                    {DOCUMENT_CATEGORY_LABELS[p.category]}
+                    {p.renouvellement ? (
+                      <span className="block text-[11px] text-ink-muted">Renouvellement</span>
+                    ) : null}
+                  </Td>
                   <Td>
                     <button
                       type="button"
@@ -209,7 +217,9 @@ export default function PiecesAVerifierPage() {
                           bloque={verifier.isPending}
                           onClick={() => {
                             setMessage(null);
-                            verifier.mutate({ piece: p, decision: 'approved' });
+                            // Le titre de la fiche se vérifie contre elle.
+                            if (p.controle) setAControler(p);
+                            else verifier.mutate({ piece: p, decision: 'approved' });
                           }}
                         />
                         <BoutonDecision
@@ -274,6 +284,28 @@ export default function PiecesAVerifierPage() {
             />
           </Field>
         </Modal>
+      ) : null}
+
+      {aControler ? (
+        <FenetreControleDuTitre
+          piece={aControler}
+          employe={aControler.employeeName}
+          onFermer={() => setAControler(null)}
+          onRejeter={(m) => {
+            setMotif(m);
+            setRejet(aControler);
+            setAControler(null);
+          }}
+          onValide={async (fiche) => {
+            const p = aControler;
+            setAControler(null);
+            setMessage({
+              ton: 'ok',
+              texte: `« ${p.label} » ajouté au dossier de ${p.employeeName}${fiche ? ' — sa fiche est mise à jour' : ''}.`,
+            });
+            await rafraichir();
+          }}
+        />
       ) : null}
 
       <FenetreDocument doc={apercu} onClose={() => setApercu(null)} />

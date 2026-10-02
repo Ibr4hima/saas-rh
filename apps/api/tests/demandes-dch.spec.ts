@@ -13,7 +13,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Capacite, SessionUser } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
@@ -143,7 +143,7 @@ beforeAll(async () => {
   const notifications = new NotificationsService(db);
   documents = new DocumentRequestsService(db, notifications);
   informations = new ProfileChangesService(db, notifications);
-  pieces = new EmployeeDocumentsService(db, notifications);
+  pieces = new EmployeeDocumentsService(db, notifications, new EncryptionService());
   habilitations = new HabilitationsService(db);
   people = new PeopleService(db, new EncryptionService());
   organigramme = new OrgUnitsService(db);
@@ -426,6 +426,21 @@ describe('les pièces justificatives', () => {
   });
   const dossier = async () =>
     (await pieces.list(moussa.session, moussa.employeeId)).map((d) => `${d.label}:${d.status}`);
+  /** Les informations d'une pièce, telles que qui la valide les saisit. */
+  const infos = async () => ({
+    numero: 'X0000001',
+    delivreLe: '2020-01-01',
+    expireLe: await dans(3000),
+  });
+  // La fiche de Moussa sans pièce d'identité, d'un test à l'autre.
+  afterEach(() =>
+    raw(
+      `UPDATE persons SET id_document_type = NULL, national_id_encrypted = NULL,
+              id_document_issued_on = NULL, id_document_expires_on = NULL
+        WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [moussa.employeeId],
+    ),
+  );
 
   it('déposée par l’agent : la DCH la vérifie — le membre habilité, dans sa file', async () => {
     const { id } = await deposer();
@@ -462,7 +477,7 @@ describe('les pièces justificatives', () => {
     expect(await codeOf(() => pieces.review(awa.session, cni, { decision: 'approved' }))).toBe(
       'demandes.pas_traitant',
     );
-    await pieces.review(mariama.session, cni, { decision: 'approved' });
+    await pieces.review(mariama.session, cni, { decision: 'approved', titre: await infos() });
     await pieces.review(awa.session, diplome, { decision: 'approved' });
     expect(await appels('piece', diplome)).toEqual([]);
   });
@@ -501,7 +516,7 @@ describe('les pièces justificatives', () => {
 
   it('CNI, passeport, CV : un seul au dossier — le nouveau, vérifié, prend la place de l’ancien', async () => {
     const { id: ancien } = await titre('passeport', 'Passeport 2019', await dans(400));
-    await pieces.review(mariama.session, ancien, { decision: 'approved' });
+    await pieces.review(mariama.session, ancien, { decision: 'approved', titre: await infos() });
     const { id: nouveau } = await titre('passeport', 'Passeport 2026', await dans(3000));
     // Un seul en vérification à la fois : on change celui-là.
     expect(await codeOf(async () => titre('passeport', 'Encore un', await dans(3000)))).toBe(
@@ -540,6 +555,113 @@ describe('les pièces justificatives', () => {
     expect((await pieces.list(moussa.session, moussa.employeeId))[0]?.expiresOn).toBeNull();
   });
 
+  describe('le titre de la fiche : qui vérifie compare, ou saisit la nouvelle pièce', () => {
+    const crypto = new EncryptionService();
+    /** La pièce d'identité que porte la fiche de Moussa. */
+    const ficheDeMoussa = (
+      type: 'passport' | 'cni' | null,
+      numero: string | null = null,
+      delivreLe: string | null = null,
+      expireLe: string | null = null,
+    ) =>
+      raw(
+        `UPDATE persons SET id_document_type = $2, national_id_encrypted = $3,
+                id_document_issued_on = $4, id_document_expires_on = $5
+          WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+        [moussa.employeeId, type, numero ? crypto.encrypt(numero) : null, delivreLe, expireLe],
+      );
+    const fiche = async () => {
+      const { rows } = await raw(
+        `SELECT p.id_document_type AS type, p.national_id_encrypted AS n,
+                p.id_document_issued_on::text AS d, p.id_document_expires_on::text AS e
+           FROM persons p JOIN employees e ON e.person_id = p.id WHERE e.id = $1`,
+        [moussa.employeeId],
+      );
+      const r = rows[0]!;
+      return `${r.type}:${r.n ? crypto.decrypt(r.n as string) : null}:${r.d}:${r.e}`;
+    };
+    const vueDCH = async (id: string) =>
+      (await pieces.file(mariama.session)).find((p) => p.id === id)!;
+    const passeport = async (renouvellement = false) =>
+      pieces.upload(moussa.session, moussa.employeeId, {
+        category: 'passeport',
+        label: 'Passeport',
+        filename: 'passeport.pdf',
+        contentType: 'application/pdf',
+        contentBase64: PDF,
+        expiresOn: await dans(2000),
+        renouvellement,
+      });
+    afterEach(() => ficheDeMoussa(null));
+
+    it('la même pièce : le document doit porter le numéro et les dates de la fiche', async () => {
+      await ficheDeMoussa('passport', 'A0123456', '2019-12-05', '2029-12-05');
+      const { id } = await passeport();
+      expect((await vueDCH(id)).controle).toEqual({
+        mode: 'conformite',
+        fiche: { numero: 'A0123456', delivreLe: '2019-12-05', expireLe: '2029-12-05' },
+      });
+      // L'agent ne voit pas ce contrôle : il est pour qui vérifie.
+      expect((await pieces.list(moussa.session, moussa.employeeId))[0]?.controle).toBeNull();
+      await pieces.review(mariama.session, id, { decision: 'approved' });
+      expect(await fiche()).toBe('passport:A0123456:2019-12-05:2029-12-05');
+    });
+
+    it('un renouvellement : qui valide saisit la nouvelle pièce — la fiche suit, l’ancien document part', async () => {
+      await ficheDeMoussa('passport', 'A0123456', '2019-12-05', '2029-12-05');
+      const { id: ancien } = await passeport();
+      await pieces.review(mariama.session, ancien, { decision: 'approved' });
+      const { id } = await passeport(true);
+      const vue = await vueDCH(id);
+      expect(vue).toMatchObject({ renouvellement: true, controle: { mode: 'saisie' } });
+      expect(await codeOf(() => pieces.review(mariama.session, id, { decision: 'approved' }))).toBe(
+        'documents.titre_requis',
+      );
+      expect(
+        await codeOf(async () =>
+          pieces.review(mariama.session, id, {
+            decision: 'approved',
+            titre: { numero: 'B999', delivreLe: '2015-01-01', expireLe: await dans(-1) },
+          }),
+        ),
+      ).toBe('documents.expire');
+      const expireLe = await dans(3650);
+      await pieces.review(mariama.session, id, {
+        decision: 'approved',
+        titre: { numero: 'B7654321', delivreLe: '2026-09-01', expireLe },
+      });
+      expect(await fiche()).toBe(`passport:B7654321:2026-09-01:${expireLe}`);
+      expect(await dossier()).toEqual(['Passeport:approved']);
+    });
+
+    it('une fiche sans pièce : la première se saisit, et la fiche en prend le type', async () => {
+      const { id } = await titre('cni', 'CNI', await dans(2000));
+      expect((await vueDCH(id)).controle?.mode).toBe('saisie');
+      const expireLe = await dans(3000);
+      await pieces.review(mariama.session, id, {
+        decision: 'approved',
+        titre: { numero: '1751198501234', delivreLe: '2024-03-01', expireLe },
+      });
+      expect(await fiche()).toBe(`cni:1751198501234:2024-03-01:${expireLe}`);
+    });
+
+    it('un autre titre que celui de la fiche se vérifie comme un autre document', async () => {
+      await ficheDeMoussa('passport', 'A0123456', '2019-12-05', '2029-12-05');
+      const { id } = await titre('cni', 'CNI', await dans(2000));
+      expect((await vueDCH(id)).controle).toBeNull();
+      expect(
+        await codeOf(async () =>
+          pieces.review(mariama.session, id, {
+            decision: 'approved',
+            titre: { numero: 'X', delivreLe: '2024-01-01', expireLe: await dans(100) },
+          }),
+        ),
+      ).toBe('documents.pas_le_titre');
+      await pieces.review(mariama.session, id, { decision: 'approved' });
+      expect(await fiche()).toBe('passport:A0123456:2019-12-05:2029-12-05');
+    });
+  });
+
   it('l’expiration : un rappel quinze jours avant, un le jour même — au titulaire, une fois chacun', async () => {
     const { id } = await titre('passeport', 'Passeport', await dans(10));
     const relever = (qui: Agent) => new NotificationsService(db).list(qui.session);
@@ -566,7 +688,7 @@ describe('les pièces justificatives', () => {
     expect(await rappels(mariama)).toEqual([]);
 
     // Un nouveau passeport déposé : l'ancien, même expiré, ne rappelle plus rien.
-    await pieces.review(mariama.session, id, { decision: 'approved' });
+    await pieces.review(mariama.session, id, { decision: 'approved', titre: await infos() });
     await raw(`DELETE FROM notifications WHERE type = 'document_expiry'`);
     await raw(`UPDATE employee_documents SET expires_on = CURRENT_DATE - 3 WHERE id = $1`, [id]);
     await titre('passeport', 'Nouveau passeport', await dans(3000));

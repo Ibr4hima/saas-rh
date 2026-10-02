@@ -76,6 +76,11 @@ const fichierSchema = z.object({
     .max(Math.ceil((MAX_EMPLOYEE_DOCUMENT_BYTES * 4) / 3) + 4),
   /** CNI et passeport seulement — exigée pour eux. */
   expiresOn: z.iso.date().optional(),
+  /**
+   * CNI et passeport déjà au dossier : une nouvelle pièce (true), ou la même
+   * à nouveau (false). Qui vérifie saisit alors ses informations, ou compare.
+   */
+  renouvellement: z.boolean().optional(),
 });
 
 export const uploadEmployeeDocumentSchema = fichierSchema
@@ -90,13 +95,40 @@ export type UploadEmployeeDocumentInput = z.infer<typeof uploadEmployeeDocumentS
 export const replaceEmployeeDocumentSchema = fichierSchema;
 export type ReplaceEmployeeDocumentInput = z.infer<typeof replaceEmployeeDocumentSchema>;
 
+/** Les informations d'un titre d'identité, telles que le document les porte. */
+export const titreSaisiSchema = z
+  .object({
+    numero: z.string().trim().min(1).max(40),
+    delivreLe: z.iso.date(),
+    expireLe: z.iso.date(),
+  })
+  .refine((t) => t.delivreLe < t.expireLe, {
+    message: 'La date d’expiration doit suivre la date de délivrance.',
+    path: ['expireLe'],
+  });
+export type TitreSaisi = z.infer<typeof titreSaisiSchema>;
+
 export const reviewEmployeeDocumentSchema = z.object({
   decision: z.enum(['approved', 'rejected']),
   comment: z.string().trim().max(500).optional(),
+  /** Valider le titre de la fiche : ses informations, qui remplacent celles de la fiche. */
+  titre: titreSaisiSchema.optional(),
 });
 export type ReviewEmployeeDocumentInput = z.infer<typeof reviewEmployeeDocumentSchema>;
 
 export type DocumentStatus = 'pending' | 'approved' | 'rejected';
+
+/**
+ * Vérifier le titre d'identité de la fiche — pour qui le vérifie :
+ *  — `conformite` : le document doit porter les informations de la fiche ;
+ *  — `saisie` : une nouvelle pièce (renouvellement, ou fiche vide) — qui
+ *    valide en saisit les informations, et la fiche est mise à jour.
+ */
+export interface ControleDuTitre {
+  mode: 'conformite' | 'saisie';
+  /** Ce que la fiche porte aujourd'hui. */
+  fiche: { numero: string | null; delivreLe: string | null; expireLe: string | null };
+}
 
 export interface EmployeeDocumentView {
   id: string;
@@ -115,6 +147,10 @@ export interface EmployeeDocumentView {
   createdAt: string;
   /** CNI et passeport : la date d'expiration — pour le titulaire seulement. */
   expiresOn: string | null;
+  /** CNI et passeport : une nouvelle pièce, déclarée par l'agent au dépôt. */
+  renouvellement: boolean;
+  /** Le titre de la fiche, à vérifier : pour qui le vérifie, sinon null. */
+  controle: ControleDuTitre | null;
   /** true si l'utilisateur COURANT est la contrepartie attendue pour valider. */
   canReview: boolean;
   canDelete: boolean;

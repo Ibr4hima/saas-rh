@@ -2,11 +2,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
+  ControleDuTitre,
   DocumentCategory,
   EmployeeDocumentView,
   PieceATraiterView,
   ReplaceEmployeeDocumentInput,
   ReviewEmployeeDocumentInput,
+  TitreSaisi,
   SessionUser,
   UploadEmployeeDocumentInput,
 } from '@teranga/contracts';
@@ -17,7 +19,9 @@ import {
   estUnique,
   MAX_EMPLOYEE_DOCUMENT_BYTES,
   peut,
+  titreDeLaFiche,
 } from '@teranga/contracts';
+import { EncryptionService } from '../../common/encryption.service';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -57,6 +61,31 @@ function lireLeFichier(input: { contentType: string; contentBase64: string }): B
   return data;
 }
 
+/** Le titre d'identité que porte la fiche : son type, son numéro, ses dates. */
+interface TitreDeLaFiche {
+  type: 'cni' | 'passeport' | null;
+  numero: string | null;
+  delivreLe: string | null;
+  expireLe: string | null;
+}
+
+/**
+ * Comment vérifier un titre d'identité déposé. Le titre de la fiche — même
+ * type, ou fiche sans type — se vérifie contre elle : on compare le
+ * document à ce qu'elle porte (`conformite`) ; s'il s'agit d'une nouvelle
+ * pièce, ou que la fiche n'en dit rien, on en saisit les informations, qui
+ * la mettent à jour (`saisie`). Un autre document — une CNI quand la fiche
+ * porte un passeport — se vérifie comme les autres : null.
+ */
+function modeDeControle(
+  doc: { category: string; renouvellement: boolean },
+  fiche: TitreDeLaFiche,
+): ControleDuTitre['mode'] | null {
+  if (!aUneExpiration(doc.category as DocumentCategory)) return null;
+  if (fiche.type !== null && fiche.type !== doc.category) return null;
+  return doc.renouvellement || fiche.type === null || !fiche.numero ? 'saisie' : 'conformite';
+}
+
 /**
  * La date d'expiration d'un titre d'identité : exigée pour la CNI et le
  * passeport, et pas encore passée — on ne dépose pas un titre expiré. Les
@@ -90,7 +119,29 @@ export class EmployeeDocumentsService {
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(EncryptionService) private readonly crypto: EncryptionService,
   ) {}
+
+  /** Le titre d'identité de la fiche d'un agent — le numéro déchiffré. */
+  private async titreDeLaFiche(tx: Tx, employeeId: string): Promise<TitreDeLaFiche> {
+    const [p] = await tx
+      .select({
+        type: t.persons.idDocumentType,
+        numero: t.persons.nationalIdEncrypted,
+        delivreLe: t.persons.idDocumentIssuedOn,
+        expireLe: t.persons.idDocumentExpiresOn,
+      })
+      .from(t.employees)
+      .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+      .where(eq(t.employees.id, employeeId))
+      .limit(1);
+    return {
+      type: titreDeLaFiche(p?.type ?? null),
+      numero: p?.numero ? this.crypto.decrypt(p.numero) : null,
+      delivreLe: p?.delivreLe ?? null,
+      expireLe: p?.expireLe ?? null,
+    };
+  }
 
   /**
    * L'agent dépose SES pièces, depuis son espace — personne ne dépose sur le
@@ -173,6 +224,7 @@ export class EmployeeDocumentsService {
         uploadedByUserId: user.userId,
         uploadedBySide: 'employee',
         expiresOn,
+        renouvellement: aUneExpiration(input.category) && Boolean(input.renouvellement),
       });
 
       // À qui vérifie les pièces pour la DCH — et à eux seuls.
@@ -220,6 +272,9 @@ export class EmployeeDocumentsService {
           sizeBytes: data.length,
           data,
           expiresOn,
+          ...(input.renouvellement !== undefined && aUneExpiration(doc.category as DocumentCategory)
+            ? { renouvellement: input.renouvellement }
+            : {}),
           createdAt: new Date(),
         })
         .where(eq(t.employeeDocuments.id, documentId));
@@ -259,6 +314,7 @@ export class EmployeeDocumentsService {
         employeeId: doc.employeeId,
         confieeA: doc.confieeAEmployeeId,
       });
+      if (input.decision === 'approved') await this.reporterSurLaFiche(tx, doc, input.titre);
 
       await tx
         .update(t.employeeDocuments)
@@ -298,6 +354,66 @@ export class EmployeeDocumentsService {
         link: '/moi/documents/justificatifs',
       });
     });
+  }
+
+  /**
+   * Valider le titre de la fiche. En conformité, le document porte ce que dit
+   * la fiche : rien à écrire — sauf si qui vérifie constate une nouvelle
+   * pièce et en saisit les informations. Une nouvelle pièce (renouvellement,
+   * fiche vide) se valide avec ses informations : elles remplacent celles de
+   * la fiche. Un autre document ne touche pas à la fiche.
+   */
+  private async reporterSurLaFiche(
+    tx: Tx,
+    doc: typeof t.employeeDocuments.$inferSelect,
+    titre: TitreSaisi | undefined,
+  ): Promise<void> {
+    const mode = modeDeControle(doc, await this.titreDeLaFiche(tx, doc.employeeId));
+    if (mode === null) {
+      if (titre) {
+        problem(
+          422,
+          'documents.pas_le_titre',
+          'Ce document n’est pas la pièce d’identité de la fiche',
+          'Ses informations ne s’y reportent pas.',
+        );
+      }
+      return;
+    }
+    if (!titre) {
+      if (mode === 'conformite') return;
+      problem(
+        422,
+        'documents.titre_requis',
+        'Saisissez les informations de la nouvelle pièce',
+        'Son numéro, sa date de délivrance et sa date d’expiration remplacent celles de la fiche.',
+      );
+    }
+    const { rows } = await tx.execute<{ expiree: boolean }>(
+      sql`SELECT ${titre.expireLe}::date <= CURRENT_DATE AS expiree`,
+    );
+    if (rows[0]?.expiree) {
+      problem(
+        422,
+        'documents.expire',
+        'Cette pièce a expiré',
+        'Rejetez le document : l’agent en déposera un en cours de validité.',
+      );
+    }
+    const [e] = await tx
+      .select({ personId: t.employees.personId })
+      .from(t.employees)
+      .where(eq(t.employees.id, doc.employeeId))
+      .limit(1);
+    await tx
+      .update(t.persons)
+      .set({
+        idDocumentType: doc.category === 'cni' ? 'cni' : 'passport',
+        nationalIdEncrypted: this.crypto.encrypt(titre.numero),
+        idDocumentIssuedOn: titre.delivreLe,
+        idDocumentExpiresOn: titre.expireLe,
+      })
+      .where(eq(t.persons.id, e!.personId));
   }
 
   async list(user: SessionUser, employeeId: string): Promise<EmployeeDocumentView[]> {
@@ -464,6 +580,19 @@ export class EmployeeDocumentsService {
       !o.isOwner &&
       doc.uploadedByUserId !== user.userId &&
       Boolean(tr?.peutTraiter);
+    // Qui vérifie le titre de la fiche voit ce qu'elle porte : de quoi
+    // comparer, ou de quoi remplacer.
+    let controle: ControleDuTitre | null = null;
+    if (canReview && aUneExpiration(doc.category as DocumentCategory)) {
+      const fiche = await this.titreDeLaFiche(tx, doc.employeeId);
+      const mode = modeDeControle(doc, fiche);
+      if (mode) {
+        controle = {
+          mode,
+          fiche: { numero: fiche.numero, delivreLe: fiche.delivreLe, expireLe: fiche.expireLe },
+        };
+      }
+    }
     // Retirer une pièce validée : qui gère les dossiers — pas sur le sien.
     const canDelete =
       (peut(user, 'personnel.gerer') && !o.isOwner) ||
@@ -484,6 +613,8 @@ export class EmployeeDocumentsService {
       createdAt: doc.createdAt.toISOString(),
       // L'échéance d'un titre sert à son titulaire : la DCH ne la suit pas.
       expiresOn: o.isOwner ? doc.expiresOn : null,
+      renouvellement: doc.renouvellement,
+      controle,
       canReview,
       canDelete,
       canReplace: o.isOwner && doc.status === 'pending' && doc.uploadedByUserId === user.userId,

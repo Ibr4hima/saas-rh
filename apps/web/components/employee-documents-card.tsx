@@ -25,6 +25,7 @@ import {
   Skeleton,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../lib/api';
+import { FenetreControleDuTitre } from './controle-titre';
 import { Icon } from './icons';
 import { formatDate } from '../lib/hooks';
 import { type ViewableDoc } from './doc-viewer';
@@ -91,6 +92,8 @@ export function EmployeeDocumentsCard({
   const [typeInitial, setTypeInitial] = useState<DocumentCategory | null>(null);
   // Le dépôt dont l'agent change le fichier, tant qu'il est en vérification.
   const [aRemplacer, setARemplacer] = useState<EmployeeDocumentView | null>(null);
+  // Le titre d'identité de la fiche, en cours de vérification.
+  const [aControler, setAControler] = useState<EmployeeDocumentView | null>(null);
   const [rejectComment, setRejectComment] = useState('');
 
   const documents = useQuery({
@@ -281,6 +284,7 @@ export function EmployeeDocumentsCard({
                           : ` · ${d.uploadedByName}${d.uploadedBySide === 'hr' ? ' (DCH)' : ''}`}{' '}
                         · {formatDate(d.createdAt.slice(0, 10))}
                         {d.expiresOn ? ` · expire le ${formatDate(d.expiresOn)}` : ''}
+                        {d.renouvellement && d.status === 'pending' ? ' · Renouvellement' : ''}
                       </span>
                     </span>
                   </button>
@@ -291,7 +295,12 @@ export function EmployeeDocumentsCard({
                     <div className="flex shrink-0 gap-1.5">
                       <Button
                         size="sm"
-                        onClick={() => review.mutate({ id: d.id, decision: 'approved' })}
+                        // Le titre de la fiche se vérifie contre elle.
+                        onClick={() =>
+                          d.controle
+                            ? setAControler(d)
+                            : review.mutate({ id: d.id, decision: 'approved' })
+                        }
                         loading={review.isPending}
                       >
                         Valider
@@ -372,6 +381,10 @@ export function EmployeeDocumentsCard({
           ouverte={depotOuvert || aRemplacer !== null}
           remplace={aRemplacer}
           typeInitial={typeInitial}
+          // Déjà au dossier : le nouveau dépôt est-il un renouvellement ?
+          dejaAuDossier={
+            new Set(pieces.filter((d) => d.status === 'approved').map((d) => d.category))
+          }
           // Un seul exemplaire en vérification : on change celui-là.
           enVerification={
             new Set(
@@ -390,6 +403,23 @@ export function EmployeeDocumentsCard({
             setTypeInitial(null);
             setARemplacer(null);
             invalidate();
+          }}
+        />
+      ) : null}
+      {aControler ? (
+        <FenetreControleDuTitre
+          piece={aControler}
+          employe={aControler.uploadedByName}
+          onFermer={() => setAControler(null)}
+          onRejeter={(motif) => {
+            setRejectingId(aControler.id);
+            setRejectComment(motif);
+            setAControler(null);
+          }}
+          onValide={(fiche) => {
+            setAControler(null);
+            invalidate();
+            if (fiche) void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
           }}
         />
       ) : null}
@@ -422,6 +452,7 @@ function FenetreDepot({
   ouverte,
   remplace,
   typeInitial,
+  dejaAuDossier,
   enVerification,
   onFermer,
   onDepose,
@@ -431,6 +462,8 @@ function FenetreDepot({
   remplace: EmployeeDocumentView | null;
   /** Le type déjà choisi à l'ouverture — le titre d'identité attendu. */
   typeInitial: DocumentCategory | null;
+  /** Les types dont un exemplaire est déjà au dossier. */
+  dejaAuDossier: ReadonlySet<DocumentCategory>;
   /** Les types à exemplaire unique dont un dépôt attend déjà la vérification. */
   enVerification: ReadonlySet<DocumentCategory>;
   onFermer: () => void;
@@ -447,12 +480,18 @@ function FenetreDepot({
   // Au remplacement, la date déjà donnée, que l'agent corrige s'il le faut.
   const expiresOn = expiration ?? remplace?.expiresOn ?? '';
   const demandeLaDate = type !== '' && aUneExpiration(type);
+  // Un titre déjà au dossier : nouvelle pièce, ou la même ? Qui vérifie
+  // saura s'il compare le document à la fiche ou en saisit les informations.
+  const [reponse, setReponse] = useState<boolean | null>(null);
+  const demandeSiRenouvellement = demandeLaDate && dejaAuDossier.has(type as DocumentCategory);
+  const renouvellement = reponse ?? (remplace ? remplace.renouvellement : null);
 
   const remettre = () => {
     setType('');
     setFichier(null);
     setNom('');
     setExpiration(null);
+    setReponse(null);
     setErreur(null);
   };
 
@@ -465,6 +504,7 @@ function FenetreDepot({
         contentType: fichier!.contentType,
         contentBase64: fichier!.contentBase64,
         ...(demandeLaDate ? { expiresOn } : {}),
+        ...(demandeSiRenouvellement ? { renouvellement: renouvellement === true } : {}),
       };
       return remplace
         ? api(`/employee-documents/${remplace.id}`, { method: 'PUT', body: corps })
@@ -524,7 +564,13 @@ function FenetreDepot({
             Annuler
           </Button>
           <Button
-            disabled={!type || !fichier || !nom.trim() || (demandeLaDate && !expiresOn)}
+            disabled={
+              !type ||
+              !fichier ||
+              !nom.trim() ||
+              (demandeLaDate && !expiresOn) ||
+              (demandeSiRenouvellement && renouvellement === null)
+            }
             loading={deposer.isPending}
             onClick={() => deposer.mutate()}
           >
@@ -552,6 +598,40 @@ function FenetreDepot({
             ))}
           </Select>
         </Field>
+
+        {demandeSiRenouvellement ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[12.5px] font-semibold text-ink">
+              S’agit-il d’un renouvellement ?
+            </span>
+            <div
+              role="radiogroup"
+              aria-label="S’agit-il d’un renouvellement ?"
+              className="flex gap-1 rounded-full border border-line-soft bg-bg p-1 sm:w-fit"
+            >
+              {[
+                { oui: true, label: 'Oui, une nouvelle pièce' },
+                { oui: false, label: 'Non, la même pièce' },
+              ].map((o) => (
+                <button
+                  key={o.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={renouvellement === o.oui}
+                  onClick={() => setReponse(o.oui)}
+                  className={cn(
+                    'flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
+                    renouvellement === o.oui
+                      ? 'bg-surface text-primary shadow-sm'
+                      : 'text-ink-muted hover:text-ink',
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {demandeLaDate ? (
           <Field label="Date d’expiration" htmlFor={`${id}-expiration`} required>
