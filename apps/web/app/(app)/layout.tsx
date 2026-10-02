@@ -110,14 +110,6 @@ const NAV_ITEMS: NavItem[] = [
     groupe: 'effectif',
   },
   {
-    // Les CDD et stages qui arrivent à leur terme : l'alerte y mène.
-    href: '/contrats',
-    label: 'Échéances de contrat',
-    short: 'Contrats',
-    icon: 'schedule',
-    groupe: 'effectif',
-  },
-  {
     href: '/organisation',
     label: 'Organigramme',
     short: 'Organig.',
@@ -194,7 +186,6 @@ const NAV_ITEMS: NavItem[] = [
 const PAGE_TITLES: Record<string, string> = {
   '/employees': 'Gestion du personnel',
   '/employees/new': 'Nouvel employé',
-  '/contrats': 'Échéances de contrat',
   '/absences': 'Absences & Congés',
   '/absences/feries': 'Gestion des jours fériés',
   '/absences/parametres': 'Paramètres des congés',
@@ -504,9 +495,6 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
         break;
       case '/employees':
         if (peut(user, 'personnel.consulter')) items.push(i);
-        break;
-      case '/contrats':
-        if (peut(user, 'contrats.echeances')) items.push(i);
         break;
       case '/absences/parametres':
         // Déléguer, puis traiter ; les réglages des congés ensuite, à qui les
@@ -1189,7 +1177,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
       return peut(u, 'personnel.gerer');
     }
     if (commence('/employees')) return peut(u, 'personnel.consulter');
-    if (commence('/contrats')) return peut(u, 'contrats.echeances') || peut(u, 'pilotage');
     if (commence('/absences/feries')) return peut(u, 'feries');
     if (commence('/absences/parametres')) return peut(u, 'conges.parametres');
     if (commence('/absences')) return voitLesConges(u);

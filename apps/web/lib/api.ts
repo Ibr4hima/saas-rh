@@ -11,7 +11,7 @@ export class ApiError extends Error {
 /** Client API unique : cookies de session inclus, erreurs RFC 9457 typées. */
 export async function api<T>(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  options: { method?: string; body?: unknown; signal?: AbortSignal; keepalive?: boolean } = {},
 ): Promise<T> {
   // Un fichier part TEL QUEL, avec son propre type. L'encoder en base64 dans
   // du JSON ajouterait un tiers de volume à l'aller et autant de travail au
@@ -21,6 +21,8 @@ export async function api<T>(
     method: options.method ?? 'GET',
     credentials: 'include',
     signal: options.signal,
+    // Une requête qui doit partir même si l'onglet se ferme.
+    keepalive: options.keepalive,
     headers: binaire
       ? { 'Content-Type': (options.body as Blob).type || 'application/octet-stream' }
       : options.body !== undefined

@@ -718,61 +718,51 @@ export default function DashboardPage() {
               description="Les CDD et les stages en cours apparaîtront ici, les plus proches de leur terme d'abord."
             />
           ) : (
-            <>
-              <Table>
-                <THead>
-                  <tr>
-                    <Th>Matricule</Th>
-                    <Th>Nom</Th>
-                    <Th>Poste</Th>
-                    <Th>Contrat</Th>
-                    <Th>Date fin</Th>
-                    <Th className="text-right whitespace-nowrap">Jours restants</Th>
-                  </tr>
-                </THead>
-                <TBody>
-                  {d!.contractFollowUp.map((c) => {
-                    const deadline = deadlineLabel(c.daysLeft);
-                    return (
-                      <Tr key={c.employeeId}>
-                        <Td className="font-mono text-ink-muted">{c.employeeNumber}</Td>
-                        <Td className="whitespace-nowrap">
-                          <Link
-                            href={`/employees/${c.employeeId}`}
-                            className="font-medium text-ink-strong hover:underline"
-                          >
-                            {c.name}
-                          </Link>
-                        </Td>
-                        <Td
-                          className="max-w-40 truncate text-ink-muted"
-                          title={c.positionTitle ?? undefined}
+            <Table>
+              <THead>
+                <tr>
+                  <Th>Matricule</Th>
+                  <Th>Nom</Th>
+                  <Th>Poste</Th>
+                  <Th>Contrat</Th>
+                  <Th>Date fin</Th>
+                  <Th className="text-right whitespace-nowrap">Jours restants</Th>
+                </tr>
+              </THead>
+              <TBody>
+                {d!.contractFollowUp.map((c) => {
+                  const deadline = deadlineLabel(c.daysLeft);
+                  return (
+                    <Tr key={c.employeeId}>
+                      <Td className="font-mono text-ink-muted">{c.employeeNumber}</Td>
+                      <Td className="whitespace-nowrap">
+                        <Link
+                          href={`/employees/${c.employeeId}`}
+                          className="font-medium text-ink-strong hover:underline"
                         >
-                          {c.positionTitle ?? '—'}
-                        </Td>
-                        <Td className="uppercase">{c.contractType}</Td>
-                        <Td className="whitespace-nowrap">
-                          {c.endDate ? formatDate(c.endDate) : '—'}
-                        </Td>
-                        <Td className="text-right">
-                          <Badge tone={deadline.tone} className="whitespace-nowrap">
-                            {deadline.text}
-                          </Badge>
-                        </Td>
-                      </Tr>
-                    );
-                  })}
-                </TBody>
-              </Table>
-              {d && d.contractFollowUpTotal > d.contractFollowUp.length ? (
-                <CardContent className="border-t border-line-soft py-3">
-                  <p className="text-xs text-ink-muted">
-                    {d.contractFollowUp.length} des {d.contractFollowUpTotal} contrats suivis — les
-                    plus urgents d&apos;abord.
-                  </p>
-                </CardContent>
-              ) : null}
-            </>
+                          {c.name}
+                        </Link>
+                      </Td>
+                      <Td
+                        className="max-w-40 truncate text-ink-muted"
+                        title={c.positionTitle ?? undefined}
+                      >
+                        {c.positionTitle ?? '—'}
+                      </Td>
+                      <Td className="uppercase">{c.contractType}</Td>
+                      <Td className="whitespace-nowrap">
+                        {c.endDate ? formatDate(c.endDate) : '—'}
+                      </Td>
+                      <Td className="text-right">
+                        <Badge tone={deadline.tone} className="whitespace-nowrap">
+                          {deadline.text}
+                        </Badge>
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </TBody>
+            </Table>
           )}
         </Card>
       ) : null}

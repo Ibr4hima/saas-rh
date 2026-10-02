@@ -488,7 +488,7 @@ describe('les échéances de contrat', () => {
       tenantId,
     ]);
 
-  it('vont à qui les suit, jamais à l’agent dont c’est le contrat ; sans personne, au directeur', async () => {
+  it('vont à qui gère le personnel, jamais à l’agent dont c’est le contrat ; sans personne, au directeur', async () => {
     await cdd(moussa, 20);
     await cdd(awa, 15);
     try {
@@ -496,19 +496,32 @@ describe('les échéances de contrat', () => {
       await relever();
       expect(await alertes()).toEqual(['Awa→Mariama', 'Moussa→Mariama']);
 
-      // Confié à Awa et Khady : elles seules — et Awa pas pour son propre contrat.
+      // Elles mènent au dossier de l'agent, où l'on renouvelle ou l'on clôt.
+      const { rows: liens } = await raw(
+        `SELECT DISTINCT n.link FROM notifications n
+          WHERE n.tenant_id = $1 AND n.type = 'contract_deadline' ORDER BY 1`,
+        [tenantId],
+      );
+      expect(liens.map((l) => l.link)).toEqual(
+        [awa, moussa].map((a) => `/employees/${a.employeeId}`).sort(),
+      );
+
+      // La gestion du personnel confiée à Awa et Khady : elles seules — et Awa
+      // pas pour son propre contrat.
       await recommencer();
-      await habiliter(awa, 'contrats.echeances');
-      await habiliter(khady, 'contrats.echeances');
+      await habiliter(awa, 'personnel.gerer');
+      await habiliter(khady, 'personnel.gerer');
       await relever();
       expect(await alertes()).toEqual(['Awa→Khady', 'Moussa→Awa', 'Moussa→Khady']);
 
-      // Awa seule à les suivre : son propre contrat revient au directeur.
+      // Awa seule à gérer le personnel : son propre contrat revient au directeur.
       await recommencer();
-      await habiliter(khady, 'contrats.echeances', false);
+      await habiliter(khady, 'personnel.gerer', false);
       await relever();
       expect(await alertes()).toEqual(['Awa→Mariama', 'Moussa→Awa']);
     } finally {
+      await habiliter(awa, 'personnel.gerer', false);
+      await habiliter(khady, 'personnel.gerer', false);
       await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
     }
   });
@@ -517,12 +530,9 @@ describe('les échéances de contrat', () => {
     const { capacites } = await db.withTenant({ tenantId, userId: mariama.session.userId }, (tx) =>
       capacitesDe(tx, mariama.session.userId, mariama.session.role),
     );
-    for (const c of [
-      'contrats.echeances',
-      'feries',
-      'recrutement.offres',
-      'recrutement.candidatures',
-    ] as const) {
+    // Les échéances de contrat suivent la gestion du personnel : plus de délégation à part.
+    expect(capacites).not.toContain('contrats.echeances');
+    for (const c of ['feries', 'recrutement.offres', 'recrutement.candidatures'] as const) {
       expect(capacites).toContain(c);
     }
     expect(capacites).not.toContain('recrutement');

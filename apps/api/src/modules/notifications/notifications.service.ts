@@ -142,8 +142,8 @@ export class NotificationsService {
     // avorte tout le reste — la lecture comprise.
     try {
       await this.db.withTenant(ctx, async (tx) => {
-        // Les échéances de contrat ne concernent que ceux qui les suivent.
-        if (peut(user, 'contrats.echeances') || peut(user, 'pilotage')) {
+        // Les échéances de contrat ne concernent que qui gère les dossiers.
+        if (peut(user, 'personnel.gerer') || peut(user, 'pilotage')) {
           await this.generateContractDeadlines(tx, user.tenantId);
         }
         // Les contrats arrivés à terme passent dans les inactifs — au plus une
@@ -387,10 +387,10 @@ export class NotificationsService {
 
   /**
    * Échéances : contrat AVEC date de fin, employé actif, fin dans ≤ 30 jours
-   * (≤ 10 jours pour les contrats d'environ un mois) — alerte à qui suit les
-   * échéances pour la DCH (sinon son directeur), jamais à l'agent dont c'est
-   * le contrat ; une par contrat, et la liste reste dans « Échéances de
-   * contrat » jusqu'au terme.
+   * (≤ 10 jours pour les contrats d'environ un mois) — alerte à qui gère les
+   * dossiers du personnel pour la DCH (sinon son directeur), jamais à l'agent
+   * dont c'est le contrat ; une par contrat. Elle mène à son dossier, où l'on
+   * renouvelle ou l'on clôt.
    */
   private async generateContractDeadlines(tx: Tx, tenantId: string): Promise<void> {
     const rows = await this.selectExpiring(tx);
@@ -398,12 +398,12 @@ export class NotificationsService {
       await alerterLaDCH(
         tx,
         tenantId,
-        'contrats.echeances',
+        'personnel.gerer',
         {
           type: 'contract_deadline',
           title: `Contrat de ${r.givenName} ${r.familyName} : échéance proche`,
           body: `${r.contractType.toUpperCase()} jusqu'au ${frDate(r.endDate)} — ${daysLeft} jour${daysLeft > 1 ? 's' : ''} restant${daysLeft > 1 ? 's' : ''}.`,
-          link: '/contrats',
+          link: `/employees/${r.employeeId}`,
           dedupeKey: `contract_deadline:${r.contractId}`,
         },
         r.employeeId,

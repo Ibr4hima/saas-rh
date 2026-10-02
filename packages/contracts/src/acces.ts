@@ -69,7 +69,6 @@ export const CAPACITES_GESTION = [
   'personnel.gerer',
   'personnel.sensible',
   'personnel.effacer',
-  'contrats.echeances',
   'conges.soldes',
   'conges.parametres',
   'feries',
@@ -232,7 +231,7 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   'personnel.gerer': {
     libelle: 'Gérer les dossiers',
     description:
-      'Créer, modifier, muter, désactiver, importer ; ouvrir le portail d’un agent ; déposer une pièce à son dossier.',
+      'Créer, modifier, muter, désactiver, importer ; ouvrir le portail d’un agent ; déposer une pièce à son dossier ; être prévenu des CDD et stages qui arrivent à leur terme.',
     groupe: 'Personnel',
   },
   'personnel.sensible': {
@@ -246,12 +245,6 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
     description: 'Supprimer définitivement un dossier et tout ce qui s’y rattache.',
     groupe: 'Personnel',
     sensible: true,
-  },
-  'contrats.echeances': {
-    libelle: 'Échéances de contrat',
-    description:
-      'Être prévenu des CDD et stages qui arrivent à leur terme — 30 jours avant, 10 pour un contrat court — et en suivre la liste.',
-    groupe: 'Personnel',
   },
   'conges.soldes': {
     libelle: 'Soldes de congés',

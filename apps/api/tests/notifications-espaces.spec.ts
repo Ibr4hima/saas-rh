@@ -138,7 +138,6 @@ describe('la règle SQL dit la même chose que celle des contrats', () => {
     '/demandes/pieces',
     '/employees',
     '/employees/abc',
-    '/contrats',
     '/absences/feries',
     '/recrutement/candidatures',
     '/calendrier',
@@ -194,7 +193,7 @@ describe('la règle SQL dit la même chose que celle des contrats', () => {
     // Gestion RH : ce qu'on traite pour les autres.
     expect(ou('conge_a_viser', '/moi/dch')).toBe('gestion');
     expect(ou('demande_a_traiter', '/documents')).toBe('gestion');
-    expect(ou('contract_deadline', '/contrats')).toBe('gestion');
+    expect(ou('contract_deadline', '/employees/abc')).toBe('gestion');
     expect(ou('delegation', '/moi/delegations')).toBe('gestion');
     expect(ou('delegation', '/organisation')).toBe('gestion');
     expect(ou('delegation', null)).toBe('gestion');

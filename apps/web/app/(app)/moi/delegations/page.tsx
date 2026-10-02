@@ -4,16 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Capacite, MembreHabilite } from '@teranga/contracts';
-import {
-  Button,
-  Card,
-  CardHeader,
-  CardTitle,
-  Checkbox,
-  cn,
-  EmptyState,
-  Skeleton,
-} from '@teranga/ui';
+import { Card, CardHeader, CardTitle, Checkbox, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
   TYPES_DOCUMENTS,
   TYPES_PIECES,
@@ -37,8 +28,8 @@ import { api } from '../../../../lib/api';
    Une ligne par page de Gestion RH, et sa liste des agents de la DCH : en
    cocher un, c'est l'autoriser ; le directeur garde toujours la main. Le
    « i » dit ce que la délégation permettra de faire.
-   Les documents se délèguent type par type. On coche, on décoche, puis on
-   enregistre — d'un coup.
+   Les documents se délèguent type par type. Chaque coche s'enregistre
+   d'elle-même.
 
    Chaque page porte aussi son propre « Déléguer » : ici, on voit tout.
    ———————————————————————————————————————————————————————————————— */
@@ -60,19 +51,11 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       {
         cle: 'personnel',
         description:
-          'Le délégué pourra consulter et gérer les dossiers du personnel : créer, modifier, muter ou désactiver un agent, importer des dossiers, accéder aux données sensibles et ajuster les soldes de congés.',
+          'Le délégué pourra consulter et gérer les dossiers du personnel : créer, modifier, muter ou désactiver un agent, importer des dossiers, accéder aux données sensibles et ajuster les soldes de congés. Les alertes d’échéance des CDD et des stages lui seront aussi adressées.',
         libelle: 'Gestion du personnel',
         icone: 'group',
         sensible: true,
         capacites: CAPACITES_PERSONNEL,
-      },
-      {
-        cle: 'contrats',
-        description:
-          'Le délégué suivra les CDD et les stages qui arrivent à leur terme et recevra les alertes d’échéance, pour préparer à temps un renouvellement ou une fin de contrat.',
-        libelle: 'Échéances de contrat',
-        icone: 'schedule',
-        capacites: ['contrats.echeances'],
       },
       {
         cle: 'organigramme',
@@ -167,12 +150,14 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
   },
 ];
 
-/** Ce qui se coche d'un geste : une page, ou un type de document. */
-const UNITES: (readonly Capacite[])[] = SECTIONS.flatMap((s) =>
-  s.lignes.flatMap((l) => ('types' in l ? l.types.map((t) => [t.capacite]) : [l.capacites])),
-);
-
 const cle = (capacite: Capacite, employeeId: string) => `${capacite}:${employeeId}`;
+
+/** Une habilitation à accorder ou à retirer — ce qu'attend le serveur. */
+interface Changement {
+  capacite: Capacite;
+  employeeId: string;
+  accordee: boolean;
+}
 
 export default function DelegationsPage() {
   const queryClient = useQueryClient();
@@ -182,14 +167,22 @@ export default function DelegationsPage() {
   const modifiable = Boolean(d?.estDirecteur);
   const [message, setMessage] = useState<Message>(null);
 
-  // Ce qui est délégué aujourd'hui, et ce que la page en fait — tant qu'on
-  // n'a rien touché, c'est la même chose.
+  // Ce qui est délégué aujourd'hui, tel que le serveur le dit.
   const actuel = useMemo(
     () => new Set(membres.flatMap((m) => m.capacites.map((c) => cle(c, m.employeeId)))),
     [membres],
   );
-  const [brouillon, setBrouillon] = useState<Set<string> | null>(null);
-  const choix = brouillon ?? actuel;
+  // Ce que la page vient de cocher ou de décocher, et que le serveur n'a pas
+  // encore rendu : la coche suit le geste, sans attendre.
+  const [touches, setTouches] = useState<Record<string, Changement>>({});
+  const choix = useMemo(() => {
+    const n = new Set(actuel);
+    for (const [k, t] of Object.entries(touches)) {
+      if (t.accordee) n.add(k);
+      else n.delete(k);
+    }
+    return n;
+  }, [actuel, touches]);
 
   const coche = (capacites: readonly Capacite[], m: MembreHabilite, dans = choix) =>
     capacites.every((c) => dans.has(cle(c, m.employeeId)));
@@ -200,50 +193,80 @@ export default function DelegationsPage() {
    */
   const basculer = (capacites: readonly Capacite[], m: MembreHabilite) => {
     setMessage(null);
-    const n = new Set(choix);
-    const etaitPlein = coche(capacites, m, actuel);
     const allume = !coche(capacites, m);
-    for (const c of capacites) {
-      const k = cle(c, m.employeeId);
-      if (allume || (!etaitPlein && actuel.has(k))) n.add(k);
-      else n.delete(k);
-    }
-    setBrouillon(n);
+    const etaitPlein = coche(capacites, m, actuel);
+    setTouches((t) => {
+      const n = { ...t };
+      for (const capacite of capacites) {
+        const k = cle(capacite, m.employeeId);
+        if (allume || etaitPlein) n[k] = { capacite, employeeId: m.employeeId, accordee: allume };
+        else delete n[k];
+      }
+      return n;
+    });
   };
 
-  const changements = useMemo(() => {
-    const liste: { capacite: Capacite; employeeId: string; accordee: boolean }[] = [];
-    for (const m of membres) {
-      for (const c of new Set(UNITES.flat())) {
-        const k = cle(c, m.employeeId);
-        if (actuel.has(k) !== choix.has(k)) {
-          liste.push({ capacite: c, employeeId: m.employeeId, accordee: choix.has(k) });
-        }
-      }
-    }
-    return liste;
-  }, [membres, actuel, choix]);
-  // Ce que la personne a changé, compté comme elle l'a fait : une pastille.
-  const nbChangees = membres.reduce(
-    (n, m) => n + UNITES.filter((u) => coche(u, m, actuel) !== coche(u, m)).length,
-    0,
+  // Ce que le serveur n'a pas encore : un geste annulé aussitôt n'y va pas.
+  const changements = useMemo(
+    () => Object.entries(touches).flatMap(([k, t]) => (actuel.has(k) !== t.accordee ? [t] : [])),
+    [actuel, touches],
   );
 
   const enregistrer = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (liste: Changement[]) => {
       // Un changement à la fois : chacun l'apprend par sa propre notification.
-      for (const ch of changements) {
+      for (const ch of liste) {
         await api('/habilitations', { method: 'PUT', body: ch });
       }
     },
-    onSuccess: () => setMessage({ ton: 'ok', texte: 'Délégations enregistrées.' }),
-    onError: (err) => setMessage({ ton: 'erreur', texte: texteErreur(err) }),
+    onError: (err) => {
+      setTouches({});
+      setMessage({ ton: 'erreur', texte: texteErreur(err) });
+    },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ['habilitations'] });
       await queryClient.invalidateQueries({ queryKey: ['validations-compteurs'] });
-      setBrouillon(null);
     },
   });
+
+  // Chaque coche s'enregistre d'elle-même, un instant après le dernier geste ;
+  // ce qui arrive pendant un envoi part au suivant.
+  const { mutate, isPending } = enregistrer;
+  useEffect(() => {
+    if (isPending || changements.length === 0) return;
+    const t = setTimeout(() => mutate(changements), 400);
+    return () => clearTimeout(t);
+  }, [changements, isPending, mutate]);
+
+  // Ce que le serveur a rendu n'est plus en attente.
+  useEffect(() => {
+    setTouches((t) => {
+      const reste = Object.entries(t).filter(([k, v]) => actuel.has(k) !== v.accordee);
+      return reste.length === Object.keys(t).length ? t : Object.fromEntries(reste);
+    });
+  }, [actuel]);
+
+  // Quitter la page juste après un geste ne le perd pas : ce qui reste part
+  // au départ — vers un autre écran, ou onglet fermé.
+  const enAttente = useRef(changements);
+  useEffect(() => {
+    enAttente.current = changements;
+  }, [changements]);
+  useEffect(() => {
+    const vider = () => {
+      const reste = enAttente.current;
+      enAttente.current = [];
+      if (reste.length === 0) return;
+      void Promise.allSettled(
+        reste.map((ch) => api('/habilitations', { method: 'PUT', body: ch, keepalive: true })),
+      ).then(() => queryClient.invalidateQueries({ queryKey: ['habilitations'] }));
+    };
+    window.addEventListener('pagehide', vider);
+    return () => {
+      window.removeEventListener('pagehide', vider);
+      vider();
+    };
+  }, [queryClient]);
 
   if (etat.isLoading) {
     return (
@@ -345,30 +368,6 @@ export default function DelegationsPage() {
           </Card>
         ))
       )}
-
-      {/* Enregistrer d'un coup ce qu'on a coché : la barre ne paraît qu'à
-          la première modification. */}
-      {modifiable && nbChangees > 0 ? (
-        <div className="sticky bottom-24 z-20 mx-auto flex w-fit items-center gap-2 rounded-full border border-card-line bg-surface py-1.5 pr-1.5 pl-4 shadow-lg md:bottom-5">
-          <span
-            className="text-[12.5px] whitespace-nowrap text-ink"
-            style={{ fontVariantNumeric: 'tabular-nums' }}
-          >
-            {nbChangees} modification{nbChangees > 1 ? 's' : ''}
-          </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={enregistrer.isPending}
-            onClick={() => setBrouillon(null)}
-          >
-            Annuler
-          </Button>
-          <Button size="sm" loading={enregistrer.isPending} onClick={() => enregistrer.mutate()}>
-            Enregistrer
-          </Button>
-        </div>
-      ) : null}
     </Page>
   );
 }
@@ -402,7 +401,7 @@ function EnTete({ ligne: l }: { ligne: Ligne }) {
 
 /**
  * Qui est délégué : une liste déroulante des agents de la DCH, à cocher. Le
- * bouton dit qui l'est déjà ; « Enregistrer », en bas, applique le tout.
+ * bouton dit qui l'est déjà ; chaque coche s'enregistre d'elle-même.
  */
 function ChoixDelegues({
   libelle,

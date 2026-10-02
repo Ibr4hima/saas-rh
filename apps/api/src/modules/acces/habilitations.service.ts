@@ -38,7 +38,6 @@ const LIEN: Record<Capacite, string> = {
   'personnel.gerer': '/employees',
   'personnel.sensible': '/employees',
   'personnel.effacer': '/employees',
-  'contrats.echeances': '/contrats',
   'conges.soldes': '/employees',
   'conges.parametres': '/absences/parametres',
   feries: '/absences/feries',

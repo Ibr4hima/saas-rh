@@ -5,7 +5,7 @@ import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
 import { AccesGuard, Peut } from '../auth/acces.guard';
 import { compterEnAttenteDCH } from '../time/visas';
-import { compterLeSuiviDesContrats, suiviDesContrats } from '../people/suivi-contrats';
+import { suiviDesContrats } from '../people/suivi-contrats';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 
 @Controller()
@@ -43,7 +43,6 @@ export class DashboardController {
         directions,
         holidays,
         followUp,
-        followUpTotal,
       ] = await Promise.all([
         count(tx.select({ n }).from(t.employees).where(eq(t.employees.status, 'active'))),
         count(
@@ -160,10 +159,8 @@ export class DashboardController {
           (SELECT day::text AS day, label FROM holidays
              WHERE day >= CURRENT_DATE ORDER BY day ASC LIMIT 3)
           ORDER BY day`),
-        // La carte n'affiche que les plus urgents ; le total suit, pour que le
-        // reste soit annoncé plutôt que tu.
-        seesContracts ? suiviDesContrats(tx, 8) : Promise.resolve([]),
-        seesContracts ? compterLeSuiviDesContrats(tx) : Promise.resolve(0),
+        // Tous les contrats suivis : le tableau de bord en est la seule liste.
+        seesContracts ? suiviDesContrats(tx) : Promise.resolve([]),
       ]);
 
       const byGender = Object.fromEntries(genders.map((g) => [g.gender ?? '?', g.n]));
@@ -187,7 +184,6 @@ export class DashboardController {
         })),
         holidayWindow: holidays.rows,
         contractFollowUp: followUp,
-        contractFollowUpTotal: followUpTotal,
       };
     });
   }

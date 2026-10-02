@@ -87,7 +87,7 @@ export class NotificationsController {
 
   /** Les contrats sous l'œil de la RH jusqu'à leur expiration. */
   @Get('contracts/expiring')
-  @Peut('contrats.echeances', 'pilotage', 'personnel.consulter')
+  @Peut('pilotage', 'personnel.consulter')
   expiring(@Req() req: AuthenticatedRequest) {
     return this.notifications.expiringContracts(req.sessionUser);
   }

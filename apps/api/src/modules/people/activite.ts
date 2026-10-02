@@ -176,7 +176,7 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
     await alerterLaDCH(
       tx,
       tenantId,
-      'contrats.echeances',
+      'personnel.gerer',
       {
         type: 'contract_ended',
         title: `Contrat de ${a.nom} arrivé à terme`,
@@ -184,7 +184,7 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
           `${TYPES[a.type] ?? 'Contrat'} terminé le ${frDate(a.fin)} : le dossier est passé dans les inactifs et l’accès au portail est fermé.`,
           ...suite,
         ].join(' '),
-        link: '/contrats',
+        link: `/employees/${a.id}`,
         dedupeKey: `contrat_termine:${a.contrat}`,
       },
       a.id,
