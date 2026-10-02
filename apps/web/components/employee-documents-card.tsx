@@ -74,16 +74,21 @@ function SigneFichier({ contentType, grand = false }: { contentType: string; gra
 export function EmployeeDocumentsCard({
   employeeId,
   depot,
+  pieceAttendue = null,
 }: {
   employeeId: string;
   /** Le dossier de l'appelant : lui seul y dépose ses documents. */
   depot: boolean;
+  /** Le titre d'identité de sa fiche, qu'il doit déposer — CNI ou passeport. */
+  pieceAttendue?: 'cni' | 'passeport' | null;
 }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [viewed, setViewed] = useState<ViewableDoc | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [depotOuvert, setDepotOuvert] = useState(false);
+  // Le type proposé à l'ouverture : celui du titre attendu, le cas échéant.
+  const [typeInitial, setTypeInitial] = useState<DocumentCategory | null>(null);
   // Le dépôt dont l'agent change le fichier, tant qu'il est en vérification.
   const [aRemplacer, setARemplacer] = useState<EmployeeDocumentView | null>(null);
   const [rejectComment, setRejectComment] = useState('');
@@ -124,6 +129,15 @@ export function EmployeeDocumentsCard({
   // de l'agent, ses propres dépôts en attente sont attendus par la DCH — les
   // compter ici lui réclamait un geste qui ne lui revient pas.
   const aValider = pieces.filter((d) => d.canReview).length;
+  // Le titre de sa fiche, tant qu'aucun n'est en vérification ni au dossier :
+  // l'agent est tenu de le déposer.
+  const manquante =
+    depot &&
+    !documents.isLoading &&
+    pieceAttendue &&
+    !pieces.some((d) => d.category === pieceAttendue && d.status !== 'rejected')
+      ? pieceAttendue
+      : null;
 
   return (
     <Card>
@@ -147,7 +161,14 @@ export function EmployeeDocumentsCard({
           ) : null}
         </div>
         {depot ? (
-          <Button variant="secondary" size="sm" onClick={() => setDepotOuvert(true)}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setTypeInitial(null);
+              setDepotOuvert(true);
+            }}
+          >
             <Icon name="upload_file" size={15} />
             Déposer un document
           </Button>
@@ -160,7 +181,7 @@ export function EmployeeDocumentsCard({
           <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
             Chargement des documents impossible — rechargez la page.
           </p>
-        ) : pieces.length === 0 ? (
+        ) : pieces.length === 0 && !manquante ? (
           depot ? (
             // Vide, la carte est elle-même l'invitation à déposer.
             <button
@@ -182,6 +203,34 @@ export function EmployeeDocumentsCard({
           )
         ) : (
           <ul className="flex flex-col gap-2">
+            {manquante ? (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTypeInitial(manquante);
+                    setDepotOuvert(true);
+                  }}
+                  className="group flex w-full items-center gap-3.5 rounded-[12px] border border-dashed border-accent/40 bg-accent-soft/20 px-3.5 py-3 text-left transition-colors duration-150 hover:border-accent/60 hover:bg-accent-soft/35 focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none"
+                >
+                  <span
+                    aria-hidden
+                    className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-accent-soft text-accent-text"
+                  >
+                    <Icon name="upload_file" size={20} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-bold text-ink-strong">
+                      {DOCUMENT_CATEGORY_LABELS[manquante]}
+                    </span>
+                    <span className="block truncate text-[11.5px] text-ink-muted">Obligatoire</span>
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-accent-soft/70 px-2.5 py-[3px] text-[11px] font-semibold text-accent-text ring-1 ring-accent/25 ring-inset">
+                    Uploader
+                  </span>
+                </button>
+              </li>
+            ) : null}
             {pieces.map((d) => (
               <li
                 key={d.id}
@@ -304,6 +353,7 @@ export function EmployeeDocumentsCard({
           employeeId={employeeId}
           ouverte={depotOuvert || aRemplacer !== null}
           remplace={aRemplacer}
+          typeInitial={typeInitial}
           // Un seul exemplaire en vérification : on change celui-là.
           enVerification={
             new Set(
@@ -314,10 +364,12 @@ export function EmployeeDocumentsCard({
           }
           onFermer={() => {
             setDepotOuvert(false);
+            setTypeInitial(null);
             setARemplacer(null);
           }}
           onDepose={() => {
             setDepotOuvert(false);
+            setTypeInitial(null);
             setARemplacer(null);
             invalidate();
           }}
@@ -351,6 +403,7 @@ function FenetreDepot({
   employeeId,
   ouverte,
   remplace,
+  typeInitial,
   enVerification,
   onFermer,
   onDepose,
@@ -358,6 +411,8 @@ function FenetreDepot({
   employeeId: string;
   ouverte: boolean;
   remplace: EmployeeDocumentView | null;
+  /** Le type déjà choisi à l'ouverture — le titre d'identité attendu. */
+  typeInitial: DocumentCategory | null;
   /** Les types à exemplaire unique dont un dépôt attend déjà la vérification. */
   enVerification: ReadonlySet<DocumentCategory>;
   onFermer: () => void;
@@ -370,7 +425,7 @@ function FenetreDepot({
   const [expiration, setExpiration] = useState<string | null>(null);
   const [survol, setSurvol] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const type = remplace?.category ?? choisi;
+  const type = remplace?.category ?? (choisi || typeInitial || '');
   // Au remplacement, la date déjà donnée, que l'agent corrige s'il le faut.
   const expiresOn = expiration ?? remplace?.expiresOn ?? '';
   const demandeLaDate = type !== '' && aUneExpiration(type);

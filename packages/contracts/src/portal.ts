@@ -77,6 +77,8 @@ export interface MyEmployeeView {
   valideurDCH: string | null;
   /** Il dirige la DCH : le visa de son N+1 (le DG) suffit. */
   demandeDuDirecteur: boolean;
+  /** Le titre d'identité de sa fiche — à déposer : sa CNI ou son passeport. */
+  pieceDIdentite: 'cni' | 'passeport' | null;
 }
 
 export type PortalStatus = 'none' | 'invited' | 'active';

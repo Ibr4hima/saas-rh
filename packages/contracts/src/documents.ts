@@ -46,6 +46,14 @@ export const DOCUMENTS_UNIQUES = [
   'cv',
 ] as const satisfies readonly DocumentCategory[];
 
+/**
+ * Le titre d'identité que l'agent doit déposer : celui de sa fiche — la CNI,
+ * ou le passeport. `null` sans type de pièce renseigné.
+ */
+export function titreDeLaFiche(idDocumentType: string | null): 'cni' | 'passeport' | null {
+  return idDocumentType === 'cni' ? 'cni' : idDocumentType === 'passport' ? 'passeport' : null;
+}
+
 export const aUneExpiration = (c: DocumentCategory): boolean =>
   (DOCUMENTS_A_EXPIRATION as readonly string[]).includes(c);
 export const estUnique = (c: DocumentCategory): boolean =>

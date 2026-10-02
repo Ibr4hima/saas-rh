@@ -36,7 +36,11 @@ export default function JoindreUnDocumentPage() {
 
   return (
     <Page>
-      <EmployeeDocumentsCard employeeId={myEmployee.data.employeeId} depot />
+      <EmployeeDocumentsCard
+        employeeId={myEmployee.data.employeeId}
+        depot
+        pieceAttendue={myEmployee.data.pieceDIdentite}
+      />
     </Page>
   );
 }

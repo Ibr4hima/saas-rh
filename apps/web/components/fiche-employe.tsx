@@ -11,7 +11,7 @@ import type {
   EmployeeHistoryEntry,
   InviteResult,
 } from '@teranga/contracts';
-import { peut } from '@teranga/contracts';
+import { peut, titreDeLaFiche } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -449,7 +449,13 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
           {/* En tête des cartes de gauche : c'est ce qui attend une décision. */}
           {canSeeHistory ? <ProfileChangeCard employeeId={e.id} /> : null}
 
-          {voitLeDossier ? <EmployeeDocumentsCard employeeId={e.id} depot={e.soi} /> : null}
+          {voitLeDossier ? (
+            <EmployeeDocumentsCard
+              employeeId={e.id}
+              depot={e.soi}
+              pieceAttendue={e.soi ? titreDeLaFiche(e.person.idDocumentType) : null}
+            />
+          ) : null}
 
           {voitLeDossier ? <CarteCertificatsAgent employeeId={e.id} /> : null}
 

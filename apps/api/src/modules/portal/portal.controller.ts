@@ -15,6 +15,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import {
   acceptInvitationSchema,
   inviteEmployeeSchema,
+  titreDeLaFiche,
   type AcceptInvitationInput,
   type InviteEmployeeInput,
   type MyEmployeeView,
@@ -67,6 +68,7 @@ export class PortalController {
           workEmail: t.employees.workEmail,
           positionTitle: t.assignments.positionTitle,
           orgUnitName: t.orgUnits.name,
+          idDocumentType: t.persons.idDocumentType,
         })
         .from(t.persons)
         .innerJoin(t.employees, eq(t.employees.personId, t.persons.id))
@@ -88,10 +90,12 @@ export class PortalController {
           'Ce compte gère l’organisation sans être lui-même un employé.',
         );
       }
+      const { idDocumentType, ...dossier } = row;
       return {
-        ...row,
+        ...dossier,
         positionTitle: row.positionTitle ?? null,
         orgUnitName: row.orgUnitName ?? null,
+        pieceDIdentite: titreDeLaFiche(idDocumentType),
         ...(await (async () => {
           const qui = await quiViseraPour(tx, row.employeeId);
           return {
