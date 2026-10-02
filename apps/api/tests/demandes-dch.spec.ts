@@ -367,6 +367,16 @@ describe('les changements d’informations', () => {
     expect(await appels('information', id)).toEqual(['dch:Mariama']);
     await habiliter(khady, 'demandes.informations');
     expect(await appels('information', id)).toEqual(['dch:Khady']);
+    // Le directeur la garde dans son compteur : il peut toujours trancher.
+    const aTraiter = (qui: Agent) =>
+      db.withTenant({ tenantId, userId: qui.session.userId }, (tx) =>
+        aTraiterPar(tx, qui.employeeId),
+      );
+    expect((await aTraiter(mariama)).informations).toBe(1);
+    expect((await aTraiter(khady)).informations).toBe(1);
+    expect(
+      (await informations.list(mariama.session, {} as never)).find((r) => r.id === id)?.canDecide,
+    ).toBe(true);
     expect(await codeOf(() => informations.decide(admin, id, { decision: 'approve' }))).toBe(
       'demandes.pas_traitant',
     );

@@ -21,12 +21,15 @@ import { Icon } from './icons';
 export function BoutonDecision({
   geste,
   employe,
+  objet = 'le congé',
   enCours,
   bloque,
   onClick,
 }: {
   geste: 'approuver' | 'refuser';
   employe: string;
+  /** Ce qu'on tranche — « le congé », « le changement ». */
+  objet?: string;
   /** C'est CE bouton qui attend le serveur. */
   enCours: boolean;
   /** Une décision est en cours, quelle qu'elle soit : on ne clique plus. */
@@ -34,7 +37,7 @@ export function BoutonDecision({
   onClick: () => void;
 }) {
   const approuve = geste === 'approuver';
-  const intitule = `${approuve ? 'Valider' : 'Refuser'} le congé de ${employe}`;
+  const intitule = `${approuve ? 'Valider' : 'Refuser'} ${objet} de ${employe}`;
   return (
     <button
       type="button"

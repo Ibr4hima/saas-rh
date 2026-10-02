@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { type MembreHabilite, type ProfileChangeRequestView } from '@teranga/contracts';
+import { peut, type ProfileChangeRequestView } from '@teranga/contracts';
 import {
   Button,
   Card,
@@ -11,45 +11,50 @@ import {
   EmptyState,
   Field,
   Skeleton,
+  Table,
+  TBody,
+  Td,
   Textarea,
+  Th,
+  THead,
+  Tr,
 } from '@teranga/ui';
+import { BoutonDecision } from '../../../../components/bouton-decision';
+import { DeleguerMembres } from '../../../../components/deleguer-membres';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { valeurSignalee } from '../../../../components/telephone';
 import {
+  BandeauDelegation,
   BandeauMessage,
-  ModalConfier,
-  ModalLesSuivantes,
-  quiTraite,
+  listePrenoms,
+  Pastille,
   texteErreur,
-  useConfier,
   useMembresDCH,
   type Message,
 } from '../../../../components/traitement-dch';
 import { api } from '../../../../lib/api';
-import { formatDate } from '../../../../lib/hooks';
-import { compte } from '../../../../lib/mots';
+import { formatDate, useMe } from '../../../../lib/hooks';
 
 /* ————————————————————————————————————————————————————————————————
-   Les changements d'informations à traiter pour la DCH.
+   « Mise à jour d'infos » — les changements d'informations signalés par
+   les agents, pour la Direction du Capital Humain.
 
    Un agent signale un changement (adresse, téléphone, situation…) depuis
    son espace ; la DCH le confirme — le dossier est mis à jour aussitôt — ou
-   le refuse, avec un motif. Ce qui attend l'appelant en haut ; ce qui est
-   confié à un autre membre ensuite. Ce qui est traité ne s'affiche plus :
-   le dossier de l'agent le porte.
+   le refuse, avec un motif. Son directeur peut DÉLÉGUER : les membres qu'il
+   coche peuvent traiter ces demandes — et lui aussi, toujours. Ce qui est
+   traité ne s'affiche plus : le dossier de l'agent le porte.
    ———————————————————————————————————————————————————————————————— */
-
-const TABULAIRE = { fontVariantNumeric: 'tabular-nums' } as const;
-const LIGNE =
-  'flex flex-wrap items-start gap-x-3 gap-y-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover';
 
 const lisible = (champ: string, valeur: string | null | undefined) =>
   valeurSignalee(champ, valeur) ?? '—';
 
 export default function InformationsATraiterPage() {
   const queryClient = useQueryClient();
+  const me = useMe();
+  const estDirecteur = Boolean(me.data?.dirigeLaDCH);
   const demandes = useQuery({
     queryKey: ['profile-changes', 'file'],
     queryFn: () => api<ProfileChangeRequestView[]>('/profile-changes'),
@@ -58,8 +63,6 @@ export default function InformationsATraiterPage() {
   const [message, setMessage] = useState<Message>(null);
   const [refus, setRefus] = useState<ProfileChangeRequestView | null>(null);
   const [motif, setMotif] = useState('');
-  const [aConfier, setAConfier] = useState<ProfileChangeRequestView | null>(null);
-  const [proposition, setProposition] = useState<MembreHabilite | null>(null);
 
   const rafraichir = async () => {
     await queryClient.invalidateQueries({ queryKey: ['profile-changes'] });
@@ -91,135 +94,136 @@ export default function InformationsATraiterPage() {
     onError: echec,
   });
 
-  const confier = useConfier('informations', rafraichir);
-  const confierA = (r: ProfileChangeRequestView, employeeId: string | null) =>
-    confier.mutate(
-      { id: r.id, employeeId },
-      {
-        onSuccess: (res) => {
-          setAConfier(null);
-          const m = membres.find((x) => x.employeeId === employeeId);
-          setMessage({
-            ton: 'ok',
-            texte: m
-              ? `Demande de ${r.employeeName} confiée à ${m.nom} — une notification lui est envoyée.`
-              : `Vous reprenez la demande de ${r.employeeName}.`,
-          });
-          if (res?.proposerHabilitation && m) setProposition(m);
-        },
-        onError: echec,
-      },
-    );
-
+  // Ce que l'appelant peut trancher — le directeur, tout, délégué ou non —,
+  // et sa propre demande, qu'il délègue. Qui consulte seulement voit la file
+  // entière, sans geste.
   const toutes = demandes.data ?? [];
-  const aTraiter = toutes.filter((r) => r.status === 'pending' && r.traitement?.pourMoi);
-  const ailleurs = toutes.filter((r) => r.status === 'pending' && !r.traitement?.pourMoi);
-  const dirige = toutes.some((r) => r.traitement?.peutConfier);
+  const traite =
+    estDirecteur || peut(me.data, 'demandes.informations') || toutes.some((r) => r.canDecide);
+  const aTraiter = toutes.filter(
+    (r) => r.status === 'pending' && (!traite || r.canDecide || Boolean(r.traitement?.aConfier)),
+  );
+  const habilites = membres.filter((m) => m.capacites.includes('demandes.informations'));
 
   return (
     <Page>
       {message ? <BandeauMessage message={message} /> : null}
 
-      {/* ———— À traiter ———— */}
-      <Card className="shrink-0">
-        <CardHeader className="flex items-center justify-between gap-3">
-          <CardTitle>À traiter</CardTitle>
-          {aTraiter.length > 0 ? (
-            <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-              {compte(aTraiter.length, 'demande')}
-            </span>
-          ) : null}
-        </CardHeader>
-        <div className="px-2 pb-2">
-          {demandes.isLoading ? (
-            <Squelette />
-          ) : aTraiter.length === 0 ? (
-            <EmptyState
-              className="py-8"
-              icon={<Icon name="badge" size={22} />}
-              title="Rien à traiter"
+      {estDirecteur ? (
+        <BandeauDelegation
+          icone="arrow_split"
+          texte={
+            habilites.length > 0
+              ? `${listePrenoms(habilites)} ${habilites.length > 1 ? 'peuvent' : 'peut'} désormais traiter les demandes de mise à jour d’informations.`
+              : 'Vous pouvez déléguer cette tâche à votre équipe.'
+          }
+          action={
+            <DeleguerMembres
+              membres={membres}
+              capacite="demandes.informations"
+              titre="Déléguer les mises à jour d’informations"
+              confirmation={(retenus) =>
+                `${listePrenoms(retenus)} ${retenus.length > 1 ? 'pourront' : 'pourra'} traiter désormais les demandes de mise à jour d’informations.`
+              }
+              retrait="Vous traiterez de vous-même toutes les demandes de mise à jour d’informations."
+              fichiers={['profile-changes']}
+              onFait={() => setMessage(null)}
+              onErreur={echec}
             />
-          ) : (
-            <ul className="flex flex-col">
+          }
+        />
+      ) : peut(me.data, 'demandes.informations') ? (
+        <BandeauDelegation
+          icone="how_to_reg"
+          texte="La DCH vous a délégué le traitement des demandes de mise à jour d’informations."
+        />
+      ) : null}
+
+      {/* ———— Demandes à traiter ———— */}
+      <Card className="shrink-0">
+        <CardHeader className="flex items-center gap-2">
+          <CardTitle className="min-w-0 flex-1">Demandes à traiter</CardTitle>
+          {aTraiter.length > 0 ? <Pastille n={aTraiter.length} /> : null}
+        </CardHeader>
+        {demandes.isLoading ? (
+          <div className="px-2 pb-2">
+            <Squelette />
+          </div>
+        ) : aTraiter.length === 0 ? (
+          <EmptyState
+            className="py-8"
+            icon={<Icon name="badge" size={22} />}
+            title="Rien à traiter"
+          />
+        ) : (
+          <Table>
+            <THead>
+              <tr>
+                <Th>Employé</Th>
+                <Th>Changement</Th>
+                <Th>Signalé le</Th>
+                <Th className="text-right">{traite ? 'Décision' : 'Traitée par'}</Th>
+              </tr>
+            </THead>
+            <TBody>
               {aTraiter.map((r) => (
-                <li key={r.id} className={LIGNE}>
-                  <Resume demande={r} />
-                  <div className="ml-auto flex shrink-0 flex-wrap items-center gap-1.5">
-                    {r.traitement?.peutConfier && membres.length > 0 ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setMessage(null);
-                          setAConfier(r);
-                        }}
-                      >
-                        Confier
-                      </Button>
-                    ) : null}
-                    {r.canDecide ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="secondary"
+                <Tr key={r.id}>
+                  <Td className="font-semibold whitespace-nowrap text-ink-strong">
+                    {r.employeeName}
+                  </Td>
+                  <Td>
+                    <Changements demande={r} />
+                  </Td>
+                  <Td className="whitespace-nowrap tabular-nums">
+                    {formatDate(r.createdAt.slice(0, 10))}
+                  </Td>
+                  <Td>
+                    {!traite ? (
+                      <p className="text-right text-[12px] text-ink-muted">
+                        {r.traitement?.traitants ?? '—'}
+                      </p>
+                    ) : r.canDecide ? (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <BoutonDecision
+                          geste="approuver"
+                          objet="le changement"
+                          employe={r.employeeName}
+                          enCours={
+                            decider.isPending &&
+                            decider.variables?.demande.id === r.id &&
+                            decider.variables.decision === 'approve'
+                          }
+                          bloque={decider.isPending}
+                          onClick={() => {
+                            setMessage(null);
+                            decider.mutate({ demande: r, decision: 'approve' });
+                          }}
+                        />
+                        <BoutonDecision
+                          geste="refuser"
+                          objet="le changement"
+                          employe={r.employeeName}
+                          enCours={false}
+                          bloque={decider.isPending}
                           onClick={() => {
                             setMessage(null);
                             setMotif('');
                             setRefus(r);
                           }}
-                        >
-                          Refuser
-                        </Button>
-                        <Button
-                          size="sm"
-                          loading={decider.isPending && decider.variables?.demande.id === r.id}
-                          disabled={decider.isPending}
-                          onClick={() => {
-                            setMessage(null);
-                            decider.mutate({ demande: r, decision: 'approve' });
-                          }}
-                        >
-                          Confirmer
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
-                </li>
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-right text-[11.5px] font-semibold text-accent-text">
+                        Votre propre demande — à déléguer
+                      </p>
+                    )}
+                  </Td>
+                </Tr>
               ))}
-            </ul>
-          )}
-        </div>
+            </TBody>
+          </Table>
+        )}
       </Card>
-
-      {/* ———— Chez un autre membre ———— */}
-      {ailleurs.length > 0 ? (
-        <Card className="shrink-0">
-          <CardHeader>
-            <CardTitle>{dirige ? 'Confiées' : 'Chez un autre membre de la DCH'}</CardTitle>
-          </CardHeader>
-          <ul className="flex flex-col px-2 pb-2">
-            {ailleurs.map((r) => (
-              <li key={r.id} className={LIGNE}>
-                <Resume demande={r} attendu={quiTraite(r.traitement)} />
-                {r.traitement?.peutConfier ? (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="ml-auto"
-                    loading={confier.isPending && confier.variables?.id === r.id}
-                    onClick={() => {
-                      setMessage(null);
-                      confierA(r, null);
-                    }}
-                  >
-                    Reprendre
-                  </Button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
 
       {refus ? (
         <Modal
@@ -259,52 +263,17 @@ export default function InformationsATraiterPage() {
           </Field>
         </Modal>
       ) : null}
-
-      {aConfier ? (
-        <ModalConfier
-          titre={`Confier la demande de ${aConfier.employeeName}`}
-          sousTitre={aConfier.fields.map((f) => f.label).join(', ')}
-          membres={membres}
-          exclure={aConfier.employeeId}
-          enCours={confier.isPending}
-          onConfier={(employeeId) => confierA(aConfier, employeeId)}
-          onClose={() => setAConfier(null)}
-        />
-      ) : null}
-      {proposition ? (
-        <ModalLesSuivantes
-          membre={proposition}
-          capacite="demandes.informations"
-          onFait={(texte) => {
-            setProposition(null);
-            setMessage({ ton: 'ok', texte });
-          }}
-          onClose={() => setProposition(null)}
-        />
-      ) : null}
     </Page>
   );
 }
 
-/** Qui, quoi (avant → après), quand. */
-function Resume({
-  demande: r,
-  attendu,
-}: {
-  demande: ProfileChangeRequestView;
-  attendu?: string | null;
-}) {
+/** Ce qui change — avant → après, champ par champ —, et le mot de l'agent. */
+function Changements({ demande: r }: { demande: ProfileChangeRequestView }) {
   return (
-    <div className="min-w-0 flex-1 basis-64">
-      <p className="truncate text-[13px] font-semibold text-ink-strong">
-        {r.employeeName}
-        <span className="ml-2 font-mono text-[10.5px] font-normal text-ink-muted">
-          {r.employeeNumber}
-        </span>
-      </p>
-      <ul className="mt-1 flex flex-col gap-0.5">
+    <>
+      <ul className="flex flex-col gap-0.5">
         {r.fields.map((f) => (
-          <li key={f.field} className="text-[12px] leading-snug">
+          <li key={f.field} className="leading-snug">
             <span className="text-ink-muted">{f.label} : </span>
             <span className="text-ink-muted line-through">{lisible(f.field, f.previous)}</span>
             <span className="mx-1.5 text-ink-muted">→</span>
@@ -312,16 +281,10 @@ function Resume({
           </li>
         ))}
       </ul>
-      <p className="mt-1 text-[11.5px] text-ink-muted">
-        {[
-          `Signalé le ${formatDate(r.createdAt.slice(0, 10))}`,
-          r.note ? `« ${r.note} »` : null,
-          attendu,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-      </p>
-    </div>
+      {r.note ? (
+        <span className="mt-0.5 block text-[11px] text-ink-muted italic">« {r.note} »</span>
+      ) : null}
+    </>
   );
 }
 

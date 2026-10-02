@@ -213,9 +213,13 @@ export async function compterLesBloquees(tx: Tx): Promise<number> {
   return n;
 }
 
+/** Les files où déléguer autorise sans retirer la main au directeur. */
+const GARDES: readonly TypeDCH[] = ['documents', 'informations'];
+
 /**
  * Ce qui attend CET agent, par type : ce qu'il traite, ou ce qu'il doit
- * confier. Les documents délégués restent aussi au directeur : déléguer
+ * confier. Les documents et les changements d'informations délégués
+ * restent aussi au directeur : déléguer
  * autorise les membres, sans lui retirer la main.
  */
 export async function aTraiterPar(tx: Tx, moi: string | null): Promise<Record<TypeDCH, number>> {
@@ -228,7 +232,7 @@ export async function aTraiterPar(tx: Tx, moi: string | null): Promise<Record<Ty
     for (const d of await enAttente(tx, type)) {
       const t = await traitementDe(tx, d.capacite, d, dch);
       const aConfier = t.aConfier && dirige;
-      const garde = type === 'documents' && dirige && d.employeeId !== moi;
+      const garde = GARDES.includes(type) && dirige && d.employeeId !== moi;
       if (aConfier || garde || t.traitants.some((v) => v.employeeId === moi)) compte[type] += 1;
     }
   }
