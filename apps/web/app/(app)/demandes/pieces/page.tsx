@@ -2,11 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import {
-  DOCUMENT_CATEGORY_LABELS,
-  type MembreHabilite,
-  type PieceATraiterView,
-} from '@teranga/contracts';
+import { DOCUMENT_CATEGORY_LABELS, peut, type PieceATraiterView } from '@teranga/contracts';
 import {
   Button,
   Card,
@@ -15,42 +11,47 @@ import {
   EmptyState,
   Field,
   Skeleton,
+  Table,
+  TBody,
+  Td,
   Textarea,
+  Th,
+  THead,
+  Tr,
 } from '@teranga/ui';
+import { BoutonDecision } from '../../../../components/bouton-decision';
+import { DeleguerMembres } from '../../../../components/deleguer-membres';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import {
+  BandeauDelegation,
   BandeauMessage,
-  ModalConfier,
-  ModalLesSuivantes,
-  quiTraite,
+  listePrenoms,
+  Pastille,
   texteErreur,
-  useConfier,
   useMembresDCH,
   type Message,
 } from '../../../../components/traitement-dch';
 import { api, apiUrl } from '../../../../lib/api';
-import { formatDate } from '../../../../lib/hooks';
-import { compte } from '../../../../lib/mots';
+import { formatDate, useMe } from '../../../../lib/hooks';
 
 /* ————————————————————————————————————————————————————————————————
-   Les pièces justificatives à vérifier pour la DCH.
+   « Vérification des documents » — les documents officiels déposés par
+   les agents, pour la Direction du Capital Humain.
 
-   Un agent dépose une pièce (pièce d'identité, diplôme…) depuis son espace ;
-   elle ne rejoint son dossier qu'une fois vérifiée. Des données sensibles :
-   le directeur du Capital Humain les vérifie, ou les confie aux membres de
-   sa direction qu'il choisit.
+   Un agent dépose un document (pièce d'identité, diplôme…) depuis son
+   espace ; il ne rejoint son dossier qu'une fois vérifié. Son directeur
+   peut DÉLÉGUER : les membres qu'il coche peuvent vérifier ces documents —
+   et lui aussi, toujours.
    ———————————————————————————————————————————————————————————————— */
-
-const TABULAIRE = { fontVariantNumeric: 'tabular-nums' } as const;
-const LIGNE =
-  'flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover';
 
 export default function PiecesAVerifierPage() {
   const queryClient = useQueryClient();
+  const me = useMe();
+  const estDirecteur = Boolean(me.data?.dirigeLaDCH);
   const pieces = useQuery({
     queryKey: ['pieces', 'file'],
     queryFn: () => api<PieceATraiterView[]>('/employee-documents/a-verifier'),
@@ -60,8 +61,6 @@ export default function PiecesAVerifierPage() {
   const [rejet, setRejet] = useState<PieceATraiterView | null>(null);
   const [motif, setMotif] = useState('');
   const [apercu, setApercu] = useState<ViewableDoc | null>(null);
-  const [aConfier, setAConfier] = useState<PieceATraiterView | null>(null);
-  const [proposition, setProposition] = useState<MembreHabilite | null>(null);
 
   const rafraichir = async () => {
     await queryClient.invalidateQueries({ queryKey: ['pieces'] });
@@ -85,33 +84,13 @@ export default function PiecesAVerifierPage() {
         ton: 'ok',
         texte:
           v.decision === 'approved'
-            ? `« ${v.piece.label} » ajoutée au dossier de ${v.piece.employeeName}.`
-            : `« ${v.piece.label} » rejetée — un message est envoyé à ${v.piece.employeeName}.`,
+            ? `« ${v.piece.label} » ajouté au dossier de ${v.piece.employeeName}.`
+            : `« ${v.piece.label} » rejeté — un message est envoyé à ${v.piece.employeeName}.`,
       });
       await rafraichir();
     },
     onError: echec,
   });
-
-  const confier = useConfier('pieces', rafraichir);
-  const confierA = (p: PieceATraiterView, employeeId: string | null) =>
-    confier.mutate(
-      { id: p.id, employeeId },
-      {
-        onSuccess: (res) => {
-          setAConfier(null);
-          const m = membres.find((x) => x.employeeId === employeeId);
-          setMessage({
-            ton: 'ok',
-            texte: m
-              ? `Pièce de ${p.employeeName} confiée à ${m.nom} — une notification lui est envoyée.`
-              : `Vous reprenez la pièce de ${p.employeeName}.`,
-          });
-          if (res?.proposerHabilitation && m) setProposition(m);
-        },
-        onError: echec,
-      },
-    );
 
   const ouvrir = (p: PieceATraiterView) =>
     setApercu({
@@ -121,117 +100,146 @@ export default function PiecesAVerifierPage() {
       titre: `${p.label} — ${p.employeeName}`,
     });
 
+  // Ce que l'appelant peut vérifier — le directeur, tout, délégué ou non —,
+  // et son propre document, qu'il délègue. Qui consulte seulement voit la
+  // file entière, sans geste.
   const toutes = pieces.data ?? [];
-  const aVerifier = toutes.filter((p) => p.status === 'pending' && p.traitement?.pourMoi);
-  const ailleurs = toutes.filter((p) => p.status === 'pending' && !p.traitement?.pourMoi);
-  const dirige = toutes.some((p) => p.traitement?.peutConfier);
+  const traite =
+    estDirecteur || peut(me.data, 'demandes.pieces') || toutes.some((p) => p.canReview);
+  const aVerifier = toutes.filter(
+    (p) => p.status === 'pending' && (!traite || p.canReview || Boolean(p.traitement?.aConfier)),
+  );
+  const habilites = membres.filter((m) => m.capacites.includes('demandes.pieces'));
 
   return (
     <Page>
       {message ? <BandeauMessage message={message} /> : null}
 
-      <Card className="shrink-0">
-        <CardHeader className="flex items-center justify-between gap-3">
-          <CardTitle>À vérifier</CardTitle>
-          {aVerifier.length > 0 ? (
-            <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-              {compte(aVerifier.length, 'pièce')}
-            </span>
-          ) : null}
-        </CardHeader>
-        <div className="px-2 pb-2">
-          {pieces.isLoading ? (
-            <Squelette />
-          ) : aVerifier.length === 0 ? (
-            <EmptyState
-              className="py-8"
-              icon={<Icon name="upload_file" size={22} />}
-              title="Rien à vérifier"
+      {estDirecteur ? (
+        <BandeauDelegation
+          icone="arrow_split"
+          texte={
+            habilites.length > 0
+              ? `${listePrenoms(habilites)} ${habilites.length > 1 ? 'peuvent' : 'peut'} désormais vérifier les documents officiels.`
+              : 'Vous pouvez déléguer cette tâche à votre équipe.'
+          }
+          action={
+            <DeleguerMembres
+              membres={membres}
+              capacite="demandes.pieces"
+              titre="Déléguer la vérification des documents"
+              confirmation={(retenus) =>
+                `${listePrenoms(retenus)} ${retenus.length > 1 ? 'pourront' : 'pourra'} vérifier désormais les documents officiels déposés par les agents.`
+              }
+              retrait="Vous vérifierez de vous-même tous les documents officiels."
+              fichiers={['pieces']}
+              onFait={() => setMessage(null)}
+              onErreur={echec}
             />
-          ) : (
-            <ul className="flex flex-col">
+          }
+        />
+      ) : peut(me.data, 'demandes.pieces') ? (
+        <BandeauDelegation
+          icone="how_to_reg"
+          texte="La DCH vous a délégué la vérification des documents officiels."
+        />
+      ) : null}
+
+      {/* ———— Demandes à traiter ———— */}
+      <Card className="shrink-0">
+        <CardHeader className="flex items-center gap-2">
+          <CardTitle className="min-w-0 flex-1">Demandes à traiter</CardTitle>
+          {aVerifier.length > 0 ? <Pastille n={aVerifier.length} /> : null}
+        </CardHeader>
+        {pieces.isLoading ? (
+          <div className="px-2 pb-2">
+            <Squelette />
+          </div>
+        ) : aVerifier.length === 0 ? (
+          <EmptyState
+            className="py-8"
+            icon={<Icon name="upload_file" size={22} />}
+            title="Rien à vérifier"
+          />
+        ) : (
+          <Table>
+            <THead>
+              <tr>
+                <Th>Employé</Th>
+                <Th>Type</Th>
+                <Th>Document</Th>
+                <Th>Déposé le</Th>
+                <Th className="text-right">{traite ? 'Décision' : 'Traitée par'}</Th>
+              </tr>
+            </THead>
+            <TBody>
               {aVerifier.map((p) => (
-                <li key={p.id} className={LIGNE}>
-                  <Resume piece={p} />
-                  <div className="ml-auto flex shrink-0 flex-wrap items-center gap-1.5">
-                    <Button size="sm" variant="ghost" onClick={() => ouvrir(p)}>
-                      <Icon name="visibility" size={15} />
-                      Voir
-                    </Button>
-                    {p.traitement?.peutConfier && membres.length > 0 ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setMessage(null);
-                          setAConfier(p);
-                        }}
-                      >
-                        Confier
-                      </Button>
-                    ) : null}
-                    {p.canReview ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="secondary"
+                <Tr key={p.id}>
+                  <Td className="font-semibold whitespace-nowrap text-ink-strong">
+                    {p.employeeName}
+                  </Td>
+                  <Td className="whitespace-nowrap">{DOCUMENT_CATEGORY_LABELS[p.category]}</Td>
+                  <Td>
+                    <button
+                      type="button"
+                      onClick={() => ouvrir(p)}
+                      title={`Voir « ${p.label} »`}
+                      className="inline-flex max-w-64 items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-medium text-primary transition-colors hover:bg-primary-soft"
+                    >
+                      <Icon name="description" size={14} className="shrink-0" />
+                      <span className="truncate">{p.label}</span>
+                    </button>
+                  </Td>
+                  <Td className="whitespace-nowrap tabular-nums">
+                    {formatDate(p.createdAt.slice(0, 10))}
+                  </Td>
+                  <Td>
+                    {!traite ? (
+                      <p className="text-right text-[12px] text-ink-muted">
+                        {p.traitement?.traitants ?? '—'}
+                      </p>
+                    ) : p.canReview ? (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <BoutonDecision
+                          geste="approuver"
+                          objet="le document"
+                          employe={p.employeeName}
+                          enCours={
+                            verifier.isPending &&
+                            verifier.variables?.piece.id === p.id &&
+                            verifier.variables.decision === 'approved'
+                          }
+                          bloque={verifier.isPending}
+                          onClick={() => {
+                            setMessage(null);
+                            verifier.mutate({ piece: p, decision: 'approved' });
+                          }}
+                        />
+                        <BoutonDecision
+                          geste="refuser"
+                          objet="le document"
+                          employe={p.employeeName}
+                          enCours={false}
+                          bloque={verifier.isPending}
                           onClick={() => {
                             setMessage(null);
                             setMotif('');
                             setRejet(p);
                           }}
-                        >
-                          Rejeter
-                        </Button>
-                        <Button
-                          size="sm"
-                          loading={verifier.isPending && verifier.variables?.piece.id === p.id}
-                          disabled={verifier.isPending}
-                          onClick={() => {
-                            setMessage(null);
-                            verifier.mutate({ piece: p, decision: 'approved' });
-                          }}
-                        >
-                          Valider
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
-                </li>
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-right text-[11.5px] font-semibold text-accent-text">
+                        Votre propre document — à déléguer
+                      </p>
+                    )}
+                  </Td>
+                </Tr>
               ))}
-            </ul>
-          )}
-        </div>
+            </TBody>
+          </Table>
+        )}
       </Card>
-
-      {ailleurs.length > 0 ? (
-        <Card className="shrink-0">
-          <CardHeader>
-            <CardTitle>{dirige ? 'Confiées' : 'Chez un autre membre de la DCH'}</CardTitle>
-          </CardHeader>
-          <ul className="flex flex-col px-2 pb-2">
-            {ailleurs.map((p) => (
-              <li key={p.id} className={LIGNE}>
-                <Resume piece={p} attendu={quiTraite(p.traitement)} />
-                {p.traitement?.peutConfier ? (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="ml-auto"
-                    loading={confier.isPending && confier.variables?.id === p.id}
-                    onClick={() => {
-                      setMessage(null);
-                      confierA(p, null);
-                    }}
-                  >
-                    Reprendre
-                  </Button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
 
       {rejet ? (
         <Modal
@@ -250,7 +258,7 @@ export default function PiecesAVerifierPage() {
                 loading={verifier.isPending}
                 onClick={() => verifier.mutate({ piece: rejet, decision: 'rejected' })}
               >
-                Rejeter la pièce
+                Rejeter le document
               </Button>
             </div>
           }
@@ -258,7 +266,7 @@ export default function PiecesAVerifierPage() {
           <Field
             label="Motif"
             htmlFor="motif-rejet-piece"
-            hint="Facultatif — il est transmis à l’agent, qui pourra déposer la pièce à nouveau."
+            hint="Facultatif — il est transmis à l’agent, qui pourra déposer le document à nouveau."
           >
             <Textarea
               id="motif-rejet-piece"
@@ -271,49 +279,8 @@ export default function PiecesAVerifierPage() {
         </Modal>
       ) : null}
 
-      {aConfier ? (
-        <ModalConfier
-          titre={`Confier la pièce de ${aConfier.employeeName}`}
-          sousTitre={aConfier.label}
-          membres={membres}
-          exclure={aConfier.employeeId}
-          enCours={confier.isPending}
-          onConfier={(employeeId) => confierA(aConfier, employeeId)}
-          onClose={() => setAConfier(null)}
-        />
-      ) : null}
-      {proposition ? (
-        <ModalLesSuivantes
-          membre={proposition}
-          capacite="demandes.pieces"
-          onFait={(texte) => {
-            setProposition(null);
-            setMessage({ ton: 'ok', texte });
-          }}
-          onClose={() => setProposition(null)}
-        />
-      ) : null}
-
       <FenetreDocument doc={apercu} onClose={() => setApercu(null)} />
     </Page>
-  );
-}
-
-function Resume({ piece: p, attendu }: { piece: PieceATraiterView; attendu?: string | null }) {
-  return (
-    <div className="min-w-0 flex-1 basis-56">
-      <p className="truncate text-[13px] font-semibold text-ink-strong">
-        {p.employeeName}
-        <span className="ml-2 font-mono text-[10.5px] font-normal text-ink-muted">
-          {p.employeeNumber}
-        </span>
-      </p>
-      <p className="mt-0.5 text-[11.5px] text-ink-muted">
-        {DOCUMENT_CATEGORY_LABELS[p.category]} · « {p.label} » · déposée le{' '}
-        {formatDate(p.createdAt.slice(0, 10))}
-      </p>
-      {attendu ? <p className="mt-0.5 text-[11.5px] text-ink-muted">{attendu}</p> : null}
-    </div>
   );
 }
 

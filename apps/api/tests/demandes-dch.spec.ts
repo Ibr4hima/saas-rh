@@ -416,6 +416,14 @@ describe('les pièces justificatives', () => {
     expect(file.map((p) => `${p.employeeName}:${p.label}:${p.canReview}`)).toEqual([
       'Moussa Test:Master:true',
     ]);
+    // Le directeur la garde dans sa file et son compteur : il peut toujours la vérifier.
+    expect((await pieces.file(mariama.session)).map((p) => p.canReview)).toEqual([true]);
+    const aTraiter = (qui: Agent) =>
+      db.withTenant({ tenantId, userId: qui.session.userId }, (tx) =>
+        aTraiterPar(tx, qui.employeeId),
+      );
+    expect((await aTraiter(mariama)).pieces).toBe(1);
+    expect((await aTraiter(awa)).pieces).toBe(1);
     await pieces.review(awa.session, id, { decision: 'approved' });
     expect(await appels('piece', id)).toEqual([]);
   });
