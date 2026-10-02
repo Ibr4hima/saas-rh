@@ -148,6 +148,19 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       },
     ],
   },
+  {
+    titre: 'Formation',
+    lignes: [
+      {
+        cle: 'academy',
+        description:
+          'Le délégué pourra créer, modifier, publier et supprimer les formations de l’APIX Academy, et en préparer les évaluations. Connaissant les questions, il ne passera plus les évaluations.',
+        libelle: 'APIX Academy',
+        icone: 'school',
+        capacites: ['academy'],
+      },
+    ],
+  },
 ];
 
 const cle = (capacite: Capacite, employeeId: string) => `${capacite}:${employeeId}`;

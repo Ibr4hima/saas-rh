@@ -839,21 +839,31 @@ describe('on ne contourne pas le système : rien sur soi-même', () => {
     )),
   });
 
-  it('l’Academy est à l’administrateur : ni le directeur ni une délégation ne la donnent', async () => {
+  it('l’Academy se gère à la DCH : le directeur la tient et la délègue ; les textes restent à l’administrateur', async () => {
     const directeur = await session(mariama);
     expect(directeur.dirigeLaDCH).toBe(true);
-    expect(directeur.capacites).toContain('pilotage');
-    expect(directeur.capacites).not.toContain('academy');
-    expect(await codeOf(() => habiliter(awa, 'academy'))).toBe('habilitations.reservee_admin');
-    // Une délégation d'avant la règle ne donne plus rien.
-    await raw(
-      `INSERT INTO habilitations (id, tenant_id, capacite, employee_id, accordee_par_employee_id)
-       VALUES ($1,$2,'academy',$3,$4)`,
-      [randomUUID(), tenantId, awa.employeeId, mariama.employeeId],
-    );
+    expect(directeur.capacites).toContain('academy');
+    expect(directeur.capacites).not.toContain('textes');
     expect((await session(awa)).capacites).not.toContain('academy');
-    const etat = await habilitations.etat(admin);
-    expect(etat.membres.every((m) => !m.capacites.includes('academy'))).toBe(true);
+    await habiliter(awa, 'academy');
+    try {
+      expect((await session(awa)).capacites).toContain('academy');
+      // Le sigle reste en capitales dans la phrase.
+      const { rows } = await raw(
+        `SELECT n.body FROM notifications n JOIN users u ON u.id = n.recipient_user_id
+          WHERE u.given_name = 'Awa' AND n.dedupe_key LIKE 'habilitation:%:accordee'
+          ORDER BY n.created_at DESC LIMIT 1`,
+      );
+      expect(rows[0]?.body).toContain('vous confie : APIX Academy.');
+      const etat = await habilitations.etat(admin);
+      expect(etat.membres.find((m) => m.employeeId === awa.employeeId)?.capacites).toContain(
+        'academy',
+      );
+    } finally {
+      await habiliter(awa, 'academy', false);
+    }
+    expect((await session(awa)).capacites).not.toContain('academy');
+    expect(await codeOf(() => habiliter(awa, 'textes'))).toBe('habilitations.reservee_admin');
     expect(
       (
         await db.withTenant({ tenantId, userId: admin.userId }, (tx) =>

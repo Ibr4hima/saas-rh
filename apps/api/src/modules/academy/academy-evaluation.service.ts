@@ -79,8 +79,8 @@ export async function employeActif(tx: Tx, userId: string): Promise<string | nul
  * Pourquoi l'évaluation est fermée à cet agent — s'il y a lieu.
  *
  * Le formateur a fait la formation : il en suit les leçons, il n'en passe
- * pas l'évaluation. Un compte qui gère le catalogue (l'administrateur) en
- * voit les questions : s'il est aussi agent, les évaluations lui sont
+ * pas l'évaluation. Qui gère le catalogue (la DCH, ses délégués,
+ * l'administrateur) en voit les questions : les évaluations lui sont
  * fermées. Tous les autres la passent et obtiennent leur certificat.
  */
 export function fermeture(
@@ -298,7 +298,11 @@ export class AcademyEvaluationService {
 
   private exigerGestion(user: SessionUser): void {
     if (!this.gere(user)) {
-      problem(403, 'academy.forbidden', 'Seul l’administrateur gère le catalogue de l’Academy');
+      problem(
+        403,
+        'academy.forbidden',
+        'Vous n’êtes pas habilité à gérer le catalogue de l’Academy',
+      );
     }
   }
 

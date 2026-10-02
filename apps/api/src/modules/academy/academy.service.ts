@@ -148,7 +148,11 @@ export class AcademyService {
 
   private exigerGestion(user: SessionUser): void {
     if (!this.gere(user)) {
-      problem(403, 'academy.forbidden', 'Seul l’administrateur gère le catalogue de l’Academy');
+      problem(
+        403,
+        'academy.forbidden',
+        'Vous n’êtes pas habilité à gérer le catalogue de l’Academy',
+      );
     }
   }
 

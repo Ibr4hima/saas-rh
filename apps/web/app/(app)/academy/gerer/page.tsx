@@ -21,12 +21,13 @@ import {
 } from '@teranga/ui';
 import { FormationModal } from '../../../../components/academy-formation-modal';
 import { RetourAcademy } from '../../../../components/academy-carte';
+import { BandeauDeleguer } from '../../../../components/deleguer-membres';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
 import { dureeLisible, FAMILLES, FOND_COUVERTURE } from '../../../../lib/academy';
 import { api } from '../../../../lib/api';
-import { formatDate } from '../../../../lib/hooks';
+import { formatDate, useMe } from '../../../../lib/hooks';
 import { compte } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
@@ -54,6 +55,7 @@ function Etat({ f }: { f: CourseAdminSummary }) {
 }
 
 export default function GererCataloguePage() {
+  const me = useMe();
   const router = useRouter();
   const params = useSearchParams();
   const creation = params.get('nouvelle') === '1';
@@ -89,7 +91,16 @@ export default function GererCataloguePage() {
   const formations = liste.data;
   return (
     <Page>
-      <RetourAcademy href="/academy" label="APIX Academy" />
+      {/* L'administrateur revient au catalogue ; un agent l'a dans « Mon espace ». */}
+      {me.data && !me.data.estAgent ? <RetourAcademy href="/academy" label="APIX Academy" /> : null}
+      <BandeauDeleguer
+        capacite="academy"
+        verbe="gérer"
+        objet="le catalogue de l’APIX Academy"
+        delegue="la gestion de l’APIX Academy"
+        retrait="Vous gérerez de vous-même l’APIX Academy."
+        titre="Déléguer l’APIX Academy"
+      />
       <Card className="pb-1">
         {/* L'action « Nouvelle formation » vit dans le bandeau, comme l'action
             unique de chaque écran — la répéter ici en ferait deux. */}

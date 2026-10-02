@@ -90,16 +90,15 @@ export const estCapaciteDemande = (c: string): c is CapaciteDemande =>
 
 /**
  * Réservées à l'administrateur : ni la direction de la DCH ni une délégation
- * ne les donnent. Le catalogue de l'APIX Academy en est : qui le gère voit
- * les questions des évaluations — confié à un agent, il le priverait de ses
- * propres certificats. Les textes de référence aussi (décision APIX) : un
- * seul dépositaire, l'administrateur, qui les dépose, les modifie et les
+ * ne les donnent. Les textes de référence (décision APIX) : un seul
+ * dépositaire, l'administrateur, qui les dépose, les modifie et les
  * supprime ; les agents les lisent dans leur espace.
+ *
+ * Le catalogue de l'APIX Academy, lui, se gère aussi à la DCH, et se
+ * délègue : qui le gère en connaît les questions, ses évaluations lui sont
+ * fermées (academy-evaluation.service.ts, `fermeture`).
  */
-export const CAPACITES_ADMINISTRATEUR = [
-  'academy',
-  'textes',
-] as const satisfies readonly Capacite[];
+export const CAPACITES_ADMINISTRATEUR = ['textes'] as const satisfies readonly Capacite[];
 
 /** Ce qu'a qui dirige la DCH, et ce qu'il peut confier : tout, sauf ce qui est à l'administrateur. */
 export const CAPACITES_DELEGABLES: readonly Capacite[] = CAPACITES.filter(
@@ -279,7 +278,7 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   academy: {
     libelle: 'APIX Academy',
-    description: 'Le catalogue des formations, et les certificats des agents.',
+    description: 'Créer, modifier et supprimer les formations, et préparer leurs évaluations.',
     groupe: 'Organisation',
   },
   textes: {

@@ -14,7 +14,14 @@ import { problem } from '../../common/problem';
 import { TenantDb } from '../../db/tenant-db';
 import { notifier } from '../notifications/notifier';
 import { reconcilierLeCircuit } from '../time/visas';
-import { agentDuCompte, directionDuPersonnel, estDeLaDCH, membresDeLaDCH, nomDe } from './dch';
+import {
+  agentDuCompte,
+  directionDuPersonnel,
+  enMinuscule,
+  estDeLaDCH,
+  membresDeLaDCH,
+  nomDe,
+} from './dch';
 
 /** Où l'on exerce une habilitation — le lien de la notification qui l'annonce. */
 const LIEN: Record<Capacite, string> = {
@@ -120,7 +127,7 @@ export class HabilitationsService {
            AND fin_at IS NULL
          FOR UPDATE`);
       const info = CAPACITE_INFOS[input.capacite];
-      const libelle = info.libelle.charAt(0).toLowerCase() + info.libelle.slice(1);
+      const libelle = enMinuscule(info.libelle);
       const directeur = `${user.givenName} ${user.familyName}`;
       const prevenir = async (
         id: string,
@@ -162,7 +169,7 @@ export class HabilitationsService {
           422,
           'habilitations.reservee_admin',
           'Réservé à l’administrateur',
-          'Le catalogue de l’APIX Academy est géré par l’administrateur : qui le gère voit les questions des évaluations.',
+          'Les textes de référence sont gérés par l’administrateur.',
         );
       }
       if (input.employeeId === moi) {

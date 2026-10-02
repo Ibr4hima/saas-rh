@@ -337,7 +337,7 @@ export async function capacitesDe(
   const estDG = (await directeurGeneral(tx)) === moi;
   const dch = await directionDuPersonnel(tx);
   if (dch?.directeurEmployeeId === moi) {
-    // Tout ce qui se délègue — l'Academy reste à l'administrateur.
+    // Tout ce qui se délègue ; les textes restent à l'administrateur.
     return { capacites: [...CAPACITES_DELEGABLES], estAgent: true, dirigeLaDCH: true, estDG };
   }
   const { rows } = await tx.execute<{ capacite: string }>(sql`
@@ -352,10 +352,14 @@ export async function capacitesDe(
   return { capacites: [...base], estAgent: true, dirigeLaDCH: false, estDG };
 }
 
+/** Un libellé dans une phrase : « jours fériés », mais « APIX Academy » garde son sigle. */
+export const enMinuscule = (l: string): string =>
+  /^\p{Lu}{2}/u.test(l) ? l : l.charAt(0).toLowerCase() + l.slice(1);
+
 const libelles = (capacites: string[]) =>
   capacites
     .map((c) => CAPACITE_INFOS[c as Capacite]?.libelle ?? c)
-    .map((l) => l.charAt(0).toLowerCase() + l.slice(1))
+    .map(enMinuscule)
     .join(', ');
 
 export async function nomDe(tx: Tx, employeeId: string): Promise<string> {

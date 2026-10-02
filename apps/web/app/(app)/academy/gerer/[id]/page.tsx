@@ -27,6 +27,7 @@ import { FenetreDocument } from '../../../../../components/fenetre-document';
 import { FenetreSuppression } from '../../../../../components/reglages-absences';
 import { dureeLisible, FAMILLES, horloge } from '../../../../../lib/academy';
 import { api, ApiError, apiUrl } from '../../../../../lib/api';
+import { useMe } from '../../../../../lib/hooks';
 import { compte } from '../../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
@@ -102,6 +103,7 @@ function envoyerFichier(
 }
 
 export default function AtelierFormationPage() {
+  const me = useMe();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
@@ -286,7 +288,9 @@ export default function AtelierFormationPage() {
                 <Icon name="edit" size={15} />
                 Modifier
               </Button>
-              <Link href={`/academy/${f.id}`}>
+              {/* L'aperçu est la vue de l'agent : qui a aussi son espace personnel
+                  l'ouvre à côté, sans quitter l'atelier. */}
+              <Link href={`/academy/${f.id}`} target={me.data?.estAgent ? '_blank' : undefined}>
                 <Button variant="ghost">
                   <Icon name="visibility" size={16} />
                   Aperçu

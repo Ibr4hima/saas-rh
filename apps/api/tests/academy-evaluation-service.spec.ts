@@ -605,10 +605,14 @@ describe('le formateur, et qui gère le catalogue', () => {
       fermeture: 'gestion',
     });
     expect(await codeOf(() => evaluation.demarrer(adminAgent, courseId))).toBe('academy.gestion');
+    // Un membre de la DCH à qui l'Academy est déléguée : de même.
+    const delegue = { ...autre, capacites: ['academy'] } as SessionUser;
+    expect((await academy.gestionDetail(delegue, courseId)).id).toBe(courseId);
+    expect(await codeOf(() => evaluation.demarrer(delegue, courseId))).toBe('academy.gestion');
     expect(await codeOf(() => evaluation.demarrer(autre, courseId))).toBe('AUCUNE ERREUR');
   });
 
-  it('le catalogue n’est géré que par l’administrateur', async () => {
+  it('sans l’habilitation « APIX Academy », on ne gère pas le catalogue', async () => {
     const membreDCH = { ...autre, capacites: ['personnel.consulter', 'pilotage'] } as SessionUser;
     expect(await codeOf(() => academy.gestionDetail(membreDCH, courseId))).toBe(
       'academy.forbidden',
