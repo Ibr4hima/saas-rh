@@ -2,18 +2,20 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { Capacite, MembreHabilite } from '@teranga/contracts';
+import { Button, Card, CardHeader, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
 import {
-  CAPACITE_INFOS,
-  CAPACITES_DELEGABLES,
-  type Capacite,
-  type InfoCapacite,
-  type MembreHabilite,
-} from '@teranga/contracts';
-import { Card, CardContent, CardHeader, CardTitle, cn, EmptyState, Skeleton } from '@teranga/ui';
-import { CorpsDefilant, CartePleine, Page } from '../../../../components/gabarit';
-import { Icon } from '../../../../components/icons';
+  ChoixMembre,
+  TYPES_DOCUMENTS,
+  TYPES_PIECES,
+  type TypeDelegable,
+} from '../../../../components/deleguer-documents';
+import { CAPACITES_PERSONNEL } from '../../../../components/deleguer-membres';
+import { Page } from '../../../../components/gabarit';
+import { Icon, type IconName } from '../../../../components/icons';
 import {
+  BandeauDelegation,
   BandeauMessage,
   texteErreur,
   useMembresDCH,
@@ -22,234 +24,375 @@ import {
 import { api } from '../../../../lib/api';
 
 /* ————————————————————————————————————————————————————————————————
-   Les délégations du directeur du Capital Humain.
+   « Déléguer des tâches » — tout ce que la DCH délègue, sur une page.
 
-   Toutes les demandes du personnel et tous les accès de gestion reviennent
-   au directeur. Il les confie, une à une, aux membres de sa direction : il
-   connaît son équipe, et certaines parties sont sensibles. Ce qui est confié
-   arrive directement au membre ; le directeur voit tout, et garde la main.
+   Une ligne par page de Gestion RH, les agents de la DCH en pastilles : la
+   cocher, c'est autoriser l'agent ; le directeur garde toujours la main.
+   Les documents se délèguent type par type. On coche, on décoche, puis on
+   enregistre — d'un coup.
 
-   Les délégations appartiennent à la DCH : quand elle change de
-   responsable, elles restent en place — le nouveau les trouve ici. Un
-   membre qui quitte la direction perd les siennes.
-
-   Une ligne par habilitation, les membres en pastilles : pleine, c'est
-   confié ; un clic confie ou retire. La grille tient sur un téléphone, là
-   où un tableau membres × habilitations déborderait.
+   Chaque page porte aussi son propre « Déléguer » : ici, on voit tout.
    ———————————————————————————————————————————————————————————————— */
 
-const GROUPES: InfoCapacite['groupe'][] = [
-  'Demandes',
-  'Documents',
-  'Personnel',
-  'Congés',
-  'Recrutement',
-  'Organisation',
+/** Une page, et ce que la déléguer donne — ou ses types, un par un. */
+type Ligne = {
+  cle: string;
+  libelle: string;
+  icone: IconName;
+  sensible?: boolean;
+} & ({ capacites: readonly Capacite[] } | { types: readonly TypeDelegable[] });
+
+const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
+  {
+    titre: 'Personnel',
+    lignes: [
+      {
+        cle: 'personnel',
+        libelle: 'Gestion du personnel',
+        icone: 'group',
+        sensible: true,
+        capacites: CAPACITES_PERSONNEL,
+      },
+      {
+        cle: 'contrats',
+        libelle: 'Échéances de contrat',
+        icone: 'schedule',
+        capacites: ['contrats.echeances'],
+      },
+      {
+        cle: 'organigramme',
+        libelle: 'Gestion de l’organigramme',
+        icone: 'family_history',
+        capacites: ['organigramme'],
+      },
+    ],
+  },
+  {
+    titre: 'Demandes',
+    lignes: [
+      {
+        cle: 'conges',
+        libelle: 'Absences & Congés',
+        icone: 'free_cancellation',
+        capacites: ['demandes.conges'],
+      },
+      {
+        cle: 'documents',
+        libelle: 'Demandes de documents',
+        icone: 'folder_managed',
+        types: TYPES_DOCUMENTS,
+      },
+      {
+        cle: 'informations',
+        libelle: 'Mise à jour d’infos',
+        icone: 'badge',
+        capacites: ['demandes.informations'],
+      },
+      {
+        cle: 'pieces',
+        libelle: 'Vérification des documents',
+        icone: 'verified_user',
+        sensible: true,
+        types: TYPES_PIECES,
+      },
+    ],
+  },
+  {
+    titre: 'Congés',
+    lignes: [
+      {
+        cle: 'parametres',
+        libelle: 'Paramètres des congés',
+        icone: 'settings',
+        capacites: ['conges.parametres'],
+      },
+      {
+        cle: 'feries',
+        libelle: 'Gestion des jours fériés',
+        icone: 'event',
+        capacites: ['feries'],
+      },
+    ],
+  },
+  {
+    titre: 'Recrutement',
+    lignes: [
+      {
+        cle: 'offres',
+        libelle: 'Offres d’emploi',
+        icone: 'business_center',
+        capacites: ['recrutement.offres'],
+      },
+      {
+        cle: 'candidatures',
+        libelle: 'Dossiers de candidature',
+        icone: 'person_add',
+        sensible: true,
+        capacites: ['recrutement.candidatures'],
+      },
+    ],
+  },
 ];
 
-/** Ce que dit chaque famille — au directeur (« vous »), ou à qui ne fait que lire. */
-const introGroupe = (groupe: InfoCapacite['groupe'], directeur: boolean): string =>
-  ({
-    Demandes: `Les demandes des agents vont directement aux membres choisis — tous sont prévenus, le premier qui la traite l’emporte. Sans membre disponible, elles ${directeur ? 'vous reviennent' : 'reviennent à qui dirige la DCH'}.`,
-    Documents:
-      'Chaque type de document se confie à part : les attestations de travail à l’un, les bulletins de salaire à l’autre. Chaque document demandé va à qui traite son type.',
-    Personnel: `L’accès aux dossiers du personnel, et les alertes d’échéance de contrat — elles vont aux membres choisis${directeur ? ' plutôt qu’à vous' : ''}, jamais à l’agent dont c’est le contrat.`,
-    Congés: 'Les soldes, les types d’absence et les jours fériés — chacun à part.',
-    Recrutement:
-      'Les offres et les dossiers se confient à part : qui rédige les offres ne lit pas forcément les candidatures.',
-    Organisation:
-      'Les autres espaces de gestion. Le catalogue de l’APIX Academy reste à l’administrateur : qui le gère voit les questions des évaluations.',
-  })[groupe];
+/** Ce qui se coche d'un geste : une page, ou un type de document. */
+const UNITES: (readonly Capacite[])[] = SECTIONS.flatMap((s) =>
+  s.lignes.flatMap((l) => ('types' in l ? l.types.map((t) => [t.capacite]) : [l.capacites])),
+);
+
+const cle = (capacite: Capacite, employeeId: string) => `${capacite}:${employeeId}`;
 
 export default function DelegationsPage() {
   const queryClient = useQueryClient();
   const etat = useMembresDCH();
+  const d = etat.data;
+  const membres = useMemo(() => d?.membres ?? [], [d?.membres]);
+  const modifiable = Boolean(d?.estDirecteur);
   const [message, setMessage] = useState<Message>(null);
 
-  const basculer = useMutation({
-    mutationFn: (v: { membre: MembreHabilite; capacite: Capacite; accordee: boolean }) =>
-      api('/habilitations', {
-        method: 'PUT',
-        body: { employeeId: v.membre.employeeId, capacite: v.capacite, accordee: v.accordee },
-      }),
-    onSuccess: async (_, v) => {
-      const libelle = CAPACITE_INFOS[v.capacite].libelle.toLowerCase();
-      setMessage({
-        ton: 'ok',
-        texte: v.accordee
-          ? `${v.membre.nom} : ${libelle}, confié — une notification lui est envoyée.`
-          : `${v.membre.nom} : ${libelle}, retiré — vous reprenez la main.`,
-      });
+  // Ce qui est délégué aujourd'hui, et ce que la page en fait — tant qu'on
+  // n'a rien touché, c'est la même chose.
+  const actuel = useMemo(
+    () => new Set(membres.flatMap((m) => m.capacites.map((c) => cle(c, m.employeeId)))),
+    [membres],
+  );
+  const [brouillon, setBrouillon] = useState<Set<string> | null>(null);
+  const choix = brouillon ?? actuel;
+
+  const coche = (capacites: readonly Capacite[], m: MembreHabilite, dans = choix) =>
+    capacites.every((c) => dans.has(cle(c, m.employeeId)));
+
+  /**
+   * Cocher donne tout ce que la ligne demande ; décocher le retire — sauf à
+   * qui n'en avait qu'une partie : il la retrouve telle qu'elle était.
+   */
+  const basculer = (capacites: readonly Capacite[], m: MembreHabilite) => {
+    setMessage(null);
+    const n = new Set(choix);
+    const etaitPlein = coche(capacites, m, actuel);
+    const allume = !coche(capacites, m);
+    for (const c of capacites) {
+      const k = cle(c, m.employeeId);
+      if (allume || (!etaitPlein && actuel.has(k))) n.add(k);
+      else n.delete(k);
+    }
+    setBrouillon(n);
+  };
+
+  const changements = useMemo(() => {
+    const liste: { capacite: Capacite; employeeId: string; accordee: boolean }[] = [];
+    for (const m of membres) {
+      for (const c of new Set(UNITES.flat())) {
+        const k = cle(c, m.employeeId);
+        if (actuel.has(k) !== choix.has(k)) {
+          liste.push({ capacite: c, employeeId: m.employeeId, accordee: choix.has(k) });
+        }
+      }
+    }
+    return liste;
+  }, [membres, actuel, choix]);
+  // Ce que la personne a changé, compté comme elle l'a fait : une pastille.
+  const nbChangees = membres.reduce(
+    (n, m) => n + UNITES.filter((u) => coche(u, m, actuel) !== coche(u, m)).length,
+    0,
+  );
+
+  const enregistrer = useMutation({
+    mutationFn: async () => {
+      // Un changement à la fois : chacun l'apprend par sa propre notification.
+      for (const ch of changements) {
+        await api('/habilitations', { method: 'PUT', body: ch });
+      }
+    },
+    onSuccess: () => setMessage({ ton: 'ok', texte: 'Délégations enregistrées.' }),
+    onError: (err) => setMessage({ ton: 'erreur', texte: texteErreur(err) }),
+    onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ['habilitations'] });
       await queryClient.invalidateQueries({ queryKey: ['validations-compteurs'] });
+      setBrouillon(null);
     },
-    onError: (err) => setMessage({ ton: 'erreur', texte: texteErreur(err) }),
   });
 
-  const d = etat.data;
-  const modifiable = Boolean(d?.estDirecteur);
+  if (etat.isLoading) {
+    return (
+      <Page>
+        <Card className="shrink-0 p-5">
+          <div className="flex flex-col gap-3">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
+          </div>
+        </Card>
+      </Page>
+    );
+  }
+
+  if (!d?.direction) {
+    return (
+      <Page>
+        <Card className="shrink-0">
+          <EmptyState
+            className="py-12"
+            icon={<Icon name="family_history" size={22} />}
+            title="Aucune Direction du Capital Humain désignée"
+            action={
+              <Link
+                href="/organisation"
+                className="text-[12.5px] font-semibold text-primary hover:underline"
+              >
+                Désigner la DCH dans l’organigramme
+              </Link>
+            }
+          />
+        </Card>
+      </Page>
+    );
+  }
 
   return (
     <Page>
       {message ? <BandeauMessage message={message} /> : null}
+      {!modifiable ? (
+        <BandeauDelegation
+          icone="lock"
+          texte="Seule la personne qui dirige la DCH modifie les délégations."
+        />
+      ) : null}
 
-      <Card className="shrink-0">
-        <CardContent className="flex items-center gap-3 pt-5">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-[11px] bg-primary/[0.07] text-primary">
-            <Icon name="arrow_split" size={19} />
+      {membres.length === 0 ? (
+        <Card className="shrink-0">
+          <EmptyState
+            className="py-12"
+            icon={<Icon name="groups" size={22} />}
+            title="Aucun autre agent dans votre direction"
+          />
+        </Card>
+      ) : (
+        SECTIONS.map((section) => (
+          <Card key={section.titre} className="shrink-0">
+            <CardHeader>
+              <CardTitle>{section.titre}</CardTitle>
+            </CardHeader>
+            <ul className="flex flex-col divide-y divide-line-soft px-5 pb-1">
+              {section.lignes.map((l) => (
+                <li key={l.cle} className="py-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
+                    <EnTete ligne={l} />
+                    {'capacites' in l ? (
+                      <Pastilles
+                        libelle={l.libelle}
+                        membres={membres}
+                        coche={(m) => coche(l.capacites, m)}
+                        onBasculer={(m) => basculer(l.capacites, m)}
+                        modifiable={modifiable}
+                      />
+                    ) : null}
+                  </div>
+                  {'types' in l ? (
+                    <ul className="mt-3 flex flex-col gap-2.5 md:ml-[46px]">
+                      {l.types.map((t) => (
+                        <li
+                          key={t.capacite}
+                          className="flex flex-col gap-2 md:flex-row md:items-center md:gap-6"
+                        >
+                          <span className="text-[12.5px] text-ink md:w-[calc(20rem-46px)] md:shrink-0">
+                            {t.libelle}
+                          </span>
+                          <Pastilles
+                            libelle={t.libelle}
+                            membres={membres}
+                            coche={(m) => coche([t.capacite], m)}
+                            onBasculer={(m) => basculer([t.capacite], m)}
+                            modifiable={modifiable}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ))
+      )}
+
+      {/* Enregistrer d'un coup ce qu'on a coché : la barre ne paraît qu'à
+          la première modification. */}
+      {modifiable && nbChangees > 0 ? (
+        <div className="sticky bottom-24 z-20 mx-auto flex w-fit items-center gap-2 rounded-full border border-card-line bg-surface py-1.5 pr-1.5 pl-4 shadow-lg md:bottom-5">
+          <span
+            className="text-[12.5px] whitespace-nowrap text-ink"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
+            {nbChangees} modification{nbChangees > 1 ? 's' : ''}
           </span>
-          <div className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-ink">
-            {etat.isLoading ? (
-              <Skeleton className="h-4 w-64" />
-            ) : !d?.direction ? (
-              <>
-                Aucune direction n’est désignée comme Direction du Capital Humain.{' '}
-                <Link href="/organisation" className="font-semibold text-primary hover:underline">
-                  Organigramme
-                </Link>
-              </>
-            ) : modifiable ? (
-              <>Déléguer les missions de la DCH à vos collaborateurs</>
-            ) : (
-              <>
-                Qui peut quoi à la <span className="font-semibold">{d.direction.nom}</span>
-                {d.directeur ? `, que dirige ${d.directeur.nom}` : ''}. Seule la personne qui dirige
-                la DCH modifie les délégations.
-              </>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <CartePleine>
-        <CardHeader className="shrink-0">
-          <CardTitle>{modifiable ? 'Délégations' : 'Qui peut quoi'}</CardTitle>
-        </CardHeader>
-        <CorpsDefilant className="px-4 pb-4">
-          {etat.isLoading ? (
-            <div className="flex flex-col gap-3">
-              {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : !d || d.membres.length === 0 ? (
-            <EmptyState
-              className="py-10"
-              icon={<Icon name="groups" size={22} />}
-              title="Personne à qui confier"
-              description="Aucun autre membre de la DCH n’a encore accès au portail. Ouvrez-leur un accès depuis leur fiche."
-            />
-          ) : (
-            <div className="flex flex-col gap-6">
-              {GROUPES.map((groupe) => (
-                <section key={groupe}>
-                  <h2 className="text-[11px] font-bold tracking-[0.08em] text-ink-muted uppercase">
-                    {groupe}
-                  </h2>
-                  <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-                    {introGroupe(groupe, modifiable)}
-                  </p>
-                  <ul className="mt-2 flex flex-col divide-y divide-line-soft">
-                    {CAPACITES_DELEGABLES.filter((c) => CAPACITE_INFOS[c].groupe === groupe).map(
-                      (c) => (
-                        <LigneCapacite
-                          key={c}
-                          capacite={c}
-                          membres={d.membres}
-                          modifiable={modifiable}
-                          enCours={
-                            basculer.isPending && basculer.variables?.capacite === c
-                              ? basculer.variables.membre.employeeId
-                              : null
-                          }
-                          onBasculer={(membre, accordee) => {
-                            setMessage(null);
-                            basculer.mutate({ membre, capacite: c, accordee });
-                          }}
-                        />
-                      ),
-                    )}
-                  </ul>
-                </section>
-              ))}
-            </div>
-          )}
-        </CorpsDefilant>
-      </CartePleine>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={enregistrer.isPending}
+            onClick={() => setBrouillon(null)}
+          >
+            Annuler
+          </Button>
+          <Button size="sm" loading={enregistrer.isPending} onClick={() => enregistrer.mutate()}>
+            Enregistrer
+          </Button>
+        </div>
+      ) : null}
     </Page>
   );
 }
 
-function LigneCapacite({
-  capacite,
-  membres,
-  modifiable,
-  enCours,
-  onBasculer,
-}: {
-  capacite: Capacite;
-  membres: MembreHabilite[];
-  modifiable: boolean;
-  /** Le membre dont la pastille attend la réponse du serveur. */
-  enCours: string | null;
-  onBasculer: (membre: MembreHabilite, accordee: boolean) => void;
-}) {
-  const info = CAPACITE_INFOS[capacite];
-  const qui = membres.filter((m) => m.capacites.includes(capacite));
+/** Le nom de la page, son icône — et « Sensible » quand il le faut. */
+function EnTete({ ligne: l }: { ligne: Ligne }) {
   return (
-    <li className="flex flex-col gap-2 py-3 lg:flex-row lg:items-start lg:gap-6">
-      <div className="min-w-0 lg:w-72 lg:shrink-0">
-        <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-strong">
-          {info.libelle}
-          {info.sensible ? (
-            <span
-              title="Données sensibles : à confier avec soin."
-              className="inline-flex items-center gap-0.5 rounded-full bg-hover px-1.5 py-px text-[10px] font-semibold text-ink-muted"
-            >
-              <Icon name="lock" size={11} />
-              Sensible
-            </span>
-          ) : null}
-        </p>
-        <p className="mt-0.5 text-[11.5px] leading-snug text-ink-muted">{info.description}</p>
-        {qui.length === 0 ? (
-          <p className="mt-0.5 text-[11.5px] text-ink-muted italic">
-            {modifiable
-              ? 'Personne d’autre que vous, pour l’instant.'
-              : 'Personne d’autre que qui dirige la DCH, pour l’instant.'}
-          </p>
+    <span className="flex min-w-0 items-center gap-3 md:w-80 md:shrink-0">
+      <span className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-primary/[0.07] text-primary">
+        <Icon name={l.icone} size={17} />
+      </span>
+      <span className="min-w-0 text-[13px] font-semibold text-ink-strong">
+        {l.libelle}
+        {l.sensible ? (
+          <span
+            title="Données sensibles : à confier avec soin."
+            className="ml-2 inline-flex translate-y-[-1px] items-center gap-0.5 rounded-full bg-surface px-1.5 py-px align-middle text-[10px] font-semibold text-ink-muted ring-1 ring-line-soft ring-inset"
+          >
+            <Icon name="lock" size={11} />
+            Sensible
+          </span>
         ) : null}
-      </div>
-      <div className="flex flex-wrap gap-1.5 lg:flex-1 lg:justify-end">
-        {membres.map((m) => {
-          const accordee = m.capacites.includes(capacite);
-          return (
-            <button
-              key={m.employeeId}
-              type="button"
-              disabled={!modifiable || enCours !== null}
-              aria-pressed={accordee}
-              title={
-                accordee
-                  ? `${m.nom} — confié. Cliquer pour retirer.`
-                  : `${m.nom} — cliquer pour confier.`
-              }
-              onClick={() => onBasculer(m, !accordee)}
-              className={cn(
-                'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11.5px] font-semibold ring-1 transition-colors duration-150 ring-inset focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:cursor-default',
-                accordee
-                  ? 'bg-primary text-primary-ink ring-primary'
-                  : 'bg-surface text-ink ring-card-line enabled:hover:bg-hover',
-                enCours === m.employeeId && 'opacity-60',
-              )}
-            >
-              {accordee ? <Icon name="check" size={13} /> : null}
-              {m.nom}
-              {m.absent ? <span className="font-normal opacity-75">· en congé</span> : null}
-            </button>
-          );
-        })}
-      </div>
-    </li>
+      </span>
+    </span>
+  );
+}
+
+function Pastilles({
+  libelle,
+  membres,
+  coche,
+  onBasculer,
+  modifiable,
+}: {
+  libelle: string;
+  membres: MembreHabilite[];
+  coche: (m: MembreHabilite) => boolean;
+  onBasculer: (m: MembreHabilite) => void;
+  modifiable: boolean;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={`Qui : ${libelle}`}
+      className="flex min-w-0 flex-1 flex-wrap gap-2"
+    >
+      {membres.map((m) => (
+        <ChoixMembre
+          key={m.employeeId}
+          nom={m.nom}
+          choisi={coche(m)}
+          onBasculer={() => onBasculer(m)}
+          desactive={!modifiable}
+        />
+      ))}
+    </div>
   );
 }

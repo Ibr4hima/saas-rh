@@ -31,7 +31,7 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
-import { BandeauDeleguer } from '../../../components/deleguer-membres';
+import { BandeauDeleguer, CAPACITES_PERSONNEL } from '../../../components/deleguer-membres';
 import { EmployeeCreateModal } from '../../../components/employee-create-modal';
 import { BandeauHierarchie } from '../../../components/bandeau-hierarchie';
 import { aDesConsequences, ListeConsequences } from '../../../components/consequences-hierarchie';
@@ -266,15 +266,10 @@ export default function EmployeesPage() {
       <EmployeeCreateModal open={createOpen} onClose={() => router.replace('/employees')} />
       {importOuvert ? <FenetreImportEmployes onClose={() => setImportOuvert(false)} /> : null}
 
-      {/* Déléguer la gestion du personnel, c'est tout la page : consulter,
-          gérer, les données sensibles, effacer un dossier. */}
+      {/* Déléguer la gestion du personnel, c'est toute la page : consulter,
+          gérer, les données sensibles, effacer un dossier, les soldes. */}
       <BandeauDeleguer
-        capacite={[
-          'personnel.consulter',
-          'personnel.gerer',
-          'personnel.sensible',
-          'personnel.effacer',
-        ]}
+        capacite={CAPACITES_PERSONNEL}
         verbe="gérer"
         objet="les dossiers du personnel"
         delegue="la gestion du personnel"

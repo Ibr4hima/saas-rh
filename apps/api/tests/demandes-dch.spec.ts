@@ -411,7 +411,7 @@ describe('les pièces justificatives', () => {
       'documents.forbidden_scope',
     );
     expect(await pieces.file(awa.session)).toEqual([]);
-    await habiliter(awa, 'demandes.pieces');
+    await habiliter(awa, 'demandes.pieces.diplome');
     const file = await pieces.file(awa.session);
     expect(file.map((p) => `${p.employeeName}:${p.label}:${p.canReview}`)).toEqual([
       'Moussa Test:Master:true',
@@ -428,10 +428,32 @@ describe('les pièces justificatives', () => {
     expect(await appels('piece', id)).toEqual([]);
   });
 
+  it('les documents officiels se vérifient type par type : chaque dépôt va à qui vérifie le sien', async () => {
+    await habiliter(awa, 'demandes.pieces.diplome');
+    await habiliter(khady, 'demandes.pieces.cni');
+    const { id: diplome } = await deposer();
+    const { id: cni } = await pieces.upload(moussa.session, moussa.employeeId, {
+      category: 'cni',
+      label: 'CNI recto-verso',
+      filename: 'cni.pdf',
+      contentType: 'application/pdf',
+      contentBase64: PDF,
+    });
+    expect(await appels('piece', diplome)).toEqual(['dch:Awa']);
+    expect(await appels('piece', cni)).toEqual(['dch:Khady']);
+    // Awa ne vérifie pas les pièces d'identité ; le directeur, si.
+    expect(await codeOf(() => pieces.review(awa.session, cni, { decision: 'approved' }))).toBe(
+      'demandes.pas_traitant',
+    );
+    await pieces.review(mariama.session, cni, { decision: 'approved' });
+    await pieces.review(awa.session, diplome, { decision: 'approved' });
+    expect(await appels('piece', diplome)).toEqual([]);
+  });
+
   it('le contenu : le titulaire, et qui vérifie les pièces — pas un autre agent', async () => {
     const { id } = await deposer();
     expect(await codeOf(() => pieces.content(khady.session, id))).toBe('documents.forbidden_scope');
-    await habiliter(khady, 'demandes.pieces');
+    await habiliter(khady, 'demandes.pieces.diplome');
     expect((await pieces.content(khady.session, id)).filename).toBe('master.pdf');
     expect((await pieces.content(moussa.session, id)).filename).toBe('master.pdf');
   });
@@ -596,7 +618,7 @@ describe('on ne contourne pas le système : rien sur soi-même', () => {
   });
 
   it('les pièces : l’agent dépose les siennes ; qui les vérifie ne vérifie pas les siennes', async () => {
-    await habiliter(awa, 'demandes.pieces');
+    await habiliter(awa, 'demandes.pieces.diplome');
     const piece = {
       category: 'diplome' as const,
       label: 'Licence',

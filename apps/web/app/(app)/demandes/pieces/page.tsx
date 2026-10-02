@@ -20,7 +20,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { BoutonDecision } from '../../../../components/bouton-decision';
-import { DeleguerMembres } from '../../../../components/deleguer-membres';
+import { DeleguerPieces, TYPES_PIECES } from '../../../../components/deleguer-documents';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Page } from '../../../../components/gabarit';
@@ -104,12 +104,18 @@ export default function PiecesAVerifierPage() {
   // et son propre document, qu'il délègue. Qui consulte seulement voit la
   // file entière, sans geste.
   const toutes = pieces.data ?? [];
-  const traite =
-    estDirecteur || peut(me.data, 'demandes.pieces') || toutes.some((p) => p.canReview);
+  // Ce qui est délégué, type par type : à qui, et — au membre — à lui.
+  const delegues = membres.filter((m) =>
+    TYPES_PIECES.some((t) => m.capacites.includes(t.capacite)),
+  );
+  const tousLesTypes = delegues.every((m) =>
+    TYPES_PIECES.every((t) => m.capacites.includes(t.capacite)),
+  );
+  const miens = TYPES_PIECES.filter((t) => peut(me.data, t.capacite));
+  const traite = estDirecteur || miens.length > 0 || toutes.some((p) => p.canReview);
   const aVerifier = toutes.filter(
     (p) => p.status === 'pending' && (!traite || p.canReview || Boolean(p.traitement?.aConfier)),
   );
-  const habilites = membres.filter((m) => m.capacites.includes('demandes.pieces'));
 
   return (
     <Page>
@@ -119,29 +125,20 @@ export default function PiecesAVerifierPage() {
         <BandeauDelegation
           icone="arrow_split"
           texte={
-            habilites.length > 0
-              ? `${listePrenoms(habilites)} ${habilites.length > 1 ? 'peuvent' : 'peut'} désormais vérifier les documents officiels.`
-              : 'Vous pouvez déléguer cette tâche à votre équipe.'
+            delegues.length > 0
+              ? `${listePrenoms(delegues)} ${delegues.length > 1 ? 'peuvent' : 'peut'} désormais vérifier ${tousLesTypes ? 'les' : 'certains'} documents officiels.`
+              : 'Vous pouvez déléguer la vérification des documents à votre équipe.'
           }
-          action={
-            <DeleguerMembres
-              membres={membres}
-              capacite="demandes.pieces"
-              titre="Déléguer la vérification des documents"
-              confirmation={(retenus) =>
-                `${listePrenoms(retenus)} ${retenus.length > 1 ? 'pourront' : 'pourra'} vérifier désormais les documents officiels déposés par les agents.`
-              }
-              retrait="Vous vérifierez de vous-même tous les documents officiels."
-              fichiers={['pieces']}
-              onFait={() => setMessage(null)}
-              onErreur={echec}
-            />
-          }
+          action={<DeleguerPieces membres={membres} onFait={() => setMessage(null)} />}
         />
-      ) : peut(me.data, 'demandes.pieces') ? (
+      ) : miens.length > 0 ? (
         <BandeauDelegation
           icone="how_to_reg"
-          texte="La DCH vous a délégué la vérification des documents officiels."
+          texte={
+            miens.length === TYPES_PIECES.length
+              ? 'La DCH vous a délégué la vérification des documents officiels.'
+              : `La DCH vous a délégué la vérification des documents suivants : ${miens.map((t) => t.libelle).join(', ')}.`
+          }
         />
       ) : null}
 

@@ -18,6 +18,19 @@ import {
 } from './traitement-dch';
 
 /**
+ * La gestion du personnel se délègue d'un bloc : tout ce que sa page
+ * demande — consulter, gérer, les données sensibles, effacer un dossier, et
+ * les soldes de congés, qui se règlent depuis la fiche.
+ */
+export const CAPACITES_PERSONNEL = [
+  'personnel.consulter',
+  'personnel.gerer',
+  'personnel.sensible',
+  'personnel.effacer',
+  'conges.soldes',
+] as const satisfies readonly Capacite[];
+
+/**
  * Le bandeau d'une page de la DCH qu'un accès ouvre (paramètres des congés,
  * offres d'emploi, organigramme, gestion du personnel…) : au directeur, qui
  * peut — et « Déléguer » ; au membre, ce qui lui est délégué. Rien pour les

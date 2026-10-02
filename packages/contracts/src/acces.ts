@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { RequestableDoc } from './document-requests';
+import type { DocumentCategory } from './documents';
 
 /**
  * Qui peut quoi — décidé avec l'APIX.
@@ -38,12 +39,28 @@ export const CAPACITES_DOCUMENTS = [
   'demandes.documents.autre',
 ] as const satisfies readonly `demandes.documents.${RequestableDoc}`[];
 
+/**
+ * Vérifier un type de document officiel : chaque dépôt va à qui vérifie ce
+ * type. `autre` ne se lit plus que sur des dépôts anciens — il reste au
+ * directeur, sauf délégation.
+ */
+export const CAPACITES_PIECES = [
+  'demandes.pieces.cni',
+  'demandes.pieces.passeport',
+  'demandes.pieces.diplome',
+  'demandes.pieces.certification',
+  'demandes.pieces.attestation_travail',
+  'demandes.pieces.attestation_stage',
+  'demandes.pieces.cv',
+  'demandes.pieces.autre',
+] as const satisfies readonly `demandes.pieces.${DocumentCategory}`[];
+
 /** Traiter un type de demande : les demandes vont directement aux membres choisis. */
 export const CAPACITES_DEMANDES = [
   'demandes.conges',
   ...CAPACITES_DOCUMENTS,
   'demandes.informations',
-  'demandes.pieces',
+  ...CAPACITES_PIECES,
 ] as const;
 
 /** Les accès : plusieurs membres peuvent détenir le même. */
@@ -96,10 +113,21 @@ export const estDelegable = (c: Capacite): boolean => CAPACITES_DELEGABLES.inclu
 export const capaciteDuDocument = (doc: RequestableDoc): CapaciteDemande =>
   `demandes.documents.${doc}`;
 
+/** Qui vérifie ce document officiel-là : une habilitation par type. */
+export const capaciteDeLaPiece = (categorie: DocumentCategory): CapaciteDemande =>
+  `demandes.pieces.${categorie}`;
+
 export interface InfoCapacite {
   libelle: string;
   description: string;
-  groupe: 'Demandes' | 'Documents' | 'Personnel' | 'Congés' | 'Recrutement' | 'Organisation';
+  groupe:
+    | 'Demandes'
+    | 'Documents'
+    | 'Vérification'
+    | 'Personnel'
+    | 'Congés'
+    | 'Recrutement'
+    | 'Organisation';
   /** Données sensibles : à confier avec soin. */
   sensible?: boolean;
 }
@@ -148,10 +176,52 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
       'Les signalements des agents (adresse, téléphone…) : les appliquer ou les refuser.',
     groupe: 'Demandes',
   },
-  'demandes.pieces': {
-    libelle: 'Pièces justificatives',
-    description: 'Les pièces déposées par les agents : les valider ou les refuser.',
-    groupe: 'Demandes',
+  'demandes.pieces.cni': {
+    libelle: 'Cartes nationales d’identité',
+    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    groupe: 'Vérification',
+    sensible: true,
+  },
+  'demandes.pieces.passeport': {
+    libelle: 'Passeports',
+    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    groupe: 'Vérification',
+    sensible: true,
+  },
+  'demandes.pieces.diplome': {
+    libelle: 'Diplômes',
+    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    groupe: 'Vérification',
+    sensible: true,
+  },
+  'demandes.pieces.certification': {
+    libelle: 'Certifications',
+    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    groupe: 'Vérification',
+    sensible: true,
+  },
+  'demandes.pieces.attestation_travail': {
+    libelle: 'Attestations de travail déposées',
+    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    groupe: 'Vérification',
+    sensible: true,
+  },
+  'demandes.pieces.attestation_stage': {
+    libelle: 'Attestations de stage',
+    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    groupe: 'Vérification',
+    sensible: true,
+  },
+  'demandes.pieces.cv': {
+    libelle: 'Curriculum vitæ',
+    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    groupe: 'Vérification',
+    sensible: true,
+  },
+  'demandes.pieces.autre': {
+    libelle: 'Autres documents déposés',
+    description: 'Les dépôts anciens hors de la liste.',
+    groupe: 'Vérification',
     sensible: true,
   },
   'personnel.consulter': {
@@ -246,7 +316,7 @@ export function capacitesDuType(type: TypeDemande): readonly CapaciteDemande[] {
     case 'informations':
       return ['demandes.informations'];
     case 'pieces':
-      return ['demandes.pieces'];
+      return CAPACITES_PIECES;
   }
 }
 

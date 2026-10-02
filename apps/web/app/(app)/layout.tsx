@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CAPACITES_DOCUMENTS,
+  CAPACITES_PIECES,
   gereQuelqueChose,
   nomCourt,
   peut,
@@ -418,7 +419,7 @@ const FILES = [
   },
   {
     type: 'pieces',
-    capacites: ['demandes.pieces'],
+    capacites: CAPACITES_PIECES,
     href: '/demandes/pieces',
     label: 'Vérification des documents',
     seul: 'Vérification des documents',

@@ -1,6 +1,8 @@
 import { sql, type SQL } from 'drizzle-orm';
 import {
+  capaciteDeLaPiece,
   capaciteDuDocument,
+  type DocumentCategory,
   capacitesDuType,
   PROFILE_CHANGE_ALL_LABELS,
   REQUESTABLE_DOC_LABELS,
@@ -91,9 +93,11 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
     table: sql.raw('employee_documents'),
     // Déposée par l'agent sur son dossier : la DCH la vérifie.
     enAttente: sql.raw(`r.status = 'pending'`),
-    detail: sql.raw('to_jsonb(r.label)'),
-    capacite: () => 'demandes.pieces',
-    objet: (d) => `« ${String(d)} » — à vérifier, puis valider pour l’ajouter au dossier`,
+    detail: sql.raw(`jsonb_build_object('label', r.label, 'categorie', r.category)`),
+    // Un type de document officiel, une délégation (cf. CAPACITES_PIECES).
+    capacite: (d) => capaciteDeLaPiece((d as { categorie: DocumentCategory }).categorie),
+    objet: (d) =>
+      `« ${(d as { label: string }).label} » — à vérifier, puis valider pour l’ajouter au dossier`,
     titre: (nom) => `Pièce à vérifier : ${nom}`,
     lien: '/demandes/pieces',
   },

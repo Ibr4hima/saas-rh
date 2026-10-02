@@ -2,13 +2,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
+  DocumentCategory,
   EmployeeDocumentView,
   PieceATraiterView,
   ReviewEmployeeDocumentInput,
   SessionUser,
   UploadEmployeeDocumentInput,
 } from '@teranga/contracts';
-import { MAX_EMPLOYEE_DOCUMENT_BYTES, peut } from '@teranga/contracts';
+import { capaciteDeLaPiece, MAX_EMPLOYEE_DOCUMENT_BYTES, peut } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -142,7 +143,7 @@ export class EmployeeDocumentsService {
           'Elles vont aux membres de la DCH qui vérifient les pièces, ou à qui dirige la DCH.',
         );
       }
-      await exigerDeTraiter(tx, user, 'demandes.pieces', {
+      await exigerDeTraiter(tx, user, capaciteDeLaPiece(doc.category as DocumentCategory), {
         employeeId: doc.employeeId,
         confieeA: doc.confieeAEmployeeId,
       });
@@ -325,7 +326,7 @@ export class EmployeeDocumentsService {
     const tr = enAttenteDCH
       ? await vueDuTraitement(
           tx,
-          'demandes.pieces',
+          capaciteDeLaPiece(doc.category as DocumentCategory),
           { employeeId: doc.employeeId, confieeA: doc.confieeAEmployeeId },
           moi,
           dch,
