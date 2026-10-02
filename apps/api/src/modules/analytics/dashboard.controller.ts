@@ -1,5 +1,5 @@
 import { Controller, Get, Inject, Req, UseGuards } from '@nestjs/common';
-import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { peut, type DashboardView } from '@teranga/contracts';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
@@ -22,9 +22,7 @@ export class DashboardController {
   @Get('dashboard')
   async stats(@Req() req: AuthenticatedRequest): Promise<DashboardView> {
     const user = req.sessionUser;
-    // Les files de la DCH ne se comptent que pour qui les voit.
-    const isManage = peut(user, 'personnel.consulter');
-    const seesContracts = peut(user, 'pilotage') || isManage;
+    const seesContracts = peut(user, 'pilotage') || peut(user, 'personnel.consulter');
 
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       const count = async (query: Promise<Array<{ n: number }>>) => (await query)[0]?.n ?? 0;
@@ -37,8 +35,6 @@ export class DashboardController {
         pendingRequests,
         upcomingAbsences,
         orgUnits,
-        pendingDocumentRequests,
-        pendingProfileChanges,
         genders,
         directions,
         holidays,
@@ -90,24 +86,6 @@ export class DashboardController {
             ),
         ),
         count(tx.select({ n }).from(t.orgUnits).where(isNull(t.orgUnits.deletedAt))),
-        // « prête » est terminal : la compter ferait un badge qui ne redescend
-        // jamais alors que la RH n'a plus rien à faire.
-        isManage
-          ? count(
-              tx
-                .select({ n })
-                .from(t.documentRequests)
-                .where(inArray(t.documentRequests.status, ['received', 'processing'])),
-            )
-          : Promise.resolve(0),
-        isManage
-          ? count(
-              tx
-                .select({ n })
-                .from(t.profileChangeRequests)
-                .where(eq(t.profileChangeRequests.status, 'pending')),
-            )
-          : Promise.resolve(0),
         tx
           .select({ gender: t.persons.gender, n })
           .from(t.employees)
@@ -172,8 +150,6 @@ export class DashboardController {
         pendingRequests,
         upcomingAbsences,
         orgUnits,
-        pendingDocumentRequests,
-        pendingProfileChanges,
         women: byGender['female'] ?? 0,
         men: byGender['male'] ?? 0,
         headcountByDirection: directions.rows.map((d) => ({

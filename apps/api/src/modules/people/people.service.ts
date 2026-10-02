@@ -1230,6 +1230,7 @@ export class PeopleService {
           employeeNumber: t.employees.employeeNumber,
           status: t.employees.status,
           userId: t.persons.userId,
+          prenom: t.persons.givenName,
           nom: sql<string>`${t.persons.givenName} || ' ' || ${t.persons.familyName}`,
         })
         .from(t.employees)
@@ -1251,7 +1252,7 @@ export class PeopleService {
   private async motifDeRefus(
     tx: Tx,
     user: SessionUser,
-    cible: { id: string; userId: string | null },
+    cible: { id: string; userId: string | null; prenom: string },
     geste: 'archive' | 'reouverture' | 'suppression',
   ): Promise<string | null> {
     if (cible.userId && cible.userId === user.userId) {
@@ -1289,7 +1290,7 @@ export class PeopleService {
     if (geste === 'reouverture') {
       const fin = await finDeContratPassee(tx, cible.id);
       if (fin) {
-        return `Son contrat a pris fin le ${frDate(fin)} — enregistrez d’abord son nouveau contrat`;
+        return `Le contrat de ${cible.prenom} a pris fin le ${frDate(fin)}. Enregistrez son nouveau contrat avant de réactiver son compte.`;
       }
     }
     // Rouvrir un dossier ne décapite aucune unité : ce garde-fou ne vaut que

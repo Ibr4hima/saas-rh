@@ -77,11 +77,9 @@ const TITRES: Record<EmployeeStatus, string> = {
 };
 
 interface Filtres {
-  positionTitle: string;
-  managerId: string;
   unit: string;
 }
-const SANS_FILTRE: Filtres = { positionTitle: '', managerId: '', unit: '' };
+const SANS_FILTRE: Filtres = { unit: '' };
 
 /**
  * Le sens du PREMIER clic sur chaque colonne.
@@ -144,8 +142,6 @@ export default function EmployeesPage() {
         offset: String((page - 1) * PAR_PAGE),
       });
       if (debounced) params.set('q', debounced);
-      if (filtres.positionTitle) params.set('positionTitle', filtres.positionTitle);
-      if (filtres.managerId) params.set('managerId', filtres.managerId);
       if (filtres.unit) params.set('unit', filtres.unit);
       return api<EmployeeListPage>(`/employees?${params.toString()}`);
     },
@@ -158,7 +154,7 @@ export default function EmployeesPage() {
   const donnees = query.data;
   const items = useMemo(() => donnees?.items ?? [], [donnees]);
   const counts = donnees?.counts ?? { active: 0, archived: 0 };
-  const facets = donnees?.facets ?? { positions: [], managers: [], units: [] };
+  const unites = donnees?.facets.units ?? [];
   const nbPages = Math.max(1, Math.ceil((donnees?.total ?? 0) / PAR_PAGE));
 
   /**
@@ -244,9 +240,7 @@ export default function EmployeesPage() {
   // Qui part avec une équipe la confie : on le demande avant de désactiver.
   const aConfier = equipesAConfier(actifsChoisis);
 
-  const filtreActif = Boolean(
-    debounced || filtres.positionTitle || filtres.managerId || filtres.unit,
-  );
+  const filtreActif = Boolean(debounced || filtres.unit);
 
   const ONGLETS = [
     { cle: 'active', label: 'Actifs', compte: counts.active },
@@ -254,7 +248,7 @@ export default function EmployeesPage() {
   ];
   const changerOnglet = (cle: string) => {
     setOnglet(cle as EmployeeStatus);
-    // Les filtres portent sur des valeurs propres à l'onglet : un poste qui
+    // Le filtre porte sur des valeurs propres à l'onglet : une unité qui
     // n'existe que chez les actifs viderait l'onglet des inactifs sans qu'on
     // comprenne pourquoi.
     setFiltres(SANS_FILTRE);
@@ -365,30 +359,18 @@ export default function EmployeesPage() {
           </BarreSelection>
         </CardHeader>
 
-        {/* Les filtres : trois listes de ce que l'onglet contient réellement,
-            plus de quoi tout relâcher d'un geste. Les inactifs n'ont plus ni
-            poste ni unité : la recherche suffit. */}
+        {/* Le filtre : les unités que l'onglet contient réellement, plus de
+            quoi le relâcher d'un geste. Les inactifs n'ont plus d'unité : la
+            recherche suffit. */}
         {onglet === 'active' ? (
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line-soft px-[18px] pb-3.5">
             <FiltreSelect
-              label="Tous les postes"
-              value={filtres.positionTitle}
-              options={facets.positions.map((p) => ({ value: p, label: p }))}
-              onChange={(v) => setFiltres((f) => ({ ...f, positionTitle: v }))}
-            />
-            <FiltreSelect
-              label="Tous les managers"
-              value={filtres.managerId}
-              options={facets.managers.map((m) => ({ value: m.id, label: m.name }))}
-              onChange={(v) => setFiltres((f) => ({ ...f, managerId: v }))}
-            />
-            <FiltreSelect
               label="Toutes les unités"
               value={filtres.unit}
-              options={facets.units.map((u) => ({ value: u, label: u }))}
+              options={unites.map((u) => ({ value: u, label: u }))}
               onChange={(v) => setFiltres((f) => ({ ...f, unit: v }))}
             />
-            {filtres.positionTitle || filtres.managerId || filtres.unit ? (
+            {filtres.unit ? (
               <Button size="sm" variant="ghost" onClick={() => setFiltres(SANS_FILTRE)}>
                 Tout afficher
               </Button>

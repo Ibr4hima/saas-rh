@@ -36,7 +36,6 @@ import { CarteCertificatsAgent } from './academy-certificat';
 import { CarteEvaluationsAgent } from './evaluation-objectifs';
 import { EmployeeDocumentsCard } from './employee-documents-card';
 import { ProfileChangeCard } from './profile-change-card';
-import { DocumentRequestRow } from './document-request-list';
 import { EmployeeEditModal } from './employee-edit-modal';
 import { Telephone } from './telephone';
 import { Donnee, EnTete, Groupe, Peremption, Repere } from './fiche';
@@ -44,12 +43,7 @@ import { Icon } from './icons';
 import { Modal } from './modal';
 import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../lib/person';
 import { formatDate, useMe } from '../lib/hooks';
-import type {
-  ConsequencesHierarchie,
-  DocumentRequestView,
-  OrgUnit,
-  OrgUnitView,
-} from '@teranga/contracts';
+import type { ConsequencesHierarchie, OrgUnit, OrgUnitView } from '@teranga/contracts';
 import { aDesConsequences, ListeConsequences } from './consequences-hierarchie';
 import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { LoadFailure } from './load-failure';
@@ -144,7 +138,6 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
   // Aucune habilitation de gestion ne s'applique à SON dossier : ce qui le
   // concerne passe par ses demandes, traitées par quelqu'un d'autre.
   const peutGerer = !soi && peut(me.data, 'personnel.gerer') && !e.soi;
-  const peutLesSoldes = !soi && peut(me.data, 'conges.soldes') && !e.soi;
   // Un agent inactif n'a ni portail, ni affectation nouvelle : sa fiche se
   // consulte, son contrat se renouvelle, et le dossier se réactive.
   const actif = e.status === 'active';
@@ -458,13 +451,11 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
 
           {voitLeDossier ? <EmployeeDocumentsCard employeeId={e.id} depot={e.soi} /> : null}
 
-          {voitLeDossier ? <DocumentRequestsCard employeeId={e.id} /> : null}
-
           {voitLeDossier ? <CarteCertificatsAgent employeeId={e.id} /> : null}
 
           {/* Les soldes sont un TABLEAU : ils appartiennent à la colonne large.
               Serrés dans le tiers de droite, leurs colonnes débordaient. */}
-          <BalancesCard employeeId={e.id} canEdit={peutLesSoldes && actif} />
+          <BalancesCard employeeId={e.id} />
         </div>
 
         {/* ———— Colonne d'administration : accès et traces — pour l'agent
@@ -860,47 +851,6 @@ function AssignmentsCard({
   );
 }
 
-/** Historique des demandes de documents de cet employé (ADR-0012). */
-function DocumentRequestsCard({ employeeId }: { employeeId: string }) {
-  const requests = useQuery({
-    queryKey: ['document-requests', 'employee', employeeId],
-    queryFn: () => api<DocumentRequestView[]>(`/document-requests?employeeId=${employeeId}`),
-  });
-
-  const liste = requests.data ?? [];
-
-  return (
-    <Card>
-      <CardHeader className="flex items-center gap-2.5">
-        <CardTitle>Demandes de documents</CardTitle>
-        {liste.length > 0 ? (
-          <span
-            className="rounded-full bg-primary/[0.09] px-2 py-px text-[10.5px] font-extrabold text-primary"
-            style={{ fontVariantNumeric: 'tabular-nums' }}
-          >
-            {liste.length}
-          </span>
-        ) : null}
-      </CardHeader>
-      <CardContent>
-        {requests.isLoading ? (
-          <Skeleton className="h-16 w-full" />
-        ) : liste.length === 0 ? (
-          <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
-            Aucune demande à ce jour.
-          </p>
-        ) : (
-          <ul className="flex flex-col">
-            {liste.map((r) => (
-              <DocumentRequestRow key={r.id} request={r} showEmployee={false} />
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 /**
  * Les compteurs de congés de l'année.
  *
@@ -910,7 +860,7 @@ function DocumentRequestsCard({ employeeId }: { employeeId: string }) {
  * agent par agent, et plus personne n'aurait su lequel faisait foi. Cette
  * carte montre l'état du compteur ; elle ne le décide pas.
  */
-function BalancesCard({ employeeId, canEdit }: { employeeId: string; canEdit: boolean }) {
+function BalancesCard({ employeeId }: { employeeId: string }) {
   const year = new Date().getFullYear();
   const balances = useQuery({
     queryKey: ['balances', employeeId, String(year)],
@@ -927,59 +877,39 @@ function BalancesCard({ employeeId, canEdit }: { employeeId: string; canEdit: bo
           <Skeleton className="h-16 w-full" />
         </CardContent>
       ) : (
-        <>
-          <Table>
-            <THead>
-              <tr>
-                <Th>Type</Th>
-                {/* Quatre colonnes de nombres, cadrées à DROITE et en chiffres
+        <Table>
+          <THead>
+            <tr>
+              <Th>Type</Th>
+              {/* Quatre colonnes de nombres, cadrées à DROITE et en chiffres
                     de largeur fixe : les unités tombent sous les unités, et on
                     compare deux lignes sans les lire. */}
-                <Th className="text-right">Droit</Th>
-                <Th className="text-right">Pris</Th>
-                <Th className="text-right">En attente</Th>
-                <Th className="text-right">Restant</Th>
-              </tr>
-            </THead>
-            <TBody>
-              {balances.data?.map((b) => (
-                <Tr key={b.absenceTypeId}>
-                  <Td className="font-medium text-ink-strong">{b.absenceTypeName}</Td>
-                  <Td className="text-right font-mono">
-                    {b.deductsBalance ? (
-                      b.entitledDays
-                    ) : (
-                      <span className="text-ink-muted/45">—</span>
-                    )}
-                  </Td>
-                  <Td className="text-right font-mono">{b.takenDays}</Td>
-                  <Td className="text-right font-mono">{b.pendingDays}</Td>
-                  <Td className="text-right font-mono font-semibold text-ink-strong">
-                    {b.deductsBalance ? (
-                      b.remainingDays
-                    ) : (
-                      <span className="font-normal text-ink-muted/45">—</span>
-                    )}
-                  </Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-          {/* Là où le droit se règle. Sans ce renvoi, on cherche le champ de
-              saisie sur cette carte — c'est là qu'il était.
-              Le nom n'est plus un LIEN : « Paramètres des congés » est éteint
-              dans le menu en attendant d'être repris, et une phrase qui y
-              mène dirait le contraire de la navigation. Elle continue de dire
-              OÙ le droit se règle, ce qui est tout ce qu'on lui demande. */}
-          {canEdit ? (
-            <CardContent className="border-t border-line-soft py-3">
-              <p className="text-[11.5px] text-ink-muted">
-                Le droit annuel se règle par type d&apos;absence dans{' '}
-                <span className="font-semibold text-ink">Paramètres des congés</span>.
-              </p>
-            </CardContent>
-          ) : null}
-        </>
+              <Th className="text-right">Droit</Th>
+              <Th className="text-right">Pris</Th>
+              <Th className="text-right">En attente</Th>
+              <Th className="text-right">Restant</Th>
+            </tr>
+          </THead>
+          <TBody>
+            {balances.data?.map((b) => (
+              <Tr key={b.absenceTypeId}>
+                <Td className="font-medium text-ink-strong">{b.absenceTypeName}</Td>
+                <Td className="text-right font-mono">
+                  {b.deductsBalance ? b.entitledDays : <span className="text-ink-muted/45">—</span>}
+                </Td>
+                <Td className="text-right font-mono">{b.takenDays}</Td>
+                <Td className="text-right font-mono">{b.pendingDays}</Td>
+                <Td className="text-right font-mono font-semibold text-ink-strong">
+                  {b.deductsBalance ? (
+                    b.remainingDays
+                  ) : (
+                    <span className="font-normal text-ink-muted/45">—</span>
+                  )}
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
       )}
     </Card>
   );

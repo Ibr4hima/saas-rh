@@ -103,23 +103,6 @@ function TotalCarte({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Rangées en attente : mêmes hauteurs que les vraies, pour que rien ne saute. */
-function RangeesEnAttente({ n }: { n: number }) {
-  return (
-    <ul className="flex flex-col px-2.5">
-      {Array.from({ length: n }, (_, i) => (
-        <li key={i} className="flex items-center gap-3 py-2">
-          <Skeleton className="size-8 rounded-full" />
-          <span className="flex flex-1 flex-col gap-1.5">
-            <Skeleton className="h-3 w-40" />
-            <Skeleton className="h-2.5 w-56 max-w-full" />
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 /* ———— Indicateurs ———— */
 
 function StatTile({
@@ -185,45 +168,6 @@ function StatTile({
         />
       </CardInteractive>
     </Link>
-  );
-}
-
-/* ———— File « À traiter » ———— */
-
-function InboxRow({
-  icon,
-  label,
-  count,
-  href,
-}: {
-  icon: IconName;
-  label: string;
-  count: number;
-  href: string;
-}) {
-  return (
-    <li>
-      <Link
-        href={href}
-        className="group flex items-center gap-3 rounded-[9px] px-2.5 py-2.5 transition-colors duration-150 hover:bg-hover"
-      >
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-primary/[0.07] text-primary">
-          <Icon name={icon} size={18} />
-        </span>
-        <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-ink-strong">{label}</span>
-        <span
-          className="rounded-full bg-alert-soft px-2 py-px text-[11px] font-extrabold text-alert-text"
-          style={TABULAIRE}
-        >
-          {count}
-        </span>
-        <Icon
-          name="chevron_right"
-          size={18}
-          className="shrink-0 text-ink-muted/40 transition-transform duration-150 group-hover:translate-x-0.5"
-        />
-      </Link>
-    </li>
   );
 }
 
@@ -424,14 +368,6 @@ function Parite({ femmes, hommes }: { femmes: number; hommes: number }) {
   );
 }
 
-interface EntreeATraiter {
-  icon: IconName;
-  label: string;
-  count: number;
-  href: string;
-  show: boolean;
-}
-
 export default function DashboardPage() {
   const me = useMe();
   const canManage = peut(me.data, 'personnel.consulter');
@@ -447,31 +383,6 @@ export default function DashboardPage() {
   });
   const d = stats.data;
   const todayIso = localToday();
-
-  const inbox: EntreeATraiter[] = [
-    {
-      icon: 'free_cancellation',
-      label: 'Demandes d’absence',
-      count: d?.pendingRequests ?? 0,
-      href: '/moi/dch',
-      show: true,
-    },
-    {
-      icon: 'folder_managed',
-      label: 'Demandes de documents',
-      count: d?.pendingDocumentRequests ?? 0,
-      href: '/documents',
-      show: canManage,
-    },
-    {
-      icon: 'badge',
-      label: 'Informations personnelles',
-      count: d?.pendingProfileChanges ?? 0,
-      href: '/demandes/informations',
-      show: canManage,
-    },
-  ];
-  const aTraiter = inbox.filter((r) => r.show && r.count > 0);
 
   // La quatrième tuile montre le prochain férié : la fenêtre renvoyée par
   // l'API contient aussi le dernier passé, on prend la première date à venir.
@@ -540,34 +451,11 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
-        {/* ———— Colonne principale ———— */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        {/* ———— Colonne principale : le calendrier s'étire à la hauteur de
+            la colonne de contexte, sans vide dessous. ———— */}
         <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Demandes à traiter</CardTitle>
-            </CardHeader>
-            <CardContent className="px-2 py-2">
-              {stats.isLoading ? (
-                <RangeesEnAttente n={2} />
-              ) : aTraiter.length === 0 ? (
-                <EmptyState
-                  className="py-7"
-                  icon={<Icon name="task_alt" size={22} />}
-                  title="Rien à traiter"
-                  description="Les demandes de congés, de documents et les changements d'informations arrivent ici."
-                />
-              ) : (
-                <ul className="flex flex-col">
-                  {aTraiter.map((r) => (
-                    <InboxRow key={r.label} {...r} />
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
+          <Card className="flex flex-1 flex-col">
             <CardHeader>
               <CardTitle>Calendrier des absences</CardTitle>
             </CardHeader>
@@ -575,7 +463,7 @@ export default function DashboardPage() {
               <SqueletteTableau lignes={3} />
             ) : absences.length === 0 ? (
               <EmptyState
-                className="py-7"
+                className="flex-1 py-7"
                 icon={<Icon name="event_available" size={22} />}
                 title="Personne d'absent à l'horizon"
                 description="Aucune absence approuvée dans les 30 prochains jours."

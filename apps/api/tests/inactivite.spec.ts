@@ -469,7 +469,9 @@ describe('désactiver, réactiver', () => {
     await inactiver();
     const refus = await people.archive(admin, { ids: [fatou.employeeId], archived: false });
     expect(refus.done).toBe(0);
-    expect(refus.skipped[0]?.reason).toContain('enregistrez d’abord son nouveau contrat');
+    expect(refus.skipped[0]?.reason).toMatch(
+      /^Le contrat de Fatou a pris fin le .+\. Enregistrez son nouveau contrat avant de réactiver son compte\.$/,
+    );
 
     expect(
       await codeOf(async () =>

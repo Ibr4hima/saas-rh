@@ -48,9 +48,6 @@ export interface DashboardView {
   /** Absences approuvées démarrant dans les 30 prochains jours. */
   upcomingAbsences: number;
   orgUnits: number;
-  /** Files RH — 0 pour les rôles qui ne les traitent pas. */
-  pendingDocumentRequests: number;
-  pendingProfileChanges: number;
   /** Parité de l'effectif actif. */
   women: number;
   men: number;

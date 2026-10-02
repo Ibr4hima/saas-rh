@@ -488,7 +488,8 @@ describe('les échéances de contrat', () => {
       tenantId,
     ]);
 
-  it('vont à qui gère le personnel, jamais à l’agent dont c’est le contrat ; sans personne, au directeur', async () => {
+  it('vont à qui gère le personnel, jamais à l’agent dont c’est le contrat ; sans délégué présent, au directeur', async () => {
+    const typeConge = randomUUID();
     await cdd(moussa, 20);
     await cdd(awa, 15);
     try {
@@ -519,9 +520,26 @@ describe('les échéances de contrat', () => {
       await habiliter(khady, 'personnel.gerer', false);
       await relever();
       expect(await alertes()).toEqual(['Awa→Mariama', 'Moussa→Awa']);
+
+      // Awa, la seule déléguée, en congé : le directeur, faute de délégué présent.
+      await recommencer();
+      await raw(
+        `INSERT INTO absence_types (id, tenant_id, name, deducts_balance, allowance_days, frequency)
+         VALUES ($1,$2,'Congé de test',false,30,'annual')`,
+        [typeConge, tenantId],
+      );
+      await raw(
+        `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+         VALUES ($1,$2,$3,$4, CURRENT_DATE - 1, CURRENT_DATE + 3, 3, 'approved')`,
+        [randomUUID(), tenantId, awa.employeeId, typeConge],
+      );
+      await relever();
+      expect(await alertes()).toEqual(['Awa→Mariama', 'Moussa→Mariama']);
     } finally {
       await habiliter(awa, 'personnel.gerer', false);
       await habiliter(khady, 'personnel.gerer', false);
+      await raw(`DELETE FROM absence_requests WHERE absence_type_id = $1`, [typeConge]);
+      await raw(`DELETE FROM absence_types WHERE id = $1`, [typeConge]);
       await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
     }
   });

@@ -422,9 +422,9 @@ export async function accueillirLeDirecteur(tx: Tx, tenantId: string): Promise<v
 /**
  * Une alerte de la DCH — l'échéance d'un contrat : elle va à qui en tient
  * l'habilitation, sauf à l'agent qu'elle concerne (on ne suit pas son propre
- * contrat) ; sans eux, à qui dirige la DCH ; sans lui, aux administrateurs.
- * Comme une demande confiée : le directeur voit tout, mais n'est plus
- * dérangé pour ce qu'il a confié.
+ * contrat) et présents ; sans eux, à qui dirige la DCH ; sans lui, aux
+ * administrateurs. Comme une demande déléguée : le directeur n'est plus
+ * dérangé pour ce qu'il a délégué — sauf quand aucun délégué n'est là.
  */
 export async function alerterLaDCH(
   tx: Tx,
@@ -439,7 +439,7 @@ export async function alerterLaDCH(
     for (const id of await detenteursDe(tx, capacite)) {
       if (id === concerne) continue;
       const m = await membreDCH(tx, dch, id);
-      if (m !== 'parti') qui.add(m.userId);
+      if (m !== 'parti' && !m.absent) qui.add(m.userId);
     }
     if (qui.size === 0 && dch.directeur && dch.directeur.employeeId !== concerne) {
       qui.add(dch.directeur.userId);
