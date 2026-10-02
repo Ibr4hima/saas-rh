@@ -52,6 +52,7 @@
     "how_to_reg",
     "image",
     "inbox",
+    "info_i",
     "light_mode",
     "link",
     "lock",
@@ -93,5 +94,5 @@
     "workspace_premium"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 89296
+  "bytes": 89528
 }

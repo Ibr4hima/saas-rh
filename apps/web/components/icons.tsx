@@ -73,6 +73,7 @@ export const ICON_NAMES = [
   'how_to_reg',
   'image',
   'inbox',
+  'info_i',
   'light_mode',
   'link',
   'lock',
