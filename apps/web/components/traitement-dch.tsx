@@ -58,7 +58,7 @@ export function BandeauDelegation({
   action,
 }: {
   icone: IconName;
-  texte: string;
+  texte: React.ReactNode;
   action?: React.ReactNode;
 }) {
   return (

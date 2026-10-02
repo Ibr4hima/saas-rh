@@ -138,9 +138,10 @@ export default function OrganisationPage() {
           capacite="organigramme"
           verbe="modifier"
           objet="l’organigramme"
-          delegue="la modification de l’organigramme"
+          delegue="la gestion de l’organigramme"
           retrait="Vous modifierez de vous-même l’organigramme."
           titre="Déléguer l’organigramme"
+          invitation="Vous pouvez déléguer la gestion de l’organigramme à votre équipe."
           fichiers={['org-units']}
         />
       ) : null}

@@ -18,10 +18,11 @@ import {
 } from './traitement-dch';
 
 /**
- * Le bandeau d'une page de la DCH qu'un seul accès ouvre (paramètres des
- * congés, offres d'emploi, dossiers de candidature) : au directeur, qui peut
- * — et « Déléguer » ; au membre, ce qui lui est délégué. Rien pour les
- * autres.
+ * Le bandeau d'une page de la DCH qu'un accès ouvre (paramètres des congés,
+ * offres d'emploi, organigramme, gestion du personnel…) : au directeur, qui
+ * peut — et « Déléguer » ; au membre, ce qui lui est délégué. Rien pour les
+ * autres. Plusieurs accès se délèguent ensemble : la gestion du personnel
+ * donne tout ce que la page demande.
  */
 export function BandeauDeleguer({
   capacite,
@@ -30,9 +31,11 @@ export function BandeauDeleguer({
   delegue,
   retrait,
   titre,
+  invitation = 'Vous pouvez déléguer cette tâche à votre équipe.',
+  sensible = false,
   fichiers = [],
 }: {
-  capacite: Capacite;
+  capacite: Capacite | readonly Capacite[];
   /** « gérer » — « Awa peut désormais gérer… ». */
   verbe: string;
   /** « les offres d’emploi ». */
@@ -42,13 +45,24 @@ export function BandeauDeleguer({
   /** « Vous gérerez de vous-même les offres d’emploi. » */
   retrait: string;
   titre: string;
+  /** Ce que le bandeau dit au directeur tant que personne n'est délégué. */
+  invitation?: string;
+  /** Des données sensibles : le bandeau le dit, la confirmation aussi. */
+  sensible?: boolean;
   fichiers?: readonly string[];
 }) {
   const me = useMe();
   const membres = useMembresDCH().data?.membres ?? [];
   const [message, setMessage] = useState<Message>(null);
-  const habilites = membres.filter((m) => m.capacites.includes(capacite));
+  const capacites = toutes(capacite);
+  const habilites = membres.filter((m) => capacites.every((c) => m.capacites.includes(c)));
   const pluriel = (n: number, un: string, plusieurs: string) => (n > 1 ? plusieurs : un);
+  const avecPastille = (texte: string) => (
+    <>
+      {texte}
+      {sensible ? <PastilleSensible /> : null}
+    </>
+  );
 
   if (me.data?.dirigeLaDCH) {
     return (
@@ -56,18 +70,18 @@ export function BandeauDeleguer({
         {message ? <BandeauMessage message={message} /> : null}
         <BandeauDelegation
           icone="arrow_split"
-          texte={
+          texte={avecPastille(
             habilites.length > 0
               ? `${listePrenoms(habilites)} ${pluriel(habilites.length, 'peut', 'peuvent')} désormais ${verbe} ${objet}.`
-              : 'Vous pouvez déléguer cette tâche à votre équipe.'
-          }
+              : invitation,
+          )}
           action={
             <DeleguerMembres
               membres={membres}
               capacite={capacite}
               titre={titre}
               confirmation={(retenus) =>
-                `${listePrenoms(retenus)} ${pluriel(retenus.length, 'pourra', 'pourront')} ${verbe} désormais ${objet}.`
+                `${listePrenoms(retenus)} ${pluriel(retenus.length, 'pourra', 'pourront')} ${verbe} désormais ${objet}${sensible ? ', données sensibles comprises' : ''}.`
               }
               retrait={retrait}
               fichiers={fichiers}
@@ -79,10 +93,31 @@ export function BandeauDeleguer({
       </>
     );
   }
-  if (peut(me.data, capacite) && me.data?.role !== 'admin') {
-    return <BandeauDelegation icone="how_to_reg" texte={`La DCH vous a délégué ${delegue}.`} />;
+  if (capacites.every((c) => peut(me.data, c)) && me.data?.role !== 'admin') {
+    return (
+      <BandeauDelegation
+        icone="how_to_reg"
+        texte={avecPastille(`La DCH vous a délégué ${delegue}.`)}
+      />
+    );
   }
   return null;
+}
+
+const toutes = (c: Capacite | readonly Capacite[]): readonly Capacite[] =>
+  typeof c === 'string' ? [c] : c;
+
+/** « Sensible » — comme sur « Déléguer des tâches ». */
+function PastilleSensible() {
+  return (
+    <span
+      title="Données sensibles : à confier avec soin."
+      className="ml-2 inline-flex translate-y-[-1px] items-center gap-0.5 rounded-full bg-surface px-1.5 py-px align-middle text-[10px] font-semibold text-ink-muted ring-1 ring-line-soft ring-inset"
+    >
+      <Icon name="lock" size={11} />
+      Sensible
+    </span>
+  );
 }
 
 /**
@@ -102,7 +137,8 @@ export function DeleguerMembres({
   onErreur,
 }: {
   membres: MembreHabilite[];
-  capacite: Capacite;
+  /** Plusieurs : délégués ensemble, retirés ensemble. */
+  capacite: Capacite | readonly Capacite[];
   /** Le titre de la confirmation — « Déléguer les absences et congés ». */
   titre: string;
   /** Ce que la confirmation dit des membres retenus. */
@@ -116,7 +152,10 @@ export function DeleguerMembres({
   onErreur: (err: unknown) => void;
 }) {
   const queryClient = useQueryClient();
-  const actuels = membres.filter((m) => m.capacites.includes(capacite));
+  const capacites = toutes(capacite);
+  // Délégué : il a TOUT ce que la page demande. En partie seulement, il
+  // reste à cocher — cocher complète, décocher retire tout.
+  const actuels = membres.filter((m) => capacites.every((c) => m.capacites.includes(c)));
   const [ouvert, setOuvert] = useState(false);
   const [choix, setChoix] = useState<string[]>([]);
   const [confirmer, setConfirmer] = useState(false);
@@ -150,10 +189,13 @@ export function DeleguerMembres({
       for (const m of membres) {
         const accordee = apres.has(m.employeeId);
         if (accordee === avant.has(m.employeeId)) continue;
-        await api('/habilitations', {
-          method: 'PUT',
-          body: { employeeId: m.employeeId, capacite, accordee },
-        });
+        for (const c of capacites) {
+          if (m.capacites.includes(c) === accordee) continue;
+          await api('/habilitations', {
+            method: 'PUT',
+            body: { employeeId: m.employeeId, capacite: c, accordee },
+          });
+        }
       }
     },
     onSuccess: async () => {
