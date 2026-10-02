@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import type { CapaciteDemande, MembreHabilite } from '@teranga/contracts';
+import type { Capacite, MembreHabilite } from '@teranga/contracts';
 import { Button, Checkbox, cn } from '@teranga/ui';
 import { api } from '../lib/api';
 import { Icon } from './icons';
@@ -25,7 +25,7 @@ export function DeleguerMembres({
   onErreur,
 }: {
   membres: MembreHabilite[];
-  capacite: CapaciteDemande;
+  capacite: Capacite;
   /** Le titre de la confirmation — « Déléguer les absences et congés ». */
   titre: string;
   /** Ce que la confirmation dit des membres retenus. */

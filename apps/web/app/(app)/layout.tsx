@@ -505,9 +505,9 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
         break;
       case '/absences/parametres':
         // Déléguer, puis traiter ; les réglages des congés ensuite, à qui les
-        // gère — ou voit les congés, pour les lire.
+        // gère seulement : traiter les congés n'y donne pas accès.
         items.push(...delegations, ...demandes);
-        if (peut(user, 'conges.parametres') || voitLesConges(user)) items.push(i);
+        if (peut(user, 'conges.parametres')) items.push(i);
         break;
       case '/recrutement': {
         // Les offres et les dossiers se confient à part.
@@ -1182,9 +1182,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (commence('/employees')) return peut(u, 'personnel.consulter');
     if (commence('/contrats')) return peut(u, 'contrats.echeances') || peut(u, 'pilotage');
     if (commence('/absences/feries')) return peut(u, 'feries') || voitLesConges(u);
-    if (commence('/absences/parametres')) {
-      return peut(u, 'conges.parametres') || voitLesConges(u);
-    }
+    if (commence('/absences/parametres')) return peut(u, 'conges.parametres');
     if (commence('/absences')) return voitLesConges(u);
     if (commence('/recrutement/candidatures')) return peut(u, 'recrutement.candidatures');
     if (path === '/recrutement' || commence('/recrutement/nouvelle')) {
