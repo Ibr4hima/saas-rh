@@ -79,7 +79,7 @@ export function EmployeeDocumentsCard({
   employeeId: string;
   /** Le dossier de l'appelant : lui seul y dépose ses documents. */
   depot: boolean;
-  /** Le titre d'identité de sa fiche, qu'il doit déposer — CNI ou passeport. */
+  /** Le titre d'identité de la fiche, que l'agent doit déposer — CNI ou passeport. */
   pieceAttendue?: 'cni' | 'passeport' | null;
 }) {
   const queryClient = useQueryClient();
@@ -129,10 +129,9 @@ export function EmployeeDocumentsCard({
   // de l'agent, ses propres dépôts en attente sont attendus par la DCH — les
   // compter ici lui réclamait un geste qui ne lui revient pas.
   const aValider = pieces.filter((d) => d.canReview).length;
-  // Le titre de sa fiche, tant qu'aucun n'est en vérification ni au dossier :
-  // l'agent est tenu de le déposer.
+  // Le titre de la fiche, tant qu'aucun n'est en vérification ni au dossier :
+  // l'agent est tenu de le déposer — et la DCH le voit sur sa fiche.
   const manquante =
-    depot &&
     !documents.isLoading &&
     pieceAttendue &&
     !pieces.some((d) => d.category === pieceAttendue && d.status !== 'rejected')
@@ -203,7 +202,26 @@ export function EmployeeDocumentsCard({
           )
         ) : (
           <ul className="flex flex-col gap-2">
-            {manquante ? (
+            {manquante && !depot ? (
+              // Côté DCH : le constat, sans geste — c'est à l'agent de déposer.
+              <li className="flex items-center gap-3.5 rounded-[12px] border border-dashed border-accent/40 bg-accent-soft/20 px-3.5 py-3">
+                <span
+                  aria-hidden
+                  className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-accent-soft text-accent-text"
+                >
+                  <Icon name="upload_file" size={20} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-bold text-ink-strong">
+                    {DOCUMENT_CATEGORY_LABELS[manquante]}
+                  </span>
+                  <span className="block truncate text-[11.5px] text-ink-muted">Obligatoire</span>
+                </span>
+                <span className="inline-flex items-center rounded-full bg-accent-soft/70 px-2.5 py-[3px] text-[11px] font-semibold text-accent-text ring-1 ring-accent/25 ring-inset">
+                  {manquante === 'cni' ? 'Non déposée' : 'Non déposé'}
+                </span>
+              </li>
+            ) : manquante ? (
               <li>
                 <button
                   type="button"

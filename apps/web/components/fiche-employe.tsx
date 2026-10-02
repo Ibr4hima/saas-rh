@@ -453,7 +453,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
             <EmployeeDocumentsCard
               employeeId={e.id}
               depot={e.soi}
-              pieceAttendue={e.soi ? titreDeLaFiche(e.person.idDocumentType) : null}
+              pieceAttendue={titreDeLaFiche(e.person.idDocumentType)}
             />
           ) : null}
 
