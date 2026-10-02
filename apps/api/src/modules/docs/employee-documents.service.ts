@@ -1,15 +1,23 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   DocumentCategory,
   EmployeeDocumentView,
   PieceATraiterView,
+  ReplaceEmployeeDocumentInput,
   ReviewEmployeeDocumentInput,
   SessionUser,
   UploadEmployeeDocumentInput,
 } from '@teranga/contracts';
-import { capaciteDeLaPiece, MAX_EMPLOYEE_DOCUMENT_BYTES, peut } from '@teranga/contracts';
+import {
+  aUneExpiration,
+  capaciteDeLaPiece,
+  DOCUMENT_CATEGORY_LABELS,
+  estUnique,
+  MAX_EMPLOYEE_DOCUMENT_BYTES,
+  peut,
+} from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -31,6 +39,52 @@ function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
   return { tenantId: user.tenantId, userId: user.userId };
 }
 
+/** Le fichier envoyé : un PDF, de 5 Mo au plus — sa signature le prouve. */
+function lireLeFichier(input: { contentType: string; contentBase64: string }): Buffer {
+  const data = Buffer.from(input.contentBase64, 'base64');
+  if (data.length === 0 || data.length > MAX_EMPLOYEE_DOCUMENT_BYTES) {
+    problem(422, 'documents.too_large', 'Le fichier doit faire 5 Mo maximum');
+  }
+  const magic = MAGIC.find((m) => m.type === input.contentType);
+  if (!magic || !magic.check(data)) {
+    problem(
+      422,
+      'documents.bad_format',
+      'Le contenu ne correspond pas au format annoncé',
+      'Seul le PDF est accepté.',
+    );
+  }
+  return data;
+}
+
+/**
+ * La date d'expiration d'un titre d'identité : exigée pour la CNI et le
+ * passeport, et pas encore passée — on ne dépose pas un titre expiré. Les
+ * autres types n'en ont pas.
+ */
+async function dateDExpiration(
+  tx: Tx,
+  category: DocumentCategory,
+  expiresOn: string | undefined,
+): Promise<string | null> {
+  if (!aUneExpiration(category)) return null;
+  if (!expiresOn) {
+    problem(422, 'documents.expiration_requise', 'Indiquez la date d’expiration du document');
+  }
+  const { rows } = await tx.execute<{ passee: boolean }>(
+    sql`SELECT ${expiresOn}::date < CURRENT_DATE AS passee`,
+  );
+  if (rows[0]?.passee) {
+    problem(
+      422,
+      'documents.expire',
+      'Ce document a déjà expiré',
+      'Déposez un document en cours de validité.',
+    );
+  }
+  return expiresOn;
+}
+
 @Injectable()
 export class EmployeeDocumentsService {
   constructor(
@@ -49,20 +103,7 @@ export class EmployeeDocumentsService {
     employeeId: string,
     input: UploadEmployeeDocumentInput,
   ): Promise<{ id: string; status: string }> {
-    const data = Buffer.from(input.contentBase64, 'base64');
-    if (data.length === 0 || data.length > MAX_EMPLOYEE_DOCUMENT_BYTES) {
-      problem(422, 'documents.too_large', 'Le fichier doit faire 5 Mo maximum');
-    }
-    const magic = MAGIC.find((m) => m.type === input.contentType);
-    if (!magic || !magic.check(data)) {
-      problem(
-        422,
-        'documents.bad_format',
-        'Le contenu ne correspond pas au format annoncé',
-        'Seul le PDF est accepté.',
-      );
-    }
-
+    const data = lireLeFichier(input);
     const id = uuidv7();
     const status = 'pending';
     await this.db.withTenant(ctxOf(user), async (tx) => {
@@ -93,6 +134,30 @@ export class EmployeeDocumentsService {
           'Faites valider ou retirez les dépôts en attente avant d’en ajouter.',
         );
       }
+      // Un seul exemplaire au dossier : un seul aussi en vérification — on
+      // change le fichier de celui-là plutôt que d'en déposer un second.
+      if (estUnique(input.category)) {
+        const [enCours] = await tx
+          .select({ id: t.employeeDocuments.id })
+          .from(t.employeeDocuments)
+          .where(
+            and(
+              eq(t.employeeDocuments.employeeId, employeeId),
+              eq(t.employeeDocuments.category, input.category),
+              eq(t.employeeDocuments.status, 'pending'),
+            ),
+          )
+          .limit(1);
+        if (enCours) {
+          problem(
+            422,
+            'documents.deja_en_verification',
+            `${DOCUMENT_CATEGORY_LABELS[input.category]} : un dépôt attend déjà la vérification`,
+            'Remplacez-le, ou annulez-le, avant d’en déposer un autre.',
+          );
+        }
+      }
+      const expiresOn = await dateDExpiration(tx, input.category, input.expiresOn);
 
       await tx.insert(t.employeeDocuments).values({
         id,
@@ -107,12 +172,59 @@ export class EmployeeDocumentsService {
         status,
         uploadedByUserId: user.userId,
         uploadedBySide: 'employee',
+        expiresOn,
       });
 
       // À qui vérifie les pièces pour la DCH — et à eux seuls.
       await reconcilierUneDemande(tx, 'pieces', id);
     });
     return { id, status };
+  }
+
+  /**
+   * Changer le fichier d'un dépôt encore en vérification — le titulaire seul.
+   * Le type reste ; le dépôt reprend sa place dans la file, à la date du
+   * nouveau fichier. Vérifié ou rejeté, il ne se change plus.
+   */
+  async replace(
+    user: SessionUser,
+    documentId: string,
+    input: ReplaceEmployeeDocumentInput,
+  ): Promise<void> {
+    const data = lireLeFichier(input);
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const doc = await this.requireDocument(tx, documentId);
+      const target = await this.requireEmployeeWithPerson(tx, doc.employeeId);
+      if (target.personUserId !== user.userId || doc.uploadedByUserId !== user.userId) {
+        problem(403, 'documents.forbidden_scope', 'Accès limité à votre propre dossier');
+      }
+      if (doc.status !== 'pending') {
+        problem(
+          422,
+          'documents.already_reviewed',
+          'Ce document a déjà été traité',
+          'Il ne se remplace plus : déposez-en un nouveau.',
+        );
+      }
+      const expiresOn = await dateDExpiration(
+        tx,
+        doc.category as DocumentCategory,
+        input.expiresOn,
+      );
+      await tx
+        .update(t.employeeDocuments)
+        .set({
+          label: input.label,
+          filename: input.filename,
+          contentType: input.contentType,
+          sizeBytes: data.length,
+          data,
+          expiresOn,
+          createdAt: new Date(),
+        })
+        .where(eq(t.employeeDocuments.id, documentId));
+      await reconcilierUneDemande(tx, 'pieces', documentId);
+    });
   }
 
   /**
@@ -160,6 +272,20 @@ export class EmployeeDocumentsService {
       await reconcilierUneDemande(tx, 'pieces', documentId);
 
       const approved = input.decision === 'approved';
+      // CNI, passeport, CV : un seul au dossier — le nouveau prend la place
+      // de l'ancien, sans autre annonce.
+      if (approved && estUnique(doc.category as DocumentCategory)) {
+        await tx
+          .delete(t.employeeDocuments)
+          .where(
+            and(
+              eq(t.employeeDocuments.employeeId, doc.employeeId),
+              eq(t.employeeDocuments.category, doc.category),
+              eq(t.employeeDocuments.status, 'approved'),
+              ne(t.employeeDocuments.id, documentId),
+            ),
+          );
+      }
       // Le titulaire l'apprend — c'est son dossier, quel qu'ait été le
       // déposant d'une pièce ancienne.
       const destinataire = target.personUserId ?? doc.uploadedByUserId;
@@ -356,8 +482,11 @@ export class EmployeeDocumentsService {
       reviewedByName: reviewer ? `${reviewer.givenName} ${reviewer.familyName}` : null,
       reviewComment: doc.reviewComment,
       createdAt: doc.createdAt.toISOString(),
+      // L'échéance d'un titre sert à son titulaire : la DCH ne la suit pas.
+      expiresOn: o.isOwner ? doc.expiresOn : null,
       canReview,
       canDelete,
+      canReplace: o.isOwner && doc.status === 'pending' && doc.uploadedByUserId === user.userId,
       traitement: tr?.vue ?? null,
     };
   }
@@ -397,6 +526,8 @@ export class EmployeeDocumentsService {
         );
       }
       await tx.delete(t.employeeDocuments).where(eq(t.employeeDocuments.id, documentId));
+      // Un dépôt annulé avant vérification ne reste pas dans la file de la DCH.
+      await reconcilierUneDemande(tx, 'pieces', documentId);
     });
   }
 

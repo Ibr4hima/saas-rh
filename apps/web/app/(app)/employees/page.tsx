@@ -309,6 +309,23 @@ export default function EmployeesPage() {
                 className="h-8 w-56 rounded-full pl-8 text-[12.5px]"
               />
             </div>
+            {/* Le filtre des unités, à côté de la recherche. Les inactifs
+                n'ont plus d'unité : la recherche suffit. */}
+            {onglet === 'active' ? (
+              <>
+                <FiltreSelect
+                  label="Toutes les unités"
+                  value={filtres.unit}
+                  options={unites.map((u) => ({ value: u, label: u }))}
+                  onChange={(v) => setFiltres((f) => ({ ...f, unit: v }))}
+                />
+                {filtres.unit ? (
+                  <Button size="sm" variant="ghost" onClick={() => setFiltres(SANS_FILTRE)}>
+                    Tout afficher
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
           </div>
 
           {/* À DROITE de la ligne du titre : c'est là qu'on cherche le
@@ -358,25 +375,6 @@ export default function EmployeesPage() {
             </Button>
           </BarreSelection>
         </CardHeader>
-
-        {/* Le filtre : les unités que l'onglet contient réellement, plus de
-            quoi le relâcher d'un geste. Les inactifs n'ont plus d'unité : la
-            recherche suffit. */}
-        {onglet === 'active' ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line-soft px-[18px] pb-3.5">
-            <FiltreSelect
-              label="Toutes les unités"
-              value={filtres.unit}
-              options={unites.map((u) => ({ value: u, label: u }))}
-              onChange={(v) => setFiltres((f) => ({ ...f, unit: v }))}
-            />
-            {filtres.unit ? (
-              <Button size="sm" variant="ghost" onClick={() => setFiltres(SANS_FILTRE)}>
-                Tout afficher
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
 
         {query.isLoading ? (
           <CorpsDefilant>

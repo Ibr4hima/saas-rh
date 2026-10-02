@@ -8,6 +8,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -15,8 +16,10 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
+  replaceEmployeeDocumentSchema,
   reviewEmployeeDocumentSchema,
   uploadEmployeeDocumentSchema,
+  type ReplaceEmployeeDocumentInput,
   type ReviewEmployeeDocumentInput,
   type UploadEmployeeDocumentInput,
 } from '@teranga/contracts';
@@ -78,6 +81,18 @@ export class EmployeeDocumentsController {
     );
     res.setHeader('Cache-Control', 'no-store');
     res.end(doc.data);
+  }
+
+  /** Changer le fichier d'un dépôt en vérification — son titulaire seul. */
+  @Put('employee-documents/:id')
+  @HttpCode(204)
+  async replace(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(replaceEmployeeDocumentSchema))
+    body: ReplaceEmployeeDocumentInput,
+  ) {
+    await this.documents.replace(req.sessionUser, id, body);
   }
 
   @Delete('employee-documents/:id')

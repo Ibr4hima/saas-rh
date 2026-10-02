@@ -392,6 +392,8 @@ export const employeeDocuments = pgTable('employee_documents', {
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   reviewComment: text('review_comment'),
   confieeAEmployeeId: uuid('confiee_a_employee_id'),
+  /** CNI et passeport : la date d'expiration, que l'agent donne au dépôt. */
+  expiresOn: date('expires_on'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -4,9 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import type { DocumentCategory, EmployeeDocumentView } from '@teranga/contracts';
 import {
+  aUneExpiration,
   DOCUMENT_CATEGORY_LABELS,
   documentCategorySchema,
   EMPLOYEE_DOCUMENT_TYPES,
+  estUnique,
   MAX_EMPLOYEE_DOCUMENT_BYTES,
 } from '@teranga/contracts';
 import {
@@ -39,6 +41,12 @@ const STATUS_TONES: Record<string, 'warning' | 'success' | 'danger'> = {
   approved: 'success',
   rejected: 'danger',
 };
+
+/** Aujourd'hui, au calendrier de l'agent : « 2026-10-02 ». */
+function aujourdhui(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 /** Le signe d'un fichier : un PDF — ou une image, sur les dépôts anciens. */
 function SigneFichier({ contentType, grand = false }: { contentType: string; grand?: boolean }) {
@@ -76,6 +84,8 @@ export function EmployeeDocumentsCard({
   const [viewed, setViewed] = useState<ViewableDoc | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [depotOuvert, setDepotOuvert] = useState(false);
+  // Le dépôt dont l'agent change le fichier, tant qu'il est en vérification.
+  const [aRemplacer, setARemplacer] = useState<EmployeeDocumentView | null>(null);
   const [rejectComment, setRejectComment] = useState('');
 
   const documents = useQuery({
@@ -195,12 +205,15 @@ export function EmployeeDocumentsCard({
                       <span className="block truncate text-[13px] font-bold text-ink-strong group-hover:text-primary">
                         {d.label}
                       </span>
-                      <span className="block truncate text-[11.5px] text-ink-muted">
+                      {/* Au téléphone, la ligne passe à la ligne : la date
+                          d'expiration ne se coupe pas. */}
+                      <span className="block truncate text-[11.5px] text-ink-muted max-sm:whitespace-normal">
                         {DOCUMENT_CATEGORY_LABELS[d.category]}
                         {depot
                           ? ''
                           : ` · ${d.uploadedByName}${d.uploadedBySide === 'hr' ? ' (DCH)' : ''}`}{' '}
                         · {formatDate(d.createdAt.slice(0, 10))}
+                        {d.expiresOn ? ` · expire le ${formatDate(d.expiresOn)}` : ''}
                       </span>
                     </span>
                   </button>
@@ -222,6 +235,21 @@ export function EmployeeDocumentsCard({
                         onClick={() => setRejectingId(rejectingId === d.id ? null : d.id)}
                       >
                         Rejeter
+                      </Button>
+                    </div>
+                  ) : d.canReplace ? (
+                    // En vérification : l'agent change le fichier, ou annule.
+                    <div className="flex shrink-0 gap-1.5">
+                      <Button size="sm" variant="secondary" onClick={() => setARemplacer(d)}>
+                        Remplacer
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={remove.isPending && remove.variables === d.id}
+                        onClick={() => remove.mutate(d.id)}
+                      >
+                        Annuler
                       </Button>
                     </div>
                   ) : d.canDelete && d.status !== 'pending' ? (
@@ -274,10 +302,23 @@ export function EmployeeDocumentsCard({
       {depot ? (
         <FenetreDepot
           employeeId={employeeId}
-          ouverte={depotOuvert}
-          onFermer={() => setDepotOuvert(false)}
+          ouverte={depotOuvert || aRemplacer !== null}
+          remplace={aRemplacer}
+          // Un seul exemplaire en vérification : on change celui-là.
+          enVerification={
+            new Set(
+              pieces
+                .filter((d) => d.status === 'pending' && estUnique(d.category))
+                .map((d) => d.category),
+            )
+          }
+          onFermer={() => {
+            setDepotOuvert(false);
+            setARemplacer(null);
+          }}
           onDepose={() => {
             setDepotOuvert(false);
+            setARemplacer(null);
             invalidate();
           }}
         />
@@ -302,46 +343,62 @@ function sansExtension(nom: string): string {
 
 /**
  * Déposer un document : son type, puis le fichier — glissé ou choisi —, que
- * l'agent renomme s'il le veut avant de l'envoyer à la DCH.
+ * l'agent renomme s'il le veut avant de l'envoyer à la DCH. Une CNI, un
+ * passeport : leur date d'expiration aussi. Ou remplacer le fichier d'un
+ * dépôt encore en vérification : son type reste.
  */
 function FenetreDepot({
   employeeId,
   ouverte,
+  remplace,
+  enVerification,
   onFermer,
   onDepose,
 }: {
   employeeId: string;
   ouverte: boolean;
+  remplace: EmployeeDocumentView | null;
+  /** Les types à exemplaire unique dont un dépôt attend déjà la vérification. */
+  enVerification: ReadonlySet<DocumentCategory>;
   onFermer: () => void;
   onDepose: () => void;
 }) {
   const id = useId();
-  const [type, setType] = useState<DocumentCategory | ''>('');
+  const [choisi, setType] = useState<DocumentCategory | ''>('');
   const [fichier, setFichier] = useState<FichierChoisi | null>(null);
   const [nom, setNom] = useState('');
+  const [expiration, setExpiration] = useState<string | null>(null);
   const [survol, setSurvol] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const type = remplace?.category ?? choisi;
+  // Au remplacement, la date déjà donnée, que l'agent corrige s'il le faut.
+  const expiresOn = expiration ?? remplace?.expiresOn ?? '';
+  const demandeLaDate = type !== '' && aUneExpiration(type);
 
   const remettre = () => {
     setType('');
     setFichier(null);
     setNom('');
+    setExpiration(null);
     setErreur(null);
   };
 
   const deposer = useMutation({
     mutationFn: () => {
       const label = nom.trim();
-      return api(`/employees/${employeeId}/documents`, {
-        method: 'POST',
-        body: {
-          category: type,
-          label,
-          filename: `${label}.pdf`,
-          contentType: fichier!.contentType,
-          contentBase64: fichier!.contentBase64,
-        },
-      });
+      const corps = {
+        label,
+        filename: `${label}.pdf`,
+        contentType: fichier!.contentType,
+        contentBase64: fichier!.contentBase64,
+        ...(demandeLaDate ? { expiresOn } : {}),
+      };
+      return remplace
+        ? api(`/employee-documents/${remplace.id}`, { method: 'PUT', body: corps })
+        : api(`/employees/${employeeId}/documents`, {
+            method: 'POST',
+            body: { category: type, ...corps },
+          });
     },
     onSuccess: () => {
       remettre();
@@ -381,7 +438,7 @@ function FenetreDepot({
     <Modal
       open={ouverte}
       onClose={fermer}
-      title="Déposer un document"
+      title={remplace ? 'Remplacer le document' : 'Déposer un document'}
       maxWidth="max-w-lg"
       footer={
         <>
@@ -394,11 +451,11 @@ function FenetreDepot({
             Annuler
           </Button>
           <Button
-            disabled={!type || !fichier || !nom.trim()}
+            disabled={!type || !fichier || !nom.trim() || (demandeLaDate && !expiresOn)}
             loading={deposer.isPending}
             onClick={() => deposer.mutate()}
           >
-            Déposer
+            {remplace ? 'Remplacer' : 'Déposer'}
           </Button>
         </>
       }
@@ -408,18 +465,32 @@ function FenetreDepot({
           <Select
             id={`${id}-type`}
             value={type}
+            disabled={remplace !== null}
             onChange={(e) => setType(e.target.value as DocumentCategory)}
           >
             <option value="" disabled hidden>
               Choisir un type
             </option>
-            {documentCategorySchema.options.map((c) => (
-              <option key={c} value={c}>
+            {(remplace ? [remplace.category] : documentCategorySchema.options).map((c) => (
+              <option key={c} value={c} disabled={!remplace && enVerification.has(c)}>
                 {DOCUMENT_CATEGORY_LABELS[c]}
+                {!remplace && enVerification.has(c) ? ' — en vérification' : ''}
               </option>
             ))}
           </Select>
         </Field>
+
+        {demandeLaDate ? (
+          <Field label="Date d’expiration" htmlFor={`${id}-expiration`} required>
+            <Input
+              id={`${id}-expiration`}
+              type="date"
+              min={aujourdhui()}
+              value={expiresOn}
+              onChange={(e) => setExpiration(e.target.value)}
+            />
+          </Field>
+        ) : null}
 
         {fichier ? (
           // Le fichier choisi : son nom se modifie sur place — c'est le nom

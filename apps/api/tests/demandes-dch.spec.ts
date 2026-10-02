@@ -403,6 +403,29 @@ describe('les pièces justificatives', () => {
       contentType: 'application/pdf',
       contentBase64: PDF,
     });
+  /** Un titre de Moussa — CNI, passeport, CV —, et sa date d'expiration s'il en a une. */
+  const titre = (category: 'cni' | 'passeport' | 'cv', label: string, expiresOn?: string) =>
+    pieces.upload(moussa.session, moussa.employeeId, {
+      category,
+      label,
+      filename: `${label}.pdf`,
+      contentType: 'application/pdf',
+      contentBase64: PDF,
+      ...(expiresOn ? { expiresOn } : {}),
+    });
+  /** La date dans `jours` jours, à l'horloge de la base. */
+  const dans = async (jours: number): Promise<string> => {
+    const { rows } = await raw(`SELECT (CURRENT_DATE + $1::int)::text AS d`, [jours]);
+    return rows[0]!.d as string;
+  };
+  const fichier = (label: string) => ({
+    label,
+    filename: `${label}.pdf`,
+    contentType: 'application/pdf' as const,
+    contentBase64: PDF,
+  });
+  const dossier = async () =>
+    (await pieces.list(moussa.session, moussa.employeeId)).map((d) => `${d.label}:${d.status}`);
 
   it('déposée par l’agent : la DCH la vérifie — le membre habilité, dans sa file', async () => {
     const { id } = await deposer();
@@ -432,13 +455,7 @@ describe('les pièces justificatives', () => {
     await habiliter(awa, 'demandes.pieces.diplome');
     await habiliter(khady, 'demandes.pieces.cni');
     const { id: diplome } = await deposer();
-    const { id: cni } = await pieces.upload(moussa.session, moussa.employeeId, {
-      category: 'cni',
-      label: 'CNI recto-verso',
-      filename: 'cni.pdf',
-      contentType: 'application/pdf',
-      contentBase64: PDF,
-    });
+    const { id: cni } = await titre('cni', 'CNI recto-verso', await dans(800));
     expect(await appels('piece', diplome)).toEqual(['dch:Awa']);
     expect(await appels('piece', cni)).toEqual(['dch:Khady']);
     // Awa ne vérifie pas les pièces d'identité ; le directeur, si.
@@ -456,6 +473,105 @@ describe('les pièces justificatives', () => {
     await habiliter(khady, 'demandes.pieces.diplome');
     expect((await pieces.content(khady.session, id)).filename).toBe('master.pdf');
     expect((await pieces.content(moussa.session, id)).filename).toBe('master.pdf');
+  });
+
+  it('en vérification, son titulaire le remplace ou l’annule ; vérifié, il ne se change plus', async () => {
+    const { id } = await deposer();
+    expect(await codeOf(() => pieces.replace(awa.session, id, fichier('Autre')))).toBe(
+      'documents.forbidden_scope',
+    );
+    await pieces.replace(moussa.session, id, fichier('Master 2'));
+    const [vue] = await pieces.list(moussa.session, moussa.employeeId);
+    expect(vue).toMatchObject({ label: 'Master 2', status: 'pending', canReplace: true });
+    expect(await appels('piece', id)).toEqual(['dch:Mariama']);
+    // Annulé : il quitte le dossier et la file de la DCH.
+    await pieces.remove(moussa.session, id);
+    expect(await appels('piece', id)).toEqual([]);
+    expect(await dossier()).toEqual([]);
+    // Vérifié : plus de remplacement.
+    const { id: verifie } = await deposer();
+    await pieces.review(mariama.session, verifie, { decision: 'approved' });
+    expect(await codeOf(() => pieces.replace(moussa.session, verifie, fichier('Master 3')))).toBe(
+      'documents.already_reviewed',
+    );
+    expect((await pieces.list(moussa.session, moussa.employeeId))[0]).toMatchObject({
+      canReplace: false,
+    });
+  });
+
+  it('CNI, passeport, CV : un seul au dossier — le nouveau, vérifié, prend la place de l’ancien', async () => {
+    const { id: ancien } = await titre('passeport', 'Passeport 2019', await dans(400));
+    await pieces.review(mariama.session, ancien, { decision: 'approved' });
+    const { id: nouveau } = await titre('passeport', 'Passeport 2026', await dans(3000));
+    // Un seul en vérification à la fois : on change celui-là.
+    expect(await codeOf(async () => titre('passeport', 'Encore un', await dans(3000)))).toBe(
+      'documents.deja_en_verification',
+    );
+    // Tant que le nouveau n'est pas vérifié, l'ancien reste au dossier.
+    expect(await dossier()).toEqual(['Passeport 2026:pending', 'Passeport 2019:approved']);
+    await pieces.review(mariama.session, nouveau, { decision: 'approved' });
+    expect(await dossier()).toEqual(['Passeport 2026:approved']);
+    // Le CV de même ; les autres types s'ajoutent sans limite.
+    const { id: cv1 } = await titre('cv', 'CV 2024');
+    await pieces.review(mariama.session, cv1, { decision: 'approved' });
+    const { id: cv2 } = await titre('cv', 'CV 2026');
+    await pieces.review(mariama.session, cv2, { decision: 'approved' });
+    const { id: d1 } = await deposer();
+    const { id: d2 } = await deposer();
+    await pieces.review(mariama.session, d1, { decision: 'approved' });
+    await pieces.review(mariama.session, d2, { decision: 'approved' });
+    expect((await dossier()).sort()).toEqual([
+      'CV 2026:approved',
+      'Master:approved',
+      'Master:approved',
+      'Passeport 2026:approved',
+    ]);
+  });
+
+  it('CNI et passeport : la date d’expiration est exigée, pas passée — et ne sert qu’au titulaire', async () => {
+    expect(await codeOf(() => titre('cni', 'CNI'))).toBe('documents.expiration_requise');
+    expect(await codeOf(async () => titre('cni', 'CNI', await dans(-1)))).toBe('documents.expire');
+    const date = await dans(800);
+    await titre('cni', 'CNI', date);
+    expect((await pieces.list(moussa.session, moussa.employeeId))[0]?.expiresOn).toBe(date);
+    expect((await pieces.list(mariama.session, moussa.employeeId))[0]?.expiresOn).toBeNull();
+    // Un CV n'en a pas.
+    await titre('cv', 'CV', date);
+    expect((await pieces.list(moussa.session, moussa.employeeId))[0]?.expiresOn).toBeNull();
+  });
+
+  it('l’expiration : un rappel quinze jours avant, un le jour même — au titulaire, une fois chacun', async () => {
+    const { id } = await titre('passeport', 'Passeport', await dans(10));
+    const relever = (qui: Agent) => new NotificationsService(db).list(qui.session);
+    const rappels = async (qui: Agent) =>
+      (
+        await raw(
+          `SELECT title FROM notifications
+            WHERE type = 'document_expiry' AND recipient_user_id = $1 ORDER BY created_at`,
+          [qui.session.userId],
+        )
+      ).rows.map((r) => r.title as string);
+    await relever(moussa);
+    await relever(moussa);
+    expect(await rappels(moussa)).toEqual(['Passeport : expiration proche']);
+    // Le jour J.
+    await raw(`UPDATE employee_documents SET expires_on = CURRENT_DATE WHERE id = $1`, [id]);
+    await relever(moussa);
+    expect(await rappels(moussa)).toEqual([
+      'Passeport : expiration proche',
+      'Passeport : expire aujourd’hui',
+    ]);
+    // Personne d'autre : ni la DCH, ni un collègue.
+    await relever(mariama);
+    expect(await rappels(mariama)).toEqual([]);
+
+    // Un nouveau passeport déposé : l'ancien, même expiré, ne rappelle plus rien.
+    await pieces.review(mariama.session, id, { decision: 'approved' });
+    await raw(`DELETE FROM notifications WHERE type = 'document_expiry'`);
+    await raw(`UPDATE employee_documents SET expires_on = CURRENT_DATE - 3 WHERE id = $1`, [id]);
+    await titre('passeport', 'Nouveau passeport', await dans(3000));
+    await relever(moussa);
+    expect(await rappels(moussa)).toEqual([]);
   });
 });
 

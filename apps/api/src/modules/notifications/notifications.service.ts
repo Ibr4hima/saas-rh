@@ -8,7 +8,12 @@ import type {
   NotificationsPage,
   SessionUser,
 } from '@teranga/contracts';
-import { NOTIFICATIONS_DE_GESTION, NOTIFICATIONS_PERSONNELLES, peut } from '@teranga/contracts';
+import {
+  DOCUMENT_CATEGORY_LABELS,
+  NOTIFICATIONS_DE_GESTION,
+  NOTIFICATIONS_PERSONNELLES,
+  peut,
+} from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -152,6 +157,8 @@ export class NotificationsService {
         // Les fériés concernent tout le monde : le rappel est créé pour
         // l'utilisateur qui consulte (une ligne, idempotente par férié).
         await this.generateHolidayReminders(tx, user.tenantId, user.userId);
+        // L'expiration de ses titres d'identité : à leur titulaire seul.
+        await this.generateExpiryReminders(tx, user.tenantId, user.userId);
         // Le circuit des congés se relit (au plus une fois par minute) : un
         // congé qui commence, un accès fermé ne déclenchent aucune écriture,
         // et c'est ici qu'on les voit passer.
@@ -383,6 +390,71 @@ export class NotificationsService {
         })),
       )
       .onConflictDoNothing();
+  }
+
+  /**
+   * L'expiration d'un titre d'identité — CNI, passeport : son titulaire est
+   * prévenu quinze jours avant, puis le jour même (ou dès qu'il revient, s'il
+   * a manqué le jour). Seul compte le dernier déposé de chaque type, en
+   * vérification ou au dossier : celui qu'un nouveau dépôt remplace ne
+   * rappelle plus rien. Pollé comme les fériés : en régime établi, aucune
+   * écriture — les rappels déjà envoyés sont écartés dans la requête.
+   */
+  private async generateExpiryReminders(tx: Tx, tenantId: string, userId: string): Promise<void> {
+    const { rows } = await tx.execute<{
+      id: string;
+      category: 'cni' | 'passeport';
+      expires_on: string;
+      jours: number;
+      etape: 'j15' | 'j0';
+    }>(sql`
+      WITH dernier AS (
+        SELECT DISTINCT ON (d.category) d.id, d.category, d.expires_on,
+               (d.expires_on - CURRENT_DATE)::int AS jours
+          FROM employee_documents d
+          JOIN employees e ON e.id = d.employee_id
+          JOIN persons p ON p.id = e.person_id
+         WHERE p.user_id = ${userId} AND d.category IN ('cni', 'passeport')
+           AND d.status <> 'rejected'
+         ORDER BY d.category, d.created_at DESC
+      ), du AS (
+        SELECT id, category, expires_on::text AS expires_on, jours,
+               CASE WHEN jours <= 0 THEN 'j0' ELSE 'j15' END AS etape
+          FROM dernier WHERE expires_on IS NOT NULL AND jours <= 15
+      )
+      SELECT * FROM du
+       WHERE NOT EXISTS (
+         SELECT 1 FROM notifications n
+          WHERE n.recipient_user_id = ${userId}
+            AND n.dedupe_key = 'expiration:' || du.id || ':' || du.etape)`);
+    for (const r of rows) {
+      const titre = DOCUMENT_CATEGORY_LABELS[r.category];
+      // « votre passeport… le renouveler », « votre carte… la renouveler ».
+      const nom = r.category === 'cni' ? 'carte nationale d’identité' : 'passeport';
+      const le = r.category === 'cni' ? 'la' : 'le';
+      const [title, body] =
+        r.etape === 'j15'
+          ? [
+              `${titre} : expiration proche`,
+              `La date d’expiration de votre ${nom} est proche : le ${frDate(r.expires_on)}. Pensez à ${le} renouveler.`,
+            ]
+          : r.jours === 0
+            ? [
+                `${titre} : expire aujourd’hui`,
+                `Votre ${nom} expire aujourd’hui. Pensez à ${le} renouveler.`,
+              ]
+            : [
+                `${titre} : expiré${r.category === 'cni' ? 'e' : ''}`,
+                `Votre ${nom} a expiré le ${frDate(r.expires_on)}. Pensez à ${le} renouveler.`,
+              ];
+      await notifier(tx, tenantId, userId, {
+        type: 'document_expiry',
+        title,
+        body,
+        link: '/moi/documents/justificatifs',
+        dedupeKey: `expiration:${r.id}:${r.etape}`,
+      });
+    }
   }
 
   /**
