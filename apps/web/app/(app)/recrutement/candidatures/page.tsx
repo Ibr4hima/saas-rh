@@ -18,6 +18,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api } from '../../../../lib/api';
+import { BandeauDeleguer } from '../../../../components/deleguer-membres';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
 import { CONTRACT_LABELS } from '../../../../lib/recruitment';
@@ -85,6 +86,14 @@ export default function CandidaturesPage() {
 
   return (
     <Page>
+      <BandeauDeleguer
+        capacite="recrutement.candidatures"
+        verbe="traiter"
+        objet="les dossiers de candidature"
+        delegue="le traitement des dossiers de candidature"
+        retrait="Vous traiterez de vous-même les dossiers de candidature."
+        titre="Déléguer les dossiers de candidature"
+      />
       <CartePleine>
         <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
           <CardTitle>Dossiers de candidature</CardTitle>

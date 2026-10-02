@@ -23,7 +23,7 @@ import {
   Th,
   Tr,
 } from '@teranga/ui';
-import { DeleguerMembres } from '../../../../components/deleguer-membres';
+import { BandeauDeleguer } from '../../../../components/deleguer-membres';
 import { Icon } from '../../../../components/icons';
 import { Modal, ModalGrid, ModalSection } from '../../../../components/modal';
 import {
@@ -31,14 +31,6 @@ import {
   FenetreSuppression,
   messageErreur,
 } from '../../../../components/reglages-absences';
-import {
-  BandeauDelegation,
-  BandeauMessage,
-  listePrenoms,
-  texteErreur,
-  useMembresDCH,
-  type Message,
-} from '../../../../components/traitement-dch';
 import { api } from '../../../../lib/api';
 import { useMe } from '../../../../lib/hooks';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
@@ -51,45 +43,17 @@ import { SqueletteTableau } from '../../../../components/tableau';
 export default function AbsenceSettingsPage() {
   const me = useMe();
   const peutGerer = peut(me.data, 'conges.parametres');
-  const estDirecteur = Boolean(me.data?.dirigeLaDCH);
-  const membres = useMembresDCH().data?.membres ?? [];
-  const habilites = membres.filter((m) => m.capacites.includes('conges.parametres'));
-  const [message, setMessage] = useState<Message>(null);
 
   return (
     <Page>
-      {message ? <BandeauMessage message={message} /> : null}
-
-      {/* Comme les files de la DCH : son directeur délègue, et garde la main. */}
-      {estDirecteur ? (
-        <BandeauDelegation
-          icone="arrow_split"
-          texte={
-            habilites.length > 0
-              ? `${listePrenoms(habilites)} ${habilites.length > 1 ? 'peuvent' : 'peut'} désormais gérer les paramètres des congés.`
-              : 'Vous pouvez déléguer cette tâche à votre équipe.'
-          }
-          action={
-            <DeleguerMembres
-              membres={membres}
-              capacite="conges.parametres"
-              titre="Déléguer les paramètres des congés"
-              confirmation={(retenus) =>
-                `${listePrenoms(retenus)} ${retenus.length > 1 ? 'pourront' : 'pourra'} gérer désormais les paramètres des congés.`
-              }
-              retrait="Vous gérerez de vous-même les paramètres des congés."
-              fichiers={[]}
-              onFait={() => setMessage(null)}
-              onErreur={(err) => setMessage({ ton: 'erreur', texte: texteErreur(err) })}
-            />
-          }
-        />
-      ) : peutGerer && me.data?.role !== 'admin' ? (
-        <BandeauDelegation
-          icone="how_to_reg"
-          texte="La DCH vous a délégué la gestion des paramètres des congés."
-        />
-      ) : null}
+      <BandeauDeleguer
+        capacite="conges.parametres"
+        verbe="gérer"
+        objet="les paramètres des congés"
+        delegue="la gestion des paramètres des congés"
+        retrait="Vous gérerez de vous-même les paramètres des congés."
+        titre="Déléguer les paramètres des congés"
+      />
 
       {/* Le catalogue des types prend la hauteur qui reste ; le circuit, qui
           tient en deux listes, garde la sienne. */}

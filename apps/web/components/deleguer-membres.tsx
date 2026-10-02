@@ -2,11 +2,88 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import type { Capacite, MembreHabilite } from '@teranga/contracts';
+import { peut, type Capacite, type MembreHabilite } from '@teranga/contracts';
 import { Button, Checkbox, cn } from '@teranga/ui';
 import { api } from '../lib/api';
+import { useMe } from '../lib/hooks';
 import { Icon } from './icons';
 import { Modal } from './modal';
+import {
+  BandeauDelegation,
+  BandeauMessage,
+  listePrenoms,
+  texteErreur,
+  useMembresDCH,
+  type Message,
+} from './traitement-dch';
+
+/**
+ * Le bandeau d'une page de la DCH qu'un seul accès ouvre (paramètres des
+ * congés, offres d'emploi, dossiers de candidature) : au directeur, qui peut
+ * — et « Déléguer » ; au membre, ce qui lui est délégué. Rien pour les
+ * autres.
+ */
+export function BandeauDeleguer({
+  capacite,
+  verbe,
+  objet,
+  delegue,
+  retrait,
+  titre,
+  fichiers = [],
+}: {
+  capacite: Capacite;
+  /** « gérer » — « Awa peut désormais gérer… ». */
+  verbe: string;
+  /** « les offres d’emploi ». */
+  objet: string;
+  /** « la gestion des offres d’emploi » — « La DCH vous a délégué… ». */
+  delegue: string;
+  /** « Vous gérerez de vous-même les offres d’emploi. » */
+  retrait: string;
+  titre: string;
+  fichiers?: readonly string[];
+}) {
+  const me = useMe();
+  const membres = useMembresDCH().data?.membres ?? [];
+  const [message, setMessage] = useState<Message>(null);
+  const habilites = membres.filter((m) => m.capacites.includes(capacite));
+  const pluriel = (n: number, un: string, plusieurs: string) => (n > 1 ? plusieurs : un);
+
+  if (me.data?.dirigeLaDCH) {
+    return (
+      <>
+        {message ? <BandeauMessage message={message} /> : null}
+        <BandeauDelegation
+          icone="arrow_split"
+          texte={
+            habilites.length > 0
+              ? `${listePrenoms(habilites)} ${pluriel(habilites.length, 'peut', 'peuvent')} désormais ${verbe} ${objet}.`
+              : 'Vous pouvez déléguer cette tâche à votre équipe.'
+          }
+          action={
+            <DeleguerMembres
+              membres={membres}
+              capacite={capacite}
+              titre={titre}
+              confirmation={(retenus) =>
+                `${listePrenoms(retenus)} ${pluriel(retenus.length, 'pourra', 'pourront')} ${verbe} désormais ${objet}.`
+              }
+              retrait={retrait}
+              fichiers={fichiers}
+              onFait={() => setMessage(null)}
+              onErreur={(err) => setMessage({ ton: 'erreur', texte: texteErreur(err) })}
+            />
+          }
+        />
+      </>
+    );
+  }
+  if (peut(me.data, capacite) && me.data?.role !== 'admin') {
+    return <BandeauDelegation icone="how_to_reg" texte={`La DCH vous a délégué ${delegue}.`} />;
+  }
+  return null;
+}
 
 /**
  * « Déléguer » une file de la DCH : ses membres, à cocher — ceux qui pourront

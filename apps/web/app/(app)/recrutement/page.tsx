@@ -20,6 +20,7 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
+import { BandeauDeleguer } from '../../../components/deleguer-membres';
 import { Icon } from '../../../components/icons';
 import { JobModal } from '../../../components/job-modal';
 import { LoadFailure } from '../../../components/load-failure';
@@ -97,6 +98,14 @@ export default function OffresPage() {
 
   return (
     <Page>
+      <BandeauDeleguer
+        capacite="recrutement.offres"
+        verbe="gérer"
+        objet="les offres d’emploi"
+        delegue="la gestion des offres d’emploi"
+        retrait="Vous gérerez de vous-même les offres d’emploi."
+        titre="Déléguer les offres d’emploi"
+      />
       <CartePleine>
         <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
           <CardTitle>Offres d&apos;emploi</CardTitle>
