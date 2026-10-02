@@ -37,6 +37,7 @@ import {
 import { api, ApiError } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
 import { aDesConsequences, ListeConsequences } from '../../../components/consequences-hierarchie';
+import { BandeauDeleguer } from '../../../components/deleguer-membres';
 import { useEspace } from '../../../components/espace';
 import { Icon } from '../../../components/icons';
 import { Modal } from '../../../components/modal';
@@ -131,6 +132,18 @@ export default function OrganisationPage() {
 
   return (
     <Page canevas>
+      {/* Tout le monde le consulte ; le modifier se délègue — côté Gestion RH. */}
+      {gestion ? (
+        <BandeauDeleguer
+          capacite="organigramme"
+          verbe="modifier"
+          objet="l’organigramme"
+          delegue="la modification de l’organigramme"
+          retrait="Vous modifierez de vous-même l’organigramme."
+          titre="Déléguer l’organigramme"
+          fichiers={['org-units']}
+        />
+      ) : null}
       {/* Ni titre ni bouton ici : la barre supérieure porte déjà le nom de
           l'écran et son unique geste. Les répéter faisait lire deux fois la
           même chose avant d'atteindre l'organigramme. */}
