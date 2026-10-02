@@ -599,7 +599,12 @@ describe('les pièces justificatives', () => {
       const { id } = await passeport();
       expect((await vueDCH(id)).controle).toEqual({
         mode: 'conformite',
-        fiche: { numero: 'A0123456', delivreLe: '2019-12-05', expireLe: '2029-12-05' },
+        fiche: {
+          type: 'passeport',
+          numero: 'A0123456',
+          delivreLe: '2019-12-05',
+          expireLe: '2029-12-05',
+        },
       });
       // L'agent ne voit pas ce contrôle : il est pour qui vérifie.
       expect((await pieces.list(moussa.session, moussa.employeeId))[0]?.controle).toBeNull();
@@ -645,9 +650,36 @@ describe('les pièces justificatives', () => {
       expect(await fiche()).toBe(`cni:1751198501234:2024-03-01:${expireLe}`);
     });
 
-    it('un autre titre que celui de la fiche se vérifie comme un autre document', async () => {
+    it('l’autre titre : validé à part, ou devenu la pièce de la fiche si qui vérifie le choisit', async () => {
       await ficheDeMoussa('passport', 'A0123456', '2019-12-05', '2029-12-05');
       const { id } = await titre('cni', 'CNI', await dans(2000));
+      expect((await vueDCH(id)).controle).toEqual({
+        mode: 'autre',
+        fiche: {
+          type: 'passeport',
+          numero: 'A0123456',
+          delivreLe: '2019-12-05',
+          expireLe: '2029-12-05',
+        },
+      });
+      // Validée à part : la fiche garde son passeport.
+      await pieces.review(mariama.session, id, { decision: 'approved' });
+      expect(await fiche()).toBe('passport:A0123456:2019-12-05:2029-12-05');
+
+      // Une autre fois, qui vérifie en fait la pièce de la fiche.
+      const { id: cni } = await titre('cni', 'CNI 2026', await dans(2000));
+      const expireLe = await dans(3000);
+      await pieces.review(mariama.session, cni, {
+        decision: 'approved',
+        titre: { numero: '1751198501234', delivreLe: '2026-01-15', expireLe },
+      });
+      expect(await fiche()).toBe(`cni:1751198501234:2026-01-15:${expireLe}`);
+      // Une seule CNI au dossier : la nouvelle a pris la place de la première.
+      expect((await dossier()).sort()).toEqual(['CNI 2026:approved']);
+    });
+
+    it('un document qui n’est pas un titre ne touche jamais à la fiche', async () => {
+      const { id } = await deposer();
       expect((await vueDCH(id)).controle).toBeNull();
       expect(
         await codeOf(async () =>
@@ -657,8 +689,6 @@ describe('les pièces justificatives', () => {
           }),
         ),
       ).toBe('documents.pas_le_titre');
-      await pieces.review(mariama.session, id, { decision: 'approved' });
-      expect(await fiche()).toBe('passport:A0123456:2019-12-05:2029-12-05');
     });
   });
 

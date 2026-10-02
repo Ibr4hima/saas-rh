@@ -119,15 +119,23 @@ export type ReviewEmployeeDocumentInput = z.infer<typeof reviewEmployeeDocumentS
 export type DocumentStatus = 'pending' | 'approved' | 'rejected';
 
 /**
- * Vérifier le titre d'identité de la fiche — pour qui le vérifie :
- *  — `conformite` : le document doit porter les informations de la fiche ;
+ * Vérifier un titre d'identité — pour qui le vérifie :
+ *  — `conformite` : le titre de la fiche ; le document doit porter ses
+ *    informations ;
  *  — `saisie` : une nouvelle pièce (renouvellement, ou fiche vide) — qui
- *    valide en saisit les informations, et la fiche est mise à jour.
+ *    valide en saisit les informations, et la fiche est mise à jour ;
+ *  — `autre` : l'autre titre (une CNI quand la fiche porte un passeport) —
+ *    il peut devenir la pièce de la fiche, en en saisissant les informations.
  */
 export interface ControleDuTitre {
-  mode: 'conformite' | 'saisie';
+  mode: 'conformite' | 'saisie' | 'autre';
   /** Ce que la fiche porte aujourd'hui. */
-  fiche: { numero: string | null; delivreLe: string | null; expireLe: string | null };
+  fiche: {
+    type: 'cni' | 'passeport' | null;
+    numero: string | null;
+    delivreLe: string | null;
+    expireLe: string | null;
+  };
 }
 
 export interface EmployeeDocumentView {

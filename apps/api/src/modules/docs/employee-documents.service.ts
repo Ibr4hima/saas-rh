@@ -74,15 +74,16 @@ interface TitreDeLaFiche {
  * type, ou fiche sans type — se vérifie contre elle : on compare le
  * document à ce qu'elle porte (`conformite`) ; s'il s'agit d'une nouvelle
  * pièce, ou que la fiche n'en dit rien, on en saisit les informations, qui
- * la mettent à jour (`saisie`). Un autre document — une CNI quand la fiche
- * porte un passeport — se vérifie comme les autres : null.
+ * la mettent à jour (`saisie`). L'autre titre — une CNI quand la fiche porte
+ * un passeport — peut en devenir la pièce, si qui vérifie le choisit
+ * (`autre`). Les autres documents : null.
  */
 function modeDeControle(
   doc: { category: string; renouvellement: boolean },
   fiche: TitreDeLaFiche,
 ): ControleDuTitre['mode'] | null {
   if (!aUneExpiration(doc.category as DocumentCategory)) return null;
-  if (fiche.type !== null && fiche.type !== doc.category) return null;
+  if (fiche.type !== null && fiche.type !== doc.category) return 'autre';
   return doc.renouvellement || fiche.type === null || !fiche.numero ? 'saisie' : 'conformite';
 }
 
@@ -361,7 +362,8 @@ export class EmployeeDocumentsService {
    * la fiche : rien à écrire — sauf si qui vérifie constate une nouvelle
    * pièce et en saisit les informations. Une nouvelle pièce (renouvellement,
    * fiche vide) se valide avec ses informations : elles remplacent celles de
-   * la fiche. Un autre document ne touche pas à la fiche.
+   * la fiche. L'autre titre ne touche à la fiche que si qui vérifie en fait
+   * sa pièce — en en saisissant les informations. Les autres documents, jamais.
    */
   private async reporterSurLaFiche(
     tx: Tx,
@@ -381,7 +383,7 @@ export class EmployeeDocumentsService {
       return;
     }
     if (!titre) {
-      if (mode === 'conformite') return;
+      if (mode === 'conformite' || mode === 'autre') return;
       problem(
         422,
         'documents.titre_requis',
@@ -589,7 +591,12 @@ export class EmployeeDocumentsService {
       if (mode) {
         controle = {
           mode,
-          fiche: { numero: fiche.numero, delivreLe: fiche.delivreLe, expireLe: fiche.expireLe },
+          fiche: {
+            type: fiche.type,
+            numero: fiche.numero,
+            delivreLe: fiche.delivreLe,
+            expireLe: fiche.expireLe,
+          },
         };
       }
     }
