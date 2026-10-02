@@ -21,6 +21,7 @@ import {
   Th,
   Tr,
 } from '@teranga/ui';
+import { BandeauDeleguer } from '../../../../components/deleguer-membres';
 import { Icon } from '../../../../components/icons';
 import { Modal, ModalGrid, ModalSection } from '../../../../components/modal';
 import {
@@ -63,6 +64,15 @@ export default function JoursFeriesPage() {
 
   return (
     <Page>
+      <BandeauDeleguer
+        capacite="feries"
+        verbe="gérer"
+        objet="les jours fériés"
+        delegue="la gestion des jours fériés"
+        retrait="Vous gérerez de vous-même les jours fériés."
+        titre="Déléguer les jours fériés"
+        invitation="Vous pouvez déléguer la gestion des jours fériés à votre équipe."
+      />
       <FeriesCard peutGerer={peutGerer} />
     </Page>
   );

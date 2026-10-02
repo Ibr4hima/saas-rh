@@ -135,6 +135,13 @@ const NAV_ITEMS: NavItem[] = [
     groupe: 'quotidien',
   },
   {
+    href: '/absences/feries',
+    label: 'Gestion des jours fériés',
+    short: 'Fériés',
+    icon: 'event',
+    groupe: 'quotidien',
+  },
+  {
     href: '/recrutement',
     label: 'Recrutement',
     short: 'Recrut.',
@@ -188,7 +195,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/employees/new': 'Nouvel employé',
   '/contrats': 'Échéances de contrat',
   '/absences': 'Absences & Congés',
-  '/absences/feries': 'Jours fériés',
+  '/absences/feries': 'Gestion des jours fériés',
   '/absences/parametres': 'Paramètres des congés',
   '/documents': 'Demandes de documents',
   '/demandes/informations': 'Mise à jour d’infos',
@@ -293,19 +300,16 @@ function pageAction(pathname: string, user: SessionUser, espace: Espace): Chrome
 
 /**
  * Le réglage d'un écran, dans le bandeau, juste avant la recherche : la
- * gestion des jours fériés s'ouvre depuis le calendrier (elle n'a plus
- * d'entrée dans le menu). Côté Gestion RH seulement, comme tout geste de
- * gestion sur une page des deux espaces.
+ * gestion des jours fériés s'ouvre aussi depuis le calendrier, à qui la
+ * gère. Côté Gestion RH seulement, comme tout geste de gestion sur une page
+ * des deux espaces.
  */
 function pageReglage(pathname: string, user: SessionUser, espace: Espace): ChromeAction | null {
-  if (pathname === '/calendrier' && espace === 'gestion' && peutVoirLesFeries(user)) {
+  if (pathname === '/calendrier' && espace === 'gestion' && peut(user, 'feries')) {
     return { href: '/absences/feries', icon: 'settings', label: 'Gestion des jours fériés' };
   }
   return null;
 }
-
-/** Qui gère les jours fériés, ou les lit avec les congés. */
-const peutVoirLesFeries = (user: SessionUser) => peut(user, 'feries') || voitLesConges(user);
 
 /**
  * Bouton d'action du bandeau : l'unique geste de l'écran. Verre translucide
@@ -508,6 +512,10 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
         // gère seulement : traiter les congés n'y donne pas accès.
         items.push(...delegations, ...demandes);
         if (peut(user, 'conges.parametres')) items.push(i);
+        break;
+      case '/absences/feries':
+        // Une délégation à part : ni les congés ni leurs paramètres n'y mènent.
+        if (peut(user, 'feries')) items.push(i);
         break;
       case '/recrutement': {
         // Les offres et les dossiers se confient à part.
@@ -1023,7 +1031,7 @@ function RubriqueRepliee({
  */
 function DateDuJour() {
   const pathname = usePathname();
-  const ici = pathname.startsWith('/calendrier') || pathname.startsWith('/absences/feries');
+  const ici = pathname.startsWith('/calendrier');
   const brut = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long',
     day: 'numeric',
@@ -1181,7 +1189,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     }
     if (commence('/employees')) return peut(u, 'personnel.consulter');
     if (commence('/contrats')) return peut(u, 'contrats.echeances') || peut(u, 'pilotage');
-    if (commence('/absences/feries')) return peut(u, 'feries') || voitLesConges(u);
+    if (commence('/absences/feries')) return peut(u, 'feries');
     if (commence('/absences/parametres')) return peut(u, 'conges.parametres');
     if (commence('/absences')) return voitLesConges(u);
     if (commence('/recrutement/candidatures')) return peut(u, 'recrutement.candidatures');
@@ -1236,10 +1244,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const action = pageAction(pathname, user, espace);
   const reglage = pageReglage(pathname, user, espace);
   const academy = espaceAcademy(pathname);
-  // Une page sans entrée dans le menu s'allume sous celle qui y mène. La
-  // gestion des jours fériés s'ouvre depuis le calendrier, que la date du
-  // bandeau ouvre : rien ne s'allume dans le menu — surtout pas « Absences ».
-  const cheminMenu = pathname.startsWith('/absences/feries') ? '/calendrier' : pathname;
+  const cheminMenu = pathname;
   const isActive = (href: string) =>
     href === '/moi' ? cheminMenu === '/moi' : cheminMenu.startsWith(href);
   /** Une sous-page couvre son chemin et ce qui en descend. */
