@@ -1034,7 +1034,7 @@ function DateDuJour() {
       <Link
         href="/calendrier"
         title="Calendrier · Jours fériés"
-        aria-label={`${libelle} — calendrier et jours fériés`}
+        aria-label={`${libelle}, calendrier et jours fériés`}
         aria-current={ici ? 'page' : undefined}
         className={cn(
           'flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none lg:px-3.5',

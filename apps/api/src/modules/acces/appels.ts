@@ -88,7 +88,7 @@ export async function relancer(tx: Tx, tenantId: string): Promise<void> {
     if (joursOuvresEcoules(a.le, aujourdhui, feries) < DELAI_RELANCE_JOURS_OUVRES) continue;
     await notifier(tx, tenantId, a.recipient_user_id, {
       type: 'rappel',
-      title: `Rappel — ${a.title}`,
+      title: `${a.title} (rappel)`,
       body: `En attente de vous depuis le ${frDate(a.le)}.${a.body ? ` ${a.body}` : ''}`,
       link: a.link ?? undefined,
       dedupeKey: a.dedupe_key.replace(':appel:', ':rappel:'),

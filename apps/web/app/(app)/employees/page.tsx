@@ -816,7 +816,7 @@ function DesactiverModal({
             value={motif}
             onChange={(e) => setMotif(e.target.value as MotifInactivite | '')}
           >
-            <option value="">— Choisir</option>
+            <option value="">Choisir</option>
             {MOTIFS_INACTIVITE.map((m) => (
               <option key={m} value={m}>
                 {MOTIF_INACTIVITE_LABELS[m]}

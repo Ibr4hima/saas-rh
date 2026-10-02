@@ -179,7 +179,7 @@ export default function LeconPage() {
                   <button
                     type="button"
                     onClick={() => setSupportOuvert(true)}
-                    title={`${ici.support.filename} — PDF, ${Math.max(1, Math.round(ici.support.size / 1024))} Ko`}
+                    title={`${ici.support.filename} · PDF, ${Math.max(1, Math.round(ici.support.size / 1024))} Ko`}
                     className="group inline-flex h-10 items-center gap-2.5 rounded-full border border-line-soft bg-surface pr-4 pl-1.5 text-[12.5px] font-semibold text-ink shadow-xs transition-all duration-150 hover:border-primary/35 hover:bg-primary-soft/40 hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
                   >
                     <span className="grid size-7 place-items-center rounded-full bg-primary-soft text-primary transition-colors group-hover:bg-primary group-hover:text-primary-ink">
@@ -212,7 +212,7 @@ export default function LeconPage() {
                 <p className="flex items-center gap-2 text-[12.5px] font-semibold text-success">
                   <Icon name="check_circle" size={17} fill />
                   Leçon validée
-                  {l.suivante ? ' — la suivante est ouverte.' : ' — c’était la dernière.'}
+                  {l.suivante ? '. La suivante est ouverte.' : '. C’était la dernière.'}
                 </p>
               ) : (
                 <div className="flex flex-col gap-2">
@@ -274,7 +274,7 @@ export default function LeconPage() {
             url: apiUrl(`/academy/lessons/${lessonId}/support?disposition=inline`),
             filename: ici.support.filename,
             contentType: 'application/pdf',
-            titre: `Support — ${l.title}`,
+            titre: `Support : ${l.title}`,
           }}
           sousTitre={f.title}
           telechargement={apiUrl(`/academy/lessons/${lessonId}/support`)}
@@ -310,7 +310,7 @@ function NavLecon({
       <span
         role="link"
         aria-disabled
-        aria-label={verrou ? `${libelle} — validez d’abord celle-ci` : libelle}
+        aria-label={verrou ? `${libelle} (validez d’abord celle-ci)` : libelle}
         title={verrou ? 'Validez cette leçon pour ouvrir la suivante' : undefined}
         className={cn(forme, 'cursor-not-allowed border-line-soft text-ink-muted/40')}
       >

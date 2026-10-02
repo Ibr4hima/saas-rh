@@ -143,7 +143,7 @@ function CarteSemestre({
       );
     } catch (e) {
       setStatuts(avant);
-      setErreur(e instanceof ApiError ? e.message : 'Statut non enregistré — réessayez.');
+      setErreur(e instanceof ApiError ? e.message : 'Statut non enregistré, réessayez.');
     }
   };
 

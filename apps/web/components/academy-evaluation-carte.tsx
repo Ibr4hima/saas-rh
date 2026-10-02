@@ -56,7 +56,7 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
     icone = 'lock';
     ton = 'bg-line-soft/70 text-ink-muted';
     const restantes = formation.lessonCount - formation.completedLessons;
-    texte = `Elle s’ouvre quand toutes les leçons sont validées — encore ${compte(restantes, 'leçon')}.`;
+    texte = `Elle s’ouvre quand toutes les leçons sont validées. Encore ${compte(restantes, 'leçon')}.`;
   } else if (ev.etat === 'fermee') {
     icone = ev.fermeture === 'formateur' ? 'school' : 'lock';
     ton = 'bg-line-soft/70 text-ink-muted';
@@ -80,8 +80,8 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
         Vos {ev.tentativesParJour} tentatives du jour sont passées. La prochaine s’ouvre{' '}
         <b className="font-bold text-ink">
           {ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}
-        </b>{' '}
-        — le temps de revoir les leçons.
+        </b>
+        , le temps de revoir les leçons.
       </>
     );
   } else if (ev.etat === 'reussie' && ev.certificat) {

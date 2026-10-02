@@ -86,7 +86,7 @@ function LigneReprise({
       hint={direction ? `Son équipe reste dans ${direction}.` : undefined}
     >
       <Select id={id} value={valeur} onChange={(ev) => onChange(ev.target.value)}>
-        <option value="">— Qui reprend son équipe ?</option>
+        <option value="">Qui reprend son équipe ?</option>
         {possibles.map((m) => (
           <option key={m.id} value={m.id}>
             {m.nom}

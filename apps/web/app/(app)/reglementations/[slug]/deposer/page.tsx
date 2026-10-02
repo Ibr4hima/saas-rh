@@ -156,7 +156,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
           <Field
             label="Référence"
             htmlFor="reference"
-            hint="Ce qui identifie la version en vigueur — « Loi n° 97-17 du 1er décembre 1997 »."
+            hint="Ce qui identifie la version en vigueur, par exemple « Loi n° 97-17 du 1er décembre 1997 »."
           >
             <Input
               id="reference"
@@ -377,7 +377,7 @@ function FichierOfficiel({
           <p className="text-[12.5px] font-bold text-ink-strong">Fichier officiel</p>
           <p className="mt-0.5 text-[11.5px] text-ink-muted">
             {choisi
-              ? `${choisi.name} · ${poids(choisi.size)} — sera déposé à l’enregistrement`
+              ? `${choisi.name} · ${poids(choisi.size)}, sera déposé à l’enregistrement`
               : actuel
                 ? `${actuel.filename} · ${poids(actuel.size)}`
                 : 'Aucun fichier déposé. Le texte lu reste consultable sans lui.'}

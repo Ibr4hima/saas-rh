@@ -99,7 +99,7 @@ export default function CongesATraiterPage() {
       setMotif('');
       setMessage({
         ton: 'ok',
-        texte: `Congé de ${v.demande.employeeName} ${v.decision === 'approved' ? 'approuvé' : 'refusé'} — un message lui est envoyé.`,
+        texte: `Congé de ${v.demande.employeeName} ${v.decision === 'approved' ? 'approuvé' : 'refusé'}. Un message lui est envoyé.`,
       });
       await rafraichir();
     },
@@ -291,7 +291,7 @@ export default function CongesATraiterPage() {
           <Field
             label="Motif"
             htmlFor="motif-refus-dch"
-            hint="Facultatif — il est transmis à l’agent avec le refus."
+            hint="Facultatif. Il est transmis à l’agent avec le refus."
           >
             <Textarea
               id="motif-refus-dch"

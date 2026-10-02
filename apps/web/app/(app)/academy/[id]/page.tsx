@@ -102,7 +102,7 @@ export default function FormationPage() {
                 rangée vide y creusait un blanc de douze pixels. */}
             {!f.published ? (
               <Badge tone="neutral" className="w-fit">
-                Brouillon — invisible pour les agents
+                Brouillon, invisible pour les agents
               </Badge>
             ) : null}
             {/* Le titre et l'unique geste de l'écran, sur la même ligne : on

@@ -348,7 +348,9 @@ export class EmployeeDocumentsService {
       const destinataire = target.personUserId ?? doc.uploadedByUserId;
       await this.notifications.notifyUser(tx, user.tenantId, destinataire, {
         type: 'document_reviewed',
-        title: approved ? `« ${doc.label} » validé — ajouté au dossier` : `« ${doc.label} » rejeté`,
+        title: approved
+          ? `« ${doc.label} » validé et ajouté au dossier`
+          : `« ${doc.label} » rejeté`,
         body: approved
           ? undefined
           : (input.comment ?? 'Vérifiez le fichier puis déposez-le à nouveau.'),

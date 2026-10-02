@@ -386,7 +386,7 @@ export function analyserTexte(brut: string): AnalyseTexte {
     problemes.push(`${vides.length} article(s) sans contenu : leur corps est resté vide.`);
   }
   if (chapitres.length === 0) {
-    problemes.push('Aucun chapitre reconnu — un chapitre s’annonce par « CHAPITRE I — Titre ».');
+    problemes.push('Aucun chapitre reconnu. Un chapitre s’annonce par « CHAPITRE I — Titre ».');
   }
 
   return {

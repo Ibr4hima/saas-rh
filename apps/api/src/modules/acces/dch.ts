@@ -308,7 +308,7 @@ export async function pasSurSoi(
     403,
     'acces.son_propre_dossier',
     `Vous ne pouvez pas ${geste} vous-même`,
-    'Ce qui vous concerne passe par une demande, comme pour tout agent : un autre membre de la DCH — ou l’administrateur — s’en charge. Un changement d’informations se signale depuis « Mes infos personnelles ».',
+    'Ce qui vous concerne passe par une demande, comme pour tout agent : un autre membre de la DCH ou l’administrateur s’en charge. Un changement d’informations se signale depuis « Mes infos personnelles ».',
   );
 }
 
@@ -412,8 +412,8 @@ export async function accueillirLeDirecteur(tx: Tx, tenantId: string): Promise<v
     title: `Vous dirigez la ${dch.nom}`,
     body:
       lignes.length > 0
-        ? `Les délégations en place sont maintenues — ${lignes.join(' ; ')}. Vous pouvez les modifier dans « Délégations ».`
-        : 'Toutes les demandes et tous les accès de la DCH vous reviennent. Vous pouvez en confier aux membres de votre direction dans « Délégations ».',
+        ? `Les délégations en place sont maintenues (${lignes.join(' ; ')}). Vous pouvez les modifier dans « Déléguer des tâches ».`
+        : 'Toutes les demandes et tous les accès de la DCH vous reviennent. Vous pouvez en déléguer aux membres de votre direction dans « Déléguer des tâches ».',
     link: '/moi/delegations',
     dedupeKey: `dch:directeur:${dch.directeur.employeeId}`,
   });

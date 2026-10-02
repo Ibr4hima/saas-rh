@@ -105,7 +105,7 @@ export function FenetreDemandeAbsence({
       const base64 = String(reader.result).split(',')[1] ?? '';
       setDoc({ filename: file.name, contentBase64: base64, sizeBytes: file.size });
     };
-    reader.onerror = () => setFileError('Impossible de lire ce fichier — réessayez.');
+    reader.onerror = () => setFileError('Impossible de lire ce fichier, réessayez.');
     reader.readAsDataURL(file);
   };
 
@@ -157,7 +157,7 @@ export function FenetreDemandeAbsence({
       onEnvoyee(r.daysCount);
     },
     onError: (err) =>
-      setServerError(err instanceof ApiError ? err.message : 'Envoi impossible — réessayez.'),
+      setServerError(err instanceof ApiError ? err.message : 'Envoi impossible, réessayez.'),
   });
 
   const peutEnvoyer =

@@ -1151,7 +1151,7 @@ export class PeopleService {
           tour.push({
             id: c.id,
             name: c.nom,
-            reason: `Encadre ${effectif} — choisissez qui reprend son équipe`,
+            reason: `Encadre ${effectif} : choisissez qui reprend son équipe`,
           });
           continue;
         }
@@ -1301,7 +1301,7 @@ export class PeopleService {
         .from(t.orgUnits)
         .where(and(eq(t.orgUnits.managerEmployeeId, cible.id), isNull(t.orgUnits.deletedAt)))
         .limit(1);
-      if (unite) return `Dirige « ${unite.name} » — nommez d'abord un successeur`;
+      if (unite) return `Dirige « ${unite.name} » : nommez d'abord un successeur`;
     }
     return null;
   }

@@ -384,7 +384,7 @@ export class NotificationsService {
           recipientUserId: userId,
           type: 'holiday_reminder',
           title: `Jour férié à venir : ${h.label}`,
-          body: `${frDate(h.day, true)} est chômé — pensez-y pour vos rendez-vous et vos échéances.`,
+          body: `${frDate(h.day, true)} est chômé. Pensez-y pour vos rendez-vous et vos échéances.`,
           link: '/calendrier',
           dedupeKey: holidayDedupeKey(h.day),
         })),

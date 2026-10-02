@@ -27,7 +27,7 @@ import {
 import { anciennete, useHorlogeMinute } from '../../../lib/temps';
 
 const INVALID_MESSAGES: Record<string, string> = {
-  closed: "La date limite de candidature est passée — cette offre n'accepte plus de dossiers.",
+  closed: "La date limite de candidature est passée : cette offre n'accepte plus de dossiers.",
   not_found: "Cette offre n'existe pas ou n'est plus publiée.",
 };
 
@@ -318,7 +318,7 @@ export default function ApplyPage() {
       }),
     onSuccess: () => setSent(true),
     onError: (err) =>
-      setServerError(err instanceof ApiError ? err.message : 'Envoi impossible — réessayez.'),
+      setServerError(err instanceof ApiError ? err.message : 'Envoi impossible, réessayez.'),
   });
 
   /**
@@ -352,7 +352,7 @@ export default function ApplyPage() {
       return;
     }
     if (file.size === 0) {
-      setFileError(`« ${file.name} » est vide — vérifiez le fichier (synchronisation cloud ?).`);
+      setFileError(`« ${file.name} » est vide. Vérifiez le fichier (synchronisation cloud ?).`);
       return;
     }
     if (file.size > MAX_DOCUMENT_BYTES) {
@@ -374,7 +374,7 @@ export default function ApplyPage() {
     };
     reader.onerror = () =>
       setFileError(
-        `Impossible de lire « ${file.name} » — réessayez ou choisissez un autre fichier.`,
+        `Impossible de lire « ${file.name} ». Réessayez ou choisissez un autre fichier.`,
       );
     reader.readAsDataURL(file);
   };
@@ -402,7 +402,7 @@ export default function ApplyPage() {
             </Button>
           }
         >
-          Impossible de joindre le serveur — vérifiez votre connexion et réessayez.
+          Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.
         </Ecran>
       </Fond>
     );

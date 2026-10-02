@@ -428,7 +428,7 @@ describe('le responsable hiérarchique', () => {
     expect(r.lignes[1]?.avertissements).toEqual([
       {
         colonne: 'Matricule du responsable',
-        texte: 'Sans direction affectée : dossier créé sans n+1 — affectez-le d’abord',
+        texte: 'Sans direction affectée : dossier créé sans n+1. Affectez-le d’abord',
       },
     ]);
     expect((await dossier('APIX-0002'))?.responsable).toBeNull();

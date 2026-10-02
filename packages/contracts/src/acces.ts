@@ -166,7 +166,7 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   'demandes.documents.autre': {
     libelle: 'Autres documents',
-    description: 'Ce que l’agent demande hors de la liste — sa précision dit quoi.',
+    description: 'Ce que l’agent demande hors de la liste, selon sa précision.',
     groupe: 'Documents',
   },
   'demandes.informations': {
@@ -177,43 +177,43 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   'demandes.pieces.cni': {
     libelle: 'Cartes nationales d’identité',
-    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    description: 'Les vérifier, puis les ajouter au dossier ou les refuser.',
     groupe: 'Vérification',
     sensible: true,
   },
   'demandes.pieces.passeport': {
     libelle: 'Passeports',
-    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    description: 'Les vérifier, puis les ajouter au dossier ou les refuser.',
     groupe: 'Vérification',
     sensible: true,
   },
   'demandes.pieces.diplome': {
     libelle: 'Diplômes',
-    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    description: 'Les vérifier, puis les ajouter au dossier ou les refuser.',
     groupe: 'Vérification',
     sensible: true,
   },
   'demandes.pieces.certification': {
     libelle: 'Certifications',
-    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    description: 'Les vérifier, puis les ajouter au dossier ou les refuser.',
     groupe: 'Vérification',
     sensible: true,
   },
   'demandes.pieces.attestation_travail': {
     libelle: 'Attestations de travail déposées',
-    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    description: 'Les vérifier, puis les ajouter au dossier ou les refuser.',
     groupe: 'Vérification',
     sensible: true,
   },
   'demandes.pieces.attestation_stage': {
     libelle: 'Attestations de stage',
-    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    description: 'Les vérifier, puis les ajouter au dossier ou les refuser.',
     groupe: 'Vérification',
     sensible: true,
   },
   'demandes.pieces.cv': {
     libelle: 'Curriculum vitæ',
-    description: 'Les vérifier, puis les ajouter au dossier — ou les refuser.',
+    description: 'Les vérifier, puis les ajouter au dossier ou les refuser.',
     groupe: 'Vérification',
     sensible: true,
   },
@@ -273,7 +273,7 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   'recrutement.candidatures': {
     libelle: 'Dossiers de candidature',
-    description: 'Lire les dossiers reçus — CV et pièces — et les faire avancer.',
+    description: 'Lire les dossiers reçus (CV et pièces) et les faire avancer.',
     groupe: 'Recrutement',
     sensible: true,
   },

@@ -411,7 +411,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
           >
             <Select id="managerEmployeeId" {...form.register('managerEmployeeId')}>
               {peutChoisir && dOffice ? null : (
-                <option value="">{peutChoisir ? '— À désigner plus tard' : '— Aucun'}</option>
+                <option value="">{peutChoisir ? 'À désigner plus tard' : 'Aucun'}</option>
               )}
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>

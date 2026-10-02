@@ -322,7 +322,7 @@ export function FenetreObjectif({
                 disabled={formations.isLoading}
                 onChange={(e) => setCourseId(e.target.value)}
               >
-                <option value="">{formations.isLoading ? 'Chargement…' : '— Choisir'}</option>
+                <option value="">{formations.isLoading ? 'Chargement…' : 'Choisir'}</option>
                 {(formations.data ?? []).map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.title}

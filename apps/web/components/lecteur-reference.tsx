@@ -190,7 +190,7 @@ export function LecteurReference({ slug }: { slug: string }) {
             url: apiUrl(`/reference-texts/${slug}/pdf?disposition=inline`),
             filename: t.pdf.filename,
             contentType: 'application/pdf',
-            titre: `${t.title} — texte officiel`,
+            titre: `${t.title} · Texte officiel`,
           }}
           sousTitre={t.reference}
           onClose={() => setPdfOuvert(false)}

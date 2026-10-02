@@ -355,7 +355,7 @@ async function verifierLaVacance(tx: Tx, tenantId: string, enAttente: string[]):
     await notifier(tx, tenantId, r.user_id, {
       type: 'dch_vacante',
       title: 'Des demandes attendent la DCH',
-      body: `${bloquees > 1 ? `${bloquees} demandes attendent` : 'Une demande attend'} : ${qui}. Désignez le responsable — ou l’intérimaire — dans l’organigramme.`,
+      body: `${bloquees > 1 ? `${bloquees} demandes attendent` : 'Une demande attend'} : ${qui}. Désignez le responsable ou l’intérimaire dans l’organigramme.`,
       link: '/organisation',
       dedupeKey: 'dch:vacante',
     });

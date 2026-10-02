@@ -98,7 +98,7 @@ export default function ObjectifsAPIXPage() {
               </div>
               <BoutonIcone
                 icone="add"
-                label={`Nouvel objectif — ${d.nom}`}
+                label={`Nouvel objectif : ${d.nom}`}
                 onClick={() => setCreation(cible)}
               />
             </CardHeader>

@@ -90,7 +90,7 @@ export default function PoserUneDemandePage() {
           >
             <Icon name="check_circle" size={15} className="mt-px shrink-0" />
             <span>
-              Demande envoyée — {compte(envoyee, 'jour')}.{' '}
+              Demande envoyée : {compte(envoyee, 'jour')}.{' '}
               <Link href="/moi/conges/historique" className="underline">
                 Voir l&apos;historique
               </Link>

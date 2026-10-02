@@ -13,7 +13,7 @@
 
 export const REGLEMENT_INTERIEUR = {
   title: 'Règlement intérieur',
-  reference: 'Adopté le 1er mars 2024 — exemple de démonstration',
+  reference: 'Adopté le 1er mars 2024, exemple de démonstration',
   effectiveOn: '2024-03-01',
   published: true,
   chapters: [
@@ -145,7 +145,7 @@ export const REGLEMENT_INTERIEUR = {
 export const CODE_DU_TRAVAIL = {
   title: 'Code du travail',
   reference:
-    'Loi n° 97-17 du 1er décembre 1997 — extrait de démonstration, à remplacer par le texte officiel',
+    'Loi n° 97-17 du 1er décembre 1997, extrait de démonstration, à remplacer par le texte officiel',
   effectiveOn: '1997-12-01',
   published: true,
   chapters: [

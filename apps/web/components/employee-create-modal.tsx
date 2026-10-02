@@ -414,7 +414,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               onChange={(e) => setManagerId(e.target.value)}
             >
               {!peutChoisirLeN1 || !directeur ? (
-                <option value="">— À désigner plus tard</option>
+                <option value="">À désigner plus tard</option>
               ) : null}
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>

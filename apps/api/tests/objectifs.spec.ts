@@ -657,7 +657,7 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
       evaluateur: 'Awa Diop',
     });
     expect((await notifications('moussa')).map((n) => n.title)).toContain(
-      'Évaluation de vos objectifs — 1er semestre 2024',
+      'Évaluation de vos objectifs du 1er semestre 2024',
     );
     expect(
       await codeOf(() =>

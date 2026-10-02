@@ -53,7 +53,7 @@ export default function InvitationPage() {
       api<AcceptResult>(`/invitations/${token}/accept`, { method: 'POST', body: { password } }),
     onSuccess: () => router.replace('/moi'),
     onError: (err) =>
-      setServerError(err instanceof ApiError ? err.message : 'Activation impossible — réessayez.'),
+      setServerError(err instanceof ApiError ? err.message : 'Activation impossible, réessayez.'),
   });
 
   if (info.isLoading) {

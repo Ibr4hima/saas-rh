@@ -273,7 +273,7 @@ function Resultat({
           {r.passed ? 'Essai réussi' : 'Essai non réussi'}
         </h1>
         <p className="max-w-md text-[12.5px] leading-relaxed text-ink-muted">
-          {compte(r.correctCount, 'bonne réponse', 'bonnes réponses')} sur {r.total} — il en fallait{' '}
+          {compte(r.correctCount, 'bonne réponse', 'bonnes réponses')} sur {r.total}. Il en fallait{' '}
           {exigees}. Rien n’a été enregistré.
         </p>
         {r.passed ? (
@@ -358,7 +358,7 @@ function Resultat({
             url: apiUrl(`${pdf}&disposition=inline`),
             filename: 'Certificat specimen.pdf',
             contentType: 'application/pdf',
-            titre: `Certificat spécimen — ${f.title}`,
+            titre: `Certificat spécimen : ${f.title}`,
           }}
           sousTitre="Aperçu : ce document n’est pas un certificat"
           telechargement={apiUrl(pdf)}

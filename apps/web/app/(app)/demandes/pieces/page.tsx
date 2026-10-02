@@ -88,7 +88,7 @@ export default function PiecesAVerifierPage() {
         texte:
           v.decision === 'approved'
             ? `« ${v.piece.label} » ajouté au dossier de ${v.piece.employeeName}.`
-            : `« ${v.piece.label} » rejeté — un message est envoyé à ${v.piece.employeeName}.`,
+            : `« ${v.piece.label} » rejeté. Un message est envoyé à ${v.piece.employeeName}.`,
       });
       await rafraichir();
     },
@@ -237,7 +237,7 @@ export default function PiecesAVerifierPage() {
                       </div>
                     ) : (
                       <p className="text-right text-[11.5px] font-semibold text-accent-text">
-                        Votre propre document — à déléguer
+                        Votre propre document, à déléguer
                       </p>
                     )}
                   </Td>
@@ -273,13 +273,13 @@ export default function PiecesAVerifierPage() {
           <Field
             label="Motif"
             htmlFor="motif-rejet-piece"
-            hint="Facultatif — il est transmis à l’agent, qui pourra déposer le document à nouveau."
+            hint="Facultatif. Il est transmis à l’agent, qui pourra déposer le document à nouveau."
           >
             <Textarea
               id="motif-rejet-piece"
               value={motif}
               maxLength={500}
-              placeholder="Ex. : le scan est illisible — merci de déposer une version plus nette."
+              placeholder="Ex. : le scan est illisible, merci de déposer une version plus nette."
               onChange={(e) => setMotif(e.target.value)}
             />
           </Field>
@@ -301,7 +301,7 @@ export default function PiecesAVerifierPage() {
             setAControler(null);
             setMessage({
               ton: 'ok',
-              texte: `« ${p.label} » ajouté au dossier de ${p.employeeName}${fiche ? ' — sa fiche est mise à jour' : ''}.`,
+              texte: `« ${p.label} » ajouté au dossier de ${p.employeeName}${fiche ? '. Sa fiche est mise à jour' : ''}.`,
             });
             await rafraichir();
           }}

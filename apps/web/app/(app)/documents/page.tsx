@@ -286,7 +286,7 @@ export default function DocumentRequestsPage() {
                       {docLabels(r)}
                       {r.traitement?.aConfier ? (
                         <span className="block text-[11px] font-semibold text-accent-text">
-                          Votre propre demande — à déléguer à un membre de la DCH
+                          Votre propre demande, à déléguer à un membre de la DCH
                         </span>
                       ) : null}
                       {r.note ? (

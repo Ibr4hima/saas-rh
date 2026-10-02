@@ -121,7 +121,7 @@ export default function JobPage() {
                 description={
                   j.status === 'published'
                     ? "Partagez le lien public de l'offre : les dossiers déposés arriveront ici."
-                    : "L'offre n'est pas encore publiée — personne ne peut y postuler."
+                    : "L'offre n'est pas encore publiée : personne ne peut y postuler."
                 }
               />
             </Card>

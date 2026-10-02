@@ -195,7 +195,7 @@ function ChoixStatut({
   return (
     <div
       role="radiogroup"
-      aria-label={`Statut — ${objectif}`}
+      aria-label={`Statut : ${objectif}`}
       className="flex flex-wrap items-center gap-1.5 max-sm:gap-1"
     >
       {STATUTS_OBJECTIF.map((s) => {
@@ -453,7 +453,7 @@ function useAction() {
         await geste();
         return true;
       } catch (e) {
-        setErreur(e instanceof ApiError ? e.message : 'Action impossible — réessayez.');
+        setErreur(e instanceof ApiError ? e.message : 'Action impossible, réessayez.');
         return false;
       } finally {
         setEnCours(null);
@@ -679,7 +679,7 @@ export function AutoEvaluationAgent({
                   onChange={(statut) => onStatuer(o.id, statut)}
                 />
                 <ZoneCommentaire
-                  aria-label={`Commentaire — ${o.texte}`}
+                  aria-label={`Commentaire : ${o.texte}`}
                   placeholder="Ce que vous avez fait, ce qui reste…"
                   value={brouillon.valeur[o.id] ?? ''}
                   onChange={(e) =>
@@ -817,7 +817,7 @@ export function EvaluationSemestre({
             ) : null}
             {envoyes && !validee ? (
               <ZoneCommentaire
-                aria-label={`Votre commentaire — ${o.texte}`}
+                aria-label={`Votre commentaire : ${o.texte}`}
                 placeholder="Votre commentaire"
                 value={brouillon.valeur.commentaires[o.id] ?? ''}
                 onChange={(e) =>

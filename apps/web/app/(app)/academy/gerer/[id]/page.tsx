@@ -711,7 +711,7 @@ function LigneLecon({
       <span className="text-[11.5px] font-semibold text-accent-text">
         {l.videoStatus === 'traitement'
           ? 'Vidéo en traitement…'
-          : 'Envoi interrompu — redéposez la vidéo'}
+          : 'Envoi interrompu, redéposez la vidéo'}
       </span>
     );
   } else {
@@ -837,7 +837,7 @@ function LigneLecon({
             url: apiUrl(`/academy/lessons/${l.id}/support?disposition=inline`),
             filename: l.support.filename,
             contentType: 'application/pdf',
-            titre: `Support — ${l.title}`,
+            titre: `Support : ${l.title}`,
           }}
           telechargement={apiUrl(`/academy/lessons/${l.id}/support`)}
           onClose={() => setApercu(false)}

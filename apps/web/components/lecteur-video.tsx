@@ -316,7 +316,7 @@ export function LecteurVideo({
       tabIndex={0}
       onMouseMove={reveiller}
       onMouseLeave={() => enLecture && setCommandes(false)}
-      aria-label={`Lecteur vidéo — ${lecture.title}`}
+      aria-label={`Lecteur vidéo : ${lecture.title}`}
       className={cn(
         'group/lecteur relative isolate w-full overflow-hidden bg-black select-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none',
         pleinEcran ? 'rounded-none' : 'mx-auto rounded-[16px]',

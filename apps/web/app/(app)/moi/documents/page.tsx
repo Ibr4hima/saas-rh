@@ -176,7 +176,7 @@ function ChoixDocument({
       type="button"
       aria-pressed={choisi}
       disabled={enCours}
-      title={enCours ? 'Déjà demandé — la demande est en cours de traitement.' : undefined}
+      title={enCours ? 'Déjà demandé : la demande est en cours de traitement.' : undefined}
       onClick={onToggle}
       className={cn(
         'inline-flex items-center gap-2 rounded-full border py-[7px] pr-3.5 pl-2.5 text-[12.5px] transition-colors duration-150',

@@ -92,7 +92,7 @@ export function EcranMarque({
       </div>
 
       <footer className="relative flex flex-wrap items-center justify-between gap-3 border-t border-line bg-surface px-6 py-4 text-[11.5px] text-ink-muted sm:px-10">
-        <span>© {new Date().getFullYear()} APIX S.A — DCH. Tous droits réservés.</span>
+        <span>© {new Date().getFullYear()} APIX S.A · DCH. Tous droits réservés.</span>
         <span>Plateforme à usage interne</span>
       </footer>
     </main>

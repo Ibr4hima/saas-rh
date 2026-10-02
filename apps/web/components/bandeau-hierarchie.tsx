@@ -101,7 +101,7 @@ export function BandeauHierarchie() {
               <b className="font-bold text-accent-text">
                 L’organigramme a {c.sommetsMultiples.length} sommets
               </b>{' '}
-              ({c.sommetsMultiples.join(', ')}) : rattachez-les sous la Direction Générale — il n’en
+              ({c.sommetsMultiples.join(', ')}) : rattachez-les sous la Direction Générale, il n’en
               faut qu’un.{' '}
             </>
           ) : null}

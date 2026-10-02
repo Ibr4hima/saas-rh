@@ -38,17 +38,17 @@ export function resumeVisas(r: AbsenceRequestView): string | undefined {
       const signe = `${e.qui}${e.parDelegationDe ? `, par délégation de ${e.parDelegationDe}` : ''}`;
       switch (e.etat) {
         case 'visee':
-          return `${qui} — visé par ${signe}`;
+          return `${qui} : visé par ${signe}`;
         case 'refusee':
-          return `${qui} — refusé par ${signe}${e.comment ? ` : « ${e.comment} »` : ''}`;
+          return `${qui} : refusé par ${signe}${e.comment ? ` : « ${e.comment} »` : ''}`;
         case 'attendue':
-          return `${qui} — en attente${e.qui ? ` de ${e.qui}` : ''}`;
+          return `${qui} : en attente${e.qui ? ` de ${e.qui}` : ''}`;
         case 'a_venir':
-          return `${qui} — ensuite`;
+          return `${qui} : ensuite`;
         case 'passee':
-          return `${qui} — personne pour viser : directement à la DCH`;
+          return `${qui} : personne pour viser : directement à la DCH`;
         default:
-          return `${qui} — sans objet`;
+          return `${qui} : sans objet`;
       }
     })
     .join('\n');

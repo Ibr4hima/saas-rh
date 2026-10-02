@@ -464,7 +464,7 @@ const applyAs = async (givenName, familyName, email, phone, message) => {
           label: 'CV',
           filename: `cv-${familyName.toLowerCase()}.pdf`,
           contentType: 'application/pdf',
-          contentBase64: pdfDemo(`CV — ${givenName} ${familyName}`, [
+          contentBase64: pdfDemo(`CV : ${givenName} ${familyName}`, [
             'Parcours, diplomes et experiences.',
             'Document de demonstration.',
           ]).toString('base64'),
@@ -473,7 +473,7 @@ const applyAs = async (givenName, familyName, email, phone, message) => {
           label: 'Lettre de motivation',
           filename: `lettre-${familyName.toLowerCase()}.pdf`,
           contentType: 'application/pdf',
-          contentBase64: pdfDemo(`Lettre de motivation — ${givenName} ${familyName}`, [
+          contentBase64: pdfDemo(`Lettre de motivation : ${givenName} ${familyName}`, [
             'Madame, Monsieur,',
             'Je vous adresse ma candidature.',
           ]).toString('base64'),
@@ -611,7 +611,7 @@ await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
     bloc(
       'checkListItem',
       [
-        texte('Livrer l’étude sur l’attractivité des zones économiques spéciales — pour le '),
+        texte('Livrer l’étude sur l’attractivité des zones économiques spéciales pour le '),
         echeance(`${anneeObjectifs}-12-15`),
       ],
       {},
@@ -628,7 +628,7 @@ await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
     bloc(
       'checkListItem',
       [
-        texte('Produire la note de conjoncture trimestrielle — pour le '),
+        texte('Produire la note de conjoncture trimestrielle pour le '),
         echeance(`${anneeObjectifs}-10-31`),
       ],
       {},
@@ -637,7 +637,7 @@ await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
     bloc(
       'checkListItem',
       [
-        texte('Présenter les intentions d’investissement au comité de direction — pour le '),
+        texte('Présenter les intentions d’investissement au comité de direction pour le '),
         echeance(`${anneeObjectifs}-11-20`),
       ],
       {},
@@ -772,7 +772,7 @@ console.log(`
 ✔ Démo prête.
   Admin       : ${ADMIN.email} / ${ADMIN.password}
   DG          : c.mbaye@apix.sn / MotDePasseCheikh1! (Objectifs de l’APIX)
-  DCH         : m.cisse@apix.sn / MotDePasseMariama1! (dirige la DCH — Délégations)
+  DCH         : m.cisse@apix.sn / MotDePasseMariama1! (dirige la DCH, Délégations)
   Employés    : a.diop@apix.sn / MotDePasseAwa1234! (idem Moussa1!, Fatou12!)
   Employés    : Awa (EMP-001, ${awa.id}), Moussa (EMP-002, ${moussa.id}), Fatou (EMP-003, ${fatou.id})
   Recrutement : offre « Chargé d'affaires investissement » publiée

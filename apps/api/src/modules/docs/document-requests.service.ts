@@ -505,12 +505,12 @@ export class DocumentRequestsService {
           ? 'Changement : où retirer vos documents'
           : 'Vos documents sont disponibles',
         body:
-          `${docs} — à retirer auprès de ${e.pickupContact}, Direction du Capital Humain. ` +
+          `${docs} : à retirer auprès de ${e.pickupContact}, Direction du Capital Humain. ` +
           `Merci de passer les récupérer${e.message ? ` (${e.message})` : ''}.`,
       },
       rejected: {
         title: 'Votre demande de documents n’a pas pu être traitée',
-        body: `${docs} — motif : ${e.message}`,
+        body: `${docs}. Motif : ${e.message}`,
       },
     };
     const draft = drafts[e.status];

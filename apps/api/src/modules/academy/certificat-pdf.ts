@@ -74,9 +74,9 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
     margin: 0,
     info: {
       Title: d.specimen
-        ? `Spécimen de certificat — ${d.formation}`
-        : `Certificat ${d.numero} — ${d.formation}`,
-      Author: `${ENTETE.raisonSociale} — APIX Academy`,
+        ? `Spécimen de certificat : ${d.formation}`
+        : `Certificat ${d.numero} : ${d.formation}`,
+      Author: `${ENTETE.raisonSociale}, APIX Academy`,
       Subject: `Certificat de réussite de ${d.titulaire}`,
     },
   });

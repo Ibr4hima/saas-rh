@@ -97,7 +97,7 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
     // Un type de document officiel, une délégation (cf. CAPACITES_PIECES).
     capacite: (d) => capaciteDeLaPiece((d as { categorie: DocumentCategory }).categorie),
     objet: (d) =>
-      `« ${(d as { label: string }).label} » — à vérifier, puis valider pour l’ajouter au dossier`,
+      `« ${(d as { label: string }).label} » à vérifier, puis à valider pour l’ajouter au dossier`,
     titre: (nom) => `Pièce à vérifier : ${nom}`,
     lien: '/demandes/pieces',
   },

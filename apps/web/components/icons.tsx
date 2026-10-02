@@ -122,7 +122,7 @@ if (process.env.NODE_ENV !== 'production') {
   const manquantes = ICON_NAMES.filter((n) => !gravees.has(n));
   if (manquantes.length > 0) {
     console.warn(
-      `[icons] ${manquantes.join(', ')} ne sont pas dans la police servie — ` +
+      `[icons] ${manquantes.join(', ')} ne sont pas dans la police servie : ` +
         'lancez « pnpm --filter @teranga/web icons:fetch », sinon ces icônes ' +
         "s'afficheront sous forme de texte.",
     );

@@ -521,7 +521,7 @@ describe('le directeur habilite des membres de sa direction', () => {
     const nouvelle = await poser(fatou);
     expect(await appels(nouvelle)).toEqual(['dch:Awa']);
     expect(await notif('Khady', 'dch:directeur:%')).toContain(
-      'Les délégations en place sont maintenues — Awa Test : demandes de congé',
+      'Les délégations en place sont maintenues (Awa Test : demandes de congé',
     );
     expect((await habilitations.etat(khady.session)).estDirecteur).toBe(true);
   });
@@ -667,7 +667,7 @@ describe('les relances', () => {
          JOIN users u ON u.id = n.recipient_user_id WHERE n.dedupe_key = $1`,
       [`conge:${id}:rappel:n1`],
     );
-    expect(rows).toEqual([{ qui: 'Ousmane', title: 'Rappel — Congé à valider : Moussa Test' }]);
+    expect(rows).toEqual([{ qui: 'Ousmane', title: 'Congé à valider : Moussa Test (rappel)' }]);
   });
 
   it('pas de rappel avant le délai', async () => {

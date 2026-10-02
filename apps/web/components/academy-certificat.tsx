@@ -31,7 +31,7 @@ export function ApercuCertificat({
         url: apiUrl(`/academy/certificats/${certificat.id}/pdf?disposition=inline`),
         filename: `Certificat ${certificat.number}.pdf`,
         contentType: 'application/pdf',
-        titre: `Certificat — ${certificat.courseTitle}`,
+        titre: `Certificat : ${certificat.courseTitle}`,
       }}
       sousTitre={`N° ${certificat.number}`}
       telechargement={apiUrl(`/academy/certificats/${certificat.id}/pdf`)}
@@ -116,7 +116,7 @@ export function CarteCertificatsAgent({ employeeId }: { employeeId: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>APIX Academy — certificats</CardTitle>
+        <CardTitle>APIX Academy · Certificats</CardTitle>
       </CardHeader>
       <CardContent>
         {certificats.isPending ? (

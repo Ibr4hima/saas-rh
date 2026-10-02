@@ -138,7 +138,7 @@ export function FriseFeries() {
               {aDater.length > 1 ? 's' : ''} encore à dater
             </p>
             <p className="mt-0.5 text-[11.5px] leading-snug text-ink-muted">
-              {aDater.map((h) => h.label).join(' · ')} — la date se pose à l&apos;annonce, et la
+              {aDater.map((h) => h.label).join(' · ')} : la date se pose à l&apos;annonce, et la
               frise s&apos;y range d&apos;elle-même.
             </p>
           </div>

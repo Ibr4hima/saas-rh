@@ -825,7 +825,7 @@ export class OrgUnitsService {
         422,
         'org.manager_outside_unit',
         'Un responsable doit travailler dans l’unité qu’il dirige',
-        'Affectez-le d’abord à cette unité, ou à une unité qui en dépend — et sans mutation programmée ailleurs.',
+        'Affectez-le d’abord à cette unité, ou à une unité qui en dépend, sans mutation programmée ailleurs.',
       );
     }
   }

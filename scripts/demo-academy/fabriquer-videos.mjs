@@ -68,7 +68,7 @@ Dialogue: 0,0:00:00.00,9:59:59.00,Sur,,0,0,0,,{\\pos(80,150)}APIX ACADEMY  ·  $
 Dialogue: 0,0:00:00.00,9:59:59.00,Titre,,0,0,0,,{\\pos(80,180)}${ass(titre)}
 Dialogue: 0,0:00:00.00,9:59:59.00,Sous,,0,0,0,,{\\pos(80,282)}${ass(formation)}
 Dialogue: 0,0:00:00.00,9:59:59.00,Sous,,0,0,0,,{\\pos(80,318)\\1a&H40&}${ass(place)}
-Dialogue: 0,0:00:00.00,9:59:59.00,Pied,,0,0,0,,{\\pos(80,436)}Vidéo de démonstration — à remplacer par l’enregistrement de la leçon
+Dialogue: 0,0:00:00.00,9:59:59.00,Pied,,0,0,0,,{\\pos(80,436)}Vidéo de démonstration, à remplacer par l’enregistrement de la leçon
 Dialogue: 0,0:00:00.00,9:59:59.00,Barre,,0,0,0,,{\\pos(0,0)\\1a&HC0&\\p1}${rect}{\\p0}
 Dialogue: 1,0:00:00.00,9:59:59.00,Barre,,0,0,0,,{\\pos(0,0)\\clip(80,470,80,482)\\t(0,${ms},\\clip(80,470,880,482))\\p1}${rect}{\\p0}
 `;

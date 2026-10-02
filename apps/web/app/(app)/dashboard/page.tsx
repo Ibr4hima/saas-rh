@@ -512,7 +512,7 @@ export default function DashboardPage() {
                 {absencesEnPlus > 0 ? (
                   <CardContent className="border-t border-line-soft py-3">
                     <p className="text-xs text-ink-muted">
-                      {compte(absencesEnPlus, 'autre')} sous 30 jours — le calendrier les montre
+                      {compte(absencesEnPlus, 'autre')} sous 30 jours : le calendrier les montre
                       toutes.
                     </p>
                   </CardContent>
@@ -582,7 +582,7 @@ export default function DashboardPage() {
             <Skeleton className="h-28 w-full" />
           ) : fenetreFeries.length === 0 ? (
             <p className="py-3 text-sm text-ink-muted">
-              Aucun férié enregistré — la liste se gère dans « Gestion des jours fériés ».
+              Aucun férié enregistré. La liste se gère dans « Gestion des jours fériés ».
             </p>
           ) : (
             <Frise jours={fenetreFeries} />

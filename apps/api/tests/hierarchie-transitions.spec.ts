@@ -332,7 +332,7 @@ describe('qui part avec une équipe la confie', () => {
 
     const refus = await people.archive(user, { ids: [chef], archived: true });
     expect(refus.done).toBe(0);
-    expect(refus.skipped[0]?.reason).toBe('Encadre un agent — choisissez qui reprend son équipe');
+    expect(refus.skipped[0]?.reason).toBe('Encadre un agent : choisissez qui reprend son équipe');
 
     const fait = await people.archive(user, {
       ids: [chef],

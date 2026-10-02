@@ -191,7 +191,7 @@ export function FormationModal({
                 disabled={agents.isLoading}
                 onChange={(e) => setAgent(e.target.value)}
               >
-                <option value="">{agents.isLoading ? 'Chargement…' : '— Choisir'}</option>
+                <option value="">{agents.isLoading ? 'Chargement…' : 'Choisir'}</option>
                 {agentAbsent?.employeeId ? (
                   <option value={agentAbsent.employeeId}>
                     {agentAbsent.nom} (a quitté l’APIX)

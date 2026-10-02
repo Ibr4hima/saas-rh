@@ -68,8 +68,8 @@ export default function CongesEquipePage() {
         ton: 'ok',
         texte:
           v.decision === 'approved'
-            ? `Demande de ${v.demande.employeeName} visée — la DCH est prévenue.`
-            : `Demande de ${v.demande.employeeName} refusée — un message lui est envoyé.`,
+            ? `Demande de ${v.demande.employeeName} visée. La DCH est prévenue.`
+            : `Demande de ${v.demande.employeeName} refusée. Un message lui est envoyé.`,
       });
       await rafraichir();
     },
@@ -224,13 +224,13 @@ export default function CongesEquipePage() {
           <Field
             label="Motif"
             htmlFor="motif-refus"
-            hint="Facultatif — il est transmis à l’agent avec le refus. La demande s’arrête là : la DCH n’est pas sollicitée."
+            hint="Facultatif. Il est transmis à l’agent avec le refus. La demande s’arrête là : la DCH n’est pas sollicitée."
           >
             <Textarea
               id="motif-refus"
               value={motif}
               maxLength={1000}
-              placeholder="Ex. : clôture des comptes cette semaine-là — proposez une autre date."
+              placeholder="Ex. : clôture des comptes cette semaine-là, proposez une autre date."
               onChange={(e) => setMotif(e.target.value)}
             />
           </Field>

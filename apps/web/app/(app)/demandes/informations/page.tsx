@@ -86,8 +86,8 @@ export default function InformationsATraiterPage() {
         ton: 'ok',
         texte:
           v.decision === 'approve'
-            ? `Dossier de ${v.demande.employeeName} mis à jour — un message lui est envoyé.`
-            : `Changement de ${v.demande.employeeName} refusé — le motif lui est transmis.`,
+            ? `Dossier de ${v.demande.employeeName} mis à jour. Un message lui est envoyé.`
+            : `Changement de ${v.demande.employeeName} refusé. Le motif lui est transmis.`,
       });
       await rafraichir();
     },
@@ -214,7 +214,7 @@ export default function InformationsATraiterPage() {
                       </div>
                     ) : (
                       <p className="text-right text-[11.5px] font-semibold text-accent-text">
-                        Votre propre demande — à déléguer
+                        Votre propre demande, à déléguer
                       </p>
                     )}
                   </Td>
@@ -251,7 +251,7 @@ export default function InformationsATraiterPage() {
             label="Motif"
             htmlFor="motif-refus-info"
             required
-            hint="Obligatoire — il est transmis à l’agent avec le refus."
+            hint="Obligatoire. Il est transmis à l’agent avec le refus."
           >
             <Textarea
               id="motif-refus-info"

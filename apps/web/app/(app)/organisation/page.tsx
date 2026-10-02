@@ -361,7 +361,7 @@ function UnitPanel({
               ? `Rattachée à ${orgUnitLabel(units.find((u) => u.id === unit.parentId)!)}`
               : unit.sommet
                 ? 'Au sommet de l’organigramme'
-                : 'Sans rattachement — à ranger sous la Direction Générale'}
+                : 'Sans rattachement, à ranger sous la Direction Générale'}
           </span>
         </span>
       }
@@ -471,7 +471,7 @@ function UnitPanel({
                 disabled={unit.sommet}
                 onChange={(e) => setParentId(e.target.value)}
               >
-                <option value="">{sommetLibre ? '— Au sommet' : '— Choisir'}</option>
+                <option value="">{sommetLibre ? 'Au sommet' : 'Choisir'}</option>
                 {parents.map((u) => (
                   <option key={u.id} value={u.id}>
                     {pathLabel(units, u)}
@@ -483,7 +483,7 @@ function UnitPanel({
               <Field
                 label="Abrégé"
                 htmlFor={`edit-short-${unit.id}`}
-                hint="Facultatif — « DCH » pour Direction du Capital Humain."
+                hint="Facultatif. « DCH » pour Direction du Capital Humain."
               >
                 <Input
                   id={`edit-short-${unit.id}`}
@@ -504,9 +504,9 @@ function UnitPanel({
                 <span>
                   <span className="font-semibold text-ink-strong">Direction du personnel</span>
                   <span className="block text-ink-muted">
-                    Elle traite les demandes des agents — les congés, une fois visés par le N+1. Qui
-                    la dirige a toutes les habilitations de la DCH. Une seule dans l’organisation :
-                    la cocher ici la retire à l’autre.
+                    Elle traite les demandes des agents, dont les congés une fois visés par le N+1.
+                    Qui la dirige a toutes les habilitations de la DCH. Une seule dans
+                    l’organisation : la cocher ici la retire à l’autre.
                   </span>
                 </span>
               </label>
@@ -549,14 +549,14 @@ function UnitPanel({
               <Field
                 label="Réaffecter les membres à"
                 htmlFor={`reassign-${unit.id}`}
-                hint="Facultatif — suspendus et affectations à venir compris."
+                hint="Facultatif. Suspendus et affectations à venir compris."
               >
                 <Select
                   id={`reassign-${unit.id}`}
                   value={reassignTo}
                   onChange={(e) => setReassignTo(e.target.value)}
                 >
-                  <option value="">— Aucune : les détacher</option>
+                  <option value="">Aucune : les détacher</option>
                   {units
                     .filter((u) => u.id !== unit.id)
                     .map((u) => (
@@ -644,7 +644,7 @@ function UnitPanel({
                     value={managerId}
                     onChange={(ev) => setManagerId(ev.target.value)}
                   >
-                    <option value="">— Aucun</option>
+                    <option value="">Aucun</option>
                     {(eligible.data ?? [])
                       .filter((e) => e.employeeId !== moi.data?.employeeId)
                       .map((e) => (
@@ -843,7 +843,7 @@ function FenetreNouvelleUnite({
               error={form.formState.errors.parentId?.message}
               hint={
                 racinePossible
-                  ? 'Laissez vide pour la placer au sommet — la Direction Générale.'
+                  ? 'Laissez vide pour la placer au sommet (la Direction Générale).'
                   : allowedParents.length === 0
                     ? `Créez d’abord ${selectedType === 'department' ? 'une direction' : 'une direction ou un département'}.`
                     : undefined
@@ -851,7 +851,7 @@ function FenetreNouvelleUnite({
               required={!racinePossible}
             >
               <Select id="new-unit-parent" {...form.register('parentId')}>
-                <option value="">{racinePossible ? '— Au sommet' : '— Choisir'}</option>
+                <option value="">{racinePossible ? 'Au sommet' : 'Choisir'}</option>
                 {allowedParents.map((u) => (
                   <option key={u.id} value={u.id}>
                     {pathLabel(units, u)}
@@ -864,7 +864,7 @@ function FenetreNouvelleUnite({
                 label="Abrégé"
                 htmlFor="new-unit-short"
                 error={form.formState.errors.shortName?.message}
-                hint="Facultatif — « DCH » pour Direction du Capital Humain."
+                hint="Facultatif. « DCH » pour Direction du Capital Humain."
               >
                 <Input
                   id="new-unit-short"

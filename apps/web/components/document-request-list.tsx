@@ -151,7 +151,7 @@ export function DocumentRequestRow({
                 ))
               ) : generatable.length > 0 ? (
                 <span className="text-[11.5px] text-ink-muted">
-                  Dossier non actif — l&apos;attestation de travail ne peut pas être générée.
+                  Dossier non actif : l&apos;attestation de travail ne peut pas être générée.
                 </span>
               ) : null}
               <Button

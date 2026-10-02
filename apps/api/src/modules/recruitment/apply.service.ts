@@ -162,7 +162,7 @@ export class ApplyService {
     const now = Date.now();
     const recent = (this.attempts.get(key) ?? []).filter((ts) => now - ts < RATE_WINDOW_MS);
     if (recent.length >= RATE_MAX) {
-      problem(429, 'recruitment.too_many_requests', 'Trop de tentatives — réessayez plus tard');
+      problem(429, 'recruitment.too_many_requests', 'Trop de tentatives, réessayez plus tard');
     }
     recent.push(now);
     this.attempts.set(key, recent);

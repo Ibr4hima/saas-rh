@@ -144,7 +144,7 @@ export class ImportEmployesService {
           responsableResolu: null,
           etat: 'ignore',
           motif: dejaLa
-            ? 'Ce matricule existe déjà dans la plateforme — le dossier reste inchangé'
+            ? 'Ce matricule existe déjà dans la plateforme : le dossier reste inchangé'
             : `Ce matricule apparaît déjà à la ligne ${dejaVu}`,
           colonne: 'Matricule',
           avertissements: [],
@@ -222,7 +222,7 @@ export class ImportEmployesService {
       // reconnue, le n+1 ne se pose pas — l'aperçu le dit avant l'import.
       const directionAgent = directionDeLigne(l);
       if (!directionAgent) {
-        refuser(l, 'Sans direction affectée : dossier créé sans n+1 — affectez-le d’abord');
+        refuser(l, 'Sans direction affectée : dossier créé sans n+1. Affectez-le d’abord');
         continue;
       }
       const cle = cleMatricule(l.responsable);

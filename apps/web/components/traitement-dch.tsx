@@ -138,7 +138,7 @@ export function useMembresDCH() {
 /** « Confiée à Awa Diop », « Awa Diop ou Khady Fall la traite » — en une ligne. */
 export function quiTraite(t: TraitementView | null | undefined): string | null {
   if (!t) return null;
-  if (t.aConfier) return 'Votre propre demande — à déléguer à un membre de la DCH';
+  if (t.aConfier) return 'Votre propre demande, à déléguer à un membre de la DCH';
   if (t.confiee) return `Confiée à ${t.confiee.nom}`;
   if (t.traitants)
     return `${t.traitants} la ${t.traitants.includes(' ou ') ? 'traitent' : 'traite'}`;

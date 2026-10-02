@@ -561,7 +561,7 @@ export class ObjectifsService {
         await notifier(tx, user.tenantId, compte, {
           type: 'objectif',
           title: `Auto-évaluation de ${await this.nomDe(tx, moi)}`,
-          body: `${titreDuSemestre(f.semestre === 1 ? 1 : 2, annee)} — à évaluer.`,
+          body: `${titreDuSemestre(f.semestre === 1 ? 1 : 2, annee)} : à évaluer.`,
           link: `/moi/equipe/suivi/${moi}?vue=evaluation`,
           dedupeKey: `objectifs:commentaires:${moi}:${annee}:${semestre}`,
         });
@@ -619,7 +619,7 @@ export class ObjectifsService {
       if (compte) {
         await notifier(tx, user.tenantId, compte, {
           type: 'objectif',
-          title: `Évaluation de vos objectifs — ${semestre === 1 ? '1er' : '2nd'} semestre ${annee}`,
+          title: `Évaluation de vos objectifs du ${semestre === 1 ? '1er' : '2nd'} semestre ${annee}`,
           body: `${await this.nomDe(tx, moi)} l’a validée : ${f.evaluation_note} — ${LIBELLES_NOTE[f.evaluation_note]}.`,
           link: '/moi/objectifs',
           dedupeKey: `objectifs:evaluation:${employeeId}:${annee}:${semestre}`,
@@ -837,7 +837,7 @@ export class ObjectifsService {
           await notifier(tx, user.tenantId, compte, {
             type: 'objectif',
             title: `Objectif évalué : ${apres.titre}`,
-            body: `${LIBELLES_EVALUATION[apres.evaluation]}${apres.commentaire ? ` — « ${apres.commentaire} »` : ''}`,
+            body: `${LIBELLES_EVALUATION[apres.evaluation]}${apres.commentaire ? ` : « ${apres.commentaire} »` : ''}`,
             link: '/moi/objectifs',
             dedupeKey: `objectif:${apres.id}:evaluation:${apres.evaluation}`,
           });

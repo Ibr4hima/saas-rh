@@ -169,7 +169,7 @@ export function Copie({
             {q.prompt}
           </h2>
           <p className="mt-1.5 text-[12px] font-semibold text-ink-muted">
-            {multiple ? 'Plusieurs réponses possibles — cochez-les toutes.' : 'Une seule réponse.'}
+            {multiple ? 'Plusieurs réponses possibles, cochez-les toutes.' : 'Une seule réponse.'}
           </p>
         </div>
 

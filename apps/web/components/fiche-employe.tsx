@@ -164,12 +164,13 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
         <p className="mb-3 flex shrink-0 items-center gap-2 rounded-[12px] bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
           <Icon name="lock" size={16} className="shrink-0 text-primary" />
           <span className="min-w-0 flex-1">
-            Votre propre dossier : vous le consultez, mais ne le modifiez pas d’ici. Vos changements
-            passent par vos demandes, comme pour tout agent — un autre membre de la DCH les traite.
+            Vous ne pouvez pas modifier votre dossier personnel. Toute demande de modification se
+            fait dans votre{' '}
+            <Link href="/moi" className="font-semibold text-primary hover:underline">
+              espace personnel
+            </Link>
+            .
           </span>
-          <Link href="/moi" className="shrink-0 font-semibold text-primary hover:underline">
-            Mes infos personnelles
-          </Link>
         </p>
       ) : null}
 
@@ -452,7 +453,9 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
           {voitLeDossier ? (
             <EmployeeDocumentsCard
               employeeId={e.id}
-              depot={e.soi}
+              // On dépose ses documents depuis son espace personnel, pas d'ici.
+              depot={soi}
+              soi={e.soi}
               pieceAttendue={titreDeLaFiche(e.person.idDocumentType)}
             />
           ) : null}
@@ -759,7 +762,7 @@ function AssignmentsCard({
                   value={nouveauN1}
                   onChange={(ev) => setNouveauN1(ev.target.value)}
                 >
-                  <option value="">— Garder le n+1 actuel</option>
+                  <option value="">Garder le n+1 actuel</option>
                   {n1Possibles.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.nom}
@@ -780,7 +783,7 @@ function AssignmentsCard({
                     value={repreneur}
                     onChange={(ev) => setRepreneur(ev.target.value)}
                   >
-                    <option value="">— Choisir</option>
+                    <option value="">Choisir</option>
                     {repreneursPossibles.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.nom}
@@ -803,7 +806,7 @@ function AssignmentsCard({
             </p>
           ) : null}
           <p className="mt-2 text-xs text-ink-muted">
-            L&apos;affectation en cours sera automatiquement clôturée la veille — l&apos;historique
+            L&apos;affectation en cours sera automatiquement clôturée la veille. L&apos;historique
             reste intact.
           </p>
           {error ? (
@@ -993,8 +996,8 @@ function PortalCard({
               {actif ? (
                 <>
                   {prenom} se connecte au portail et y gère ses demandes de congés et de documents.
-                  Ce qu&apos;on y fait de plus vient de sa place dans l&apos;organigramme — N+1
-                  d&apos;une équipe, Direction du Capital Humain — pas d&apos;un rôle.
+                  Ce qu&apos;on y fait de plus vient de sa place dans l&apos;organigramme (N+1
+                  d&apos;une équipe, Direction du Capital Humain), pas d&apos;un rôle.
                 </>
               ) : (
                 <>

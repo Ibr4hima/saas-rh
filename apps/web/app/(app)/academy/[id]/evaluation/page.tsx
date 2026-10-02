@@ -339,7 +339,7 @@ function Resultat({
         <p className="max-w-md text-[12.5px] leading-relaxed text-ink-muted">
           {r.expired
             ? 'Le temps était écoulé quand la copie est arrivée : elle compte pour zéro.'
-            : `${compte(r.correctCount, 'bonne réponse', 'bonnes réponses')} sur ${r.total} — il en fallait ${exigees}.`}
+            : `${compte(r.correctCount, 'bonne réponse', 'bonnes réponses')} sur ${r.total}. Il en fallait ${exigees}.`}
           {!r.passed
             ? ev.etat === 'attente'
               ? ` Vos tentatives du jour sont passées : la prochaine s’ouvre ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`

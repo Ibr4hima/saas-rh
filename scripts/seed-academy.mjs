@@ -136,7 +136,7 @@ function supportPdf({ titre, formation, lecon, lignes }) {
   flux.push('ET');
   flux.push(
     'BT /F1 9 Tf 0.5 0.52 0.6 rg 60 50 Td',
-    `(${pdfTexte('APIX Academy — support de démonstration')}) Tj ET`,
+    `(${pdfTexte('APIX Academy · Support de démonstration')}) Tj ET`,
   );
   const contenu = flux.join('\n');
 
@@ -222,7 +222,7 @@ for (const f of FORMATIONS) {
       console.log(`→ ${deja.title} (existante)`);
       await chargerEvaluation(deja.id, f.evaluation);
     } else {
-      console.log(`= « ${deja.title} » existe déjà — laissée telle quelle`);
+      console.log(`= « ${deja.title} » existe déjà, laissée telle quelle`);
     }
     continue;
   }

@@ -234,7 +234,7 @@ export class JobsService {
           skipped.push({
             id,
             title: offre.title,
-            reason: `${n} candidature${n > 1 ? 's' : ''} déposée${n > 1 ? 's' : ''} — fermez l’offre plutôt`,
+            reason: `${n} candidature${n > 1 ? 's' : ''} déposée${n > 1 ? 's' : ''} : fermez l’offre plutôt`,
           });
           continue;
         }

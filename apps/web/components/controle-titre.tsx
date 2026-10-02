@@ -95,7 +95,7 @@ export function FenetreControleDuTitre({
               valider.mutate();
             }}
           >
-            {mode === 'conformite' ? 'Conforme — valider' : 'Valider'}
+            {mode === 'conformite' ? 'Conforme' : 'Valider'}
           </Button>
         </>
       }
@@ -130,9 +130,9 @@ export function FenetreControleDuTitre({
             <button
               type="button"
               onClick={() => setMode('saisie')}
-              className="w-fit text-[12px] font-semibold text-ink-muted underline-offset-2 hover:text-primary hover:underline"
+              className="w-fit text-[12.5px] font-semibold text-primary hover:underline"
             >
-              C’est une nouvelle pièce
+              Il s’agit d’une nouvelle pièce.
             </button>
           </>
         ) : mode === 'autre' ? (
@@ -209,7 +209,7 @@ export function FenetreControleDuTitre({
             />
             {fiche.numero ? (
               <p className="text-[11.5px] text-ink-muted">
-                Sur la fiche aujourd’hui : <span className="font-mono">{fiche.numero}</span>
+                Pièce actuelle : <span className="font-mono">{fiche.numero}</span>
                 {fiche.delivreLe ? ` · délivrée le ${formatDate(fiche.delivreLe)}` : ''}
                 {fiche.expireLe ? ` · expire le ${formatDate(fiche.expireLe)}` : ''}
               </p>

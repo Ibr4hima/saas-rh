@@ -34,12 +34,10 @@ import { Modal } from './modal';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'En vérification',
-  approved: 'Au dossier',
   rejected: 'Rejeté',
 };
 const STATUS_TONES: Record<string, 'warning' | 'success' | 'danger'> = {
   pending: 'warning',
-  approved: 'success',
   rejected: 'danger',
 };
 
@@ -75,11 +73,14 @@ function SigneFichier({ contentType, grand = false }: { contentType: string; gra
 export function EmployeeDocumentsCard({
   employeeId,
   depot,
+  soi = depot,
   pieceAttendue = null,
 }: {
   employeeId: string;
-  /** Le dossier de l'appelant : lui seul y dépose ses documents. */
+  /** Le dossier de l'appelant, dans son espace personnel : lui seul y dépose ses documents. */
   depot: boolean;
+  /** Le dossier de l'appelant : dans l'espace RH, il le consulte sans y toucher. */
+  soi?: boolean;
   /** Le titre d'identité de la fiche, que l'agent doit déposer — CNI ou passeport. */
   pieceAttendue?: 'cni' | 'passeport' | null;
 }) {
@@ -181,7 +182,7 @@ export function EmployeeDocumentsCard({
           <Skeleton className="h-20 w-full" />
         ) : documents.isError ? (
           <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
-            Chargement des documents impossible — rechargez la page.
+            Chargement des documents impossible. Rechargez la page.
           </p>
         ) : pieces.length === 0 && !manquante ? (
           depot ? (
@@ -288,9 +289,12 @@ export function EmployeeDocumentsCard({
                       </span>
                     </span>
                   </button>
-                  <Badge tone={STATUS_TONES[d.status] ?? 'warning'}>
-                    {STATUS_LABELS[d.status] ?? d.status}
-                  </Badge>
+                  {/* Validé, le document est au dossier : pas de badge. */}
+                  {d.status === 'approved' ? null : (
+                    <Badge tone={STATUS_TONES[d.status] ?? 'warning'}>
+                      {STATUS_LABELS[d.status] ?? d.status}
+                    </Badge>
+                  )}
                   {d.canReview ? (
                     <div className="flex shrink-0 gap-1.5">
                       <Button
@@ -313,7 +317,7 @@ export function EmployeeDocumentsCard({
                         Rejeter
                       </Button>
                     </div>
-                  ) : d.canReplace ? (
+                  ) : depot && d.canReplace ? (
                     // En vérification : l'agent change le fichier, ou annule.
                     <div className="flex shrink-0 gap-1.5">
                       <Button size="sm" variant="secondary" onClick={() => setARemplacer(d)}>
@@ -328,7 +332,7 @@ export function EmployeeDocumentsCard({
                         Annuler
                       </Button>
                     </div>
-                  ) : d.canDelete && d.status !== 'pending' ? (
+                  ) : d.canDelete && d.status !== 'pending' && (depot || !soi) ? (
                     <Button size="sm" variant="ghost" onClick={() => remove.mutate(d.id)}>
                       Retirer
                     </Button>
@@ -593,7 +597,7 @@ function FenetreDepot({
             {(remplace ? [remplace.category] : documentCategorySchema.options).map((c) => (
               <option key={c} value={c} disabled={!remplace && enVerification.has(c)}>
                 {DOCUMENT_CATEGORY_LABELS[c]}
-                {!remplace && enVerification.has(c) ? ' — en vérification' : ''}
+                {!remplace && enVerification.has(c) ? ' (en vérification)' : ''}
               </option>
             ))}
           </Select>

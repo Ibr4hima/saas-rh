@@ -140,7 +140,7 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       {
         cle: 'candidatures',
         description:
-          'Le délégué consultera les dossiers de candidature reçus — CV et pièces jointes — et les fera avancer dans le recrutement.',
+          'Le délégué consultera les dossiers de candidature reçus (CV et pièces jointes) et les fera avancer dans le recrutement.',
         libelle: 'Dossiers de candidature',
         icone: 'person_add',
         sensible: true,

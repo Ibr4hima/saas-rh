@@ -24,7 +24,7 @@ export default function LoginPage() {
       await api<{ user: SessionUser }>('/auth/login', { method: 'POST', body: values });
       router.replace('/');
     } catch (err) {
-      setServerError(err instanceof ApiError ? err.message : 'Connexion impossible — réessayez.');
+      setServerError(err instanceof ApiError ? err.message : 'Connexion impossible, réessayez.');
     }
   });
 

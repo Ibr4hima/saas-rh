@@ -78,7 +78,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
         await queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
       }
     } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Lecture impossible — réessayez.');
+      setErreur(err instanceof ApiError ? err.message : 'Lecture impossible, réessayez.');
     } finally {
       setEnCours(false);
     }
@@ -207,7 +207,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
           <ModalSection title="Ce que le fichier doit contenir">
             <p className="text-[12.5px] leading-relaxed text-ink">
               Une ligne par agent, et une première ligne d’intitulés. Quatre colonnes sont
-              indispensables — <b>Prénom</b>, <b>Nom</b>, <b>Matricule</b>, <b>Début du contrat</b>{' '}
+              indispensables : <b>Prénom</b>, <b>Nom</b>, <b>Matricule</b>, <b>Début du contrat</b>{' '}
               ; les autres sont reprises si elles sont là.
             </p>
             <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
