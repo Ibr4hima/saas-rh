@@ -5,6 +5,7 @@ export { Input } from './input';
 export { Label } from './label';
 export { Field } from './field';
 export { Select } from './select';
+export { SelectMultiple } from './select-multiple';
 export { Textarea } from './textarea';
 export { Badge, type BadgeTone } from './badge';
 export { Card, CardInteractive, CardHeader, CardTitle, CardContent } from './card';

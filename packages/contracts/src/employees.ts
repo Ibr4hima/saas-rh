@@ -469,6 +469,20 @@ const optionalFiltre = (max: number) =>
     .optional();
 
 /**
+ * Un filtre qui prend PLUSIEURS valeurs : `?unit=DCH&unit=DG`. Une seule
+ * arrive en chaîne, plusieurs en tableau ; les deux sortent en tableau, et
+ * rien du tout (ou que des vides) sort en `undefined`, comme un filtre absent.
+ */
+const filtreMultiple = (max: number) =>
+  z
+    .union([z.string().trim().max(max), z.array(z.string().trim().max(max)).max(50)])
+    .transform((v) => {
+      const valeurs = (Array.isArray(v) ? v : [v]).filter((x) => x !== '');
+      return valeurs.length > 0 ? valeurs : undefined;
+    })
+    .optional();
+
+/**
  * La liste passe au décalage plutôt qu'au curseur.
  *
  * Un curseur est arrimé À UNE clé de tri — ici la date de création. Dès que la
@@ -487,8 +501,8 @@ export const listEmployeesQuerySchema = z.object({
     .uuid()
     .optional()
     .or(z.literal('').transform(() => undefined)),
-  /** L'unité TELLE QU'ELLE S'AFFICHE : l'abrégé de la direction, sinon le nom. */
-  unit: optionalFiltre(120),
+  /** Les unités TELLES QU'ELLES S'AFFICHENT : l'abrégé de la direction, sinon le nom. */
+  unit: filtreMultiple(120),
   sort: employeeSortSchema.default('recent'),
   dir: z.enum(['asc', 'desc']).default('desc'),
   offset: z.coerce.number().int().min(0).max(100_000).default(0),

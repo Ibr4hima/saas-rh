@@ -287,10 +287,36 @@ describe('tri, filtres et effectifs', () => {
       'CARLA',
     ]);
     // L'unité se filtre sur ce que la colonne AFFICHE — l'abrégé de la direction.
-    expect((await lister({ unit: 'DFC' })).items.map((i) => i.employeeNumber).sort()).toEqual([
+    expect((await lister({ unit: ['DFC'] })).items.map((i) => i.employeeNumber).sort()).toEqual([
       'ALICE',
       'CARLA',
     ]);
+  });
+
+  it('filtre sur plusieurs unités à la fois', async () => {
+    const dfc = randomUUID();
+    const dch = randomUUID();
+    // Un seul sommet par organigramme : la seconde direction se rattache à la première.
+    await raw(
+      `INSERT INTO org_units (id, tenant_id, name, unit_type, short_name)
+       VALUES ($1,$2,'Direction Financière','direction','DFC')`,
+      [dfc, tenantId],
+    );
+    await raw(
+      `INSERT INTO org_units (id, tenant_id, name, unit_type, short_name, parent_id)
+       VALUES ($1,$2,'Direction du Capital Humain','direction','DCH',$3)`,
+      [dch, tenantId, dfc],
+    );
+    await affecter(alice, 'Comptable', dfc);
+    await affecter(bruno, 'Chargé de paie', dch);
+    await affecter(carla, 'Analyste', null);
+
+    const numeros = async (unit: string[]) =>
+      (await lister({ unit })).items.map((i) => i.employeeNumber).sort();
+    expect(await numeros(['DFC'])).toEqual(['ALICE']);
+    expect(await numeros(['DFC', 'DCH'])).toEqual(['ALICE', 'BRUNO']);
+    // Le total suit le filtre : c'est lui qui donne le nombre de pages.
+    expect((await lister({ unit: ['DFC', 'DCH'] })).total).toBe(2);
   });
 
   it('propose en filtre exactement ce que l’onglet contient', async () => {

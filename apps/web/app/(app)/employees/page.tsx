@@ -22,6 +22,7 @@ import {
   Field,
   Input,
   Select,
+  SelectMultiple,
   Table,
   TBody,
   Td,
@@ -77,9 +78,9 @@ const TITRES: Record<EmployeeStatus, string> = {
 };
 
 interface Filtres {
-  unit: string;
+  units: string[];
 }
-const SANS_FILTRE: Filtres = { unit: '' };
+const SANS_FILTRE: Filtres = { units: [] };
 
 /**
  * Le sens du PREMIER clic sur chaque colonne.
@@ -142,7 +143,7 @@ export default function EmployeesPage() {
         offset: String((page - 1) * PAR_PAGE),
       });
       if (debounced) params.set('q', debounced);
-      if (filtres.unit) params.set('unit', filtres.unit);
+      for (const u of filtres.units) params.append('unit', u);
       return api<EmployeeListPage>(`/employees?${params.toString()}`);
     },
     // La page précédente RESTE à l'écran pendant que la suivante arrive : sans
@@ -240,7 +241,7 @@ export default function EmployeesPage() {
   // Qui part avec une équipe la confie : on le demande avant de désactiver.
   const aConfier = equipesAConfier(actifsChoisis);
 
-  const filtreActif = Boolean(debounced || filtres.unit);
+  const filtreActif = Boolean(debounced) || filtres.units.length > 0;
 
   const ONGLETS = [
     { cle: 'active', label: 'Actifs', compte: counts.active },
@@ -317,13 +318,15 @@ export default function EmployeesPage() {
                 n'ont plus d'unité : la recherche suffit. */}
             {onglet === 'active' ? (
               <>
-                <FiltreSelect
-                  label="Toutes les unités"
-                  value={filtres.unit}
+                <SelectMultiple
+                  tout="Toutes les unités"
+                  resume={(n) => `${n} unités`}
+                  valeurs={filtres.units}
                   options={unites.map((u) => ({ value: u, label: u }))}
-                  onChange={(v) => setFiltres((f) => ({ ...f, unit: v }))}
+                  onChange={(units) => setFiltres((f) => ({ ...f, units }))}
+                  className="h-8 w-auto min-w-[9.5rem] pr-3 text-[12.5px]"
                 />
-                {filtres.unit ? (
+                {filtres.units.length > 0 ? (
                   <Button size="sm" variant="ghost" onClick={() => setFiltres(SANS_FILTRE)}>
                     Tout afficher
                   </Button>
@@ -594,39 +597,6 @@ export default function EmployeesPage() {
         </Modal>
       ) : null}
     </Page>
-  );
-}
-
-/** Une liste de filtre : l'intitulé au repos vaut « tout ». */
-function FiltreSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  onChange: (v: string) => void;
-}) {
-  return (
-    <Select
-      value={value}
-      aria-label={label}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={options.length === 0}
-      className={cn(
-        'h-8 w-auto min-w-[9.5rem] rounded-full pr-8 text-[12.5px]',
-        value ? 'border-primary/45 text-primary' : 'text-ink-muted',
-      )}
-    >
-      <option value="">{label}</option>
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </Select>
   );
 }
 

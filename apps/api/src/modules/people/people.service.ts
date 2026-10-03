@@ -222,7 +222,12 @@ export class PeopleService {
         query.status ? sql`status = ${query.status}` : null,
         query.positionTitle ? sql`position_title = ${query.positionTitle}` : null,
         query.managerId ? sql`manager_employee_id = ${query.managerId}` : null,
-        query.unit ? sql`unite = ${query.unit}` : null,
+        query.unit
+          ? sql`unite IN (${sql.join(
+              query.unit.map((u) => sql`${u}`),
+              sql`, `,
+            )})`
+          : null,
       ].filter((c): c is NonNullable<typeof c> => c !== null);
       const ou = filtres.length > 0 ? sql`WHERE ${sql.join(filtres, sql` AND `)}` : sql``;
 

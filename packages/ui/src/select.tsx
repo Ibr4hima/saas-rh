@@ -104,13 +104,34 @@ function fusionnerRefs<T>(...refs: (React.Ref<T> | undefined)[]) {
   };
 }
 
-interface Position {
+export interface Position {
   left: number;
   width: number;
   maxWidth: number;
   top?: number;
   bottom?: number;
   maxHeight: number;
+}
+
+/** Où poser la liste d'un bouton : dessous, sauf si le dessus fait nettement mieux. */
+export function positionSous(b: DOMRect): Position {
+  const marge = 6;
+  const dessous = window.innerHeight - b.bottom - marge - 8;
+  const dessus = b.top - marge - 8;
+  // Vers le haut seulement si le dessous ne suffit pas ET que le dessus fait
+  // mieux : une liste qui saute au-dessus sans raison surprend.
+  const versLeHaut = dessous < 180 && dessus > dessous;
+  return {
+    left: b.left,
+    width: b.width,
+    // La liste part de la largeur du bouton et grandit avec son contenu :
+    // un sélecteur étroit (l'indicatif d'un téléphone, large de trois
+    // lettres) ne doit pas couper « SEN · +221 » dans sa propre liste.
+    // Bridée à ce qui reste jusqu'au bord de l'écran.
+    maxWidth: Math.max(b.width, window.innerWidth - b.left - 8),
+    ...(versLeHaut ? { bottom: window.innerHeight - b.top + marge } : { top: b.bottom + marge }),
+    maxHeight: Math.max(120, Math.min(300, versLeHaut ? dessus : dessous)),
+  };
 }
 
 export function Select({
@@ -151,24 +172,7 @@ export function Select({
 
   const placer = React.useCallback(() => {
     const b = declencheur.current?.getBoundingClientRect();
-    if (!b) return;
-    const marge = 6;
-    const dessous = window.innerHeight - b.bottom - marge - 8;
-    const dessus = b.top - marge - 8;
-    // Vers le haut seulement si le dessous ne suffit pas ET que le dessus fait
-    // mieux : une liste qui saute au-dessus sans raison surprend.
-    const versLeHaut = dessous < 180 && dessus > dessous;
-    setPosition({
-      left: b.left,
-      width: b.width,
-      // La liste part de la largeur du bouton et grandit avec son contenu :
-      // un sélecteur étroit — l'indicatif d'un téléphone, large de trois
-      // lettres — ne doit pas couper « SEN · +221 » dans sa propre liste.
-      // Bridée à ce qui reste jusqu'au bord de l'écran.
-      maxWidth: Math.max(b.width, window.innerWidth - b.left - 8),
-      ...(versLeHaut ? { bottom: window.innerHeight - b.top + marge } : { top: b.bottom + marge }),
-      maxHeight: Math.max(120, Math.min(300, versLeHaut ? dessus : dessous)),
-    });
+    if (b) setPosition(positionSous(b));
   }, []);
 
   const ouvrir = React.useCallback(() => {
@@ -398,7 +402,7 @@ export function Select({
   );
 }
 
-function Chevron({ ouvert }: { ouvert: boolean }) {
+export function Chevron({ ouvert }: { ouvert: boolean }) {
   return (
     <svg
       aria-hidden
