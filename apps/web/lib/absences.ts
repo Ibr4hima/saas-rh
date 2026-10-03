@@ -1,0 +1,55 @@
+import { ETAPE_CONGE_LABELS, type AbsenceRequestView } from '@teranga/contracts';
+
+export const ABSENCE_STATUS_LABELS: Record<string, string> = {
+  pending: 'En attente',
+  approved: 'Approuvée',
+  rejected: 'Refusée',
+  cancelled: 'Annulée',
+};
+
+export const ABSENCE_STATUS_TONES: Record<string, 'orange' | 'teal' | 'rouge' | 'gris'> = {
+  pending: 'orange',
+  approved: 'teal',
+  rejected: 'rouge',
+  cancelled: 'gris',
+};
+
+export const ROLE_LABELS: Record<string, string> = {
+  admin: 'Administrateur',
+  hr: 'RH',
+  payroll: 'Paie',
+  manager: 'Manager',
+  employee: 'Employé',
+};
+
+/**
+ * Le circuit de visa d'une demande, en toutes lettres — étape par étape, qui
+ * a signé, qui reste attendu : le N+1, puis la DCH.
+ *
+ * Sert d'infobulle au statut, côté DCH comme côté portail : le même texte
+ * des deux côtés, sinon l'employé et son gestionnaire ne lisent pas la même
+ * histoire de la même demande.
+ */
+export function resumeVisas(r: AbsenceRequestView): string | undefined {
+  if (r.circuit.length === 0) return undefined;
+  return r.circuit
+    .map((e) => {
+      const qui = ETAPE_CONGE_LABELS[e.etape];
+      const signe = `${e.qui}${e.parDelegationDe ? `, par délégation de ${e.parDelegationDe}` : ''}`;
+      switch (e.etat) {
+        case 'visee':
+          return `${qui} : visé par ${signe}`;
+        case 'refusee':
+          return `${qui} : refusé par ${signe}${e.comment ? ` : « ${e.comment} »` : ''}`;
+        case 'attendue':
+          return `${qui} : en attente${e.qui ? ` de ${e.qui}` : ''}`;
+        case 'a_venir':
+          return `${qui} : ensuite`;
+        case 'passee':
+          return `${qui} : personne pour viser : directement à la DCH`;
+        default:
+          return `${qui} : sans objet`;
+      }
+    })
+    .join('\n');
+}
