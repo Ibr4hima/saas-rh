@@ -513,7 +513,7 @@ export function LecteurVideo({
         </div>
       ) : null}
 
-      {/* ———— les commandes ————
+      {/* Les commandes.
           Une capsule de verre sombre posée AU-DESSUS de l'image, détachée des
           bords, sur une seule ligne : lecture, temps, barre, durée, son,
           plein écran. Elle s'efface pendant la lecture et revient au moindre
