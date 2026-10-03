@@ -273,15 +273,15 @@ body {
 }
 
 /* ── Fond de la page d'une offre ──────────────────────────────────────────
-   Un blanc à peine bleui, le même du haut au bas de la page : rien ne vire
-   en descendant. Deux halos du bleu de marque, de taille fixe, éclairent le
-   haut sans jamais s'étirer avec la longueur de l'offre. Une seule teinte,
-   la claire (cf. `useThemeClair`). */
+   Le volet de l'offre : un blanc à peine bleui, le même du haut au bas, que
+   le blanc pur du formulaire voisin suffit à détacher. Deux halos du bleu de
+   marque, de taille fixe, éclairent le haut sans s'étirer avec la longueur
+   de l'offre. Une seule teinte, la claire (cf. `useThemeClair`). */
 .fond-offre {
-  background-color: #f5f7fa;
+  background-color: #f3f6fa;
   background-image:
-    radial-gradient(900px 560px at 92% -180px, rgb(0 79 145 / 0.11), rgb(0 79 145 / 0) 70%),
-    radial-gradient(700px 420px at -6% -140px, rgb(0 79 145 / 0.06), rgb(0 79 145 / 0) 70%);
+    radial-gradient(720px 480px at 100% -160px, rgb(0 79 145 / 0.1), rgb(0 79 145 / 0) 70%),
+    radial-gradient(560px 380px at 0% -120px, rgb(0 79 145 / 0.06), rgb(0 79 145 / 0) 70%);
   background-repeat: no-repeat;
 }
 
