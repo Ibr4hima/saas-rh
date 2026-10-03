@@ -121,7 +121,7 @@ const toutes = (c: Capacite | readonly Capacite[]): readonly Capacite[] =>
   typeof c === 'string' ? [c] : c;
 
 /** « Sensible » — comme sur « Déléguer des tâches ». */
-function PastilleSensible() {
+export function PastilleSensible() {
   return (
     <span
       title="Données sensibles : à confier avec soin."

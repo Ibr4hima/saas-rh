@@ -116,8 +116,8 @@ const NAV_ITEMS: NavItem[] = [
     icon: 'family_history',
     groupe: 'effectif',
   },
-  // « Déléguer des tâches » et « Demandes à traiter » s'insèrent ici, selon
-  // ce que l'agent traite pour la DCH (cf. navigationGestion). Les demandes de
+  // « Demandes à traiter » s'insère ici, selon ce que l'agent traite pour la
+  // DCH ; « Déléguer des tâches », sous le tableau de bord (cf. navigationGestion). Les demandes de
   // congé se traitent sous « Demandes à traiter › Absences & Congés » ; leurs
   // réglages ont leur page.
   {
@@ -471,7 +471,8 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
                 children: files.map((f) => ({ href: f.href, label: f.label })),
               },
         ];
-  // Le directeur les modifie ; l'administrateur y lit qui peut quoi.
+  // Le directeur les modifie ; l'administrateur y lit qui peut quoi. En tête,
+  // avec le tableau de bord : c'est là que se décide qui fait quoi.
   const delegations: NavItem[] =
     user.dirigeLaDCH || user.role === 'admin'
       ? [
@@ -480,7 +481,7 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
             label: 'Déléguer des tâches',
             short: 'Déléguer',
             icon: 'arrow_split',
-            groupe: 'quotidien',
+            groupe: 'pilotage',
           },
         ]
       : [];
@@ -489,6 +490,7 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
     switch (i.href) {
       case '/dashboard':
         if (peut(user, 'pilotage')) items.push(i);
+        items.push(...delegations);
         break;
       case '/employees':
         if (peut(user, 'personnel.consulter')) items.push(i);
@@ -498,9 +500,9 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
         if (peut(user, 'organigramme')) items.push(i);
         break;
       case '/absences/parametres':
-        // Déléguer, puis traiter ; les réglages des congés ensuite, à qui les
-        // gère seulement : traiter les congés n'y donne pas accès.
-        items.push(...delegations, ...demandes);
+        // Traiter ; les réglages des congés ensuite, à qui les gère
+        // seulement : traiter les congés n'y donne pas accès.
+        items.push(...demandes);
         if (peut(user, 'conges.parametres')) items.push(i);
         break;
       case '/absences/feries':

@@ -93,6 +93,7 @@ export default function CandidaturesPage() {
         delegue="le traitement des dossiers de candidature"
         retrait="Vous traiterez de vous-même les dossiers de candidature."
         titre="Déléguer les dossiers de candidature"
+        sensible
       />
       <CartePleine>
         <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">

@@ -22,6 +22,7 @@ import {
 import { BoutonDecision } from '../../../../components/bouton-decision';
 import { FenetreControleDuTitre } from '../../../../components/controle-titre';
 import { DeleguerPieces, detient, TYPES_PIECES } from '../../../../components/deleguer-documents';
+import { PastilleSensible } from '../../../../components/deleguer-membres';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Page } from '../../../../components/gabarit';
@@ -126,9 +127,12 @@ export default function PiecesAVerifierPage() {
         <BandeauDelegation
           icone="arrow_split"
           texte={
-            delegues.length > 0
-              ? `${listePrenoms(delegues)} ${delegues.length > 1 ? 'peuvent' : 'peut'} désormais vérifier ${tousLesTypes ? 'les' : 'certains'} documents officiels.`
-              : 'Vous pouvez déléguer la vérification des documents à votre équipe.'
+            <>
+              {delegues.length > 0
+                ? `${listePrenoms(delegues)} ${delegues.length > 1 ? 'peuvent' : 'peut'} désormais vérifier ${tousLesTypes ? 'les' : 'certains'} documents officiels.`
+                : 'Vous pouvez déléguer la vérification des documents à votre équipe.'}
+              <PastilleSensible />
+            </>
           }
           action={<DeleguerPieces membres={membres} onFait={() => setMessage(null)} />}
         />
@@ -136,9 +140,12 @@ export default function PiecesAVerifierPage() {
         <BandeauDelegation
           icone="how_to_reg"
           texte={
-            miens.length === TYPES_PIECES.length
-              ? 'La DCH vous a délégué la vérification des documents officiels.'
-              : `La DCH vous a délégué la vérification des documents suivants : ${miens.map((t) => t.libelle).join(', ')}.`
+            <>
+              {miens.length === TYPES_PIECES.length
+                ? 'La DCH vous a délégué la vérification des documents officiels.'
+                : `La DCH vous a délégué la vérification des documents suivants : ${miens.map((t) => t.libelle).join(', ')}.`}
+              <PastilleSensible />
+            </>
           }
         />
       ) : null}
