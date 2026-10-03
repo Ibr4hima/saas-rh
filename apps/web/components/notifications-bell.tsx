@@ -186,7 +186,7 @@ function PointNonLu() {
   return (
     <span
       aria-hidden
-      className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-alert ring-2 ring-[var(--tg-hero)]"
+      className="absolute -top-[3px] -right-[3px] size-2 rounded-full bg-alert ring-2 ring-[var(--tg-hero)]"
     />
   );
 }
