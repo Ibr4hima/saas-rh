@@ -781,17 +781,11 @@ function DesactiverModal({
 }) {
   const [motif, setMotif] = useState<MotifInactivite | ''>('');
   const [repreneurs, setRepreneurs] = useState<Record<string, string>>({});
-  const seul = lot.length === 1 ? lot[0] : null;
   return (
     <Modal
       open
       onClose={onClose}
       title={lot.length > 1 ? `Désactiver ${lot.length} profils` : 'Désactiver le profil'}
-      subtitle={
-        seul
-          ? `${seul.givenName} ${seul.familyName} passe dans les inactifs. Son portail reste ouvert un mois, en accès restreint.`
-          : 'Ils passent dans les inactifs. Leur portail reste ouvert un mois, en accès restreint.'
-      }
       maxWidth="max-w-lg"
       footer={
         <>
@@ -809,12 +803,7 @@ function DesactiverModal({
       }
     >
       <ModalSection title="Pourquoi ?">
-        <Field
-          label="Motif"
-          htmlFor="motif-inactivite"
-          required
-          hint="La fin d’un CDD ou d’un stage se pose d’elle-même, le lendemain du dernier jour."
-        >
+        <Field label="Motif" htmlFor="motif-inactivite" required>
           <Select
             id="motif-inactivite"
             value={motif}
