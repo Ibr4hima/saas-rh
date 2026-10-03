@@ -150,7 +150,7 @@ function DeleguerParType({
 
   const appliquer = useMutation({
     mutationFn: async () => {
-      // Un changement à la fois : chaque membre l'apprend par sa notification.
+      // Un changement à la fois, habilitation par habilitation.
       for (const { capacite, m, accordee } of changements) {
         await api('/habilitations', {
           method: 'PUT',

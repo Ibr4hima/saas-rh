@@ -227,7 +227,7 @@ export default function DelegationsPage() {
 
   const enregistrer = useMutation({
     mutationFn: async (liste: Changement[]) => {
-      // Un changement à la fois : chacun l'apprend par sa propre notification.
+      // Un changement à la fois, habilitation par habilitation.
       for (const ch of liste) {
         await api('/habilitations', { method: 'PUT', body: ch });
       }

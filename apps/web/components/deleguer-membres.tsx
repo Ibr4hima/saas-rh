@@ -198,7 +198,7 @@ export function DeleguerMembres({
 
   const appliquer = useMutation({
     mutationFn: async () => {
-      // Un membre à la fois : chacun l'apprend par sa propre notification.
+      // Un membre à la fois, habilitation par habilitation.
       for (const m of membres) {
         const accordee = apres.has(m.employeeId);
         if (accordee === avant.has(m.employeeId)) continue;

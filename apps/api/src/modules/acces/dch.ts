@@ -353,7 +353,7 @@ export async function capacitesDe(
 }
 
 /** Un libellé dans une phrase : « jours fériés », mais « APIX Academy » garde son sigle. */
-export const enMinuscule = (l: string): string =>
+const enMinuscule = (l: string): string =>
   /^\p{Lu}{2}/u.test(l) ? l : l.charAt(0).toLowerCase() + l.slice(1);
 
 const libelles = (capacites: string[]) =>
@@ -396,31 +396,6 @@ export async function verifierLesHabilitations(tx: Tx, tenantId: string): Promis
       dedupeKey: `habilitations:${r.employee_id}:partie:${new Date().toISOString().slice(0, 10)}`,
     });
   }
-}
-
-/**
- * Un nouveau directeur du Capital Humain trouve les délégations en place —
- * elles appartiennent à la DCH, et le travail continue. Il en reçoit la
- * liste, une fois, pour les revoir s'il le veut.
- */
-export async function accueillirLeDirecteur(tx: Tx, tenantId: string): Promise<void> {
-  const dch = await directionDuPersonnel(tx);
-  if (!dch?.directeur) return;
-  const { rows } = await tx.execute<{ employee_id: string; capacites: string[] }>(sql`
-    SELECT employee_id, array_agg(capacite ORDER BY capacite) AS capacites
-      FROM habilitations WHERE fin_at IS NULL GROUP BY employee_id`);
-  const lignes: string[] = [];
-  for (const r of rows) lignes.push(`${await nomDe(tx, r.employee_id)} : ${libelles(r.capacites)}`);
-  await notifier(tx, tenantId, dch.directeur.userId, {
-    type: 'delegation',
-    title: `Vous dirigez la ${dch.nom}`,
-    body:
-      lignes.length > 0
-        ? `Les délégations en place sont maintenues (${lignes.join(' ; ')}). Vous pouvez les modifier dans « Déléguer des tâches ».`
-        : 'Toutes les demandes et tous les accès de la DCH vous reviennent. Vous pouvez en déléguer aux membres de votre direction dans « Déléguer des tâches ».',
-    link: '/moi/delegations',
-    dedupeKey: `dch:directeur:${dch.directeur.employeeId}`,
-  });
 }
 
 /**

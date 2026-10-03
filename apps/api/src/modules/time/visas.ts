@@ -4,7 +4,6 @@ import type { Tx } from '../../db/tenant-db';
 import { notifier } from '../notifications/notifier';
 import { frDate, relancer, retirerLesAppels, tenirLesAppels } from '../acces/appels';
 import {
-  accueillirLeDirecteur,
   directionDuPersonnel,
   nomsDe,
   traitementDe,
@@ -323,7 +322,6 @@ export async function reconcilierLeCircuit(tx: Tx, tenantId: string): Promise<vo
   const enAttente = await demandesEnAttente(tx);
   for (const id of enAttente) await reconcilierDemande(tx, id);
   await reconcilierLesDemandes(tx, tenantId);
-  await accueillirLeDirecteur(tx, tenantId);
   await verifierLaVacance(tx, tenantId, enAttente);
   await relancer(tx, tenantId);
 }

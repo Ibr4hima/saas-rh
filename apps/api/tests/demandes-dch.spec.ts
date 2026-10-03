@@ -848,13 +848,12 @@ describe('on ne contourne pas le système : rien sur soi-même', () => {
     await habiliter(awa, 'academy');
     try {
       expect((await session(awa)).capacites).toContain('academy');
-      // Le sigle reste en capitales dans la phrase.
+      // Déléguer ne se notifie pas.
       const { rows } = await raw(
-        `SELECT n.body FROM notifications n JOIN users u ON u.id = n.recipient_user_id
-          WHERE u.given_name = 'Awa' AND n.dedupe_key LIKE 'habilitation:%:accordee'
-          ORDER BY n.created_at DESC LIMIT 1`,
+        `SELECT n.id FROM notifications n JOIN users u ON u.id = n.recipient_user_id
+          WHERE u.given_name = 'Awa' AND n.dedupe_key LIKE 'habilitation:%'`,
       );
-      expect(rows[0]?.body).toContain('vous confie : APIX Academy.');
+      expect(rows).toEqual([]);
       const etat = await habilitations.etat(admin);
       expect(etat.membres.find((m) => m.employeeId === awa.employeeId)?.capacites).toContain(
         'academy',

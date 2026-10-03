@@ -426,9 +426,8 @@ describe('le directeur confie une demande', () => {
 describe('le directeur habilite des membres de sa direction', () => {
   it('les demandes vont directement au membre ; le directeur n’est plus prévenu, mais voit tout', async () => {
     await habiliter(awa);
-    expect(await notif('Awa', 'habilitation:%:accordee')).toContain(
-      'vous confie : demandes de congé',
-    );
+    // La délégation ne se notifie pas : la demande qui arrive, si.
+    expect(await notif('Awa', 'habilitation:%')).toBeNull();
     const id = await poser(moussa);
     await viser(ousmane, id);
     expect(await appels(id)).toEqual(['dch:Awa']);
@@ -502,16 +501,16 @@ describe('le directeur habilite des membres de sa direction', () => {
     expect(rows).toEqual([{ fin_motif: 'partie' }]);
   });
 
-  it('retirée par le directeur : le membre l’apprend, les demandes reviennent', async () => {
+  it('retirée par le directeur : sans notification, les demandes reviennent', async () => {
     await habiliter(awa);
     const id = await poser(moussa);
     await viser(ousmane, id);
     await habiliter(awa, false);
     expect(await appels(id)).toEqual(['dch:Mariama']);
-    expect(await notif('Awa', 'habilitation:%:retiree')).toContain('reprend');
+    expect(await notif('Awa', 'habilitation:%')).toBeNull();
   });
 
-  it('un nouveau directeur trouve les délégations en place — elles sont à la DCH —, et en est prévenu', async () => {
+  it('un nouveau directeur trouve les délégations en place (elles sont à la DCH), sans avis', async () => {
     await habiliter(awa);
     const dejaConfiee = await poser(moussa);
     await viser(ousmane, dejaConfiee);
@@ -520,9 +519,7 @@ describe('le directeur habilite des membres de sa direction', () => {
     expect(await appels(dejaConfiee)).toEqual(['dch:Awa']);
     const nouvelle = await poser(fatou);
     expect(await appels(nouvelle)).toEqual(['dch:Awa']);
-    expect(await notif('Khady', 'dch:directeur:%')).toContain(
-      'Les délégations en place sont maintenues (Awa Test : demandes de congé',
-    );
+    expect(await notif('Khady', 'dch:directeur:%')).toBeNull();
     expect((await habilitations.etat(khady.session)).estDirecteur).toBe(true);
   });
 
