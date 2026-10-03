@@ -56,6 +56,7 @@ export const PIECE: Record<DocumentCategory, Nom> = {
 /** Les documents qu'on demande à la DCH. */
 export const DOCUMENT: Record<RequestableDoc, Nom> = {
   attestation_travail: nom('attestation de travail', true),
+  attestation_stage: nom('attestation de stage', true),
   contrat_travail: nom('contrat de travail', false, 'son'),
   bulletin_salaire: nom('bulletin de salaire', false),
   attestation_salaire: nom('attestation de salaire', true),

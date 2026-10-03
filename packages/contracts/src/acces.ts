@@ -26,12 +26,14 @@ import type { DocumentCategory } from './documents';
  *
  * Les documents se confient TYPE PAR TYPE — les attestations de travail à
  * l'un, les bulletins de salaire à l'autre : chaque document demandé est
- * une demande à part, qui va à qui traite ce type-là.
+ * une demande à part, qui va à qui traite ce type-là. Les attestations de
+ * travail et de stage se délèguent ensemble (0055).
  */
 
 /** Traiter un type de document : chaque document demandé va à qui le traite. */
 export const CAPACITES_DOCUMENTS = [
   'demandes.documents.attestation_travail',
+  'demandes.documents.attestation_stage',
   'demandes.documents.contrat_travail',
   'demandes.documents.bulletin_salaire',
   'demandes.documents.attestation_salaire',
@@ -139,6 +141,11 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   'demandes.documents.attestation_travail': {
     libelle: 'Attestations de travail',
     description: 'L’application les génère : les relire, les faire signer, annoncer leur retrait.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.attestation_stage': {
+    libelle: 'Attestations de stage',
+    description: 'Les établir, les faire signer, annoncer leur retrait.',
     groupe: 'Documents',
   },
   'demandes.documents.contrat_travail': {

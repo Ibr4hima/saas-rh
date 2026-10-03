@@ -278,6 +278,27 @@ describe('les demandes de documents', () => {
     ]);
   });
 
+  it('l’attestation de stage se demande comme les autres, et va à qui la traite', async () => {
+    await habiliter(awa, 'demandes.documents.attestation_stage');
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_stage'] }))
+      .ids as [string];
+    expect(await appels('document', id)).toEqual(['dch:Awa']);
+    const { rows } = await raw(`SELECT title FROM notifications WHERE dedupe_key = $1`, [
+      `document:${id}:appel:dch`,
+    ]);
+    expect(rows.map((r) => r.title)).toEqual(['Moussa Test demande une attestation de stage']);
+    await documents.advance(awa.session, id, { status: 'processing' });
+    await documents.advance(awa.session, id, { status: 'ready', pickupContact: 'Awa Diop' });
+    const { rows: avis } = await raw(
+      `SELECT title FROM notifications
+        WHERE recipient_user_id = $1 AND dedupe_key LIKE $2 AND remplacee_le IS NULL`,
+      [moussa.session.userId, `document:${id}:suivi:%`],
+    );
+    expect(avis.map((r) => r.title)).toEqual([
+      'Votre attestation de stage est prête, à retirer auprès d’Awa Diop',
+    ]);
+  });
+
   it('un document déjà demandé, et encore en cours, ne se redemande pas', async () => {
     await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
     expect(

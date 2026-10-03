@@ -14,6 +14,7 @@ import type { TraitementView } from './acces';
 
 export const requestableDocSchema = z.enum([
   'attestation_travail',
+  'attestation_stage',
   'contrat_travail',
   'bulletin_salaire',
   'attestation_salaire',
@@ -24,6 +25,7 @@ export type RequestableDoc = z.infer<typeof requestableDocSchema>;
 
 export const REQUESTABLE_DOC_LABELS: Record<RequestableDoc, string> = {
   attestation_travail: 'Attestation de travail',
+  attestation_stage: 'Attestation de stage',
   contrat_travail: 'Contrat de travail',
   bulletin_salaire: 'Bulletin de salaire',
   attestation_salaire: 'Attestation de salaire',

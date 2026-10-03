@@ -20,6 +20,7 @@ import { compte } from '../../../../lib/mots';
 
 const REQUESTABLE: RequestableDoc[] = [
   'attestation_travail',
+  'attestation_stage',
   'contrat_travail',
   'bulletin_salaire',
   'attestation_salaire',
@@ -108,7 +109,7 @@ export default function MyDocumentsPage() {
               {/* Les libellés gardent leur majuscule : « et autre document »
                   en bas de casse se lit comme une phrase inachevée, alors
                   que « et Autre document » se lit comme l'entrée cochée. */}
-              — {enumerer(selected.map((d) => REQUESTABLE_DOC_LABELS[d]))}.
+              : {enumerer(selected.map((d) => REQUESTABLE_DOC_LABELS[d]))}.
             </p>
           ) : null}
         </CardContent>

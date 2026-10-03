@@ -277,11 +277,12 @@ const enTantQue = async (employeeId, method, path, body) => {
 console.log('→ Délégations : Mariama confie à Awa une partie des documents, et les dossiers');
 // Tout le monde est agent ; ce qu'on fait de plus vient de l'organigramme.
 // Mariama dirige la DCH : tout lui revient. Elle confie à Awa, membre de sa
-// direction, les attestations de travail, les contrats et les certificats,
+// direction, les attestations de travail et de stage, les contrats et les certificats,
 // et la consultation des dossiers. Les bulletins et attestations de salaire
 // — sensibles —, les congés, les informations, les pièces restent chez elle.
 for (const capacite of [
   'demandes.documents.attestation_travail',
+  'demandes.documents.attestation_stage',
   'demandes.documents.contrat_travail',
   'demandes.documents.certificat_travail',
   'personnel.consulter',

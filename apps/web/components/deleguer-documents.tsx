@@ -25,7 +25,8 @@ import { texteErreur } from './traitement-dch';
 
    Les documents officiels se délèguent par familles, qui se vérifient
    ensemble : la CNI et le passeport, les diplômes et les certifications,
-   les attestations de travail et de stage, le CV.
+   les attestations de travail et de stage, le CV. Côté demandes, les
+   attestations de travail et de stage vont aussi ensemble.
 
    Déléguer autorise, sans rien retirer : le directeur traite toujours tout.
    Décocher retire la délégation. « Autre document » n'y figure pas : il
@@ -41,6 +42,7 @@ export interface TypeDelegable {
 /** Les documents qu'un agent demande, « Autre document » mis à part. */
 export const DOCUMENTS_DELEGABLES = [
   'attestation_travail',
+  'attestation_stage',
   'contrat_travail',
   'bulletin_salaire',
   'attestation_salaire',
@@ -58,9 +60,20 @@ const FAMILLES_DE_PIECES: readonly { libelle: string; types: readonly DocumentCa
   { libelle: DOCUMENT_CATEGORY_LABELS.cv, types: ['cv'] },
 ];
 
-export const TYPES_DOCUMENTS: readonly TypeDelegable[] = DOCUMENTS_DELEGABLES.map((d) => ({
-  libelle: REQUESTABLE_DOC_LABELS[d],
-  capacites: [capaciteDuDocument(d)],
+/** Les mêmes, par familles : les attestations de travail et de stage vont ensemble. */
+const FAMILLES_DE_DOCUMENTS: readonly { libelle: string; types: readonly RequestableDoc[] }[] = [
+  {
+    libelle: 'Attestations de travail et de stage',
+    types: ['attestation_travail', 'attestation_stage'],
+  },
+  ...(
+    ['contrat_travail', 'bulletin_salaire', 'attestation_salaire', 'certificat_travail'] as const
+  ).map((d) => ({ libelle: REQUESTABLE_DOC_LABELS[d], types: [d] })),
+];
+
+export const TYPES_DOCUMENTS: readonly TypeDelegable[] = FAMILLES_DE_DOCUMENTS.map((f) => ({
+  libelle: f.libelle,
+  capacites: f.types.map(capaciteDuDocument),
 }));
 
 export const TYPES_PIECES: readonly TypeDelegable[] = FAMILLES_DE_PIECES.map((f) => ({
