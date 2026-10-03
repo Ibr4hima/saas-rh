@@ -345,8 +345,7 @@ export default function DelegationsPage() {
               <CardTitle>{section.titre}</CardTitle>
             </CardHeader>
             {section.avertissement ? (
-              <p className="mx-5 mb-1 flex items-start gap-2 rounded-[10px] bg-warning-soft px-3 py-2 text-[12px] leading-snug text-warning">
-                <Icon name="warning" size={15} className="mt-px shrink-0" />
+              <p className="mx-5 mb-1 rounded-[10px] bg-[#E0802F]/[0.12] px-3 py-2 text-[12px] leading-snug text-accent-text">
                 {section.avertissement}
               </p>
             ) : null}
