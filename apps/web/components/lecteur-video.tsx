@@ -547,7 +547,7 @@ export function LecteurVideo({
             <Icon name={muet || volume === 0 ? 'volume_off' : 'volume_up'} size={21} />
           </BoutonLecteur>
           {/* La glissière du son s'ouvre au survol du bouton, et au clavier. */}
-          <div className="hidden w-0 overflow-hidden transition-[width] duration-200 ease-out group-focus-within/son:w-[76px] group-hover/son:w-[76px] sm:block">
+          <div className="hidden h-9 w-0 items-center overflow-hidden transition-[width] duration-200 ease-out group-focus-within/son:w-[76px] group-hover/son:w-[76px] sm:flex">
             <input
               type="range"
               min={0}
@@ -559,7 +559,7 @@ export function LecteurVideo({
                 setVolume(Number(e.target.value));
                 setMuet(Number(e.target.value) === 0);
               }}
-              className="glissiere-son mr-2 ml-1 w-[64px]"
+              className="glissiere-son mr-2 ml-1 block w-[64px] shrink-0"
               style={{ ['--niveau' as string]: `${(muet ? 0 : volume) * 100}%` }}
             />
           </div>

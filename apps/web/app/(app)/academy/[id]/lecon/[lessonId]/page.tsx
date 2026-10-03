@@ -23,7 +23,6 @@ import { Page } from '../../../../../../components/gabarit';
 import { Icon } from '../../../../../../components/icons';
 import { LecteurVideo } from '../../../../../../components/lecteur-video';
 import { LoadFailure } from '../../../../../../components/load-failure';
-import { pourcent } from '../../../../../../lib/academy';
 import { api, ApiError, apiUrl } from '../../../../../../lib/api';
 import { compte } from '../../../../../../lib/mots';
 
@@ -215,21 +214,14 @@ export default function LeconPage() {
                   {l.suivante ? '. La suivante est ouverte.' : '. C’était la dernière.'}
                 </p>
               ) : (
-                <div className="flex flex-col gap-2">
-                  <div className="relative max-w-md">
-                    <BarreProgression part={vu} />
-                    {/* Le repère des 90 % : on voit la ligne d'arrivée. */}
-                    <span
-                      aria-hidden
-                      className="absolute -top-1 h-3.5 w-0.5 rounded-full bg-ink-strong/60"
-                      style={{ left: `${SEUIL_VISIONNAGE * 100}%` }}
-                    />
-                  </div>
-                  <p className="text-[12px] text-ink-muted">
-                    Vue à <b className="font-bold text-ink">{pourcent(vu)}</b> —{' '}
-                    {Math.round(SEUIL_VISIONNAGE * 100)} % pour valider la leçon et ouvrir la
-                    suivante.
-                  </p>
+                <div className="relative max-w-md">
+                  <BarreProgression part={vu} />
+                  {/* Le repère des 90 % : on voit la ligne d'arrivée. */}
+                  <span
+                    aria-hidden
+                    className="absolute -top-1 h-3.5 w-0.5 rounded-full bg-ink-strong/60"
+                    style={{ left: `${SEUIL_VISIONNAGE * 100}%` }}
+                  />
                 </div>
               )
             ) : null}
