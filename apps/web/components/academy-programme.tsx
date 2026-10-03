@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { CourseDetail, LessonView } from '@teranga/contracts';
-import { cn } from '@teranga/ui';
+import { Badge, cn } from '@teranga/ui';
 import { horloge, MOTS_ETAT } from '../lib/academy';
 import { Icon } from './icons';
 
@@ -63,10 +63,10 @@ export function Programme({
               const contenu = (
                 <>
                   <IconeEtat lecon={l} courante={ici} />
-                  <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
                     <span
                       className={cn(
-                        'block truncate text-[12.5px] leading-snug',
+                        'min-w-0 truncate text-[12.5px] leading-snug',
                         ici ? 'font-bold text-ink-strong' : 'font-semibold',
                         verrouillee ? 'text-ink-muted' : !ici && 'text-ink',
                       )}
@@ -79,10 +79,11 @@ export function Programme({
                       </span>
                       {l.title}
                     </span>
+                    {/* Où en est la leçon commencée : un badge sur la ligne du titre. */}
                     {l.etat === 'en_cours' ? (
-                      <span className="mt-0.5 block text-[11px] text-ink-muted">
-                        Vue à {Math.floor(l.vu * 100)} %
-                      </span>
+                      <Badge tone="gris" size="sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {Math.floor(l.vu * 100)} %
+                      </Badge>
                     ) : null}
                   </span>
                   {l.support ? (
