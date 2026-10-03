@@ -23,6 +23,7 @@ import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
+import { accord, de, DOCUMENT } from '../notifications/phrases';
 import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
 import {
   capaciteDesDocuments,
@@ -356,6 +357,7 @@ export class DocumentRequestsService {
       if (!person?.userId) return; // dossier sans compte portail : rien à notifier
 
       await this.notifyEmployee(tx, user.tenantId, person.userId, {
+        requestId,
         status: input.status,
         docTypes: row.docTypes,
         pickupContact: changes.pickupContact ?? null,
@@ -467,6 +469,7 @@ export class DocumentRequestsService {
 
         if (who?.userId) {
           await this.notifyEmployee(tx, user.tenantId, who.userId, {
+            requestId: id,
             status: input.status,
             docTypes: row.docTypes,
             pickupContact,
@@ -480,12 +483,17 @@ export class DocumentRequestsService {
     });
   }
 
-  /** Avis envoyé à l'employé, identique que la demande parte seule ou en lot. */
+  /**
+   * Avis envoyé à l'employé, identique que la demande parte seule ou en lot.
+   * Chaque étape prend la place de la précédente : « en préparation », puis
+   * « prête », puis un éventuel nouveau lieu de retrait.
+   */
   private async notifyEmployee(
     tx: Tx,
     tenantId: string,
     userId: string,
     e: {
+      requestId: string;
       status: DocumentRequestStatus;
       docTypes: string[];
       pickupContact: string | null;
@@ -493,32 +501,25 @@ export class DocumentRequestsService {
       isCorrection: boolean;
     },
   ): Promise<void> {
-    const docs = labelList(e.docTypes);
-    const drafts: Record<string, { title: string; body: string }> = {
-      processing: {
-        title: 'Votre demande de documents est en cours de traitement',
-        body: `La Direction du Capital Humain prépare : ${docs}.`,
-      },
-      ready: {
-        title: e.isCorrection
-          ? 'Changement : où retirer vos documents'
-          : 'Vos documents sont disponibles',
-        body:
-          `${docs} : à retirer auprès de ${e.pickupContact}, Direction du Capital Humain. ` +
-          `Merci de passer les récupérer${e.message ? ` (${e.message})` : ''}.`,
-      },
-      rejected: {
-        title: 'Votre demande de documents n’a pas pu être traitée',
-        body: `${docs}. Motif : ${e.message}`,
-      },
+    const seul = e.docTypes.length === 1 ? DOCUMENT[e.docTypes[0] as RequestableDoc] : undefined;
+    const votre = seul ? `Votre ${seul.nom} est` : 'Vos documents sont';
+    const pret = seul ? accord('prêt', seul) : 'prêts';
+    const titres: Partial<Record<DocumentRequestStatus, string>> = {
+      processing: `${votre} en préparation`,
+      ready: e.isCorrection
+        ? `${votre} à retirer auprès ${de(e.pickupContact ?? 'la DCH')}`
+        : `${votre} ${pret}, à retirer auprès ${de(e.pickupContact ?? 'la DCH')}`,
+      rejected: `Votre demande ${seul ? de(seul.nom) : 'de documents'} est refusée`,
     };
-    const draft = drafts[e.status];
-    if (!draft) return;
+    const title = titres[e.status];
+    if (!title) return;
+    const sujet = `document:${e.requestId}:suivi:`;
     await this.notifications.notifyUser(tx, tenantId, userId, {
       type: `document_request_${e.status}`,
-      title: draft.title,
-      body: draft.body,
+      title,
       link: '/moi/documents/suivi',
+      dedupeKey: `${sujet}${e.status}${e.isCorrection ? `:${Date.now()}` : ''}`,
+      remplace: sujet,
     });
   }
 

@@ -411,6 +411,8 @@ export const notifications = pgTable('notifications', {
   readAt: timestamp('read_at', { withTimezone: true }),
   /** Rangée hors de la boîte, jamais perdue : voir 0021. */
   archivedAt: timestamp('archived_at', { withTimezone: true }),
+  /** Remplacée par une plus récente sur le même sujet : hors de la boîte. Voir 0054. */
+  remplaceeLe: timestamp('remplacee_le', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

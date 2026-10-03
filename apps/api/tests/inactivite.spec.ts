@@ -280,6 +280,13 @@ describe('la fin de contrat, d’elle-même', () => {
        VALUES ($1,$2,$3,$4, CURRENT_DATE + 10, CURRENT_DATE + 12, 3, 'pending')`,
       [randomUUID(), tenantId, fatou.employeeId, typeId],
     );
+    // Le rappel d'échéance reçu avant la fin.
+    await raw(
+      `INSERT INTO notifications (id, tenant_id, recipient_user_id, type, title, dedupe_key)
+       SELECT $1, $2, $3, 'contract_deadline', 'Rappel', 'contract_deadline:' || c.id || ':j7'
+         FROM contracts c WHERE c.employee_id = $4`,
+      [randomUUID(), tenantId, mariama.userId, fatou.employeeId],
+    );
 
     expect(await inactiver()).toBe(1);
 
@@ -325,17 +332,21 @@ describe('la fin de contrat, d’elle-même', () => {
       [fatou.userId],
     );
     expect(sessions[0].n).toBe(1);
-    // Qui dirige la DCH l'apprend, avec ce qui reste à faire.
+    // Qui dirige la DCH l'apprend ; le rappel d'échéance quitte sa boîte.
     const { rows: alertes } = await raw(
-      `SELECT recipient_user_id, title, body FROM notifications WHERE tenant_id = $1 AND type = 'contract_ended'`,
+      `SELECT recipient_user_id, type, title, remplacee_le IS NOT NULL AS remplacee
+         FROM notifications WHERE tenant_id = $1 AND type LIKE 'contract_%' ORDER BY created_at`,
       [tenantId],
     );
-    expect(alertes).toHaveLength(1);
-    expect(alertes[0].recipient_user_id).toBe(mariama.userId);
-    expect(alertes[0].title).toBe('Contrat de Fatou Test arrivé à terme');
-    expect(alertes[0].body).toContain('« Service Comptabilité » n’a plus de responsable');
-    expect(alertes[0].body).toContain('Son équipe relève désormais de Omar Test');
-    expect(alertes[0].body).toContain('Son accès au portail reste ouvert jusqu’au');
+    expect(alertes).toEqual([
+      expect.objectContaining({ type: 'contract_deadline', remplacee: true }),
+      {
+        recipient_user_id: mariama.userId,
+        type: 'contract_ended',
+        title: 'Le CDD de Fatou Test a pris fin',
+        remplacee: false,
+      },
+    ]);
 
     // Une seule fois.
     expect(await inactiver()).toBe(0);
@@ -349,11 +360,6 @@ describe('la fin de contrat, d’elle-même', () => {
       ibou.employeeId,
     ]);
     expect(n1[0].manager_employee_id).toBe(omar.employeeId);
-    const { rows: alertes } = await raw(
-      `SELECT body FROM notifications WHERE tenant_id = $1 AND type = 'contract_ended'`,
-      [tenantId],
-    );
-    expect(alertes[0].body).toContain('Son équipe relève désormais de Omar Test');
   });
 
   it('un contrat qui finit aujourd’hui court encore ; un renouvellement enregistré d’avance compte', async () => {

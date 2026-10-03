@@ -26,6 +26,7 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
+import { accord, PIECE } from '../notifications/phrases';
 import { agentDuCompte, directionDuPersonnel, type DirectionDuPersonnel } from '../acces/dch';
 import {
   exigerDeTraiter,
@@ -346,15 +347,15 @@ export class EmployeeDocumentsService {
       // Le titulaire l'apprend — c'est son dossier, quel qu'ait été le
       // déposant d'une pièce ancienne.
       const destinataire = target.personUserId ?? doc.uploadedByUserId;
+      const piece = PIECE[doc.category as DocumentCategory] ?? PIECE.autre;
+      const nom = doc.category === 'autre' ? `document « ${doc.label} »` : piece.nom;
       await this.notifications.notifyUser(tx, user.tenantId, destinataire, {
         type: 'document_reviewed',
         title: approved
-          ? `« ${doc.label} » validé et ajouté au dossier`
-          : `« ${doc.label} » rejeté`,
-        body: approved
-          ? undefined
-          : (input.comment ?? 'Vérifiez le fichier puis déposez-le à nouveau.'),
+          ? `Votre ${nom} est ${accord('ajouté', piece)} à votre dossier`
+          : `Votre ${nom} est ${accord('refusé', piece)}`,
         link: '/moi/documents/justificatifs',
+        dedupeKey: `piece:${documentId}:verdict`,
       });
     });
   }

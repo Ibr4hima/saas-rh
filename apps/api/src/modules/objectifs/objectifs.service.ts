@@ -2,7 +2,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import { sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
-  LIBELLES_EVALUATION,
   type CreerObjectifInput,
   type EvaluerObjectifInput,
   type FicheSuivi,
@@ -20,7 +19,6 @@ import {
   type EvaluationValidee,
   type NoteGlobale,
   objectifsDeLaFiche,
-  LIBELLES_NOTE,
   peut,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
@@ -28,11 +26,10 @@ import {
   type SessionUser,
   type SuiviEquipe,
   type TeamCourseProgress,
-  titreDuSemestre,
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { TenantDb, type Tx } from '../../db/tenant-db';
-import { frDate } from '../acces/appels';
+import { duSemestre } from '../notifications/phrases';
 import { AcademyEquipeService } from '../academy/academy-equipe.service';
 import { employeActif } from '../academy/academy-evaluation.service';
 import { notifier } from '../notifications/notifier';
@@ -424,12 +421,17 @@ export class ObjectifsService {
               SELECT p.given_name || ' ' || p.family_name AS nom
                 FROM employees e JOIN persons p ON p.id = e.person_id WHERE e.id = ${moi}`)
           ).rows;
+          // Une par jour au plus, et seule la dernière reste dans la boîte.
+          const sujet = `objectifs:fiche:${employeeId}:${an}:${input.semestre}:`;
+          const { rows: deja } = await tx.execute(sql`
+            SELECT 1 FROM notifications
+             WHERE recipient_user_id = ${compte} AND dedupe_key LIKE ${`${sujet}%`} LIMIT 1`);
           await notifier(tx, user.tenantId, compte, {
             type: 'objectif',
-            title: titreDuSemestre(input.semestre, an),
-            body: `${auteur?.nom ?? 'Votre n+1'} les a mis à jour.`,
+            title: `${auteur?.nom ?? 'Votre n+1'} a ${deja.length > 0 ? 'mis à jour' : 'fixé'} vos objectifs ${duSemestre(input.semestre, an)}`,
             link: '/moi/objectifs',
-            dedupeKey: `objectifs:fiche:${employeeId}:${an}:${input.semestre}:${this.aujourdhui()}`,
+            dedupeKey: `${sujet}${this.aujourdhui()}`,
+            remplace: sujet,
           });
         }
       }
@@ -560,8 +562,7 @@ export class ObjectifsService {
       if (compte) {
         await notifier(tx, user.tenantId, compte, {
           type: 'objectif',
-          title: `Auto-évaluation de ${await this.nomDe(tx, moi)}`,
-          body: `${titreDuSemestre(f.semestre === 1 ? 1 : 2, annee)} : à évaluer.`,
+          title: `${await this.nomDe(tx, moi)} a envoyé son auto-évaluation ${duSemestre(semestre, annee)}`,
           link: `/moi/equipe/suivi/${moi}?vue=evaluation`,
           dedupeKey: `objectifs:commentaires:${moi}:${annee}:${semestre}`,
         });
@@ -619,8 +620,7 @@ export class ObjectifsService {
       if (compte) {
         await notifier(tx, user.tenantId, compte, {
           type: 'objectif',
-          title: `Évaluation de vos objectifs du ${semestre === 1 ? '1er' : '2nd'} semestre ${annee}`,
-          body: `${await this.nomDe(tx, moi)} l’a validée : ${f.evaluation_note} — ${LIBELLES_NOTE[f.evaluation_note]}.`,
+          title: `${await this.nomDe(tx, moi)} a évalué vos objectifs ${duSemestre(semestre, annee)}`,
           link: '/moi/objectifs',
           dedupeKey: `objectifs:evaluation:${employeeId}:${annee}:${semestre}`,
         });
@@ -834,12 +834,13 @@ export class ObjectifsService {
       if (apres.niveau === 'individuel' && apres.evaluation && apres.employee_id) {
         const compte = await this.compteDe(tx, apres.employee_id);
         if (compte) {
+          // Revue le lendemain, l'évaluation prend la place de la précédente.
           await notifier(tx, user.tenantId, compte, {
             type: 'objectif',
-            title: `Objectif évalué : ${apres.titre}`,
-            body: `${LIBELLES_EVALUATION[apres.evaluation]}${apres.commentaire ? ` : « ${apres.commentaire} »` : ''}`,
+            title: `${await this.nomDe(tx, moi)} a évalué votre objectif « ${apres.titre} »`,
             link: '/moi/objectifs',
-            dedupeKey: `objectif:${apres.id}:evaluation:${apres.evaluation}`,
+            dedupeKey: `objectif:${apres.id}:evaluation:${this.aujourdhui()}`,
+            remplace: `objectif:${apres.id}:evaluation:`,
           });
         }
       }
@@ -1031,19 +1032,13 @@ export class ObjectifsService {
     moi: string,
     o: LigneObjectif,
   ): Promise<void> {
-    const auteur = o.auteur ?? 'Votre n+1';
     const le = this.aujourdhui();
     if (o.niveau === 'individuel' && o.employee_id) {
       const compte = await this.compteDe(tx, o.employee_id);
       if (!compte) return;
-      const echeance = jour(o.echeance);
       await notifier(tx, user.tenantId, compte, {
         type: 'objectif',
-        title:
-          o.nature === 'formation'
-            ? `Formation à suivre : ${o.titre}`
-            : `Nouvel objectif : ${o.titre}`,
-        body: `Fixé par ${auteur}${echeance ? `, pour le ${frDate(echeance)}` : ''}.`,
+        title: `${o.auteur ?? 'Votre n+1'} vous a fixé ${o.nature === 'formation' ? 'une formation' : 'un objectif'} : ${o.titre}`,
         link: '/moi/objectifs',
         dedupeKey: `objectif:${o.id}`,
       });
@@ -1065,20 +1060,22 @@ export class ObjectifsService {
               moi,
             )
           : await this.comptes(tx, sql`TRUE`, moi);
-    const title =
+    const quoi =
       o.niveau === 'direction'
-        ? `Objectifs ${o.annee} de votre direction`
-        : `Orientations ${o.annee} de l’APIX`;
+        ? { nom: `les objectifs ${o.annee} de votre direction`, fixes: 'sont fixés' }
+        : { nom: `les orientations ${o.annee} de l’APIX`, fixes: 'sont fixées' };
+    const title = o.auteur
+      ? `${o.auteur} a fixé ${quoi.nom}`
+      : `${quoi.nom[0]!.toUpperCase()}${quoi.nom.slice(1)} ${quoi.fixes}`;
+    const sujet =
+      o.niveau === 'direction' ? `objectifs:direction:${o.direction_id}:` : 'objectifs:apix:';
     for (const compte of destinataires) {
       await notifier(tx, user.tenantId, compte, {
         type: 'objectif',
         title,
-        body: `${auteur} les a fixés.`,
         link: '/moi/objectifs',
-        dedupeKey:
-          o.niveau === 'direction'
-            ? `objectifs:direction:${o.direction_id}:${le}`
-            : `objectifs:apix:${le}`,
+        dedupeKey: `${sujet}${le}`,
+        remplace: sujet,
       });
     }
   }

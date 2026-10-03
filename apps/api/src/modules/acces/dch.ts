@@ -1,6 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
 import {
-  CAPACITE_INFOS,
   CAPACITES_DELEGABLES,
   CAPACITES_GESTION,
   type Capacite,
@@ -352,16 +351,6 @@ export async function capacitesDe(
   return { capacites: [...base], estAgent: true, dirigeLaDCH: false, estDG };
 }
 
-/** Un libellé dans une phrase : « jours fériés », mais « APIX Academy » garde son sigle. */
-const enMinuscule = (l: string): string =>
-  /^\p{Lu}{2}/u.test(l) ? l : l.charAt(0).toLowerCase() + l.slice(1);
-
-const libelles = (capacites: string[]) =>
-  capacites
-    .map((c) => CAPACITE_INFOS[c as Capacite]?.libelle ?? c)
-    .map(enMinuscule)
-    .join(', ');
-
 export async function nomDe(tx: Tx, employeeId: string): Promise<string> {
   const { rows } = await tx.execute<{ nom: string }>(sql`
     SELECT p.given_name || ' ' || p.family_name AS nom
@@ -376,9 +365,8 @@ export async function nomDe(tx: Tx, employeeId: string): Promise<string> {
  * l'attendent.
  */
 export async function verifierLesHabilitations(tx: Tx, tenantId: string): Promise<void> {
-  const { rows } = await tx.execute<{ employee_id: string; capacites: string[] }>(sql`
-    SELECT employee_id, array_agg(capacite ORDER BY capacite) AS capacites
-      FROM habilitations WHERE fin_at IS NULL GROUP BY employee_id`);
+  const { rows } = await tx.execute<{ employee_id: string }>(sql`
+    SELECT DISTINCT employee_id FROM habilitations WHERE fin_at IS NULL`);
   if (rows.length === 0) return;
   const dch = await directionDuPersonnel(tx);
   for (const r of rows) {
@@ -390,8 +378,7 @@ export async function verifierLesHabilitations(tx: Tx, tenantId: string): Promis
     const nom = await nomDe(tx, r.employee_id);
     await notifier(tx, tenantId, dch.directeur.userId, {
       type: 'delegation_rompue',
-      title: `${nom} ne fait plus partie de la DCH`,
-      body: `Ses habilitations sont retirées : ${libelles(r.capacites)}. Les demandes qu’elle ou il traitait passent aux autres membres habilités, ou vous reviennent. Vous pouvez confier ces tâches à un autre membre de votre direction.`,
+      title: `${nom} a quitté la DCH, ses délégations sont retirées`,
       link: '/moi/delegations',
       dedupeKey: `habilitations:${r.employee_id}:partie:${new Date().toISOString().slice(0, 10)}`,
     });

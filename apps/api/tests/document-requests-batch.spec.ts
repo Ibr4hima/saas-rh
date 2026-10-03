@@ -223,6 +223,31 @@ describe('validation en lot', () => {
   });
 });
 
+describe('le suivi, côté employé', () => {
+  it('chaque étape prend la place de la précédente dans sa boîte', async () => {
+    const [id] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
+    const boite = async () =>
+      (
+        await raw(
+          `SELECT title FROM notifications
+            WHERE tenant_id = $1 AND recipient_user_id = $2 AND remplacee_le IS NULL
+            ORDER BY created_at`,
+          [tenantId, awaUserId],
+        )
+      ).rows.map((r) => (r as { title: string }).title);
+    await service.advance(rh, id, { status: 'processing' });
+    expect(await boite()).toEqual(['Votre attestation de travail est en préparation']);
+    await service.advance(rh, id, { status: 'ready', pickupContact: 'Mme Fatou Sall' });
+    expect(await boite()).toEqual([
+      'Votre attestation de travail est prête, à retirer auprès de Mme Fatou Sall',
+    ]);
+    await service.advance(rh, id, { status: 'ready', pickupContact: 'M. Diallo' });
+    expect(await boite()).toEqual([
+      'Votre attestation de travail est à retirer auprès de M. Diallo',
+    ]);
+  });
+});
+
 describe('lot qui n’est plus à jour', () => {
   it('écarte la demande déjà traitée et laisse partir les autres', async () => {
     const [a] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];

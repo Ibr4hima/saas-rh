@@ -30,6 +30,7 @@ import { aTraiterPar, confierLaDemande } from '../src/modules/acces/demandes';
 import { DocumentRequestsService } from '../src/modules/docs/document-requests.service';
 import { EmployeeDocumentsService } from '../src/modules/docs/employee-documents.service';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
+import { frDate } from '../src/modules/notifications/phrases';
 import { ProfileChangesService } from '../src/modules/profile/profile-changes.service';
 import { reconcilierLeCircuit } from '../src/modules/time/visas';
 
@@ -473,6 +474,16 @@ describe('les pièces justificatives', () => {
     const { id: cni } = await titre('cni', 'CNI recto-verso', await dans(800));
     expect(await appels('piece', diplome)).toEqual(['dch:Awa']);
     expect(await appels('piece', cni)).toEqual(['dch:Khady']);
+    const titres = async (qui: Agent, cle: string) =>
+      (
+        await raw(
+          `SELECT title FROM notifications WHERE recipient_user_id = $1 AND dedupe_key LIKE $2
+            ORDER BY title`,
+          [qui.session.userId, cle],
+        )
+      ).rows.map((r) => r.title as string);
+    expect(await titres(khady, `piece:${cni}:%`)).toEqual(['Moussa Test a déposé sa CNI']);
+    expect(await titres(awa, `piece:${diplome}:%`)).toEqual(['Moussa Test a déposé un diplôme']);
     // Awa ne vérifie pas les pièces d'identité ; le directeur, si.
     expect(await codeOf(() => pieces.review(awa.session, cni, { decision: 'approved' }))).toBe(
       'demandes.pas_traitant',
@@ -480,6 +491,10 @@ describe('les pièces justificatives', () => {
     await pieces.review(mariama.session, cni, { decision: 'approved', titre: await infos() });
     await pieces.review(awa.session, diplome, { decision: 'approved' });
     expect(await appels('piece', diplome)).toEqual([]);
+    expect(await titres(moussa, 'piece:%:verdict')).toEqual([
+      'Votre CNI est ajoutée à votre dossier',
+      'Votre diplôme est ajouté à votre dossier',
+    ]);
   });
 
   it('le contenu : le titulaire, et qui vérifie les pièces — pas un autre agent', async () => {
@@ -695,23 +710,28 @@ describe('les pièces justificatives', () => {
   it('l’expiration : un rappel quinze jours avant, un le jour même — au titulaire, une fois chacun', async () => {
     const { id } = await titre('passeport', 'Passeport', await dans(10));
     const relever = (qui: Agent) => new NotificationsService(db).list(qui.session);
+    /** Les rappels envoyés ; « remplacé » : celui qui a quitté la boîte. */
     const rappels = async (qui: Agent) =>
       (
         await raw(
-          `SELECT title FROM notifications
+          `SELECT title, remplacee_le IS NOT NULL AS remplace FROM notifications
             WHERE type = 'document_expiry' AND recipient_user_id = $1 ORDER BY created_at`,
           [qui.session.userId],
         )
-      ).rows.map((r) => r.title as string);
+      ).rows.map((r) => `${r.title as string}${r.remplace ? ' (remplacé)' : ''}`);
     await relever(moussa);
     await relever(moussa);
-    expect(await rappels(moussa)).toEqual(['Passeport : expiration proche']);
-    // Le jour J.
+    expect(await rappels(moussa)).toEqual([`Votre passeport expire le ${frDate(await dans(10))}`]);
+    // Le jour J : l'avis du jour prend la place de celui des quinze jours.
     await raw(`UPDATE employee_documents SET expires_on = CURRENT_DATE WHERE id = $1`, [id]);
     await relever(moussa);
     expect(await rappels(moussa)).toEqual([
-      'Passeport : expiration proche',
-      'Passeport : expire aujourd’hui',
+      `Votre passeport expire le ${frDate(await dans(10))} (remplacé)`,
+      'Votre passeport expire aujourd’hui',
+    ]);
+    const { items } = await relever(moussa);
+    expect(items.filter((n) => n.type === 'document_expiry').map((n) => n.title)).toEqual([
+      'Votre passeport expire aujourd’hui',
     ]);
     // Personne d'autre : ni la DCH, ni un collègue.
     await relever(mariama);
@@ -734,7 +754,7 @@ describe('les échéances de contrat', () => {
       `SELECT u.given_name AS qui, p.given_name AS de
          FROM notifications n
          JOIN users u ON u.id = n.recipient_user_id
-         JOIN contracts c ON n.dedupe_key = 'contract_deadline:' || c.id
+         JOIN contracts c ON n.dedupe_key LIKE 'contract_deadline:' || c.id || '%'
          JOIN employees e ON e.id = c.employee_id
          JOIN persons p ON p.id = e.person_id
         WHERE n.tenant_id = $1 AND n.type = 'contract_deadline'
@@ -755,6 +775,10 @@ describe('les échéances de contrat', () => {
     raw(`DELETE FROM notifications WHERE tenant_id = $1 AND type = 'contract_deadline'`, [
       tenantId,
     ]);
+  const dans = async (jours: number): Promise<string> => {
+    const { rows } = await raw(`SELECT (CURRENT_DATE + $1::int)::text AS d`, [jours]);
+    return rows[0]!.d as string;
+  };
 
   it('vont à qui gère le personnel, jamais à l’agent dont c’est le contrat ; sans délégué présent, au directeur', async () => {
     const typeConge = randomUUID();
@@ -808,6 +832,47 @@ describe('les échéances de contrat', () => {
       await habiliter(khady, 'personnel.gerer', false);
       await raw(`DELETE FROM absence_requests WHERE absence_type_id = $1`, [typeConge]);
       await raw(`DELETE FROM absence_types WHERE id = $1`, [typeConge]);
+      await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
+    }
+  });
+
+  it('reviennent à quinze jours, puis à sept : chaque rappel prend la place du précédent', async () => {
+    await cdd(moussa, 25);
+    const fin = (jours: number) =>
+      raw(
+        `UPDATE contracts SET end_date = CURRENT_DATE + $2::int WHERE tenant_id = $1 AND employee_id = $3`,
+        [tenantId, jours, moussa.employeeId],
+      );
+    const boite = async () =>
+      (await new NotificationsService(db).list(mariama.session)).items
+        .filter((n) => n.type === 'contract_deadline')
+        .map((n) => n.title);
+    try {
+      await relever();
+      await relever();
+      expect(await boite()).toEqual([
+        `Le CDD de Moussa Test prend fin le ${frDate(await dans(25))}`,
+      ]);
+      await fin(12);
+      await relever();
+      expect(await boite()).toEqual([
+        `Rappel : le CDD de Moussa Test prend fin le ${frDate(await dans(12))}`,
+      ]);
+      await fin(5);
+      await relever();
+      await relever();
+      expect(await boite()).toEqual([
+        `Rappel : le CDD de Moussa Test prend fin le ${frDate(await dans(5))}`,
+      ]);
+      // Trois envois en tout, un seul dans la boîte.
+      const { rows } = await raw(
+        `SELECT count(*)::int AS n FROM notifications
+          WHERE tenant_id = $1 AND type = 'contract_deadline' AND recipient_user_id = $2`,
+        [tenantId, mariama.session.userId],
+      );
+      expect(rows[0]!.n).toBe(3);
+    } finally {
+      await recommencer();
       await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
     }
   });

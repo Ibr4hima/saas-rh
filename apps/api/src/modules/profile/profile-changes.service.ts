@@ -293,21 +293,12 @@ export class ProfileChangesService {
       await reconcilierUneDemande(tx, 'informations', requestId);
 
       if (!target?.userId) return; // dossier sans compte portail : rien à notifier
-      const drafts = {
-        approve: {
-          title: 'Vos informations ont été mises à jour',
-          body: 'La Direction du Capital Humain a validé les corrections que vous aviez signalées.',
-        },
-        reject: {
-          title: 'Vos corrections n’ont pas été retenues',
-          body: `Motif : ${input.message?.trim()}`,
-        },
-      } as const;
-      const draft = drafts[input.decision];
       await this.notifications.notifyUser(tx, user.tenantId, target.userId, {
         type: `profile_change_${input.decision}`,
-        title: draft.title,
-        body: draft.body,
+        title:
+          input.decision === 'approve'
+            ? 'Vos informations sont mises à jour'
+            : 'Votre demande de mise à jour est refusée',
         link: '/moi',
       });
     });

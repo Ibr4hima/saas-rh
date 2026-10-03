@@ -173,11 +173,12 @@ async function appels(id: string): Promise<string[]> {
 }
 async function notif(prenom: string, cle: string): Promise<string | null> {
   const { rows } = await raw(
-    `SELECT n.body FROM notifications n JOIN users u ON u.id = n.recipient_user_id
-      WHERE u.given_name = $1 AND n.tenant_id = $2 AND n.dedupe_key LIKE $3`,
+    `SELECT n.title FROM notifications n JOIN users u ON u.id = n.recipient_user_id
+      WHERE u.given_name = $1 AND n.tenant_id = $2 AND n.dedupe_key LIKE $3
+        AND n.remplacee_le IS NULL`,
     [prenom, tenantId, cle],
   );
-  return rows[0]?.body ?? null;
+  return rows[0]?.title ?? null;
 }
 
 /** Mariama, qui dirige la DCH, confie les demandes de congé à ce membre. */
@@ -321,7 +322,9 @@ describe('le N+1 d’abord, puis la DCH', () => {
     await viser(mariama, id);
     expect((await vue(id)).status).toBe('approved');
     expect(await appels(id)).toEqual([]);
-    expect(await notif('Moussa', `conge:${id}:verdict`)).toContain('Mariama Test (DCH)');
+    expect(await notif('Moussa', `conge:${id}:verdict`)).toMatch(
+      /^Votre congé annuel du \d+ au \d+ \S+ 2027 est approuvé$/,
+    );
   });
 
   it('refusée par le N+1, elle s’arrête là : la DCH n’est jamais appelée', async () => {
@@ -395,7 +398,7 @@ describe('le directeur confie une demande', () => {
     });
     await viser(awa, id);
     expect(await circuit(id)).toEqual(['n1:visee:Ousmane Test', 'dch:visee:Awa Test/Mariama Test']);
-    expect(await notif('Moussa', `conge:${id}:verdict`)).toContain('Awa Test, pour la DCH');
+    expect(await notif('Moussa', `conge:${id}:verdict`)).toMatch(/est approuvé$/);
   });
 
   it('le directeur garde la main : il vise lui-même une demande confiée, ou la reprend', async () => {
@@ -492,8 +495,8 @@ describe('le directeur habilite des membres de sa direction', () => {
     ]);
     await reconcilier();
     expect(await appels(id)).toEqual(['dch:Mariama']);
-    expect(await notif('Mariama', 'habilitations:%:partie:%')).toContain(
-      'Ses habilitations sont retirées : demandes de congé',
+    expect(await notif('Mariama', 'habilitations:%:partie:%')).toBe(
+      'Awa Test a quitté la DCH, ses délégations sont retirées',
     );
     const { rows } = await raw(`SELECT fin_motif FROM habilitations WHERE employee_id = $1`, [
       awa.employeeId,
@@ -581,7 +584,9 @@ describe('le poste de directeur vacant', () => {
     const id = await poser(moussa);
     await viser(ousmane, id);
     expect(await appels(id)).toEqual([]);
-    expect(await notif('Ibrahima', 'dch:vacante')).toContain('Désignez le responsable');
+    expect(await notif('Ibrahima', 'dch:vacante')).toBe(
+      'Une demande attend un responsable à la Direction du Capital Humain',
+    );
     // L'intérim : l'administrateur désigne Khady à la tête de la DCH.
     await organigramme.update(admin, uDCH, { managerEmployeeId: khady.employeeId });
     expect(await appels(id)).toEqual(['dch:Khady']);
@@ -661,11 +666,20 @@ describe('les relances', () => {
     await reconcilier();
     await reconcilier();
     const { rows } = await raw(
-      `SELECT u.given_name AS qui, n.title FROM notifications n
-         JOIN users u ON u.id = n.recipient_user_id WHERE n.dedupe_key = $1`,
-      [`conge:${id}:rappel:n1`],
+      `SELECT u.given_name AS qui, n.title, n.remplacee_le IS NOT NULL AS remplacee
+         FROM notifications n JOIN users u ON u.id = n.recipient_user_id
+        WHERE n.dedupe_key LIKE $1 ORDER BY n.created_at`,
+      [`conge:${id}:%:n1`],
     );
-    expect(rows).toEqual([{ qui: 'Ousmane', title: 'Congé à valider : Moussa Test (rappel)' }]);
+    // Le rappel prend la place de l'appel dans la boîte.
+    expect(rows).toEqual([
+      { qui: 'Ousmane', title: expect.stringMatching(/^Moussa Test demande/), remplacee: true },
+      {
+        qui: 'Ousmane',
+        title: expect.stringMatching(/^Rappel : Moussa Test demande un congé annuel du /),
+        remplacee: false,
+      },
+    ]);
   });
 
   it('pas de rappel avant le délai', async () => {

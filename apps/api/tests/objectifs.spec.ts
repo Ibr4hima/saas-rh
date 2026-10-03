@@ -83,9 +83,11 @@ async function agent(qui: Nom, prenom: string, nom: string, n1: Nom | null, unit
   );
 }
 
+/** La boîte : ce qui a été remplacé par plus récent n'y est plus. */
 async function notifications(qui: Nom): Promise<{ title: string; link: string | null }[]> {
   const { rows } = await raw(
-    `SELECT title, link FROM notifications WHERE recipient_user_id = $1 ORDER BY created_at`,
+    `SELECT title, link FROM notifications
+      WHERE recipient_user_id = $1 AND remplacee_le IS NULL ORDER BY created_at`,
     [comptes[qui]],
   );
   return rows as { title: string; link: string | null }[];
@@ -265,18 +267,18 @@ describe('qui voit quoi', () => {
     const moussa = await notifications('moussa');
     expect(moussa.map((n) => n.title)).toEqual(
       expect.arrayContaining([
-        'Orientations 2026 de l’APIX',
-        'Objectifs 2026 de votre direction',
-        'Nouvel objectif : Livrer l’étude sectorielle',
+        expect.stringMatching(/ a fixé les orientations 2026 de l’APIX$/),
+        expect.stringMatching(/ a fixé les objectifs 2026 de votre direction$/),
+        'Awa Diop vous a fixé un objectif : Livrer l’étude sectorielle',
       ]),
     );
     expect(moussa.every((n) => n.link === '/moi/objectifs')).toBe(true);
     // Les orientations réservées aux directeurs ne sont pas annoncées à Moussa :
     // une seule notification d'orientations par jour, et c'est celle « à tous ».
-    expect(moussa.filter((n) => n.title.startsWith('Orientations'))).toHaveLength(1);
+    expect(moussa.filter((n) => n.title.includes('orientations'))).toHaveLength(1);
     // Fatou n'est pas de la DCH.
     expect((await notifications('fatou')).map((n) => n.title)).not.toContain(
-      'Nouvel objectif : Livrer l’étude sectorielle',
+      'Awa Diop vous a fixé un objectif : Livrer l’étude sectorielle',
     );
     // Le DG ne se prévient pas lui-même.
     expect(await notifications('dg')).toEqual([]);
@@ -320,7 +322,7 @@ describe('une formation à suivre', () => {
     expect(o.formation).toEqual({ courseId, statut: 'a_commencer', lecons: 2, validees: 0 });
     expect(o.atteint).toBe(false);
     expect((await notifications('moussa')).map((n) => n.title)).toContain(
-      'Formation à suivre : Excel avancé',
+      'Awa Diop vous a fixé une formation : Excel avancé',
     );
 
     expect(
@@ -370,7 +372,7 @@ describe('évaluer, modifier, supprimer', () => {
     expect(evalue.evaluation).toBe('partiel');
     expect(evalue.enRetard).toBe(false);
     expect((await notifications('moussa')).map((n) => n.title)).toContain(
-      'Objectif évalué : Rendre le rapport trimestriel',
+      'Awa Diop a évalué votre objectif « Rendre le rapport trimestriel »',
     );
 
     // Retirer l'évaluation efface aussi le commentaire.
@@ -475,11 +477,26 @@ describe('la fiche d’objectifs', () => {
     });
     expect((await objectifs.fiche(session('awa'), agents.moussa)).fiches).toHaveLength(2);
     // Deux enregistrements le même jour : une notification par fiche, pas plus.
-    expect(
-      (await notifications('moussa')).filter((n) => n.title.startsWith('Objectifs du')),
-    ).toEqual([
-      { title: 'Objectifs du 2nd semestre de 2026', link: '/moi/objectifs' },
-      { title: 'Objectifs du 1er semestre de 2026', link: '/moi/objectifs' },
+    const fichesNotifiees = async () =>
+      (await notifications('moussa')).filter((n) => n.title.includes('vos objectifs du'));
+    expect(await fichesNotifiees()).toEqual([
+      { title: 'Awa Diop a fixé vos objectifs du 2nd semestre 2026', link: '/moi/objectifs' },
+      { title: 'Awa Diop a fixé vos objectifs du 1er semestre 2026', link: '/moi/objectifs' },
+    ]);
+    // Mise à jour un autre jour : la nouvelle prend la place de l'ancienne.
+    await raw(
+      `UPDATE notifications SET dedupe_key = regexp_replace(dedupe_key, ':[0-9-]+$', ':2026-01-01')
+        WHERE recipient_user_id = $1 AND dedupe_key LIKE 'objectifs:fiche:%'`,
+      [comptes.moussa],
+    );
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      annee: 2026,
+      semestre: 1,
+      contenu: [bloc('checkListItem', 'Clore les comptes', { checked: true })],
+    });
+    expect(await fichesNotifiees()).toEqual([
+      { title: 'Awa Diop a fixé vos objectifs du 2nd semestre 2026', link: '/moi/objectifs' },
+      { title: 'Awa Diop a mis à jour vos objectifs du 1er semestre 2026', link: '/moi/objectifs' },
     ]);
   });
 
@@ -619,7 +636,7 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
     });
     expect((await vueN1()).evaluation.envoyesLe).not.toBeNull();
     expect((await notifications('awa')).map((n) => n.title)).toContain(
-      'Auto-évaluation de Moussa Ndiaye',
+      'Moussa Ndiaye a envoyé son auto-évaluation du 1er semestre 2024',
     );
     expect(
       (await objectifs.suiviEquipe(session('awa'))).membres.find((m) => m.givenName === 'Moussa')!
@@ -657,7 +674,7 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
       evaluateur: 'Awa Diop',
     });
     expect((await notifications('moussa')).map((n) => n.title)).toContain(
-      'Évaluation de vos objectifs du 1er semestre 2024',
+      'Awa Diop a évalué vos objectifs du 1er semestre 2024',
     );
     expect(
       await codeOf(() =>

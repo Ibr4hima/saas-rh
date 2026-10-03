@@ -1,9 +1,9 @@
 import { sql, type SQL } from 'drizzle-orm';
-import type { ChangementRattachement, MotifChangement } from '@teranga/contracts';
+import type { ChangementRattachement, ContractType, MotifChangement } from '@teranga/contracts';
 import { ProblemException } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
-import { frDate } from '../acces/appels';
 import { alerterLaDCH } from '../acces/dch';
+import { CONTRAT } from '../notifications/phrases';
 import { reconcilierDemande, reconcilierLeCircuit } from '../time/visas';
 import {
   directionDeEmploye,
@@ -19,8 +19,6 @@ import { dernierContrat } from './en-activite';
    La fin de contrat, d'elle-même : les dossiers des contrats arrivés à
    terme passent dans les inactifs (cf. en-activite.ts pour la règle).
    ———————————————————————————————————————————————————————————————— */
-
-const TYPES: Record<string, string> = { cdd: 'CDD', stage: 'Stage' };
 
 /**
  * L'activité s'arrête : le dernier jour se note au dossier, et sa dernière
@@ -89,7 +87,7 @@ export async function reprendreLActivite(
  *     un n+1 ;
  *   - ses demandes de congé en attente sont annulées ; son portail reste
  *     ouvert un mois, restreint, puis se ferme.
- * Qui suit les échéances pour la DCH l'apprend, avec ce qui reste à faire.
+ * Qui suit les échéances pour la DCH l'apprend.
  * Rend le nombre de dossiers passés dans les inactifs.
  */
 export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promise<number> {
@@ -99,12 +97,10 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
     contrat: string;
     type: string;
     fin: string;
-    fin_acces: string;
     n1: string | null;
   }>(sql`
     SELECT e.id, p.given_name || ' ' || p.family_name AS nom, c.id AS contrat,
            c.contract_type AS type, c.end_date::text AS fin,
-           (c.end_date + interval '1 month')::date::text AS fin_acces,
            e.manager_employee_id AS n1
       FROM employees e
       JOIN persons p ON p.id = e.person_id
@@ -124,15 +120,13 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
              archived_at = (${a.fin}::date + 1)::timestamptz, updated_at = now()
        WHERE id = ${a.id}`);
     await arreterLActivite(tx, a.id, sql`${a.fin}::date`);
-    const { rows: unites } = await tx.execute<{ name: string }>(sql`
+    await tx.execute(sql`
       UPDATE org_units SET manager_employee_id = NULL, updated_at = now()
-       WHERE manager_employee_id = ${a.id} AND deleted_at IS NULL
-      RETURNING name`);
+       WHERE manager_employee_id = ${a.id} AND deleted_at IS NULL`);
 
     // L'équipe remonte d'un cran — rattachement par rattachement, sous la
     // règle —, ou passe au responsable de sa direction.
     const journal: ChangementRattachement[] = [];
-    let reprise = 0;
     for (const m of equipe) {
       const candidats: [string | null, MotifChangement][] = [
         [a.n1, 'reprise_equipe'],
@@ -143,7 +137,6 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
         try {
           await validerRattachement(tx, m.id, cible, await directionDeEmploye(tx, m.id));
           await rattacher(tx, journal, m.id, cible, motif);
-          reprise += 1;
           break;
         } catch (err) {
           if (!(err instanceof ProblemException)) throw err;
@@ -157,32 +150,17 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
       RETURNING id`);
     for (const d of annulees) await reconcilierDemande(tx, d.id);
 
-    const suite: string[] = [];
-    if (unites.length > 0) {
-      const noms = unites.map((u) => `« ${u.name} »`).join(', ');
-      suite.push(`${noms} n’a plus de responsable : nommez un successeur.`);
-    }
-    if (equipe.length > 0) {
-      const repreneurs = [...new Set(journal.map((c) => c.apres).filter(Boolean))];
-      suite.push(
-        reprise === equipe.length && repreneurs.length > 0
-          ? `Son équipe relève désormais de ${repreneurs.join(' et de ')}.`
-          : `Son équipe attend un nouveau n+1 (${equipe.length - reprise} agent${equipe.length - reprise > 1 ? 's' : ''}).`,
-      );
-    }
     await alerterLaDCH(
       tx,
       tenantId,
       'personnel.gerer',
       {
         type: 'contract_ended',
-        title: `Contrat de ${a.nom} arrivé à terme`,
-        body: [
-          `${TYPES[a.type] ?? 'Contrat'} terminé le ${frDate(a.fin)} : le dossier est passé dans les inactifs. Son accès au portail reste ouvert jusqu’au ${frDate(a.fin_acces)}, le temps de récupérer ses documents.`,
-          ...suite,
-        ].join(' '),
+        title: `Le ${CONTRAT[a.type as ContractType] ?? 'contrat'} de ${a.nom} a pris fin`,
         link: `/employees/${a.id}`,
         dedupeKey: `contrat_termine:${a.contrat}`,
+        // Ses rappels d'échéance n'ont plus d'objet.
+        remplace: `contract_deadline:${a.contrat}`,
       },
       a.id,
     );

@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm';
 import type { EtapeConge } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 import { notifier } from '../notifications/notifier';
-import { frDate, relancer, retirerLesAppels, tenirLesAppels } from '../acces/appels';
+import { relancer, retirerLesAppels, tenirLesAppels } from '../acces/appels';
+import { absence, accord, duAu } from '../notifications/phrases';
 import {
   directionDuPersonnel,
   nomsDe,
@@ -206,11 +207,10 @@ export async function lireDemande(tx: Tx, requestId: string): Promise<Demande | 
     : null;
 }
 
-function periode(d: Demande): string {
-  const jours = `${d.jours} jour${d.jours > 1 ? 's' : ''}`;
-  return d.debut === d.fin
-    ? `${d.type} · le ${frDate(d.debut)} (${jours})`
-    : `${d.type} · du ${frDate(d.debut)} au ${frDate(d.fin)} (${jours})`;
+/** « Moussa Ndiaye demande un congé annuel du 10 au 12 mai 2027 ». */
+function demandeDe(d: Demande): string {
+  const a = absence(d.type);
+  return `${d.nom} demande ${a.article} ${a.nom} ${duAu(d.debut, d.fin)}`;
 }
 
 /** La clé de l'appel à viser : une par demande, par étape. */
@@ -222,28 +222,15 @@ export async function annoncerLeVerdict(
   tx: Tx,
   d: Demande,
   verdict: 'approved' | 'rejected',
-  par: string,
-  commentaire?: string | null,
 ): Promise<void> {
   if (!d.demandeurUserId) return;
+  const a = absence(d.type);
   await notifier(tx, d.tenantId, d.demandeurUserId, {
     type: verdict === 'approved' ? 'conge_approuve' : 'conge_refuse',
-    title: verdict === 'approved' ? 'Congé approuvé' : 'Congé refusé',
-    body: `${periode(d)}. ${verdict === 'approved' ? 'Approuvée' : 'Refusée'} par ${par}.${
-      commentaire ? ` « ${commentaire} »` : ''
-    }`,
+    title: `Votre ${a.nom} ${duAu(d.debut, d.fin)} est ${accord(verdict === 'approved' ? 'approuvé' : 'refusé', a)}`,
     link: '/moi/conges/historique',
     dedupeKey: cleVerdict(d.id),
   });
-}
-
-/** Qui a visé l'étape du N+1, pour le dire à la DCH. */
-async function viseParN1(tx: Tx, requestId: string): Promise<string | null> {
-  const { rows } = await tx.execute<{ nom: string }>(sql`
-    SELECT u.given_name || ' ' || u.family_name AS nom
-      FROM absence_approvals a JOIN users u ON u.id = a.decided_by_user_id
-     WHERE a.request_id = ${requestId} AND a.level = ${NIVEAU_N1} AND a.decision = 'approved'`);
-  return rows[0]?.nom ?? null;
 }
 
 /**
@@ -273,26 +260,14 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
   if (att.etape === 'n1') {
     await tenirLesAppels(tx, d.tenantId, prefixe, 'n1', destinataires, {
       type: 'conge_a_viser',
-      title: `Congé à valider : ${d.nom}`,
-      body: att.demandeDuDirecteur
-        ? `${periode(d)}. Vous êtes son N+1 : votre visa suffit.`
-        : `${periode(d)}. Vous êtes son N+1 : la DCH la reçoit après votre visa.`,
+      title: demandeDe(d),
       link: '/moi/equipe',
     });
     return;
   }
-  const n1 = await viseParN1(tx, requestId);
-  const origine = n1
-    ? `Visée par ${n1}, son N+1.`
-    : 'Sans N+1 disponible, elle vient directement à la DCH.';
   await tenirLesAppels(tx, d.tenantId, prefixe, 'dch', destinataires, {
     type: 'conge_a_viser',
-    title: `Congé à traiter : ${d.nom}`,
-    body: att.parDelegationDe
-      ? `${periode(d)}. ${origine} Confiée par ${att.parDelegationDe.nom} (DCH).`
-      : att.valideurs[0]?.employeeId === att.dch?.directeurEmployeeId
-        ? `${periode(d)}. ${origine} Vous pouvez la traiter, ou la confier à un membre de la DCH.`
-        : `${periode(d)}. ${origine}`,
+    title: demandeDe(d),
     link: '/moi/dch',
   });
 }
@@ -346,14 +321,12 @@ async function verifierLaVacance(tx: Tx, tenantId: string, enAttente: string[]):
   }
   const { rows } = await tx.execute<{ user_id: string }>(sql`
     SELECT user_id FROM user_tenant_memberships WHERE tenant_id = ${tenantId} AND role = 'admin'`);
-  const qui = dch
-    ? `la ${dch.nom} n’a pas de responsable qui puisse les traiter`
-    : 'aucune direction du personnel n’est désignée dans l’organigramme';
   for (const r of rows) {
     await notifier(tx, tenantId, r.user_id, {
       type: 'dch_vacante',
-      title: 'Des demandes attendent la DCH',
-      body: `${bloquees > 1 ? `${bloquees} demandes attendent` : 'Une demande attend'} : ${qui}. Désignez le responsable ou l’intérimaire dans l’organigramme.`,
+      title: dch
+        ? `${bloquees > 1 ? 'Des demandes attendent' : 'Une demande attend'} un responsable à la ${dch.nom}`
+        : `${bloquees > 1 ? 'Des demandes attendent' : 'Une demande attend'} une direction du personnel`,
       link: '/organisation',
       dedupeKey: 'dch:vacante',
     });

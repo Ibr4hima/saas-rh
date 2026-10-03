@@ -177,8 +177,7 @@ describe('génération du rappel (chemin complet)', () => {
     await service.list(user);
     const r = await rappels();
     expect(r).toHaveLength(1);
-    expect(r[0]!.title).toContain('Fête de démonstration');
-    expect(r[0]!.body).toContain('chômé');
+    expect(r[0]!.title).toMatch(/^Fête de démonstration, férié le \S+ \d/);
   });
 
   it("ne réécrit RIEN au sondage suivant — c'est l'invariant qui avait cassé", async () => {
@@ -227,8 +226,7 @@ describe('garde-fou d’idempotence (SQL généré)', () => {
         tenantId,
         recipientUserId: userId,
         type: 'holiday_reminder',
-        title: 'Jour férié à venir : Fête de démonstration',
-        body: 'corps',
+        title: 'Fête de démonstration, férié le lundi 5 octobre 2026',
         link: '/calendrier',
         dedupeKey: holidayDedupeKey(JOUR_DU),
       });

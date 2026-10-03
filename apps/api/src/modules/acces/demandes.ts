@@ -4,8 +4,6 @@ import {
   capaciteDuDocument,
   type DocumentCategory,
   capacitesDuType,
-  PROFILE_CHANGE_ALL_LABELS,
-  REQUESTABLE_DOC_LABELS,
   type CapaciteDemande,
   type RequestableDoc,
   type SessionUser,
@@ -14,6 +12,7 @@ import {
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
+import { DOCUMENT, enumerer, PIECE } from '../notifications/phrases';
 import { retirerLesAppels, tenirLesAppels } from './appels';
 import {
   agentDuCompte,
@@ -55,8 +54,8 @@ interface Definition {
   detail: SQL;
   /** L'habilitation qui la traite. */
   capacite: (detail: unknown) => CapaciteDemande;
-  objet: (detail: unknown) => string;
-  titre: (nom: string) => string;
+  /** « Moussa Ndiaye demande une attestation de travail ». */
+  titre: (nom: string, detail: unknown) => string;
   lien: string;
 }
 
@@ -68,11 +67,13 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
     detail: sql.raw('to_jsonb(r.doc_types)'),
     // Un document par demande (cf. DocumentRequestsService.create).
     capacite: (d) => capaciteDuDocument((d as RequestableDoc[])[0]!),
-    objet: (d) =>
-      (d as string[])
-        .map((x) => REQUESTABLE_DOC_LABELS[x as keyof typeof REQUESTABLE_DOC_LABELS] ?? x)
-        .join(', '),
-    titre: (nom) => `Demande de document : ${nom}`,
+    titre: (nom, d) =>
+      `${nom} demande ${enumerer(
+        (d as RequestableDoc[]).map((x) => {
+          const doc = DOCUMENT[x] ?? DOCUMENT.autre;
+          return `${doc.article} ${doc.nom}`;
+        }),
+      )}`,
     lien: '/documents',
   },
   informations: {
@@ -81,11 +82,7 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
     enAttente: sql.raw(`r.status = 'pending'`),
     detail: sql.raw('r.changes'),
     capacite: () => 'demandes.informations',
-    objet: (d) =>
-      `À mettre à jour : ${Object.keys(d as Record<string, unknown>)
-        .map((k) => (PROFILE_CHANGE_ALL_LABELS[k] ?? k).toLowerCase())
-        .join(', ')}`,
-    titre: (nom) => `Changement d’informations : ${nom}`,
+    titre: (nom) => `${nom} demande une mise à jour de ses informations`,
     lien: '/demandes/informations',
   },
   pieces: {
@@ -96,9 +93,10 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
     detail: sql.raw(`jsonb_build_object('label', r.label, 'categorie', r.category)`),
     // Un type de document officiel, une délégation (cf. CAPACITES_PIECES).
     capacite: (d) => capaciteDeLaPiece((d as { categorie: DocumentCategory }).categorie),
-    objet: (d) =>
-      `« ${(d as { label: string }).label} » à vérifier, puis à valider pour l’ajouter au dossier`,
-    titre: (nom) => `Pièce à vérifier : ${nom}`,
+    titre: (nom, d) => {
+      const piece = PIECE[(d as { categorie: DocumentCategory }).categorie] ?? PIECE.autre;
+      return `${nom} a déposé ${piece.article} ${piece.nom}`;
+    },
     lien: '/demandes/pieces',
   },
 };
@@ -153,17 +151,14 @@ async function tenir(tx: Tx, d: DemandeDCH, dch: DirectionDuPersonnel | null): P
   const def = DEFINITIONS[d.type];
   const prefixe = `${def.prefixe}:${d.id}`;
   const t = await traitementDe(tx, d.capacite, d, dch);
-  const objet = def.objet(d.detail);
   if (t.aConfier && t.dch?.directeur) {
     await tenirLesAppels(tx, d.tenantId, prefixe, 'a-confier', [t.dch.directeur.userId], {
       type: 'demande_a_confier',
-      title: `Votre demande est à confier`,
-      body: `${objet}. Personne d’autre à la DCH n’est habilité à la traiter : confiez-la à un membre de votre direction.`,
+      title: 'Votre demande est à confier à un membre de la DCH',
       link: def.lien,
     });
     return;
   }
-  const directeurTraite = t.traitants[0]?.employeeId === t.dch?.directeurEmployeeId;
   await tenirLesAppels(
     tx,
     d.tenantId,
@@ -172,12 +167,7 @@ async function tenir(tx: Tx, d: DemandeDCH, dch: DirectionDuPersonnel | null): P
     t.traitants.map((v) => v.userId),
     {
       type: 'demande_a_traiter',
-      title: def.titre(d.nom),
-      body: t.parDelegationDe
-        ? `${objet}. Confiée par ${t.parDelegationDe.nom} (DCH).`
-        : directeurTraite
-          ? `${objet}. Vous pouvez la traiter, ou la confier à un membre de la DCH.`
-          : `${objet}.`,
+      title: def.titre(d.nom, d.detail),
       link: def.lien,
     },
   );

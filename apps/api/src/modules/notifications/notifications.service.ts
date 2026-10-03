@@ -2,39 +2,25 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, gte, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
+  ContractType,
   Espace,
   ExpiringContractView,
   NotificationScope,
   NotificationsPage,
   SessionUser,
 } from '@teranga/contracts';
-import {
-  DOCUMENT_CATEGORY_LABELS,
-  NOTIFICATIONS_DE_GESTION,
-  NOTIFICATIONS_PERSONNELLES,
-  peut,
-} from '@teranga/contracts';
+import { NOTIFICATIONS_DE_GESTION, NOTIFICATIONS_PERSONNELLES, peut } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayReminderDate } from '../time/workdays';
 import { reconcilierSiLeTempsEstVenu } from '../time/visas';
 import { notifier, type NotificationDraft } from './notifier';
+import { CONTRAT, frDate, PIECE, rappel } from './phrases';
 import { alerterLaDCH } from '../acces/dch';
 import { inactiverSiLeTempsEstVenu } from '../people/activite';
 
 export type { NotificationDraft } from './notifier';
-
-/** « 9 septembre 2026 » — jamais d'ISO brut dans un texte lu par un humain. */
-function frDate(iso: string, withWeekday = false): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('fr-FR', {
-    ...(withWeekday ? { weekday: 'long' as const } : {}),
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
-}
 
 /**
  * Clé d'idempotence d'un rappel de férié : le JOUR, pas l'identifiant.
@@ -76,8 +62,12 @@ export function holidayAlreadySentSql(userId: string) {
   )`;
 }
 
-/** Les trois prédicats qui reviennent partout, nommés une fois pour toutes. */
-const mien = (userId: string) => eq(t.notifications.recipientUserId, userId);
+/**
+ * Les trois prédicats qui reviennent partout, nommés une fois pour toutes.
+ * Une notification remplacée par une plus récente n'est plus à personne.
+ */
+const mien = (userId: string) =>
+  and(eq(t.notifications.recipientUserId, userId), isNull(t.notifications.remplaceeLe))!;
 const dansLaBoite = () => isNull(t.notifications.archivedAt);
 const range = () => sql`${t.notifications.archivedAt} IS NOT NULL`;
 
@@ -383,8 +373,7 @@ export class NotificationsService {
           tenantId,
           recipientUserId: userId,
           type: 'holiday_reminder',
-          title: `Jour férié à venir : ${h.label}`,
-          body: `${frDate(h.day, true)} est chômé. Pensez-y pour vos rendez-vous et vos échéances.`,
+          title: `${h.label}, férié le ${frDate(h.day, true)}`,
           link: '/calendrier',
           dedupeKey: holidayDedupeKey(h.day),
         })),
@@ -428,55 +417,49 @@ export class NotificationsService {
           WHERE n.recipient_user_id = ${userId}
             AND n.dedupe_key = 'expiration:' || du.id || ':' || du.etape)`);
     for (const r of rows) {
-      const titre = DOCUMENT_CATEGORY_LABELS[r.category];
-      // « votre passeport… le renouveler », « votre carte… la renouveler ».
-      const nom = r.category === 'cni' ? 'carte nationale d’identité' : 'passeport';
-      const le = r.category === 'cni' ? 'la' : 'le';
-      const [title, body] =
+      const piece = PIECE[r.category];
+      const title =
         r.etape === 'j15'
-          ? [
-              `${titre} : expiration proche`,
-              `La date d’expiration de votre ${nom} est proche : le ${frDate(r.expires_on)}. Pensez à ${le} renouveler.`,
-            ]
+          ? `Votre ${piece.nom} expire le ${frDate(r.expires_on)}`
           : r.jours === 0
-            ? [
-                `${titre} : expire aujourd’hui`,
-                `Votre ${nom} expire aujourd’hui. Pensez à ${le} renouveler.`,
-              ]
-            : [
-                `${titre} : expiré${r.category === 'cni' ? 'e' : ''}`,
-                `Votre ${nom} a expiré le ${frDate(r.expires_on)}. Pensez à ${le} renouveler.`,
-              ];
+            ? `Votre ${piece.nom} expire aujourd’hui`
+            : `Votre ${piece.nom} a expiré le ${frDate(r.expires_on)}`;
+      // Le jour venu, l'avis du jour prend la place de celui des quinze jours.
       await notifier(tx, tenantId, userId, {
         type: 'document_expiry',
         title,
-        body,
         link: '/moi/documents/justificatifs',
         dedupeKey: `expiration:${r.id}:${r.etape}`,
+        remplace: `expiration:${r.id}:`,
       });
     }
   }
 
   /**
    * Échéances : contrat AVEC date de fin, employé actif, fin dans ≤ 30 jours
-   * (≤ 10 jours pour les contrats d'environ un mois) — alerte à qui gère les
+   * (≤ 10 jours pour les contrats d'environ un mois) : alerte à qui gère les
    * dossiers du personnel pour la DCH (sinon son directeur), jamais à l'agent
-   * dont c'est le contrat ; une par contrat. Elle mène à son dossier, où l'on
+   * dont c'est le contrat. Elle revient à quinze jours, puis à sept : chaque
+   * rappel prend la place du précédent. Elle mène à son dossier, où l'on
    * renouvelle ou l'on clôt.
    */
   private async generateContractDeadlines(tx: Tx, tenantId: string): Promise<void> {
     const rows = await this.selectExpiring(tx);
     for (const { daysLeft, ...r } of rows) {
+      const etape = daysLeft <= 7 ? ':j7' : daysLeft <= 15 ? ':j15' : '';
+      const echeance = `Le ${CONTRAT[r.contractType as ContractType] ?? 'contrat'} de ${r.givenName} ${r.familyName} prend fin ${
+        daysLeft === 0 ? 'aujourd’hui' : `le ${frDate(r.endDate)}`
+      }`;
       await alerterLaDCH(
         tx,
         tenantId,
         'personnel.gerer',
         {
           type: 'contract_deadline',
-          title: `Contrat de ${r.givenName} ${r.familyName} : échéance proche`,
-          body: `${r.contractType.toUpperCase()} jusqu'au ${frDate(r.endDate)} — ${daysLeft} jour${daysLeft > 1 ? 's' : ''} restant${daysLeft > 1 ? 's' : ''}.`,
+          title: etape ? rappel(echeance) : echeance,
           link: `/employees/${r.employeeId}`,
-          dedupeKey: `contract_deadline:${r.contractId}`,
+          dedupeKey: `contract_deadline:${r.contractId}${etape}`,
+          remplace: `contract_deadline:${r.contractId}`,
         },
         r.employeeId,
       );

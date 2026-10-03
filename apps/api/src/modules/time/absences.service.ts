@@ -1047,7 +1047,6 @@ export class AbsencesService {
         );
       }
 
-      const nom = `${user.givenName} ${user.familyName}`;
       const viser = (level: number, parDelegationDe: string | null = null) =>
         tx.insert(t.absenceApprovals).values({
           id: uuidv7(),
@@ -1059,21 +1058,21 @@ export class AbsencesService {
           comment: input.comment,
           parDelegationDe,
         });
-      const clore = async (level: number, par: string) => {
+      const clore = async (level: number) => {
         await tx
           .update(t.absenceRequests)
           .set({ status: input.decision, currentLevel: level, decidedAt: new Date() })
           .where(eq(t.absenceRequests.id, requestId));
         await reconcilierDemande(tx, requestId);
         const d = await lireDemande(tx, requestId);
-        if (d) await annoncerLeVerdict(tx, d, input.decision, par, input.comment);
+        if (d) await annoncerLeVerdict(tx, d, input.decision);
         if (input.decision === 'approved') await this.rappelerAuDirecteur(tx, user, demande, att);
       };
 
       if (att.etape === 'n1') {
         await viser(NIVEAU_N1);
         if (input.decision === 'rejected' || att.demandeDuDirecteur) {
-          await clore(NIVEAU_N1, `${nom}, votre N+1`);
+          await clore(NIVEAU_N1);
           return;
         }
         // Visée par le N+1 : la demande passe à la DCH.
@@ -1088,7 +1087,7 @@ export class AbsencesService {
         if (aussiDCH) {
           const pourLeCompteDe = traiteAussi ? (suite?.parDelegationDe?.employeeId ?? null) : null;
           await viser(NIVEAU_DCH, pourLeCompteDe);
-          await clore(NIVEAU_DCH, `${nom}, votre N+1`);
+          await clore(NIVEAU_DCH);
           return;
         }
         await reconcilierLeCircuit(tx, user.tenantId);
@@ -1098,7 +1097,7 @@ export class AbsencesService {
       // L'étape de la DCH : son traitant, ou le directeur qui reprend la main.
       const pourLeCompteDe = estAttendu ? (att.parDelegationDe?.employeeId ?? null) : null;
       await viser(NIVEAU_DCH, pourLeCompteDe);
-      await clore(NIVEAU_DCH, pourLeCompteDe ? `${nom}, pour la DCH` : `${nom} (DCH)`);
+      await clore(NIVEAU_DCH);
     });
   }
 
@@ -1120,8 +1119,7 @@ export class AbsencesService {
     }
     await notifier(tx, user.tenantId, dch.directeur.userId, {
       type: 'delegation',
-      title: 'Pendant votre congé',
-      body: 'Personne ne traite les demandes de congé à votre place : elles vous attendront jusqu’à votre retour. Vous pouvez les confier à un membre de la DCH d’ici là.',
+      title: 'Les demandes de congé vous attendront jusqu’à votre retour',
       link: '/moi/delegations',
       dedupeKey: `delegation:absence:${demande.id}`,
     });

@@ -1,3 +1,4 @@
+import { and, eq, isNull, like, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import * as t from '../../db/schema';
 import type { Tx } from '../../db/tenant-db';
@@ -14,6 +15,13 @@ export interface NotificationDraft {
   link?: string;
   /** Rend la création idempotente : jamais deux fois la même clé par destinataire. */
   dedupeKey?: string;
+  /**
+   * Le sujet : les notifications de ce destinataire dont la clé commence
+   * ainsi sont remplacées par celle-ci, et quittent la boîte. Le rappel
+   * d'une échéance chasse le précédent ; la dernière mise à jour d'une fiche,
+   * les autres.
+   */
+  remplace?: string;
 }
 
 /**
@@ -28,10 +36,11 @@ export async function notifier(
   userId: string,
   draft: NotificationDraft,
 ): Promise<void> {
-  await tx
+  const id = uuidv7();
+  const [cree] = await tx
     .insert(t.notifications)
     .values({
-      id: uuidv7(),
+      id,
       tenantId,
       recipientUserId: userId,
       type: draft.type,
@@ -40,5 +49,20 @@ export async function notifier(
       link: draft.link ?? null,
       dedupeKey: draft.dedupeKey ?? null,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: t.notifications.id });
+  // Déjà envoyée : rien ne change. Nouvelle : elle chasse les précédentes.
+  if (!cree || !draft.remplace) return;
+  await tx
+    .update(t.notifications)
+    .set({ remplaceeLe: sql`now()` })
+    .where(
+      and(
+        eq(t.notifications.tenantId, tenantId),
+        eq(t.notifications.recipientUserId, userId),
+        like(t.notifications.dedupeKey, `${draft.remplace.replace(/[\\%_]/g, '\\$&')}%`),
+        ne(t.notifications.id, id),
+        isNull(t.notifications.remplaceeLe),
+      ),
+    );
 }

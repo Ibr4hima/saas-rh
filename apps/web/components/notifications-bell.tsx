@@ -29,12 +29,18 @@ function relativeTime(iso: string): string {
  * l'œil trie par famille au lieu de lire dix phrases.
  */
 function iconOf(type: string): IconName {
+  if (type === 'conge_approuve') return 'event_available';
+  if (type === 'conge_refuse' || type === 'contract_ended') return 'event_busy';
+  if (type.startsWith('conge_')) return 'event';
+  if (type.startsWith('demande_')) return 'inbox';
+  if (type === 'rappel') return 'timer';
+  if (type === 'document_expiry') return 'badge';
   if (type.startsWith('document_')) return 'folder_managed';
+  if (type.startsWith('profile_change')) return 'person';
   if (type === 'contract_deadline') return 'schedule';
-  if (type === 'contract_ended') return 'event_busy';
   if (type === 'holiday_reminder') return 'flag';
-  if (type === 'profile_change_request') return 'badge';
   if (type === 'objectif') return 'task_alt';
+  if (type.startsWith('delegation') || type === 'dch_vacante') return 'group';
   return 'notifications';
 }
 
@@ -332,11 +338,6 @@ function PanneauNotifications({
               className="py-9"
               icon={<Icon name={archive ? 'archive' : 'notifications'} size={22} />}
               title={archive ? 'Aucune archive' : 'Rien à signaler'}
-              description={
-                archive
-                  ? undefined
-                  : 'Les demandes, validations et échéances qui vous concernent arriveront ici.'
-              }
             />
           ) : (
             <ul className="flex flex-col">
@@ -374,11 +375,7 @@ function PanneauNotifications({
                         >
                           {n.title}
                         </span>
-                        {n.body ? (
-                          <span className="mt-0.5 line-clamp-2 block text-[11.5px] leading-snug text-ink-muted">
-                            {n.body}
-                          </span>
-                        ) : null}
+                        {/* Le titre seul : il dit tout, la page où il mène dit le reste. */}
                         <span className="mt-1 block text-[10.5px] font-semibold text-ink-muted">
                           {relativeTime(n.createdAt)}
                         </span>
