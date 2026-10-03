@@ -193,11 +193,17 @@ function Coquille({ children }: { children: React.ReactNode }) {
  * teinté, le formulaire sur le blanc. Chaque volet remplit sa moitié quelle
  * que soit la longueur de l'autre : aucun trou sous le plus court.
  *
- * Le formulaire se centre dans la hauteur de l'écran, et y reste pendant la
- * lecture d'une longue offre ; mais seulement sur un écran assez haut pour
- * le montrer en entier : collé plus haut que l'écran, son bouton d'envoi
- * deviendrait inatteignable.
+ * Les deux volets partent du même point haut, et le logo comme « Postuler »
+ * y occupent une ligne de 48 px : leurs centres restent alignés quelle que
+ * soit la hauteur de l'écran. Ce départ centre à peu près le formulaire
+ * (40rem), sans descendre sous 3rem.
+ *
+ * Le formulaire reste en place pendant la lecture d'une longue offre ; mais
+ * seulement sur un écran assez haut pour le montrer en entier : collé plus
+ * haut que l'écran, son bouton d'envoi deviendrait inatteignable.
  */
+const DEPART = 'lg:pt-[max(3rem,calc(50dvh_-_20rem))]';
+
 function Volets({
   initiale,
   offre,
@@ -210,16 +216,23 @@ function Volets({
   return (
     <main className="min-h-dvh bg-surface lg:grid lg:grid-cols-2">
       <div className="fond-offre">
-        {/* Le logo et l'offre se centrent ensemble dans la hauteur, sur le
-            même axe que le formulaire, et coulent normalement si l'offre est
-            longue. */}
-        <div className="mx-auto max-w-[640px] px-5 pt-6 pb-10 sm:px-10 lg:mr-0 lg:flex lg:min-h-dvh lg:flex-col lg:justify-center lg:px-12 lg:py-12 xl:px-16">
+        <div
+          className={cn(
+            'mx-auto flex max-w-[640px] flex-col px-5 pt-6 pb-10 sm:px-10 lg:mr-0 lg:px-12 lg:pb-16 xl:px-16',
+            DEPART,
+          )}
+        >
           <BrandMark variant="entete" repli={initiale ?? 'A'} />
           {offre}
         </div>
       </div>
       <div className="border-t border-line-soft lg:border-t-0 lg:border-l">
-        <div className="mx-auto flex max-w-[560px] flex-col justify-center px-5 pt-10 pb-14 sm:px-10 lg:top-0 lg:ml-0 lg:min-h-dvh lg:px-12 lg:py-12 xl:px-16 lg:[@media(min-height:50rem)]:sticky">
+        <div
+          className={cn(
+            'mx-auto max-w-[560px] px-5 pt-10 pb-14 sm:px-10 lg:top-0 lg:ml-0 lg:px-12 lg:pb-12 xl:px-16 lg:[@media(min-height:50rem)]:sticky',
+            DEPART,
+          )}
+        >
           {formulaire}
         </div>
       </div>
@@ -528,7 +541,7 @@ export default function ApplyPage() {
               }}
               className="flex flex-col gap-8"
             >
-              <h2 className="text-[24px] leading-tight font-extrabold tracking-[-0.015em] text-ink-strong">
+              <h2 className="flex h-12 items-center text-[24px] font-extrabold tracking-[-0.015em] text-ink-strong">
                 Postuler
               </h2>
 
