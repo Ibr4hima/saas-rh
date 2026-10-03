@@ -41,7 +41,7 @@ import { Telephone } from './telephone';
 import { Donnee, EnTete, Groupe, Peremption, Repere } from './fiche';
 import { Icon } from './icons';
 import { Modal } from './modal';
-import { ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../lib/person';
+import { contractEnd, ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../lib/person';
 import { formatDate, useMe } from '../lib/hooks';
 import type { ConsequencesHierarchie, OrgUnit, OrgUnitView } from '@teranga/contracts';
 import { aDesConsequences, ListeConsequences } from './consequences-hierarchie';
@@ -61,6 +61,8 @@ const CONTRACT_LABELS: Record<string, string> = {
   consultant: 'Consultant',
   detachement: 'Détachement',
 };
+/** Un nouveau contrat : consultant et détachement ne se signent plus. */
+const TYPES_DE_NOUVEAU_CONTRAT = ['cdi', 'cdd', 'stage'] as const;
 const ACTION_LABELS: Record<string, string> = {
   INSERT: 'Création',
   UPDATE: 'Modification',
@@ -432,7 +434,13 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
           <Card>
             <CardHeader className="flex items-center justify-between">
               <CardTitle>Contrats</CardTitle>
-              {peutGerer ? <NouveauContrat employeeId={e.id} /> : null}
+              {peutGerer ? (
+                <NouveauContrat
+                  employeeId={e.id}
+                  prenom={e.person.givenName}
+                  contrats={e.contracts}
+                />
+              ) : null}
             </CardHeader>
             {e.contracts.length === 0 ? (
               <CardContent>
@@ -1134,17 +1142,39 @@ function BoutonReactiver({
 
 /**
  * Un nouveau contrat : un CDD renouvelé, un stage suivi d'un CDD, un CDI. Le
- * précédent s'arrête la veille. Un CDD ou un stage a une date de fin — c'est
- * elle qui, le lendemain, fera passer l'agent dans les inactifs.
+ * précédent s'arrête la veille. Un CDD ou un stage se dit par sa durée, comme
+ * à la création du dossier : la fin en découle, et c'est elle qui, le
+ * lendemain, fera passer l'agent dans les inactifs. Le début peut être passé :
+ * un contrat signé la semaine dernière s'enregistre à sa vraie date.
  */
-function NouveauContrat({ employeeId }: { employeeId: string }) {
+function NouveauContrat({
+  employeeId,
+  prenom,
+  contrats,
+}: {
+  employeeId: string;
+  prenom: string;
+  contrats: { startDate: string; endDate: string | null }[];
+}) {
   const queryClient = useQueryClient();
+  const aujourdhui = new Date().toISOString().slice(0, 10);
   const [ouvert, setOuvert] = useState(false);
   const [type, setType] = useState('cdd');
-  const [debut, setDebut] = useState(new Date().toISOString().slice(0, 10));
-  const [fin, setFin] = useState('');
+  const [debut, setDebut] = useState(aujourdhui);
+  const [mois, setMois] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
-  const finRequise = type === 'cdd' || type === 'stage';
+  const avecDuree = type === 'cdd' || type === 'stage';
+  const fin = avecDuree && debut && Number(mois) > 0 ? contractEnd(debut, Number(mois)) : null;
+  // Le contrat qui court aujourd'hui, s'il s'arrête pour laisser place au nouveau.
+  const remplace = contrats.some(
+    (c) =>
+      c.startDate <= aujourdhui && (!c.endDate || (c.endDate >= aujourdhui && c.endDate >= debut)),
+  );
+  const fermer = () => {
+    setOuvert(false);
+    setMois('');
+    setErreur(null);
+  };
   const enregistrer = useMutation({
     mutationFn: () =>
       api(`/employees/${employeeId}/contracts`, {
@@ -1152,9 +1182,7 @@ function NouveauContrat({ employeeId }: { employeeId: string }) {
         body: { contractType: type, startDate: debut, ...(fin ? { endDate: fin } : {}) },
       }),
     onSuccess: async () => {
-      setOuvert(false);
-      setFin('');
-      setErreur(null);
+      fermer();
       await queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
       await queryClient.invalidateQueries({ queryKey: ['contrats'] });
@@ -1169,9 +1197,15 @@ function NouveauContrat({ employeeId }: { employeeId: string }) {
       </Button>
       <Modal
         open={ouvert}
-        onClose={() => setOuvert(false)}
+        onClose={fermer}
         title="Nouveau contrat"
-        subtitle="Renouvellement, ou changement de contrat. Le contrat en cours s’arrête la veille."
+        // En composant, pas en texte : la phrase passe à la ligne sur
+        // téléphone au lieu d'être coupée.
+        subtitle={
+          <p className="text-xs text-ink-muted">
+            Le contrat en cours s’arrête la veille du début du nouveau.
+          </p>
+        }
         maxWidth="max-w-lg"
         footer={
           <>
@@ -1183,12 +1217,12 @@ function NouveauContrat({ employeeId }: { employeeId: string }) {
                 {erreur}
               </p>
             ) : null}
-            <Button variant="secondary" onClick={() => setOuvert(false)}>
+            <Button variant="secondary" onClick={fermer}>
               Annuler
             </Button>
             <Button
               loading={enregistrer.isPending}
-              disabled={!debut || (finRequise && !fin)}
+              disabled={!debut || (avecDuree && !fin)}
               onClick={() => {
                 setErreur(null);
                 enregistrer.mutate();
@@ -1200,11 +1234,17 @@ function NouveauContrat({ employeeId }: { employeeId: string }) {
         }
       >
         <div className="flex flex-col gap-3.5">
+          {remplace ? (
+            <p className="flex items-start gap-2 rounded-[12px] bg-warning-soft px-3.5 py-2.5 text-[12.5px] font-semibold text-warning ring-1 ring-current/15 ring-inset">
+              <Icon name="warning" size={16} className="mt-px shrink-0" />
+              {prenom} est actuellement sous contrat, ce nouveau contrat remplacera l’ancien.
+            </p>
+          ) : null}
           <Field label="Type" htmlFor="contrat-type" required>
             <Select id="contrat-type" value={type} onChange={(ev) => setType(ev.target.value)}>
-              {Object.entries(CONTRACT_LABELS).map(([v, l]) => (
+              {TYPES_DE_NOUVEAU_CONTRAT.map((v) => (
                 <option key={v} value={v}>
-                  {l}
+                  {CONTRACT_LABELS[v]}
                 </option>
               ))}
             </Select>
@@ -1218,20 +1258,23 @@ function NouveauContrat({ employeeId }: { employeeId: string }) {
                 onChange={(ev) => setDebut(ev.target.value)}
               />
             </Field>
-            <Field
-              label="Fin"
-              htmlFor="contrat-fin"
-              required={finRequise}
-              hint={finRequise ? undefined : 'Facultative pour ce type de contrat.'}
-            >
-              <Input
-                id="contrat-fin"
-                type="date"
-                value={fin}
-                min={debut}
-                onChange={(ev) => setFin(ev.target.value)}
-              />
-            </Field>
+            {avecDuree ? (
+              <Field label="Durée (mois)" htmlFor="contrat-duree" required>
+                <Input
+                  id="contrat-duree"
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={mois}
+                  onChange={(ev) => setMois(ev.target.value)}
+                />
+                {fin ? (
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Fin du contrat : <span className="font-medium">{formatDate(fin)}</span>
+                  </p>
+                ) : null}
+              </Field>
+            ) : null}
           </div>
         </div>
       </Modal>

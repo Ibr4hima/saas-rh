@@ -322,11 +322,16 @@ export const initialContractSchema = z.object({
 });
 
 /**
- * Un nouveau contrat : un CDD renouvelé, un stage suivi d'un CDD, un CDI.
+ * Un nouveau contrat : un CDD renouvelé, un stage suivi d'un CDD, un CDI ;
+ * plus de consultant ni de détachement (ceux d'avant restent lisibles).
  * Le précédent s'arrête la veille, s'il courait encore. Un CDD ou un stage a
  * une date de fin — c'est elle qui fera passer l'agent dans les inactifs.
  */
 export const newContractSchema = initialContractSchema
+  .refine((c) => ['cdi', 'cdd', 'stage'].includes(c.contractType), {
+    message: 'Un nouveau contrat est un CDI, un CDD ou un stage',
+    path: ['contractType'],
+  })
   .refine((c) => !['cdd', 'stage'].includes(c.contractType) || c.endDate !== undefined, {
     message: 'Un CDD ou un stage a une date de fin',
     path: ['endDate'],

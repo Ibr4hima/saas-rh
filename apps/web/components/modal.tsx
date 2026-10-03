@@ -136,7 +136,10 @@ export function Modal({
         )}
       >
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2.5 border-b border-line-soft px-6 py-4 sm:px-7">
-          <div className="flex min-w-0 items-center gap-3">
+          {/* Sans commandes d'en-tête, le titre prend la place qui reste : un
+              long sous-titre se coupe d'une ellipse au lieu de pousser le
+              bouton Fermer à la ligne. */}
+          <div className={cn('flex min-w-0 items-center gap-3', !enTete && 'flex-1 basis-0')}>
             {avatar ? <span className="shrink-0">{avatar}</span> : null}
             <div className="min-w-0">
               <h2

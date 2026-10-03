@@ -15,7 +15,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { archiveEmployeesSchema, type SessionUser } from '@teranga/contracts';
+import { archiveEmployeesSchema, newContractSchema, type SessionUser } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -632,6 +632,35 @@ describe('désactiver, réactiver', () => {
       fatou.employeeId,
     ]);
     expect(fin[0].fin_activite).toBeNull();
+  });
+
+  it('un contrat signé la semaine dernière s’enregistre à sa date, et rouvre le dossier', async () => {
+    await inactiver();
+    await people.newContract(admin, fatou.employeeId, {
+      contractType: 'stage',
+      startDate: await jour(-7),
+      endDate: await jour(80),
+    });
+    const ok = await people.archive(admin, { ids: [fatou.employeeId], archived: false });
+    expect(ok.done).toBe(1);
+    const { rows } = await raw(
+      `SELECT contract_type, start_date::text AS debut, end_date::text AS fin
+         FROM contracts WHERE employee_id = $1 ORDER BY start_date`,
+      [fatou.employeeId],
+    );
+    expect(rows.at(-1)).toEqual({
+      contract_type: 'stage',
+      debut: await jour(-7),
+      fin: await jour(80),
+    });
+  });
+
+  it('un nouveau contrat est un CDI, un CDD ou un stage : plus de consultant ni de détachement', () => {
+    const contrat = (contractType: string) =>
+      newContractSchema.safeParse({ contractType, startDate: '2026-10-01', endDate: '2027-03-31' })
+        .success;
+    expect(['cdi', 'cdd', 'stage'].map(contrat)).toEqual([true, true, true]);
+    expect(['consultant', 'detachement'].map(contrat)).toEqual([false, false]);
   });
 
   it('un nouveau contrat arrête le précédent la veille, s’il courait encore', async () => {
