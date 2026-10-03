@@ -67,7 +67,8 @@ const optionalUuid = z
   .or(z.literal('').transform(() => undefined));
 
 /**
- * Abrégé d'une direction : « DCH » pour « Direction du Capital Humain ».
+ * Acronyme d'une direction : « DCH » pour « Direction du Capital Humain ».
+ * Obligatoire pour une direction, refusé aux départements et services.
  * Normalisé en majuscules — un sigle ne se saisit pas en minuscules, et
  * l'unicité en base est insensible à la casse.
  */
@@ -79,13 +80,18 @@ const shortNameField = z
   .transform((v) => (v === '' ? undefined : v.toUpperCase()))
   .optional();
 
-export const createOrgUnitSchema = z.object({
-  name: trimmed(120),
-  unitType: orgUnitTypeSchema,
-  parentId: optionalUuid,
-  /** Réservé aux directions : refusé sur un département ou un service. */
-  shortName: shortNameField,
-});
+export const createOrgUnitSchema = z
+  .object({
+    name: trimmed(120),
+    unitType: orgUnitTypeSchema,
+    parentId: optionalUuid,
+    /** Réservé aux directions, et obligatoire pour elles. */
+    shortName: shortNameField,
+  })
+  .refine((u) => u.unitType !== 'direction' || Boolean(u.shortName), {
+    message: 'Une direction a un acronyme',
+    path: ['shortName'],
+  });
 export type CreateOrgUnitInput = z.infer<typeof createOrgUnitSchema>;
 
 export const updateOrgUnitSchema = z.object({
@@ -95,7 +101,7 @@ export const updateOrgUnitSchema = z.object({
   parentId: z.uuid().nullable().optional(),
   managerEmployeeId: z.uuid().nullable().optional(),
   /**
-   * `null` efface l'abrégé, l'absence le laisse inchangé. Attention : la chaîne
+   * `null` efface l'acronyme, l'absence le laisse inchangé. Attention : la chaîne
    * vide est traitée comme une ABSENCE (le formulaire web envoie `null`).
    */
   shortName: shortNameField.or(z.null()),
@@ -168,6 +174,8 @@ export interface OrgUnitView extends OrgUnit {
    * reste le nom complet, pour les écrans qui ont la place de l'écrire.
    */
   managerShortName: string | null;
+  /** Son matricule : « Mariama C. · EMP-002 » se lit sans ambiguïté. */
+  managerNumber: string | null;
   managerPosition: string | null;
   /**
    * L'unité est LE sommet de l'organigramme — la Direction Générale, dont le

@@ -562,7 +562,7 @@ function Bloc({
         // Le gabarit coupe les noms à rallonge et les responsables aux
         // prénoms multiples : l'infobulle rend l'un et l'autre en entier, et
         // la fenêtre de détail aussi.
-        title={`${u.name}\nResponsable : ${u.managerName ?? 'Non désigné'}`}
+        title={`${u.name}\n${u.managerName ?? 'Responsable : Non désigné'}`}
         style={{ width: largeur, height: HAUTEUR_BLOC }}
         className={cn(
           // Gabarit unique (cf. HAUTEUR_BLOC / LARGEUR_BLOC) : la hauteur ne
@@ -605,13 +605,14 @@ function Bloc({
             {u.name}
           </span>
           <span className="block truncate text-[11.5px] leading-tight text-ink-muted">
-            Responsable&nbsp;:{' '}
             {u.managerName ? (
-              // Abrégé : « Mouhamadou Moustapha Salih Niang » ne tient pas
-              // dans un bloc, et c'est le NOM DE FAMILLE qu'on y perdrait.
+              // Le nom seul, abrégé : « Mouhamadou Moustapha Salih Niang » ne
+              // tient pas dans un bloc, et c'est le NOM DE FAMILLE qu'on y perdrait.
               <span className="font-semibold text-ink">{u.managerShortName ?? u.managerName}</span>
             ) : (
-              <span className="text-ink-muted/70">Non désigné</span>
+              <>
+                Responsable&nbsp;: <span className="text-ink-muted/70">Non désigné</span>
+              </>
             )}
           </span>
         </span>

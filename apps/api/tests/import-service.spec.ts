@@ -292,7 +292,7 @@ describe('l’écriture', () => {
     expect(ligne?.avertissements).toEqual([
       {
         colonne: 'Direction affectée',
-        texte: 'Abrégé inconnu dans l’organigramme : dossier sans rattachement',
+        texte: 'Acronyme inconnu dans l’organigramme : dossier sans rattachement',
       },
     ]);
     expect(ligne?.uniteResolue).toBeNull();

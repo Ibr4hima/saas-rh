@@ -175,7 +175,7 @@ export class ImportEmployesService {
                   colonne: 'Direction affectée',
                   // Sans temps : le même texte se relit dans l'aperçu
                   // (« sera créé ») et dans le compte rendu d'après.
-                  texte: 'Abrégé inconnu dans l’organigramme : dossier sans rattachement',
+                  texte: 'Acronyme inconnu dans l’organigramme : dossier sans rattachement',
                 },
               ]
             : unite && !poste

@@ -67,7 +67,7 @@ function mapUniqueViolation(err: unknown): never {
     );
   }
   if (detail.includes('short_name_unique')) {
-    problem(422, 'org.short_name_taken', 'Cet abrégé est déjà utilisé par une autre direction');
+    problem(422, 'org.short_name_taken', 'Cet acronyme est déjà utilisé par une autre direction');
   }
   if (detail.includes('org_units_un_seul_sommet')) {
     problem(
@@ -113,6 +113,7 @@ export class OrgUnitsService {
           managerEmployeeId: t.orgUnits.managerEmployeeId,
           managerGivenName: managerPersons.givenName,
           managerFamilyName: managerPersons.familyName,
+          managerNumber: t.employees.employeeNumber,
           sommet: sql<boolean>`(org_units.id = ${SOMMET})`,
           directionDuPersonnel: t.orgUnits.directionDuPersonnel,
           managerPosition: sql<string | null>`(
@@ -153,6 +154,7 @@ export class OrgUnitsService {
         managerShortName: r.managerGivenName
           ? nomAbrege(r.managerGivenName, r.managerFamilyName ?? '')
           : null,
+        managerNumber: r.managerNumber,
         managerPosition: r.managerPosition,
         sommet: Boolean(r.sommet),
         directionDuPersonnel: r.directionDuPersonnel,
@@ -215,7 +217,7 @@ export class OrgUnitsService {
       problem(
         422,
         'org.sommet_indissoluble',
-        'La Direction Générale ne se dissout pas',
+        'La Direction Générale ne se supprime pas',
         'Elle porte le sommet de l’organigramme et son responsable est le directeur général. Renommez-la au besoin.',
       );
     }
@@ -231,7 +233,7 @@ export class OrgUnitsService {
       problem(
         422,
         'org.dch_indissoluble',
-        'La direction du personnel ne se dissout pas',
+        'La direction du personnel ne se supprime pas',
         'Elle traite les demandes des agents : désignez d’abord une autre direction du personnel.',
       );
     }
@@ -437,6 +439,7 @@ export class OrgUnitsService {
         parentId: t.orgUnits.parentId,
         managerEmployeeId: t.orgUnits.managerEmployeeId,
         dch: t.orgUnits.directionDuPersonnel,
+        shortName: t.orgUnits.shortName,
       })
       .from(t.orgUnits)
       .where(eq(t.orgUnits.id, id))
@@ -533,8 +536,11 @@ export class OrgUnitsService {
 
     if (input.shortName !== undefined) {
       this.assertShortNameAllowed(nextType, input.shortName);
+    } else if (input.unitType === 'direction' && !before!.shortName) {
+      // Une unité qui devient direction prend son acronyme du même geste.
+      this.assertShortNameAllowed(nextType, null);
     } else if (input.unitType !== undefined && nextType !== 'direction') {
-      // Un département n'a pas d'abrégé : le déclassement l'efface.
+      // Un département n'a pas d'acronyme : le déclassement l'efface.
       input = { ...input, shortName: null };
     }
 
@@ -620,13 +626,26 @@ export class OrgUnitsService {
     }
   }
 
-  /** Un abrégé ne se pose que sur une direction (contrainte CHECK en 0012). */
+  /**
+   * Une direction a son acronyme (« DCH ») ; un département ou un service
+   * n'en a pas (contrainte CHECK en 0012). Les directions d'avant la règle
+   * gardent le leur vide tant qu'on ne touche ni à leur type ni à leur
+   * acronyme.
+   */
   private assertShortNameAllowed(unitType: OrgUnitType, shortName: string | null): void {
+    if (!shortName && unitType === 'direction') {
+      problem(
+        422,
+        'org.acronyme_requis',
+        'Une direction a un acronyme',
+        '« DCH » pour Direction du Capital Humain.',
+      );
+    }
     if (shortName && unitType !== 'direction') {
       problem(
         422,
         'org.short_name_direction_only',
-        'Seule une direction porte un abrégé',
+        'Seule une direction porte un acronyme',
         'Un département ou un service se désigne par son nom complet.',
       );
     }

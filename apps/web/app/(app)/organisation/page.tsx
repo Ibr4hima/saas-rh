@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   createOrgUnitSchema,
+  nomAbrege,
   ORG_UNIT_PARENT_TYPES,
   ORG_UNIT_ROOT_TYPES,
   ORG_UNIT_TYPE_LABELS,
@@ -380,9 +381,9 @@ function UnitPanel({
                   setError(null);
                   setConfirmDelete(true);
                 }}
-                className="text-[12px] font-semibold text-ink-muted transition-colors hover:text-danger"
+                className="text-[12px] font-semibold text-danger transition-colors hover:text-danger/80"
               >
-                Dissoudre l’unité
+                Supprimer l’unité
               </button>
             )}
             <Button
@@ -480,11 +481,7 @@ function UnitPanel({
               </Select>
             </Field>
             {unitType === 'direction' ? (
-              <Field
-                label="Abrégé"
-                htmlFor={`edit-short-${unit.id}`}
-                hint="Facultatif. « DCH » pour Direction du Capital Humain."
-              >
+              <Field label="Acronyme" htmlFor={`edit-short-${unit.id}`} required>
                 <Input
                   id={`edit-short-${unit.id}`}
                   value={shortName}
@@ -515,6 +512,7 @@ function UnitPanel({
               <Button
                 size="sm"
                 loading={verification || appliquer.isPending}
+                disabled={!name.trim() || (unitType === 'direction' && !shortName.trim())}
                 onClick={() => void verifierPuisAppliquer(corpsEdition())}
               >
                 Enregistrer
@@ -542,7 +540,7 @@ function UnitPanel({
         <Card className="border-danger/30">
           <CardContent className="flex flex-col gap-3 py-4">
             <p className="text-[12.5px] text-danger">
-              Dissoudre « {unit.name} » ? L’unité disparaît de l’organigramme, mais l’historique des
+              Supprimer « {unit.name} » ? L’unité disparaît de l’organigramme, mais l’historique des
               affectations continue de la mentionner.
             </p>
             {unit.attachedEmployees > 0 ? (
@@ -587,7 +585,7 @@ function UnitPanel({
                 loading={remove.isPending}
                 onClick={() => remove.mutate()}
               >
-                Confirmer la dissolution
+                Confirmer la suppression
               </Button>
               <Button
                 size="sm"
@@ -611,33 +609,21 @@ function UnitPanel({
               {unit.headcount} {unit.headcount > 1 ? 'personnes' : 'personne'}
             </DataBlock>
             <DataBlock label="Responsable">
-              {unit.managerName ? (
+              {unit.managerShortName ? (
                 <>
-                  {unit.managerName}
-                  {unit.managerPosition ? (
-                    <span className="text-ink-muted"> — {unit.managerPosition}</span>
+                  {unit.managerShortName}
+                  {unit.managerNumber ? (
+                    <span className="text-ink-muted"> · {unit.managerNumber}</span>
                   ) : null}
                 </>
               ) : null}
             </DataBlock>
           </DataGrid>
 
-          {canManage && unit.directionDuPersonnel && !estAdmin ? (
-            <p className="mt-3 border-t border-line-soft pt-3 text-[12px] text-ink-muted">
-              Qui dirige la Direction du Capital Humain a toutes les habilitations :
-              l’administrateur seul le désigne.
-            </p>
-          ) : canManage ? (
+          {/* Qui dirige la DCH a toutes les habilitations : l'administrateur seul le désigne. */}
+          {canManage && (!unit.directionDuPersonnel || estAdmin) ? (
             <div className="mt-3 border-t border-line-soft pt-3">
-              <Field
-                label="Désigner un responsable"
-                htmlFor="unit-manager"
-                hint={
-                  !eligible.isLoading && (eligible.data ?? []).length === 0
-                    ? 'Personne n’est encore affecté à cette unité : affectez quelqu’un avant de le nommer responsable.'
-                    : undefined
-                }
-              >
+              <Field label="Désigner un responsable" htmlFor="unit-manager">
                 <div className="flex gap-2">
                   <Select
                     id="unit-manager"
@@ -649,8 +635,7 @@ function UnitPanel({
                       .filter((e) => e.employeeId !== moi.data?.employeeId)
                       .map((e) => (
                         <option key={e.employeeId} value={e.employeeId}>
-                          {e.givenName} {e.familyName}
-                          {e.positionTitle ? ` — ${e.positionTitle}` : ''}
+                          {nomAbrege(e.givenName, e.familyName)} · {e.employeeNumber}
                         </option>
                       ))}
                   </Select>
@@ -681,8 +666,7 @@ function UnitPanel({
             <Skeleton className="mt-2 h-12 w-full" />
           ) : (members.data ?? []).length === 0 ? (
             <p className="mt-2 text-[12.5px] text-ink-muted/70">
-              Aucun membre aujourd’hui. Les affectations se posent depuis la fiche de chaque
-              employé, sur la carte « Affectations ».
+              Aucun agent n’est affecté à cette unité à ce jour.
             </p>
           ) : (
             <ul className="mt-2 flex flex-col gap-2">
@@ -698,16 +682,14 @@ function UnitPanel({
                         href={`/employees/${m.employeeId}`}
                         className="font-semibold text-ink-strong hover:underline"
                       >
-                        {m.givenName} {m.familyName}
+                        {nomAbrege(m.givenName, m.familyName)}
                       </Link>
                     ) : (
                       <span className="font-semibold text-ink-strong">
-                        {m.givenName} {m.familyName}
+                        {nomAbrege(m.givenName, m.familyName)}
                       </span>
                     )}
-                    {m.positionTitle ? (
-                      <span className="text-ink-muted"> · {m.positionTitle}</span>
-                    ) : null}
+                    <span className="text-ink-muted"> · {m.employeeNumber}</span>
                   </span>
                 </li>
               ))}
@@ -814,7 +796,7 @@ function FenetreNouvelleUnite({
             >
               <Input
                 id="new-unit-name"
-                placeholder="Ex : Direction des Ressources Humaines"
+                placeholder="Direction du Capital Humain"
                 {...form.register('name')}
               />
             </Field>
@@ -861,10 +843,10 @@ function FenetreNouvelleUnite({
             </Field>
             {selectedType === 'direction' ? (
               <Field
-                label="Abrégé"
+                label="Acronyme"
                 htmlFor="new-unit-short"
                 error={form.formState.errors.shortName?.message}
-                hint="Facultatif. « DCH » pour Direction du Capital Humain."
+                required
               >
                 <Input
                   id="new-unit-short"

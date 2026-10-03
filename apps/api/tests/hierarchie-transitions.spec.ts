@@ -369,7 +369,7 @@ describe('les réorganisations', () => {
   it('un seul sommet : ni création, ni re-rattachement d’un second', async () => {
     expect(
       await codeOf(() =>
-        organigramme.create(user, { name: 'Autre sommet', unitType: 'direction' }),
+        organigramme.create(user, { name: 'Autre sommet', unitType: 'direction', shortName: 'AS' }),
       ),
     ).toBe('org.sommet_unique');
     expect(await codeOf(() => organigramme.update(user, uDSID, { parentId: null }))).toBe(
@@ -408,7 +408,7 @@ describe('les réorganisations', () => {
     const dsid = await unDirecteur('DSID', uDSID);
     const chef = await agent('CHEF', uEtudes, dsid);
     await nommer(uEtudes, chef);
-    const r = await organigramme.update(user, uEtudes, { unitType: 'direction' });
+    const r = await organigramme.update(user, uEtudes, { unitType: 'direction', shortName: 'DE' });
     expect(await n1(chef)).toBe(dg);
     expect(r.changements.map((c) => c.motif)).toEqual(['directeur']);
   });

@@ -212,7 +212,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
             </p>
             <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
               Les intitulés se reconnaissent sans tenir compte des accents ni de la casse, et
-              l’ordre des colonnes n’a pas d’importance. La direction se désigne par son abrégé («
+              l’ordre des colonnes n’a pas d’importance. La direction se désigne par son acronyme («
               DCH ») ou par son nom complet. Rien n’est écrit avant que vous ne validiez l’aperçu.
             </p>
             <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
@@ -315,7 +315,7 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
                         // rattachement — pas sur une ligne qu'on n'écrit pas.
                         <span
                           className={cn(l.etat === 'a-creer' && 'text-accent-text')}
-                          title={l.etat === 'a-creer' ? 'Abrégé inconnu' : undefined}
+                          title={l.etat === 'a-creer' ? 'Acronyme inconnu' : undefined}
                         >
                           {l.uniteAbrege}
                         </span>

@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionUser } from '@teranga/contracts';
+import { createOrgUnitSchema, type SessionUser } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
@@ -164,7 +164,9 @@ describe('hiérarchie des types', () => {
 
   it('refuse un second sommet, à la création comme au re-rattachement', async () => {
     expect(
-      await codeOf(() => service.create(user, { name: 'Direction Bis', unitType: 'direction' })),
+      await codeOf(() =>
+        service.create(user, { name: 'Direction Bis', unitType: 'direction', shortName: 'DB' }),
+      ),
     ).toBe('org.sommet_unique');
     const fille = await creerUnite('Direction Fille', 'direction', direction);
     expect(await codeOf(() => service.update(user, fille, { parentId: null }))).toBe(
@@ -439,6 +441,38 @@ describe('dissolution', () => {
   });
 });
 
+describe('l’acronyme', () => {
+  it('une direction en a un : à la création, en devenant direction, et il ne s’efface pas', async () => {
+    expect(
+      createOrgUnitSchema.safeParse({ name: 'Direction X', unitType: 'direction' }).success,
+    ).toBe(false);
+    expect(
+      createOrgUnitSchema.safeParse({ name: 'Direction X', unitType: 'direction', shortName: 'dx' })
+        .data?.shortName,
+    ).toBe('DX');
+    expect(createOrgUnitSchema.safeParse({ name: 'Dépt', unitType: 'department' }).success).toBe(
+      true,
+    );
+    expect(
+      await codeOf(() =>
+        service.create(user, { name: 'Direction X', unitType: 'direction', parentId: racine }),
+      ),
+    ).toBe('org.acronyme_requis');
+    const dept = await creerUnite('Département X', 'department', direction);
+    expect(await codeOf(() => service.update(user, dept, { unitType: 'direction' }))).toBe(
+      'org.acronyme_requis',
+    );
+    await service.update(user, dept, { unitType: 'direction', shortName: 'DX' });
+    expect(await codeOf(() => service.update(user, dept, { shortName: null }))).toBe(
+      'org.acronyme_requis',
+    );
+    // Le reste se modifie sans y toucher.
+    await service.update(user, dept, { name: 'Direction X' });
+    const { rows } = await raw(`SELECT name, short_name FROM org_units WHERE id = $1`, [dept]);
+    expect(rows[0]).toEqual({ name: 'Direction X', short_name: 'DX' });
+  });
+});
+
 describe('re-rattachement', () => {
   it('refuse un changement de type qui ferait sortir un responsable de son périmètre', async () => {
     // chefId dirige la direction mère depuis le département : ériger le
@@ -446,9 +480,11 @@ describe('re-rattachement', () => {
     // sa propre tête.
     await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [departement]);
     await raw(`UPDATE org_units SET manager_employee_id = $1 WHERE id = $2`, [chefId, direction]);
-    expect(await codeOf(() => service.update(user, departement, { unitType: 'direction' }))).toBe(
-      'org.manager_would_leave_unit',
-    );
+    expect(
+      await codeOf(() =>
+        service.update(user, departement, { unitType: 'direction', shortName: 'DX' }),
+      ),
+    ).toBe('org.manager_would_leave_unit');
   });
 
   it('refuse une réorganisation qui ferait sortir le DG de la Direction Générale', async () => {
