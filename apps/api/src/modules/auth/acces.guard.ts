@@ -22,6 +22,9 @@ export const FERME_AUX_INACTIFS_KEY = 'fermeAuxInactifs';
  */
 export const FermeAuxInactifs = () => SetMetadata(FERME_AUX_INACTIFS_KEY, true);
 
+/** L'exception, sur une route d'une classe fermée : « Mes certificats » de l'Academy. */
+export const OuvertAuxInactifs = () => SetMetadata(FERME_AUX_INACTIFS_KEY, false);
+
 @Injectable()
 export class AccesGuard implements CanActivate {
   constructor(@Inject(Reflector) private readonly reflector: Reflector) {}

@@ -10,6 +10,7 @@ import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
 import { api } from '../../../../lib/api';
+import { useMe } from '../../../../lib/hooks';
 import { compte } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
@@ -22,6 +23,8 @@ import { compte } from '../../../../lib/mots';
    ———————————————————————————————————————————————————————————————— */
 
 export default function MesCertificatsPage() {
+  // Plus en activité : il garde ses certificats, pas le reste de l'Academy.
+  const restreint = Boolean(useMe().data?.finDAcces);
   const certificats = useQuery({
     queryKey: ['academy', 'certificats'],
     queryFn: () => api<CertificateSummary[]>('/academy/certificats'),
@@ -33,7 +36,7 @@ export default function MesCertificatsPage() {
 
   return (
     <Page>
-      <RetourAcademy href="/academy" label="APIX Academy" />
+      {restreint ? null : <RetourAcademy href="/academy" label="APIX Academy" />}
       <div className="flex items-baseline gap-3">
         <h2 className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
           Mes certificats
@@ -59,12 +62,18 @@ export default function MesCertificatsPage() {
         >
           <EmptyState
             icon={<Icon name="workspace_premium" size={22} />}
-            title="Pas encore de certificat"
-            description="Réussissez l’évaluation finale d’une formation APIX Academy : son certificat apparaîtra ici."
+            title={restreint ? 'Aucun certificat' : 'Pas encore de certificat'}
+            description={
+              restreint
+                ? undefined
+                : 'Réussissez l’évaluation finale d’une formation APIX Academy : son certificat apparaîtra ici.'
+            }
             action={
-              <Link href="/academy">
-                <Button variant="secondary">Parcourir le catalogue</Button>
-              </Link>
+              restreint ? undefined : (
+                <Link href="/academy">
+                  <Button variant="secondary">Parcourir le catalogue</Button>
+                </Link>
+              )
             }
           />
         </Card>
@@ -90,7 +99,7 @@ export default function MesCertificatsPage() {
                     <Icon name="school" size={19} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    {a.published ? (
+                    {a.published && !restreint ? (
                       <Link
                         href={`/academy/${a.courseId}`}
                         className="block truncate text-[13px] font-bold text-ink-strong hover:text-primary"

@@ -76,6 +76,20 @@ export async function employeActif(tx: Tx, userId: string): Promise<string | nul
 }
 
 /**
+ * Le dossier relié à un compte, actif ou non : ses certificats restent à
+ * l'agent qui n'est plus en activité, le temps de son mois d'accès.
+ */
+async function sonDossier(tx: Tx, userId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ id: t.employees.id })
+    .from(t.employees)
+    .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+    .where(and(eq(t.persons.userId, userId), isNull(t.persons.deletedAt)))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/**
  * Pourquoi l'évaluation est fermée à cet agent — s'il y a lieu.
  *
  * Le formateur a fait la formation : il en suit les leçons, il n'en passe
@@ -861,7 +875,7 @@ export class AcademyEvaluationService {
   /** Qui voit l'Academy d'un agent : lui, qui gère l'Academy, qui consulte les dossiers. */
   private async exigerDeVoir(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
     if (this.gere(user) || peut(user, 'personnel.consulter')) return;
-    if ((await employeActif(tx, user.userId)) !== employeeId) {
+    if ((await sonDossier(tx, user.userId)) !== employeeId) {
       problem(403, 'academy.forbidden', 'Ces certificats ne sont pas les vôtres');
     }
   }
@@ -905,14 +919,14 @@ export class AcademyEvaluationService {
 
   async mesFormationsAnimees(user: SessionUser): Promise<FormationAnimee[]> {
     const employeeId = await this.db.withTenant(this.ctx(user), (tx) =>
-      employeActif(tx, user.userId),
+      sonDossier(tx, user.userId),
     );
     return employeeId ? this.formationsAnimees(user, employeeId) : [];
   }
 
   async mesCertificats(user: SessionUser): Promise<CertificateSummary[]> {
     const employeeId = await this.db.withTenant(this.ctx(user), (tx) =>
-      employeActif(tx, user.userId),
+      sonDossier(tx, user.userId),
     );
     return employeeId ? this.certificatsDe(user, employeeId) : [];
   }
@@ -925,7 +939,7 @@ export class AcademyEvaluationService {
         .where(eq(t.academyCertificates.id, certificateId))
         .limit(1);
       if (!c) problem(404, 'academy.certificate_not_found', 'Certificat introuvable');
-      if (!this.gere(user) && (await employeActif(tx, user.userId)) !== c.employeeId) {
+      if (!this.gere(user) && (await sonDossier(tx, user.userId)) !== c.employeeId) {
         problem(404, 'academy.certificate_not_found', 'Certificat introuvable');
       }
       return c;

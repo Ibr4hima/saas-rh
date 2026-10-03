@@ -5,7 +5,13 @@
     "rootDir": "src",
     "module": "CommonJS",
     "moduleResolution": "Node",
-    "target": "ES2022"
+    "target": "ES2022",
+    // Au lancement de `pnpm dev`, le mode watch ne réécrit pas un dist/ déjà
+    // à jour : l'API, qui démarre en même temps, ne lit plus un fichier à
+    // moitié écrit. Le fichier d'état vit dans dist/ : effacer dist/ le
+    // remet à zéro.
+    "incremental": true,
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "include": ["src"]
 }

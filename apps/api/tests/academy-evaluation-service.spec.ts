@@ -539,6 +539,26 @@ describe('le certificat', () => {
     );
     expect(await evaluation.certificatsDe(rh, agentEmployeeId)).toHaveLength(1);
   });
+
+  it('reste à son titulaire qui n’est plus en activité, le temps de son mois d’accès', async () => {
+    await reussir();
+    await raw(
+      `UPDATE employees SET status = 'archived', inactivite_motif = 'demission',
+              fin_activite = CURRENT_DATE, archived_at = now() WHERE id = $1`,
+      [agentEmployeeId],
+    );
+    try {
+      const [c] = await evaluation.mesCertificats(agent);
+      expect(c).toBeDefined();
+      expect((await evaluation.pdf(agent, c!.id)).filename).toBe(`Certificat ${c!.number}.pdf`);
+    } finally {
+      await raw(
+        `UPDATE employees SET status = 'active', inactivite_motif = NULL, fin_activite = NULL,
+                archived_at = NULL WHERE id = $1`,
+        [agentEmployeeId],
+      );
+    }
+  });
 });
 
 describe('le formateur, et qui gère le catalogue', () => {

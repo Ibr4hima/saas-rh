@@ -200,6 +200,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/academy': 'APIX Academy',
   '/academy/gerer': 'Gérer le catalogue',
   '/academy/equipe': 'Mon équipe',
+  '/academy/certificats': 'Mes certificats',
   '/evaluation': 'Évaluation des objectifs',
   '/organisation': 'Organigramme',
   '/reglementations/code-du-travail': 'Code du travail',
@@ -684,7 +685,8 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
 /**
  * Ce qui se ferme à qui n'est plus en activité, pendant le mois où son
  * portail reste ouvert : visible dans le menu, grisé. « Poser une demande »
- * est la page même des congés ; l'historique, lui, reste ouvert.
+ * est la page même des congés ; l'historique, lui, reste ouvert. De
+ * l'Academy, il garde « Mes certificats » : il les emporte.
  */
 const FERMEES_AUX_INACTIFS = [
   '/moi/objectifs',
@@ -695,7 +697,8 @@ const FERMEES_AUX_INACTIFS = [
 ];
 const fermeeAuxInactifs = (chemin: string) =>
   chemin === '/moi/conges' ||
-  FERMEES_AUX_INACTIFS.some((p) => chemin === p || chemin.startsWith(`${p}/`));
+  (FERMEES_AUX_INACTIFS.some((p) => chemin === p || chemin.startsWith(`${p}/`)) &&
+    !chemin.startsWith('/academy/certificats'));
 
 /** Le menu de Mon espace d'un agent qui n'est plus en activité : les mêmes entrées, certaines grisées. */
 function restreindre(items: NavItem[]): NavItem[] {
@@ -1194,13 +1197,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (commence('/academy/gerer')) return peut(u, 'academy');
     // Ce qu'on garde de ses formations est à l'agent : l'administrateur, qui
     // ne l'est pas, n'ouvre du côté apprenant que l'aperçu de l'atelier.
-    if (
-      commence('/academy/certificats') ||
-      commence('/academy/ma-liste') ||
-      commence('/academy/equipe')
-    ) {
-      return u.estAgent;
-    }
+    // Ses certificats restent aussi à qui n'est plus en activité.
+    if (commence('/academy/certificats')) return u.estAgent || Boolean(u.finDAcces);
+    if (commence('/academy/ma-liste') || commence('/academy/equipe')) return u.estAgent;
     if (commence('/academy')) return true;
     if (commence('/dashboard') || commence('/evaluation')) {
       return peut(u, 'pilotage');
@@ -1263,7 +1262,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const title = titleOverride ?? pageTitle(pathname, user.givenName);
   const action = pageAction(pathname, user, espace);
   const reglage = pageReglage(pathname, user, espace);
-  const academy = espaceAcademy(pathname);
+  // Ses certificats, pour qui n'est plus en activité : une page de son
+  // espace, sans le bandeau de l'Academy, dont les raccourcis lui sont fermés.
+  const academy = espaceAcademy(pathname) && !restreint;
   const cheminMenu = pathname;
   const isActive = (href: string) =>
     href === '/moi' ? cheminMenu === '/moi' : cheminMenu.startsWith(href);
@@ -1354,7 +1355,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <MenuCompte
               variante="bandeau"
               certificats={espace === 'agent'}
-              restreint={restreint}
               bascule={
                 deuxEspaces
                   ? { vers: autre, alerte: alertes[autre], onBasculer: () => allerA(autre) }
@@ -1491,7 +1491,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <MenuCompte
               variante="colonne"
               certificats={espace === 'agent'}
-              restreint={restreint}
               bascule={
                 deuxEspaces
                   ? { vers: autre, alerte: alertes[autre], onBasculer: () => allerA(autre) }

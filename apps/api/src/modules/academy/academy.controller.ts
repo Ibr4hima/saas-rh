@@ -45,7 +45,7 @@ import {
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { AccesGuard, FermeAuxInactifs, Peut } from '../auth/acces.guard';
+import { AccesGuard, FermeAuxInactifs, OuvertAuxInactifs, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AcademyEquipeService } from './academy-equipe.service';
 import { AcademyEvaluationService } from './academy-evaluation.service';
@@ -429,13 +429,17 @@ export class AcademyController {
   }
 
   // ———————————— les certificats
+  // Les siens restent ouverts à l'agent qui n'est plus en activité, le
+  // temps de son mois d'accès : il les emporte.
 
   @Get('certificats')
+  @OuvertAuxInactifs()
   mesCertificats(@Req() req: AuthenticatedRequest) {
     return this.evaluation.mesCertificats(req.sessionUser);
   }
 
   @Get('formations-animees')
+  @OuvertAuxInactifs()
   mesFormationsAnimees(@Req() req: AuthenticatedRequest) {
     return this.evaluation.mesFormationsAnimees(req.sessionUser);
   }
@@ -452,6 +456,7 @@ export class AcademyController {
   }
 
   @Get('certificats/:id/pdf')
+  @OuvertAuxInactifs()
   async certificatPdf(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,

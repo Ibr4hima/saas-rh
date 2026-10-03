@@ -515,14 +515,20 @@ describe('un mois pour récupérer ses documents', () => {
     expect(ferme(PeopleController.prototype.orgUnitMembers)).toBe(true);
     expect(ferme(AbsencesController.prototype.createRequest)).toBe(true);
     expect(ferme(AbsencesController.prototype.preview)).toBe(true);
-    // Ses documents, son historique de congés restent ouverts.
+    // Ses documents, son historique de congés, ses certificats restent ouverts.
     expect(ferme(AbsencesController.prototype.listRequests)).toBe(false);
+    expect(ferme(AcademyController.prototype.mesCertificats)).toBe(false);
+    expect(ferme(AcademyController.prototype.certificatPdf)).toBe(false);
 
     const garde = new AccesGuard(new Reflector());
-    const contexte = (handler: object, finDAcces: string | null) =>
+    const contexte = (
+      handler: object,
+      finDAcces: string | null,
+      classe: object = AbsencesController,
+    ) =>
       ({
         getHandler: () => handler,
-        getClass: () => AbsencesController,
+        getClass: () => classe,
         switchToHttp: () => ({
           getRequest: () => ({ sessionUser: { role: 'employee', capacites: [], finDAcces } }),
         }),
@@ -543,6 +549,16 @@ describe('un mois pour récupérer ses documents', () => {
         garde.canActivate(contexte(AbsencesController.prototype.listRequests, '2026-11-02')),
       ),
     ).toBe('AUCUNE ERREUR');
+    // Dans l'Academy fermée, « Mes certificats » reste ouvert.
+    const academie = AcademyController.prototype;
+    expect(
+      code(() =>
+        garde.canActivate(contexte(academie.mesCertificats, '2026-11-02', AcademyController)),
+      ),
+    ).toBe('AUCUNE ERREUR');
+    expect(
+      code(() => garde.canActivate(contexte(academie.catalogue, '2026-11-02', AcademyController))),
+    ).toBe('acces.inactif');
   });
 });
 
