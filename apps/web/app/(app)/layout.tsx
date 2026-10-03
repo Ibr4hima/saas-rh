@@ -420,22 +420,18 @@ const FILES = [
 ] as const;
 
 /**
- * Les files qu'il voit : celles qu'il traite, et celles où une demande
- * l'attend. Les absences et congés, en outre, à qui consulte les dossiers :
- * qui est absent, et pourquoi, fait partie du dossier.
+ * Les files qu'il voit : celles qui lui sont déléguées, et celles où une
+ * demande l'attend. Rien d'autre n'y mène : gérer les dossiers du personnel
+ * n'ouvre pas la file des congés. L'administrateur lit celle des congés.
  */
 function filesDe(user: SessionUser, aTraiter: ATraiter | undefined) {
   return FILES.filter(
     (f) =>
       f.capacites.some((c) => peut(user, c)) ||
       (aTraiter?.[f.type] ?? 0) > 0 ||
-      (f.type === 'conges' && voitLesConges(user)),
+      (f.type === 'conges' && user.role === 'admin'),
   );
 }
-
-/** Voit toutes les demandes de congé : qui les traite pour la DCH, ou consulte les dossiers. */
-const voitLesConges = (user: SessionUser) =>
-  peut(user, 'demandes.conges') || peut(user, 'personnel.consulter');
 
 /** A-t-il un espace de gestion — une habilitation, ou une demande qui l'attend ? */
 function gere(user: SessionUser, aTraiter: ATraiter | undefined): boolean {
@@ -496,6 +492,10 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
         break;
       case '/employees':
         if (peut(user, 'personnel.consulter')) items.push(i);
+        break;
+      case '/organisation':
+        // Tout le monde le consulte dans son espace ; ici, qui le gère.
+        if (peut(user, 'organigramme')) items.push(i);
         break;
       case '/absences/parametres':
         // Déléguer, puis traiter ; les réglages des congés ensuite, à qui les
@@ -1185,7 +1185,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         !validations.data ||
         file.capacites.some((c) => peut(u, c)) ||
         (aTraiter?.[file.type] ?? 0) > 0 ||
-        peut(u, 'personnel.consulter')
+        (file.type === 'conges' && u.role === 'admin')
       );
     }
     if (commence('/moi/delegations')) return u.dirigeLaDCH || u.role === 'admin';
@@ -1215,7 +1215,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (commence('/employees')) return peut(u, 'personnel.consulter');
     if (commence('/absences/feries')) return peut(u, 'feries');
     if (commence('/absences/parametres')) return peut(u, 'conges.parametres');
-    if (commence('/absences')) return voitLesConges(u);
+    if (commence('/absences')) return peut(u, 'demandes.conges') || u.role === 'admin';
     if (commence('/recrutement/candidatures')) return peut(u, 'recrutement.candidatures');
     if (path === '/recrutement' || commence('/recrutement/nouvelle')) {
       return peut(u, 'recrutement.offres');

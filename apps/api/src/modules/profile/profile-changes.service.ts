@@ -135,9 +135,12 @@ export class ProfileChangesService {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       const moi = await agentDuCompte(tx, user.userId);
       const selfOnly = filters.scope === 'mine';
+      // La file : qui la traite pour la DCH. Les signalements d'UN agent, sur
+      // sa fiche : qui consulte les dossiers.
       const toute =
         !selfOnly &&
-        (await voitToutLaFile(tx, user, 'informations', peut(user, 'personnel.consulter')));
+        ((await voitToutLaFile(tx, user, 'informations')) ||
+          (Boolean(filters.employeeId) && peut(user, 'personnel.consulter')));
       const conditions = [];
 
       if (selfOnly) {

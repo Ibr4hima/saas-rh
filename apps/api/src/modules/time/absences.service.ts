@@ -603,11 +603,12 @@ export class AbsencesService {
   }
 
   /**
-   * Voit toutes les demandes de congé : qui les traite pour la DCH (son
-   * directeur, les membres habilités) et qui consulte les dossiers.
+   * Voit toutes les demandes de congé : qui les traite pour la DCH, son
+   * directeur et les membres habilités. Consulter les dossiers n'y suffit
+   * pas : la file des congés se délègue à part.
    */
   private voitTout(tx: Tx, user: SessionUser): Promise<boolean> {
-    return voitToutLaFile(tx, user, 'conges', peut(user, 'personnel.consulter'));
+    return voitToutLaFile(tx, user, 'conges');
   }
 
   /**
@@ -910,9 +911,13 @@ export class AbsencesService {
           eq(t.employees.managerEmployeeId, self),
           sql`${t.employees.id} IS DISTINCT FROM ${DG}`,
         );
+      } else if (
+        query.employeeId &&
+        (peut(user, 'personnel.consulter') || peut(user, 'conges.soldes'))
+      ) {
+        // Les absences d'UN agent, sur sa fiche : qui consulte les dossiers.
       } else if (!(await this.voitTout(tx, user))) {
-        // Hors RH, paie et DCH, chacun voit les siennes — et celles qu'on
-        // lui a confiées pour la DCH.
+        // Hors DCH, chacun voit les siennes, et celles qu'on lui a confiées.
         const self = await this.selfEmployeeId(tx, user);
         if (!self) return [];
         conditions.push(
@@ -945,11 +950,11 @@ export class AbsencesService {
 
   async upcoming(user: SessionUser): Promise<AbsenceRequestView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      // Même périmètre que listRequests : la RH et la paie voient toute
+      // Qui traite les congés pour la DCH, et le tableau de bord, voient toute
       // l'agence ; les autres, leurs absences et celles de leurs agents
-      // directs — le n+1 organise son équipe avec.
+      // directs : le n+1 organise son équipe avec.
       const scope = [];
-      if (!(await this.voitTout(tx, user))) {
+      if (!peut(user, 'pilotage') && !(await this.voitTout(tx, user))) {
         const self = await this.selfEmployeeId(tx, user);
         if (!self) return [];
         scope.push(
@@ -1133,7 +1138,7 @@ export class AbsencesService {
       if (!request) {
         problem(404, 'absence.request_not_found', 'Demande introuvable');
       }
-      if (!(await voitToutLaFile(tx, user, 'conges', false))) {
+      if (!(await voitToutLaFile(tx, user, 'conges'))) {
         // Le titulaire du dossier peut annuler sa demande en attente, même si
         // c'est la DCH qui l'avait saisie pour lui. La DCH (son directeur,
         // les membres habilités aux congés) annule aussi un congé à venir.
@@ -1193,7 +1198,7 @@ export class AbsencesService {
         // membres habilités aux congés, le membre à qui la demande est
         // confiée. Jamais le N+1.
         const traite = Boolean(
-          self && (request.confieeA === self || (await voitToutLaFile(tx, user, 'conges', false))),
+          self && (request.confieeA === self || (await voitToutLaFile(tx, user, 'conges'))),
         );
         if (self !== request.employeeId && !traite) {
           // Données de santé potentielles : ni managers ni paie n'y accèdent.

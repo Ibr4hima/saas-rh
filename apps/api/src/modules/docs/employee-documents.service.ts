@@ -424,7 +424,9 @@ export class EmployeeDocumentsService {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       const target = await this.requireEmployeeWithPerson(tx, employeeId);
       const isOwner = target.personUserId === user.userId;
-      if (!isOwner && !(await this.voitLaFile(tx, user))) {
+      // Ses documents se lisent sur sa fiche : qui consulte les dossiers les voit.
+      const surLaFiche = peut(user, 'personnel.consulter');
+      if (!isOwner && !surLaFiche && !(await this.voitLaFile(tx, user))) {
         problem(403, 'documents.forbidden_scope', 'Accès limité à votre propre dossier');
       }
 
@@ -542,9 +544,12 @@ export class EmployeeDocumentsService {
     });
   }
 
-  /** Voit les pièces de tous les dossiers : qui les vérifie pour la DCH, ou consulte les dossiers. */
+  /**
+   * Voit la file des pièces à vérifier : qui les vérifie pour la DCH. Qui
+   * consulte les dossiers lit les pièces d'un agent sur sa fiche, pas la file.
+   */
   private voitLaFile(tx: Tx, user: SessionUser): Promise<boolean> {
-    return voitToutLaFile(tx, user, 'pieces', peut(user, 'personnel.consulter'));
+    return voitToutLaFile(tx, user, 'pieces');
   }
 
   /** Voit CE document : la file entière, ou le membre à qui il est confié. */

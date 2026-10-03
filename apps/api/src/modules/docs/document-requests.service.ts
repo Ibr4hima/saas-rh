@@ -147,7 +147,7 @@ export class DocumentRequestsService {
       // est aussi agent).
       const moi = await agentDuCompte(tx, user.userId);
       const selfOnly = filters.scope === 'mine';
-      const toute = !selfOnly && (await this.traiteLesDocuments(tx, user, true));
+      const toute = !selfOnly && (await this.traiteLesDocuments(tx, user));
       const conditions = [];
 
       if (selfOnly) {
@@ -188,7 +188,7 @@ export class DocumentRequestsService {
         .limit(100);
 
       const dch = await directionDuPersonnel(tx);
-      const traiteLesDocuments = !selfOnly && (await this.traiteLesDocuments(tx, user, false));
+      const traiteLesDocuments = !selfOnly && (await this.traiteLesDocuments(tx, user));
       const vues: DocumentRequestView[] = [];
       for (const r of rows) {
         const ouverte = ['received', 'processing'].includes(r.request.status);
@@ -235,13 +235,9 @@ export class DocumentRequestsService {
     });
   }
 
-  /**
-   * Traite les demandes de documents : le directeur du Capital Humain, les
-   * membres habilités — et, pour les voir seulement, qui consulte les
-   * dossiers.
-   */
-  private traiteLesDocuments(tx: Tx, user: SessionUser, voir: boolean): Promise<boolean> {
-    return voitToutLaFile(tx, user, 'documents', voir && peut(user, 'personnel.consulter'));
+  /** Traite les demandes de documents : le directeur du Capital Humain, les membres habilités. */
+  private traiteLesDocuments(tx: Tx, user: SessionUser): Promise<boolean> {
+    return voitToutLaFile(tx, user, 'documents');
   }
 
   /**
@@ -257,7 +253,7 @@ export class DocumentRequestsService {
     if (row.status === 'ready') {
       const moi = await agentDuCompte(tx, user.userId);
       if (row.handledByUserId === user.userId) return null;
-      if (row.employeeId !== moi && (await this.traiteLesDocuments(tx, user, false))) return null;
+      if (row.employeeId !== moi && (await this.traiteLesDocuments(tx, user))) return null;
       return 'Traitée par un autre membre de la DCH';
     }
     try {

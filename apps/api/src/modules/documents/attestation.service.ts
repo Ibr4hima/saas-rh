@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { peut, type SessionUser } from '@teranga/contracts';
+import type { SessionUser } from '@teranga/contracts';
 import { agentDuCompte, directionDuPersonnel, pasSurSoi } from '../acces/dch';
 import { capaciteDesDocuments, vueDuTraitement } from '../acces/demandes';
 import { problem } from '../../common/problem';
@@ -78,7 +78,11 @@ export function rattachement(unite: string): string {
 export class AttestationService {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
 
-  /** L'attestation d'un agent — qui gère les dossiers, ou qui traite sa demande. */
+  /**
+   * L'attestation d'un agent : qui traite sa demande (la file des documents).
+   * Gérer les dossiers n'y suffit pas, les attestations se délèguent à part.
+   * L'administrateur garde la main pour contrôler le modèle.
+   */
   async forEmployee(
     user: SessionUser,
     employeeId: string,
@@ -86,7 +90,7 @@ export class AttestationService {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       // La sienne se demande depuis « Mes documents », comme pour tout agent.
       await pasSurSoi(tx, user.userId, [employeeId], 'établir votre propre attestation');
-      if (!peut(user, 'personnel.gerer') && !(await this.traiteSaDemande(tx, user, employeeId))) {
+      if (user.role !== 'admin' && !(await this.traiteSaDemande(tx, user, employeeId))) {
         problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
       }
       return this.build(tx, user.tenantId, employeeId);

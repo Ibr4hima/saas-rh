@@ -273,16 +273,16 @@ export async function vueDuTraitement(
 
 /**
  * Qui voit toute la file d'un type : le directeur, les membres habilités à
- * le traiter (pour les documents : à l'un d'eux) — et qui consulte les
- * dossiers du personnel.
+ * le traiter (pour les documents : à l'un d'eux), et l'administrateur, qui
+ * la lit sans la traiter. Rien d'autre n'y donne accès, pas même la
+ * consultation des dossiers du personnel.
  */
 export async function voitToutLaFile(
   tx: Tx,
   user: SessionUser,
   type: TypeDemande,
-  peutConsulter: boolean,
 ): Promise<boolean> {
-  if (peutConsulter) return true;
+  if (user.role === 'admin') return true;
   const moi = await agentDuCompte(tx, user.userId);
   if (!moi) return false;
   const dch = await directionDuPersonnel(tx);

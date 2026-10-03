@@ -297,7 +297,7 @@ describe('les demandes de documents', () => {
     expect(r.ids).toHaveLength(4);
   });
 
-  it('chacun voit les siennes ; la file entière, qui la traite ou consulte les dossiers', async () => {
+  it('chacun voit les siennes ; la file entière, qui la traite (l’administrateur la lit)', async () => {
     const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
       .ids as [string];
     await habiliter(awa, 'demandes.documents.attestation_travail');
@@ -946,5 +946,46 @@ describe('on ne contourne pas le système : rien sur soi-même', () => {
     const [vue] = await pieces.list(awa.session, awa.employeeId);
     expect(vue).toMatchObject({ canReview: false });
     await pieces.review(mariama.session, id, { decision: 'approved' });
+  });
+});
+
+describe('gérer les dossiers du personnel n’ouvre aucune file', () => {
+  it('ni les congés, ni les documents, ni les informations, ni les pièces : la fiche de chacun, oui', async () => {
+    const gestion = {
+      ...khady.session,
+      capacites: ['personnel.consulter', 'personnel.gerer', 'personnel.sensible', 'conges.soldes'],
+    } as SessionUser;
+    await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
+    await informations.create(moussa.session, { changes: { addressLine: 'Cité Keur Gorgui' } });
+    const typeConge = randomUUID();
+    await raw(
+      `INSERT INTO absence_types (id, tenant_id, name, deducts_balance, allowance_days, frequency)
+       VALUES ($1,$2,'Congé de test',false,30,'annual')`,
+      [typeConge, tenantId],
+    );
+    await raw(
+      `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+       VALUES ($1,$2,$3,$4, CURRENT_DATE + 10, CURRENT_DATE + 12, 3, 'pending')`,
+      [randomUUID(), tenantId, moussa.employeeId, typeConge],
+    );
+    try {
+      expect(await documents.list(gestion, {})).toEqual([]);
+      expect(await informations.list(gestion, {})).toEqual([]);
+      expect(await pieces.file(gestion)).toEqual([]);
+      expect(await absences.listRequests(gestion, { limit: 100 } as never)).toEqual([]);
+      // Sur la fiche de Moussa : ses signalements, ses absences.
+      expect(await informations.list(gestion, { employeeId: moussa.employeeId })).toHaveLength(1);
+      expect(
+        await absences.listRequests(gestion, {
+          limit: 100,
+          employeeId: moussa.employeeId,
+        } as never),
+      ).toHaveLength(1);
+      // L'administrateur, lui, lit les files sans les traiter.
+      expect(await absences.listRequests(admin, { limit: 100 } as never)).toHaveLength(1);
+    } finally {
+      await raw(`DELETE FROM absence_requests WHERE absence_type_id = $1`, [typeConge]);
+      await raw(`DELETE FROM absence_types WHERE id = $1`, [typeConge]);
+    }
   });
 });
