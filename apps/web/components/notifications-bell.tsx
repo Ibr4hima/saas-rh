@@ -146,8 +146,10 @@ export function NotificationsBell({ espace }: { espace?: Espace }) {
             : 'border-white/30 bg-white/10 hover:border-white/55 hover:bg-white/20',
         )}
       >
-        <Icon name="notifications" size={20} fill={unread > 0} />
-        {unread > 0 ? <Pastille valeur={unread} /> : null}
+        <span className="relative flex">
+          <Icon name="notifications" size={20} fill={unread > 0} />
+          {unread > 0 ? <PointNonLu /> : null}
+        </span>
       </button>
 
       {open ? (
@@ -175,21 +177,17 @@ export function NotificationsBell({ espace }: { espace?: Espace }) {
 }
 
 /**
- * Le compteur d'avis en attente, posé sur le bandeau.
- *
- * Aplat rouge PÂLE et chiffre foncé — le badge est clair partout, et ne change
- * que de palier selon le fond (voir `--tg-alert-*` dans tokens.css). Le liseré
- * sombre n'est pas un ornement : la pastille mord sur le bouton en verre, dont
- * le fond remonte jusqu'à 25 % de blanc, où un aplat pâle tomberait à 2,4:1.
+ * Un point rouge sur la cloche, sans chiffre : comme sur la carte du compte,
+ * il dit « il y a du nouveau », et le panneau dit combien. Le nombre reste
+ * dans l'intitulé accessible du bouton. Le liseré, à la couleur du bandeau,
+ * détache le point de la cloche qu'il mord.
  */
-function Pastille({ valeur }: { valeur: number }) {
+function PointNonLu() {
   return (
     <span
-      className="absolute -top-[3px] -right-[3px] flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-alert-hero px-[4.5px] text-[10px] leading-none font-extrabold text-alert-hero-ink ring-2 ring-[var(--tg-alert-ring)]"
-      style={{ fontVariantNumeric: 'tabular-nums' }}
-    >
-      {valeur > 99 ? '99+' : valeur}
-    </span>
+      aria-hidden
+      className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-alert ring-2 ring-[var(--tg-hero)]"
+    />
   );
 }
 
