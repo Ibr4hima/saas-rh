@@ -40,40 +40,6 @@ interface PickedFile {
 const sansExtension = (nom: string) => nom.replace(/\.pdf$/i, '');
 
 /**
- * Un nom de fichier qu'on peut réécrire, et qui reste un nom de fichier.
- *
- * Le champ SE DIMENSIONNE SUR SON TEXTE, pour que l'extension et le poids
- * restent collés au nom au lieu de flotter au bout d'une barre vide. Un
- * champ ne sait pas faire cela seul : une doublure invisible porte le même
- * texte et donne sa largeur à l'ensemble, et le champ se pose par-dessus.
- */
-function NomModifiable({
-  valeur,
-  onChange,
-  label,
-}: {
-  valeur: string;
-  onChange: (v: string) => void;
-  label: string;
-}) {
-  return (
-    <span className="group/nom relative min-w-0 max-w-full">
-      <span aria-hidden className="invisible block truncate px-0.5 whitespace-pre">
-        {valeur || ' '}
-      </span>
-      <input
-        value={valeur}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={`Renommer ${label}`}
-        maxLength={120}
-        spellCheck={false}
-        className="absolute inset-0 w-full min-w-0 truncate rounded-[3px] border-b border-dashed border-transparent bg-transparent px-0.5 text-ink-muted transition-colors outline-none group-hover/nom:border-ink-muted/40 focus:border-primary focus:text-ink-strong"
-      />
-    </span>
-  );
-}
-
-/**
  * Une pièce à joindre, choisie ou non.
  *
  * Le `<input type=file>` du navigateur affiche « Aucun fichier choisi » dans
@@ -118,36 +84,29 @@ function PieceJointe({
 
   if (fichier) {
     return (
-      <div className="group flex items-center gap-3 rounded-[11px] border border-success/35 bg-success-soft px-3.5 py-3">
+      <div className="flex items-center gap-3 rounded-[11px] border border-success/35 bg-success-soft px-3.5 py-3">
         {champ('sr-only')}
         <Icon name="check_circle" size={20} className="shrink-0 text-success" />
+        {/* Le nom du fichier est le titre de la pièce, et se corrige ici même,
+            comme au dépôt d'un document dans l'espace personnel : « Document
+            (3) copie » est le classement du candidat sur son propre disque,
+            et c'est ce qui arrive dans la file du recruteur. */}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-bold text-ink-strong">{label}</p>
-          {/* Le nom du fichier se CORRIGE ici même : « Document (3) copie.pdf »
-              est le classement du candidat sur son propre disque, et c'est ce
-              qui arrive dans la file du recruteur.
-              Le champ ne RESSEMBLE PAS à un champ : ni cadre ni fond, la même
-              encre que la ligne qu'il remplace. Un soulignement pointillé
-              paraît au survol, un crayon à côté — c'est tout ce qu'il faut
-              pour dire qu'on peut écrire là. */}
-          <span className="flex items-baseline gap-1.5 text-[11.5px] text-ink-muted">
-            <NomModifiable
-              valeur={sansExtension(fichier.filename)}
-              onChange={onRenommer}
-              label={label}
+          <div className="flex items-center gap-1 border-b border-ink/15 pb-0.5 transition-colors focus-within:border-primary">
+            <input
+              value={sansExtension(fichier.filename)}
+              onChange={(e) => onRenommer(e.target.value)}
+              aria-label={`Renommer ${label}`}
+              placeholder={label}
+              maxLength={120}
+              spellCheck={false}
+              className="min-w-0 flex-1 truncate bg-transparent text-[13px] font-bold text-ink-strong outline-none placeholder:text-ink-muted/60"
             />
-            <span className="shrink-0 whitespace-nowrap">
-              .pdf · {Math.max(1, Math.round(fichier.sizeBytes / 1024))} Ko
-            </span>
-            {/* En bout de ligne, et nulle part ailleurs : posé entre le nom et
-                son extension, il les décollait l'un de l'autre même invisible. */}
-            <Icon
-              name="edit"
-              size={11}
-              aria-hidden
-              className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-            />
-          </span>
+            <Icon name="edit" size={14} aria-hidden className="shrink-0 text-ink-muted/70" />
+          </div>
+          <p className="mt-1 truncate text-[11.5px] text-ink-muted">
+            {label} · PDF · {Math.max(1, Math.round(fichier.sizeBytes / 1024))} Ko
+          </p>
         </div>
         <button
           type="button"
@@ -251,13 +210,12 @@ function Volets({
   return (
     <main className="min-h-dvh bg-surface lg:grid lg:grid-cols-2">
       <div className="fond-offre">
-        {/* Le logo reste en haut ; l'offre se centre dans la hauteur, sur le
-            même axe que le formulaire, et coule normalement si elle est longue. */}
-        <div className="relative mx-auto max-w-[640px] px-5 pt-6 pb-10 sm:px-10 lg:mr-0 lg:flex lg:min-h-dvh lg:flex-col lg:justify-center lg:px-12 lg:pt-28 lg:pb-16 xl:px-16">
-          <div className="lg:absolute lg:top-10">
-            <BrandMark variant="entete" repli={initiale ?? 'A'} />
-          </div>
-          <div>{offre}</div>
+        {/* Le logo et l'offre se centrent ensemble dans la hauteur, sur le
+            même axe que le formulaire, et coulent normalement si l'offre est
+            longue. */}
+        <div className="mx-auto max-w-[640px] px-5 pt-6 pb-10 sm:px-10 lg:mr-0 lg:flex lg:min-h-dvh lg:flex-col lg:justify-center lg:px-12 lg:py-12 xl:px-16">
+          <BrandMark variant="entete" repli={initiale ?? 'A'} />
+          {offre}
         </div>
       </div>
       <div className="border-t border-line-soft lg:border-t-0 lg:border-l">
@@ -348,7 +306,7 @@ export default function ApplyPage() {
           phone: composePhone(phonePays, phoneLocal),
           documents: Object.entries(files).map(([label, f]) => ({
             label,
-            filename: f.filename,
+            filename: sansExtension(f.filename).trim() ? f.filename : `${label}.pdf`,
             contentType: f.contentType,
             contentBase64: f.contentBase64,
           })),
@@ -364,8 +322,8 @@ export default function ApplyPage() {
    *
    * Le nom est celui qui arrivera dans la file du recruteur : il vaut mieux
    * « CV Mouhamadou Kane » que « Document (3) copie.pdf ». L'extension n'est
-   * pas modifiable — elle dit le format, qui n'est pas au choix du candidat —
-   * et un nom vidé revient à celui du fichier d'origine à l'envoi.
+   * pas modifiable : elle dit le format, qui n'est pas au choix du candidat.
+   * Un nom vidé part sous celui de la pièce (« CV.pdf »).
    */
   const renommer = (label: string, nom: string) => {
     const propre = nom.replace(/[\\/:*?"<>|]/g, '').slice(0, 120);
@@ -421,7 +379,7 @@ export default function ApplyPage() {
     return (
       <Volets
         offre={
-          <div className="mt-14 lg:mt-0">
+          <div className="mt-9">
             <Skeleton className="h-4 w-28 rounded-full" />
             <Skeleton className="mt-4 h-11 w-full max-w-md rounded-xl" />
             <Skeleton className="mt-6 h-8 w-full max-w-sm rounded-full" />
@@ -485,16 +443,17 @@ export default function ApplyPage() {
       initiale={offre.organizationName[0]?.toUpperCase()}
       offre={
         <>
-          <div className="mt-12 lg:mt-0">
-            <p className="flex flex-wrap items-baseline gap-x-2.5 text-[11px] font-extrabold tracking-[0.18em] text-primary uppercase">
+          <div className="mt-9">
+            <p className="text-[11px] font-extrabold tracking-[0.18em] text-primary uppercase">
               Offre d’emploi
-              <span className="font-mono text-[11px] font-semibold tracking-normal text-ink-muted normal-case">
-                {offre.reference}
-              </span>
             </p>
-            <h1 className="mt-3 text-[32px] leading-[1.08] font-extrabold tracking-[-0.025em] text-balance text-ink-strong sm:text-[42px]">
+            <h1 className="mt-3 text-[30px] leading-[1.1] font-extrabold tracking-[-0.022em] text-balance text-ink-strong sm:text-[38px]">
               {offre.title}
             </h1>
+            <p className="mt-2.5 text-[12px] font-semibold text-ink-muted">
+              <span className="tracking-[0.12em] uppercase">Réf</span> ·{' '}
+              <span className="font-mono">{offre.reference}</span>
+            </p>
             <ul className="mt-6 flex flex-wrap gap-2">
               <Etiquette icon="business_center">
                 {CONTRACT_LABELS[offre.contractType] ?? offre.contractType}
@@ -534,7 +493,7 @@ export default function ApplyPage() {
           </div>
 
           <div className="mt-10 border-t border-ink/[0.08] pt-8 lg:mt-12 lg:pt-10">
-            <Rubrique>Le poste</Rubrique>
+            <Rubrique>Description du poste</Rubrique>
             <DescriptionOffre texte={offre.description} lecture />
           </div>
         </>

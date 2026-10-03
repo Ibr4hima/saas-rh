@@ -88,7 +88,9 @@ export function BrandMark({
           // candidat, il a droit à sa pleine mesure.
           variant === 'candidature' && 'h-14 w-auto max-w-[200px] rounded-lg bg-transparent',
           // En-tête d'une page publique : la signature, à mesure de barre.
-          variant === 'entete' && 'h-10 w-auto max-w-[170px] bg-transparent',
+          // `self-start` : posé dans une colonne flexible, il s'y étirerait à
+          // sa largeur maximale et s'y centrerait, décollé du texte.
+          variant === 'entete' && 'h-12 w-auto max-w-[200px] self-start bg-transparent',
         )}
         onError={() => setCandidate((i) => i + 1)}
       />
@@ -106,7 +108,8 @@ export function BrandMark({
         variant === 'compact' && 'size-8 rounded-md bg-primary text-xs text-primary-ink',
         variant === 'candidature' &&
           'size-14 rounded-[18px] bg-primary text-[22px] text-primary-ink',
-        variant === 'entete' && 'size-10 rounded-[12px] bg-primary text-[17px] text-primary-ink',
+        variant === 'entete' &&
+          'size-12 self-start rounded-[14px] bg-primary text-[19px] text-primary-ink',
       )}
     >
       {repli ?? 'CH'}
