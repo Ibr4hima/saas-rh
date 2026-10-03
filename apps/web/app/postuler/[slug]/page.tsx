@@ -12,6 +12,7 @@ import {
 } from '@teranga/contracts';
 import { Button, Field, Input, Skeleton, cn } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
+import { BarreDefilement } from '../../../components/barre-defilement';
 import { BrandMark } from '../../../components/brand-mark';
 import { Icon, type IconName } from '../../../components/icons';
 import { PhoneInput } from '../../../components/phone-input';
@@ -190,17 +191,22 @@ function Coquille({ children }: { children: React.ReactNode }) {
 
 /**
  * La page d'une offre, en deux volets de pleine hauteur : l'offre sur le fond
- * teinté, le formulaire sur le blanc. Chaque volet remplit sa moitié quelle
- * que soit la longueur de l'autre : aucun trou sous le plus court.
+ * teinté, le formulaire sur le blanc.
+ *
+ * Sur grand écran, comme deux pages d'un livre ouvert : le formulaire reste
+ * immobile, et c'est l'offre seule qui défile, sa longueur dépendant de ce
+ * que le recruteur a rédigé. Sa barre de défilement se pose sur la couture
+ * entre les deux volets. La molette tournée au-dessus du formulaire fait
+ * défiler l'offre elle aussi : le formulaire n'a rien à faire défiler.
  *
  * Les deux volets partent du même point haut, et le logo comme « Postuler »
  * y occupent une ligne de 48 px : leurs centres restent alignés quelle que
  * soit la hauteur de l'écran. Ce départ centre à peu près le formulaire
- * (40rem), sans descendre sous 3rem.
+ * (40rem), sans descendre sous 3rem. Sur un écran trop bas pour le montrer
+ * en entier, le formulaire défile à son tour : son bouton d'envoi doit
+ * rester atteignable.
  *
- * Le formulaire reste en place pendant la lecture d'une longue offre ; mais
- * seulement sur un écran assez haut pour le montrer en entier : collé plus
- * haut que l'écran, son bouton d'envoi deviendrait inatteignable.
+ * Sur téléphone, les volets s'empilent et la page défile d'un seul tenant.
  */
 const DEPART = 'lg:pt-[max(3rem,calc(50dvh_-_20rem))]';
 
@@ -213,9 +219,22 @@ function Volets({
   offre: React.ReactNode;
   formulaire: React.ReactNode;
 }) {
+  const gauche = useRef<HTMLDivElement>(null);
+
+  /** La molette au-dessus du formulaire, quand il tient dans l'écran, fait défiler l'offre. */
+  const versLOffre = (e: React.WheelEvent<HTMLDivElement>) => {
+    const droite = e.currentTarget;
+    if (droite.scrollHeight > droite.clientHeight + 1) return;
+    // Firefox compte parfois en lignes : une ligne vaut environ 16 px.
+    gauche.current?.scrollBy({ top: e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY });
+  };
+
   return (
-    <main className="min-h-dvh bg-surface lg:grid lg:grid-cols-2">
-      <div className="fond-offre">
+    <main className="min-h-dvh bg-surface lg:relative lg:grid lg:h-dvh lg:grid-cols-2 lg:overflow-hidden">
+      <div
+        ref={gauche}
+        className="fond-offre lg:h-dvh lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden"
+      >
         <div
           className={cn(
             'mx-auto flex max-w-[640px] flex-col px-5 pt-6 pb-10 sm:px-10 lg:mr-0 lg:px-12 lg:pb-16 xl:px-16',
@@ -226,16 +245,24 @@ function Volets({
           {offre}
         </div>
       </div>
-      <div className="border-t border-line-soft lg:border-t-0 lg:border-l">
+      <div
+        onWheel={versLOffre}
+        className="border-t border-line-soft lg:h-dvh lg:overflow-y-auto lg:border-t-0 lg:border-l"
+      >
         <div
           className={cn(
-            'mx-auto max-w-[560px] px-5 pt-10 pb-14 sm:px-10 lg:top-0 lg:ml-0 lg:px-12 lg:pb-12 xl:px-16 lg:[@media(min-height:50rem)]:sticky',
+            'mx-auto max-w-[560px] px-5 pt-10 pb-14 sm:px-10 lg:ml-0 lg:px-12 lg:pb-12 xl:px-16',
             DEPART,
           )}
         >
           {formulaire}
         </div>
       </div>
+      {/* Sur la couture : le filet du volet droit passe à 50 % + 0,5 px. */}
+      <BarreDefilement
+        cible={gauche}
+        className="absolute inset-y-4 left-[calc(50%+0.5px)] hidden w-4 -translate-x-1/2 lg:block"
+      />
     </main>
   );
 }
@@ -654,13 +681,6 @@ export default function ApplyPage() {
                 >
                   Envoyer ma candidature
                 </Button>
-                <p className="mt-2.5 text-center text-[11.5px] text-ink-muted">
-                  {manquants.length > 0
-                    ? `Reste à joindre : ${manquants.join(', ')}`
-                    : complet
-                      ? 'Tout est prêt.'
-                      : 'Renseignez vos nom, prénom et adresse email.'}
-                </p>
               </div>
             </form>
           )}
