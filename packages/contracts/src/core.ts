@@ -156,6 +156,8 @@ export const sessionUserSchema = z.object({
    * (AAAA-MM-JJ), un mois après sa fin d'activité. `null` : en activité.
    */
   finDAcces: z.string().nullable().default(null),
+  /** Le sexe à son dossier, pour l'icône de son compte. `null` : inconnu, ou pas de dossier. */
+  gender: z.enum(['female', 'male']).nullable().default(null),
 });
 export type SessionUser = z.infer<typeof sessionUserSchema>;
 

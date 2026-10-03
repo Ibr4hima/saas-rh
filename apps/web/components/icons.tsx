@@ -83,6 +83,7 @@ export const ICON_NAMES = [
   'notifications',
   'pause',
   'person',
+  'person_2',
   'person_add',
   'picture_as_pdf',
   'place',

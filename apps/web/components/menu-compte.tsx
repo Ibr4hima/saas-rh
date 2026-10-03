@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom';
 import { cn } from '@teranga/ui';
 import { api } from '../lib/api';
+import { useMe } from '../lib/hooks';
 import { LIBELLES_ESPACE, type Espace } from './espace';
 import { Icon, type IconName } from './icons';
 import { usePreferences } from './preferences';
@@ -54,6 +55,8 @@ export function MenuCompte({
 }) {
   const router = useRouter();
   const { theme, basculer } = usePreferences();
+  // L'icône du compte suit le sexe au dossier : person, ou person_2.
+  const soi: IconName = useMe().data?.gender === 'female' ? 'person_2' : 'person';
   const [ouvert, setOuvert] = useState(false);
   const bouton = useRef<HTMLButtonElement>(null);
   // Le panneau vit dans un portail : il n'est plus DANS le bouton, et le
@@ -115,7 +118,7 @@ export function MenuCompte({
         )}
       >
         <span className="relative flex">
-          <Icon name="person" size={dansLeBandeau ? 19 : 18} fill={ouvert} />
+          <Icon name={soi} size={dansLeBandeau ? 19 : 18} fill={ouvert} />
           {bascule && bascule.alerte > 0 && !ouvert ? (
             <span
               aria-hidden
@@ -137,7 +140,7 @@ export function MenuCompte({
         >
           {bascule ? (
             <Rangee
-              icone={bascule.vers === 'gestion' ? 'business_center' : 'person'}
+              icone={bascule.vers === 'gestion' ? 'business_center' : soi}
               libelle={LIBELLES_ESPACE[bascule.vers]}
               badge={bascule.alerte}
               onClick={() => {

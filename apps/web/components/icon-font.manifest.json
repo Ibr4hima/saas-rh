@@ -62,6 +62,7 @@
     "notifications",
     "pause",
     "person",
+    "person_2",
     "person_add",
     "picture_as_pdf",
     "place",
@@ -94,5 +95,5 @@
     "workspace_premium"
   ],
   "axes": "opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
-  "bytes": 89528
+  "bytes": 90984
 }

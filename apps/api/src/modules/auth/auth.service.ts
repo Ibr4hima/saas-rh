@@ -190,6 +190,11 @@ export class AuthService {
         // n'ouvre plus rien. C'est ici que la porte se referme.
         const { finDAcces, ferme } = await accesDuCompte(tx, session.userId);
         if (ferme) return null;
+        const [personne] = await tx
+          .select({ gender: t.persons.gender })
+          .from(t.persons)
+          .where(and(eq(t.persons.userId, session.userId), isNull(t.persons.deletedAt)))
+          .limit(1);
         // Pendant ce mois, il n'est plus agent de l'APIX : aucune
         // habilitation, même si la liste ne l'a pas encore rangé.
         const { capacites, estAgent, dirigeLaDCH, estDG } = finDAcces
@@ -209,6 +214,8 @@ export class AuthService {
           dirigeLaDCH,
           estDG,
           finDAcces,
+          gender:
+            personne?.gender === 'female' || personne?.gender === 'male' ? personne.gender : null,
         };
       },
     );

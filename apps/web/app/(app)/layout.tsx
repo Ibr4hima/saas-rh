@@ -1080,10 +1080,15 @@ function DateDuJour() {
   );
 }
 
-/** Sous le nom : l'espace où l'on travaille ; pour l'administrateur, sa fonction. */
+/**
+ * Sous le nom : l'espace où l'on travaille ; pour l'administrateur, sa
+ * fonction. Deux places ont le leur : le directeur du Capital Humain dans sa
+ * gestion, le directeur général dans son espace.
+ */
 function qualite(user: SessionUser, espace: Espace): string {
   if (user.role === 'admin') return 'Administration';
-  return espace === 'gestion' ? 'Espace RH' : 'Espace personnel';
+  if (espace === 'gestion') return user.dirigeLaDCH ? 'Espace DCH' : 'Espace RH';
+  return user.estDG ? 'Espace DG' : 'Espace personnel';
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

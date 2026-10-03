@@ -252,6 +252,10 @@ export default function EmployeesPage() {
     // n'existe que chez les actifs viderait l'onglet des inactifs sans qu'on
     // comprenne pourquoi.
     setFiltres(SANS_FILTRE);
+    // Les inactifs, du départ le plus récent au plus ancien ; les actifs, par
+    // dernier dossier touché.
+    setSort(cle === 'archived' ? 'contractEnd' : 'recent');
+    setDir('desc');
     sel.vider();
   };
 
