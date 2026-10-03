@@ -4,7 +4,7 @@ import * as React from 'react';
 import type { BeatResult, Intervalle, LessonPlayback } from '@teranga/contracts';
 import { BATTEMENT_S, SEUIL_VISIONNAGE } from '@teranga/contracts';
 import { Button, cn } from '@teranga/ui';
-import { horloge, pourcent } from '../lib/academy';
+import { horloge } from '../lib/academy';
 import { api, ApiError, apiUrl } from '../lib/api';
 import { Icon } from './icons';
 
@@ -305,7 +305,6 @@ export function LecteurVideo({
     ecrireSon({ volume, muet });
   }, [muet, volume]);
 
-  const vu = Math.min(1, intervalles.reduce((s, [de, a]) => s + (a - de), 0) / duree);
   const limite =
     validee || !suivi ? duree : Math.max(plusLoinServeur, plusLoinLocal.current, temps);
   const montrerCommandes = commandes || !enLecture || fini;
@@ -472,7 +471,6 @@ export function LecteurVideo({
               </>
             ) : (
               <>
-                <p className="text-[17px] font-bold tracking-[-0.01em]">Vue à {pourcent(vu)}</p>
                 <p className="text-[12.5px] leading-relaxed text-white/75">
                   Il faut {Math.round(SEUIL_VISIONNAGE * 100)} % pour valider la leçon. Les passages
                   non vus restent clairs sur la barre.
