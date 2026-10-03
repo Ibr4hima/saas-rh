@@ -651,3 +651,59 @@ body {
   background-color: var(--statut-fond, var(--tg-surface));
   background-image: var(--statut-signe, none);
 }
+
+/* ── Glissière du son du lecteur Academy ──────────────────────────────────
+   La glissière native du navigateur trahissait le « lecteur web » : piste
+   grise épaisse, poignée de système. Ici, un fil de 3 px rempli de blanc
+   jusqu'au niveau (--niveau, posé par le lecteur) et une poignée blanche
+   ronde. Clavier et lecteurs d'écran restent ceux de l'`input` natif. */
+.glissiere-son {
+  appearance: none;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+.glissiere-son:focus-visible {
+  outline: none;
+}
+.glissiere-son::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    #fff var(--niveau, 100%),
+    rgb(255 255 255 / 0.25) var(--niveau, 100%)
+  );
+}
+.glissiere-son::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
+}
+.glissiere-son:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 4px rgb(255 255 255 / 0.3),
+    0 1px 4px rgb(0 0 0 / 0.45);
+}
+.glissiere-son::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.25);
+}
+.glissiere-son::-moz-range-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: #fff;
+}
+.glissiere-son::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
+}

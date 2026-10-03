@@ -319,7 +319,9 @@ export function LecteurVideo({
       aria-label={`Lecteur vidéo : ${lecture.title}`}
       className={cn(
         'group/lecteur relative isolate w-full overflow-hidden bg-black select-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none',
-        pleinEcran ? 'rounded-none' : 'mx-auto rounded-[16px]',
+        pleinEcran
+          ? 'rounded-none'
+          : 'mx-auto rounded-[20px] shadow-[0_1px_2px_rgb(0_0_0/0.06),0_18px_40px_-18px_rgb(0_0_0/0.35)]',
         !montrerCommandes && 'cursor-none',
       )}
       // Le cadre a les proportions EXACTES de la vidéo, et toute la largeur de
@@ -402,30 +404,42 @@ export function LecteurVideo({
         }}
       />
 
-      {/* ———— la grande touche lecture, tant que rien ne joue ———— */}
+      {/* Un voile doux sous les commandes : juste assez pour que le blanc se
+          lise sur une image claire, jamais une bande noire. */}
+      <div
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/55 via-black/15 to-transparent transition-opacity duration-300',
+          montrerCommandes && !ailleurs ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+
+      {/* La grande touche, tant que rien ne joue : un disque blanc plein, le
+          triangle au bleu de la marque, et une ombre qui le détache de
+          n'importe quelle image. */}
       {!enLecture && !fini && !ailleurs && !erreurMedia ? (
         <button
           type="button"
           onClick={basculer}
           aria-label="Lire la vidéo"
-          className="absolute top-1/2 left-1/2 grid size-[68px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white/15 text-white ring-1 ring-white/30 backdrop-blur-md transition-transform duration-200 hover:scale-105 hover:bg-white/25"
+          className="absolute top-1/2 left-1/2 grid size-[72px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white text-[#004f91] shadow-[0_12px_40px_-8px_rgb(0_0_0/0.55)] transition-transform duration-200 ease-out hover:scale-[1.06] focus-visible:ring-4 focus-visible:ring-white/40 focus-visible:outline-none active:scale-95 sm:size-[84px]"
         >
-          <Icon name="play_arrow" size={38} fill />
+          <Icon name="play_arrow" size={40} fill className="ml-1" />
         </button>
       ) : null}
 
       {attente && enLecture ? (
         <span
           aria-hidden
-          className="absolute top-1/2 left-1/2 size-10 -translate-x-1/2 -translate-y-1/2 animate-spin rounded-full border-[3px] border-white/25 border-t-white"
+          className="absolute top-1/2 left-1/2 size-11 -translate-x-1/2 -translate-y-1/2 animate-spin rounded-full border-2 border-white/20 border-t-white"
         />
       ) : null}
 
-      {/* ———— l'avis passager, en haut ———— */}
+      {/* L'avis passager, en haut : une capsule du même verre que les commandes. */}
       {avis ? (
         <div
           role="status"
-          className="absolute top-3 left-1/2 w-max max-w-[90%] -translate-x-1/2 rounded-full bg-black/70 px-3.5 py-1.5 text-center text-[12px] font-semibold text-white ring-1 ring-white/15 backdrop-blur-md"
+          className="absolute top-4 left-1/2 w-max max-w-[90%] -translate-x-1/2 rounded-full bg-black/45 px-4 py-2 text-center text-[12px] font-semibold text-white ring-1 ring-white/10 backdrop-blur-xl"
         >
           {avis}
         </div>
@@ -433,15 +447,17 @@ export function LecteurVideo({
 
       {/* ———— fin de la vidéo ———— */}
       {fini && !ailleurs ? (
-        <div className="absolute inset-0 grid place-items-center bg-black/70 p-6 text-center text-white backdrop-blur-sm">
+        <div className="absolute inset-0 grid place-items-center bg-black/60 p-6 text-center text-white backdrop-blur-md">
           <div className="flex max-w-sm flex-col items-center gap-3">
             {validee || !suivi ? (
               <>
-                <Icon name="check_circle" size={40} fill className="text-[#7fd4a8]" />
-                <p className="text-[16px] font-bold">
+                <span className="grid size-14 place-items-center rounded-full bg-white/10 ring-1 ring-white/15">
+                  <Icon name="check" size={30} weight={600} className="text-[#69d3c6]" />
+                </span>
+                <p className="text-[17px] font-bold tracking-[-0.01em]">
                   {suivi ? 'Leçon validée' : 'Fin de la leçon'}
                 </p>
-                <div className="flex flex-wrap justify-center gap-2">
+                <div className="mt-1 flex flex-wrap justify-center gap-2">
                   <Button variant="secondary" size="sm" onClick={basculer}>
                     <Icon name="replay" size={15} />
                     Revoir
@@ -456,13 +472,14 @@ export function LecteurVideo({
               </>
             ) : (
               <>
-                <p className="text-[16px] font-bold">Vue à {pourcent(vu)}</p>
-                <p className="text-[12.5px] leading-relaxed text-white/80">
+                <p className="text-[17px] font-bold tracking-[-0.01em]">Vue à {pourcent(vu)}</p>
+                <p className="text-[12.5px] leading-relaxed text-white/75">
                   Il faut {Math.round(SEUIL_VISIONNAGE * 100)} % pour valider la leçon. Les passages
                   non vus restent clairs sur la barre.
                 </p>
                 <Button
                   size="sm"
+                  className="mt-1"
                   onClick={() => {
                     allerA(premierTrou(intervalles, duree));
                     void video.current?.play();
@@ -479,30 +496,40 @@ export function LecteurVideo({
 
       {/* ———— la lecture continue ailleurs ———— */}
       {ailleurs || erreurMedia ? (
-        <div className="absolute inset-0 grid place-items-center bg-black/80 p-6 text-center text-white">
+        <div className="absolute inset-0 grid place-items-center bg-black/80 p-6 text-center text-white backdrop-blur-md">
           <div className="flex max-w-sm flex-col items-center gap-3">
-            <p className="text-[15px] font-bold">
+            <p className="text-[16px] font-bold tracking-[-0.01em]">
               {ailleurs ? 'La lecture continue ailleurs' : 'La vidéo ne se charge pas'}
             </p>
-            <p className="text-[12.5px] leading-relaxed text-white/75">
+            <p className="text-[12.5px] leading-relaxed text-white/70">
               {ailleurs
                 ? 'Une autre leçon, ou celle-ci dans un autre onglet, a pris le relais. Une seule lecture compte à la fois.'
                 : 'La connexion a peut-être été coupée, ou l’adresse de lecture a expiré.'}
             </p>
-            <Button size="sm" onClick={onReprendreIci}>
+            <Button size="sm" className="mt-1" onClick={onReprendreIci}>
               {ailleurs ? 'Reprendre ici' : 'Réessayer'}
             </Button>
           </div>
         </div>
       ) : null}
 
-      {/* ———— les commandes ———— */}
+      {/* ———— les commandes ————
+          Une capsule de verre sombre posée AU-DESSUS de l'image, détachée des
+          bords, sur une seule ligne : lecture, temps, barre, durée, son,
+          plein écran. Elle s'efface pendant la lecture et revient au moindre
+          mouvement. */}
       <div
         className={cn(
-          'absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 pt-12 pb-2.5 transition-opacity duration-300 sm:px-4',
-          montrerCommandes && !ailleurs ? 'opacity-100' : 'pointer-events-none opacity-0',
+          'absolute inset-x-2 bottom-2 flex items-center gap-0.5 rounded-[14px] bg-black/50 p-1 text-white ring-1 ring-white/10 backdrop-blur-xl transition-[opacity,transform] duration-300 ease-out sm:inset-x-5 sm:bottom-5 sm:gap-2 sm:rounded-[16px] sm:px-2.5 sm:py-1.5',
+          montrerCommandes && !ailleurs
+            ? 'translate-y-0 opacity-100'
+            : 'pointer-events-none translate-y-2 opacity-0',
         )}
       >
+        <BoutonLecteur label={enLecture ? 'Pause' : 'Lecture'} onClick={basculer}>
+          <Icon name={enLecture ? 'pause' : 'play_arrow'} size={24} fill />
+        </BoutonLecteur>
+        <Temps>{horloge(temps)}</Temps>
         <BarreTemps
           duree={duree}
           temps={temps}
@@ -511,58 +538,55 @@ export function LecteurVideo({
           libre={validee || !suivi}
           onAller={allerA}
         />
-        <div className="mt-1.5 flex items-center gap-1 text-white sm:gap-2">
-          <BoutonLecteur label={enLecture ? 'Pause' : 'Lecture'} onClick={basculer}>
-            <Icon name={enLecture ? 'pause' : 'play_arrow'} size={24} fill />
-          </BoutonLecteur>
+        <Temps attenue>{horloge(duree)}</Temps>
+        <div className="group/son flex items-center">
           <BoutonLecteur
             label={muet ? 'Activer le son' : 'Couper le son'}
             onClick={() => setMuet((m) => !m)}
           >
             <Icon name={muet || volume === 0 ? 'volume_off' : 'volume_up'} size={21} />
           </BoutonLecteur>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={muet ? 0 : volume}
-            aria-label="Volume"
-            onChange={(e) => {
-              setVolume(Number(e.target.value));
-              setMuet(Number(e.target.value) === 0);
-            }}
-            className="hidden h-1 w-20 cursor-pointer accent-white sm:block"
-          />
-          <span
-            className="ml-1 text-[12px] font-semibold text-white/90"
-            style={{ fontVariantNumeric: 'tabular-nums' }}
-          >
-            {horloge(temps)} <span className="text-white/50">/ {horloge(duree)}</span>
-          </span>
-          <span className="flex-1" />
-          {suivi ? (
-            <span
-              className={cn(
-                'rounded-full px-2.5 py-[3px] text-[11px] font-bold ring-1',
-                validee
-                  ? 'bg-[#7fd4a8]/15 text-[#a8e6c5] ring-[#7fd4a8]/35'
-                  : 'bg-white/10 text-white/90 ring-white/20',
-              )}
-              style={{ fontVariantNumeric: 'tabular-nums' }}
-            >
-              {validee ? 'Validée' : `Vue ${pourcent(vu)}`}
-            </span>
-          ) : null}
-          <BoutonLecteur
-            label={pleinEcran ? 'Quitter le plein écran' : 'Plein écran'}
-            onClick={pleinEcranBascule}
-          >
-            <Icon name={pleinEcran ? 'fullscreen_exit' : 'fullscreen'} size={22} />
-          </BoutonLecteur>
+          {/* La glissière du son s'ouvre au survol du bouton, et au clavier. */}
+          <div className="hidden w-0 overflow-hidden transition-[width] duration-200 ease-out group-focus-within/son:w-[76px] group-hover/son:w-[76px] sm:block">
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={muet ? 0 : volume}
+              aria-label="Volume"
+              onChange={(e) => {
+                setVolume(Number(e.target.value));
+                setMuet(Number(e.target.value) === 0);
+              }}
+              className="glissiere-son mr-2 ml-1 w-[64px]"
+              style={{ ['--niveau' as string]: `${(muet ? 0 : volume) * 100}%` }}
+            />
+          </div>
         </div>
+        <BoutonLecteur
+          label={pleinEcran ? 'Quitter le plein écran' : 'Plein écran'}
+          onClick={pleinEcranBascule}
+        >
+          <Icon name={pleinEcran ? 'fullscreen_exit' : 'fullscreen'} size={22} />
+        </BoutonLecteur>
       </div>
     </div>
+  );
+}
+
+/** Un temps de la capsule, en chiffres de largeur fixe : rien ne bouge quand il défile. */
+function Temps({ children, attenue = false }: { children: string; attenue?: boolean }) {
+  return (
+    <span
+      className={cn(
+        'shrink-0 px-0.5 text-[12px] font-semibold',
+        attenue ? 'text-white/60' : 'text-white/95',
+      )}
+      style={{ fontVariantNumeric: 'tabular-nums' }}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -581,7 +605,7 @@ function BoutonLecteur({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className="grid size-9 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/15 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
+      className="grid size-8 shrink-0 place-items-center rounded-[10px] sm:size-9 sm:rounded-[11px] text-white/90 transition-colors duration-150 hover:bg-white/12 hover:text-white focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:outline-none active:bg-white/20"
     >
       {children}
     </button>
@@ -591,8 +615,9 @@ function BoutonLecteur({
 /**
  * La barre du temps. Trois couches, de bas en haut : la piste ; les passages
  * VUS, en bleu ; la position, en blanc. Au-delà de ce qu'on a le droit
- * d'atteindre en première lecture, la piste est hachurée — on voit où l'on
- * ne peut pas aller, avant d'essayer.
+ * d'atteindre en première lecture, la piste est hachurée : on voit où l'on
+ * ne peut pas aller, avant d'essayer. Fine au repos, elle s'épaissit sous le
+ * pointeur, montre son curseur et le temps visé dans une bulle blanche.
  */
 function BarreTemps({
   duree,
@@ -629,7 +654,7 @@ function BarreTemps({
       aria-valuemax={Math.round(duree)}
       aria-valuenow={Math.round(temps)}
       aria-valuetext={`${horloge(temps)} sur ${horloge(duree)}`}
-      className="group/barre relative flex h-4 cursor-pointer items-center"
+      className="group/barre relative mx-1 flex h-7 min-w-0 flex-1 cursor-pointer items-center"
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         setGlisse(true);
@@ -642,7 +667,12 @@ function BarreTemps({
       onPointerUp={() => setGlisse(false)}
       onPointerLeave={() => setSurvol(null)}
     >
-      <div className="relative h-1 w-full overflow-hidden rounded-full bg-white/20 transition-[height] duration-150 group-hover/barre:h-1.5">
+      <div
+        className={cn(
+          'relative h-[4px] w-full overflow-hidden rounded-full bg-white/22 transition-[height] duration-150 ease-out group-hover/barre:h-[6px]',
+          glisse && 'h-[6px]',
+        )}
+      >
         {!libre && limite < duree ? (
           <div
             aria-hidden
@@ -650,7 +680,7 @@ function BarreTemps({
             style={{
               left: pct(limite),
               background:
-                'repeating-linear-gradient(135deg, rgb(255 255 255 / 0.16) 0 3px, transparent 3px 7px)',
+                'repeating-linear-gradient(135deg, rgb(255 255 255 / 0.12) 0 2px, transparent 2px 6px)',
             }}
           />
         ) : null}
@@ -661,17 +691,23 @@ function BarreTemps({
             style={{ left: pct(de), width: `calc(${pct(a)} - ${pct(de)})`, background: BLEU_VU }}
           />
         ))}
-        <div className="absolute inset-y-0 left-0 bg-white" style={{ width: pct(temps) }} />
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-white"
+          style={{ width: pct(temps) }}
+        />
       </div>
       <span
         aria-hidden
-        className="absolute size-3 -translate-x-1/2 scale-0 rounded-full bg-white shadow transition-transform duration-150 group-hover/barre:scale-100"
+        className={cn(
+          'absolute size-[14px] -translate-x-1/2 scale-0 rounded-full bg-white shadow-[0_0_0_4px_rgb(255_255_255/0.18),0_2px_6px_rgb(0_0_0/0.4)] transition-transform duration-150 ease-out group-hover/barre:scale-100',
+          glisse && 'scale-100',
+        )}
         style={{ left: pct(temps) }}
       />
       {survol !== null ? (
         <span
           aria-hidden
-          className="absolute bottom-5 -translate-x-1/2 rounded-md bg-black/80 px-1.5 py-0.5 text-[11px] font-semibold text-white"
+          className="absolute bottom-8 -translate-x-1/2 rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[#14172a] shadow-[0_4px_14px_rgb(0_0_0/0.35)]"
           style={{ left: pct(survol), fontVariantNumeric: 'tabular-nums' }}
         >
           {horloge(survol)}
