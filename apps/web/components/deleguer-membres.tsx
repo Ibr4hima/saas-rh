@@ -170,6 +170,8 @@ export function DeleguerMembres({
   // reste à cocher — cocher complète, décocher retire tout.
   const actuels = membres.filter((m) => capacites.every((c) => m.capacites.includes(c)));
   const [ouvert, setOuvert] = useState(false);
+  // Où commence le voile : sous la barre bleue, qui reste nette.
+  const [hautVoile, setHautVoile] = useState(0);
   const [choix, setChoix] = useState<string[]>([]);
   const [confirmer, setConfirmer] = useState(false);
   const racine = useRef<HTMLDivElement>(null);
@@ -226,14 +228,29 @@ export function DeleguerMembres({
   });
 
   return (
-    <div ref={racine} className="relative shrink-0">
+    // Ouvert, le menu passe au-dessus du voile : lui et son bouton restent
+    // nets, le reste de la page recule, comme sous la cloche.
+    <div ref={racine} className={cn('relative shrink-0', ouvert && 'z-[56]')}>
+      {ouvert ? (
+        // Le voile est DANS le menu, sous lui : un clic dessus est un clic
+        // « dedans » pour le gestionnaire global, il referme donc lui-même.
+        <div
+          aria-hidden
+          onPointerDown={() => setOuvert(false)}
+          className="tg-voile fixed inset-x-0 bottom-0 -z-10"
+          style={{ top: hautVoile }}
+        />
+      ) : null}
       <Button
         size="sm"
         variant="secondary"
         aria-haspopup="true"
         aria-expanded={ouvert}
         onClick={() => {
-          if (!ouvert) setChoix(actuels.map((m) => m.employeeId));
+          if (!ouvert) {
+            setChoix(actuels.map((m) => m.employeeId));
+            setHautVoile(document.querySelector('header')?.getBoundingClientRect().bottom ?? 0);
+          }
           setOuvert((o) => !o);
         }}
       >

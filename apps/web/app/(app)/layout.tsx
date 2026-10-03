@@ -292,19 +292,6 @@ function pageAction(pathname: string, user: SessionUser, espace: Espace): Chrome
 }
 
 /**
- * Le réglage d'un écran, dans le bandeau, juste avant la recherche : la
- * gestion des jours fériés s'ouvre aussi depuis le calendrier, à qui la
- * gère. Côté Gestion RH seulement, comme tout geste de gestion sur une page
- * des deux espaces.
- */
-function pageReglage(pathname: string, user: SessionUser, espace: Espace): ChromeAction | null {
-  if (pathname === '/calendrier' && espace === 'gestion' && peut(user, 'feries')) {
-    return { href: '/absences/feries', icon: 'settings', label: 'Gestion des jours fériés' };
-  }
-  return null;
-}
-
-/**
  * Bouton d'action du bandeau : l'unique geste de l'écran. Verre translucide
  * plutôt qu'aplat — sur un fond de marque, un second aplat de marque ne se
  * détacherait pas.
@@ -1268,7 +1255,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
   const title = titleOverride ?? pageTitle(pathname, user.givenName);
   const action = pageAction(pathname, user, espace);
-  const reglage = pageReglage(pathname, user, espace);
   // Ses certificats, pour qui n'est plus en activité : une page de son
   // espace, sans le bandeau de l'Academy, dont les raccourcis lui sont fermés.
   const academy = espaceAcademy(pathname) && !restreint;
@@ -1352,7 +1338,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
           ) : (
             <>
               <DateDuJour />
-              {reglage ? <HeaderAction action={reglage} /> : null}
               <NotificationsBell espace={deuxEspaces ? espace : undefined} />
             </>
           )}
