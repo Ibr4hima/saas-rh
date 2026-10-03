@@ -100,6 +100,16 @@ body {
   scrollbar-color: var(--tg-line) transparent;
 }
 
+/* Un panneau qui dessine sa propre barre (BarreDefilement) : la native
+   s'efface. La règle se tient hors couche, comme celle du dessus : une
+   classe utilitaire, rangée dans sa couche, perdrait contre elle. */
+.sans-barre {
+  scrollbar-width: none;
+}
+.sans-barre::-webkit-scrollbar {
+  display: none;
+}
+
 /* Tout l'UI en Google Sans : font-mono ne garde que les chiffres tabulaires
    (matricules, compteurs) — plus aucune police système visible. */
 .font-mono {

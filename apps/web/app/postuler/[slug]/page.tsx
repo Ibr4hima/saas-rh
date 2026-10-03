@@ -233,7 +233,7 @@ function Volets({
     <main className="min-h-dvh bg-surface lg:relative lg:grid lg:h-dvh lg:grid-cols-2 lg:overflow-hidden">
       <div
         ref={gauche}
-        className="fond-offre lg:h-dvh lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden"
+        className="fond-offre sans-barre lg:h-dvh lg:overflow-y-auto lg:overscroll-contain"
       >
         <div
           className={cn(
