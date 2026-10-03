@@ -351,6 +351,27 @@ body {
 .login-dome {
   position: relative;
   isolation: isolate;
+  /* Thème clair : le bleu ne tombe pas net sur un blanc. Il descend plus
+     longtemps, en s'éclaircissant, et se perd dans un sol à peine bleui :
+     l'écart entre le haut et le bas se franchit par paliers, comme en
+     sombre où le bleu se fond dans la nuit du fond. */
+  background:
+    radial-gradient(
+      135% 115% at 50% -32%,
+      #002a52 0%,
+      #002a52 34%,
+      #003a6e 50%,
+      #004f91 62%,
+      rgb(38 112 182 / 0.78) 71%,
+      rgb(108 160 213 / 0.46) 81%,
+      rgb(176 205 235 / 0.18) 91%,
+      rgb(214 229 244 / 0) 100%
+    ),
+    linear-gradient(180deg, #e3ecf6 0%, #eef3f9 55%, #f4f7fb 100%);
+}
+
+/* Thème sombre : le bleu se dissout dans le fond de l'application. */
+:root[data-theme='dark'] .login-dome {
   background:
     radial-gradient(
       135% 115% at 50% -32%,
@@ -361,6 +382,20 @@ body {
       rgb(26 106 176 / 0) 82%
     ),
     var(--tg-bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .login-dome {
+    background:
+      radial-gradient(
+        135% 115% at 50% -32%,
+        #002a52 0%,
+        #002a52 34%,
+        #003a6e 50%,
+        #004f91 62%,
+        rgb(26 106 176 / 0) 82%
+      ),
+      var(--tg-bg);
+  }
 }
 
 /* Les couches décoratives vivent dans leur propre calque, sous le contenu et
