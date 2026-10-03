@@ -44,7 +44,7 @@ type Ligne = {
   sensible?: boolean;
 } & ({ capacites: readonly Capacite[] } | { types: readonly TypeDelegable[] });
 
-const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
+const SECTIONS: { titre: string; lignes: Ligne[]; avertissement?: string }[] = [
   {
     titre: 'Personnel',
     lignes: [
@@ -154,12 +154,15 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       {
         cle: 'academy',
         description:
-          'Le délégué pourra créer, modifier, publier et supprimer les formations de l’APIX Academy, et en préparer les évaluations. Connaissant les questions, il ne passera plus les évaluations.',
+          'Le délégué pourra créer, modifier, publier et supprimer les formations de l’APIX Academy, et en préparer les évaluations.',
         libelle: 'APIX Academy',
         icone: 'school',
         capacites: ['academy'],
       },
     ],
+    // Qui gère le catalogue en connaît les questions (academy-evaluation.service.ts, `fermeture`).
+    avertissement:
+      'La personne déléguée pourra toujours suivre les formations, mais plus passer leurs évaluations : elle n’en obtiendra pas les certificats.',
   },
 ];
 
@@ -341,6 +344,12 @@ export default function DelegationsPage() {
             <CardHeader>
               <CardTitle>{section.titre}</CardTitle>
             </CardHeader>
+            {section.avertissement ? (
+              <p className="mx-5 mb-1 flex items-start gap-2 rounded-[10px] bg-warning-soft px-3 py-2 text-[12px] leading-snug text-warning">
+                <Icon name="warning" size={15} className="mt-px shrink-0" />
+                {section.avertissement}
+              </p>
+            ) : null}
             <ul className="flex flex-col divide-y divide-line-soft px-5 pb-1">
               {section.lignes.map((l) => (
                 <li key={l.cle} className="py-4">
