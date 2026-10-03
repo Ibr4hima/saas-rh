@@ -51,6 +51,10 @@
   --color-badge-gris-line: var(--tg-badge-gris-line);
   --color-badge-rouge-ink: var(--tg-badge-rouge-ink);
   --color-badge-rouge-line: var(--tg-badge-rouge-line);
+  --color-decision-oui: var(--tg-decision-oui);
+  --color-decision-oui-ink: var(--tg-decision-oui-ink);
+  --color-decision-non: var(--tg-decision-non);
+  --color-decision-non-ink: var(--tg-decision-non-ink);
   --color-alert: var(--tg-alert);
   --color-alert-soft: var(--tg-alert-soft);
   --color-alert-text: var(--tg-alert-text);

@@ -97,6 +97,13 @@
   --tg-badge-gris-line: rgb(90 95 117 / 0.32);
   --tg-badge-rouge-ink: #dc2626;
   --tg-badge-rouge-line: rgb(220 38 38 / 0.4);
+  /* Boutons de décision (valider, refuser) : au repos ils sont dessinés comme
+     un badge, au survol ils se remplissent. Encre sur l'aplat : 5,2:1 et
+     4,8:1. */
+  --tg-decision-oui: #0b7a70;
+  --tg-decision-oui-ink: #ffffff;
+  --tg-decision-non: #dc2626;
+  --tg-decision-non-ink: #ffffff;
 
   /* Le rouge des COMPTEURS de notification, décliné depuis #dc2626. Distinct
      de `danger`, qui dit l'erreur : ici rien n'est cassé, quelque chose
@@ -307,6 +314,11 @@
     --tg-badge-gris-line: rgb(138 144 166 / 0.45);
     --tg-badge-rouge-ink: #f87171;
     --tg-badge-rouge-line: rgb(239 68 68 / 0.55);
+    /* La nuit, l'aplat s'éclaircit et l'encre fonce (7,9:1 et 6,5:1). */
+    --tg-decision-oui: #3cc4b5;
+    --tg-decision-oui-ink: #04211e;
+    --tg-decision-non: #f27272;
+    --tg-decision-non-ink: #2b0707;
   }
 }
 
@@ -380,6 +392,11 @@
   --tg-badge-gris-line: rgb(138 144 166 / 0.45);
   --tg-badge-rouge-ink: #f87171;
   --tg-badge-rouge-line: rgb(239 68 68 / 0.55);
+  /* La nuit, l'aplat s'éclaircit et l'encre fonce (7,9:1 et 6,5:1). */
+  --tg-decision-oui: #3cc4b5;
+  --tg-decision-oui-ink: #04211e;
+  --tg-decision-non: #f27272;
+  --tg-decision-non-ink: #2b0707;
 }
 
 @media (prefers-reduced-motion: reduce) {
