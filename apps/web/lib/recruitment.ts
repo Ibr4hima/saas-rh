@@ -9,11 +9,11 @@ export const JOB_STATUS_LABELS: Record<string, string> = {
   closed: 'Archivée',
 };
 
-export const JOB_STATUS_TONES: Record<string, 'neutral' | 'success' | 'warning'> = {
-  draft: 'neutral',
-  published: 'success',
+export const JOB_STATUS_TONES: Record<string, 'gris' | 'teal' | 'orange'> = {
+  draft: 'gris',
+  published: 'teal',
   // Une campagne archivée n'est pas un incident : c'est une fin normale.
-  closed: 'neutral',
+  closed: 'gris',
 };
 
 export const CONTRACT_LABELS: Record<string, string> = {

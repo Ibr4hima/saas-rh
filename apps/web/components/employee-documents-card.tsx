@@ -36,9 +36,9 @@ const STATUS_LABELS: Record<string, string> = {
   pending: 'En vérification',
   rejected: 'Rejeté',
 };
-const STATUS_TONES: Record<string, 'warning' | 'success' | 'danger'> = {
-  pending: 'warning',
-  rejected: 'danger',
+const STATUS_TONES: Record<string, 'orange' | 'teal' | 'rouge'> = {
+  pending: 'orange',
+  rejected: 'rouge',
 };
 
 /** Aujourd'hui, au calendrier de l'agent : « 2026-10-02 ». */
@@ -158,9 +158,9 @@ export function EmployeeDocumentsCard({
           {/* Ce qui attend une décision se dit dans le titre : c'est la seule
               chose de cette carte qui demande une action aujourd'hui. */}
           {aValider > 0 ? (
-            <span className="rounded-full bg-warning-soft px-2 py-px text-[10.5px] font-bold text-warning">
+            <Badge tone="orange" size="sm">
               {aValider} à vérifier
-            </span>
+            </Badge>
           ) : null}
         </div>
         {depot ? (
@@ -221,9 +221,7 @@ export function EmployeeDocumentsCard({
                   </span>
                   <span className="block truncate text-[11.5px] text-ink-muted">Obligatoire</span>
                 </span>
-                <span className="inline-flex items-center rounded-full bg-accent-soft/70 px-2.5 py-[3px] text-[11px] font-semibold text-accent-text ring-1 ring-accent/25 ring-inset">
-                  {manquante === 'cni' ? 'Non déposée' : 'Non déposé'}
-                </span>
+                <Badge tone="orange">{manquante === 'cni' ? 'Non déposée' : 'Non déposé'}</Badge>
               </li>
             ) : manquante ? (
               <li>
@@ -247,9 +245,7 @@ export function EmployeeDocumentsCard({
                     </span>
                     <span className="block truncate text-[11.5px] text-ink-muted">Obligatoire</span>
                   </span>
-                  <span className="inline-flex items-center rounded-full bg-accent-soft/70 px-2.5 py-[3px] text-[11px] font-semibold text-accent-text ring-1 ring-accent/25 ring-inset">
-                    Uploader
-                  </span>
+                  <Badge tone="orange">Uploader</Badge>
                 </button>
               </li>
             ) : null}
@@ -291,7 +287,7 @@ export function EmployeeDocumentsCard({
                   </button>
                   {/* Validé, le document est au dossier : pas de badge. */}
                   {d.status === 'approved' ? null : (
-                    <Badge tone={STATUS_TONES[d.status] ?? 'warning'}>
+                    <Badge tone={STATUS_TONES[d.status] ?? 'orange'}>
                       {STATUS_LABELS[d.status] ?? d.status}
                     </Badge>
                   )}

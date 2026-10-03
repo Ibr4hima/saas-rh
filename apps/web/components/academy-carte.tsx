@@ -105,12 +105,12 @@ export function CarteFormation({ formation }: { formation: CourseSummary }) {
 
             <div className="mt-auto pt-2">
               {formation.certified ? (
-                <Badge tone="success" className="gap-1">
+                <Badge tone="teal">
                   <Icon name="workspace_premium" size={13} />
                   Certifiée
                 </Badge>
               ) : terminee ? (
-                <Badge tone="success" className="gap-1">
+                <Badge tone="teal">
                   <Icon name="check_circle" size={13} fill />
                   {formation.hasEvaluation ? 'Leçons terminées' : 'Terminée'}
                 </Badge>

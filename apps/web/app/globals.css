@@ -39,6 +39,18 @@
   --color-partiel-text: var(--tg-partiel-text);
   --color-note-b: var(--tg-note-b);
   --color-note-b-soft: var(--tg-note-b-soft);
+  --color-badge-bleu-ink: var(--tg-badge-bleu-ink);
+  --color-badge-bleu-line: var(--tg-badge-bleu-line);
+  --color-badge-orange-ink: var(--tg-badge-orange-ink);
+  --color-badge-orange-line: var(--tg-badge-orange-line);
+  --color-badge-teal-ink: var(--tg-badge-teal-ink);
+  --color-badge-teal-line: var(--tg-badge-teal-line);
+  --color-badge-prune-ink: var(--tg-badge-prune-ink);
+  --color-badge-prune-line: var(--tg-badge-prune-line);
+  --color-badge-gris-ink: var(--tg-badge-gris-ink);
+  --color-badge-gris-line: var(--tg-badge-gris-line);
+  --color-badge-rouge-ink: var(--tg-badge-rouge-ink);
+  --color-badge-rouge-line: var(--tg-badge-rouge-line);
   --color-alert: var(--tg-alert);
   --color-alert-soft: var(--tg-alert-soft);
   --color-alert-text: var(--tg-alert-text);

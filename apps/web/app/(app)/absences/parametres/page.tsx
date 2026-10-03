@@ -154,11 +154,11 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
                 <Td>
                   <div className="flex flex-wrap items-center gap-1.5">
                     {t.deductsBalance ? (
-                      <Badge tone="primary">Décompté du solde</Badge>
+                      <Badge tone="bleu">Décompté du solde</Badge>
                     ) : (
-                      <Badge tone="neutral">Suivi seul</Badge>
+                      <Badge tone="gris">Suivi seul</Badge>
                     )}
-                    {t.requiresDocument ? <Badge tone="warning">Justificatif</Badge> : null}
+                    {t.requiresDocument ? <Badge tone="orange">Justificatif</Badge> : null}
                   </div>
                 </Td>
                 {peutGerer ? (

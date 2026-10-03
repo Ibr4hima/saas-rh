@@ -986,11 +986,11 @@ function PortalCard({
       <CardHeader className="flex items-center justify-between gap-3">
         <CardTitle>Accès au portail</CardTitle>
         {actif ? (
-          <Badge tone="success">Compte actif</Badge>
+          <Badge tone="teal">Compte actif</Badge>
         ) : portal.status === 'invited' ? (
-          <Badge tone="warning">Invitation en cours</Badge>
+          <Badge tone="orange">Invitation en cours</Badge>
         ) : (
-          <Badge tone="neutral">Aucun accès</Badge>
+          <Badge tone="gris">Aucun accès</Badge>
         )}
       </CardHeader>
 

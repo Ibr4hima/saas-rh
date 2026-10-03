@@ -193,7 +193,7 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
                     </span>
                   </button>
                   <div className="flex items-center gap-1.5 pl-8 md:pl-0">
-                    <Badge tone="neutral">
+                    <Badge tone="gris">
                       {q.kind === 'multiple' ? 'Choix multiple' : 'Choix unique'}
                     </Badge>
                     <BoutonIcone

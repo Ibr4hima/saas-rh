@@ -242,11 +242,11 @@ export default function AtelierFormationPage() {
                 {famille.label}
               </span>
               {f.published ? (
-                <Badge tone="success">Publiée</Badge>
+                <Badge tone="teal">Publiée</Badge>
               ) : publiable ? (
-                <Badge tone="neutral">Prête à publier</Badge>
+                <Badge tone="gris">Prête à publier</Badge>
               ) : (
-                <Badge tone="warning">À compléter</Badge>
+                <Badge tone="orange">À compléter</Badge>
               )}
             </div>
             <h1 className="text-[20px] leading-tight font-bold tracking-[-0.02em] text-ink-strong">

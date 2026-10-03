@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { useCallback, useState } from 'react';
 import type { AttemptView, CourseAdminView, TrialResult } from '@teranga/contracts';
 import { SECONDES_PAR_QUESTION, SEUIL_REUSSITE } from '@teranga/contracts';
-import { Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
+import { Badge, Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { RetourAcademy } from '../../../../../../components/academy-carte';
 import {
   cocher,
@@ -331,9 +331,9 @@ function Resultat({
                       {o.correct ? <span className="sr-only"> (bonne réponse)</span> : null}
                     </span>
                     {o.chosen ? (
-                      <span className="shrink-0 rounded-full bg-line-soft px-2 py-0.5 text-[10.5px] font-bold text-ink-muted">
+                      <Badge tone="gris" size="sm">
                         Votre choix
-                      </span>
+                      </Badge>
                     ) : null}
                   </li>
                 ))}

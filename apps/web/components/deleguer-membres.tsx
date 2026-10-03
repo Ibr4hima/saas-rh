@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { peut, type Capacite, type MembreHabilite } from '@teranga/contracts';
-import { Button, Checkbox, cn } from '@teranga/ui';
+import { Badge, Button, Checkbox, cn } from '@teranga/ui';
 import { api } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import { Icon } from './icons';
@@ -123,13 +123,15 @@ const toutes = (c: Capacite | readonly Capacite[]): readonly Capacite[] =>
 /** « Sensible » — comme sur « Déléguer des tâches ». */
 export function PastilleSensible() {
   return (
-    <span
+    <Badge
+      tone="gris"
+      size="sm"
       title="Données sensibles : à confier avec soin."
-      className="ml-2 inline-flex translate-y-[-1px] items-center gap-0.5 rounded-full bg-surface px-1.5 py-px align-middle text-[10px] font-semibold text-ink-muted ring-1 ring-line-soft ring-inset"
+      className="ml-2 translate-y-[-1px] align-middle"
     >
       <Icon name="lock" size={11} />
       Sensible
-    </span>
+    </Badge>
   );
 }
 

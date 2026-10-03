@@ -288,7 +288,7 @@ export function SuiviSignalements() {
                       </p>
                     ) : null}
                   </div>
-                  <Badge tone={PROFILE_CHANGE_STATUS_TONES[r.status]} className="ml-auto shrink-0">
+                  <Badge tone={PROFILE_CHANGE_STATUS_TONES[r.status]} className="ml-auto">
                     {PROFILE_CHANGE_STATUS_LABELS[r.status]}
                   </Badge>
                 </div>

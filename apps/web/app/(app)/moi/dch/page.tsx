@@ -468,13 +468,9 @@ function CalendrierDesAbsences() {
                 <Td className="text-right tabular-nums">{r.daysCount}</Td>
                 <Td>
                   {r.startDate <= jour ? (
-                    <Badge tone="success" className="whitespace-nowrap">
-                      En cours
-                    </Badge>
+                    <Badge tone="teal">En cours</Badge>
                   ) : (
-                    <Badge tone="primary" className="whitespace-nowrap">
-                      À venir
-                    </Badge>
+                    <Badge tone="bleu">À venir</Badge>
                   )}
                 </Td>
               </Tr>

@@ -56,13 +56,13 @@ export const DOC_REQUEST_STATUS_LABELS: Record<DocumentRequestStatus, string> = 
 
 export const DOC_REQUEST_STATUS_TONES: Record<
   DocumentRequestStatus,
-  'neutral' | 'warning' | 'primary' | 'success' | 'danger'
+  'gris' | 'orange' | 'bleu' | 'teal' | 'rouge'
 > = {
-  received: 'neutral',
-  processing: 'warning',
-  ready: 'primary',
-  delivered: 'success',
-  rejected: 'danger',
+  received: 'gris',
+  processing: 'orange',
+  ready: 'bleu',
+  delivered: 'teal',
+  rejected: 'rouge',
 };
 
 /**

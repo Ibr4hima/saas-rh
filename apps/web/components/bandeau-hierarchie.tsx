@@ -188,9 +188,7 @@ function Ligne({ anomalie }: { anomalie: AnomalieHierarchie }) {
         <span className="flex shrink-0 flex-col items-end gap-1">
           {/* L'orange pour ce qui ARRÊTE l'évaluation, le gris pour ce qui se
               corrige sans bloquer : la RH doit savoir par où commencer. */}
-          <Badge tone={bloquant ? 'warning' : 'neutral'} className="whitespace-nowrap">
-            {mots.court}
-          </Badge>
+          <Badge tone={bloquant ? 'orange' : 'gris'}>{mots.court}</Badge>
           <span className="hidden max-w-xs text-right text-[11px] leading-snug text-ink-muted sm:block">
             {mots.explication}
           </span>

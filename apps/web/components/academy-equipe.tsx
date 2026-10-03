@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { StatutSuivi, TeamCourseProgress, TeamMember } from '@teranga/contracts';
-import { cn } from '@teranga/ui';
+import { Badge, cn, type BadgeTone } from '@teranga/ui';
 import { ETATS_SUIVI, FAMILLES, FOND_COUVERTURE, pourcent } from '../lib/academy';
 import { formatDate } from '../lib/hooks';
 import { anciennete } from '../lib/temps';
@@ -15,26 +15,20 @@ import { Icon } from './icons';
    l'ATTEND, ce qu'il a OBTENU. Le reste est sur sa fiche, à un clic.
    ———————————————————————————————————————————————————————————————— */
 
-const TONS = {
-  attente: 'bg-accent-soft/70 text-accent-text ring-accent/25',
-  succes: 'bg-success-soft/55 text-success ring-success/25',
-  suivi: 'bg-primary-soft/55 text-primary ring-primary/25',
-  neutre: 'bg-line-soft/55 text-ink-muted ring-ink-muted/20',
-} as const;
+const TONS: Record<'attente' | 'succes' | 'suivi' | 'neutre', BadgeTone> = {
+  attente: 'orange',
+  succes: 'teal',
+  suivi: 'bleu',
+  neutre: 'gris',
+};
 
 export function PastilleEtat({ statut, className }: { statut: StatutSuivi; className?: string }) {
   const e = ETATS_SUIVI[statut];
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2.5 py-[3px] text-[11px] font-semibold whitespace-nowrap ring-1 ring-inset',
-        TONS[e.ton],
-        className,
-      )}
-    >
-      <Icon name={e.icone} size={13} fill={e.ton === 'succes'} />
+    <Badge tone={TONS[e.ton]} className={className}>
+      <Icon name={e.icone} size={13} fill={e.ton === 'succes'} className="-ml-0.5" />
       {e.label}
-    </span>
+    </Badge>
   );
 }
 

@@ -148,7 +148,7 @@ export function CarteCertificatsAgent({ employeeId }: { employeeId: string }) {
                       Formateur de cette formation · {FAMILLES[a.category].label}
                     </span>
                   </span>
-                  {!a.published ? <Badge tone="neutral">Brouillon</Badge> : null}
+                  {!a.published ? <Badge tone="gris">Brouillon</Badge> : null}
                 </li>
               ))}
             </ul>

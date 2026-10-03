@@ -40,18 +40,15 @@ import { compte } from '../../../../lib/mots';
    ———————————————————————————————————————————————————————————————— */
 
 function Etat({ f }: { f: CourseAdminSummary }) {
-  if (f.published) return <Badge tone="success">Publiée</Badge>;
+  if (f.published) return <Badge tone="teal">Publiée</Badge>;
   if (f.obstacleCount > 0) {
     return (
-      <Badge
-        tone="warning"
-        title={`${compte(f.obstacleCount, 'point')} à régler avant publication`}
-      >
+      <Badge tone="orange" title={`${compte(f.obstacleCount, 'point')} à régler avant publication`}>
         À compléter
       </Badge>
     );
   }
-  return <Badge tone="neutral">Prête à publier</Badge>;
+  return <Badge tone="gris">Prête à publier</Badge>;
 }
 
 export default function GererCataloguePage() {

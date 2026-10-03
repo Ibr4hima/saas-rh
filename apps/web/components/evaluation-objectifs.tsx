@@ -24,6 +24,7 @@ import {
   type StatutObjectif,
 } from '@teranga/contracts';
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -38,6 +39,7 @@ import {
   Th,
   THead,
   Tr,
+  type BadgeTone,
 } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { Icon, type IconName } from './icons';
@@ -166,19 +168,20 @@ function Case({ statut }: { statut?: StatutObjectif }) {
   );
 }
 
-/** Le statut, en toutes lettres : une pastille à sa couleur. */
+/** Le badge d'un statut : le bleu d'atteint, l'orange de partiel, le rouge de non atteint. */
+const BADGE_STATUT: Record<StatutObjectif, BadgeTone> = {
+  atteint: 'bleu',
+  partiel: 'orange',
+  non_atteint: 'rouge',
+};
+
+/** Le statut, en toutes lettres : un badge à sa couleur. */
 function PastilleStatut({ statut }: { statut: StatutObjectif }) {
-  const d = DESSIN_STATUT[statut];
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full border px-2 py-px text-[10.5px] font-bold tracking-normal normal-case',
-        d.leger,
-      )}
-    >
-      <Icon name={d.signe} size={12} weight={600} />
+    <Badge tone={BADGE_STATUT[statut]} size="sm" className="normal-case">
+      <Icon name={DESSIN_STATUT[statut].signe} size={11} weight={600} />
       {LIBELLES_STATUT[statut]}
-    </span>
+    </Badge>
   );
 }
 

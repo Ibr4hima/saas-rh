@@ -306,10 +306,7 @@ function Entree({
               </div>
               {/* Une fête mobile se date à l'annonce — le dire évite de croire
                   qu'une date déjà posée ne bougera plus. */}
-              <Badge
-                tone={ferie.fixed ? 'neutral' : 'primary'}
-                className="shrink-0 whitespace-nowrap"
-              >
+              <Badge tone={ferie.fixed ? 'gris' : 'bleu'}>
                 {ferie.fixed ? 'Date fixe' : 'Date variable'}
               </Badge>
             </div>

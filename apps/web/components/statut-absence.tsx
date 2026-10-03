@@ -1,23 +1,11 @@
 import type { EtapeConge } from '@teranga/contracts';
-import { cn } from '@teranga/ui';
+import { Badge } from '@teranga/ui';
 import { ABSENCE_STATUS_LABELS, ABSENCE_STATUS_TONES } from '../lib/absences';
 
 /** Une demande en attente dit QUI elle attend — l'étape, pas la personne. */
 const EN_ATTENTE_DE: Record<EtapeConge, string> = {
   n1: 'En attente du N+1',
   dch: 'En attente de la DCH',
-};
-
-/**
- * Aplats doux, mesurés : chaque texte tient au moins 4,89:1 sur son fond, de
- * jour comme de nuit. Le halo intérieur donne au tag son arête sans ajouter
- * une couleur de plus — il est tiré de la teinte du texte.
- */
-const FONDS: Record<string, string> = {
-  success: 'bg-success-soft text-success',
-  warning: 'bg-warning-soft text-warning',
-  danger: 'bg-danger-soft text-danger',
-  neutral: 'bg-line-soft text-ink-muted',
 };
 
 /**
@@ -40,21 +28,14 @@ export function StatutAbsence({
   titre?: string;
   className?: string;
 }) {
-  const ton = ABSENCE_STATUS_TONES[statut] ?? 'neutral';
+  const ton = ABSENCE_STATUS_TONES[statut] ?? 'gris';
   const libelle =
     statut === 'pending' && etape
       ? EN_ATTENTE_DE[etape]
       : (ABSENCE_STATUS_LABELS[statut] ?? statut);
   return (
-    <span
-      title={titre}
-      className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-[3px] text-[11px] font-semibold whitespace-nowrap ring-1 ring-current/15 ring-inset',
-        FONDS[ton] ?? FONDS.neutral,
-        className,
-      )}
-    >
+    <Badge tone={ton} title={titre} className={className}>
       {libelle}
-    </span>
+    </Badge>
   );
 }

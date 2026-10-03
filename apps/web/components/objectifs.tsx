@@ -13,7 +13,7 @@ import {
   type FormationProposable,
   type ObjectifView,
 } from '@teranga/contracts';
-import { Button, cn, Field, Input, Select, Textarea } from '@teranga/ui';
+import { Badge, Button, cn, Field, Input, Select, Textarea, type BadgeTone } from '@teranga/ui';
 import { api } from '../lib/api';
 import { formatDate } from '../lib/hooks';
 import { PastilleEtat } from './academy-equipe';
@@ -29,10 +29,10 @@ import { messageErreur } from './reglages-absences';
 /** Tout ce qui touche aux objectifs se relit d'un coup après un geste. */
 export const CLE_OBJECTIFS = ['objectifs'] as const;
 
-const TONS_EVALUATION: Record<EvaluationObjectif, string> = {
-  atteint: 'bg-success-soft/55 text-success ring-success/25',
-  partiel: 'bg-primary-soft/55 text-primary ring-primary/25',
-  non_atteint: 'bg-danger-soft/55 text-danger ring-danger/25',
+const TONS_EVALUATION: Record<EvaluationObjectif, BadgeTone> = {
+  atteint: 'teal',
+  partiel: 'bleu',
+  non_atteint: 'rouge',
 };
 
 const ICONES_EVALUATION: Record<EvaluationObjectif, IconName> = {
@@ -41,17 +41,12 @@ const ICONES_EVALUATION: Record<EvaluationObjectif, IconName> = {
   non_atteint: 'close',
 };
 
-function Pastille({ ton, icone, children }: { ton: string; icone: IconName; children: string }) {
+function Pastille({ ton, icone, children }: { ton: BadgeTone; icone: IconName; children: string }) {
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2.5 py-[3px] text-[11px] font-semibold whitespace-nowrap ring-1 ring-inset',
-        ton,
-      )}
-    >
-      <Icon name={icone} size={13} />
+    <Badge tone={ton}>
+      <Icon name={icone} size={13} className="-ml-0.5" />
       {children}
-    </span>
+    </Badge>
   );
 }
 
@@ -60,7 +55,7 @@ export function EtatObjectif({ objectif }: { objectif: ObjectifView }) {
   if (objectif.formation) {
     if (!objectif.formation.statut) {
       return (
-        <Pastille ton="bg-line-soft/55 text-ink-muted ring-ink-muted/20" icone="school">
+        <Pastille ton="gris" icone="school">
           Formation retirée
         </Pastille>
       );

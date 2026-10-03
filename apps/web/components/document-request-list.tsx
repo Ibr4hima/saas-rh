@@ -118,7 +118,7 @@ export function DocumentRequestRow({
             <p className="mt-1 text-[11.5px] font-semibold text-danger">Motif : {r.hrMessage}</p>
           ) : null}
         </div>
-        <Badge tone={DOC_REQUEST_STATUS_TONES[r.status]} className="shrink-0">
+        <Badge tone={DOC_REQUEST_STATUS_TONES[r.status]}>
           {DOC_REQUEST_STATUS_LABELS[r.status]}
         </Badge>
       </div>

@@ -78,6 +78,26 @@
   --tg-note-b: #4f6b00;
   --tg-note-b-soft: #eef5d8;
 
+  /* --- Badges : six tons, et seulement six ---
+     Fond blanc, le mot dans sa couleur, et un liseré de la même couleur en
+     plus clair : le liseré dessine la forme, le mot porte le sens. Le liseré
+     est posé en transparence sur le fond du badge. Contrastes du mot sur
+     blanc, mesurés : bleu 8,3:1 · orange 5,6:1 · teal 6,1:1 · prune 6,3:1 ·
+     gris 6,8:1 · rouge 4,8:1. L'orange de marque (#e0802f) ne passe que
+     2,9:1 en texte : il tient le liseré, le mot prend son palier assombri. */
+  --tg-badge-bleu-ink: #004f91;
+  --tg-badge-bleu-line: rgb(0 79 145 / 0.35);
+  --tg-badge-orange-ink: #a3520f;
+  --tg-badge-orange-line: rgb(224 128 47 / 0.55);
+  --tg-badge-teal-ink: #0b6e65;
+  --tg-badge-teal-line: rgb(15 138 126 / 0.4);
+  --tg-badge-prune-ink: #8e4585;
+  --tg-badge-prune-line: rgb(142 69 133 / 0.38);
+  --tg-badge-gris-ink: #555a6e;
+  --tg-badge-gris-line: rgb(90 95 117 / 0.32);
+  --tg-badge-rouge-ink: #dc2626;
+  --tg-badge-rouge-line: rgb(220 38 38 / 0.4);
+
   /* Le rouge des COMPTEURS de notification, décliné depuis #dc2626. Distinct
      de `danger`, qui dit l'erreur : ici rien n'est cassé, quelque chose
      attend d'être vu.
@@ -272,6 +292,21 @@
     --tg-chart: #659cd9;
     --tg-chart-2: #f69f70;
     --tg-chart-track: #262a3a;
+    /* Badges de nuit : le fond est la carte, le mot remonte en clarté à
+       teinte constante (6,0 à 9,3:1), le liseré reste la même couleur en
+       plus sourd. */
+    --tg-badge-bleu-ink: #9cc4f2;
+    --tg-badge-bleu-line: rgb(111 166 228 / 0.5);
+    --tg-badge-orange-ink: #f2ab6c;
+    --tg-badge-orange-line: rgb(224 128 47 / 0.55);
+    --tg-badge-teal-ink: #69d3c6;
+    --tg-badge-teal-line: rgb(47 179 165 / 0.5);
+    --tg-badge-prune-ink: #dba2d2;
+    --tg-badge-prune-line: rgb(180 106 169 / 0.55);
+    --tg-badge-gris-ink: #b0b5c6;
+    --tg-badge-gris-line: rgb(138 144 166 / 0.45);
+    --tg-badge-rouge-ink: #f87171;
+    --tg-badge-rouge-line: rgb(239 68 68 / 0.55);
   }
 }
 
@@ -330,6 +365,21 @@
   --tg-chart: #659cd9;
   --tg-chart-2: #f69f70;
   --tg-chart-track: #262a3a;
+  /* Badges de nuit : le fond est la carte, le mot remonte en clarté à
+     teinte constante (6,0 à 9,3:1), le liseré reste la même couleur en
+     plus sourd. */
+  --tg-badge-bleu-ink: #9cc4f2;
+  --tg-badge-bleu-line: rgb(111 166 228 / 0.5);
+  --tg-badge-orange-ink: #f2ab6c;
+  --tg-badge-orange-line: rgb(224 128 47 / 0.55);
+  --tg-badge-teal-ink: #69d3c6;
+  --tg-badge-teal-line: rgb(47 179 165 / 0.5);
+  --tg-badge-prune-ink: #dba2d2;
+  --tg-badge-prune-line: rgb(180 106 169 / 0.55);
+  --tg-badge-gris-ink: #b0b5c6;
+  --tg-badge-gris-line: rgb(138 144 166 / 0.45);
+  --tg-badge-rouge-ink: #f87171;
+  --tg-badge-rouge-line: rgb(239 68 68 / 0.55);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -42,7 +42,7 @@ export function ModuleAVenir({
           <span className="grid size-12 place-items-center rounded-full bg-primary-soft text-primary">
             <Icon name={icone} size={26} />
           </span>
-          <Badge tone="primary">Bientôt disponible</Badge>
+          <Badge tone="bleu">Bientôt disponible</Badge>
           <p className="text-[15px] leading-relaxed font-bold text-ink-strong">{promesse}</p>
 
           <ul className="mt-1 flex w-full flex-col gap-2 text-left">

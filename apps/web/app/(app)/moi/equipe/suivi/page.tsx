@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import type { MembreSuivi, SuiviEquipe } from '@teranga/contracts';
-import { Card, EmptyState, Skeleton } from '@teranga/ui';
+import { Badge, Card, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../../lib/api';
 import { Page } from '../../../../../components/gabarit';
 import { Icon, type IconName } from '../../../../../components/icons';
@@ -71,9 +71,9 @@ function CarteMembre({ membre: m }: { membre: MembreSuivi }) {
           </span>
           {/* Des commentaires envoyés attendent l'évaluation. */}
           {m.aEvaluer > 0 ? (
-            <span className="shrink-0 rounded-full bg-accent-soft px-2 py-px text-[10.5px] font-semibold text-accent-text">
+            <Badge tone="orange" size="sm">
               À évaluer
-            </span>
+            </Badge>
           ) : null}
         </span>
         <span className="mt-1 flex flex-col gap-[3px]">

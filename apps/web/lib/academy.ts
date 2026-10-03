@@ -104,10 +104,10 @@ export function quandLisible(iso: string, maintenant = new Date()): string {
 }
 
 export const STATUTS_CERTIFICAT = {
-  valide: { label: 'Valide', tone: 'success' },
+  valide: { label: 'Valide', tone: 'teal' },
   // Un certificat expiré attend d'être renouvelé : c'est l'orange de l'attente.
-  expire: { label: 'Expiré', tone: 'warning' },
-  revoque: { label: 'Révoqué', tone: 'danger' },
+  expire: { label: 'Expiré', tone: 'orange' },
+  revoque: { label: 'Révoqué', tone: 'rouge' },
 } as const;
 
 /**

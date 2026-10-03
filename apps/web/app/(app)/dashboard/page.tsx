@@ -493,16 +493,12 @@ export default function DashboardPage() {
                         <Td className="text-right font-mono">{r.daysCount}</Td>
                         <Td>
                           {r.startDate <= todayIso ? (
-                            <Badge tone="success" className="whitespace-nowrap">
-                              En cours
-                            </Badge>
+                            <Badge tone="teal">En cours</Badge>
                           ) : (
                             // Bleu, comme sur l'écran des demandes : les deux
                             // tableaux montrent le même état, ils ne peuvent pas
                             // le dire de deux couleurs.
-                            <Badge tone="primary" className="whitespace-nowrap">
-                              À venir
-                            </Badge>
+                            <Badge tone="bleu">À venir</Badge>
                           )}
                         </Td>
                       </Tr>
@@ -642,9 +638,7 @@ export default function DashboardPage() {
                         {c.endDate ? formatDate(c.endDate) : '—'}
                       </Td>
                       <Td className="text-right">
-                        <Badge tone={deadline.tone} className="whitespace-nowrap">
-                          {deadline.text}
-                        </Badge>
+                        <Badge tone={deadline.tone}>{deadline.text}</Badge>
                       </Td>
                     </Tr>
                   );

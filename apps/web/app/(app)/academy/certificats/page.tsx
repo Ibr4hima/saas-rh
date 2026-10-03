@@ -115,7 +115,7 @@ export default function MesCertificatsPage() {
                       Pas de certificat : votre dossier indique que vous l’avez animée.
                     </span>
                   </span>
-                  {!a.published ? <Badge tone="neutral">Pas encore publiée</Badge> : null}
+                  {!a.published ? <Badge tone="gris">Pas encore publiée</Badge> : null}
                 </li>
               ))}
             </ul>

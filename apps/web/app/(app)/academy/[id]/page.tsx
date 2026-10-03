@@ -101,7 +101,7 @@ export default function FormationPage() {
                 voient pas. Rien d'autre ne s'écrit au-dessus du titre : une
                 rangée vide y creusait un blanc de douze pixels. */}
             {!f.published ? (
-              <Badge tone="neutral" className="w-fit">
+              <Badge tone="gris" className="w-fit">
                 Brouillon, invisible pour les agents
               </Badge>
             ) : null}

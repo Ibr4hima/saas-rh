@@ -112,14 +112,12 @@ export const PROFILE_CHANGE_STATUS_LABELS: Record<ProfileChangeStatus, string> =
   rejected: 'Refusée',
 };
 
-export const PROFILE_CHANGE_STATUS_TONES: Record<
-  ProfileChangeStatus,
-  'warning' | 'success' | 'danger'
-> = {
-  pending: 'warning',
-  approved: 'success',
-  rejected: 'danger',
-};
+export const PROFILE_CHANGE_STATUS_TONES: Record<ProfileChangeStatus, 'orange' | 'teal' | 'rouge'> =
+  {
+    pending: 'orange',
+    approved: 'teal',
+    rejected: 'rouge',
+  };
 
 export interface ProfileChangeRequestView {
   id: string;

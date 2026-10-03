@@ -6,7 +6,7 @@ export { Label } from './label';
 export { Field } from './field';
 export { Select } from './select';
 export { Textarea } from './textarea';
-export { Badge } from './badge';
+export { Badge, type BadgeTone } from './badge';
 export { Card, CardInteractive, CardHeader, CardTitle, CardContent } from './card';
 export { DataBlock, DataGrid } from './data-block';
 export { Table, THead, TBody, Tr, Th, Td } from './table';

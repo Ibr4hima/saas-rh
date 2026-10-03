@@ -10,7 +10,7 @@ import {
   TYPES_PIECES,
   type TypeDelegable,
 } from '../../../../components/deleguer-documents';
-import { CAPACITES_PERSONNEL } from '../../../../components/deleguer-membres';
+import { CAPACITES_PERSONNEL, PastilleSensible } from '../../../../components/deleguer-membres';
 import { Page } from '../../../../components/gabarit';
 import { Icon, type IconName } from '../../../../components/icons';
 import {
@@ -406,15 +406,7 @@ function EnTete({ ligne: l }: { ligne: Ligne }) {
         <span className="ml-2">
           <Info libelle={l.libelle} texte={l.description} />
         </span>
-        {l.sensible ? (
-          <span
-            title="Données sensibles : à confier avec soin."
-            className="ml-2 inline-flex translate-y-[-1px] items-center gap-0.5 rounded-full bg-surface px-1.5 py-px align-middle text-[10px] font-semibold text-ink-muted ring-1 ring-line-soft ring-inset"
-          >
-            <Icon name="lock" size={11} />
-            Sensible
-          </span>
-        ) : null}
+        {l.sensible ? <PastilleSensible /> : null}
       </span>
     </span>
   );

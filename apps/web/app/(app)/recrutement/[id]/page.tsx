@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { ApplicationView, JobPostingView } from '@teranga/contracts';
 import { nomAbrege, peut } from '@teranga/contracts';
-import { Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
+import { Badge, Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api, apiUrl } from '../../../../lib/api';
 import { ApercuDocument, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate, useMe } from '../../../../lib/hooks';
@@ -226,12 +226,9 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
               Pièces demandées
             </span>
             {j.requiredDocuments.map((d) => (
-              <span
-                key={d}
-                className="rounded-full bg-bg px-2.5 py-[3px] text-[11.5px] font-semibold text-ink"
-              >
+              <Badge key={d} tone="gris">
                 {d}
-              </span>
+              </Badge>
             ))}
           </div>
         ) : null}

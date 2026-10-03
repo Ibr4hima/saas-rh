@@ -32,10 +32,10 @@ import { Modal, ModalSection } from './modal';
 
 type Etape = 'depot' | 'apercu' | 'fait';
 
-const TONS: Record<LigneImport['etat'], 'success' | 'warning' | 'danger'> = {
-  'a-creer': 'success',
-  ignore: 'warning',
-  erreur: 'danger',
+const TONS: Record<LigneImport['etat'], 'teal' | 'orange' | 'rouge'> = {
+  'a-creer': 'teal',
+  ignore: 'orange',
+  erreur: 'rouge',
 };
 
 /**
@@ -347,9 +347,7 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
                     </Td>
                     <Td>
                       <span className="flex flex-col items-start gap-1">
-                        <Badge tone={TONS[l.etat]} className="whitespace-nowrap">
-                          {motDeLEtat(l.etat, rapport.applique)}
-                        </Badge>
+                        <Badge tone={TONS[l.etat]}>{motDeLEtat(l.etat, rapport.applique)}</Badge>
                         {/* Le motif tient dans la colonne quand l'écran est
                             large ; sous 768 px il passe à la ligne suivante,
                             en pleine largeur. Serré dans un cinquième de

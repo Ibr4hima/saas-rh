@@ -7,11 +7,11 @@ export const ABSENCE_STATUS_LABELS: Record<string, string> = {
   cancelled: 'Annulée',
 };
 
-export const ABSENCE_STATUS_TONES: Record<string, 'warning' | 'success' | 'danger' | 'neutral'> = {
-  pending: 'warning',
-  approved: 'success',
-  rejected: 'danger',
-  cancelled: 'neutral',
+export const ABSENCE_STATUS_TONES: Record<string, 'orange' | 'teal' | 'rouge' | 'gris'> = {
+  pending: 'orange',
+  approved: 'teal',
+  rejected: 'rouge',
+  cancelled: 'gris',
 };
 
 export const ROLE_LABELS: Record<string, string> = {
