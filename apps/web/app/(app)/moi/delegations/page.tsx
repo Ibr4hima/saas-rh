@@ -360,15 +360,15 @@ export default function DelegationsPage() {
                     <ul className="mt-3 flex flex-col gap-2 md:ml-[46px]">
                       {l.types.map((t) => (
                         <li
-                          key={t.capacite}
+                          key={t.libelle}
                           className="flex flex-col gap-1.5 md:flex-row md:items-center md:gap-6"
                         >
                           <span className="min-w-0 flex-1 text-[12.5px] text-ink">{t.libelle}</span>
                           <ChoixDelegues
                             libelle={t.libelle}
                             membres={membres}
-                            coche={(m) => coche([t.capacite], m)}
-                            onBasculer={(m) => basculer([t.capacite], m)}
+                            coche={(m) => coche(t.capacites, m)}
+                            onBasculer={(m) => basculer(t.capacites, m)}
                             modifiable={modifiable}
                           />
                         </li>
@@ -533,18 +533,27 @@ function ChoixDelegues({
 /** Le « i » d'une tâche : ce que la déléguer permettra de faire. */
 function Info({ libelle, texte }: { libelle: string; texte: string }) {
   const [ouvert, setOuvert] = useState(false);
+  // En bas de l'écran, la bulle s'ouvre au-dessus : sinon elle sort de la page.
+  const [enHaut, setEnHaut] = useState(false);
+  const bouton = useRef<HTMLButtonElement>(null);
+  const ouvrir = () => {
+    const r = bouton.current?.getBoundingClientRect();
+    setEnHaut(Boolean(r && window.innerHeight - r.bottom < 200));
+    setOuvert(true);
+  };
   return (
     <span
       className="inline-flex align-middle md:relative"
-      onMouseEnter={() => setOuvert(true)}
+      onMouseEnter={ouvrir}
       onMouseLeave={() => setOuvert(false)}
     >
       <button
+        ref={bouton}
         type="button"
         aria-label={`À propos : ${libelle}`}
         aria-expanded={ouvert}
         // Au doigt, le survol n'existe pas : toucher ouvre, toucher ailleurs ferme.
-        onClick={() => setOuvert(true)}
+        onClick={ouvrir}
         onBlur={() => setOuvert(false)}
         className="grid size-[18px] place-items-center rounded-full text-ink-muted ring-1 ring-line ring-inset transition-colors duration-150 hover:bg-primary/[0.07] hover:text-primary hover:ring-primary/30 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
       >
@@ -553,7 +562,10 @@ function Info({ libelle, texte }: { libelle: string; texte: string }) {
       {ouvert ? (
         <span
           role="tooltip"
-          className="absolute top-full left-1/2 z-40 mt-2 w-72 -translate-x-1/2 rounded-[12px] border border-card-line bg-surface px-3.5 py-3 text-[12px] leading-relaxed font-normal text-ink shadow-lg max-md:right-0 max-md:left-0 max-md:w-auto max-md:translate-x-0"
+          className={cn(
+            'absolute left-1/2 z-40 w-72 -translate-x-1/2 rounded-[12px] border border-card-line bg-surface px-3.5 py-3 text-[12px] leading-relaxed font-normal text-ink shadow-lg max-md:right-0 max-md:left-0 max-md:w-auto max-md:translate-x-0',
+            enHaut ? 'bottom-full mb-2' : 'top-full mt-2',
+          )}
         >
           {texte}
         </span>

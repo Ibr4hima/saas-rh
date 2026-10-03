@@ -20,18 +20,22 @@ import { texteErreur } from './traitement-dch';
 
 /* ————————————————————————————————————————————————————————————————
    « Déléguer » type par type : une fenêtre, un type de document par ligne,
-   et pour chacun les membres de la DCH qui peuvent le traiter — les
+   et pour chacun les membres de la DCH qui peuvent le traiter : les
    demandes de documents, et la vérification des documents officiels.
 
+   Les documents officiels se délèguent par familles, qui se vérifient
+   ensemble : la CNI et le passeport, les diplômes et les certifications,
+   les attestations de travail et de stage, le CV.
+
    Déléguer autorise, sans rien retirer : le directeur traite toujours tout.
-   Décocher retire la délégation. « Autre document » n'y figure pas — il
+   Décocher retire la délégation. « Autre document » n'y figure pas : il
    reste au directeur.
    ———————————————————————————————————————————————————————————————— */
 
-/** Un type qui se délègue à part : son libellé, son habilitation. */
+/** Ce qui se délègue d'un bloc : son libellé, ses habilitations. */
 export interface TypeDelegable {
   libelle: string;
-  capacite: Capacite;
+  capacites: readonly Capacite[];
 }
 
 /** Les documents qu'un agent demande, « Autre document » mis à part. */
@@ -43,40 +47,40 @@ export const DOCUMENTS_DELEGABLES = [
   'certificat_travail',
 ] as const satisfies readonly RequestableDoc[];
 
-/** Les documents officiels qu'un agent dépose. */
-export const PIECES_DELEGABLES = [
-  'cni',
-  'passeport',
-  'diplome',
-  'certification',
-  'attestation_travail',
-  'attestation_stage',
-  'cv',
-] as const satisfies readonly DocumentCategory[];
+/** Les documents officiels qu'un agent dépose, par familles. */
+const FAMILLES_DE_PIECES: readonly { libelle: string; types: readonly DocumentCategory[] }[] = [
+  { libelle: 'CNI et passeport', types: ['cni', 'passeport'] },
+  { libelle: 'Diplômes et certifications', types: ['diplome', 'certification'] },
+  {
+    libelle: 'Attestations de travail et de stage',
+    types: ['attestation_travail', 'attestation_stage'],
+  },
+  { libelle: DOCUMENT_CATEGORY_LABELS.cv, types: ['cv'] },
+];
 
 export const TYPES_DOCUMENTS: readonly TypeDelegable[] = DOCUMENTS_DELEGABLES.map((d) => ({
   libelle: REQUESTABLE_DOC_LABELS[d],
-  capacite: capaciteDuDocument(d),
+  capacites: [capaciteDuDocument(d)],
 }));
 
-export const TYPES_PIECES: readonly TypeDelegable[] = PIECES_DELEGABLES.map((c) => ({
-  libelle: DOCUMENT_CATEGORY_LABELS[c],
-  capacite: capaciteDeLaPiece(c),
+export const TYPES_PIECES: readonly TypeDelegable[] = FAMILLES_DE_PIECES.map((f) => ({
+  libelle: f.libelle,
+  capacites: f.types.map(capaciteDeLaPiece),
 }));
 
-const cle = (capacite: Capacite, employeeId: string) => `${capacite}:${employeeId}`;
+/** Le membre a-t-il tout ce bloc ? */
+export const detient = (m: MembreHabilite, t: TypeDelegable) =>
+  t.capacites.every((c) => m.capacites.includes(c));
 
-/** Qui peut traiter quoi, aujourd'hui : `<habilitation>:<membre>`. */
+const cle = (t: TypeDelegable, employeeId: string) => `${t.capacites.join('+')}:${employeeId}`;
+
+/** Qui peut traiter quoi, aujourd'hui : `<habilitations>:<membre>`. */
 export function delegationsDe(
   types: readonly TypeDelegable[],
   membres: readonly MembreHabilite[],
 ): Set<string> {
   return new Set(
-    types.flatMap((t) =>
-      membres
-        .filter((m) => m.capacites.includes(t.capacite))
-        .map((m) => cle(t.capacite, m.employeeId)),
-    ),
+    types.flatMap((t) => membres.filter((m) => detient(m, t)).map((m) => cle(t, m.employeeId))),
   );
 }
 
@@ -123,13 +127,17 @@ function DeleguerParType({
   const [erreur, setErreur] = useState<string | null>(null);
 
   const actuelles = delegationsDe(types, membres);
+  // Un bloc coché : chacune de ses habilitations que le membre n'a pas ;
+  // décoché : chacune de celles qu'il a.
   const changements = types.flatMap((t) =>
     membres
-      .filter(
-        (m) =>
-          actuelles.has(cle(t.capacite, m.employeeId)) !== choix.has(cle(t.capacite, m.employeeId)),
-      )
-      .map((m) => ({ capacite: t.capacite, m })),
+      .filter((m) => actuelles.has(cle(t, m.employeeId)) !== choix.has(cle(t, m.employeeId)))
+      .flatMap((m) => {
+        const accordee = choix.has(cle(t, m.employeeId));
+        return t.capacites
+          .filter((c) => m.capacites.includes(c) !== accordee)
+          .map((capacite) => ({ capacite, m, accordee }));
+      }),
   );
 
   const basculer = (k: string) =>
@@ -143,14 +151,10 @@ function DeleguerParType({
   const appliquer = useMutation({
     mutationFn: async () => {
       // Un changement à la fois : chaque membre l'apprend par sa notification.
-      for (const { capacite, m } of changements) {
+      for (const { capacite, m, accordee } of changements) {
         await api('/habilitations', {
           method: 'PUT',
-          body: {
-            employeeId: m.employeeId,
-            capacite,
-            accordee: choix.has(cle(capacite, m.employeeId)),
-          },
+          body: { employeeId: m.employeeId, capacite, accordee },
         });
       }
     },
@@ -220,7 +224,7 @@ function DeleguerParType({
           <ul className="-my-1 flex flex-col divide-y divide-line-soft">
             {types.map((t) => (
               <li
-                key={t.capacite}
+                key={t.libelle}
                 className="flex flex-col gap-2.5 py-3.5 sm:flex-row sm:items-center sm:gap-5"
               >
                 <span className="flex min-w-0 items-center gap-2.5 sm:w-56 sm:shrink-0">
@@ -238,8 +242,8 @@ function DeleguerParType({
                     <ChoixMembre
                       key={m.employeeId}
                       nom={m.nom}
-                      choisi={choix.has(cle(t.capacite, m.employeeId))}
-                      onBasculer={() => basculer(cle(t.capacite, m.employeeId))}
+                      choisi={choix.has(cle(t, m.employeeId))}
+                      onBasculer={() => basculer(cle(t, m.employeeId))}
                     />
                   ))}
                 </div>

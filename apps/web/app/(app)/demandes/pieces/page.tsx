@@ -21,7 +21,7 @@ import {
 } from '@teranga/ui';
 import { BoutonDecision } from '../../../../components/bouton-decision';
 import { FenetreControleDuTitre } from '../../../../components/controle-titre';
-import { DeleguerPieces, TYPES_PIECES } from '../../../../components/deleguer-documents';
+import { DeleguerPieces, detient, TYPES_PIECES } from '../../../../components/deleguer-documents';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Page } from '../../../../components/gabarit';
@@ -109,12 +109,10 @@ export default function PiecesAVerifierPage() {
   const toutes = pieces.data ?? [];
   // Ce qui est délégué, type par type : à qui, et — au membre — à lui.
   const delegues = membres.filter((m) =>
-    TYPES_PIECES.some((t) => m.capacites.includes(t.capacite)),
+    TYPES_PIECES.some((t) => t.capacites.some((c) => m.capacites.includes(c))),
   );
-  const tousLesTypes = delegues.every((m) =>
-    TYPES_PIECES.every((t) => m.capacites.includes(t.capacite)),
-  );
-  const miens = TYPES_PIECES.filter((t) => peut(me.data, t.capacite));
+  const tousLesTypes = delegues.every((m) => TYPES_PIECES.every((t) => detient(m, t)));
+  const miens = TYPES_PIECES.filter((t) => t.capacites.some((c) => peut(me.data, c)));
   const traite = estDirecteur || miens.length > 0 || toutes.some((p) => p.canReview);
   const aVerifier = toutes.filter(
     (p) => p.status === 'pending' && (!traite || p.canReview || Boolean(p.traitement?.aConfier)),
