@@ -174,6 +174,8 @@ export interface OrgUnitView extends OrgUnit {
    * reste le nom complet, pour les écrans qui ont la place de l'écrire.
    */
   managerShortName: string | null;
+  /** Son genre, pour la civilité du bloc : « M. Abdoulaye Diallo ». */
+  managerGender: 'female' | 'male' | null;
   /** Son matricule : « Mariama C. · EMP-002 » se lit sans ambiguïté. */
   managerNumber: string | null;
   managerPosition: string | null;

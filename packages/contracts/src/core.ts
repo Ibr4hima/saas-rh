@@ -224,6 +224,13 @@ export function deElide(mot: string): string {
   return /[aeiouyàâäéèêëîïôöùûüh]/.test(premier) ? "d'" : 'de ';
 }
 
+/** La civilité d'une personne, selon son genre : « M. », « Mme », ou rien si on l'ignore. */
+export function civilite(gender: string | null | undefined): 'M.' | 'Mme' | null {
+  if (gender === 'male') return 'M.';
+  if (gender === 'female') return 'Mme';
+  return null;
+}
+
 export function nomAbrege(givenName: string, familyName: string): string {
   const nom = familyName.trim();
   const prenoms = givenName.trim().split(/\s+/).filter(Boolean);

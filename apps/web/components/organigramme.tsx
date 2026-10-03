@@ -2,7 +2,7 @@
 
 import type * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { orgUnitLabel, type OrgUnitView } from '@teranga/contracts';
+import { civilite, orgUnitLabel, type OrgUnitView } from '@teranga/contracts';
 import { cn } from '@teranga/ui';
 import { Icon } from './icons';
 
@@ -562,7 +562,11 @@ function Bloc({
         // Le gabarit coupe les noms à rallonge et les responsables aux
         // prénoms multiples : l'infobulle rend l'un et l'autre en entier, et
         // la fenêtre de détail aussi.
-        title={`${u.name}\n${u.managerName ?? 'Responsable : Non désigné'}`}
+        title={`${u.name}\n${
+          u.managerName
+            ? [civilite(u.managerGender), u.managerName].filter(Boolean).join(' ')
+            : 'Responsable : Non désigné'
+        }`}
         style={{ width: largeur, height: HAUTEUR_BLOC }}
         className={cn(
           // Gabarit unique (cf. HAUTEUR_BLOC / LARGEUR_BLOC) : la hauteur ne
@@ -606,9 +610,14 @@ function Bloc({
           </span>
           <span className="block truncate text-[11.5px] leading-tight text-ink-muted">
             {u.managerName ? (
-              // Le nom seul, abrégé : « Mouhamadou Moustapha Salih Niang » ne
-              // tient pas dans un bloc, et c'est le NOM DE FAMILLE qu'on y perdrait.
-              <span className="font-semibold text-ink">{u.managerShortName ?? u.managerName}</span>
+              // La civilité dans l'encre de « Responsable », le nom dans celle
+              // de « Non désigné » : « M. Abdoulaye Diallo ». Le nom est abrégé,
+              // « Mouhamadou Moustapha Salih Niang » ne tient pas dans un bloc,
+              // et c'est le NOM DE FAMILLE qu'on y perdrait.
+              <>
+                {civilite(u.managerGender) ? <>{civilite(u.managerGender)}&nbsp;</> : null}
+                <span className="text-ink-muted/70">{u.managerShortName ?? u.managerName}</span>
+              </>
             ) : (
               <>
                 Responsable&nbsp;: <span className="text-ink-muted/70">Non désigné</span>

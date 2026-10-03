@@ -113,6 +113,7 @@ export class OrgUnitsService {
           managerEmployeeId: t.orgUnits.managerEmployeeId,
           managerGivenName: managerPersons.givenName,
           managerFamilyName: managerPersons.familyName,
+          managerGender: managerPersons.gender,
           managerNumber: t.employees.employeeNumber,
           sommet: sql<boolean>`(org_units.id = ${SOMMET})`,
           directionDuPersonnel: t.orgUnits.directionDuPersonnel,
@@ -154,6 +155,8 @@ export class OrgUnitsService {
         managerShortName: r.managerGivenName
           ? nomAbrege(r.managerGivenName, r.managerFamilyName ?? '')
           : null,
+        managerGender:
+          r.managerGender === 'female' || r.managerGender === 'male' ? r.managerGender : null,
         managerNumber: r.managerNumber,
         managerPosition: r.managerPosition,
         sommet: Boolean(r.sommet),
