@@ -46,11 +46,14 @@ export function MenuCompte({
   variante,
   bascule,
   certificats,
+  restreint = false,
 }: {
   variante: 'colonne' | 'bandeau';
   bascule?: BasculeDEspace;
   /** « Mes certificats » : dans Mon espace seulement. */
   certificats: boolean;
+  /** Plus en activité : l'Academy, et ses certificats, lui sont fermés. */
+  restreint?: boolean;
 }) {
   const router = useRouter();
   const { theme, basculer } = usePreferences();
@@ -152,6 +155,7 @@ export function MenuCompte({
             <Rangee
               icone="workspace_premium"
               libelle="Mes certificats"
+              desactive={restreint}
               onClick={() => {
                 setOuvert(false);
                 router.push('/academy/certificats');
@@ -268,6 +272,7 @@ function Rangee({
   libelle,
   danger,
   badge,
+  desactive = false,
   onClick,
 }: {
   icone: IconName;
@@ -275,23 +280,36 @@ function Rangee({
   danger?: boolean;
   /** Ce qui attend derrière la rangée (l'autre espace). */
   badge?: number;
+  /** Visible, grisée, sans effet. */
+  desactive?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
+      disabled={desactive}
+      aria-disabled={desactive || undefined}
       onClick={onClick}
       className={cn(
         'group flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[12.5px] font-medium transition-colors duration-150',
-        danger
-          ? 'text-ink hover:bg-danger-soft hover:text-danger'
-          : 'text-ink hover:bg-hover hover:text-ink-strong',
+        desactive
+          ? 'cursor-not-allowed text-ink-muted/45'
+          : danger
+            ? 'text-ink hover:bg-danger-soft hover:text-danger'
+            : 'text-ink hover:bg-hover hover:text-ink-strong',
       )}
     >
       {/* L'icône suit le mot au survol : sur la déconnexion, une flèche
           restée grise à côté d'un libellé rouge se lit comme une erreur. */}
-      <Icon name={icone} size={17} className="shrink-0 text-ink-muted group-hover:text-current" />
+      <Icon
+        name={icone}
+        size={17}
+        className={cn(
+          'shrink-0',
+          desactive ? 'text-ink-muted/45' : 'text-ink-muted group-hover:text-current',
+        )}
+      />
       <span className="flex-1">{libelle}</span>
       {badge && badge > 0 ? (
         <span className="rounded-full bg-alert-soft px-[6px] py-px text-[10px] font-extrabold text-alert-text">

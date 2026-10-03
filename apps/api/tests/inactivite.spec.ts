@@ -4,25 +4,35 @@
  *
  * La règle de l'APIX : un agent dont le CDD ou le stage est arrivé à terme
  * n'est plus de l'agence. Son dossier passe de lui-même dans les inactifs le
- * lendemain de son dernier jour ; d'ici là, chaque porte vérifie la date —
+ * lendemain de son dernier jour ; d'ici là, chaque porte vérifie la date :
  * il ne dirige rien, n'est le n+1 de personne, ne reçoit ni affectation ni
- * accès au portail, et ne se connecte plus.
+ * invitation au portail. Son compte reste ouvert un mois, restreint, le temps
+ * de récupérer ses documents ; ensuite il ne se connecte plus.
  */
 import { randomUUID } from 'node:crypto';
 import { hash as argonHash } from '@node-rs/argon2';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { archiveEmployeesSchema, type SessionUser } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
+import { AcademyController } from '../src/modules/academy/academy.controller';
+import { AccesGuard, FERME_AUX_INACTIFS_KEY } from '../src/modules/auth/acces.guard';
 import { AuthService } from '../src/modules/auth/auth.service';
+import { DocumentRequestsService } from '../src/modules/docs/document-requests.service';
+import { NotificationsService } from '../src/modules/notifications/notifications.service';
+import { ObjectifsController } from '../src/modules/objectifs/objectifs.controller';
 import { inactiverLesContratsEchus } from '../src/modules/people/activite';
 import { OrgUnitsService } from '../src/modules/people/org-units.service';
+import { PeopleController } from '../src/modules/people/people.controller';
 import { PeopleService } from '../src/modules/people/people.service';
 import { InvitationsService } from '../src/modules/portal/invitations.service';
+import { AbsencesController } from '../src/modules/time/absences.controller';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -172,6 +182,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   for (const table of [
     'notifications',
+    'document_requests',
     'sessions',
     'invitations',
     'absence_requests',
@@ -222,6 +233,7 @@ beforeEach(async () => {
 afterAll(async () => {
   for (const table of [
     'notifications',
+    'document_requests',
     'sessions',
     'invitations',
     'absence_requests',
@@ -301,7 +313,8 @@ describe('la fin de contrat, d’elle-même', () => {
       ibou.employeeId,
     ]);
     expect(n1[0].manager_employee_id).toBe(omar.employeeId);
-    // Plus de congé en attente, plus de session.
+    // Plus de congé en attente ; sa session, elle, reste ouverte : son
+    // portail lui sert encore un mois.
     const { rows: conges } = await raw(
       `SELECT status FROM absence_requests WHERE employee_id = $1`,
       [fatou.employeeId],
@@ -311,7 +324,7 @@ describe('la fin de contrat, d’elle-même', () => {
       `SELECT count(*)::int AS n FROM sessions WHERE user_id = $1 AND revoked_at IS NULL`,
       [fatou.userId],
     );
-    expect(sessions[0].n).toBe(0);
+    expect(sessions[0].n).toBe(1);
     // Qui dirige la DCH l'apprend, avec ce qui reste à faire.
     const { rows: alertes } = await raw(
       `SELECT recipient_user_id, title, body FROM notifications WHERE tenant_id = $1 AND type = 'contract_ended'`,
@@ -322,6 +335,7 @@ describe('la fin de contrat, d’elle-même', () => {
     expect(alertes[0].title).toBe('Contrat de Fatou Test arrivé à terme');
     expect(alertes[0].body).toContain('« Service Comptabilité » n’a plus de responsable');
     expect(alertes[0].body).toContain('Son équipe relève désormais de Omar Test');
+    expect(alertes[0].body).toContain('Son accès au portail reste ouvert jusqu’au');
 
     // Une seule fois.
     expect(await inactiver()).toBe(0);
@@ -361,7 +375,7 @@ describe('la fin de contrat, d’elle-même', () => {
 });
 
 describe('avant même le passage, un contrat échu ferme les portes', () => {
-  it('ni n+1, ni responsable d’unité, ni affectation, ni portail, ni connexion', async () => {
+  it('ni n+1, ni responsable d’unité, ni affectation, ni invitation au portail', async () => {
     // Fatou n'est pas encore passée dans les inactifs : c'est la date qui refuse.
     expect((await statut(fatou)).status).toBe('active');
     expect(
@@ -394,13 +408,10 @@ describe('avant même le passage, un contrat échu ferme les portes', () => {
       fatou.userId,
       tenantId,
     ]);
-    expect(await codeOf(() => auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {}))).toBe(
-      'auth.employee_archived',
-    );
-    // Un collègue en activité, lui, se connecte.
+    // Un collègue en activité se connecte, sans restriction.
     expect(
-      await codeOf(() => auth.login({ email: moussa.email, password: MOT_DE_PASSE }, {})),
-    ).toBe('AUCUNE ERREUR');
+      (await auth.login({ email: moussa.email, password: MOT_DE_PASSE }, {})).user.finDAcces,
+    ).toBeNull();
   });
 
   it('une affectation ne commence pas après la fin du contrat', async () => {
@@ -432,6 +443,106 @@ describe('avant même le passage, un contrat échu ferme les portes', () => {
     await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [uCompta]);
     const candidats = await unites.eligibleManagers(admin, uCompta);
     expect(candidats.map((c) => c.givenName)).toEqual(['Ibou']);
+  });
+});
+
+describe('un mois pour récupérer ses documents', () => {
+  /** Le dernier jour d'accès : un mois après la fin d'activité, selon la base. */
+  const unMoisApres = async (fin: string) => {
+    const { rows } = await raw(`SELECT ($1::date + interval '1 month')::date::text AS d`, [fin]);
+    return rows[0].d as string;
+  };
+
+  it('son contrat terminé, elle se connecte encore un mois : un portail restreint, sans habilitation', async () => {
+    const { token, user } = await auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {});
+    expect(user).toMatchObject({
+      finDAcces: await unMoisApres(await jour(-1)),
+      estAgent: false,
+      dirigeLaDCH: false,
+      capacites: [],
+    });
+    // Passé ce mois, la porte se ferme : à la connexion, et pour la session ouverte.
+    await raw(`UPDATE contracts SET end_date = CURRENT_DATE - 40 WHERE employee_id = $1`, [
+      fatou.employeeId,
+    ]);
+    expect(await codeOf(() => auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {}))).toBe(
+      'auth.employee_archived',
+    );
+    expect(await auth.resolveSession(token)).toBeNull();
+    const refus = await auth
+      .login({ email: fatou.email, password: MOT_DE_PASSE }, {})
+      .catch((e: ProblemException) => e.problem.detail);
+    expect(refus).toMatch(/^Votre accès au portail a pris fin le .+ Il sera rouvert/);
+  });
+
+  it('désactivée à la main, même délai, compté depuis sa fin d’activité', async () => {
+    await raw(
+      `UPDATE contracts SET end_date = NULL, contract_type = 'cdi' WHERE employee_id = $1`,
+      [fatou.employeeId],
+    );
+    await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [uCompta]);
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [
+      ibou.employeeId,
+      omar.employeeId,
+    ]);
+    const r = await people.archive(admin, {
+      ids: [fatou.employeeId],
+      archived: true,
+      motif: 'demission',
+    });
+    expect(r.done).toBe(1);
+    const { user } = await auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {});
+    expect(user.finDAcces).toBe(await unMoisApres(await jour(0)));
+    // Elle suit encore les documents qu'elle a demandés.
+    const documents = new DocumentRequestsService(db, new NotificationsService(db));
+    await documents.create(user, { docTypes: ['certificat_travail'] });
+    expect(await documents.list(user, { scope: 'mine' })).toHaveLength(1);
+    // Un mois et un jour plus tard, c'est fini.
+    await raw(
+      `UPDATE employees SET fin_activite = CURRENT_DATE - interval '1 month' - interval '1 day' WHERE id = $1`,
+      [fatou.employeeId],
+    );
+    expect(await codeOf(() => auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {}))).toBe(
+      'auth.employee_archived',
+    );
+  });
+
+  it('ce qui lui est fermé ce mois-là : demandes d’absence, objectifs, Academy, organigramme', () => {
+    const ferme = (cible: object) => Reflect.getMetadata(FERME_AUX_INACTIFS_KEY, cible) === true;
+    expect(ferme(AcademyController)).toBe(true);
+    expect(ferme(ObjectifsController)).toBe(true);
+    expect(ferme(PeopleController.prototype.listOrgUnits)).toBe(true);
+    expect(ferme(PeopleController.prototype.orgUnitMembers)).toBe(true);
+    expect(ferme(AbsencesController.prototype.createRequest)).toBe(true);
+    expect(ferme(AbsencesController.prototype.preview)).toBe(true);
+    // Ses documents, son historique de congés restent ouverts.
+    expect(ferme(AbsencesController.prototype.listRequests)).toBe(false);
+
+    const garde = new AccesGuard(new Reflector());
+    const contexte = (handler: object, finDAcces: string | null) =>
+      ({
+        getHandler: () => handler,
+        getClass: () => AbsencesController,
+        switchToHttp: () => ({
+          getRequest: () => ({ sessionUser: { role: 'employee', capacites: [], finDAcces } }),
+        }),
+      }) as unknown as ExecutionContext;
+    const code = (fn: () => unknown) => {
+      try {
+        fn();
+        return 'AUCUNE ERREUR';
+      } catch (err) {
+        return (err as ProblemException).problem.code;
+      }
+    };
+    const poser = AbsencesController.prototype.createRequest;
+    expect(code(() => garde.canActivate(contexte(poser, '2026-11-02')))).toBe('acces.inactif');
+    expect(code(() => garde.canActivate(contexte(poser, null)))).toBe('AUCUNE ERREUR');
+    expect(
+      code(() =>
+        garde.canActivate(contexte(AbsencesController.prototype.listRequests, '2026-11-02')),
+      ),
+    ).toBe('AUCUNE ERREUR');
   });
 });
 

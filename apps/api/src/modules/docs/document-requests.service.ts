@@ -151,8 +151,11 @@ export class DocumentRequestsService {
       const conditions = [];
 
       if (selfOnly) {
-        if (!moi) return [];
-        conditions.push(eq(t.documentRequests.employeeId, moi));
+        // Son dossier, actif ou non : un agent qui n'est plus en activité
+        // suit encore les documents qu'il a demandés.
+        const soi = await this.selfEmployee(tx, user);
+        if (!soi) return [];
+        conditions.push(eq(t.documentRequests.employeeId, soi.employeeId));
       } else if (!toute) {
         if (!moi) return [];
         conditions.push(

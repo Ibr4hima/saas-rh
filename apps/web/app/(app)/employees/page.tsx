@@ -723,8 +723,8 @@ function SupprimerModal({
         </ul>
         <p className="mt-3 rounded-[9px] bg-bg px-3 py-2 text-[12px] text-ink-muted">
           Si l’employé a quitté l’organisation mais que vous avez encore le droit de conserver ses
-          données, désactivez son profil : le dossier reste, le portail se ferme, et le rendre actif
-          rouvre l’accès avec les mêmes identifiants.
+          données, désactivez son profil : le dossier reste, le portail se ferme un mois plus tard,
+          et le rendre actif rouvre l’accès avec les mêmes identifiants.
         </p>
       </ModalSection>
 
@@ -785,8 +785,8 @@ function DesactiverModal({
       title={lot.length > 1 ? `Désactiver ${lot.length} profils` : 'Désactiver le profil'}
       subtitle={
         seul
-          ? `${seul.givenName} ${seul.familyName} passe dans les inactifs : son accès au portail est fermé.`
-          : 'Ils passent dans les inactifs : leur accès au portail est fermé.'
+          ? `${seul.givenName} ${seul.familyName} passe dans les inactifs. Son portail reste ouvert un mois, en accès restreint.`
+          : 'Ils passent dans les inactifs. Leur portail reste ouvert un mois, en accès restreint.'
       }
       maxWidth="max-w-lg"
       footer={

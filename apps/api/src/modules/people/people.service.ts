@@ -1011,12 +1011,10 @@ export class PeopleService {
   /**
    * Archiver un dossier, ou le rouvrir. Le même geste dans les deux sens.
    *
-   * Archiver ferme le portail SANS toucher au compte : ni le mot de passe, ni
-   * l'identifiant, ni le rôle ne bougent. C'est ce qui permet, six mois plus
-   * tard, de rendre l'accès sans rien redemander à l'agent — il se reconnecte
-   * avec ce qu'il connaît déjà. Les sessions ouvertes sont révoquées sur-le-
-   * champ : sinon l'agent continuerait de naviguer jusqu'à l'expiration de son
-   * cookie, ce qui est exactement ce qu'on vient de lui retirer.
+   * Archiver ne touche pas au compte : ni le mot de passe, ni l'identifiant,
+   * ni le rôle ne bougent. L'agent garde un mois son portail, restreint, pour
+   * récupérer ses documents ; ensuite il ne se connecte plus. Rouvrir le
+   * dossier lui rend l'accès avec ce qu'il connaît déjà.
    */
   async archive(user: SessionUser, input: ArchiveEmployeesInput): Promise<EmployeeBatchResult> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
@@ -1077,21 +1075,6 @@ export class PeopleService {
           )
           .returning({ id: t.absenceRequests.id });
         for (const d of annulees) await reconcilierDemande(tx, d.id);
-        const comptes = retenus.map((c) => c.userId).filter((u): u is string => u !== null);
-        if (comptes.length > 0) {
-          // Dans CE tenant seulement : l'agent peut être employé ailleurs, et
-          // la fin de son contrat ici ne le déconnecte pas de là-bas.
-          await tx
-            .update(t.sessions)
-            .set({ revokedAt: new Date() })
-            .where(
-              and(
-                inArray(t.sessions.userId, comptes),
-                eq(t.sessions.tenantId, user.tenantId),
-                isNull(t.sessions.revokedAt),
-              ),
-            );
-        }
       }
       await this.faireSuivre(tx, user.tenantId, journal);
       // Un dossier rouvert revient avec le n+1 et l'affectation qu'il avait :

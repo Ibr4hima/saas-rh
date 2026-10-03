@@ -82,12 +82,13 @@ export async function reprendreLActivite(
  *
  * Ce qu'un départ ordonné demanderait à la DCH — un successeur à la tête de
  * l'unité, un repreneur pour l'équipe —, la date ne l'attend pas :
- *   — une unité qu'il dirigeait reste sans responsable (le contrôle de la
+ *   - une unité qu'il dirigeait reste sans responsable (le contrôle de la
  *     chaîne la signale) ;
- *   — son équipe remonte d'un cran, à son propre n+1, si la règle le
+ *   - son équipe remonte d'un cran, à son propre n+1, si la règle le
  *     permet ; sinon au responsable de sa direction ; sinon elle attend
  *     un n+1 ;
- *   — ses demandes de congé en attente sont annulées, ses sessions fermées.
+ *   - ses demandes de congé en attente sont annulées ; son portail reste
+ *     ouvert un mois, restreint, puis se ferme.
  * Qui suit les échéances pour la DCH l'apprend, avec ce qui reste à faire.
  * Rend le nombre de dossiers passés dans les inactifs.
  */
@@ -98,11 +99,12 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
     contrat: string;
     type: string;
     fin: string;
-    user_id: string | null;
+    fin_acces: string;
     n1: string | null;
   }>(sql`
     SELECT e.id, p.given_name || ' ' || p.family_name AS nom, c.id AS contrat,
-           c.contract_type AS type, c.end_date::text AS fin, p.user_id,
+           c.contract_type AS type, c.end_date::text AS fin,
+           (c.end_date + interval '1 month')::date::text AS fin_acces,
            e.manager_employee_id AS n1
       FROM employees e
       JOIN persons p ON p.id = e.person_id
@@ -154,11 +156,6 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
        WHERE employee_id = ${a.id} AND status = 'pending'
       RETURNING id`);
     for (const d of annulees) await reconcilierDemande(tx, d.id);
-    if (a.user_id) {
-      await tx.execute(sql`
-        UPDATE sessions SET revoked_at = now()
-         WHERE user_id = ${a.user_id} AND tenant_id = ${tenantId} AND revoked_at IS NULL`);
-    }
 
     const suite: string[] = [];
     if (unites.length > 0) {
@@ -181,7 +178,7 @@ export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promi
         type: 'contract_ended',
         title: `Contrat de ${a.nom} arrivé à terme`,
         body: [
-          `${TYPES[a.type] ?? 'Contrat'} terminé le ${frDate(a.fin)} : le dossier est passé dans les inactifs et l’accès au portail est fermé.`,
+          `${TYPES[a.type] ?? 'Contrat'} terminé le ${frDate(a.fin)} : le dossier est passé dans les inactifs. Son accès au portail reste ouvert jusqu’au ${frDate(a.fin_acces)}, le temps de récupérer ses documents.`,
           ...suite,
         ].join(' '),
         link: `/employees/${a.id}`,

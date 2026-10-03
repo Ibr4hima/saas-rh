@@ -45,7 +45,7 @@ import {
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { AccesGuard, Peut } from '../auth/acces.guard';
+import { AccesGuard, FermeAuxInactifs, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AcademyEquipeService } from './academy-equipe.service';
 import { AcademyEvaluationService } from './academy-evaluation.service';
@@ -60,6 +60,7 @@ import { AcademyService } from './academy.service';
  */
 @Controller('academy')
 @UseGuards(SessionGuard, AccesGuard)
+@FermeAuxInactifs()
 export class AcademyController {
   constructor(
     @Inject(AcademyService) private readonly academy: AcademyService,

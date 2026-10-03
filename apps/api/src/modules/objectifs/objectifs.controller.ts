@@ -33,7 +33,7 @@ import {
   type ModifierObjectifInput,
 } from '@teranga/contracts';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { AccesGuard } from '../auth/acces.guard';
+import { AccesGuard, FermeAuxInactifs } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { ObjectifsService } from './objectifs.service';
 
@@ -49,6 +49,7 @@ interface Periode {
  */
 @Controller('objectifs')
 @UseGuards(SessionGuard, AccesGuard)
+@FermeAuxInactifs()
 export class ObjectifsController {
   constructor(@Inject(ObjectifsService) private readonly objectifs: ObjectifsService) {}
 

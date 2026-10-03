@@ -13,18 +13,39 @@ export const CAPACITES_KEY = 'capacites';
  */
 export const Peut = (...capacites: Capacite[]) => SetMetadata(CAPACITES_KEY, capacites);
 
+export const FERME_AUX_INACTIFS_KEY = 'fermeAuxInactifs';
+
+/**
+ * Fermé à qui n'est plus en activité : pendant le mois où son portail reste
+ * ouvert, il ne pose plus de demande d'absence et n'a plus accès aux
+ * objectifs, à l'Academy ni à l'organigramme. Sur une classe ou une route.
+ */
+export const FermeAuxInactifs = () => SetMetadata(FERME_AUX_INACTIFS_KEY, true);
+
 @Injectable()
 export class AccesGuard implements CanActivate {
   constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const ferme = this.reflector.getAllAndOverride<boolean | undefined>(FERME_AUX_INACTIFS_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (ferme && req.sessionUser.finDAcces) {
+      problem(
+        403,
+        'acces.inactif',
+        'Accès restreint',
+        'Vous n’êtes plus en activité : cette page ne vous est plus ouverte.',
+      );
+    }
     const requises = this.reflector.getAllAndOverride<Capacite[] | undefined>(CAPACITES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
     if (!requises || requises.length === 0) return true;
 
-    const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
     if (!requises.some((c) => peut(req.sessionUser, c))) {
       problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
     }

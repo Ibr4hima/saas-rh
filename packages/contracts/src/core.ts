@@ -151,6 +151,11 @@ export const sessionUserSchema = z.object({
   dirigeLaDCH: z.boolean().default(false),
   /** Directeur général : il fixe les objectifs de l'APIX et de ses directions. */
   estDG: z.boolean().default(false),
+  /**
+   * Il n'est plus en activité : son portail est restreint jusqu'à ce jour
+   * (AAAA-MM-JJ), un mois après sa fin d'activité. `null` : en activité.
+   */
+  finDAcces: z.string().nullable().default(null),
 });
 export type SessionUser = z.infer<typeof sessionUserSchema>;
 

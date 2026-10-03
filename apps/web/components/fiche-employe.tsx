@@ -93,6 +93,14 @@ function seniority(hiredOn: string, jusquAu?: string | null): string {
   return rest === 0 ? y : `${y} et ${rest} mois`;
 }
 
+/** « 30 octobre 2026 ». */
+const dateLongue = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
 /**
  * La fiche d'un agent. `soi` : l'agent la lit dans son espace personnel —
  * « Mes infos personnelles » — la même fiche, sans les gestes de gestion, et
@@ -111,6 +119,8 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
   const canSeeHistory = !soi && peut(me.data, 'personnel.consulter');
   /** Ce qui se lit de son propre dossier comme de celui d'un autre, pour qui le consulte. */
   const voitLeDossier = soi || canSeeHistory;
+  /** Plus en activité : ses objectifs et l'Academy lui sont fermés jusqu'à la fin de son accès. */
+  const finDAcces = soi ? (me.data?.finDAcces ?? null) : null;
 
   const detail = useQuery({
     queryKey: ['employee', id],
@@ -170,6 +180,14 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
               espace personnel
             </Link>
             .
+          </span>
+        </p>
+      ) : null}
+      {finDAcces ? (
+        <p className="mb-3 flex shrink-0 items-center gap-2 rounded-[12px] bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
+          <Icon name="schedule" size={16} className="shrink-0 text-primary" />
+          <span className="min-w-0 flex-1">
+            Votre accès au portail prend fin le {dateLongue(finDAcces)}.
           </span>
         </p>
       ) : null}
@@ -445,7 +463,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
           </Card>
 
           {/* Les semestres évalués par le n+1, dès la validation. */}
-          {voitLeDossier ? <CarteEvaluationsAgent employeeId={e.id} /> : null}
+          {voitLeDossier && !finDAcces ? <CarteEvaluationsAgent employeeId={e.id} /> : null}
 
           {/* En tête des cartes de gauche : c'est ce qui attend une décision. */}
           {canSeeHistory ? <ProfileChangeCard employeeId={e.id} /> : null}
@@ -460,7 +478,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
             />
           ) : null}
 
-          {voitLeDossier ? <CarteCertificatsAgent employeeId={e.id} /> : null}
+          {voitLeDossier && !finDAcces ? <CarteCertificatsAgent employeeId={e.id} /> : null}
 
           {/* Les soldes sont un TABLEAU : ils appartiennent à la colonne large.
               Serrés dans le tiers de droite, leurs colonnes débordaient. */}

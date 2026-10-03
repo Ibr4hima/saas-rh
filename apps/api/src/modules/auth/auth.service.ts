@@ -9,7 +9,7 @@ import { TenantDb } from '../../db/tenant-db';
 import * as t from '../../db/schema';
 import { problem } from '../../common/problem';
 import { capacitesDe } from '../acces/dch';
-import { contratEchu } from '../people/en-activite';
+import { accesDuCompte, dateLisible } from '../people/en-activite';
 
 export interface IssuedSession {
   token: string;
@@ -119,43 +119,25 @@ export class AuthService {
       );
     }
 
-    if (await this.dossierArchive(user.id, selected.tenantId)) {
+    // La question se pose par tenant, pas globalement : le compte peut être
+    // employé ailleurs, et la fin d'un contrat ici ne referme pas cette
+    // porte-là. C'est aussi pourquoi on ne touche pas à `users.status`, qui,
+    // lui, vaut pour toutes les organisations à la fois.
+    const acces = await this.db.withTenant({ tenantId: selected.tenantId, userId: user.id }, (tx) =>
+      accesDuCompte(tx, user.id),
+    );
+    if (acces.ferme && acces.finDAcces) {
       problem(
         403,
         'auth.employee_archived',
-        'Votre accès a été désactivé',
+        'Votre accès a pris fin',
         // Le client affiche le DÉTAIL quand il existe : il doit donc se lire
         // seul, sans le titre au-dessus.
-        'Votre accès a été désactivé. Le service des ressources humaines peut le rouvrir.',
+        `Votre accès au portail a pris fin le ${dateLisible(acces.finDAcces)}. Il sera rouvert à la signature d’un nouveau contrat.`,
       );
     }
 
     return this.issueSession(user.id, selected.tenantId, meta);
-  }
-
-  /**
-   * Le dossier de cet agent est-il archivé DANS CETTE organisation ?
-   *
-   * La question se pose par tenant, pas globalement : le compte peut être
-   * employé ailleurs, et la fin d'un contrat ici ne referme pas cette
-   * porte-là. C'est aussi pourquoi on ne touche pas à `users.status`, qui,
-   * lui, vaut pour toutes les organisations à la fois.
-   */
-  private async dossierArchive(userId: string, tenantId: string): Promise<boolean> {
-    return this.db.withTenant({ tenantId, userId }, async (tx) => {
-      const [row] = await tx
-        .select({
-          status: t.employees.status,
-          // Son contrat arrivé à terme, la porte est fermée dès le lendemain —
-          // sans attendre que le dossier passe dans les inactifs.
-          echu: sql<boolean>`${contratEchu(sql`${t.employees.id}`)}`,
-        })
-        .from(t.employees)
-        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-        .where(eq(t.persons.userId, userId))
-        .limit(1);
-      return row?.status === 'archived' || Boolean(row?.echu);
-    });
   }
 
   async logout(token: string): Promise<void> {
@@ -203,25 +185,16 @@ export class AuthService {
           )
           .limit(1);
         if (!row) return null;
-        // Un dossier archivé pendant que la session courait : le cookie est
-        // encore valide, l'accès ne l'est plus. La révocation posée à
-        // l'archivage suffirait, mais elle ne couvre pas les sessions ouvertes
-        // ailleurs entre-temps ; c'est ici que la porte se referme vraiment.
-        const [dossier] = await tx
-          .select({
-            status: t.employees.status,
-            echu: sql<boolean>`${contratEchu(sql`${t.employees.id}`)}`,
-          })
-          .from(t.employees)
-          .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-          .where(eq(t.persons.userId, session.userId))
-          .limit(1);
-        if (dossier?.status === 'archived' || dossier?.echu) return null;
-        const { capacites, estAgent, dirigeLaDCH, estDG } = await capacitesDe(
-          tx,
-          session.userId,
-          row.role,
-        );
+        // Plus en activité : le portail reste ouvert, restreint, un mois
+        // après son dernier jour ; ce délai passé, le cookie encore valide
+        // n'ouvre plus rien. C'est ici que la porte se referme.
+        const { finDAcces, ferme } = await accesDuCompte(tx, session.userId);
+        if (ferme) return null;
+        // Pendant ce mois, il n'est plus agent de l'APIX : aucune
+        // habilitation, même si la liste ne l'a pas encore rangé.
+        const { capacites, estAgent, dirigeLaDCH, estDG } = finDAcces
+          ? { capacites: [], estAgent: false, dirigeLaDCH: false, estDG: false }
+          : await capacitesDe(tx, session.userId, row.role);
         return {
           userId: session.userId,
           tenantId: session.tenantId,
@@ -235,6 +208,7 @@ export class AuthService {
           estAgent,
           dirigeLaDCH,
           estDG,
+          finDAcces,
         };
       },
     );

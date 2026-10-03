@@ -254,7 +254,7 @@ afterAll(async () => {
 });
 
 describe('archivage', () => {
-  it('ferme le dossier et révoque les sessions ouvertes', async () => {
+  it('ferme le dossier ; ses sessions restent ouvertes, le temps de son mois d’accès', async () => {
     await garnir(awa);
     expect(await compte('sessions', 'user_id = $1 AND revoked_at IS NULL', [awa.userId])).toBe(1);
 
@@ -264,7 +264,7 @@ describe('archivage', () => {
     const detail = await people.detail(admin, awa.employeeId);
     expect(detail.status).toBe('archived');
     expect(detail.archivedAt).not.toBeNull();
-    expect(await compte('sessions', 'user_id = $1 AND revoked_at IS NULL', [awa.userId])).toBe(0);
+    expect(await compte('sessions', 'user_id = $1 AND revoked_at IS NULL', [awa.userId])).toBe(1);
   });
 
   it('ne touche PAS au compte — c’est ce qui rend la réactivation indolore', async () => {

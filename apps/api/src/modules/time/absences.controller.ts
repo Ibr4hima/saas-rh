@@ -39,7 +39,7 @@ import {
 } from '@teranga/contracts';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { AccesGuard, Peut } from '../auth/acces.guard';
+import { AccesGuard, FermeAuxInactifs, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AbsencesService } from './absences.service';
 
@@ -168,6 +168,7 @@ export class AbsencesController {
   // ---------- Demandes ----------
 
   @Post('absence-preview')
+  @FermeAuxInactifs()
   preview(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(previewAbsenceSchema)) body: { startDate: string; endDate: string },
@@ -189,6 +190,7 @@ export class AbsencesController {
   }
 
   @Post('absence-requests')
+  @FermeAuxInactifs()
   createRequest(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(createAbsenceRequestSchema)) body: CreateAbsenceRequestInput,

@@ -37,7 +37,7 @@ import {
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { AccesGuard, Peut } from '../auth/acces.guard';
+import { AccesGuard, FermeAuxInactifs, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { HierarchieService } from './hierarchie.service';
 import { ImportEmployesService } from './import.service';
@@ -182,6 +182,7 @@ export class PeopleController {
   // ---------- Organisation ----------
 
   @Get('org-units')
+  @FermeAuxInactifs()
   listOrgUnits(@Req() req: AuthenticatedRequest) {
     return this.orgUnits.list(req.sessionUser);
   }
@@ -253,6 +254,7 @@ export class PeopleController {
 
   /** Annuaire interne : visible par tous les rôles (« qui se référer »). */
   @Get('org-units/:id/members')
+  @FermeAuxInactifs()
   orgUnitMembers(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.orgUnits.members(req.sessionUser, id);
   }

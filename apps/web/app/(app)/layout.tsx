@@ -681,6 +681,33 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
   ];
 }
 
+/**
+ * Ce qui se ferme à qui n'est plus en activité, pendant le mois où son
+ * portail reste ouvert : visible dans le menu, grisé. « Poser une demande »
+ * est la page même des congés ; l'historique, lui, reste ouvert.
+ */
+const FERMEES_AUX_INACTIFS = [
+  '/moi/objectifs',
+  '/moi/objectifs-apix',
+  '/moi/equipe',
+  '/academy',
+  '/organisation',
+];
+const fermeeAuxInactifs = (chemin: string) =>
+  chemin === '/moi/conges' ||
+  FERMEES_AUX_INACTIFS.some((p) => chemin === p || chemin.startsWith(`${p}/`));
+
+/** Le menu de Mon espace d'un agent qui n'est plus en activité : les mêmes entrées, certaines grisées. */
+function restreindre(items: NavItem[]): NavItem[] {
+  return items.map((i) => {
+    if (!i.children) return fermeeAuxInactifs(i.href) ? { ...i, desactive: true } : i;
+    const children = i.children.map((c) =>
+      fermeeAuxInactifs(c.href) ? { ...c, desactive: true } : c,
+    );
+    return { ...i, children, desactive: children.every((c) => c.desactive) };
+  });
+}
+
 /** Une entrée simple de la barre latérale. */
 function RangeeNav({
   href,
@@ -1103,7 +1130,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
   }, [deuxEspaces, impose, choix, choisir]);
 
   const estDG = Boolean(me.data?.estDG);
-  const navAgent = useMemo(() => personalNav(aUneEquipe, estDG), [aUneEquipe, estDG]);
+  const restreint = Boolean(me.data?.finDAcces);
+  const navAgent = useMemo(() => {
+    const nav = personalNav(aUneEquipe, estDG);
+    return restreint ? restreindre(nav) : nav;
+  }, [aUneEquipe, estDG, restreint]);
   const navGestion = useMemo(
     () => (me.data && gestion ? navigationGestion(me.data, aTraiter) : []),
     [me.data, gestion, aTraiter],
@@ -1137,6 +1168,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     const u = me.data;
     if (!u) return true;
     const commence = (p: string) => path === p || path.startsWith(`${p}/`);
+    if (u.finDAcces && fermeeAuxInactifs(path)) return false;
     // Ce que traite la DCH : attendre les compteurs, qui disent si une
     // demande a été confiée à l'agent.
     const file = FILES.find((f) => commence(f.href));
@@ -1322,6 +1354,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <MenuCompte
               variante="bandeau"
               certificats={espace === 'agent'}
+              restreint={restreint}
               bascule={
                 deuxEspaces
                   ? { vers: autre, alerte: alertes[autre], onBasculer: () => allerA(autre) }
@@ -1458,6 +1491,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <MenuCompte
               variante="colonne"
               certificats={espace === 'agent'}
+              restreint={restreint}
               bascule={
                 deuxEspaces
                   ? { vers: autre, alerte: alertes[autre], onBasculer: () => allerA(autre) }
@@ -1509,8 +1543,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
         {items.map((item) => {
           const active = isActive(item.href);
           // Une rubrique n'a pas de page à elle : l'onglet mène à sa première
-          // sous-page, sinon il ouvrirait une redirection au lieu d'un écran.
-          const cible = item.children?.[0]?.href ?? item.href;
+          // sous-page ouverte, sinon il ouvrirait une redirection au lieu d'un écran.
+          const cible = item.children?.find((c) => !c.desactive)?.href ?? item.href;
           const forme =
             'relative flex min-w-14 flex-col items-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-medium';
           const contenu = (

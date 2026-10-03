@@ -15,6 +15,12 @@ import type { Tx } from '../../db/tenant-db';
 
    Le contrat qui fait foi est le DERNIER, par date de début : un CDD
    renouvelé d'avance compte par son successeur, déjà enregistré.
+
+   Son compte, lui, reste ouvert un mois après son dernier jour, le temps de
+   demander et de récupérer ses documents : un portail restreint, sans
+   demande d'absence, objectifs, équipe, Academy ni organigramme. Passé ce
+   délai, il ne se connecte plus, jusqu'à ce qu'un nouveau contrat rouvre
+   son dossier.
    ———————————————————————————————————————————————————————————————— */
 
 /** « 17 octobre 2026 » — jamais d'ISO brut dans un message lu par un humain. */
@@ -80,3 +86,36 @@ export async function finDeContratPassee(tx: Tx, employeeId: string): Promise<st
      WHERE ce.id = ${dernierContrat(employeeId)} AND ce.end_date < CURRENT_DATE`);
   return rows[0]?.fin ?? null;
 }
+
+/**
+ * L'accès au portail d'un compte, dans ce tenant.
+ *   - `finDAcces` null : agent en activité, ou compte sans dossier ;
+ *   - sinon, le dernier jour où il peut encore se connecter, un mois après
+ *     sa fin d'activité ; `ferme` : ce jour est passé.
+ * La fin d'activité est celle du dossier inactif ; d'un contrat échu que la
+ * liste n'a pas encore rangé, sa date de fin.
+ */
+export async function accesDuCompte(
+  tx: Tx,
+  userId: string,
+): Promise<{ finDAcces: string | null; ferme: boolean }> {
+  const { rows } = await tx.execute<{ dernier: string | null; ferme: boolean | null }>(sql`
+    WITH dossier AS (
+      SELECT CASE WHEN e.status = 'archived'
+                  THEN COALESCE(e.fin_activite, (e.archived_at AT TIME ZONE 'UTC')::date - 1)
+                  ELSE (SELECT ce.end_date FROM contracts ce
+                         WHERE ce.id = ${dernierContrat(sql`e.id`)} AND ce.end_date < CURRENT_DATE)
+             END AS fin
+        FROM employees e JOIN persons p ON p.id = e.person_id
+       WHERE p.user_id = ${userId}
+       LIMIT 1)
+    SELECT (fin + interval '1 month')::date::text AS dernier,
+           (fin + interval '1 month')::date < CURRENT_DATE AS ferme
+      FROM dossier`);
+  const a = rows[0];
+  if (!a?.dernier) return { finDAcces: null, ferme: false };
+  return { finDAcces: a.dernier, ferme: Boolean(a.ferme) };
+}
+
+/** « 30 octobre 2026 », pour les messages qui parlent de l'accès. */
+export const dateLisible = jour;
