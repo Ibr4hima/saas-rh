@@ -39,7 +39,7 @@ export function joursRestants(iso: string): number {
  * où finit un point ni où commence le suivant. On reconnaît donc les blocs de
  * puces et on les rend comme des puces — sans rien demander de plus à la RH.
  */
-export function DescriptionOffre({ texte }: { texte: string }) {
+export function DescriptionOffre({ texte, lecture = false }: { texte: string; lecture?: boolean }) {
   const blocs = useMemo(
     () =>
       texte
@@ -55,23 +55,25 @@ export function DescriptionOffre({ texte }: { texte: string }) {
     [texte],
   );
 
+  // En lecture (la page publique), le corps d'un article : plus grand, plus aéré.
+  const corps = lecture ? 'text-[15px] leading-[1.7]' : 'text-[13.5px] leading-relaxed';
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className={lecture ? 'flex flex-col gap-5' : 'flex flex-col gap-3.5'}>
       {blocs.map((bloc, i) =>
         bloc.type === 'liste' ? (
-          <ul key={i} className="flex flex-col gap-2">
+          <ul key={i} className={lecture ? 'flex flex-col gap-3' : 'flex flex-col gap-2'}>
             {bloc.items.map((item, j) => (
-              <li key={j} className="flex gap-2.5 text-[13.5px] leading-relaxed text-ink">
+              <li key={j} className={`flex gap-3 text-ink ${corps}`}>
                 <span
                   aria-hidden
-                  className="mt-[8px] size-1.5 shrink-0 rounded-full bg-primary/45"
+                  className={`${lecture ? 'mt-[11px]' : 'mt-[8px]'} size-1.5 shrink-0 rounded-full bg-primary/45`}
                 />
                 <span className="min-w-0">{item}</span>
               </li>
             ))}
           </ul>
         ) : (
-          <p key={i} className="text-[13.5px] leading-relaxed whitespace-pre-line text-ink">
+          <p key={i} className={`whitespace-pre-line text-ink ${corps}`}>
             {bloc.texte}
           </p>
         ),

@@ -8,6 +8,7 @@ import { ACADEMY_CATEGORY_LABELS } from '@teranga/contracts';
 import { Button, Card, cn, Input, Skeleton } from '@teranga/ui';
 import { BrandMark } from '../../../components/brand-mark';
 import { Icon, type IconName } from '../../../components/icons';
+import { useThemeClair } from '../../../components/preferences';
 import { api, ApiError } from '../../../lib/api';
 import { pourcent } from '../../../lib/academy';
 import { formatDate } from '../../../lib/hooks';
@@ -71,6 +72,7 @@ function AutreNumero() {
 }
 
 export default function VerifierPage() {
+  useThemeClair();
   const { numero } = useParams<{ numero: string }>();
   const verification = useQuery({
     queryKey: ['verification', numero],

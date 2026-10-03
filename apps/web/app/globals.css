@@ -272,14 +272,27 @@ body {
   filter: brightness(0) invert(1);
 }
 
-/* ── Fond de la page publique de candidature ──────────────────────────────
+/* ── Fond de la page d'une offre ──────────────────────────────────────────
+   Un blanc à peine bleui, le même du haut au bas de la page : rien ne vire
+   en descendant. Deux halos du bleu de marque, de taille fixe, éclairent le
+   haut sans jamais s'étirer avec la longueur de l'offre. Une seule teinte,
+   la claire (cf. `useThemeClair`). */
+.fond-offre {
+  background-color: #f5f7fa;
+  background-image:
+    radial-gradient(900px 560px at 92% -180px, rgb(0 79 145 / 0.11), rgb(0 79 145 / 0) 70%),
+    radial-gradient(700px 420px at -6% -140px, rgb(0 79 145 / 0.06), rgb(0 79 145 / 0) 70%);
+  background-repeat: no-repeat;
+}
+
+/* ── Fond de la vérification publique d'un certificat ─────────────────────
    Repris de l'écran de connexion de la plateforme APIX : un bleu de marque
    balayé de nappes blanches très diffuses. Ce n'est pas UN dégradé, ce sont
    quatre couches qui se recouvrent — c'est leur recouvrement, et non l'une
    d'elles, qui donne au fond sa lumière. La trame fine par-dessus l'empêche
    de paraître plat sur un grand écran.
 
-   Le fond ne suit pas le thème : le candidat n'a pas de compte, donc pas de
+   Le fond ne suit pas le thème : le visiteur n'a pas de compte, donc pas de
    préférence enregistrée, et la couleur de l'employeur ne s'inverse pas. */
 .fond-candidature {
   position: relative;

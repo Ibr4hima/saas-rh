@@ -34,7 +34,25 @@ export const CLE_THEME = 'teranga-theme';
 
 /** Le script inline du <head>. Écrit en une ligne, sans dépendance, et
     tolérant à l'échec : en navigation privée, `localStorage` peut lever. */
-export const SCRIPT_AMORCAGE = `try{document.documentElement.dataset.theme=localStorage.getItem('${CLE_THEME}')==='sombre'?'dark':'light'}catch(e){}`;
+export const SCRIPT_AMORCAGE = `try{document.documentElement.dataset.theme=/^\\/(postuler|verifier)\\//.test(location.pathname)||localStorage.getItem('${CLE_THEME}')!=='sombre'?'light':'dark'}catch(e){}`;
+
+/**
+ * Les pages publiques (une offre, la vérification d'un certificat) sont vues
+ * par des personnes extérieures : une seule teinte, la claire, quelle que
+ * soit la préférence gardée dans ce navigateur. Le script d'amorçage le fait
+ * au premier pixel ; ce crochet le tient quand on y arrive depuis
+ * l'application, et rend le thème choisi en repartant.
+ */
+export function useThemeClair(): void {
+  useEffect(() => {
+    const html = document.documentElement;
+    const avant = html.dataset.theme;
+    html.dataset.theme = 'light';
+    return () => {
+      if (avant) html.dataset.theme = avant;
+    };
+  }, []);
+}
 
 const Contexte = createContext<{
   theme: Theme;

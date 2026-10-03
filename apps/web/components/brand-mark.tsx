@@ -23,7 +23,7 @@ export function BrandMark({
   variant,
   repli,
 }: {
-  variant: 'full' | 'hero' | 'compact' | 'candidature' | 'connexion';
+  variant: 'full' | 'hero' | 'compact' | 'candidature' | 'connexion' | 'entete';
   /**
    * Ce qui s'affiche à défaut de fichier de logo. « CH » convient à
    * l'application, qui est le portail ; pas à la page publique d'une offre,
@@ -87,6 +87,8 @@ export function BrandMark({
           // Page publique : le logo est la première chose que voit le
           // candidat, il a droit à sa pleine mesure.
           variant === 'candidature' && 'h-14 w-auto max-w-[200px] rounded-lg bg-transparent',
+          // En-tête d'une page publique : la signature, à mesure de barre.
+          variant === 'entete' && 'h-10 w-auto max-w-[170px] bg-transparent',
         )}
         onError={() => setCandidate((i) => i + 1)}
       />
@@ -104,6 +106,7 @@ export function BrandMark({
         variant === 'compact' && 'size-8 rounded-md bg-primary text-xs text-primary-ink',
         variant === 'candidature' &&
           'size-14 rounded-[18px] bg-primary text-[22px] text-primary-ink',
+        variant === 'entete' && 'size-10 rounded-[12px] bg-primary text-[17px] text-primary-ink',
       )}
     >
       {repli ?? 'CH'}
