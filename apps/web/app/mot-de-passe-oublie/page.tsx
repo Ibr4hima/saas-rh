@@ -59,7 +59,9 @@ export default function MotDePasseOubliePage() {
     setEtape(suivante);
   };
 
-  const emailValide = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  // Seul un compte de l'APIX reçoit un code : le bouton attend une adresse
+  // complète en @apix.sn, pas la première lettre tapée.
+  const emailValide = /^[^\s@]+@apix\.sn$/i.test(email.trim());
   const manqueAuMotDePasse = passwordShortfall(password);
   const repriseDeLAdresse = password.length > 0 && !passwordDiffersFromEmail(password, email);
   const discordance = confirm.length > 0 && password !== confirm;
@@ -67,7 +69,7 @@ export default function MotDePasseOubliePage() {
   const soumettre = (e: React.FormEvent) => {
     e.preventDefault();
     if (etape === 'adresse') {
-      if (!emailValide) return setErreur('Indiquez une adresse email valide.');
+      if (!emailValide) return setErreur('Indiquez votre adresse @apix.sn.');
       return void avancer('code');
     }
     if (etape === 'code') {
@@ -255,7 +257,7 @@ export default function MotDePasseOubliePage() {
           libelleEnCours={etape === 'adresse' ? 'Envoi…' : 'Vérification…'}
           disabled={
             etape === 'adresse'
-              ? email.trim().length === 0
+              ? !emailValide
               : etape === 'code'
                 ? code.length !== LONGUEUR_CODE
                 : password.length === 0 || confirm.length === 0 || discordance
