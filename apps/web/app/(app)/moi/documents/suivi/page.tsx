@@ -2,15 +2,39 @@
 
 import { useQuery } from '@tanstack/react-query';
 import type { DocumentRequestView } from '@teranga/contracts';
-import { Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
+import {
+  DOC_REQUEST_STATUS_LABELS,
+  DOC_REQUEST_STATUS_TONES,
+  REQUESTABLE_DOC_LABELS,
+} from '@teranga/contracts';
+import {
+  Badge,
+  Card,
+  CardHeader,
+  CardTitle,
+  EmptyState,
+  Skeleton,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+  Tr,
+} from '@teranga/ui';
 import { api } from '../../../../../lib/api';
-import { DocumentRequestRow } from '../../../../../components/document-request-list';
+import { formatDate } from '../../../../../lib/hooks';
+import { timeAgo } from '../../../../../components/document-request-list';
 import { Icon } from '../../../../../components/icons';
 import { Page } from '../../../../../components/gabarit';
 
 /**
  * Suivi de mes demandes de documents : où en est chacune, jusqu'au lieu de
  * retrait.
+ *
+ * Même facture que l'historique des congés, sa voisine dans l'espace
+ * personnel : une carte par année, un tableau aux colonnes fixes, le statut
+ * en badge. Ce qui appelle un geste (aller chercher un document prêt) se lit
+ * dans la colonne « Retrait » et se compte dans le titre de la carte.
  */
 export default function SuiviDemandesDocumentsPage() {
   const docRequests = useQuery({
@@ -18,13 +42,16 @@ export default function SuiviDemandesDocumentsPage() {
     queryKey: ['document-requests', 'me'],
     queryFn: () => api<DocumentRequestView[]>('/document-requests?scope=mine'),
   });
-  const demandes = docRequests.data ?? [];
-  const aRetirer = demandes.filter((r) => r.status === 'ready').length;
+  // La plus récente en tête : on revient ici pour ce qui vient d'arriver.
+  const demandes = [...(docRequests.data ?? [])].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
+  const annees = [...new Set(demandes.map((r) => r.createdAt.slice(0, 4)))];
 
   return (
     <Page>
       {docRequests.isLoading ? (
-        <Skeleton className="h-40 w-full rounded-[16px]" />
+        <Skeleton className="h-48 w-full rounded-[16px]" />
       ) : demandes.length === 0 ? (
         <Card>
           <EmptyState
@@ -34,26 +61,109 @@ export default function SuiviDemandesDocumentsPage() {
           />
         </Card>
       ) : (
-        <Card>
-          <CardHeader className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-            <CardTitle>Suivi de mes demandes</CardTitle>
-            {/* La seule ligne de cette carte qui appelle un geste : aller
-                chercher le document. Elle se dit dans le titre. */}
-            {aRetirer > 0 ? (
-              <span className="rounded-full bg-primary/[0.09] px-2 py-px text-[10.5px] font-bold text-primary">
-                {aRetirer} à retirer
-              </span>
-            ) : null}
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col">
-              {demandes.map((r) => (
-                <DocumentRequestRow key={r.id} request={r} showEmployee={false} />
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+        annees.map((annee) => {
+          const lignes = demandes.filter((r) => r.createdAt.startsWith(annee));
+          const aRetirer = lignes.filter((r) => r.status === 'ready').length;
+          return (
+            <Card key={annee}>
+              <CardHeader className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+                <CardTitle>Demandes {annee}</CardTitle>
+                {aRetirer > 0 ? <Badge tone="bleu">{aRetirer} à retirer</Badge> : null}
+              </CardHeader>
+              {/* Des colonnes de largeur fixe : d'une année à l'autre, les dates
+                  et les statuts tombent au même endroit. */}
+              <Table className="sm:table-fixed">
+                {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
+                <THead className="hidden sm:table-header-group">
+                  <tr>
+                    <Th className="sm:w-[34%]">Document</Th>
+                    <Th className="sm:w-[16%]">Demandée le</Th>
+                    <Th className="sm:w-[32%]">Retrait</Th>
+                    <Th className="sm:w-[18%]">Statut</Th>
+                  </tr>
+                </THead>
+                <TBody>
+                  {lignes.map((r) => (
+                    <Ligne key={r.id} demande={r} />
+                  ))}
+                </TBody>
+              </Table>
+            </Card>
+          );
+        })
       )}
     </Page>
   );
+}
+
+/**
+ * Une demande, sur une ligne. Sur téléphone, la date, le retrait et le statut
+ * se rangent sous le document : quatre colonnes n'y tiennent pas.
+ */
+function Ligne({ demande: r }: { demande: DocumentRequestView }) {
+  const documents = r.docTypes.map((d) => REQUESTABLE_DOC_LABELS[d] ?? d).join(' · ');
+  const demandee = formatDate(r.createdAt.slice(0, 10));
+  const statut = (
+    <Badge tone={DOC_REQUEST_STATUS_TONES[r.status]}>{DOC_REQUEST_STATUS_LABELS[r.status]}</Badge>
+  );
+  const retrait = <Retrait demande={r} />;
+  return (
+    <Tr>
+      <Td>
+        <p className="truncate font-semibold text-ink-strong" title={documents}>
+          {documents}
+        </p>
+        {r.note ? (
+          <p className="mt-0.5 truncate text-[11.5px] text-ink-muted italic" title={r.note}>
+            « {r.note} »
+          </p>
+        ) : null}
+        {r.status === 'rejected' && r.hrMessage ? (
+          <p className="mt-0.5 text-[11.5px] font-semibold text-danger">Motif : {r.hrMessage}</p>
+        ) : null}
+        <p className="mt-1 text-[11.5px] text-ink-muted tabular-nums sm:hidden">
+          Demandée le {demandee}
+        </p>
+        {r.status === 'ready' || r.status === 'delivered' ? (
+          <div className="mt-2 text-[12.5px] sm:hidden">{retrait}</div>
+        ) : null}
+        <div className="mt-2.5 sm:hidden">{statut}</div>
+      </Td>
+      <Td className="hidden tabular-nums sm:table-cell" title={timeAgo(r.createdAt)}>
+        {demandee}
+      </Td>
+      <Td className="hidden sm:table-cell">{retrait}</Td>
+      <Td className="hidden sm:table-cell">{statut}</Td>
+    </Tr>
+  );
+}
+
+/**
+ * Où en est le document, côté retrait : auprès de qui le chercher une fois
+ * prêt, depuis quand il attend ; le jour où il a été remis. Tant que la
+ * demande est en cours, la cellule reste vide.
+ */
+function Retrait({ demande: r }: { demande: DocumentRequestView }) {
+  if (r.status === 'ready' && r.pickupContact) {
+    return (
+      <div className="min-w-0">
+        <p className="truncate font-semibold text-primary" title={r.pickupContact}>
+          Auprès de {r.pickupContact}
+        </p>
+        {/* L'ancienneté rend visible un document prêt que personne n'est
+            venu chercher : l'agent est le seul à pouvoir y remédier. */}
+        <p className="mt-0.5 text-[11.5px] text-ink-muted">
+          {r.readyAt ? `Prête ${timeAgo(r.readyAt)}` : null}
+          {r.readyAt && r.hrMessage ? ' · ' : null}
+          {r.hrMessage}
+        </p>
+      </div>
+    );
+  }
+  if (r.status === 'delivered' && r.deliveredAt) {
+    return (
+      <span className="text-ink-muted">Remise le {formatDate(r.deliveredAt.slice(0, 10))}</span>
+    );
+  }
+  return null;
 }
