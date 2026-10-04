@@ -11,8 +11,10 @@ import {
   BoutonOeil,
   ChampMarque,
   EcranMarque,
+  motDePasseConforme,
   ReglesMotDePasse,
   SaisieMarque,
+  SANS_COPIER_COLLER,
 } from '../../../components/ecran-marque';
 import { api, ApiError } from '../../../lib/api';
 
@@ -85,7 +87,8 @@ export default function InvitationPage() {
   }
 
   const invite = info.data;
-  const discordance = confirm.length > 0 && password !== confirm;
+  const conforme = motDePasseConforme(password, invite.email ?? '');
+  const discordance = conforme && confirm.length > 0 && password !== confirm;
 
   return (
     <EcranMarque
@@ -126,14 +129,18 @@ export default function InvitationPage() {
               placeholder="12 caractères minimum"
               className="pr-11"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                // Redevenu non conforme : la confirmation repart de zéro.
+                if (!motDePasseConforme(e.target.value, invite.email ?? '')) setConfirm('');
+              }}
+              {...SANS_COPIER_COLLER}
             />
             <BoutonOeil visible={showPwd} onToggle={() => setShowPwd((v) => !v)} />
           </ChampMarque>
-          {/* Les règles s'affichent, mais ne VERROUILLENT pas le bouton : ce
-              champ porte aussi le mot de passe d'un compte déjà existant, qui
-              n'a pas à satisfaire une règle adoptée depuis. C'est le serveur
-              qui tranche, lui seul sachant si le compte est à créer. */}
+          {/* Les règles verrouillent la confirmation. Revers connu : une
+              personne qui a déjà un compte, avec un ancien mot de passe qui
+              ne les remplit pas, passe d'abord par « Mot de passe oublié ». */}
           <ReglesMotDePasse password={password} email={invite.email ?? ''} />
         </div>
 
@@ -150,11 +157,17 @@ export default function InvitationPage() {
             placeholder="••••••••"
             className="pr-11"
             value={confirm}
+            disabled={!conforme}
             onChange={(e) => setConfirm(e.target.value)}
             aria-invalid={discordance ? true : undefined}
             aria-describedby={discordance ? 'confirm-erreur' : undefined}
+            {...SANS_COPIER_COLLER}
           />
-          <BoutonOeil visible={showConfirm} onToggle={() => setShowConfirm((v) => !v)} />
+          <BoutonOeil
+            visible={showConfirm}
+            onToggle={() => setShowConfirm((v) => !v)}
+            disabled={!conforme}
+          />
         </ChampMarque>
 
         {serverError ? (
@@ -169,7 +182,7 @@ export default function InvitationPage() {
         <BoutonMarque
           enCours={accept.isPending}
           libelleEnCours="Activation…"
-          disabled={password.length === 0 || confirm.length === 0 || discordance}
+          disabled={!conforme || confirm.length === 0 || discordance}
         >
           Activer mon compte
         </BoutonMarque>

@@ -9,8 +9,10 @@ import {
   BoutonOeil,
   ChampMarque,
   EcranMarque,
+  motDePasseConforme,
   ReglesMotDePasse,
   SaisieMarque,
+  SANS_COPIER_COLLER,
 } from '../../components/ecran-marque';
 import { Icon } from '../../components/icons';
 
@@ -64,7 +66,8 @@ export default function MotDePasseOubliePage() {
   const emailValide = /^[^\s@]+@apix\.sn$/i.test(email.trim());
   const manqueAuMotDePasse = passwordShortfall(password);
   const repriseDeLAdresse = password.length > 0 && !passwordDiffersFromEmail(password, email);
-  const discordance = confirm.length > 0 && password !== confirm;
+  const conforme = motDePasseConforme(password, email);
+  const discordance = conforme && confirm.length > 0 && password !== confirm;
 
   const soumettre = (e: React.FormEvent) => {
     e.preventDefault();
@@ -211,7 +214,10 @@ export default function MotDePasseOubliePage() {
                   onChange={(e) => {
                     setErreur(null);
                     setPassword(e.target.value);
+                    // Redevenu non conforme : la confirmation repart de zéro.
+                    if (!motDePasseConforme(e.target.value, email)) setConfirm('');
                   }}
+                  {...SANS_COPIER_COLLER}
                 />
                 <BoutonOeil visible={showPwd} onToggle={() => setShowPwd((v) => !v)} />
               </ChampMarque>
@@ -231,14 +237,20 @@ export default function MotDePasseOubliePage() {
                 placeholder="••••••••"
                 className="pr-11"
                 value={confirm}
+                disabled={!conforme}
                 onChange={(e) => {
                   setErreur(null);
                   setConfirm(e.target.value);
                 }}
                 aria-invalid={discordance ? true : undefined}
                 aria-describedby={discordance ? 'confirm-erreur' : undefined}
+                {...SANS_COPIER_COLLER}
               />
-              <BoutonOeil visible={showConfirm} onToggle={() => setShowConfirm((v) => !v)} />
+              <BoutonOeil
+                visible={showConfirm}
+                onToggle={() => setShowConfirm((v) => !v)}
+                disabled={!conforme}
+              />
             </ChampMarque>
           </>
         ) : null}
@@ -260,7 +272,7 @@ export default function MotDePasseOubliePage() {
               ? !emailValide
               : etape === 'code'
                 ? code.length !== LONGUEUR_CODE
-                : password.length === 0 || confirm.length === 0 || discordance
+                : !conforme || confirm.length === 0 || discordance
           }
         >
           {etape === 'adresse'

@@ -11,8 +11,10 @@ import {
   BoutonOeil,
   ChampMarque,
   EcranMarque,
+  motDePasseConforme,
   ReglesMotDePasse,
   SaisieMarque,
+  SANS_COPIER_COLLER,
 } from '../../components/ecran-marque';
 import { api, ApiError } from '../../lib/api';
 
@@ -30,7 +32,8 @@ export default function RegisterPage() {
   const email = form.watch('email') ?? '';
   // La confirmation ne vit pas dans le schéma : c'est une garde de saisie, pas
   // une donnée que l'API reçoit.
-  const discordance = confirm.length > 0 && password !== confirm;
+  const conforme = motDePasseConforme(password, email);
+  const discordance = conforme && confirm.length > 0 && password !== confirm;
 
   const onSubmit = form.handleSubmit(async (values) => {
     setServerError(null);
@@ -137,7 +140,13 @@ export default function RegisterPage() {
               className="pr-11"
               aria-invalid={errors.password ? true : undefined}
               aria-describedby={errors.password ? 'password-erreur' : undefined}
-              {...form.register('password')}
+              {...form.register('password', {
+                // Redevenu non conforme : la confirmation repart de zéro.
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                  if (!motDePasseConforme(e.target.value, email)) setConfirm('');
+                },
+              })}
+              {...SANS_COPIER_COLLER}
             />
             <BoutonOeil visible={showPwd} onToggle={() => setShowPwd((v) => !v)} />
           </ChampMarque>
@@ -157,11 +166,17 @@ export default function RegisterPage() {
             placeholder="••••••••"
             className="pr-11"
             value={confirm}
+            disabled={!conforme}
             onChange={(e) => setConfirm(e.target.value)}
             aria-invalid={discordance ? true : undefined}
             aria-describedby={discordance ? 'confirm-erreur' : undefined}
+            {...SANS_COPIER_COLLER}
           />
-          <BoutonOeil visible={showConfirm} onToggle={() => setShowConfirm((v) => !v)} />
+          <BoutonOeil
+            visible={showConfirm}
+            onToggle={() => setShowConfirm((v) => !v)}
+            disabled={!conforme}
+          />
         </ChampMarque>
 
         {serverError ? (
@@ -176,7 +191,7 @@ export default function RegisterPage() {
         <BoutonMarque
           enCours={isSubmitting}
           libelleEnCours="Création…"
-          disabled={confirm.length === 0 || discordance}
+          disabled={!conforme || confirm.length === 0 || discordance}
         >
           Créer mon compte
         </BoutonMarque>

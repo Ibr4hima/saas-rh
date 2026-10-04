@@ -175,17 +175,49 @@ export function SaisieMarque({
 }
 
 /** L'œil qui dévoile un mot de passe, posé au bout du champ. */
-export function BoutonOeil({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
+export function BoutonOeil({
+  visible,
+  onToggle,
+  disabled,
+}: {
+  visible: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onToggle}
+      disabled={disabled}
       aria-label={visible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-      className="absolute top-1/2 right-2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+      className="absolute top-1/2 right-2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-40"
     >
       <Icon name={visible ? 'visibility_off' : 'visibility'} size={17} />
     </button>
   );
+}
+
+/**
+ * Un mot de passe se tape : il ne se copie, ne se coupe, ne se colle ni ne se
+ * dépose. La confirmation sert à prouver qu'on le connaît ; recopiée par un
+ * copier-coller, elle reproduirait la faute de frappe au lieu de la révéler.
+ * Le remplissage d'un gestionnaire de mots de passe n'est pas un collage : il
+ * passe toujours.
+ */
+export const SANS_COPIER_COLLER = {
+  onCopy: (e: React.ClipboardEvent) => e.preventDefault(),
+  onCut: (e: React.ClipboardEvent) => e.preventDefault(),
+  onPaste: (e: React.ClipboardEvent) => e.preventDefault(),
+  onDrop: (e: React.DragEvent) => e.preventDefault(),
+};
+
+/**
+ * Toutes les règles affichées sous le champ sont remplies. Tant qu'elles ne le
+ * sont pas, la confirmation reste fermée : on ne confirme pas un mot de passe
+ * que le serveur refusera.
+ */
+export function motDePasseConforme(password: string, email: string): boolean {
+  return passwordRulesFor(email).every((regle) => regle.ok(password));
 }
 
 /**
