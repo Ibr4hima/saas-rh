@@ -486,7 +486,7 @@ describe('le certificat', () => {
       status: 'valide',
       holderName: 'Awa Diop',
       courseTitle: 'PowerPoint',
-      organizationName: 'APIX',
+      organizationName: 'APIX S.A',
       score: 1,
     });
     expect(await codeOf(() => evaluation.verifier('APX-0000-0000'))).toBe(

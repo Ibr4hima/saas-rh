@@ -577,12 +577,7 @@ export class AcademyEvaluationService {
             .from(t.users)
             .where(eq(t.users.id, user.userId))
             .limit(1);
-      const [organisation] = await tx
-        .select({ name: t.tenants.name })
-        .from(t.tenants)
-        .where(eq(t.tenants.id, user.tenantId))
-        .limit(1);
-      return { f, compte, matricule: fiche?.number ?? null, organisation };
+      return { f, compte, matricule: fiche?.number ?? null };
     });
     const maintenant = this.horloge();
     const numero = 'APX-XXXX-XXXX';
@@ -591,7 +586,7 @@ export class AcademyEvaluationService {
       titulaire: d.compte ? `${d.compte.givenName} ${d.compte.familyName}` : 'Prénom Nom',
       matricule: d.matricule,
       formation: d.f.title,
-      organisation: d.organisation?.name ?? ENTETE.raisonSociale,
+      organisation: ENTETE.raisonSociale,
       score,
       emisLe: maintenant,
       expireLe: expiration(maintenant, d.f.certificateValidityMonths),
@@ -837,11 +832,6 @@ export class AcademyEvaluationService {
       .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
       .where(eq(t.employees.id, employeeId))
       .limit(1);
-    const [organisation] = await tx
-      .select({ name: t.tenants.name })
-      .from(t.tenants)
-      .where(eq(t.tenants.id, user.tenantId))
-      .limit(1);
     // Le numéro est tiré au hasard : une collision est improbable, pas
     // impossible — on retire alors, sans faire échouer la réussite.
     for (let essai = 0; essai < 5; essai += 1) {
@@ -858,7 +848,9 @@ export class AcademyEvaluationService {
           holderNumber: agent?.number ?? '—',
           courseTitle: f.title,
           courseCategory: f.category,
-          organizationName: organisation?.name ?? ENTETE.raisonSociale,
+          // L'émetteur, tel qu'il signe ses actes : la raison sociale, et non
+          // le nom court du compte.
+          organizationName: ENTETE.raisonSociale,
           score,
           issuedAt: maintenant,
           expiresAt: expiration(maintenant, f.certificateValidityMonths),
