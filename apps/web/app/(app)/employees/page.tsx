@@ -105,12 +105,18 @@ export default function EmployeesPage() {
   // L'ouverture passe par l'URL (?nouveau) : le bouton de la barre supérieure
   // est un lien, la fenêtre se partage, et le bouton Retour la referme au lieu
   // de quitter la liste.
-  const createOpen = useSearchParams().get('nouveau') !== null;
+  const params = useSearchParams();
+  const createOpen = params.get('nouveau') !== null;
+  // L'onglet se lit aussi dans l'URL (?onglet=inactifs) : le tableau de bord y
+  // renvoie quand il n'a plus de contrat à suivre.
+  const ongletInitial: EmployeeStatus = params.get('onglet') === 'inactifs' ? 'archived' : 'active';
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
-  const [onglet, setOnglet] = useState<EmployeeStatus>('active');
+  const [onglet, setOnglet] = useState<EmployeeStatus>(ongletInitial);
   const [filtres, setFiltres] = useState<Filtres>(SANS_FILTRE);
-  const [sort, setSort] = useState<EmployeeSort>('recent');
+  const [sort, setSort] = useState<EmployeeSort>(
+    ongletInitial === 'archived' ? 'contractEnd' : 'recent',
+  );
   const [dir, setDir] = useState<Sens>('desc');
   const [panneau, setPanneau] = useState<'supprimer' | null | 'desactiver'>(null);
   // L'import ne passe PAS par l'URL, contrairement à la création : on y arrive
@@ -249,6 +255,10 @@ export default function EmployeesPage() {
   ];
   const changerOnglet = (cle: string) => {
     setOnglet(cle as EmployeeStatus);
+    // L'URL suit l'onglet : un rechargement retombe sur celui qu'on regardait.
+    router.replace(cle === 'archived' ? '/employees?onglet=inactifs' : '/employees', {
+      scroll: false,
+    });
     // Le filtre porte sur des valeurs propres à l'onglet : une unité qui
     // n'existe que chez les actifs viderait l'onglet des inactifs sans qu'on
     // comprenne pourquoi.

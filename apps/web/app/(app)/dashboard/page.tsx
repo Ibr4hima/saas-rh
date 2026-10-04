@@ -599,7 +599,25 @@ export default function DashboardPage() {
               className="py-7"
               icon={<Icon name="description" size={22} />}
               title="Aucun contrat à durée limitée"
-              description="Les CDD et les stages en cours apparaîtront ici, les plus proches de leur terme d'abord."
+              description={
+                <>
+                  Aucun CDD ou stage en cours.
+                  {/* Le lien ne s'offre qu'à qui ouvre la liste du personnel. */}
+                  {peut(me.data, 'personnel.consulter') ? (
+                    <>
+                      {' '}
+                      Vous pouvez consulter la liste du personnel inactif{' '}
+                      <Link
+                        href="/employees?onglet=inactifs"
+                        className="font-semibold text-primary underline-offset-2 hover:underline"
+                      >
+                        ici
+                      </Link>
+                      .
+                    </>
+                  ) : null}
+                </>
+              }
             />
           ) : (
             <Table>

@@ -6,7 +6,7 @@ interface EmptyStateProps {
       dise de QUOI il est vide. */
   icon?: React.ReactNode;
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   action?: React.ReactNode;
   className?: string;
 }
