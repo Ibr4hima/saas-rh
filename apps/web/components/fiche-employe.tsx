@@ -165,8 +165,10 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
         <FenetreSignalement employe={e} onClose={() => setSignalement(false)} />
       ) : null}
       {soi ? null : (
+        // Le retour mène à l'onglet où se range le dossier : un inactif se
+        // retrouve parmi les inactifs, pas en tête des actifs.
         <Link
-          href="/employees"
+          href={actif ? '/employees' : '/employees?onglet=inactifs'}
           className="mb-3 inline-flex items-center gap-1 text-[11.5px] font-semibold text-ink-muted transition-colors hover:text-primary"
         >
           ← Gestion du personnel
