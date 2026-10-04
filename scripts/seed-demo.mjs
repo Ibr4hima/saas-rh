@@ -447,6 +447,10 @@ const job = await call('POST', '/jobs', {
   contractType: 'cdi',
   location: 'Dakar',
   requiredDocuments: ['CV', 'Lettre de motivation'],
+  niveauEtudes: 'bac5',
+  experienceMin: 3,
+  nombrePostes: 1,
+  langues: ['fr'],
 });
 await call('PATCH', `/jobs/${job.id}`, { status: 'published' });
 

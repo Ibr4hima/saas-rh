@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import type { ApplyInput, PublicJobInfo } from '@teranga/contracts';
+import type { ApplyInput, Langue, NiveauEtudes, PublicJobInfo } from '@teranga/contracts';
 import { MAX_DOCUMENT_BYTES } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
@@ -43,6 +43,11 @@ export class ApplyService {
           location: t.jobPostings.location,
           deadline: t.jobPostings.deadline,
           requiredDocuments: t.jobPostings.requiredDocuments,
+          niveauEtudes: t.jobPostings.niveauEtudes,
+          experienceMin: t.jobPostings.experienceMin,
+          nombrePostes: t.jobPostings.nombrePostes,
+          langues: t.jobPostings.langues,
+          dureeMois: t.jobPostings.dureeMois,
           organizationName: t.tenants.name,
         })
         .from(t.jobPostings)
@@ -61,6 +66,11 @@ export class ApplyService {
         location: row.location,
         deadline: row.deadline,
         requiredDocuments: row.requiredDocuments,
+        niveauEtudes: row.niveauEtudes as NiveauEtudes | null,
+        experienceMin: row.experienceMin,
+        nombrePostes: row.nombrePostes,
+        langues: row.langues as Langue[],
+        dureeMois: row.dureeMois,
       };
     });
   }

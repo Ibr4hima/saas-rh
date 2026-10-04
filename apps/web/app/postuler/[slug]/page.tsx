@@ -7,7 +7,10 @@ import type { PublicJobInfo } from '@teranga/contracts';
 import {
   ALLOWED_DOCUMENT_TYPES,
   deElide,
+  LANGUE_LABELS,
+  libellePostes,
   MAX_DOCUMENT_BYTES,
+  NIVEAU_ETUDES_LABELS,
   premierPrenom,
 } from '@teranga/contracts';
 import { Button, Field, Input, Skeleton, cn } from '@teranga/ui';
@@ -17,8 +20,13 @@ import { BrandMark } from '../../../components/brand-mark';
 import { Icon, type IconName } from '../../../components/icons';
 import { PhoneInput } from '../../../components/phone-input';
 import { composePhone, DEFAULT_COUNTRY } from '../../../lib/countries';
-import { CONTRACT_LABELS } from '../../../lib/recruitment';
-import { DescriptionOffre, joursRestants, jourFr } from '../../../components/offre-fiche';
+import { experienceExigee, libelleContrat } from '../../../lib/recruitment';
+import {
+  DescriptionOffre,
+  FaitOffre,
+  joursRestants,
+  jourFr,
+} from '../../../components/offre-fiche';
 import { useThemeClair } from '../../../components/preferences';
 import { anciennete, useHorlogeMinute } from '../../../lib/temps';
 
@@ -471,6 +479,27 @@ export default function ApplyPage() {
   const compteRebours = restants !== null && restants <= 14;
   const urgence = restants !== null && restants <= 7;
   const age = anciennete(offre.createdAt);
+  // Le profil recherché, ce que l'offre en dit : une offre antérieure peut ne
+  // rien en porter, la rubrique disparaît alors plutôt que d'afficher du vide.
+  const profil: { icon: IconName; label: string; valeur: string }[] = [
+    offre.niveauEtudes
+      ? {
+          icon: 'school',
+          label: 'Niveau d’études',
+          valeur: NIVEAU_ETUDES_LABELS[offre.niveauEtudes],
+        }
+      : null,
+    offre.experienceMin !== null
+      ? { icon: 'trending_up', label: 'Expérience', valeur: experienceExigee(offre.experienceMin) }
+      : null,
+    offre.langues.length > 0
+      ? {
+          icon: 'translate',
+          label: 'Langues',
+          valeur: offre.langues.map((l) => LANGUE_LABELS[l]).join(', '),
+        }
+      : null,
+  ].filter((f): f is { icon: IconName; label: string; valeur: string } => f !== null);
 
   const envoyer = () => {
     if (!complet || apply.isPending) return;
@@ -496,8 +525,11 @@ export default function ApplyPage() {
             </p>
             <ul className="mt-6 flex flex-wrap gap-2">
               <Etiquette icon="business_center">
-                {CONTRACT_LABELS[offre.contractType] ?? offre.contractType}
+                {libelleContrat(offre.contractType, offre.dureeMois)}
               </Etiquette>
+              {offre.nombrePostes > 1 ? (
+                <Etiquette icon="groups">{libellePostes(offre.nombrePostes)}</Etiquette>
+              ) : null}
               {offre.location ? <Etiquette icon="place">{offre.location}</Etiquette> : null}
               <Etiquette icon="event">
                 {offre.deadline ? (
@@ -531,6 +563,19 @@ export default function ApplyPage() {
               </a>
             ) : null}
           </div>
+
+          {profil.length > 0 ? (
+            <div className="mt-10 border-t border-ink/[0.08] pt-8 lg:mt-12 lg:pt-10">
+              <Rubrique>Profil recherché</Rubrique>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                {profil.map((f) => (
+                  <FaitOffre key={f.label} icon={f.icon} label={f.label}>
+                    {f.valeur}
+                  </FaitOffre>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-10 border-t border-ink/[0.08] pt-8 lg:mt-12 lg:pt-10">
             <Rubrique>Description du poste</Rubrique>

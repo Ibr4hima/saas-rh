@@ -8,6 +8,59 @@ export type JobStatus = z.infer<typeof jobStatusSchema>;
 
 const trimmed = (max: number) => z.string().trim().min(1).max(max);
 
+/* ---------- Le profil recherché ----------
+   Tout se choisit dans une liste, rien ne se tape : une offre se lit d'un
+   coup d'œil, se compare à la suivante, et ne porte pas « Bac +3 » ici et
+   « BAC+3 » là. */
+
+export const NIVEAUX_ETUDES = ['bac1', 'bac2', 'bac3', 'bac4', 'bac5', 'bac5plus'] as const;
+export const niveauEtudesSchema = z.enum(NIVEAUX_ETUDES);
+export type NiveauEtudes = z.infer<typeof niveauEtudesSchema>;
+export const NIVEAU_ETUDES_LABELS: Record<NiveauEtudes, string> = {
+  bac1: 'Bac+1',
+  bac2: 'Bac+2',
+  bac3: 'Bac+3',
+  bac4: 'Bac+4',
+  bac5: 'Bac+5',
+  bac5plus: 'Au-delà de Bac+5',
+};
+
+/** Années d'expérience minimum, par paliers ; 10 vaut « 10 ans et plus ». */
+export const EXPERIENCES_MIN = [0, 1, 2, 3, 5, 7, 10] as const;
+export function libelleExperience(ans: number): string {
+  if (ans === 0) return 'Aucune';
+  if (ans >= 10) return '10 ans et plus';
+  return ans === 1 ? '1 an' : `${ans} ans`;
+}
+
+/** Postes à pourvoir ; 5 vaut « 5 ou plus ». */
+export const NOMBRES_POSTES = [1, 2, 3, 4, 5] as const;
+export function libellePostes(n: number): string {
+  if (n >= 5) return '5 postes ou plus';
+  return n === 1 ? '1 poste' : `${n} postes`;
+}
+
+export const LANGUES = ['fr', 'en', 'wo', 'ar', 'es', 'pt'] as const;
+export const langueSchema = z.enum(LANGUES);
+export type Langue = z.infer<typeof langueSchema>;
+export const LANGUE_LABELS: Record<Langue, string> = {
+  fr: 'Français',
+  en: 'Anglais',
+  wo: 'Wolof',
+  ar: 'Arabe',
+  es: 'Espagnol',
+  pt: 'Portugais',
+};
+
+/** La durée ne se demande qu'aux contrats qui en ont une. */
+export const CONTRATS_A_DUREE: readonly string[] = ['cdd', 'stage'];
+export const DUREES_MOIS = [3, 6, 12, 18, 24] as const;
+
+const languesSchema = z
+  .array(langueSchema)
+  .max(LANGUES.length)
+  .transform((l) => [...new Set(l)]);
+
 export const createJobPostingSchema = z.object({
   title: trimmed(140),
   description: trimmed(20_000),
@@ -27,6 +80,12 @@ export const createJobPostingSchema = z.object({
     .or(z.literal('').transform(() => undefined))
     .optional(),
   requiredDocuments: z.array(trimmed(60)).max(5).default([]),
+  niveauEtudes: niveauEtudesSchema,
+  experienceMin: z.literal(EXPERIENCES_MIN),
+  nombrePostes: z.literal(NOMBRES_POSTES).default(1),
+  langues: languesSchema.default([]),
+  /** Exigée pour un CDD ou un stage, ignorée pour les autres contrats. */
+  dureeMois: z.literal(DUREES_MOIS).nullish(),
 });
 export type CreateJobPostingInput = z.infer<typeof createJobPostingSchema>;
 
@@ -38,6 +97,11 @@ export const updateJobPostingSchema = z.object({
   location: z.string().trim().max(120).nullable().optional(),
   deadline: z.iso.date().nullable().optional(),
   requiredDocuments: z.array(trimmed(60)).max(5).optional(),
+  niveauEtudes: niveauEtudesSchema.optional(),
+  experienceMin: z.literal(EXPERIENCES_MIN).optional(),
+  nombrePostes: z.literal(NOMBRES_POSTES).optional(),
+  langues: languesSchema.optional(),
+  dureeMois: z.literal(DUREES_MOIS).nullable().optional(),
   status: jobStatusSchema.optional(),
 });
 export type UpdateJobPostingInput = z.infer<typeof updateJobPostingSchema>;
@@ -54,6 +118,12 @@ export interface JobPostingView {
   location: string | null;
   deadline: string | null;
   requiredDocuments: string[];
+  /** Null sur une offre antérieure au profil recherché. */
+  niveauEtudes: NiveauEtudes | null;
+  experienceMin: number | null;
+  nombrePostes: number;
+  langues: Langue[];
+  dureeMois: number | null;
   status: JobStatus;
   publicSlug: string;
   createdAt: string;
@@ -143,6 +213,11 @@ export type PublicJobInfo =
       location: string | null;
       deadline: string | null;
       requiredDocuments: string[];
+      niveauEtudes: NiveauEtudes | null;
+      experienceMin: number | null;
+      nombrePostes: number;
+      langues: Langue[];
+      dureeMois: number | null;
     };
 
 export const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;

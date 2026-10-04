@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
+import { CONTRATS_A_DUREE } from '@teranga/contracts';
 import type {
   ApplicationStage,
   ApplicationView,
@@ -15,6 +16,23 @@ import type {
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
+
+/**
+ * La durée suit le contrat : exigée pour un CDD ou un stage, effacée pour les
+ * autres. Un CDI passé en CDD sans durée serait une offre qu'on ne sait pas
+ * annoncer ; un CDD redevenu CDI ne garde pas une durée qui ne veut plus rien
+ * dire.
+ */
+function dureeSelonContrat(
+  contractType: string,
+  dureeMois: number | null | undefined,
+): number | null {
+  if (!CONTRATS_A_DUREE.includes(contractType)) return null;
+  if (dureeMois == null) {
+    problem(422, 'recruitment.duree_requise', 'Choisissez la durée du contrat.');
+  }
+  return dureeMois;
+}
 
 function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
   return { tenantId: user.tenantId, userId: user.userId };
@@ -46,6 +64,11 @@ export class JobsService {
         location: input.location ?? null,
         deadline: input.deadline ?? null,
         requiredDocuments: input.requiredDocuments,
+        niveauEtudes: input.niveauEtudes,
+        experienceMin: input.experienceMin,
+        nombrePostes: input.nombrePostes,
+        langues: input.langues,
+        dureeMois: dureeSelonContrat(input.contractType, input.dureeMois),
         publicSlug,
         createdByUserId: user.userId,
       });
@@ -98,7 +121,7 @@ export class JobsService {
 
   async update(user: SessionUser, id: string, input: UpdateJobPostingInput): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
-      await this.requirePosting(tx, id);
+      const actuelle = await this.requirePosting(tx, id);
       if (input.orgUnitId) await this.requireOrgUnit(tx, input.orgUnitId);
 
       const changes: Partial<typeof t.jobPostings.$inferInsert> = {};
@@ -110,6 +133,18 @@ export class JobsService {
       if (input.deadline !== undefined) changes.deadline = input.deadline;
       if (input.requiredDocuments !== undefined) {
         changes.requiredDocuments = input.requiredDocuments;
+      }
+      if (input.niveauEtudes !== undefined) changes.niveauEtudes = input.niveauEtudes;
+      if (input.experienceMin !== undefined) changes.experienceMin = input.experienceMin;
+      if (input.nombrePostes !== undefined) changes.nombrePostes = input.nombrePostes;
+      if (input.langues !== undefined) changes.langues = input.langues;
+      // La durée se juge sur l'état FINAL de l'offre : contrat et durée
+      // peuvent changer ensemble, ou l'un sans l'autre.
+      if (input.contractType !== undefined || input.dureeMois !== undefined) {
+        changes.dureeMois = dureeSelonContrat(
+          input.contractType ?? actuelle.contractType,
+          input.dureeMois === undefined ? actuelle.dureeMois : input.dureeMois,
+        );
       }
       if (input.status !== undefined) changes.status = input.status;
       if (Object.keys(changes).length === 0) return;
@@ -301,6 +336,11 @@ export class JobsService {
       location: p.location,
       deadline: p.deadline,
       requiredDocuments: p.requiredDocuments,
+      niveauEtudes: p.niveauEtudes as JobPostingView['niveauEtudes'],
+      experienceMin: p.experienceMin,
+      nombrePostes: p.nombrePostes,
+      langues: p.langues as JobPostingView['langues'],
+      dureeMois: p.dureeMois,
       status: p.status as JobPostingView['status'],
       publicSlug: p.publicSlug,
       createdAt: p.createdAt.toISOString(),

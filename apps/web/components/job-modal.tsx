@@ -3,6 +3,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { JobPostingView } from '@teranga/contracts';
+import {
+  CONTRATS_A_DUREE,
+  DUREES_MOIS,
+  EXPERIENCES_MIN,
+  LANGUE_LABELS,
+  LANGUES,
+  libelleExperience,
+  libellePostes,
+  NIVEAU_ETUDES_LABELS,
+  NIVEAUX_ETUDES,
+  NOMBRES_POSTES,
+} from '@teranga/contracts';
 import { Button, Field, Input, Select, Textarea } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { Icon } from './icons';
@@ -22,6 +34,12 @@ interface Champs {
   contractType: string;
   deadline: string;
   documents: string[];
+  /** Les listes rendent des chaînes ; la chaîne vide, c'est « rien choisi ». */
+  niveauEtudes: string;
+  experienceMin: string;
+  nombrePostes: string;
+  langues: string[];
+  dureeMois: string;
 }
 
 const VIDE: Champs = {
@@ -30,6 +48,11 @@ const VIDE: Champs = {
   contractType: 'cdi',
   deadline: '',
   documents: ['CV'],
+  niveauEtudes: '',
+  experienceMin: '',
+  nombrePostes: '1',
+  langues: ['fr'],
+  dureeMois: '',
 };
 
 function depuis(offre: JobPostingView): Champs {
@@ -41,6 +64,11 @@ function depuis(offre: JobPostingView): Champs {
     // Une offre plus ancienne peut porter d'autres pièces : elles restent
     // affichées et décochables, sinon la modifier les effacerait en silence.
     documents: offre.requiredDocuments,
+    niveauEtudes: offre.niveauEtudes ?? '',
+    experienceMin: offre.experienceMin === null ? '' : String(offre.experienceMin),
+    nombrePostes: String(offre.nombrePostes),
+    langues: offre.langues,
+    dureeMois: offre.dureeMois === null ? '' : String(offre.dureeMois),
   };
 }
 
@@ -71,6 +99,15 @@ export function JobModal({
       'documents',
       v.documents.includes(doc) ? v.documents.filter((d) => d !== doc) : [...v.documents, doc],
     );
+  const basculerLangue = (l: string) =>
+    set('langues', v.langues.includes(l) ? v.langues.filter((x) => x !== l) : [...v.langues, l]);
+  const aDuree = CONTRATS_A_DUREE.includes(v.contractType);
+  const complet =
+    Boolean(v.title.trim()) &&
+    Boolean(v.description.trim()) &&
+    v.niveauEtudes !== '' &&
+    v.experienceMin !== '' &&
+    (!aDuree || v.dureeMois !== '');
 
   const enregistrer = useMutation({
     mutationFn: async () => {
@@ -80,6 +117,12 @@ export function JobModal({
         contractType: v.contractType,
         deadline: v.deadline || (offre ? null : undefined),
         requiredDocuments: v.documents,
+        niveauEtudes: v.niveauEtudes,
+        experienceMin: Number(v.experienceMin),
+        nombrePostes: Number(v.nombrePostes),
+        // Dans l'ordre de la liste, quel que soit l'ordre des clics.
+        langues: LANGUES.filter((l) => v.langues.includes(l)),
+        dureeMois: aDuree ? Number(v.dureeMois) : null,
       };
       if (offre) {
         await api(`/jobs/${offre.id}`, { method: 'PATCH', body: corps });
@@ -120,7 +163,7 @@ export function JobModal({
           </Button>
           <Button
             loading={enregistrer.isPending}
-            disabled={!v.title.trim() || !v.description.trim()}
+            disabled={!complet}
             onClick={() => {
               setErreur(null);
               enregistrer.mutate();
@@ -164,6 +207,37 @@ export function JobModal({
                 <option value="detachement">Détachement</option>
               </Select>
             </Field>
+            {aDuree ? (
+              <Field label="Durée du contrat" htmlFor="dureeMois" required>
+                <Select
+                  id="dureeMois"
+                  value={v.dureeMois}
+                  onChange={(e) => set('dureeMois', e.target.value)}
+                >
+                  <option value="" hidden>
+                    Choisir
+                  </option>
+                  {DUREES_MOIS.map((m) => (
+                    <option key={m} value={m}>
+                      {m} mois
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
+            <Field label="Nombre de postes" htmlFor="nombrePostes" required>
+              <Select
+                id="nombrePostes"
+                value={v.nombrePostes}
+                onChange={(e) => set('nombrePostes', e.target.value)}
+              >
+                {NOMBRES_POSTES.map((n) => (
+                  <option key={n} value={n}>
+                    {libellePostes(n)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <Field label="Date limite de candidature" htmlFor="deadline">
               <Input
                 id="deadline"
@@ -176,31 +250,98 @@ export function JobModal({
         </div>
       </ModalSection>
 
+      <ModalSection title="Profil recherché">
+        <div className="flex flex-col gap-3.5">
+          <ModalGrid>
+            <Field label="Niveau d’études" htmlFor="niveauEtudes" required>
+              <Select
+                id="niveauEtudes"
+                value={v.niveauEtudes}
+                onChange={(e) => set('niveauEtudes', e.target.value)}
+              >
+                <option value="" hidden>
+                  Choisir
+                </option>
+                {NIVEAUX_ETUDES.map((n) => (
+                  <option key={n} value={n}>
+                    {NIVEAU_ETUDES_LABELS[n]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Expérience minimum" htmlFor="experienceMin" required>
+              <Select
+                id="experienceMin"
+                value={v.experienceMin}
+                onChange={(e) => set('experienceMin', e.target.value)}
+              >
+                <option value="" hidden>
+                  Choisir
+                </option>
+                {EXPERIENCES_MIN.map((a) => (
+                  <option key={a} value={a}>
+                    {libelleExperience(a)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </ModalGrid>
+          {/* Même intitulé que les champs voisins : un groupe de puces, pas un
+              champ, d'où la légende d'un fieldset plutôt qu'un label. */}
+          <fieldset className="min-w-0">
+            <legend className="mb-1.5 block text-sm font-medium text-ink-strong">
+              Langues exigées
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {LANGUES.map((l) => (
+                <Puce key={l} coche={v.langues.includes(l)} onClick={() => basculerLangue(l)}>
+                  {LANGUE_LABELS[l]}
+                </Puce>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+      </ModalSection>
+
       <ModalSection title="Documents demandés aux candidats">
         <div className="flex flex-wrap gap-2">
-          {[...new Set([...DOCUMENTS_SUGGERES, ...v.documents])].map((doc) => {
-            const coche = v.documents.includes(doc);
-            return (
-              <button
-                key={doc}
-                type="button"
-                onClick={() => basculerDoc(doc)}
-                className={
-                  coche
-                    ? 'flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.07] px-3 py-1 text-[12px] font-semibold text-primary'
-                    : 'flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-[12px] font-medium text-ink-muted transition-colors hover:border-primary/30 hover:text-ink'
-                }
-              >
-                {coche ? <Icon name="check" size={13} /> : null}
-                {doc}
-              </button>
-            );
-          })}
+          {[...new Set([...DOCUMENTS_SUGGERES, ...v.documents])].map((doc) => (
+            <Puce key={doc} coche={v.documents.includes(doc)} onClick={() => basculerDoc(doc)}>
+              {doc}
+            </Puce>
+          ))}
         </div>
         <p className="mt-2.5 text-[11.5px] text-ink-muted">
           Le candidat devra fournir chaque document coché pour pouvoir postuler.
         </p>
       </ModalSection>
     </Modal>
+  );
+}
+
+/** Une puce qu'on coche ou décoche : un document demandé, une langue exigée. */
+function Puce({
+  coche,
+  onClick,
+  children,
+}: {
+  coche: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={coche}
+      onClick={onClick}
+      className={
+        coche
+          ? 'flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.07] px-3 py-1 text-[12px] font-semibold text-primary'
+          : 'flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-[12px] font-medium text-ink-muted transition-colors hover:border-primary/30 hover:text-ink'
+      }
+    >
+      {coche ? <Icon name="check" size={13} /> : null}
+      {children}
+    </button>
   );
 }

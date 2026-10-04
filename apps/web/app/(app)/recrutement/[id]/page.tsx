@@ -5,13 +5,19 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { ApplicationView, JobPostingView } from '@teranga/contracts';
-import { nomAbrege, peut } from '@teranga/contracts';
+import {
+  LANGUE_LABELS,
+  libellePostes,
+  NIVEAU_ETUDES_LABELS,
+  nomAbrege,
+  peut,
+} from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api, apiUrl } from '../../../../lib/api';
 import { ApercuDocument, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import { Telephone, telHref } from '../../../../components/telephone';
-import { CONTRACT_LABELS, libelleDocument } from '../../../../lib/recruitment';
+import { experienceExigee, libelleContrat, libelleDocument } from '../../../../lib/recruitment';
 import { DescriptionOffre, FaitOffre, jourFr } from '../../../../components/offre-fiche';
 import { LoadFailure } from '../../../../components/load-failure';
 import { Icon, type IconName } from '../../../../components/icons';
@@ -177,7 +183,7 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
             <span className="font-mono">{j.reference}</span>
           </FaitOffre>
           <FaitOffre icon="badge" label="Type de contrat">
-            {CONTRACT_LABELS[j.contractType] ?? j.contractType}
+            {libelleContrat(j.contractType, j.dureeMois)}
           </FaitOffre>
           <FaitOffre icon="schedule" label="Publiée il y a">
             {anciennete(j.createdAt)}
@@ -188,6 +194,24 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
             ) : (
               <span className="font-normal text-ink-muted">Sans date limite</span>
             )}
+          </FaitOffre>
+          {/* Le profil recherché. Une offre antérieure peut ne pas le porter :
+              « Non renseigné » le signale à la RH, qui le complète en modifiant. */}
+          <FaitOffre icon="school" label="Niveau d’études">
+            {j.niveauEtudes ? NIVEAU_ETUDES_LABELS[j.niveauEtudes] : <NonRenseigne />}
+          </FaitOffre>
+          <FaitOffre icon="trending_up" label="Expérience">
+            {j.experienceMin === null ? <NonRenseigne /> : experienceExigee(j.experienceMin)}
+          </FaitOffre>
+          <FaitOffre icon="translate" label="Langues">
+            {j.langues.length > 0 ? (
+              j.langues.map((l) => LANGUE_LABELS[l]).join(', ')
+            ) : (
+              <NonRenseigne />
+            )}
+          </FaitOffre>
+          <FaitOffre icon="groups" label="Postes à pourvoir">
+            {libellePostes(j.nombrePostes)}
           </FaitOffre>
         </div>
 
@@ -436,4 +460,8 @@ function FenetreCandidat({
       )}
     </Modal>
   );
+}
+
+function NonRenseigne() {
+  return <span className="font-normal text-ink-muted">Non renseigné</span>;
 }

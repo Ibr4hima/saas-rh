@@ -11,7 +11,8 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionUser } from '@teranga/contracts';
+import type { CreateJobPostingInput, SessionUser } from '@teranga/contracts';
+import { createJobPostingSchema } from '@teranga/contracts';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
@@ -34,11 +35,15 @@ async function raw(q: string, params: unknown[] = []) {
   return ownerPool.query(q, params as never[]);
 }
 
-const offre = (titre: string) => ({
+const offre = (titre: string): CreateJobPostingInput => ({
   title: titre,
   description: 'Description de poste suffisamment longue pour passer la validation.',
-  contractType: 'cdi' as const,
-  requiredDocuments: ['cv'] as string[],
+  contractType: 'cdi',
+  requiredDocuments: ['cv'],
+  niveauEtudes: 'bac3',
+  experienceMin: 2,
+  nombrePostes: 1,
+  langues: ['fr'],
 });
 
 beforeAll(async () => {
@@ -204,5 +209,67 @@ describe('suppression d’offres', () => {
     expect(res.deleted).toBe(0);
     expect(res.skipped[0]?.reason).toBe('Offre introuvable');
     expect((await service.list(rhAilleurs)).length).toBe(1);
+  });
+});
+
+describe('profil recherché', () => {
+  it('enregistre et relit niveau, expérience, postes et langues', async () => {
+    const { id } = await service.create(rh, {
+      ...offre('Analyste'),
+      niveauEtudes: 'bac5plus',
+      experienceMin: 10,
+      nombrePostes: 3,
+      langues: ['fr', 'en'],
+    });
+    const lue = await service.detail(rh, id);
+    expect(lue.niveauEtudes).toBe('bac5plus');
+    expect(lue.experienceMin).toBe(10);
+    expect(lue.nombrePostes).toBe(3);
+    expect(lue.langues).toEqual(['fr', 'en']);
+    expect(lue.dureeMois).toBeNull();
+  });
+
+  it('exige la durée d’un CDD ou d’un stage, et l’ignore pour un CDI', async () => {
+    await expect(
+      service.create(rh, { ...offre('CDD sans durée'), contractType: 'cdd' }),
+    ).rejects.toMatchObject({ problem: { code: 'recruitment.duree_requise' } });
+
+    const stage = await service.create(rh, {
+      ...offre('Stage'),
+      contractType: 'stage',
+      dureeMois: 6,
+    });
+    expect((await service.detail(rh, stage.id)).dureeMois).toBe(6);
+
+    const cdi = await service.create(rh, { ...offre('CDI'), dureeMois: 12 });
+    expect((await service.detail(rh, cdi.id)).dureeMois).toBeNull();
+  });
+
+  it('juge la durée sur l’état final de l’offre modifiée', async () => {
+    const { id } = await service.create(rh, offre('Poste'));
+    // CDI → CDD sans durée : refusé.
+    await expect(service.update(rh, id, { contractType: 'cdd' })).rejects.toMatchObject({
+      problem: { code: 'recruitment.duree_requise' },
+    });
+    // CDI → CDD avec durée : accepté.
+    await service.update(rh, id, { contractType: 'cdd', dureeMois: 12 });
+    expect((await service.detail(rh, id)).dureeMois).toBe(12);
+    // Changer la durée seule d'un CDD : accepté.
+    await service.update(rh, id, { dureeMois: 24 });
+    expect((await service.detail(rh, id)).dureeMois).toBe(24);
+    // Retour en CDI : la durée disparaît.
+    await service.update(rh, id, { contractType: 'cdi' });
+    expect((await service.detail(rh, id)).dureeMois).toBeNull();
+  });
+
+  it('refuse une valeur hors liste et dédoublonne les langues', () => {
+    const base = { ...offre('Poste'), langues: ['fr', 'fr', 'en'] };
+    expect(createJobPostingSchema.parse(base).langues).toEqual(['fr', 'en']);
+    expect(createJobPostingSchema.safeParse({ ...base, niveauEtudes: 'bac6' }).success).toBe(false);
+    expect(createJobPostingSchema.safeParse({ ...base, experienceMin: 4 }).success).toBe(false);
+    expect(createJobPostingSchema.safeParse({ ...base, nombrePostes: 6 }).success).toBe(false);
+    expect(createJobPostingSchema.safeParse({ ...base, langues: ['de'] }).success).toBe(false);
+    const { niveauEtudes: _n, ...sansNiveau } = base;
+    expect(createJobPostingSchema.safeParse(sansNiveau).success).toBe(false);
   });
 });

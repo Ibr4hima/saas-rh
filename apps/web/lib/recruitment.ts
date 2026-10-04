@@ -24,6 +24,19 @@ export const CONTRACT_LABELS: Record<string, string> = {
   detachement: 'Détachement',
 };
 
+/** « CDD · 12 mois » : le contrat, et sa durée quand il en a une. */
+export function libelleContrat(type: string, dureeMois: number | null): string {
+  const contrat = CONTRACT_LABELS[type] ?? type;
+  return dureeMois ? `${contrat} · ${dureeMois} mois` : contrat;
+}
+
+/** L'expérience telle qu'on l'annonce : « 3 ans minimum », « Aucune exigée ». */
+export function experienceExigee(ans: number): string {
+  if (ans === 0) return 'Aucune exigée';
+  if (ans >= 10) return '10 ans et plus';
+  return ans === 1 ? '1 an minimum' : `${ans} ans minimum`;
+}
+
 /**
  * L'intitulé d'une pièce, tel qu'on le montre en grand.
  *
