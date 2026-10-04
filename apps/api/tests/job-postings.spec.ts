@@ -42,7 +42,6 @@ const offre = (titre: string): CreateJobPostingInput => ({
   requiredDocuments: ['cv'],
   niveauEtudes: 'bac3',
   experienceMin: 2,
-  nombrePostes: 1,
   langues: ['fr'],
 });
 
@@ -213,18 +212,16 @@ describe('suppression d’offres', () => {
 });
 
 describe('profil recherché', () => {
-  it('enregistre et relit niveau, expérience, postes et langues', async () => {
+  it('enregistre et relit niveau, expérience et langues', async () => {
     const { id } = await service.create(rh, {
       ...offre('Analyste'),
       niveauEtudes: 'bac5plus',
       experienceMin: 10,
-      nombrePostes: 3,
       langues: ['fr', 'en'],
     });
     const lue = await service.detail(rh, id);
     expect(lue.niveauEtudes).toBe('bac5plus');
     expect(lue.experienceMin).toBe(10);
-    expect(lue.nombrePostes).toBe(3);
     expect(lue.langues).toEqual(['fr', 'en']);
     expect(lue.dureeMois).toBeNull();
   });
@@ -267,7 +264,6 @@ describe('profil recherché', () => {
     expect(createJobPostingSchema.parse(base).langues).toEqual(['fr', 'en']);
     expect(createJobPostingSchema.safeParse({ ...base, niveauEtudes: 'bac6' }).success).toBe(false);
     expect(createJobPostingSchema.safeParse({ ...base, experienceMin: 4 }).success).toBe(false);
-    expect(createJobPostingSchema.safeParse({ ...base, nombrePostes: 6 }).success).toBe(false);
     expect(createJobPostingSchema.safeParse({ ...base, langues: ['de'] }).success).toBe(false);
     const { niveauEtudes: _n, ...sansNiveau } = base;
     expect(createJobPostingSchema.safeParse(sansNiveau).success).toBe(false);

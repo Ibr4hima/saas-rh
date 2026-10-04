@@ -5,13 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { ApplicationView, JobPostingView } from '@teranga/contracts';
-import {
-  LANGUE_LABELS,
-  libellePostes,
-  NIVEAU_ETUDES_LABELS,
-  nomAbrege,
-  peut,
-} from '@teranga/contracts';
+import { LANGUE_LABELS, NIVEAU_ETUDES_LABELS, nomAbrege, peut } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api, apiUrl } from '../../../../lib/api';
 import { ApercuDocument, type ViewableDoc } from '../../../../components/doc-viewer';
@@ -209,9 +203,6 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
             ) : (
               <NonRenseigne />
             )}
-          </FaitOffre>
-          <FaitOffre icon="groups" label="Postes à pourvoir">
-            {libellePostes(j.nombrePostes)}
           </FaitOffre>
         </div>
 

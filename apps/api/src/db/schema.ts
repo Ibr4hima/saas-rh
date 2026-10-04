@@ -315,7 +315,6 @@ export const jobPostings = pgTable('job_postings', {
   /** Le profil recherché (cf. 0056) : des listes fermées, rien de saisi. */
   niveauEtudes: text('niveau_etudes'),
   experienceMin: smallint('experience_min'),
-  nombrePostes: smallint('nombre_postes').notNull().default(1),
   langues: text('langues').array().notNull().default([]),
   dureeMois: smallint('duree_mois'),
   status: text('status').notNull().default('draft'),

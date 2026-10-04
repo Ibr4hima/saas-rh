@@ -45,7 +45,6 @@ export class ApplyService {
           requiredDocuments: t.jobPostings.requiredDocuments,
           niveauEtudes: t.jobPostings.niveauEtudes,
           experienceMin: t.jobPostings.experienceMin,
-          nombrePostes: t.jobPostings.nombrePostes,
           langues: t.jobPostings.langues,
           dureeMois: t.jobPostings.dureeMois,
           organizationName: t.tenants.name,
@@ -68,7 +67,6 @@ export class ApplyService {
         requiredDocuments: row.requiredDocuments,
         niveauEtudes: row.niveauEtudes as NiveauEtudes | null,
         experienceMin: row.experienceMin,
-        nombrePostes: row.nombrePostes,
         langues: row.langues as Langue[],
         dureeMois: row.dureeMois,
       };

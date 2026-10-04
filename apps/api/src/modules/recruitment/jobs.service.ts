@@ -66,7 +66,6 @@ export class JobsService {
         requiredDocuments: input.requiredDocuments,
         niveauEtudes: input.niveauEtudes,
         experienceMin: input.experienceMin,
-        nombrePostes: input.nombrePostes,
         langues: input.langues,
         dureeMois: dureeSelonContrat(input.contractType, input.dureeMois),
         publicSlug,
@@ -136,7 +135,6 @@ export class JobsService {
       }
       if (input.niveauEtudes !== undefined) changes.niveauEtudes = input.niveauEtudes;
       if (input.experienceMin !== undefined) changes.experienceMin = input.experienceMin;
-      if (input.nombrePostes !== undefined) changes.nombrePostes = input.nombrePostes;
       if (input.langues !== undefined) changes.langues = input.langues;
       // La durée se juge sur l'état FINAL de l'offre : contrat et durée
       // peuvent changer ensemble, ou l'un sans l'autre.
@@ -338,7 +336,6 @@ export class JobsService {
       requiredDocuments: p.requiredDocuments,
       niveauEtudes: p.niveauEtudes as JobPostingView['niveauEtudes'],
       experienceMin: p.experienceMin,
-      nombrePostes: p.nombrePostes,
       langues: p.langues as JobPostingView['langues'],
       dureeMois: p.dureeMois,
       status: p.status as JobPostingView['status'],

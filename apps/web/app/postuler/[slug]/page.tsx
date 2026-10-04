@@ -8,7 +8,6 @@ import {
   ALLOWED_DOCUMENT_TYPES,
   deElide,
   LANGUE_LABELS,
-  libellePostes,
   MAX_DOCUMENT_BYTES,
   NIVEAU_ETUDES_LABELS,
   premierPrenom,
@@ -527,9 +526,6 @@ export default function ApplyPage() {
               <Etiquette icon="business_center">
                 {libelleContrat(offre.contractType, offre.dureeMois)}
               </Etiquette>
-              {offre.nombrePostes > 1 ? (
-                <Etiquette icon="groups">{libellePostes(offre.nombrePostes)}</Etiquette>
-              ) : null}
               {offre.location ? <Etiquette icon="place">{offre.location}</Etiquette> : null}
               <Etiquette icon="event">
                 {offre.deadline ? (

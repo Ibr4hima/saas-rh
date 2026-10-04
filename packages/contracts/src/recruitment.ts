@@ -33,13 +33,6 @@ export function libelleExperience(ans: number): string {
   return ans === 1 ? '1 an' : `${ans} ans`;
 }
 
-/** Postes à pourvoir ; 5 vaut « 5 ou plus ». */
-export const NOMBRES_POSTES = [1, 2, 3, 4, 5] as const;
-export function libellePostes(n: number): string {
-  if (n >= 5) return '5 postes ou plus';
-  return n === 1 ? '1 poste' : `${n} postes`;
-}
-
 export const LANGUES = ['fr', 'en', 'wo', 'ar', 'es', 'pt'] as const;
 export const langueSchema = z.enum(LANGUES);
 export type Langue = z.infer<typeof langueSchema>;
@@ -82,7 +75,6 @@ export const createJobPostingSchema = z.object({
   requiredDocuments: z.array(trimmed(60)).max(5).default([]),
   niveauEtudes: niveauEtudesSchema,
   experienceMin: z.literal(EXPERIENCES_MIN),
-  nombrePostes: z.literal(NOMBRES_POSTES).default(1),
   langues: languesSchema.default([]),
   /** Exigée pour un CDD ou un stage, ignorée pour les autres contrats. */
   dureeMois: z.literal(DUREES_MOIS).nullish(),
@@ -99,7 +91,6 @@ export const updateJobPostingSchema = z.object({
   requiredDocuments: z.array(trimmed(60)).max(5).optional(),
   niveauEtudes: niveauEtudesSchema.optional(),
   experienceMin: z.literal(EXPERIENCES_MIN).optional(),
-  nombrePostes: z.literal(NOMBRES_POSTES).optional(),
   langues: languesSchema.optional(),
   dureeMois: z.literal(DUREES_MOIS).nullable().optional(),
   status: jobStatusSchema.optional(),
@@ -121,7 +112,6 @@ export interface JobPostingView {
   /** Null sur une offre antérieure au profil recherché. */
   niveauEtudes: NiveauEtudes | null;
   experienceMin: number | null;
-  nombrePostes: number;
   langues: Langue[];
   dureeMois: number | null;
   status: JobStatus;
@@ -215,7 +205,6 @@ export type PublicJobInfo =
       requiredDocuments: string[];
       niveauEtudes: NiveauEtudes | null;
       experienceMin: number | null;
-      nombrePostes: number;
       langues: Langue[];
       dureeMois: number | null;
     };

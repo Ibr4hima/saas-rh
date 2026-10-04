@@ -10,10 +10,8 @@ import {
   LANGUE_LABELS,
   LANGUES,
   libelleExperience,
-  libellePostes,
   NIVEAU_ETUDES_LABELS,
   NIVEAUX_ETUDES,
-  NOMBRES_POSTES,
 } from '@teranga/contracts';
 import { Button, Field, Input, Select, Textarea } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
@@ -37,7 +35,6 @@ interface Champs {
   /** Les listes rendent des chaînes ; la chaîne vide, c'est « rien choisi ». */
   niveauEtudes: string;
   experienceMin: string;
-  nombrePostes: string;
   langues: string[];
   dureeMois: string;
 }
@@ -50,7 +47,6 @@ const VIDE: Champs = {
   documents: ['CV'],
   niveauEtudes: '',
   experienceMin: '',
-  nombrePostes: '1',
   langues: ['fr'],
   dureeMois: '',
 };
@@ -66,7 +62,6 @@ function depuis(offre: JobPostingView): Champs {
     documents: offre.requiredDocuments,
     niveauEtudes: offre.niveauEtudes ?? '',
     experienceMin: offre.experienceMin === null ? '' : String(offre.experienceMin),
-    nombrePostes: String(offre.nombrePostes),
     langues: offre.langues,
     dureeMois: offre.dureeMois === null ? '' : String(offre.dureeMois),
   };
@@ -119,7 +114,6 @@ export function JobModal({
         requiredDocuments: v.documents,
         niveauEtudes: v.niveauEtudes,
         experienceMin: Number(v.experienceMin),
-        nombrePostes: Number(v.nombrePostes),
         // Dans l'ordre de la liste, quel que soit l'ordre des clics.
         langues: LANGUES.filter((l) => v.langues.includes(l)),
         dureeMois: aDuree ? Number(v.dureeMois) : null,
@@ -225,19 +219,6 @@ export function JobModal({
                 </Select>
               </Field>
             ) : null}
-            <Field label="Nombre de postes" htmlFor="nombrePostes" required>
-              <Select
-                id="nombrePostes"
-                value={v.nombrePostes}
-                onChange={(e) => set('nombrePostes', e.target.value)}
-              >
-                {NOMBRES_POSTES.map((n) => (
-                  <option key={n} value={n}>
-                    {libellePostes(n)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
             <Field label="Date limite de candidature" htmlFor="deadline">
               <Input
                 id="deadline"
