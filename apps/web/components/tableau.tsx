@@ -3,7 +3,6 @@
 import * as React from 'react';
 import { Checkbox, cn, Skeleton, Td, Th } from '@teranga/ui';
 import { accorde, compte } from '../lib/mots';
-import { Icon } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
    Le socle des tableaux.
@@ -168,10 +167,11 @@ export type Sens = 'asc' | 'desc';
 /**
  * Un en-tête qui trie.
  *
- * La flèche n'apparaît que sur la colonne active : trois flèches grises en
- * permanence ne diraient plus laquelle commande l'ordre à l'écran. Le bouton
- * remplit toute la cellule — on vise un intitulé de colonne, pas cinq
- * caractères.
+ * Chaque colonne triable porte un double chevron, pâle : c'est lui qui dit
+ * qu'un clic sur l'intitulé trie. La colonne active se distingue d'un coup
+ * d'œil : son intitulé passe en bleu et il ne lui reste qu'un chevron, celui
+ * du sens. Le bouton remplit toute la cellule : on vise un intitulé de
+ * colonne, pas cinq caractères.
  */
 export function ThTri<C extends string>({
   label,
@@ -201,7 +201,7 @@ export function ThTri<C extends string>({
         type="button"
         onClick={() => onTrier(colonne)}
         className={cn(
-          'flex w-full items-center gap-1 px-3.5 py-[11px] tracking-[0.12em] uppercase transition-colors',
+          'group flex w-full items-center gap-1 px-3.5 py-[11px] tracking-[0.12em] uppercase transition-colors',
           'focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
           droite ? 'justify-end text-right' : 'text-left',
           actif ? 'text-primary' : 'text-ink-muted hover:text-ink',
@@ -215,18 +215,43 @@ export function ThTri<C extends string>({
   );
 }
 
+/**
+ * Les deux chevrons, haut et bas. Au repos, les deux, pâles ; sur la colonne
+ * active, celui du sens seul, recentré, en bleu (la couleur de l'intitulé).
+ */
 function FlecheTri({ actif, sens }: { actif: boolean; sens: Sens }) {
+  const garde = (c: Sens) => (!actif ? 'opacity-100' : sens === c ? 'opacity-100' : 'opacity-0');
   return (
-    <Icon
-      name="chevron_right"
-      size={13}
+    <svg
       aria-hidden
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       className={cn(
-        'shrink-0 transition-[transform,opacity] duration-150',
-        actif ? 'opacity-100' : 'opacity-0',
-        sens === 'asc' ? '-rotate-90' : 'rotate-90',
+        'size-[13px] shrink-0 transition-opacity duration-150',
+        actif ? 'opacity-100' : 'opacity-45 group-hover:opacity-80',
       )}
-    />
+    >
+      <path
+        d="M5 6.25 8 3.25 11 6.25"
+        className={cn(
+          'transition-[opacity,transform] duration-150',
+          garde('asc'),
+          actif && sens === 'asc' && 'translate-y-[2.75px]',
+        )}
+      />
+      <path
+        d="M5 9.75 8 12.75 11 9.75"
+        className={cn(
+          'transition-[opacity,transform] duration-150',
+          garde('desc'),
+          actif && sens === 'desc' && '-translate-y-[2.75px]',
+        )}
+      />
+    </svg>
   );
 }
 
