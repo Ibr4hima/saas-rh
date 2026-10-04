@@ -66,10 +66,10 @@ export default function VerifierPage() {
   const c = verification.data;
 
   return (
-    // Le fond du volet de l'offre sur la page Postuler : un blanc à peine
-    // bleui, éclairé de deux halos. La carte tient dans l'écran, sans
+    // Le fond du volet de l'offre sur la page Postuler, un cran plus
+    // soutenu pour détacher la carte. La carte tient dans l'écran, sans
     // défilement : sur un écran bas, ses marges se resserrent (`court:`).
-    <main className="fond-offre flex min-h-dvh flex-col">
+    <main className="fond-certificat flex min-h-dvh flex-col">
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-6 sm:px-8 court:py-3">
         <div className="w-full max-w-[440px] overflow-hidden rounded-[20px] bg-surface shadow-[0_1px_2px_rgb(0_40_90/0.05),0_18px_48px_-18px_rgb(0_40_90/0.24)] ring-1 ring-[rgb(0_40_90/0.06)]">
           <header className="flex justify-center px-8 pt-7 court:pt-4">

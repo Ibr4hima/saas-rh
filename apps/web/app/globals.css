@@ -306,13 +306,23 @@ body {
    Le volet de l'offre : un blanc à peine bleui, le même du haut au bas, que
    le blanc pur du formulaire voisin suffit à détacher. Deux halos du bleu de
    marque, de taille fixe, éclairent le haut sans s'étirer avec la longueur
-   de l'offre. Une seule teinte, la claire (cf. `useThemeClair`).
-   La vérification publique d'un certificat le reprend tel quel. */
+   de l'offre. Une seule teinte, la claire (cf. `useThemeClair`). */
 .fond-offre {
   background-color: #f3f6fa;
   background-image:
     radial-gradient(720px 480px at 100% -160px, rgb(0 79 145 / 0.1), rgb(0 79 145 / 0) 70%),
     radial-gradient(560px 380px at 0% -120px, rgb(0 79 145 / 0.06), rgb(0 79 145 / 0) 70%);
+  background-repeat: no-repeat;
+}
+
+/* ── Fond de la vérification publique d'un certificat ─────────────────────
+   Celui du volet de l'offre, d'un cran plus soutenu : une carte blanche y
+   est seule à l'écran, elle doit s'en détacher nettement. */
+.fond-certificat {
+  background-color: #ebf0f6;
+  background-image:
+    radial-gradient(720px 480px at 100% -160px, rgb(0 79 145 / 0.13), rgb(0 79 145 / 0) 70%),
+    radial-gradient(560px 380px at 0% -120px, rgb(0 79 145 / 0.08), rgb(0 79 145 / 0) 70%);
   background-repeat: no-repeat;
 }
 
