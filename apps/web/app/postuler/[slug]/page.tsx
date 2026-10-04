@@ -480,25 +480,17 @@ export default function ApplyPage() {
   const age = anciennete(offre.createdAt);
   // Le profil recherché, ce que l'offre en dit : une offre antérieure peut ne
   // rien en porter, la rubrique disparaît alors plutôt que d'afficher du vide.
-  const profil: { icon: IconName; label: string; valeur: string }[] = [
+  const profil: { label: string; valeur: string }[] = [
     offre.niveauEtudes
-      ? {
-          icon: 'school',
-          label: 'Niveau d’études',
-          valeur: NIVEAU_ETUDES_LABELS[offre.niveauEtudes],
-        }
+      ? { label: 'Niveau d’études', valeur: NIVEAU_ETUDES_LABELS[offre.niveauEtudes] }
       : null,
     offre.experienceMin !== null
-      ? { icon: 'trending_up', label: 'Expérience', valeur: experienceExigee(offre.experienceMin) }
+      ? { label: 'Expérience', valeur: experienceExigee(offre.experienceMin) }
       : null,
     offre.langues.length > 0
-      ? {
-          icon: 'translate',
-          label: 'Langues',
-          valeur: offre.langues.map((l) => LANGUE_LABELS[l]).join(', '),
-        }
+      ? { label: 'Langues', valeur: offre.langues.map((l) => LANGUE_LABELS[l]).join(', ') }
       : null,
-  ].filter((f): f is { icon: IconName; label: string; valeur: string } => f !== null);
+  ].filter((f): f is { label: string; valeur: string } => f !== null);
 
   const envoyer = () => {
     if (!complet || apply.isPending) return;
@@ -565,7 +557,7 @@ export default function ApplyPage() {
               <Rubrique>Profil recherché</Rubrique>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 {profil.map((f) => (
-                  <FaitOffre key={f.label} icon={f.icon} label={f.label}>
+                  <FaitOffre key={f.label} label={f.label}>
                     {f.valeur}
                   </FaitOffre>
                 ))}

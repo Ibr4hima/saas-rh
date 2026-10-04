@@ -47,7 +47,7 @@ const VIDE: Champs = {
   documents: ['CV'],
   niveauEtudes: '',
   experienceMin: '',
-  langues: ['fr'],
+  langues: [],
   dureeMois: '',
 };
 
@@ -171,18 +171,12 @@ export function JobModal({
       <ModalSection title="Le poste">
         <div className="flex flex-col gap-3.5">
           <Field label="Intitulé du poste" htmlFor="title" required>
-            <Input
-              id="title"
-              placeholder="Ex : Chargé d'affaires investissement"
-              value={v.title}
-              onChange={(e) => set('title', e.target.value)}
-            />
+            <Input id="title" value={v.title} onChange={(e) => set('title', e.target.value)} />
           </Field>
           <Field label="Description de la mission" htmlFor="description" required>
             <Textarea
               id="description"
               rows={6}
-              placeholder="Missions, profil recherché, avantages…"
               value={v.description}
               onChange={(e) => set('description', e.target.value)}
             />
@@ -197,8 +191,6 @@ export function JobModal({
                 <option value="cdi">CDI</option>
                 <option value="cdd">CDD</option>
                 <option value="stage">Stage</option>
-                <option value="consultant">Consultant</option>
-                <option value="detachement">Détachement</option>
               </Select>
             </Field>
             {aDuree ? (

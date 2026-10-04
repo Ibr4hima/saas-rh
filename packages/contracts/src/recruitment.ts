@@ -33,17 +33,23 @@ export function libelleExperience(ans: number): string {
   return ans === 1 ? '1 an' : `${ans} ans`;
 }
 
-export const LANGUES = ['fr', 'en', 'wo', 'ar', 'es', 'pt'] as const;
+/** Les langues qu'une offre peut exiger, dans l'ordre où on les propose. */
+export const LANGUES = ['en', 'zh', 'es', 'ar', 'it'] as const;
 export const langueSchema = z.enum(LANGUES);
 export type Langue = z.infer<typeof langueSchema>;
 export const LANGUE_LABELS: Record<Langue, string> = {
-  fr: 'Français',
   en: 'Anglais',
-  wo: 'Wolof',
-  ar: 'Arabe',
+  zh: 'Mandarin',
   es: 'Espagnol',
-  pt: 'Portugais',
+  ar: 'Arabe',
+  it: 'Italien',
 };
+
+/**
+ * Les contrats qu'une offre propose. Le consultant et le détachement restent
+ * des contrats d'agent, mais ne se recrutent pas par une offre publiée.
+ */
+export const jobContractTypeSchema = z.enum(['cdi', 'cdd', 'stage']);
 
 /** La durée ne se demande qu'aux contrats qui en ont une. */
 export const CONTRATS_A_DUREE: readonly string[] = ['cdd', 'stage'];
@@ -61,7 +67,7 @@ export const createJobPostingSchema = z.object({
     .uuid()
     .nullish()
     .or(z.literal('').transform(() => undefined)),
-  contractType: contractTypeSchema,
+  contractType: jobContractTypeSchema,
   location: z
     .string()
     .trim()
@@ -85,7 +91,7 @@ export const updateJobPostingSchema = z.object({
   title: trimmed(140).optional(),
   description: trimmed(20_000).optional(),
   orgUnitId: z.uuid().nullable().optional(),
-  contractType: contractTypeSchema.optional(),
+  contractType: jobContractTypeSchema.optional(),
   location: z.string().trim().max(120).nullable().optional(),
   deadline: z.iso.date().nullable().optional(),
   requiredDocuments: z.array(trimmed(60)).max(5).optional(),

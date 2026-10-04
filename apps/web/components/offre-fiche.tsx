@@ -56,7 +56,7 @@ export function DescriptionOffre({ texte, lecture = false }: { texte: string; le
   );
 
   // En lecture (la page publique), le corps d'un article : plus grand, plus aéré.
-  const corps = lecture ? 'text-[15px] leading-[1.7]' : 'text-[13.5px] leading-relaxed';
+  const corps = lecture ? 'text-[14px] leading-[1.7]' : 'text-[13.5px] leading-relaxed';
   return (
     <div className={lecture ? 'flex flex-col gap-5' : 'flex flex-col gap-3.5'}>
       {blocs.map((bloc, i) =>
@@ -66,7 +66,7 @@ export function DescriptionOffre({ texte, lecture = false }: { texte: string; le
               <li key={j} className={`flex gap-3 text-ink ${corps}`}>
                 <span
                   aria-hidden
-                  className={`${lecture ? 'mt-[11px]' : 'mt-[8px]'} size-1.5 shrink-0 rounded-full bg-primary/45`}
+                  className={`${lecture ? 'mt-[9px]' : 'mt-[8px]'} size-1.5 shrink-0 rounded-full bg-primary/45`}
                 />
                 <span className="min-w-0">{item}</span>
               </li>
@@ -82,19 +82,19 @@ export function DescriptionOffre({ texte, lecture = false }: { texte: string; le
   );
 }
 
-/** Un fait de l'offre : une icône, un intitulé, une valeur. */
+/** Un fait de l'offre : une icône (facultative), un intitulé, une valeur. */
 export function FaitOffre({
   icon,
   label,
   children,
 }: {
-  icon: IconName;
+  icon?: IconName;
   label: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex min-w-0 items-start gap-2.5">
-      <Icon name={icon} size={18} className="mt-px shrink-0 text-primary/70" />
+      {icon ? <Icon name={icon} size={18} className="mt-px shrink-0 text-primary/70" /> : null}
       <div className="min-w-0">
         <p className="text-[10px] font-extrabold tracking-[0.12em] text-ink-muted uppercase">
           {label}

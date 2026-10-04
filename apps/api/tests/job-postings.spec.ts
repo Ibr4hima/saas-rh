@@ -42,7 +42,7 @@ const offre = (titre: string): CreateJobPostingInput => ({
   requiredDocuments: ['cv'],
   niveauEtudes: 'bac3',
   experienceMin: 2,
-  langues: ['fr'],
+  langues: ['en'],
 });
 
 beforeAll(async () => {
@@ -217,12 +217,12 @@ describe('profil recherché', () => {
       ...offre('Analyste'),
       niveauEtudes: 'bac5plus',
       experienceMin: 10,
-      langues: ['fr', 'en'],
+      langues: ['en', 'zh'],
     });
     const lue = await service.detail(rh, id);
     expect(lue.niveauEtudes).toBe('bac5plus');
     expect(lue.experienceMin).toBe(10);
-    expect(lue.langues).toEqual(['fr', 'en']);
+    expect(lue.langues).toEqual(['en', 'zh']);
     expect(lue.dureeMois).toBeNull();
   });
 
@@ -260,8 +260,14 @@ describe('profil recherché', () => {
   });
 
   it('refuse une valeur hors liste et dédoublonne les langues', () => {
-    const base = { ...offre('Poste'), langues: ['fr', 'fr', 'en'] };
-    expect(createJobPostingSchema.parse(base).langues).toEqual(['fr', 'en']);
+    const base = { ...offre('Poste'), langues: ['en', 'en', 'it'] };
+    expect(createJobPostingSchema.parse(base).langues).toEqual(['en', 'it']);
+    // Le français, le wolof, le portugais ne sont plus proposés ; ni le
+    // consultant ou le détachement comme contrat d'offre.
+    expect(createJobPostingSchema.safeParse({ ...base, langues: ['fr'] }).success).toBe(false);
+    expect(createJobPostingSchema.safeParse({ ...base, contractType: 'consultant' }).success).toBe(
+      false,
+    );
     expect(createJobPostingSchema.safeParse({ ...base, niveauEtudes: 'bac6' }).success).toBe(false);
     expect(createJobPostingSchema.safeParse({ ...base, experienceMin: 4 }).success).toBe(false);
     expect(createJobPostingSchema.safeParse({ ...base, langues: ['de'] }).success).toBe(false);
