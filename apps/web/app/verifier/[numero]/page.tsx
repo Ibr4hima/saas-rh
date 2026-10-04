@@ -66,13 +66,12 @@ export default function VerifierPage() {
   const c = verification.data;
 
   return (
-    // Le fond de l'écran de connexion, à l'identique : le dôme de marque et
-    // son décor (cf. `EcranMarque`). La carte tient dans l'écran, sans
+    // Le fond du volet de l'offre sur la page Postuler : un blanc à peine
+    // bleui, éclairé de deux halos. La carte tient dans l'écran, sans
     // défilement : sur un écran bas, ses marges se resserrent (`court:`).
-    <main className="login-dome flex min-h-dvh flex-col">
-      <div aria-hidden className="login-decor" />
+    <main className="fond-offre flex min-h-dvh flex-col">
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-6 sm:px-8 court:py-3">
-        <div className="w-full max-w-[440px] overflow-hidden rounded-[14px] bg-surface shadow-[0_30px_70px_rgb(0_0_0/0.28),0_4px_14px_rgb(0_0_0/0.10)]">
+        <div className="w-full max-w-[440px] overflow-hidden rounded-[20px] bg-surface shadow-[0_1px_2px_rgb(0_40_90/0.05),0_18px_48px_-18px_rgb(0_40_90/0.24)] ring-1 ring-[rgb(0_40_90/0.06)]">
           <header className="flex justify-center px-8 pt-7 court:pt-4">
             <BrandMark variant="candidature" repli="A" />
           </header>
@@ -125,7 +124,7 @@ function Certificat({ c }: { c: PublicCertificateView }) {
       {/* Les faits, comme un reçu : une ligne chacun, le libellé à gauche, la
           valeur à droite. */}
       <section className="px-6 pt-6 pb-7 sm:px-8 court:pt-4 court:pb-5">
-        <dl className="divide-y divide-line-soft rounded-[10px] px-4 ring-1 ring-line">
+        <dl className="divide-y divide-line-soft rounded-[14px] px-4 ring-1 ring-line">
           <Fait label="Score">{pourcent(c.score)}</Fait>
           <Fait label="Délivré le">{formatDate(c.issuedAt)}</Fait>
           <Fait label={c.status === 'expire' ? 'Expiré le' : 'Valable jusqu’au'}>
@@ -216,7 +215,7 @@ function Chargement() {
     <div className="flex flex-col items-center px-8 pt-6 pb-7" aria-busy>
       <Skeleton className="h-6 w-56" />
       <Skeleton className="mt-8 h-8 w-44" />
-      <Skeleton className="mt-6 h-48 w-full rounded-[10px]" />
+      <Skeleton className="mt-6 h-48 w-full rounded-[14px]" />
     </div>
   );
 }

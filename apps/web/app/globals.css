@@ -306,7 +306,8 @@ body {
    Le volet de l'offre : un blanc à peine bleui, le même du haut au bas, que
    le blanc pur du formulaire voisin suffit à détacher. Deux halos du bleu de
    marque, de taille fixe, éclairent le haut sans s'étirer avec la longueur
-   de l'offre. Une seule teinte, la claire (cf. `useThemeClair`). */
+   de l'offre. Une seule teinte, la claire (cf. `useThemeClair`).
+   La vérification publique d'un certificat le reprend tel quel. */
 .fond-offre {
   background-color: #f3f6fa;
   background-image:
