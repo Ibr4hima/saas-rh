@@ -193,29 +193,24 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
           </FaitOffre>
         </div>
 
-        {/* Le profil recherché, en rubrique comme la description, sans icônes
-            comme sur la page publique. Une offre antérieure peut ne pas le
-            porter : « Non renseigné » le signale à la RH, qui le complète en
-            modifiant l'offre. */}
-        <div className="border-t border-line-soft pt-5">
-          <p className="mb-3 text-[10px] font-extrabold tracking-[0.12em] text-primary uppercase">
-            Profil recherché
-          </p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <FaitOffre label="Niveau d’études">
-              {j.niveauEtudes ? NIVEAU_ETUDES_LABELS[j.niveauEtudes] : <NonRenseigne />}
-            </FaitOffre>
-            <FaitOffre label="Expérience">
-              {j.experienceMin === null ? <NonRenseigne /> : experienceExigee(j.experienceMin)}
-            </FaitOffre>
-            <FaitOffre label="Langues">
-              {j.langues.length > 0 ? (
-                j.langues.map((l) => LANGUE_LABELS[l]).join(', ')
-              ) : (
-                <NonRenseigne />
-              )}
-            </FaitOffre>
-          </div>
+        {/* Le profil recherché, sous un trait fin, avec ses icônes comme les
+            faits du dessus. Une offre antérieure peut ne pas le porter :
+            « Non renseigné » le signale à la RH, qui le complète en modifiant
+            l'offre. */}
+        <div className="grid grid-cols-1 gap-4 border-t border-line-soft pt-5 sm:grid-cols-3">
+          <FaitOffre icon="school" label="Niveau d’études">
+            {j.niveauEtudes ? NIVEAU_ETUDES_LABELS[j.niveauEtudes] : <NonRenseigne />}
+          </FaitOffre>
+          <FaitOffre icon="trending_up" label="Expérience">
+            {j.experienceMin === null ? <NonRenseigne /> : experienceExigee(j.experienceMin)}
+          </FaitOffre>
+          <FaitOffre icon="translate" label="Langues">
+            {j.langues.length > 0 ? (
+              j.langues.map((l) => LANGUE_LABELS[l]).join(', ')
+            ) : (
+              <NonRenseigne />
+            )}
+          </FaitOffre>
         </div>
 
         {j.description ? (
