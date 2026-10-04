@@ -16,6 +16,7 @@ import { useMe } from '../lib/hooks';
 import { compte } from '../lib/mots';
 import { Icon } from './icons';
 import { Modal } from './modal';
+import { BandeauDelegation } from './traitement-dch';
 
 /* ————————————————————————————————————————————————————————————————
    L'avertissement de la chaîne hiérarchique.
@@ -93,33 +94,34 @@ export function BandeauHierarchie() {
 
   return (
     <>
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[14px] border border-accent/25 bg-accent-soft/50 px-4 py-3">
-        <Icon name="warning" size={17} className="shrink-0 text-accent-text" />
-        <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-ink">
-          {c.sommetsMultiples.length > 1 ? (
-            <>
-              <b className="font-bold text-accent-text">
-                L’organigramme a {c.sommetsMultiples.length} sommets
-              </b>{' '}
-              ({c.sommetsMultiples.join(', ')}) : rattachez-les sous la Direction Générale, il n’en
-              faut qu’un.{' '}
-            </>
-          ) : null}
-          {c.anomalies.length > 0 ? (
-            <b className="font-bold text-accent-text">
-              {compte(c.anomalies.length, 'dossier')} à compléter
-            </b>
-          ) : null}
-          {c.directeurGeneral === null ? (
-            <> Aucun directeur général n’est désigné à la tête de l’organigramme.</>
-          ) : null}
-        </p>
-        {c.anomalies.length > 0 ? (
-          <Button size="sm" variant="secondary" className="h-8" onClick={() => setOuvert(true)}>
-            Voir les dossiers
-          </Button>
-        ) : null}
-      </div>
+      <BandeauDelegation
+        ton="orange"
+        icone="warning"
+        texte={
+          <>
+            {c.sommetsMultiples.length > 1 ? (
+              <>
+                L’organigramme a {c.sommetsMultiples.length} sommets (
+                {c.sommetsMultiples.join(', ')}) : rattachez-les sous la Direction Générale, il n’en
+                faut qu’un.{' '}
+              </>
+            ) : null}
+            {c.anomalies.length > 0 ? (
+              <>{compte(c.anomalies.length, 'dossier')} à compléter</>
+            ) : null}
+            {c.directeurGeneral === null ? (
+              <> Aucun directeur général n’est désigné à la tête de l’organigramme.</>
+            ) : null}
+          </>
+        }
+        action={
+          c.anomalies.length > 0 ? (
+            <Button size="sm" variant="secondary" onClick={() => setOuvert(true)}>
+              Consulter
+            </Button>
+          ) : undefined
+        }
+      />
 
       {ouvert ? <FenetreAnomalies controle={c} onClose={() => setOuvert(false)} /> : null}
     </>

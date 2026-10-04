@@ -51,24 +51,34 @@ export function listePrenoms(membres: readonly MembreHabilite[]): string {
 /**
  * En tête d'une file de la DCH, la délégation : au directeur, qui peut
  * traiter, et son bouton « Déléguer » ; au membre, ce qui lui est délégué.
+ *
+ * Le même bandeau, en orange, porte ce qui attend un geste (des dossiers à
+ * compléter) : deux bandeaux empilés gardent ainsi la même forme.
  */
 export function BandeauDelegation({
   icone,
   texte,
   action,
+  ton = 'bleu',
 }: {
   icone: IconName;
   texte: React.ReactNode;
   action?: React.ReactNode;
+  ton?: 'bleu' | 'orange';
 }) {
   return (
     <div
       className={cn(
-        'flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] bg-primary/[0.06] pl-3.5 text-[12.5px] text-ink',
+        'flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] pl-3.5 text-[12.5px] text-ink',
+        ton === 'orange' ? 'bg-accent/[0.08]' : 'bg-primary/[0.06]',
         action ? 'py-2 pr-2' : 'py-2.5 pr-3.5',
       )}
     >
-      <Icon name={icone} size={16} className="shrink-0 text-primary" />
+      <Icon
+        name={icone}
+        size={16}
+        className={cn('shrink-0', ton === 'orange' ? 'text-accent-text' : 'text-primary')}
+      />
       <span className="min-w-0 flex-1">{texte}</span>
       {action}
     </div>
