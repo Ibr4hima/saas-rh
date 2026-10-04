@@ -162,6 +162,11 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
           <h1 className="text-[22px] leading-tight font-extrabold text-balance text-ink-strong">
             {j.title}
           </h1>
+          {/* La référence sous le titre, comme sur la page publique. */}
+          <p className="mt-1.5 text-[11.5px] font-semibold text-ink-muted">
+            <span className="tracking-[0.12em] uppercase">Réf</span> ·{' '}
+            <span className="font-mono">{j.reference}</span>
+          </p>
           {/* La direction et le lieu tiennent sous le titre, là où on les
               cherche — et disparaissent quand ils ne sont pas renseignés,
               plutôt que d'afficher deux tirets dans la grille des faits. */}
@@ -172,10 +177,7 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
           ) : null}
         </div>
 
-        <div className="grid grid-cols-1 gap-4 border-t border-line-soft pt-5 sm:grid-cols-2 lg:grid-cols-4">
-          <FaitOffre icon="description" label="Référence">
-            <span className="font-mono">{j.reference}</span>
-          </FaitOffre>
+        <div className="grid grid-cols-1 gap-4 border-t border-line-soft pt-5 sm:grid-cols-3">
           <FaitOffre icon="badge" label="Type de contrat">
             {libelleContrat(j.contractType, j.dureeMois)}
           </FaitOffre>
@@ -189,21 +191,31 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
               <span className="font-normal text-ink-muted">Sans date limite</span>
             )}
           </FaitOffre>
-          {/* Le profil recherché. Une offre antérieure peut ne pas le porter :
-              « Non renseigné » le signale à la RH, qui le complète en modifiant. */}
-          <FaitOffre icon="school" label="Niveau d’études">
-            {j.niveauEtudes ? NIVEAU_ETUDES_LABELS[j.niveauEtudes] : <NonRenseigne />}
-          </FaitOffre>
-          <FaitOffre icon="trending_up" label="Expérience">
-            {j.experienceMin === null ? <NonRenseigne /> : experienceExigee(j.experienceMin)}
-          </FaitOffre>
-          <FaitOffre icon="translate" label="Langues">
-            {j.langues.length > 0 ? (
-              j.langues.map((l) => LANGUE_LABELS[l]).join(', ')
-            ) : (
-              <NonRenseigne />
-            )}
-          </FaitOffre>
+        </div>
+
+        {/* Le profil recherché, en rubrique comme la description, sans icônes
+            comme sur la page publique. Une offre antérieure peut ne pas le
+            porter : « Non renseigné » le signale à la RH, qui le complète en
+            modifiant l'offre. */}
+        <div className="border-t border-line-soft pt-5">
+          <p className="mb-3 text-[10px] font-extrabold tracking-[0.12em] text-primary uppercase">
+            Profil recherché
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <FaitOffre label="Niveau d’études">
+              {j.niveauEtudes ? NIVEAU_ETUDES_LABELS[j.niveauEtudes] : <NonRenseigne />}
+            </FaitOffre>
+            <FaitOffre label="Expérience">
+              {j.experienceMin === null ? <NonRenseigne /> : experienceExigee(j.experienceMin)}
+            </FaitOffre>
+            <FaitOffre label="Langues">
+              {j.langues.length > 0 ? (
+                j.langues.map((l) => LANGUE_LABELS[l]).join(', ')
+              ) : (
+                <NonRenseigne />
+              )}
+            </FaitOffre>
+          </div>
         </div>
 
         {j.description ? (
