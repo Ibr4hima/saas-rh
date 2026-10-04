@@ -129,7 +129,7 @@ export function CarteCertificatsAgent({ employeeId }: { employeeId: string }) {
         {animees.data && animees.data.length > 0 ? (
           <section className="mt-4 border-t border-line-soft pt-4">
             <h3 className="text-[11px] font-bold tracking-[0.08em] text-ink-muted uppercase">
-              Formateur
+              {animees.data.length > 1 ? 'Formations dispensées' : 'Formation dispensée'}
             </h3>
             <ul className="mt-1 flex flex-col">
               {animees.data.map((a) => (
@@ -145,7 +145,7 @@ export function CarteCertificatsAgent({ employeeId }: { employeeId: string }) {
                       {a.title}
                     </span>
                     <span className="block text-[11.5px] text-ink-muted">
-                      Formateur de cette formation · {FAMILLES[a.category].label}
+                      {FAMILLES[a.category].label}
                     </span>
                   </span>
                   {!a.published ? <Badge tone="gris">Brouillon</Badge> : null}
