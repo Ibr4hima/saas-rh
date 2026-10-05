@@ -5,6 +5,7 @@ export const ABSENCE_STATUS_LABELS: Record<string, string> = {
   approved: 'Approuvée',
   rejected: 'Refusée',
   cancelled: 'Annulée',
+  expired: 'Expirée',
 };
 
 export const ABSENCE_STATUS_TONES: Record<string, 'orange' | 'teal' | 'rouge' | 'gris'> = {
@@ -12,6 +13,7 @@ export const ABSENCE_STATUS_TONES: Record<string, 'orange' | 'teal' | 'rouge' | 
   approved: 'teal',
   rejected: 'rouge',
   cancelled: 'gris',
+  expired: 'gris',
 };
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -47,6 +49,8 @@ export function resumeVisas(r: AbsenceRequestView): string | undefined {
           return `${qui} : ensuite`;
         case 'passee':
           return `${qui} : personne pour viser : directement à la DCH`;
+        case 'sans_reponse':
+          return `${qui} : sans réponse dans le délai`;
         default:
           return `${qui} : sans objet`;
       }

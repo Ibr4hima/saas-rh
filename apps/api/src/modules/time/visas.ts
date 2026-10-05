@@ -15,6 +15,7 @@ import {
 } from '../acces/dch';
 import { compterLesBloquees, reconcilierLesDemandes } from '../acces/demandes';
 import { DG } from '../people/chaine';
+import { DELAI_N1_JOURS_OUVRES } from './workdays';
 
 /* ————————————————————————————————————————————————————————————————
    Le circuit d'une demande d'absence : le N+1, puis la DCH.
@@ -28,6 +29,9 @@ import { DG } from '../people/chaine';
      1. le N+1 de l'agent vise d'abord — celui du MOMENT où il vise. Sans
         N+1 qui puisse viser (le DG, un N+1 archivé, sans accès au portail,
         ou en congé aujourd'hui), la demande va directement à la DCH ;
+        elle y va aussi quand le N+1 n'a pas visé cinq jours ouvrés après
+        le dépôt. Déposée avant son premier jour, une demande toujours en
+        attente ce jour-là expire ;
      2. la DCH, c'est son directeur — le responsable de la direction du
         personnel dans l'organigramme. Il traite, ou il confie : une demande
         à la main, ou toutes, en habilitant des membres de sa direction.
@@ -76,6 +80,8 @@ export interface Attendu {
   demandeDuDirecteur: boolean;
   /** La direction du personnel, telle qu'elle est. */
   dch: DirectionDuPersonnel | null;
+  /** Le N+1 n'a pas visé dans le délai : la demande est passée à la DCH. */
+  n1SansReponse: boolean;
 }
 
 interface DemandeCircuit {
@@ -84,6 +90,22 @@ interface DemandeCircuit {
   status: string;
   currentLevel: number;
   confieeAEmployeeId: string | null;
+  /** Le moment du dépôt : le délai du N+1 court depuis. */
+  deposeeLe: Date | string;
+}
+
+/**
+ * Le N+1 a laissé passer son délai : cinq jours ouvrés entiers depuis le
+ * dépôt, sans le compter, jusqu'à la veille (cf. joursOuvresEcoules).
+ */
+async function delaiDuN1Passe(tx: Tx, demande: DemandeCircuit): Promise<boolean> {
+  const { rows } = await tx.execute<{ jours: number }>(sql`
+    SELECT count(*)::int AS jours
+      FROM generate_series((${demande.deposeeLe}::timestamptz)::date + 1, CURRENT_DATE - 1,
+                           interval '1 day') AS g(d)
+     WHERE extract(isodow FROM g.d) < 6
+       AND NOT EXISTS (SELECT 1 FROM holidays h WHERE h.day = g.d::date)`);
+  return (rows[0]?.jours ?? 0) >= DELAI_N1_JOURS_OUVRES;
 }
 
 /** Qui traite pour la DCH — la règle commune à toutes les demandes. */
@@ -112,16 +134,23 @@ export async function attendu(tx: Tx, demande: DemandeCircuit): Promise<Attendu 
     parDelegationDe: null,
     demandeDuDirecteur,
     dch,
+    n1SansReponse: false,
   });
+  let n1SansReponse = false;
   if (demande.currentLevel <= NIVEAU_N1) {
     const n1 = await n1De(tx, demande.employeeId);
-    if (n1 && !n1.absent) return leN1(n1);
+    if (n1 && !n1.absent) {
+      if (!(await delaiDuN1Passe(tx, demande))) return leN1(n1);
+      n1SansReponse = true;
+    }
     if (demandeDuDirecteur) {
       // Le directeur du Capital Humain : son N+1 (le DG) vise seul. Absent,
-      // ce sont ses membres habilités qui prennent le relais — sinon on
-      // attend le DG.
+      // ou sans réponse dans le délai, ce sont ses membres habilités qui
+      // prennent le relais ; sinon on attend le DG.
       const t = await traitantDCH(tx, demande, dch);
-      if (t.valideurs.length > 0) return { etape: 'dch', ...t, demandeDuDirecteur, dch };
+      if (t.valideurs.length > 0) {
+        return { etape: 'dch', ...t, demandeDuDirecteur, dch, n1SansReponse };
+      }
       return leN1(n1);
     }
   }
@@ -130,7 +159,7 @@ export async function attendu(tx: Tx, demande: DemandeCircuit): Promise<Attendu 
     // Passée à ses membres, qui ne peuvent plus : elle revient au DG.
     return leN1(await n1De(tx, demande.employeeId));
   }
-  return { etape: 'dch', ...t, demandeDuDirecteur, dch };
+  return { etape: 'dch', ...t, demandeDuDirecteur, dch, n1SansReponse };
 }
 
 /** La demande, lue pour le circuit. */
@@ -141,8 +170,9 @@ export async function lireCircuit(tx: Tx, requestId: string): Promise<DemandeCir
     status: string;
     current_level: number;
     confiee_a_employee_id: string | null;
+    created_at: string;
   }>(sql`
-    SELECT id, employee_id, status, current_level, confiee_a_employee_id
+    SELECT id, employee_id, status, current_level, confiee_a_employee_id, created_at::text
       FROM absence_requests WHERE id = ${requestId}`);
   const r = rows[0];
   return r
@@ -152,6 +182,7 @@ export async function lireCircuit(tx: Tx, requestId: string): Promise<DemandeCir
         status: r.status,
         currentLevel: r.current_level,
         confieeAEmployeeId: r.confiee_a_employee_id,
+        deposeeLe: r.created_at,
       }
     : null;
 }
@@ -246,9 +277,10 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
   // Arrivée à la DCH — visée par le N+1, ou sans N+1 qui puisse viser —,
   // elle y reste : un N+1 qui revient de congé ne la reprend pas en route.
   if (att?.etape === 'dch' && demande.currentLevel < NIVEAU_DCH) {
-    await tx.execute(
-      sql`UPDATE absence_requests SET current_level = ${NIVEAU_DCH} WHERE id = ${requestId}`,
-    );
+    await tx.execute(sql`
+      UPDATE absence_requests
+         SET current_level = ${NIVEAU_DCH}, n1_sans_reponse = ${att.n1SansReponse}
+       WHERE id = ${requestId}`);
   }
   const d = att && att.valideurs.length > 0 ? await lireDemande(tx, requestId) : null;
   const prefixe = `conge:${requestId}`;
@@ -287,7 +319,14 @@ export async function attenduPourLaReprise(
   const demandeDuDirecteur = Boolean(dch?.directeurEmployeeId === demande.employeeId);
   const n1 = await n1De(tx, demande.employeeId);
   if (n1 && !n1.absent) {
-    return { etape: 'n1', valideurs: [n1], parDelegationDe: null, demandeDuDirecteur, dch };
+    return {
+      etape: 'n1',
+      valideurs: [n1],
+      parDelegationDe: null,
+      demandeDuDirecteur,
+      dch,
+      n1SansReponse: false,
+    };
   }
   const t = await traitantDCH(
     tx,
@@ -297,10 +336,11 @@ export async function attenduPourLaReprise(
       status: 'pending',
       currentLevel: NIVEAU_DCH,
       confieeAEmployeeId: null,
+      deposeeLe: new Date(),
     },
     dch,
   );
-  return { etape: 'dch', ...t, demandeDuDirecteur, dch };
+  return { etape: 'dch', ...t, demandeDuDirecteur, dch, n1SansReponse: false };
 }
 
 /** Le préfixe des appels à confirmer un retour : à part de ceux du visa. */
@@ -432,6 +472,70 @@ export async function annoncerLeChangement(
   );
 }
 
+// ──────────────────────────────────────────── l'échéance
+
+/**
+ * Une demande expirée : déposée avant son premier jour, ce jour est arrivé
+ * sans qu'elle soit décidée. Une demande déposée le jour même ou après coup
+ * (une régularisation, un arrêt maladie) n'expire pas. En SQL, sur `r`.
+ */
+const EXPIREE = sql`r.status = 'pending' AND r.start_date <= CURRENT_DATE
+                    AND r.created_at::date < r.start_date`;
+
+/** Cette demande a-t-elle passé son échéance (même si rien ne l'a encore notée) ? */
+export async function aExpire(tx: Tx, requestId: string): Promise<boolean> {
+  const { rows } = await tx.execute(
+    sql`SELECT 1 FROM absence_requests r WHERE r.id = ${requestId} AND ${EXPIREE}`,
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Les demandes arrivées à leur premier jour sans réponse expirent : le
+ * solde n'en retient plus rien, les appels s'en vont. L'agent, son N+1 et
+ * qui traite pour la DCH l'apprennent ; l'agent peut en déposer une autre.
+ */
+export async function expirerLesDemandes(tx: Tx): Promise<void> {
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    SELECT r.id FROM absence_requests r WHERE ${EXPIREE} ORDER BY r.created_at FOR UPDATE`);
+  for (const { id } of rows) {
+    const d = await lireDemande(tx, id);
+    const demande = await lireCircuit(tx, id);
+    if (!d || !demande) continue;
+    const n1 = await n1De(tx, d.employeeId);
+    const t = await traitantDCH(tx, demande, await directionDuPersonnel(tx));
+    await tx.execute(sql`
+      UPDATE absence_requests SET status = 'expired', decided_at = now() WHERE id = ${id}`);
+    await retirerLesAppels(tx, `conge:${id}`);
+
+    const a = absence(d.type);
+    const periode = duAu(d.debut, d.fin);
+    const cle = `conge:${id}:expiree`;
+    if (d.demandeurUserId) {
+      await notifier(tx, d.tenantId, d.demandeurUserId, {
+        type: 'conge_expire',
+        title: `Votre demande ${de(a.nom)} ${periode} a expiré sans réponse`,
+        link: '/moi/conges/historique',
+        dedupeKey: cle,
+      });
+    }
+    const titre = `La demande ${de(a.nom)} ${de(d.nom)} ${periode} a expiré sans réponse`;
+    const prevenus = new Set<string>(d.demandeurUserId ? [d.demandeurUserId] : []);
+    const prevenir = async (userId: string, link: string) => {
+      if (prevenus.has(userId)) return;
+      prevenus.add(userId);
+      await notifier(tx, d.tenantId, userId, {
+        type: 'conge_expire',
+        title: titre,
+        link,
+        dedupeKey: cle,
+      });
+    };
+    if (n1) await prevenir(n1.userId, '/moi/equipe');
+    for (const v of t.valideurs) await prevenir(v.userId, '/moi/dch');
+  }
+}
+
 /** Les demandes en attente — le circuit tient sur elles. */
 async function demandesEnAttente(tx: Tx, employeeId?: string): Promise<string[]> {
   const { rows } = await tx.execute<{ id: string }>(sql`
@@ -454,6 +558,7 @@ export async function faireSuivreLesDemandes(tx: Tx, employeeId: string): Promis
  * personne ne traite pour la DCH.
  */
 export async function reconcilierLeCircuit(tx: Tx, tenantId: string): Promise<void> {
+  await expirerLesDemandes(tx);
   await verifierLesHabilitations(tx, tenantId);
   const enAttente = await demandesEnAttente(tx);
   for (const id of enAttente) await reconcilierDemande(tx, id);
@@ -533,6 +638,7 @@ export async function quiViseraPour(
     status: 'pending',
     currentLevel: NIVEAU_N1,
     confieeAEmployeeId: null,
+    deposeeLe: new Date(),
   };
   const n1 = await n1De(tx, employeeId);
   const dch = await directionDuPersonnel(tx);

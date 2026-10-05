@@ -92,3 +92,9 @@ export function joursOuvresEcoules(
 
 /** Au-delà de ce délai, qui est attendu reçoit un rappel. */
 export const DELAI_RELANCE_JOURS_OUVRES = 2;
+
+/**
+ * Sans visa du N+1 au-delà de ce délai, la demande de congé passe à la DCH.
+ * D'ici là, le N+1 est rappelé tous les deux jours ouvrés.
+ */
+export const DELAI_N1_JOURS_OUVRES = 5;

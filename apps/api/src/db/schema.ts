@@ -259,6 +259,8 @@ export const absenceRequests = pgTable('absence_requests', {
   ecourteMotif: text('ecourte_motif'),
   annuleParUserId: uuid('annule_par_user_id'),
   annuleMotif: text('annule_motif'),
+  /** Passée à la DCH faute de visa du N+1 dans le délai. */
+  n1SansReponse: boolean('n1_sans_reponse').notNull().default(false),
   decidedAt: timestamp('decided_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -47,10 +47,12 @@ import {
 } from '../acces/dch';
 import { aTraiterPar, voitToutLaFile } from '../acces/demandes';
 import {
+  aExpire,
   annoncerLeChangement,
   annoncerLeVerdict,
   attendu,
   attenduPourLaReprise,
+  expirerLesDemandes,
   lireCircuit,
   lireDemande,
   NIVEAU_DCH,
@@ -597,6 +599,7 @@ export class AbsencesService {
   /** Ce que l'appelant a devant lui : son équipe, ce qu'il vise, ce qu'il traite. */
   async compteurs(user: SessionUser): Promise<CompteursValidations> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
+      await expirerLesDemandes(tx);
       const moi = await this.selfEmployeeId(tx, user);
       const rien = { documents: 0, informations: 0, pieces: 0, conges: 0 };
       if (!moi) return { equipe: 0, aViser: 0, aTraiter: rien };
@@ -731,6 +734,7 @@ export class AbsencesService {
 
   async balances(user: SessionUser, employeeId: string, year: number): Promise<BalanceView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
+      await expirerLesDemandes(tx);
       await this.requireEmployee(tx, employeeId);
       await this.assertEmployeeScope(tx, user, employeeId);
       const types = await this.selectTypes(tx);
@@ -994,6 +998,9 @@ export class AbsencesService {
     query: ListAbsenceRequestsQuery,
   ): Promise<AbsenceRequestView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
+      // Aucune tâche ne tourne la nuit : une demande arrivée à son premier
+      // jour sans réponse expire à la première lecture qui la montrerait.
+      await expirerLesDemandes(tx);
       const conditions = [];
       if (query.status) conditions.push(eq(t.absenceRequests.status, query.status));
       if (query.employeeId) conditions.push(eq(t.absenceRequests.employeeId, query.employeeId));
@@ -1113,6 +1120,14 @@ export class AbsencesService {
       }
       if (request.status !== 'pending') {
         problem(422, 'absence.already_decided', 'Cette demande a déjà été traitée');
+      }
+      if (await aExpire(tx, requestId)) {
+        problem(
+          422,
+          'absence.expiree',
+          'Cette demande a expiré',
+          'Son premier jour est arrivé sans réponse : l’agent peut en déposer une nouvelle.',
+        );
       }
       if ((await this.selfEmployeeId(tx, user)) === request.employeeId) {
         problem(403, 'absence.propre_demande', 'Vous ne pouvez pas viser votre propre demande');
@@ -1781,8 +1796,10 @@ export class AbsencesService {
         status: request.status,
         currentLevel: request.currentLevel,
         confieeAEmployeeId: request.confieeAEmployeeId,
+        deposeeLe: request.createdAt,
       });
       const enAttente = request.status === 'pending';
+      const expiree = request.status === 'expired';
       const visas = approvalRows.filter((a) => a.request_id === request.id);
       const signe = (level: number): EtapeCircuitView | null => {
         const v = visas.find((a) => a.level === level);
@@ -1807,16 +1824,21 @@ export class AbsencesService {
           comment: null,
         }) satisfies EtapeCircuitView;
 
-      // L'étape du N+1 : signée ; attendue (on dit qui) ; passée, quand la
-      // demande est allée à la DCH sans lui ; sans objet si elle a été
-      // annulée avant qu'il vise.
+      // L'étape du N+1 : signée ; attendue (on dit qui) ; sans réponse, quand
+      // le délai a passé (la demande est allée à la DCH, ou a expiré) ;
+      // passée, quand la demande est allée à la DCH sans lui ; sans objet si
+      // elle a été annulée avant qu'il vise.
       const etapeN1 =
         signe(NIVEAU_N1) ??
         (att?.etape === 'n1'
           ? vide('n1', 'attendue', nomsDe(att.valideurs))
-          : request.status === 'cancelled' && request.currentLevel === NIVEAU_N1
-            ? vide('n1', 'sans_objet', null)
-            : vide('n1', 'passee', null));
+          : request.n1SansReponse || att?.n1SansReponse
+            ? vide('n1', 'sans_reponse', null)
+            : expiree && request.currentLevel === NIVEAU_N1
+              ? vide('n1', 'sans_reponse', null)
+              : request.status === 'cancelled' && request.currentLevel === NIVEAU_N1
+                ? vide('n1', 'sans_objet', null)
+                : vide('n1', 'passee', null));
       // L'étape de la DCH : signée ; attendue (son traitant) ; à venir ; ou
       // sans objet — refus du N+1, annulation, congé du directeur du Capital
       // Humain que le DG vise seul.
@@ -1826,7 +1848,9 @@ export class AbsencesService {
           ? vide('dch', 'attendue', nomsDe(att.valideurs))
           : enAttente && !att?.demandeDuDirecteur
             ? vide('dch', 'a_venir', null)
-            : vide('dch', 'sans_objet', null));
+            : expiree && request.currentLevel >= NIVEAU_DCH
+              ? vide('dch', 'sans_reponse', null)
+              : vide('dch', 'sans_objet', null));
 
       const estDirecteur = Boolean(moi && att?.dch?.directeurEmployeeId === moi);
       const canDecide =

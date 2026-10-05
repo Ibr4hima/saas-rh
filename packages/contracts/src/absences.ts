@@ -130,10 +130,13 @@ export const ETAPE_CONGE_LABELS: Record<EtapeConge, string> = {
  *   — attendue : c'est elle qui bloque, en ce moment ;
  *   — à venir : elle viendra après l'étape attendue ;
  *   — passée : pas de N+1 qui puisse viser, la demande est allée à la DCH ;
+ *   - sans réponse : personne n'a visé dans le délai ; la demande est
+ *     passée à la DCH (étape du N+1), ou elle a expiré ;
  *   — sans objet : elle n'aura pas lieu (refus plus tôt, annulation, ou
  *     demande du directeur du Capital Humain, que le DG vise seul).
  */
-export type EtatEtapeConge = 'visee' | 'refusee' | 'attendue' | 'a_venir' | 'passee' | 'sans_objet';
+export type EtatEtapeConge =
+  'visee' | 'refusee' | 'attendue' | 'a_venir' | 'passee' | 'sans_reponse' | 'sans_objet';
 
 export interface EtapeCircuitView {
   etape: EtapeConge;
@@ -242,7 +245,7 @@ export const rappelerSchema = z.object({
 export type RappelerInput = z.infer<typeof rappelerSchema>;
 
 export const listAbsenceRequestsQuerySchema = z.object({
-  status: z.enum(['pending', 'approved', 'rejected', 'cancelled']).optional(),
+  status: z.enum(['pending', 'approved', 'rejected', 'cancelled', 'expired']).optional(),
   employeeId: z.uuid().optional(),
   /** Les demandes des agents directs de l'appelant — celles qu'il vise. */
   equipe: z.stringbool().optional(),

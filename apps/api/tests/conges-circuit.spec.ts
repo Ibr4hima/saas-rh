@@ -702,6 +702,126 @@ describe('les relances', () => {
   });
 });
 
+describe('l’échéance', () => {
+  /** Les rappels de cette demande, chez cette personne : la date et s'ils sont dans la boîte. */
+  async function rappels(id: string, prenom: string) {
+    const { rows } = await raw(
+      `SELECT n.created_at > now() - interval '1 hour' AS recent
+         FROM notifications n JOIN users u ON u.id = n.recipient_user_id
+        WHERE u.given_name = $1 AND n.dedupe_key LIKE $2`,
+      [prenom, `conge:${id}:rappel:%`],
+    );
+    return rows.map((r) => (r.recent ? 'recent' : 'ancien'));
+  }
+
+  it('le N+1 est rappelé tous les deux jours ouvrés ; un seul rappel à la fois dans sa boîte', async () => {
+    const id = await poser(moussa);
+    await raw(
+      `UPDATE notifications SET created_at = now() - interval '10 days' WHERE dedupe_key = $1`,
+      [`conge:${id}:appel:n1`],
+    );
+    await reconcilier();
+    expect(await rappels(id, 'Ousmane')).toEqual(['recent']);
+    // Le rappel date d'une semaine : un nouveau prend sa place.
+    await raw(
+      `UPDATE notifications SET created_at = now() - interval '7 days' WHERE dedupe_key = $1`,
+      [`conge:${id}:rappel:n1`],
+    );
+    await reconcilier();
+    expect(await rappels(id, 'Ousmane')).toEqual(['recent']);
+    expect(await notif('Ousmane', `conge:${id}:rappel:n1`)).toMatch(/^Rappel : Moussa Test/);
+  });
+
+  it('à la DCH, le rappel reste unique', async () => {
+    const id = await poser(moussa);
+    await viser(ousmane, id);
+    await raw(
+      `UPDATE notifications SET created_at = now() - interval '10 days' WHERE dedupe_key = $1`,
+      [`conge:${id}:appel:dch`],
+    );
+    await reconcilier();
+    await raw(
+      `UPDATE notifications SET created_at = now() - interval '7 days' WHERE dedupe_key = $1`,
+      [`conge:${id}:rappel:dch`],
+    );
+    await reconcilier();
+    expect(await rappels(id, 'Mariama')).toEqual(['ancien']);
+  });
+
+  it('cinq jours ouvrés sans visa du N+1 : la demande passe à la DCH, qui décide', async () => {
+    const id = await poser(moussa);
+    await raw(`UPDATE absence_requests SET created_at = now() - interval '14 days' WHERE id = $1`, [
+      id,
+    ]);
+    await reconcilier();
+    expect(await circuit(id)).toEqual(['n1:sans_reponse:', 'dch:attendue:Mariama Test']);
+    expect(await appels(id)).toEqual(['dch:Mariama']);
+    // Le N+1 n'a plus la main : elle est à la DCH.
+    expect(await codeOf(() => viser(ousmane, id))).toBe('absence.reservee_a_la_dch');
+    await viser(mariama, id);
+    expect(await circuit(id)).toEqual(['n1:sans_reponse:', 'dch:visee:Mariama Test']);
+    expect((await vue(id)).status).toBe('approved');
+  });
+
+  it('avant le délai, elle reste au N+1', async () => {
+    const id = await poser(moussa);
+    await raw(`UPDATE absence_requests SET created_at = now() - interval '1 day' WHERE id = $1`, [
+      id,
+    ]);
+    await reconcilier();
+    expect(await circuit(id)).toEqual(['n1:attendue:Ousmane Test', 'dch:a_venir:']);
+  });
+
+  /** Une demande déposée il y a trois jours, qui commence aujourd'hui. */
+  async function arriveeASonPremierJour(): Promise<string> {
+    const id = await poser(moussa);
+    await raw(
+      `UPDATE absence_requests SET start_date = CURRENT_DATE, end_date = CURRENT_DATE + 4,
+              created_at = now() - interval '3 days' WHERE id = $1`,
+      [id],
+    );
+    return id;
+  }
+
+  it('son premier jour arrivé sans réponse, elle expire : l’agent, son N+1 et la DCH le savent', async () => {
+    const id = await arriveeASonPremierJour();
+    expect(await codeOf(() => viser(ousmane, id))).toBe('absence.expiree');
+    const r = await vue(id);
+    expect(r.status).toBe('expired');
+    expect(r.gestes.annuler).toBe(false);
+    expect(await circuit(id)).toEqual(['n1:sans_reponse:', 'dch:sans_objet:']);
+    expect(await appels(id)).toEqual([]);
+    expect(await notif('Moussa', `conge:${id}:expiree`)).toMatch(
+      /^Votre demande de congé annuel du .+ a expiré sans réponse$/,
+    );
+    for (const qui of ['Ousmane', 'Mariama']) {
+      expect(await notif(qui, `conge:${id}:expiree`)).toMatch(
+        /^La demande de congé annuel de Moussa Test du .+ a expiré sans réponse$/,
+      );
+    }
+    expect(await codeOf(() => viser(ousmane, id))).toBe('absence.already_decided');
+  });
+
+  it('expirée, elle ne retient plus de jours : l’agent en dépose une autre sur la même période', async () => {
+    const id = await arriveeASonPremierJour();
+    await reconcilier();
+    expect((await vue(id)).status).toBe('expired');
+    const { rows } = await raw(
+      `SELECT start_date::text AS du, end_date::text AS au FROM absence_requests WHERE id = $1`,
+      [id],
+    );
+    const nouvelle = await absences.createRequest(moussa.session, {
+      employeeId: moussa.employeeId,
+      absenceTypeId: typeId,
+      startDate: rows[0].du,
+      endDate: rows[0].au,
+    });
+    // Déposée le jour même : elle n'expire pas, elle attend le N+1.
+    await reconcilier();
+    expect((await vue(nouvelle.id)).status).toBe('pending');
+  });
+});
+
 describe('un agent de la DCH qui n’a pas encore activé son compte', () => {
   it('on lui délègue déjà ; il traite dès qu’il active son compte', async () => {
     const nogaye = await agent('Nogaye', uDCH, mariama.employeeId, null);
