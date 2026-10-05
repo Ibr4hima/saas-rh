@@ -190,7 +190,10 @@ export interface OrgUnitView extends OrgUnit {
   sommet: boolean;
   /** La direction du personnel (la DCH) — une seule dans l'organisation. */
   directionDuPersonnel: boolean;
-  /** Effectif AFFICHÉ : les personnes actives qui y travaillent aujourd'hui. */
+  /**
+   * Effectif AFFICHÉ : les personnes actives qui y travaillent aujourd'hui,
+   * dans l'unité ou ses sous-unités (sans les directions qu'elle coiffe).
+   */
   headcount: number;
   /**
    * Personnes dont l'affectation à cette unité n'a pas pris fin — suspendus et
@@ -208,6 +211,8 @@ export interface OrgUnitMember {
   givenName: string;
   familyName: string;
   positionTitle: string | null;
+  /** Membre d'une sous-unité : son nom ; affecté à l'unité même : `null`. */
+  unite?: string | null;
 }
 
 /**

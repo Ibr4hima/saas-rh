@@ -184,6 +184,11 @@ export type SetBalanceInput = z.infer<typeof setBalanceSchema>;
 export interface BalanceView {
   absenceTypeId: string;
   absenceTypeName: string;
+  /**
+   * Type retiré depuis : son solde de l'année reste lisible (ses demandes y
+   * comptent), mais il ne se propose plus.
+   */
+  retire: boolean;
   deductsBalance: boolean;
   year: number;
   entitledDays: number;

@@ -92,7 +92,12 @@ function mapUniqueViolation(err: unknown): never {
 export class OrgUnitsService {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
 
-  /** Liste enrichie pour l'organigramme : responsable et effectif direct. */
+  /**
+   * Liste enrichie pour l'organigramme : responsable et effectif. L'effectif
+   * d'une unité compte tout son périmètre (ses sous-unités, sans les
+   * directions qu'elle coiffe) : une direction de huit agents répartis dans
+   * deux départements ne se lit pas « 1 personne ».
+   */
   async list(user: SessionUser): Promise<OrgUnitView[]> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       const managerPersons = t.persons;
@@ -122,12 +127,6 @@ export class OrgUnitsService {
             WHERE a.employee_id = org_units.manager_employee_id
               AND a.validity @> CURRENT_DATE
             LIMIT 1)`,
-          headcount: sql<number>`(
-            SELECT count(*)::int FROM assignments a
-            JOIN employees e ON e.id = a.employee_id
-            WHERE a.org_unit_id = org_units.id
-              AND a.validity @> CURRENT_DATE
-              AND e.status = 'active')`,
           // Qui perdrait son rattachement en cas de dissolution : sans filtre
           // de statut, et affectations futures comprises. On compte les
           // PERSONNES, pas les affectations — c'est ce que l'avertissement
@@ -143,6 +142,24 @@ export class OrgUnitsService {
         .leftJoin(managerPersons, eq(managerPersons.id, t.employees.personId))
         .where(isNull(t.orgUnits.deletedAt))
         .orderBy(asc(t.orgUnits.unitType), asc(t.orgUnits.name));
+
+      // Chaque agent compte pour son unité et pour celles qui la coiffent,
+      // jusqu'à la première direction comprise : c'est le périmètre.
+      const { rows: effectifs } = await tx.execute<{ unite: string; n: number }>(sql`
+        WITH RECURSIVE montee AS (
+          SELECT id AS depart, id AS unite, unit_type, parent_id, 0 AS prof
+            FROM org_units WHERE deleted_at IS NULL
+          UNION ALL
+          SELECT m.depart, o.id, o.unit_type, o.parent_id, m.prof + 1
+            FROM montee m JOIN org_units o ON o.id = m.parent_id AND o.deleted_at IS NULL
+           WHERE m.unit_type <> 'direction' AND m.prof < 64
+        )
+        SELECT m.unite, count(DISTINCT a.employee_id)::int AS n
+          FROM montee m
+          JOIN assignments a ON a.org_unit_id = m.depart AND a.validity @> CURRENT_DATE
+          JOIN employees e ON e.id = a.employee_id AND e.status = 'active'
+         GROUP BY m.unite`);
+      const effectif = new Map(effectifs.map((x) => [x.unite, x.n]));
 
       return rows.map((r) => ({
         id: r.id,
@@ -161,7 +178,7 @@ export class OrgUnitsService {
         managerPosition: r.managerPosition,
         sommet: Boolean(r.sommet),
         directionDuPersonnel: r.directionDuPersonnel,
-        headcount: r.headcount,
+        headcount: effectif.get(r.id) ?? 0,
         attachedEmployees: r.attachedEmployees,
       }));
     });
@@ -853,29 +870,41 @@ export class OrgUnitsService {
   }
 
   /** Les personnes actuellement affectées à l'unité (annuaire interne). */
+  /**
+   * Les membres d'une unité : ceux que son effectif compte, tout son
+   * périmètre. Qui travaille dans une sous-unité la nomme.
+   */
   async members(user: SessionUser, id: string): Promise<OrgUnitMember[]> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await this.requireUnit(tx, id, 'org.unit_not_found');
-      const rows = await tx
-        .select({
-          employeeId: t.employees.id,
-          employeeNumber: t.employees.employeeNumber,
-          givenName: t.persons.givenName,
-          familyName: t.persons.familyName,
-          positionTitle: t.assignments.positionTitle,
-        })
-        .from(t.assignments)
-        .innerJoin(t.employees, eq(t.employees.id, t.assignments.employeeId))
-        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-        .where(
-          and(
-            eq(t.assignments.orgUnitId, id),
-            sql`${t.assignments.validity} @> CURRENT_DATE`,
-            eq(t.employees.status, 'active'),
-          ),
-        )
-        .orderBy(asc(t.persons.familyName), asc(t.persons.givenName));
-      return rows;
+      const { rows } = await tx.execute<{
+        employee_id: string;
+        employee_number: string;
+        given_name: string;
+        family_name: string;
+        position_title: string | null;
+        unite: string | null;
+      }>(sql`
+        ${perimetre(id)}
+        SELECT DISTINCT ON (p.family_name, p.given_name, e.id)
+               e.id AS employee_id, e.employee_number, p.given_name, p.family_name,
+               a.position_title,
+               CASE WHEN a.org_unit_id = ${id} THEN NULL ELSE o.name END AS unite
+          FROM assignments a
+          JOIN employees e ON e.id = a.employee_id AND e.status = 'active'
+          JOIN persons p ON p.id = e.person_id
+          JOIN org_units o ON o.id = a.org_unit_id
+         WHERE a.org_unit_id IN (SELECT id FROM perimetre)
+           AND a.validity @> CURRENT_DATE
+         ORDER BY p.family_name, p.given_name, e.id`);
+      return rows.map((r) => ({
+        employeeId: r.employee_id,
+        employeeNumber: r.employee_number,
+        givenName: r.given_name,
+        familyName: r.family_name,
+        positionTitle: r.position_title,
+        unite: r.unite,
+      }));
     });
   }
 

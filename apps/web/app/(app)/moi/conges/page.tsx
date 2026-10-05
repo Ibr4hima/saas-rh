@@ -37,7 +37,7 @@ export default function PoserUneDemandePage() {
     enabled: Boolean(employeeId),
   });
   // Le solde qui se décompte — le congé annuel, en pratique.
-  const solde = (balances.data ?? []).find((b) => b.deductsBalance);
+  const solde = (balances.data ?? []).find((b) => b.deductsBalance && !b.retire);
 
   return (
     <Page>

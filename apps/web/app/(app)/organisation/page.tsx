@@ -690,6 +690,7 @@ function UnitPanel({
                       </span>
                     )}
                     <span className="text-ink-muted"> · {m.employeeNumber}</span>
+                    {m.unite ? <span className="text-ink-muted"> · {m.unite}</span> : null}
                   </span>
                 </li>
               ))}

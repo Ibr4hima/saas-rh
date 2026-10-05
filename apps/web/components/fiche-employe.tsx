@@ -1009,7 +1009,14 @@ function BalancesCard({ employeeId }: { employeeId: string }) {
           <TBody>
             {balances.data?.map((b) => (
               <Tr key={b.absenceTypeId}>
-                <Td className="font-medium text-ink-strong">{b.absenceTypeName}</Td>
+                <Td className="font-medium text-ink-strong">
+                  {b.absenceTypeName}
+                  {b.retire ? (
+                    <Badge tone="gris" size="sm" className="ml-2 align-middle">
+                      Retiré
+                    </Badge>
+                  ) : null}
+                </Td>
                 <Td className="text-right font-mono">
                   {b.deductsBalance ? b.entitledDays : <span className="text-ink-muted/45">—</span>}
                 </Td>

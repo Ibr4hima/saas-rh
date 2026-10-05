@@ -539,3 +539,31 @@ describe('traductions d’erreurs SQL', () => {
     ).toBe('org.manager_already_assigned');
   });
 });
+
+describe('l’effectif d’une unité', () => {
+  it('compte tout son périmètre, sans les directions qu’elle coiffe, et ses membres le nomment', async () => {
+    // Direction Mère : un agent direct, deux dans son département (dont
+    // Chef-1 au service). La sous-direction garde les siens.
+    await creerEmploye('DIR-1', direction);
+    await creerEmploye('DEP-1', departement);
+    const sousDirection = await creerUnite('Sous-Direction', 'direction', direction);
+    await creerEmploye('SD-1', sousDirection);
+
+    const unites = await service.list(user);
+    const effectif = (id: string) => unites.find((u) => u.id === id)!.headcount;
+    expect(effectif(direction)).toBe(3);
+    expect(effectif(departement)).toBe(2);
+    expect(effectif(serviceUnit)).toBe(1);
+    expect(effectif(sousDirection)).toBe(1);
+    // La Direction Générale ne compte que les siens : ses directions ont leur tête.
+    expect(effectif(racine)).toBe(1);
+
+    const membres = await service.members(user, direction);
+    expect(membres.map((m) => [m.employeeNumber, m.unite ?? null])).toEqual([
+      ['CHEF-1', 'Service Petit-Fils'],
+      ['DEP-1', 'Département Fils'],
+      ['DIR-1', null],
+    ]);
+    expect(membres).toHaveLength(effectif(direction));
+  });
+});

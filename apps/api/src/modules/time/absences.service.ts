@@ -182,6 +182,19 @@ export const absencesDesTrenteJours = () => [
   lte(t.absenceRequests.startDate, sql`CURRENT_DATE + 30`),
 ];
 
+/**
+ * Une demande se décompte selon le paramétrage de l'année où elle commence :
+ * celui que son type avait alors, s'il a changé depuis. Le badge d'une
+ * demande dit ainsi ce que le solde de son année en a fait.
+ */
+const decompteDeLaDemande = sql<boolean>`COALESCE(
+  (SELECT p.deducts_balance FROM absence_types_passe p
+    WHERE p.absence_type_id = absence_requests.absence_type_id
+      AND p.jusqu_a_annee >= extract(year FROM absence_requests.start_date)
+      AND extract(year FROM absence_requests.start_date) < extract(year FROM CURRENT_DATE)
+    ORDER BY p.jusqu_a_annee LIMIT 1),
+  absence_types.deducts_balance)`;
+
 /** Ce qu'un solde d'année lit d'un type d'absence. */
 type TypePourSolde = {
   id: string;
@@ -189,6 +202,8 @@ type TypePourSolde = {
   deductsBalance: boolean;
   allowanceDays: string | number | null;
   frequency: string;
+  /** Retiré depuis : il ne figure qu'aux soldes des années où il a servi. */
+  retire?: boolean;
 };
 
 /** Le droit à porter d'office sur un solde d'année : le quota annuel, s'il y en a un. */
@@ -862,7 +877,38 @@ export class AbsencesService {
       await expirerLesDemandes(tx);
       await this.requireEmployee(tx, employeeId);
       await this.assertEmployeeScope(tx, user, employeeId);
-      return this.balancesInTx(tx, user, employeeId, year, await this.selectTypes(tx));
+      // Un type retiré garde son solde de l'année où il a servi : « rien
+      // n'est effacé du passé », dit la fenêtre de retrait.
+      const { rows: retires } = await tx.execute<{
+        id: string;
+        name: string;
+        deducts_balance: boolean;
+        allowance_days: string | null;
+        frequency: string;
+      }>(sql`
+        SELECT ty.id, ty.name, ty.deducts_balance, ty.allowance_days::text AS allowance_days,
+               ty.frequency
+          FROM absence_types ty
+         WHERE ty.deleted_at IS NOT NULL
+           AND (EXISTS (SELECT 1 FROM absence_requests r
+                         WHERE r.absence_type_id = ty.id AND r.employee_id = ${employeeId}
+                           AND r.status IN ('approved', 'pending')
+                           AND extract(year FROM r.start_date) = ${year})
+                OR EXISTS (SELECT 1 FROM absence_balances b
+                            WHERE b.absence_type_id = ty.id AND b.employee_id = ${employeeId}
+                              AND b.year = ${year}))
+         ORDER BY ty.name`);
+      return this.balancesInTx(tx, user, employeeId, year, [
+        ...(await this.selectTypes(tx)),
+        ...retires.map((r) => ({
+          id: r.id,
+          name: r.name,
+          deductsBalance: r.deducts_balance,
+          allowanceDays: r.allowance_days,
+          frequency: r.frequency,
+          retire: true,
+        })),
+      ]);
     });
   }
 
@@ -1154,7 +1200,7 @@ export class AbsencesService {
             employeeNumber: t.employees.employeeNumber,
             workEmail: t.employees.workEmail,
             typeName: t.absenceTypes.name,
-            deductsBalance: t.absenceTypes.deductsBalance,
+            deductsBalance: decompteDeLaDemande,
             requiresDocument: t.absenceTypes.requiresDocument,
           })
           .from(t.absenceRequests)
@@ -1193,7 +1239,7 @@ export class AbsencesService {
           employeeNumber: t.employees.employeeNumber,
           workEmail: t.employees.workEmail,
           typeName: t.absenceTypes.name,
-          deductsBalance: t.absenceTypes.deductsBalance,
+          deductsBalance: decompteDeLaDemande,
           requiresDocument: t.absenceTypes.requiresDocument,
         })
         .from(t.absenceRequests)
@@ -1946,6 +1992,7 @@ export class AbsencesService {
       return {
         absenceTypeId: type.id,
         absenceTypeName: type.name,
+        retire: Boolean(type.retire),
         deductsBalance: type.deductsBalance,
         year,
         entitledDays: entitled,

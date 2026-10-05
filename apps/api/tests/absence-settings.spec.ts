@@ -531,12 +531,16 @@ describe('quota et cadence', () => {
       requiresDocument: false,
     };
     const { id } = await absences.createType(admin, champs);
+    const passee = randomUUID();
     await raw(
       `INSERT INTO absence_requests
          (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
        VALUES ($1, $2, $3, $4, $5, $6, 25, 'approved')`,
-      [randomUUID(), tenantId, employeeId, id, `${ANNEE - 1}-07-01`, `${ANNEE - 1}-08-04`],
+      [passee, tenantId, employeeId, id, `${ANNEE - 1}-07-01`, `${ANNEE - 1}-08-04`],
     );
+    const decomptee = async (demande: string) =>
+      (await absences.listRequests(admin, { limit: 50 } as never)).find((r) => r.id === demande)
+        ?.deductsBalance;
     const solde = async (annee: number) =>
       (await absences.balances(admin, employeeId, annee)).find((s) => s.absenceTypeId === id)!;
 
@@ -560,6 +564,16 @@ describe('quota et cadence', () => {
     });
     expect(await solde(ANNEE - 1)).toMatchObject({ deductsBalance: true, remainingDays: 5 });
     expect(await solde(ANNEE)).toMatchObject({ deductsBalance: false, entitledDays: 0 });
+    // La demande de l'an passé reste décomptée, comme dans le solde de son année.
+    expect(await decomptee(passee)).toBe(true);
+    const cetteAnnee = randomUUID();
+    await raw(
+      `INSERT INTO absence_requests
+         (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 2, 'approved')`,
+      [cetteAnnee, tenantId, employeeId, id, `${ANNEE}-03-02`, `${ANNEE}-03-03`],
+    );
+    expect(await decomptee(cetteAnnee)).toBe(false);
   });
 });
 
@@ -603,6 +617,23 @@ describe('retirer un type d’absence', () => {
       [retirable],
     );
     expect((rows[0] as { n: number }).n).toBe(1);
+  });
+
+  it('son solde de l’année où il a servi reste lisible, marqué retiré', async () => {
+    const { retirable, autre } = await deuxTypes();
+    await poserDemande(retirable, 'approved');
+    await absences.deleteType(admin, retirable);
+
+    const soldes = await absences.balances(admin, employeeId, ANNEE);
+    expect(soldes.find((s) => s.absenceTypeId === retirable)).toMatchObject({
+      absenceTypeName: 'Mission',
+      retire: true,
+      takenDays: 2,
+    });
+    expect(soldes.find((s) => s.absenceTypeId === autre)?.retire).toBe(false);
+    // Une année où il n'a pas servi ne le montre pas.
+    const avant = await absences.balances(admin, employeeId, ANNEE - 1);
+    expect(avant.some((s) => s.absenceTypeId === retirable)).toBe(false);
   });
 
   it('libère son nom ; deux types en service ne le partagent pas, à la casse près', async () => {
