@@ -15,6 +15,7 @@ import {
 } from '@teranga/contracts';
 import { Button, Field, Input, Select, Textarea } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
+import { aujourdhui } from '../lib/temps';
 import { Icon } from './icons';
 import { Modal, ModalGrid, ModalSection } from './modal';
 
@@ -215,6 +216,7 @@ export function JobModal({
               <Input
                 id="deadline"
                 type="date"
+                min={aujourdhui()}
                 value={v.deadline}
                 onChange={(e) => set('deadline', e.target.value)}
               />

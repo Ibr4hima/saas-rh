@@ -293,6 +293,8 @@ export interface MembreSuivi {
   enRetard: number;
   /** Ses fiches dont l'auto-évaluation est envoyée, pas encore évaluées. */
   aEvaluer: number;
+  /** Parti de l'APIX : il reste là le temps que son n+1 termine son évaluation. */
+  parti: boolean;
 }
 
 export interface SuiviEquipe {

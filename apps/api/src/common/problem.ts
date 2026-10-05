@@ -22,6 +22,18 @@ export function problem(status: number, code: string, title: string, detail?: st
   throw new ProblemException({ status, code, title, detail });
 }
 
+const TITRES_HTTP: Record<number, string> = {
+  400: 'Requête invalide',
+  401: 'Authentification requise',
+  403: 'Droits insuffisants pour cette action',
+  404: 'Adresse introuvable',
+  405: 'Méthode non permise',
+  409: 'Conflit avec l’état actuel',
+  413: 'Corps de requête trop volumineux',
+  415: 'Format de requête non pris en charge',
+  429: 'Trop de requêtes, réessayez dans un instant',
+};
+
 /** Statut 4xx d'une erreur du body-parser express, ou null si autre chose. */
 function bodyParserStatus(err: unknown): number | null {
   const e = err as { statusCode?: unknown; status?: unknown };
@@ -45,8 +57,11 @@ export class ProblemFilter implements ExceptionFilter {
       code = exception.problem.code;
       detail = exception.problem.detail;
     } else if (exception instanceof HttpException) {
+      // Les erreurs que Nest lève de lui-même parlent anglais (« Cannot GET »,
+      // « Validation failed (uuid is expected) ») : l'utilisateur lit le
+      // titre français de leur statut.
       status = exception.getStatus();
-      title = exception.message;
+      title = TITRES_HTTP[status] ?? 'Requête impossible';
       code = `http_${status}`;
     } else if (bodyParserStatus(exception) !== null) {
       // Erreurs du body-parser express (corps trop gros, JSON malformé…) :

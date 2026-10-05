@@ -700,7 +700,14 @@ export class AbsencesService {
       if (!moi) return { equipe: 0, aViser: 0, aTraiter: rien };
       const { rows } = await tx.execute<{ equipe: number }>(sql`
         SELECT count(*)::int AS equipe FROM employees e
-         WHERE e.manager_employee_id = ${moi} AND e.status = 'active'
+         WHERE e.manager_employee_id = ${moi}
+           AND (e.status = 'active'
+                -- Parti en laissant une auto-évaluation à évaluer : il reste
+                -- de l'équipe le temps que son n+1 la termine.
+                OR EXISTS (SELECT 1 FROM objectifs_fiches f
+                            WHERE f.employee_id = e.id
+                              AND f.commentaires_envoyes_le IS NOT NULL
+                              AND f.evaluation_validee_le IS NULL))
            AND e.id IS DISTINCT FROM ${DG}`);
       const equipe = rows[0]?.equipe ?? 0;
       // Qui est attendu, demande par demande : c'est le circuit qui le dit

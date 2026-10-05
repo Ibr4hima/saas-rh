@@ -29,10 +29,11 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { accord, PIECE } from '../notifications/phrases';
 import { agentDuCompte, directionDuPersonnel, type DirectionDuPersonnel } from '../acces/dch';
 import {
-  exigerDeTraiter,
   reconcilierUneDemande,
-  vueDuTraitement,
+  uneDemandeALaFois,
   voitToutLaFile,
+  vueDuTraitement,
+  exigerDeTraiter,
 } from '../acces/demandes';
 
 /** La signature d'un PDF — le contentType seul ne prouve rien. */
@@ -89,9 +90,26 @@ function modeDeControle(
 }
 
 /**
+ * Une pièce d'identité n'est reçue que si elle vaut encore demain : une date
+ * d'expiration passée, ou celle du jour, la refuse. La même règle au dépôt,
+ * à la vérification et sur la fiche.
+ */
+async function refuserSiExpiree(tx: Tx, expireLe: string): Promise<void> {
+  const { rows } = await tx.execute<{ ecart: number }>(
+    sql`SELECT (${expireLe}::date - CURRENT_DATE)::int AS ecart`,
+  );
+  const ecart = rows[0]?.ecart ?? 1;
+  if (ecart > 0) return;
+  problem(
+    422,
+    'documents.expire',
+    ecart === 0 ? 'Cette pièce expire aujourd’hui' : 'Cette pièce a expiré',
+  );
+}
+
+/**
  * La date d'expiration d'un titre d'identité : exigée pour la CNI et le
- * passeport, et pas encore passée — on ne dépose pas un titre expiré. Les
- * autres types n'en ont pas.
+ * passeport, et encore valable demain. Les autres types n'en ont pas.
  */
 async function dateDExpiration(
   tx: Tx,
@@ -102,17 +120,7 @@ async function dateDExpiration(
   if (!expiresOn) {
     problem(422, 'documents.expiration_requise', 'Indiquez la date d’expiration du document');
   }
-  const { rows } = await tx.execute<{ passee: boolean }>(
-    sql`SELECT ${expiresOn}::date < CURRENT_DATE AS passee`,
-  );
-  if (rows[0]?.passee) {
-    problem(
-      422,
-      'documents.expire',
-      'Ce document a déjà expiré',
-      'Déposez un document en cours de validité.',
-    );
-  }
+  await refuserSiExpiree(tx, expiresOn);
   return expiresOn;
 }
 
@@ -174,6 +182,7 @@ export class EmployeeDocumentsService {
         );
       }
 
+      await uneDemandeALaFois(tx, employeeId);
       const [pendingCount] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(t.employeeDocuments)
@@ -394,7 +403,12 @@ export class EmployeeDocumentsService {
       return;
     }
     if (!titre) {
-      if (mode === 'conformite' || mode === 'autre') return;
+      // Sans nouvelles informations, c'est la date déclarée au dépôt qui vaut :
+      // une pièce expirée depuis, ou ce jour, ne se valide pas.
+      if (mode === 'conformite' || mode === 'autre') {
+        if (doc.expiresOn) await refuserSiExpiree(tx, doc.expiresOn);
+        return;
+      }
       problem(
         422,
         'documents.titre_requis',
@@ -402,17 +416,7 @@ export class EmployeeDocumentsService {
         'Son numéro, sa date de délivrance et sa date d’expiration remplacent celles de la fiche.',
       );
     }
-    const { rows } = await tx.execute<{ expiree: boolean }>(
-      sql`SELECT ${titre.expireLe}::date <= CURRENT_DATE AS expiree`,
-    );
-    if (rows[0]?.expiree) {
-      problem(
-        422,
-        'documents.expire',
-        'Cette pièce a expiré',
-        'Rejetez le document : l’agent en déposera un en cours de validité.',
-      );
-    }
+    await refuserSiExpiree(tx, titre.expireLe);
     const [e] = await tx
       .select({ personId: t.employees.personId })
       .from(t.employees)

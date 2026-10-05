@@ -108,9 +108,20 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
       <EnTete
         titre={nom}
         marque={
-          <span role="img" aria-label="Actif" title="Actif" className="inline-flex text-success">
-            <Icon name="verified" size={22} />
-          </span>
+          m.parti ? (
+            <span
+              role="img"
+              aria-label="Inactif"
+              title="Inactif"
+              className="inline-flex text-ink-muted"
+            >
+              <Icon name="verified_off" size={22} />
+            </span>
+          ) : (
+            <span role="img" aria-label="Actif" title="Actif" className="inline-flex text-success">
+              <Icon name="verified" size={22} />
+            </span>
+          )
         }
         sousTitre={
           <>
@@ -178,6 +189,7 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
       <FichesDuMembre
         employeeId={employeeId}
         prenom={m.givenName}
+        parti={m.parti}
         vue={vue}
         fiches={fiche.data.fiches}
         formations={fiche.data.formations}
@@ -202,6 +214,7 @@ interface Carte {
 function FichesDuMembre({
   employeeId,
   prenom,
+  parti,
   vue,
   fiches,
   formations,
@@ -209,6 +222,8 @@ function FichesDuMembre({
 }: {
   employeeId: string;
   prenom: string;
+  /** Parti : ses objectifs ne se fixent plus, son évaluation se termine. */
+  parti: boolean;
   vue: Vue;
   fiches: FicheSuivi['fiches'];
   formations: FormationDeLaFiche[];
@@ -262,7 +277,9 @@ function FichesDuMembre({
   return parAnnee(cartes, annee).map((groupe) => (
     <section key={groupe.annee} className="flex flex-col gap-7">
       <SeparateurAnnee annee={groupe.annee}>
-        {groupe.annee === annee ? <ChoixSemestre fixes={fixes} onChoisir={choisir} /> : null}
+        {groupe.annee === annee && !parti ? (
+          <ChoixSemestre fixes={fixes} onChoisir={choisir} />
+        ) : null}
       </SeparateurAnnee>
       {groupe.fiches.map((c) => {
         const enregistree = fiches.find((f) => cleDe(f) === cleDe(c));
@@ -278,7 +295,7 @@ function FichesDuMembre({
               carte={c}
               statuts={enregistree?.statuts ?? {}}
               // L'agent a envoyé son auto-évaluation : ses objectifs ne changent plus.
-              verrouillee={Boolean(enregistree?.evaluation.envoyesLe)}
+              verrouillee={parti || Boolean(enregistree?.evaluation.envoyesLe)}
               formations={formations}
               catalogue={catalogue}
               signal={focus.cle === cleDe(c) ? focus.n : 0}

@@ -27,6 +27,16 @@ import {
   type Traitement,
 } from './dch';
 
+/**
+ * Les demandes d'un même agent passent une à une : « déjà demandé », « un
+ * dépôt attend déjà » se lisent puis s'écrivent, et deux clics rapprochés
+ * passeraient tous deux la vérification. Le verrou tient jusqu'à la fin de
+ * la transaction ; il ne bloque que cet agent.
+ */
+export async function uneDemandeALaFois(tx: Tx, employeeId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`demandes:${employeeId}`}))`);
+}
+
 /* ————————————————————————————————————————————————————————————————
    Les demandes du personnel qui vont droit à la DCH : documents,
    changements d'informations, pièces justificatives.

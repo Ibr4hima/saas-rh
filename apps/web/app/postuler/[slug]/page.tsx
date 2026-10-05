@@ -477,7 +477,7 @@ export default function ApplyPage() {
   // ne dit rien de plus que la date, et occupe la place où l'urgence se lira.
   const compteRebours = restants !== null && restants <= 14;
   const urgence = restants !== null && restants <= 7;
-  const age = anciennete(offre.createdAt);
+  const age = anciennete(offre.publishedAt);
   // Le profil recherché, ce que l'offre en dit : une offre antérieure peut ne
   // rien en porter, la rubrique disparaît alors plutôt que d'afficher du vide.
   const profil: { label: string; valeur: string }[] = [

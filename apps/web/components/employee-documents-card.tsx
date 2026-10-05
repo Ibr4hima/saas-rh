@@ -28,6 +28,7 @@ import { api, ApiError, apiUrl } from '../lib/api';
 import { FenetreControleDuTitre } from './controle-titre';
 import { Icon } from './icons';
 import { formatDate } from '../lib/hooks';
+import { demain } from '../lib/temps';
 import { type ViewableDoc } from './doc-viewer';
 import { FenetreDocument } from './fenetre-document';
 import { Modal } from './modal';
@@ -40,12 +41,6 @@ const STATUS_TONES: Record<string, 'orange' | 'teal' | 'rouge'> = {
   pending: 'orange',
   rejected: 'rouge',
 };
-
-/** Aujourd'hui, au calendrier de l'agent : « 2026-10-02 ». */
-function aujourdhui(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 /** Le signe d'un fichier : un PDF — ou une image, sur les dépôts anciens. */
 function SigneFichier({ contentType, grand = false }: { contentType: string; grand?: boolean }) {
@@ -639,7 +634,7 @@ function FenetreDepot({
             <Input
               id={`${id}-expiration`}
               type="date"
-              min={aujourdhui()}
+              min={demain()}
               value={expiresOn}
               onChange={(e) => setExpiration(e.target.value)}
             />

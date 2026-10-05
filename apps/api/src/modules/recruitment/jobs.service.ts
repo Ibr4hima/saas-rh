@@ -38,6 +38,27 @@ function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
   return { tenantId: user.tenantId, userId: user.userId };
 }
 
+/**
+ * Une offre se ferme d'elle-même le lendemain de sa date limite : son statut
+ * dit alors ce que lit le candidat. Relu à chaque lecture de la liste.
+ */
+async function cloreLesOffresEchues(tx: Tx): Promise<void> {
+  await tx.execute(sql`
+    UPDATE job_postings SET status = 'closed', updated_at = now()
+     WHERE status = 'published' AND deadline < CURRENT_DATE`);
+}
+
+/** Une date limite déjà passée ne se publie pas : l'offre serait close à l'instant. */
+async function refuserUneDateLimitePassee(tx: Tx, limite: string | null): Promise<void> {
+  if (!limite) return;
+  const { rows } = await tx.execute<{ passee: boolean }>(
+    sql`SELECT ${limite}::date < CURRENT_DATE AS passee`,
+  );
+  if (rows[0]?.passee) {
+    problem(422, 'recruitment.date_limite_passee', 'La date limite de candidature est passée');
+  }
+}
+
 @Injectable()
 export class JobsService {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
@@ -52,6 +73,7 @@ export class JobsService {
     const publicSlug = randomBytes(16).toString('base64url');
     await this.db.withTenant(ctxOf(user), async (tx) => {
       if (input.orgUnitId) await this.requireOrgUnit(tx, input.orgUnitId);
+      await refuserUneDateLimitePassee(tx, input.deadline ?? null);
       const reference = await this.prochaineReference(tx, user.tenantId);
       await tx.insert(t.jobPostings).values({
         id,
@@ -77,6 +99,7 @@ export class JobsService {
 
   async list(user: SessionUser): Promise<JobPostingView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
+      await cloreLesOffresEchues(tx);
       const rows = await tx
         .select({
           posting: t.jobPostings,
@@ -97,6 +120,7 @@ export class JobsService {
 
   async detail(user: SessionUser, id: string): Promise<JobPostingView> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
+      await cloreLesOffresEchues(tx);
       const row = await this.requirePosting(tx, id);
       const [unit] = row.orgUnitId
         ? await tx
@@ -120,8 +144,16 @@ export class JobsService {
 
   async update(user: SessionUser, id: string, input: UpdateJobPostingInput): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
+      await cloreLesOffresEchues(tx);
       const actuelle = await this.requirePosting(tx, id);
       if (input.orgUnitId) await this.requireOrgUnit(tx, input.orgUnitId);
+      // Ce que l'offre sera une fois modifiée : publiée, sa date limite doit
+      // être à venir. Une date reportée ne la rouvre pas d'elle-même.
+      const statut = input.status ?? actuelle.status;
+      const limite = input.deadline !== undefined ? input.deadline : actuelle.deadline;
+      if (statut === 'published' || input.deadline !== undefined) {
+        await refuserUneDateLimitePassee(tx, limite);
+      }
 
       const changes: Partial<typeof t.jobPostings.$inferInsert> = {};
       if (input.title !== undefined) changes.title = input.title;
@@ -145,6 +177,10 @@ export class JobsService {
         );
       }
       if (input.status !== undefined) changes.status = input.status;
+      // Rendue publique : c'est de ce jour que la page la date.
+      if (input.status === 'published' && actuelle.status !== 'published') {
+        changes.publishedAt = new Date();
+      }
       if (Object.keys(changes).length === 0) return;
       changes.updatedAt = new Date();
       await tx.update(t.jobPostings).set(changes).where(eq(t.jobPostings.id, id));
@@ -293,6 +329,9 @@ export class JobsService {
       if (deleted.length === 0) {
         problem(404, 'recruitment.application_not_found', 'Candidature introuvable');
       }
+      // Le journal avait gardé la candidature à chaque étape (nom, email,
+      // téléphone, message) : il garde la trace des gestes, plus leur contenu.
+      await tx.execute(sql`SELECT erase_audit_payload(ARRAY[${applicationId}]::uuid[])`);
     });
   }
 
@@ -341,6 +380,7 @@ export class JobsService {
       status: p.status as JobPostingView['status'],
       publicSlug: p.publicSlug,
       createdAt: p.createdAt.toISOString(),
+      publishedAt: p.publishedAt?.toISOString() ?? null,
       applicationCounts: counts ?? {},
     };
   }

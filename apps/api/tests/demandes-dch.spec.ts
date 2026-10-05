@@ -228,6 +228,44 @@ describe('les demandes de documents', () => {
     await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
   });
 
+  it('deux clics rapprochés ne font qu’une demande, un dépôt, une mise à jour', async () => {
+    const deuxFois = async (geste: () => Promise<unknown>) =>
+      (await Promise.allSettled([geste(), geste()])).map((r) =>
+        r.status === 'fulfilled'
+          ? 'ok'
+          : r.reason instanceof ProblemException
+            ? r.reason.problem.code
+            : String(r.reason),
+      );
+    expect(
+      (
+        await deuxFois(() =>
+          documents.create(moussa.session, { docTypes: ['attestation_travail'] }),
+        )
+      ).sort(),
+    ).toEqual(['documents.deja_en_cours', 'ok']);
+    expect(
+      (
+        await deuxFois(() =>
+          pieces.upload(moussa.session, moussa.employeeId, {
+            category: 'cv',
+            label: 'CV',
+            filename: 'cv.pdf',
+            contentType: 'application/pdf',
+            contentBase64: PDF,
+          }),
+        )
+      ).sort(),
+    ).toEqual(['documents.deja_en_verification', 'ok']);
+    expect(
+      (
+        await deuxFois(() =>
+          informations.create(moussa.session, { changes: { addressLine: 'Cité Keur Gorgui' } }),
+        )
+      ).sort(),
+    ).toEqual(['ok', 'profile.request_already_pending']);
+  });
+
   it('déjà en préparation : qui la préparait est prévenu ; prête, elle ne s’annule plus', async () => {
     const [id] = (await documents.create(moussa.session, { docTypes: ['bulletin_salaire'] }))
       .ids as [string];
@@ -676,6 +714,8 @@ describe('les pièces justificatives', () => {
   it('CNI et passeport : la date d’expiration est exigée, pas passée — et ne sert qu’au titulaire', async () => {
     expect(await codeOf(() => titre('cni', 'CNI'))).toBe('documents.expiration_requise');
     expect(await codeOf(async () => titre('cni', 'CNI', await dans(-1)))).toBe('documents.expire');
+    // Le jour même aussi : la règle de la fiche et de la vérification.
+    expect(await codeOf(async () => titre('cni', 'CNI', await dans(0)))).toBe('documents.expire');
     const date = await dans(800);
     await titre('cni', 'CNI', date);
     expect((await pieces.list(moussa.session, moussa.employeeId))[0]?.expiresOn).toBe(date);
@@ -740,6 +780,15 @@ describe('les pièces justificatives', () => {
       expect((await pieces.list(moussa.session, moussa.employeeId))[0]?.controle).toBeNull();
       await pieces.review(mariama.session, id, { decision: 'approved' });
       expect(await fiche()).toBe('passport:A0123456:2019-12-05:2029-12-05');
+    });
+
+    it('une pièce expirée entre son dépôt et sa vérification ne se valide pas', async () => {
+      await ficheDeMoussa('passport', 'A0123456', '2019-12-05', '2029-12-05');
+      const { id } = await passeport();
+      await raw(`UPDATE employee_documents SET expires_on = CURRENT_DATE WHERE id = $1`, [id]);
+      expect(await codeOf(() => pieces.review(mariama.session, id, { decision: 'approved' }))).toBe(
+        'documents.expire',
+      );
     });
 
     it('un renouvellement : qui valide saisit la nouvelle pièce — la fiche suit, l’ancien document part', async () => {

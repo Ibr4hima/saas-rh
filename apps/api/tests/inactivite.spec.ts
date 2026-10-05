@@ -23,6 +23,7 @@ import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
 import { AcademyController } from '../src/modules/academy/academy.controller';
 import { AccesGuard, FERME_AUX_INACTIFS_KEY } from '../src/modules/auth/acces.guard';
+import { agentDuCompte, directionDuPersonnel, estDeLaDCH, viseur } from '../src/modules/acces/dch';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { DocumentRequestsService } from '../src/modules/docs/document-requests.service';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
@@ -421,6 +422,26 @@ describe('avant même le passage, un contrat échu ferme les portes', () => {
     expect(
       (await auth.login({ email: moussa.email, password: MOT_DE_PASSE }, {})).user.finDAcces,
     ).toBeNull();
+  });
+
+  it('ni n+1 qui vise, ni membre de la DCH, ni agent de son compte', async () => {
+    // Le contrat de la directrice du Capital Humain finit hier, son dossier
+    // n'est pas encore rangé : elle ne vise plus, ne traite plus.
+    await raw(`UPDATE contracts SET end_date = CURRENT_DATE - 1 WHERE employee_id = $1`, [
+      mariama.employeeId,
+    ]);
+    const vu = await db.withTenant({ tenantId, userId: adminUserId }, async (tx) => {
+      const dch = await directionDuPersonnel(tx);
+      return {
+        fatou: await viseur(tx, fatou.employeeId),
+        directrice: dch?.directeur ?? null,
+        deLaDCH: dch ? await estDeLaDCH(tx, dch, mariama.employeeId) : null,
+        compte: await agentDuCompte(tx, mariama.userId),
+        actif: await viseur(tx, moussa.employeeId),
+      };
+    });
+    expect(vu).toMatchObject({ fatou: null, directrice: null, deLaDCH: false, compte: null });
+    expect(vu.actif?.employeeId).toBe(moussa.employeeId);
   });
 
   it('une affectation ne commence pas après la fin du contrat', async () => {

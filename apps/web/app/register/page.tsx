@@ -3,7 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { registerInputSchema, type RegisterInput, type SessionUser } from '@teranga/contracts';
 import { BoutonMarque } from '../../components/bouton-marque';
@@ -35,6 +35,15 @@ export default function RegisterPage() {
   const conforme = motDePasseConforme(password, email);
   const discordance = conforme && confirm.length > 0 && password !== confirm;
 
+  // Les inscriptions ne s'ouvrent que si le serveur le permet : sinon,
+  // n'importe qui créerait une organisation sur le domaine de l'APIX.
+  const [ouverte, setOuverte] = useState<boolean | null>(null);
+  useEffect(() => {
+    api<{ ouverte: boolean }>('/auth/inscription')
+      .then((r) => setOuverte(r.ouverte))
+      .catch(() => setOuverte(false));
+  }, []);
+
   const onSubmit = form.handleSubmit(async (values) => {
     setServerError(null);
     try {
@@ -44,6 +53,29 @@ export default function RegisterPage() {
       setServerError(err instanceof ApiError ? err.message : 'Inscription impossible, réessayez.');
     }
   });
+
+  if (ouverte === false) {
+    return (
+      <EcranMarque
+        titre="Les inscriptions sont fermées"
+        sousTitre="Un compte s’ouvre sur invitation de la Direction du Capital Humain."
+      >
+        <Link
+          href="/login"
+          className="mt-6 inline-flex h-[46px] w-full items-center justify-center rounded-full bg-primary text-[14.5px] font-bold text-primary-ink shadow-[0_4px_18px_rgb(0_79_145/0.35)] transition-[background-color,transform] duration-150 hover:-translate-y-px hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          Se connecter
+        </Link>
+      </EcranMarque>
+    );
+  }
+  if (ouverte === null) {
+    return (
+      <EcranMarque titre="Créer un compte">
+        <div aria-busy className="h-40" />
+      </EcranMarque>
+    );
+  }
 
   return (
     <EcranMarque

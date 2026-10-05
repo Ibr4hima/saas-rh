@@ -37,6 +37,7 @@ export class ApplyService {
         .select({
           reference: t.jobPostings.reference,
           createdAt: t.jobPostings.createdAt,
+          publishedAt: t.jobPostings.publishedAt,
           title: t.jobPostings.title,
           description: t.jobPostings.description,
           contractType: t.jobPostings.contractType,
@@ -58,7 +59,7 @@ export class ApplyService {
         valid: true,
         organizationName: row.organizationName,
         reference: row.reference,
-        createdAt: row.createdAt.toISOString(),
+        publishedAt: (row.publishedAt ?? row.createdAt).toISOString(),
         title: row.title,
         description: row.description,
         contractType: row.contractType,

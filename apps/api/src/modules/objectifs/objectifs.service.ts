@@ -90,7 +90,17 @@ interface LigneMembre extends Record<string, unknown> {
   work_email: string | null;
   work_phone: string | null;
   phone: string | null;
+  /** Parti de l'APIX : il ne reste là que le temps que son n+1 l'évalue. */
+  parti: boolean;
 }
+
+/** Parti de l'APIX en laissant une auto-évaluation envoyée, pas encore validée. En SQL. */
+const evaluationEnSuspens = (employeeId: SQL) => sql`(
+  (SELECT es.status FROM employees es WHERE es.id = ${employeeId}) <> 'active'
+  AND EXISTS (
+    SELECT 1 FROM objectifs_fiches fs
+     WHERE fs.employee_id = ${employeeId}
+       AND fs.commentaires_envoyes_le IS NOT NULL AND fs.evaluation_validee_le IS NULL))`;
 
 const iso = (d: string | Date | null): string | null =>
   d === null ? null : d instanceof Date ? d.toISOString() : new Date(d).toISOString();
@@ -308,7 +318,7 @@ export class ObjectifsService {
     const an = annee ?? this.anneeCourante();
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
-      const membres = await this.directs(tx, moi);
+      const membres = await this.directs(tx, moi, true);
       const ids = membres.map((m) => m.id);
       const objectifs = ids.length
         ? await this.lire(
@@ -345,7 +355,7 @@ export class ObjectifsService {
     const an = annee ?? this.anneeCourante();
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
-      const membre = (await this.directs(tx, moi)).find((m) => m.id === employeeId);
+      const membre = (await this.directs(tx, moi, true)).find((m) => m.id === employeeId);
       if (!membre) {
         problem(404, 'objectifs.hors_equipe', 'Cet agent ne fait pas partie de votre équipe');
       }
@@ -584,7 +594,7 @@ export class ObjectifsService {
   ): Promise<void> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
-      await this.exigerSonN1(tx, moi, employeeId);
+      await this.exigerSonN1(tx, moi, employeeId, true);
       const f = await this.uneFiche(tx, employeeId, annee, semestre);
       exigerEvaluable(f);
       await tx.execute(sql`
@@ -605,7 +615,7 @@ export class ObjectifsService {
   ): Promise<void> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
-      await this.exigerSonN1(tx, moi, employeeId);
+      await this.exigerSonN1(tx, moi, employeeId, true);
       const f = await this.uneFiche(tx, employeeId, annee, semestre);
       exigerEvaluable(f);
       if (!f.evaluation_note) {
@@ -868,10 +878,17 @@ export class ObjectifsService {
   }
 
   /** L'agent doit être un direct ACTIF de l'appelant — jamais le DG. */
-  private async exigerSonN1(tx: Tx, moi: string, employeeId: string): Promise<void> {
+  private async exigerSonN1(
+    tx: Tx,
+    moi: string,
+    employeeId: string,
+    evaluation = false,
+  ): Promise<void> {
     const { rows } = await tx.execute(sql`
       SELECT 1 FROM employees
-       WHERE id = ${employeeId} AND manager_employee_id = ${moi} AND status = 'active'
+       WHERE id = ${employeeId} AND manager_employee_id = ${moi}
+         AND (status = 'active'
+              ${evaluation ? sql`OR ${evaluationEnSuspens(sql`employees.id`)}` : sql``})
          AND id IS DISTINCT FROM ${DG}`);
     if (rows.length === 0) {
       problem(403, 'objectifs.hors_equipe', 'Vous fixez les objectifs de votre équipe seulement');
@@ -916,14 +933,18 @@ export class ObjectifsService {
     return rows[0]?.sommet === direction.id ? null : direction;
   }
 
-  /** Les directs ACTIFS de l'agent, avec leur poste du jour — jamais le DG. */
-  private async directs(tx: Tx, moi: string): Promise<LigneMembre[]> {
+  /**
+   * Les directs ACTIFS de l'agent, avec leur poste du jour, jamais le DG.
+   * `evaluations` y ajoute ceux qui sont partis en laissant une
+   * auto-évaluation envoyée, pas encore validée : leur n+1 la termine.
+   */
+  private async directs(tx: Tx, moi: string, evaluations = false): Promise<LigneMembre[]> {
     const { rows } = await tx.execute<LigneMembre>(sql`
       SELECT e.id, e.employee_number, p.given_name, p.family_name,
              a.position_title, u.name AS unite,
              ${directionDeLUnite(sql`a.org_unit_id`, 'short_name')} AS direction_abrege,
              ${directionDeLUnite(sql`a.org_unit_id`, 'name')} AS direction_nom,
-             e.work_email, e.work_phone, p.phone
+             e.work_email, e.work_phone, p.phone, e.status <> 'active' AS parti
         FROM employees e
         JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
         LEFT JOIN LATERAL (
@@ -936,7 +957,8 @@ export class ObjectifsService {
         ) a ON true
         LEFT JOIN org_units u ON u.id = a.org_unit_id AND u.deleted_at IS NULL
        WHERE e.manager_employee_id = ${moi}
-         AND e.status = 'active'
+         AND (e.status = 'active'
+              ${evaluations ? sql`OR ${evaluationEnSuspens(sql`e.id`)}` : sql``})
          AND e.id IS DISTINCT FROM ${DG}
        ORDER BY p.family_name, p.given_name, e.id`);
     return rows;
@@ -1012,6 +1034,7 @@ export class ObjectifsService {
       atteints: objectifs.filter((o) => o.atteint).length,
       enRetard: objectifs.filter((o) => o.enRetard).length,
       aEvaluer,
+      parti: m.parti,
     };
   }
 

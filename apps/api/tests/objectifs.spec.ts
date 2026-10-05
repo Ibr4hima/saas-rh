@@ -500,6 +500,38 @@ describe('la fiche d’objectifs', () => {
     ]);
   });
 
+  it('une séance d’écriture laisse une trace au journal, pas une par enregistrement', async () => {
+    const ecrire = (texte: string) =>
+      objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+        annee: 2024,
+        semestre: 1,
+        contenu: [bloc('paragraph', texte)],
+      });
+    for (let i = 1; i <= 15; i += 1) await ecrire(`Brouillon ${i}`);
+    const traces = async () =>
+      (
+        await raw(
+          `SELECT a.action, a.old_data->'contenu'->0->'content'->0->>'text' AS avant
+             FROM audit_log a JOIN objectifs_fiches f ON f.id = a.row_id
+            WHERE a.table_name = 'objectifs_fiches' AND f.employee_id = $1 AND f.annee = 2024
+            ORDER BY a.occurred_at, a.action`,
+          [agents.moussa],
+        )
+      ).rows;
+    expect(await traces()).toEqual([{ action: 'INSERT', avant: null }]);
+    // Dix minutes sans écrire : la séance suivante laisse sa trace, et son
+    // « avant » est l'état où la précédente s'est arrêtée.
+    await raw(
+      `UPDATE audit_log SET occurred_at = occurred_at - interval '11 minutes'
+        WHERE table_name = 'objectifs_fiches'`,
+    );
+    await ecrire('Version relue');
+    expect(await traces()).toEqual([
+      { action: 'INSERT', avant: null },
+      { action: 'UPDATE', avant: 'Brouillon 15' },
+    ]);
+  });
+
   it('elle ne s’écrit que par le n+1, et ses liens ne mènent qu’à des adresses sûres', async () => {
     expect(
       await codeOf(() =>
@@ -730,6 +762,41 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
     expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2023, 1))).toBe(
       'objectifs.fiche_introuvable',
     );
+  });
+});
+
+describe('un agent parti avant son évaluation', () => {
+  it('reste chez son n+1 le temps qu’il l’évalue, sans objectifs à fixer', async () => {
+    // Le 2nd semestre 2024 de Moussa est envoyé, pas encore évalué.
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [agents.moussa]);
+    try {
+      const membre = async () =>
+        (await objectifs.suiviEquipe(session('awa'))).membres.find(
+          (m) => m.employeeId === agents.moussa,
+        );
+      expect(await membre()).toMatchObject({ parti: true, aEvaluer: 1 });
+      expect(
+        await codeOf(() =>
+          objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+            annee: 2025,
+            semestre: 1,
+            contenu: [],
+          }),
+        ),
+      ).toBe('objectifs.hors_equipe');
+      await objectifs.enregistrerEvaluation(session('awa'), agents.moussa, 2024, 2, {
+        commentaires: {},
+        note: 'C',
+      });
+      await objectifs.validerEvaluation(session('awa'), agents.moussa, 2024, 2);
+      // Évalué : il quitte l'équipe.
+      expect(await membre()).toBeUndefined();
+      expect(await codeOf(() => objectifs.fiche(session('awa'), agents.moussa))).toBe(
+        'objectifs.hors_equipe',
+      );
+    } finally {
+      await raw(`UPDATE employees SET status = 'active' WHERE id = $1`, [agents.moussa]);
+    }
   });
 });
 

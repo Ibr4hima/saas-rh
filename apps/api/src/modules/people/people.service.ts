@@ -1613,6 +1613,22 @@ export class PeopleService {
         .where(eq(t.contracts.employeeId, id))
         .returning({ id: t.contracts.id }),
     );
+    // Ce que la suppression du dossier emporterait en cascade sans le dire :
+    // ses certificats (nom et matricule figés), ses habilitations, ses
+    // objectifs et ses fiches d'objectifs (évaluations comprises). Effacés
+    // ici, leurs identifiants rejoignent la récolte, et le journal oublie
+    // aussi leur contenu.
+    for (const table of [
+      sql`academy_certificates`,
+      sql`habilitations`,
+      sql`objectifs`,
+      sql`objectifs_fiches`,
+    ]) {
+      const { rows } = await tx.execute<{ id: string }>(
+        sql`DELETE FROM ${table} WHERE employee_id = ${id} RETURNING id`,
+      );
+      recolter(rows);
+    }
 
     // Ce qui POINTE vers lui se détache — un successeur se nomme, il ne se
     // devine pas. Les subordonnés remontent sans manager plutôt que de

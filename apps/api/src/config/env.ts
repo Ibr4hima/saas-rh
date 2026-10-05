@@ -18,6 +18,16 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   /**
+   * Créer une organisation depuis la page publique d'inscription. Fermé par
+   * défaut : sans cela, n'importe qui pouvait ouvrir une « APIX S.A » et
+   * publier des offres sur le vrai domaine. La toute première organisation
+   * d'une base vide se crée toujours (installation).
+   */
+  INSCRIPTION_OUVERTE: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  /**
    * Derrière un reverse proxy : valeur Express `trust proxy` ('1', 'loopback'…)
    * pour que req.ip reflète le client réel et pas le proxy. Vide = désactivé.
    */

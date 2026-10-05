@@ -151,7 +151,10 @@ export interface EtapeCircuitView {
 
 /** Ce que l'appelant a devant lui : son équipe, ce qu'il vise, ce qu'il traite. */
 export interface CompteursValidations {
-  /** Ses agents directs actifs (le DG n'est de l'équipe de personne). */
+  /**
+   * Ses agents directs actifs, et ceux partis dont l'évaluation reste à
+   * terminer (le DG n'est de l'équipe de personne).
+   */
   equipe: number;
   /** Les demandes de ses agents qui attendent SON visa. */
   aViser: number;

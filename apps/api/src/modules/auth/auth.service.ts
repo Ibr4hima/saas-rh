@@ -40,7 +40,34 @@ function slugify(name: string): string {
 export class AuthService {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
 
+  /**
+   * L'inscription publique crée une organisation : ouverte seulement sur une
+   * base vide (la première organisation) ou si le serveur l'autorise.
+   */
+  async inscriptionOuverte(): Promise<boolean> {
+    if (loadEnv().INSCRIPTION_OUVERTE) return true;
+    const [compte] = await this.db.global.select({ id: t.users.id }).from(t.users).limit(1);
+    return !compte;
+  }
+
   async register(input: RegisterInput, meta: RequestMeta): Promise<IssuedSession> {
+    // Deux premières inscriptions simultanées ne font pas deux organisations :
+    // le verrou tient jusqu'à ce que la première soit écrite.
+    return this.db.global.transaction(async (verrou) => {
+      await verrou.execute(sql`SELECT pg_advisory_xact_lock(hashtext('inscription'))`);
+      return this.inscrire(input, meta);
+    });
+  }
+
+  private async inscrire(input: RegisterInput, meta: RequestMeta): Promise<IssuedSession> {
+    if (!(await this.inscriptionOuverte())) {
+      problem(
+        403,
+        'auth.inscription_fermee',
+        'Les inscriptions sont fermées',
+        'Un compte s’ouvre sur invitation de la Direction du Capital Humain.',
+      );
+    }
     const existing = await this.db.global
       .select({ id: t.users.id })
       .from(t.users)

@@ -75,6 +75,12 @@ function CarteMembre({ membre: m }: { membre: MembreSuivi }) {
               À évaluer
             </Badge>
           ) : null}
+          {/* Parti de l'APIX : il reste là le temps de son évaluation. */}
+          {m.parti ? (
+            <Badge tone="gris" size="sm">
+              Inactif
+            </Badge>
+          ) : null}
         </span>
         <span className="mt-1 flex flex-col gap-[3px]">
           <Ligne icon="badge">

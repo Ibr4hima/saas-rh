@@ -27,10 +27,11 @@ import { accord, de, DOCUMENT } from '../notifications/phrases';
 import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
 import {
   capaciteDesDocuments,
-  exigerDeTraiter,
   reconcilierUneDemande,
-  vueDuTraitement,
+  uneDemandeALaFois,
   voitToutLaFile,
+  vueDuTraitement,
+  exigerDeTraiter,
 } from '../acces/demandes';
 
 /** Le garde-fou et sa définition vivent au contrat : le portail l'annonce. */
@@ -94,6 +95,7 @@ export class DocumentRequestsService {
         );
       }
 
+      await uneDemandeALaFois(tx, self.employeeId);
       const ouvertes = await tx
         .select({ status: t.documentRequests.status, docTypes: t.documentRequests.docTypes })
         .from(t.documentRequests)

@@ -123,6 +123,8 @@ export interface JobPostingView {
   status: JobStatus;
   publicSlug: string;
   createdAt: string;
+  /** Null tant qu'elle n'a jamais été publiée. */
+  publishedAt: string | null;
   /** Nombre de candidatures par étape (pour la liste des offres). */
   applicationCounts: Record<string, number>;
 }
@@ -201,8 +203,8 @@ export type PublicJobInfo =
       organizationName: string;
       /** OFF-AAAA-NNN — ce que le candidat cite quand il relance. */
       reference: string;
-      /** Mise en ligne de l'offre — « publiée il y a trois jours ». */
-      createdAt: string;
+      /** Mise en ligne de l'offre : « publiée il y a trois jours ». */
+      publishedAt: string;
       title: string;
       description: string;
       contractType: string;

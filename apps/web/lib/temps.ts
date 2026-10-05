@@ -74,3 +74,19 @@ export function useHorlogeMinute(): void {
     return () => clearInterval(id);
   }, []);
 }
+
+/** Aujourd'hui, au calendrier de qui saisit : « 2026-10-05 ». */
+export function aujourdhui(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Demain, au calendrier de l'agent : le premier jour qu'une pièce d'identité
+ * peut porter comme date d'expiration (celle du jour est refusée).
+ */
+export function demain(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}

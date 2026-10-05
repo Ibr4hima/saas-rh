@@ -6,6 +6,7 @@ import { DOCUMENT_CATEGORY_LABELS, type EmployeeDocumentView } from '@teranga/co
 import { Button, cn, Field, Input } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../lib/api';
 import { formatDate } from '../lib/hooks';
+import { demain } from '../lib/temps';
 import { Icon } from './icons';
 import { Modal } from './modal';
 
@@ -270,7 +271,7 @@ function Saisie({
           <Input
             id={`${id}-expire`}
             type="date"
-            min={delivreLe || undefined}
+            min={demain()}
             value={expireLe}
             onChange={(e) => onExpireLe(e.target.value)}
           />

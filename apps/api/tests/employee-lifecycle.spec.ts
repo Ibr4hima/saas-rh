@@ -377,8 +377,40 @@ describe('suppression définitive', () => {
 
   it('vide le journal d’audit de ce qu’il avait recopié, et garde la trace', async () => {
     await garnir(awa);
+    // Ce que la cascade emportait sans en effacer la copie au journal : un
+    // certificat (nom figé), une habilitation, un objectif, une fiche notée.
+    await raw(
+      `INSERT INTO academy_certificates (id, tenant_id, employee_id, number, holder_name,
+         holder_number, course_title, course_category, organization_name, score)
+       VALUES ($1,$2,$3,'APX-AWA0-0001','AWA Test','AWA','Excel','bureautique','APIX',0.9)`,
+      [randomUUID(), tenantId, awa.employeeId],
+    );
+    await raw(
+      `INSERT INTO habilitations (id, tenant_id, capacite, employee_id)
+       VALUES ($1,$2,'demandes.conges',$3)`,
+      [randomUUID(), tenantId, awa.employeeId],
+    );
+    await raw(
+      `INSERT INTO objectifs (id, tenant_id, niveau, annee, titre, employee_id)
+       VALUES ($1,$2,'individuel',2026,'Objectif confié à AWA',$3)`,
+      [randomUUID(), tenantId, awa.employeeId],
+    );
+    await raw(
+      `INSERT INTO objectifs_fiches (id, tenant_id, employee_id, annee, semestre, evaluation_note)
+       VALUES ($1,$2,$3,2026,1,'A')`,
+      [randomUUID(), tenantId, awa.employeeId],
+    );
     const personId = awa.personId;
     await people.remove(admin, { ids: [awa.employeeId] });
+    // La note non plus ne survit pas au journal.
+    const notes = await raw(
+      `SELECT count(*)::int AS n FROM audit_log
+        WHERE tenant_id = $1 AND table_name IN
+              ('academy_certificates', 'habilitations', 'objectifs', 'objectifs_fiches')
+          AND (old_data IS NOT NULL OR new_data IS NOT NULL)`,
+      [tenantId],
+    );
+    expect((notes.rows[0] as { n: number }).n).toBe(0);
 
     const lignes = await raw(
       `SELECT action, old_data, new_data FROM audit_log

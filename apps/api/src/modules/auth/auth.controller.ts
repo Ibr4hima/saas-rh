@@ -43,6 +43,12 @@ export class AuthController {
     });
   }
 
+  /** La page d'inscription demande d'abord si elle peut s'afficher. */
+  @Get('auth/inscription')
+  async inscription(): Promise<{ ouverte: boolean }> {
+    return { ouverte: await this.auth.inscriptionOuverte() };
+  }
+
   @Post('auth/register')
   @UsePipes(new ZodValidationPipe(registerInputSchema))
   async register(

@@ -22,10 +22,11 @@ import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
 import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
 import {
-  exigerDeTraiter,
   reconcilierUneDemande,
-  vueDuTraitement,
+  uneDemandeALaFois,
   voitToutLaFile,
+  vueDuTraitement,
+  exigerDeTraiter,
 } from '../acces/demandes';
 
 /**
@@ -83,6 +84,7 @@ export class ProfileChangesService {
         );
       }
 
+      await uneDemandeALaFois(tx, self.employeeId);
       const [pending] = await tx
         .select({ id: t.profileChangeRequests.id })
         .from(t.profileChangeRequests)

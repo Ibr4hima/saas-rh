@@ -335,6 +335,8 @@ export const jobPostings = pgTable('job_postings', {
   status: text('status').notNull().default('draft'),
   publicSlug: text('public_slug').notNull(),
   createdByUserId: uuid('created_by_user_id').notNull(),
+  /** Le jour où l'offre a été rendue publique (la dernière fois). */
+  publishedAt: timestamp('published_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

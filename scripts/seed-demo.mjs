@@ -4,6 +4,8 @@
  * types/fériés/circuit de congés, demandes approuvées et en attente.
  * Usage : node scripts/seed-demo.mjs [http://localhost:3001]
  * Idempotence : à lancer sur une base vide (sinon l'email admin existe déjà).
+ * L'organisation se crée par l'inscription publique : sur une base qui a déjà
+ * des comptes, l'API doit tourner avec INSCRIPTION_OUVERTE=true.
  */
 import { randomUUID } from 'node:crypto';
 import { CODE_DU_TRAVAIL, REGLEMENT_INTERIEUR } from './seed-textes.mjs';

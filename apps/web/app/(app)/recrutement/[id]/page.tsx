@@ -181,8 +181,8 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
           <FaitOffre icon="badge" label="Type de contrat">
             {libelleContrat(j.contractType, j.dureeMois)}
           </FaitOffre>
-          <FaitOffre icon="schedule" label="Publiée il y a">
-            {anciennete(j.createdAt)}
+          <FaitOffre icon="schedule" label={j.publishedAt ? 'Publiée il y a' : 'Créée il y a'}>
+            {anciennete(j.publishedAt ?? j.createdAt)}
           </FaitOffre>
           <FaitOffre icon="event" label="Date limite">
             {j.deadline ? (

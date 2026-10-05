@@ -6,6 +6,7 @@ import {
   type CapaciteDemande,
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
+import { contratEchu } from '../people/en-activite';
 import type { Tx } from '../../db/tenant-db';
 import { notifier, type NotificationDraft } from '../notifications/notifier';
 import {
@@ -65,7 +66,7 @@ export async function viseur(tx: Tx, employeeId: string | null): Promise<Viseur 
       JOIN persons p ON p.id = e.person_id AND p.user_id IS NOT NULL AND p.deleted_at IS NULL
       JOIN users u ON u.id = p.user_id AND u.status = 'active'
       JOIN user_tenant_memberships m ON m.user_id = u.id AND m.tenant_id = e.tenant_id
-     WHERE e.id = ${employeeId} AND e.status = 'active'
+     WHERE e.id = ${employeeId} AND e.status = 'active' AND NOT ${contratEchu(sql`e.id`)}
      LIMIT 1`);
   const r = rows[0];
   return r ? { employeeId: r.employee_id, userId: r.user_id, nom: r.nom, absent: r.absent } : null;
@@ -133,7 +134,8 @@ export async function estDeLaDCH(
     SELECT EXISTS (
       SELECT 1 FROM employees e
         JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
-       WHERE e.id = ${employeeId} AND e.status = 'active') AS actif`);
+       WHERE e.id = ${employeeId} AND e.status = 'active'
+         AND NOT ${contratEchu(sql`e.id`)}) AS actif`);
   if (!rows[0]?.actif) return false;
   return (await directionDeEmploye(tx, employeeId))?.id === dch.uniteId;
 }
@@ -274,7 +276,7 @@ export async function membresDeLaDCH(
               WHERE u.id = p.user_id AND u.status = 'active') AS compte
       FROM employees e
       JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
-     WHERE e.status = 'active'
+     WHERE e.status = 'active' AND NOT ${contratEchu(sql`e.id`)}
        AND e.id IS DISTINCT FROM ${dch.directeurEmployeeId}
        AND ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'id')} = ${dch.uniteId}
      ORDER BY p.family_name, p.given_name`);
@@ -311,11 +313,16 @@ export async function pasSurSoi(
   );
 }
 
-/** L'agent relié à ce compte, s'il est actif. */
+/**
+ * L'agent relié à ce compte, s'il est en activité : dossier actif et contrat
+ * en cours. Un contrat échu compte dès le lendemain du dernier jour, sans
+ * attendre que la liste range le dossier dans les inactifs.
+ */
 export async function agentDuCompte(tx: Tx, userId: string): Promise<string | null> {
   const { rows } = await tx.execute<{ id: string }>(sql`
     SELECT e.id FROM employees e JOIN persons p ON p.id = e.person_id
      WHERE p.user_id = ${userId} AND e.status = 'active' AND p.deleted_at IS NULL
+       AND NOT ${contratEchu(sql`e.id`)}
      LIMIT 1`);
   return rows[0]?.id ?? null;
 }

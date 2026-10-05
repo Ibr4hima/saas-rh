@@ -9,6 +9,7 @@
  * les emporter en partant.
  */
 import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { CreateJobPostingInput, SessionUser } from '@teranga/contracts';
@@ -273,5 +274,72 @@ describe('profil recherché', () => {
     expect(createJobPostingSchema.safeParse({ ...base, langues: ['de'] }).success).toBe(false);
     const { niveauEtudes: _n, ...sansNiveau } = base;
     expect(createJobPostingSchema.safeParse(sansNiveau).success).toBe(false);
+  });
+});
+
+describe('statut et date limite', () => {
+  const jour = async (decalage: number) =>
+    ((await raw(`SELECT (CURRENT_DATE + $1::int)::text AS d`, [decalage])).rows[0] as { d: string })
+      .d;
+  const code = async (geste: () => Promise<unknown>) => {
+    try {
+      await geste();
+      return 'ok';
+    } catch (err) {
+      return (err as { problem?: { code: string } }).problem?.code ?? String(err);
+    }
+  };
+
+  it('date la publication, pas le brouillon', async () => {
+    const { id } = await service.create(rh, { ...offre('Juriste'), deadline: await jour(20) });
+    expect((await service.detail(rh, id)).publishedAt).toBeNull();
+    await service.update(rh, id, { status: 'published' });
+    expect((await service.detail(rh, id)).publishedAt).not.toBeNull();
+  });
+
+  it('ne publie pas une offre dont la date limite est passée', async () => {
+    expect(
+      await code(async () =>
+        service.create(rh, { ...offre('Comptable'), deadline: await jour(-1) }),
+      ),
+    ).toBe('recruitment.date_limite_passee');
+    const { id } = await service.create(rh, { ...offre('Comptable'), deadline: await jour(3) });
+    await raw(`UPDATE job_postings SET deadline = CURRENT_DATE - 1 WHERE id = $1`, [id]);
+    expect(await code(() => service.update(rh, id, { status: 'published' }))).toBe(
+      'recruitment.date_limite_passee',
+    );
+  });
+
+  it('se ferme le lendemain de sa date limite, et ne se rouvre qu’avec une date reportée', async () => {
+    const { id } = await service.create(rh, { ...offre('Auditeur'), deadline: await jour(5) });
+    await service.update(rh, id, { status: 'published' });
+    await raw(`UPDATE job_postings SET deadline = CURRENT_DATE - 1 WHERE id = $1`, [id]);
+    expect((await service.list(rh)).find((o) => o.id === id)?.status).toBe('closed');
+    expect(await code(() => service.update(rh, id, { status: 'published' }))).toBe(
+      'recruitment.date_limite_passee',
+    );
+    await service.update(rh, id, { deadline: await jour(30), status: 'published' });
+    expect((await service.detail(rh, id)).status).toBe('published');
+  });
+});
+
+describe('une candidature supprimée', () => {
+  it('ne laisse au journal que la trace des gestes, pas la personne', async () => {
+    const { id: offreId } = await service.create(rh, offre('Analyste'));
+    const id = randomUUID();
+    await db.withTenant({ tenantId, userId: rhUserId }, (tx) =>
+      tx.execute(sql`
+        INSERT INTO applications (id, tenant_id, job_posting_id, given_name, family_name, email)
+        VALUES (${id}, ${tenantId}, ${offreId}, 'Ndeye', 'Candidate', 'ndeye.candidate@exemple.sn')`),
+    );
+    await service.updateStage(rh, id, 'interview');
+    await service.deleteApplication(rh, id);
+    const { rows } = await raw(
+      `SELECT action, old_data IS NULL AND new_data IS NULL AS vide
+         FROM audit_log WHERE row_id = $1 ORDER BY occurred_at, action`,
+      [id],
+    );
+    expect(rows.map((r) => r.action).sort()).toEqual(['DELETE', 'INSERT', 'UPDATE']);
+    expect(rows.every((r) => r.vide)).toBe(true);
   });
 });
