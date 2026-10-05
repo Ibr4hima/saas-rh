@@ -33,6 +33,7 @@ import { OrgUnitsService } from '../src/modules/people/org-units.service';
 import { PeopleService } from '../src/modules/people/people.service';
 import { AbsencesService } from '../src/modules/time/absences.service';
 import { reconcilierLeCircuit } from '../src/modules/time/visas';
+import { countWorkdays } from '../src/modules/time/workdays';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -733,5 +734,222 @@ describe('un agent de la DCH qui n’a pas encore activé son compte', () => {
         uDSID,
       ]);
     }
+  });
+});
+
+describe('un congé validé qui change', () => {
+  /** Une date à `n` jours d'aujourd'hui, en ISO. */
+  const jour = (n: number) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  /** Un congé déjà validé pour cet agent, de `debut` à `fin` jours d'aujourd'hui. */
+  async function congeValide(qui: Agent, debut: number, fin: number): Promise<string> {
+    const id = randomUUID();
+    await raw(
+      `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date,
+         days_count, status, current_level, requested_by_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'approved',1,$8)`,
+      [id, tenantId, qui.employeeId, typeId, jour(debut), jour(fin), 9, qui.session.userId],
+    );
+    return id;
+  }
+  const jourApres = (iso: string, n: number) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  /** Le problème renvoyé : son code, son titre, son détail. */
+  async function refus(fn: () => Promise<unknown>) {
+    try {
+      await fn();
+    } catch (err) {
+      if (err instanceof ProblemException) return err.problem;
+    }
+    throw new Error('aucun refus');
+  }
+  /** Le congé tel que son N+1 le voit, sur l'écran de son équipe. */
+  async function vueEquipe(id: string, n1: Agent) {
+    const r = (await absences.listRequests(n1.session, { limit: 100, equipe: true } as never)).find(
+      (x) => x.id === id,
+    );
+    if (!r) throw new Error('congé invisible pour ce N+1');
+    return r;
+  }
+  async function appelsReprise(id: string): Promise<string[]> {
+    const { rows } = await raw(
+      `SELECT u.given_name AS qui, split_part(n.dedupe_key, ':', 4) AS etape
+         FROM notifications n JOIN users u ON u.id = n.recipient_user_id
+        WHERE n.dedupe_key LIKE $1 ORDER BY 2, 1`,
+      [`reprise:${id}:appel:%`],
+    );
+    return rows.map((r) => `${r.etape}:${r.qui}`);
+  }
+
+  it('l’agent annule un congé validé à venir : sans validation, N+1 et DCH sont prévenus', async () => {
+    const id = await poser(moussa);
+    await viser(ousmane, id);
+    await viser(mariama, id);
+    expect((await vue(id, moussa.session)).gestes.annuler).toBe(true);
+    await absences.cancel(moussa.session, id);
+    const v = await vue(id);
+    expect(v.status).toBe('cancelled');
+    expect(v.annulation).toBeNull();
+    expect(await notif('Ousmane', `conge:${id}:annule`)).toMatch(
+      /^Le congé annuel de Moussa Test .* est annulé$/,
+    );
+    expect(await notif('Mariama', `conge:${id}:annule`)).not.toBeNull();
+    // L'avis « approuvé » ne dit plus vrai : il a quitté sa boîte.
+    expect(await notif('Moussa', `conge:${id}:verdict`)).toBeNull();
+  });
+
+  it('un congé commencé ne s’annule plus : il s’écourte', async () => {
+    const id = await congeValide(moussa, -2, 6);
+    const v = await vue(id, moussa.session);
+    expect(v.gestes).toMatchObject({ annuler: false, demanderReprise: true });
+    expect(await codeOf(() => absences.cancel(moussa.session, id))).toBe('absence.not_cancellable');
+  });
+
+  it('la DCH annule un congé à venir avec un motif ; ni le N+1, ni l’administrateur', async () => {
+    const id = await poser(moussa);
+    await viser(ousmane, id);
+    await viser(mariama, id);
+    expect(await codeOf(() => absences.cancel(ousmane.session, id, { motif: 'x' }))).toBe(
+      'absence.cancel_forbidden',
+    );
+    expect(await codeOf(() => absences.cancel(admin, id, { motif: 'x' }))).toBe(
+      'absence.cancel_forbidden',
+    );
+    expect(await codeOf(() => absences.cancel(mariama.session, id))).toBe('absence.motif_requis');
+    await absences.cancel(mariama.session, id, { motif: 'Audit de fin d’année' });
+    expect((await vue(id)).annulation).toEqual({
+      par: 'Mariama Test',
+      motif: 'Audit de fin d’année',
+    });
+    expect(await notif('Moussa', `conge:${id}:annule`)).toMatch(
+      /^Votre congé annuel .* est annulé$/,
+    );
+    expect(await notif('Ousmane', `conge:${id}:annule`)).not.toBeNull();
+  });
+
+  it('l’agent revient plus tôt : son N+1 confirme, les jours sont recomptés', async () => {
+    const id = await congeValide(moussa, -3, 7);
+    await absences.demanderReprise(moussa.session, id, { reprise: jour(1) });
+    expect(await appelsReprise(id)).toEqual(['n1:Ousmane']);
+    expect(await absences.compteurs(ousmane.session)).toMatchObject({ aViser: 1 });
+    expect((await vueEquipe(id, ousmane)).gestes.confirmerReprise).toBe(true);
+    expect(
+      await codeOf(() => absences.deciderReprise(khady.session, id, { decision: 'approved' })),
+    ).toBe('absence.reprise_reservee');
+    await absences.deciderReprise(ousmane.session, id, { decision: 'approved' });
+    const v = await vue(id);
+    expect(v).toMatchObject({
+      endDate: jour(0),
+      finInitiale: jour(7),
+      repriseDemandee: null,
+      daysCount: countWorkdays(jour(-3), jour(0), new Set()).workingDays,
+      ecourtement: { nature: 'retour', par: 'Ousmane Test', motif: null },
+    });
+    expect(await appelsReprise(id)).toEqual([]);
+    expect(await notif('Moussa', `conge:${id}:ecourte:%`)).toMatch(
+      /^Votre reprise le .* est confirmée$/,
+    );
+    expect(await notif('Mariama', `conge:${id}:ecourte:%`)).toMatch(/est écourté : reprise le/);
+  });
+
+  it('le N+1 absent : la DCH confirme le retour', async () => {
+    await enConge(ousmane);
+    const id = await congeValide(moussa, -3, 7);
+    await absences.demanderReprise(moussa.session, id, { reprise: jour(2) });
+    expect(await appelsReprise(id)).toEqual(['dch:Mariama']);
+    expect(await absences.compteurs(mariama.session)).toMatchObject({ aTraiter: { conges: 1 } });
+    await absences.deciderReprise(mariama.session, id, { decision: 'approved' });
+    expect((await vue(id)).endDate).toBe(jour(1));
+  });
+
+  it('retour refusé, ou retiré : le congé reste tel quel', async () => {
+    const id = await congeValide(moussa, -3, 7);
+    await absences.demanderReprise(moussa.session, id, { reprise: jour(1) });
+    await absences.deciderReprise(ousmane.session, id, { decision: 'rejected' });
+    expect(await vue(id)).toMatchObject({
+      endDate: jour(7),
+      repriseDemandee: null,
+      ecourtement: null,
+    });
+    expect(await notif('Moussa', `conge:${id}:reprise-refusee:%`)).toMatch(/n’est pas confirmée$/);
+    await absences.demanderReprise(moussa.session, id, { reprise: jour(2) });
+    await absences.retirerReprise(moussa.session, id);
+    expect(await appelsReprise(id)).toEqual([]);
+    expect((await vue(id)).endDate).toBe(jour(7));
+  });
+
+  it('la reprise tombe entre aujourd’hui et la fin prévue, exclue', async () => {
+    const id = await congeValide(moussa, -3, 7);
+    for (const reprise of [jour(-1), jour(7), jour(8)]) {
+      expect(await codeOf(() => absences.demanderReprise(moussa.session, id, { reprise }))).toBe(
+        'absence.reprise_hors_conge',
+      );
+      expect(
+        await codeOf(() => absences.rappeler(ousmane.session, id, { reprise, motif: 'x' })),
+      ).toBe('absence.reprise_hors_conge');
+    }
+    // Aujourd'hui, et la veille de la fin prévue : les deux bornes passent.
+    await absences.demanderReprise(moussa.session, id, { reprise: jour(0) });
+    await absences.demanderReprise(moussa.session, id, { reprise: jour(6) });
+    expect((await vue(id)).repriseDemandee).toBe(jour(6));
+    await absences.retirerReprise(moussa.session, id);
+    const avenir = await poser(moussa);
+    expect(
+      await codeOf(() => absences.demanderReprise(moussa.session, avenir, { reprise: jour(1) })),
+    ).toBe('absence.pas_validee');
+    // Un congé fini ne s'écourte plus.
+    const fini = await congeValide(moussa, -20, -12);
+    expect((await vue(fini, moussa.session)).gestes.demanderReprise).toBe(false);
+    expect(
+      await codeOf(() => absences.demanderReprise(moussa.session, fini, { reprise: jour(-14) })),
+    ).toBe('absence.termine');
+  });
+
+  it('le N+1 rappelle un agent en congé, avec un motif ; un collègue ne le peut pas', async () => {
+    const id = await congeValide(moussa, -3, 7);
+    expect((await vueEquipe(id, ousmane)).gestes.rappeler).toBe(true);
+    expect(
+      await codeOf(() => absences.rappeler(khady.session, id, { reprise: jour(1), motif: 'x' })),
+    ).toBe('absence.rappel_reserve');
+    expect(
+      await codeOf(() => absences.rappeler(moussa.session, id, { reprise: jour(1), motif: 'x' })),
+    ).toBe('absence.propre_demande');
+    await absences.rappeler(ousmane.session, id, {
+      reprise: jour(1),
+      motif: 'Incident en production',
+    });
+    expect(await vue(id)).toMatchObject({
+      endDate: jour(0),
+      ecourtement: { nature: 'rappel', par: 'Ousmane Test', motif: 'Incident en production' },
+    });
+    expect(await notif('Moussa', `conge:${id}:ecourte:%`)).toMatch(
+      /^Votre congé annuel est écourté : reprise le/,
+    );
+    expect(await notif('Mariama', `conge:${id}:ecourte:%`)).not.toBeNull();
+    expect(await notif('Ousmane', `conge:${id}:ecourte:%`)).toBeNull();
+  });
+
+  it('un chevauchement dit quel congé, et le jour où commencer', async () => {
+    const id = await poser(moussa);
+    await viser(ousmane, id);
+    await viser(mariama, id);
+    const v = await vue(id);
+    const p = await refus(() =>
+      absences.createRequest(moussa.session, {
+        employeeId: moussa.employeeId,
+        absenceTypeId: typeId,
+        startDate: v.endDate,
+        endDate: jourApres(v.endDate, 5),
+      }),
+    );
+    expect(p.code).toBe('absence.overlap');
+    expect(p.title).toMatch(/^Cette période chevauche votre congé annuel du /);
+    expect(p.detail).toMatch(/^Votre congé annuel va jusqu’au .* : commencez celle-ci le .*\.$/);
   });
 });

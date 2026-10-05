@@ -14,6 +14,7 @@ import {
   Textarea,
 } from '@teranga/ui';
 import { BoutonDecision } from '../../../../components/bouton-decision';
+import { FenetreRappel, MentionConge } from '../../../../components/conge-valide';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
@@ -21,7 +22,7 @@ import { StatutAbsence } from '../../../../components/statut-absence';
 import { resumeVisas } from '../../../../lib/absences';
 import { api, ApiError } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/hooks';
-import { compte } from '../../../../lib/mots';
+import { compte, de } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    Les congés de l'équipe : ce que le n+1 vise.
@@ -47,6 +48,7 @@ export default function CongesEquipePage() {
   const [refus, setRefus] = useState<AbsenceRequestView | null>(null);
   const [motif, setMotif] = useState('');
   const [message, setMessage] = useState<{ ton: 'ok' | 'erreur'; texte: string } | null>(null);
+  const [rappel, setRappel] = useState<AbsenceRequestView | null>(null);
 
   const rafraichir = async () => {
     await queryClient.invalidateQueries({ queryKey: ['absence-requests'] });
@@ -80,11 +82,36 @@ export default function CongesEquipePage() {
       }),
   });
 
+  // Le retour anticipé d'un agent : le N+1 le confirme, ou le refuse.
+  const confirmer = useMutation({
+    mutationFn: (v: { demande: AbsenceRequestView; decision: 'approved' | 'rejected' }) =>
+      api(`/absence-requests/${v.demande.id}/reprise/decision`, {
+        method: 'POST',
+        body: { decision: v.decision },
+      }),
+    onSuccess: async (_, v) => {
+      setMessage({
+        ton: 'ok',
+        texte:
+          v.decision === 'approved'
+            ? `Retour ${de(v.demande.employeeName)} confirmé.`
+            : `Retour ${de(v.demande.employeeName)} refusé.`,
+      });
+      await rafraichir();
+    },
+    onError: (err) =>
+      setMessage({
+        ton: 'erreur',
+        texte: err instanceof ApiError ? err.message : 'Décision impossible.',
+      }),
+  });
+
   const toutes = demandes.data ?? [];
   const aViser = toutes
-    .filter((r) => r.canDecide)
+    .filter((r) => r.canDecide || r.gestes.confirmerReprise)
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
-  const suivi = toutes.filter((r) => !r.canDecide);
+  const suivi = toutes.filter((r) => !r.canDecide && !r.gestes.confirmerReprise);
+  const occupe = decider.isPending || confirmer.isPending;
 
   return (
     <Page>
@@ -130,31 +157,68 @@ export default function CongesEquipePage() {
                 >
                   <Resume demande={r} />
                   <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                    <BoutonDecision
-                      geste="approuver"
-                      employe={r.employeeName}
-                      enCours={
-                        decider.isPending &&
-                        decider.variables?.demande.id === r.id &&
-                        decider.variables.decision === 'approved'
-                      }
-                      bloque={decider.isPending}
-                      onClick={() => {
-                        setMessage(null);
-                        decider.mutate({ demande: r, decision: 'approved' });
-                      }}
-                    />
-                    <BoutonDecision
-                      geste="refuser"
-                      employe={r.employeeName}
-                      enCours={false}
-                      bloque={decider.isPending}
-                      onClick={() => {
-                        setMessage(null);
-                        setMotif('');
-                        setRefus(r);
-                      }}
-                    />
+                    {r.gestes.confirmerReprise ? (
+                      <>
+                        <BoutonDecision
+                          geste="approuver"
+                          employe={r.employeeName}
+                          objet="le retour"
+                          enCours={
+                            confirmer.isPending &&
+                            confirmer.variables?.demande.id === r.id &&
+                            confirmer.variables.decision === 'approved'
+                          }
+                          bloque={occupe}
+                          onClick={() => {
+                            setMessage(null);
+                            confirmer.mutate({ demande: r, decision: 'approved' });
+                          }}
+                        />
+                        <BoutonDecision
+                          geste="refuser"
+                          employe={r.employeeName}
+                          objet="le retour"
+                          enCours={
+                            confirmer.isPending &&
+                            confirmer.variables?.demande.id === r.id &&
+                            confirmer.variables.decision === 'rejected'
+                          }
+                          bloque={occupe}
+                          onClick={() => {
+                            setMessage(null);
+                            confirmer.mutate({ demande: r, decision: 'rejected' });
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <BoutonDecision
+                          geste="approuver"
+                          employe={r.employeeName}
+                          enCours={
+                            decider.isPending &&
+                            decider.variables?.demande.id === r.id &&
+                            decider.variables.decision === 'approved'
+                          }
+                          bloque={occupe}
+                          onClick={() => {
+                            setMessage(null);
+                            decider.mutate({ demande: r, decision: 'approved' });
+                          }}
+                        />
+                        <BoutonDecision
+                          geste="refuser"
+                          employe={r.employeeName}
+                          enCours={false}
+                          bloque={occupe}
+                          onClick={() => {
+                            setMessage(null);
+                            setMotif('');
+                            setRefus(r);
+                          }}
+                        />
+                      </>
+                    )}
                   </div>
                 </li>
               ))}
@@ -185,7 +249,19 @@ export default function CongesEquipePage() {
                   className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover"
                 >
                   <Resume demande={r} />
-                  <div className="ml-auto flex shrink-0 items-center">
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                    {r.gestes.rappeler ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setMessage(null);
+                          setRappel(r);
+                        }}
+                      >
+                        Rappeler
+                      </Button>
+                    ) : null}
                     <StatutAbsence
                       statut={r.status}
                       etape={r.etapeAttendue}
@@ -198,6 +274,18 @@ export default function CongesEquipePage() {
           )}
         </CorpsDefilant>
       </CartePleine>
+
+      {rappel ? (
+        <FenetreRappel
+          demande={rappel}
+          onClose={() => setRappel(null)}
+          onFait={async () => {
+            setMessage({ ton: 'ok', texte: `Rappel envoyé à ${rappel.employeeName}.` });
+            setRappel(null);
+            await rafraichir();
+          }}
+        />
+      ) : null}
 
       {refus ? (
         <Modal
@@ -249,6 +337,7 @@ function Resume({ demande: r }: { demande: AbsenceRequestView }) {
         {r.absenceTypeName} · {formatDate(r.startDate)} → {formatDate(r.endDate)} ·{' '}
         {compte(r.daysCount, 'jour')}
       </p>
+      <MentionConge demande={r} />
       {r.reason ? (
         <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-ink-muted">{r.reason}</p>
       ) : null}

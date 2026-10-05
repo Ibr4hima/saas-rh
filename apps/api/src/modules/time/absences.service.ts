@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   AbsencePreview,
   AbsenceRequestView,
+  AnnulerAbsenceInput,
   AbsenceType,
   BalanceView,
   CompteursValidations,
@@ -11,9 +12,12 @@ import type {
   CreateAbsenceTypeInput,
   CreateHolidayInput,
   DecideAbsenceRequestInput,
+  DeciderRepriseInput,
+  DemanderRepriseInput,
   EtapeCircuitView,
   Holiday,
   ListAbsenceRequestsQuery,
+  RappelerInput,
   SessionUser,
   SetBalanceInput,
   UpdateAbsenceTypeInput,
@@ -30,6 +34,7 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayDedupeKey } from '../notifications/notifications.service';
+import { absence, duAu, frDate } from '../notifications/phrases';
 import { DG } from '../people/chaine';
 import { notifier } from '../notifications/notifier';
 import {
@@ -42,14 +47,18 @@ import {
 } from '../acces/dch';
 import { aTraiterPar, voitToutLaFile } from '../acces/demandes';
 import {
+  annoncerLeChangement,
   annoncerLeVerdict,
   attendu,
+  attenduPourLaReprise,
   lireCircuit,
   lireDemande,
   NIVEAU_DCH,
   NIVEAU_N1,
   reconcilierDemande,
   reconcilierLeCircuit,
+  reconcilierReprise,
+  reprisesEnAttente,
   type Attendu,
 } from './visas';
 import { countWorkdays } from './workdays';
@@ -115,6 +124,20 @@ function pgCode(err: unknown): string | undefined {
 function num(v: string | number | null | undefined): number {
   return v == null ? 0 : Number(v);
 }
+
+/** Aujourd'hui, à Dakar (UTC+0, sans heure d'été). */
+function aujourdhui(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Le jour d'avant, le jour d'après : des dates ISO, sans fuseau. */
+function decaler(iso: string, jours: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + jours);
+  return d.toISOString().slice(0, 10);
+}
+const veille = (iso: string) => decaler(iso, -1);
+const lendemain = (iso: string) => decaler(iso, 1);
 
 /**
  * Le droit à porter d'office sur un solde d'année. Seul un quota annuel s'y
@@ -598,6 +621,22 @@ export class AbsencesService {
           conges += 1;
         }
       }
+      // Les retours anticipés à confirmer : le N+1, sinon la DCH.
+      for (const id of await reprisesEnAttente(tx)) {
+        const demande = await lireCircuit(tx, id);
+        if (!demande) continue;
+        const att = await attenduPourLaReprise(tx, demande);
+        if (att.valideurs.some((v) => v.employeeId === moi)) {
+          if (att.etape === 'n1') aViser += 1;
+          else conges += 1;
+        } else if (
+          att.etape === 'dch' &&
+          !att.demandeDuDirecteur &&
+          att.dch?.directeurEmployeeId === moi
+        ) {
+          conges += 1;
+        }
+      }
       return { equipe, aViser, aTraiter: { conges, ...(await aTraiterPar(tx, moi)) } };
     });
   }
@@ -882,16 +921,61 @@ export class AbsencesService {
         await reconcilierLeCircuit(tx, user.tenantId);
       });
     } catch (err) {
-      if (pgCode(err) === '23P01') {
-        problem(
-          409,
-          'absence.overlap',
-          'Cette période chevauche une absence déjà demandée ou approuvée',
-        );
-      }
+      if (pgCode(err) === '23P01') await this.refuserLeChevauchement(user, input);
       throw err;
     }
     return { id, daysCount };
+  }
+
+  /**
+   * La période en chevauche une autre : on dit laquelle. Quand elle ne
+   * déborde que la fin d'un congé (un arrêt maladie qui prolonge un congé,
+   * par exemple), on dit aussi le jour où la commencer.
+   */
+  private async refuserLeChevauchement(
+    user: SessionUser,
+    input: CreateAbsenceRequestInput,
+  ): Promise<never> {
+    const [autre] = await this.db.withTenant(ctxOf(user), (tx) =>
+      tx
+        .select({
+          debut: t.absenceRequests.startDate,
+          fin: t.absenceRequests.endDate,
+          statut: t.absenceRequests.status,
+          type: t.absenceTypes.name,
+        })
+        .from(t.absenceRequests)
+        .innerJoin(t.absenceTypes, eq(t.absenceTypes.id, t.absenceRequests.absenceTypeId))
+        .where(
+          and(
+            eq(t.absenceRequests.employeeId, input.employeeId),
+            inArray(t.absenceRequests.status, ['pending', 'approved']),
+            lte(t.absenceRequests.startDate, input.endDate),
+            gte(t.absenceRequests.endDate, input.startDate),
+          ),
+        )
+        .orderBy(asc(t.absenceRequests.startDate))
+        .limit(1),
+    );
+    if (!autre) {
+      problem(
+        409,
+        'absence.overlap',
+        'Cette période chevauche une absence déjà demandée ou approuvée',
+      );
+    }
+    const a = absence(autre.type);
+    const periode = duAu(autre.debut, autre.fin);
+    problem(
+      409,
+      'absence.overlap',
+      autre.statut === 'approved'
+        ? `Cette période chevauche votre ${a.nom} ${periode}`
+        : `Cette période chevauche votre demande de ${a.nom} ${periode}`,
+      autre.debut <= input.startDate && autre.fin < input.endDate
+        ? `${autre.statut === 'approved' ? 'Votre' : 'Votre demande de'} ${a.nom} va jusqu’au ${frDate(autre.fin)} : commencez celle-ci le ${frDate(lendemain(autre.fin))}.`
+        : undefined,
+    );
   }
 
   async listRequests(
@@ -1125,52 +1209,331 @@ export class AbsencesService {
     });
   }
 
-  async cancel(user: SessionUser, requestId: string): Promise<void> {
+  /**
+   * Annuler. L'agent annule sa demande en attente, ou son congé validé tant
+   * qu'il n'a pas commencé : c'est immédiat, il redevient disponible et ses
+   * jours lui reviennent. La DCH annule le congé validé d'un autre, à venir,
+   * en disant pourquoi. Un congé commencé ne s'annule plus : il s'écourte.
+   */
+  async cancel(
+    user: SessionUser,
+    requestId: string,
+    input: AnnulerAbsenceInput = {},
+  ): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
-      const [request] = await tx
-        .select()
-        .from(t.absenceRequests)
-        .where(eq(t.absenceRequests.id, requestId))
-        .for('update')
-        .limit(1);
-      if (!request) {
-        problem(404, 'absence.request_not_found', 'Demande introuvable');
-      }
-      if (!(await voitToutLaFile(tx, user, 'conges'))) {
-        // Le titulaire du dossier peut annuler sa demande en attente, même si
-        // c'est la DCH qui l'avait saisie pour lui. La DCH (son directeur,
-        // les membres habilités aux congés) annule aussi un congé à venir.
-        const self = await this.selfEmployeeId(tx, user);
-        const isOwnPending =
-          (request.requestedByUserId === user.userId || request.employeeId === self) &&
-          request.status === 'pending';
-        if (!isOwnPending) {
+      const request = await this.verrouiller(tx, requestId);
+      const self = await this.selfEmployeeId(tx, user);
+      const sienne = request.employeeId === self || request.requestedByUserId === user.userId;
+      const aVenir = request.status === 'approved' && request.startDate > aujourdhui();
+      if (sienne) {
+        if (request.status !== 'pending' && !aVenir) {
+          problem(
+            422,
+            'absence.not_cancellable',
+            request.status === 'approved'
+              ? 'Ce congé a déjà commencé'
+              : 'Cette demande ne peut plus être annulée',
+            request.status === 'approved'
+              ? 'Pour revenir plus tôt, indiquez votre jour de reprise : votre N+1 le confirmera.'
+              : undefined,
+          );
+        }
+      } else {
+        if (!(await this.gereLesConges(tx, user))) {
           problem(
             403,
             'absence.cancel_forbidden',
-            'Vous ne pouvez annuler que vos propres demandes en attente',
+            'Vous ne pouvez annuler que vos propres demandes',
           );
         }
+        if (!aVenir) {
+          problem(
+            422,
+            'absence.not_cancellable',
+            'Seul un congé validé qui n’a pas commencé s’annule',
+            request.status === 'pending'
+              ? 'Une demande en attente se refuse.'
+              : 'Un congé en cours se rappelle.',
+          );
+        }
+        if (!input.motif?.trim()) {
+          problem(422, 'absence.motif_requis', 'Indiquez le motif de l’annulation');
+        }
       }
-      const today = new Date().toISOString().slice(0, 10);
-      const cancellable =
-        request.status === 'pending' ||
-        (request.status === 'approved' && request.startDate > today);
-      if (!cancellable) {
-        problem(
-          422,
-          'absence.not_cancellable',
-          'Cette demande ne peut plus être annulée',
-          'Seules les demandes en attente ou approuvées non commencées sont annulables.',
-        );
+      const d = request.status === 'approved' ? await lireDemande(tx, requestId) : null;
+      await tx
+        .update(t.absenceRequests)
+        .set({
+          status: 'cancelled',
+          decidedAt: new Date(),
+          repriseDemandee: null,
+          annuleParUserId: sienne ? null : user.userId,
+          annuleMotif: sienne ? null : input.motif!.trim(),
+          updatedAt: new Date(),
+        })
+        .where(eq(t.absenceRequests.id, requestId));
+      // Plus rien à viser ni à confirmer : les appels restés dans les boîtes s'en vont.
+      await reconcilierDemande(tx, requestId);
+      await reconcilierReprise(tx, requestId);
+      if (d) await annoncerLeChangement(tx, d, { quoi: 'annule', parLAgent: sienne }, user.userId);
+    });
+  }
+
+  /**
+   * L'agent revient plus tôt : il dit le jour où il reprend. Les jours lui
+   * sont rendus une fois le retour confirmé par son N+1 (la DCH, à défaut) :
+   * c'est lui qui voit l'agent revenu.
+   */
+  async demanderReprise(
+    user: SessionUser,
+    requestId: string,
+    input: DemanderRepriseInput,
+  ): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const request = await this.verrouiller(tx, requestId);
+      if ((await this.selfEmployeeId(tx, user)) !== request.employeeId) {
+        problem(403, 'absence.reprise_la_sienne', 'Vous ne pouvez écourter que vos congés');
+      }
+      this.exigerEnCours(request);
+      await this.exigerUneReprise(tx, request, input.reprise);
+      await tx
+        .update(t.absenceRequests)
+        .set({ repriseDemandee: input.reprise, updatedAt: new Date() })
+        .where(eq(t.absenceRequests.id, requestId));
+      await reconcilierReprise(tx, requestId);
+    });
+  }
+
+  /** L'agent retire sa demande de reprise, tant qu'elle n'est pas confirmée. */
+  async retirerReprise(user: SessionUser, requestId: string): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const request = await this.verrouiller(tx, requestId);
+      if ((await this.selfEmployeeId(tx, user)) !== request.employeeId) {
+        problem(403, 'absence.reprise_la_sienne', 'Vous ne pouvez écourter que vos congés');
+      }
+      if (!request.repriseDemandee) {
+        problem(422, 'absence.pas_de_reprise', 'Aucune reprise en attente sur ce congé');
       }
       await tx
         .update(t.absenceRequests)
-        .set({ status: 'cancelled', decidedAt: new Date() })
+        .set({ repriseDemandee: null, updatedAt: new Date() })
         .where(eq(t.absenceRequests.id, requestId));
-      // Plus rien à viser : les appels restés dans les boîtes s'en vont.
-      await reconcilierDemande(tx, requestId);
+      await reconcilierReprise(tx, requestId);
     });
+  }
+
+  /** Le N+1 (la DCH, à défaut) confirme le retour de l'agent, ou le refuse. */
+  async deciderReprise(
+    user: SessionUser,
+    requestId: string,
+    input: DeciderRepriseInput,
+  ): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const request = await this.verrouiller(tx, requestId);
+      const reprise = request.repriseDemandee;
+      if (request.status !== 'approved' || !reprise) {
+        problem(422, 'absence.pas_de_reprise', 'Aucune reprise à confirmer sur ce congé');
+      }
+      if ((await this.selfEmployeeId(tx, user)) === request.employeeId) {
+        problem(403, 'absence.propre_demande', 'Vous ne pouvez pas confirmer votre propre retour');
+      }
+      if (!(await this.confirmeLaReprise(tx, user, request))) {
+        problem(
+          403,
+          'absence.reprise_reservee',
+          'Ce retour attend la confirmation de son N+1',
+          'À défaut de N+1 présent, la DCH le confirme.',
+        );
+      }
+      const d = (await lireDemande(tx, requestId))!;
+      if (input.decision === 'approved') {
+        await this.ecourter(tx, request, reprise, { nature: 'retour', par: user.userId });
+        await reconcilierReprise(tx, requestId);
+        await annoncerLeChangement(
+          tx,
+          d,
+          { quoi: 'ecourte', reprise, nature: 'retour' },
+          user.userId,
+        );
+        return;
+      }
+      await tx
+        .update(t.absenceRequests)
+        .set({ repriseDemandee: null, updatedAt: new Date() })
+        .where(eq(t.absenceRequests.id, requestId));
+      await reconcilierReprise(tx, requestId);
+      await annoncerLeChangement(tx, d, { quoi: 'reprise_refusee', reprise }, user.userId);
+    });
+  }
+
+  /**
+   * Rappeler un agent en congé : son N+1 ou la DCH écourtent le congé en
+   * cours, sans son accord, en disant pourquoi. Effet immédiat.
+   */
+  async rappeler(user: SessionUser, requestId: string, input: RappelerInput): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const request = await this.verrouiller(tx, requestId);
+      if ((await this.selfEmployeeId(tx, user)) === request.employeeId) {
+        problem(
+          403,
+          'absence.propre_demande',
+          'Pour revenir plus tôt, indiquez votre jour de reprise',
+        );
+      }
+      if (!(await this.peutRappeler(tx, user, request.employeeId))) {
+        problem(
+          403,
+          'absence.rappel_reserve',
+          'Seuls son N+1 et la DCH rappellent un agent en congé',
+        );
+      }
+      this.exigerEnCours(request);
+      await this.exigerUneReprise(tx, request, input.reprise);
+      const d = (await lireDemande(tx, requestId))!;
+      await this.ecourter(tx, request, input.reprise, {
+        nature: 'rappel',
+        par: user.userId,
+        motif: input.motif,
+      });
+      await reconcilierReprise(tx, requestId);
+      await annoncerLeChangement(
+        tx,
+        d,
+        { quoi: 'ecourte', reprise: input.reprise, nature: 'rappel' },
+        user.userId,
+      );
+    });
+  }
+
+  /** La demande, verrouillée pour qu'on la change. */
+  private async verrouiller(tx: Tx, requestId: string) {
+    const [request] = await tx
+      .select()
+      .from(t.absenceRequests)
+      .where(eq(t.absenceRequests.id, requestId))
+      .for('update')
+      .limit(1);
+    if (!request) problem(404, 'absence.request_not_found', 'Demande introuvable');
+    return request;
+  }
+
+  /** Un congé validé, commencé et pas encore fini : seul celui-là s'écourte. */
+  private exigerEnCours(request: typeof t.absenceRequests.$inferSelect): void {
+    if (request.status !== 'approved') {
+      problem(422, 'absence.pas_validee', 'Seul un congé validé s’écourte');
+    }
+    if (request.startDate > aujourdhui()) {
+      problem(
+        422,
+        'absence.pas_commence',
+        'Ce congé n’a pas commencé',
+        'Un congé qui n’a pas commencé s’annule.',
+      );
+    }
+    if (request.endDate < aujourdhui()) {
+      problem(422, 'absence.termine', 'Ce congé est terminé');
+    }
+  }
+
+  /**
+   * Le jour de reprise : à partir d'aujourd'hui, et avant la fin prévue du
+   * congé (décidé avec l'APIX). Il reste au moins un jour ouvré de congé
+   * avant lui : sinon ce n'est plus écourter, c'est annuler.
+   */
+  private async exigerUneReprise(
+    tx: Tx,
+    request: typeof t.absenceRequests.$inferSelect,
+    reprise: string,
+  ): Promise<void> {
+    const today = aujourdhui();
+    if (reprise < today || reprise >= request.endDate) {
+      problem(
+        422,
+        'absence.reprise_hors_conge',
+        'Le jour de reprise doit tomber entre aujourd’hui et la fin prévue du congé',
+        `Entre le ${frDate(today)} et le ${frDate(veille(request.endDate))}.`,
+      );
+    }
+    if ((await this.joursOuvres(tx, request.startDate, veille(reprise))) === 0) {
+      problem(
+        422,
+        'absence.reprise_sans_conge',
+        'Il ne resterait aucun jour de congé avant cette reprise',
+      );
+    }
+  }
+
+  /** Écourte le congé : il finit la veille de la reprise, ses jours sont recomptés. */
+  private async ecourter(
+    tx: Tx,
+    request: typeof t.absenceRequests.$inferSelect,
+    reprise: string,
+    par: { nature: 'retour' | 'rappel'; par: string; motif?: string },
+  ): Promise<void> {
+    const fin = veille(reprise);
+    const jours = await this.joursOuvres(tx, request.startDate, fin);
+    await tx
+      .update(t.absenceRequests)
+      .set({
+        endDate: fin,
+        daysCount: jours.toString(),
+        finInitiale: request.finInitiale ?? request.endDate,
+        repriseDemandee: null,
+        ecourteNature: par.nature,
+        ecourteParUserId: par.par,
+        ecourteLe: new Date(),
+        ecourteMotif: par.motif?.trim() || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(t.absenceRequests.id, request.id));
+  }
+
+  private async joursOuvres(tx: Tx, debut: string, fin: string): Promise<number> {
+    if (fin < debut) return 0;
+    const feries = await tx
+      .select({ day: sql<string>`${t.holidays.day}` })
+      .from(t.holidays)
+      .where(isNotNull(t.holidays.day));
+    return countWorkdays(debut, fin, new Set(feries.map((h) => h.day))).workingDays;
+  }
+
+  /**
+   * Qui gère les congés pour la DCH : son directeur, les membres habilités
+   * qui y sont encore. Pas l'administrateur, qui ne traite aucune demande.
+   */
+  private async gereLesConges(tx: Tx, user: SessionUser): Promise<boolean> {
+    const moi = await this.selfEmployeeId(tx, user);
+    if (!moi) return false;
+    const dch = await directionDuPersonnel(tx);
+    if (!dch) return false;
+    if (dch.directeurEmployeeId === moi) return true;
+    if (!(await detenteursDe(tx, 'demandes.conges')).includes(moi)) return false;
+    return (await membreDCH(tx, dch, moi)) !== 'parti';
+  }
+
+  /** Son N+1, ou la DCH, rappellent un agent. */
+  private async peutRappeler(tx: Tx, user: SessionUser, employeeId: string): Promise<boolean> {
+    const moi = await this.selfEmployeeId(tx, user);
+    if (!moi) return false;
+    const { rows } = await tx.execute<{ n1: string | null }>(sql`
+      SELECT manager_employee_id AS n1 FROM employees WHERE id = ${employeeId}`);
+    // Le DG ne relève de personne : il n'a pas de N+1 qui le rappelle.
+    if (rows[0]?.n1 === moi) return true;
+    return this.gereLesConges(tx, user);
+  }
+
+  /** Celui qui doit confirmer ce retour, ou le directeur, qui garde la main. */
+  private async confirmeLaReprise(
+    tx: Tx,
+    user: SessionUser,
+    request: { id: string; employeeId: string },
+  ): Promise<boolean> {
+    const att = await attenduPourLaReprise(tx, request);
+    if (att.valideurs.some((v) => v.userId === user.userId)) return true;
+    const moi = await this.selfEmployeeId(tx, user);
+    return Boolean(
+      att.etape === 'dch' && moi && att.dch?.directeurEmployeeId === moi && !att.demandeDuDirecteur,
+    );
   }
 
   /** Justificatif d'une demande — la DCH (données sensibles) ou le titulaire. */
@@ -1369,6 +1732,28 @@ export class AbsencesService {
        ORDER BY a.level`);
 
     const moi = await this.selfEmployeeId(tx, user);
+    const today = aujourdhui();
+    const gere = await this.gereLesConges(tx, user);
+    // Qui a écourté ou annulé, et le N+1 de chaque agent : lus une fois.
+    const auteurs = [
+      ...new Set(rows.flatMap(({ request: r }) => [r.ecourteParUserId, r.annuleParUserId])),
+    ].filter((x): x is string => Boolean(x));
+    const noms = new Map<string, string>();
+    if (auteurs.length > 0) {
+      const lus = await tx
+        .select({ id: t.users.id, prenom: t.users.givenName, nom: t.users.familyName })
+        .from(t.users)
+        .where(inArray(t.users.id, auteurs));
+      for (const u of lus) noms.set(u.id, `${u.prenom} ${u.nom}`);
+    }
+    const n1s = new Map(
+      (
+        await tx
+          .select({ id: t.employees.id, n1: t.employees.managerEmployeeId })
+          .from(t.employees)
+          .where(inArray(t.employees.id, [...new Set(rows.map((r) => r.request.employeeId))]))
+      ).map((e) => [e.id, e.n1]),
+    );
     const vues: AbsenceRequestView[] = [];
     for (const {
       request,
@@ -1456,6 +1841,28 @@ export class AbsencesService {
             }
           : null;
 
+      // Ce que l'utilisateur peut faire de ce congé, s'il est validé.
+      const sienne = moi !== null && moi === request.employeeId;
+      const valide = request.status === 'approved';
+      const commence = valide && request.startDate <= today;
+      const aVenir = valide && request.startDate > today;
+      const sonN1 = Boolean(moi && n1s.get(request.employeeId) === moi);
+      let repriseAttendDe: string | null = null;
+      let confirmerReprise = false;
+      if (valide && request.repriseDemandee) {
+        const attRep = await attenduPourLaReprise(tx, request);
+        repriseAttendDe = nomsDe(attRep.valideurs);
+        confirmerReprise =
+          !sienne &&
+          (attRep.valideurs.some((v) => v.userId === user.userId) ||
+            Boolean(
+              attRep.etape === 'dch' &&
+              moi &&
+              attRep.dch?.directeurEmployeeId === moi &&
+              !attRep.demandeDuDirecteur,
+            ));
+      }
+
       vues.push({
         id: request.id,
         employeeId: request.employeeId,
@@ -1476,6 +1883,29 @@ export class AbsencesService {
         canDecide,
         traitement,
         documentName: documentRows.find((d) => d.requestId === request.id)?.filename ?? null,
+        finInitiale: request.finInitiale,
+        ecourtement:
+          request.ecourteNature === 'retour' || request.ecourteNature === 'rappel'
+            ? {
+                nature: request.ecourteNature,
+                par: request.ecourteParUserId ? (noms.get(request.ecourteParUserId) ?? null) : null,
+                le: (request.ecourteLe ?? request.updatedAt).toISOString(),
+                motif: request.ecourteMotif,
+              }
+            : null,
+        annulation:
+          request.status === 'cancelled' && request.annuleParUserId
+            ? { par: noms.get(request.annuleParUserId) ?? null, motif: request.annuleMotif }
+            : null,
+        repriseDemandee: valide ? request.repriseDemandee : null,
+        repriseAttendDe,
+        gestes: {
+          annuler: sienne ? request.status === 'pending' || aVenir : gere && aVenir,
+          demanderReprise:
+            sienne && commence && request.endDate > today && !request.repriseDemandee,
+          confirmerReprise,
+          rappeler: !sienne && commence && request.endDate > today && (sonN1 || gere),
+        },
         approvals: visas.map((a) => ({
           level: a.level,
           decision: a.decision,

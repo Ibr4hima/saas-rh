@@ -211,6 +211,36 @@ export const decideAbsenceRequestSchema = z.object({
 });
 export type DecideAbsenceRequestInput = z.infer<typeof decideAbsenceRequestSchema>;
 
+// ---------- Un congé validé qui change ----------
+
+/**
+ * Annuler. L'agent annule le sien tant qu'il n'a pas commencé, sans motif ;
+ * la DCH qui annule le congé validé d'un autre dit pourquoi.
+ */
+export const annulerAbsenceSchema = z
+  .object({
+    motif: z.string().trim().max(1000).optional(),
+  })
+  .default({});
+export type AnnulerAbsenceInput = z.infer<typeof annulerAbsenceSchema>;
+
+/** Revenir plus tôt : le jour où l'agent reprend le travail. */
+export const demanderRepriseSchema = z.object({ reprise: isoDate });
+export type DemanderRepriseInput = z.infer<typeof demanderRepriseSchema>;
+
+/** Le N+1 (ou la DCH, à défaut) confirme le retour, ou le refuse. */
+export const deciderRepriseSchema = z.object({
+  decision: z.enum(['approved', 'rejected']),
+});
+export type DeciderRepriseInput = z.infer<typeof deciderRepriseSchema>;
+
+/** Rappeler l'agent en congé : le jour où il reprend, et pourquoi. */
+export const rappelerSchema = z.object({
+  reprise: isoDate,
+  motif: z.string().trim().min(1, 'Indiquez le motif du rappel').max(1000),
+});
+export type RappelerInput = z.infer<typeof rappelerSchema>;
+
 export const listAbsenceRequestsQuerySchema = z.object({
   status: z.enum(['pending', 'approved', 'rejected', 'cancelled']).optional(),
   employeeId: z.uuid().optional(),
@@ -255,6 +285,28 @@ export interface AbsenceRequestView {
   approvals: ApprovalView[];
   /** Nom du justificatif PDF joint, s'il y en a un. */
   documentName: string | null;
+  /** La fin validée au départ, quand le congé a été écourté. */
+  finInitiale: string | null;
+  /** Écourté : le retour de l'agent, confirmé, ou un rappel de l'employeur. */
+  ecourtement: {
+    nature: 'retour' | 'rappel';
+    par: string | null;
+    le: string;
+    motif: string | null;
+  } | null;
+  /** Annulé par la DCH (et non par l'agent) : qui, et pourquoi. */
+  annulation: { par: string | null; motif: string | null } | null;
+  /** Le jour de reprise que l'agent demande, tant qu'il attend confirmation. */
+  repriseDemandee: string | null;
+  /** Qui doit confirmer ce retour. */
+  repriseAttendDe: string | null;
+  /** Ce que l'utilisateur courant peut faire de ce congé. */
+  gestes: {
+    annuler: boolean;
+    demanderReprise: boolean;
+    confirmerReprise: boolean;
+    rappeler: boolean;
+  };
   createdAt: string;
 }
 

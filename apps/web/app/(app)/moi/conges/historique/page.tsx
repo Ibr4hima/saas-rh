@@ -17,6 +17,11 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
+import {
+  FenetreAnnulation,
+  FenetreReprise,
+  MentionConge,
+} from '../../../../../components/conge-valide';
 import { type ViewableDoc } from '../../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../../components/fenetre-document';
 import { Icon } from '../../../../../components/icons';
@@ -37,6 +42,9 @@ export default function HistoriqueCongesPage() {
   const queryClient = useQueryClient();
   const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Un congé validé : l'annuler (pas commencé) ou l'écourter (en cours).
+  const [aAnnuler, setAAnnuler] = useState<AbsenceRequestView | null>(null);
+  const [aEcourter, setAEcourter] = useState<AbsenceRequestView | null>(null);
 
   const myEmployee = useQuery({
     queryKey: ['me-employee'],
@@ -52,14 +60,24 @@ export default function HistoriqueCongesPage() {
     enabled: Boolean(employeeId),
   });
 
+  const rafraichir = () => {
+    setErreur(null);
+    setAAnnuler(null);
+    setAEcourter(null);
+    void queryClient.invalidateQueries({ queryKey: ['my-requests'] });
+    void queryClient.invalidateQueries({ queryKey: ['balances'] });
+  };
+  // Une demande en attente s'annule d'un clic ; un retour pas encore
+  // confirmé se retire de même.
   const cancel = useMutation({
     mutationFn: (id: string) => api(`/absence-requests/${id}/cancel`, { method: 'POST' }),
-    onSuccess: () => {
-      setErreur(null);
-      void queryClient.invalidateQueries({ queryKey: ['my-requests'] });
-      void queryClient.invalidateQueries({ queryKey: ['balances'] });
-    },
+    onSuccess: rafraichir,
     onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Annulation impossible.'),
+  });
+  const retirerReprise = useMutation({
+    mutationFn: (id: string) => api(`/absence-requests/${id}/reprise`, { method: 'DELETE' }),
+    onSuccess: rafraichir,
+    onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Action impossible.'),
   });
 
   const chargement = myEmployee.isLoading || requests.isLoading;
@@ -129,8 +147,15 @@ export default function HistoriqueCongesPage() {
                           titre: 'Justificatif',
                         })
                       }
-                      onAnnuler={() => cancel.mutate(r.id)}
-                      annulationEnCours={cancel.isPending && cancel.variables === r.id}
+                      onAnnuler={() =>
+                        r.status === 'pending' ? cancel.mutate(r.id) : setAAnnuler(r)
+                      }
+                      onEcourter={() => setAEcourter(r)}
+                      onRetirerReprise={() => retirerReprise.mutate(r.id)}
+                      enCours={
+                        (cancel.isPending && cancel.variables === r.id) ||
+                        (retirerReprise.isPending && retirerReprise.variables === r.id)
+                      }
                     />
                   ))}
               </TBody>
@@ -140,25 +165,44 @@ export default function HistoriqueCongesPage() {
       )}
 
       <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
+      {aAnnuler ? (
+        <FenetreAnnulation
+          demande={aAnnuler}
+          sienne
+          onClose={() => setAAnnuler(null)}
+          onFait={rafraichir}
+        />
+      ) : null}
+      {aEcourter ? (
+        <FenetreReprise
+          demande={aEcourter}
+          onClose={() => setAEcourter(null)}
+          onFait={rafraichir}
+        />
+      ) : null}
     </Page>
   );
 }
 
 /**
  * Une demande, sur une ligne. Sur téléphone, la période, la durée, le statut,
- * le justificatif et l'annulation se rangent sous le type : six colonnes n'y
+ * le justificatif et les gestes se rangent sous le type : six colonnes n'y
  * tiennent pas.
  */
 function Ligne({
   demande: r,
   onJustificatif,
   onAnnuler,
-  annulationEnCours,
+  onEcourter,
+  onRetirerReprise,
+  enCours,
 }: {
   demande: AbsenceRequestView;
   onJustificatif: () => void;
   onAnnuler: () => void;
-  annulationEnCours: boolean;
+  onEcourter: () => void;
+  onRetirerReprise: () => void;
+  enCours: boolean;
 }) {
   const periode = `${formatDate(r.startDate)} → ${formatDate(r.endDate)}`;
   const statut = <StatutAbsence statut={r.status} etape={r.etapeAttendue} titre={resumeVisas(r)} />;
@@ -172,12 +216,21 @@ function Ligne({
       Prévisualiser
     </button>
   ) : null;
-  const annuler =
-    r.status === 'pending' ? (
-      <Button size="sm" variant="ghost" onClick={onAnnuler} loading={annulationEnCours}>
-        Annuler
-      </Button>
-    ) : null;
+  // Un geste par ligne au plus : annuler (en attente, ou validé à venir),
+  // écourter (en cours), ou retirer un retour qui attend sa confirmation.
+  const geste = r.repriseDemandee ? (
+    <Button size="sm" variant="ghost" onClick={onRetirerReprise} loading={enCours}>
+      Retirer
+    </Button>
+  ) : r.gestes.annuler ? (
+    <Button size="sm" variant="ghost" onClick={onAnnuler} loading={enCours}>
+      Annuler
+    </Button>
+  ) : r.gestes.demanderReprise ? (
+    <Button size="sm" variant="ghost" onClick={onEcourter}>
+      Écourter
+    </Button>
+  ) : null;
   return (
     <Tr>
       <Td>
@@ -187,21 +240,25 @@ function Ligne({
         <p className="mt-0.5 text-[11.5px] text-ink-muted tabular-nums sm:hidden">
           {periode} · {compte(r.daysCount, 'jour')}
         </p>
+        <div className="sm:hidden">
+          <MentionConge demande={r} />
+        </div>
         <div className="mt-2.5 flex items-center gap-3 sm:hidden">
           {statut}
           {justificatif}
-          <span className="ml-auto">{annuler}</span>
+          <span className="ml-auto">{geste}</span>
         </div>
       </Td>
-      <Td className="hidden tabular-nums sm:table-cell">{periode}</Td>
+      <Td className="hidden tabular-nums sm:table-cell">
+        {periode}
+        <MentionConge demande={r} />
+      </Td>
       <Td className="hidden text-right whitespace-nowrap tabular-nums sm:table-cell">
         {compte(r.daysCount, 'jour')}
       </Td>
-      <Td className="hidden sm:table-cell">
-        {justificatif ?? <span className="text-ink-muted/45">—</span>}
-      </Td>
+      <Td className="hidden sm:table-cell">{justificatif}</Td>
       <Td className="hidden sm:table-cell">{statut}</Td>
-      <Td className="hidden text-right sm:table-cell">{annuler}</Td>
+      <Td className="hidden text-right sm:table-cell">{geste}</Td>
     </Tr>
   );
 }

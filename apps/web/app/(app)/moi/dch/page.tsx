@@ -21,6 +21,11 @@ import {
   Tr,
 } from '@teranga/ui';
 import { BoutonDecision } from '../../../../components/bouton-decision';
+import {
+  FenetreAnnulation,
+  FenetreRappel,
+  MentionConge,
+} from '../../../../components/conge-valide';
 import { DeleguerMembres } from '../../../../components/deleguer-membres';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
@@ -42,7 +47,7 @@ import {
 import { resumeVisas } from '../../../../lib/absences';
 import { api, apiUrl } from '../../../../lib/api';
 import { formatDate, useMe } from '../../../../lib/hooks';
-import { compte } from '../../../../lib/mots';
+import { compte, de } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    « Absences & Congés » — les demandes de congé, pour la Direction du
@@ -78,9 +83,13 @@ export default function CongesATraiterPage() {
   const [refus, setRefus] = useState<AbsenceRequestView | null>(null);
   const [motif, setMotif] = useState('');
   const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
+  // Un congé validé en cours, ou à venir : le rappeler, l'annuler.
+  const [rappel, setRappel] = useState<AbsenceRequestView | null>(null);
+  const [annulation, setAnnulation] = useState<AbsenceRequestView | null>(null);
 
   const rafraichir = async () => {
     await queryClient.invalidateQueries({ queryKey: ['absence-requests'] });
+    await queryClient.invalidateQueries({ queryKey: ['absences-upcoming'] });
     await queryClient.invalidateQueries({ queryKey: ['validations-compteurs'] });
   };
   const echec = (err: unknown) => setMessage({ ton: 'erreur', texte: texteErreur(err) });
@@ -106,11 +115,29 @@ export default function CongesATraiterPage() {
     onError: echec,
   });
 
-  // Ce que l'appelant peut décider à l'étape de la DCH — pour le directeur,
-  // tout, délégué ou non.
+  // Le retour anticipé d'un agent dont le N+1 est absent : la DCH le confirme.
+  const confirmer = useMutation({
+    mutationFn: (v: { demande: AbsenceRequestView; decision: 'approved' | 'rejected' }) =>
+      api(`/absence-requests/${v.demande.id}/reprise/decision`, {
+        method: 'POST',
+        body: { decision: v.decision },
+      }),
+    onSuccess: async (_, v) => {
+      setMessage({
+        ton: 'ok',
+        texte: `Retour ${de(v.demande.employeeName)} ${v.decision === 'approved' ? 'confirmé' : 'refusé'}. Un message lui est envoyé.`,
+      });
+      await rafraichir();
+    },
+    onError: echec,
+  });
+  const occupe = decider.isPending || confirmer.isPending;
+
+  // Ce que l'appelant peut décider à l'étape de la DCH (pour le directeur,
+  // tout, délégué ou non), et les retours qu'il confirme.
   const toutes = demandes.data ?? [];
   const aTraiter = toutes
-    .filter((r) => r.canDecide && r.etapeAttendue === 'dch')
+    .filter((r) => (r.canDecide && r.etapeAttendue === 'dch') || r.gestes.confirmerReprise)
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
   // Qui traite les congés pour la DCH — ou se voit confier une demande. Les
   // autres consultent : ils voient la file telle qu'elle est, sans geste.
@@ -139,9 +166,7 @@ export default function CongesATraiterPage() {
           })
         }
       />
-    ) : (
-      <span className="text-ink-muted/60">—</span>
-    );
+    ) : null;
 
   return (
     <Page>
@@ -215,11 +240,45 @@ export default function CongesATraiterPage() {
                   <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
                   <Td className="whitespace-nowrap tabular-nums">
                     <Periode demande={r} />
+                    <MentionConge demande={r} />
                   </Td>
                   <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
                   <Td>{justificatif(r)}</Td>
                   <Td>
-                    {traite ? (
+                    {r.gestes.confirmerReprise ? (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <BoutonDecision
+                          geste="approuver"
+                          employe={r.employeeName}
+                          objet="le retour"
+                          enCours={
+                            confirmer.isPending &&
+                            confirmer.variables?.demande.id === r.id &&
+                            confirmer.variables.decision === 'approved'
+                          }
+                          bloque={occupe}
+                          onClick={() => {
+                            setMessage(null);
+                            confirmer.mutate({ demande: r, decision: 'approved' });
+                          }}
+                        />
+                        <BoutonDecision
+                          geste="refuser"
+                          employe={r.employeeName}
+                          objet="le retour"
+                          enCours={
+                            confirmer.isPending &&
+                            confirmer.variables?.demande.id === r.id &&
+                            confirmer.variables.decision === 'rejected'
+                          }
+                          bloque={occupe}
+                          onClick={() => {
+                            setMessage(null);
+                            confirmer.mutate({ demande: r, decision: 'rejected' });
+                          }}
+                        />
+                      </div>
+                    ) : traite ? (
                       <div className="flex items-center justify-end gap-1.5">
                         <BoutonDecision
                           geste="approuver"
@@ -229,7 +288,7 @@ export default function CongesATraiterPage() {
                             decider.variables?.demande.id === r.id &&
                             decider.variables.decision === 'approved'
                           }
-                          bloque={decider.isPending}
+                          bloque={occupe}
                           onClick={() => {
                             setMessage(null);
                             decider.mutate({ demande: r, decision: 'approved' });
@@ -239,7 +298,7 @@ export default function CongesATraiterPage() {
                           geste="refuser"
                           employe={r.employeeName}
                           enCours={false}
-                          bloque={decider.isPending}
+                          bloque={occupe}
                           onClick={() => {
                             setMessage(null);
                             setMotif('');
@@ -249,7 +308,7 @@ export default function CongesATraiterPage() {
                       </div>
                     ) : (
                       <p className="text-right text-[12px] text-ink-muted">
-                        {quiTraite(r.traitement) ?? '—'}
+                        {quiTraite(r.traitement)}
                       </p>
                     )}
                   </Td>
@@ -260,7 +319,16 @@ export default function CongesATraiterPage() {
         )}
       </Card>
 
-      <CalendrierDesAbsences />
+      <CalendrierDesAbsences
+        onRappeler={(r) => {
+          setMessage(null);
+          setRappel(r);
+        }}
+        onAnnuler={(r) => {
+          setMessage(null);
+          setAnnulation(r);
+        }}
+      />
 
       {/* ———— Demandes traitées : pliées, on les ouvre quand on les cherche ———— */}
       <DemandesTraitees demandes={traitees} chargement={chargement} />
@@ -301,6 +369,33 @@ export default function CongesATraiterPage() {
             />
           </Field>
         </Modal>
+      ) : null}
+
+      {rappel ? (
+        <FenetreRappel
+          demande={rappel}
+          onClose={() => setRappel(null)}
+          onFait={async () => {
+            setMessage({ ton: 'ok', texte: `Rappel envoyé à ${rappel.employeeName}.` });
+            setRappel(null);
+            await rafraichir();
+          }}
+        />
+      ) : null}
+      {annulation ? (
+        <FenetreAnnulation
+          demande={annulation}
+          sienne={false}
+          onClose={() => setAnnulation(null)}
+          onFait={async () => {
+            setMessage({
+              ton: 'ok',
+              texte: `Congé ${de(annulation.employeeName)} annulé. Un message lui est envoyé.`,
+            });
+            setAnnulation(null);
+            await rafraichir();
+          }}
+        />
       ) : null}
 
       <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
@@ -380,6 +475,7 @@ function DemandesTraitees({
                 <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
                 <Td className="whitespace-nowrap tabular-nums">
                   <Periode demande={r} />
+                  <MentionConge demande={r} />
                 </Td>
                 <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
                 <Td>
@@ -423,13 +519,21 @@ function aujourdhui(): string {
  * Qui est absent, et qui le sera sous trente jours : un complément de la
  * file, pas la file — la carte garde sa taille.
  */
-function CalendrierDesAbsences() {
+function CalendrierDesAbsences({
+  onRappeler,
+  onAnnuler,
+}: {
+  onRappeler: (r: AbsenceRequestView) => void;
+  onAnnuler: (r: AbsenceRequestView) => void;
+}) {
   const absences = useQuery({
     queryKey: ['absences-upcoming'],
     queryFn: () => api<AbsenceRequestView[]>('/absences/upcoming'),
   });
   const jour = aujourdhui();
   const liste = absences.data ?? [];
+  // La colonne des gestes n'existe que pour qui peut rappeler ou annuler.
+  const gestes = liste.some((r) => r.gestes.rappeler || r.gestes.annuler);
   return (
     <Card className="shrink-0">
       <CardHeader>
@@ -456,12 +560,20 @@ function CalendrierDesAbsences() {
               <Th>Fin</Th>
               <Th className="text-right">Jours</Th>
               <Th>Statut</Th>
+              {gestes ? (
+                <Th>
+                  <span className="sr-only">Actions</span>
+                </Th>
+              ) : null}
             </tr>
           </THead>
           <TBody>
             {liste.map((r) => (
               <Tr key={r.id}>
-                <Td className="font-medium text-ink-strong">{r.employeeName}</Td>
+                <Td className="font-medium whitespace-nowrap text-ink-strong">
+                  {r.employeeName}
+                  <MentionConge demande={r} />
+                </Td>
                 <Td>{r.absenceTypeName}</Td>
                 <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
                 <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
@@ -473,6 +585,19 @@ function CalendrierDesAbsences() {
                     <Badge tone="bleu">À venir</Badge>
                   )}
                 </Td>
+                {gestes ? (
+                  <Td className="text-right">
+                    {r.gestes.rappeler ? (
+                      <Button size="sm" variant="ghost" onClick={() => onRappeler(r)}>
+                        Rappeler
+                      </Button>
+                    ) : r.gestes.annuler ? (
+                      <Button size="sm" variant="ghost" onClick={() => onAnnuler(r)}>
+                        Annuler
+                      </Button>
+                    ) : null}
+                  </Td>
+                ) : null}
               </Tr>
             ))}
           </TBody>

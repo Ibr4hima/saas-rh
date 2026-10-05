@@ -3,7 +3,7 @@ import type { EtapeConge } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 import { notifier } from '../notifications/notifier';
 import { relancer, retirerLesAppels, tenirLesAppels } from '../acces/appels';
-import { absence, accord, duAu } from '../notifications/phrases';
+import { absence, accord, de, duAu, frDate } from '../notifications/phrases';
 import {
   directionDuPersonnel,
   nomsDe,
@@ -272,6 +272,166 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
   });
 }
 
+// ──────────────────────────────────────────── un congé validé qui change
+
+/**
+ * Qui confirme le retour anticipé d'un agent : son N+1, présent ; sinon qui
+ * traite les congés pour la DCH. Le N+1 est le mieux placé pour dire que
+ * l'agent est bien revenu, puisque les jours lui sont rendus.
+ */
+export async function attenduPourLaReprise(
+  tx: Tx,
+  demande: { id: string; employeeId: string },
+): Promise<Attendu> {
+  const dch = await directionDuPersonnel(tx);
+  const demandeDuDirecteur = Boolean(dch?.directeurEmployeeId === demande.employeeId);
+  const n1 = await n1De(tx, demande.employeeId);
+  if (n1 && !n1.absent) {
+    return { etape: 'n1', valideurs: [n1], parDelegationDe: null, demandeDuDirecteur, dch };
+  }
+  const t = await traitantDCH(
+    tx,
+    {
+      id: demande.id,
+      employeeId: demande.employeeId,
+      status: 'pending',
+      currentLevel: NIVEAU_DCH,
+      confieeAEmployeeId: null,
+    },
+    dch,
+  );
+  return { etape: 'dch', ...t, demandeDuDirecteur, dch };
+}
+
+/** Le préfixe des appels à confirmer un retour : à part de ceux du visa. */
+const prefixeReprise = (requestId: string) => `reprise:${requestId}`;
+
+/**
+ * Tient les appels à confirmer le retour d'un agent : tant qu'il attend,
+ * qui doit le confirmer a le sien ; confirmé, refusé ou retiré, il s'en va.
+ */
+export async function reconcilierReprise(tx: Tx, requestId: string): Promise<void> {
+  const { rows } = await tx.execute<{ reprise: string | null; status: string }>(sql`
+    SELECT reprise_demandee::text AS reprise, status FROM absence_requests WHERE id = ${requestId}`);
+  const r = rows[0];
+  const d = r?.reprise && r.status === 'approved' ? await lireDemande(tx, requestId) : null;
+  if (!r?.reprise || !d) {
+    await retirerLesAppels(tx, prefixeReprise(requestId));
+    return;
+  }
+  const att = await attenduPourLaReprise(tx, d);
+  const a = absence(d.type);
+  await tenirLesAppels(
+    tx,
+    d.tenantId,
+    prefixeReprise(requestId),
+    att.etape,
+    att.valideurs.map((v) => v.userId),
+    {
+      type: 'reprise_a_confirmer',
+      title: `${d.nom} écourte ${a.feminin ? 'sa' : 'son'} ${a.nom} : reprise le ${frDate(r.reprise)}`,
+      link: att.etape === 'n1' ? '/moi/equipe' : '/moi/dch',
+    },
+  );
+}
+
+/** Les congés validés dont l'agent attend qu'on confirme son retour. */
+export async function reprisesEnAttente(tx: Tx, employeeId?: string): Promise<string[]> {
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    SELECT id FROM absence_requests
+     WHERE status = 'approved' AND reprise_demandee IS NOT NULL
+       ${employeeId ? sql`AND employee_id = ${employeeId}` : sql``}
+     ORDER BY created_at`);
+  return rows.map((r) => r.id);
+}
+
+/** Ce qui arrive à un congé validé : chacun l'apprend à sa façon. */
+export type Changement =
+  | { quoi: 'annule'; parLAgent: boolean }
+  | { quoi: 'ecourte'; reprise: string; nature: 'retour' | 'rappel' }
+  | { quoi: 'reprise_refusee'; reprise: string };
+
+/**
+ * Un congé validé change : l'agent, son N+1 et la DCH l'avaient vu validé,
+ * chacun apprend ce qu'il devient. Qui a fait le geste n'est pas prévenu de
+ * son propre geste. Pour la DCH, ce sont ceux qui traitent les congés : les
+ * membres habilités, sinon le directeur.
+ */
+export async function annoncerLeChangement(
+  tx: Tx,
+  d: Demande,
+  changement: Changement,
+  auteurUserId: string,
+): Promise<void> {
+  const a = absence(d.type);
+  const cle = (suite: string) => `conge:${d.id}:${suite}`;
+  const envoyer = async (
+    userId: string | null | undefined,
+    message: { type: string; title: string; link: string; dedupeKey: string; remplace?: string },
+  ) => {
+    if (!userId || userId === auteurUserId) return;
+    await notifier(tx, d.tenantId, userId, message);
+  };
+
+  if (changement.quoi === 'reprise_refusee') {
+    await envoyer(d.demandeurUserId, {
+      type: 'conge_refuse',
+      title: `Votre reprise le ${frDate(changement.reprise)} n’est pas confirmée`,
+      link: '/moi/conges/historique',
+      dedupeKey: cle(`reprise-refusee:${changement.reprise}`),
+    });
+    return;
+  }
+
+  const n1 = await n1De(tx, d.employeeId);
+  const dch = await traitementDe(tx, 'demandes.conges', {
+    employeeId: d.employeeId,
+    confieeA: null,
+  });
+  const aux = async (title: string, dedupeKey: string) => {
+    await envoyer(n1?.userId, { type: 'conge_modifie', title, link: '/moi/equipe', dedupeKey });
+    for (const v of dch.traitants) {
+      if (v.userId === n1?.userId) continue;
+      await envoyer(v.userId, { type: 'conge_modifie', title, link: '/moi/dch', dedupeKey });
+    }
+  };
+  const leConge = `${a.feminin ? 'La' : 'Le'} ${a.nom} ${de(d.nom)} ${duAu(d.debut, d.fin)}`;
+
+  if (changement.quoi === 'annule') {
+    // L'avis « approuvé » ne dit plus vrai : il quitte la boîte de l'agent.
+    if (changement.parLAgent && d.demandeurUserId) {
+      await tx.execute(sql`
+        UPDATE notifications SET remplacee_le = now()
+         WHERE dedupe_key = ${cle('verdict')} AND recipient_user_id = ${d.demandeurUserId}
+           AND remplacee_le IS NULL`);
+    }
+    await envoyer(d.demandeurUserId, {
+      type: 'conge_refuse',
+      title: `Votre ${a.nom} ${duAu(d.debut, d.fin)} est ${accord('annulé', a)}`,
+      link: '/moi/conges/historique',
+      dedupeKey: cle('annule'),
+      remplace: cle('verdict'),
+    });
+    await aux(`${leConge} est ${accord('annulé', a)}`, cle('annule'));
+    return;
+  }
+
+  const reprise = frDate(changement.reprise);
+  await envoyer(d.demandeurUserId, {
+    type: 'conge_modifie',
+    title:
+      changement.nature === 'retour'
+        ? `Votre reprise le ${reprise} est confirmée`
+        : `Votre ${a.nom} est ${accord('écourté', a)} : reprise le ${reprise}`,
+    link: '/moi/conges/historique',
+    dedupeKey: cle(`ecourte:${changement.reprise}`),
+  });
+  await aux(
+    `${leConge} est ${accord('écourté', a)} : reprise le ${reprise}`,
+    cle(`ecourte:${changement.reprise}`),
+  );
+}
+
 /** Les demandes en attente — le circuit tient sur elles. */
 async function demandesEnAttente(tx: Tx, employeeId?: string): Promise<string[]> {
   const { rows } = await tx.execute<{ id: string }>(sql`
@@ -284,6 +444,7 @@ async function demandesEnAttente(tx: Tx, employeeId?: string): Promise<string[]>
 /** Le N+1 d'un agent vient de changer : ses demandes le suivent. */
 export async function faireSuivreLesDemandes(tx: Tx, employeeId: string): Promise<void> {
   for (const id of await demandesEnAttente(tx, employeeId)) await reconcilierDemande(tx, id);
+  for (const id of await reprisesEnAttente(tx, employeeId)) await reconcilierReprise(tx, id);
 }
 
 /**
@@ -296,6 +457,7 @@ export async function reconcilierLeCircuit(tx: Tx, tenantId: string): Promise<vo
   await verifierLesHabilitations(tx, tenantId);
   const enAttente = await demandesEnAttente(tx);
   for (const id of enAttente) await reconcilierDemande(tx, id);
+  for (const id of await reprisesEnAttente(tx)) await reconcilierReprise(tx, id);
   await reconcilierLesDemandes(tx, tenantId);
   await verifierLaVacance(tx, tenantId, enAttente);
   await relancer(tx, tenantId);

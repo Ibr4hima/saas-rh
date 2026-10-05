@@ -27,3 +27,6 @@ export function compte(n: number, singulier: string, pluriel = `${singulier}s`):
 export function accorde(n: number, participe: string, feminin = false): string {
   return `${participe}${feminin ? 'e' : ''}${n > 1 ? 's' : ''}`;
 }
+
+/** « de Moussa Ndiaye », « d’Awa Diop » : l'élision devant une voyelle. */
+export const de = (mot: string) => (/^[aeiouyéèêâîôû]/i.test(mot) ? `d’${mot}` : `de ${mot}`);

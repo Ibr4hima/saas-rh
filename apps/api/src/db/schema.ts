@@ -249,6 +249,16 @@ export const absenceRequests = pgTable('absence_requests', {
   requestedByUserId: uuid('requested_by_user_id'),
   /** Confiée à la main à un membre de la DCH ; NULL : la règle s'applique. */
   confieeAEmployeeId: uuid('confiee_a_employee_id'),
+  /** La fin validée au départ, quand le congé a été écourté. */
+  finInitiale: date('fin_initiale'),
+  /** Le jour de reprise que l'agent demande, en attente de confirmation. */
+  repriseDemandee: date('reprise_demandee'),
+  ecourteNature: text('ecourte_nature'),
+  ecourteParUserId: uuid('ecourte_par_user_id'),
+  ecourteLe: timestamp('ecourte_le', { withTimezone: true }),
+  ecourteMotif: text('ecourte_motif'),
+  annuleParUserId: uuid('annule_par_user_id'),
+  annuleMotif: text('annule_motif'),
   decidedAt: timestamp('decided_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

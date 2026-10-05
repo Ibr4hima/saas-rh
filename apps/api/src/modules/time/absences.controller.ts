@@ -17,22 +17,30 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
+  annulerAbsenceSchema,
   confierSchema,
   createAbsenceRequestSchema,
   createAbsenceTypeSchema,
   createHolidaySchema,
   decideAbsenceRequestSchema,
+  deciderRepriseSchema,
+  demanderRepriseSchema,
   listAbsenceRequestsQuerySchema,
   previewAbsenceSchema,
+  rappelerSchema,
   setBalanceSchema,
   updateAbsenceTypeSchema,
   updateHolidaySchema,
+  type AnnulerAbsenceInput,
   type ConfierInput,
   type CreateAbsenceRequestInput,
   type CreateAbsenceTypeInput,
   type CreateHolidayInput,
   type DecideAbsenceRequestInput,
+  type DeciderRepriseInput,
+  type DemanderRepriseInput,
   type ListAbsenceRequestsQuery,
+  type RappelerInput,
   type SetBalanceInput,
   type UpdateAbsenceTypeInput,
   type UpdateHolidayInput,
@@ -210,8 +218,52 @@ export class AbsencesController {
 
   @Post('absence-requests/:id/cancel')
   @HttpCode(204)
-  async cancel(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
-    await this.absences.cancel(req.sessionUser, id);
+  async cancel(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(annulerAbsenceSchema)) body: AnnulerAbsenceInput,
+  ) {
+    await this.absences.cancel(req.sessionUser, id, body);
+  }
+
+  // ---------- Un congé validé qui change ----------
+
+  /** L'agent revient plus tôt : son jour de reprise, à confirmer par son N+1. */
+  @Post('absence-requests/:id/reprise')
+  @HttpCode(204)
+  async demanderReprise(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(demanderRepriseSchema)) body: DemanderRepriseInput,
+  ) {
+    await this.absences.demanderReprise(req.sessionUser, id, body);
+  }
+
+  @Delete('absence-requests/:id/reprise')
+  @HttpCode(204)
+  async retirerReprise(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    await this.absences.retirerReprise(req.sessionUser, id);
+  }
+
+  @Post('absence-requests/:id/reprise/decision')
+  @HttpCode(204)
+  async deciderReprise(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(deciderRepriseSchema)) body: DeciderRepriseInput,
+  ) {
+    await this.absences.deciderReprise(req.sessionUser, id, body);
+  }
+
+  /** Le N+1 ou la DCH rappellent un agent en congé. */
+  @Post('absence-requests/:id/rappel')
+  @HttpCode(204)
+  async rappeler(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(rappelerSchema)) body: RappelerInput,
+  ) {
+    await this.absences.rappeler(req.sessionUser, id, body);
   }
 
   /** Justificatif PDF joint à une demande (RH ou titulaire uniquement). */
