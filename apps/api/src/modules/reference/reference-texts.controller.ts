@@ -25,6 +25,7 @@ import { problem } from '../../common/problem';
 import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { ReferenceTextsService } from './reference-texts.service';
+import { contentDisposition } from '../../common/telechargement';
 
 /**
  * Les textes de référence se lisent SANS condition de rôle.
@@ -71,7 +72,7 @@ export class ReferenceTextsController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `${disposition === 'inline' ? 'inline' : 'attachment'}; filename="${filename}"`,
+      contentDisposition(disposition === 'inline' ? 'inline' : 'attachment', filename),
     );
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.end(data);

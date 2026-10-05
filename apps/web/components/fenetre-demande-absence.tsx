@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import type { AbsencePreview, AbsenceType, BalanceView } from '@teranga/contracts';
+import type { AbsencePreview, AbsenceType, AgentSaisieView, BalanceView } from '@teranga/contracts';
 import { Button, cn, Field, Input, Select, Skeleton, Textarea } from '@teranga/ui';
 import { Donnee } from './fiche';
 import { Icon } from './icons';
@@ -41,16 +41,27 @@ function joursCalendaires(debut: string, fin: string): number {
 }
 
 export function FenetreDemandeAbsence({
-  employeeId,
+  employeeId: pourMoi,
+  pourAutrui = false,
   onClose,
   onEnvoyee,
 }: {
-  employeeId: string;
+  /** L'agent qui pose sa demande ; absent quand la DCH saisit pour un autre. */
+  employeeId?: string;
+  /** La DCH saisit pour un agent qui ne le peut pas : elle le choisit. */
+  pourAutrui?: boolean;
   onClose: () => void;
   /** La demande est partie : son nombre de jours. */
   onEnvoyee: (jours: number) => void;
 }) {
   const queryClient = useQueryClient();
+  const [agentId, setAgentId] = useState('');
+  const employeeId = pourAutrui ? agentId : (pourMoi ?? '');
+  const agents = useQuery({
+    queryKey: ['absences-saisie-agents'],
+    queryFn: () => api<AgentSaisieView[]>('/absences/saisie/agents'),
+    enabled: pourAutrui,
+  });
   const [typeId, setTypeId] = useState('');
   const [startDate, setStartDate] = useState(aujourdhui());
   const [endDate, setEndDate] = useState(aujourdhui());
@@ -79,6 +90,7 @@ export function FenetreDemandeAbsence({
   const balances = useQuery({
     queryKey: ['balances', employeeId, annee],
     queryFn: () => api<BalanceView[]>(`/employees/${employeeId}/balances?year=${annee}`),
+    enabled: Boolean(employeeId),
   });
 
   useEffect(() => {
@@ -153,6 +165,7 @@ export function FenetreDemandeAbsence({
       }),
     onSuccess: (r) => {
       void queryClient.invalidateQueries({ queryKey: ['my-requests'] });
+      void queryClient.invalidateQueries({ queryKey: ['absence-requests'] });
       void queryClient.invalidateQueries({ queryKey: ['balances'] });
       onEnvoyee(r.daysCount);
     },
@@ -160,14 +173,15 @@ export function FenetreDemandeAbsence({
       setServerError(err instanceof ApiError ? err.message : 'Envoi impossible, réessayez.'),
   });
 
+  // Le justificatif peut suivre : la DCH ne valide qu'avec lui.
   const peutEnvoyer =
-    Boolean(typeId) && days > 0 && !periodeInvalide && !insufficient && !(needsDocument && !doc);
+    Boolean(employeeId) && Boolean(typeId) && days > 0 && !periodeInvalide && !insufficient;
 
   return (
     <Modal
       open
       onClose={onClose}
-      title="Poser une demande"
+      title={pourAutrui ? 'Saisir une demande' : 'Poser une demande'}
       maxWidth="max-w-2xl"
       footer={
         <>
@@ -190,7 +204,7 @@ export function FenetreDemandeAbsence({
               submit.mutate();
             }}
           >
-            Envoyer la demande
+            {pourAutrui ? 'Enregistrer la demande' : 'Envoyer la demande'}
           </Button>
         </>
       }
@@ -199,6 +213,21 @@ export function FenetreDemandeAbsence({
         <p className="rounded-[12px] bg-warning-soft px-3.5 py-2.5 text-[12.5px] text-warning ring-1 ring-current/15 ring-inset">
           Aucun type d&apos;absence n&apos;est encore configuré.
         </p>
+      ) : null}
+
+      {pourAutrui ? (
+        <ModalSection title="Agent">
+          <Field label="Pour" htmlFor="agent" required>
+            <Select id="agent" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+              <option value="">Choisir un agent</option>
+              {agents.data?.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.nom} · {a.matricule}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </ModalSection>
       ) : null}
 
       <ModalSection title="Nature">
@@ -216,7 +245,6 @@ export function FenetreDemandeAbsence({
             <Field
               label={selectedType?.name === 'Mission' ? 'Ordre de mission' : 'Justificatif'}
               htmlFor="justificatif"
-              required
               hint={doc ? undefined : 'PDF, 5 Mo au plus'}
               error={fileError ?? undefined}
             >

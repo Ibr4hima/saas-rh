@@ -27,6 +27,7 @@ import { ZodValidationPipe } from '../../common/zod.pipe';
 import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { EmployeeDocumentsService } from './employee-documents.service';
+import { contentDisposition } from '../../common/telechargement';
 
 @Controller()
 @UseGuards(SessionGuard, AccesGuard)
@@ -77,7 +78,7 @@ export class EmployeeDocumentsController {
     res.setHeader('Content-Type', doc.contentType);
     res.setHeader(
       'Content-Disposition',
-      `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
+      contentDisposition(download ? 'attachment' : 'inline', doc.filename),
     );
     res.setHeader('Cache-Control', 'no-store');
     res.end(doc.data);

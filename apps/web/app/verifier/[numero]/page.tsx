@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import type { PublicCertificateView } from '@teranga/contracts';
@@ -134,6 +135,16 @@ function Certificat({ c }: { c: PublicCertificateView }) {
           <Fait label="Numéro">
             <Numero numero={c.number} />
           </Fait>
+          {c.reemisSous ? (
+            <Fait label="Réémis sous">
+              <Link
+                href={`/verifier/${c.reemisSous}`}
+                className="font-mono tracking-tight text-primary underline-offset-2 hover:underline"
+              >
+                {c.reemisSous}
+              </Link>
+            </Fait>
+          ) : null}
         </dl>
       </section>
     </>

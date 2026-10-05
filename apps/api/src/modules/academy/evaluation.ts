@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import {
+  FENETRE_RENOUVELLEMENT_JOURS,
   FENETRE_TENTATIVES_H,
   SECONDES_PAR_QUESTION,
   SEUIL_REUSSITE,
@@ -171,6 +172,18 @@ export function expiration(emis: Date, mois: number | null): Date | null {
   const dernier = new Date(Date.UTC(fin.getUTCFullYear(), fin.getUTCMonth() + 1, 0)).getUTCDate();
   fin.setUTCDate(Math.min(jour, dernier));
   return fin;
+}
+
+/**
+ * Le certificat se renouvelle avant de tomber : valide, il expire dans
+ * moins de FENETRE_RENOUVELLEMENT_JOURS jours. Sans échéance, jamais.
+ */
+export function renouvelable(
+  c: { expiresAt: Date | null; revokedAt: Date | null },
+  maintenant: Date,
+): boolean {
+  if (statutCertificat(c, maintenant) !== 'valide' || !c.expiresAt) return false;
+  return c.expiresAt.getTime() - maintenant.getTime() <= FENETRE_RENOUVELLEMENT_JOURS * 86_400_000;
 }
 
 export function statutCertificat(

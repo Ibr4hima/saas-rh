@@ -42,13 +42,20 @@ export interface Viseur {
   nom: string;
   /** En congé aujourd'hui (absence approuvée qui couvre ce jour). */
   absent: boolean;
+  /** Absent : le dernier jour de son absence (ISO), sinon null. */
+  absentJusquAu: string | null;
 }
 
-/** Absent aujourd'hui : une absence approuvée couvre ce jour. En SQL. */
-const estAbsent = (employeeId: SQL) => sql`EXISTS (
-  SELECT 1 FROM absence_requests ab
+/**
+ * Le dernier jour de l'absence en cours : une absence approuvée couvre ce
+ * jour, et elle l'éloigne (une mission le laisse joignable). Null : présent.
+ */
+const finDAbsence = (employeeId: SQL) => sql`(
+  SELECT max(ab.end_date)::text FROM absence_requests ab
+    JOIN absence_types ty ON ty.id = ab.absence_type_id AND NOT ty.reste_joignable
    WHERE ab.employee_id = ${employeeId} AND ab.status = 'approved'
      AND CURRENT_DATE BETWEEN ab.start_date AND ab.end_date)`;
+const estAbsent = (employeeId: SQL) => sql`(${finDAbsence(employeeId)} IS NOT NULL)`;
 
 /** Un agent, s'il peut viser — sinon null. */
 export async function viseur(tx: Tx, employeeId: string | null): Promise<Viseur | null> {
@@ -57,11 +64,11 @@ export async function viseur(tx: Tx, employeeId: string | null): Promise<Viseur 
     employee_id: string;
     user_id: string;
     nom: string;
-    absent: boolean;
+    absent_jusqu_au: string | null;
   }>(sql`
     SELECT e.id AS employee_id, u.id AS user_id,
            p.given_name || ' ' || p.family_name AS nom,
-           ${estAbsent(sql`e.id`)} AS absent
+           ${finDAbsence(sql`e.id`)} AS absent_jusqu_au
       FROM employees e
       JOIN persons p ON p.id = e.person_id AND p.user_id IS NOT NULL AND p.deleted_at IS NULL
       JOIN users u ON u.id = p.user_id AND u.status = 'active'
@@ -69,7 +76,15 @@ export async function viseur(tx: Tx, employeeId: string | null): Promise<Viseur 
      WHERE e.id = ${employeeId} AND e.status = 'active' AND NOT ${contratEchu(sql`e.id`)}
      LIMIT 1`);
   const r = rows[0];
-  return r ? { employeeId: r.employee_id, userId: r.user_id, nom: r.nom, absent: r.absent } : null;
+  return r
+    ? {
+        employeeId: r.employee_id,
+        userId: r.user_id,
+        nom: r.nom,
+        absent: r.absent_jusqu_au !== null,
+        absentJusquAu: r.absent_jusqu_au,
+      }
+    : null;
 }
 
 // ———————————————————————————————————————————— la direction du personnel

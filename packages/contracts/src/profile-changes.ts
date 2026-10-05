@@ -100,6 +100,11 @@ export type CreateProfileChangeRequestInput = z.infer<typeof createProfileChange
 export const decideProfileChangeRequestSchema = z.object({
   decision: z.enum(['approve', 'reject']),
   message: z.string().trim().max(500).optional(),
+  /**
+   * Valider malgré un dossier modifié depuis la demande : la valeur demandée
+   * remplace ce que la RH avait corrigé entre-temps. Sans lui, refusé.
+   */
+  ecraser: z.boolean().optional(),
 });
 export type DecideProfileChangeRequestInput = z.infer<typeof decideProfileChangeRequestSchema>;
 
@@ -147,6 +152,10 @@ export interface ProfileChangeRequestView {
     /** Valeur au moment de la demande — pour repérer un dossier modifié depuis. */
     previous: string | null;
     next: string | null;
+    /** Valeur au dossier aujourd'hui (demande en attente) ; sinon null. */
+    actuel: string | null;
+    /** En attente, et le dossier a changé depuis la demande sur ce champ. */
+    modifieDepuis: boolean;
   }[];
   /** true si l'utilisateur courant peut trancher cette demande. */
   canDecide: boolean;

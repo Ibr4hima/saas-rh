@@ -27,6 +27,8 @@ import {
   MentionConge,
 } from '../../../../components/conge-valide';
 import { DeleguerMembres } from '../../../../components/deleguer-membres';
+import { FenetreDemandeAbsence } from '../../../../components/fenetre-demande-absence';
+import { JoindreJustificatif } from '../../../../components/joindre-justificatif';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Page } from '../../../../components/gabarit';
@@ -86,6 +88,8 @@ export default function CongesATraiterPage() {
   // Un congé validé en cours, ou à venir : le rappeler, l'annuler.
   const [rappel, setRappel] = useState<AbsenceRequestView | null>(null);
   const [annulation, setAnnulation] = useState<AbsenceRequestView | null>(null);
+  // Saisir pour un agent qui ne le peut pas (sans portail, hospitalisé).
+  const [saisie, setSaisie] = useState(false);
 
   const rafraichir = async () => {
     await queryClient.invalidateQueries({ queryKey: ['absence-requests'] });
@@ -166,6 +170,16 @@ export default function CongesATraiterPage() {
           })
         }
       />
+    ) : r.justificatifAttendu ? (
+      r.gestes.joindreJustificatif ? (
+        <JoindreJustificatif
+          demande={r}
+          onFait={() => void rafraichir()}
+          onErreur={(texte) => setMessage({ ton: 'erreur', texte })}
+        />
+      ) : (
+        <Badge tone="orange">Attendu</Badge>
+      )
     ) : null;
 
   return (
@@ -207,6 +221,19 @@ export default function CongesATraiterPage() {
         <CardHeader className="flex items-center gap-2">
           <CardTitle className="min-w-0 flex-1">Demandes à traiter</CardTitle>
           {enAttente.length > 0 ? <Pastille n={enAttente.length} /> : null}
+          {traite ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setMessage(null);
+                setSaisie(true);
+              }}
+            >
+              <Icon name="add" size={16} />
+              Saisir une demande
+            </Button>
+          ) : null}
         </CardHeader>
         {chargement ? (
           <div className="px-2 pb-2">
@@ -236,6 +263,11 @@ export default function CongesATraiterPage() {
                 <Tr key={r.id}>
                   <Td className="font-semibold whitespace-nowrap text-ink-strong">
                     {r.employeeName}
+                    {r.saisiePar ? (
+                      <p className="text-[11.5px] font-normal text-ink-muted">
+                        Saisie par {r.saisiePar}
+                      </p>
+                    ) : null}
                   </Td>
                   <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
                   <Td className="whitespace-nowrap tabular-nums">
@@ -288,7 +320,8 @@ export default function CongesATraiterPage() {
                             decider.variables?.demande.id === r.id &&
                             decider.variables.decision === 'approved'
                           }
-                          bloque={occupe}
+                          // Un type qui l'exige se valide avec son justificatif.
+                          bloque={occupe || r.justificatifAttendu}
                           onClick={() => {
                             setMessage(null);
                             decider.mutate({ demande: r, decision: 'approved' });
@@ -393,6 +426,18 @@ export default function CongesATraiterPage() {
               texte: `Congé ${de(annulation.employeeName)} annulé. Un message lui est envoyé.`,
             });
             setAnnulation(null);
+            await rafraichir();
+          }}
+        />
+      ) : null}
+
+      {saisie ? (
+        <FenetreDemandeAbsence
+          pourAutrui
+          onClose={() => setSaisie(false)}
+          onEnvoyee={async () => {
+            setSaisie(false);
+            setMessage({ ton: 'ok', texte: 'Demande enregistrée.' });
             await rafraichir();
           }}
         />

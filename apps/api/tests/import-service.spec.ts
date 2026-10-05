@@ -594,7 +594,7 @@ describe('le compte rendu dit ce que la base contient', () => {
     );
   });
 
-  it('crée l’agent dont la pièce est expirée, avec sa date, et le signale', async () => {
+  it('crée l’agent dont la pièce est périmée, sans elle, et le signale', async () => {
     const entetes = [...COLONNES, "Pièce d'identité", 'Numéro de la pièce', "Date d'expiration"];
     const r = await imports.importer(
       admin,
@@ -613,12 +613,15 @@ describe('le compte rendu dit ce que la base contient', () => {
     );
     expect(r.crees).toBe(1);
     expect(r.lignes[0]?.avertissements.map((a) => a.colonne)).toContain("Date d'expiration");
+    // Le formulaire refuse une pièce périmée : l'import ne l'écrit pas non plus.
     const piece = await raw(
-      `SELECT p.id_document_expires_on::text AS d FROM employees e JOIN persons p ON p.id = e.person_id
+      `SELECT p.id_document_type AS t, p.national_id_encrypted AS n,
+              p.id_document_expires_on::text AS d
+         FROM employees e JOIN persons p ON p.id = e.person_id
         WHERE e.tenant_id = $1 AND e.employee_number = 'APIX-0001'`,
       [tenantId],
     );
-    expect(piece.rows[0]?.d).toBe('2020-01-01');
+    expect(piece.rows[0]).toEqual({ t: null, n: null, d: null });
   });
 });
 

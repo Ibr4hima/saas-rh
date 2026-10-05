@@ -159,6 +159,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
                       <Badge tone="gris">Suivi seul</Badge>
                     )}
                     {t.requiresDocument ? <Badge tone="orange">Justificatif</Badge> : null}
+                    {t.resteJoignable ? <Badge tone="teal">Joignable</Badge> : null}
                   </div>
                 </Td>
                 {peutGerer ? (
@@ -220,6 +221,7 @@ type BrouillonType = {
   allowanceDays: string;
   deductsBalance: boolean;
   requiresDocument: boolean;
+  resteJoignable: boolean;
 };
 
 function FenetreType({
@@ -237,6 +239,7 @@ function FenetreType({
     allowanceDays: cible?.allowanceDays == null ? '' : String(cible.allowanceDays),
     deductsBalance: cible?.deductsBalance ?? true,
     requiresDocument: cible?.requiresDocument ?? false,
+    resteJoignable: cible?.resteJoignable ?? false,
   });
   const [erreur, setErreur] = useState<string | null>(null);
   const set = <K extends keyof BrouillonType>(k: K, v: BrouillonType[K]) =>
@@ -253,6 +256,7 @@ function FenetreType({
         allowanceDays: form.allowanceDays.trim() === '' ? null : Number(form.allowanceDays),
         frequency: form.frequency,
         requiresDocument: form.requiresDocument,
+        resteJoignable: form.resteJoignable,
       };
       return cible
         ? api(`/absence-types/${cible.id}`, { method: 'PATCH', body })
@@ -371,9 +375,17 @@ function FenetreType({
             <span>
               <span className="font-semibold text-ink-strong">Justificatif obligatoire</span>
               <span className="block text-ink-muted">
-                La demande n’est pas acceptée sans pièce jointe (certificat, ordre de mission…).
+                La demande n’est validée qu’avec sa pièce jointe (certificat, ordre de mission…).
               </span>
             </span>
+          </label>
+          <label className="flex items-start gap-2.5 text-[12.5px] text-ink">
+            <Checkbox
+              className="mt-0.5"
+              checked={form.resteJoignable}
+              onChange={(e) => set('resteJoignable', e.target.checked)}
+            />
+            <span className="font-semibold text-ink-strong">Joignable pendant l’absence</span>
           </label>
         </div>
       </ModalSection>

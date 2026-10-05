@@ -338,6 +338,45 @@ describe('conversion d’une ligne', () => {
       'Email personnel',
     ],
     ['à la durée sur un CDI', { 'Durée (mois)': 12 }, /CDI ne prend pas de durée/i, 'Durée (mois)'],
+    // Les contrôles du formulaire de création, appliqués à l'import.
+    [
+      'au 31 février',
+      { 'Date de naissance': '31/02/1990' },
+      /pas une date valide/i,
+      'Date de naissance',
+    ],
+    [
+      'au 29 février d’une année ordinaire',
+      { 'Début du contrat': '2023-02-29' },
+      /pas une date valide/i,
+      'Début du contrat',
+    ],
+    [
+      'd’une personne de moins de 15 ans',
+      { 'Date de naissance': new Date() },
+      /au moins 15 ans/i,
+      'Date de naissance',
+    ],
+    ['au CDD sans durée', { 'Type de contrat': 'CDD' }, /durée en mois/i, 'Durée (mois)'],
+    [
+      'à la durée en mois non entiers',
+      { 'Type de contrat': 'CDD', 'Durée (mois)': '1,5' },
+      /mois entiers/i,
+      'Durée (mois)',
+    ],
+    [
+      'au contrat de consultant',
+      { 'Type de contrat': 'Consultant' },
+      /CDI, un CDD ou un stage/i,
+      'Type de contrat',
+    ],
+    [
+      'au type de pièce sans numéro',
+      { 'Numéro de la pièce': null },
+      /numéro de la pièce/i,
+      'Numéro de la pièce',
+    ],
+    ['au nom trop long', { Nom: 'N'.repeat(81) }, /80 caractères au plus/i, 'Nom'],
   ] as [string, Record<string, unknown>, RegExp, string][]) {
     it(`refuse une ligne ${cas}, en nommant la colonne`, () => {
       const r = convertirLigne(ligne({ ...complete, ...modif }) as never, colonnes);
@@ -348,17 +387,20 @@ describe('conversion d’une ligne', () => {
     });
   }
 
-  it('garde l’agent dont la pièce est expirée, avec sa vraie date et un avertissement', () => {
+  it('garde l’agent dont la pièce est périmée, sans la reprendre au dossier', () => {
     const r = convertirLigne(
       ligne({ ...complete, "Date d'expiration": new Date(Date.UTC(2020, 0, 1, 12)) }) as never,
       colonnes,
     );
     if (!('ok' in r)) throw new Error('attendu convertible');
-    expect(r.ok.entree.person.idDocumentExpiresOn).toBe('2020-01-01');
+    // Le formulaire la refuse : le dossier se crée sans elle.
+    expect(r.ok.entree.person).not.toHaveProperty('idDocumentExpiresOn');
+    expect(r.ok.entree.person).not.toHaveProperty('nationalId');
+    expect(r.ok.entree.person).not.toHaveProperty('idDocumentType');
     expect(r.ok.avertissements).toEqual([
       {
         colonne: "Date d'expiration",
-        texte: 'Pièce d’identité expirée depuis le 1er janvier 2020 : à renouveler',
+        texte: 'Pièce d’identité périmée le 1er janvier 2020 : non reprise, à renouveler',
       },
     ]);
   });

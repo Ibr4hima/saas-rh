@@ -14,6 +14,7 @@ import {
   verrouillerLaChaine,
 } from './chaine';
 import { dernierContrat } from './en-activite';
+import { parLeSysteme } from '../../db/systeme';
 
 /* ————————————————————————————————————————————————————————————————
    La fin de contrat, d'elle-même : les dossiers des contrats arrivés à
@@ -122,6 +123,10 @@ export async function reprendreLActivite(
  * Rend le nombre de dossiers passés dans les inactifs.
  */
 export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promise<number> {
+  return parLeSysteme(tx, () => inactiverLesEchus(tx, tenantId));
+}
+
+async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
   const { rows } = await tx.execute<{
     id: string;
     nom: string;

@@ -26,6 +26,8 @@ const absenceTypeFields = z.object({
   allowanceDays: z.number().min(0).max(365).nullish(),
   frequency: absenceFrequencySchema.default('none'),
   requiresDocument: z.boolean().default(false),
+  /** L'agent reste joignable (une mission) : il vise encore ce qui l'attend. */
+  resteJoignable: z.boolean().optional(),
 });
 
 /** « 30 par an » se comprend ; « par an » tout court ne veut rien dire. */
@@ -58,6 +60,7 @@ export interface AbsenceType {
   allowanceDays: number | null;
   frequency: AbsenceFrequency;
   requiresDocument: boolean;
+  resteJoignable: boolean;
   /** Nombre de demandes déjà déposées sur ce type : il ne se supprime pas à la légère. */
   usageCount: number;
 }
@@ -211,6 +214,17 @@ export const createAbsenceRequestSchema = z
   });
 export type CreateAbsenceRequestInput = z.infer<typeof createAbsenceRequestSchema>;
 
+/** Le justificatif joint après coup. */
+export const joindreJustificatifSchema = absenceJustificatifSchema;
+export type JoindreJustificatifInput = z.infer<typeof joindreJustificatifSchema>;
+
+/** Un agent pour qui la DCH saisit une demande. */
+export interface AgentSaisieView {
+  id: string;
+  nom: string;
+  matricule: string;
+}
+
 export const decideAbsenceRequestSchema = z.object({
   decision: z.enum(['approved', 'rejected']),
   comment: z.string().trim().max(1000).optional(),
@@ -291,6 +305,10 @@ export interface AbsenceRequestView {
   approvals: ApprovalView[];
   /** Nom du justificatif PDF joint, s'il y en a un. */
   documentName: string | null;
+  /** Le type exige un justificatif, la demande attend encore le sien. */
+  justificatifAttendu: boolean;
+  /** Saisie par la DCH pour l'agent : qui l'a saisie (sinon null). */
+  saisiePar: string | null;
   /** La fin validée au départ, quand le congé a été écourté. */
   finInitiale: string | null;
   /** Écourté : le retour de l'agent, confirmé, ou un rappel de l'employeur. */
@@ -312,6 +330,7 @@ export interface AbsenceRequestView {
     demanderReprise: boolean;
     confirmerReprise: boolean;
     rappeler: boolean;
+    joindreJustificatif: boolean;
   };
   createdAt: string;
 }

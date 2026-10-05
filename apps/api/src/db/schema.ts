@@ -202,6 +202,8 @@ export const absenceTypes = pgTable('absence_types', {
   /** 'annual' | 'monthly' | 'none' — la période sur laquelle le quota se rouvre. */
   frequency: text('frequency').notNull().default('none'),
   requiresDocument: boolean('requires_document').notNull().default(false),
+  /** L'agent reste joignable (une mission) : il vise encore ce qui l'attend. */
+  resteJoignable: boolean('reste_joignable').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -418,6 +420,8 @@ export const employeeDocuments = pgTable('employee_documents', {
   expiresOn: date('expires_on'),
   /** CNI et passeport : une nouvelle pièce, qui remplace celle de la fiche. */
   renouvellement: boolean('renouvellement').notNull().default(false),
+  /** Avance à chaque fichier remplacé : qui vérifie dit lequel il a ouvert. */
+  version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -659,6 +663,11 @@ export const academyCertificates = pgTable('academy_certificates', {
   issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  /** Pourquoi il a été révoqué (une réémission le dit par `reemisSous`). */
+  revocationMotif: text('revocation_motif'),
+  revoqueParUserId: uuid('revoque_par_user_id'),
+  /** Réémis : le numéro du certificat qui le remplace. */
+  reemisSous: text('reemis_sous'),
 });
 
 // ---------- Objectifs (0042) ----------

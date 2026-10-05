@@ -13,6 +13,7 @@ import type {
   QuestionInput,
   QuizAdminView,
   QuizSettingsInput,
+  RevoquerCertificatInput,
   SessionUser,
   SubmitAttemptInput,
   SubmitTrialInput,
@@ -25,6 +26,7 @@ import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { ENTETE } from '../documents/entete';
 import { genererCertificatPdf } from './certificat-pdf';
+import { notifier } from '../notifications/notifier';
 import {
   corriger,
   dureeTentative,
@@ -33,6 +35,7 @@ import {
   hasardSur,
   normaliserNumero,
   numeroCertificat,
+  renouvelable,
   statutCertificat,
   tirerQuestions,
   type Hasard,
@@ -140,7 +143,11 @@ export async function formationsCertifiees(
   );
 }
 
-function resumeCertificat(c: LigneCertificat, maintenant: Date): CertificateSummary {
+function resumeCertificat(
+  c: LigneCertificat,
+  maintenant: Date,
+  gestes: CertificateSummary['gestes'] = { revoquer: false, reemettre: false },
+): CertificateSummary {
   return {
     id: c.id,
     number: c.number,
@@ -151,6 +158,9 @@ function resumeCertificat(c: LigneCertificat, maintenant: Date): CertificateSumm
     issuedAt: c.issuedAt.toISOString(),
     expiresAt: c.expiresAt?.toISOString() ?? null,
     status: statutCertificat(c, maintenant),
+    revocationMotif: c.revocationMotif,
+    reemisSous: c.reemisSous,
+    gestes,
   };
 }
 
@@ -206,6 +216,7 @@ export async function vueEvaluation(
       prochaineTentative: null,
       derniere: null,
       certificat: null,
+      renouvellement: false,
     };
   }
   const raison = fermeture(f, employeeId, gereLeCatalogue);
@@ -248,8 +259,12 @@ export async function vueEvaluation(
     parJour,
   );
 
-  // Un certificat obtenu AVANT d'être désigné formateur reste le sien.
-  const etat: EvaluationView['etat'] = valide
+  // Un certificat qui expire bientôt n'arrête plus l'évaluation : elle se
+  // repasse pour le renouveler. Obtenu AVANT d'être désigné formateur, il
+  // reste le sien.
+  const renouvellement = Boolean(valide && renouvelable(valide, maintenant));
+  const acquis = valide && !renouvellement;
+  const etat: EvaluationView['etat'] = acquis
     ? 'reussie'
     : raison
       ? 'fermee'
@@ -264,11 +279,12 @@ export async function vueEvaluation(
   return {
     ...base,
     etat,
-    fermeture: valide ? null : raison,
+    fermeture: acquis ? null : raison,
     tentativesRestantes: restantes,
     prochaineTentative: etat === 'attente' ? (prochaine?.toISOString() ?? null) : null,
     derniere,
     certificat: valide ? resumeCertificat(valide, maintenant) : null,
+    renouvellement,
   };
 }
 
@@ -650,8 +666,20 @@ export class AcademyEvaluationService {
         problem(403, 'academy.evaluation_locked', 'Validez d’abord toutes les leçons');
       }
       const maintenant = this.horloge();
-      const certifiees = await formationsCertifiees(tx, employeeId, maintenant);
-      if (certifiees.has(courseId)) {
+      // Un certificat valide arrête l'évaluation, sauf dans les jours qui
+      // précèdent son expiration : on la repasse pour le renouveler.
+      const acquis = (
+        await tx
+          .select()
+          .from(t.academyCertificates)
+          .where(
+            and(
+              eq(t.academyCertificates.employeeId, employeeId),
+              eq(t.academyCertificates.courseId, courseId),
+            ),
+          )
+      ).some((c) => statutCertificat(c, maintenant) === 'valide' && !renouvelable(c, maintenant));
+      if (acquis) {
         problem(409, 'academy.already_certified', 'Vous avez déjà réussi cette évaluation');
       }
 
@@ -882,7 +910,15 @@ export class AcademyEvaluationService {
         .from(t.academyCertificates)
         .where(eq(t.academyCertificates.employeeId, employeeId))
         .orderBy(desc(t.academyCertificates.issuedAt));
-      return rows.map((c) => resumeCertificat(c, maintenant));
+      // Qui gère l'Academy révoque ou réémet : jamais ses propres certificats.
+      const gerant = this.gere(user) && (await sonDossier(tx, user.userId)) !== employeeId;
+      return rows.map((c) => {
+        const valide = statutCertificat(c, maintenant) === 'valide';
+        return resumeCertificat(c, maintenant, {
+          revoquer: gerant && valide,
+          reemettre: gerant && valide,
+        });
+      });
     });
   }
 
@@ -974,6 +1010,149 @@ export class AcademyEvaluationService {
       score: c.score,
       issuedAt: c.issuedAt.toISOString(),
       expiresAt: c.expiresAt?.toISOString() ?? null,
+      reemisSous: c.reemisSous,
     };
+  }
+
+  // ---------------------------- révoquer, réémettre
+
+  /** Le certificat, verrouillé, pour qui gère l'Academy : pas l'un des siens. */
+  private async certificatAGerer(
+    tx: Tx,
+    user: SessionUser,
+    certificateId: string,
+  ): Promise<LigneCertificat> {
+    this.exigerGestion(user);
+    const [c] = await tx
+      .select()
+      .from(t.academyCertificates)
+      .where(eq(t.academyCertificates.id, certificateId))
+      .for('update')
+      .limit(1);
+    if (!c) problem(404, 'academy.certificate_not_found', 'Certificat introuvable');
+    if ((await sonDossier(tx, user.userId)) === c.employeeId) {
+      problem(403, 'academy.son_certificat', 'Personne ne révoque ni ne réémet ses certificats');
+    }
+    const statut = statutCertificat(c, this.horloge());
+    if (statut !== 'valide') {
+      problem(
+        422,
+        'academy.certificat_clos',
+        statut === 'revoque' ? 'Ce certificat est déjà révoqué' : 'Ce certificat a expiré',
+      );
+    }
+    return c;
+  }
+
+  /** Le compte du titulaire, s'il en a un : il apprend ce qui arrive à son certificat. */
+  private async titulaire(tx: Tx, employeeId: string): Promise<string | null> {
+    const [p] = await tx
+      .select({ userId: t.persons.userId })
+      .from(t.employees)
+      .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+      .where(eq(t.employees.id, employeeId))
+      .limit(1);
+    return p?.userId ?? null;
+  }
+
+  /**
+   * Révoquer : le certificat ne vaut plus, la vérification publique le dit
+   * aussitôt. Le motif est dit au titulaire ; il reste au journal.
+   */
+  async revoquer(
+    user: SessionUser,
+    certificateId: string,
+    input: RevoquerCertificatInput,
+  ): Promise<void> {
+    await this.db.withTenant(this.ctx(user), async (tx) => {
+      const c = await this.certificatAGerer(tx, user, certificateId);
+      await tx
+        .update(t.academyCertificates)
+        .set({
+          revokedAt: this.horloge(),
+          revocationMotif: input.motif,
+          revoqueParUserId: user.userId,
+        })
+        .where(eq(t.academyCertificates.id, c.id));
+      const destinataire = await this.titulaire(tx, c.employeeId);
+      if (destinataire) {
+        await notifier(tx, user.tenantId, destinataire, {
+          type: 'certificat_revoque',
+          title: `Votre certificat « ${c.courseTitle} » est révoqué : ${input.motif}`,
+          link: '/academy/certificats',
+          dedupeKey: `certificat:${c.id}:revoque`,
+        });
+      }
+    });
+  }
+
+  /**
+   * Réémettre : un nom ou un matricule corrigé depuis l'émission. Le nouveau
+   * certificat reprend la réussite (formation, score, date, échéance) sous
+   * le nom actuel du titulaire et un nouveau numéro ; l'ancien est révoqué
+   * et renvoie au nouveau.
+   */
+  async reemettre(user: SessionUser, certificateId: string): Promise<CertificateSummary> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const ancien = await this.certificatAGerer(tx, user, certificateId);
+      const [agent] = await tx
+        .select({
+          givenName: t.persons.givenName,
+          familyName: t.persons.familyName,
+          number: t.employees.employeeNumber,
+        })
+        .from(t.employees)
+        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+        .where(eq(t.employees.id, ancien.employeeId))
+        .limit(1);
+      let nouveau: LigneCertificat | undefined;
+      for (let essai = 0; essai < 5 && !nouveau; essai += 1) {
+        [nouveau] = await tx
+          .insert(t.academyCertificates)
+          .values({
+            id: uuidv7(),
+            tenantId: user.tenantId,
+            employeeId: ancien.employeeId,
+            courseId: ancien.courseId,
+            attemptId: ancien.attemptId,
+            number: numeroCertificat(this.hasard),
+            holderName: agent ? `${agent.givenName} ${agent.familyName}` : ancien.holderName,
+            holderNumber: agent?.number ?? ancien.holderNumber,
+            courseTitle: ancien.courseTitle,
+            courseCategory: ancien.courseCategory,
+            organizationName: ENTETE.raisonSociale,
+            score: ancien.score,
+            issuedAt: ancien.issuedAt,
+            expiresAt: ancien.expiresAt,
+          })
+          .onConflictDoNothing({ target: t.academyCertificates.number })
+          .returning();
+      }
+      if (!nouveau) {
+        problem(
+          500,
+          'academy.certificate_number',
+          'Impossible d’attribuer un numéro de certificat',
+        );
+      }
+      await tx
+        .update(t.academyCertificates)
+        .set({
+          revokedAt: this.horloge(),
+          reemisSous: nouveau.number,
+          revoqueParUserId: user.userId,
+        })
+        .where(eq(t.academyCertificates.id, ancien.id));
+      const destinataire = await this.titulaire(tx, ancien.employeeId);
+      if (destinataire) {
+        await notifier(tx, user.tenantId, destinataire, {
+          type: 'certificat_reemis',
+          title: `Votre certificat « ${ancien.courseTitle} » est réémis sous le n° ${nouveau.number}`,
+          link: '/academy/certificats',
+          dedupeKey: `certificat:${ancien.id}:reemis`,
+        });
+      }
+      return resumeCertificat(nouveau, this.horloge());
+    });
   }
 }

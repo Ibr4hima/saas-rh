@@ -103,10 +103,15 @@ export function EmployeeDocumentsCard({
   };
 
   const review = useMutation({
-    mutationFn: (input: { id: string; decision: 'approved' | 'rejected'; comment?: string }) =>
+    mutationFn: (input: {
+      id: string;
+      version: number;
+      decision: 'approved' | 'rejected';
+      comment?: string;
+    }) =>
       api(`/employee-documents/${input.id}/review`, {
         method: 'POST',
-        body: { decision: input.decision, comment: input.comment },
+        body: { version: input.version, decision: input.decision, comment: input.comment },
       }),
     onSuccess: () => {
       setRejectingId(null);
@@ -114,7 +119,11 @@ export function EmployeeDocumentsCard({
       setError(null);
       invalidate();
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Action impossible.'),
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : 'Action impossible.');
+      // Remplacée entre-temps : la liste montre le nouveau fichier.
+      invalidate();
+    },
   });
 
   const remove = useMutation({
@@ -294,7 +303,7 @@ export function EmployeeDocumentsCard({
                         onClick={() =>
                           d.controle
                             ? setAControler(d)
-                            : review.mutate({ id: d.id, decision: 'approved' })
+                            : review.mutate({ id: d.id, version: d.version, decision: 'approved' })
                         }
                         loading={review.isPending}
                       >
@@ -350,6 +359,7 @@ export function EmployeeDocumentsCard({
                       onClick={() =>
                         review.mutate({
                           id: d.id,
+                          version: d.version,
                           decision: 'rejected',
                           comment: rejectComment.trim(),
                         })
@@ -406,7 +416,11 @@ export function EmployeeDocumentsCard({
         <FenetreControleDuTitre
           piece={aControler}
           employe={aControler.uploadedByName}
-          onFermer={() => setAControler(null)}
+          // Un fichier remplacé pendant la lecture : la liste se met à jour.
+          onFermer={() => {
+            setAControler(null);
+            invalidate();
+          }}
           onRejeter={(motif) => {
             setRejectingId(aControler.id);
             setRejectComment(motif);

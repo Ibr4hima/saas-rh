@@ -16,6 +16,7 @@ import type {
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
+import { parLeSysteme } from '../../db/systeme';
 
 /**
  * La durée suit le contrat : exigée pour un CDD ou un stage, effacée pour les
@@ -43,9 +44,11 @@ function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
  * dit alors ce que lit le candidat. Relu à chaque lecture de la liste.
  */
 async function cloreLesOffresEchues(tx: Tx): Promise<void> {
-  await tx.execute(sql`
-    UPDATE job_postings SET status = 'closed', updated_at = now()
-     WHERE status = 'published' AND deadline < CURRENT_DATE`);
+  await parLeSysteme(tx, () =>
+    tx.execute(sql`
+      UPDATE job_postings SET status = 'closed', updated_at = now()
+       WHERE status = 'published' AND deadline < CURRENT_DATE`),
+  );
 }
 
 /** Une date limite déjà passée ne se publie pas : l'offre serait close à l'instant. */

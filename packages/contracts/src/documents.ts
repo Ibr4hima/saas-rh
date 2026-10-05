@@ -109,6 +109,8 @@ export const titreSaisiSchema = z
 export type TitreSaisi = z.infer<typeof titreSaisiSchema>;
 
 export const reviewEmployeeDocumentSchema = z.object({
+  /** Le fichier ouvert par qui vérifie : un autre, déposé depuis, ne se juge pas à sa place. */
+  version: z.number().int().positive(),
   decision: z.enum(['approved', 'rejected']),
   comment: z.string().trim().max(500).optional(),
   /** Valider le titre de la fiche : ses informations, qui remplacent celles de la fiche. */
@@ -153,6 +155,8 @@ export interface EmployeeDocumentView {
   reviewedByName: string | null;
   reviewComment: string | null;
   createdAt: string;
+  /** Le fichier en cours : il avance à chaque remplacement. */
+  version: number;
   /** CNI et passeport : la date d'expiration — pour le titulaire seulement. */
   expiresOn: string | null;
   /** CNI et passeport : une nouvelle pièce, déclarée par l'agent au dépôt. */

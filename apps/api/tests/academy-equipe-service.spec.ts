@@ -378,9 +378,11 @@ describe('où en est chaque agent', () => {
   it('un certificat révoqué ne se montre pas', async () => {
     for (const l of lecons) await progres(agents.moussa, l, true);
     await certificat(agents.moussa, excel, 'Excel', 0.9, '2026-09-20T10:00:00Z', null);
-    await raw(`UPDATE academy_certificates SET revoked_at = now() WHERE employee_id = $1`, [
-      agents.moussa,
-    ]);
+    await raw(
+      `UPDATE academy_certificates SET revoked_at = now(), revocation_motif = 'Erreur'
+        WHERE employee_id = $1`,
+      [agents.moussa],
+    );
     expect((await ficheDeMoussa()).get('Excel')).toMatchObject({
       status: 'evaluation_a_passer',
       certificate: null,

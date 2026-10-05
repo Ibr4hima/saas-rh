@@ -11,6 +11,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { hash as argonHash } from '@node-rs/argon2';
+import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
@@ -381,6 +382,28 @@ describe('la fin de contrat, d’elle-même', () => {
     );
     expect(await inactiver()).toBe(0);
     expect((await statut(fatou)).status).toBe('active');
+  });
+});
+
+describe('une tâche que le temps déclenche', () => {
+  it('se trace au nom du système, pas de qui ouvrait la page', async () => {
+    const apres = await db.withTenant({ tenantId, userId: adminUserId }, async (tx) => {
+      await inactiverLesContratsEchus(tx, tenantId);
+      // Le contexte de l'appelant revient intact.
+      const { rows } = await tx.execute<{ u: string }>(
+        sql`SELECT current_setting('app.user_id', true) AS u`,
+      );
+      return rows[0]?.u;
+    });
+    expect(apres).toBe(adminUserId);
+    const { rows } = await raw(
+      `SELECT actor_user_id FROM audit_log
+        WHERE table_name = 'employees' AND row_id = $1 AND action = 'UPDATE'
+          AND new_data->>'status' = 'archived'`,
+      [fatou.employeeId],
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.actor_user_id === null)).toBe(true);
   });
 });
 

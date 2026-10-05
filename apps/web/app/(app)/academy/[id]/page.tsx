@@ -69,7 +69,11 @@ export default function FormationPage() {
     <Link href={`/academy/${f.id}/evaluation`} className="shrink-0">
       <Button className="w-full sm:w-auto">
         <Icon name="quiz" size={17} />
-        {f.evaluation?.etat === 'en_cours' ? 'Reprendre l’évaluation' : 'Passer l’évaluation'}
+        {f.evaluation?.etat === 'en_cours'
+          ? 'Reprendre l’évaluation'
+          : f.evaluation?.renouvellement
+            ? 'Renouveler le certificat'
+            : 'Passer l’évaluation'}
       </Button>
     </Link>
   ) : cible ? (

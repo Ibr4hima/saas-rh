@@ -266,6 +266,13 @@ function checkIdDocument(
       message: 'Précisez le type de pièce (CNI ou passeport)',
     });
   }
+  if (requireTypeWithNumber && p.idDocumentType && !p.nationalId) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['nationalId'],
+      message: 'Indiquez le numéro de la pièce',
+    });
+  }
   if (
     p.idDocumentIssuedOn &&
     p.idDocumentExpiresOn &&
@@ -325,23 +332,23 @@ export const employeeFieldsSchema = z.object({
   customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
-export const initialContractSchema = z.object({
-  contractType: contractTypeSchema,
-  startDate: isoDate,
-  endDate: isoDate.optional(),
-  trialPeriodEnd: isoDate.optional(),
-  notes: optionalTrimmed(2000),
-});
-
 /**
- * Un nouveau contrat : un CDD renouvelé, un stage suivi d'un CDD, un CDI ;
- * plus de consultant ni de détachement (ceux d'avant restent lisibles).
- * Le précédent s'arrête la veille, s'il courait encore. Un CDD ou un stage a
- * une date de fin — c'est elle qui fera passer l'agent dans les inactifs.
+ * Un contrat, le premier comme les suivants : un CDI, un CDD ou un stage ;
+ * plus de consultant ni de détachement (ceux d'avant restent lisibles). Un
+ * CDD ou un stage a une date de fin : c'est elle qui fera passer l'agent
+ * dans les inactifs. Les mêmes règles à la création, au formulaire comme à
+ * l'import, et pour un nouveau contrat.
  */
-export const newContractSchema = initialContractSchema
+export const initialContractSchema = z
+  .object({
+    contractType: contractTypeSchema,
+    startDate: isoDate,
+    endDate: isoDate.optional(),
+    trialPeriodEnd: isoDate.optional(),
+    notes: optionalTrimmed(2000),
+  })
   .refine((c) => ['cdi', 'cdd', 'stage'].includes(c.contractType), {
-    message: 'Un nouveau contrat est un CDI, un CDD ou un stage',
+    message: 'Un contrat est un CDI, un CDD ou un stage',
     path: ['contractType'],
   })
   .refine((c) => !['cdd', 'stage'].includes(c.contractType) || c.endDate !== undefined, {
@@ -352,6 +359,9 @@ export const newContractSchema = initialContractSchema
     message: 'La fin du contrat précède son début',
     path: ['endDate'],
   });
+
+/** Un nouveau contrat : le précédent s'arrête la veille, s'il courait encore. */
+export const newContractSchema = initialContractSchema;
 export type NewContractInput = z.infer<typeof newContractSchema>;
 
 /**

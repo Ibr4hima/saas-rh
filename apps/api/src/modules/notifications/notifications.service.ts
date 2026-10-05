@@ -20,6 +20,7 @@ import { CONTRAT, frDate, PIECE, rappel } from './phrases';
 import { alerterLaDCH } from '../acces/dch';
 import { inactiverSiLeTempsEstVenu } from '../people/activite';
 import { dernierContrat } from '../people/en-activite';
+import { parLeSysteme } from '../../db/systeme';
 
 export type { NotificationDraft } from './notifier';
 
@@ -138,24 +139,27 @@ export class NotificationsService {
     // boîte de réception. Dans une transaction commune, l'échec d'un INSERT
     // avorte tout le reste — la lecture comprise.
     try {
-      await this.db.withTenant(ctx, async (tx) => {
-        // Les échéances de contrat ne concernent que qui gère les dossiers.
-        if (peut(user, 'personnel.gerer') || peut(user, 'pilotage')) {
-          await this.generateContractDeadlines(tx, user.tenantId);
-        }
-        // Les contrats arrivés à terme passent dans les inactifs — au plus une
-        // fois par minute, quelle que soit la session qui relève.
-        await inactiverSiLeTempsEstVenu(tx, user.tenantId);
-        // Les fériés concernent tout le monde : le rappel est créé pour
-        // l'utilisateur qui consulte (une ligne, idempotente par férié).
-        await this.generateHolidayReminders(tx, user.tenantId, user.userId);
-        // L'expiration de ses titres d'identité : à leur titulaire seul.
-        await this.generateExpiryReminders(tx, user.tenantId, user.userId);
-        // Le circuit des congés se relit (au plus une fois par minute) : un
-        // congé qui commence, un accès fermé ne déclenchent aucune écriture,
-        // et c'est ici qu'on les voit passer.
-        await reconcilierSiLeTempsEstVenu(tx, user.tenantId);
-      });
+      // Au nom du système : rien de tout cela n'est le geste de qui relève.
+      await this.db.withTenant(ctx, (tx) =>
+        parLeSysteme(tx, async () => {
+          // Les échéances de contrat ne concernent que qui gère les dossiers.
+          if (peut(user, 'personnel.gerer') || peut(user, 'pilotage')) {
+            await this.generateContractDeadlines(tx, user.tenantId);
+          }
+          // Les contrats arrivés à terme passent dans les inactifs, au plus une
+          // fois par minute, quelle que soit la session qui relève.
+          await inactiverSiLeTempsEstVenu(tx, user.tenantId);
+          // Les fériés concernent tout le monde : le rappel est créé pour
+          // l'utilisateur qui consulte (une ligne, idempotente par férié).
+          await this.generateHolidayReminders(tx, user.tenantId, user.userId);
+          // L'expiration de ses titres d'identité : à leur titulaire seul.
+          await this.generateExpiryReminders(tx, user.tenantId, user.userId);
+          // Le circuit des congés se relit (au plus une fois par minute) : un
+          // congé qui commence, un accès fermé ne déclenchent aucune écriture,
+          // et c'est ici qu'on les voit passer.
+          await reconcilierSiLeTempsEstVenu(tx, user.tenantId);
+        }),
+      );
     } catch (err) {
       this.logger.error(
         `Génération des notifications impossible (tenant ${user.tenantId}) : la boîte est servie sans elle.`,

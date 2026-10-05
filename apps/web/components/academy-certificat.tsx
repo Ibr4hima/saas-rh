@@ -1,14 +1,26 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { CertificateSummary, FormationAnimee } from '@teranga/contracts';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, cn, Skeleton } from '@teranga/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  cn,
+  Field,
+  Skeleton,
+  Textarea,
+} from '@teranga/ui';
 import { FAMILLES, FOND_COUVERTURE, pourcent, STATUTS_CERTIFICAT } from '../lib/academy';
-import { api, apiUrl } from '../lib/api';
+import { api, ApiError, apiUrl } from '../lib/api';
 import { formatDate } from '../lib/hooks';
 import { FenetreDocument } from './fenetre-document';
 import { Icon } from './icons';
+import { Modal } from './modal';
 
 /* ————————————————————————————————————————————————————————————————
    Les certificats d'APIX Academy, à l'écran.
@@ -49,6 +61,9 @@ export function ListeCertificats({
   compact?: boolean;
 }) {
   const [ouvert, setOuvert] = useState<CertificateSummary | null>(null);
+  // Qui gère l'Academy : révoquer (motif dit), réémettre (nom corrigé).
+  const [aRevoquer, setARevoquer] = useState<CertificateSummary | null>(null);
+  const [aReemettre, setAReemettre] = useState<CertificateSummary | null>(null);
   return (
     <>
       <ul className="flex flex-col">
@@ -73,6 +88,11 @@ export function ListeCertificats({
                   <span className="block text-[11.5px] text-ink-muted">
                     Obtenu le {formatDate(c.issuedAt)} · {pourcent(c.score)}
                     {c.expiresAt ? ` · jusqu’au ${formatDate(c.expiresAt)}` : ''}
+                    {c.reemisSous
+                      ? ` · réémis sous le n° ${c.reemisSous}`
+                      : c.revocationMotif
+                        ? ` · ${c.revocationMotif}`
+                        : ''}
                     {!compact ? (
                       <>
                         {' · '}
@@ -88,13 +108,149 @@ export function ListeCertificats({
                   <Icon name="visibility" size={15} />
                   Voir
                 </Button>
+                {c.gestes.reemettre ? (
+                  <Button variant="secondary" size="sm" onClick={() => setAReemettre(c)}>
+                    Réémettre
+                  </Button>
+                ) : null}
+                {c.gestes.revoquer ? (
+                  <Button variant="ghost" size="sm" onClick={() => setARevoquer(c)}>
+                    Révoquer
+                  </Button>
+                ) : null}
               </div>
             </li>
           );
         })}
       </ul>
       {ouvert ? <ApercuCertificat certificat={ouvert} onClose={() => setOuvert(null)} /> : null}
+      {aRevoquer ? (
+        <FenetreRevocation certificat={aRevoquer} onClose={() => setARevoquer(null)} />
+      ) : null}
+      {aReemettre ? (
+        <FenetreReemission certificat={aReemettre} onClose={() => setAReemettre(null)} />
+      ) : null}
     </>
+  );
+}
+
+const messageDErreur = (err: unknown) =>
+  err instanceof ApiError ? err.message : 'Action impossible, réessayez.';
+
+/** Révoquer : le motif est dit au titulaire, et la vérification publique le montre révoqué. */
+function FenetreRevocation({
+  certificat: c,
+  onClose,
+}: {
+  certificat: CertificateSummary;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [motif, setMotif] = useState('');
+  const revoquer = useMutation({
+    mutationFn: () =>
+      api(`/academy/certificats/${c.id}/revocation`, {
+        method: 'POST',
+        body: { motif: motif.trim() },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['academy', 'certificats'] });
+      onClose();
+    },
+  });
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Révoquer le certificat « ${c.courseTitle} »`}
+      subtitle={`N° ${c.number}`}
+      maxWidth="max-w-lg"
+      footer={
+        <>
+          {revoquer.isError ? (
+            <p role="alert" className="min-w-0 flex-1 text-[12px] font-semibold text-danger">
+              {messageDErreur(revoquer.error)}
+            </p>
+          ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button
+            variant="danger"
+            disabled={!motif.trim()}
+            loading={revoquer.isPending}
+            onClick={() => revoquer.mutate()}
+          >
+            Révoquer
+          </Button>
+        </>
+      }
+    >
+      <Field label="Motif" htmlFor="motif-revocation" required>
+        <Textarea
+          id="motif-revocation"
+          value={motif}
+          maxLength={500}
+          onChange={(e) => setMotif(e.target.value)}
+        />
+      </Field>
+    </Modal>
+  );
+}
+
+/** Réémettre : un nouveau numéro, au nom actuel du titulaire ; l'ancien renvoie au nouveau. */
+function FenetreReemission({
+  certificat: c,
+  onClose,
+}: {
+  certificat: CertificateSummary;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const reemettre = useMutation({
+    mutationFn: () =>
+      api<CertificateSummary>(`/academy/certificats/${c.id}/reemission`, { method: 'POST' }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['academy', 'certificats'] });
+      onClose();
+    },
+  });
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Réémettre le certificat « ${c.courseTitle} »`}
+      subtitle={`N° ${c.number}`}
+      maxWidth="max-w-lg"
+      footer={
+        <>
+          {reemettre.isError ? (
+            <p role="alert" className="min-w-0 flex-1 text-[12px] font-semibold text-danger">
+              {messageDErreur(reemettre.error)}
+            </p>
+          ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button loading={reemettre.isPending} onClick={() => reemettre.mutate()}>
+            Réémettre
+          </Button>
+        </>
+      }
+    >
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-[12.5px]">
+        <div>
+          <dt className="text-ink-muted">Obtenu le</dt>
+          <dd className="font-semibold text-ink-strong">{formatDate(c.issuedAt)}</dd>
+        </div>
+        <div>
+          <dt className="text-ink-muted">Valable jusqu’au</dt>
+          <dd className="font-semibold text-ink-strong">
+            {c.expiresAt ? formatDate(c.expiresAt) : 'Sans limite'}
+          </dd>
+        </div>
+      </dl>
+    </Modal>
   );
 }
 

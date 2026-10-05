@@ -6,6 +6,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Inject,
   Param,
   ParseUUIDPipe,
@@ -24,6 +25,7 @@ import type {
   PrepareVideoInput,
   QuestionInput,
   QuizSettingsInput,
+  RevoquerCertificatInput,
   SaveCourseInput,
   SubmitAttemptInput,
   SubmitTrialInput,
@@ -36,6 +38,7 @@ import {
   publishCourseSchema,
   questionSchema,
   quizSettingsSchema,
+  revoquerCertificatSchema,
   saveCourseSchema,
   specimenQuerySchema,
   submitAttemptSchema,
@@ -50,6 +53,7 @@ import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AcademyEquipeService } from './academy-equipe.service';
 import { AcademyEvaluationService } from './academy-evaluation.service';
 import { AcademyService } from './academy.service';
+import { contentDisposition } from '../../common/telechargement';
 
 /**
  * APIX Academy.
@@ -120,13 +124,9 @@ export class AcademyController {
   ) {
     const { filename, data } = await this.academy.support(req.sessionUser, id);
     res.setHeader('Content-Type', 'application/pdf');
-    // Le nom en deux formes : une version ASCII pour les vieux navigateurs, et
-    // la vraie, en UTF-8 (RFC 6266) — sans elle, « Le PIB et ses trois
-    // optiques.pdf » arrivait sous le nom « Le%20PIB%20et%20ses… ».
-    const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '');
     res.setHeader(
       'Content-Disposition',
-      `${disposition === 'inline' ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      contentDisposition(disposition === 'inline' ? 'inline' : 'attachment', filename),
     );
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.end(data);
@@ -385,7 +385,7 @@ export class AcademyController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `${disposition === 'inline' ? 'inline' : 'attachment'}; filename="${filename}"`,
+      contentDisposition(disposition === 'inline' ? 'inline' : 'attachment', filename),
     );
     res.setHeader('Cache-Control', 'private, no-store');
     res.end(data);
@@ -455,6 +455,25 @@ export class AcademyController {
     return this.evaluation.formationsAnimees(req.sessionUser, id);
   }
 
+  /** Révoquer un certificat, motif à l'appui : qui gère l'Academy. */
+  @Post('certificats/:id/revocation')
+  @Peut('academy')
+  @HttpCode(204)
+  async revoquerCertificat(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(revoquerCertificatSchema)) body: RevoquerCertificatInput,
+  ) {
+    await this.evaluation.revoquer(req.sessionUser, id, body);
+  }
+
+  /** Réémettre un certificat sous le nom actuel du titulaire. */
+  @Post('certificats/:id/reemission')
+  @Peut('academy')
+  reemettreCertificat(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.evaluation.reemettre(req.sessionUser, id);
+  }
+
   @Get('certificats/:id/pdf')
   @OuvertAuxInactifs()
   async certificatPdf(
@@ -467,7 +486,7 @@ export class AcademyController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `${disposition === 'inline' ? 'inline' : 'attachment'}; filename="${filename}"`,
+      contentDisposition(disposition === 'inline' ? 'inline' : 'attachment', filename),
     );
     res.setHeader('Cache-Control', 'private, no-store');
     res.end(data);

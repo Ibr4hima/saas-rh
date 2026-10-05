@@ -25,6 +25,7 @@ import {
   decideAbsenceRequestSchema,
   deciderRepriseSchema,
   demanderRepriseSchema,
+  joindreJustificatifSchema,
   listAbsenceRequestsQuerySchema,
   previewAbsenceSchema,
   rappelerSchema,
@@ -39,6 +40,7 @@ import {
   type DecideAbsenceRequestInput,
   type DeciderRepriseInput,
   type DemanderRepriseInput,
+  type JoindreJustificatifInput,
   type ListAbsenceRequestsQuery,
   type RappelerInput,
   type SetBalanceInput,
@@ -50,6 +52,7 @@ import { ZodValidationPipe } from '../../common/zod.pipe';
 import { AccesGuard, FermeAuxInactifs, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AbsencesService } from './absences.service';
+import { contentDisposition } from '../../common/telechargement';
 
 /**
  * L'année demandée ; à défaut, l'année en cours AU MOMENT DE LA REQUÊTE. Une
@@ -202,6 +205,12 @@ export class AbsencesController {
     return this.absences.listRequests(req.sessionUser, query);
   }
 
+  /** Les agents pour qui la DCH saisit une demande. */
+  @Get('absences/saisie/agents')
+  agentsPourSaisie(@Req() req: AuthenticatedRequest) {
+    return this.absences.agentsPourSaisie(req.sessionUser);
+  }
+
   @Get('absences/upcoming')
   upcoming(@Req() req: AuthenticatedRequest) {
     return this.absences.upcoming(req.sessionUser);
@@ -276,6 +285,17 @@ export class AbsencesController {
     await this.absences.rappeler(req.sessionUser, id, body);
   }
 
+  /** Le justificatif joint après coup : il suit la demande. */
+  @Post('absence-requests/:id/document')
+  @HttpCode(204)
+  async joindreJustificatif(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(joindreJustificatifSchema)) body: JoindreJustificatifInput,
+  ) {
+    await this.absences.joindreJustificatif(req.sessionUser, id, body);
+  }
+
   /** Justificatif PDF joint à une demande (RH ou titulaire uniquement). */
   @Get('absence-requests/:id/document')
   async document(
@@ -285,10 +305,7 @@ export class AbsencesController {
   ) {
     const doc = await this.absences.document(req.sessionUser, id);
     res.setHeader('Content-Type', doc.contentType);
-    res.setHeader(
-      'Content-Disposition',
-      `inline; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
-    );
+    res.setHeader('Content-Disposition', contentDisposition('inline', doc.filename));
     res.setHeader('Cache-Control', 'no-store');
     res.end(doc.data);
   }

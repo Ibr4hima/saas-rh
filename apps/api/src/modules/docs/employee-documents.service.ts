@@ -260,7 +260,7 @@ export class EmployeeDocumentsService {
   ): Promise<void> {
     const data = lireLeFichier(input);
     await this.db.withTenant(ctxOf(user), async (tx) => {
-      const doc = await this.requireDocument(tx, documentId);
+      const doc = await this.requireDocument(tx, documentId, { verrou: true });
       const target = await this.requireEmployeeWithPerson(tx, doc.employeeId);
       if (target.personUserId !== user.userId || doc.uploadedByUserId !== user.userId) {
         problem(403, 'documents.forbidden_scope', 'Accès limité à votre propre dossier');
@@ -290,6 +290,7 @@ export class EmployeeDocumentsService {
           ...(input.renouvellement !== undefined && aUneExpiration(doc.category as DocumentCategory)
             ? { renouvellement: input.renouvellement }
             : {}),
+          version: sql`${t.employeeDocuments.version} + 1`,
           createdAt: new Date(),
         })
         .where(eq(t.employeeDocuments.id, documentId));
@@ -299,7 +300,10 @@ export class EmployeeDocumentsService {
 
   /**
    * La vérification : qui traite les pièces pour la DCH — jamais le titulaire
-   * du dossier, jamais qui a déposé la pièce.
+   * du dossier, jamais qui a déposé la pièce. La pièce est verrouillée le
+   * temps du verdict : deux vérifications ne se croisent pas, et le second
+   * trouve la pièce déjà traitée. Le verdict porte sur le fichier ouvert : si
+   * l'agent l'a remplacé depuis, il ne vaut pas pour le nouveau.
    */
   async review(
     user: SessionUser,
@@ -307,7 +311,7 @@ export class EmployeeDocumentsService {
     input: ReviewEmployeeDocumentInput,
   ): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
-      const doc = await this.requireDocument(tx, documentId);
+      const doc = await this.requireDocument(tx, documentId, { verrou: true });
       const target = await this.requireEmployeeWithPerson(tx, doc.employeeId);
       const isOwner = target.personUserId === user.userId;
       // Périmètre AVANT l'état : un tiers ne doit rien apprendre du document.
@@ -329,6 +333,14 @@ export class EmployeeDocumentsService {
         employeeId: doc.employeeId,
         confieeA: doc.confieeAEmployeeId,
       });
+      if (doc.version !== input.version) {
+        problem(
+          409,
+          'documents.remplace_depuis',
+          'L’agent a remplacé le fichier depuis votre lecture',
+          'Ouvrez le nouveau fichier avant de vous prononcer.',
+        );
+      }
       // L'agent doit savoir quoi corriger avant de déposer à nouveau.
       if (input.decision === 'rejected' && !input.comment?.trim()) {
         problem(422, 'documents.motif_requis', 'Indiquez le motif du rejet');
@@ -644,6 +656,7 @@ export class EmployeeDocumentsService {
       reviewedByName: reviewer ? `${reviewer.givenName} ${reviewer.familyName}` : null,
       reviewComment: doc.reviewComment,
       createdAt: doc.createdAt.toISOString(),
+      version: doc.version,
       // L'échéance d'un titre sert à son titulaire : la DCH ne la suit pas.
       expiresOn: o.isOwner ? doc.expiresOn : null,
       renouvellement: doc.renouvellement,
@@ -679,9 +692,10 @@ export class EmployeeDocumentsService {
     });
   }
 
+  /** Le journal garde le retrait et son auteur, sans le fichier (cf. 0069). */
   async remove(user: SessionUser, documentId: string): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
-      const doc = await this.requireDocument(tx, documentId);
+      const doc = await this.requireDocument(tx, documentId, { verrou: true });
       const target = await this.requireEmployeeWithPerson(tx, doc.employeeId);
       // Qui gère les dossiers retire une pièce validée — pas de SON dossier.
       const isManage = peut(user, 'personnel.gerer') && target.personUserId !== user.userId;
@@ -699,13 +713,18 @@ export class EmployeeDocumentsService {
     });
   }
 
-  /** La pièce sans son contenu : seul le téléchargement lit le fichier. */
-  private async requireDocument(tx: Tx, id: string) {
-    const [doc] = await tx
+  /**
+   * La pièce sans son contenu : seul le téléchargement lit le fichier.
+   * Verrouillée pour qui la change : remplacement, verdict et retrait
+   * passent l'un après l'autre, chacun sur l'état laissé par le précédent.
+   */
+  private async requireDocument(tx: Tx, id: string, o: { verrou?: boolean } = {}) {
+    const lecture = tx
       .select(SANS_CONTENU)
       .from(t.employeeDocuments)
       .where(eq(t.employeeDocuments.id, id))
       .limit(1);
+    const [doc] = o.verrou ? await lecture.for('update') : await lecture;
     if (!doc) {
       problem(404, 'documents.not_found', 'Document introuvable');
     }

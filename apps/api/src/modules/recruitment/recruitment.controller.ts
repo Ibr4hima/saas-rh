@@ -33,6 +33,7 @@ import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { ApplyService } from './apply.service';
 import { JobsService } from './jobs.service';
+import { contentDisposition } from '../../common/telechargement';
 
 const SLUG_RE = /^[A-Za-z0-9_-]{10,64}$/;
 
@@ -127,10 +128,7 @@ export class RecruitmentController {
     const doc = await this.jobs.document(req.sessionUser, id);
     res.setHeader('Content-Type', doc.contentType);
     // filename* encodé : les noms de fichiers viennent du public.
-    res.setHeader(
-      'Content-Disposition',
-      `inline; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
-    );
+    res.setHeader('Content-Disposition', contentDisposition('inline', doc.filename));
     res.setHeader('Cache-Control', 'no-store');
     res.end(doc.data);
   }

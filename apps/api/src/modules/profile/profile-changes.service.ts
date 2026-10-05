@@ -45,6 +45,21 @@ const COLUMN_OF: Record<string, keyof typeof t.persons.$inferInsert> = {
   emergencyContactPhone: 'emergencyContactPhone',
 };
 
+/** Deux valeurs d'un champ, comparées comme le dossier les tient (vide = absent). */
+const pareil = (a: unknown, b: unknown) => String(a ?? '') === String(b ?? '');
+
+/** Les champs dont la valeur au dossier n'est plus celle qu'avait vue l'agent. */
+function modifiesDepuis(
+  changes: Record<string, unknown>,
+  previous: Record<string, unknown>,
+  person: Record<string, unknown>,
+): string[] {
+  return Object.keys(changes).filter((field) => {
+    const colonne = COLUMN_OF[field];
+    return colonne !== undefined && !pareil(previous[field], person[colonne]);
+  });
+}
+
 function ctxOf(user: SessionUser) {
   return { tenantId: user.tenantId, userId: user.userId };
 }
@@ -172,6 +187,7 @@ export class ProfileChangesService {
             givenName: t.persons.givenName,
             familyName: t.persons.familyName,
             gender: t.persons.gender,
+            person: t.persons,
             employeeNumber: t.employees.employeeNumber,
             handlerGivenName: handler.givenName,
             handlerFamilyName: handler.familyName,
@@ -209,6 +225,8 @@ export class ProfileChangesService {
             r.request.changes as Record<string, unknown>,
             r.request.previous as Record<string, unknown>,
             r.gender,
+            // Le dossier d'aujourd'hui ne compte que pour une demande en attente.
+            r.request.status === 'pending' ? (r.person as Record<string, unknown>) : null,
           ),
           canDecide: Boolean(tr?.peutTraiter),
           canCancel: r.request.status === 'pending' && r.request.employeeId === self?.employeeId,
@@ -256,11 +274,29 @@ export class ProfileChangesService {
       });
 
       const [target] = await tx
-        .select({ personId: t.employees.personId, userId: t.persons.userId })
+        .select({ personId: t.employees.personId, userId: t.persons.userId, person: t.persons })
         .from(t.employees)
         .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
         .where(eq(t.employees.id, row.employeeId))
         .limit(1);
+
+      if (input.decision === 'approve' && target && !input.ecraser) {
+        // La RH a corrigé l'un de ces champs depuis la demande : la valider
+        // remplacerait sa correction. Cela se décide en le voyant.
+        const changes = modifiesDepuis(
+          row.changes as Record<string, unknown>,
+          row.previous as Record<string, unknown>,
+          target.person as Record<string, unknown>,
+        );
+        if (changes.length > 0) {
+          problem(
+            409,
+            'profile.modifie_depuis',
+            'Le dossier a changé depuis la demande',
+            `${changes.map((f) => PROFILE_CHANGE_ALL_LABELS[f] ?? f).join(', ')} : la valeur au dossier n’est plus celle que l’agent avait sous les yeux.`,
+          );
+        }
+      }
 
       if (input.decision === 'approve') {
         // Le jsonb stocké est REVALIDÉ avant d'atteindre la base : il a
@@ -342,6 +378,7 @@ export class ProfileChangesService {
     changes: Record<string, unknown>,
     previous: Record<string, unknown>,
     gender: string | null,
+    person: Record<string, unknown> | null,
   ) {
     const marital = maritalLabelsFor(gender ?? undefined);
     const render = (field: string, value: unknown): string | null => {
@@ -356,6 +393,10 @@ export class ProfileChangesService {
         label: PROFILE_CHANGE_ALL_LABELS[field]!,
         previous: render(field, previous[field]),
         next: render(field, changes[field]),
+        actuel: person && COLUMN_OF[field] ? render(field, person[COLUMN_OF[field]!]) : null,
+        modifieDepuis: Boolean(
+          person && COLUMN_OF[field] && !pareil(previous[field], person[COLUMN_OF[field]!]),
+        ),
       }));
   }
 

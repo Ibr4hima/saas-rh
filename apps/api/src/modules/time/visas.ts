@@ -16,6 +16,7 @@ import {
 import { compterLesBloquees, reconcilierLesDemandes } from '../acces/demandes';
 import { DG } from '../people/chaine';
 import { DELAI_N1_JOURS_OUVRES } from './workdays';
+import { parLeSysteme } from '../../db/systeme';
 
 /* ————————————————————————————————————————————————————————————————
    Le circuit d'une demande d'absence : le N+1, puis la DCH.
@@ -27,10 +28,13 @@ import { DELAI_N1_JOURS_OUVRES } from './workdays';
 
    Les règles, décidées avec l'APIX :
      1. le N+1 de l'agent vise d'abord — celui du MOMENT où il vise. Sans
-        N+1 qui puisse viser (le DG, un N+1 archivé, sans accès au portail,
-        ou en congé aujourd'hui), la demande va directement à la DCH ;
-        elle y va aussi quand le N+1 n'a pas visé cinq jours ouvrés après
-        le dépôt. Déposée avant son premier jour, une demande toujours en
+        N+1 qui puisse viser (le DG, un N+1 archivé, sans accès au portail),
+        la demande va directement à la DCH ; elle y va aussi quand le N+1
+        n'a pas visé cinq jours ouvrés après le dépôt. Un N+1 absent (une
+        mission le laisse joignable) garde la main s'il rentre au plus tard
+        la veille du congé demandé ; sinon la DCH traite le temps de son
+        absence, et la demande lui revient s'il rentre avant qu'elle ait
+        visé. Déposée avant son premier jour, une demande toujours en
         attente ce jour-là expire ;
      2. la DCH, c'est son directeur — le responsable de la direction du
         personnel dans l'organigramme. Il traite, ou il confie : une demande
@@ -82,6 +86,11 @@ export interface Attendu {
   dch: DirectionDuPersonnel | null;
   /** Le N+1 n'a pas visé dans le délai : la demande est passée à la DCH. */
   n1SansReponse: boolean;
+  /**
+   * La DCH traite le temps de l'absence du N+1 : la demande ne lui est pas
+   * acquise, elle revient au N+1 s'il rentre avant qu'elle ait visé.
+   */
+  n1Absent: boolean;
 }
 
 interface DemandeCircuit {
@@ -92,6 +101,19 @@ interface DemandeCircuit {
   confieeAEmployeeId: string | null;
   /** Le moment du dépôt : le délai du N+1 court depuis. */
   deposeeLe: Date | string;
+  /** Le premier jour demandé (ISO) : le N+1 absent doit être rentré la veille. */
+  debut: string | null;
+}
+
+/**
+ * Le N+1, absent, sera rentré au plus tard la veille du congé : il garde la
+ * main. Sans date de congé connue, son absence suffit à passer la main.
+ */
+function rentreAvantLeConge(n1: Viseur, demande: DemandeCircuit): boolean {
+  if (!n1.absentJusquAu || !demande.debut) return false;
+  const [a, m, j] = demande.debut.split('-').map(Number) as [number, number, number];
+  const avantVeille = new Date(Date.UTC(a, m - 1, j - 2)).toISOString().slice(0, 10);
+  return n1.absentJusquAu <= avantVeille;
 }
 
 /**
@@ -135,13 +157,17 @@ export async function attendu(tx: Tx, demande: DemandeCircuit): Promise<Attendu 
     demandeDuDirecteur,
     dch,
     n1SansReponse: false,
+    n1Absent: false,
   });
   let n1SansReponse = false;
+  let n1Absent = false;
   if (demande.currentLevel <= NIVEAU_N1) {
     const n1 = await n1De(tx, demande.employeeId);
-    if (n1 && !n1.absent) {
+    if (n1 && (!n1.absent || rentreAvantLeConge(n1, demande))) {
       if (!(await delaiDuN1Passe(tx, demande))) return leN1(n1);
       n1SansReponse = true;
+    } else if (n1) {
+      n1Absent = true;
     }
     if (demandeDuDirecteur) {
       // Le directeur du Capital Humain : son N+1 (le DG) vise seul. Absent,
@@ -149,7 +175,7 @@ export async function attendu(tx: Tx, demande: DemandeCircuit): Promise<Attendu 
       // prennent le relais ; sinon on attend le DG.
       const t = await traitantDCH(tx, demande, dch);
       if (t.valideurs.length > 0) {
-        return { etape: 'dch', ...t, demandeDuDirecteur, dch, n1SansReponse };
+        return { etape: 'dch', ...t, demandeDuDirecteur, dch, n1SansReponse, n1Absent };
       }
       return leN1(n1);
     }
@@ -159,7 +185,7 @@ export async function attendu(tx: Tx, demande: DemandeCircuit): Promise<Attendu 
     // Passée à ses membres, qui ne peuvent plus : elle revient au DG.
     return leN1(await n1De(tx, demande.employeeId));
   }
-  return { etape: 'dch', ...t, demandeDuDirecteur, dch, n1SansReponse };
+  return { etape: 'dch', ...t, demandeDuDirecteur, dch, n1SansReponse, n1Absent };
 }
 
 /** La demande, lue pour le circuit. */
@@ -171,8 +197,10 @@ export async function lireCircuit(tx: Tx, requestId: string): Promise<DemandeCir
     current_level: number;
     confiee_a_employee_id: string | null;
     created_at: string;
+    start_date: string;
   }>(sql`
-    SELECT id, employee_id, status, current_level, confiee_a_employee_id, created_at::text
+    SELECT id, employee_id, status, current_level, confiee_a_employee_id, created_at::text,
+           start_date::text
       FROM absence_requests WHERE id = ${requestId}`);
   const r = rows[0];
   return r
@@ -183,6 +211,7 @@ export async function lireCircuit(tx: Tx, requestId: string): Promise<DemandeCir
         currentLevel: r.current_level,
         confieeAEmployeeId: r.confiee_a_employee_id,
         deposeeLe: r.created_at,
+        debut: r.start_date,
       }
     : null;
 }
@@ -274,9 +303,10 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
   const demande = await lireCircuit(tx, requestId);
   if (!demande) return;
   const att = await attendu(tx, demande);
-  // Arrivée à la DCH — visée par le N+1, ou sans N+1 qui puisse viser —,
-  // elle y reste : un N+1 qui revient de congé ne la reprend pas en route.
-  if (att?.etape === 'dch' && demande.currentLevel < NIVEAU_DCH) {
+  // Arrivée à la DCH (visée par le N+1, sans N+1 qui puisse viser, ou
+  // sans réponse dans le délai), elle y reste. Passée le temps d'une
+  // absence du N+1, elle ne lui est pas retirée : il la retrouve en rentrant.
+  if (att?.etape === 'dch' && demande.currentLevel < NIVEAU_DCH && !att.n1Absent) {
     await tx.execute(sql`
       UPDATE absence_requests
          SET current_level = ${NIVEAU_DCH}, n1_sans_reponse = ${att.n1SansReponse}
@@ -326,6 +356,7 @@ export async function attenduPourLaReprise(
       demandeDuDirecteur,
       dch,
       n1SansReponse: false,
+      n1Absent: false,
     };
   }
   const t = await traitantDCH(
@@ -337,10 +368,11 @@ export async function attenduPourLaReprise(
       currentLevel: NIVEAU_DCH,
       confieeAEmployeeId: null,
       deposeeLe: new Date(),
+      debut: null,
     },
     dch,
   );
-  return { etape: 'dch', ...t, demandeDuDirecteur, dch, n1SansReponse: false };
+  return { etape: 'dch', ...t, demandeDuDirecteur, dch, n1SansReponse: false, n1Absent: false };
 }
 
 /** Le préfixe des appels à confirmer un retour : à part de ceux du visa. */
@@ -496,6 +528,10 @@ export async function aExpire(tx: Tx, requestId: string): Promise<boolean> {
  * qui traite pour la DCH l'apprennent ; l'agent peut en déposer une autre.
  */
 export async function expirerLesDemandes(tx: Tx): Promise<void> {
+  await parLeSysteme(tx, () => expirer(tx));
+}
+
+async function expirer(tx: Tx): Promise<void> {
   const { rows } = await tx.execute<{ id: string }>(sql`
     SELECT r.id FROM absence_requests r WHERE ${EXPIREE} ORDER BY r.created_at FOR UPDATE`);
   for (const { id } of rows) {
@@ -504,8 +540,14 @@ export async function expirerLesDemandes(tx: Tx): Promise<void> {
     if (!d || !demande) continue;
     const n1 = await n1De(tx, d.employeeId);
     const t = await traitantDCH(tx, demande, await directionDuPersonnel(tx));
+    // Elle expire là où elle attendait : à la DCH, le temps d'une absence
+    // du N+1 aussi.
+    const aLaDCH = (await attendu(tx, demande))?.etape === 'dch';
     await tx.execute(sql`
-      UPDATE absence_requests SET status = 'expired', decided_at = now() WHERE id = ${id}`);
+      UPDATE absence_requests
+         SET status = 'expired', decided_at = now(),
+             current_level = ${aLaDCH ? sql`GREATEST(current_level, ${NIVEAU_DCH})` : sql`current_level`}
+       WHERE id = ${id}`);
     await retirerLesAppels(tx, `conge:${id}`);
 
     const a = absence(d.type);
@@ -639,12 +681,15 @@ export async function quiViseraPour(
     currentLevel: NIVEAU_N1,
     confieeAEmployeeId: null,
     deposeeLe: new Date(),
+    debut: null,
   };
   const n1 = await n1De(tx, employeeId);
   const dch = await directionDuPersonnel(tx);
   const t = await traitantDCH(tx, fictive, dch);
+  // Les dates ne sont pas encore choisies : le N+1, même absent ce jour,
+  // vise s'il rentre avant le congé.
   return {
-    n1: n1 && !n1.absent ? n1.nom : null,
+    n1: n1 ? n1.nom : null,
     dch: nomsDe(t.valideurs),
     demandeDuDirecteur: Boolean(dch?.directeurEmployeeId === employeeId),
   };

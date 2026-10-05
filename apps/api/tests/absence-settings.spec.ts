@@ -589,6 +589,22 @@ describe('retirer un type d’absence', () => {
     expect((rows[0] as { n: number }).n).toBe(1);
   });
 
+  it('libère son nom ; deux types en service ne le partagent pas, à la casse près', async () => {
+    const { retirable } = await deuxTypes();
+    await absences.deleteType(admin, retirable);
+    const type = (name: string) => ({
+      name,
+      deductsBalance: false,
+      allowanceDays: null,
+      frequency: 'none' as const,
+      requiresDocument: true,
+    });
+    await absences.createType(admin, type('Mission'));
+    expect(await codeOf(() => absences.createType(admin, type('MISSION')))).toBe(
+      'absence.type_exists',
+    );
+  });
+
   it('est refusé tant qu’une demande attend un visa', async () => {
     const { retirable } = await deuxTypes();
     await poserDemande(retirable, 'pending');

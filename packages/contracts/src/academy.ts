@@ -401,7 +401,22 @@ export interface CertificateSummary {
   expiresAt: string | null;
   /** valide, expiré, ou révoqué — dit à la date d'aujourd'hui. */
   status: 'valide' | 'expire' | 'revoque';
+  /** Révoqué : pourquoi. */
+  revocationMotif: string | null;
+  /** Réémis : le numéro qui le remplace. */
+  reemisSous: string | null;
+  /** Ce que l'utilisateur courant peut en faire : qui gère l'Academy, pas sur les siens. */
+  gestes: { revoquer: boolean; reemettre: boolean };
 }
+
+/** Révoquer un certificat : le motif est dit. */
+export const revoquerCertificatSchema = z.object({
+  motif: z.string().trim().min(1).max(500),
+});
+export type RevoquerCertificatInput = z.infer<typeof revoquerCertificatSchema>;
+
+/** Le certificat se renouvelle dans les jours qui précèdent son expiration. */
+export const FENETRE_RENOUVELLEMENT_JOURS = 60;
 
 /**
  * L'évaluation d'une formation, vue par l'agent.
@@ -431,6 +446,8 @@ export interface EvaluationView {
   prochaineTentative: string | null;
   derniere: { score: number; passed: boolean; submittedAt: string } | null;
   certificat: CertificateSummary | null;
+  /** Le certificat expire bientôt : l'évaluation se repasse pour le renouveler. */
+  renouvellement: boolean;
 }
 
 /** Une copie ouverte : les questions, SANS les réponses. */
@@ -492,6 +509,8 @@ export interface PublicCertificateView {
   score: number;
   issuedAt: string;
   expiresAt: string | null;
+  /** Réémis : le numéro qui le remplace. */
+  reemisSous: string | null;
 }
 
 /* ————————————————————————————————————————————————————————————————

@@ -489,6 +489,37 @@ describe('les changements d’informations', () => {
     expect(await appels('information', id)).toEqual([]);
   });
 
+  it('une correction de la RH faite depuis la demande ne s’écrase pas sans qu’on le voie', async () => {
+    const { id } = await informations.create(moussa.session, {
+      changes: { addressLine: 'Cité Mixta' },
+    });
+    // Entre-temps, la RH corrige l'adresse au dossier.
+    await raw(
+      `UPDATE persons SET address_line = 'Corrigée par la RH'
+        WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [moussa.employeeId],
+    );
+    const vue = (await informations.list(mariama.session, {} as never)).find((r) => r.id === id)!;
+    expect(vue.fields).toEqual([
+      expect.objectContaining({
+        field: 'addressLine',
+        actuel: 'Corrigée par la RH',
+        next: 'Cité Mixta',
+        modifieDepuis: true,
+      }),
+    ]);
+    expect(
+      await codeOf(() => informations.decide(mariama.session, id, { decision: 'approve' })),
+    ).toBe('profile.modifie_depuis');
+    await informations.decide(mariama.session, id, { decision: 'approve', ecraser: true });
+    const { rows } = await raw(
+      `SELECT p.address_line AS a FROM persons p JOIN employees e ON e.person_id = p.id
+        WHERE e.id = $1`,
+      [moussa.employeeId],
+    );
+    expect(rows[0]?.a).toBe('Cité Mixta');
+  });
+
   it('l’agent annule la sienne tant qu’elle attend, et peut en envoyer une autre', async () => {
     const { id } = await informations.create(moussa.session, {
       changes: { addressLine: 'Ouakam' },
@@ -574,9 +605,9 @@ describe('les pièces justificatives', () => {
   it('déposée par l’agent : la DCH la vérifie — le membre habilité, dans sa file', async () => {
     const { id } = await deposer();
     expect(await appels('piece', id)).toEqual(['dch:Mariama']);
-    expect(await codeOf(() => pieces.review(awa.session, id, { decision: 'approved' }))).toBe(
-      'documents.forbidden_scope',
-    );
+    expect(
+      await codeOf(() => pieces.review(awa.session, id, { version: 1, decision: 'approved' })),
+    ).toBe('documents.forbidden_scope');
     expect(await pieces.file(awa.session)).toEqual([]);
     await habiliter(awa, 'demandes.pieces.diplome');
     const file = await pieces.file(awa.session);
@@ -591,21 +622,22 @@ describe('les pièces justificatives', () => {
       );
     expect((await aTraiter(mariama)).pieces).toBe(1);
     expect((await aTraiter(awa)).pieces).toBe(1);
-    await pieces.review(awa.session, id, { decision: 'approved' });
+    await pieces.review(awa.session, id, { version: 1, decision: 'approved' });
     expect(await appels('piece', id)).toEqual([]);
   });
 
   it('un rejet dit pourquoi : le motif est exigé, et l’agent le lit dans l’avis', async () => {
     const { id } = await deposer();
-    expect(await codeOf(() => pieces.review(mariama.session, id, { decision: 'rejected' }))).toBe(
-      'documents.motif_requis',
-    );
+    expect(
+      await codeOf(() => pieces.review(mariama.session, id, { version: 1, decision: 'rejected' })),
+    ).toBe('documents.motif_requis');
     expect(
       await codeOf(() =>
-        pieces.review(mariama.session, id, { decision: 'rejected', comment: '   ' }),
+        pieces.review(mariama.session, id, { version: 1, decision: 'rejected', comment: '   ' }),
       ),
     ).toBe('documents.motif_requis');
     await pieces.review(mariama.session, id, {
+      version: 1,
       decision: 'rejected',
       comment: 'Document illisible',
     });
@@ -634,11 +666,15 @@ describe('les pièces justificatives', () => {
     expect(await titres(khady, `piece:${cni}:%`)).toEqual(['Moussa Test a déposé sa CNI']);
     expect(await titres(awa, `piece:${diplome}:%`)).toEqual(['Moussa Test a déposé un diplôme']);
     // Awa ne vérifie pas les pièces d'identité ; le directeur, si.
-    expect(await codeOf(() => pieces.review(awa.session, cni, { decision: 'approved' }))).toBe(
-      'demandes.pas_traitant',
-    );
-    await pieces.review(mariama.session, cni, { decision: 'approved', titre: await infos() });
-    await pieces.review(awa.session, diplome, { decision: 'approved' });
+    expect(
+      await codeOf(() => pieces.review(awa.session, cni, { version: 1, decision: 'approved' })),
+    ).toBe('demandes.pas_traitant');
+    await pieces.review(mariama.session, cni, {
+      version: 1,
+      decision: 'approved',
+      titre: await infos(),
+    });
+    await pieces.review(awa.session, diplome, { version: 1, decision: 'approved' });
     expect(await appels('piece', diplome)).toEqual([]);
     expect(await titres(moussa, 'piece:%:verdict')).toEqual([
       'Votre CNI est ajoutée à votre dossier',
@@ -673,7 +709,7 @@ describe('les pièces justificatives', () => {
     expect(await dossier()).toEqual([]);
     // Vérifié : plus de remplacement.
     const { id: verifie } = await deposer();
-    await pieces.review(mariama.session, verifie, { decision: 'approved' });
+    await pieces.review(mariama.session, verifie, { version: 1, decision: 'approved' });
     expect(await codeOf(() => pieces.replace(moussa.session, verifie, fichier('Master 3')))).toBe(
       'documents.already_reviewed',
     );
@@ -682,9 +718,53 @@ describe('les pièces justificatives', () => {
     });
   });
 
+  it('le verdict porte sur le fichier ouvert ; deux vérifications ne se croisent pas ; un retrait se trace', async () => {
+    const { id } = await deposer();
+    const [lu] = await pieces.list(mariama.session, moussa.employeeId);
+    expect(lu?.version).toBe(1);
+    // L'agent change le fichier pendant que Mariama lit l'ancien.
+    await pieces.replace(moussa.session, id, fichier('Master corrigé'));
+    expect(
+      await codeOf(() => pieces.review(mariama.session, id, { version: 1, decision: 'approved' })),
+    ).toBe('documents.remplace_depuis');
+    expect(await dossier()).toEqual(['Master corrigé:pending']);
+
+    // Deux membres se prononcent en même temps : un seul verdict passe.
+    await habiliter(khady, 'demandes.pieces.diplome');
+    const verdicts = await Promise.allSettled([
+      pieces.review(mariama.session, id, { version: 2, decision: 'approved' }),
+      pieces.review(khady.session, id, { version: 2, decision: 'rejected', comment: 'Illisible' }),
+    ]);
+    expect(verdicts.filter((v) => v.status === 'fulfilled')).toHaveLength(1);
+    const refus = verdicts.find((v) => v.status === 'rejected') as PromiseRejectedResult;
+    expect((refus.reason as ProblemException).problem.code).toBe('documents.already_reviewed');
+    const { rows: avis } = await raw(
+      `SELECT count(*)::int AS n FROM notifications WHERE dedupe_key = $1`,
+      [`piece:${id}:verdict`],
+    );
+    expect(avis[0]!.n).toBe(1);
+    await habiliter(khady, 'demandes.pieces.diplome', false);
+
+    // Retirée du dossier : le journal dit qui, quoi, sans le fichier.
+    await pieces.remove(admin, id);
+    const { rows: journal } = await raw(
+      `SELECT actor_user_id, old_data FROM audit_log
+        WHERE table_name = 'employee_documents' AND row_id = $1 AND action = 'DELETE'`,
+      [id],
+    );
+    expect(journal).toHaveLength(1);
+    expect(journal[0]!.actor_user_id).toBe(admin.userId);
+    expect(journal[0]!.old_data).toMatchObject({ label: 'Master corrigé', version: 2 });
+    expect(journal[0]!.old_data).not.toHaveProperty('data');
+  });
+
   it('CNI, passeport, CV : un seul au dossier — le nouveau, vérifié, prend la place de l’ancien', async () => {
     const { id: ancien } = await titre('passeport', 'Passeport 2019', await dans(400));
-    await pieces.review(mariama.session, ancien, { decision: 'approved', titre: await infos() });
+    await pieces.review(mariama.session, ancien, {
+      version: 1,
+      decision: 'approved',
+      titre: await infos(),
+    });
     const { id: nouveau } = await titre('passeport', 'Passeport 2026', await dans(3000));
     // Un seul en vérification à la fois : on change celui-là.
     expect(await codeOf(async () => titre('passeport', 'Encore un', await dans(3000)))).toBe(
@@ -692,17 +772,17 @@ describe('les pièces justificatives', () => {
     );
     // Tant que le nouveau n'est pas vérifié, l'ancien reste au dossier.
     expect(await dossier()).toEqual(['Passeport 2026:pending', 'Passeport 2019:approved']);
-    await pieces.review(mariama.session, nouveau, { decision: 'approved' });
+    await pieces.review(mariama.session, nouveau, { version: 1, decision: 'approved' });
     expect(await dossier()).toEqual(['Passeport 2026:approved']);
     // Le CV de même ; les autres types s'ajoutent sans limite.
     const { id: cv1 } = await titre('cv', 'CV 2024');
-    await pieces.review(mariama.session, cv1, { decision: 'approved' });
+    await pieces.review(mariama.session, cv1, { version: 1, decision: 'approved' });
     const { id: cv2 } = await titre('cv', 'CV 2026');
-    await pieces.review(mariama.session, cv2, { decision: 'approved' });
+    await pieces.review(mariama.session, cv2, { version: 1, decision: 'approved' });
     const { id: d1 } = await deposer();
     const { id: d2 } = await deposer();
-    await pieces.review(mariama.session, d1, { decision: 'approved' });
-    await pieces.review(mariama.session, d2, { decision: 'approved' });
+    await pieces.review(mariama.session, d1, { version: 1, decision: 'approved' });
+    await pieces.review(mariama.session, d2, { version: 1, decision: 'approved' });
     expect((await dossier()).sort()).toEqual([
       'CV 2026:approved',
       'Master:approved',
@@ -778,7 +858,7 @@ describe('les pièces justificatives', () => {
       });
       // L'agent ne voit pas ce contrôle : il est pour qui vérifie.
       expect((await pieces.list(moussa.session, moussa.employeeId))[0]?.controle).toBeNull();
-      await pieces.review(mariama.session, id, { decision: 'approved' });
+      await pieces.review(mariama.session, id, { version: 1, decision: 'approved' });
       expect(await fiche()).toBe('passport:A0123456:2019-12-05:2029-12-05');
     });
 
@@ -786,24 +866,29 @@ describe('les pièces justificatives', () => {
       await ficheDeMoussa('passport', 'A0123456', '2019-12-05', '2029-12-05');
       const { id } = await passeport();
       await raw(`UPDATE employee_documents SET expires_on = CURRENT_DATE WHERE id = $1`, [id]);
-      expect(await codeOf(() => pieces.review(mariama.session, id, { decision: 'approved' }))).toBe(
-        'documents.expire',
-      );
+      expect(
+        await codeOf(() =>
+          pieces.review(mariama.session, id, { version: 1, decision: 'approved' }),
+        ),
+      ).toBe('documents.expire');
     });
 
     it('un renouvellement : qui valide saisit la nouvelle pièce — la fiche suit, l’ancien document part', async () => {
       await ficheDeMoussa('passport', 'A0123456', '2019-12-05', '2029-12-05');
       const { id: ancien } = await passeport();
-      await pieces.review(mariama.session, ancien, { decision: 'approved' });
+      await pieces.review(mariama.session, ancien, { version: 1, decision: 'approved' });
       const { id } = await passeport(true);
       const vue = await vueDCH(id);
       expect(vue).toMatchObject({ renouvellement: true, controle: { mode: 'saisie' } });
-      expect(await codeOf(() => pieces.review(mariama.session, id, { decision: 'approved' }))).toBe(
-        'documents.titre_requis',
-      );
+      expect(
+        await codeOf(() =>
+          pieces.review(mariama.session, id, { version: 1, decision: 'approved' }),
+        ),
+      ).toBe('documents.titre_requis');
       expect(
         await codeOf(async () =>
           pieces.review(mariama.session, id, {
+            version: 1,
             decision: 'approved',
             titre: { numero: 'B999', delivreLe: '2015-01-01', expireLe: await dans(-1) },
           }),
@@ -811,6 +896,7 @@ describe('les pièces justificatives', () => {
       ).toBe('documents.expire');
       const expireLe = await dans(3650);
       await pieces.review(mariama.session, id, {
+        version: 1,
         decision: 'approved',
         titre: { numero: 'B7654321', delivreLe: '2026-09-01', expireLe },
       });
@@ -823,6 +909,7 @@ describe('les pièces justificatives', () => {
       expect((await vueDCH(id)).controle?.mode).toBe('saisie');
       const expireLe = await dans(3000);
       await pieces.review(mariama.session, id, {
+        version: 1,
         decision: 'approved',
         titre: { numero: '1751198501234', delivreLe: '2024-03-01', expireLe },
       });
@@ -842,13 +929,14 @@ describe('les pièces justificatives', () => {
         },
       });
       // Validée à part : la fiche garde son passeport.
-      await pieces.review(mariama.session, id, { decision: 'approved' });
+      await pieces.review(mariama.session, id, { version: 1, decision: 'approved' });
       expect(await fiche()).toBe('passport:A0123456:2019-12-05:2029-12-05');
 
       // Une autre fois, qui vérifie en fait la pièce de la fiche.
       const { id: cni } = await titre('cni', 'CNI 2026', await dans(2000));
       const expireLe = await dans(3000);
       await pieces.review(mariama.session, cni, {
+        version: 1,
         decision: 'approved',
         titre: { numero: '1751198501234', delivreLe: '2026-01-15', expireLe },
       });
@@ -863,6 +951,7 @@ describe('les pièces justificatives', () => {
       expect(
         await codeOf(async () =>
           pieces.review(mariama.session, id, {
+            version: 1,
             decision: 'approved',
             titre: { numero: 'X', delivreLe: '2024-01-01', expireLe: await dans(100) },
           }),
@@ -902,7 +991,11 @@ describe('les pièces justificatives', () => {
     expect(await rappels(mariama)).toEqual([]);
 
     // Un nouveau passeport déposé : l'ancien, même expiré, ne rappelle plus rien.
-    await pieces.review(mariama.session, id, { decision: 'approved', titre: await infos() });
+    await pieces.review(mariama.session, id, {
+      version: 1,
+      decision: 'approved',
+      titre: await infos(),
+    });
     await raw(`DELETE FROM notifications WHERE type = 'document_expiry'`);
     await raw(`UPDATE employee_documents SET expires_on = CURRENT_DATE - 3 WHERE id = $1`, [id]);
     await titre('passeport', 'Nouveau passeport', await dans(3000));
@@ -1009,6 +1102,7 @@ describe('l’expiration d’un titre : la date qui fait foi', () => {
     await relever();
     expect(await rappels()).toEqual([]);
     await pieces.review(mariama.session, id, {
+      version: 1,
       decision: 'approved',
       titre: { numero: 'A1234567', delivreLe: '2017-01-01', expireLe: await dans(10) },
     });
@@ -1288,12 +1382,12 @@ describe('on ne contourne pas le système : rien sur soi-même', () => {
     expect(status).toBe('pending');
     // Awa vérifie les pièces… mais pas les siennes : elles vont à Mariama.
     expect(await appels('piece', id)).toEqual(['dch:Mariama']);
-    expect(await codeOf(() => pieces.review(awa.session, id, { decision: 'approved' }))).toBe(
-      'documents.wrong_reviewer',
-    );
+    expect(
+      await codeOf(() => pieces.review(awa.session, id, { version: 1, decision: 'approved' })),
+    ).toBe('documents.wrong_reviewer');
     const [vue] = await pieces.list(awa.session, awa.employeeId);
     expect(vue).toMatchObject({ canReview: false });
-    await pieces.review(mariama.session, id, { decision: 'approved' });
+    await pieces.review(mariama.session, id, { version: 1, decision: 'approved' });
   });
 });
 

@@ -400,6 +400,16 @@ describe('suppression définitive', () => {
        VALUES ($1,$2,$3,2026,1,'A')`,
       [randomUUID(), tenantId, awa.employeeId],
     );
+    // Une pièce retirée bien avant l'effacement : elle n'est plus là pour
+    // être récoltée, mais le journal en garde la copie.
+    const piece = randomUUID();
+    await raw(
+      `INSERT INTO employee_documents (id, tenant_id, employee_id, category, label, filename,
+         content_type, size_bytes, data, uploaded_by_user_id, uploaded_by_side)
+       VALUES ($1,$2,$3,'diplome','Master de AWA','awa.pdf','application/pdf',4,'\\x25504446',$4,'employee')`,
+      [piece, tenantId, awa.employeeId, adminUserId],
+    );
+    await raw(`DELETE FROM employee_documents WHERE id = $1`, [piece]);
     const personId = awa.personId;
     await people.remove(admin, { ids: [awa.employeeId] });
     // La note non plus ne survit pas au journal.

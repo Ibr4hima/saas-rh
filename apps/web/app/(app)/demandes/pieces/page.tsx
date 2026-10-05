@@ -77,6 +77,7 @@ export default function PiecesAVerifierPage() {
       api(`/employee-documents/${v.piece.id}/review`, {
         method: 'POST',
         body: {
+          version: v.piece.version,
           decision: v.decision,
           ...(v.decision === 'rejected' && motif.trim() ? { comment: motif.trim() } : {}),
         },
@@ -93,7 +94,11 @@ export default function PiecesAVerifierPage() {
       });
       await rafraichir();
     },
-    onError: echec,
+    onError: async (err) => {
+      echec(err);
+      // Remplacée entre-temps : la file montre le nouveau fichier.
+      await rafraichir();
+    },
   });
 
   const ouvrir = (p: PieceATraiterView) =>
@@ -292,7 +297,11 @@ export default function PiecesAVerifierPage() {
         <FenetreControleDuTitre
           piece={aControler}
           employe={aControler.employeeName}
-          onFermer={() => setAControler(null)}
+          // Un fichier remplacé pendant la lecture : la file se met à jour.
+          onFermer={() => {
+            setAControler(null);
+            void rafraichir();
+          }}
           onRejeter={(m) => {
             setMotif(m);
             setRejet(aControler);

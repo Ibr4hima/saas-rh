@@ -57,6 +57,7 @@ export function FenetreControleDuTitre({
       api(`/employee-documents/${piece.id}/review`, {
         method: 'POST',
         body: {
+          version: piece.version,
           decision: 'approved',
           ...(saisir ? { titre: { numero: numero.trim(), delivreLe, expireLe } } : {}),
         },

@@ -9,5 +9,5 @@
 - **snake_case anglais** pour tables/colonnes ; français pour l'UI et la doc.
 - `tenant_id` NOT NULL sur toute table métier ; unicité et index préfixés `(tenant_id, …)`.
 - Soft delete (`deleted_at`) uniquement où le métier l'exige ; jamais sur paie/audit.
-- Migrations SQL **expand/contract** (jamais de DDL destructif dans la release qui l'introduit), `lock_timeout` systématique.
+- Migrations SQL **expand/contract** (jamais de DDL destructif dans la release qui l'introduit), `lock_timeout` systématique (posé par le migrateur). Le migrateur se verrouille, relève l'empreinte de chaque fichier appliqué et refuse qu'on le modifie, le renomme ou le supprime ; un fichier destructif se déclare (`-- Destructif : <raison>`) et ne s'applique à une base en service qu'avec `MIGRATIONS_DESTRUCTIVES=<fichier>`.
 - TypeScript `strict` partout ; pas de `any` non justifié ; Zod aux frontières (API, imports, jobs).

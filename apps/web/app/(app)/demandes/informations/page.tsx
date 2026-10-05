@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { peut, type ProfileChangeRequestView } from '@teranga/contracts';
 import {
+  Badge,
   Button,
   Card,
   CardHeader,
@@ -62,6 +63,9 @@ export default function InformationsATraiterPage() {
   const membres = useMembresDCH().data?.membres ?? [];
   const [message, setMessage] = useState<Message>(null);
   const [refus, setRefus] = useState<ProfileChangeRequestView | null>(null);
+  // Le dossier a changé depuis la demande : la valider remplacerait une
+  // correction de la RH. Cela se confirme en voyant ce qui sera remplacé.
+  const [aRemplacer, setARemplacer] = useState<ProfileChangeRequestView | null>(null);
   const [motif, setMotif] = useState('');
 
   const rafraichir = async () => {
@@ -71,16 +75,22 @@ export default function InformationsATraiterPage() {
   const echec = (err: unknown) => setMessage({ ton: 'erreur', texte: texteErreur(err) });
 
   const decider = useMutation({
-    mutationFn: (v: { demande: ProfileChangeRequestView; decision: 'approve' | 'reject' }) =>
+    mutationFn: (v: {
+      demande: ProfileChangeRequestView;
+      decision: 'approve' | 'reject';
+      ecraser?: boolean;
+    }) =>
       api(`/profile-changes/${v.demande.id}/decide`, {
         method: 'POST',
         body: {
           decision: v.decision,
           ...(v.decision === 'reject' ? { message: motif.trim() } : {}),
+          ...(v.ecraser ? { ecraser: true } : {}),
         },
       }),
     onSuccess: async (_, v) => {
       setRefus(null);
+      setARemplacer(null);
       setMotif('');
       setMessage({
         ton: 'ok',
@@ -196,7 +206,8 @@ export default function InformationsATraiterPage() {
                           bloque={decider.isPending}
                           onClick={() => {
                             setMessage(null);
-                            decider.mutate({ demande: r, decision: 'approve' });
+                            if (r.fields.some((f) => f.modifieDepuis)) setARemplacer(r);
+                            else decider.mutate({ demande: r, decision: 'approve' });
                           }}
                         />
                         <BoutonDecision
@@ -224,6 +235,43 @@ export default function InformationsATraiterPage() {
           </Table>
         )}
       </Card>
+
+      {aRemplacer ? (
+        <Modal
+          open
+          onClose={() => setARemplacer(null)}
+          title={`Remplacer les informations de ${aRemplacer.employeeName} ?`}
+          maxWidth="max-w-lg"
+          footer={
+            <div className="flex w-full justify-end gap-2">
+              <Button variant="secondary" onClick={() => setARemplacer(null)}>
+                Annuler
+              </Button>
+              <Button
+                loading={decider.isPending}
+                onClick={() =>
+                  decider.mutate({ demande: aRemplacer, decision: 'approve', ecraser: true })
+                }
+              >
+                Remplacer
+              </Button>
+            </div>
+          }
+        >
+          <ul className="flex flex-col gap-2 text-[13px]">
+            {aRemplacer.fields
+              .filter((f) => f.modifieDepuis)
+              .map((f) => (
+                <li key={f.field} className="leading-snug">
+                  <span className="text-ink-muted">{f.label} : </span>
+                  <span className="text-ink-muted line-through">{lisible(f.field, f.actuel)}</span>
+                  <span className="mx-1.5 text-ink-muted">→</span>
+                  <span className="font-medium text-ink-strong">{lisible(f.field, f.next)}</span>
+                </li>
+              ))}
+          </ul>
+        </Modal>
+      ) : null}
 
       {refus ? (
         <Modal
@@ -275,9 +323,18 @@ function Changements({ demande: r }: { demande: ProfileChangeRequestView }) {
         {r.fields.map((f) => (
           <li key={f.field} className="leading-snug">
             <span className="text-ink-muted">{f.label} : </span>
-            <span className="text-ink-muted line-through">{lisible(f.field, f.previous)}</span>
+            {/* Modifié depuis la demande : c'est la valeur au dossier
+                aujourd'hui qui serait remplacée, pas celle qu'a vue l'agent. */}
+            <span className="text-ink-muted line-through">
+              {lisible(f.field, f.modifieDepuis ? f.actuel : f.previous)}
+            </span>
             <span className="mx-1.5 text-ink-muted">→</span>
             <span className="font-medium text-ink-strong">{lisible(f.field, f.next)}</span>
+            {f.modifieDepuis ? (
+              <Badge tone="rouge" size="sm" className="ml-1.5 align-middle">
+                Modifié depuis la demande
+              </Badge>
+            ) : null}
           </li>
         ))}
       </ul>

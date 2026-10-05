@@ -64,6 +64,10 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
       ev.fermeture === 'formateur'
         ? 'Vous êtes le formateur de cette formation : l’évaluation ne vous concerne pas. Les leçons restent ouvertes, et votre dossier indique que vous l’avez animée.'
         : 'Vous gérez le catalogue et en connaissez les questions : les évaluations vous sont fermées.';
+  } else if (ev.etat === 'ouverte' && ev.renouvellement && ev.certificat?.expiresAt) {
+    icone = 'workspace_premium';
+    titre = 'Renouveler le certificat';
+    texte = `Votre certificat expire le ${formatDate(ev.certificat.expiresAt)}.${tentativesDuJour(ev) ? ` ${tentativesDuJour(ev)}` : ''}`;
   } else if (ev.etat === 'ouverte') {
     texte =
       ev.derniere && !ev.derniere.passed

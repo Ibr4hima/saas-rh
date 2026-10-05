@@ -14,6 +14,13 @@ const env = loadEnv();
 let ownerPool: Pool;
 let appPool: Pool;
 
+/**
+ * Les tables tenantées SANS RLS, chacune pour une raison écrite.
+ * `sessions` : la session se résout avant que l'organisation soit connue
+ * (c'est le jeton qui la désigne), cf. 0001_init.sql.
+ */
+const SANS_RLS = ['sessions'];
+
 interface TenantFixture {
   tenantId: string;
   userId: string;
@@ -113,19 +120,33 @@ describe('préconditions', () => {
     expect(owner.rows[0].tableowner).not.toBe('app_user');
   });
 
-  it('la RLS est active ET forcée sur toutes les tables tenantées', async () => {
-    const { rows } = await ownerPool.query(`
+  it('la RLS est active ET forcée, avec une policy, sur toutes les tables tenantées', async () => {
+    // Pas de liste écrite à la main : une table ajoutée par une migration et
+    // oubliée ici passerait sans contrôle. Toute table qui porte un
+    // tenant_id (et `tenants` elle-même) est examinée.
+    const { rows } = await ownerPool.query(
+      `
       SELECT c.relname
-      FROM pg_class c
-      JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'public'
-        AND c.relname IN ('tenants', 'user_tenant_memberships', 'org_units', 'contracts',
-                          'persons', 'employees', 'assignments', 'audit_log',
-                          'absence_types', 'holidays', 'holiday_seeds', 'absence_balances',
-                          'absence_requests', 'absence_approvals', 'invitations',
-                          'objectifs', 'objectifs_fiches')
-        AND NOT (c.relrowsecurity AND c.relforcerowsecurity)
-    `);
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relkind = 'r'
+         AND (c.relname = 'tenants' OR EXISTS (
+               SELECT 1 FROM pg_attribute a
+                WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped))
+         AND c.relname <> ALL ($1::text[])
+         AND NOT (c.relrowsecurity AND c.relforcerowsecurity
+                  AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid))
+       ORDER BY 1`,
+      [SANS_RLS],
+    );
+    expect(rows.map((r) => r.relname)).toEqual([]);
+  });
+
+  it('les exceptions sont bien celles qu’on croit', async () => {
+    const { rows } = await ownerPool.query(
+      `SELECT relname FROM pg_class WHERE relname = ANY ($1::text[]) AND relrowsecurity`,
+      [SANS_RLS],
+    );
     expect(rows).toEqual([]);
   });
 });

@@ -14,6 +14,7 @@ import {
 } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
+  AgentSaisieView,
   AbsencePreview,
   AbsenceRequestView,
   AnnulerAbsenceInput,
@@ -48,7 +49,7 @@ import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayDedupeKey } from '../notifications/notifications.service';
 import { absence, accord, duAu, frDate } from '../notifications/phrases';
 import { DG } from '../people/chaine';
-import { dernierContrat } from '../people/en-activite';
+import { contratEchu, dernierContrat } from '../people/en-activite';
 import { notifier } from '../notifications/notifier';
 import {
   detenteursDe,
@@ -84,6 +85,7 @@ type DefaultType = {
   allowanceDays: number | null;
   frequency: AbsenceFrequency;
   requiresDocument: boolean;
+  resteJoignable?: boolean;
 };
 
 // La maternité s'ouvre à la naissance : ses jours ne se rechargent ni au mois
@@ -124,6 +126,7 @@ const DEFAULT_TYPES: DefaultType[] = [
     allowanceDays: null,
     frequency: 'none',
     requiresDocument: true,
+    resteJoignable: true,
   },
 ];
 
@@ -134,6 +137,21 @@ function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
 function pgCode(err: unknown): string | undefined {
   const e = err as { code?: string; cause?: { code?: string } };
   return e?.code ?? e?.cause?.code;
+}
+
+/** Un justificatif : un PDF de 5 Mo au plus, sa signature le prouve. */
+function lireJustificatif(input: { filename: string; contentBase64: string }): {
+  filename: string;
+  data: Buffer;
+} {
+  const data = Buffer.from(input.contentBase64, 'base64');
+  if (data.length === 0 || data.length > MAX_JUSTIFICATIF_BYTES) {
+    problem(422, 'absence.document_too_large', 'Le justificatif doit faire 5 Mo maximum');
+  }
+  if (!data.subarray(0, 5).toString().startsWith('%PDF')) {
+    problem(422, 'absence.document_not_pdf', 'Le justificatif doit être un PDF');
+  }
+  return { filename: input.filename, data };
 }
 
 function num(v: string | number | null | undefined): number {
@@ -212,6 +230,7 @@ export class AbsencesService {
             allowanceDays: d.allowanceDays?.toString() ?? null,
             frequency: d.frequency,
             requiresDocument: d.requiresDocument,
+            resteJoignable: d.resteJoignable ?? false,
           });
         }
         rows = await this.selectTypes(tx);
@@ -232,6 +251,7 @@ export class AbsencesService {
           allowanceDays: input.allowanceDays?.toString() ?? null,
           frequency: input.frequency,
           requiresDocument: input.requiresDocument,
+          resteJoignable: input.resteJoignable ?? false,
         }),
       );
     } catch (err) {
@@ -260,6 +280,7 @@ export class AbsencesService {
             allowanceDays: input.allowanceDays?.toString() ?? null,
             frequency: input.frequency,
             requiresDocument: input.requiresDocument,
+            resteJoignable: input.resteJoignable ?? false,
           })
           .where(eq(t.absenceTypes.id, id));
       } catch (err) {
@@ -939,12 +960,15 @@ export class AbsencesService {
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
         await this.requireEmployee(tx, input.employeeId);
-        // Décision produit : chaque employé pose SES demandes depuis son
-        // portail — aucun rôle ne saisit pour le compte d'un tiers.
+        // Chaque agent pose SES demandes depuis son portail. Qui traite les
+        // congés pour la DCH saisit pour un agent qui ne le peut pas (sans
+        // portail, hospitalisé) : la demande suit le même circuit.
         const self = await this.selfEmployeeId(tx, user);
-        if (self !== input.employeeId) {
+        const pourSoi = self === input.employeeId;
+        if (!pourSoi && !(await this.gereLesConges(tx, user))) {
           problem(403, 'absence.self_only', 'Vous ne pouvez poser une demande que pour vous-même');
         }
+        const sonContrat = pourSoi ? 'votre contrat' : 'son contrat';
         // Deux demandes envoyées au même instant (deux onglets, un double
         // envoi) passeraient chacune le contrôle de solde sans voir l'autre :
         // le dossier de l'agent est verrouillé jusqu'à la fin de la
@@ -971,16 +995,16 @@ export class AbsencesService {
           problem(
             422,
             'absence.hors_contrat',
-            'Cette période commence avant votre contrat',
-            `Votre contrat commence le ${frDate(debutContrat)} : commencez la demande ce jour-là au plus tôt.`,
+            `Cette période commence avant ${sonContrat}`,
+            `${pourSoi ? 'Votre' : 'Son'} contrat commence le ${frDate(debutContrat)} : commencez la demande ce jour-là au plus tôt.`,
           );
         }
         if (finContrat && input.endDate > finContrat) {
           problem(
             422,
             'absence.hors_contrat',
-            'Cette période dépasse la fin de votre contrat',
-            `Votre contrat prend fin le ${frDate(finContrat)} : terminez la demande ce jour-là au plus tard.`,
+            `Cette période dépasse la fin de ${sonContrat}`,
+            `${pourSoi ? 'Votre' : 'Son'} contrat prend fin le ${frDate(finContrat)} : terminez la demande ce jour-là au plus tard.`,
           );
         }
 
@@ -1003,26 +1027,9 @@ export class AbsencesService {
           );
         }
 
-        // Justificatif : exigé dès que le type le requiert.
-        let document: { filename: string; data: Buffer } | null = null;
-        if (input.document) {
-          const data = Buffer.from(input.document.contentBase64, 'base64');
-          if (data.length === 0 || data.length > MAX_JUSTIFICATIF_BYTES) {
-            problem(422, 'absence.document_too_large', 'Le justificatif doit faire 5 Mo maximum');
-          }
-          if (!data.subarray(0, 5).toString().startsWith('%PDF')) {
-            problem(422, 'absence.document_not_pdf', 'Le justificatif doit être un PDF');
-          }
-          document = { filename: input.document.filename, data };
-        }
-        if (type.requiresDocument && !document) {
-          problem(
-            422,
-            'absence.document_required',
-            'Un justificatif PDF est requis',
-            `Le type « ${type.name} » exige un justificatif (attestation, ordre de mission…).`,
-          );
-        }
+        // Le justificatif peut suivre la demande (un certificat médical
+        // arrive après l'arrêt) : il n'est exigé qu'à la validation.
+        const document = input.document ? lireJustificatif(input.document) : null;
 
         if (type.deductsBalance) {
           const year = Number(input.startDate.slice(0, 4));
@@ -1063,6 +1070,19 @@ export class AbsencesService {
         // demande part directement à la DCH. Qui est attendu est prévenu.
         await reconcilierDemande(tx, id);
         await reconcilierLeCircuit(tx, user.tenantId);
+        // Saisie pour lui : l'agent l'apprend, s'il a un compte.
+        if (!pourSoi) {
+          const d = await lireDemande(tx, id);
+          if (d?.demandeurUserId) {
+            const a = absence(d.type);
+            await notifier(tx, user.tenantId, d.demandeurUserId, {
+              type: 'conge_saisi',
+              title: `La DCH a saisi pour vous ${a.article} ${a.nom} ${duAu(d.debut, d.fin)}`,
+              link: '/moi/conges/historique',
+              dedupeKey: `conge:${id}:saisie`,
+            });
+          }
+        }
       });
     } catch (err) {
       if (pgCode(err) === '23P01') await this.refuserLeChevauchement(user, input);
@@ -1173,6 +1193,7 @@ export class AbsencesService {
             workEmail: t.employees.workEmail,
             typeName: t.absenceTypes.name,
             deductsBalance: t.absenceTypes.deductsBalance,
+            requiresDocument: t.absenceTypes.requiresDocument,
           })
           .from(t.absenceRequests)
           .innerJoin(t.employees, eq(t.employees.id, t.absenceRequests.employeeId))
@@ -1211,6 +1232,7 @@ export class AbsencesService {
           workEmail: t.employees.workEmail,
           typeName: t.absenceTypes.name,
           deductsBalance: t.absenceTypes.deductsBalance,
+          requiresDocument: t.absenceTypes.requiresDocument,
         })
         .from(t.absenceRequests)
         .innerJoin(t.employees, eq(t.employees.id, t.absenceRequests.employeeId))
@@ -1308,6 +1330,7 @@ export class AbsencesService {
           parDelegationDe,
         });
       const clore = async (level: number) => {
+        if (input.decision === 'approved') await this.exigerLeJustificatif(tx, requestId);
         await tx
           .update(t.absenceRequests)
           .set({ status: input.decision, currentLevel: level, decidedAt: new Date() })
@@ -1751,6 +1774,93 @@ export class AbsencesService {
     });
   }
 
+  /**
+   * Le justificatif qui suit la demande : un certificat médical arrive après
+   * l'arrêt, l'ordre de mission après le départ. L'agent le joint, ou qui a
+   * saisi pour lui, ou la DCH. Tant que la demande attend, il se remplace ;
+   * validée, il ne s'ajoute que s'il manquait.
+   */
+  async joindreJustificatif(
+    user: SessionUser,
+    requestId: string,
+    input: { filename: string; contentBase64: string },
+  ): Promise<void> {
+    const fichier = lireJustificatif(input);
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const request = await this.verrouiller(tx, requestId);
+      const self = await this.selfEmployeeId(tx, user);
+      const autorise =
+        request.employeeId === self ||
+        request.requestedByUserId === user.userId ||
+        (await this.gereLesConges(tx, user));
+      if (!autorise) {
+        problem(403, 'absence.document_forbidden', 'Justificatif réservé à la DCH et au titulaire');
+      }
+      const [existant] = await tx
+        .select({ id: t.absenceDocuments.id })
+        .from(t.absenceDocuments)
+        .where(eq(t.absenceDocuments.requestId, requestId))
+        .limit(1);
+      const ouverte = request.status === 'pending';
+      if (!ouverte && !(request.status === 'approved' && !existant)) {
+        problem(
+          422,
+          'absence.justificatif_clos',
+          'Le justificatif de cette demande ne se change plus',
+          'Elle a été traitée avec celui-ci.',
+        );
+      }
+      if (existant) {
+        await tx.delete(t.absenceDocuments).where(eq(t.absenceDocuments.id, existant.id));
+      }
+      await tx.insert(t.absenceDocuments).values({
+        id: uuidv7(),
+        tenantId: user.tenantId,
+        requestId,
+        filename: fichier.filename,
+        sizeBytes: fichier.data.length,
+        data: fichier.data,
+      });
+    });
+  }
+
+  /**
+   * Les agents pour qui la DCH peut saisir : ceux en activité, sauf
+   * soi-même (on pose les siennes depuis son espace).
+   */
+  async agentsPourSaisie(user: SessionUser): Promise<AgentSaisieView[]> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      if (!(await this.gereLesConges(tx, user))) {
+        problem(403, 'absence.reserve_a_la_dch', 'Réservé à qui traite les congés pour la DCH');
+      }
+      const moi = await this.selfEmployeeId(tx, user);
+      const { rows } = await tx.execute<{ id: string; nom: string; matricule: string }>(sql`
+        SELECT e.id, p.given_name || ' ' || p.family_name AS nom, e.employee_number AS matricule
+          FROM employees e JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
+         WHERE e.status = 'active' AND NOT ${contratEchu(sql`e.id`)}
+           AND e.id IS DISTINCT FROM ${moi}
+         ORDER BY p.family_name, p.given_name`);
+      return rows;
+    });
+  }
+
+  /** Un type qui exige un justificatif n'est validé qu'avec lui. */
+  private async exigerLeJustificatif(tx: Tx, requestId: string): Promise<void> {
+    const { rows } = await tx.execute<{ type: string }>(sql`
+      SELECT ty.name AS type FROM absence_requests r
+        JOIN absence_types ty ON ty.id = r.absence_type_id AND ty.requires_document
+       WHERE r.id = ${requestId}
+         AND NOT EXISTS (SELECT 1 FROM absence_documents d WHERE d.request_id = r.id)`);
+    const manque = rows[0];
+    if (!manque) return;
+    problem(
+      422,
+      'absence.justificatif_attendu',
+      'Le justificatif manque',
+      `« ${manque.type} » se valide avec son justificatif : il doit être joint d’abord.`,
+    );
+  }
+
   // ---------- Privé ----------
 
   /** Id du dossier employé relié au compte connecté (null si aucun). */
@@ -1767,6 +1877,8 @@ export class AbsencesService {
   /** Qui consulte les dossiers, ou gère les soldes : tout dossier ; les autres, le leur. */
   private async assertEmployeeScope(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
     if (peut(user, 'personnel.consulter') || peut(user, 'conges.soldes')) return;
+    // Qui traite les congés pour la DCH lit le solde de qui il saisit.
+    if (await this.gereLesConges(tx, user)) return;
     const self = await this.selfEmployeeId(tx, user);
     if (self !== employeeId) {
       problem(403, 'people.forbidden_scope', 'Accès limité à votre propre dossier');
@@ -1782,6 +1894,7 @@ export class AbsencesService {
         allowanceDays: t.absenceTypes.allowanceDays,
         frequency: t.absenceTypes.frequency,
         requiresDocument: t.absenceTypes.requiresDocument,
+        resteJoignable: t.absenceTypes.resteJoignable,
       })
       .from(t.absenceTypes)
       .where(isNull(t.absenceTypes.deletedAt))
@@ -1864,6 +1977,7 @@ export class AbsencesService {
       workEmail: string | null;
       typeName: string;
       deductsBalance: boolean;
+      requiresDocument: boolean;
     }>,
   ): Promise<AbsenceRequestView[]> {
     if (rows.length === 0) return [];
@@ -1901,8 +2015,24 @@ export class AbsencesService {
     const gere = await this.gereLesConges(tx, user);
     // Qui a écourté ou annulé, et le N+1 de chaque agent : lus une fois.
     const auteurs = [
-      ...new Set(rows.flatMap(({ request: r }) => [r.ecourteParUserId, r.annuleParUserId])),
+      ...new Set(
+        rows.flatMap(({ request: r }) => [
+          r.ecourteParUserId,
+          r.annuleParUserId,
+          r.requestedByUserId,
+        ]),
+      ),
     ].filter((x): x is string => Boolean(x));
+    // Le compte de chaque agent : une demande saisie par un autre le dit.
+    const comptes = new Map(
+      (
+        await tx
+          .select({ id: t.employees.id, userId: t.persons.userId })
+          .from(t.employees)
+          .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+          .where(inArray(t.employees.id, [...new Set(rows.map((r) => r.request.employeeId))]))
+      ).map((e) => [e.id, e.userId]),
+    );
     const noms = new Map<string, string>();
     if (auteurs.length > 0) {
       const lus = await tx
@@ -1928,6 +2058,7 @@ export class AbsencesService {
       workEmail,
       typeName,
       deductsBalance,
+      requiresDocument,
     } of rows) {
       const att = await attendu(tx, {
         id: request.id,
@@ -1936,6 +2067,7 @@ export class AbsencesService {
         currentLevel: request.currentLevel,
         confieeAEmployeeId: request.confieeAEmployeeId,
         deposeeLe: request.createdAt,
+        debut: request.startDate,
       });
       const enAttente = request.status === 'pending';
       const expiree = request.status === 'expired';
@@ -2057,6 +2189,14 @@ export class AbsencesService {
         canDecide,
         traitement,
         documentName: documentRows.find((d) => d.requestId === request.id)?.filename ?? null,
+        justificatifAttendu:
+          requiresDocument &&
+          request.status === 'pending' &&
+          !documentRows.some((d) => d.requestId === request.id),
+        saisiePar:
+          request.requestedByUserId && request.requestedByUserId !== comptes.get(request.employeeId)
+            ? (noms.get(request.requestedByUserId) ?? null)
+            : null,
         finInitiale: request.finInitiale,
         ecourtement:
           request.ecourteNature === 'retour' || request.ecourteNature === 'rappel'
@@ -2079,6 +2219,12 @@ export class AbsencesService {
             sienne && commence && request.endDate > today && !request.repriseDemandee,
           confirmerReprise,
           rappeler: !sienne && commence && request.endDate > today && (sonN1 || gere),
+          // Le justificatif qui suit la demande : l'agent, qui l'a saisie
+          // pour lui, ou la DCH ; tant qu'elle attend, ou validée sans lui.
+          joindreJustificatif:
+            (request.status === 'pending' ||
+              (valide && !documentRows.some((d) => d.requestId === request.id))) &&
+            (sienne || request.requestedByUserId === user.userId || gere),
         },
         approvals: visas.map((a) => ({
           level: a.level,

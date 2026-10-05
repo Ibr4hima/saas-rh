@@ -127,6 +127,8 @@ let moussa: Agent;
 let sansCompte: Agent;
 let fatou: Agent;
 let sansDossier: SessionUser;
+let missionId: string;
+let maladieId: string;
 let admin: SessionUser;
 
 let semaine = 0;
@@ -194,13 +196,31 @@ const viser = (
 const reconcilier = () =>
   db.withTenant({ tenantId, userId: admin.userId }, (tx) => reconcilierLeCircuit(tx, tenantId));
 
-/** Un congé approuvé qui couvre aujourd'hui : l'agent est absent. */
-async function enConge(qui: Agent) {
+/** Un congé approuvé qui couvre aujourd'hui, jusqu'à J+`fin` : l'agent est absent. */
+async function enConge(qui: Agent, type = typeId, fin = 3): Promise<string> {
+  const id = randomUUID();
   await raw(
     `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
-     VALUES ($1,$2,$3,$4, CURRENT_DATE - 1, CURRENT_DATE + 3, 3, 'approved')`,
-    [randomUUID(), tenantId, qui.employeeId, typeId],
+     VALUES ($1,$2,$3,$4, CURRENT_DATE - 1, CURRENT_DATE + $5::int, 3, 'approved')`,
+    [id, tenantId, qui.employeeId, type, fin],
   );
+  return id;
+}
+
+/** Une demande de J+`debut` à J+`fin`, à l'horloge de la base. */
+async function poserDu(qui: Agent, debut: number, fin: number): Promise<string> {
+  const { rows } = await raw(
+    `SELECT (CURRENT_DATE + $1::int)::text AS d, (CURRENT_DATE + $2::int)::text AS f`,
+    [debut, fin],
+  );
+  return (
+    await absences.createRequest(qui.session, {
+      employeeId: qui.employeeId,
+      absenceTypeId: typeId,
+      startDate: rows[0]!.d as string,
+      endDate: rows[0]!.f as string,
+    })
+  ).id;
 }
 
 beforeAll(async () => {
@@ -220,6 +240,18 @@ beforeAll(async () => {
     `INSERT INTO absence_types (id, tenant_id, name, deducts_balance, allowance_days, frequency)
      VALUES ($1,$2,'Congé annuel',true,300,'annual')`,
     [typeId, tenantId],
+  );
+  maladieId = randomUUID();
+  await raw(
+    `INSERT INTO absence_types (id, tenant_id, name, deducts_balance, frequency, requires_document)
+     VALUES ($1,$2,'Maladie',false,'none',true)`,
+    [maladieId, tenantId],
+  );
+  missionId = randomUUID();
+  await raw(
+    `INSERT INTO absence_types (id, tenant_id, name, deducts_balance, frequency, reste_joignable)
+     VALUES ($1,$2,'Mission',false,'none',true)`,
+    [missionId, tenantId],
   );
   sansDossier = await compte('Rokhaya', 'employee');
   admin = await compte('Ibrahima', 'admin');
@@ -245,6 +277,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await raw(`DELETE FROM notifications WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM absence_documents WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM absence_approvals WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM absence_requests WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM habilitations WHERE tenant_id = $1`, [tenantId]);
@@ -350,16 +383,114 @@ describe('quand le N+1 ne peut pas viser, la demande va directement à la DCH', 
     expect(await appels(id)).toEqual(['dch:Mariama']);
   });
 
-  it('un N+1 en congé aujourd’hui — la DCH, pas le N+2', async () => {
+  it('un N+1 en congé qui rentre avant le congé demandé : il garde la main', async () => {
     await enConge(ousmane);
     const id = await poser(moussa);
+    expect(await appels(id)).toEqual(['n1:Ousmane']);
+    expect(await circuit(id)).toEqual(['n1:attendue:Ousmane Test', 'dch:a_venir:']);
+  });
+
+  it('un N+1 qui ne rentre pas à temps : la DCH, pas le N+2, le temps de son absence', async () => {
+    const absence = await enConge(ousmane);
+    // Ousmane rentre dans quatre jours ; le congé commence dans trois.
+    const id = await poserDu(moussa, 3, 10);
     expect(await circuit(id)).toEqual(['n1:passee:', 'dch:attendue:Mariama Test']);
     expect(await codeOf(() => viser(dg, id))).toBe('absence.reservee_a_la_dch');
+    expect(await appels(id)).toEqual(['dch:Mariama']);
+    // Il écourte son congé : la demande lui revient, la DCH n'est plus appelée.
+    await raw(`UPDATE absence_requests SET end_date = CURRENT_DATE - 1 WHERE id = $1`, [absence]);
+    await reconcilier();
+    expect(await appels(id)).toEqual(['n1:Ousmane']);
+    expect(await circuit(id)).toEqual(['n1:attendue:Ousmane Test', 'dch:a_venir:']);
+  });
+
+  it('pendant l’absence du N+1, la DCH vise : la demande est approuvée', async () => {
+    await enConge(ousmane);
+    const id = await poserDu(moussa, 2, 9);
+    await viser(mariama, id);
+    expect((await vue(id)).status).toBe('approved');
+    expect(await circuit(id)).toEqual(['n1:passee:', 'dch:visee:Mariama Test']);
+  });
+
+  it('en mission, le N+1 reste joignable : il garde la main', async () => {
+    await enConge(ousmane, missionId, 30);
+    const id = await poserDu(moussa, 2, 9);
+    expect(await appels(id)).toEqual(['n1:Ousmane']);
+    expect((await vue(id)).etapeAttendue).toBe('n1');
   });
 
   it('le DG : directement à la DCH', async () => {
     const id = await poser(dg);
     expect((await vue(id)).etapeAttendue).toBe('dch');
+  });
+});
+
+describe('la DCH saisit pour un agent ; le justificatif suit', () => {
+  const PDF = Buffer.from('%PDF-1.4 certificat').toString('base64');
+  const certificat = { filename: 'certificat.pdf', contentBase64: PDF };
+  /** Un arrêt maladie, du lundi d'une semaine au vendredi, sans justificatif. */
+  const arret = (par: Agent, pour: Agent) =>
+    absences.createRequest(par.session, {
+      employeeId: pour.employeeId,
+      absenceTypeId: maladieId,
+      ...periode(),
+    });
+
+  it('un agent sans portail : la DCH saisit, la demande suit le même circuit', async () => {
+    const { id } = await absences.createRequest(mariama.session, {
+      employeeId: sansCompte.employeeId,
+      absenceTypeId: typeId,
+      ...periode(),
+    });
+    // Son N+1 est le DG : il vise d'abord, comme pour toute demande.
+    expect(await appels(id)).toEqual(['n1:Cheikh']);
+    expect((await vue(id)).saisiePar).toBe('Mariama Test');
+  });
+
+  it('un agent hospitalisé : il apprend la saisie ; un autre agent ne saisit pas pour lui', async () => {
+    const { id } = await arret(mariama, moussa);
+    expect(await notif('Moussa', `conge:${id}:saisie`)).toMatch(
+      /^La DCH a saisi pour vous un congé maladie du /,
+    );
+    expect(await codeOf(() => arret(fatou, moussa))).toBe('absence.self_only');
+    expect(await codeOf(() => absences.agentsPourSaisie(moussa.session))).toBe(
+      'absence.reserve_a_la_dch',
+    );
+    const agents = (await absences.agentsPourSaisie(mariama.session)).map((a) => a.nom);
+    expect(agents).toContain('Moussa Test');
+    expect(agents).not.toContain('Mariama Test');
+  });
+
+  it('le justificatif arrive après coup : la DCH ne valide qu’avec lui', async () => {
+    const { id } = await arret(moussa, moussa);
+    expect(await vue(id)).toMatchObject({ justificatifAttendu: true, documentName: null });
+    await viser(ousmane, id);
+    expect(await codeOf(() => viser(mariama, id))).toBe('absence.justificatif_attendu');
+    // Ni un collègue ; l'agent, oui.
+    expect(await codeOf(() => absences.joindreJustificatif(fatou.session, id, certificat))).toBe(
+      'absence.document_forbidden',
+    );
+    await absences.joindreJustificatif(moussa.session, id, certificat);
+    expect(await vue(id)).toMatchObject({
+      justificatifAttendu: false,
+      documentName: 'certificat.pdf',
+    });
+    await viser(mariama, id);
+    expect((await vue(id)).status).toBe('approved');
+    // Traitée avec celui-ci : il ne se remplace plus.
+    expect(await codeOf(() => absences.joindreJustificatif(moussa.session, id, certificat))).toBe(
+      'absence.justificatif_clos',
+    );
+  });
+
+  it('qui a saisi pour l’agent joint son justificatif ; le refus, lui, n’en a pas besoin', async () => {
+    const { id } = await arret(mariama, sansCompte);
+    await absences.joindreJustificatif(mariama.session, id, certificat);
+    expect((await vue(id)).documentName).toBe('certificat.pdf');
+    const { id: autre } = await arret(mariama, moussa);
+    await viser(ousmane, autre);
+    await viser(mariama, autre, 'rejected');
+    expect((await vue(autre)).status).toBe('rejected');
   });
 });
 

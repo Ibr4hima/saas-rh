@@ -33,10 +33,19 @@ export function ProfileChangeCard({ employeeId }: { employeeId: string }) {
   });
 
   const decide = useMutation({
-    mutationFn: (input: { id: string; decision: 'approve' | 'reject'; message?: string }) =>
+    mutationFn: (input: {
+      id: string;
+      decision: 'approve' | 'reject';
+      message?: string;
+      ecraser?: boolean;
+    }) =>
       api(`/profile-changes/${input.id}/decide`, {
         method: 'POST',
-        body: { decision: input.decision, message: input.message },
+        body: {
+          decision: input.decision,
+          message: input.message,
+          ...(input.ecraser ? { ecraser: true } : {}),
+        },
       }),
     onSuccess: () => {
       setRejectOpen(null);
@@ -83,10 +92,15 @@ export function ProfileChangeCard({ employeeId }: { employeeId: string }) {
                   <li key={f.field} className="text-sm">
                     <span className="text-ink-muted">{f.label} : </span>
                     <span className="text-ink-muted line-through">
-                      {lisible(f.field, f.previous)}
+                      {lisible(f.field, f.modifieDepuis ? f.actuel : f.previous)}
                     </span>
                     <span className="mx-1.5 text-ink-muted">→</span>
                     <span className="font-medium text-ink-strong">{lisible(f.field, f.next)}</span>
+                    {f.modifieDepuis ? (
+                      <Badge tone="rouge" size="sm" className="ml-1.5 align-middle">
+                        Modifié depuis la demande
+                      </Badge>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -101,9 +115,17 @@ export function ProfileChangeCard({ employeeId }: { employeeId: string }) {
                   <Button
                     size="sm"
                     loading={decide.isPending}
-                    onClick={() => decide.mutate({ id: r.id, decision: 'approve' })}
+                    onClick={() =>
+                      decide.mutate({
+                        id: r.id,
+                        decision: 'approve',
+                        ecraser: r.fields.some((f) => f.modifieDepuis),
+                      })
+                    }
                   >
-                    Confirmer et mettre à jour
+                    {r.fields.some((f) => f.modifieDepuis)
+                      ? 'Remplacer et mettre à jour'
+                      : 'Confirmer et mettre à jour'}
                   </Button>
                   <Button
                     size="sm"

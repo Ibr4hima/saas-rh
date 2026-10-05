@@ -13,6 +13,7 @@ import type { Response } from 'express';
 import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AttestationService } from './attestation.service';
+import { contentDisposition } from '../../common/telechargement';
 
 @Controller()
 @UseGuards(SessionGuard, AccesGuard)
@@ -41,7 +42,7 @@ export class DocumentsController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `${inline ? 'inline' : 'attachment'}; filename="${filename}"`,
+      contentDisposition(inline ? 'inline' : 'attachment', filename),
     );
     res.setHeader('Cache-Control', 'no-store');
     res.end(pdf);

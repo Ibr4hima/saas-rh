@@ -25,6 +25,7 @@ import {
 import { type ViewableDoc } from '../../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../../components/fenetre-document';
 import { Icon } from '../../../../../components/icons';
+import { JoindreJustificatif } from '../../../../../components/joindre-justificatif';
 import { StatutAbsence } from '../../../../../components/statut-absence';
 import { Page } from '../../../../../components/gabarit';
 import { api, ApiError, apiUrl } from '../../../../../lib/api';
@@ -152,6 +153,8 @@ export default function HistoriqueCongesPage() {
                       }
                       onEcourter={() => setAEcourter(r)}
                       onRetirerReprise={() => retirerReprise.mutate(r.id)}
+                      onJoint={rafraichir}
+                      onErreur={setErreur}
                       enCours={
                         (cancel.isPending && cancel.variables === r.id) ||
                         (retirerReprise.isPending && retirerReprise.variables === r.id)
@@ -195,6 +198,8 @@ function Ligne({
   onAnnuler,
   onEcourter,
   onRetirerReprise,
+  onJoint,
+  onErreur,
   enCours,
 }: {
   demande: AbsenceRequestView;
@@ -202,6 +207,8 @@ function Ligne({
   onAnnuler: () => void;
   onEcourter: () => void;
   onRetirerReprise: () => void;
+  onJoint: () => void;
+  onErreur: (texte: string) => void;
   enCours: boolean;
 }) {
   const periode = `${formatDate(r.startDate)} → ${formatDate(r.endDate)}`;
@@ -215,6 +222,8 @@ function Ligne({
     >
       Prévisualiser
     </button>
+  ) : r.justificatifAttendu ? (
+    <JoindreJustificatif demande={r} onFait={onJoint} onErreur={onErreur} />
   ) : null;
   // Un geste par ligne au plus : annuler (en attente, ou validé à venir),
   // écourter (en cours), ou retirer un retour qui attend sa confirmation.

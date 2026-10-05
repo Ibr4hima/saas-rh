@@ -1742,6 +1742,15 @@ export class PeopleService {
       }
     }
 
+    // Ce que le journal garde de lignes retirées AVANT l'effacement : une pièce
+    // annulée, remplacée par une plus récente ou retirée du dossier. Elles ne
+    // sont plus là pour être récoltées, mais leur copie porte son dossier.
+    const { rows: retirees } = await tx.execute<{ id: string }>(sql`
+      SELECT DISTINCT row_id AS id FROM audit_log
+       WHERE tenant_id = app_tenant_id() AND row_id IS NOT NULL
+         AND (old_data ->> 'employee_id' = ${id} OR new_data ->> 'employee_id' = ${id})`);
+    recolter(retirees);
+
     // En dernier : chaque suppression ci-dessus vient d'écrire dans le journal
     // une copie de la ligne effacée. C'est ce contenu-là qu'on retire, en
     // laissant la trace de l'opération. Un seul paramètre, découpé côté base :

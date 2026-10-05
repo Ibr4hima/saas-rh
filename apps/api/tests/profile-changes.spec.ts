@@ -167,7 +167,15 @@ describe('signalement par l’employé', () => {
     if (!vue) throw new Error('demande absente');
     expect(vue.status).toBe('pending');
     expect(vue.fields).toEqual([
-      { field: 'addressLine', label: 'Adresse', previous: 'Sicap Liberté', next: 'Cité Malick Sy' },
+      {
+        field: 'addressLine',
+        label: 'Adresse',
+        previous: 'Sicap Liberté',
+        next: 'Cité Malick Sy',
+        // Le dossier n'a pas bougé depuis : rien à signaler.
+        actuel: 'Sicap Liberté',
+        modifieDepuis: false,
+      },
     ]);
   });
 

@@ -183,6 +183,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  await raw(`DELETE FROM notifications WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM academy_certificates WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM academy_courses WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM employees WHERE tenant_id = $1`, [tenantId]);
@@ -524,6 +525,93 @@ describe('le certificat', () => {
     horloge = Date.UTC(2027, 9, 1);
     expect((await evaluation.verifier(numero)).status).toBe('expire');
     expect((await academy.detail(agent, courseId)).evaluation?.etat).toBe('ouverte');
+  });
+
+  it('se révoque avec un motif : la vérification le dit, le titulaire l’apprend', async () => {
+    const numero = await reussir();
+    const [c] = await evaluation.certificatsDe(rh, agentEmployeeId);
+    expect(c?.gestes).toEqual({ revoquer: true, reemettre: true });
+    expect((await evaluation.certificatsDe(agent, agentEmployeeId))[0]?.gestes).toEqual({
+      revoquer: false,
+      reemettre: false,
+    });
+    expect(await codeOf(() => evaluation.revoquer(agent, c!.id, { motif: 'Erreur' }))).toBe(
+      'academy.forbidden',
+    );
+    await evaluation.revoquer(rh, c!.id, { motif: 'Copie non conforme' });
+    expect((await evaluation.verifier(numero)).status).toBe('revoque');
+    const { rows } = await raw(
+      `SELECT n.title FROM notifications n WHERE n.recipient_user_id = $1 AND n.dedupe_key = $2`,
+      [agentUserId, `certificat:${c!.id}:revoque`],
+    );
+    expect(rows[0]?.title).toBe('Votre certificat « PowerPoint » est révoqué : Copie non conforme');
+    expect(await codeOf(() => evaluation.revoquer(rh, c!.id, { motif: 'Encore' }))).toBe(
+      'academy.certificat_clos',
+    );
+    // Révoqué, il ne compte plus : l'évaluation se rouvre.
+    expect((await academy.detail(agent, courseId)).evaluation?.etat).toBe('ouverte');
+  });
+
+  it('se réémet sous le nom corrigé : l’ancien numéro renvoie au nouveau', async () => {
+    const numero = await reussir();
+    const [ancien] = await evaluation.certificatsDe(rh, agentEmployeeId);
+    await raw(
+      `UPDATE persons SET family_name = 'Diop Sall'
+        WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [agentEmployeeId],
+    );
+    const nouveau = await evaluation.reemettre(rh, ancien!.id);
+    expect(nouveau.number).not.toBe(numero);
+    expect(await evaluation.verifier(nouveau.number)).toMatchObject({
+      status: 'valide',
+      holderName: 'Awa Diop Sall',
+      issuedAt: ancien!.issuedAt,
+      reemisSous: null,
+    });
+    expect(await evaluation.verifier(numero)).toMatchObject({
+      status: 'revoque',
+      holderName: 'Awa Diop',
+      reemisSous: nouveau.number,
+    });
+    expect((await academy.detail(agent, courseId)).evaluation?.etat).toBe('reussie');
+    await raw(
+      `UPDATE persons SET family_name = 'Diop'
+        WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [agentEmployeeId],
+    );
+  });
+
+  it('se renouvelle dans les soixante jours qui précèdent son expiration', async () => {
+    await evaluation.reglerEvaluation(rh, courseId, {
+      questionCount: 5,
+      certificateValidityMonths: 12,
+    });
+    const numero = await reussir();
+    // Quatre-vingt-six jours avant l'échéance : rien à renouveler encore.
+    horloge = Date.UTC(2027, 6, 1, 9);
+    expect((await academy.detail(agent, courseId)).evaluation).toMatchObject({
+      etat: 'reussie',
+      renouvellement: false,
+    });
+    expect(await codeOf(() => evaluation.demarrer(agent, courseId))).toBe(
+      'academy.already_certified',
+    );
+    // Cinquante-cinq jours avant : l'évaluation se repasse.
+    horloge = Date.UTC(2027, 7, 1, 9);
+    expect((await academy.detail(agent, courseId)).evaluation).toMatchObject({
+      etat: 'ouverte',
+      renouvellement: true,
+      certificat: { number: numero },
+    });
+    const a = await evaluation.demarrer(agent, courseId);
+    const r = await evaluation.soumettre(agent, a.id, { answers: await bonnesReponses(a.id) });
+    expect(r.certificat?.expiresAt?.slice(0, 10)).toBe('2028-08-01');
+    // L'ancien vaut jusqu'à son terme ; le nouveau prend la suite.
+    expect((await evaluation.verifier(numero)).status).toBe('valide');
+    expect((await academy.detail(agent, courseId)).evaluation).toMatchObject({
+      etat: 'reussie',
+      renouvellement: false,
+    });
   });
 
   it('se télécharge en PDF par son titulaire et par la RH — pas par un collègue', async () => {

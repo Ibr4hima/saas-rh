@@ -1,5 +1,6 @@
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import {
+  createEmployeeSchema,
   NATIONALITY_LABELS,
   type ContractType,
   type CreateEmployeeInput,
@@ -194,18 +195,20 @@ function date(v: CelluleXlsx): { iso: string } | { erreur: string } | undefined 
   const t = String(v).trim();
   if (t === '') return undefined;
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
-  if (iso) return { iso: `${iso[1]}-${iso[2]}-${iso[3]}` };
   const fr = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t);
-  if (fr) {
-    const [, j, m, a] = fr;
-    const jour = Number(j);
-    const mois = Number(m);
-    if (jour < 1 || jour > 31 || mois < 1 || mois > 12) {
-      return { erreur: `« ${t} » n’est pas une date valide` };
-    }
-    return { iso: `${a}-${String(mois).padStart(2, '0')}-${String(jour).padStart(2, '0')}` };
+  if (!iso && !fr) {
+    return { erreur: `« ${t} » ne se lit pas comme une date (attendu 12/04/1990 ou 1990-04-12)` };
   }
-  return { erreur: `« ${t} » ne se lit pas comme une date (attendu 12/04/1990 ou 1990-04-12)` };
+  const [a, m, j] = iso
+    ? [Number(iso[1]), Number(iso[2]), Number(iso[3])]
+    : [Number(fr![3]), Number(fr![2]), Number(fr![1])];
+  // Le jour doit exister dans son mois : un 31 avril, un 29 février d'une
+  // année ordinaire, ne deviennent pas le 1er mai ou le 1er mars.
+  const jour = new Date(Date.UTC(a, m - 1, j));
+  if (jour.getUTCFullYear() !== a || jour.getUTCMonth() !== m - 1 || jour.getUTCDate() !== j) {
+    return { erreur: `« ${t} » n’est pas une date valide` };
+  }
+  return { iso: jour.toISOString().slice(0, 10) };
 }
 
 /**
@@ -393,13 +396,15 @@ export function convertirLigne(
   if (numeroPiece && !piece) {
     return refus('Le numéro de pièce est donné sans son type', 'piece');
   }
-  // Une pièce expirée ne fait pas perdre l'agent : le dossier se crée avec
-  // sa vraie date, la fiche la montre périmée et l'agent est prévenu.
+  // Une pièce périmée ne fait pas perdre l'agent, mais n'entre pas au
+  // dossier : le formulaire la refuse, l'import aussi. Le dossier se crée
+  // sans elle ; l'agent déposera la nouvelle, que la DCH vérifiera.
   const avertissements: AvertissementImport[] = [];
-  if (dates.expiration && dates.expiration < new Date().toISOString().slice(0, 10)) {
+  const perimee = Boolean(dates.expiration && dates.expiration <= aujourdhui());
+  if (perimee) {
     avertissements.push({
       colonne: nomColonne('expiration'),
-      texte: `Pièce d’identité expirée depuis le ${frDate(dates.expiration)} : à renouveler`,
+      texte: `Pièce d’identité périmée le ${frDate(dates.expiration!)} : non reprise, à renouveler`,
     });
   }
 
@@ -417,8 +422,8 @@ export function convertirLigne(
   let fin: string | undefined;
   if (dureeBrute !== null && dureeBrute !== '' && dureeBrute !== undefined) {
     const mois = Number(String(dureeBrute).replace(',', '.'));
-    if (!Number.isFinite(mois) || mois <= 0 || mois > 600) {
-      return refus(`« ${String(dureeBrute)} » n’est pas une durée en mois`, 'duree');
+    if (!Number.isInteger(mois) || mois <= 0 || mois > 600) {
+      return refus(`« ${String(dureeBrute)} » n’est pas une durée en mois entiers`, 'duree');
     }
     if (contrat === 'cdi') {
       // Le classeur type le dit dans sa note de colonne : la durée ne
@@ -426,21 +431,70 @@ export function convertirLigne(
       // erreur de saisie, pas une fin de contrat à inventer.
       return refus('Un CDI ne prend pas de durée', 'duree');
     }
-    fin = finDeContrat(debut.iso, Math.round(mois));
+    fin = finDeContrat(debut.iso, mois);
+  }
+  if ((contrat === 'cdd' || contrat === 'stage') && !fin) {
+    return refus('Un CDD ou un stage a une durée en mois', 'duree');
   }
 
   const emailPersonnel = lireTexte('emailPersonnel');
   const emailPro = lireTexte('emailPro');
-  for (const [valeur, champ] of [
-    [emailPersonnel, 'emailPersonnel'],
-    [emailPro, 'emailPro'],
-  ] as [string | undefined, Champ][]) {
-    if (valeur && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valeur)) {
-      return refus(`« ${valeur} » n’est pas une adresse email`, champ);
-    }
-  }
-
   const poste = lireTexte('poste') ?? null;
+
+  const entree = {
+    person: {
+      givenName: prenom,
+      familyName: nom,
+      ...(sexe ? { gender: sexe } : {}),
+      ...(dates.naissance ? { birthDate: dates.naissance } : {}),
+      ...(pays ? { birthPlace: pays } : {}),
+      ...(situation ? { maritalStatus: situation } : {}),
+      ...(perimee
+        ? {}
+        : {
+            ...(numeroPiece ? { nationalId: numeroPiece } : {}),
+            ...(piece ? { idDocumentType: piece } : {}),
+            ...(dates.delivrance ? { idDocumentIssuedOn: dates.delivrance } : {}),
+            ...(dates.expiration ? { idDocumentExpiresOn: dates.expiration } : {}),
+          }),
+      ...(emailPersonnel ? { personalEmail: emailPersonnel } : {}),
+      ...(telephone(lire('indicatif'), lire('telephone'))
+        ? { phone: telephone(lire('indicatif'), lire('telephone')) }
+        : {}),
+      ...(lireTexte('adresse') ? { addressLine: lireTexte('adresse') } : {}),
+    },
+    employee: {
+      employeeNumber: matricule,
+      // Première embauche : la date du contrat fait l'entrée dans
+      // l'organisation. Le fichier n'en distingue pas deux.
+      hiredOn: debut.iso,
+      ...(emailPro ? { workEmail: emailPro } : {}),
+      ...(telephone(lire('indicatifPro'), lire('telephonePro'))
+        ? { workPhone: telephone(lire('indicatifPro'), lire('telephonePro')) }
+        : {}),
+    },
+    ...(contrat
+      ? {
+          contract: {
+            contractType: contrat,
+            startDate: debut.iso,
+            ...(fin ? { endDate: fin } : {}),
+          },
+        }
+      : {}),
+    ...(poste ? { assignment: { positionTitle: poste, startDate: debut.iso } } : {}),
+  };
+
+  // Les contrôles du formulaire de création, les mêmes : ce qu'il refuse,
+  // l'import le refuse aussi, en nommant la colonne.
+  const verdict = createEmployeeSchema.safeParse(entree);
+  if (!verdict.success) {
+    const [issue] = verdict.error.issues;
+    return refus(
+      issue?.message ?? 'Valeur invalide',
+      COLONNE_DU_CHAMP[issue?.path.join('.') ?? ''] ?? null,
+    );
+  }
 
   return {
     ok: {
@@ -450,45 +504,38 @@ export function convertirLigne(
       uniteAbrege: lireTexte('unite') ?? null,
       responsableMatricule: lireTexte('responsable')?.toUpperCase() ?? null,
       avertissements,
-      entree: {
-        person: {
-          givenName: prenom,
-          familyName: nom,
-          ...(sexe ? { gender: sexe } : {}),
-          ...(dates.naissance ? { birthDate: dates.naissance } : {}),
-          ...(pays ? { birthPlace: pays } : {}),
-          ...(situation ? { maritalStatus: situation } : {}),
-          ...(numeroPiece ? { nationalId: numeroPiece } : {}),
-          ...(piece ? { idDocumentType: piece } : {}),
-          ...(dates.delivrance ? { idDocumentIssuedOn: dates.delivrance } : {}),
-          ...(dates.expiration ? { idDocumentExpiresOn: dates.expiration } : {}),
-          ...(emailPersonnel ? { personalEmail: emailPersonnel } : {}),
-          ...(telephone(lire('indicatif'), lire('telephone'))
-            ? { phone: telephone(lire('indicatif'), lire('telephone')) }
-            : {}),
-          ...(lireTexte('adresse') ? { addressLine: lireTexte('adresse') } : {}),
-        },
-        employee: {
-          employeeNumber: matricule,
-          // Première embauche : la date du contrat fait l'entrée dans
-          // l'organisation. Le fichier n'en distingue pas deux.
-          hiredOn: debut.iso,
-          ...(emailPro ? { workEmail: emailPro } : {}),
-          ...(telephone(lire('indicatifPro'), lire('telephonePro'))
-            ? { workPhone: telephone(lire('indicatifPro'), lire('telephonePro')) }
-            : {}),
-        },
-        ...(contrat
-          ? {
-              contract: {
-                contractType: contrat,
-                startDate: debut.iso,
-                ...(fin ? { endDate: fin } : {}),
-              },
-            }
-          : {}),
-        ...(poste ? { assignment: { positionTitle: poste, startDate: debut.iso } } : {}),
-      },
+      entree: verdict.data as LigneConvertie['entree'],
     },
   };
+}
+
+/** La colonne du fichier d'où vient chaque champ du dossier. */
+const COLONNE_DU_CHAMP: Record<string, Champ> = {
+  'person.givenName': 'prenom',
+  'person.familyName': 'nom',
+  'person.gender': 'sexe',
+  'person.birthDate': 'naissance',
+  'person.birthPlace': 'paysNaissance',
+  'person.maritalStatus': 'situation',
+  'person.nationalId': 'numeroPiece',
+  'person.idDocumentType': 'piece',
+  'person.idDocumentIssuedOn': 'delivrance',
+  'person.idDocumentExpiresOn': 'expiration',
+  'person.personalEmail': 'emailPersonnel',
+  'person.phone': 'telephone',
+  'person.addressLine': 'adresse',
+  'employee.employeeNumber': 'matricule',
+  'employee.hiredOn': 'debutContrat',
+  'employee.workEmail': 'emailPro',
+  'employee.workPhone': 'telephonePro',
+  'contract.contractType': 'contrat',
+  'contract.startDate': 'debutContrat',
+  'contract.endDate': 'duree',
+  'assignment.positionTitle': 'poste',
+  'assignment.startDate': 'debutContrat',
+};
+
+/** Le jour, à Dakar comme à Greenwich : la règle de la fiche. */
+function aujourdhui(): string {
+  return new Date().toISOString().slice(0, 10);
 }
