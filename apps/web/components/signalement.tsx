@@ -234,13 +234,29 @@ export function FenetreSignalement({
 
 /** Le suivi des signalements de l'agent, à la place de l'historique. */
 export function SuiviSignalements() {
+  const queryClient = useQueryClient();
   const signalements = useMesSignalements();
   const liste = signalements.data ?? [];
+  const [erreur, setErreur] = useState<string | null>(null);
+  // Tant que la DCH n'a pas tranché, le signalement s'annule d'un clic.
+  const annuler = useMutation({
+    mutationFn: (id: string) => api(`/profile-changes/${id}/cancel`, { method: 'POST' }),
+    onSuccess: () => {
+      setErreur(null);
+      void queryClient.invalidateQueries({ queryKey: ['profile-changes'] });
+    },
+    onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Annulation impossible.'),
+  });
   return (
     <Card>
       <CardHeader>
         <CardTitle>Mes signalements</CardTitle>
       </CardHeader>
+      {erreur ? (
+        <p role="alert" className="px-5 pb-2 text-[12.5px] text-danger">
+          {erreur}
+        </p>
+      ) : null}
       {liste.length === 0 ? (
         <CardContent>
           <p className="text-sm text-ink-muted">
@@ -288,9 +304,21 @@ export function SuiviSignalements() {
                       </p>
                     ) : null}
                   </div>
-                  <Badge tone={PROFILE_CHANGE_STATUS_TONES[r.status]} className="ml-auto">
-                    {PROFILE_CHANGE_STATUS_LABELS[r.status]}
-                  </Badge>
+                  <div className="ml-auto flex flex-col items-end gap-2">
+                    <Badge tone={PROFILE_CHANGE_STATUS_TONES[r.status]}>
+                      {PROFILE_CHANGE_STATUS_LABELS[r.status]}
+                    </Badge>
+                    {r.canCancel ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => annuler.mutate(r.id)}
+                        loading={annuler.isPending && annuler.variables === r.id}
+                      >
+                        Annuler
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </li>
             ))}

@@ -1,6 +1,7 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import type { DocumentRequestView } from '@teranga/contracts';
 import {
   DOC_REQUEST_STATUS_LABELS,
@@ -9,6 +10,7 @@ import {
 } from '@teranga/contracts';
 import {
   Badge,
+  Button,
   Card,
   CardHeader,
   CardTitle,
@@ -21,7 +23,7 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
-import { api } from '../../../../../lib/api';
+import { api, ApiError } from '../../../../../lib/api';
 import { formatDate } from '../../../../../lib/hooks';
 import { timeAgo } from '../../../../../components/document-request-list';
 import { Icon } from '../../../../../components/icons';
@@ -37,10 +39,21 @@ import { Page } from '../../../../../components/gabarit';
  * dans la colonne « Retrait » et se compte dans le titre de la carte.
  */
 export default function SuiviDemandesDocumentsPage() {
+  const queryClient = useQueryClient();
+  const [erreur, setErreur] = useState<string | null>(null);
   const docRequests = useQuery({
     // scope=mine : l'espace personnel reste personnel même pour un membre RH.
     queryKey: ['document-requests', 'me'],
     queryFn: () => api<DocumentRequestView[]>('/document-requests?scope=mine'),
+  });
+  // Tant que le document n'est pas prêt, la demande s'annule d'un clic.
+  const annuler = useMutation({
+    mutationFn: (id: string) => api(`/document-requests/${id}/cancel`, { method: 'POST' }),
+    onSuccess: () => {
+      setErreur(null);
+      void queryClient.invalidateQueries({ queryKey: ['document-requests'] });
+    },
+    onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Annulation impossible.'),
   });
   // La plus récente en tête : on revient ici pour ce qui vient d'arriver.
   const demandes = [...(docRequests.data ?? [])].sort((a, b) =>
@@ -50,6 +63,16 @@ export default function SuiviDemandesDocumentsPage() {
 
   return (
     <Page>
+      {erreur ? (
+        <p
+          role="alert"
+          className="flex items-start gap-2 rounded-[12px] bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger ring-1 ring-current/15 ring-inset"
+        >
+          <Icon name="error" size={15} className="mt-px shrink-0" />
+          {erreur}
+        </p>
+      ) : null}
+
       {docRequests.isLoading ? (
         <Skeleton className="h-48 w-full rounded-[16px]" />
       ) : demandes.length === 0 ? (
@@ -76,15 +99,23 @@ export default function SuiviDemandesDocumentsPage() {
                 {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
                 <THead className="hidden sm:table-header-group">
                   <tr>
-                    <Th className="sm:w-[34%]">Document</Th>
-                    <Th className="sm:w-[16%]">Demandée le</Th>
-                    <Th className="sm:w-[32%]">Retrait</Th>
-                    <Th className="sm:w-[18%]">Statut</Th>
+                    <Th className="sm:w-[32%]">Document</Th>
+                    <Th className="sm:w-[15%]">Demandée le</Th>
+                    <Th className="sm:w-[29%]">Retrait</Th>
+                    <Th className="sm:w-[14%]">Statut</Th>
+                    <Th className="sm:w-[10%]">
+                      <span className="sr-only">Actions</span>
+                    </Th>
                   </tr>
                 </THead>
                 <TBody>
                   {lignes.map((r) => (
-                    <Ligne key={r.id} demande={r} />
+                    <Ligne
+                      key={r.id}
+                      demande={r}
+                      onAnnuler={() => annuler.mutate(r.id)}
+                      enCours={annuler.isPending && annuler.variables === r.id}
+                    />
                   ))}
                 </TBody>
               </Table>
@@ -97,16 +128,29 @@ export default function SuiviDemandesDocumentsPage() {
 }
 
 /**
- * Une demande, sur une ligne. Sur téléphone, la date, le retrait et le statut
- * se rangent sous le document : quatre colonnes n'y tiennent pas.
+ * Une demande, sur une ligne. Sur téléphone, la date, le retrait, le statut
+ * et le geste se rangent sous le document : cinq colonnes n'y tiennent pas.
  */
-function Ligne({ demande: r }: { demande: DocumentRequestView }) {
+function Ligne({
+  demande: r,
+  onAnnuler,
+  enCours,
+}: {
+  demande: DocumentRequestView;
+  onAnnuler: () => void;
+  enCours: boolean;
+}) {
   const documents = r.docTypes.map((d) => REQUESTABLE_DOC_LABELS[d] ?? d).join(' · ');
   const demandee = formatDate(r.createdAt.slice(0, 10));
   const statut = (
     <Badge tone={DOC_REQUEST_STATUS_TONES[r.status]}>{DOC_REQUEST_STATUS_LABELS[r.status]}</Badge>
   );
   const retrait = <Retrait demande={r} />;
+  const geste = r.canCancel ? (
+    <Button size="sm" variant="ghost" onClick={onAnnuler} loading={enCours}>
+      Annuler
+    </Button>
+  ) : null;
   return (
     <Tr>
       <Td>
@@ -127,13 +171,17 @@ function Ligne({ demande: r }: { demande: DocumentRequestView }) {
         {r.status === 'ready' || r.status === 'delivered' ? (
           <div className="mt-2 text-[12.5px] sm:hidden">{retrait}</div>
         ) : null}
-        <div className="mt-2.5 sm:hidden">{statut}</div>
+        <div className="mt-2.5 flex items-center gap-3 sm:hidden">
+          {statut}
+          <span className="ml-auto">{geste}</span>
+        </div>
       </Td>
       <Td className="hidden tabular-nums sm:table-cell" title={timeAgo(r.createdAt)}>
         {demandee}
       </Td>
       <Td className="hidden sm:table-cell">{retrait}</Td>
       <Td className="hidden sm:table-cell">{statut}</Td>
+      <Td className="hidden text-right sm:table-cell">{geste}</Td>
     </Tr>
   );
 }

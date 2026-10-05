@@ -472,6 +472,12 @@ export class AbsencesService {
     label: string,
     sauf: string | null,
   ): Promise<void> {
+    // Un double clic sur « Ajouter » : sans verrou, les deux passent ce
+    // contrôle avant que l'un n'écrive. Les fériés d'une année se touchent
+    // un par un.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('feries:' || current_setting('app.tenant_id') || ':' || ${String(year)}))`,
+    );
     const [jumeau] = await tx
       .select({ id: t.holidays.id })
       .from(t.holidays)
@@ -832,6 +838,11 @@ export class AbsencesService {
         if (self !== input.employeeId) {
           problem(403, 'absence.self_only', 'Vous ne pouvez poser une demande que pour vous-même');
         }
+        // Deux demandes envoyées au même instant (deux onglets, un double
+        // envoi) passeraient chacune le contrôle de solde sans voir l'autre :
+        // le dossier de l'agent est verrouillé jusqu'à la fin de la
+        // transaction, la seconde attend la première et voit son solde.
+        await tx.execute(sql`SELECT id FROM employees WHERE id = ${input.employeeId} FOR UPDATE`);
         const [type] = await tx
           .select()
           .from(t.absenceTypes)

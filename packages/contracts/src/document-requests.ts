@@ -43,6 +43,7 @@ export const documentRequestStatusSchema = z.enum([
   'ready',
   'delivered',
   'rejected',
+  'cancelled',
 ]);
 export type DocumentRequestStatus = z.infer<typeof documentRequestStatusSchema>;
 
@@ -52,6 +53,7 @@ export const DOC_REQUEST_STATUS_LABELS: Record<DocumentRequestStatus, string> = 
   ready: 'Prête à retirer',
   delivered: 'Remise',
   rejected: 'Refusée',
+  cancelled: 'Annulée',
 };
 
 export const DOC_REQUEST_STATUS_TONES: Record<
@@ -63,6 +65,7 @@ export const DOC_REQUEST_STATUS_TONES: Record<
   ready: 'bleu',
   delivered: 'teal',
   rejected: 'rouge',
+  cancelled: 'gris',
 };
 
 /**
@@ -171,6 +174,8 @@ export interface DocumentRequestView {
   handledAt: string | null;
   /** true si l'utilisateur courant peut la faire avancer : il la traite pour la DCH. */
   canAdvance: boolean;
+  /** true si c'est la sienne, et qu'elle n'est pas encore prête : il peut l'annuler. */
+  canCancel: boolean;
   /** Qui la traite, tant qu'elle est ouverte (sinon null). */
   traitement: TraitementView | null;
 }

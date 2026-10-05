@@ -51,8 +51,18 @@ import { AccesGuard, FermeAuxInactifs, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AbsencesService } from './absences.service';
 
-const yearQuerySchema = z.object({
-  year: z.coerce.number().int().min(2000).max(2100).default(new Date().getFullYear()),
+/**
+ * L'année demandée ; à défaut, l'année en cours AU MOMENT DE LA REQUÊTE. Une
+ * valeur calculée au chargement du module resterait celle du démarrage du
+ * serveur, et un serveur lancé en décembre servirait l'année écoulée.
+ */
+export const yearQuerySchema = z.object({
+  year: z.coerce
+    .number()
+    .int()
+    .min(2000)
+    .max(2100)
+    .default(() => new Date().getUTCFullYear()),
 });
 
 @Controller()

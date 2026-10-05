@@ -13,6 +13,15 @@ import { loadEnv } from '../config/env';
 import * as schema from './schema';
 
 export type Db = NodePgDatabase<typeof schema>;
+
+/**
+ * Le fuseau de chaque connexion. « Aujourd'hui » se décide en base (une fin
+ * de contrat, un congé qui commence, un rappel) : CURRENT_DATE doit donner le
+ * jour de Dakar, quel que soit le réglage du serveur qui héberge la base.
+ * Dakar est à UTC+0, sans heure d'été.
+ */
+export const FUSEAU_HORAIRE = 'Africa/Dakar';
+export const OPTIONS_CONNEXION = `-c TimeZone=${FUSEAU_HORAIRE}`;
 export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export interface TenantContext {
@@ -31,7 +40,11 @@ export class TenantDb implements OnModuleDestroy {
 
   constructor() {
     const env = loadEnv();
-    this.pool = new Pool({ connectionString: env.APP_DATABASE_URL, max: 10 });
+    this.pool = new Pool({
+      connectionString: env.APP_DATABASE_URL,
+      max: 10,
+      options: OPTIONS_CONNEXION,
+    });
     this.global = drizzle(this.pool, { schema });
   }
 

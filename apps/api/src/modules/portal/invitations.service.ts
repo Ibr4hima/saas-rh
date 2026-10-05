@@ -13,7 +13,7 @@ import type {
 import { passwordDiffersFromEmail, passwordShortfall } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
-import { TenantDb } from '../../db/tenant-db';
+import { TenantDb, type Tx } from '../../db/tenant-db';
 import { AuthService, IssuedSession } from '../auth/auth.service';
 import { finDeContratPassee } from '../people/en-activite';
 import { reconcilierLeCircuit } from '../time/visas';
@@ -27,6 +27,22 @@ function pgCode(err: unknown): string | undefined {
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * Le dossier a fermé depuis l'envoi : archivé, ou contrat échu que la liste
+ * n'a pas encore rangé. Suppose app.tenant_id posé.
+ */
+async function dossierFerme(tx: Tx, personId: string): Promise<boolean> {
+  const [dossier] = await tx
+    .select({ id: t.employees.id, status: t.employees.status })
+    .from(t.employees)
+    .where(eq(t.employees.personId, personId))
+    .orderBy(sql`${t.employees.status} = 'active' DESC`)
+    .limit(1);
+  return (
+    !dossier || dossier.status !== 'active' || Boolean(await finDeContratPassee(tx, dossier.id))
+  );
 }
 
 @Injectable()
@@ -141,6 +157,9 @@ export class InvitationsService {
       if (!row) return { valid: false, reason: 'not_found' };
       if (row.invitation.acceptedAt) return { valid: false, reason: 'used' };
       if (row.invitation.expiresAt < new Date()) return { valid: false, reason: 'expired' };
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${row.invitation.tenantId}, true)`);
+      if (await dossierFerme(tx, row.invitation.personId))
+        return { valid: false, reason: 'expired' };
       return {
         valid: true,
         organizationName: row.organizationName,
@@ -178,6 +197,10 @@ export class InvitationsService {
         // (leur policy exige app.tenant_id) et que les écritures suivantes
         // passent par les policies standard du tenant.
         await tx.execute(sql`SELECT set_config('app.tenant_id', ${invitation.tenantId}, true)`);
+
+        if (await dossierFerme(tx, invitation.personId)) {
+          problem(410, 'portal.invitation_invalid', "Cette invitation n'est plus valable");
+        }
 
         // Anti double-emploi : le premier UPDATE gagne, les suivants échouent.
         const marked = await tx

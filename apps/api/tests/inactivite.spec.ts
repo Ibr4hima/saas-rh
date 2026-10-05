@@ -680,3 +680,56 @@ describe('désactiver, réactiver', () => {
     ]);
   });
 });
+
+describe('une invitation en attente quand le dossier ferme', () => {
+  /** Un agent sans compte, et l'invitation qu'on lui envoie : le jeton du lien. */
+  async function invite(a: Agent): Promise<string> {
+    await raw(
+      `UPDATE persons SET user_id = NULL WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [a.employeeId],
+    );
+    const { invitePath } = await invitations.invite(
+      admin,
+      a.employeeId,
+      'employee',
+      `invite-${randomUUID()}@test.local`,
+    );
+    return invitePath.split('/').pop() as string;
+  }
+
+  it('l’archivage la referme : le lien ne s’ouvre plus', async () => {
+    const jeton = await invite(moussa);
+    expect((await invitations.info(jeton)).valid).toBe(true);
+    await people.archive(admin, { ids: [moussa.employeeId], archived: true, motif: 'demission' });
+    expect(await invitations.info(jeton)).toEqual({ valid: false, reason: 'expired' });
+    expect(await codeOf(() => invitations.accept(jeton, 'UnMotDePasseNeuf1!', {}))).toBe(
+      'portal.invitation_invalid',
+    );
+  });
+
+  it('un contrat échu depuis l’envoi la refuse, avant même que la liste le range', async () => {
+    const jeton = await invite(moussa);
+    await raw(
+      `UPDATE contracts SET contract_type = 'cdd', end_date = CURRENT_DATE - 1 WHERE employee_id = $1`,
+      [moussa.employeeId],
+    );
+    expect((await statut(moussa)).status).toBe('active');
+    expect(await invitations.info(jeton)).toEqual({ valid: false, reason: 'expired' });
+    expect(await codeOf(() => invitations.accept(jeton, 'UnMotDePasseNeuf1!', {}))).toBe(
+      'portal.invitation_invalid',
+    );
+    // Rien n'a été créé : ni compte relié, ni appartenance.
+    const { rows } = await raw(
+      `SELECT p.user_id, i.accepted_at FROM persons p JOIN invitations i ON i.person_id = p.id
+        WHERE p.id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [moussa.employeeId],
+    );
+    expect(rows).toEqual([{ user_id: null, accepted_at: null }]);
+  });
+
+  it('un dossier en activité l’accepte', async () => {
+    const jeton = await invite(moussa);
+    const { result } = await invitations.accept(jeton, 'UnMotDePasseNeuf1!', {});
+    expect(result.existingUser).toBe(false);
+  });
+});

@@ -51,6 +51,7 @@ const ALLOWED_TRANSITIONS: Record<string, DocumentRequestStatus[]> = {
   ready: ['ready'],
   delivered: [],
   rejected: [],
+  cancelled: [],
 };
 
 function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
@@ -149,12 +150,12 @@ export class DocumentRequestsService {
       const moi = await agentDuCompte(tx, user.userId);
       const selfOnly = filters.scope === 'mine';
       const toute = !selfOnly && (await this.traiteLesDocuments(tx, user));
+      // Son dossier, actif ou non : un agent qui n'est plus en activité
+      // suit encore les documents qu'il a demandés, et les annule.
+      const soi = await this.selfEmployee(tx, user);
       const conditions = [];
 
       if (selfOnly) {
-        // Son dossier, actif ou non : un agent qui n'est plus en activité
-        // suit encore les documents qu'il a demandés.
-        const soi = await this.selfEmployee(tx, user);
         if (!soi) return [];
         conditions.push(eq(t.documentRequests.employeeId, soi.employeeId));
       } else if (!toute) {
@@ -227,8 +228,11 @@ export class DocumentRequestsService {
           handledAt:
             r.request.readyAt?.toISOString() ??
             r.request.deliveredAt?.toISOString() ??
-            (r.request.status === 'rejected' ? r.request.updatedAt.toISOString() : null),
+            (['rejected', 'cancelled'].includes(r.request.status)
+              ? r.request.updatedAt.toISOString()
+              : null),
           canAdvance: peutAvancer && (ALLOWED_TRANSITIONS[r.request.status]?.length ?? 0) > 0,
+          canCancel: ouverte && r.request.employeeId === soi?.employeeId,
           traitement: tr?.vue ?? null,
         });
       }
@@ -363,6 +367,43 @@ export class DocumentRequestsService {
         pickupContact: changes.pickupContact ?? null,
         message: input.message?.trim() || null,
         isCorrection,
+      });
+    });
+  }
+
+  /**
+   * L'agent retire sa demande tant qu'elle n'est pas prête : elle sort de la
+   * file. Déjà prise en charge, qui la préparait en est prévenu.
+   */
+  async cancel(user: SessionUser, requestId: string): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(t.documentRequests)
+        .where(eq(t.documentRequests.id, requestId))
+        .for('update')
+        .limit(1);
+      const soi = await this.selfEmployee(tx, user);
+      if (!row || !soi || row.employeeId !== soi.employeeId) {
+        problem(404, 'documents.request_not_found', 'Demande introuvable');
+      }
+      if (!OPEN_STATUSES.includes(row.status)) {
+        problem(422, 'documents.deja_traitee', 'Cette demande est déjà traitée');
+      }
+      await tx
+        .update(t.documentRequests)
+        .set({ status: 'cancelled', updatedAt: new Date() })
+        .where(eq(t.documentRequests.id, requestId));
+      await reconcilierUneDemande(tx, 'documents', requestId);
+
+      if (row.status !== 'processing' || !row.handledByUserId) return;
+      if (row.handledByUserId === user.userId) return;
+      const doc = DOCUMENT[row.docTypes[0] as RequestableDoc] ?? DOCUMENT.autre;
+      await this.notifications.notifyUser(tx, user.tenantId, row.handledByUserId, {
+        type: 'document_request_cancelled',
+        title: `${soi.givenName} ${soi.familyName} annule sa demande ${de(doc.nom)}`,
+        link: '/documents',
+        dedupeKey: `document:${requestId}:annulee`,
       });
     });
   }

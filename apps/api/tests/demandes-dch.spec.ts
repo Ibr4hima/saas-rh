@@ -210,6 +210,51 @@ afterAll(async () => {
 });
 
 describe('les demandes de documents', () => {
+  it('l’agent annule la sienne tant qu’elle n’est pas prête : elle sort de la file', async () => {
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
+    const vue = async (qui: Agent) =>
+      (await documents.list(qui.session, { scope: 'mine' })).find((r) => r.id === id);
+    expect((await vue(moussa))?.canCancel).toBe(true);
+    // Une autre que la sienne : introuvable, même pour qui la traite.
+    expect(await codeOf(() => documents.cancel(mariama.session, id))).toBe(
+      'documents.request_not_found',
+    );
+    await documents.cancel(moussa.session, id);
+    expect(await vue(moussa)).toMatchObject({ status: 'cancelled', canCancel: false });
+    expect(await appels('document', id)).toEqual([]);
+    expect(await codeOf(() => documents.cancel(moussa.session, id))).toBe('documents.deja_traitee');
+    // Annulée, elle se redemande.
+    await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
+  });
+
+  it('déjà en préparation : qui la préparait est prévenu ; prête, elle ne s’annule plus', async () => {
+    const [id] = (await documents.create(moussa.session, { docTypes: ['bulletin_salaire'] }))
+      .ids as [string];
+    await documents.advance(mariama.session, id, { status: 'processing' });
+    await documents.cancel(moussa.session, id);
+    const { rows } = await raw(
+      `SELECT title FROM notifications WHERE recipient_user_id = $1 AND dedupe_key = $2`,
+      [mariama.session.userId, `document:${id}:annulee`],
+    );
+    expect(rows).toEqual([{ title: 'Moussa Test annule sa demande de bulletin de salaire' }]);
+    expect(await codeOf(() => documents.advance(mariama.session, id, { status: 'ready' }))).toBe(
+      'documents.invalid_transition',
+    );
+
+    const [prete] = (await documents.create(moussa.session, { docTypes: ['bulletin_salaire'] }))
+      .ids as [string];
+    await documents.advance(mariama.session, prete, { status: 'processing' });
+    await documents.advance(mariama.session, prete, { status: 'ready' });
+    expect(
+      (await documents.list(moussa.session, { scope: 'mine' })).find((r) => r.id === prete)
+        ?.canCancel,
+    ).toBe(false);
+    expect(await codeOf(() => documents.cancel(moussa.session, prete))).toBe(
+      'documents.deja_traitee',
+    );
+  });
+
   it('par défaut, le directeur du Capital Humain : lui seul est appelé, lui seul traite', async () => {
     const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
       .ids as [string];
@@ -404,6 +449,30 @@ describe('les changements d’informations', () => {
     );
     await informations.decide(khady.session, id, { decision: 'approve' });
     expect(await appels('information', id)).toEqual([]);
+  });
+
+  it('l’agent annule la sienne tant qu’elle attend, et peut en envoyer une autre', async () => {
+    const { id } = await informations.create(moussa.session, {
+      changes: { addressLine: 'Ouakam' },
+    });
+    const mienne = async () =>
+      (await informations.list(moussa.session, { scope: 'mine' })).find((r) => r.id === id);
+    expect((await mienne())?.canCancel).toBe(true);
+    expect(await codeOf(() => informations.cancel(mariama.session, id))).toBe(
+      'profile.request_not_found',
+    );
+    await informations.cancel(moussa.session, id);
+    expect(await mienne()).toMatchObject({ status: 'cancelled', canCancel: false });
+    expect(await appels('information', id)).toEqual([]);
+    expect(
+      await codeOf(() => informations.decide(mariama.session, id, { decision: 'approve' })),
+    ).toBe('profile.request_already_handled');
+    // L'adresse n'a pas bougé, et une nouvelle demande part.
+    const { rows } = await raw(`SELECT address_line FROM persons WHERE user_id = $1`, [
+      moussa.session.userId,
+    ]);
+    expect(rows[0].address_line).not.toBe('Ouakam');
+    await informations.create(moussa.session, { changes: { addressLine: 'Yoff' } });
   });
 
   it('retirée, l’habilitation rend la demande au directeur', async () => {

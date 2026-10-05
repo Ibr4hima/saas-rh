@@ -33,6 +33,11 @@ export async function arreterLActivite(tx: Tx, employeeId: string, fin: SQL): Pr
     UPDATE assignments SET validity = daterange(lower(validity), (${fin})::date + 1)
      WHERE employee_id = ${employeeId}
        AND (upper_inf(validity) OR upper(validity) > (${fin})::date + 1)`);
+  // Une invitation en attente ne s'ouvre plus : le portail lui serait fermé.
+  await tx.execute(sql`
+    UPDATE invitations SET expires_at = now()
+     WHERE person_id = (SELECT person_id FROM employees WHERE id = ${employeeId})
+       AND accepted_at IS NULL AND expires_at > now()`);
 }
 
 /**

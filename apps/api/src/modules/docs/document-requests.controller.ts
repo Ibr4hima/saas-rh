@@ -71,6 +71,13 @@ export class DocumentRequestsController {
     return this.requests.batchAdvance(req.sessionUser, body);
   }
 
+  /** L'agent retire sa demande, tant qu'elle n'est pas prête. */
+  @Post('document-requests/:id/cancel')
+  @HttpCode(204)
+  async cancel(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    await this.requests.cancel(req.sessionUser, id);
+  }
+
   @Post('document-requests/:id/advance')
   @HttpCode(204)
   async advance(

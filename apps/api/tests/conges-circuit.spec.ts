@@ -953,3 +953,45 @@ describe('un congé validé qui change', () => {
     expect(p.detail).toMatch(/^Votre congé annuel va jusqu’au .* : commencez celle-ci le .*\.$/);
   });
 });
+
+describe('les envois simultanés', () => {
+  it('deux demandes au même instant ne dépassent pas le solde', async () => {
+    const court = randomUUID();
+    await raw(
+      `INSERT INTO absence_types (id, tenant_id, name, deducts_balance, allowance_days, frequency)
+       VALUES ($1,$2,'Congé court',true,5,'annual')`,
+      [court, tenantId],
+    );
+    try {
+      // Deux demandes de 3 jours, chacune possible seule, pas les deux.
+      const envoyer = (debut: string, fin: string) =>
+        codeOf(() =>
+          absences.createRequest(moussa.session, {
+            employeeId: moussa.employeeId,
+            absenceTypeId: court,
+            startDate: debut,
+            endDate: fin,
+          }),
+        );
+      const codes = await Promise.all([
+        envoyer('2027-03-01', '2027-03-03'),
+        envoyer('2027-03-08', '2027-03-10'),
+      ]);
+      expect(codes.sort()).toEqual(['AUCUNE ERREUR', 'absence.insufficient_balance']);
+    } finally {
+      await raw(`DELETE FROM absence_requests WHERE absence_type_id = $1`, [court]);
+      await raw(`DELETE FROM absence_types WHERE id = $1`, [court]);
+    }
+  });
+
+  it('le même férié ajouté deux fois au même instant n’est inscrit qu’une fois', async () => {
+    try {
+      const ajouter = () =>
+        codeOf(() => absences.createHoliday(mariama.session, { year: 2027, label: 'Korité' }));
+      const codes = await Promise.all([ajouter(), ajouter()]);
+      expect(codes.sort()).toEqual(['AUCUNE ERREUR', 'absence.holiday_label_exists']);
+    } finally {
+      await raw(`DELETE FROM holidays WHERE tenant_id = $1`, [tenantId]);
+    }
+  });
+});

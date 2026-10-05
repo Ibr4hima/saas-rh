@@ -141,10 +141,10 @@ export class ProfileChangesService {
         !selfOnly &&
         ((await voitToutLaFile(tx, user, 'informations')) ||
           (Boolean(filters.employeeId) && peut(user, 'personnel.consulter')));
+      const self = await this.selfPerson(tx, user, true);
       const conditions = [];
 
       if (selfOnly) {
-        const self = await this.selfPerson(tx, user, true);
         if (!self) return [];
         conditions.push(eq(t.profileChangeRequests.employeeId, self.employeeId));
       } else if (!toute) {
@@ -203,6 +203,7 @@ export class ProfileChangesService {
             r.gender,
           ),
           canDecide: Boolean(tr?.peutTraiter),
+          canCancel: r.request.status === 'pending' && r.request.employeeId === self?.employeeId,
           traitement: tr?.vue ?? null,
         });
       }
@@ -301,6 +302,30 @@ export class ProfileChangesService {
             : 'Votre demande de mise à jour est refusée',
         link: '/moi',
       });
+    });
+  }
+
+  /** L'agent retire sa demande tant qu'elle attend : elle sort de la file. */
+  async cancel(user: SessionUser, requestId: string): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(t.profileChangeRequests)
+        .where(eq(t.profileChangeRequests.id, requestId))
+        .for('update')
+        .limit(1);
+      const self = await this.selfPerson(tx, user, true);
+      if (!row || !self || row.employeeId !== self.employeeId) {
+        problem(404, 'profile.request_not_found', 'Demande introuvable');
+      }
+      if (row.status !== 'pending') {
+        problem(422, 'profile.request_already_handled', 'Cette demande a déjà été traitée');
+      }
+      await tx
+        .update(t.profileChangeRequests)
+        .set({ status: 'cancelled', handledAt: new Date(), updatedAt: new Date() })
+        .where(eq(t.profileChangeRequests.id, requestId));
+      await reconcilierUneDemande(tx, 'informations', requestId);
     });
   }
 

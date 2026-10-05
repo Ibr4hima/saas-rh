@@ -8,10 +8,11 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 import { loadEnv } from '../config/env';
+import { OPTIONS_CONNEXION } from './tenant-db';
 
 export async function runMigrations(databaseUrl?: string): Promise<void> {
   const url = databaseUrl ?? loadEnv().DATABASE_URL;
-  const client = new Client({ connectionString: url });
+  const client = new Client({ connectionString: url, options: OPTIONS_CONNEXION });
   await client.connect();
 
   try {

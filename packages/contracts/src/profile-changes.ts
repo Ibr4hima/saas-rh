@@ -103,21 +103,25 @@ export const decideProfileChangeRequestSchema = z.object({
 });
 export type DecideProfileChangeRequestInput = z.infer<typeof decideProfileChangeRequestSchema>;
 
-export const profileChangeStatusSchema = z.enum(['pending', 'approved', 'rejected']);
+export const profileChangeStatusSchema = z.enum(['pending', 'approved', 'rejected', 'cancelled']);
 export type ProfileChangeStatus = z.infer<typeof profileChangeStatusSchema>;
 
 export const PROFILE_CHANGE_STATUS_LABELS: Record<ProfileChangeStatus, string> = {
   pending: 'En attente',
   approved: 'Appliquée',
   rejected: 'Refusée',
+  cancelled: 'Annulée',
 };
 
-export const PROFILE_CHANGE_STATUS_TONES: Record<ProfileChangeStatus, 'orange' | 'teal' | 'rouge'> =
-  {
-    pending: 'orange',
-    approved: 'teal',
-    rejected: 'rouge',
-  };
+export const PROFILE_CHANGE_STATUS_TONES: Record<
+  ProfileChangeStatus,
+  'orange' | 'teal' | 'rouge' | 'gris'
+> = {
+  pending: 'orange',
+  approved: 'teal',
+  rejected: 'rouge',
+  cancelled: 'gris',
+};
 
 export interface ProfileChangeRequestView {
   id: string;
@@ -146,6 +150,8 @@ export interface ProfileChangeRequestView {
   }[];
   /** true si l'utilisateur courant peut trancher cette demande. */
   canDecide: boolean;
+  /** true si c'est la sienne, encore en attente : il peut l'annuler. */
+  canCancel: boolean;
   /** Qui la traite, tant qu'elle est en attente (sinon null). */
   traitement: TraitementView | null;
 }

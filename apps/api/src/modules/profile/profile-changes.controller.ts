@@ -55,6 +55,13 @@ export class ProfileChangesController {
     return this.requests.list(req.sessionUser, query);
   }
 
+  /** L'agent retire sa demande, tant qu'elle attend. */
+  @Post('profile-changes/:id/cancel')
+  @HttpCode(204)
+  async cancel(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    await this.requests.cancel(req.sessionUser, id);
+  }
+
   @Post('profile-changes/:id/decide')
   @HttpCode(204)
   async decide(

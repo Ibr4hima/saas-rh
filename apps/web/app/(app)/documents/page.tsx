@@ -140,9 +140,10 @@ export default function DocumentRequestsPage() {
   const traitees = useMemo(() => {
     // Un historique se lit du plus récent au plus ancien. Annoncer le retrait
     // CLÔT le travail de la RH : l'employé est prévenu et vient chercher son
-    // document, il n'y a plus rien à relancer depuis cet écran.
+    // document, il n'y a plus rien à relancer depuis cet écran. Une demande
+    // que l'agent a annulée n'a pas été traitée : elle n'y figure pas.
     return items
-      .filter((r) => !OPEN.includes(r.status))
+      .filter((r) => !OPEN.includes(r.status) && r.status !== 'cancelled')
       .sort((a, b) => (b.handledAt ?? b.createdAt).localeCompare(a.handledAt ?? a.createdAt));
   }, [items]);
 
@@ -310,9 +311,7 @@ export default function DocumentRequestsPage() {
                       {heures(h)}
                     </Td>
                     {traite ? null : (
-                      <Td className="text-[12px] text-ink-muted">
-                        {r.traitement?.traitants ?? '—'}
-                      </Td>
+                      <Td className="text-[12px] text-ink-muted">{r.traitement?.traitants}</Td>
                     )}
                   </Tr>
                 );
@@ -375,7 +374,7 @@ export default function DocumentRequestsPage() {
                     className="text-right font-semibold whitespace-nowrap text-ink-muted"
                     style={{ fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {r.handledAt ? heures(ecartHeures(r.createdAt, r.handledAt)) : '—'}
+                    {r.handledAt ? heures(ecartHeures(r.createdAt, r.handledAt)) : null}
                   </Td>
                   {/* Ce qui a été RÉPONDU au demandeur, pas l'étiquette d'un
                         automate : une fois le retrait annoncé, la RH n'a plus
@@ -384,12 +383,12 @@ export default function DocumentRequestsPage() {
                   <Td>
                     {r.status === 'rejected' ? (
                       <span className="font-semibold text-danger">
-                        Refusée{r.hrMessage ? ` — ${r.hrMessage}` : ''}
+                        Refusée{r.hrMessage ? ` : ${r.hrMessage}` : ''}
                       </span>
                     ) : (
                       <>
                         <span className="text-ink">
-                          À retirer auprès de {r.pickupContact ?? '—'}
+                          {r.pickupContact ? `À retirer auprès de ${r.pickupContact}` : 'Prête'}
                         </span>
                         {r.hrMessage ? (
                           <span className="block text-[11px] text-ink-muted">{r.hrMessage}</span>
@@ -586,7 +585,7 @@ function TraiterModal({
               <li key={s.id} className="flex items-center gap-2 text-[12.5px]">
                 <Icon name="error" size={15} className="shrink-0 text-warning" />
                 <span className="font-semibold text-ink-strong">{s.employeeName || 'Demande'}</span>
-                <span className="text-ink-muted">— {s.reason}</span>
+                <span className="text-ink-muted">· {s.reason}</span>
               </li>
             ))}
           </ul>
@@ -664,7 +663,7 @@ function TraiterModal({
             {requests.map((r) => (
               <li key={r.id} className="text-[12.5px]">
                 <span className="font-bold text-ink-strong">{r.employeeName}</span>
-                <span className="text-ink-muted"> — {docLabels(r)}</span>
+                <span className="text-ink-muted"> · {docLabels(r)}</span>
               </li>
             ))}
           </ul>
@@ -791,7 +790,7 @@ function Ligne({
           vide ? 'text-ink-muted/45' : 'text-ink-strong',
         )}
       >
-        {vide ? '—' : children}
+        {vide ? null : children}
       </dd>
     </div>
   );
@@ -1010,7 +1009,7 @@ function DeclinerModal({
           {requests.map((r) => (
             <li key={r.id} className="text-[12.5px]">
               <span className="font-bold text-ink-strong">{r.employeeName}</span>
-              <span className="text-ink-muted"> — {docLabels(r)}</span>
+              <span className="text-ink-muted"> · {docLabels(r)}</span>
             </li>
           ))}
         </ul>
