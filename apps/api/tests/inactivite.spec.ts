@@ -33,6 +33,7 @@ import { PeopleController } from '../src/modules/people/people.controller';
 import { PeopleService } from '../src/modules/people/people.service';
 import { InvitationsService } from '../src/modules/portal/invitations.service';
 import { AbsencesController } from '../src/modules/time/absences.controller';
+import { AbsencesService } from '../src/modules/time/absences.service';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -252,6 +253,8 @@ afterAll(async () => {
     tenantId,
   ]);
   await raw(`DELETE FROM user_tenant_memberships WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM holidays WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM holiday_seeds WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM audit_log WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
   await raw(`DELETE FROM users WHERE id = ANY($1)`, [rows.map((r) => r.user_id as string)]);
@@ -731,5 +734,234 @@ describe('une invitation en attente quand le dossier ferme', () => {
     const jeton = await invite(moussa);
     const { result } = await invitations.accept(jeton, 'UnMotDePasseNeuf1!', {});
     expect(result.existingUser).toBe(false);
+  });
+});
+
+describe('un départ et ses congés', () => {
+  /** Un congé de Moussa, déjà validé, du jour `du` au jour `au` (relatifs à aujourd'hui). */
+  async function congeValide(typeId: string, du: number, au: number): Promise<string> {
+    const id = randomUUID();
+    await raw(
+      `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+       VALUES ($1,$2,$3,$4, CURRENT_DATE + $5::int, CURRENT_DATE + $6::int, 1, 'approved')`,
+      [id, tenantId, moussa.employeeId, typeId, du, au],
+    );
+    return id;
+  }
+  const etat = async (id: string) =>
+    (
+      await raw(
+        `SELECT status, end_date::text AS au, fin_initiale::text AS prevu FROM absence_requests WHERE id = $1`,
+        [id],
+      )
+    ).rows[0] as { status: string; au: string; prevu: string | null };
+
+  it('qui part perd ses congés à venir ; celui qui dépasse son dernier jour s’arrête ce jour-là', async () => {
+    const typeId = randomUUID();
+    await raw(`INSERT INTO absence_types (id, tenant_id, name) VALUES ($1,$2,'Congé annuel')`, [
+      typeId,
+      tenantId,
+    ]);
+    const aVenir = await congeValide(typeId, 20, 24);
+    const enCours = await congeValide(typeId, -3, 6);
+    const passe = await congeValide(typeId, -40, -38);
+    await people.archive(admin, { ids: [moussa.employeeId], archived: true, motif: 'demission' });
+    expect((await etat(aVenir)).status).toBe('cancelled');
+    expect(await etat(enCours)).toEqual({
+      status: 'approved',
+      au: await jour(0),
+      prevu: await jour(6),
+    });
+    expect((await etat(passe)).status).toBe('approved');
+  });
+
+  it('une demande ne sort pas du contrat : ni avant son début, ni après sa fin', async () => {
+    const absences = new AbsencesService(db);
+    const typeId = randomUUID();
+    await raw(
+      `INSERT INTO absence_types (id, tenant_id, name, deducts_balance) VALUES ($1,$2,'Mission',false)`,
+      [typeId, tenantId],
+    );
+    await raw(
+      `UPDATE contracts SET contract_type = 'cdd', end_date = CURRENT_DATE + 30 WHERE employee_id = $1`,
+      [moussa.employeeId],
+    );
+    const { user } = await auth.login({ email: moussa.email, password: MOT_DE_PASSE }, {});
+    const demander = (du: number, au: number) =>
+      codeOf(async () =>
+        absences.createRequest(user, {
+          employeeId: moussa.employeeId,
+          absenceTypeId: typeId,
+          startDate: await jour(du),
+          endDate: await jour(au),
+        }),
+      );
+    expect(await demander(25, 40)).toBe('absence.hors_contrat');
+    expect(await demander(-1000, -998)).toBe('absence.hors_contrat');
+    expect(await demander(25, 30)).toBe('AUCUNE ERREUR');
+  });
+});
+
+describe('couper un accès', () => {
+  const entrer = (a: Agent) => auth.login({ email: a.email, password: MOT_DE_PASSE }, {});
+
+  it('un licenciement ou un décès ferme le portail le jour même, sans le mois de délai', async () => {
+    const { token } = await entrer(moussa);
+    await people.archive(admin, {
+      ids: [moussa.employeeId],
+      archived: true,
+      motif: 'licenciement',
+    });
+    expect(await auth.resolveSession(token)).toBeNull();
+    expect(await codeOf(() => entrer(moussa))).toBe('auth.employee_archived');
+  });
+
+  it('couper : déconnecté de partout, il ne revient pas ; rétabli, il revient', async () => {
+    const { token } = await entrer(moussa);
+    const { token: autreAppareil } = await entrer(moussa);
+    await invitations.couperLAcces(admin, moussa.employeeId, true);
+    expect(await auth.resolveSession(token)).toBeNull();
+    expect(await auth.resolveSession(autreAppareil)).toBeNull();
+    expect(await codeOf(() => entrer(moussa))).toBe('auth.acces_coupe');
+    expect((await people.detail(admin, moussa.employeeId)).portal.status).toBe('coupe');
+
+    await invitations.couperLAcces(admin, moussa.employeeId, false);
+    expect(await codeOf(() => entrer(moussa))).toBe('AUCUNE ERREUR');
+    expect((await people.detail(admin, moussa.employeeId)).portal.status).toBe('active');
+  });
+
+  it('personne ne coupe le sien ; l’accès du directeur du Capital Humain, seul l’administrateur le coupe', async () => {
+    const gestionnaire = {
+      userId: omar.userId,
+      tenantId,
+      role: 'employee',
+      capacites: ['personnel.gerer'],
+    } as unknown as SessionUser;
+    expect(await codeOf(() => invitations.couperLAcces(gestionnaire, omar.employeeId, true))).toBe(
+      'acces.son_propre_dossier',
+    );
+    expect(
+      await codeOf(() => invitations.couperLAcces(gestionnaire, mariama.employeeId, true)),
+    ).toBe('portal.acces_reserve_admin');
+    expect(
+      await codeOf(() => invitations.couperLAcces(gestionnaire, moussa.employeeId, true)),
+    ).toBe('AUCUNE ERREUR');
+    expect(await codeOf(() => invitations.couperLAcces(admin, mariama.employeeId, true))).toBe(
+      'AUCUNE ERREUR',
+    );
+    await invitations.couperLAcces(admin, mariama.employeeId, false);
+    await invitations.couperLAcces(admin, moussa.employeeId, false);
+  });
+
+  it('se déconnecter partout ferme toutes ses sessions', async () => {
+    const a = await entrer(moussa);
+    const b = await entrer(moussa);
+    await auth.deconnecterPartout(a.user.userId);
+    expect(await auth.resolveSession(a.token)).toBeNull();
+    expect(await auth.resolveSession(b.token)).toBeNull();
+    expect(await codeOf(() => entrer(moussa))).toBe('AUCUNE ERREUR');
+  });
+});
+
+describe('corriger ce qui a été saisi par erreur', () => {
+  const contrats = async (a: Agent) =>
+    (
+      await raw(
+        `SELECT id, contract_type AS type, start_date::text AS du, end_date::text AS au
+           FROM contracts WHERE employee_id = $1 ORDER BY start_date`,
+        [a.employeeId],
+      )
+    ).rows as { id: string; type: string; du: string; au: string | null }[];
+
+  it('un CDD saisi trop court : corrigé, le dossier passé à tort dans les inactifs se rouvre', async () => {
+    expect(await inactiver()).toBe(1);
+    expect((await statut(fatou)).status).toBe('archived');
+    const [cdd] = await contrats(fatou);
+    const r = await people.corrigerContrat(admin, fatou.employeeId, cdd!.id, {
+      contractType: 'cdd',
+      startDate: cdd!.du,
+      endDate: await jour(330),
+    });
+    expect(r).toEqual({ rouvert: true });
+    expect((await statut(fatou)).status).toBe('active');
+    expect((await contrats(fatou))[0]!.au).toBe(await jour(330));
+    expect((await affectations(fatou)).at(-1)!.au).toBeNull();
+  });
+
+  it('une fin corrigée déjà passée fait passer l’agent dans les inactifs', async () => {
+    const [cdi] = await contrats(moussa);
+    await people.corrigerContrat(admin, moussa.employeeId, cdi!.id, {
+      contractType: 'cdd',
+      startDate: cdi!.du,
+      endDate: await jour(-2),
+    });
+    expect((await statut(moussa)).status).toBe('archived');
+  });
+
+  it('seul le dernier contrat se corrige ; le précédent se recale sur son début', async () => {
+    const [cdi] = await contrats(moussa);
+    await people.newContract(admin, moussa.employeeId, {
+      contractType: 'cdd',
+      startDate: await jour(10),
+      endDate: await jour(375),
+    });
+    expect(
+      await codeOf(() =>
+        people.corrigerContrat(admin, moussa.employeeId, cdi!.id, {
+          contractType: 'cdi',
+          startDate: cdi!.du,
+        }),
+      ),
+    ).toBe('people.contrat_pas_le_dernier');
+    const [, cdd] = await contrats(moussa);
+    await people.corrigerContrat(admin, moussa.employeeId, cdd!.id, {
+      contractType: 'cdd',
+      startDate: await jour(20),
+      endDate: await jour(385),
+    });
+    expect((await contrats(moussa)).map((c) => c.au)).toEqual([await jour(19), await jour(385)]);
+  });
+
+  it('une mutation saisie par erreur s’annule : l’affectation précédente reprend', async () => {
+    await people.newAssignment(admin, moussa.employeeId, {
+      orgUnitId: uCompta,
+      positionTitle: 'Comptable',
+      startDate: await jour(0),
+    });
+    const [, nouvelle] = (
+      await raw(`SELECT id FROM assignments WHERE employee_id = $1 ORDER BY lower(validity)`, [
+        moussa.employeeId,
+      ])
+    ).rows as { id: string }[];
+    await people.annulerAffectation(admin, moussa.employeeId, nouvelle!.id);
+    expect(await affectations(moussa)).toEqual([{ poste: 'Poste', du: '2024-01-01', au: null }]);
+    // La seule qui reste ne s'annule pas : il resterait sans affectation.
+    const [seule] = (
+      await raw(`SELECT id FROM assignments WHERE employee_id = $1`, [moussa.employeeId])
+    ).rows as { id: string }[];
+    expect(await codeOf(() => people.annulerAffectation(admin, moussa.employeeId, seule!.id))).toBe(
+      'people.affectation_seule',
+    );
+  });
+
+  it('l’affectation en cours se corrige : son poste, sa date ; la précédente s’y recale', async () => {
+    await people.newAssignment(admin, moussa.employeeId, {
+      orgUnitId: uDFC,
+      positionTitle: 'Analyste',
+      startDate: await jour(0),
+    });
+    const [, derniere] = (
+      await raw(`SELECT id FROM assignments WHERE employee_id = $1 ORDER BY lower(validity)`, [
+        moussa.employeeId,
+      ])
+    ).rows as { id: string }[];
+    await people.corrigerAffectation(admin, moussa.employeeId, derniere!.id, {
+      positionTitle: 'Analyste financier',
+      startDate: await jour(-30),
+    });
+    expect(await affectations(moussa)).toEqual([
+      { poste: 'Poste', du: '2024-01-01', au: await jour(-31) },
+      { poste: 'Analyste financier', du: await jour(-30), au: null },
+    ]);
   });
 });

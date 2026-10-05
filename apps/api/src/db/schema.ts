@@ -66,6 +66,9 @@ export const userTenantMemberships = pgTable('user_tenant_memberships', {
   tenantId: uuid('tenant_id').notNull(),
   userId: uuid('user_id').notNull(),
   role: text('role').notNull(),
+  /** L'accès à cette organisation est coupé : le compte ne s'y connecte plus. */
+  accesCoupeLe: timestamp('acces_coupe_le', { withTimezone: true }),
+  accesCoupeParUserId: uuid('acces_coupe_par_user_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

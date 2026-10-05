@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   ControleDuTitre,
@@ -419,6 +419,12 @@ export class EmployeeDocumentsService {
         idDocumentExpiresOn: titre.expireLe,
       })
       .where(eq(t.persons.id, e!.personId));
+    // Le document porte la date retenue : c'est elle que l'agent lit, et
+    // celle des rappels.
+    await tx
+      .update(t.employeeDocuments)
+      .set({ expiresOn: titre.expireLe })
+      .where(eq(t.employeeDocuments.id, doc.id));
   }
 
   async list(user: SessionUser, employeeId: string): Promise<EmployeeDocumentView[]> {
@@ -484,29 +490,34 @@ export class EmployeeDocumentsService {
       const toute = await this.voitLaFile(tx, user);
       if (!toute && !moi) return [];
       const uploader = t.users;
-      const rows = await tx
-        .select({
-          doc: t.employeeDocuments,
-          uploaderGivenName: uploader.givenName,
-          uploaderFamilyName: uploader.familyName,
-          givenName: t.persons.givenName,
-          familyName: t.persons.familyName,
-          employeeNumber: t.employees.employeeNumber,
-          ownerUserId: t.persons.userId,
-        })
-        .from(t.employeeDocuments)
-        .innerJoin(uploader, eq(uploader.id, t.employeeDocuments.uploadedByUserId))
-        .innerJoin(t.employees, eq(t.employees.id, t.employeeDocuments.employeeId))
-        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-        .where(
-          and(
-            sql`(${t.employeeDocuments.status} = 'pending'
-                 OR ${t.employeeDocuments.reviewedAt} > now() - interval '30 days')`,
-            toute ? undefined : eq(t.employeeDocuments.confieeAEmployeeId, moi!),
-          ),
-        )
-        .orderBy(desc(t.employeeDocuments.createdAt))
-        .limit(200);
+      // Les pièces en vérification viennent toutes ; la limite ne porte que
+      // sur celles vérifiées ces trente derniers jours. Sans leur contenu :
+      // une liste n'a pas à charger les fichiers.
+      const { data: _contenu, ...colonnes } = getTableColumns(t.employeeDocuments);
+      const lire = (filtre: SQL) =>
+        tx
+          .select({
+            doc: colonnes,
+            uploaderGivenName: uploader.givenName,
+            uploaderFamilyName: uploader.familyName,
+            givenName: t.persons.givenName,
+            familyName: t.persons.familyName,
+            employeeNumber: t.employees.employeeNumber,
+            ownerUserId: t.persons.userId,
+          })
+          .from(t.employeeDocuments)
+          .innerJoin(uploader, eq(uploader.id, t.employeeDocuments.uploadedByUserId))
+          .innerJoin(t.employees, eq(t.employees.id, t.employeeDocuments.employeeId))
+          .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+          .where(and(filtre, toute ? undefined : eq(t.employeeDocuments.confieeAEmployeeId, moi!)))
+          .orderBy(desc(t.employeeDocuments.createdAt));
+      const rows = [
+        ...(await lire(eq(t.employeeDocuments.status, 'pending'))),
+        ...(await lire(
+          sql`${t.employeeDocuments.status} <> 'pending'
+              AND ${t.employeeDocuments.reviewedAt} > now() - interval '30 days'`,
+        ).limit(100)),
+      ].sort((a, b) => b.doc.createdAt.getTime() - a.doc.createdAt.getTime());
       const reviewerIds = rows
         .map((r) => r.doc.reviewedByUserId)
         .filter((v): v is string => Boolean(v));
@@ -569,7 +580,7 @@ export class EmployeeDocumentsService {
     user: SessionUser,
     moi: string | null,
     dch: DirectionDuPersonnel | null,
-    doc: typeof t.employeeDocuments.$inferSelect,
+    doc: Omit<typeof t.employeeDocuments.$inferSelect, 'data'>,
     uploadedByName: string,
     o: { reviewer?: { givenName: string; familyName: string }; isOwner: boolean },
   ): Promise<EmployeeDocumentView> {

@@ -837,6 +837,126 @@ describe('les pièces justificatives', () => {
   });
 });
 
+describe('les files ne se coupent pas', () => {
+  it('une demande ancienne en attente reste dans la file, derrière plus de cent traitées plus récentes', async () => {
+    const [doc] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
+    const { id: info } = await informations.create(moussa.session, {
+      changes: { addressLine: 'Sacré-Cœur 3' },
+    });
+    const { id: piece } = await pieces.upload(moussa.session, moussa.employeeId, {
+      category: 'diplome',
+      label: 'Licence',
+      filename: 'licence.pdf',
+      contentType: 'application/pdf',
+      contentBase64: PDF,
+    });
+    await raw(`UPDATE document_requests SET created_at = now() - interval '1 year' WHERE id = $1`, [
+      doc,
+    ]);
+    await raw(
+      `UPDATE profile_change_requests SET created_at = now() - interval '1 year' WHERE id = $1`,
+      [info],
+    );
+    await raw(
+      `UPDATE employee_documents SET created_at = now() - interval '1 year' WHERE id = $1`,
+      [piece],
+    );
+    // Cent dix demandes de chaque sorte, traitées et plus récentes.
+    await raw(
+      `INSERT INTO document_requests (id, tenant_id, employee_id, doc_types, status, requested_by_user_id)
+       SELECT gen_random_uuid(), $1, $2, ARRAY['bulletin_salaire'], 'ready', $3 FROM generate_series(1, 110)`,
+      [tenantId, awa.employeeId, awa.session.userId],
+    );
+    await raw(
+      `INSERT INTO profile_change_requests (id, tenant_id, employee_id, changes, status, requested_by_user_id)
+       SELECT gen_random_uuid(), $1, $2, '{"phone":"+221770000000"}', 'approved', $3
+         FROM generate_series(1, 110)`,
+      [tenantId, awa.employeeId, awa.session.userId],
+    );
+    await raw(
+      `INSERT INTO employee_documents (id, tenant_id, employee_id, category, label, filename, content_type,
+                                       size_bytes, data, status, uploaded_by_user_id, uploaded_by_side, reviewed_at)
+       SELECT gen_random_uuid(), $1, $2, 'diplome', 'Ancien', 'a.pdf', 'application/pdf', 4, '\\x25504446',
+              'approved', $3, 'employee', now() FROM generate_series(1, 110)`,
+      [tenantId, awa.employeeId, awa.session.userId],
+    );
+    try {
+      const fileDocs = await documents.list(mariama.session, {});
+      expect(fileDocs.some((r) => r.id === doc)).toBe(true);
+      expect(fileDocs.filter((r) => r.status === 'ready').length).toBe(100);
+      expect((await informations.list(mariama.session, {})).some((r) => r.id === info)).toBe(true);
+      const filePieces = await pieces.file(mariama.session);
+      expect(filePieces.some((p) => p.id === piece)).toBe(true);
+      expect(filePieces.filter((p) => p.status === 'approved').length).toBe(100);
+    } finally {
+      await raw(`DELETE FROM document_requests WHERE employee_id = $1`, [awa.employeeId]);
+      await raw(`DELETE FROM profile_change_requests WHERE employee_id = $1`, [awa.employeeId]);
+      await raw(`DELETE FROM employee_documents WHERE employee_id = $1`, [awa.employeeId]);
+    }
+  });
+});
+
+describe('l’expiration d’un titre : la date qui fait foi', () => {
+  const crypto = new EncryptionService();
+  const relever = () => new NotificationsService(db).list(moussa.session);
+  const rappels = async () =>
+    (
+      await raw(
+        `SELECT title FROM notifications
+          WHERE type = 'document_expiry' AND recipient_user_id = $1 AND remplacee_le IS NULL`,
+        [moussa.session.userId],
+      )
+    ).rows.map((r) => r.title as string);
+  const dans = async (jours: number): Promise<string> => {
+    const { rows } = await raw(`SELECT (CURRENT_DATE + $1::int)::text AS d`, [jours]);
+    return rows[0]!.d as string;
+  };
+  afterEach(async () => {
+    await raw(`DELETE FROM notifications WHERE type = 'document_expiry'`);
+    await raw(`DELETE FROM employee_documents WHERE employee_id = $1`, [moussa.employeeId]);
+    await raw(
+      `UPDATE persons SET id_document_type = NULL, national_id_encrypted = NULL,
+              id_document_issued_on = NULL, id_document_expires_on = NULL
+        WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [moussa.employeeId],
+    );
+  });
+
+  it('la date corrigée par la DCH à la validation, pas celle tapée par l’agent', async () => {
+    const { id } = await pieces.upload(moussa.session, moussa.employeeId, {
+      category: 'passeport',
+      label: 'Passeport',
+      filename: 'passeport.pdf',
+      contentType: 'application/pdf',
+      contentBase64: PDF,
+      expiresOn: await dans(2000),
+    });
+    await relever();
+    expect(await rappels()).toEqual([]);
+    await pieces.review(mariama.session, id, {
+      decision: 'approved',
+      titre: { numero: 'A1234567', delivreLe: '2017-01-01', expireLe: await dans(10) },
+    });
+    expect((await pieces.list(moussa.session, moussa.employeeId))[0]?.expiresOn).toBe(
+      await dans(10),
+    );
+    await relever();
+    expect(await rappels()).toEqual([`Votre passeport expire le ${frDate(await dans(10))}`]);
+  });
+
+  it('un titre repris d’un import, sans document, rappelle aussi', async () => {
+    await raw(
+      `UPDATE persons SET id_document_type = 'cni', national_id_encrypted = $2,
+              id_document_expires_on = CURRENT_DATE + 5
+        WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [moussa.employeeId, crypto.encrypt('1234567890123')],
+    );
+    await relever();
+    expect(await rappels()).toEqual([`Votre CNI expire le ${frDate(await dans(5))}`]);
+  });
+});
+
 describe('les échéances de contrat', () => {
   /** Qui a reçu l'alerte, pour le contrat de qui. */
   async function alertes(): Promise<string[]> {

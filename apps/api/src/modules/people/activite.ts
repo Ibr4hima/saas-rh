@@ -4,7 +4,7 @@ import { ProblemException } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
 import { alerterLaDCH } from '../acces/dch';
 import { CONTRAT } from '../notifications/phrases';
-import { reconcilierDemande, reconcilierLeCircuit } from '../time/visas';
+import { reconcilierDemande, reconcilierLeCircuit, reconcilierReprise } from '../time/visas';
 import {
   directionDeEmploye,
   equipeDe,
@@ -33,6 +33,32 @@ export async function arreterLActivite(tx: Tx, employeeId: string, fin: SQL): Pr
     UPDATE assignments SET validity = daterange(lower(validity), (${fin})::date + 1)
      WHERE employee_id = ${employeeId}
        AND (upper_inf(validity) OR upper(validity) > (${fin})::date + 1)`);
+  // Ses congés validés s'arrêtent avec lui : ceux qui commencent après son
+  // dernier jour n'auront pas lieu, ceux qui le dépassent s'arrêtent ce jour-là
+  // (les jours au-delà lui reviennent).
+  const { rows: ecourtes } = await tx.execute<{ id: string }>(sql`
+    WITH coupe AS (
+      SELECT r.id,
+             (SELECT count(*) FROM generate_series(r.start_date, (${fin})::date, interval '1 day') g(d)
+               WHERE extract(isodow FROM g.d) < 6
+                 AND NOT EXISTS (SELECT 1 FROM holidays h WHERE h.day = g.d::date)) AS jours
+        FROM absence_requests r
+       WHERE r.employee_id = ${employeeId} AND r.status = 'approved'
+         AND r.start_date <= (${fin})::date AND r.end_date > (${fin})::date
+    )
+    UPDATE absence_requests r
+       SET fin_initiale = COALESCE(r.fin_initiale, r.end_date), end_date = (${fin})::date,
+           days_count = coupe.jours, reprise_demandee = NULL
+      FROM coupe
+     WHERE r.id = coupe.id AND coupe.jours > 0
+    RETURNING r.id`);
+  // Ce qui va encore au-delà commence après son dernier jour (ou n'en garde
+  // aucun jour ouvré) : il n'aura pas lieu.
+  const { rows: annules } = await tx.execute<{ id: string }>(sql`
+    UPDATE absence_requests SET status = 'cancelled', decided_at = now(), reprise_demandee = NULL
+     WHERE employee_id = ${employeeId} AND status = 'approved' AND end_date > (${fin})::date
+    RETURNING id`);
+  for (const { id } of [...annules, ...ecourtes]) await reconcilierReprise(tx, id);
   // Une invitation en attente ne s'ouvre plus : le portail lui serait fermé.
   await tx.execute(sql`
     UPDATE invitations SET expires_at = now()

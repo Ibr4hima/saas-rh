@@ -1,5 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   AbsencePreview,
@@ -34,8 +46,9 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayDedupeKey } from '../notifications/notifications.service';
-import { absence, duAu, frDate } from '../notifications/phrases';
+import { absence, accord, duAu, frDate } from '../notifications/phrases';
 import { DG } from '../people/chaine';
+import { dernierContrat } from '../people/en-activite';
 import { notifier } from '../notifications/notifier';
 import {
   detenteursDe,
@@ -315,7 +328,7 @@ export class AbsencesService {
 
   async listHolidays(user: SessionUser, year?: number): Promise<Holiday[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      if (year && peut(user, 'feries')) await this.semerAnnee(tx, user, year);
+      if (year) await this.semerAnnee(tx, user.tenantId, year);
       const rows = await tx
         .select({
           id: t.holidays.id,
@@ -380,6 +393,7 @@ export class AbsencesService {
         }
         throw err;
       }
+      if (input.day) await this.recompterLesConges(tx, user.tenantId, [input.day]);
     });
     return { id };
   }
@@ -423,6 +437,13 @@ export class AbsencesService {
       }
       // Le rappel parti pour l'ancienne date annonce désormais un jour ouvré.
       if (row.day && row.day !== jour) await this.oublierRappel(tx, row.day);
+      if (row.day !== jour) {
+        await this.recompterLesConges(
+          tx,
+          user.tenantId,
+          [row.day, jour].filter((d): d is string => Boolean(d)),
+        );
+      }
     });
   }
 
@@ -441,7 +462,10 @@ export class AbsencesService {
       // Le rappel déjà parti affirmerait qu'un jour ouvré est chômé : on le
       // retire de toutes les boîtes. Les fêtes mobiles se recalent souvent
       // pendant la fenêtre J−2, quand la notification vient d'être envoyée.
-      if (row.day) await this.oublierRappel(tx, row.day);
+      if (row.day) {
+        await this.oublierRappel(tx, row.day);
+        await this.recompterLesConges(tx, user.tenantId, [row.day]);
+      }
     });
   }
 
@@ -522,10 +546,10 @@ export class AbsencesService {
    * on a retiré tous les jours. Les confondre ferait revenir ce qu'on vient de
    * supprimer. D'où la marque posée en même temps que le socle.
    */
-  private async semerAnnee(tx: Tx, user: SessionUser, year: number): Promise<void> {
+  private async semerAnnee(tx: Tx, tenantId: string, year: number): Promise<void> {
     const marque = await tx
       .insert(t.holidaySeeds)
-      .values({ tenantId: user.tenantId, year })
+      .values({ tenantId, year })
       .onConflictDoNothing()
       .returning({ year: t.holidaySeeds.year });
     if (marque.length === 0) return;
@@ -543,13 +567,14 @@ export class AbsencesService {
       ).map((r) => r.label.toLowerCase()),
     );
 
+    const poses: string[] = [];
     for (const modele of await this.modeleDAnnee(tx, year - 1)) {
       if (dejaLa.has(modele.label.toLowerCase())) continue;
-      await tx
+      const [pose] = await tx
         .insert(t.holidays)
         .values({
           id: uuidv7(),
-          tenantId: user.tenantId,
+          tenantId,
           year,
           day: modele.fixedDate ? reporterSur(year, modele) : null,
           label: modele.label,
@@ -557,7 +582,77 @@ export class AbsencesService {
         })
         // Une fête mobile a pu être datée là avant que la date civile n'y soit
         // posée : on ne l'écrase pas.
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .returning({ day: t.holidays.day });
+      if (pose?.day) poses.push(pose.day);
+    }
+    // Un congé posé sur cette année avant qu'elle soit semée a pu compter le
+    // 1er janvier : il se recompte.
+    await this.recompterLesConges(tx, tenantId, poses);
+  }
+
+  /**
+   * Les fériés de la période existent avant qu'on la compte : sans quoi le
+   * 1er janvier d'une année que personne n'a encore ouverte serait décompté.
+   */
+  private async semerLaPeriode(
+    tx: Tx,
+    tenantId: string,
+    debut: string,
+    fin: string,
+  ): Promise<void> {
+    for (let year = Number(debut.slice(0, 4)); year <= Number(fin.slice(0, 4)); year += 1) {
+      await this.semerAnnee(tx, tenantId, year);
+    }
+  }
+
+  /**
+   * Un jour devient férié, ou cesse de l'être : les congés en attente ou
+   * validés qui le couvrent se recomptent, et le solde suit. Un congé qui ne
+   * garde aucun jour ouvré n'a plus lieu d'être : il est annulé, et l'agent
+   * le sait.
+   */
+  private async recompterLesConges(tx: Tx, tenantId: string, jours: string[]): Promise<void> {
+    if (jours.length === 0) return;
+    const { rows } = await tx.execute<{
+      id: string;
+      jours: number;
+      user_id: string | null;
+      type: string;
+      debut: string;
+      fin: string;
+    }>(sql`
+      SELECT r.id, p.user_id, ty.name AS type, r.start_date::text AS debut, r.end_date::text AS fin,
+             (SELECT count(*)::int FROM generate_series(r.start_date, r.end_date, interval '1 day') g(d)
+               WHERE extract(isodow FROM g.d) < 6
+                 AND NOT EXISTS (SELECT 1 FROM holidays h WHERE h.day = g.d::date)) AS jours
+        FROM absence_requests r
+        JOIN employees e ON e.id = r.employee_id
+        JOIN persons p ON p.id = e.person_id
+        JOIN absence_types ty ON ty.id = r.absence_type_id
+       WHERE r.status IN ('pending', 'approved')
+         AND EXISTS (SELECT 1 FROM unnest(${`{${jours.join(',')}}`}::date[]) j
+                      WHERE j BETWEEN r.start_date AND r.end_date)`);
+    for (const r of rows) {
+      if (r.jours > 0) {
+        await tx.execute(sql`
+          UPDATE absence_requests SET days_count = ${r.jours}
+           WHERE id = ${r.id} AND days_count <> ${r.jours}`);
+        continue;
+      }
+      await tx.execute(sql`
+        UPDATE absence_requests SET status = 'cancelled', decided_at = now(), reprise_demandee = NULL
+         WHERE id = ${r.id}`);
+      await reconcilierDemande(tx, r.id);
+      if (r.user_id) {
+        const a = absence(r.type);
+        await notifier(tx, tenantId, r.user_id, {
+          type: 'conge_annule',
+          title: `Votre ${a.nom} ${duAu(r.debut, r.fin)} est ${accord('annulé', a)} : ce jour est férié`,
+          link: '/moi/conges/historique',
+          dedupeKey: `conge:${r.id}:ferie`,
+        });
+      }
     }
   }
 
@@ -811,6 +906,7 @@ export class AbsencesService {
 
   async preview(user: SessionUser, startDate: string, endDate: string): Promise<AbsencePreview> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.semerLaPeriode(tx, user.tenantId, startDate, endDate);
       // Une fête non encore datée ne chôme rien : elle n'entre pas au décompte.
       const holidayRows = await tx
         .select({ day: sql<string>`${t.holidays.day}`, label: t.holidays.label })
@@ -856,6 +952,32 @@ export class AbsencesService {
           problem(422, 'absence.type_not_found', "Ce type d'absence n'existe pas");
         }
 
+        // La période tient dans son contrat : ni avant son premier jour, ni
+        // après la fin du dernier.
+        const { rows: bornes } = await tx.execute<{ debut: string | null; fin: string | null }>(sql`
+          SELECT (SELECT min(c.start_date)::text FROM contracts c
+                   WHERE c.employee_id = ${input.employeeId}) AS debut,
+                 (SELECT c.end_date::text FROM contracts c
+                   WHERE c.id = ${dernierContrat(input.employeeId)}) AS fin`);
+        const { debut: debutContrat, fin: finContrat } = bornes[0] ?? { debut: null, fin: null };
+        if (debutContrat && input.startDate < debutContrat) {
+          problem(
+            422,
+            'absence.hors_contrat',
+            'Cette période commence avant votre contrat',
+            `Votre contrat commence le ${frDate(debutContrat)} : commencez la demande ce jour-là au plus tôt.`,
+          );
+        }
+        if (finContrat && input.endDate > finContrat) {
+          problem(
+            422,
+            'absence.hors_contrat',
+            'Cette période dépasse la fin de votre contrat',
+            `Votre contrat prend fin le ${frDate(finContrat)} : terminez la demande ce jour-là au plus tard.`,
+          );
+        }
+
+        await this.semerLaPeriode(tx, user.tenantId, input.startDate, input.endDate);
         const holidayRows = await tx
           .select({ day: sql<string>`${t.holidays.day}` })
           .from(t.holidays)
@@ -1001,7 +1123,7 @@ export class AbsencesService {
       // Aucune tâche ne tourne la nuit : une demande arrivée à son premier
       // jour sans réponse expire à la première lecture qui la montrerait.
       await expirerLesDemandes(tx);
-      const conditions = [];
+      const conditions: (SQL | undefined)[] = [];
       if (query.status) conditions.push(eq(t.absenceRequests.status, query.status));
       if (query.employeeId) conditions.push(eq(t.absenceRequests.employeeId, query.employeeId));
       if (query.equipe) {
@@ -1028,23 +1150,33 @@ export class AbsencesService {
         );
       }
 
-      const rows = await tx
-        .select({
-          request: t.absenceRequests,
-          givenName: t.persons.givenName,
-          familyName: t.persons.familyName,
-          employeeNumber: t.employees.employeeNumber,
-          workEmail: t.employees.workEmail,
-          typeName: t.absenceTypes.name,
-          deductsBalance: t.absenceTypes.deductsBalance,
-        })
-        .from(t.absenceRequests)
-        .innerJoin(t.employees, eq(t.employees.id, t.absenceRequests.employeeId))
-        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-        .innerJoin(t.absenceTypes, eq(t.absenceTypes.id, t.absenceRequests.absenceTypeId))
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(t.absenceRequests.createdAt))
-        .limit(query.limit);
+      // Ce qui attend une décision ne se coupe jamais : les demandes en
+      // attente et les retours à confirmer viennent toutes ; la limite ne
+      // porte que sur l'historique. Sinon les plus anciennes, que le badge
+      // compte, disparaîtraient de la file.
+      const ouverte = sql`(${t.absenceRequests.status} = 'pending'
+        OR (${t.absenceRequests.status} = 'approved' AND ${t.absenceRequests.repriseDemandee} IS NOT NULL))`;
+      const lire = (filtre: SQL) =>
+        tx
+          .select({
+            request: t.absenceRequests,
+            givenName: t.persons.givenName,
+            familyName: t.persons.familyName,
+            employeeNumber: t.employees.employeeNumber,
+            workEmail: t.employees.workEmail,
+            typeName: t.absenceTypes.name,
+            deductsBalance: t.absenceTypes.deductsBalance,
+          })
+          .from(t.absenceRequests)
+          .innerJoin(t.employees, eq(t.employees.id, t.absenceRequests.employeeId))
+          .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+          .innerJoin(t.absenceTypes, eq(t.absenceTypes.id, t.absenceRequests.absenceTypeId))
+          .where(and(...conditions, filtre))
+          .orderBy(desc(t.absenceRequests.createdAt));
+      const rows = [
+        ...(await lire(ouverte)),
+        ...(await lire(sql`NOT ${ouverte}`).limit(query.limit)),
+      ].sort((a, b) => b.request.createdAt.getTime() - a.request.createdAt.getTime());
 
       return this.toViews(tx, user, rows);
     });

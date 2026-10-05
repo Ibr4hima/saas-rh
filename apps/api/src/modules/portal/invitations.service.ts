@@ -15,6 +15,7 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { AuthService, IssuedSession } from '../auth/auth.service';
+import { directionDuPersonnel } from '../acces/dch';
 import { finDeContratPassee } from '../people/en-activite';
 import { reconcilierLeCircuit } from '../time/visas';
 
@@ -137,6 +138,68 @@ export class InvitationsService {
       role,
       expiresAt: expiresAt.toISOString(),
     };
+  }
+
+  /**
+   * Couper l'accès d'un agent à l'organisation : ses sessions se ferment sur
+   * tous ses appareils, et il ne se reconnecte plus jusqu'à ce qu'on le
+   * rétablisse. Son dossier n'en est pas touché. Personne ne coupe le sien ;
+   * le compte d'un administrateur, ou du directeur du Capital Humain, seul
+   * un administrateur le coupe.
+   */
+  async couperLAcces(user: SessionUser, employeeId: string, coupe: boolean): Promise<void> {
+    const compte = await this.db.withTenant(
+      { tenantId: user.tenantId, userId: user.userId },
+      async (tx) => {
+        const [row] = await tx
+          .select({ userId: t.persons.userId })
+          .from(t.employees)
+          .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+          .where(eq(t.employees.id, employeeId))
+          .limit(1);
+        if (!row) problem(404, 'people.employee_not_found', 'Employé introuvable');
+        if (!row.userId) {
+          problem(422, 'portal.sans_compte', 'Cet agent n’a pas de compte sur le portail');
+        }
+        if (row.userId === user.userId) {
+          problem(403, 'acces.son_propre_dossier', 'Vous ne pouvez pas couper votre propre accès');
+        }
+        const [membre] = await tx
+          .select({ id: t.userTenantMemberships.id, role: t.userTenantMemberships.role })
+          .from(t.userTenantMemberships)
+          .where(
+            and(
+              eq(t.userTenantMemberships.userId, row.userId),
+              eq(t.userTenantMemberships.tenantId, user.tenantId),
+            ),
+          )
+          .limit(1);
+        if (!membre) {
+          problem(422, 'portal.sans_compte', 'Cet agent n’a pas de compte sur le portail');
+        }
+        if (user.role !== 'admin') {
+          const dch = await directionDuPersonnel(tx);
+          if (membre.role === 'admin' || dch?.directeurEmployeeId === employeeId) {
+            problem(
+              403,
+              'portal.acces_reserve_admin',
+              'Seul un administrateur coupe cet accès',
+              'Ce compte administre l’organisation ou dirige la Direction du Capital Humain : seul un administrateur peut couper ou rétablir son accès.',
+            );
+          }
+        }
+        await tx
+          .update(t.userTenantMemberships)
+          .set(
+            coupe
+              ? { accesCoupeLe: new Date(), accesCoupeParUserId: user.userId }
+              : { accesCoupeLe: null, accesCoupeParUserId: null },
+          )
+          .where(eq(t.userTenantMemberships.id, membre.id));
+        return row.userId;
+      },
+    );
+    if (coupe) await this.auth.deconnecterPartout(compte, user.tenantId);
   }
 
   /** Page publique : renseigne l'écran d'acceptation sans révéler autre chose. */

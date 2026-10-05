@@ -96,6 +96,7 @@ export class AuthService {
         .select({
           tenantId: t.userTenantMemberships.tenantId,
           slug: t.tenants.slug,
+          accesCoupeLe: t.userTenantMemberships.accesCoupeLe,
         })
         .from(t.userTenantMemberships)
         .innerJoin(t.tenants, eq(t.tenants.id, t.userTenantMemberships.tenantId))
@@ -116,6 +117,15 @@ export class AuthService {
         'auth.organization_required',
         'Plusieurs organisations pour ce compte',
         `Préciser organizationSlug parmi : ${orgs.map((o) => o.slug).join(', ')}`,
+      );
+    }
+
+    if (selected.accesCoupeLe) {
+      problem(
+        403,
+        'auth.acces_coupe',
+        'Votre accès est suspendu',
+        'Votre accès au portail est suspendu : adressez-vous à la Direction du Capital Humain.',
       );
     }
 
@@ -147,6 +157,23 @@ export class AuthService {
       .where(eq(t.sessions.tokenHash, hashToken(token)));
   }
 
+  /**
+   * Toutes les sessions d'un compte se ferment : chaque appareil devra se
+   * reconnecter. Dans une organisation seulement, quand on la précise.
+   */
+  async deconnecterPartout(userId: string, tenantId?: string): Promise<void> {
+    await this.db.global
+      .update(t.sessions)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(t.sessions.userId, userId),
+          isNull(t.sessions.revokedAt),
+          tenantId ? eq(t.sessions.tenantId, tenantId) : undefined,
+        ),
+      );
+  }
+
   /** Résout une session active et reconstruit le SessionUser courant. */
   async resolveSession(token: string): Promise<SessionUser | null> {
     const [session] = await this.db.global
@@ -173,6 +200,7 @@ export class AuthService {
             organizationName: t.tenants.name,
             organizationSlug: t.tenants.slug,
             role: t.userTenantMemberships.role,
+            accesCoupeLe: t.userTenantMemberships.accesCoupeLe,
           })
           .from(t.userTenantMemberships)
           .innerJoin(t.tenants, eq(t.tenants.id, t.userTenantMemberships.tenantId))
@@ -184,7 +212,8 @@ export class AuthService {
             ),
           )
           .limit(1);
-        if (!row) return null;
+        // Un accès coupé ferme aussi les sessions qui auraient survécu.
+        if (!row || row.accesCoupeLe) return null;
         // Plus en activité : le portail reste ouvert, restreint, un mois
         // après son dernier jour ; ce délai passé, le cookie encore valide
         // n'ouvre plus rien. C'est ici que la porte se referme.

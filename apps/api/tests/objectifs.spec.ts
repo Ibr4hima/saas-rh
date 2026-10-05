@@ -689,17 +689,24 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
         .aEvaluer,
     ).toBe(0);
 
-    // Validée, l'évaluation entre au dossier de l'agent : lui la lit, la DCH
-    // aussi ; un collègue, non.
+    // Validée, l'évaluation entre au dossier de l'agent : lui la lit, le
+    // directeur du Capital Humain aussi ; ni qui consulte les dossiers, ni
+    // l'administrateur, ni un collègue.
     const attendu = [
       { annee: 2024, semestre: 1, manager: 'Awa Diop', note: 'B', valideeLe: expect.any(String) },
     ];
     expect(await objectifs.evaluationsDe(session('moussa'), agents.moussa)).toEqual(attendu);
-    const dch = { ...session('fatou'), capacites: ['personnel.consulter'] } as SessionUser;
+    const dch = { ...session('fatou'), dirigeLaDCH: true } as SessionUser;
     expect(await objectifs.evaluationsDe(dch, agents.moussa)).toEqual(attendu);
-    expect(await codeOf(() => objectifs.evaluationsDe(session('ousmane'), agents.moussa))).toBe(
-      'objectifs.dossier_interdit',
-    );
+    for (const qui of [
+      session('ousmane'),
+      { ...session('fatou'), capacites: ['personnel.consulter'] } as SessionUser,
+      { ...session('fatou'), role: 'admin' } as SessionUser,
+    ]) {
+      expect(await codeOf(() => objectifs.evaluationsDe(qui, agents.moussa))).toBe(
+        'objectifs.dossier_interdit',
+      );
+    }
   });
 
   it('pas de note, pas de validation', async () => {

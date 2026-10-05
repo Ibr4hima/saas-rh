@@ -19,6 +19,8 @@ import type {
   MotifInactivite,
   NewAssignmentInput,
   NewContractInput,
+  CorrigerAffectationInput,
+  CorrigerContratInput,
   SessionUser,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
@@ -540,10 +542,13 @@ export class PeopleService {
     tenantId: string,
     personId: string,
     personUserId: string | null,
-  ): Promise<{ status: 'none' | 'invited' | 'active'; role: string | null }> {
+  ): Promise<{ status: 'none' | 'invited' | 'active' | 'coupe'; role: string | null }> {
     if (personUserId) {
       const [membership] = await tx
-        .select({ role: t.userTenantMemberships.role })
+        .select({
+          role: t.userTenantMemberships.role,
+          accesCoupeLe: t.userTenantMemberships.accesCoupeLe,
+        })
         .from(t.userTenantMemberships)
         .where(
           and(
@@ -552,7 +557,10 @@ export class PeopleService {
           ),
         )
         .limit(1);
-      return { status: 'active', role: membership?.role ?? null };
+      return {
+        status: membership?.accesCoupeLe ? 'coupe' : 'active',
+        role: membership?.role ?? null,
+      };
     }
     const [pending] = await tx
       .select({ role: t.invitations.role })
@@ -692,6 +700,214 @@ export class PeopleService {
         notes: input.notes ?? null,
       });
       return { id: contractId };
+    });
+  }
+
+  /**
+   * Corriger le dernier contrat, saisi par erreur : un CDD saisi à un mois au
+   * lieu de douze, un stage pour un CDD. Les règles d'un nouveau contrat
+   * valent : il commence après le précédent, qui s'arrêtait la veille de son
+   * début et s'y recale. Si la fin erronée avait déjà fait passer l'agent dans
+   * les inactifs et que le contrat corrigé court encore, son dossier se
+   * rouvre ; si la fin corrigée est passée, il y passe.
+   */
+  async corrigerContrat(
+    user: SessionUser,
+    id: string,
+    contratId: string,
+    input: CorrigerContratInput,
+  ): Promise<{ rouvert: boolean }> {
+    const rouvrir = await this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.requireEmployee(tx, id);
+      await pasSurSoi(tx, user.userId, [id], 'modifier votre propre contrat');
+      const contrats = await tx
+        .select({
+          id: t.contracts.id,
+          startDate: t.contracts.startDate,
+          endDate: t.contracts.endDate,
+        })
+        .from(t.contracts)
+        .where(eq(t.contracts.employeeId, id))
+        .orderBy(desc(t.contracts.startDate), desc(t.contracts.createdAt))
+        .for('update');
+      const [dernier, precedent] = contrats;
+      if (!dernier || dernier.id !== contratId) {
+        problem(
+          422,
+          'people.contrat_pas_le_dernier',
+          'Seul le dernier contrat se corrige',
+          'Les contrats précédents sont clos : enregistrez plutôt un nouveau contrat.',
+        );
+      }
+      if (precedent && input.startDate <= precedent.startDate) {
+        problem(
+          422,
+          'people.contrat_avant_le_precedent',
+          'Le contrat doit commencer après le précédent',
+          `Le contrat précédent a commencé le ${frDate(precedent.startDate)}.`,
+        );
+      }
+      // Le précédent s'arrêtait la veille de ce contrat : il suit son début.
+      if (precedent && precedent.endDate && input.startDate !== dernier.startDate) {
+        const { rows } = await tx.execute<{ veille: boolean }>(sql`
+          SELECT ${precedent.endDate}::date = ${dernier.startDate}::date - 1 AS veille`);
+        if (rows[0]?.veille) {
+          await tx
+            .update(t.contracts)
+            .set({ endDate: sql`${input.startDate}::date - 1`, updatedAt: new Date() })
+            .where(eq(t.contracts.id, precedent.id));
+        }
+      }
+      await tx
+        .update(t.contracts)
+        .set({
+          contractType: input.contractType,
+          startDate: input.startDate,
+          endDate: input.endDate ?? null,
+          trialPeriodEnd: input.trialPeriodEnd ?? null,
+          notes: input.notes ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(t.contracts.id, contratId));
+      // Les alertes d'échéance parlaient de l'ancienne date de fin.
+      await tx.execute(sql`
+        DELETE FROM notifications
+         WHERE dedupe_key LIKE ${`contract_deadline:${contratId}%`}
+            OR dedupe_key = ${`contrat_termine:${contratId}`}`);
+
+      // Passé dans les inactifs par cette fin erronée, et le contrat court
+      // encore : le dossier se rouvre (hors de cette transaction, par le même
+      // chemin qu'une réactivation).
+      const { rows } = await tx.execute<{ rouvrir: boolean }>(sql`
+        SELECT e.status = 'archived' AND e.inactivite_motif = 'fin_de_contrat'
+               AND e.fin_activite = ${dernier.endDate}::date
+               AND (${input.endDate ?? null}::date IS NULL OR ${input.endDate ?? null}::date >= CURRENT_DATE)
+               AS rouvrir
+          FROM employees e WHERE e.id = ${id}`);
+      // Une fin corrigée déjà passée : il passe dans les inactifs.
+      await inactiverLesContratsEchus(tx, user.tenantId);
+      return Boolean(rows[0]?.rouvrir);
+    });
+    if (!rouvrir) return { rouvert: false };
+    const r = await this.archive(user, { ids: [id], archived: false });
+    return { rouvert: r.done === 1 };
+  }
+
+  /** L'affectation en cours ou à venir la plus récente, et celle qu'elle a suivie. */
+  private async dernieresAffectations(tx: Tx, id: string) {
+    const lignes = await tx
+      .select({
+        id: t.assignments.id,
+        du: sql<string>`lower(${t.assignments.validity})::text`,
+        au: sql<string | null>`upper(${t.assignments.validity})::text`,
+      })
+      .from(t.assignments)
+      .where(eq(t.assignments.employeeId, id))
+      .orderBy(sql`lower(${t.assignments.validity}) DESC`)
+      .limit(2)
+      .for('update');
+    return { derniere: lignes[0], precedente: lignes[1] };
+  }
+
+  /**
+   * Corriger la dernière affectation, saisie par erreur : l'intitulé du
+   * poste, la date de début. L'affectation précédente, qui s'arrêtait à son
+   * début, s'y recale. L'unité ne se corrige pas ici : une affectation dans
+   * la mauvaise unité s'annule, puis se ressaisit avec ses règles.
+   */
+  async corrigerAffectation(
+    user: SessionUser,
+    id: string,
+    affectationId: string,
+    input: CorrigerAffectationInput,
+  ): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.requireEmployee(tx, id);
+      await pasSurSoi(tx, user.userId, [id], 'changer votre propre affectation');
+      const { derniere, precedente } = await this.dernieresAffectations(tx, id);
+      if (!derniere || derniere.id !== affectationId) {
+        problem(
+          422,
+          'people.affectation_pas_la_derniere',
+          'Seule la dernière affectation se corrige',
+          'Les affectations précédentes font l’historique du dossier.',
+        );
+      }
+      if (precedente && input.startDate <= precedente.du) {
+        problem(
+          422,
+          'people.assignment_start_too_early',
+          "L'affectation doit démarrer après le début de la précédente",
+          `L’affectation précédente a commencé le ${frDate(precedente.du)}.`,
+        );
+      }
+      if (derniere.au && input.startDate >= derniere.au) {
+        problem(
+          422,
+          'people.affectation_apres_sa_fin',
+          'L’affectation commencerait après sa fin',
+          `Elle s’est arrêtée le ${frDate(derniere.au)}.`,
+        );
+      }
+      const recaler = precedente && precedente.au === derniere.du;
+      // L'ordre évite le chevauchement : on libère d'abord la place.
+      if (recaler && input.startDate < derniere.du) {
+        await tx.execute(sql`
+          UPDATE assignments SET validity = daterange(lower(validity), ${input.startDate}::date)
+           WHERE id = ${precedente.id}`);
+      }
+      await tx.execute(sql`
+        UPDATE assignments
+           SET validity = daterange(${input.startDate}::date, upper(validity)),
+               position_title = ${input.positionTitle}
+         WHERE id = ${derniere.id}`);
+      if (recaler && input.startDate > derniere.du) {
+        await tx.execute(sql`
+          UPDATE assignments SET validity = daterange(lower(validity), ${input.startDate}::date)
+           WHERE id = ${precedente.id}`);
+      }
+    });
+  }
+
+  /**
+   * Annuler la dernière affectation, saisie par erreur : une mutation vers
+   * la mauvaise unité. L'affectation qu'elle avait close reprend, comme si
+   * la mutation n'avait pas eu lieu. Ce que la chaîne hiérarchique en garde
+   * à revoir se dit tout de suite.
+   */
+  async annulerAffectation(
+    user: SessionUser,
+    id: string,
+    affectationId: string,
+  ): Promise<ConsequencesHierarchie> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.requireEmployee(tx, id);
+      await pasSurSoi(tx, user.userId, [id], 'changer votre propre affectation');
+      await verrouillerLaChaine(tx);
+      const avant = await lireLaChaine(tx);
+      const { derniere, precedente } = await this.dernieresAffectations(tx, id);
+      if (!derniere || derniere.id !== affectationId) {
+        problem(
+          422,
+          'people.affectation_pas_la_derniere',
+          'Seule la dernière affectation s’annule',
+          'Les affectations précédentes font l’historique du dossier.',
+        );
+      }
+      if (!precedente || precedente.au !== derniere.du) {
+        problem(
+          422,
+          'people.affectation_seule',
+          'Aucune affectation à laquelle revenir',
+          'Corrigez plutôt son poste ou sa date : l’agent resterait sans affectation.',
+        );
+      }
+      await tx.delete(t.assignments).where(eq(t.assignments.id, derniere.id));
+      await tx.execute(sql`
+        UPDATE assignments SET validity = daterange(lower(validity), ${derniere.au}::date)
+         WHERE id = ${precedente.id}`);
+      await this.faireSuivre(tx, user.tenantId, []);
+      return { changements: [], aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)) };
     });
   }
 

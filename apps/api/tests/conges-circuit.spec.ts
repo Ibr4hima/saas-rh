@@ -297,6 +297,8 @@ afterAll(async () => {
   ]) {
     await raw(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
   }
+  await raw(`DELETE FROM holidays WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM holiday_seeds WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM audit_log WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
   await db?.pool.end();
@@ -699,6 +701,30 @@ describe('les relances', () => {
     await viser(ousmane, id);
     expect(await notif('Ousmane', `conge:${id}:rappel:%`)).toBeNull();
     expect(await notif('Mariama', `conge:${id}:rappel:%`)).toBeNull();
+  });
+});
+
+describe('la file ne se coupe pas', () => {
+  it('une demande ancienne en attente reste dans la file, derrière plus de cent traitées plus récentes', async () => {
+    const id = await poser(moussa);
+    await raw(`UPDATE absence_requests SET created_at = now() - interval '1 year' WHERE id = $1`, [
+      id,
+    ]);
+    await raw(
+      `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+       SELECT gen_random_uuid(), $1, $2, $3, DATE '2029-01-01' + g, DATE '2029-01-01' + g, 1, 'rejected'
+         FROM generate_series(1, 110) g`,
+      [tenantId, awa.employeeId, typeId],
+    );
+    try {
+      const liste = await absences.listRequests(admin, { limit: 100 } as never);
+      expect(liste.some((r) => r.id === id)).toBe(true);
+      expect(liste.filter((r) => r.status === 'rejected').length).toBe(100);
+    } finally {
+      await raw(`DELETE FROM absence_requests WHERE employee_id = $1 AND status = 'rejected'`, [
+        awa.employeeId,
+      ]);
+    }
   });
 });
 
@@ -1107,7 +1133,9 @@ describe('les envois simultanés', () => {
   it('le même férié ajouté deux fois au même instant n’est inscrit qu’une fois', async () => {
     try {
       const ajouter = () =>
-        codeOf(() => absences.createHoliday(mariama.session, { year: 2027, label: 'Korité' }));
+        codeOf(() =>
+          absences.createHoliday(mariama.session, { year: 2027, label: 'Fête de l’agence' }),
+        );
       const codes = await Promise.all([ajouter(), ajouter()]);
       expect(codes.sort()).toEqual(['AUCUNE ERREUR', 'absence.holiday_label_exists']);
     } finally {

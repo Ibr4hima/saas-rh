@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, not, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   CreateProfileChangeRequestInput,
@@ -142,7 +142,7 @@ export class ProfileChangesService {
         ((await voitToutLaFile(tx, user, 'informations')) ||
           (Boolean(filters.employeeId) && peut(user, 'personnel.consulter')));
       const self = await this.selfPerson(tx, user, true);
-      const conditions = [];
+      const conditions: SQL[] = [];
 
       if (selfOnly) {
         if (!self) return [];
@@ -160,23 +160,29 @@ export class ProfileChangesService {
       if (filters.status) conditions.push(eq(t.profileChangeRequests.status, filters.status));
 
       const handler = t.users;
-      const rows = await tx
-        .select({
-          request: t.profileChangeRequests,
-          givenName: t.persons.givenName,
-          familyName: t.persons.familyName,
-          gender: t.persons.gender,
-          employeeNumber: t.employees.employeeNumber,
-          handlerGivenName: handler.givenName,
-          handlerFamilyName: handler.familyName,
-        })
-        .from(t.profileChangeRequests)
-        .innerJoin(t.employees, eq(t.employees.id, t.profileChangeRequests.employeeId))
-        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-        .leftJoin(handler, eq(handler.id, t.profileChangeRequests.handledByUserId))
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(t.profileChangeRequests.createdAt))
-        .limit(100);
+      // Les demandes en attente viennent toutes ; la limite ne porte que sur
+      // l'historique, sinon les plus anciennes sortiraient de la file.
+      const ouverte = eq(t.profileChangeRequests.status, 'pending');
+      const lire = (filtre: SQL) =>
+        tx
+          .select({
+            request: t.profileChangeRequests,
+            givenName: t.persons.givenName,
+            familyName: t.persons.familyName,
+            gender: t.persons.gender,
+            employeeNumber: t.employees.employeeNumber,
+            handlerGivenName: handler.givenName,
+            handlerFamilyName: handler.familyName,
+          })
+          .from(t.profileChangeRequests)
+          .innerJoin(t.employees, eq(t.employees.id, t.profileChangeRequests.employeeId))
+          .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+          .leftJoin(handler, eq(handler.id, t.profileChangeRequests.handledByUserId))
+          .where(and(...conditions, filtre))
+          .orderBy(desc(t.profileChangeRequests.createdAt));
+      const rows = [...(await lire(ouverte)), ...(await lire(not(ouverte)).limit(100))].sort(
+        (a, b) => b.request.createdAt.getTime() - a.request.createdAt.getTime(),
+      );
 
       const dch = await directionDuPersonnel(tx);
       const vues: ProfileChangeRequestView[] = [];

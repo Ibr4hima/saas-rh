@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Inject,
   Param,
   ParseUUIDPipe,
@@ -49,6 +50,24 @@ export class PortalController {
     @Body(new ZodValidationPipe(inviteEmployeeSchema)) body: InviteEmployeeInput,
   ) {
     return this.invitations.invite(req.sessionUser, id, body.role, body.email);
+  }
+
+  /** Couper l'accès d'un agent : déconnecté partout, il ne se reconnecte plus. */
+  @Post('employees/:id/acces/couper')
+  @HttpCode(204)
+  @UseGuards(SessionGuard, AccesGuard)
+  @Peut('personnel.gerer')
+  async couper(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    await this.invitations.couperLAcces(req.sessionUser, id, true);
+  }
+
+  /** Rétablir l'accès coupé : il se reconnecte avec son mot de passe. */
+  @Post('employees/:id/acces/retablir')
+  @HttpCode(204)
+  @UseGuards(SessionGuard, AccesGuard)
+  @Peut('personnel.gerer')
+  async retablir(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    await this.invitations.couperLAcces(req.sessionUser, id, false);
   }
 
   /** Mon dossier : l'employé relié au compte connecté. */

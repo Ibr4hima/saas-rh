@@ -377,6 +377,54 @@ describe('un férié sans date', () => {
   });
 });
 
+describe('un férié daté après coup', () => {
+  /** Un congé de l'agent, déjà posé, du `du` au `au`. */
+  async function conge(du: string, au: string, jours: number, status = 'approved') {
+    const typeId = randomUUID();
+    await raw(
+      `INSERT INTO absence_types (id, tenant_id, name, deducts_balance) VALUES ($1,$2,$3,true)`,
+      [typeId, tenantId, `Congé ${typeId.slice(0, 6)}`],
+    );
+    const id = randomUUID();
+    await raw(
+      `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [id, tenantId, employeeId, typeId, du, au, jours, status],
+    );
+    return id;
+  }
+  const lire = async (id: string) =>
+    (await raw(`SELECT status, days_count::int AS jours FROM absence_requests WHERE id = $1`, [id]))
+      .rows[0] as { status: string; jours: number };
+
+  it('les congés qui le couvrent se recomptent ; une fois retiré, ils retrouvent leurs jours', async () => {
+    const { lundi, mercredi, vendredi } = SEMAINE_DE_JUIN;
+    const valide = await conge(lundi, vendredi, 5);
+    const korite = (await absences.listHolidays(admin, ANNEE)).find((h) => h.label === 'Korité')!;
+    await absences.updateHoliday(admin, korite.id, { day: mercredi, label: 'Korité' });
+    expect(await lire(valide)).toEqual({ status: 'approved', jours: 4 });
+    await absences.updateHoliday(admin, korite.id, { day: null, label: 'Korité' });
+    expect(await lire(valide)).toEqual({ status: 'approved', jours: 5 });
+  });
+
+  it('un congé d’un seul jour, devenu férié, est annulé', async () => {
+    const { mercredi } = SEMAINE_DE_JUIN;
+    const unJour = await conge(mercredi, mercredi, 1);
+    await absences.createHoliday(admin, { year: ANNEE, day: mercredi, label: 'Fête locale' });
+    expect((await lire(unJour)).status).toBe('cancelled');
+  });
+
+  it('l’année suivante, que personne n’a ouverte, a déjà son 1er janvier', async () => {
+    // Une année dont le 1er janvier tombe en semaine.
+    let annee = ANNEE + 1;
+    while ([0, 6].includes(new Date(Date.UTC(annee, 0, 1)).getUTCDay())) annee += 1;
+    const premier = `${annee}-01-01`;
+    const apercu = await absences.preview(admin, premier, premier);
+    expect(apercu.workingDays).toBe(0);
+    expect(apercu.holidaysSkipped.map((h) => h.day)).toEqual([premier]);
+  });
+});
+
 describe('une fête mobile se recale', () => {
   async function poser(day: string, label: string): Promise<string> {
     const { id } = await absences.createHoliday(admin, { year: ANNEE, day, label });

@@ -352,6 +352,20 @@ export const newContractSchema = initialContractSchema
   });
 export type NewContractInput = z.infer<typeof newContractSchema>;
 
+/**
+ * Corriger le dernier contrat, saisi par erreur : un CDD saisi à un mois au
+ * lieu de douze. Les mêmes règles qu'un nouveau contrat.
+ */
+export const corrigerContratSchema = newContractSchema;
+export type CorrigerContratInput = NewContractInput;
+
+/** Corriger l'affectation en cours : son intitulé de poste, sa date de début. */
+export const corrigerAffectationSchema = z.object({
+  positionTitle: trimmed(120),
+  startDate: isoDate,
+});
+export type CorrigerAffectationInput = z.infer<typeof corrigerAffectationSchema>;
+
 export const initialAssignmentSchema = z.object({
   positionTitle: trimmed(120),
   orgUnitId: z.uuid().optional(),
@@ -700,7 +714,8 @@ export interface EmployeeDetail {
   assignments: AssignmentView[];
   contracts: ContractView[];
   portal: {
-    status: 'none' | 'invited' | 'active';
+    /** `coupe` : un compte existe, mais son accès est coupé. */
+    status: 'none' | 'invited' | 'active' | 'coupe';
     role: string | null;
   };
 }

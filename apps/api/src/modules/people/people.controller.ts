@@ -15,6 +15,8 @@ import {
 } from '@nestjs/common';
 import {
   archiveEmployeesSchema,
+  corrigerAffectationSchema,
+  corrigerContratSchema,
   createEmployeeSchema,
   createOrgUnitSchema,
   deleteEmployeesSchema,
@@ -25,6 +27,8 @@ import {
   updateEmployeeSchema,
   updateOrgUnitSchema,
   type ArchiveEmployeesInput,
+  type CorrigerAffectationInput,
+  type CorrigerContratInput,
   type CreateEmployeeInput,
   type DeleteEmployeesInput,
   type ListEmployeesQuery,
@@ -171,6 +175,42 @@ export class PeopleController {
     @Body(new ZodValidationPipe(newContractSchema)) body: NewContractInput,
   ) {
     return this.people.newContract(req.sessionUser, id, body);
+  }
+
+  /** Corriger la dernière affectation, saisie par erreur : son poste, sa date. */
+  @Patch('employees/:id/assignments/:affectationId')
+  @Peut('personnel.gerer')
+  @HttpCode(204)
+  async corrigerAffectation(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('affectationId', ParseUUIDPipe) affectationId: string,
+    @Body(new ZodValidationPipe(corrigerAffectationSchema)) body: CorrigerAffectationInput,
+  ) {
+    await this.people.corrigerAffectation(req.sessionUser, id, affectationId, body);
+  }
+
+  /** Annuler la dernière affectation, saisie par erreur : la précédente reprend. */
+  @Delete('employees/:id/assignments/:affectationId')
+  @Peut('personnel.gerer')
+  annulerAffectation(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('affectationId', ParseUUIDPipe) affectationId: string,
+  ) {
+    return this.people.annulerAffectation(req.sessionUser, id, affectationId);
+  }
+
+  /** Corriger le dernier contrat, saisi par erreur. */
+  @Patch('employees/:id/contracts/:contratId')
+  @Peut('personnel.gerer')
+  corrigerContrat(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('contratId', ParseUUIDPipe) contratId: string,
+    @Body(new ZodValidationPipe(corrigerContratSchema)) body: CorrigerContratInput,
+  ) {
+    return this.people.corrigerContrat(req.sessionUser, id, contratId, body);
   }
 
   @Get('employees/:id/history')

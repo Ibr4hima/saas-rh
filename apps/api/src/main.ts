@@ -44,6 +44,9 @@ async function bootstrap(): Promise<void> {
   app.use('/v1/absence-requests', json({ limit: '8mb' }));
   // Pièces justificatives du dossier (PDF/images ≤ 5 Mo en base64).
   app.use('/v1/employees', json({ limit: '8mb' }));
+  // Le remplacement d'une pièce en vérification porte le même fichier, sous
+  // une autre route : sans cette ligne, il butait sur la limite commune.
+  app.use('/v1/employee-documents', json({ limit: '8mb' }));
   // Le fichier officiel d'un texte de référence arrive en BINAIRE BRUT, pas
   // en base64 : un Journal officiel numérisé pèse plusieurs dizaines de
   // mégaoctets, que le base64 gonflerait d'un tiers avant de les faire passer

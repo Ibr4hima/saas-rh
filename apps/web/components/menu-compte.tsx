@@ -86,9 +86,9 @@ export function MenuCompte({
     };
   }, [ouvert]);
 
-  const seDeconnecter = async () => {
+  const seDeconnecter = async (partout = false) => {
     setOuvert(false);
-    await api('/auth/logout', { method: 'POST' });
+    await api(partout ? '/auth/deconnecter-partout' : '/auth/logout', { method: 'POST' });
     router.replace('/login');
   };
 
@@ -170,6 +170,11 @@ export function MenuCompte({
             }}
           />
           <div className="my-1 h-px bg-line-soft" />
+          <Rangee
+            icone="devices"
+            libelle="Se déconnecter partout"
+            onClick={() => void seDeconnecter(true)}
+          />
           <Rangee
             icone="logout"
             libelle="Se déconnecter"

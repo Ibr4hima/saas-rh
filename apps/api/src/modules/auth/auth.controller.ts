@@ -79,6 +79,18 @@ export class AuthController {
     res.clearCookie(SESSION_COOKIE, { path: '/' });
   }
 
+  /** Fermer toutes ses sessions, sur tous ses appareils : celle-ci comprise. */
+  @Post('auth/deconnecter-partout')
+  @HttpCode(204)
+  @UseGuards(SessionGuard)
+  async deconnecterPartout(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    await this.auth.deconnecterPartout(req.sessionUser.userId);
+    res.clearCookie(SESSION_COOKIE, { path: '/' });
+  }
+
   @Get('me')
   @UseGuards(SessionGuard)
   me(@Req() req: AuthenticatedRequest): SessionUser {

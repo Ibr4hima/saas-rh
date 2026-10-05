@@ -455,16 +455,27 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                     <Th>Type</Th>
                     <Th>Début</Th>
                     <Th>Fin</Th>
+                    {peutGerer ? (
+                      <Th>
+                        <span className="sr-only">Actions</span>
+                      </Th>
+                    ) : null}
                   </tr>
                 </THead>
                 <TBody>
-                  {e.contracts.map((c) => (
+                  {e.contracts.map((c, i) => (
                     <Tr key={c.id}>
                       <Td className="font-medium text-ink-strong">
                         {CONTRACT_LABELS[c.contractType] ?? c.contractType}
                       </Td>
                       <Td>{formatDate(c.startDate)}</Td>
-                      <Td>{c.endDate ? formatDate(c.endDate) : '—'}</Td>
+                      <Td>{c.endDate ? formatDate(c.endDate) : null}</Td>
+                      {peutGerer ? (
+                        <Td className="text-right">
+                          {/* Le plus récent d'abord : seul le dernier se corrige. */}
+                          {i === 0 ? <CorrectionContrat employeeId={e.id} contrat={c} /> : null}
+                        </Td>
+                      ) : null}
                     </Tr>
                   ))}
                 </TBody>
@@ -472,8 +483,11 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
             )}
           </Card>
 
-          {/* Les semestres évalués par le n+1, dès la validation. */}
-          {voitLeDossier && !finDAcces ? <CarteEvaluationsAgent employeeId={e.id} /> : null}
+          {/* Les semestres évalués par le n+1, dès la validation : l'agent et
+              le directeur du Capital Humain, eux seuls. */}
+          {(soi || me.data?.dirigeLaDCH) && !finDAcces ? (
+            <CarteEvaluationsAgent employeeId={e.id} />
+          ) : null}
 
           {/* En tête des cartes de gauche : c'est ce qui attend une décision. */}
           {canSeeHistory ? <ProfileChangeCard employeeId={e.id} /> : null}
@@ -643,6 +657,24 @@ function AssignmentsCard({
 }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  // La dernière affectation, saisie par erreur : son poste ou sa date se
+  // corrigent ; une mutation se défait, et la précédente reprend.
+  const [geste, setGeste] = useState<'corriger' | 'annuler' | null>(null);
+  const parDate = [...assignments].sort((a, b) => b.validFrom.localeCompare(a.validFrom));
+  const derniere = parDate[0];
+  const annulable = Boolean(derniere && parDate[1] && parDate[1].validTo === derniere.validFrom);
+  const gestesDerniere = (
+    <>
+      <Button size="sm" variant="ghost" onClick={() => setGeste('corriger')}>
+        Corriger
+      </Button>
+      {annulable ? (
+        <Button size="sm" variant="ghost" onClick={() => setGeste('annuler')}>
+          Annuler
+        </Button>
+      ) : null}
+    </>
+  );
   const [positionTitle, setPositionTitle] = useState('');
   const [orgUnitId, setOrgUnitId] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
@@ -847,6 +879,18 @@ function AssignmentsCard({
           <ListeConsequences consequences={bilan!} faites />
         </CardContent>
       ) : null}
+      {geste && derniere ? (
+        <GesteAffectation
+          employeeId={employeeId}
+          affectation={derniere}
+          geste={geste}
+          onClose={() => setGeste(null)}
+          onFait={(res) => {
+            setGeste(null);
+            if (res) setBilan(res);
+          }}
+        />
+      ) : null}
       {assignments.length === 0 ? (
         <CardContent>
           <p className="text-sm text-ink-muted">Aucune affectation enregistrée.</p>
@@ -859,12 +903,24 @@ function AssignmentsCard({
               <Th>Unité</Th>
               <Th>Du</Th>
               <Th>Au</Th>
+              {canManage ? (
+                <Th className="hidden sm:table-cell">
+                  <span className="sr-only">Actions</span>
+                </Th>
+              ) : null}
             </tr>
           </THead>
           <TBody>
             {assignments.map((a) => (
               <Tr key={a.id}>
-                <Td className="font-medium text-ink-strong">{a.positionTitle}</Td>
+                <Td className="font-medium text-ink-strong">
+                  {a.positionTitle}
+                  {/* Sur téléphone, les gestes passent sous le poste : une
+                      cinquième colonne sortirait de l'écran. */}
+                  {canManage && a.id === derniere?.id ? (
+                    <div className="mt-1.5 -ml-2.5 flex gap-1 sm:hidden">{gestesDerniere}</div>
+                  ) : null}
+                </Td>
                 <Td>{a.orgUnitName ?? '—'}</Td>
                 <Td className="whitespace-nowrap">{formatDate(a.validFrom)}</Td>
                 {/* La colonne « Au » porte seule l'état : « aujourd'hui » dit
@@ -879,6 +935,11 @@ function AssignmentsCard({
                     <span className="text-ink-muted">à venir</span>
                   )}
                 </Td>
+                {canManage ? (
+                  <Td className="hidden text-right whitespace-nowrap sm:table-cell">
+                    {a.id === derniere?.id ? gestesDerniere : null}
+                  </Td>
+                ) : null}
               </Tr>
             ))}
           </TBody>
@@ -952,6 +1013,207 @@ function BalancesCard({ employeeId }: { employeeId: string }) {
   );
 }
 
+/** Corriger le poste ou la date de la dernière affectation, ou l'annuler. */
+function GesteAffectation({
+  employeeId,
+  affectation: a,
+  geste,
+  onClose,
+  onFait,
+}: {
+  employeeId: string;
+  affectation: EmployeeDetail['assignments'][number];
+  geste: 'corriger' | 'annuler';
+  onClose: () => void;
+  onFait: (res: ConsequencesHierarchie | null) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [poste, setPoste] = useState(a.positionTitle);
+  const [debut, setDebut] = useState(a.validFrom);
+  const envoyer = useMutation({
+    mutationFn: () =>
+      geste === 'corriger'
+        ? api<null>(`/employees/${employeeId}/assignments/${a.id}`, {
+            method: 'PATCH',
+            body: { positionTitle: poste.trim(), startDate: debut },
+          })
+        : api<ConsequencesHierarchie>(`/employees/${employeeId}/assignments/${a.id}`, {
+            method: 'DELETE',
+          }),
+    onSuccess: (res) => {
+      void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+      void queryClient.invalidateQueries({ queryKey: ['employees'] });
+      void queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
+      onFait(res ?? null);
+    },
+  });
+  const erreur = envoyer.error
+    ? envoyer.error instanceof ApiError
+      ? envoyer.error.message
+      : 'Enregistrement impossible.'
+    : null;
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={geste === 'corriger' ? 'Corriger l’affectation' : 'Annuler l’affectation'}
+      subtitle={`${a.positionTitle}${a.orgUnitName ? ` · ${a.orgUnitName}` : ''}`}
+      maxWidth="max-w-md"
+      footer={
+        <div className="flex w-full justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            {geste === 'corriger' ? 'Annuler' : 'Garder l’affectation'}
+          </Button>
+          <Button
+            variant={geste === 'annuler' ? 'danger' : 'primary'}
+            loading={envoyer.isPending}
+            disabled={geste === 'corriger' && (!poste.trim() || !debut)}
+            onClick={() => envoyer.mutate()}
+          >
+            {geste === 'corriger' ? 'Enregistrer' : 'Annuler l’affectation'}
+          </Button>
+        </div>
+      }
+    >
+      {geste === 'corriger' ? (
+        <div className="flex flex-col gap-3.5">
+          <Field label="Poste" htmlFor="corr-poste" required>
+            <Input id="corr-poste" value={poste} onChange={(ev) => setPoste(ev.target.value)} />
+          </Field>
+          <Field label="Début" htmlFor="corr-debut" required>
+            <Input
+              id="corr-debut"
+              type="date"
+              value={debut}
+              onChange={(ev) => setDebut(ev.target.value)}
+            />
+          </Field>
+        </div>
+      ) : (
+        <p className="text-[13px] text-ink">L’affectation précédente reprend.</p>
+      )}
+      {erreur ? (
+        <p role="alert" className="mt-3 text-[12.5px] text-danger">
+          {erreur}
+        </p>
+      ) : null}
+    </Modal>
+  );
+}
+
+/**
+ * Corriger le dernier contrat, saisi par erreur. Un dossier passé à tort
+ * dans les inactifs par une fin erronée se rouvre.
+ */
+function CorrectionContrat({
+  employeeId,
+  contrat: c,
+}: {
+  employeeId: string;
+  contrat: EmployeeDetail['contracts'][number];
+}) {
+  const queryClient = useQueryClient();
+  const [ouvert, setOuvert] = useState(false);
+  const corrigeable = (TYPES_DE_NOUVEAU_CONTRAT as readonly string[]).includes(c.contractType);
+  const [type, setType] = useState(corrigeable ? c.contractType : 'cdd');
+  const [debut, setDebut] = useState(c.startDate);
+  const [fin, setFin] = useState(c.endDate ?? '');
+  const avecFin = type === 'cdd' || type === 'stage';
+  const corriger = useMutation({
+    mutationFn: () =>
+      api(`/employees/${employeeId}/contracts/${c.id}`, {
+        method: 'PATCH',
+        body: { contractType: type, startDate: debut, ...(avecFin && fin ? { endDate: fin } : {}) },
+      }),
+    onSuccess: async () => {
+      setOuvert(false);
+      await queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+      await queryClient.invalidateQueries({ queryKey: ['employees'] });
+      await queryClient.invalidateQueries({ queryKey: ['contrats'] });
+    },
+  });
+  const erreur = corriger.error
+    ? corriger.error instanceof ApiError
+      ? corriger.error.message
+      : 'Enregistrement impossible.'
+    : null;
+  return (
+    <>
+      <Button size="sm" variant="ghost" onClick={() => setOuvert(true)}>
+        Corriger
+      </Button>
+      {/* La fenêtre naît dans une cellule alignée à droite : elle reprend la gauche. */}
+      <div className="text-left">
+        <Modal
+          open={ouvert}
+          onClose={() => setOuvert(false)}
+          title="Corriger le contrat"
+          maxWidth="max-w-lg"
+          footer={
+            <>
+              {erreur ? (
+                <p
+                  role="alert"
+                  className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+                >
+                  {erreur}
+                </p>
+              ) : null}
+              <Button variant="secondary" onClick={() => setOuvert(false)}>
+                Annuler
+              </Button>
+              <Button
+                loading={corriger.isPending}
+                disabled={!debut || (avecFin && !fin)}
+                onClick={() => corriger.mutate()}
+              >
+                Enregistrer
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3.5">
+            <Field label="Type" htmlFor="corr-contrat-type" required>
+              <Select
+                id="corr-contrat-type"
+                value={type}
+                onChange={(ev) => setType(ev.target.value)}
+              >
+                {TYPES_DE_NOUVEAU_CONTRAT.map((v) => (
+                  <option key={v} value={v}>
+                    {CONTRACT_LABELS[v]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <Field label="Début" htmlFor="corr-contrat-debut" required>
+                <Input
+                  id="corr-contrat-debut"
+                  type="date"
+                  value={debut}
+                  onChange={(ev) => setDebut(ev.target.value)}
+                />
+              </Field>
+              {avecFin ? (
+                <Field label="Fin" htmlFor="corr-contrat-fin" required>
+                  <Input
+                    id="corr-contrat-fin"
+                    type="date"
+                    min={debut || undefined}
+                    value={fin}
+                    onChange={(ev) => setFin(ev.target.value)}
+                  />
+                </Field>
+              ) : null}
+            </div>
+          </div>
+        </Modal>
+      </div>
+    </>
+  );
+}
+
 function PortalCard({
   employeeId,
   portal,
@@ -980,8 +1242,23 @@ function PortalCard({
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Génération impossible.'),
   });
 
+  // Couper l'accès : déconnecté de partout, il ne se reconnecte plus ;
+  // le rétablir lui rend la connexion, avec son mot de passe.
+  const [aCouper, setACouper] = useState(false);
+  const acces = useMutation({
+    mutationFn: (geste: 'couper' | 'retablir') =>
+      api(`/employees/${employeeId}/acces/${geste}`, { method: 'POST' }),
+    onSuccess: () => {
+      setACouper(false);
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Action impossible.'),
+  });
+
   const inviteUrl = invite ? `${window.location.origin}${invite.invitePath}` : null;
   const actif = portal.status === 'active';
+  const coupe = portal.status === 'coupe';
 
   return (
     <Card>
@@ -989,6 +1266,8 @@ function PortalCard({
         <CardTitle>Accès au portail</CardTitle>
         {actif ? (
           <Badge tone="teal">Compte actif</Badge>
+        ) : coupe ? (
+          <Badge tone="rouge">Accès coupé</Badge>
         ) : portal.status === 'invited' ? (
           <Badge tone="orange">Invitation en cours</Badge>
         ) : (
@@ -1005,7 +1284,11 @@ function PortalCard({
           <span
             className={cn(
               'flex size-9 shrink-0 items-center justify-center rounded-[11px]',
-              actif ? 'bg-success-soft text-success' : 'bg-primary/[0.07] text-primary',
+              actif
+                ? 'bg-success-soft text-success'
+                : coupe
+                  ? 'bg-danger-soft text-danger'
+                  : 'bg-primary/[0.07] text-primary',
             )}
           >
             <Icon name={actif ? 'how_to_reg' : 'lock'} size={19} />
@@ -1016,12 +1299,16 @@ function PortalCard({
                 ? portal.role === 'admin'
                   ? 'Compte actif · administration'
                   : 'Compte actif'
-                : portal.status === 'invited'
-                  ? 'Invitation envoyée, pas encore acceptée'
-                  : 'Pas encore de compte'}
+                : coupe
+                  ? 'Accès coupé'
+                  : portal.status === 'invited'
+                    ? 'Invitation envoyée, pas encore acceptée'
+                    : 'Pas encore de compte'}
             </p>
             <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-              {actif ? (
+              {coupe ? (
+                <>La connexion au portail est refusée à {prenom} jusqu&apos;au rétablissement.</>
+              ) : actif ? (
                 <>
                   {prenom} se connecte au portail et y gère ses demandes de congés et de documents.
                   Ce qu&apos;on y fait de plus vient de sa place dans l&apos;organigramme (N+1
@@ -1042,7 +1329,54 @@ function PortalCard({
           </div>
         </div>
 
-        {actif ? null : (
+        {actif || coupe ? (
+          <>
+            <div>
+              <Button
+                variant={coupe ? 'primary' : 'secondary'}
+                loading={coupe && acces.isPending}
+                onClick={() => (coupe ? acces.mutate('retablir') : setACouper(true))}
+              >
+                {coupe ? 'Rétablir l’accès' : 'Couper l’accès'}
+              </Button>
+            </div>
+            {error && !aCouper ? (
+              <p className="rounded-[10px] bg-danger-soft/55 px-3 py-2 text-[12.5px] text-danger ring-1 ring-danger/25 ring-inset">
+                {error}
+              </p>
+            ) : null}
+            <Modal
+              open={aCouper}
+              onClose={() => setACouper(false)}
+              title={`Couper l’accès de ${prenom}`}
+              maxWidth="max-w-md"
+              footer={
+                <div className="flex w-full justify-end gap-2">
+                  <Button variant="secondary" onClick={() => setACouper(false)}>
+                    Annuler
+                  </Button>
+                  <Button
+                    variant="danger"
+                    loading={acces.isPending}
+                    onClick={() => acces.mutate('couper')}
+                  >
+                    Couper l’accès
+                  </Button>
+                </div>
+              }
+            >
+              <p className="text-[13px] text-ink">
+                Ses sessions se ferment sur tous ses appareils, et la connexion lui est refusée
+                jusqu&apos;au rétablissement.
+              </p>
+              {error ? (
+                <p role="alert" className="mt-2 text-[12.5px] text-danger">
+                  {error}
+                </p>
+              ) : null}
+            </Modal>
+          </>
+        ) : (
           <>
             {/* Pas de rôle à choisir : tout le monde entre comme agent, et
                 l'organigramme donne le reste. */}

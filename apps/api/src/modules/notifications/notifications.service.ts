@@ -388,6 +388,11 @@ export class NotificationsService {
    * vérification ou au dossier : celui qu'un nouveau dépôt remplace ne
    * rappelle plus rien. Pollé comme les fériés : en régime établi, aucune
    * écriture — les rappels déjà envoyés sont écartés dans la requête.
+   *
+   * La date qui fait foi est celle de la fiche, pour le titre qu'elle porte :
+   * la DCH a pu corriger à la validation la date tapée par l'agent, ou la
+   * reprendre d'un import, sans document. Un dépôt encore en vérification,
+   * plus récent, porte la date à venir : c'est la sienne.
    */
   private async generateExpiryReminders(tx: Tx, tenantId: string, userId: string): Promise<void> {
     const { rows } = await tx.execute<{
@@ -397,19 +402,30 @@ export class NotificationsService {
       jours: number;
       etape: 'j15' | 'j0';
     }>(sql`
-      WITH dernier AS (
-        SELECT DISTINCT ON (d.category) d.id, d.category, d.expires_on,
-               (d.expires_on - CURRENT_DATE)::int AS jours
+      WITH fiche AS (
+        SELECT CASE p.id_document_type WHEN 'cni' THEN 'cni' WHEN 'passport' THEN 'passeport' END
+                 AS category,
+               p.id_document_expires_on AS expires_on
+          FROM persons p
+         WHERE p.user_id = ${userId} AND p.id_document_expires_on IS NOT NULL
+      ), dernier AS (
+        SELECT DISTINCT ON (d.category) d.category, d.status, d.expires_on
           FROM employee_documents d
           JOIN employees e ON e.id = d.employee_id
           JOIN persons p ON p.id = e.person_id
          WHERE p.user_id = ${userId} AND d.category IN ('cni', 'passeport')
            AND d.status <> 'rejected'
          ORDER BY d.category, d.created_at DESC
+      ), titres AS (
+        SELECT COALESCE(d.category, f.category) AS category,
+               CASE WHEN f.category IS NULL OR d.status = 'pending' THEN d.expires_on
+                    ELSE f.expires_on END AS expires_on
+          FROM dernier d FULL JOIN fiche f ON f.category = d.category
       ), du AS (
-        SELECT id, category, expires_on::text AS expires_on, jours,
-               CASE WHEN jours <= 0 THEN 'j0' ELSE 'j15' END AS etape
-          FROM dernier WHERE expires_on IS NOT NULL AND jours <= 15
+        SELECT category, category || ':' || expires_on::text AS id,
+               expires_on::text AS expires_on, (expires_on - CURRENT_DATE)::int AS jours,
+               CASE WHEN expires_on <= CURRENT_DATE THEN 'j0' ELSE 'j15' END AS etape
+          FROM titres WHERE expires_on IS NOT NULL AND expires_on - CURRENT_DATE <= 15
       )
       SELECT * FROM du
        WHERE NOT EXISTS (
@@ -424,13 +440,14 @@ export class NotificationsService {
           : r.jours === 0
             ? `Votre ${piece.nom} expire aujourd’hui`
             : `Votre ${piece.nom} a expiré le ${frDate(r.expires_on)}`;
-      // Le jour venu, l'avis du jour prend la place de celui des quinze jours.
+      // Le jour venu, l'avis du jour prend la place de celui des quinze jours ;
+      // une date corrigée, celle de l'avis donné sur l'ancienne.
       await notifier(tx, tenantId, userId, {
         type: 'document_expiry',
         title,
         link: '/moi/documents/justificatifs',
         dedupeKey: `expiration:${r.id}:${r.etape}`,
-        remplace: `expiration:${r.id}:`,
+        remplace: `expiration:${r.category}:`,
       });
     }
   }

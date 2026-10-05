@@ -19,7 +19,6 @@ import {
   type EvaluationValidee,
   type NoteGlobale,
   objectifsDeLaFiche,
-  peut,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
   type ObjectifView,
@@ -630,15 +629,13 @@ export class ObjectifsService {
 
   /**
    * Les évaluations validées d'un agent, la plus récente d'abord — ce que son
-   * dossier en garde. L'agent voit les siennes ; qui consulte les dossiers du
-   * personnel, celles de tous.
+   * dossier en garde. L'agent voit les siennes ; le directeur du Capital
+   * Humain, celles de tous. Consulter les dossiers n'y suffit pas : une note
+   * ne se lit pas comme une adresse.
    */
   async evaluationsDe(user: SessionUser, employeeId: string): Promise<EvaluationValidee[]> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
-      if (
-        !peut(user, 'personnel.consulter') &&
-        (await employeActif(tx, user.userId)) !== employeeId
-      ) {
+      if (!user.dirigeLaDCH && (await employeActif(tx, user.userId)) !== employeeId) {
         problem(403, 'objectifs.dossier_interdit', 'Ces évaluations ne sont pas les vôtres');
       }
       const { rows } = await tx.execute<{

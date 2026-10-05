@@ -94,6 +94,9 @@ export async function finDeContratPassee(tx: Tx, employeeId: string): Promise<st
  *     sa fin d'activité ; `ferme` : ce jour est passé.
  * La fin d'activité est celle du dossier inactif ; d'un contrat échu que la
  * liste n'a pas encore rangé, sa date de fin.
+ *
+ * Un licenciement ou un décès ne laisse pas ce mois : l'accès se ferme le
+ * jour même.
  */
 export async function accesDuCompte(
   tx: Tx,
@@ -105,12 +108,13 @@ export async function accesDuCompte(
                   THEN COALESCE(e.fin_activite, (e.archived_at AT TIME ZONE 'UTC')::date - 1)
                   ELSE (SELECT ce.end_date FROM contracts ce
                          WHERE ce.id = ${dernierContrat(sql`e.id`)} AND ce.end_date < CURRENT_DATE)
-             END AS fin
+             END AS fin,
+             e.status = 'archived' AND e.inactivite_motif IN ('licenciement', 'deces') AS sans_delai
         FROM employees e JOIN persons p ON p.id = e.person_id
        WHERE p.user_id = ${userId}
        LIMIT 1)
-    SELECT (fin + interval '1 month')::date::text AS dernier,
-           (fin + interval '1 month')::date < CURRENT_DATE AS ferme
+    SELECT CASE WHEN sans_delai THEN fin ELSE (fin + interval '1 month')::date END::text AS dernier,
+           sans_delai OR (fin + interval '1 month')::date < CURRENT_DATE AS ferme
       FROM dossier`);
   const a = rows[0];
   if (!a?.dernier) return { finDAcces: null, ferme: false };

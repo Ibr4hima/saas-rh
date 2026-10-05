@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, not, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   AdvanceDocumentRequestInput,
@@ -153,7 +153,7 @@ export class DocumentRequestsService {
       // Son dossier, actif ou non : un agent qui n'est plus en activité
       // suit encore les documents qu'il a demandés, et les annule.
       const soi = await this.selfEmployee(tx, user);
-      const conditions = [];
+      const conditions: SQL[] = [];
 
       if (selfOnly) {
         if (!soi) return [];
@@ -171,23 +171,29 @@ export class DocumentRequestsService {
       if (filters.status) conditions.push(eq(t.documentRequests.status, filters.status));
 
       const handler = t.users;
-      const rows = await tx
-        .select({
-          request: t.documentRequests,
-          givenName: t.persons.givenName,
-          familyName: t.persons.familyName,
-          employeeNumber: t.employees.employeeNumber,
-          employeeStatus: t.employees.status,
-          handlerGivenName: handler.givenName,
-          handlerFamilyName: handler.familyName,
-        })
-        .from(t.documentRequests)
-        .innerJoin(t.employees, eq(t.employees.id, t.documentRequests.employeeId))
-        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-        .leftJoin(handler, eq(handler.id, t.documentRequests.handledByUserId))
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(t.documentRequests.createdAt))
-        .limit(100);
+      // Les demandes ouvertes viennent toutes ; la limite ne porte que sur
+      // l'historique, sinon les plus anciennes sortiraient de la file.
+      const ouverte = inArray(t.documentRequests.status, OPEN_STATUSES);
+      const lire = (filtre: SQL) =>
+        tx
+          .select({
+            request: t.documentRequests,
+            givenName: t.persons.givenName,
+            familyName: t.persons.familyName,
+            employeeNumber: t.employees.employeeNumber,
+            employeeStatus: t.employees.status,
+            handlerGivenName: handler.givenName,
+            handlerFamilyName: handler.familyName,
+          })
+          .from(t.documentRequests)
+          .innerJoin(t.employees, eq(t.employees.id, t.documentRequests.employeeId))
+          .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+          .leftJoin(handler, eq(handler.id, t.documentRequests.handledByUserId))
+          .where(and(...conditions, filtre))
+          .orderBy(desc(t.documentRequests.createdAt));
+      const rows = [...(await lire(ouverte)), ...(await lire(not(ouverte)).limit(100))].sort(
+        (a, b) => b.request.createdAt.getTime() - a.request.createdAt.getTime(),
+      );
 
       const dch = await directionDuPersonnel(tx);
       const traiteLesDocuments = !selfOnly && (await this.traiteLesDocuments(tx, user));
