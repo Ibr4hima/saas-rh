@@ -144,7 +144,21 @@ export class PeopleService {
       );
     }
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      const like = query.q ? `%${query.q}%` : null;
+      // Chaque mot cherché doit se trouver dans le prénom, le nom ou le
+      // matricule, dans n'importe quel ordre : « Awa Diop » comme « Diop Awa ».
+      const mots = (query.q ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
+      const recherche =
+        mots.length === 0
+          ? sql`TRUE`
+          : sql.join(
+              mots.map((mot) => {
+                const motif = `%${mot.replace(/[\\%_]/g, '\\$&')}%`;
+                return sql`(sans_accents(p.given_name) LIKE sans_accents(${motif})
+                         OR sans_accents(p.family_name) LIKE sans_accents(${motif})
+                         OR sans_accents(e.employee_number) LIKE sans_accents(${motif}))`;
+              }),
+              sql` AND `,
+            );
 
       /**
        * Le socle : une ligne par agent, colonnes affichées comprises. La
@@ -204,12 +218,7 @@ export class PeopleService {
                           AND (av.validity @> CURRENT_DATE OR lower(av.validity) > CURRENT_DATE)
                         ORDER BY lower(av.validity) LIMIT 1)
           LEFT JOIN org_units o ON o.id = a.org_unit_id
-          WHERE ${
-            like === null
-              ? sql`TRUE`
-              : sql`(p.given_name ILIKE ${like} OR p.family_name ILIKE ${like}
-                     OR e.employee_number ILIKE ${like})`
-          }
+          WHERE ${recherche}
         ),
         -- L'unité TELLE QU'ELLE S'AFFICHE : la colonne montre l'abrégé de la
         -- direction, et un filtre qui porterait sur autre chose ne
@@ -371,7 +380,8 @@ export class PeopleService {
           id: employeeId,
           tenantId: user.tenantId,
           personId,
-          employeeNumber: input.employee.employeeNumber,
+          // En capitales même quand l'appel ne passe pas par le schéma (import).
+          employeeNumber: input.employee.employeeNumber.trim().toUpperCase(),
           hiredOn: input.employee.hiredOn,
           workEmail: input.employee.workEmail,
           workPhone: input.employee.workPhone,
@@ -620,7 +630,9 @@ export class PeopleService {
           // archivé avec son portail grand ouvert.
           const champs: Partial<typeof t.employees.$inferInsert> = {};
           const e = input.employee;
-          if (e.employeeNumber !== undefined) champs.employeeNumber = e.employeeNumber;
+          if (e.employeeNumber !== undefined) {
+            champs.employeeNumber = e.employeeNumber.trim().toUpperCase();
+          }
           if (e.hiredOn !== undefined) champs.hiredOn = e.hiredOn;
           if (e.workEmail !== undefined) champs.workEmail = e.workEmail;
           if (e.workPhone !== undefined) champs.workPhone = e.workPhone;
@@ -687,6 +699,11 @@ export class PeopleService {
           .update(t.contracts)
           .set({ endDate: sql`${input.startDate}::date - 1`, updatedAt: new Date() })
           .where(eq(t.contracts.id, precedent.id));
+      }
+      // Renouvelé, le précédent ne « prend plus fin » : ses alertes s'en vont.
+      if (precedent) {
+        await tx.execute(sql`
+          DELETE FROM notifications WHERE dedupe_key LIKE ${`contract_deadline:${precedent.id}%`}`);
       }
       const contractId = uuidv7();
       await tx.insert(t.contracts).values({
@@ -1628,26 +1645,39 @@ export class PeopleService {
      * Les notifications qui PARLENT de lui, dans la boîte des autres.
      *
      * « Moussa Ndiaye demande des documents » dort chez la RH : elle nomme la
-     * personne et mène à une demande qu'on vient d'effacer. On la retire donc
-     * aussi — par l'identifiant quand le lien le porte, par le nom sinon.
-     *
-     * Le nom est un repère grossier, et c'est une limite assumée : une
-     * notification qui désignerait la personne autrement (initiales, email
-     * professionnel) survivrait. Le jour où ces notifications porteront
-     * l'identifiant de la ligne qu'elles annoncent, ce filet-là deviendra
-     * inutile — c'est la vraie correction, elle touche leur émission.
+     * personne et mène à une demande qu'on vient d'effacer. Son lien ou sa
+     * clé porte l'identifiant du dossier, ou celui d'une ligne effacée à
+     * l'instant (demande, pièce, contrat) : c'est par là qu'on la retrouve,
+     * sans risque de toucher à un homonyme.
      */
-    recolter(
-      await tx
-        .delete(t.notifications)
-        .where(
-          sql`(${t.notifications.link} LIKE ${`%${id}%`}
-            OR ${t.notifications.dedupeKey} LIKE ${`%${id}%`}
-            OR ${t.notifications.title} LIKE ${`%${nom}%`}
-            OR ${t.notifications.body} LIKE ${`%${nom}%`})`,
-        )
-        .returning({ id: t.notifications.id }),
-    );
+    const effaces = `{${traces.join(',')}}`;
+    const { rows: parIdentifiant } = await tx.execute<{ id: string }>(sql`
+      DELETE FROM notifications n
+       WHERE EXISTS (
+         SELECT 1 FROM unnest(${effaces}::uuid[]) AS x(id)
+          WHERE position(x.id::text IN coalesce(n.link, '')) > 0
+             OR position(x.id::text IN coalesce(n.dedupe_key, '')) > 0)
+      RETURNING n.id`);
+    recolter(parIdentifiant);
+
+    // Celles qui ne le citent que par son nom (« Moussa Ndiaye a évalué vos
+    // objectifs ») : seulement si ce nom ne désigne personne d'autre ici.
+    const [homonyme] = await tx
+      .select({ id: t.persons.id })
+      .from(t.persons)
+      .where(sql`position(${nom} IN ${t.persons.givenName} || ' ' || ${t.persons.familyName}) > 0`)
+      .limit(1);
+    if (!homonyme) {
+      recolter(
+        await tx
+          .delete(t.notifications)
+          .where(
+            sql`(position(${nom} IN ${t.notifications.title}) > 0
+              OR position(${nom} IN coalesce(${t.notifications.body}, '')) > 0)`,
+          )
+          .returning({ id: t.notifications.id }),
+      );
+    }
 
     if (userId) {
       recolter(

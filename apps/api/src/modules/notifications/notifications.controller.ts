@@ -33,9 +33,9 @@ export class NotificationsController {
   list(
     @Req() req: AuthenticatedRequest,
     @Query(new ZodValidationPipe(notificationScopeQuerySchema))
-    query: { scope: NotificationScope; espace?: Espace },
+    query: { scope: NotificationScope; espace?: Espace; limite: number },
   ) {
-    return this.notifications.list(req.sessionUser, query.scope, query.espace);
+    return this.notifications.list(req.sessionUser, query.scope, query.espace, query.limite);
   }
 
   @Post('notifications/:id/read')

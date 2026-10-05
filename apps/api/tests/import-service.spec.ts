@@ -568,3 +568,73 @@ describe('le responsable hiérarchique', () => {
     expect(r.lignes.every((l) => l.responsable === null)).toBe(true);
   });
 });
+
+describe('le compte rendu dit ce que la base contient', () => {
+  it('ne compte pas rattaché un agent dont le n+1 du fichier n’a pas pu être créé', async () => {
+    // Le n+1 passe l'aperçu, puis sa création échoue à l'écriture.
+    class PeopleEnPanne extends PeopleService {
+      override create(user: SessionUser, input: Parameters<PeopleService['create']>[1]) {
+        if (input.employee.employeeNumber === 'APIX-0001') throw new Error('Panne');
+        return super.create(user, input);
+      }
+    }
+    const fragile = new ImportEmployesService(db, new PeopleEnPanne(db, new EncryptionService()));
+    const r = await fragile.importer(
+      admin,
+      classeurDe([AGENT(1), AGENT(2, { 'Matricule du responsable': 'APIX-0001' })]),
+      true,
+    );
+    expect(r.crees).toBe(1);
+    expect(r.rattaches).toBe(0);
+    expect(r.sansResponsable).toBe(1);
+    const agent2 = r.lignes.find((l) => l.matricule === 'APIX-0002');
+    expect(agent2?.responsableResolu).toBeNull();
+    expect(agent2?.avertissements.map((a) => a.texte)).toContain(
+      'Le dossier de Agent1 Diop n’a pas pu être créé : rattachement non fait',
+    );
+  });
+
+  it('crée l’agent dont la pièce est expirée, avec sa date, et le signale', async () => {
+    const entetes = [...COLONNES, "Pièce d'identité", 'Numéro de la pièce', "Date d'expiration"];
+    const r = await imports.importer(
+      admin,
+      classeurDe(
+        [
+          {
+            ...AGENT(1),
+            "Pièce d'identité": 'CNI',
+            'Numéro de la pièce': '1199019012345',
+            "Date d'expiration": '01/01/2020',
+          } as Ligne,
+        ],
+        entetes,
+      ),
+      true,
+    );
+    expect(r.crees).toBe(1);
+    expect(r.lignes[0]?.avertissements.map((a) => a.colonne)).toContain("Date d'expiration");
+    const piece = await raw(
+      `SELECT p.id_document_expires_on::text AS d FROM employees e JOIN persons p ON p.id = e.person_id
+        WHERE e.tenant_id = $1 AND e.employee_number = 'APIX-0001'`,
+      [tenantId],
+    );
+    expect(piece.rows[0]?.d).toBe('2020-01-01');
+  });
+});
+
+describe('les matricules en capitales', () => {
+  it('écrit en capitales le matricule tapé en minuscules', async () => {
+    await imports.importer(admin, classeurDe([AGENT(1, { Matricule: 'apix-0001' })]), true);
+    expect((await dossier('APIX-0001'))?.given_name).toBe('Agent1');
+  });
+
+  it('voit le doublon d’un fichier malgré la casse', async () => {
+    const r = await imports.importer(
+      admin,
+      classeurDe([AGENT(1), AGENT(1, { Prénom: 'Sosie', Matricule: 'apix-0001' })]),
+      true,
+    );
+    expect(r.crees).toBe(1);
+    expect(r.lignes[1]?.etat).toBe('ignore');
+  });
+});

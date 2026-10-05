@@ -21,6 +21,7 @@ import { api } from '../../../../lib/api';
 import { BandeauDeleguer } from '../../../../components/deleguer-membres';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
+import { correspond } from '../../../../lib/recherche';
 import { CONTRACT_LABELS } from '../../../../lib/recruitment';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
 import { SqueletteTableau, ThTri, useTriLocal } from '../../../../components/tableau';
@@ -45,10 +46,7 @@ export default function CandidaturesPage() {
   const jobs = useQuery({ queryKey: ['jobs'], queryFn: () => api<JobPostingView[]>('/jobs') });
 
   const filtrees = useMemo(() => {
-    const terme = q.trim().toLowerCase();
-    const tout = jobs.data ?? [];
-    if (!terme) return tout;
-    return tout.filter((o) => `${o.reference} ${o.title}`.toLowerCase().includes(terme));
+    return (jobs.data ?? []).filter((o) => correspond(q, o.reference, o.title));
   }, [jobs.data, q]);
 
   /**

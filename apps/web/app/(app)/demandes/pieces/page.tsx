@@ -268,6 +268,7 @@ export default function PiecesAVerifierPage() {
               <Button
                 variant="danger"
                 loading={verifier.isPending}
+                disabled={!motif.trim()}
                 onClick={() => verifier.mutate({ piece: rejet, decision: 'rejected' })}
               >
                 Rejeter le document
@@ -275,11 +276,7 @@ export default function PiecesAVerifierPage() {
             </div>
           }
         >
-          <Field
-            label="Motif"
-            htmlFor="motif-rejet-piece"
-            hint="Facultatif. Il est transmis à l’agent, qui pourra déposer le document à nouveau."
-          >
+          <Field label="Motif" htmlFor="motif-rejet-piece" required>
             <Textarea
               id="motif-rejet-piece"
               value={motif}

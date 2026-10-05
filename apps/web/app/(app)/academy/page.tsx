@@ -18,6 +18,7 @@ import { FAMILLES } from '../../../lib/academy';
 import { api } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
 import { compte } from '../../../lib/mots';
+import { correspond } from '../../../lib/recherche';
 
 /* ————————————————————————————————————————————————————————————————
    APIX Academy — le catalogue.
@@ -71,13 +72,7 @@ export default function AcademyPage() {
   // La recherche d'abord, la famille ensuite : les compteurs des onglets
   // disent combien de formations TROUVÉES chaque famille contient.
   const trouvees = useMemo(() => {
-    const q = recherche.trim().toLocaleLowerCase('fr');
-    if (!q) return formations;
-    return formations.filter(
-      (f) =>
-        f.title.toLocaleLowerCase('fr').includes(q) ||
-        (f.summary ?? '').toLocaleLowerCase('fr').includes(q),
-    );
+    return formations.filter((f) => correspond(recherche, f.title, f.summary));
   }, [formations, recherche]);
   const visibles = useMemo(
     () => trouvees.filter((f) => filtre === 'toutes' || f.category === filtre),

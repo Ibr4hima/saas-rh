@@ -418,7 +418,7 @@ function Chapitre({
               >
                 <p className="mb-2 text-[14px] leading-snug font-bold text-ink-strong">
                   <span className="text-primary">Article {a.numero}</span>
-                  {a.title ? <span className="font-semibold text-ink"> — {a.title}</span> : null}
+                  {a.title ? <span className="font-semibold text-ink"> : {a.title}</span> : null}
                 </p>
                 <Corps texte={a.body} />
               </article>
@@ -502,7 +502,7 @@ function Resultats({
             <p className="mt-1 flex items-center justify-between gap-3 text-[12.5px] font-bold text-primary">
               <span>
                 Article {h.numero}
-                {h.title ? <span className="text-ink-strong"> — {h.title}</span> : null}
+                {h.title ? <span className="text-ink-strong"> : {h.title}</span> : null}
               </span>
               <Icon name="chevron_right" size={14} className="shrink-0 text-ink-muted" />
             </p>

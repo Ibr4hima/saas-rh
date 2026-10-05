@@ -116,6 +116,10 @@ async function dateDExpiration(
   return expiresOn;
 }
 
+/** Les colonnes d'une pièce, fichier exclu : une liste n'a pas à le charger. */
+const { data: _contenu, ...SANS_CONTENU } = getTableColumns(t.employeeDocuments);
+type PieceSansContenu = Omit<typeof t.employeeDocuments.$inferSelect, 'data'>;
+
 @Injectable()
 export class EmployeeDocumentsService {
   constructor(
@@ -316,6 +320,10 @@ export class EmployeeDocumentsService {
         employeeId: doc.employeeId,
         confieeA: doc.confieeAEmployeeId,
       });
+      // L'agent doit savoir quoi corriger avant de déposer à nouveau.
+      if (input.decision === 'rejected' && !input.comment?.trim()) {
+        problem(422, 'documents.motif_requis', 'Indiquez le motif du rejet');
+      }
       if (input.decision === 'approved') await this.reporterSurLaFiche(tx, doc, input.titre);
 
       await tx
@@ -353,7 +361,7 @@ export class EmployeeDocumentsService {
         type: 'document_reviewed',
         title: approved
           ? `Votre ${nom} est ${accord('ajouté', piece)} à votre dossier`
-          : `Votre ${nom} est ${accord('refusé', piece)}`,
+          : `Votre ${nom} est ${accord('refusé', piece)} : ${input.comment!.trim()}`,
         link: '/moi/documents/justificatifs',
         dedupeKey: `piece:${documentId}:verdict`,
       });
@@ -370,7 +378,7 @@ export class EmployeeDocumentsService {
    */
   private async reporterSurLaFiche(
     tx: Tx,
-    doc: typeof t.employeeDocuments.$inferSelect,
+    doc: PieceSansContenu,
     titre: TitreSaisi | undefined,
   ): Promise<void> {
     const mode = modeDeControle(doc, await this.titreDeLaFiche(tx, doc.employeeId));
@@ -440,7 +448,7 @@ export class EmployeeDocumentsService {
       const uploader = t.users;
       const rows = await tx
         .select({
-          doc: t.employeeDocuments,
+          doc: SANS_CONTENU,
           uploaderGivenName: uploader.givenName,
           uploaderFamilyName: uploader.familyName,
         })
@@ -493,11 +501,10 @@ export class EmployeeDocumentsService {
       // Les pièces en vérification viennent toutes ; la limite ne porte que
       // sur celles vérifiées ces trente derniers jours. Sans leur contenu :
       // une liste n'a pas à charger les fichiers.
-      const { data: _contenu, ...colonnes } = getTableColumns(t.employeeDocuments);
       const lire = (filtre: SQL) =>
         tx
           .select({
-            doc: colonnes,
+            doc: SANS_CONTENU,
             uploaderGivenName: uploader.givenName,
             uploaderFamilyName: uploader.familyName,
             givenName: t.persons.givenName,
@@ -565,11 +572,7 @@ export class EmployeeDocumentsService {
   }
 
   /** Voit CE document : la file entière, ou le membre à qui il est confié. */
-  private async voit(
-    tx: Tx,
-    user: SessionUser,
-    doc: typeof t.employeeDocuments.$inferSelect,
-  ): Promise<boolean> {
+  private async voit(tx: Tx, user: SessionUser, doc: PieceSansContenu): Promise<boolean> {
     if (await this.voitLaFile(tx, user)) return true;
     const moi = await agentDuCompte(tx, user.userId);
     return Boolean(moi && doc.confieeAEmployeeId === moi);
@@ -580,7 +583,7 @@ export class EmployeeDocumentsService {
     user: SessionUser,
     moi: string | null,
     dch: DirectionDuPersonnel | null,
-    doc: Omit<typeof t.employeeDocuments.$inferSelect, 'data'>,
+    doc: PieceSansContenu,
     uploadedByName: string,
     o: { reviewer?: { givenName: string; familyName: string }; isOwner: boolean },
   ): Promise<EmployeeDocumentView> {
@@ -664,7 +667,11 @@ export class EmployeeDocumentsService {
       if (!autorise) {
         problem(403, 'documents.forbidden_scope', 'Accès limité à votre propre dossier');
       }
-      return { filename: doc.filename, contentType: doc.contentType, data: doc.data };
+      const [fichier] = await tx
+        .select({ data: t.employeeDocuments.data })
+        .from(t.employeeDocuments)
+        .where(eq(t.employeeDocuments.id, documentId));
+      return { filename: doc.filename, contentType: doc.contentType, data: fichier!.data };
     });
   }
 
@@ -688,9 +695,10 @@ export class EmployeeDocumentsService {
     });
   }
 
+  /** La pièce sans son contenu : seul le téléchargement lit le fichier. */
   private async requireDocument(tx: Tx, id: string) {
     const [doc] = await tx
-      .select()
+      .select(SANS_CONTENU)
       .from(t.employeeDocuments)
       .where(eq(t.employeeDocuments.id, id))
       .limit(1);

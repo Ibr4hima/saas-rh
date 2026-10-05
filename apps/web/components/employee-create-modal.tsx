@@ -119,7 +119,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             addressLine: addressLine || undefined,
           },
           employee: {
-            employeeNumber,
+            employeeNumber: employeeNumber.trim().toUpperCase(),
             hiredOn: contractStart,
             workEmail: composeWorkEmail(workEmail),
             workPhone: composePhone(workPhoneCountry, workPhoneLocal),
@@ -318,6 +318,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
           <Field label="Matricule" htmlFor="employeeNumber" required>
             <Input
               id="employeeNumber"
+              className="uppercase"
               value={employeeNumber}
               onChange={(e) => setEmployeeNumber(e.target.value)}
             />

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { LigneImport, RapportImportEmployes, SessionUser } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { lirePremiereFeuille, XlsxIllisible } from '../../common/xlsx';
@@ -42,6 +43,9 @@ import { contratEchu } from './en-activite';
       quarante-neuf précédentes, et le rapport nomme la ligne ET la colonne
       pour que la RH corrige dans son tableur.
    ———————————————————————————————————————————————————————————————— */
+
+/** Le n+1 d'un dossier, joint à sa propre table. */
+const n1 = alias(t.employees, 'n1');
 
 /** Au-delà, c'est un fichier qu'on n'importe pas : c'est une migration. */
 const MAX_LIGNES = 5_000;
@@ -131,7 +135,7 @@ export class ImportEmployesService {
       // importé affichait TOUS ses abrégés comme introuvables.
       const unite = uniteAbrege ? unitesParAbrege.get(normaliser(uniteAbrege)) : undefined;
       const dejaLa = employesParMatricule.has(cleMatricule(matricule));
-      const dejaVu = vusDansLeFichier.get(matricule);
+      const dejaVu = vusDansLeFichier.get(cleMatricule(matricule));
       if (dejaLa || dejaVu !== undefined) {
         lignes.push({
           ligne: numero,
@@ -151,7 +155,7 @@ export class ImportEmployesService {
         });
         return;
       }
-      vusDansLeFichier.set(matricule, numero);
+      vusDansLeFichier.set(cleMatricule(matricule), numero);
 
       lignes.push({
         ligne: numero,
@@ -168,8 +172,9 @@ export class ImportEmployesService {
         etat: 'a-creer',
         motif: null,
         colonne: null,
-        avertissements:
-          uniteAbrege && !unite
+        avertissements: [
+          ...converti.ok.avertissements,
+          ...(uniteAbrege && !unite
             ? [
                 {
                   colonne: 'Direction affectée',
@@ -187,7 +192,8 @@ export class ImportEmployesService {
                     texte: 'Sans poste, l’agent n’est pas affecté : dossier sans direction',
                   },
                 ]
-              : [],
+              : []),
+        ],
       });
       aCreer.push({ ligne: numero, converti });
     });
@@ -349,7 +355,15 @@ export class ImportEmployesService {
       const id = nes.get(cleMatricule(l.matricule));
       const cleResp = cleMatricule(l.responsable);
       const responsableId = employesParMatricule.get(cleResp)?.id ?? nes.get(cleResp) ?? null;
-      if (!id || !responsableId) continue;
+      if (!id) continue;
+      if (!responsableId) {
+        // Son n+1 devait naître de ce fichier, et sa ligne a échoué.
+        l.avertissements.push({
+          colonne: NOM_COLONNE_RESPONSABLE,
+          texte: `Le dossier de ${l.responsableResolu} n’a pas pu être créé : rattachement non fait`,
+        });
+        continue;
+      }
       try {
         await this.people.update(user, id, { employee: { managerEmployeeId: responsableId } });
       } catch (err) {
@@ -359,6 +373,15 @@ export class ImportEmployesService {
         l.responsableResolu = null;
         l.avertissements.push({ colonne: NOM_COLONNE_RESPONSABLE, texte: messageDErreur(err) });
       }
+    }
+
+    // Le compte rendu final dit ce que la base contient, pas ce que l'aperçu
+    // prévoyait : le n+1 de chaque dossier créé se relit après écriture.
+    const reels = await this.responsablesReels(user, [...nes.values()]);
+    for (const l of rapport.lignes) {
+      const id =
+        l.etat === 'a-creer' && l.matricule ? nes.get(cleMatricule(l.matricule)) : undefined;
+      if (id) l.responsableResolu = reels.get(id) ?? null;
     }
 
     return {
@@ -378,6 +401,20 @@ export class ImportEmployesService {
       }
       throw err;
     }
+  }
+
+  /** Le nom du n+1 de chaque dossier, tel qu'il est en base. */
+  private async responsablesReels(user: SessionUser, ids: string[]) {
+    if (ids.length === 0) return new Map<string, string>();
+    return this.db.withTenant(ctxOf(user), async (tx: Tx) => {
+      const lignes = await tx
+        .select({ id: t.employees.id, prenom: t.persons.givenName, nom: t.persons.familyName })
+        .from(t.employees)
+        .innerJoin(n1, eq(n1.id, t.employees.managerEmployeeId))
+        .innerJoin(t.persons, eq(t.persons.id, n1.personId))
+        .where(inArray(t.employees.id, ids));
+      return new Map(lignes.map((r) => [r.id, `${r.prenom} ${r.nom}`]));
+    });
   }
 
   /**

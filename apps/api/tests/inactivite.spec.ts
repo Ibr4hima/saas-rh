@@ -684,6 +684,35 @@ describe('désactiver, réactiver', () => {
   });
 });
 
+describe('un CDD renouvelé ne prend pas fin', () => {
+  it('ni alerte de fin pour lui, ni reste de celles déjà parties', async () => {
+    const notifications = new NotificationsService(db);
+    await raw(`UPDATE contracts SET end_date = CURRENT_DATE + 10 WHERE employee_id = $1`, [
+      fatou.employeeId,
+    ]);
+    const alertes = async () =>
+      (
+        await raw(
+          `SELECT title FROM notifications
+            WHERE tenant_id = $1 AND type = 'contract_deadline' AND title LIKE '%Fatou%'`,
+          [tenantId],
+        )
+      ).rows.length;
+    await notifications.list(admin);
+    expect(await alertes()).toBe(1);
+
+    // Renouvelée au lendemain de sa fin : l'ancien contrat garde sa date.
+    await people.newContract(admin, fatou.employeeId, {
+      contractType: 'cdd',
+      startDate: await jour(11),
+      endDate: await jour(376),
+    });
+    expect(await alertes()).toBe(0);
+    await notifications.list(admin);
+    expect(await alertes()).toBe(0);
+  });
+});
+
 describe('une invitation en attente quand le dossier ferme', () => {
   /** Un agent sans compte, et l'invitation qu'on lui envoie : le jeton du lien. */
   async function invite(a: Agent): Promise<string> {

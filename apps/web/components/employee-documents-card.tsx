@@ -351,11 +351,12 @@ export function EmployeeDocumentsCard({
                       size="sm"
                       variant="danger"
                       loading={review.isPending}
+                      disabled={!rejectComment.trim()}
                       onClick={() =>
                         review.mutate({
                           id: d.id,
                           decision: 'rejected',
-                          comment: rejectComment.trim() || undefined,
+                          comment: rejectComment.trim(),
                         })
                       }
                     >

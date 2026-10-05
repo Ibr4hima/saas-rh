@@ -583,7 +583,7 @@ export default function EmployeesPage() {
                     <Icon name="error" size={15} className="mt-0.5 shrink-0 text-warning" />
                     <span>
                       <span className="font-semibold text-ink-strong">{s.name}</span>
-                      <span className="text-ink-muted"> — {s.reason}</span>
+                      <span className="text-ink-muted"> : {s.reason}</span>
                     </span>
                   </li>
                 ))}

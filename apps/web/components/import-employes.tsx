@@ -354,16 +354,16 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
                             390 px, il se hachait sur huit lignes. */}
                         {l.motif ? (
                           <span className="hidden text-[11px] leading-snug text-ink-muted md:inline">
-                            {l.colonne ? <b>{l.colonne} — </b> : null}
+                            {l.colonne ? <b>{l.colonne} : </b> : null}
                             {l.motif}
                           </span>
                         ) : null}
-                        {l.avertissements.map((a) => (
+                        {l.avertissements.map((a, i) => (
                           <span
-                            key={a.colonne}
+                            key={`${a.colonne}-${i}`}
                             className="hidden text-[11px] leading-snug text-ink-muted md:inline"
                           >
-                            <b>{a.colonne} — </b>
+                            <b>{a.colonne} : </b>
                             {a.texte}
                           </span>
                         ))}
@@ -380,13 +380,13 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
                         <span className="flex flex-col gap-1 text-[11px] leading-snug text-ink-muted">
                           {l.motif ? (
                             <span>
-                              {l.colonne ? <b>{l.colonne} — </b> : null}
+                              {l.colonne ? <b>{l.colonne} : </b> : null}
                               {l.motif}
                             </span>
                           ) : null}
-                          {l.avertissements.map((a) => (
-                            <span key={a.colonne}>
-                              <b>{a.colonne} — </b>
+                          {l.avertissements.map((a, i) => (
+                            <span key={`${a.colonne}-${i}`}>
+                              <b>{a.colonne} : </b>
                               {a.texte}
                             </span>
                           ))}

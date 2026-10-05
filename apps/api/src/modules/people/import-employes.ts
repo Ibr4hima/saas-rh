@@ -6,8 +6,10 @@ import {
   type Gender,
   type IdDocumentType,
   type MaritalStatus,
+  type AvertissementImport,
 } from '@teranga/contracts';
 import type { CelluleXlsx } from '../../common/xlsx';
+import { frDate } from '../notifications/phrases';
 
 /* ————————————————————————————————————————————————————————————————
    Du fichier du RH au dossier de la plateforme.
@@ -259,6 +261,8 @@ export interface LigneConvertie {
   uniteAbrege: string | null;
   /** Le matricule du n+1 écrit dans le fichier, à résoudre contre l'effectif. */
   responsableMatricule: string | null;
+  /** Ce qui ne bloque pas la création mais que la RH doit lire. */
+  avertissements: AvertissementImport[];
   /** Prête à passer à la création de dossier, orgUnitId non résolu. */
   entree: Omit<CreateEmployeeInput, 'assignment'> & {
     assignment?: { positionTitle: string; startDate: string };
@@ -328,7 +332,8 @@ export function convertirLigne(
 
   const prenom = lireTexte('prenom');
   const nom = lireTexte('nom');
-  const matricule = lireTexte('matricule');
+  // Un matricule s'écrit en capitales, quelle que soit la frappe du classeur.
+  const matricule = lireTexte('matricule')?.toUpperCase();
   const nomComplet = [prenom, nom].filter(Boolean).join(' ') || null;
 
   const refus = (motif: string, colonne: Champ | null): { refus: LigneRefusee } => ({
@@ -388,8 +393,14 @@ export function convertirLigne(
   if (numeroPiece && !piece) {
     return refus('Le numéro de pièce est donné sans son type', 'piece');
   }
+  // Une pièce expirée ne fait pas perdre l'agent : le dossier se crée avec
+  // sa vraie date, la fiche la montre périmée et l'agent est prévenu.
+  const avertissements: AvertissementImport[] = [];
   if (dates.expiration && dates.expiration < new Date().toISOString().slice(0, 10)) {
-    return refus(`La pièce d’identité est expirée depuis le ${dates.expiration}`, 'expiration');
+    avertissements.push({
+      colonne: nomColonne('expiration'),
+      texte: `Pièce d’identité expirée depuis le ${frDate(dates.expiration)} : à renouveler`,
+    });
   }
 
   const paysBrut = lireTexte('paysNaissance');
@@ -437,7 +448,8 @@ export function convertirLigne(
       nom: `${prenom} ${nom}`,
       poste,
       uniteAbrege: lireTexte('unite') ?? null,
-      responsableMatricule: lireTexte('responsable') ?? null,
+      responsableMatricule: lireTexte('responsable')?.toUpperCase() ?? null,
+      avertissements,
       entree: {
         person: {
           givenName: prenom,

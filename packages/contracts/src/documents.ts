@@ -204,6 +204,8 @@ export const notificationEspaceSchema = z.enum(['agent', 'gestion']).optional();
 export const notificationScopeQuerySchema = z.object({
   scope: notificationScopeSchema,
   espace: notificationEspaceSchema,
+  /** Combien en lire : trente d'abord, trente de plus à chaque « Voir plus ». */
+  limite: z.coerce.number().int().min(1).max(600).default(30),
 });
 
 /** Tout lire, tout ranger : dans la boîte d'un espace, ou dans toute la boîte. */
@@ -217,6 +219,8 @@ export type NotificationIdsInput = z.infer<typeof notificationIdsSchema>;
 
 export interface NotificationsPage {
   items: NotificationView[];
+  /** Combien en compte la vue (boîte ou archives) : au-delà des `items`, il en reste. */
+  total: number;
   /** Non lues DANS LA BOÎTE : ranger une notification la retire du compteur. */
   unreadCount: number;
   /** Combien de lignes dorment dans les archives (pour l'onglet). */

@@ -395,7 +395,11 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
           >
             <Input
               id="employeeNumber"
-              {...form.register('employeeNumber', { required: 'Le matricule est requis' })}
+              className="uppercase"
+              {...form.register('employeeNumber', {
+                required: 'Le matricule est requis',
+                setValueAs: (v: string) => v.toUpperCase(),
+              })}
             />
           </Field>
           <Field

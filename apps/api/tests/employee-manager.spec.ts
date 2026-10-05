@@ -353,6 +353,24 @@ describe('tri, filtres et effectifs', () => {
     expect(page.counts).toEqual({ active: 0, archived: 1 });
   });
 
+  it('trouve « Prénom Nom » dans les deux ordres, sans tenir compte des accents', async () => {
+    await raw(
+      `UPDATE persons SET given_name = 'Mariama', family_name = 'Cissé'
+                WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [carla],
+    );
+    for (const q of ['Mariama Cissé', 'cisse mariama', 'MARIAMA CISSE', 'cis', 'carl']) {
+      const page = await lister({ q });
+      expect(
+        page.items.map((i) => i.employeeNumber),
+        q,
+      ).toEqual(['CARLA']);
+    }
+    expect((await lister({ q: 'Mariama Diop' })).items).toHaveLength(0);
+    // Un joker tapé se cherche tel quel.
+    expect((await lister({ q: '%' })).items).toHaveLength(0);
+  });
+
   it('pagine par décalage', async () => {
     const p1 = await lister({ sort: 'name', dir: 'asc', limit: 2, offset: 0 });
     expect(p1.items.map((i) => i.employeeNumber)).toEqual(['ALICE', 'BRUNO']);
@@ -393,5 +411,24 @@ describe('tri, filtres et effectifs', () => {
     const trop = await lister({ status: 'active', offset: 50 });
     expect(trop.items).toHaveLength(0);
     expect(trop.total).toBe(2);
+  });
+});
+
+describe('le matricule', () => {
+  const matricule = async (id: string) =>
+    (await raw(`SELECT employee_number FROM employees WHERE id = $1`, [id])).rows[0]
+      ?.employee_number as string;
+
+  it('s’écrit en capitales, quelle que soit la frappe', async () => {
+    await people.update(user, bruno, { employee: { employeeNumber: ' apix-0009 ' } });
+    expect(await matricule(bruno)).toBe('APIX-0009');
+  });
+
+  it('ne se prend pas deux fois, même en changeant la casse', async () => {
+    expect(
+      await codeOf(() => people.update(user, bruno, { employee: { employeeNumber: 'alice' } })),
+    ).toBe('people.employee_number_taken');
+    // Même une écriture faite hors de l'API bute sur la base.
+    await expect(creerEmploye('alice')).rejects.toThrow(/employees_matricule_sans_casse/);
   });
 });

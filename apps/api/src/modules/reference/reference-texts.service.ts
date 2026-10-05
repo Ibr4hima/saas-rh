@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, inArray, notInArray, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   ReferenceChapterView,
@@ -53,8 +53,10 @@ export class ReferenceTextsService {
    * lui dire qu'un brouillon existe serait déjà en dire trop.
    */
   private async visible(tx: Tx, slug: string, user: SessionUser) {
+    // Sans le PDF : seul son téléchargement le lit.
+    const { pdfData: _pdf, ...colonnes } = getTableColumns(t.referenceTexts);
     const [texte] = await tx
-      .select()
+      .select(colonnes)
       .from(t.referenceTexts)
       .where(eq(t.referenceTexts.slug, slug))
       .limit(1);
@@ -238,10 +240,14 @@ export class ReferenceTextsService {
   async pdf(user: SessionUser, slug: string): Promise<{ filename: string; data: Buffer }> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const texte = await this.visible(tx, slug, user);
-      if (!texte.pdfFilename || !texte.pdfData) {
+      const [fichier] = await tx
+        .select({ data: t.referenceTexts.pdfData })
+        .from(t.referenceTexts)
+        .where(eq(t.referenceTexts.id, texte.id));
+      if (!texte.pdfFilename || !fichier?.data) {
         problem(404, 'reference.no_pdf', 'Aucun fichier officiel déposé pour ce texte');
       }
-      return { filename: texte.pdfFilename, data: texte.pdfData };
+      return { filename: texte.pdfFilename, data: fichier.data };
     });
   }
 

@@ -10,7 +10,7 @@ import type {
   NotificationView,
   NotificationsPage,
 } from '@teranga/contracts';
-import { cn, EmptyState } from '@teranga/ui';
+import { Button, cn, EmptyState } from '@teranga/ui';
 import { api } from '../lib/api';
 import { Icon, type IconName } from './icons';
 
@@ -54,13 +54,21 @@ export function NotificationsBell({ espace }: { espace?: Espace }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [vue, setVue] = useState<NotificationScope>('inbox');
+  // Trente d'abord ; « Voir plus » en ajoute trente. Changer d'onglet repart de trente.
+  const [limite, setLimite] = useState(30);
   const boutonRef = useRef<HTMLButtonElement>(null);
   const panneauRef = useRef<HTMLDivElement>(null);
 
   const page = useQuery({
-    queryKey: ['notifications', vue, espace ?? 'tout'],
+    queryKey: ['notifications', vue, espace ?? 'tout', limite],
     queryFn: () =>
-      api<NotificationsPage>(`/notifications?scope=${vue}${filtre ? `&${filtre}` : ''}`),
+      api<NotificationsPage>(
+        `/notifications?scope=${vue}&limite=${limite}${filtre ? `&${filtre}` : ''}`,
+      ),
+    // « Voir plus » garde la liste affichée pendant qu'elle s'allonge ; un
+    // changement d'onglet, lui, ne montre jamais les lignes de l'autre vue.
+    placeholderData: (precedente, requete) =>
+      requete?.queryKey[1] === vue ? precedente : undefined,
     refetchInterval: 60_000,
   });
 
@@ -159,8 +167,14 @@ export function NotificationsBell({ espace }: { espace?: Espace }) {
           items={items}
           unread={unread}
           archivees={page.data?.archivedCount ?? 0}
+          total={page.data?.total ?? 0}
+          onVoirPlus={() => setLimite((l) => l + 30)}
+          voirPlusEnCours={page.isPlaceholderData}
           vue={vue}
-          onVue={setVue}
+          onVue={(v) => {
+            setVue(v);
+            setLimite(30);
+          }}
           chargement={page.isPending}
           onTousLus={() => markAll.mutate()}
           tousLusEnCours={markAll.isPending}
@@ -205,6 +219,9 @@ function PanneauNotifications({
   ancre,
   panneauRef,
   items,
+  total,
+  onVoirPlus,
+  voirPlusEnCours,
   unread,
   archivees,
   vue,
@@ -222,6 +239,9 @@ function PanneauNotifications({
   ancre: React.RefObject<HTMLButtonElement | null>;
   panneauRef: React.RefObject<HTMLDivElement | null>;
   items: NotificationView[];
+  total: number;
+  onVoirPlus: () => void;
+  voirPlusEnCours: boolean;
   unread: number;
   archivees: number;
   vue: NotificationScope;
@@ -398,6 +418,13 @@ function PanneauNotifications({
                   </li>
                 );
               })}
+              {items.length < total ? (
+                <li className="flex justify-center py-2.5">
+                  <Button size="sm" variant="ghost" loading={voirPlusEnCours} onClick={onVoirPlus}>
+                    Voir plus
+                  </Button>
+                </li>
+              ) : null}
             </ul>
           )}
         </div>

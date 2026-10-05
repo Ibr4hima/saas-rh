@@ -19,6 +19,7 @@ import { notifier, type NotificationDraft } from './notifier';
 import { CONTRAT, frDate, PIECE, rappel } from './phrases';
 import { alerterLaDCH } from '../acces/dch';
 import { inactiverSiLeTempsEstVenu } from '../people/activite';
+import { dernierContrat } from '../people/en-activite';
 
 export type { NotificationDraft } from './notifier';
 
@@ -128,6 +129,7 @@ export class NotificationsService {
     user: SessionUser,
     scope: NotificationScope = 'inbox',
     espace?: Espace,
+    limite = 30,
   ): Promise<NotificationsPage> {
     const ctx = { tenantId: user.tenantId, userId: user.userId };
 
@@ -172,8 +174,11 @@ export class NotificationsService {
         // celle qu'on vient de ranger, donc celle qu'on cherche à ressortir.
         .orderBy(
           scope === 'archive' ? desc(t.notifications.archivedAt) : desc(t.notifications.createdAt),
+          // Départage stable : « Voir plus » relit une page plus longue, les
+          // lignes déjà vues doivent garder leur place.
+          desc(t.notifications.id),
         )
-        .limit(30);
+        .limit(limite);
       const [compte] = await tx
         .select({
           // Le compteur de la cloche ne parle que de la BOÎTE : une ligne
@@ -181,12 +186,14 @@ export class NotificationsService {
           nonLues: sql<number>`count(*) FILTER (
             WHERE read_at IS NULL AND archived_at IS NULL)::int`,
           archivees: sql<number>`count(*) FILTER (WHERE archived_at IS NOT NULL)::int`,
+          dansLaBoite: sql<number>`count(*) FILTER (WHERE archived_at IS NULL)::int`,
         })
         .from(t.notifications)
         .where(and(mien(user.userId), deLEspace(espace)));
       return {
         unreadCount: compte?.nonLues ?? 0,
         archivedCount: compte?.archivees ?? 0,
+        total: (scope === 'archive' ? compte?.archivees : compte?.dansLaBoite) ?? 0,
         items: items.map((i) => ({
           id: i.id,
           type: i.type,
@@ -503,6 +510,9 @@ export class NotificationsService {
       .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
       .where(
         and(
+          // Son DERNIER contrat seulement : un CDD déjà renouvelé ne prend
+          // pas fin, son successeur est enregistré.
+          sql`${t.contracts.id} = ${dernierContrat(sql`${t.employees.id}`)}`,
           sql`${t.contracts.endDate} IS NOT NULL`,
           gte(t.contracts.endDate, sql`CURRENT_DATE`),
           eq(t.employees.status, 'active'),

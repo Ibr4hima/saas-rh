@@ -156,7 +156,7 @@ describe('la colonne du responsable hiérarchique', () => {
     }
   });
 
-  it('rend le matricule du n+1 TEL QUEL, à résoudre plus tard', () => {
+  it('rend le matricule du n+1 en capitales, à résoudre plus tard', () => {
     const { colonnes } = correspondre([
       'Prénom',
       'Nom',
@@ -165,7 +165,7 @@ describe('la colonne du responsable hiérarchique', () => {
       'Matricule du responsable',
     ]);
     const r = convertirLigne(['Awa', 'Diop', 'APIX-0002', '01/03/2024', ' apix-0001 '], colonnes);
-    expect('ok' in r && r.ok.responsableMatricule).toBe('apix-0001');
+    expect('ok' in r && r.ok.responsableMatricule).toBe('APIX-0001');
   });
 
   it('ne réclame pas la colonne : elle est facultative', () => {
@@ -324,12 +324,6 @@ describe('conversion d’une ligne', () => {
       /sans son type/i,
       "Pièce d'identité",
     ],
-    [
-      'à la pièce expirée',
-      { "Date d'expiration": new Date(Date.UTC(2020, 0, 1, 12)) },
-      /expirée/i,
-      "Date d'expiration",
-    ],
     ['au pays inconnu', { 'Pays de naissance': 'Wakanda' }, /Pays inconnu/i, 'Pays de naissance'],
     [
       'à la date illisible',
@@ -353,6 +347,28 @@ describe('conversion d’une ligne', () => {
       expect(r.refus.colonne).toBe(colonne);
     });
   }
+
+  it('garde l’agent dont la pièce est expirée, avec sa vraie date et un avertissement', () => {
+    const r = convertirLigne(
+      ligne({ ...complete, "Date d'expiration": new Date(Date.UTC(2020, 0, 1, 12)) }) as never,
+      colonnes,
+    );
+    if (!('ok' in r)) throw new Error('attendu convertible');
+    expect(r.ok.entree.person.idDocumentExpiresOn).toBe('2020-01-01');
+    expect(r.ok.avertissements).toEqual([
+      {
+        colonne: "Date d'expiration",
+        texte: 'Pièce d’identité expirée depuis le 1er janvier 2020 : à renouveler',
+      },
+    ]);
+  });
+
+  it('écrit le matricule et celui du n+1 en capitales', () => {
+    const r = convertirLigne(ligne({ ...complete, Matricule: ' apix-0007 ' }) as never, colonnes);
+    if (!('ok' in r)) throw new Error('attendu convertible');
+    expect(r.ok.matricule).toBe('APIX-0007');
+    expect(r.ok.entree.employee.employeeNumber).toBe('APIX-0007');
+  });
 
   it('accepte une ligne réduite au strict nécessaire', () => {
     const r = convertirLigne(

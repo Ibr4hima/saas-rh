@@ -557,6 +557,27 @@ describe('les pièces justificatives', () => {
     expect(await appels('piece', id)).toEqual([]);
   });
 
+  it('un rejet dit pourquoi : le motif est exigé, et l’agent le lit dans l’avis', async () => {
+    const { id } = await deposer();
+    expect(await codeOf(() => pieces.review(mariama.session, id, { decision: 'rejected' }))).toBe(
+      'documents.motif_requis',
+    );
+    expect(
+      await codeOf(() =>
+        pieces.review(mariama.session, id, { decision: 'rejected', comment: '   ' }),
+      ),
+    ).toBe('documents.motif_requis');
+    await pieces.review(mariama.session, id, {
+      decision: 'rejected',
+      comment: 'Document illisible',
+    });
+    const { rows } = await raw(
+      `SELECT title FROM notifications WHERE recipient_user_id = $1 AND dedupe_key = $2`,
+      [moussa.session.userId, `piece:${id}:verdict`],
+    );
+    expect(rows).toEqual([{ title: 'Votre diplôme est refusé : Document illisible' }]);
+  });
+
   it('les documents officiels se vérifient type par type : chaque dépôt va à qui vérifie le sien', async () => {
     await habiliter(awa, 'demandes.pieces.diplome');
     await habiliter(khady, 'demandes.pieces.cni');
@@ -593,6 +614,10 @@ describe('les pièces justificatives', () => {
     await habiliter(khady, 'demandes.pieces.diplome');
     expect((await pieces.content(khady.session, id)).filename).toBe('master.pdf');
     expect((await pieces.content(moussa.session, id)).filename).toBe('master.pdf');
+    // Le fichier se lit au téléchargement seulement : la liste n'en porte rien.
+    expect((await pieces.content(moussa.session, id)).data).toEqual(Buffer.from(PDF, 'base64'));
+    const liste = await pieces.list(moussa.session, moussa.employeeId);
+    expect(liste.find((p) => p.id === id)).not.toHaveProperty('data');
   });
 
   it('en vérification, son titulaire le remplace ou l’annule ; vérifié, il ne se change plus', async () => {

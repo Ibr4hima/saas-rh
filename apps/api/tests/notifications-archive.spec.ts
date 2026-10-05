@@ -214,3 +214,23 @@ describe('idempotence des rappels générés', () => {
     expect(Number(rows[0]!.n)).toBe(1);
   });
 });
+
+describe('la boîte se lit par pages', () => {
+  it('rend la page demandée et dit combien il en reste', async () => {
+    await service.archiveAll(user);
+    for (let i = 0; i < 45; i += 1) await poser(`Avis ${i}`);
+    const premiere = await service.list(user, 'inbox', undefined, 30);
+    expect(premiere.items).toHaveLength(30);
+    expect(premiere.total).toBe(45);
+    const suite = await service.list(user, 'inbox', undefined, 60);
+    expect(suite.items).toHaveLength(45);
+    // La page longue commence par les mêmes lignes que la courte.
+    expect(suite.items.slice(0, 30).map((n) => n.id)).toEqual(premiere.items.map((n) => n.id));
+  });
+
+  it('compte les archives à part', async () => {
+    const archives = await service.list(user, 'archive', undefined, 30);
+    expect(archives.total).toBe(archives.archivedCount);
+    expect(archives.items.length).toBe(Math.min(30, archives.total));
+  });
+});

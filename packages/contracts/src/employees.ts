@@ -50,6 +50,8 @@ export type OrgUnitType = z.infer<typeof orgUnitTypeSchema>;
 
 const isoDate = z.iso.date();
 const trimmed = (max: number) => z.string().trim().min(1).max(max);
+/** Un matricule s'écrit en capitales, quelle que soit la frappe. */
+const matricule = trimmed(30).toUpperCase();
 const optionalTrimmed = (max: number) =>
   z
     .string()
@@ -314,7 +316,7 @@ export const personFieldsSchema = personFieldsBaseSchema.superRefine((p, ctx) =>
 );
 
 export const employeeFieldsSchema = z.object({
-  employeeNumber: trimmed(30),
+  employeeNumber: matricule,
   hiredOn: isoDate,
   workEmail: z.email().optional(),
   workPhone: optionalTrimmed(30),
@@ -422,7 +424,7 @@ export const updatePersonFieldsSchema = z
 
 export const updateEmployeeFieldsSchema = z
   .object({
-    employeeNumber: trimmed(30),
+    employeeNumber: matricule,
     hiredOn: isoDate,
     workEmail: z.email().nullable(),
     workPhone: clearableString(30),

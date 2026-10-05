@@ -356,6 +356,25 @@ describe('suppression définitive', () => {
     expect(await compte('user_tenant_memberships', 'user_id = $1', [awa.userId])).toBe(0);
   });
 
+  it('laisse à un homonyme les notifications qui parlent de lui', async () => {
+    const sosie = await creerDossier('SOSIE', false);
+    await raw(`UPDATE persons SET given_name = 'AWA' WHERE id = $1`, [sosie.personId]);
+    const [deAwa, deSosie] = [randomUUID(), randomUUID()];
+    for (const [id, employe] of [
+      [deAwa, awa.employeeId],
+      [deSosie, sosie.employeeId],
+    ]) {
+      await raw(
+        `INSERT INTO notifications (id, tenant_id, recipient_user_id, type, title, link)
+         VALUES ($1,$2,$3,'contract_deadline','Le CDI de AWA Test prend fin',$4)`,
+        [id, tenantId, adminUserId, `/employees/${employe}`],
+      );
+    }
+    await people.remove(admin, { ids: [awa.employeeId] });
+    expect(await compte('notifications', 'id = $1', [deAwa])).toBe(0);
+    expect(await compte('notifications', 'id = $1', [deSosie])).toBe(1);
+  });
+
   it('vide le journal d’audit de ce qu’il avait recopié, et garde la trace', async () => {
     await garnir(awa);
     const personId = awa.personId;

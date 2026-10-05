@@ -335,7 +335,7 @@ function CompteRendu({ analyse }: { analyse: ReturnType<typeof analyserTexte> })
                 </span>
                 <span className="text-ink-muted">
                   {' '}
-                  — {c.articles.length} article{c.articles.length > 1 ? 's' : ''}
+                  · {c.articles.length} article{c.articles.length > 1 ? 's' : ''}
                   {c.sections.length > 0
                     ? `, ${c.sections.length} section${c.sections.length > 1 ? 's' : ''}`
                     : ''}
