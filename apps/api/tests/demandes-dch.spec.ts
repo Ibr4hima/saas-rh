@@ -361,6 +361,105 @@ describe('les demandes de documents', () => {
     ]);
   });
 
+  it('un ancien directeur ne garde pas ce qu’il avait repris', async () => {
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
+    await db.withTenant({ tenantId, userId: mariama.session.userId }, (tx) =>
+      confierLaDemande(tx, mariama.session, 'documents', id, null),
+    );
+    const confiee = async () =>
+      (await raw(`SELECT confiee_a_employee_id AS c FROM document_requests WHERE id = $1`, [id]))
+        .rows[0]?.c ?? null;
+    expect(await confiee()).toBe(mariama.employeeId);
+    // Awa dirige désormais la DCH ; Mariama y reste, sans habilitation.
+    await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [
+      uDCH,
+      awa.employeeId,
+    ]);
+    expect(await confiee()).toBeNull();
+    await reconcilier();
+    expect(await appels('document', id)).toEqual(['dch:Awa']);
+    expect(
+      await codeOf(() => documents.advance(mariama.session, id, { status: 'processing' })),
+    ).toBe('demandes.pas_traitant');
+  });
+
+  it('un membre sorti de la DCH perd ce qui lui était confié, et ne le voit plus', async () => {
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
+    await db.withTenant({ tenantId, userId: mariama.session.userId }, (tx) =>
+      confierLaDemande(tx, mariama.session, 'documents', id, khady.employeeId),
+    );
+    const voit = async () => (await documents.list(khady.session, {})).some((r) => r.id === id);
+    expect(await voit()).toBe(true);
+    await raw(`UPDATE assignments SET org_unit_id = $2 WHERE employee_id = $1`, [
+      khady.employeeId,
+      uDSID,
+    ]);
+    try {
+      await reconcilier();
+      expect(await voit()).toBe(false);
+      expect(await appels('document', id)).toEqual(['dch:Mariama']);
+    } finally {
+      await raw(`UPDATE assignments SET org_unit_id = $2 WHERE employee_id = $1`, [
+        khady.employeeId,
+        uDCH,
+      ]);
+    }
+  });
+
+  it('qui a traité une demande prête ne la corrige plus une fois sa délégation retirée', async () => {
+    await habiliter(awa, 'demandes.documents.attestation_travail');
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
+    await documents.advance(awa.session, id, { status: 'processing' });
+    await documents.advance(awa.session, id, { status: 'ready', pickupContact: 'Awa Diop' });
+    await habiliter(awa, 'demandes.documents.attestation_travail', false);
+    expect(
+      await codeOf(() =>
+        documents.advance(awa.session, id, { status: 'ready', pickupContact: 'Accueil' }),
+      ),
+    ).not.toBe('AUCUNE ERREUR');
+    expect((await documents.list(awa.session, {})).some((r) => r.canAdvance && r.id === id)).toBe(
+      false,
+    );
+    await documents.advance(mariama.session, id, { status: 'ready', pickupContact: 'Accueil' });
+  });
+
+  it('l’attestation se génère pour une demande d’attestation ouverte, et le droit s’éteint avec elle', async () => {
+    const generer = () => codeOf(() => attestations.forEmployee(awa.session, moussa.employeeId));
+    // Traiter son bulletin ne donne pas son attestation.
+    await habiliter(awa, 'demandes.documents.bulletin_salaire');
+    await documents.create(moussa.session, { docTypes: ['bulletin_salaire'] });
+    expect(await generer()).toBe('auth.forbidden');
+
+    await habiliter(awa, 'demandes.documents.attestation_travail');
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
+    expect(await generer()).toBe('AUCUNE ERREUR');
+    expect((await attestations.apercu(awa.session, moussa.employeeId)).paragraphes[0]).toMatch(
+      /^L’Agence .* atteste que M\.\/Mme Moussa TEST/,
+    );
+
+    // Prête : la demande est close, le droit avec elle.
+    await documents.advance(awa.session, id, { status: 'processing' });
+    expect(await generer()).toBe('AUCUNE ERREUR');
+    await documents.advance(awa.session, id, { status: 'ready', pickupContact: 'Awa Diop' });
+    expect(await generer()).toBe('auth.forbidden');
+    expect(await codeOf(() => attestations.apercu(awa.session, moussa.employeeId))).toBe(
+      'auth.forbidden',
+    );
+
+    // Une nouvelle demande, puis la délégation retirée : plus rien.
+    await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
+    expect(await generer()).toBe('AUCUNE ERREUR');
+    await habiliter(awa, 'demandes.documents.attestation_travail', false);
+    expect(await generer()).toBe('auth.forbidden');
+    expect(await codeOf(() => attestations.forEmployee(mariama.session, moussa.employeeId))).toBe(
+      'AUCUNE ERREUR',
+    );
+  });
+
   it('l’attestation de stage se demande comme les autres, et va à qui la traite', async () => {
     await habiliter(awa, 'demandes.documents.attestation_stage');
     const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_stage'] }))
@@ -665,10 +764,10 @@ describe('les pièces justificatives', () => {
       ).rows.map((r) => r.title as string);
     expect(await titres(khady, `piece:${cni}:%`)).toEqual(['Moussa Test a déposé sa CNI']);
     expect(await titres(awa, `piece:${diplome}:%`)).toEqual(['Moussa Test a déposé un diplôme']);
-    // Awa ne vérifie pas les pièces d'identité ; le directeur, si.
+    // Awa ne vérifie pas les pièces d'identité, et ne les voit pas ; le directeur, si.
     expect(
       await codeOf(() => pieces.review(awa.session, cni, { version: 1, decision: 'approved' })),
-    ).toBe('demandes.pas_traitant');
+    ).toBe('documents.forbidden_scope');
     await pieces.review(mariama.session, cni, {
       version: 1,
       decision: 'approved',
@@ -692,6 +791,21 @@ describe('les pièces justificatives', () => {
     expect((await pieces.content(moussa.session, id)).data).toEqual(Buffer.from(PDF, 'base64'));
     const liste = await pieces.list(moussa.session, moussa.employeeId);
     expect(liste.find((p) => p.id === id)).not.toHaveProperty('data');
+  });
+
+  it('une déléguée aux seuls CV ne voit ni ne télécharge une CNI', async () => {
+    const { id: cni } = await titre('cni', 'CNI', await dans(800));
+    const { id: cv } = await titre('cv', 'CV');
+    await habiliter(khady, 'demandes.pieces.cv');
+    expect((await pieces.file(khady.session)).map((p) => p.id)).toEqual([cv]);
+    expect((await pieces.list(khady.session, moussa.employeeId)).map((p) => p.id)).toEqual([cv]);
+    expect(await codeOf(() => pieces.content(khady.session, cni))).toBe(
+      'documents.forbidden_scope',
+    );
+    expect((await pieces.content(khady.session, cv)).filename).toBe('CV.pdf');
+    // La directrice voit tout.
+    expect((await pieces.file(mariama.session)).map((p) => p.id).sort()).toEqual([cni, cv].sort());
+    await habiliter(khady, 'demandes.pieces.cv', false);
   });
 
   it('en vérification, son titulaire le remplace ou l’annule ; vérifié, il ne se change plus', async () => {

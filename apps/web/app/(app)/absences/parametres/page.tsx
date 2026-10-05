@@ -2,8 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import type { AbsenceFrequency, AbsenceType } from '@teranga/contracts';
-import { ABSENCE_FREQUENCY_LABELS, peut } from '@teranga/contracts';
+import type { AbsenceType } from '@teranga/contracts';
+import { peut } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -15,7 +15,6 @@ import {
   EmptyState,
   Field,
   Input,
-  Select,
   TBody,
   THead,
   Table,
@@ -67,12 +66,7 @@ export default function AbsenceSettingsPage() {
 // Types d'absences
 // =============================================================================
 
-/**
- * Un quota se lit toujours avec sa cadence : « 30 » ne veut rien dire, « 30 par
- * an » se comprend. Les deux colonnes se tiennent donc côte à côte, et la
- * fréquence tombe à « — » quand le type n'en a pas — la maternité s'ouvre à la
- * naissance, pas au 1er janvier.
- */
+/** Un type a un quota annuel, ou n'en a pas : la maternité s'ouvre à la naissance. */
 function TypesCard({ peutGerer }: { peutGerer: boolean }) {
   const queryClient = useQueryClient();
   const types = useQuery({
@@ -125,8 +119,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
           <THead>
             <tr>
               <Th>Type d&apos;absence</Th>
-              <Th className="text-right">Jours autorisés</Th>
-              <Th>Fréquence</Th>
+              <Th>Quota</Th>
               <Th>Règles</Th>
               {peutGerer ? <Th className="w-20 text-right">Actions</Th> : null}
             </tr>
@@ -135,20 +128,13 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
             {(types.data ?? []).map((t) => (
               <Tr key={t.id} className="group">
                 <Td className="font-semibold text-ink-strong">{t.name}</Td>
-                <Td className="text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {t.allowanceDays == null ? (
-                    <span className="text-ink-muted">—</span>
-                  ) : (
+                <Td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {t.frequency === 'annual' && t.allowanceDays != null ? (
                     <>
-                      {t.allowanceDays} <span className="text-ink-muted">j</span>
+                      {t.allowanceDays} <span className="text-ink-muted">j par an</span>
                     </>
-                  )}
-                </Td>
-                <Td>
-                  {t.allowanceDays == null && t.frequency === 'none' ? (
-                    <span className="text-ink-muted">—</span>
                   ) : (
-                    ABSENCE_FREQUENCY_LABELS[t.frequency]
+                    <span className="text-ink-muted">Sans quota</span>
                   )}
                 </Td>
                 <Td>
@@ -217,7 +203,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
 
 type BrouillonType = {
   name: string;
-  frequency: AbsenceFrequency;
+  /** Vide : sans quota. */
   allowanceDays: string;
   deductsBalance: boolean;
   requiresDocument: boolean;
@@ -235,9 +221,8 @@ function FenetreType({
 }) {
   const [form, setForm] = useState<BrouillonType>({
     name: cible?.name ?? '',
-    frequency: cible?.frequency ?? 'annual',
     allowanceDays: cible?.allowanceDays == null ? '' : String(cible.allowanceDays),
-    deductsBalance: cible?.deductsBalance ?? true,
+    deductsBalance: cible?.deductsBalance ?? false,
     requiresDocument: cible?.requiresDocument ?? false,
     resteJoignable: cible?.resteJoignable ?? false,
   });
@@ -245,16 +230,18 @@ function FenetreType({
   const set = <K extends keyof BrouillonType>(k: K, v: BrouillonType[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  const quotaManquant = form.frequency !== 'none' && form.allowanceDays.trim() === '';
+  const avecQuota = form.allowanceDays.trim() !== '';
   const nomTropCourt = form.name.trim().length < 2;
+  const annee = new Date().getFullYear();
 
   const enregistrer = useMutation({
     mutationFn: () => {
       const body = {
         name: form.name.trim(),
-        deductsBalance: form.deductsBalance,
-        allowanceDays: form.allowanceDays.trim() === '' ? null : Number(form.allowanceDays),
-        frequency: form.frequency,
+        // Seul un quota se décompte : sans lui, toute demande serait refusée.
+        deductsBalance: avecQuota && form.deductsBalance,
+        allowanceDays: avecQuota ? Number(form.allowanceDays) : null,
+        frequency: avecQuota ? 'annual' : 'none',
         requiresDocument: form.requiresDocument,
         resteJoignable: form.resteJoignable,
       };
@@ -271,10 +258,13 @@ function FenetreType({
       open
       onClose={onClose}
       title={cible ? 'Modifier le type d’absence' : 'Nouveau type d’absence'}
+      // En composant, pas en texte : la phrase passe à la ligne au lieu d'être coupée.
       subtitle={
-        cible
-          ? 'Les demandes déjà déposées gardent le paramétrage sous lequel elles ont été visées.'
-          : 'Il apparaîtra aussitôt dans le formulaire de demande.'
+        <p className="text-xs text-ink-muted">
+          {cible
+            ? `Vaut à partir de ${annee} ; les années passées gardent leur paramétrage.`
+            : 'Il apparaîtra aussitôt dans le formulaire de demande.'}
+        </p>
       }
       maxWidth="max-w-xl"
       footer={
@@ -283,7 +273,7 @@ function FenetreType({
             Annuler
           </Button>
           <Button
-            disabled={nomTropCourt || quotaManquant}
+            disabled={nomTropCourt}
             loading={enregistrer.isPending}
             onClick={() => {
               setErreur(null);
@@ -313,30 +303,7 @@ function FenetreType({
 
       <ModalSection title="Droit ouvert">
         <ModalGrid>
-          <Field
-            label="Fréquence"
-            htmlFor="typeFreq"
-            hint="« Par événement » : le droit s’ouvre au fait générateur, pas au calendrier."
-          >
-            <Select
-              id="typeFreq"
-              value={form.frequency}
-              onChange={(e) => set('frequency', e.target.value as AbsenceFrequency)}
-            >
-              {(Object.keys(ABSENCE_FREQUENCY_LABELS) as AbsenceFrequency[]).map((f) => (
-                <option key={f} value={f}>
-                  {ABSENCE_FREQUENCY_LABELS[f]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field
-            label="Jours autorisés"
-            htmlFor="typeDays"
-            required={form.frequency !== 'none'}
-            error={quotaManquant ? 'Indiquez un nombre de jours pour cette fréquence.' : undefined}
-            hint={form.frequency === 'none' ? 'Laissez vide s’il n’y a pas de plafond.' : undefined}
-          >
+          <Field label="Jours par an" htmlFor="typeDays">
             <Input
               id="typeDays"
               type="number"
@@ -345,7 +312,7 @@ function FenetreType({
               step={0.5}
               value={form.allowanceDays}
               onChange={(e) => set('allowanceDays', e.target.value)}
-              placeholder="Ex : 30"
+              placeholder="Sans quota"
             />
           </Field>
         </ModalGrid>
@@ -356,7 +323,8 @@ function FenetreType({
           <label className="flex items-start gap-2.5 text-[12.5px] text-ink">
             <Checkbox
               className="mt-0.5"
-              checked={form.deductsBalance}
+              checked={avecQuota && form.deductsBalance}
+              disabled={!avecQuota}
               onChange={(e) => set('deductsBalance', e.target.checked)}
             />
             <span>

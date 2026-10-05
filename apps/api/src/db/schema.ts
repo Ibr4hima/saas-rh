@@ -197,9 +197,9 @@ export const absenceTypes = pgTable('absence_types', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
   name: text('name').notNull(),
-  deductsBalance: boolean('deducts_balance').notNull().default(true),
+  deductsBalance: boolean('deducts_balance').notNull().default(false),
   allowanceDays: numeric('allowance_days', { precision: 5, scale: 2 }),
-  /** 'annual' | 'monthly' | 'none' — la période sur laquelle le quota se rouvre. */
+  /** 'annual' : un quota par an ; 'none' : pas de quota (migration 0075). */
   frequency: text('frequency').notNull().default('none'),
   requiresDocument: boolean('requires_document').notNull().default(false),
   /** L'agent reste joignable (une mission) : il vise encore ce qui l'attend. */

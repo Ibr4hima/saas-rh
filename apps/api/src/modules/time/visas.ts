@@ -13,7 +13,7 @@ import {
   type DirectionDuPersonnel,
   type Viseur,
 } from '../acces/dch';
-import { compterLesBloquees, reconcilierLesDemandes } from '../acces/demandes';
+import { compterLesBloquees, libererLesConfiees, reconcilierLesDemandes } from '../acces/demandes';
 import { DG } from '../people/chaine';
 import { DELAI_N1_JOURS_OUVRES } from './workdays';
 import { parLeSysteme } from '../../db/systeme';
@@ -602,6 +602,7 @@ export async function faireSuivreLesDemandes(tx: Tx, employeeId: string): Promis
 export async function reconcilierLeCircuit(tx: Tx, tenantId: string): Promise<void> {
   await expirerLesDemandes(tx);
   await verifierLesHabilitations(tx, tenantId);
+  await libererLesConfiees(tx);
   const enAttente = await demandesEnAttente(tx);
   for (const id of enAttente) await reconcilierDemande(tx, id);
   for (const id of await reprisesEnAttente(tx)) await reconcilierReprise(tx, id);
@@ -656,7 +657,44 @@ export async function reconcilierSiLeTempsEstVenu(tx: Tx, tenantId: string): Pro
   await reconcilierLeCircuit(tx, tenantId);
 }
 
-/** Les demandes qui attendent la DCH — le compteur de la RH. */
+/**
+ * Ce qui attend un agent, demande par demande, comme le circuit le dit : à
+ * viser comme N+1, à traiter pour la DCH (retours anticipés compris). Un N+1
+ * en congé, un membre parti ne comptent pas ; le directeur du Capital Humain
+ * compte aussi ce qu'il a délégué, il peut le traiter. Le menu et le tableau
+ * de bord comptent ainsi la file que l'écran « Congés à traiter » montre.
+ */
+export async function compterLesVisas(
+  tx: Tx,
+  moi: string,
+): Promise<{ aViser: number; conges: number }> {
+  let aViser = 0;
+  let conges = 0;
+  const compter = (att: Attendu | null) => {
+    if (!att) return;
+    if (att.valideurs.some((v) => v.employeeId === moi)) {
+      if (att.etape === 'n1') aViser += 1;
+      else conges += 1;
+    } else if (
+      att.etape === 'dch' &&
+      !att.demandeDuDirecteur &&
+      att.dch?.directeurEmployeeId === moi
+    ) {
+      conges += 1;
+    }
+  };
+  for (const id of await demandesEnAttente(tx)) {
+    const demande = await lireCircuit(tx, id);
+    compter(demande ? await attendu(tx, demande) : null);
+  }
+  for (const id of await reprisesEnAttente(tx)) {
+    const demande = await lireCircuit(tx, id);
+    if (demande) compter(await attenduPourLaReprise(tx, demande));
+  }
+  return { aViser, conges };
+}
+
+/** Les demandes qui attendent la DCH, pour toute l'agence. */
 export async function compterEnAttenteDCH(tx: Tx): Promise<number> {
   let n = 0;
   for (const id of await demandesEnAttente(tx)) {

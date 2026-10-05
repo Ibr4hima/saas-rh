@@ -18,6 +18,7 @@ import {
   type EvaluationN1Input,
   type EvaluationValidee,
   type NoteGlobale,
+  formationsDeLaFiche,
   objectifsDeLaFiche,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
@@ -150,6 +151,8 @@ type LigneFiche = {
   updated_at: string | Date;
   auteur: string | null;
   statuts: Record<string, StatutObjectif>;
+  statuts_empreintes: Record<string, string>;
+  formations_figees: FormationDeLaFiche[] | null;
   commentaires_agent: Record<string, string>;
   commentaires_envoyes_le: string | Date | null;
   commentaires_n1: Record<string, string>;
@@ -161,7 +164,8 @@ type LigneFiche = {
 const SELECTION_FICHE = sql`
   SELECT f.id, f.annee, f.semestre, f.contenu, f.updated_at,
          CASE WHEN pa.id IS NULL THEN NULL ELSE pa.given_name || ' ' || pa.family_name END AS auteur,
-         f.statuts, f.commentaires_agent, f.commentaires_envoyes_le, f.commentaires_n1,
+         f.statuts, f.statuts_empreintes, f.formations_figees,
+         f.commentaires_agent, f.commentaires_envoyes_le, f.commentaires_n1,
          f.evaluation_note, f.evaluation_validee_le,
          CASE WHEN pv.id IS NULL THEN NULL ELSE pv.given_name || ' ' || pv.family_name END AS evaluateur
     FROM objectifs_fiches f
@@ -193,17 +197,42 @@ function avecLesStatuts(
   });
 }
 
+/**
+ * Les statuts qui valent encore : ceux d'un objectif toujours dans la fiche,
+ * dont le texte est celui auquel l'agent a répondu. Réécrit par le n+1
+ * depuis, l'objectif est à revoir (`caducs`). Un statut donné avant que les
+ * empreintes ne se gardent vaut tel quel.
+ */
+function statutsEnVigueur(l: LigneFiche): {
+  statuts: Record<string, StatutObjectif>;
+  caducs: string[];
+} {
+  const statuts: Record<string, StatutObjectif> = {};
+  const caducs: string[] = [];
+  for (const o of objectifsDeLaFiche(l.contenu)) {
+    const statut = l.statuts[o.id];
+    if (!statut) continue;
+    const empreinte = l.statuts_empreintes[o.id];
+    if (empreinte !== undefined && empreinte !== o.empreinte) caducs.push(o.id);
+    else statuts[o.id] = statut;
+  }
+  return { statuts, caducs };
+}
+
 function vueFiche(l: LigneFiche, vue: 'agent' | 'n1'): FicheObjectifs {
   const envoyes = l.commentaires_envoyes_le !== null;
   const validee = l.evaluation_validee_le !== null;
   const voitN1 = vue === 'n1' || validee;
+  const { statuts, caducs } = statutsEnVigueur(l);
   return {
     annee: l.annee,
     semestre: l.semestre === 1 ? 1 : 2,
-    contenu: avecLesStatuts(l.contenu, l.statuts),
+    contenu: avecLesStatuts(l.contenu, statuts),
     majLe: iso(l.updated_at)!,
     auteur: l.auteur,
-    statuts: l.statuts,
+    statuts,
+    statutsCaducs: caducs,
+    formations: l.formations_figees,
     evaluation: {
       commentairesAgent: vue === 'agent' || envoyes ? l.commentaires_agent : {},
       envoyesLe: iso(l.commentaires_envoyes_le),
@@ -509,15 +538,33 @@ export class ObjectifsService {
       const moi = await this.exigerAgent(tx, user);
       const f = await this.uneFiche(tx, moi, annee, semestre);
       exigerNonEnvoyee(f);
-      if (!objectifsDeLaFiche(f.contenu).some((o) => o.id === input.id)) {
+      const objectif = objectifsDeLaFiche(f.contenu).find((o) => o.id === input.id);
+      if (!objectif) {
         problem(422, 'objectifs.objectif_inconnu', 'Cet objectif n’est pas dans la fiche');
       }
-      const { rows } = await tx.execute<{ statuts: Record<string, StatutObjectif> }>(sql`
+      // L'agent répond au texte qu'il a sous les yeux : réécrit entre-temps
+      // par son n+1, l'objectif se relit avant d'être évalué.
+      if (input.empreinte !== undefined && input.empreinte !== objectif.empreinte) {
+        problem(
+          409,
+          'objectifs.objectif_modifie',
+          'Votre N+1 vient de modifier cet objectif',
+          'Relisez-le, puis dites où vous en êtes.',
+        );
+      }
+      const { rows } = await tx.execute<LigneFiche>(sql`
         UPDATE objectifs_fiches
-           SET statuts = ${input.statut ? sql`statuts || jsonb_build_object(${input.id}::text, ${input.statut}::text)` : sql`statuts - ${input.id}::text`}
+           SET ${
+             input.statut
+               ? sql`statuts = statuts || jsonb_build_object(${input.id}::text, ${input.statut}::text),
+                     statuts_empreintes = statuts_empreintes
+                       || jsonb_build_object(${input.id}::text, ${objectif.empreinte}::text)`
+               : sql`statuts = statuts - ${input.id}::text,
+                     statuts_empreintes = statuts_empreintes - ${input.id}::text`
+           }
          WHERE id = ${f.id}
-        RETURNING statuts`);
-      return { statuts: rows[0]!.statuts };
+        RETURNING contenu, statuts, statuts_empreintes`);
+      return { statuts: statutsEnVigueur(rows[0]!).statuts };
     });
   }
 
@@ -549,8 +596,10 @@ export class ObjectifsService {
       const moi = await this.exigerAgent(tx, user);
       const f = await this.uneFiche(tx, moi, annee, semestre);
       exigerNonEnvoyee(f);
+      // Un statut donné à un texte que le n+1 a réécrit depuis ne compte pas.
+      const { statuts } = statutsEnVigueur(f);
       const restants = objectifsDeLaFiche(f.contenu).filter(
-        (o) => !f.statuts[o.id] || !f.commentaires_agent[o.id]?.trim(),
+        (o) => !statuts[o.id] || !f.commentaires_agent[o.id]?.trim(),
       ).length;
       if (restants > 0) {
         problem(
@@ -561,8 +610,16 @@ export class ObjectifsService {
             : 'Un objectif attend encore son statut ou votre commentaire',
         );
       }
+      // Les formations de la fiche se figent avec elle : relue plus tard,
+      // elle dit où en était l'agent quand il l'a envoyée.
+      const cites = new Set(formationsDeLaFiche(f.contenu));
+      const figees = formationsDe((await this.progression(tx, [moi])).get(moi)).filter((x) =>
+        cites.has(x.courseId),
+      );
       await tx.execute(sql`
-        UPDATE objectifs_fiches SET commentaires_envoyes_le = now() WHERE id = ${f.id}`);
+        UPDATE objectifs_fiches
+           SET commentaires_envoyes_le = now(), formations_figees = ${JSON.stringify(figees)}::jsonb
+         WHERE id = ${f.id}`);
 
       const { rows } = await tx.execute<{ n1: string | null }>(sql`
         SELECT manager_employee_id AS n1 FROM employees WHERE id = ${moi}`);
@@ -1087,8 +1144,12 @@ export class ObjectifsService {
     const title = o.auteur
       ? `${o.auteur} a fixé ${quoi.nom}`
       : `${quoi.nom[0]!.toUpperCase()}${quoi.nom.slice(1)} ${quoi.fixes}`;
+    // L'année fait partie du sujet : les orientations 2027 fixées le jour des
+    // 2026 ne se confondent pas avec elles, et ne les remplacent pas.
     const sujet =
-      o.niveau === 'direction' ? `objectifs:direction:${o.direction_id}:` : 'objectifs:apix:';
+      o.niveau === 'direction'
+        ? `objectifs:direction:${o.direction_id}:${o.annee}:`
+        : `objectifs:apix:${o.annee}:`;
     for (const compte of destinataires) {
       await notifier(tx, user.tenantId, compte, {
         type: 'objectif',

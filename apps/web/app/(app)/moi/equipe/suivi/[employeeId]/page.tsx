@@ -296,7 +296,8 @@ function FichesDuMembre({
               statuts={enregistree?.statuts ?? {}}
               // L'agent a envoyé son auto-évaluation : ses objectifs ne changent plus.
               verrouillee={parti || Boolean(enregistree?.evaluation.envoyesLe)}
-              formations={formations}
+              // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
+              formations={enregistree?.formations ?? formations}
               catalogue={catalogue}
               signal={focus.cle === cleDe(c) ? focus.n : 0}
             />
@@ -375,6 +376,8 @@ function ZoneFiche({
                 majLe: r.majLe,
                 auteur: ancienne?.auteur ?? null,
                 statuts: ancienne?.statuts ?? {},
+                statutsCaducs: ancienne?.statutsCaducs ?? [],
+                formations: ancienne?.formations ?? null,
                 evaluation: ancienne?.evaluation ?? SANS_EVALUATION,
               },
             ],

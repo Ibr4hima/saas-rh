@@ -676,6 +676,13 @@ export function AutoEvaluationAgent({
               </>
             ) : (
               <>
+                {fiche.statutsCaducs.includes(o.id) && !statuts[o.id] ? (
+                  // Réécrit par le n+1 depuis le statut donné : il attend un
+                  // nouveau statut.
+                  <Badge tone="orange" className="self-start">
+                    Modifié par votre N+1
+                  </Badge>
+                ) : null}
                 <ChoixStatut
                   objectif={o.texte}
                   valeur={statuts[o.id]}

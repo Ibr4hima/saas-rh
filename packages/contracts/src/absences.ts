@@ -8,21 +8,20 @@ const isoDate = z.iso.date();
 // ---------- Types d'absences ----------
 
 /**
- * La période sur laquelle le quota se rouvre. « none » n'est pas un trou : la
- * maternité ouvre ses jours à la naissance, pas au 1er janvier.
+ * Un type a un quota annuel, ou n'en a pas. « Par mois » et « par événement »
+ * se proposaient sans jamais s'appliquer : ils sont retirés (migration 0075).
  */
-export const absenceFrequencySchema = z.enum(['annual', 'monthly', 'none']);
+export const absenceFrequencySchema = z.enum(['annual', 'none']);
 export type AbsenceFrequency = z.infer<typeof absenceFrequencySchema>;
 
 export const ABSENCE_FREQUENCY_LABELS: Record<AbsenceFrequency, string> = {
   annual: 'Par an',
-  monthly: 'Par mois',
-  none: 'Par événement',
+  none: 'Sans quota',
 };
 
 const absenceTypeFields = z.object({
   name: z.string().trim().min(2).max(80),
-  deductsBalance: z.boolean().default(true),
+  deductsBalance: z.boolean().default(false),
   allowanceDays: z.number().min(0).max(365).nullish(),
   frequency: absenceFrequencySchema.default('none'),
   requiresDocument: z.boolean().default(false),
@@ -30,27 +29,34 @@ const absenceTypeFields = z.object({
   resteJoignable: z.boolean().optional(),
 });
 
-/** « 30 par an » se comprend ; « par an » tout court ne veut rien dire. */
-const allowanceMatchesFrequency = (v: {
+type ChampsDuType = {
   frequency: AbsenceFrequency;
   allowanceDays?: number | null;
-}) => v.frequency === 'none' || v.allowanceDays != null;
-const allowanceMessage = {
-  message: 'Indiquez un nombre de jours, ou choisissez « Par événement »',
-  path: ['allowanceDays'] as PropertyKey[],
+  deductsBalance: boolean;
 };
 
-export const createAbsenceTypeSchema = absenceTypeFields.refine(
-  allowanceMatchesFrequency,
-  allowanceMessage,
-);
+/** Un quota annuel a son nombre de jours ; sans quota, pas de nombre. */
+const quotaCoherent = (v: ChampsDuType) => (v.frequency === 'annual') === (v.allowanceDays != null);
+const quotaMessage = {
+  message: 'Un quota annuel se donne en jours ; sans quota, pas de nombre de jours',
+  path: ['allowanceDays'] as PropertyKey[],
+};
+/** Seul un quota se décompte : décompter sans quota refuserait toute demande. */
+const decompteSurQuota = (v: ChampsDuType) => !v.deductsBalance || v.frequency === 'annual';
+const decompteMessage = {
+  message: 'Seul un quota annuel se décompte du solde',
+  path: ['deductsBalance'] as PropertyKey[],
+};
+
+export const createAbsenceTypeSchema = absenceTypeFields
+  .refine(quotaCoherent, quotaMessage)
+  .refine(decompteSurQuota, decompteMessage);
 export type CreateAbsenceTypeInput = z.infer<typeof createAbsenceTypeSchema>;
 
 /** La fenêtre de modification renvoie le type entier : même forme qu'à la création. */
-export const updateAbsenceTypeSchema = absenceTypeFields.refine(
-  allowanceMatchesFrequency,
-  allowanceMessage,
-);
+export const updateAbsenceTypeSchema = absenceTypeFields
+  .refine(quotaCoherent, quotaMessage)
+  .refine(decompteSurQuota, decompteMessage);
 export type UpdateAbsenceTypeInput = z.infer<typeof updateAbsenceTypeSchema>;
 
 export interface AbsenceType {

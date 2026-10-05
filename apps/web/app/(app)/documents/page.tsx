@@ -4,9 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
+  AttestationApercu,
   BatchAdvanceResult,
   DocumentRequestView,
-  EmployeeDetail,
   RequestableDoc,
 } from '@teranga/contracts';
 import {
@@ -33,7 +33,6 @@ import {
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
-import { CONTRACT_LABELS } from '../../../lib/recruitment';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
@@ -762,55 +761,16 @@ function TraiterModal({
 }
 
 /**
- * Une ligne de contrôle : l'intitulé à gauche, la valeur à droite.
+ * Aperçu d'une pièce : le texte que le PDF imprimera, mot pour mot.
  *
- * Une valeur manquante s'efface au lieu de s'aligner — sur un document qu'on
- * s'apprête à remettre, un champ vide est une chose à voir, pas un tiret à
- * compter parmi les autres.
- */
-function Ligne({
-  label,
-  children,
-  mono,
-}: {
-  label: string;
-  children?: React.ReactNode;
-  mono?: boolean;
-}) {
-  const vide = children === null || children === undefined || children === '';
-  return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-line-soft py-2.5">
-      <dt className="shrink-0 text-[9.5px] font-bold tracking-[0.1em] text-ink-muted uppercase">
-        {label}
-      </dt>
-      <dd
-        className={cn(
-          'min-w-0 text-right text-[13px] leading-snug font-semibold break-words',
-          mono && 'font-mono',
-          vide ? 'text-ink-muted/45' : 'text-ink-strong',
-        )}
-      >
-        {vide ? null : children}
-      </dd>
-    </div>
-  );
-}
-
-/**
- * Aperçu d'une pièce : les informations qui seront IMPRIMÉES dessus.
- *
- * On a d'abord essayé d'encastrer le PDF. Une A4 réduite à la taille d'une
- * fenêtre n'est pas lisible — on y voit une page, pas ce qu'elle dit, et la
- * visionneuse du navigateur ajoute sa propre barre et ses marges. Or ce qu'on
- * vérifie avant d'annoncer un document, c'est bien précis : est-ce la bonne
- * personne, la bonne fonction, les bonnes dates. Ces champs sont donc affichés
- * en clair, exactement ceux que l'attestation reprend, et le document lui-même
- * reste à un clic pour qui veut le lire en entier ou l'imprimer.
+ * Une A4 encastrée, réduite à la taille d'une fenêtre, ne se lit pas. Le
+ * serveur rend donc les textes de l'attestation, ceux-là mêmes qu'il met dans
+ * le PDF, et l'écran les compose comme la feuille. Le PDF reste à un clic.
  */
 function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }) {
   const detail = useQuery({
-    queryKey: ['employee', piece.employeeId],
-    queryFn: () => api<EmployeeDetail>(`/employees/${piece.employeeId}`),
+    queryKey: ['attestation-apercu', piece.employeeId],
+    queryFn: () => api<AttestationApercu>(`/employees/${piece.employeeId}/attestation/apercu`),
     enabled: piece.generable,
     retry: false,
   });
@@ -832,6 +792,19 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
           {piece.employeeName}
         </p>
       </div>
+      {detail.isSuccess ? (
+        <a
+          href={apiUrl(`/employees/${piece.employeeId}/attestation?disposition=inline`)}
+          target="_blank"
+          rel="noreferrer"
+          tabIndex={-1}
+        >
+          <Button size="sm" variant="secondary">
+            <Icon name="picture_as_pdf" size={15} />
+            Ouvrir le PDF
+          </Button>
+        </a>
+      ) : null}
     </div>
   );
 
@@ -891,49 +864,31 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
     );
   }
 
-  const e = detail.data;
-  const affectation = e.assignments.find((a) => a.current) ?? e.assignments[0];
-  // Le contrat le plus récemment commencé : c'est celui que l'attestation cite.
-  const contrat = [...e.contracts].sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
-
+  const a = detail.data;
   return (
     <>
       {entete}
-      {/* Huit champs à contrôler l'un après l'autre. Ils étaient dans huit
-          cadres bleus : on voyait des boîtes avant de lire des mots, alors que
-          le geste ici est justement de LIRE — est-ce la bonne personne, la
-          bonne fonction, les bonnes dates.
-
-          Chaque champ tient donc sur une ligne, l'intitulé à gauche et la
-          valeur à droite, séparée de la suivante par un filet. Deux colonnes
-          dès que la fenêtre a la largeur ; comme la grille étire ses cases à
-          la hauteur de leur rangée, les filets des deux colonnes tombent
-          exactement en face. */}
-      <div className="@container flex-1 overflow-y-auto px-5 py-4">
-        <dl className="grid grid-cols-1 gap-x-10 @[38rem]:grid-cols-2">
-          <Ligne label="Nom et prénom">
-            {e.person.givenName} {e.person.familyName}
-          </Ligne>
-          <Ligne label="Matricule" mono>
-            {e.employeeNumber}
-          </Ligne>
-          <Ligne label="Date de naissance">
-            {e.person.birthDate ? formatDate(e.person.birthDate) : null}
-          </Ligne>
-          <Ligne label="Fonction">{affectation?.positionTitle}</Ligne>
-          <Ligne label="Direction">{affectation?.orgUnitName}</Ligne>
-          <Ligne label="Type de contrat">
-            {contrat ? (CONTRACT_LABELS[contrat.contractType] ?? contrat.contractType) : null}
-          </Ligne>
-          <Ligne label="Date d'embauche">{formatDate(e.hiredOn)}</Ligne>
-          <Ligne label="Fin de contrat">
-            {contrat?.endDate ? formatDate(contrat.endDate) : 'Sans terme'}
-          </Ligne>
-        </dl>
-
-        <p className="mt-4 text-[11.5px] leading-relaxed text-ink-muted">
-          L&apos;attestation reprend ces informations. Pensez à bien les vérifier avant de valider.
-        </p>
+      <div className="flex-1 overflow-y-auto bg-surface-raised/60 px-3 py-4 sm:px-6 sm:py-6">
+        <article className="mx-auto max-w-[38rem] rounded-[6px] bg-surface px-5 py-8 text-[13px] leading-[1.8] text-ink-strong shadow-xs ring-1 ring-line-soft sm:px-12 sm:py-12">
+          <h3 className="text-center">
+            <span className="border-b border-current pb-0.5 text-[14.5px] font-bold tracking-[0.12em]">
+              {a.titre}
+            </span>
+          </h3>
+          <div className="mt-9 flex flex-col gap-4 text-justify">
+            {a.paragraphes.map((p) => (
+              <p key={p}>{p}</p>
+            ))}
+          </div>
+          <p className="mt-10 text-right">{a.lieuEtDate}</p>
+          <div className="mt-6 text-right">
+            {a.signature.map((ligne, i) => (
+              <p key={ligne} className={i === 0 ? 'font-bold' : undefined}>
+                {ligne}
+              </p>
+            ))}
+          </div>
+        </article>
       </div>
     </>
   );

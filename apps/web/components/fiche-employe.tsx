@@ -43,6 +43,7 @@ import { Icon } from './icons';
 import { Modal } from './modal';
 import { contractEnd, ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../lib/person';
 import { formatDate, useMe } from '../lib/hooks';
+import { aujourdhui } from '../lib/temps';
 import type { ConsequencesHierarchie, OrgUnit, OrgUnitView } from '@teranga/contracts';
 import { aDesConsequences, ListeConsequences } from './consequences-hierarchie';
 import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
@@ -82,12 +83,24 @@ function lastDay(exclusiveEnd: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Ancienneté en clair : « 3 ans et 2 mois », pas une date à soustraire. */
-function seniority(hiredOn: string, jusquAu?: string | null): string {
-  const start = new Date(`${hiredOn}T12:00:00Z`);
+/**
+ * Ancienneté en clair : « 3 ans et 2 mois », pas une date à soustraire. Les
+ * intervalles entre un départ et un retour n'en font pas partie.
+ */
+function seniority(
+  hiredOn: string,
+  jusquAu: string | null,
+  interruptions: EmployeeDetail['interruptions'],
+): string {
+  const JOUR = 1000 * 60 * 60 * 24;
+  const t = (iso: string) => new Date(`${iso}T12:00:00Z`).getTime();
   // Inactif : l'ancienneté s'arrête à son dernier jour, pas à aujourd'hui.
-  const fin = jusquAu ? new Date(`${jusquAu}T12:00:00Z`).getTime() : Date.now();
-  const months = Math.max(0, (fin - start.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+  const fin = jusquAu ? t(jusquAu) : Date.now();
+  const absent = interruptions.reduce(
+    (total, i) => total + Math.max(0, t(i.repriseLe) - t(i.dernierJour) - JOUR),
+    0,
+  );
+  const months = Math.max(0, (fin - t(hiredOn) - absent) / (JOUR * 30.44));
   const years = Math.floor(months / 12);
   const rest = Math.floor(months % 12);
   if (years === 0) return rest <= 1 ? '< 1 mois' : `${rest} mois`;
@@ -251,7 +264,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
               Signaler un changement
             </Button>
           ) : peutGerer && !actif ? (
-            <BoutonReactiver employeeId={e.id} onRefus={setRefusReactivation} />
+            <BoutonReactiver employe={e} onRefus={setRefusReactivation} />
           ) : peutGerer ? (
             <Link
               href={`/employees/${e.id}?modifier=1`}
@@ -305,8 +318,10 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                   ) : null
                 }
               />
-              <Repere label="Ancienneté" valeur={seniority(e.hiredOn)}>
-                Depuis le {formatDate(e.hiredOn)}
+              <Repere label="Ancienneté" valeur={seniority(e.hiredOn, null, e.interruptions)}>
+                {e.interruptions.length > 0
+                  ? `Retour le ${formatDate(e.interruptions[e.interruptions.length - 1]!.repriseLe)}`
+                  : `Depuis le ${formatDate(e.hiredOn)}`}
               </Repere>
             </>
           ) : (
@@ -317,7 +332,10 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                 label="Fin contrat"
                 valeur={e.finActivite ? formatDate(e.finActivite) : null}
               />
-              <Repere label="Ancienneté" valeur={seniority(e.hiredOn, e.finActivite)}>
+              <Repere
+                label="Ancienneté"
+                valeur={seniority(e.hiredOn, e.finActivite, e.interruptions)}
+              >
                 Arrivée le {formatDate(e.hiredOn)}
               </Repere>
               <Repere
@@ -1432,47 +1450,102 @@ function PortalCard({
   );
 }
 
+/** Le lendemain d'une date ISO. */
+function lendemain(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * Réactiver le dossier, à la place du stylo : la fiche d'un inactif ne se
- * modifie pas. Le serveur refuse tant que le contrat est échu — la raison
- * s'affiche sous le matricule.
+ * modifie pas. La reprise se date : par défaut le début du contrat
+ * enregistré depuis le départ, sinon aujourd'hui. Le serveur refuse tant que
+ * le contrat est échu ; la raison s'affiche sous le matricule.
  */
 function BoutonReactiver({
-  employeeId,
+  employe: e,
   onRefus,
 }: {
-  employeeId: string;
+  employe: EmployeeDetail;
   onRefus: (raison: string | null) => void;
 }) {
   const queryClient = useQueryClient();
+  const [ouvert, setOuvert] = useState(false);
+  const jour = aujourdhui();
+  const premier = e.finActivite ? lendemain(e.finActivite) : null;
+  const parDefaut = e.repriseParDefaut ?? jour;
+  const [le, setLe] = useState(parDefaut);
   const reactiver = useMutation({
     mutationFn: () =>
       api<EmployeeBatchResult>('/employees/archive', {
         method: 'POST',
-        body: { ids: [employeeId], archived: false },
+        // La date proposée est celle du serveur : il ne la reçoit que changée.
+        body: { ids: [e.id], archived: false, ...(le !== parDefaut ? { le } : {}) },
       }),
     onSuccess: async (r) => {
+      setOuvert(false);
       if (r.done === 0) {
         onRefus(r.skipped[0]?.reason ?? 'Réactivation impossible.');
         return;
       }
       onRefus(null);
-      await queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+      await queryClient.invalidateQueries({ queryKey: ['employee', e.id] });
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
     },
-    onError: (err) => onRefus(err instanceof ApiError ? err.message : 'Réactivation impossible.'),
+    onError: (err) => {
+      setOuvert(false);
+      onRefus(err instanceof ApiError ? err.message : 'Réactivation impossible.');
+    },
   });
   return (
-    <Button
-      size="sm"
-      variant="secondary"
-      className="shrink-0"
-      loading={reactiver.isPending}
-      onClick={() => reactiver.mutate()}
-    >
-      <Icon name="unarchive" size={15} />
-      Réactiver
-    </Button>
+    <>
+      <Button
+        size="sm"
+        variant="secondary"
+        className="shrink-0"
+        onClick={() => {
+          setLe(parDefaut);
+          setOuvert(true);
+        }}
+      >
+        <Icon name="unarchive" size={15} />
+        Réactiver
+      </Button>
+      <Modal
+        open={ouvert}
+        onClose={() => setOuvert(false)}
+        title="Réactiver le profil"
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setOuvert(false)}>
+              Annuler
+            </Button>
+            <Button
+              loading={reactiver.isPending}
+              disabled={!le || (premier !== null && le < premier)}
+              onClick={() => reactiver.mutate()}
+            >
+              Réactiver
+            </Button>
+          </>
+        }
+      >
+        <Field label="Reprise le" htmlFor="reprise-le" required>
+          <Input
+            id="reprise-le"
+            type="date"
+            min={premier ?? undefined}
+            max={jour}
+            // Un nouveau contrat qui commence plus tard fixe la reprise.
+            disabled={parDefaut > jour}
+            value={le}
+            onChange={(ev) => setLe(ev.target.value)}
+          />
+        </Field>
+      </Modal>
+    </>
   );
 }
 

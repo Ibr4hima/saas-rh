@@ -1,10 +1,13 @@
-import { Controller, Get, Inject, Req, UseGuards } from '@nestjs/common';
-import { and, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import { Controller, Get, Inject, Logger, Req, UseGuards } from '@nestjs/common';
+import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import { peut, type DashboardView } from '@teranga/contracts';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
+import { agentDuCompte } from '../acces/dch';
 import { AccesGuard, Peut } from '../auth/acces.guard';
-import { compterEnAttenteDCH } from '../time/visas';
+import { absencesDesTrenteJours, AbsencesService } from '../time/absences.service';
+import { compterEnAttenteDCH, compterLesVisas, expirerLesDemandes } from '../time/visas';
+import { inactiverLesContratsEchus } from '../people/activite';
 import { suiviDesContrats } from '../people/suivi-contrats';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 
@@ -12,7 +15,12 @@ import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 @UseGuards(SessionGuard, AccesGuard)
 @Peut('pilotage')
 export class DashboardController {
-  constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
+  private readonly logger = new Logger(DashboardController.name);
+
+  constructor(
+    @Inject(TenantDb) private readonly db: TenantDb,
+    @Inject(AbsencesService) private readonly absences: AbsencesService,
+  ) {}
 
   /**
    * Tout le tableau de bord en un appel. L'écran d'accueil est la page la plus
@@ -23,36 +31,52 @@ export class DashboardController {
   async stats(@Req() req: AuthenticatedRequest): Promise<DashboardView> {
     const user = req.sessionUser;
     const seesContracts = peut(user, 'pilotage') || peut(user, 'personnel.consulter');
+    const ctx = { tenantId: user.tenantId, userId: user.userId };
 
-    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+    // Chaque chiffre compte ce que montre l'écran qu'il ouvre. Les contrats
+    // échus passent d'abord dans les inactifs, comme avant la liste du
+    // personnel ; dans leur transaction, et sans priver l'accueil s'ils
+    // échouent.
+    try {
+      await this.db.withTenant(ctx, (tx) => inactiverLesContratsEchus(tx, user.tenantId));
+    } catch (err) {
+      this.logger.error(
+        `Fin des contrats échus impossible (tenant ${user.tenantId}) : l'accueil est servi sans elle.`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
+
+    return this.db.withTenant(ctx, async (tx) => {
       const count = async (query: Promise<Array<{ n: number }>>) => (await query)[0]?.n ?? 0;
       const n = sql<number>`count(*)::int`;
+      // Les demandes échues s'en vont, et les fériés de l'année existent,
+      // avant qu'on les compte : comme sur leurs écrans.
+      await expirerLesDemandes(tx);
+      await this.absences.semerAutourDAujourdhui(tx, user.tenantId);
+      // Les congés à valider : la file de qui regarde, celle que « Congés à
+      // traiter » lui montre. Qui n'en traite pas lit celle de l'agence.
+      const moi = await agentDuCompte(tx, user.userId);
+      const file = moi ? (await compterLesVisas(tx, moi)).conges : 0;
+      const pendingRequests =
+        moi && (file > 0 || peut(user, 'demandes.conges')) ? file : await compterEnAttenteDCH(tx);
 
       const [
         activeEmployees,
-        hiredLast90d,
         absentToday,
-        pendingRequests,
         upcomingAbsences,
-        orgUnits,
         genders,
         directions,
         holidays,
         followUp,
       ] = await Promise.all([
         count(tx.select({ n }).from(t.employees).where(eq(t.employees.status, 'active'))),
+        // Le calendrier des absences, coupé en deux : en cours, puis à venir.
         count(
           tx
             .select({ n })
-            .from(t.employees)
+            .from(t.absenceRequests)
             .where(
-              and(
-                eq(t.employees.status, 'active'),
-                // Bornée des DEUX côtés : un dossier préparé en avance
-                // (hired_on futur) n'est pas un recrutement déjà arrivé.
-                gte(t.employees.hiredOn, sql`CURRENT_DATE - 90`),
-                lte(t.employees.hiredOn, sql`CURRENT_DATE`),
-              ),
+              and(...absencesDesTrenteJours(), lte(t.absenceRequests.startDate, sql`CURRENT_DATE`)),
             ),
         ),
         count(
@@ -61,31 +85,11 @@ export class DashboardController {
             .from(t.absenceRequests)
             .where(
               and(
-                eq(t.absenceRequests.status, 'approved'),
-                lte(t.absenceRequests.startDate, sql`CURRENT_DATE`),
-                gte(t.absenceRequests.endDate, sql`CURRENT_DATE`),
+                ...absencesDesTrenteJours(),
+                gte(t.absenceRequests.startDate, sql`CURRENT_DATE + 1`),
               ),
             ),
         ),
-        // Ce qui attend la DCH — pas ce qui attend encore le N+1 : un badge
-        // qui compte une demande qu'on ne peut pas encore traiter fait
-        // cliquer pour rien. Le circuit en décide, demande par demande.
-        compterEnAttenteDCH(tx),
-        count(
-          tx
-            .select({ n })
-            .from(t.absenceRequests)
-            .where(
-              and(
-                eq(t.absenceRequests.status, 'approved'),
-                // Strictement FUTURES : une absence en cours est déjà comptée
-                // dans absentToday, la recompter gonflerait la même tuile.
-                sql`${t.absenceRequests.startDate} > CURRENT_DATE`,
-                lte(t.absenceRequests.startDate, sql`CURRENT_DATE + 30`),
-              ),
-            ),
-        ),
-        count(tx.select({ n }).from(t.orgUnits).where(isNull(t.orgUnits.deletedAt))),
         tx
           .select({ gender: t.persons.gender, n })
           .from(t.employees)
@@ -116,14 +120,21 @@ export class DashboardController {
             SELECT DISTINCT ON (depart) depart AS unite_id, id AS dir_id
               FROM remontee WHERE unit_type = 'direction'
              ORDER BY depart, prof
+          ),
+          -- L'affectation de chacun, comme la liste du personnel la lit : en
+          -- cours, sinon la prochaine.
+          affecte AS (
+            SELECT e.id AS employee_id,
+                   (SELECT av.org_unit_id FROM assignments av
+                     WHERE av.employee_id = e.id
+                       AND (av.validity @> CURRENT_DATE OR lower(av.validity) > CURRENT_DATE)
+                     ORDER BY lower(av.validity) LIMIT 1) AS unite_id
+              FROM employees e WHERE e.status = 'active'
           )
-          SELECT d.id AS dir_id, d.name, d.short_name, count(e.id)::int AS headcount
+          SELECT d.id AS dir_id, d.name, d.short_name, count(af.employee_id)::int AS headcount
           FROM org_units d
           LEFT JOIN direction_de dd ON dd.dir_id = d.id
-          LEFT JOIN assignments a
-            ON a.org_unit_id = dd.unite_id AND a.validity @> CURRENT_DATE
-          LEFT JOIN employees e
-            ON e.id = a.employee_id AND e.status = 'active'
+          LEFT JOIN affecte af ON af.unite_id = dd.unite_id
           WHERE d.unit_type = 'direction' AND d.deleted_at IS NULL
           GROUP BY d.id, d.name, d.short_name
           ORDER BY headcount DESC, d.name`),
@@ -145,11 +156,9 @@ export class DashboardController {
 
       return {
         activeEmployees,
-        hiredLast90d,
         absentToday,
         pendingRequests,
         upcomingAbsences,
-        orgUnits,
         women: byGender['female'] ?? 0,
         men: byGender['male'] ?? 0,
         headcountByDirection: directions.rows.map((d) => ({

@@ -66,6 +66,7 @@ import {
   annoncerLeVerdict,
   attendu,
   attenduPourLaReprise,
+  compterLesVisas,
   expirerLesDemandes,
   lireCircuit,
   lireDemande,
@@ -74,7 +75,6 @@ import {
   reconcilierDemande,
   reconcilierLeCircuit,
   reconcilierReprise,
-  reprisesEnAttente,
   type Attendu,
 } from './visas';
 import { countWorkdays } from './workdays';
@@ -173,10 +173,25 @@ const veille = (iso: string) => decaler(iso, -1);
 const lendemain = (iso: string) => decaler(iso, 1);
 
 /**
- * Le droit à porter d'office sur un solde d'année. Seul un quota annuel s'y
- * verse : « 3 par mois » ne fait pas 3 sur l'année, et les jours de maternité
- * ne s'ouvrent pas au 1er janvier.
+ * Les absences du calendrier : validées, en cours ou commençant dans les
+ * trente jours. Le tableau de bord compte les mêmes qu'il liste.
  */
+export const absencesDesTrenteJours = () => [
+  eq(t.absenceRequests.status, 'approved'),
+  gte(t.absenceRequests.endDate, sql`CURRENT_DATE`),
+  lte(t.absenceRequests.startDate, sql`CURRENT_DATE + 30`),
+];
+
+/** Ce qu'un solde d'année lit d'un type d'absence. */
+type TypePourSolde = {
+  id: string;
+  name: string;
+  deductsBalance: boolean;
+  allowanceDays: string | number | null;
+  frequency: string;
+};
+
+/** Le droit à porter d'office sur un solde d'année : le quota annuel, s'il y en a un. */
 function droitAnnuel(type: {
   allowanceDays: string | number | null;
   frequency: string;
@@ -266,11 +281,28 @@ export class AbsencesService {
   async updateType(user: SessionUser, id: string, input: UpdateAbsenceTypeInput): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
       const [row] = await tx
-        .select({ id: t.absenceTypes.id })
+        .select()
         .from(t.absenceTypes)
         .where(and(eq(t.absenceTypes.id, id), isNull(t.absenceTypes.deletedAt)))
-        .limit(1);
+        .limit(1)
+        .for('update');
       if (!row) problem(404, 'absence.type_not_found', 'Type d’absence introuvable');
+      const quota = input.allowanceDays ?? null;
+      const change =
+        row.deductsBalance !== input.deductsBalance ||
+        row.frequency !== input.frequency ||
+        (row.allowanceDays === null ? null : Number(row.allowanceDays)) !== quota;
+      // Le changement vaut pour l'année en cours et les suivantes : les
+      // années passées gardent le paramétrage qui les régissait. Un premier
+      // changement de l'année le garde ; les suivants n'y touchent plus.
+      if (change) {
+        await tx.execute(sql`
+          INSERT INTO absence_types_passe
+            (tenant_id, absence_type_id, jusqu_a_annee, deducts_balance, allowance_days, frequency)
+          VALUES (${user.tenantId}, ${id}, extract(year FROM CURRENT_DATE)::int - 1,
+                  ${row.deductsBalance}, ${row.allowanceDays}, ${row.frequency})
+          ON CONFLICT (absence_type_id, jusqu_a_annee) DO NOTHING`);
+      }
       try {
         await tx
           .update(t.absenceTypes)
@@ -627,6 +659,13 @@ export class AbsencesService {
     }
   }
 
+  /** Les fériés de l'année et de la suivante existent avant qu'on les lise. */
+  async semerAutourDAujourdhui(tx: Tx, tenantId: string): Promise<void> {
+    const annee = Number(aujourdhui().slice(0, 4));
+    await this.semerAnnee(tx, tenantId, annee);
+    await this.semerAnnee(tx, tenantId, annee + 1);
+  }
+
   /**
    * Un jour devient férié, ou cesse de l'être : les congés en attente ou
    * validés qui le couvrent se recomptent, et le solde suit. Un congé qui ne
@@ -731,44 +770,7 @@ export class AbsencesService {
                               AND f.evaluation_validee_le IS NULL))
            AND e.id IS DISTINCT FROM ${DG}`);
       const equipe = rows[0]?.equipe ?? 0;
-      // Qui est attendu, demande par demande : c'est le circuit qui le dit
-      // — un N+1 en congé, un membre parti ne comptent pas. Le directeur du
-      // Capital Humain compte aussi ce qu'il a délégué : il peut le traiter.
-      const enAttente = await tx.execute<{ id: string }>(sql`
-        SELECT id FROM absence_requests WHERE status = 'pending'`);
-      let aViser = 0;
-      let conges = 0;
-      for (const { id } of enAttente.rows) {
-        const demande = await lireCircuit(tx, id);
-        const att = demande ? await attendu(tx, demande) : null;
-        if (!att) continue;
-        if (att.valideurs.some((v) => v.employeeId === moi)) {
-          if (att.etape === 'n1') aViser += 1;
-          else conges += 1;
-        } else if (
-          att.etape === 'dch' &&
-          !att.demandeDuDirecteur &&
-          att.dch?.directeurEmployeeId === moi
-        ) {
-          conges += 1;
-        }
-      }
-      // Les retours anticipés à confirmer : le N+1, sinon la DCH.
-      for (const id of await reprisesEnAttente(tx)) {
-        const demande = await lireCircuit(tx, id);
-        if (!demande) continue;
-        const att = await attenduPourLaReprise(tx, demande);
-        if (att.valideurs.some((v) => v.employeeId === moi)) {
-          if (att.etape === 'n1') aViser += 1;
-          else conges += 1;
-        } else if (
-          att.etape === 'dch' &&
-          !att.demandeDuDirecteur &&
-          att.dch?.directeurEmployeeId === moi
-        ) {
-          conges += 1;
-        }
-      }
+      const { aViser, conges } = await compterLesVisas(tx, moi);
       return { equipe, aViser, aTraiter: { conges, ...(await aTraiterPar(tx, moi)) } };
     });
   }
@@ -860,47 +862,7 @@ export class AbsencesService {
       await expirerLesDemandes(tx);
       await this.requireEmployee(tx, employeeId);
       await this.assertEmployeeScope(tx, user, employeeId);
-      const types = await this.selectTypes(tx);
-      const balanceRows = await tx
-        .select()
-        .from(t.absenceBalances)
-        .where(and(eq(t.absenceBalances.employeeId, employeeId), eq(t.absenceBalances.year, year)));
-      const sums = await tx
-        .select({
-          absenceTypeId: t.absenceRequests.absenceTypeId,
-          status: t.absenceRequests.status,
-          days: sql<string>`coalesce(sum(${t.absenceRequests.daysCount}), 0)`,
-        })
-        .from(t.absenceRequests)
-        .where(
-          and(
-            eq(t.absenceRequests.employeeId, employeeId),
-            sql`extract(year from ${t.absenceRequests.startDate}) = ${year}`,
-            inArray(t.absenceRequests.status, ['approved', 'pending']),
-          ),
-        )
-        .groupBy(t.absenceRequests.absenceTypeId, t.absenceRequests.status);
-
-      return types.map((type) => {
-        const balance = balanceRows.find((b) => b.absenceTypeId === type.id);
-        const taken = num(
-          sums.find((s) => s.absenceTypeId === type.id && s.status === 'approved')?.days,
-        );
-        const pending = num(
-          sums.find((s) => s.absenceTypeId === type.id && s.status === 'pending')?.days,
-        );
-        const entitled = num(balance?.entitledDays ?? droitAnnuel(type) ?? 0);
-        return {
-          absenceTypeId: type.id,
-          absenceTypeName: type.name,
-          deductsBalance: type.deductsBalance,
-          year,
-          entitledDays: entitled,
-          takenDays: taken,
-          pendingDays: pending,
-          remainingDays: type.deductsBalance ? entitled - taken - pending : 0,
-        };
-      });
+      return this.balancesInTx(tx, user, employeeId, year, await this.selectTypes(tx));
     });
   }
 
@@ -1031,11 +993,11 @@ export class AbsencesService {
         // arrive après l'arrêt) : il n'est exigé qu'à la validation.
         const document = input.document ? lireJustificatif(input.document) : null;
 
-        if (type.deductsBalance) {
+        {
+          // Le solde de l'année de la demande, au paramétrage de cette année-là.
           const year = Number(input.startDate.slice(0, 4));
-          const views = await this.balancesInTx(tx, user, input.employeeId, year, [type]);
-          const view = views[0];
-          if (view && daysCount > view.remainingDays) {
+          const [view] = await this.balancesInTx(tx, user, input.employeeId, year, [type]);
+          if (view?.deductsBalance && daysCount > view.remainingDays) {
             problem(
               422,
               'absence.insufficient_balance',
@@ -1238,15 +1200,8 @@ export class AbsencesService {
         .innerJoin(t.employees, eq(t.employees.id, t.absenceRequests.employeeId))
         .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
         .innerJoin(t.absenceTypes, eq(t.absenceTypes.id, t.absenceRequests.absenceTypeId))
-        .where(
-          and(
-            eq(t.absenceRequests.status, 'approved'),
-            gte(t.absenceRequests.endDate, sql`CURRENT_DATE`),
-            ...scope,
-          ),
-        )
-        .orderBy(asc(t.absenceRequests.startDate))
-        .limit(20);
+        .where(and(...absencesDesTrenteJours(), ...scope))
+        .orderBy(asc(t.absenceRequests.startDate));
       return this.toViews(tx, user, rows);
     });
   }
@@ -1916,14 +1871,49 @@ export class AbsencesService {
     }));
   }
 
-  /** Variante de balances() réutilisable dans une transaction déjà ouverte. */
+  /**
+   * Le paramétrage qui régissait une année passée : celui que chaque type
+   * avait alors, s'il a changé depuis (cf. `updateType`). Pour l'année en
+   * cours et les suivantes, le type tel qu'il est.
+   */
+  private async parametrageDeLAnnee<T extends TypePourSolde>(
+    tx: Tx,
+    types: T[],
+    year: number,
+  ): Promise<T[]> {
+    const { rows } = await tx.execute<{
+      absence_type_id: string;
+      deducts_balance: boolean;
+      allowance_days: string | null;
+      frequency: string;
+    }>(sql`
+      SELECT DISTINCT ON (absence_type_id) absence_type_id, deducts_balance,
+             allowance_days::text AS allowance_days, frequency
+        FROM absence_types_passe
+       WHERE jusqu_a_annee >= ${year} AND ${year} < extract(year FROM CURRENT_DATE)
+       ORDER BY absence_type_id, jusqu_a_annee`);
+    return types.map((type) => {
+      const passe = rows.find((r) => r.absence_type_id === type.id);
+      return passe
+        ? {
+            ...type,
+            deductsBalance: passe.deducts_balance,
+            allowanceDays: passe.allowance_days,
+            frequency: passe.frequency,
+          }
+        : type;
+    });
+  }
+
+  /** Les soldes d'une année, dans une transaction déjà ouverte. */
   private async balancesInTx(
     tx: Tx,
-    user: SessionUser,
+    _user: SessionUser,
     employeeId: string,
     year: number,
-    types: Array<typeof t.absenceTypes.$inferSelect>,
+    typesActuels: TypePourSolde[],
   ): Promise<BalanceView[]> {
+    const types = await this.parametrageDeLAnnee(tx, typesActuels, year);
     const balanceRows = await tx
       .select()
       .from(t.absenceBalances)

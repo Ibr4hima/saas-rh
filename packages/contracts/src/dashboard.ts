@@ -39,15 +39,15 @@ export interface DashboardContractFollowUp {
 
 export interface DashboardView {
   activeEmployees: number;
-  /** Recrutés au cours des 90 derniers jours — le pouls des arrivées. */
-  hiredLast90d: number;
   /** Absents AUJOURD'HUI (congé approuvé couvrant la date du jour). */
   absentToday: number;
-  /** Demandes de congés en attente d'un visa. */
+  /**
+   * Les congés à valider : la file de qui regarde (celle de « Congés à
+   * traiter ») ; pour qui n'en traite pas, ce qui attend la DCH.
+   */
   pendingRequests: number;
   /** Absences approuvées démarrant dans les 30 prochains jours. */
   upcomingAbsences: number;
-  orgUnits: number;
   /** Parité de l'effectif actif. */
   women: number;
   men: number;

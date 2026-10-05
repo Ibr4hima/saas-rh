@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, getTableColumns, inArray, ne, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   ControleDuTitre,
@@ -29,9 +29,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { accord, PIECE } from '../notifications/phrases';
 import { agentDuCompte, directionDuPersonnel, type DirectionDuPersonnel } from '../acces/dch';
 import {
+  capacitesVues,
   reconcilierUneDemande,
   uneDemandeALaFois,
-  voitToutLaFile,
   vueDuTraitement,
   exigerDeTraiter,
 } from '../acces/demandes';
@@ -456,8 +456,10 @@ export class EmployeeDocumentsService {
       const target = await this.requireEmployeeWithPerson(tx, employeeId);
       const isOwner = target.personUserId === user.userId;
       // Ses documents se lisent sur sa fiche : qui consulte les dossiers les voit.
+      // Qui vérifie les pièces n'en voit que les types qui lui sont délégués.
       const surLaFiche = peut(user, 'personnel.consulter');
-      if (!isOwner && !surLaFiche && !(await this.voitLaFile(tx, user))) {
+      const familles = isOwner || surLaFiche ? 'toutes' : await this.famillesVues(tx, user);
+      if (familles !== 'toutes' && familles.size === 0) {
         problem(403, 'documents.forbidden_scope', 'Accès limité à votre propre dossier');
       }
 
@@ -470,7 +472,14 @@ export class EmployeeDocumentsService {
         })
         .from(t.employeeDocuments)
         .innerJoin(uploader, eq(uploader.id, t.employeeDocuments.uploadedByUserId))
-        .where(eq(t.employeeDocuments.employeeId, employeeId))
+        .where(
+          and(
+            eq(t.employeeDocuments.employeeId, employeeId),
+            familles === 'toutes'
+              ? undefined
+              : inArray(t.employeeDocuments.category, [...familles]),
+          ),
+        )
         .orderBy(desc(t.employeeDocuments.createdAt));
 
       const reviewerIds = rows
@@ -511,8 +520,16 @@ export class EmployeeDocumentsService {
   async file(user: SessionUser): Promise<PieceATraiterView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       const moi = await agentDuCompte(tx, user.userId);
-      const toute = await this.voitLaFile(tx, user);
-      if (!toute && !moi) return [];
+      const familles = await this.famillesVues(tx, user);
+      if (familles !== 'toutes' && familles.size === 0 && !moi) return [];
+      // Les types délégués, et les pièces confiées à la main.
+      const perimetre =
+        familles === 'toutes'
+          ? undefined
+          : or(
+              familles.size > 0 ? inArray(t.employeeDocuments.category, [...familles]) : sql`false`,
+              moi ? eq(t.employeeDocuments.confieeAEmployeeId, moi) : sql`false`,
+            );
       const uploader = t.users;
       // Les pièces en vérification viennent toutes ; la limite ne porte que
       // sur celles vérifiées ces trente derniers jours. Sans leur contenu :
@@ -532,7 +549,7 @@ export class EmployeeDocumentsService {
           .innerJoin(uploader, eq(uploader.id, t.employeeDocuments.uploadedByUserId))
           .innerJoin(t.employees, eq(t.employees.id, t.employeeDocuments.employeeId))
           .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-          .where(and(filtre, toute ? undefined : eq(t.employeeDocuments.confieeAEmployeeId, moi!)))
+          .where(and(filtre, perimetre))
           .orderBy(desc(t.employeeDocuments.createdAt));
       const rows = [
         ...(await lire(eq(t.employeeDocuments.status, 'pending'))),
@@ -580,16 +597,21 @@ export class EmployeeDocumentsService {
   }
 
   /**
-   * Voit la file des pièces à vérifier : qui les vérifie pour la DCH. Qui
-   * consulte les dossiers lit les pièces d'un agent sur sa fiche, pas la file.
+   * Les types de pièces que l'utilisateur vérifie pour la DCH : tous pour son
+   * directeur (et l'administrateur, qui lit sans traiter), sinon ceux de ses
+   * délégations. Qui consulte les dossiers lit les pièces d'un agent sur sa
+   * fiche, pas la file.
    */
-  private voitLaFile(tx: Tx, user: SessionUser): Promise<boolean> {
-    return voitToutLaFile(tx, user, 'pieces');
+  private async famillesVues(tx: Tx, user: SessionUser): Promise<'toutes' | Set<string>> {
+    const vues = await capacitesVues(tx, user, 'pieces');
+    if (vues === 'toutes') return vues;
+    return new Set([...vues].map((c) => c.slice('demandes.pieces.'.length)));
   }
 
-  /** Voit CE document : la file entière, ou le membre à qui il est confié. */
+  /** Voit CE document : son type lui est délégué, ou la pièce lui est confiée. */
   private async voit(tx: Tx, user: SessionUser, doc: PieceSansContenu): Promise<boolean> {
-    if (await this.voitLaFile(tx, user)) return true;
+    const familles = await this.famillesVues(tx, user);
+    if (familles === 'toutes' || familles.has(doc.category)) return true;
     const moi = await agentDuCompte(tx, user.userId);
     return Boolean(moi && doc.confieeAEmployeeId === moi);
   }

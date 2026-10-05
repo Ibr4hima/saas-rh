@@ -120,9 +120,10 @@ function StatTile({
   /** Un nombre le plus souvent, une date pour le prochain férié. */
   value: React.ReactNode;
   context?: string;
-  href: string;
+  /** Absent : la page derrière n'est pas ouverte à qui regarde. */
+  href?: string;
 }) {
-  return (
+  const corps = (
     /* L'étiquette passe AVANT le chiffre : on lit « ce que c'est » puis
        « combien », l'ordre dans lequel la question se pose. L'icône tient
        dans une pastille bleue, à droite — la même pour les quatre tuiles :
@@ -130,59 +131,66 @@ function StatTile({
        permanente, alors qu'elle ne fait qu'ouvrir un écran. La flèche
        n'apparaît qu'au survol : la tuile est une porte, on ne le voit qu'en
        s'approchant. */
-    <Link
-      href={href}
-      className="group block rounded-[14px] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
-    >
-      <CardInteractive className="relative h-full px-4 pt-3.5 pb-4">
-        <div className="flex items-center justify-between gap-3">
-          <p className="truncate text-[10px] font-bold tracking-[0.1em] text-ink-muted uppercase">
-            <span className="sm:hidden">{short}</span>
-            <span className="hidden sm:inline">{label}</span>
-          </p>
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-primary/[0.07] text-primary transition-colors duration-200 group-hover:bg-primary/[0.12]">
-            <Icon name={icon} size={17} />
-          </span>
-        </div>
-        {value === undefined ? (
-          <Skeleton className="mt-3 h-[30px] w-14" />
-        ) : (
-          <p
-            className="mt-2.5 text-[26px] leading-none font-bold tracking-[-0.025em] text-ink-strong sm:text-[30px]"
-            style={TABULAIRE}
-          >
-            {value}
-          </p>
-        )}
-        {/* `title` parce que la ligne est TRONQUÉE sur grand écran : sans lui,
+    <CardInteractive className="relative h-full px-4 pt-3.5 pb-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="truncate text-[10px] font-bold tracking-[0.1em] text-ink-muted uppercase">
+          <span className="sm:hidden">{short}</span>
+          <span className="hidden sm:inline">{label}</span>
+        </p>
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-primary/[0.07] text-primary transition-colors duration-200 group-hover:bg-primary/[0.12]">
+          <Icon name={icon} size={17} />
+        </span>
+      </div>
+      {value === undefined ? (
+        <Skeleton className="mt-3 h-[30px] w-14" />
+      ) : (
+        <p
+          className="mt-2.5 text-[26px] leading-none font-bold tracking-[-0.025em] text-ink-strong sm:text-[30px]"
+          style={TABULAIRE}
+        >
+          {value}
+        </p>
+      )}
+      {/* `title` parce que la ligne est TRONQUÉE sur grand écran : sans lui,
             ce qui dépasse de la carte est simplement perdu. */}
-        {context ? (
-          <p title={context} className="mt-2 text-[11.5px] text-ink-muted sm:truncate sm:pr-5">
-            {context}
-          </p>
-        ) : null}
+      {context ? (
+        <p title={context} className="mt-2 text-[11.5px] text-ink-muted sm:truncate sm:pr-5">
+          {context}
+        </p>
+      ) : null}
+      {href ? (
         <Icon
           name="arrow_forward"
           size={16}
           className="absolute right-3.5 bottom-3.5 hidden -translate-x-1 text-primary opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100 sm:block"
         />
-      </CardInteractive>
+      ) : null}
+    </CardInteractive>
+  );
+  return href ? (
+    <Link
+      href={href}
+      className="group block rounded-[14px] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+    >
+      {corps}
     </Link>
+  ) : (
+    <div className="h-full">{corps}</div>
   );
 }
 
 /* ———— Barres d'effectifs (une teinte, étiquettes en encre de texte) ———— */
 
 function DirectionBar({
-  id,
+  href,
   label,
   title,
   value,
   max,
   total,
 }: {
-  /** null = les agents sans affectation : pas d'unité à ouvrir. */
-  id: string | null;
+  /** La liste du personnel filtrée sur la direction ; absente, rien à ouvrir. */
+  href: string | null;
   label: string;
   title: string;
   value: number;
@@ -221,11 +229,8 @@ function DirectionBar({
   const forme = '-mx-2 flex items-center gap-3 rounded-[7px] px-2 py-1';
   return (
     <li title={`${title} — ${compte(value, 'agent')} · ${part} %`}>
-      {id ? (
-        <Link
-          href={`/organisation?unite=${id}`}
-          className={cn(forme, 'transition-colors duration-150 hover:bg-hover')}
-        >
+      {href ? (
+        <Link href={href} className={cn(forme, 'transition-colors duration-150 hover:bg-hover')}>
           {contenu}
         </Link>
       ) : (
@@ -372,6 +377,8 @@ export default function DashboardPage() {
   const me = useMe();
   const canManage = peut(me.data, 'personnel.consulter');
   const seesContracts = peut(me.data, 'pilotage') || canManage;
+  // Une tuile n'ouvre que la page que qui regarde peut ouvrir.
+  const voitLesConges = peut(me.data, 'demandes.conges') || me.data?.role === 'admin';
 
   const stats = useQuery({
     queryKey: ['dashboard'],
@@ -408,7 +415,7 @@ export default function DashboardPage() {
           short="Effectif"
           value={d?.activeEmployees}
           context={d ? repartition(d) : undefined}
-          href="/employees"
+          href={canManage ? '/employees' : undefined}
         />
         <StatTile
           icon="free_cancellation"
@@ -416,7 +423,7 @@ export default function DashboardPage() {
           short="À valider"
           value={d?.pendingRequests}
           context="congés en attente de visa"
-          href="/moi/dch"
+          href={voitLesConges ? '/moi/dch' : undefined}
         />
         <StatTile
           icon="event_busy"
@@ -424,7 +431,7 @@ export default function DashboardPage() {
           short="Absents"
           value={d?.absentToday}
           context={d ? `${d.upcomingAbsences} à venir sous 30 jours` : undefined}
-          href="/calendrier"
+          href={voitLesConges ? '/moi/dch' : undefined}
         />
         <StatTile
           icon="flag"
@@ -447,7 +454,7 @@ export default function DashboardPage() {
                 ? 'aucun férié programmé'
                 : undefined
           }
-          href="/absences/feries"
+          href={peut(me.data, 'feries') ? '/absences/feries' : undefined}
         />
       </div>
 
@@ -507,10 +514,18 @@ export default function DashboardPage() {
                 </Table>
                 {absencesEnPlus > 0 ? (
                   <CardContent className="border-t border-line-soft py-3">
-                    <p className="text-xs text-ink-muted">
-                      {compte(absencesEnPlus, 'autre')} sous 30 jours : le calendrier les montre
-                      toutes.
-                    </p>
+                    {voitLesConges ? (
+                      <Link
+                        href="/moi/dch"
+                        className="text-xs font-semibold text-primary hover:underline"
+                      >
+                        {compte(absencesEnPlus, 'autre')} sous 30 jours
+                      </Link>
+                    ) : (
+                      <p className="text-xs text-ink-muted">
+                        {compte(absencesEnPlus, 'autre')} sous 30 jours
+                      </p>
+                    )}
                   </CardContent>
                 ) : null}
               </>
@@ -541,7 +556,13 @@ export default function DashboardPage() {
                     {d!.headcountByDirection.map((x) => (
                       <DirectionBar
                         key={x.id}
-                        id={x.id}
+                        // La liste du personnel, filtrée sur la direction :
+                        // elle compte les mêmes agents que la barre.
+                        href={
+                          canManage
+                            ? `/employees?unite=${encodeURIComponent(x.shortName ?? x.name)}`
+                            : null
+                        }
                         label={x.shortName ?? x.name}
                         title={x.name}
                         value={x.headcount}
@@ -551,7 +572,7 @@ export default function DashboardPage() {
                     ))}
                     {unassigned > 0 ? (
                       <DirectionBar
-                        id={null}
+                        href={null}
                         label="—"
                         title="Sans affectation"
                         value={unassigned}

@@ -51,7 +51,12 @@ import {
 import { frDate } from '../acces/appels';
 import { pasSurSoi } from '../acces/dch';
 import { faireSuivreLesDemandes, reconcilierDemande, reconcilierLeCircuit } from '../time/visas';
-import { arreterLActivite, inactiverLesContratsEchus, reprendreLActivite } from './activite';
+import {
+  arreterLActivite,
+  inactiverLesContratsEchus,
+  jourDeReprise,
+  reprendreLActivite,
+} from './activite';
 import { dernierContrat, exigerEnActivite, finDeContratPassee } from './en-activite';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 
@@ -483,6 +488,22 @@ export class PeopleService {
             .limit(1)
         : [];
       const team = await equipeDe(tx, employee.id);
+      const { rows: interruptions } = await tx.execute<{
+        dernierJour: string;
+        repriseLe: string;
+      }>(sql`
+        SELECT dernier_jour::text AS "dernierJour", reprise_le::text AS "repriseLe"
+          FROM periodes_inactivite
+         WHERE employee_id = ${employee.id} AND reprise_le IS NOT NULL
+         ORDER BY dernier_jour`);
+      const repriseParDefaut =
+        employee.status === 'archived' && employee.finActivite
+          ? ((
+              await tx.execute<{ le: string }>(
+                sql`SELECT ${jourDeReprise(employee.id, null)}::text AS le`,
+              )
+            ).rows[0]?.le ?? null)
+          : null;
 
       const canSeeSensitive = peut(user, 'personnel.sensible') || isSelf;
       return {
@@ -493,6 +514,8 @@ export class PeopleService {
         archivedAt: employee.archivedAt?.toISOString() ?? null,
         inactiviteMotif: (employee.inactiviteMotif as MotifInactivite | null) ?? null,
         finActivite: employee.finActivite ?? null,
+        interruptions,
+        repriseParDefaut,
         hiredOn: employee.hiredOn,
         workEmail: employee.workEmail,
         workPhone: employee.workPhone,
@@ -1261,9 +1284,29 @@ export class PeopleService {
       const cibles = await this.chargerCibles(tx, input.ids);
       const skipped: EmployeeBatchResult['skipped'] = [];
       const geste = input.archived ? 'archive' : 'reouverture';
+      const le = input.le ?? null;
+      if (le) {
+        const { rows } = await tx.execute<{ futur: boolean }>(
+          sql`SELECT ${le}::date > CURRENT_DATE AS futur`,
+        );
+        if (rows[0]?.futur) {
+          problem(
+            422,
+            'people.date_future',
+            input.archived
+              ? 'Le dernier jour ne peut pas être dans le futur'
+              : 'La reprise ne peut pas être dans le futur',
+            input.archived
+              ? 'Un départ prévu s’enregistre le jour venu, ou par la date de fin de son contrat.'
+              : 'Une reprise prévue s’enregistre par le contrat qui la porte.',
+          );
+        }
+      }
       let retenus: typeof cibles = [];
       for (const c of cibles) {
-        const motif = await this.motifDeRefus(tx, user, c, geste);
+        const motif =
+          (await this.motifDeRefus(tx, user, c, geste)) ??
+          (le ? await this.dateHorsActivite(tx, c.id, le, input.archived) : null);
         if (motif) skipped.push({ id: c.id, name: c.nom, reason: motif });
         else retenus.push(c);
       }
@@ -1281,7 +1324,7 @@ export class PeopleService {
       // Rouvert, il retrouve son poste et son unité — avant de redevenir
       // actif : un dossier actif n'a pas de dernier jour.
       if (!input.archived) {
-        for (const c of retenus) await reprendreLActivite(tx, user.tenantId, c.id);
+        for (const c of retenus) await reprendreLActivite(tx, user.tenantId, c.id, le);
       }
       await tx
         .update(t.employees)
@@ -1298,8 +1341,16 @@ export class PeopleService {
       }
 
       if (input.archived) {
-        // Son dernier jour, c'est aujourd'hui : sa dernière affectation s'arrête là.
-        for (const c of retenus) await arreterLActivite(tx, c.id, sql`CURRENT_DATE`);
+        // Son dernier jour, celui qu'on donne, ou aujourd'hui : sa dernière
+        // affectation s'arrête là, ses congés validés au-delà n'auront pas lieu.
+        for (const c of retenus) {
+          await arreterLActivite(
+            tx,
+            c.id,
+            le ? sql`${le}::date` : sql`CURRENT_DATE`,
+            input.motif ?? null,
+          );
+        }
         // Qui part ne prend plus de congé : ses demandes encore en attente
         // sont annulées, et leurs appels à viser retirés des boîtes.
         const annulees = await tx
@@ -1325,6 +1376,33 @@ export class PeopleService {
         aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
       };
     });
+  }
+
+  /**
+   * Une date de départ avant le début de son activité, ou une reprise qui
+   * ne suit pas son dernier jour : le motif du refus, sinon `null`.
+   */
+  private async dateHorsActivite(
+    tx: Tx,
+    id: string,
+    le: string,
+    depart: boolean,
+  ): Promise<string | null> {
+    const { rows } = await tx.execute<{ debut: string; fin: string | null }>(sql`
+      SELECT GREATEST(e.hired_on,
+                      (SELECT max(p.reprise_le) FROM periodes_inactivite p
+                        WHERE p.employee_id = e.id))::text AS debut,
+             e.fin_activite::text AS fin
+        FROM employees e WHERE e.id = ${id}`);
+    const r = rows[0];
+    if (!r) return null;
+    if (depart && le < r.debut) {
+      return `Son activité a commencé le ${frDate(r.debut)} : son dernier jour ne peut pas la précéder`;
+    }
+    if (!depart && r.fin && le <= r.fin) {
+      return `Son dernier jour était le ${frDate(r.fin)} : la reprise vient après`;
+    }
+    return null;
   }
 
   /**
@@ -1615,14 +1693,15 @@ export class PeopleService {
     );
     // Ce que la suppression du dossier emporterait en cascade sans le dire :
     // ses certificats (nom et matricule figés), ses habilitations, ses
-    // objectifs et ses fiches d'objectifs (évaluations comprises). Effacés
-    // ici, leurs identifiants rejoignent la récolte, et le journal oublie
-    // aussi leur contenu.
+    // objectifs et ses fiches d'objectifs (évaluations comprises), ses départs
+    // et retours. Effacés ici, leurs identifiants rejoignent la récolte, et
+    // le journal oublie aussi leur contenu.
     for (const table of [
       sql`academy_certificates`,
       sql`habilitations`,
       sql`objectifs`,
       sql`objectifs_fiches`,
+      sql`periodes_inactivite`,
     ]) {
       const { rows } = await tx.execute<{ id: string }>(
         sql`DELETE FROM ${table} WHERE employee_id = ${id} RETURNING id`,

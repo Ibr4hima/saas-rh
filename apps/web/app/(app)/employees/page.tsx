@@ -32,13 +32,14 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
+import { aujourdhui } from '../../../lib/temps';
 import { BandeauDeleguer, CAPACITES_PERSONNEL } from '../../../components/deleguer-membres';
 import { EmployeeCreateModal } from '../../../components/employee-create-modal';
 import { BandeauHierarchie } from '../../../components/bandeau-hierarchie';
 import { aDesConsequences, ListeConsequences } from '../../../components/consequences-hierarchie';
 import { FenetreImportEmployes } from '../../../components/import-employes';
 import { Icon } from '../../../components/icons';
-import { Modal, ModalSection } from '../../../components/modal';
+import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
 import { Onglets, OngletsBandeau } from '../../../components/onglets-bandeau';
 import { Pagination } from '../../../components/pagination';
 import {
@@ -113,7 +114,11 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [onglet, setOnglet] = useState<EmployeeStatus>(ongletInitial);
-  const [filtres, setFiltres] = useState<Filtres>(SANS_FILTRE);
+  // Venu d'une barre du tableau de bord : la liste s'ouvre filtrée sur sa direction.
+  const uniteDemandee = params.get('unite');
+  const [filtres, setFiltres] = useState<Filtres>(
+    uniteDemandee ? { units: [uniteDemandee] } : SANS_FILTRE,
+  );
   const [sort, setSort] = useState<EmployeeSort>(
     ongletInitial === 'archived' ? 'contractEnd' : 'recent',
   );
@@ -227,10 +232,12 @@ export default function EmployeesPage() {
     mutationFn: ({
       archived,
       motif,
+      le,
       repreneurs,
     }: {
       archived: boolean;
       motif?: MotifInactivite;
+      le?: string;
       repreneurs?: Record<string, string>;
     }) =>
       api<EmployeeBatchResult>('/employees/archive', {
@@ -239,6 +246,7 @@ export default function EmployeesPage() {
           ids: (archived ? actifsChoisis : archivesChoisis).map((e) => e.id),
           archived,
           motif,
+          le,
           repreneurs,
         },
       }),
@@ -547,9 +555,9 @@ export default function EmployeesPage() {
           equipes={aConfier}
           enCours={archiver.isPending}
           onClose={() => setPanneau(null)}
-          onConfirmer={(motif, repreneurs) => {
+          onConfirmer={(motif, le, repreneurs) => {
             setPanneau(null);
-            archiver.mutate({ archived: true, motif, repreneurs });
+            archiver.mutate({ archived: true, motif, le, repreneurs });
           }}
         />
       ) : null}
@@ -757,9 +765,10 @@ function DesactiverModal({
   equipes: EquipeAConfier[];
   enCours: boolean;
   onClose: () => void;
-  onConfirmer: (motif: MotifInactivite, repreneurs: Record<string, string>) => void;
+  onConfirmer: (motif: MotifInactivite, le: string, repreneurs: Record<string, string>) => void;
 }) {
   const [motif, setMotif] = useState<MotifInactivite | ''>('');
+  const [le, setLe] = useState(aujourdhui());
   const [repreneurs, setRepreneurs] = useState<Record<string, string>>({});
   return (
     <Modal
@@ -774,29 +783,41 @@ function DesactiverModal({
           </Button>
           <Button
             loading={enCours}
-            disabled={!motif || !toutesConfiees(equipes, repreneurs)}
-            onClick={() => motif && onConfirmer(motif, repreneurs)}
+            disabled={!motif || !le || le > aujourdhui() || !toutesConfiees(equipes, repreneurs)}
+            onClick={() => motif && onConfirmer(motif, le, repreneurs)}
           >
             Désactiver
           </Button>
         </>
       }
     >
-      <ModalSection title="Pourquoi ?">
-        <Field label="Motif" htmlFor="motif-inactivite" required>
-          <Select
-            id="motif-inactivite"
-            value={motif}
-            onChange={(e) => setMotif(e.target.value as MotifInactivite | '')}
-          >
-            <option value="">Choisir</option>
-            {MOTIFS_INACTIVITE.map((m) => (
-              <option key={m} value={m}>
-                {MOTIF_INACTIVITE_LABELS[m]}
-              </option>
-            ))}
-          </Select>
-        </Field>
+      <ModalSection title="Départ">
+        <ModalGrid>
+          <Field label="Motif" htmlFor="motif-inactivite" required>
+            <Select
+              id="motif-inactivite"
+              value={motif}
+              onChange={(e) => setMotif(e.target.value as MotifInactivite | '')}
+            >
+              <option value="">Choisir</option>
+              {MOTIFS_INACTIVITE.map((m) => (
+                <option key={m} value={m}>
+                  {MOTIF_INACTIVITE_LABELS[m]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {/* Le départ se date de son dernier jour, pas du jour de la saisie. */}
+          <Field label="Dernier jour" htmlFor="dernier-jour" required>
+            <Input
+              id="dernier-jour"
+              type="date"
+              max={aujourdhui()}
+              value={le}
+              onChange={(e) => setLe(e.target.value)}
+            />
+          </Field>
+        </ModalGrid>
       </ModalSection>
       {equipes.length > 0 ? (
         <ModalSection

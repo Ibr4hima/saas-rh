@@ -9,6 +9,7 @@ import type {
   ObjectifView,
   StatutObjectif,
 } from '@teranga/contracts';
+import { objectifsDeLaFiche } from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
 import {
@@ -125,9 +126,12 @@ function CarteSemestre({
     setStatuts(apres);
     setErreur(null);
     try {
+      // Le texte lu à l'écran part avec le statut : réécrit entre-temps par
+      // le n+1, l'objectif est refusé, et la fiche se recharge.
+      const empreinte = objectifsDeLaFiche(fiche.contenu).find((o) => o.id === id)?.empreinte;
       const r = await api<{ statuts: Record<string, StatutObjectif> }>(
         `/objectifs/moi/fiches/${fiche.annee}/${fiche.semestre}/statuts`,
-        { method: 'PUT', body: { id, statut } },
+        { method: 'PUT', body: { id, statut, empreinte } },
       );
       queryClient.setQueryData<MesObjectifs>([...CLE_OBJECTIFS, 'moi'], (d) =>
         d
@@ -135,7 +139,11 @@ function CarteSemestre({
               ...d,
               fiches: d.fiches.map((x) =>
                 x.annee === fiche.annee && x.semestre === fiche.semestre
-                  ? { ...x, statuts: r.statuts }
+                  ? {
+                      ...x,
+                      statuts: r.statuts,
+                      statutsCaducs: x.statutsCaducs.filter((c) => c !== id),
+                    }
                   : x,
               ),
             }
@@ -144,6 +152,9 @@ function CarteSemestre({
     } catch (e) {
       setStatuts(avant);
       setErreur(e instanceof ApiError ? e.message : 'Statut non enregistré, réessayez.');
+      if (e instanceof ApiError && e.problem.code === 'objectifs.objectif_modifie') {
+        await queryClient.invalidateQueries({ queryKey: [...CLE_OBJECTIFS, 'moi'] });
+      }
     }
   };
 
@@ -182,7 +193,8 @@ function CarteSemestre({
             className="pt-3 pb-1"
             contenu={fiche.contenu}
             modifiable={false}
-            formations={formations}
+            // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
+            formations={fiche.formations ?? formations}
             statuts={statuts}
           />
           <div className="flex flex-wrap items-center justify-end gap-3 px-5 pb-4">

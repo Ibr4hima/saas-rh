@@ -583,6 +583,13 @@ export const archiveEmployeesSchema = z
     archived: z.boolean(),
     /** Pourquoi il devient inactif — exigé pour désactiver, ignoré pour réactiver. */
     motif: motifInactiviteSchema.optional(),
+    /**
+     * Le dernier jour d'activité (départ), ou le premier jour de la reprise
+     * (réactivation). Par défaut : aujourd'hui pour un départ ; pour une
+     * reprise, le début du nouveau contrat s'il suit le départ, sinon
+     * aujourd'hui. Jamais dans le futur.
+     */
+    le: isoDate.optional(),
     repreneurs: repreneursSchema,
   })
   .refine((v) => !v.archived || v.motif !== undefined, {
@@ -696,6 +703,13 @@ export interface EmployeeDetail {
   inactiviteMotif: MotifInactivite | null;
   /** Inactif : son dernier jour d'activité — fin de contrat ou jour du départ. */
   finActivite: string | null;
+  /**
+   * Ses départs suivis d'un retour : le dernier jour, puis le premier jour de
+   * la reprise. L'ancienneté se compte hors de ces intervalles.
+   */
+  interruptions: { dernierJour: string; repriseLe: string }[];
+  /** Inactif : le jour où reprendrait son activité, réactivé sans autre date. */
+  repriseParDefaut: string | null;
   hiredOn: string;
   workEmail: string | null;
   workPhone: string | null;

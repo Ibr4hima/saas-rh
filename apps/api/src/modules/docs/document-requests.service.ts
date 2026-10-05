@@ -207,11 +207,11 @@ export class DocumentRequestsService {
           !selfOnly && ouverte
             ? await vueDuTraitement(tx, capaciteDesDocuments(r.request.docTypes), d, moi, dch)
             : null;
-        // Prête : on corrige le point de retrait — qui l'a traitée, ou la DCH.
+        // Prête : on corrige le point de retrait, qui traite les documents
+        // pour la DCH ; qui l'a traitée seulement s'il les traite encore.
         const peutAvancer =
           r.request.status === 'ready'
-            ? r.request.handledByUserId === user.userId ||
-              (traiteLesDocuments && r.request.employeeId !== moi)
+            ? traiteLesDocuments && r.request.employeeId !== moi
             : Boolean(tr?.peutTraiter);
         vues.push({
           id: r.request.id,
@@ -264,10 +264,11 @@ export class DocumentRequestsService {
     row: typeof t.documentRequests.$inferSelect,
   ): Promise<string | null> {
     if (row.status === 'ready') {
+      // Qui l'a traitée ne garde pas la main en quittant la DCH : la
+      // correction revient à qui traite les documents aujourd'hui.
       const moi = await agentDuCompte(tx, user.userId);
-      if (row.handledByUserId === user.userId) return null;
       if (row.employeeId !== moi && (await this.traiteLesDocuments(tx, user))) return null;
-      return 'Traitée par un autre membre de la DCH';
+      return 'Réservé à qui traite les documents pour la DCH';
     }
     try {
       await exigerDeTraiter(tx, user, capaciteDesDocuments(row.docTypes), {

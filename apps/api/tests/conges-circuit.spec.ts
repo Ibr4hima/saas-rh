@@ -32,6 +32,8 @@ import { HabilitationsService } from '../src/modules/acces/habilitations.service
 import { OrgUnitsService } from '../src/modules/people/org-units.service';
 import { PeopleService } from '../src/modules/people/people.service';
 import { AbsencesService } from '../src/modules/time/absences.service';
+import { DashboardController } from '../src/modules/analytics/dashboard.controller';
+import type { AuthenticatedRequest } from '../src/modules/auth/session.guard';
 import { reconcilierLeCircuit } from '../src/modules/time/visas';
 import { countWorkdays } from '../src/modules/time/workdays';
 
@@ -1272,5 +1274,51 @@ describe('les envois simultanés', () => {
     } finally {
       await raw(`DELETE FROM holidays WHERE tenant_id = $1`, [tenantId]);
     }
+  });
+});
+
+describe('le tableau de bord compte ce que ses listes montrent', () => {
+  const tableau = () => new DashboardController(db, absences);
+  const chiffres = (session: SessionUser) =>
+    tableau().stats({ sessionUser: session } as AuthenticatedRequest);
+
+  it('les congés à valider : la file de qui regarde, celle de « Congés à traiter »', async () => {
+    await habiliter(awa);
+    const id = await poser(moussa);
+    await viser(ousmane, id);
+    // Une demande dont le début est passé sans visa : échue, elle ne compte plus.
+    const echue = await poser(moussa);
+    await raw(
+      `UPDATE absence_requests SET start_date = CURRENT_DATE - 1, end_date = CURRENT_DATE
+        WHERE id = $1`,
+      [echue],
+    );
+    for (const qui of [mariama, awa]) {
+      const file = (await absences.compteurs(qui.session)).aTraiter.conges;
+      expect((await chiffres(qui.session)).pendingRequests).toBe(file);
+      expect(file).toBe(1);
+    }
+    // Qui ne traite pas les congés lit ce qui attend la DCH, pour l'agence.
+    expect((await chiffres(admin)).pendingRequests).toBe(1);
+  });
+
+  it('absents aujourd’hui et à venir : les lignes du calendrier, sur trente jours', async () => {
+    await enConge(moussa);
+    const validee = async (debut: number) => {
+      const id = randomUUID();
+      await raw(
+        `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+         VALUES ($1,$2,$3,$4, CURRENT_DATE + $5::int, CURRENT_DATE + $5::int + 1, 2, 'approved')`,
+        [id, tenantId, ousmane.employeeId, typeId, debut],
+      );
+      return id;
+    };
+    await validee(10);
+    const tard = await validee(40);
+    const d = await chiffres(admin);
+    expect([d.absentToday, d.upcomingAbsences]).toEqual([1, 1]);
+    const calendrier = await absences.upcoming(admin);
+    expect(calendrier.map((r) => r.id)).not.toContain(tard);
+    expect(calendrier).toHaveLength(d.absentToday + d.upcomingAbsences);
   });
 });

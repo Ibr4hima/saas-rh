@@ -670,11 +670,14 @@ describe('désactiver, réactiver', () => {
     const ok = await people.archive(admin, { ids: [fatou.employeeId], archived: false });
     expect(ok.done).toBe(1);
     expect(await statut(fatou)).toMatchObject({ status: 'active', inactivite_motif: null });
-    // Elle retrouve son poste, à compter de son nouveau contrat.
-    expect(await affectations(fatou)).toEqual([
-      { poste: 'Poste', du: '2024-01-01', au: await jour(-1) },
-      { poste: 'Poste', du: await jour(0), au: null },
-    ]);
+    // Son nouveau contrat commence le lendemain de la fin du précédent : pas
+    // d'interruption, son affectation reprend son cours, sans départ inscrit.
+    expect(await affectations(fatou)).toEqual([{ poste: 'Poste', du: '2024-01-01', au: null }]);
+    const { rows: departs } = await raw(
+      `SELECT count(*)::int AS n FROM periodes_inactivite WHERE employee_id = $1`,
+      [fatou.employeeId],
+    );
+    expect(departs[0].n).toBe(0);
     const { rows: fin } = await raw(`SELECT fin_activite FROM employees WHERE id = $1`, [
       fatou.employeeId,
     ]);
@@ -1035,6 +1038,166 @@ describe('corriger ce qui a été saisi par erreur', () => {
     expect(await affectations(moussa)).toEqual([
       { poste: 'Poste', du: '2024-01-01', au: await jour(-31) },
       { poste: 'Analyste financier', du: await jour(-30), au: null },
+    ]);
+  });
+});
+
+describe('un départ daté, un retour daté', () => {
+  const periodes = async (a: Agent) =>
+    (
+      await raw(
+        `SELECT dernier_jour::text AS dernier, motif, reprise_le::text AS reprise
+           FROM periodes_inactivite WHERE employee_id = $1 ORDER BY dernier_jour`,
+        [a.employeeId],
+      )
+    ).rows;
+
+  it('le départ se date de son dernier jour, jamais dans le futur ni avant son arrivée', async () => {
+    expect(
+      await codeOf(async () =>
+        people.archive(admin, {
+          ids: [moussa.employeeId],
+          archived: true,
+          motif: 'demission',
+          le: await jour(1),
+        }),
+      ),
+    ).toBe('people.date_future');
+    const avant = await people.archive(admin, {
+      ids: [moussa.employeeId],
+      archived: true,
+      motif: 'demission',
+      le: '2023-12-31',
+    });
+    expect(avant.done).toBe(0);
+    expect(avant.skipped[0]?.reason).toBe(
+      'Son activité a commencé le 1er janvier 2024 : son dernier jour ne peut pas la précéder',
+    );
+
+    const r = await people.archive(admin, {
+      ids: [moussa.employeeId],
+      archived: true,
+      motif: 'demission',
+      le: await jour(-10),
+    });
+    expect(r.done).toBe(1);
+    expect((await people.detail(admin, moussa.employeeId)).finActivite).toBe(await jour(-10));
+    expect(await affectations(moussa)).toEqual([
+      { poste: 'Poste', du: '2024-01-01', au: await jour(-10) },
+    ]);
+    expect(await periodes(moussa)).toEqual([
+      { dernier: await jour(-10), motif: 'demission', reprise: null },
+    ]);
+  });
+
+  it('réactivé le jour même, il n’est jamais parti : son unité, il la garde le lendemain', async () => {
+    await people.archive(admin, { ids: [moussa.employeeId], archived: true, motif: 'demission' });
+    const r = await people.archive(admin, { ids: [moussa.employeeId], archived: false });
+    expect(r.done).toBe(1);
+    expect(await affectations(moussa)).toEqual([{ poste: 'Poste', du: '2024-01-01', au: null }]);
+    expect(await periodes(moussa)).toEqual([]);
+    const { rows } = await raw(
+      `SELECT count(*)::int AS n FROM assignments
+        WHERE employee_id = $1 AND validity @> (CURRENT_DATE + 1) AND org_unit_id = $2`,
+      [moussa.employeeId, uDFC],
+    );
+    expect(rows[0].n).toBe(1);
+    expect((await people.detail(admin, moussa.employeeId)).interruptions).toEqual([]);
+  });
+
+  it('une réintégration garde le départ, reprend au jour du retour, et l’intervalle ne compte pas', async () => {
+    await people.archive(admin, {
+      ids: [moussa.employeeId],
+      archived: true,
+      motif: 'demission',
+      le: await jour(-100),
+    });
+    const tot = await people.archive(admin, {
+      ids: [moussa.employeeId],
+      archived: false,
+      le: await jour(-100),
+    });
+    expect(tot.skipped[0]?.reason).toMatch(
+      /^Son dernier jour était le .+ : la reprise vient après$/,
+    );
+
+    // Sans date : aujourd'hui, pas le lendemain du départ.
+    expect((await people.detail(admin, moussa.employeeId)).repriseParDefaut).toBe(await jour(0));
+    const r = await people.archive(admin, { ids: [moussa.employeeId], archived: false });
+    expect(r.done).toBe(1);
+    expect(await affectations(moussa)).toEqual([
+      { poste: 'Poste', du: '2024-01-01', au: await jour(-100) },
+      { poste: 'Poste', du: await jour(0), au: null },
+    ]);
+    expect(await periodes(moussa)).toEqual([
+      { dernier: await jour(-100), motif: 'demission', reprise: await jour(0) },
+    ]);
+    const fiche = await people.detail(admin, moussa.employeeId);
+    expect(fiche.interruptions).toEqual([
+      { dernierJour: await jour(-100), repriseLe: await jour(0) },
+    ]);
+    expect(fiche.finActivite).toBeNull();
+  });
+
+  it('un retour daté dans le passé ; un contrat enregistré depuis le départ donne sa date', async () => {
+    await people.archive(admin, {
+      ids: [moussa.employeeId],
+      archived: true,
+      motif: 'demission',
+      le: await jour(-60),
+    });
+    await people.archive(admin, { ids: [moussa.employeeId], archived: false, le: await jour(-20) });
+    expect(await periodes(moussa)).toEqual([
+      { dernier: await jour(-60), motif: 'demission', reprise: await jour(-20) },
+    ]);
+    expect((await affectations(moussa)).at(-1)).toEqual({
+      poste: 'Poste',
+      du: await jour(-20),
+      au: null,
+    });
+
+    await people.archive(admin, {
+      ids: [moussa.employeeId],
+      archived: true,
+      motif: 'demission',
+      le: await jour(-5),
+    });
+    await people.newContract(admin, moussa.employeeId, {
+      contractType: 'cdd',
+      startDate: await jour(-2),
+      endDate: await jour(200),
+    });
+    expect((await people.detail(admin, moussa.employeeId)).repriseParDefaut).toBe(await jour(-2));
+    await people.archive(admin, { ids: [moussa.employeeId], archived: false });
+    expect((await periodes(moussa)).at(-1)).toEqual({
+      dernier: await jour(-5),
+      motif: 'demission',
+      reprise: await jour(-2),
+    });
+  });
+
+  it('un départ avant son retour précédent est refusé', async () => {
+    await people.archive(admin, {
+      ids: [moussa.employeeId],
+      archived: true,
+      motif: 'demission',
+      le: await jour(-60),
+    });
+    await people.archive(admin, { ids: [moussa.employeeId], archived: false, le: await jour(-20) });
+    const r = await people.archive(admin, {
+      ids: [moussa.employeeId],
+      archived: true,
+      motif: 'demission',
+      le: await jour(-30),
+    });
+    expect(r.done).toBe(0);
+    expect(r.skipped[0]?.reason).toMatch(/^Son activité a commencé le .+ : son dernier jour/);
+  });
+
+  it('une fin de contrat, d’elle-même, s’inscrit aussi dans ses départs', async () => {
+    await inactiver();
+    expect(await periodes(fatou)).toEqual([
+      { dernier: await jour(-1), motif: 'fin_de_contrat', reprise: null },
     ]);
   });
 });

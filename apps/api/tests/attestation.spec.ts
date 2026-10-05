@@ -167,3 +167,42 @@ describe('les tournures qui étaient fautives', () => {
     expect(frDate('2025-02-21')).toBe('21 février 2025');
   });
 });
+
+describe('ce que l’attestation cite', () => {
+  it('le contrat commencé, pas celui enregistré d’avance', async () => {
+    const futur = randomUUID();
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date)
+       VALUES ($1, $2, $3, 'cdi', CURRENT_DATE + 30)`,
+      [futur, tenantId, employes.femme],
+    );
+    try {
+      const [corps] = (await service.apercu(admin, employes.femme!)).paragraphes;
+      expect(corps).toContain('dans le cadre d’un contrat à durée déterminée (CDD)');
+      expect(corps).not.toContain('CDI');
+    } finally {
+      await raw('DELETE FROM contracts WHERE id = $1', [futur]);
+    }
+  });
+
+  it('un stagiaire est accueilli en stage, pas employé', async () => {
+    const [corps] = (await service.apercu(admin, employes.homme!)).paragraphes;
+    expect(corps).toContain(
+      'M. Moussa NDIAYE, né le 1er janvier 1990 (Sénégal), matricule ATT-002',
+    );
+    expect(corps).toContain('est accueilli en stage en son sein depuis le 1er février 2025');
+    expect(corps).not.toContain('employé');
+    const [femme] = (await service.apercu(admin, employes.femme!)).paragraphes;
+    expect(femme).toContain('est employée en son sein depuis le 1er février 2025');
+  });
+
+  it('l’aperçu porte les textes du PDF, lieu, date et signature compris', async () => {
+    const apercu = await service.apercu(admin, employes.femme!);
+    expect(apercu.titre).toBe('ATTESTATION DE TRAVAIL');
+    expect(apercu.paragraphes[1]).toBe(
+      'La présente attestation lui est délivrée pour servir et valoir ce que de droit.',
+    );
+    expect(apercu.lieuEtDate).toBe(`Fait à Dakar, le ${frDate(new Date())}`);
+    expect(apercu.signature).toEqual(['Pour APIX S.A,', 'La Direction du Capital Humain']);
+  });
+});

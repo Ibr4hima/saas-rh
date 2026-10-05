@@ -420,21 +420,18 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.nom}
-                  {m.poste ? ` — ${m.poste}` : ''}
+                  {m.poste ? ` · ${m.poste}` : ''}
                 </option>
               ))}
             </Select>
           </Field>
-          <Field
-            label="Début du contrat"
-            htmlFor="hiredOn"
-            error={errors.hiredOn?.message}
-            required
-          >
+          {/* La date d'embauche, et elle seule : le début d'un contrat se
+              corrige sur le contrat, dans le bloc Contrats de la fiche. */}
+          <Field label="Date d’embauche" htmlFor="hiredOn" error={errors.hiredOn?.message} required>
             <Input
               id="hiredOn"
               type="date"
-              {...form.register('hiredOn', { required: "La date d'embauche est requise" })}
+              {...form.register('hiredOn', { required: 'La date d’embauche est requise' })}
             />
           </Field>
           <Field label="Email professionnel" htmlFor="workEmail">

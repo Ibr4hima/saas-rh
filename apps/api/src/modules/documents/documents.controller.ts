@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import type { AttestationApercu } from '@teranga/contracts';
 import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AttestationService } from './attestation.service';
@@ -20,10 +21,7 @@ import { contentDisposition } from '../../common/telechargement';
 export class DocumentsController {
   constructor(@Inject(AttestationService) private readonly attestations: AttestationService) {}
 
-  /**
-   * L'attestation d'un agent : depuis sa fiche (qui gère les dossiers), ou
-   * depuis la file des documents (qui traite sa demande).
-   */
+  /** L'attestation d'un agent, depuis la file des documents (qui traite sa demande). */
   @Get('employees/:id/attestation')
   async employeeAttestation(
     @Req() req: AuthenticatedRequest,
@@ -36,6 +34,15 @@ export class DocumentsController {
   ) {
     const { filename, pdf } = await this.attestations.forEmployee(req.sessionUser, id);
     this.send(res, filename, pdf, disposition === 'inline');
+  }
+
+  /** Ses textes, tels que le PDF les imprime : l'aperçu de la file. */
+  @Get('employees/:id/attestation/apercu')
+  attestationApercu(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<AttestationApercu> {
+    return this.attestations.apercu(req.sessionUser, id);
   }
 
   private send(res: Response, filename: string, pdf: Buffer, inline = false) {

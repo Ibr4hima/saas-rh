@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import type { SessionUser } from '@teranga/contracts';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import type { AttestationApercu, SessionUser } from '@teranga/contracts';
+import { capaciteDuDocument } from '@teranga/contracts';
 import { agentDuCompte, directionDuPersonnel, pasSurSoi } from '../acces/dch';
-import { capaciteDesDocuments, vueDuTraitement } from '../acces/demandes';
+import { vueDuTraitement } from '../acces/demandes';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -33,7 +34,7 @@ export function elide(prefixe: string, mot: string): string {
   return /^[aeiouyàâäéèêëîïôöùûü]/i.test(mot.trim()) ? `${prefixe}’${mot}` : `${prefixe}e ${mot}`;
 }
 
-interface AttestationData {
+export interface AttestationData {
   civility: string;
   fullName: string;
   birthLine: string;
@@ -42,6 +43,8 @@ interface AttestationData {
   positionTitle: string | null;
   orgUnitName: string | null;
   contractLabel: string | null;
+  /** Un stagiaire n'est pas « employé » : il est accueilli en stage. */
+  stage: boolean;
   feminine: boolean;
 }
 
@@ -74,54 +77,106 @@ export function rattachement(unite: string): string {
   return ` (${unite})`;
 }
 
+/**
+ * Les textes de l'attestation, tels que le PDF les imprime. L'aperçu de la
+ * file des documents affiche les mêmes : une seule rédaction, deux rendus.
+ */
+export function textesDeLAttestation(d: AttestationData, aujourdhui: Date): AttestationApercu {
+  const e = d.feminine ? 'e' : '';
+  // « Nous soussignés, APIX, attestons » : la formule était doublement
+  // fautive. « Nous soussignés » désigne des PERSONNES qui signent, pas une
+  // société ; et le pluriel s'accordait avec un sujet singulier. Une
+  // personne morale atteste en son nom propre.
+  const phrase: string[] = [
+    `L’${ENTETE.agence} (${ENTETE.raisonSociale}) atteste que ${d.civility} ${d.fullName}${d.birthLine}, ` +
+      `matricule ${d.employeeNumber}, ` +
+      (d.stage ? `est accueilli${e} en stage en son sein` : `est employé${e} en son sein`) +
+      ` depuis le ${frDate(d.hiredOn)}`,
+  ];
+  if (d.positionTitle) {
+    phrase.push(
+      ` et y occupe ${elide('le poste d', d.positionTitle)}` +
+        (d.orgUnitName ? rattachement(d.orgUnitName) : ''),
+    );
+  }
+  if (d.contractLabel) phrase.push(`, dans le cadre ${d.contractLabel}`);
+  phrase.push('.');
+  return {
+    titre: 'ATTESTATION DE TRAVAIL',
+    paragraphes: [
+      phrase.join(''),
+      'La présente attestation lui est délivrée pour servir et valoir ce que de droit.',
+    ],
+    // « Fait le … » seul ne suffit pas : un acte administratif porte le lieu
+    // de son émission.
+    lieuEtDate: `Fait à ${ENTETE.ville}, le ${frDate(aujourdhui)}`,
+    signature: [`Pour ${ENTETE.raisonSociale},`, `La ${ENTETE.service}`],
+  };
+}
+
 @Injectable()
 export class AttestationService {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
 
   /**
-   * L'attestation d'un agent : qui traite sa demande (la file des documents).
-   * Gérer les dossiers n'y suffit pas, les attestations se délèguent à part.
-   * L'administrateur garde la main pour contrôler le modèle.
+   * L'attestation d'un agent : qui traite, en ce moment, sa demande
+   * d'attestation de travail. Une demande d'un autre document n'y donne pas
+   * droit, et le droit s'éteint avec la demande : une fois prête, refusée ou
+   * annulée, ou la délégation retirée. Gérer les dossiers n'y suffit pas, les
+   * attestations se délèguent à part. L'administrateur garde la main pour
+   * contrôler le modèle.
    */
   async forEmployee(
     user: SessionUser,
     employeeId: string,
   ): Promise<{ filename: string; pdf: Buffer }> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
-      // La sienne se demande depuis « Mes documents », comme pour tout agent.
-      await pasSurSoi(tx, user.userId, [employeeId], 'établir votre propre attestation');
-      if (user.role !== 'admin' && !(await this.traiteSaDemande(tx, user, employeeId))) {
-        problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
-      }
-      return this.build(tx, user.tenantId, employeeId);
+      await this.exigerLeDroit(tx, user, employeeId);
+      const d = await this.donnees(tx, employeeId);
+      const safeNumber = d.employeeNumber.replace(/[^A-Za-z0-9-]/g, '_');
+      return {
+        filename: `attestation-travail-${safeNumber}.pdf`,
+        pdf: await this.render(textesDeLAttestation(d, new Date())),
+      };
     });
   }
 
-  /** Une demande de documents de cet agent, que l'appelant traite (ou a traitée). */
+  /**
+   * Ce que le PDF imprimera, mot pour mot : l'aperçu de la file des documents
+   * le montre tel quel, au lieu de recomposer les champs de son côté.
+   */
+  async apercu(user: SessionUser, employeeId: string): Promise<AttestationApercu> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await this.exigerLeDroit(tx, user, employeeId);
+      return textesDeLAttestation(await this.donnees(tx, employeeId), new Date());
+    });
+  }
+
+  private async exigerLeDroit(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
+    // La sienne se demande depuis « Mes documents », comme pour tout agent.
+    await pasSurSoi(tx, user.userId, [employeeId], 'établir votre propre attestation');
+    if (user.role !== 'admin' && !(await this.traiteSaDemande(tx, user, employeeId))) {
+      problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+    }
+  }
+
+  /** Une demande d'attestation de travail de cet agent, encore ouverte, que l'appelant traite. */
   private async traiteSaDemande(tx: Tx, user: SessionUser, employeeId: string): Promise<boolean> {
     const moi = await agentDuCompte(tx, user.userId);
     const dch = await directionDuPersonnel(tx);
-    const { rows } = await tx.execute<{
-      doc_types: string[];
-      confiee_a_employee_id: string | null;
-      handled_by_user_id: string | null;
-    }>(sql`
-      SELECT doc_types, confiee_a_employee_id, handled_by_user_id FROM document_requests
-       WHERE employee_id = ${employeeId} AND status IN ('received', 'processing', 'ready')`);
+    const { rows } = await tx.execute<{ confiee_a_employee_id: string | null }>(sql`
+      SELECT confiee_a_employee_id FROM document_requests
+       WHERE employee_id = ${employeeId} AND status IN ('received', 'processing')
+         AND 'attestation_travail' = ANY (doc_types)`);
+    const capacite = capaciteDuDocument('attestation_travail');
     for (const r of rows) {
-      if (r.handled_by_user_id === user.userId) return true;
       const d = { employeeId, confieeA: r.confiee_a_employee_id };
-      const capacite = capaciteDesDocuments(r.doc_types);
       if ((await vueDuTraitement(tx, capacite, d, moi, dch)).peutTraiter) return true;
     }
     return false;
   }
 
-  private async build(
-    tx: Tx,
-    tenantId: string,
-    employeeId: string,
-  ): Promise<{ filename: string; pdf: Buffer }> {
+  private async donnees(tx: Tx, employeeId: string): Promise<AttestationData> {
     const [row] = await tx
       .select({
         employeeNumber: t.employees.employeeNumber,
@@ -162,10 +217,14 @@ export class AttestationService {
       );
     }
 
+    // Le contrat en cours : le dernier COMMENCÉ. Un CDI enregistré d'avance,
+    // qui prendra la suite d'un CDD, ne se cite pas avant son premier jour.
     const [contract] = await tx
       .select({ contractType: t.contracts.contractType })
       .from(t.contracts)
-      .where(eq(t.contracts.employeeId, employeeId))
+      .where(
+        and(eq(t.contracts.employeeId, employeeId), sql`${t.contracts.startDate} <= CURRENT_DATE`),
+      )
       .orderBy(desc(t.contracts.startDate))
       .limit(1);
 
@@ -179,7 +238,7 @@ export class AttestationService {
           ? `, né${feminine ? 'e' : ''} le ${frDate(row.birthDate)}`
           : '';
 
-    const data: AttestationData = {
+    return {
       civility: row.gender === 'male' ? 'M.' : feminine ? 'Mme' : 'M./Mme',
       fullName: `${row.givenName} ${row.familyName.toUpperCase()}`,
       birthLine,
@@ -188,16 +247,12 @@ export class AttestationService {
       positionTitle: row.positionTitle ?? null,
       orgUnitName: row.orgUnitName ?? null,
       contractLabel: contract ? (CONTRACT_LABELS[contract.contractType] ?? null) : null,
+      stage: contract?.contractType === 'stage',
       feminine,
-    };
-    const safeNumber = row.employeeNumber.replace(/[^A-Za-z0-9-]/g, '_');
-    return {
-      filename: `attestation-travail-${safeNumber}.pdf`,
-      pdf: await this.render(data),
     };
   }
 
-  private render(d: AttestationData): Promise<Buffer> {
+  private render(textes: AttestationApercu): Promise<Buffer> {
     const MARGE = 56;
     const doc = new PDFDocument({
       size: 'A4',
@@ -211,22 +266,23 @@ export class AttestationService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
     });
 
-    const today = new Date();
     const largeur = doc.page.width - MARGE * 2;
-    const e = d.feminine ? 'e' : '';
 
     dessinerEntete(doc, MARGE);
 
     // ── Titre ──
     doc.moveDown(3);
-    const titre = 'ATTESTATION DE TRAVAIL';
     const ECART = 1.8;
     doc.font(police(doc, 'bold')).fontSize(15).fillColor('#111111');
     // Le trait est tracé à la main plutôt que par `underline`, qui compte
     // l'espacement ajouté APRÈS la dernière lettre et débordait d'autant.
-    const largeurTitre = doc.widthOfString(titre, { characterSpacing: ECART }) - ECART;
+    const largeurTitre = doc.widthOfString(textes.titre, { characterSpacing: ECART }) - ECART;
     const yTitre = doc.y;
-    doc.text(titre, MARGE, yTitre, { width: largeur, align: 'center', characterSpacing: ECART });
+    doc.text(textes.titre, MARGE, yTitre, {
+      width: largeur,
+      align: 'center',
+      characterSpacing: ECART,
+    });
     const xTitre = (doc.page.width - largeurTitre) / 2;
     doc
       .moveTo(xTitre, yTitre + doc.currentLineHeight() + 1)
@@ -236,51 +292,22 @@ export class AttestationService {
       .stroke();
 
     // ── Corps ──
-    //
-    // « Nous soussignés, APIX, attestons » : la formule était doublement
-    // fautive. « Nous soussignés » désigne des PERSONNES qui signent, pas une
-    // société ; et le pluriel s'accordait avec un sujet singulier. Une
-    // personne morale atteste en son nom propre.
-    const phrase: string[] = [
-      `L’${ENTETE.agence} (${ENTETE.raisonSociale}) atteste que ${d.civility} ${d.fullName}${d.birthLine}, ` +
-        `matricule ${d.employeeNumber}, est employé${e} en son sein depuis le ${frDate(d.hiredOn)}`,
-    ];
-    if (d.positionTitle) {
-      phrase.push(
-        ` et y occupe ${elide('le poste d', d.positionTitle)}` +
-          (d.orgUnitName ? rattachement(d.orgUnitName) : ''),
-      );
-    }
-    if (d.contractLabel) phrase.push(`, dans le cadre ${d.contractLabel}`);
-    phrase.push('.');
-
     doc.moveDown(2.6);
     doc.font(police(doc, 'normal')).fontSize(11).fillColor('#111111');
-    doc.text(phrase.join(''), MARGE, doc.y, { width: largeur, align: 'justify', lineGap: 5 });
-    doc.moveDown(1);
-    doc.text(
-      `La présente attestation lui est délivrée pour servir et valoir ce que de droit.`,
-      MARGE,
-      doc.y,
-      { width: largeur, align: 'justify', lineGap: 5 },
-    );
+    textes.paragraphes.forEach((p, i) => {
+      if (i > 0) doc.moveDown(1);
+      doc.text(p, MARGE, doc.y, { width: largeur, align: 'justify', lineGap: 5 });
+    });
 
     // ── Lieu, date et signature ──
-    //
-    // « Fait le … » seul ne suffit pas : un acte administratif porte le lieu
-    // de son émission.
     doc.moveDown(3);
-    doc.text(`Fait à ${ENTETE.ville}, le ${frDate(today)}`, MARGE, doc.y, {
-      width: largeur,
-      align: 'right',
-    });
+    doc.text(textes.lieuEtDate, MARGE, doc.y, { width: largeur, align: 'right' });
     doc.moveDown(2);
-    doc
-      .font(police(doc, 'bold'))
-      .text(`Pour ${ENTETE.raisonSociale},`, MARGE, doc.y, { width: largeur, align: 'right' });
-    doc
-      .font(police(doc, 'normal'))
-      .text(`La ${ENTETE.service}`, MARGE, doc.y, { width: largeur, align: 'right' });
+    textes.signature.forEach((ligne, i) => {
+      doc
+        .font(police(doc, i === 0 ? 'bold' : 'normal'))
+        .text(ligne, MARGE, doc.y, { width: largeur, align: 'right' });
+    });
 
     doc.end();
     return done;

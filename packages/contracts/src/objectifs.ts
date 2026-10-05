@@ -117,8 +117,18 @@ export interface FicheObjectifs {
   /** Dernière mise à jour, et par qui. */
   majLe: string;
   auteur: string | null;
-  /** Par objectif (l'id du bloc) : où l'agent dit en être. */
+  /**
+   * Par objectif (l'id du bloc) : où l'agent dit en être. Seuls les statuts
+   * qui répondent au texte actuel de l'objectif y figurent.
+   */
   statuts: Record<string, StatutObjectif>;
+  /** Les objectifs réécrits depuis que l'agent a dit où il en était : à revoir. */
+  statutsCaducs: string[];
+  /**
+   * L'état des formations de la fiche, figé à l'envoi de l'auto-évaluation ;
+   * `null` tant qu'elle n'est pas envoyée (il se lit alors au présent).
+   */
+  formations: FormationDeLaFiche[] | null;
   evaluation: EvaluationFiche;
 }
 
@@ -188,6 +198,8 @@ const commentaires = z
 export const statutObjectifSchema = z.object({
   id: z.string().min(1).max(100),
   statut: z.enum(STATUTS_OBJECTIF).nullable(),
+  /** L'empreinte du texte que l'agent avait sous les yeux (cf. `ObjectifDeLaFiche`). */
+  empreinte: z.string().max(20_000).optional(),
 });
 export type StatutObjectifInput = z.infer<typeof statutObjectifSchema>;
 
@@ -213,6 +225,11 @@ export const periodeParamsSchema = z.object({
 export interface ObjectifDeLaFiche {
   id: string;
   texte: string;
+  /**
+   * Ce que dit l'objectif, indépendamment de la mise en forme et de la langue
+   * d'affichage : un statut répond à cette empreinte, pas à l'id du bloc.
+   */
+  empreinte: string;
   /** Le contenu du bloc, tel que l'éditeur l'enregistre (texte stylé, échéances…). */
   contenu: Record<string, unknown>[];
 }
@@ -237,6 +254,23 @@ function texteDe(contenu: unknown): string {
     .trim();
 }
 
+/** Le texte d'un objectif, ses liens et ses échéances en date ISO. */
+function empreinteDe(contenu: unknown): string {
+  if (!Array.isArray(contenu)) return '';
+  return contenu
+    .map((c: Record<string, unknown>) => {
+      if (c.type === 'text') return String(c.text ?? '');
+      if (c.type === 'link') return empreinteDe(c.content);
+      if (c.type === 'echeance') {
+        return `[${String((c.props as { date?: string } | undefined)?.date ?? '')}]`;
+      }
+      return '';
+    })
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /**
  * Les objectifs d'une fiche : ses cases à cocher qui disent quelque chose,
  * dans l'ordre de lecture. Un paragraphe n'en est pas un.
@@ -252,6 +286,7 @@ export function objectifsDeLaFiche(contenu: Record<string, unknown>[]): Objectif
           tous.push({
             id: b.id,
             texte,
+            empreinte: empreinteDe(b.content),
             contenu: Array.isArray(b.content) ? (b.content as Record<string, unknown>[]) : [],
           });
         }
@@ -261,6 +296,28 @@ export function objectifsDeLaFiche(contenu: Record<string, unknown>[]): Objectif
   };
   parcourir(contenu);
   return tous;
+}
+
+/** Les formations que cite une fiche : les blocs « Formation », dans l'ordre de lecture. */
+export function formationsDeLaFiche(contenu: Record<string, unknown>[]): string[] {
+  const ids: string[] = [];
+  const parcourir = (blocs: unknown) => {
+    if (!Array.isArray(blocs)) return;
+    for (const b of blocs as Record<string, unknown>[]) {
+      const courseId = (b.props as { courseId?: unknown } | undefined)?.courseId;
+      if (
+        b.type === 'formation' &&
+        typeof courseId === 'string' &&
+        courseId &&
+        !ids.includes(courseId)
+      ) {
+        ids.push(courseId);
+      }
+      parcourir(b.children);
+    }
+  };
+  parcourir(contenu);
+  return ids;
 }
 
 /** La fiche fait au plus 300 000 caractères une fois sérialisée. */

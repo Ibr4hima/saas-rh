@@ -9,9 +9,9 @@
  *    tous les décomptes de l'année basculent d'un cran sans que personne ne
  *    voie rien. Le produit doit refuser, pas faire confiance à l'écran : la
  *    même API sert le formulaire ET quiconque appelle la route à la main.
- * 2. Un quota ne se verse dans un solde d'année QUE s'il est annuel. « 3 par
- *    mois » lu comme « 3 par an » donnerait un droit onze fois trop petit,
- *    et le calcul de solde ne se plaint jamais : il soustrait, c'est tout.
+ * 2. Un type a un quota annuel, ou n'en a pas : « par mois » et « par
+ *    événement » s'affichaient sans jamais s'appliquer (migration 0075). Et
+ *    modifier un type ne réécrit pas les soldes des années passées.
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -382,7 +382,8 @@ describe('un férié daté après coup', () => {
   async function conge(du: string, au: string, jours: number, status = 'approved') {
     const typeId = randomUUID();
     await raw(
-      `INSERT INTO absence_types (id, tenant_id, name, deducts_balance) VALUES ($1,$2,$3,true)`,
+      `INSERT INTO absence_types (id, tenant_id, name, deducts_balance, allowance_days, frequency)
+       VALUES ($1,$2,$3,true,30,'annual')`,
       [typeId, tenantId, `Congé ${typeId.slice(0, 6)}`],
     );
     const id = randomUUID();
@@ -484,24 +485,21 @@ describe('une fête mobile se recale', () => {
 });
 
 describe('quota et cadence', () => {
-  it('un quota sans cadence est refusé à la saisie', () => {
-    expect(
-      createAbsenceTypeSchema.safeParse({
-        name: 'Récupération',
-        frequency: 'monthly',
-        allowanceDays: null,
-      }).success,
-    ).toBe(false);
+  const type = (v: Record<string, unknown>) =>
+    createAbsenceTypeSchema.safeParse({ name: 'Récupération', ...v }).success;
+
+  it('un quota est annuel, ou il n’y en a pas : plus de cadence par mois', () => {
+    expect(type({ frequency: 'monthly', allowanceDays: 3 })).toBe(false);
+    expect(type({ frequency: 'annual', allowanceDays: null })).toBe(false);
+    expect(type({ frequency: 'annual', allowanceDays: 30 })).toBe(true);
   });
 
-  it('une cadence « par événement » se passe de quota', () => {
-    expect(
-      createAbsenceTypeSchema.safeParse({
-        name: 'Maternité',
-        frequency: 'none',
-        allowanceDays: null,
-      }).success,
-    ).toBe(true);
+  it('sans quota, pas de nombre de jours, et rien ne se décompte', () => {
+    expect(type({ frequency: 'none', allowanceDays: null })).toBe(true);
+    // « Par événement » laissait saisir 98 jours qui ne plafonnaient rien.
+    expect(type({ frequency: 'none', allowanceDays: 98 })).toBe(false);
+    // Décompter sans quota refusait toute demande.
+    expect(type({ frequency: 'none', allowanceDays: null, deductsBalance: true })).toBe(false);
   });
 
   it('se modifient sur un type existant', async () => {
@@ -524,26 +522,44 @@ describe('quota et cadence', () => {
     expect(type?.frequency).toBe('annual');
   });
 
-  it('seul un quota ANNUEL alimente le solde de l’année', async () => {
-    await absences.createType(admin, {
+  it('modifier un type ne réécrit pas les soldes des années passées', async () => {
+    const champs = {
       name: 'Congé annuel',
       deductsBalance: true,
       allowanceDays: 30,
-      frequency: 'annual',
+      frequency: 'annual' as const,
       requiresDocument: false,
-    });
-    await absences.createType(admin, {
-      name: 'Récupération',
-      deductsBalance: true,
-      allowanceDays: 3,
-      frequency: 'monthly',
-      requiresDocument: false,
-    });
+    };
+    const { id } = await absences.createType(admin, champs);
+    await raw(
+      `INSERT INTO absence_requests
+         (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 25, 'approved')`,
+      [randomUUID(), tenantId, employeeId, id, `${ANNEE - 1}-07-01`, `${ANNEE - 1}-08-04`],
+    );
+    const solde = async (annee: number) =>
+      (await absences.balances(admin, employeeId, annee)).find((s) => s.absenceTypeId === id)!;
 
-    const soldes = await absences.balances(admin, employeeId, ANNEE);
-    expect(soldes.find((s) => s.absenceTypeName === 'Congé annuel')?.entitledDays).toBe(30);
-    // 3 par mois ne fait pas 3 sur l'année : sans droit saisi, le solde reste nul.
-    expect(soldes.find((s) => s.absenceTypeName === 'Récupération')?.entitledDays).toBe(0);
+    await absences.updateType(admin, id, { ...champs, allowanceDays: 24 });
+    // L'an passé garde ses 30 jours ; cette année et les suivantes passent à 24.
+    expect(await solde(ANNEE - 1)).toMatchObject({ entitledDays: 30, remainingDays: 5 });
+    expect((await solde(ANNEE)).entitledDays).toBe(24);
+    expect((await solde(ANNEE + 1)).entitledDays).toBe(24);
+
+    // Un second changement dans l'année ne touche pas au passé déjà gardé.
+    await absences.updateType(admin, id, { ...champs, allowanceDays: 20 });
+    expect((await solde(ANNEE - 1)).entitledDays).toBe(30);
+    expect((await solde(ANNEE)).entitledDays).toBe(20);
+
+    // Ni le décompte : l'an passé reste décompté.
+    await absences.updateType(admin, id, {
+      ...champs,
+      deductsBalance: false,
+      allowanceDays: null,
+      frequency: 'none',
+    });
+    expect(await solde(ANNEE - 1)).toMatchObject({ deductsBalance: true, remainingDays: 5 });
+    expect(await solde(ANNEE)).toMatchObject({ deductsBalance: false, entitledDays: 0 });
   });
 });
 

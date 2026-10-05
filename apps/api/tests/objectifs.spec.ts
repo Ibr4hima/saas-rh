@@ -18,6 +18,7 @@ import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SessionUser } from '@teranga/contracts';
+import { objectifsDeLaFiche } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
@@ -282,6 +283,23 @@ describe('qui voit quoi', () => {
     );
     // Le DG ne se prévient pas lui-même.
     expect(await notifications('dg')).toEqual([]);
+  });
+
+  it('les orientations de l’année suivante, fixées le même jour, s’annoncent à part', async () => {
+    await objectifs.creer(session('dg'), {
+      niveau: 'apix',
+      diffusion: 'tous',
+      nature: 'libre',
+      titre: 'Préparer le plan stratégique suivant',
+      annee: 2027,
+    });
+    const titres = (await notifications('moussa')).map((n) => n.title);
+    expect(titres).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/ a fixé les orientations 2026 de l’APIX$/),
+        expect.stringMatching(/ a fixé les orientations 2027 de l’APIX$/),
+      ]),
+    );
   });
 });
 
@@ -762,6 +780,135 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
     expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2023, 1))).toBe(
       'objectifs.fiche_introuvable',
     );
+  });
+
+  it('un objectif réécrit par le n+1 perd le statut donné à l’ancien texte', async () => {
+    const ecrire = (texte: string) =>
+      objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+        annee: 2025,
+        semestre: 1,
+        contenu: [caseACocher('r1', texte), caseACocher('r2', 'Former deux stagiaires')],
+      });
+    const agent = async () => de((await objectifs.mesObjectifs(session('moussa'))).fiches, 2025, 1);
+    const empreinte = async (id: string) =>
+      objectifsDeLaFiche((await agent()).contenu).find((o) => o.id === id)!.empreinte;
+
+    await ecrire('Livrer la note');
+    const lue = await empreinte('r1');
+    await objectifs.statuer(session('moussa'), 2025, 1, {
+      id: 'r1',
+      statut: 'atteint',
+      empreinte: lue,
+    });
+    await objectifs.statuer(session('moussa'), 2025, 1, { id: 'r2', statut: 'partiel' });
+    await objectifs.enregistrerCommentaires(session('moussa'), 2025, 1, {
+      commentaires: { r1: 'Livrée.', r2: 'Un sur deux.' },
+    });
+
+    // Le n+1 réécrit l'objectif : le statut ne répond plus au texte.
+    await ecrire('Livrer la note et le rapport annuel');
+    expect(await agent()).toMatchObject({ statuts: { r2: 'partiel' }, statutsCaducs: ['r1'] });
+    expect((await agent()).contenu[0]).toMatchObject({ props: { checked: false } });
+    expect(
+      de((await objectifs.fiche(session('awa'), agents.moussa)).fiches, 2025, 1).statuts,
+    ).toEqual({ r2: 'partiel' });
+    expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2025, 1))).toBe(
+      'objectifs.auto_evaluation_incomplete',
+    );
+    // Un écran resté sur l'ancien texte ne passe pas.
+    expect(
+      await codeOf(() =>
+        objectifs.statuer(session('moussa'), 2025, 1, {
+          id: 'r1',
+          statut: 'atteint',
+          empreinte: lue,
+        }),
+      ),
+    ).toBe('objectifs.objectif_modifie');
+
+    // Le texte d'origine revient : le statut aussi.
+    await ecrire('Livrer la note');
+    expect((await agent()).statuts).toEqual({ r1: 'atteint', r2: 'partiel' });
+
+    await ecrire('Livrer la note et le rapport annuel');
+    await objectifs.statuer(session('moussa'), 2025, 1, {
+      id: 'r1',
+      statut: 'partiel',
+      empreinte: await empreinte('r1'),
+    });
+    expect(await agent()).toMatchObject({
+      statuts: { r1: 'partiel', r2: 'partiel' },
+      statutsCaducs: [],
+    });
+    await objectifs.envoyerCommentaires(session('moussa'), 2025, 1);
+    await raw(`DELETE FROM objectifs_fiches WHERE employee_id = $1 AND annee = 2025`, [
+      agents.moussa,
+    ]);
+  });
+
+  it('envoyée, la fiche garde l’état de ses formations ce jour-là', async () => {
+    const courseId = randomUUID();
+    const moduleId = randomUUID();
+    await raw(
+      `INSERT INTO academy_courses (id, tenant_id, title, category, published_at, created_by_user_id)
+       VALUES ($1,$2,'Word pour tous','bureautique', now(), $3)`,
+      [courseId, tenantId, comptes.dg],
+    );
+    await raw(
+      `INSERT INTO academy_modules (id, tenant_id, course_id, position, title) VALUES ($1,$2,$3,0,'Bases')`,
+      [moduleId, tenantId, courseId],
+    );
+    const lecon = async (position: number) => {
+      const id = randomUUID();
+      await raw(
+        `INSERT INTO academy_lessons (id, tenant_id, course_id, module_id, position, title,
+           video_provider, video_uid, video_status, duration_seconds)
+         VALUES ($1,$2,$3,$4,$5,$6,'local',$7,'prete',60)`,
+        [id, tenantId, courseId, moduleId, position, `Leçon ${position + 1}`, randomUUID()],
+      );
+      return id;
+    };
+    for (const id of [await lecon(0), await lecon(1)]) {
+      await raw(
+        `INSERT INTO academy_lesson_progress (tenant_id, employee_id, lesson_id, watched, watched_seconds, completed_at, updated_at)
+         VALUES ($1,$2,$3,'[[0,60]]',60, now(), now())`,
+        [tenantId, agents.moussa, id],
+      );
+    }
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      annee: 2025,
+      semestre: 2,
+      contenu: [
+        caseACocher('w1', 'Suivre la formation Word'),
+        {
+          id: 'f1',
+          type: 'formation',
+          props: { courseId, titre: 'Word pour tous' },
+          children: [],
+        },
+      ],
+    });
+    const fiche = async () => de((await objectifs.mesObjectifs(session('moussa'))).fiches, 2025, 2);
+    expect((await fiche()).formations).toBeNull();
+    await objectifs.statuer(session('moussa'), 2025, 2, { id: 'w1', statut: 'atteint' });
+    await objectifs.enregistrerCommentaires(session('moussa'), 2025, 2, {
+      commentaires: { w1: 'Terminée.' },
+    });
+    await objectifs.envoyerCommentaires(session('moussa'), 2025, 2);
+    const figee = { courseId, statut: 'terminee', lecons: 2, validees: 2 };
+    expect((await fiche()).formations).toEqual([figee]);
+
+    // Une leçon ajoutée depuis rouvre le parcours au présent, pas dans la fiche envoyée.
+    await lecon(2);
+    const moi = await objectifs.mesObjectifs(session('moussa'));
+    expect(moi.formations.find((f) => f.courseId === courseId)).toMatchObject({ lecons: 3 });
+    expect(de(moi.fiches, 2025, 2).formations).toEqual([figee]);
+    expect(
+      de((await objectifs.fiche(session('awa'), agents.moussa)).fiches, 2025, 2).formations,
+    ).toEqual([figee]);
+    await raw(`DELETE FROM objectifs_fiches WHERE employee_id = $1 AND annee = 2025`, [
+      agents.moussa,
+    ]);
   });
 });
 

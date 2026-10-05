@@ -204,6 +204,32 @@ export async function reconcilierLesDemandes(tx: Tx, _tenantId: string): Promise
   }
 }
 
+/**
+ * Une demande confiée à qui n'est plus de la DCH (mutation, départ, accès
+ * coupé) lui est reprise : elle revient au circuit commun, et il ne la voit
+ * plus. Les congés en attente comme les autres demandes.
+ */
+export async function libererLesConfiees(tx: Tx): Promise<void> {
+  const dch = await directionDuPersonnel(tx);
+  const tables: { table: SQL; enAttente: SQL }[] = [
+    ...TYPES_DCH.map((type) => DEFINITIONS[type]),
+    { table: sql.raw('absence_requests'), enAttente: sql.raw(`r.status = 'pending'`) },
+  ];
+  for (const { table, enAttente } of tables) {
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      SELECT DISTINCT r.confiee_a_employee_id AS id FROM ${table} r
+       WHERE ${enAttente} AND r.confiee_a_employee_id IS NOT NULL`);
+    for (const { id } of rows) {
+      const reste =
+        dch && (id === dch.directeurEmployeeId || (await membreDCH(tx, dch, id)) !== 'parti');
+      if (reste) continue;
+      await tx.execute(sql`
+        UPDATE ${table} r SET confiee_a_employee_id = NULL
+         WHERE ${enAttente} AND r.confiee_a_employee_id = ${id}`);
+    }
+  }
+}
+
 /** Les demandes que personne ne peut traiter — pour l'alerte à l'administrateur. */
 export async function compterLesBloquees(tx: Tx): Promise<number> {
   const dch = await directionDuPersonnel(tx);
@@ -294,6 +320,31 @@ export async function voitToutLaFile(
   }
   if (!habilite) return false;
   return (await membreDCH(tx, dch, moi)) !== 'parti';
+}
+
+/**
+ * Ce que l'utilisateur voit d'un type de demande, capacité par capacité :
+ * tout pour l'administrateur et le directeur du Capital Humain ; pour un
+ * membre de la DCH, les capacités qu'il détient, et elles seules. Un délégué
+ * aux CV ne lit pas les CNI.
+ */
+export async function capacitesVues(
+  tx: Tx,
+  user: SessionUser,
+  type: TypeDemande,
+): Promise<'toutes' | Set<CapaciteDemande>> {
+  if (user.role === 'admin') return 'toutes';
+  const moi = await agentDuCompte(tx, user.userId);
+  if (!moi) return new Set();
+  const dch = await directionDuPersonnel(tx);
+  if (!dch) return new Set();
+  if (dch.directeurEmployeeId === moi) return 'toutes';
+  if ((await membreDCH(tx, dch, moi)) === 'parti') return new Set();
+  const vues = new Set<CapaciteDemande>();
+  for (const c of capacitesDuType(type)) {
+    if ((await detenteursDe(tx, c)).includes(moi)) vues.add(c);
+  }
+  return vues;
 }
 
 /** Refuse (403) qui ne peut pas traiter cette demande. */

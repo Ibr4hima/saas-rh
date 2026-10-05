@@ -36,6 +36,14 @@ export const REQUESTABLE_DOC_LABELS: Record<RequestableDoc, string> = {
 /** Ce que l'application sait générer elle-même (le reste vient du système de paie). */
 export const GENERATED_DOCS: RequestableDoc[] = ['attestation_travail'];
 
+/** Ce que l'attestation de travail imprimera, mot pour mot : l'aperçu le montre tel quel. */
+export interface AttestationApercu {
+  titre: string;
+  paragraphes: string[];
+  lieuEtDate: string;
+  signature: string[];
+}
+
 /** `delivered` : statut historique, conservé en lecture (voir en-tête). */
 export const documentRequestStatusSchema = z.enum([
   'received',

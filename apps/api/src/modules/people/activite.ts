@@ -22,12 +22,22 @@ import { parLeSysteme } from '../../db/systeme';
    ———————————————————————————————————————————————————————————————— */
 
 /**
- * L'activité s'arrête : le dernier jour se note au dossier, et sa dernière
- * affectation s'arrête ce jour-là — une affectation prévue après n'aura pas
- * lieu. `fin` : le dernier jour, en SQL (une date).
+ * L'activité s'arrête : le dernier jour se note au dossier et dans ses
+ * départs, et sa dernière affectation s'arrête ce jour-là ; une affectation
+ * prévue après n'aura pas lieu. `fin` : le dernier jour, en SQL (une date).
  */
-export async function arreterLActivite(tx: Tx, employeeId: string, fin: SQL): Promise<void> {
+export async function arreterLActivite(
+  tx: Tx,
+  employeeId: string,
+  fin: SQL,
+  motif: string | null,
+): Promise<void> {
   await tx.execute(sql`UPDATE employees SET fin_activite = ${fin} WHERE id = ${employeeId}`);
+  await tx.execute(sql`
+    INSERT INTO periodes_inactivite (tenant_id, employee_id, dernier_jour, motif)
+    SELECT tenant_id, id, (${fin})::date, ${motif} FROM employees WHERE id = ${employeeId}
+    ON CONFLICT (employee_id) WHERE reprise_le IS NULL
+    DO UPDATE SET dernier_jour = EXCLUDED.dernier_jour, motif = EXCLUDED.motif`);
   await tx.execute(sql`
     DELETE FROM assignments WHERE employee_id = ${employeeId} AND lower(validity) > ${fin}`);
   await tx.execute(sql`
@@ -68,43 +78,87 @@ export async function arreterLActivite(tx: Tx, employeeId: string, fin: SQL): Pr
 }
 
 /**
- * L'activité reprend : l'agent retrouve le poste et l'unité de sa dernière
- * affectation — une affectation neuve, qui commence au lendemain de son
- * dernier jour, ou au début de son nouveau contrat s'il est plus tard. Une
- * unité dissoute entre-temps ne revient pas : l'affectation est alors sans
- * unité, et le contrôle de la chaîne le signale.
+ * Le jour où l'activité reprend : celui qu'on donne ; sinon le début du
+ * contrat enregistré depuis le départ, s'il y en a un ; sinon aujourd'hui.
+ * Jamais avant le lendemain du dernier jour. En SQL, pour un dossier inactif.
+ */
+export const jourDeReprise = (employeeId: string, demandee: string | null) => sql`(
+  SELECT GREATEST(
+           COALESCE(${demandee}::date,
+                    CASE WHEN c.created_at > e.archived_at THEN c.start_date END,
+                    CURRENT_DATE),
+           e.fin_activite + 1)
+    FROM employees e
+    LEFT JOIN contracts c ON c.id = ${dernierContrat(employeeId)}
+   WHERE e.id = ${employeeId})`;
+
+/**
+ * L'activité reprend, le jour dit (cf. `jourDeReprise`).
+ *
+ * Revenu le lendemain de son dernier jour, l'agent n'est jamais parti : son
+ * départ s'efface, et son affectation, arrêtée ce jour-là, reprend son cours.
+ * Revenu plus tard, son départ garde sa date et reçoit celle du retour ;
+ * il retrouve le poste et l'unité de sa dernière affectation, dans une
+ * affectation neuve qui commence au jour de la reprise, pas au lendemain du
+ * départ : l'intervalle n'est pas une période d'activité. Une unité dissoute
+ * entre-temps ne revient pas : l'affectation est alors sans unité, et le
+ * contrôle de la chaîne le signale.
  */
 export async function reprendreLActivite(
   tx: Tx,
   tenantId: string,
   employeeId: string,
+  demandee: string | null = null,
 ): Promise<void> {
   const { rows } = await tx.execute<{
-    fin: string | null;
+    reprise: string | null;
+    lendemain: string | null;
+    affectation: string | null;
+    au: string | null;
     poste: string | null;
     unite: string | null;
-    debut: string | null;
   }>(sql`
-    SELECT e.fin_activite::text AS fin, a.position_title AS poste,
-           (SELECT o.id FROM org_units o WHERE o.id = a.org_unit_id AND o.deleted_at IS NULL) AS unite,
-           GREATEST(e.fin_activite + 1,
-                    (SELECT c.start_date FROM contracts c WHERE c.id = ${dernierContrat(employeeId)}))::text
-             AS debut
+    SELECT ${jourDeReprise(employeeId, demandee)}::text AS reprise,
+           (e.fin_activite + 1)::text AS lendemain,
+           a.id AS affectation, upper(a.validity)::text AS au, a.position_title AS poste,
+           (SELECT o.id FROM org_units o WHERE o.id = a.org_unit_id AND o.deleted_at IS NULL) AS unite
       FROM employees e
       LEFT JOIN assignments a ON a.id = (SELECT ax.id FROM assignments ax WHERE ax.employee_id = e.id
                                           ORDER BY lower(ax.validity) DESC LIMIT 1)
      WHERE e.id = ${employeeId}`);
   const r = rows[0];
   await tx.execute(sql`UPDATE employees SET fin_activite = NULL WHERE id = ${employeeId}`);
-  if (!r?.fin || !r.poste || !r.debut) return;
+  if (!r?.reprise || !r.lendemain) {
+    await tx.execute(sql`
+      DELETE FROM periodes_inactivite WHERE employee_id = ${employeeId} AND reprise_le IS NULL`);
+    return;
+  }
+
+  if (r.reprise === r.lendemain) {
+    await tx.execute(sql`
+      DELETE FROM periodes_inactivite WHERE employee_id = ${employeeId} AND reprise_le IS NULL`);
+    // L'affectation arrêtée au départ reprend, si son unité existe encore.
+    if (r.affectation && r.au === r.lendemain && r.unite) {
+      await tx.execute(sql`
+        UPDATE assignments SET validity = daterange(lower(validity), NULL)
+         WHERE id = ${r.affectation}`);
+      return;
+    }
+  } else {
+    await tx.execute(sql`
+      UPDATE periodes_inactivite SET reprise_le = ${r.reprise}::date
+       WHERE employee_id = ${employeeId} AND reprise_le IS NULL`);
+  }
+
+  if (!r.poste) return;
   const { rows: ouverte } = await tx.execute(sql`
     SELECT 1 FROM assignments WHERE employee_id = ${employeeId}
-       AND (upper_inf(validity) OR upper(validity) > CURRENT_DATE) LIMIT 1`);
+       AND (upper_inf(validity) OR upper(validity) > ${r.reprise}::date) LIMIT 1`);
   if (ouverte.length > 0) return;
   await tx.execute(sql`
     INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
     VALUES (gen_random_uuid(), ${tenantId}, ${employeeId}, ${r.unite}, ${r.poste},
-            daterange(${r.debut}::date, NULL))`);
+            daterange(${r.reprise}::date, NULL))`);
 }
 
 /**
@@ -155,7 +209,7 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
          SET status = 'archived', inactivite_motif = 'fin_de_contrat',
              archived_at = (${a.fin}::date + 1)::timestamptz, updated_at = now()
        WHERE id = ${a.id}`);
-    await arreterLActivite(tx, a.id, sql`${a.fin}::date`);
+    await arreterLActivite(tx, a.id, sql`${a.fin}::date`, 'fin_de_contrat');
     await tx.execute(sql`
       UPDATE org_units SET manager_employee_id = NULL, updated_at = now()
        WHERE manager_employee_id = ${a.id} AND deleted_at IS NULL`);
