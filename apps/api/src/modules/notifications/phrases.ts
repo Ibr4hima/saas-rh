@@ -80,6 +80,17 @@ export function absence(type: string): Nom {
   return nom(bas.startsWith('congé') ? bas : `congé ${bas}`, false);
 }
 
+/** Une absence dont le motif ne regarde pas qui lit : la maladie, pour le N+1. */
+export const ABSENCE: Nom = nom('absence', true);
+
+const voyelle = (mot: string) => /^[aeiouyéèêâîôûh]/i.test(mot);
+
+/** « son congé », « sa mission », « son absence ». */
+export const sonSa = (n: Nom) => (n.feminin && !voyelle(n.nom) ? 'sa' : 'son');
+
+/** « Le congé », « La mission », « L’absence ». */
+export const leLa = (n: Nom) => (voyelle(n.nom) ? 'L’' : n.feminin ? 'La ' : 'Le ');
+
 /** « approuvé », « approuvée ». */
 export const accord = (mot: string, n: Pick<Nom, 'feminin'>) => (n.feminin ? `${mot}e` : mot);
 

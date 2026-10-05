@@ -1322,3 +1322,144 @@ describe('le tableau de bord compte ce que ses listes montrent', () => {
     expect(calendrier).toHaveLength(d.absentToday + d.upcomingAbsences);
   });
 });
+
+describe('un motif confidentiel', () => {
+  const PDF = Buffer.from('%PDF-1.4 certificat').toString('base64');
+  beforeAll(() =>
+    raw(`UPDATE absence_types SET motif_confidentiel = true WHERE id = $1`, [maladieId]),
+  );
+  afterAll(() =>
+    raw(`UPDATE absence_types SET motif_confidentiel = false WHERE id = $1`, [maladieId]),
+  );
+  const arret = async () =>
+    (
+      await absences.createRequest(moussa.session, {
+        employeeId: moussa.employeeId,
+        absenceTypeId: maladieId,
+        ...periode(),
+        reason: 'Grippe',
+        document: { filename: 'certificat-medical.pdf', contentBase64: PDF },
+      })
+    ).id;
+  const avec = (qui: Agent, ...capacites: Capacite[]) =>
+    ({ ...qui.session, capacites }) as SessionUser;
+
+  it('le N+1 vise une absence : ni le type, ni le motif, ni le certificat', async () => {
+    const id = await arret();
+    const equipe = await absences.listRequests(ousmane.session, {
+      equipe: true,
+      limit: 100,
+    } as never);
+    expect(equipe.find((r) => r.id === id)).toMatchObject({
+      absenceTypeId: null,
+      absenceTypeName: 'Absence',
+      reason: null,
+      documentName: null,
+      justificatifAttendu: false,
+      canDecide: true,
+    });
+    expect(await notif('Ousmane', `conge:${id}:appel:%`)).toMatch(
+      /^Moussa Test demande une absence du /,
+    );
+    expect(await codeOf(() => absences.document(ousmane.session, id))).toBe(
+      'absence.document_forbidden',
+    );
+    // L'agent et la DCH lisent tout.
+    for (const qui of [moussa, mariama]) {
+      expect(await vue(id, qui.session)).toMatchObject({
+        absenceTypeId: maladieId,
+        absenceTypeName: 'Maladie',
+        reason: 'Grippe',
+        documentName: 'certificat-medical.pdf',
+      });
+    }
+    await viser(ousmane, id);
+    expect(await notif('Mariama', `conge:${id}:appel:%`)).toMatch(
+      /^Moussa Test demande un congé maladie du /,
+    );
+  });
+
+  it('le calendrier du N+1 et du tableau de bord : une absence', async () => {
+    const id = await enConge(moussa, maladieId);
+    const type = async (session: SessionUser) =>
+      (await absences.upcoming(session)).find((r) => r.id === id)?.absenceTypeName;
+    expect(await type(ousmane.session)).toBe('Absence');
+    expect(await type(avec(dg, 'pilotage'))).toBe('Absence');
+    expect(await type(avec(dg, 'pilotage', 'personnel.sensible'))).toBe('Maladie');
+    expect(await type(moussa.session)).toBe('Maladie');
+  });
+
+  it('l’annulation : le N+1 apprend qu’une absence est annulée, la DCH lit le motif', async () => {
+    const id = randomUUID();
+    await raw(
+      `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+       VALUES ($1,$2,$3,$4, CURRENT_DATE + 20, CURRENT_DATE + 21, 2, 'approved')`,
+      [id, tenantId, moussa.employeeId, maladieId],
+    );
+    await absences.cancel(moussa.session, id);
+    expect(await notif('Ousmane', `conge:${id}:annule`)).toMatch(
+      /^L’absence de Moussa Test du .* est annulée$/,
+    );
+    expect(await notif('Mariama', `conge:${id}:annule`)).toMatch(
+      /^Le congé maladie de Moussa Test du .* est annulé$/,
+    );
+  });
+
+  it('les soldes : la ligne de la maladie reste à l’agent et aux données sensibles', async () => {
+    await enConge(moussa, maladieId);
+    const annee = new Date().getFullYear();
+    const types = async (session: SessionUser) =>
+      (await absences.balances(session, moussa.employeeId, annee)).map((b) => b.absenceTypeName);
+    expect(await types(avec(khady, 'personnel.consulter'))).not.toContain('Maladie');
+    expect(await types(avec(khady, 'personnel.consulter', 'personnel.sensible'))).toContain(
+      'Maladie',
+    );
+    expect(await types(moussa.session)).toContain('Maladie');
+  });
+
+  it('un type modifié sans le dire garde son motif confidentiel', async () => {
+    await absences.updateType(avec(mariama, 'conges.parametres'), maladieId, {
+      name: 'Maladie',
+      deductsBalance: false,
+      frequency: 'none',
+      requiresDocument: true,
+    });
+    const { rows } = await raw(`SELECT motif_confidentiel FROM absence_types WHERE id = $1`, [
+      maladieId,
+    ]);
+    expect(rows[0]?.motif_confidentiel).toBe(true);
+  });
+});
+
+describe('un subordonné ne traite pas la demande de son chef', () => {
+  it('Binta, habilitée, s’efface devant la demande d’Awa, sa N+1 : le directeur la traite', async () => {
+    await habiliter(binta);
+    // Mariama, N+1 d'Awa, ne rentre pas à temps : la demande passe à la DCH.
+    await enConge(mariama);
+    const id = await poserDu(awa, 3, 10);
+    expect((await vue(id)).etapeAttendue).toBe('dch');
+    expect(await appels(id)).toEqual(['dch:Mariama']);
+    expect(await codeOf(() => viser(binta, id))).toBe('absence.reservee_a_la_dch');
+    // Un autre membre habilité, qui ne relève pas d'Awa, la reçoit.
+    await habiliter(khady);
+    await reconcilier();
+    expect(await appels(id)).toEqual(['dch:Khady']);
+  });
+
+  it('le directeur ne la confie pas à qui relève du demandeur', async () => {
+    await enConge(mariama);
+    const id = await poserDu(awa, 3, 10);
+    expect(await codeOf(() => absences.confier(mariama.session, id, binta.employeeId))).toBe(
+      'absence.confiee_au_subordonne',
+    );
+    await absences.confier(mariama.session, id, khady.employeeId);
+    expect(await appels(id)).toEqual(['dch:Khady']);
+  });
+
+  it('la demande du directeur, DG absent, reste à ses membres habilités', async () => {
+    await habiliter(awa);
+    await enConge(dg);
+    const id = await poserDu(mariama, 3, 10);
+    expect(await appels(id)).toEqual(['dch:Awa']);
+  });
+});

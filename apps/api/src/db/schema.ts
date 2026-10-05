@@ -204,6 +204,8 @@ export const absenceTypes = pgTable('absence_types', {
   requiresDocument: boolean('requires_document').notNull().default(false),
   /** L'agent reste joignable (une mission) : il vise encore ce qui l'attend. */
   resteJoignable: boolean('reste_joignable').notNull().default(false),
+  /** Le motif ne regarde que l'agent et la DCH : le N+1 voit une absence (migration 0076). */
+  motifConfidentiel: boolean('motif_confidentiel').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -370,6 +372,10 @@ export const applications = pgTable('applications', {
   phone: text('phone'),
   message: text('message'),
   stage: text('stage').notNull().default('received'),
+  /** Chiffrée au repos (migration 0079) : vide, la ligne date d'avant. */
+  cleVersion: smallint('cle_version'),
+  /** L'empreinte à clé de l'adresse : une candidature par adresse et par offre. */
+  emailIndex: bytea('email_index'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -383,6 +389,7 @@ export const applicationDocuments = pgTable('application_documents', {
   contentType: text('content_type').notNull(),
   sizeBytes: integer('size_bytes').notNull(),
   data: bytea('data').notNull(),
+  cleVersion: smallint('cle_version'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -242,7 +242,8 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   'personnel.sensible': {
     libelle: 'Données sensibles',
-    description: 'Le numéro de pièce d’identité, les pièces et les justificatifs d’absence.',
+    description:
+      'Le numéro de pièce d’identité, les pièces, les justificatifs et les motifs confidentiels d’absence.',
     groupe: 'Personnel',
     sensible: true,
   },

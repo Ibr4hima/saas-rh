@@ -146,6 +146,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
                     )}
                     {t.requiresDocument ? <Badge tone="orange">Justificatif</Badge> : null}
                     {t.resteJoignable ? <Badge tone="teal">Joignable</Badge> : null}
+                    {t.motifConfidentiel ? <Badge tone="prune">Confidentiel</Badge> : null}
                   </div>
                 </Td>
                 {peutGerer ? (
@@ -208,6 +209,7 @@ type BrouillonType = {
   deductsBalance: boolean;
   requiresDocument: boolean;
   resteJoignable: boolean;
+  motifConfidentiel: boolean;
 };
 
 function FenetreType({
@@ -225,6 +227,7 @@ function FenetreType({
     deductsBalance: cible?.deductsBalance ?? false,
     requiresDocument: cible?.requiresDocument ?? false,
     resteJoignable: cible?.resteJoignable ?? false,
+    motifConfidentiel: cible?.motifConfidentiel ?? false,
   });
   const [erreur, setErreur] = useState<string | null>(null);
   const set = <K extends keyof BrouillonType>(k: K, v: BrouillonType[K]) =>
@@ -244,6 +247,7 @@ function FenetreType({
         frequency: avecQuota ? 'annual' : 'none',
         requiresDocument: form.requiresDocument,
         resteJoignable: form.resteJoignable,
+        motifConfidentiel: form.motifConfidentiel,
       };
       return cible
         ? api(`/absence-types/${cible.id}`, { method: 'PATCH', body })
@@ -354,6 +358,14 @@ function FenetreType({
               onChange={(e) => set('resteJoignable', e.target.checked)}
             />
             <span className="font-semibold text-ink-strong">Joignable pendant l’absence</span>
+          </label>
+          <label className="flex items-start gap-2.5 text-[12.5px] text-ink">
+            <Checkbox
+              className="mt-0.5"
+              checked={form.motifConfidentiel}
+              onChange={(e) => set('motifConfidentiel', e.target.checked)}
+            />
+            <span className="font-semibold text-ink-strong">Motif réservé à la DCH</span>
           </label>
         </div>
       </ModalSection>

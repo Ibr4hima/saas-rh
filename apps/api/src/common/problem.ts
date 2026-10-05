@@ -41,6 +41,35 @@ function bodyParserStatus(err: unknown): number | null {
   return typeof status === 'number' && status >= 400 && status < 500 ? status : null;
 }
 
+/**
+ * Une erreur de base de données porte la requête ET ses valeurs : Drizzle
+ * les écrit dans son message (« params: … »), soit, sur un dépôt de
+ * candidature, le nom, l'adresse et le CV entier. Le journal n'en garde que
+ * la requête et la cause ; les valeurs, jamais.
+ */
+export function pourLeJournal(exception: unknown): unknown {
+  const e = exception as {
+    name?: string;
+    query?: unknown;
+    params?: unknown;
+    message?: unknown;
+    cause?: { code?: string; constraint?: string; table?: string; message?: string };
+  } | null;
+  const avecValeurs =
+    e !== null &&
+    typeof e === 'object' &&
+    ('params' in e || (typeof e.message === 'string' && e.message.includes('\nparams:')));
+  if (!avecValeurs) return exception;
+  return {
+    name: e.name,
+    query: typeof e.query === 'string' ? e.query : undefined,
+    code: e.cause?.code,
+    constraint: e.cause?.constraint,
+    table: e.cause?.table,
+    cause: e.cause?.message,
+  };
+}
+
 @Catch()
 export class ProblemFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
@@ -74,13 +103,13 @@ export class ProblemFilter implements ExceptionFilter {
         title = 'Corps de requête illisible';
         code = 'request.malformed_body';
       }
-    } else if (process.env.NODE_ENV !== 'production') {
+    } else if (process.env.NODE_ENV !== 'production' && pourLeJournal(exception) === exception) {
       detail = exception instanceof Error ? exception.message : String(exception);
     }
 
     if (status >= 500) {
       // Les erreurs serveur sont loggées, jamais détaillées au client en prod.
-      console.error(exception);
+      console.error(pourLeJournal(exception));
     }
 
     res

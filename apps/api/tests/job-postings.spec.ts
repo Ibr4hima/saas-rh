@@ -10,7 +10,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { CreateJobPostingInput, SessionUser } from '@teranga/contracts';
 import { createJobPostingSchema } from '@teranga/contracts';
@@ -18,6 +18,10 @@ import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
 import { JobsService } from '../src/modules/recruitment/jobs.service';
+import { EncryptionService } from '../src/common/encryption.service';
+import { pourLeJournal } from '../src/common/problem';
+import { chiffrerLesCandidatures } from '../src/db/chiffrer-candidatures';
+import { ApplyService } from '../src/modules/recruitment/apply.service';
 
 const env = loadEnv();
 
@@ -50,7 +54,7 @@ beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 3 });
   db = new TenantDb();
-  service = new JobsService(db);
+  service = new JobsService(db, new EncryptionService());
 
   await raw(
     `INSERT INTO users (id, email, password_hash, given_name, family_name)
@@ -93,6 +97,7 @@ beforeEach(async () => {
 afterAll(async () => {
   for (const id of [tenantId, autreTenantId]) {
     for (const table of [
+      'application_access_log',
       'applications',
       'job_postings',
       'job_posting_counters',
@@ -341,5 +346,159 @@ describe('une candidature supprimée', () => {
     );
     expect(rows.map((r) => r.action).sort()).toEqual(['DELETE', 'INSERT', 'UPDATE']);
     expect(rows.every((r) => r.vide)).toBe(true);
+  });
+});
+
+describe('les candidatures, gardées au repos', () => {
+  const enc = new EncryptionService();
+  const PDF = Buffer.from('%PDF-1.4 curriculum vitae de Ndeye');
+  const deposer = async (slug: string, email: string) =>
+    new ApplyService(db, enc).apply(slug, {
+      givenName: 'Ndeye',
+      familyName: 'Candidate',
+      email,
+      phone: '+221770000000',
+      documents: [
+        {
+          label: 'cv',
+          filename: 'CV Ndeye Candidate.pdf',
+          contentType: 'application/pdf',
+          contentBase64: PDF.toString('base64'),
+        },
+      ],
+    });
+  const publiee = async () => {
+    const { id } = await service.create(rh, offre('Chargé de recrutement'));
+    await service.update(rh, id, { status: 'published' });
+    const { rows } = await raw(`SELECT public_slug FROM job_postings WHERE id = $1`, [id]);
+    return { id, slug: rows[0].public_slug as string };
+  };
+
+  it('en base, rien du candidat ne se lit en clair ; la RH le lit, et sa lecture se trace', async () => {
+    const { id, slug } = await publiee();
+    await deposer(slug, 'Ndeye.Candidate@exemple.sn');
+
+    const { rows: lignes } = await raw(
+      `SELECT a.id, a.given_name, a.family_name, a.email, a.phone, a.cle_version,
+              d.filename, d.data, d.cle_version AS piece_version
+         FROM applications a JOIN application_documents d ON d.application_id = a.id
+        WHERE a.job_posting_id = $1`,
+      [id],
+    );
+    const l = lignes[0];
+    for (const champ of [l.given_name, l.family_name, l.email, l.phone, l.filename]) {
+      expect(champ).toMatch(/^c1:/);
+    }
+    expect(JSON.stringify(l)).not.toMatch(/Ndeye|exemple\.sn|770000000/);
+    expect((l.data as Buffer).subarray(0, 5).toString()).not.toBe('%PDF-');
+    expect([l.cle_version, l.piece_version]).toEqual([1, 1]);
+
+    const [vue] = await service.applications(rh, id);
+    expect(vue).toMatchObject({
+      givenName: 'Ndeye',
+      email: 'Ndeye.Candidate@exemple.sn',
+      phone: '+221770000000',
+      documents: [{ filename: 'CV Ndeye Candidate.pdf' }],
+    });
+    const piece = await service.document(rh, vue!.documents[0]!.id);
+    expect(piece.data.equals(PDF)).toBe(true);
+    const { rows: traces } = await raw(
+      `SELECT action, actor_user_id FROM application_access_log
+        WHERE tenant_id = $1 AND (job_posting_id = $2 OR application_id = $3)
+        ORDER BY occurred_at`,
+      [tenantId, id, vue!.id],
+    );
+    expect(traces).toEqual([
+      { action: 'list', actor_user_id: rhUserId },
+      { action: 'document', actor_user_id: rhUserId },
+    ]);
+
+    // Le journal d'audit garde les gestes, pas la personne ni la pièce.
+    const { rows: audit } = await raw(
+      `SELECT table_name, new_data FROM audit_log
+        WHERE row_id IN (SELECT id FROM applications WHERE job_posting_id = $1
+                         UNION SELECT d.id FROM application_documents d
+                           JOIN applications a ON a.id = d.application_id
+                          WHERE a.job_posting_id = $1)`,
+      [id],
+    );
+    expect(audit.map((a) => a.table_name).sort()).toEqual([
+      'application_documents',
+      'applications',
+    ]);
+    for (const a of audit) {
+      expect(Object.keys(a.new_data)).not.toEqual(expect.arrayContaining(['given_name']));
+      for (const cle of ['given_name', 'family_name', 'email', 'phone', 'filename', 'data']) {
+        expect(a.new_data).not.toHaveProperty(cle);
+      }
+    }
+  });
+
+  it('une adresse ne candidate qu’une fois par offre, même chiffrée, quelle que soit la casse', async () => {
+    const { slug } = await publiee();
+    await deposer(slug, 'awa.ndiaye@exemple.sn');
+    await expect(deposer(slug, '  AWA.Ndiaye@exemple.sn ')).rejects.toMatchObject({
+      problem: { code: 'recruitment.already_applied' },
+    });
+  });
+
+  it('un chiffré ne se lit qu’à sa place', () => {
+    const ici = `${tenantId}:applications:${randomUUID()}:email`;
+    const chiffre = enc.chiffrerTexte('ndeye@exemple.sn', ici);
+    expect(enc.dechiffrerTexte(chiffre, ici)).toBe('ndeye@exemple.sn');
+    expect(() => enc.dechiffrerTexte(chiffre, `${autreTenantId}${ici.slice(36)}`)).toThrow();
+    expect(() => enc.dechiffrerTexte(chiffre, ici.replace(':email', ':given_name'))).toThrow();
+  });
+
+  it('une candidature d’avant se lit, puis le migrateur la chiffre', async () => {
+    const { id: offreId } = await service.create(rh, offre('Archiviste'));
+    const id = randomUUID();
+    const pieceId = randomUUID();
+    await raw(
+      `INSERT INTO applications (id, tenant_id, job_posting_id, given_name, family_name, email)
+       VALUES ($1, $2, $3, 'Moussa', 'Ancien', 'moussa.ancien@exemple.sn')`,
+      [id, tenantId, offreId],
+    );
+    await raw(
+      `INSERT INTO application_documents (id, tenant_id, application_id, label, filename, content_type, size_bytes, data)
+       VALUES ($1, $2, $3, 'cv', 'cv-ancien.pdf', 'application/pdf', $4, $5)`,
+      [pieceId, tenantId, id, PDF.length, PDF],
+    );
+    expect((await service.applications(rh, offreId))[0]).toMatchObject({
+      givenName: 'Moussa',
+      documents: [{ filename: 'cv-ancien.pdf' }],
+    });
+    const client = new Client({ connectionString: env.DATABASE_URL });
+    await client.connect();
+    try {
+      expect(await chiffrerLesCandidatures(client)).toBeGreaterThanOrEqual(2);
+    } finally {
+      await client.end();
+    }
+    const { rows } = await raw(`SELECT given_name, cle_version FROM applications WHERE id = $1`, [
+      id,
+    ]);
+    expect(rows[0]).toMatchObject({ cle_version: 1, given_name: expect.stringMatching(/^c1:/) });
+    expect((await service.applications(rh, offreId))[0]).toMatchObject({
+      givenName: 'Moussa',
+      email: 'moussa.ancien@exemple.sn',
+      documents: [{ filename: 'cv-ancien.pdf' }],
+    });
+    expect((await service.document(rh, pieceId)).data.equals(PDF)).toBe(true);
+  });
+
+  it('une erreur de base ne journalise jamais les valeurs de la requête', () => {
+    const erreur = Object.assign(
+      new Error('Failed query: insert into applications …\nparams: Ndeye,ndeye@exemple.sn'),
+      {
+        name: 'DrizzleQueryError',
+        query: 'insert into applications …',
+        params: ['Ndeye', 'ndeye@exemple.sn'],
+        cause: { code: '55P03', message: 'lock timeout' },
+      },
+    );
+    const journal = JSON.stringify(pourLeJournal(erreur));
+    expect(journal).not.toMatch(/Ndeye|exemple/);
+    expect(journal).toContain('55P03');
   });
 });

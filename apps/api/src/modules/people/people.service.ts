@@ -626,6 +626,15 @@ export class PeopleService {
 
         if (input.person && Object.keys(input.person).length > 0) {
           const { nationalId, ...rest } = input.person;
+          // Le numéro de la pièce est masqué à qui n'a pas les données
+          // sensibles : il ne l'écrase pas plus qu'il ne le lit.
+          if (nationalId !== undefined && !peut(user, 'personnel.sensible')) {
+            problem(
+              403,
+              'people.donnees_sensibles',
+              'Le numéro de la pièce ne se modifie qu’avec l’accès aux données sensibles',
+            );
+          }
           await tx
             .update(t.persons)
             .set({

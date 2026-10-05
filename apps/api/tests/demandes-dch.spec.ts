@@ -1545,3 +1545,31 @@ describe('gérer les dossiers du personnel n’ouvre aucune file', () => {
     }
   });
 });
+
+describe('le numéro de pièce, masqué sans les données sensibles', () => {
+  it('ne s’écrase pas sans elles ; le reste de la fiche se modifie', async () => {
+    const sansSensible = {
+      ...khady.session,
+      capacites: ['personnel.consulter', 'personnel.gerer'],
+    } as SessionUser;
+    const avecSensible = {
+      ...khady.session,
+      capacites: ['personnel.consulter', 'personnel.gerer', 'personnel.sensible'],
+    } as SessionUser;
+    await people.update(avecSensible, moussa.employeeId, {
+      person: { idDocumentType: 'cni', nationalId: '1234567890123' },
+    });
+    expect((await people.detail(sansSensible, moussa.employeeId)).person.nationalId).toBeNull();
+    for (const nationalId of [null, '9999999999999']) {
+      expect(
+        await codeOf(() =>
+          people.update(sansSensible, moussa.employeeId, { person: { nationalId } }),
+        ),
+      ).toBe('people.donnees_sensibles');
+    }
+    await people.update(sansSensible, moussa.employeeId, { person: { phone: '770000003' } });
+    expect((await people.detail(avecSensible, moussa.employeeId)).person.nationalId).toBe(
+      '1234567890123',
+    );
+  });
+});

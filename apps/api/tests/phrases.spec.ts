@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { absence, de, duAu, frDate, rappel } from '../src/modules/notifications/phrases';
+import {
+  ABSENCE,
+  absence,
+  de,
+  duAu,
+  frDate,
+  leLa,
+  rappel,
+  sonSa,
+} from '../src/modules/notifications/phrases';
 
 describe('les mots des notifications', () => {
   it('écrit les dates comme on les dit', () => {
@@ -25,6 +34,15 @@ describe('les mots des notifications', () => {
     expect(absence('Congé annuel')).toMatchObject({ nom: 'congé annuel', article: 'un' });
     expect(absence('Maladie')).toMatchObject({ nom: 'congé maladie', article: 'un' });
     expect(absence('Mission')).toMatchObject({ nom: 'mission', article: 'une', feminin: true });
+  });
+
+  it('accorde l’article et le possessif, élision comprise', () => {
+    expect(`${leLa(absence('Maladie'))}${absence('Maladie').nom}`).toBe('Le congé maladie');
+    expect(`${leLa(absence('Mission'))}${absence('Mission').nom}`).toBe('La mission');
+    expect(`${leLa(ABSENCE)}${ABSENCE.nom}`).toBe('L’absence');
+    expect(sonSa(absence('Mission'))).toBe('sa');
+    expect(sonSa(ABSENCE)).toBe('son');
+    expect(sonSa(absence('Congé annuel'))).toBe('son');
   });
 
   it('un rappel garde le nom propre, et met le reste en minuscule', () => {

@@ -13,7 +13,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import {
   applySchema,
   createJobPostingSchema,
@@ -127,9 +127,16 @@ export class RecruitmentController {
   ) {
     const doc = await this.jobs.document(req.sessionUser, id);
     res.setHeader('Content-Type', doc.contentType);
-    // filename* encodé : les noms de fichiers viennent du public.
-    res.setHeader('Content-Disposition', contentDisposition('inline', doc.filename));
-    res.setHeader('Cache-Control', 'no-store');
+    // filename* encodé : les noms de fichiers viennent du public. La pièce
+    // se télécharge, elle ne s'ouvre pas dans l'onglet de l'application ; ni
+    // le navigateur ni un intermédiaire n'en gardent de copie, et elle ne
+    // s'exécute pas, quoi qu'elle contienne (le lecteur la lit en mémoire).
+    res.setHeader('Content-Disposition', contentDisposition('attachment', doc.filename));
+    res.setHeader('Cache-Control', 'no-store, private, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('Referrer-Policy', 'no-referrer');
     res.end(doc.data);
   }
 }
@@ -150,12 +157,11 @@ export class PublicJobsController {
   async apply(
     @Param('slug') slug: string,
     @Body(new ZodValidationPipe(applySchema)) body: ApplyInput,
-    @Req() req: Request,
   ) {
     if (!SLUG_RE.test(slug)) {
       problem(410, 'recruitment.job_unavailable', "Cette offre n'accepte plus de candidatures");
     }
-    await this.applications.apply(slug, body, req.ip);
+    await this.applications.apply(slug, body);
     return { ok: true };
   }
 }

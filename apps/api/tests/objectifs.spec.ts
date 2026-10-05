@@ -26,6 +26,7 @@ import { TenantDb } from '../src/db/tenant-db';
 import { AcademyEquipeService } from '../src/modules/academy/academy-equipe.service';
 import { capacitesDe } from '../src/modules/acces/dch';
 import { ObjectifsService } from '../src/modules/objectifs/objectifs.service';
+import { reconcilierLeCircuit } from '../src/modules/time/visas';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -943,6 +944,104 @@ describe('un agent parti avant son évaluation', () => {
       );
     } finally {
       await raw(`UPDATE employees SET status = 'active' WHERE id = $1`, [agents.moussa]);
+    }
+  });
+});
+
+describe('le n+1 change pendant l’évaluation', () => {
+  const caseACocher = (id: string, texte: string) => ({
+    id,
+    type: 'checkListItem',
+    props: { checked: false },
+    content: [{ type: 'text', text: texte, styles: {} }],
+    children: [],
+  });
+  /** Une fiche que l'agent a remplie, prête à partir. */
+  const remplie = async (annee: number, semestre: 1 | 2) => {
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      annee,
+      semestre,
+      contenu: [caseACocher('o1', 'Livrer la note')],
+    });
+    await objectifs.statuer(session('moussa'), annee, semestre, { id: 'o1', statut: 'atteint' });
+    await objectifs.enregistrerCommentaires(session('moussa'), annee, semestre, {
+      commentaires: { o1: 'Livrée.' },
+    });
+  };
+  const nouveauN1 = async (qui: Nom | null) => {
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [
+      agents.moussa,
+      qui ? agents[qui] : null,
+    ]);
+    await db.withTenant({ tenantId, userId: comptes.dg }, (tx) =>
+      reconcilierLeCircuit(tx, tenantId),
+    );
+  };
+  const appels = async () => {
+    const { rows } = await raw(
+      `SELECT u.given_name AS qui FROM notifications n JOIN users u ON u.id = n.recipient_user_id
+        WHERE n.dedupe_key LIKE $1 ORDER BY 1`,
+      [`objectifs:${agents.moussa}:2022:1:appel:%`],
+    );
+    return rows.map((r) => r.qui as string);
+  };
+  const vueDe = async (qui: Nom) =>
+    (await objectifs.fiche(session(qui), agents.moussa)).fiches.find(
+      (f) => f.annee === 2022 && f.semestre === 1,
+    )!;
+
+  it('l’appel suit le nouveau n+1, qui évalue sur une page blanche', async () => {
+    try {
+      await remplie(2022, 1);
+      await objectifs.envoyerCommentaires(session('moussa'), 2022, 1);
+      expect(await appels()).toEqual(['Awa']);
+      // Awa commence son évaluation, puis Moussa passe sous Ousmane.
+      await objectifs.enregistrerEvaluation(session('awa'), agents.moussa, 2022, 1, {
+        commentaires: { o1: 'Propos d’Awa.' },
+        note: 'C',
+      });
+      await nouveauN1('ousmane');
+      expect(await appels()).toEqual(['Ousmane']);
+      expect((await notifications('ousmane')).map((n) => n.title)).toContain(
+        'Moussa Ndiaye a envoyé son auto-évaluation du 1er semestre 2022',
+      );
+      // Le brouillon d'Awa n'est pas le sien : il ne le lit pas, ne le valide pas.
+      expect((await vueDe('ousmane')).evaluation).toMatchObject({
+        commentairesAgent: { o1: 'Livrée.' },
+        commentairesN1: {},
+        note: null,
+      });
+      expect(
+        await codeOf(() => objectifs.validerEvaluation(session('ousmane'), agents.moussa, 2022, 1)),
+      ).toBe('objectifs.evaluation_sans_note');
+      await objectifs.enregistrerEvaluation(session('ousmane'), agents.moussa, 2022, 1, {
+        commentaires: { o1: 'Propos d’Ousmane.' },
+        note: 'B',
+      });
+      await objectifs.validerEvaluation(session('ousmane'), agents.moussa, 2022, 1);
+      expect(await appels()).toEqual([]);
+      const lue = (await objectifs.mesObjectifs(session('moussa'))).fiches.find(
+        (f) => f.annee === 2022 && f.semestre === 1,
+      )!;
+      expect(lue.evaluation).toMatchObject({
+        commentairesN1: { o1: 'Propos d’Ousmane.' },
+        note: 'B',
+        evaluateur: 'Ousmane Fall',
+      });
+    } finally {
+      await nouveauN1('awa');
+    }
+  });
+
+  it('sans n+1, l’auto-évaluation ne part pas dans le vide', async () => {
+    try {
+      await remplie(2022, 2);
+      await nouveauN1(null);
+      expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2022, 2))).toBe(
+        'objectifs.sans_n1',
+      );
+    } finally {
+      await nouveauN1('awa');
     }
   });
 });

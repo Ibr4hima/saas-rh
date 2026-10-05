@@ -20,6 +20,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 import { loadEnv } from '../config/env';
+import { chiffrerLesCandidatures } from './chiffrer-candidatures';
 import { OPTIONS_CONNEXION } from './tenant-db';
 
 /** La clé du verrou consultatif des migrations, propre à ce migrateur. */
@@ -155,6 +156,12 @@ export async function runMigrations(
         process.stdout.write('FAILED\n');
         throw err;
       }
+    }
+    // Ce que le SQL ne sait pas faire, faute de clé : chiffrer les
+    // candidatures déposées avant 0079.
+    if (!options.dossier) {
+      const chiffrees = await chiffrerLesCandidatures(client);
+      if (chiffrees > 0) process.stdout.write(`Candidatures chiffrées : ${chiffrees}\n`);
     }
   } finally {
     await client.end();

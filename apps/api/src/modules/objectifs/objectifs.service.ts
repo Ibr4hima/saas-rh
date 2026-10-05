@@ -33,6 +33,8 @@ import { duSemestre } from '../notifications/phrases';
 import { AcademyEquipeService } from '../academy/academy-equipe.service';
 import { employeActif } from '../academy/academy-evaluation.service';
 import { notifier } from '../notifications/notifier';
+import { retirerLesAppels } from '../acces/appels';
+import { prefixeEvaluation, reconcilierLesEvaluations } from './evaluation-attendue';
 import {
   DG,
   SOMMET,
@@ -159,6 +161,7 @@ type LigneFiche = {
   evaluation_note: NoteGlobale | null;
   evaluation_validee_le: string | Date | null;
   evaluateur: string | null;
+  evaluateur_employee_id: string | null;
 };
 
 const SELECTION_FICHE = sql`
@@ -167,7 +170,8 @@ const SELECTION_FICHE = sql`
          f.statuts, f.statuts_empreintes, f.formations_figees,
          f.commentaires_agent, f.commentaires_envoyes_le, f.commentaires_n1,
          f.evaluation_note, f.evaluation_validee_le,
-         CASE WHEN pv.id IS NULL THEN NULL ELSE pv.given_name || ' ' || pv.family_name END AS evaluateur
+         CASE WHEN pv.id IS NULL THEN NULL ELSE pv.given_name || ' ' || pv.family_name END AS evaluateur,
+         f.evaluateur_employee_id
     FROM objectifs_fiches f
     LEFT JOIN employees ea ON ea.id = f.auteur_employee_id
     LEFT JOIN persons pa ON pa.id = ea.person_id
@@ -219,10 +223,15 @@ function statutsEnVigueur(l: LigneFiche): {
   return { statuts, caducs };
 }
 
-function vueFiche(l: LigneFiche, vue: 'agent' | 'n1'): FicheObjectifs {
+/**
+ * Ce que l'agent et le n+1 en lisent. Le brouillon du n+1 n'est qu'à son
+ * auteur : un nouveau n+1 évalue sur une page blanche, il ne valide pas les
+ * propos de l'ancien.
+ */
+function vueFiche(l: LigneFiche, vue: 'agent' | 'n1', lecteur?: string): FicheObjectifs {
   const envoyes = l.commentaires_envoyes_le !== null;
   const validee = l.evaluation_validee_le !== null;
-  const voitN1 = vue === 'n1' || validee;
+  const voitN1 = validee || (vue === 'n1' && l.evaluateur_employee_id === lecteur);
   const { statuts, caducs } = statutsEnVigueur(l);
   return {
     annee: l.annee,
@@ -395,7 +404,7 @@ export class ObjectifsService {
           sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${membre.id}`,
         )
       ).map((o) => this.vue(o, progression.get(membre.id)));
-      const fiches = await this.lireFiches(tx, membre.id, 'n1');
+      const fiches = await this.lireFiches(tx, membre.id, 'n1', moi);
       const aEvaluer = fiches.filter(
         (f) => f.evaluation.envoyesLe && !f.evaluation.valideeLe,
       ).length;
@@ -488,12 +497,13 @@ export class ObjectifsService {
     tx: Tx,
     employeeId: string,
     vue: 'agent' | 'n1',
+    lecteur?: string,
   ): Promise<FicheObjectifs[]> {
     const { rows } = await tx.execute<LigneFiche>(sql`
       ${SELECTION_FICHE}
        WHERE f.employee_id = ${employeeId}
        ORDER BY f.annee DESC, f.semestre DESC`);
-    return rows.filter((l) => ficheRemplie(l.contenu)).map((l) => vueFiche(l, vue));
+    return rows.filter((l) => ficheRemplie(l.contenu)).map((l) => vueFiche(l, vue, lecteur));
   }
 
   /** Une fiche, verrouillée le temps du geste — 404 si elle n'existe pas. */
@@ -616,23 +626,22 @@ export class ObjectifsService {
       const figees = formationsDe((await this.progression(tx, [moi])).get(moi)).filter((x) =>
         cites.has(x.courseId),
       );
+      // Elle part à quelqu'un : sans N+1, elle ne s'envoie pas.
+      const { rows } = await tx.execute<{ n1: string | null }>(sql`
+        SELECT manager_employee_id AS n1 FROM employees
+         WHERE id = ${moi} AND id IS DISTINCT FROM ${DG}`);
+      if (!rows[0]?.n1) {
+        problem(
+          422,
+          'objectifs.sans_n1',
+          'Votre auto-évaluation s’envoie à votre N+1 : vous n’en avez pas pour l’instant',
+        );
+      }
       await tx.execute(sql`
         UPDATE objectifs_fiches
            SET commentaires_envoyes_le = now(), formations_figees = ${JSON.stringify(figees)}::jsonb
          WHERE id = ${f.id}`);
-
-      const { rows } = await tx.execute<{ n1: string | null }>(sql`
-        SELECT manager_employee_id AS n1 FROM employees WHERE id = ${moi}`);
-      const n1 = rows[0]?.n1;
-      const compte = n1 ? await this.compteDe(tx, n1) : null;
-      if (compte) {
-        await notifier(tx, user.tenantId, compte, {
-          type: 'objectif',
-          title: `${await this.nomDe(tx, moi)} a envoyé son auto-évaluation ${duSemestre(semestre, annee)}`,
-          link: `/moi/equipe/suivi/${moi}?vue=evaluation`,
-          dedupeKey: `objectifs:commentaires:${moi}:${annee}:${semestre}`,
-        });
-      }
+      await reconcilierLesEvaluations(tx, moi);
     });
   }
 
@@ -675,13 +684,15 @@ export class ObjectifsService {
       await this.exigerSonN1(tx, moi, employeeId, true);
       const f = await this.uneFiche(tx, employeeId, annee, semestre);
       exigerEvaluable(f);
-      if (!f.evaluation_note) {
+      // La note d'un autre (l'ancien n+1) ne se valide pas : la sienne seule.
+      if (!f.evaluation_note || f.evaluateur_employee_id !== moi) {
         problem(422, 'objectifs.evaluation_sans_note', 'Donnez l’appréciation globale');
       }
       await tx.execute(sql`
         UPDATE objectifs_fiches
            SET evaluation_validee_le = now(), evaluateur_employee_id = ${moi}
          WHERE id = ${f.id}`);
+      await retirerLesAppels(tx, prefixeEvaluation(employeeId, annee, semestre));
       const compte = await this.compteDe(tx, employeeId);
       if (compte) {
         await notifier(tx, user.tenantId, compte, {

@@ -3,7 +3,8 @@ import type { EtapeConge } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 import { notifier } from '../notifications/notifier';
 import { relancer, retirerLesAppels, tenirLesAppels } from '../acces/appels';
-import { absence, accord, de, duAu, frDate } from '../notifications/phrases';
+import { ABSENCE, absence, accord, de, duAu, frDate, leLa, sonSa } from '../notifications/phrases';
+import type { Nom } from '../notifications/phrases';
 import {
   directionDuPersonnel,
   nomsDe,
@@ -16,6 +17,7 @@ import {
 import { compterLesBloquees, libererLesConfiees, reconcilierLesDemandes } from '../acces/demandes';
 import { DG } from '../people/chaine';
 import { DELAI_N1_JOURS_OUVRES } from './workdays';
+import { reconcilierLesEvaluations } from '../objectifs/evaluation-attendue';
 import { parLeSysteme } from '../../db/systeme';
 
 /* ————————————————————————————————————————————————————————————————
@@ -228,6 +230,8 @@ interface Demande {
   fin: string;
   jours: number;
   demandeurUserId: string | null;
+  /** Le motif ne regarde que l'agent et la DCH (cf. migration 0076). */
+  confidentiel: boolean;
 }
 
 /** Ce qu'un message dit de la demande — qui, quoi, quand. */
@@ -242,10 +246,11 @@ export async function lireDemande(tx: Tx, requestId: string): Promise<Demande | 
     fin: string;
     jours: string;
     user_id: string | null;
+    confidentiel: boolean;
   }>(sql`
     SELECT r.id, r.tenant_id, r.employee_id, p.given_name || ' ' || p.family_name AS nom,
            ty.name AS type, r.start_date::text AS debut, r.end_date::text AS fin,
-           r.days_count::text AS jours, p.user_id
+           r.days_count::text AS jours, p.user_id, ty.motif_confidentiel AS confidentiel
       FROM absence_requests r
       JOIN employees e ON e.id = r.employee_id
       JOIN persons p ON p.id = e.person_id
@@ -263,13 +268,21 @@ export async function lireDemande(tx: Tx, requestId: string): Promise<Demande | 
         fin: r.fin,
         jours: Number(r.jours),
         demandeurUserId: r.user_id,
+        confidentiel: r.confidentiel,
       }
     : null;
 }
 
+/**
+ * Ce que le message dit du motif. L'agent et la DCH lisent « congé
+ * maladie » ; le N+1, d'un motif confidentiel, « absence ».
+ */
+function motif(d: Demande, pour: 'agent' | 'n1' | 'dch'): Nom {
+  return pour === 'n1' && d.confidentiel ? ABSENCE : absence(d.type);
+}
+
 /** « Moussa Ndiaye demande un congé annuel du 10 au 12 mai 2027 ». */
-function demandeDe(d: Demande): string {
-  const a = absence(d.type);
+function demandeDe(d: Demande, a: Nom): string {
   return `${d.nom} demande ${a.article} ${a.nom} ${duAu(d.debut, d.fin)}`;
 }
 
@@ -322,14 +335,14 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
   if (att.etape === 'n1') {
     await tenirLesAppels(tx, d.tenantId, prefixe, 'n1', destinataires, {
       type: 'conge_a_viser',
-      title: demandeDe(d),
+      title: demandeDe(d, motif(d, 'n1')),
       link: '/moi/equipe',
     });
     return;
   }
   await tenirLesAppels(tx, d.tenantId, prefixe, 'dch', destinataires, {
     type: 'conge_a_viser',
-    title: demandeDe(d),
+    title: demandeDe(d, motif(d, 'dch')),
     link: '/moi/dch',
   });
 }
@@ -392,7 +405,7 @@ export async function reconcilierReprise(tx: Tx, requestId: string): Promise<voi
     return;
   }
   const att = await attenduPourLaReprise(tx, d);
-  const a = absence(d.type);
+  const a = motif(d, att.etape);
   await tenirLesAppels(
     tx,
     d.tenantId,
@@ -401,7 +414,7 @@ export async function reconcilierReprise(tx: Tx, requestId: string): Promise<voi
     att.valideurs.map((v) => v.userId),
     {
       type: 'reprise_a_confirmer',
-      title: `${d.nom} écourte ${a.feminin ? 'sa' : 'son'} ${a.nom} : reprise le ${frDate(r.reprise)}`,
+      title: `${d.nom} écourte ${sonSa(a)} ${a.nom} : reprise le ${frDate(r.reprise)}`,
       link: att.etape === 'n1' ? '/moi/equipe' : '/moi/dch',
     },
   );
@@ -460,14 +473,25 @@ export async function annoncerLeChangement(
     employeeId: d.employeeId,
     confieeA: null,
   });
-  const aux = async (title: string, dedupeKey: string) => {
-    await envoyer(n1?.userId, { type: 'conge_modifie', title, link: '/moi/equipe', dedupeKey });
+  // Le N+1 et la DCH lisent la même phrase, chacun avec le motif qu'il voit.
+  const aux = async (title: (a: Nom) => string, dedupeKey: string) => {
+    await envoyer(n1?.userId, {
+      type: 'conge_modifie',
+      title: title(motif(d, 'n1')),
+      link: '/moi/equipe',
+      dedupeKey,
+    });
     for (const v of dch.traitants) {
       if (v.userId === n1?.userId) continue;
-      await envoyer(v.userId, { type: 'conge_modifie', title, link: '/moi/dch', dedupeKey });
+      await envoyer(v.userId, {
+        type: 'conge_modifie',
+        title: title(motif(d, 'dch')),
+        link: '/moi/dch',
+        dedupeKey,
+      });
     }
   };
-  const leConge = `${a.feminin ? 'La' : 'Le'} ${a.nom} ${de(d.nom)} ${duAu(d.debut, d.fin)}`;
+  const leConge = (a: Nom) => `${leLa(a)}${a.nom} ${de(d.nom)} ${duAu(d.debut, d.fin)}`;
 
   if (changement.quoi === 'annule') {
     // L'avis « approuvé » ne dit plus vrai : il quitte la boîte de l'agent.
@@ -484,7 +508,7 @@ export async function annoncerLeChangement(
       dedupeKey: cle('annule'),
       remplace: cle('verdict'),
     });
-    await aux(`${leConge} est ${accord('annulé', a)}`, cle('annule'));
+    await aux((a) => `${leConge(a)} est ${accord('annulé', a)}`, cle('annule'));
     return;
   }
 
@@ -499,7 +523,7 @@ export async function annoncerLeChangement(
     dedupeKey: cle(`ecourte:${changement.reprise}`),
   });
   await aux(
-    `${leConge} est ${accord('écourté', a)} : reprise le ${reprise}`,
+    (a) => `${leConge(a)} est ${accord('écourté', a)} : reprise le ${reprise}`,
     cle(`ecourte:${changement.reprise}`),
   );
 }
@@ -561,20 +585,21 @@ async function expirer(tx: Tx): Promise<void> {
         dedupeKey: cle,
       });
     }
-    const titre = `La demande ${de(a.nom)} ${de(d.nom)} ${periode} a expiré sans réponse`;
+    const titre = (m: Nom) =>
+      `La demande ${de(m.nom)} ${de(d.nom)} ${periode} a expiré sans réponse`;
     const prevenus = new Set<string>(d.demandeurUserId ? [d.demandeurUserId] : []);
-    const prevenir = async (userId: string, link: string) => {
+    const prevenir = async (userId: string, pour: 'n1' | 'dch') => {
       if (prevenus.has(userId)) return;
       prevenus.add(userId);
       await notifier(tx, d.tenantId, userId, {
         type: 'conge_expire',
-        title: titre,
-        link,
+        title: titre(motif(d, pour)),
+        link: pour === 'n1' ? '/moi/equipe' : '/moi/dch',
         dedupeKey: cle,
       });
     };
-    if (n1) await prevenir(n1.userId, '/moi/equipe');
-    for (const v of t.valideurs) await prevenir(v.userId, '/moi/dch');
+    if (n1) await prevenir(n1.userId, 'n1');
+    for (const v of t.valideurs) await prevenir(v.userId, 'dch');
   }
 }
 
@@ -587,10 +612,11 @@ async function demandesEnAttente(tx: Tx, employeeId?: string): Promise<string[]>
   return rows.map((r) => r.id);
 }
 
-/** Le N+1 d'un agent vient de changer : ses demandes le suivent. */
+/** Le N+1 d'un agent vient de changer : ses demandes le suivent, son auto-évaluation aussi. */
 export async function faireSuivreLesDemandes(tx: Tx, employeeId: string): Promise<void> {
   for (const id of await demandesEnAttente(tx, employeeId)) await reconcilierDemande(tx, id);
   for (const id of await reprisesEnAttente(tx, employeeId)) await reconcilierReprise(tx, id);
+  await reconcilierLesEvaluations(tx, employeeId);
 }
 
 /**
@@ -606,6 +632,7 @@ export async function reconcilierLeCircuit(tx: Tx, tenantId: string): Promise<vo
   const enAttente = await demandesEnAttente(tx);
   for (const id of enAttente) await reconcilierDemande(tx, id);
   for (const id of await reprisesEnAttente(tx)) await reconcilierReprise(tx, id);
+  await reconcilierLesEvaluations(tx);
   await reconcilierLesDemandes(tx, tenantId);
   await verifierLaVacance(tx, tenantId, enAttente);
   await relancer(tx, tenantId);

@@ -13,10 +13,12 @@ import type {
   SessionUser,
   UpdateJobPostingInput,
 } from '@teranga/contracts';
+import { EncryptionService } from '../../common/encryption.service';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { parLeSysteme } from '../../db/systeme';
+import { contenuDeLaPiece, dechiffrerCandidature, nomDeLaPiece } from './chiffrement';
 
 /**
  * La durée suit le contrat : exigée pour un CDD ou un stage, effacée pour les
@@ -64,7 +66,28 @@ async function refuserUneDateLimitePassee(tx: Tx, limite: string | null): Promis
 
 @Injectable()
 export class JobsService {
-  constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
+  constructor(
+    @Inject(TenantDb) private readonly db: TenantDb,
+    @Inject(EncryptionService) private readonly enc: EncryptionService,
+  ) {}
+
+  /** Qui a consulté quoi : la liste d'une offre, ou une pièce. */
+  private async tracer(
+    tx: Tx,
+    user: SessionUser,
+    consultation:
+      | { action: 'list'; jobPostingId: string }
+      | { action: 'document'; applicationId: string; documentId: string },
+  ): Promise<void> {
+    await tx.execute(sql`
+      INSERT INTO application_access_log
+        (tenant_id, action, job_posting_id, application_id, document_id, actor_user_id)
+      VALUES (${user.tenantId}, ${consultation.action},
+              ${'jobPostingId' in consultation ? consultation.jobPostingId : null},
+              ${'applicationId' in consultation ? consultation.applicationId : null},
+              ${'documentId' in consultation ? consultation.documentId : null},
+              ${user.userId})`);
+  }
 
   async create(
     user: SessionUser,
@@ -202,11 +225,13 @@ export class JobsService {
       const docs = await tx
         .select({
           id: t.applicationDocuments.id,
+          tenantId: t.applicationDocuments.tenantId,
           applicationId: t.applicationDocuments.applicationId,
           label: t.applicationDocuments.label,
           filename: t.applicationDocuments.filename,
           contentType: t.applicationDocuments.contentType,
           sizeBytes: t.applicationDocuments.sizeBytes,
+          cleVersion: t.applicationDocuments.cleVersion,
         })
         .from(t.applicationDocuments)
         .innerJoin(t.applications, eq(t.applications.id, t.applicationDocuments.applicationId))
@@ -218,20 +243,17 @@ export class JobsService {
         list.push({
           id: d.id,
           label: d.label,
-          filename: d.filename,
+          filename: nomDeLaPiece(this.enc, d),
           contentType: d.contentType,
           sizeBytes: d.sizeBytes,
         });
         byApp.set(d.applicationId, list);
       }
+      await this.tracer(tx, user, { action: 'list', jobPostingId: jobId });
       return apps.map((a) => ({
         id: a.id,
         jobPostingId: a.jobPostingId,
-        givenName: a.givenName,
-        familyName: a.familyName,
-        email: a.email,
-        phone: a.phone,
-        message: a.message,
+        ...dechiffrerCandidature(this.enc, a),
         stage: a.stage as ApplicationStage,
         createdAt: a.createdAt.toISOString(),
         documents: byApp.get(a.id) ?? [],
@@ -346,9 +368,13 @@ export class JobsService {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       const [doc] = await tx
         .select({
+          id: t.applicationDocuments.id,
+          tenantId: t.applicationDocuments.tenantId,
+          applicationId: t.applicationDocuments.applicationId,
           filename: t.applicationDocuments.filename,
           contentType: t.applicationDocuments.contentType,
           data: t.applicationDocuments.data,
+          cleVersion: t.applicationDocuments.cleVersion,
         })
         .from(t.applicationDocuments)
         .where(eq(t.applicationDocuments.id, documentId))
@@ -356,7 +382,19 @@ export class JobsService {
       if (!doc) {
         problem(404, 'recruitment.document_not_found', 'Document introuvable');
       }
-      return doc;
+      await this.tracer(tx, user, {
+        action: 'document',
+        applicationId: doc.applicationId,
+        documentId: doc.id,
+      });
+      return {
+        filename: nomDeLaPiece(this.enc, doc),
+        // Un dépôt ancien n'a pas été contrôlé comme un PDF : il se télécharge
+        // sans que le navigateur l'interprète.
+        contentType:
+          doc.contentType === 'application/pdf' ? doc.contentType : 'application/octet-stream',
+        data: contenuDeLaPiece(this.enc, doc),
+      };
     });
   }
 

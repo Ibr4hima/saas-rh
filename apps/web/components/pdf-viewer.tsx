@@ -97,7 +97,12 @@ export function PdfViewer({
         // pdf.js prend la propriété du tampon : on lui en donne une copie,
         // sinon rouvrir le même document une seconde fois trouve un tampon
         // « détaché » et échoue.
-        const chargement = pdfjs.getDocument({ data: data.slice(0) });
+        // Un PDF vient parfois du public (un CV) : rien de lui ne s'exécute.
+        const chargement = pdfjs.getDocument({
+          data: data.slice(0),
+          isEvalSupported: false,
+          enableXfa: false,
+        });
         tache = chargement;
         const pdf = await chargement.promise;
         if (annule) return;

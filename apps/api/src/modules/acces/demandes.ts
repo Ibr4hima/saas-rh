@@ -22,6 +22,7 @@ import {
   membreDCH,
   nomDe,
   nomsDe,
+  subordonnesDe,
   traitementDe,
   type DirectionDuPersonnel,
   type Traitement,
@@ -411,6 +412,13 @@ export async function confierLaDemande(
   if (employeeId) {
     if (employeeId === d.employeeId) {
       problem(422, 'demandes.confiee_au_demandeur', 'On ne confie pas une demande à qui la pose');
+    }
+    if (d.employeeId !== moi && (await subordonnesDe(tx, d.employeeId)).has(employeeId)) {
+      problem(
+        422,
+        'demandes.confiee_au_subordonne',
+        'On ne confie pas une demande à une personne placée sous celle qui la pose',
+      );
     }
     const m = await membreDCH(tx, dch, employeeId);
     if (m === 'parti' || employeeId === moi) {

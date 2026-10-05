@@ -164,6 +164,21 @@ export async function detenteursDe(tx: Tx, capacite: Capacite): Promise<string[]
   return rows.map((r) => r.employee_id);
 }
 
+/**
+ * Qui relève de lui, à tout niveau de la chaîne des N+1 : ceux-là ne
+ * traitent pas ses demandes.
+ */
+export async function subordonnesDe(tx: Tx, employeeId: string): Promise<Set<string>> {
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    WITH RECURSIVE sous AS (
+      SELECT e.id FROM employees e WHERE e.manager_employee_id = ${employeeId}
+      UNION
+      SELECT e.id FROM employees e JOIN sous s ON e.manager_employee_id = s.id
+    )
+    SELECT id FROM sous`);
+  return new Set(rows.map((r) => r.id));
+}
+
 /** Qui traite une demande pour la DCH, maintenant. */
 export interface Traitement {
   /**
@@ -189,8 +204,10 @@ export interface Traitement {
  *      personne après lui).
  *
  * « Le peut » : membre de la DCH, avec un accès ouvert, présent aujourd'hui.
- * Personne ne traite sa propre demande — celle du directeur va à ses
- * membres habilités, ou attend qu'il la confie.
+ * Personne ne traite sa propre demande, ni celle de son chef : qui relève du
+ * demandeur s'efface, et à défaut de membre, le directeur traite. Celle du
+ * directeur, qui n'a que des subordonnés à la DCH, va à ses membres
+ * habilités, ou attend qu'il la confie.
  */
 export async function traitementDe(
   tx: Tx,
@@ -201,8 +218,15 @@ export async function traitementDe(
   const dch = dchConnue === undefined ? await directionDuPersonnel(tx) : dchConnue;
   if (!dch) return { traitants: [], parDelegationDe: null, aConfier: false, dch: null };
   const directeur = dch.directeur;
+  let sous: Set<string> | null = null;
+  const relevantDuDemandeur = async (employeeId: string) => {
+    if (dch.directeurEmployeeId === demande.employeeId) return false;
+    sous ??= await subordonnesDe(tx, demande.employeeId);
+    return sous.has(employeeId);
+  };
   const disponible = async (employeeId: string): Promise<Viseur | null> => {
     if (employeeId === demande.employeeId || employeeId === dch.directeurEmployeeId) return null;
+    if (await relevantDuDemandeur(employeeId)) return null;
     const m = await membreDCH(tx, dch, employeeId);
     return m !== 'parti' && !m.absent ? m : null;
   };

@@ -1,51 +1,103 @@
 import { existsSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { resolve } from 'node:path';
 import { config as dotenv } from 'dotenv';
 import { z } from 'zod';
 
-const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().default(3001),
-  /** Rôle propriétaire — migrations uniquement (bypasse la RLS). */
-  DATABASE_URL: z.string().min(1),
-  /** Rôle applicatif non-owner — tout le runtime (soumis à la RLS, ADR-0002). */
-  APP_DATABASE_URL: z.string().min(1),
-  SESSION_TTL_HOURS: z.coerce.number().int().min(1).default(12),
-  /** Clé AES-256 (32 octets base64) pour le chiffrement applicatif des champs sensibles. */
-  DATA_ENCRYPTION_KEY: z.string().min(40),
-  COOKIE_SECURE: z
-    .string()
-    .default('false')
-    .transform((v) => v === 'true'),
-  /**
-   * Créer une organisation depuis la page publique d'inscription. Fermé par
-   * défaut : sans cela, n'importe qui pouvait ouvrir une « APIX S.A » et
-   * publier des offres sur le vrai domaine. La toute première organisation
-   * d'une base vide se crée toujours (installation).
-   */
-  INSCRIPTION_OUVERTE: z
-    .string()
-    .default('false')
-    .transform((v) => v === 'true'),
-  /**
-   * Derrière un reverse proxy : valeur Express `trust proxy` ('1', 'loopback'…)
-   * pour que req.ip reflète le client réel et pas le proxy. Vide = désactivé.
-   */
-  TRUST_PROXY: z
-    .string()
-    .default('')
-    .transform((v) => (v === '' ? undefined : /^\d+$/.test(v) ? Number(v) : v)),
-  /**
-   * APIX Academy, stockage vidéo LOCAL (développement, démonstration) : le
-   * répertoire des fichiers. Par défaut `apps/api/var/academy-media`.
-   */
-  ACADEMY_MEDIA_DIR: z.string().min(1).optional(),
-  /**
-   * L'adresse publique de l'application web — celle que porte le QR code d'un
-   * certificat, pour qu'un tiers le vérifie. En production : l'URL réelle.
-   */
-  PUBLIC_WEB_URL: z.string().url().default('http://localhost:3002'),
-});
+/** La clé de développement publiée dans `.env.example` : connue de tous. */
+const CLE_DE_DEVELOPPEMENT = 'mfM8qEsFfS1lIiWvm8hrM8zqi+O/PFhzPku1whgaMoU=';
+
+/** Une entrée de `trust proxy` : une adresse, un réseau, ou un nom qu'Express connaît. */
+const procheDeConfiance = (v: string) => {
+  if (['loopback', 'linklocal', 'uniquelocal'].includes(v)) return true;
+  const [adresse, masque] = v.split('/');
+  return isIP(adresse ?? '') !== 0 && (masque === undefined || /^\d{1,3}$/.test(masque));
+};
+
+export const envSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    PORT: z.coerce.number().int().default(3001),
+    /** Rôle propriétaire : migrations uniquement (bypasse la RLS). */
+    DATABASE_URL: z.string().min(1),
+    /** Rôle applicatif non-owner : tout le runtime (soumis à la RLS, ADR-0002). */
+    APP_DATABASE_URL: z.string().min(1),
+    SESSION_TTL_HOURS: z.coerce.number().int().min(1).default(12),
+    /** Clé AES-256 (32 octets base64) pour le chiffrement applicatif des champs sensibles. */
+    DATA_ENCRYPTION_KEY: z.string().min(40),
+    COOKIE_SECURE: z
+      .string()
+      .default('false')
+      .transform((v) => v === 'true'),
+    /**
+     * Créer une organisation depuis la page publique d'inscription. Fermé par
+     * défaut : sans cela, n'importe qui pouvait ouvrir une « APIX S.A » et
+     * publier des offres sur le vrai domaine. La toute première organisation
+     * d'une base vide se crée toujours (installation).
+     */
+    INSCRIPTION_OUVERTE: z
+      .string()
+      .default('false')
+      .transform((v) => v === 'true'),
+    /**
+     * Derrière un reverse proxy : les proxys dont on croit l'en-tête
+     * X-Forwarded-For, pour que req.ip soit l'adresse du client et non celle
+     * du proxy. Un nombre de sauts ('2'), ou une liste d'adresses, de réseaux
+     * et de noms Express ('loopback, 10.0.0.0/8'). 'false' : l'API est
+     * exposée directement. 'true' est refusé : il croirait n'importe quel
+     * en-tête, que le client écrit lui-même. Obligatoire en production.
+     */
+    TRUST_PROXY: z
+      .string()
+      .default('')
+      .transform((v) => v.trim())
+      .refine(
+        (v) =>
+          v === '' ||
+          v === 'false' ||
+          /^\d+$/.test(v) ||
+          v
+            .split(',')
+            .map((x) => x.trim())
+            .every(procheDeConfiance),
+        {
+          message:
+            "TRUST_PROXY : un nombre de sauts, une liste d'adresses ou de réseaux, ou 'false'",
+        },
+      )
+      .transform((v): string | number | false | undefined =>
+        v === ''
+          ? undefined
+          : v === 'false'
+            ? false
+            : /^\d+$/.test(v)
+              ? Number(v)
+              : v
+                  .split(',')
+                  .map((x) => x.trim())
+                  .join(','),
+      ),
+    /**
+     * APIX Academy, stockage vidéo LOCAL (développement, démonstration) : le
+     * répertoire des fichiers. Par défaut `apps/api/var/academy-media`.
+     */
+    ACADEMY_MEDIA_DIR: z.string().min(1).optional(),
+    /**
+     * L'adresse publique de l'application web, celle que porte le QR code d'un
+     * certificat, pour qu'un tiers le vérifie. En production : l'URL réelle.
+     */
+    PUBLIC_WEB_URL: z.string().url().default('http://localhost:3002'),
+  })
+  .refine((e) => e.NODE_ENV !== 'production' || e.TRUST_PROXY !== undefined, {
+    message:
+      "TRUST_PROXY doit être réglé en production : les proxys devant l'API, ou 'false' si elle est exposée directement",
+    path: ['TRUST_PROXY'],
+  })
+  .refine((e) => e.NODE_ENV !== 'production' || e.DATA_ENCRYPTION_KEY !== CLE_DE_DEVELOPPEMENT, {
+    message:
+      'DATA_ENCRYPTION_KEY : la clé de développement est publique, en générer une (openssl rand -base64 32)',
+    path: ['DATA_ENCRYPTION_KEY'],
+  });
 
 export type Env = z.infer<typeof envSchema>;
 

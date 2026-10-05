@@ -10,9 +10,11 @@ import type {
   OrgUnitView,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
+import { peut } from '@teranga/contracts';
 import { Button, Field, Input, Select, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { composePhone, COUNTRIES, splitPhone } from '../lib/countries';
+import { useMe } from '../lib/hooks';
 import { maritalLabels, maxBirthDate } from '../lib/person';
 import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { Modal, ModalGrid, ModalSection } from './modal';
@@ -176,6 +178,9 @@ export function EmployeeEditModal({
 
 function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: () => void }) {
   const queryClient = useQueryClient();
+  // Sans les données sensibles, le numéro de la pièce est masqué : il ne se
+  // modifie pas non plus.
+  const voitSensible = peut(useMe().data, 'personnel.sensible');
   const [serverError, setServerError] = useState<string | null>(null);
 
   // C'est dans cette fenêtre qu'on corrige les dossiers signalés par le
@@ -349,7 +354,11 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
           {watchedIdType ? (
             <>
               <Field label="Numéro de la pièce" htmlFor="nationalId">
-                <Input id="nationalId" {...form.register('nationalId')} />
+                <Input
+                  id="nationalId"
+                  placeholder={voitSensible ? undefined : 'Masqué'}
+                  {...form.register('nationalId', { disabled: !voitSensible })}
+                />
               </Field>
               <Field label="Date de délivrance" htmlFor="idDocumentIssuedOn">
                 <Input

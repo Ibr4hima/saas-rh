@@ -58,6 +58,7 @@ import {
   nomDe,
   nomsDe,
   pasSurSoi,
+  subordonnesDe,
 } from '../acces/dch';
 import { aTraiterPar, voitToutLaFile } from '../acces/demandes';
 import {
@@ -86,6 +87,7 @@ type DefaultType = {
   frequency: AbsenceFrequency;
   requiresDocument: boolean;
   resteJoignable?: boolean;
+  motifConfidentiel?: boolean;
 };
 
 // La maternité s'ouvre à la naissance : ses jours ne se rechargent ni au mois
@@ -105,6 +107,7 @@ const DEFAULT_TYPES: DefaultType[] = [
     allowanceDays: null,
     frequency: 'none',
     requiresDocument: true,
+    motifConfidentiel: true,
   },
   {
     name: 'Maternité',
@@ -204,6 +207,7 @@ type TypePourSolde = {
   frequency: string;
   /** Retiré depuis : il ne figure qu'aux soldes des années où il a servi. */
   retire?: boolean;
+  motifConfidentiel?: boolean;
 };
 
 /** Le droit à porter d'office sur un solde d'année : le quota annuel, s'il y en a un. */
@@ -261,6 +265,7 @@ export class AbsencesService {
             frequency: d.frequency,
             requiresDocument: d.requiresDocument,
             resteJoignable: d.resteJoignable ?? false,
+            motifConfidentiel: d.motifConfidentiel ?? false,
           });
         }
         rows = await this.selectTypes(tx);
@@ -282,6 +287,7 @@ export class AbsencesService {
           frequency: input.frequency,
           requiresDocument: input.requiresDocument,
           resteJoignable: input.resteJoignable ?? false,
+          motifConfidentiel: input.motifConfidentiel ?? false,
         }),
       );
     } catch (err) {
@@ -328,6 +334,9 @@ export class AbsencesService {
             frequency: input.frequency,
             requiresDocument: input.requiresDocument,
             resteJoignable: input.resteJoignable ?? false,
+            // Omis, il reste ce qu'il était : un motif confidentiel ne
+            // redevient pas visible par oubli.
+            motifConfidentiel: input.motifConfidentiel ?? row.motifConfidentiel,
           })
           .where(eq(t.absenceTypes.id, id));
       } catch (err) {
@@ -844,6 +853,16 @@ export class AbsencesService {
             'On ne confie pas une demande à qui la pose',
           );
         }
+        if (
+          request.employeeId !== moi &&
+          (await subordonnesDe(tx, request.employeeId)).has(employeeId)
+        ) {
+          problem(
+            422,
+            'absence.confiee_au_subordonne',
+            'On ne confie pas une demande à une personne placée sous celle qui la pose',
+          );
+        }
         const m = await membreDCH(tx, dch, employeeId);
         if (m === 'parti' || employeeId === moi) {
           problem(422, 'absence.pas_membre_dch', 'Choisissez un membre de la DCH');
@@ -885,9 +904,10 @@ export class AbsencesService {
         deducts_balance: boolean;
         allowance_days: string | null;
         frequency: string;
+        motif_confidentiel: boolean;
       }>(sql`
         SELECT ty.id, ty.name, ty.deducts_balance, ty.allowance_days::text AS allowance_days,
-               ty.frequency
+               ty.frequency, ty.motif_confidentiel
           FROM absence_types ty
          WHERE ty.deleted_at IS NOT NULL
            AND (EXISTS (SELECT 1 FROM absence_requests r
@@ -898,7 +918,13 @@ export class AbsencesService {
                             WHERE b.absence_type_id = ty.id AND b.employee_id = ${employeeId}
                               AND b.year = ${year}))
          ORDER BY ty.name`);
-      return this.balancesInTx(tx, user, employeeId, year, [
+      // Les jours de maladie disent la maladie : comme le motif d'une
+      // demande, ils restent à l'agent et à qui lit ses justificatifs.
+      const voitLesMotifs =
+        (await this.selfEmployeeId(tx, user)) === employeeId ||
+        peut(user, 'personnel.sensible') ||
+        (await this.voitTout(tx, user));
+      const types: TypePourSolde[] = [
         ...(await this.selectTypes(tx)),
         ...retires.map((r) => ({
           id: r.id,
@@ -907,8 +933,16 @@ export class AbsencesService {
           allowanceDays: r.allowance_days,
           frequency: r.frequency,
           retire: true,
+          motifConfidentiel: r.motif_confidentiel,
         })),
-      ]);
+      ];
+      return this.balancesInTx(
+        tx,
+        user,
+        employeeId,
+        year,
+        types.filter((ty) => voitLesMotifs || !ty.motifConfidentiel),
+      );
     });
   }
 
@@ -1202,6 +1236,7 @@ export class AbsencesService {
             typeName: t.absenceTypes.name,
             deductsBalance: decompteDeLaDemande,
             requiresDocument: t.absenceTypes.requiresDocument,
+            confidentiel: t.absenceTypes.motifConfidentiel,
           })
           .from(t.absenceRequests)
           .innerJoin(t.employees, eq(t.employees.id, t.absenceRequests.employeeId))
@@ -1241,6 +1276,7 @@ export class AbsencesService {
           typeName: t.absenceTypes.name,
           deductsBalance: decompteDeLaDemande,
           requiresDocument: t.absenceTypes.requiresDocument,
+          confidentiel: t.absenceTypes.motifConfidentiel,
         })
         .from(t.absenceRequests)
         .innerJoin(t.employees, eq(t.employees.id, t.absenceRequests.employeeId))
@@ -1896,6 +1932,7 @@ export class AbsencesService {
         frequency: t.absenceTypes.frequency,
         requiresDocument: t.absenceTypes.requiresDocument,
         resteJoignable: t.absenceTypes.resteJoignable,
+        motifConfidentiel: t.absenceTypes.motifConfidentiel,
       })
       .from(t.absenceTypes)
       .where(isNull(t.absenceTypes.deletedAt))
@@ -2015,6 +2052,7 @@ export class AbsencesService {
       typeName: string;
       deductsBalance: boolean;
       requiresDocument: boolean;
+      confidentiel: boolean;
     }>,
   ): Promise<AbsenceRequestView[]> {
     if (rows.length === 0) return [];
@@ -2050,6 +2088,10 @@ export class AbsencesService {
     const moi = await this.selfEmployeeId(tx, user);
     const today = aujourdhui();
     const gere = await this.gereLesConges(tx, user);
+    // Un motif confidentiel (la maladie) : l'agent et qui ouvre son
+    // justificatif le lisent, cf. `document`. Le N+1, le tableau de bord,
+    // qui consulte les dossiers voient une absence.
+    const voitLesMotifs = peut(user, 'personnel.sensible') || (await this.voitTout(tx, user));
     // Qui a écourté ou annulé, et le N+1 de chaque agent : lus une fois.
     const auteurs = [
       ...new Set(
@@ -2096,6 +2138,7 @@ export class AbsencesService {
       typeName,
       deductsBalance,
       requiresDocument,
+      confidentiel,
     } of rows) {
       const att = await attendu(tx, {
         id: request.id,
@@ -2186,6 +2229,13 @@ export class AbsencesService {
 
       // Ce que l'utilisateur peut faire de ce congé, s'il est validé.
       const sienne = moi !== null && moi === request.employeeId;
+      const motif =
+        !confidentiel ||
+        voitLesMotifs ||
+        sienne ||
+        request.requestedByUserId === user.userId ||
+        (moi !== null && request.confieeAEmployeeId === moi);
+      const justificatif = documentRows.find((d) => d.requestId === request.id)?.filename ?? null;
       const valide = request.status === 'approved';
       const commence = valide && request.startDate <= today;
       const aVenir = valide && request.startDate > today;
@@ -2212,24 +2262,22 @@ export class AbsencesService {
         employeeName: `${givenName} ${familyName}`,
         employeeNumber,
         workEmail,
-        absenceTypeId: request.absenceTypeId,
-        absenceTypeName: typeName,
+        absenceTypeId: motif ? request.absenceTypeId : null,
+        absenceTypeName: motif ? typeName : 'Absence',
         deductsBalance,
         startDate: request.startDate,
         endDate: request.endDate,
         daysCount: num(request.daysCount),
-        reason: request.reason,
+        reason: motif ? request.reason : null,
         status: request.status,
         currentLevel: att?.etape === 'dch' ? NIVEAU_DCH : request.currentLevel,
         etapeAttendue: att?.etape ?? null,
         circuit: [etapeN1, etapeDCH],
         canDecide,
         traitement,
-        documentName: documentRows.find((d) => d.requestId === request.id)?.filename ?? null,
+        documentName: motif ? justificatif : null,
         justificatifAttendu:
-          requiresDocument &&
-          request.status === 'pending' &&
-          !documentRows.some((d) => d.requestId === request.id),
+          motif && requiresDocument && request.status === 'pending' && !justificatif,
         saisiePar:
           request.requestedByUserId && request.requestedByUserId !== comptes.get(request.employeeId)
             ? (noms.get(request.requestedByUserId) ?? null)
@@ -2259,8 +2307,7 @@ export class AbsencesService {
           // Le justificatif qui suit la demande : l'agent, qui l'a saisie
           // pour lui, ou la DCH ; tant qu'elle attend, ou validée sans lui.
           joindreJustificatif:
-            (request.status === 'pending' ||
-              (valide && !documentRows.some((d) => d.requestId === request.id))) &&
+            (request.status === 'pending' || (valide && !justificatif)) &&
             (sienne || request.requestedByUserId === user.userId || gere),
         },
         approvals: visas.map((a) => ({

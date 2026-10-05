@@ -1,5 +1,6 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -54,6 +55,7 @@ export function MenuCompte({
   certificats: boolean;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { theme, basculer } = usePreferences();
   // L'icône du compte suit le sexe au dossier : person, ou person_2.
   const soi: IconName = useMe().data?.gender === 'female' ? 'person_2' : 'person';
@@ -89,6 +91,8 @@ export function MenuCompte({
   const seDeconnecter = async (partout = false) => {
     setOuvert(false);
     await api(partout ? '/auth/deconnecter-partout' : '/auth/logout', { method: 'POST' });
+    // Ce qui a été lu (candidatures, dossiers) ne reste pas dans l'onglet.
+    queryClient.clear();
     router.replace('/login');
   };
 

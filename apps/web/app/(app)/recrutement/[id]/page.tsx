@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ApplicationView, JobPostingView } from '@teranga/contracts';
 import { LANGUE_LABELS, NIVEAU_ETUDES_LABELS, nomAbrege, peut } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
@@ -355,18 +355,25 @@ function FenetreCandidat({
   // Le dossier change : on repart de sa première pièce.
   useEffect(() => setOnglet(0), [a?.id]);
 
+  // Une pièce ouverte se télécharge une fois : chaque téléchargement se trace
+  // (qui a lu quel CV), un nouveau rendu ne doit pas la redemander.
+  const vues = useMemo(
+    () =>
+      (a?.documents ?? []).map((d) => ({
+        cle: d.id,
+        titre: d.label,
+        doc: {
+          url: apiUrl(`/application-documents/${d.id}`),
+          filename: d.filename,
+          contentType: d.contentType,
+          titre: libelleDocument(d.label),
+        } satisfies ViewableDoc,
+      })),
+    [a?.documents],
+  );
+
   if (!a) return null;
 
-  const vues = a.documents.map((d) => ({
-    cle: d.id,
-    titre: d.label,
-    doc: {
-      url: apiUrl(`/application-documents/${d.id}`),
-      filename: d.filename,
-      contentType: d.contentType,
-      titre: libelleDocument(d.label),
-    } satisfies ViewableDoc,
-  }));
   // L'onglet retenu peut dépasser après une suppression de pièce : on le
   // ramène dans les bornes ici plutôt que de laisser une vue vide.
   const index = Math.min(onglet, Math.max(0, vues.length - 1));

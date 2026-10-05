@@ -27,6 +27,8 @@ const absenceTypeFields = z.object({
   requiresDocument: z.boolean().default(false),
   /** L'agent reste joignable (une mission) : il vise encore ce qui l'attend. */
   resteJoignable: z.boolean().optional(),
+  /** Le motif ne regarde que l'agent et la DCH : le N+1 voit une absence. */
+  motifConfidentiel: z.boolean().optional(),
 });
 
 type ChampsDuType = {
@@ -67,6 +69,7 @@ export interface AbsenceType {
   frequency: AbsenceFrequency;
   requiresDocument: boolean;
   resteJoignable: boolean;
+  motifConfidentiel: boolean;
   /** Nombre de demandes déjà déposées sur ce type : il ne se supprime pas à la légère. */
   usageCount: number;
 }
@@ -295,7 +298,12 @@ export interface AbsenceRequestView {
   employeeName: string;
   employeeNumber: string;
   workEmail: string | null;
-  absenceTypeId: string;
+  /**
+   * Null, et « Absence » pour nom, quand le motif est confidentiel et que
+   * l'utilisateur n'est ni l'agent ni la DCH : le motif saisi et le
+   * justificatif lui sont tus aussi.
+   */
+  absenceTypeId: string | null;
   absenceTypeName: string;
   deductsBalance: boolean;
   startDate: string;

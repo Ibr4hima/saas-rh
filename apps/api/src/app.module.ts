@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AccesController } from './modules/acces/acces.controller';
 import { HabilitationsService } from './modules/acces/habilitations.service';
 import { EncryptionService } from './common/encryption.service';
+import { Limiteur } from './common/limiteur';
 import {
   AcademyController,
   AcademyMediaController,
@@ -77,6 +78,7 @@ import { AbsencesService } from './modules/time/absences.service';
   providers: [
     TenantDb,
     EncryptionService,
+    Limiteur,
     AuthService,
     HabilitationsService,
     SessionGuard,
