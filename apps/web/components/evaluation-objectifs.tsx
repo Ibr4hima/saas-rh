@@ -53,7 +53,9 @@ import { CLE_OBJECTIFS } from './objectifs';
    atteint, partiellement, non atteint ; la case en prend la couleur — et ce
    qu'il a fait, ce qui manque et pourquoi. Il enregistre autant de fois qu'il
    veut et envoie à son n+1 quand chaque objectif a son statut et son
-   commentaire. Le n+1 lit, commente à son tour sous chaque objectif, donne
+   commentaire. Une formation de l'APIX Academy est un objectif comme les
+   autres, mais son statut vient de l'Academy, figé à l'envoi ; la commenter
+   est libre. Le n+1 lit, commente à son tour sous chaque objectif, donne
    l'appréciation globale et valide.
    ———————————————————————————————————————————————————————————————— */
 
@@ -185,6 +187,15 @@ function PastilleStatut({ statut }: { statut: StatutObjectif }) {
   );
 }
 
+/** Le statut d'une formation, sous l'objectif : il se lit, il ne se choisit pas. */
+function PastilleStatutSeule({ statut }: { statut: StatutObjectif }) {
+  return (
+    <span className="self-start">
+      <PastilleStatut statut={statut} />
+    </span>
+  );
+}
+
 /** Atteint, Partiellement, Non atteint : le choix de l'agent, sous l'objectif. */
 function ChoixStatut({
   objectif,
@@ -282,6 +293,14 @@ function LigneObjectif({
       <div className="flex items-start gap-[11px]">
         <Case statut={statut} />
         <p className="min-w-0 flex-1 text-[12.5px] leading-[1.5] text-ink-strong">
+          {objectif.formation ? (
+            // Une formation de l'APIX Academy : son statut vient de là.
+            <Icon
+              name="school"
+              size={15}
+              className="mr-1.5 inline-block align-[-3px] text-primary"
+            />
+          ) : null}
           <TexteObjectif contenu={objectif.contenu} />
         </p>
       </div>
@@ -563,14 +582,15 @@ export function BoutonAutoEvaluation({
   onClick: () => void;
 }) {
   const ev = fiche.evaluation;
-  const objectifs = objectifsDeLaFiche(fiche.contenu);
-  const faits = evalues(objectifs, fiche.statuts, ev.commentairesAgent);
+  // Ce que l'agent évalue lui-même : les cases. Une formation a son statut.
+  const cases = objectifsDeLaFiche(fiche.contenu).filter((o) => !o.formation);
+  const faits = evalues(cases, fiche.statuts, ev.commentairesAgent);
   const etat = ev.valideeLe
     ? `Évaluation · ${ev.note}`
     : ev.envoyesLe
       ? 'Auto-évaluation envoyée'
       : faits > 0
-        ? `Auto-évaluation · ${faits}/${objectifs.length}`
+        ? `Auto-évaluation · ${faits}/${cases.length}`
         : 'Auto-évaluation';
   return (
     <button
@@ -624,8 +644,10 @@ export function AutoEvaluationAgent({
   const base = `/objectifs/moi/fiches/${fiche.annee}/${fiche.semestre}/commentaires`;
   const cle = [...CLE_OBJECTIFS, 'moi'];
 
-  const sansStatut = objectifs.filter((o) => !statuts[o.id]).length;
-  const sansCommentaire = objectifs.filter((o) => !brouillon.valeur[o.id]?.trim()).length;
+  // Une formation a le statut que lui donne l'Academy ; la commenter est libre.
+  const cases = objectifs.filter((o) => !o.formation);
+  const sansStatut = cases.filter((o) => !statuts[o.id]).length;
+  const sansCommentaire = cases.filter((o) => !brouillon.valeur[o.id]?.trim()).length;
   const reste = [
     sansStatut ? `${sansStatut} statut${sansStatut > 1 ? 's' : ''} à choisir` : null,
     sansCommentaire
@@ -665,6 +687,8 @@ export function AutoEvaluationAgent({
               <>
                 {ev.commentairesAgent[o.id] ? (
                   <Propos qui="Vous" texte={ev.commentairesAgent[o.id]!} statut={statuts[o.id]} />
+                ) : o.formation && statuts[o.id] ? (
+                  <PastilleStatutSeule statut={statuts[o.id]!} />
                 ) : null}
                 {ev.valideeLe && ev.commentairesN1[o.id]?.trim() ? (
                   <Propos
@@ -683,14 +707,24 @@ export function AutoEvaluationAgent({
                     Modifié par votre N+1
                   </Badge>
                 ) : null}
-                <ChoixStatut
-                  objectif={o.texte}
-                  valeur={statuts[o.id]}
-                  onChange={(statut) => onStatuer(o.id, statut)}
-                />
+                {o.formation ? (
+                  statuts[o.id] ? (
+                    <PastilleStatutSeule statut={statuts[o.id]!} />
+                  ) : null
+                ) : (
+                  <ChoixStatut
+                    objectif={o.texte}
+                    valeur={statuts[o.id]}
+                    onChange={(statut) => onStatuer(o.id, statut)}
+                  />
+                )}
                 <ZoneCommentaire
                   aria-label={`Commentaire : ${o.texte}`}
-                  placeholder="Ce que vous avez fait, ce qui reste…"
+                  placeholder={
+                    o.formation
+                      ? 'Ce que vous en retenez (facultatif)'
+                      : 'Ce que vous avez fait, ce qui reste…'
+                  }
                   value={brouillon.valeur[o.id] ?? ''}
                   onChange={(e) =>
                     brouillon.changer({ ...brouillon.valeur, [o.id]: e.target.value })
@@ -828,6 +862,8 @@ export function EvaluationSemestre({
                 texte={ev.commentairesAgent[o.id]!}
                 statut={fiche.statuts[o.id]}
               />
+            ) : o.formation && fiche.statuts[o.id] ? (
+              <PastilleStatutSeule statut={fiche.statuts[o.id]!} />
             ) : null}
             {envoyes && !validee ? (
               <ZoneCommentaire

@@ -891,6 +891,18 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
     });
     const fiche = async () => de((await objectifs.mesObjectifs(session('moussa'))).fiches, 2025, 2);
     expect((await fiche()).formations).toBeNull();
+    // La formation est un objectif : terminée, elle est atteinte. Son statut
+    // vient de l'Academy, l'agent ne le choisit pas.
+    expect((await fiche()).statuts).toEqual({ f1: 'atteint' });
+    expect(
+      await codeOf(() =>
+        objectifs.statuer(session('moussa'), 2025, 2, { id: 'f1', statut: 'non_atteint' }),
+      ),
+    ).toBe('objectifs.statut_de_formation');
+    expect(
+      (await objectifs.statuer(session('moussa'), 2025, 2, { id: 'w1', statut: 'partiel' }))
+        .statuts,
+    ).toEqual({ w1: 'partiel', f1: 'atteint' });
     await objectifs.statuer(session('moussa'), 2025, 2, { id: 'w1', statut: 'atteint' });
     await objectifs.enregistrerCommentaires(session('moussa'), 2025, 2, {
       commentaires: { w1: 'Terminée.' },
@@ -907,9 +919,64 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
     expect(
       de((await objectifs.fiche(session('awa'), agents.moussa)).fiches, 2025, 2).formations,
     ).toEqual([figee]);
+    // Son statut aussi : la formation, rouverte depuis, reste atteinte dans la fiche.
+    expect(de(moi.fiches, 2025, 2).statuts).toEqual({ w1: 'atteint', f1: 'atteint' });
+    expect(
+      de((await objectifs.fiche(session('awa'), agents.moussa)).fiches, 2025, 2).statuts.f1,
+    ).toBe('atteint');
     await raw(`DELETE FROM objectifs_fiches WHERE employee_id = $1 AND annee = 2025`, [
       agents.moussa,
     ]);
+  });
+
+  it('une fiche qui ne donne qu’une formation à suivre s’envoie, et s’évalue', async () => {
+    const courseId = randomUUID();
+    await raw(
+      `INSERT INTO academy_courses (id, tenant_id, title, category, published_at, created_by_user_id)
+       VALUES ($1,$2,'Excel avancé','bureautique', now(), $3)`,
+      [courseId, tenantId, comptes.dg],
+    );
+    try {
+      await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+        annee: 2021,
+        semestre: 2,
+        contenu: [
+          { id: 'f2', type: 'formation', props: { courseId, titre: 'Excel avancé' }, children: [] },
+        ],
+      });
+      const vue = async (qui: Nom) =>
+        de(
+          qui === 'moussa'
+            ? (await objectifs.mesObjectifs(session('moussa'))).fiches
+            : (await objectifs.fiche(session(qui), agents.moussa)).fiches,
+          2021,
+          2,
+        );
+      // Pas commencée : non atteinte. Le commentaire de l'agent est libre.
+      expect((await vue('moussa')).statuts).toEqual({ f2: 'non_atteint' });
+      expect(
+        (await notifications('moussa')).filter((n) =>
+          n.title.includes('vos objectifs du 2nd semestre 2021'),
+        ),
+      ).toHaveLength(1);
+      await objectifs.envoyerCommentaires(session('moussa'), 2021, 2);
+      expect((await vue('awa')).statuts).toEqual({ f2: 'non_atteint' });
+      // Le n+1 la commente comme un autre objectif.
+      await objectifs.enregistrerEvaluation(session('awa'), agents.moussa, 2021, 2, {
+        commentaires: { f2: 'À suivre avant juin.' },
+        note: 'C',
+      });
+      await objectifs.validerEvaluation(session('awa'), agents.moussa, 2021, 2);
+      expect((await vue('moussa')).evaluation).toMatchObject({
+        commentairesN1: { f2: 'À suivre avant juin.' },
+        note: 'C',
+      });
+    } finally {
+      await raw(`DELETE FROM objectifs_fiches WHERE employee_id = $1 AND annee = 2021`, [
+        agents.moussa,
+      ]);
+      await raw(`DELETE FROM academy_courses WHERE id = $1`, [courseId]);
+    }
   });
 
   it('une fiche sans case à cocher n’a rien à évaluer : ni annonce, ni envoi', async () => {

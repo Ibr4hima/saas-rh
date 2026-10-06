@@ -20,6 +20,7 @@ import {
   type NoteGlobale,
   formationsDeLaFiche,
   objectifsDeLaFiche,
+  statutsDesFormations,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
   type ObjectifView,
@@ -224,11 +225,27 @@ function statutsEnVigueur(l: LigneFiche): {
 }
 
 /**
+ * Le statut de chaque formation de la fiche : celui de l'APIX Academy,
+ * au présent tant que l'auto-évaluation n'est pas envoyée, figé ensuite.
+ */
+function statutsDeSesFormations(
+  l: LigneFiche,
+  formations: FormationDeLaFiche[],
+): Record<string, StatutObjectif> {
+  return statutsDesFormations(objectifsDeLaFiche(l.contenu), l.formations_figees ?? formations);
+}
+
+/**
  * Ce que l'agent et le n+1 en lisent. Le brouillon du n+1 n'est qu'à son
  * auteur : un nouveau n+1 évalue sur une page blanche, il ne valide pas les
  * propos de l'ancien.
  */
-function vueFiche(l: LigneFiche, vue: 'agent' | 'n1', lecteur?: string): FicheObjectifs {
+function vueFiche(
+  l: LigneFiche,
+  vue: 'agent' | 'n1',
+  formations: FormationDeLaFiche[],
+  lecteur?: string,
+): FicheObjectifs {
   const envoyes = l.commentaires_envoyes_le !== null;
   const validee = l.evaluation_validee_le !== null;
   const voitN1 = validee || (vue === 'n1' && l.evaluateur_employee_id === lecteur);
@@ -239,7 +256,7 @@ function vueFiche(l: LigneFiche, vue: 'agent' | 'n1', lecteur?: string): FicheOb
     contenu: avecLesStatuts(l.contenu, statuts),
     majLe: iso(l.updated_at)!,
     auteur: l.auteur,
-    statuts,
+    statuts: { ...statuts, ...statutsDeSesFormations(l, formations) },
     statutsCaducs: caducs,
     formations: l.formations_figees,
     evaluation: {
@@ -340,7 +357,7 @@ export class ObjectifsService {
       const progression = await this.progression(tx, [moi]);
       return {
         annee: an,
-        fiches: await this.lireFiches(tx, moi, 'agent'),
+        fiches: await this.lireFiches(tx, moi, 'agent', formationsDe(progression.get(moi))),
         formations: formationsDe(progression.get(moi)),
         apix: apix.map((o) => this.vue(o)),
         direction: direction
@@ -404,7 +421,13 @@ export class ObjectifsService {
           sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${membre.id}`,
         )
       ).map((o) => this.vue(o, progression.get(membre.id)));
-      const fiches = await this.lireFiches(tx, membre.id, 'n1', moi);
+      const fiches = await this.lireFiches(
+        tx,
+        membre.id,
+        'n1',
+        formationsDe(progression.get(membre.id)),
+        moi,
+      );
       const aEvaluer = fiches.filter(
         (f) => f.evaluation.envoyesLe && !f.evaluation.valideeLe,
       ).length;
@@ -499,13 +522,16 @@ export class ObjectifsService {
     tx: Tx,
     employeeId: string,
     vue: 'agent' | 'n1',
+    formations: FormationDeLaFiche[],
     lecteur?: string,
   ): Promise<FicheObjectifs[]> {
     const { rows } = await tx.execute<LigneFiche>(sql`
       ${SELECTION_FICHE}
        WHERE f.employee_id = ${employeeId}
        ORDER BY f.annee DESC, f.semestre DESC`);
-    return rows.filter((l) => ficheRemplie(l.contenu)).map((l) => vueFiche(l, vue, lecteur));
+    return rows
+      .filter((l) => ficheRemplie(l.contenu))
+      .map((l) => vueFiche(l, vue, formations, lecteur));
   }
 
   /** Une fiche, verrouillée le temps du geste — 404 si elle n'existe pas. */
@@ -554,6 +580,13 @@ export class ObjectifsService {
       if (!objectif) {
         problem(422, 'objectifs.objectif_inconnu', 'Cet objectif n’est pas dans la fiche');
       }
+      if (objectif.formation) {
+        problem(
+          422,
+          'objectifs.statut_de_formation',
+          'Le statut d’une formation vient de l’APIX Academy',
+        );
+      }
       // L'agent répond au texte qu'il a sous les yeux : réécrit entre-temps
       // par son n+1, l'objectif se relit avant d'être évalué.
       if (input.empreinte !== undefined && input.empreinte !== objectif.empreinte) {
@@ -575,8 +608,14 @@ export class ObjectifsService {
                      statuts_empreintes = statuts_empreintes - ${input.id}::text`
            }
          WHERE id = ${f.id}
-        RETURNING contenu, statuts, statuts_empreintes`);
-      return { statuts: statutsEnVigueur(rows[0]!).statuts };
+        RETURNING contenu, statuts, statuts_empreintes, formations_figees`);
+      const formations = formationsDe((await this.progression(tx, [moi])).get(moi));
+      return {
+        statuts: {
+          ...statutsEnVigueur(rows[0]!).statuts,
+          ...statutsDeSesFormations(rows[0]!, formations),
+        },
+      };
     });
   }
 
@@ -599,8 +638,9 @@ export class ObjectifsService {
   }
 
   /**
-   * L'agent envoie son auto-évaluation à son n+1 — chaque objectif avec son
-   * statut et son commentaire, atteint ou non. Les objectifs, les statuts et
+   * L'agent envoie son auto-évaluation à son n+1 : chaque case avec son
+   * statut et son commentaire, atteinte ou non ; chaque formation avec le
+   * statut que l'Academy lui donne ce jour-là. Les objectifs, les statuts et
    * les commentaires ne changent plus ; le n+1 en est prévenu.
    */
   async envoyerCommentaires(user: SessionUser, annee: number, semestre: number): Promise<void> {
@@ -609,15 +649,17 @@ export class ObjectifsService {
       const f = await this.uneFiche(tx, moi, annee, semestre);
       exigerNonEnvoyee(f);
       const objectifs = objectifsDeLaFiche(f.contenu);
-      // Seules les cases à cocher sont des objectifs : une fiche en titres, en
-      // puces ou en tableau n'a rien à évaluer, et se verrouillerait vide.
+      // Les cases à cocher et les formations sont des objectifs : une fiche en
+      // titres, en puces ou en tableau n'a rien à évaluer, et se verrouillerait
+      // vide.
       if (objectifs.length === 0) {
         problem(422, 'objectifs.sans_objectif', 'Cette fiche n’a encore aucun objectif à évaluer');
       }
       // Un statut donné à un texte que le n+1 a réécrit depuis ne compte pas.
+      // Une formation a le sien, celui de l'Academy ; la commenter est libre.
       const { statuts } = statutsEnVigueur(f);
       const restants = objectifs.filter(
-        (o) => !statuts[o.id] || !f.commentaires_agent[o.id]?.trim(),
+        (o) => !o.formation && (!statuts[o.id] || !f.commentaires_agent[o.id]?.trim()),
       ).length;
       if (restants > 0) {
         problem(

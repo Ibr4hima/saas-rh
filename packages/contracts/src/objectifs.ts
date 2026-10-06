@@ -119,7 +119,8 @@ export interface FicheObjectifs {
   auteur: string | null;
   /**
    * Par objectif (l'id du bloc) : où l'agent dit en être. Seuls les statuts
-   * qui répondent au texte actuel de l'objectif y figurent.
+   * qui répondent au texte actuel de l'objectif y figurent. Celui d'une
+   * formation vient de l'APIX Academy, figé à l'envoi avec la fiche.
    */
   statuts: Record<string, StatutObjectif>;
   /** Les objectifs réécrits depuis que l'agent a dit où il en était : à revoir. */
@@ -221,7 +222,10 @@ export const periodeParamsSchema = z.object({
     .refine((s): s is Semestre => s === 1 || s === 2, 'Semestre 1 ou 2'),
 });
 
-/** Un objectif de la fiche : une case à cocher, son texte, et son contenu mis en forme. */
+/**
+ * Un objectif de la fiche : une case à cocher, ou une formation à suivre ;
+ * son texte, et son contenu mis en forme.
+ */
 export interface ObjectifDeLaFiche {
   id: string;
   texte: string;
@@ -232,6 +236,11 @@ export interface ObjectifDeLaFiche {
   empreinte: string;
   /** Le contenu du bloc, tel que l'éditeur l'enregistre (texte stylé, échéances…). */
   contenu: Record<string, unknown>[];
+  /**
+   * Un bloc « Formation » : la formation qu'il donne à suivre. Son statut ne
+   * se choisit pas, il vient de l'APIX Academy (cf. `statutDeFormation`).
+   */
+  formation: string | null;
 }
 
 function texteDe(contenu: unknown): string {
@@ -272,8 +281,9 @@ function empreinteDe(contenu: unknown): string {
 }
 
 /**
- * Les objectifs d'une fiche : ses cases à cocher qui disent quelque chose,
- * dans l'ordre de lecture. Un paragraphe n'en est pas un.
+ * Les objectifs d'une fiche : ses cases à cocher qui disent quelque chose, et
+ * ses formations à suivre, dans l'ordre de lecture. Un paragraphe n'en est
+ * pas un.
  */
 export function objectifsDeLaFiche(contenu: Record<string, unknown>[]): ObjectifDeLaFiche[] {
   const tous: ObjectifDeLaFiche[] = [];
@@ -288,6 +298,24 @@ export function objectifsDeLaFiche(contenu: Record<string, unknown>[]): Objectif
             texte,
             empreinte: empreinteDe(b.content),
             contenu: Array.isArray(b.content) ? (b.content as Record<string, unknown>[]) : [],
+            formation: null,
+          });
+        }
+      }
+      if (b.type === 'formation' && typeof b.id === 'string') {
+        const props = (b.props ?? {}) as { courseId?: unknown; titre?: unknown };
+        const courseId = typeof props.courseId === 'string' ? props.courseId : '';
+        if (courseId) {
+          const texte =
+            typeof props.titre === 'string' && props.titre.trim()
+              ? props.titre.trim()
+              : 'Formation APIX Academy';
+          tous.push({
+            id: b.id,
+            texte,
+            empreinte: `formation:${courseId}`,
+            contenu: [{ type: 'text', text: texte, styles: {} }],
+            formation: courseId,
           });
         }
       }
@@ -296,6 +324,30 @@ export function objectifsDeLaFiche(contenu: Record<string, unknown>[]): Objectif
   };
   parcourir(contenu);
   return tous;
+}
+
+/**
+ * Le statut d'une formation donnée à suivre, lu dans l'APIX Academy :
+ * certifiée ou terminée, elle est atteinte ; commencée, partiellement ; pas
+ * commencée, non atteinte.
+ */
+export function statutDeFormation(statut: StatutSuivi | undefined): StatutObjectif {
+  if (statut === 'certifiee' || statut === 'terminee') return 'atteint';
+  if (!statut || statut === 'a_commencer') return 'non_atteint';
+  return 'partiel';
+}
+
+/** Les statuts des formations d'une fiche, selon l'état de chacune. */
+export function statutsDesFormations(
+  objectifs: ObjectifDeLaFiche[],
+  formations: FormationDeLaFiche[],
+): Record<string, StatutObjectif> {
+  const statuts: Record<string, StatutObjectif> = {};
+  for (const o of objectifs) {
+    if (!o.formation) continue;
+    statuts[o.id] = statutDeFormation(formations.find((f) => f.courseId === o.formation)?.statut);
+  }
+  return statuts;
 }
 
 /** Les formations que cite une fiche : les blocs « Formation », dans l'ordre de lecture. */
