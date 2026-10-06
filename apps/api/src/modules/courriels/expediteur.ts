@@ -6,8 +6,8 @@ import { loadEnv } from '../../config/env';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { composer, objetDe, type ContenuCourriel, type Gabarit } from './gabarits';
-import { fichiersDuLogo, preparerLogo, type LogoCourriel } from './logo';
-import type { ImageJointe, Transport } from './transports';
+import { sonderLogo, type LogoCourriel } from './logo';
+import type { Transport } from './transports';
 
 /* ────────────────────────────────────────────────────────────────
    La file des courriels.
@@ -58,12 +58,6 @@ export interface CourrielEnFile {
   to: string;
   gabarit: Gabarit;
 }
-
-const imageDuLogo = (logo: LogoCourriel): ImageJointe => ({
-  cid: logo.cid,
-  nom: 'logo.png',
-  png: logo.png,
-});
 
 /** Le délai avant l'essai suivant : 1, 2, 4… minutes, au plus 6 heures. */
 export const delaiAvantEssai = (essais: number) =>
@@ -149,12 +143,12 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
     private readonly transport: Transport | null,
     private readonly expediteur: string,
     private readonly portail = loadEnv().PUBLIC_WEB_URL.replace(/\/$/, ''),
-    private readonly fichiersLogo = fichiersDuLogo(loadEnv().MAIL_LOGO),
+    private readonly sonde: (portail: string) => Promise<LogoCourriel | null> = sonderLogo,
     private readonly cadence = INTERVALLE_MS,
   ) {}
 
-  /** Le logo, préparé une fois pour toutes au premier envoi. */
-  private logo: Promise<LogoCourriel | null> | null = null;
+  /** Le logo que le site sert, revu toutes les dix minutes : un logo déposé entre-temps est pris. */
+  private logo: { valeur: Promise<LogoCourriel | null>; jusqua: number } | null = null;
 
   /** Un serveur de courrier est configuré : les invitations partent seules. */
   get actif(): boolean {
@@ -268,8 +262,10 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
            ORDER BY p.created_at`);
       });
       if (lot.length === 0) continue;
-      this.logo ??= preparerLogo(this.fichiersLogo);
-      const logo = await this.logo;
+      if (!this.logo || this.logo.jusqua < Date.now()) {
+        this.logo = { valeur: this.sonde(this.portail), jusqua: Date.now() + 10 * 60_000 };
+      }
+      const logo = await this.logo.valeur;
       for (const courriel of lot) {
         const issue = await this.envoyerUn(transport, tenantId, courriel, logo);
         await this.db.withTenant({ tenantId }, (tx) => this.consigner(tx, courriel, issue));
@@ -327,7 +323,6 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
         subject: corps.subject,
         text: corps.text,
         html: corps.html,
-        images: logo && corps.html.includes(`cid:${logo.cid}`) ? [imageDuLogo(logo)] : [],
       });
       return { ok: true };
     } catch (e) {

@@ -68,9 +68,6 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
-      sharp:
-        specifier: 0.34.5
-        version: 0.34.5
       uuid:
         specifier: ^11.0.0
         version: 11.1.1
@@ -153,6 +150,9 @@ importers:
       react-hook-form:
         specifier: ^7.60.0
         version: 7.85.0(react@19.2.8)
+      sharp:
+        specifier: 0.34.5
+        version: 0.34.5
       zod:
         specifier: ^4.1.0
         version: 4.4.3

@@ -136,7 +136,7 @@ function page(
     `font-family:${POLICE};font-size:${taille}px;line-height:1.55;color:${couleur};${extra}`;
 
   const logo = rendu.logo
-    ? `<img src="cid:${rendu.logo.cid}" width="${rendu.logo.largeur}" height="${rendu.logo.hauteur}" alt="${echapper(o.organisation)}" style="display:block;margin:0 auto;width:${rendu.logo.largeur}px;height:${rendu.logo.hauteur}px;border:0;outline:none">`
+    ? `<img src="${echapper(rendu.logo.src)}" width="${rendu.logo.largeur}" height="${rendu.logo.hauteur}" alt="${echapper(o.organisation)}" style="display:block;margin:0 auto;width:${rendu.logo.largeur}px;height:${rendu.logo.hauteur}px;border:0;outline:none;${texte(20, '#ffffff', 'font-weight:700;letter-spacing:0.16em')}">`
     : `<div style="${texte(24, '#ffffff', 'font-weight:700;letter-spacing:0.16em;line-height:44px')}">${echapper(o.organisation.toUpperCase())}</div>`;
 
   const trait = (sens: 'gauche' | 'droite') =>

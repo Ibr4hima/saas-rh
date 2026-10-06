@@ -22,10 +22,7 @@ import { TenantDb } from '../src/db/tenant-db';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { ESSAIS_MAX, ExpediteurCourriels } from '../src/modules/courriels/expediteur';
 import { composer } from '../src/modules/courriels/gabarits';
-import { fichiersDuLogo, preparerLogo } from '../src/modules/courriels/logo';
-import sharp from 'sharp';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { sonderLogo } from '../src/modules/courriels/logo';
 import {
   type Courriel,
   type Transport,
@@ -155,7 +152,15 @@ beforeAll(async () => {
 beforeEach(async () => {
   await vider();
   transport = new TransportDeTest();
-  expediteur = new ExpediteurCourriels(db, enc, transport, 'Capital Humain <rh@apix.test>');
+  // Sans logo par défaut : le test ne dépend pas du site qui tourne à côté.
+  expediteur = new ExpediteurCourriels(
+    db,
+    enc,
+    transport,
+    'Capital Humain <rh@apix.test>',
+    'http://localhost:3002',
+    async () => null,
+  );
   invitations = new InvitationsService(db, new AuthService(db), expediteur);
   people = new PeopleService(db, enc, expediteur);
 });
@@ -557,53 +562,70 @@ describe('le gabarit', () => {
 });
 
 describe('le logo', () => {
-  const dossier = mkdtempSync(join(tmpdir(), 'logo-'));
-  /** Un logo d'encre foncée sur fond transparent, comme celui de l'organisation. */
-  const svg = join(dossier, 'logo-apix.svg');
-  writeFileSync(
-    svg,
-    '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100"><ellipse cx="150" cy="50" rx="140" ry="40" fill="none" stroke="#003366" stroke-width="8"/><rect x="40" y="35" width="120" height="30" fill="#0b2a4a"/></svg>',
-  );
+  /** L'en-tête d'un PNG de 264 × 88 : le logo, deux fois plus fin que son affichage. */
+  const png = () => {
+    const b = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0);
+    b.writeUInt32BE(13, 8);
+    b.write('IHDR', 12, 'ascii');
+    b.writeUInt32BE(264, 16);
+    b.writeUInt32BE(88, 20);
+    return b;
+  };
 
-  it('se met en blanc, garde sa transparence, à la hauteur de l’écran de connexion', async () => {
-    const logo = await preparerLogo([join(dossier, 'absent.svg'), svg]);
-    expect(logo).not.toBeNull();
-    expect(logo!.hauteur).toBe(44);
-    expect(logo!.largeur).toBe(132);
-    const { data } = await sharp(logo!.png).raw().toBuffer({ resolveWithObject: true });
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i + 3]! > 0) expect([data[i], data[i + 1], data[i + 2]]).toEqual([255, 255, 255]);
-    }
+  it('se charge du site : son adresse et ses dimensions d’affichage', async () => {
+    const appels: string[] = [];
+    const faux = (async (url: string) => {
+      appels.push(url);
+      return new Response(png(), { status: 200, headers: { 'content-type': 'image/png' } });
+    }) as unknown as typeof fetch;
+    expect(await sonderLogo('https://rh.apix.sn/', faux)).toEqual({
+      src: 'https://rh.apix.sn/courriel/logo.png',
+      largeur: 132,
+      hauteur: 44,
+    });
+    expect(appels).toEqual(['https://rh.apix.sn/courriel/logo.png']);
   });
 
-  it('sans fichier, ou sans transparence : le nom de l’organisation', async () => {
-    expect(await preparerLogo([join(dossier, 'absent.svg')])).toBeNull();
-    const opaque = join(dossier, 'opaque.png');
-    await sharp({ create: { width: 30, height: 10, channels: 3, background: '#ffffff' } })
-      .png()
-      .toFile(opaque);
-    expect(await preparerLogo([opaque])).toBeNull();
-    expect(fichiersDuLogo('/ici/logo.png')).toEqual(['/ici/logo.png']);
+  it('absent, ou le site injoignable : le nom de l’organisation', async () => {
+    const absent = (async () => new Response(null, { status: 404 })) as unknown as typeof fetch;
+    const panne = (async () => {
+      throw new Error('ECONNREFUSED');
+    }) as unknown as typeof fetch;
+    expect(await sonderLogo('https://rh.apix.sn', absent)).toBeNull();
+    expect(await sonderLogo('https://rh.apix.sn', panne)).toBeNull();
   });
 
-  it('voyage dans le courriel, affiché dans le corps', async () => {
+  it('s’affiche depuis le site, sans aucune pièce jointe', async () => {
+    let sondes = 0;
     const avecLogo = new ExpediteurCourriels(
       db,
       enc,
       transport,
       'Capital Humain <rh@apix.test>',
       'http://localhost:3002',
-      [svg],
+      async () => {
+        sondes += 1;
+        return { src: 'http://localhost:3002/courriel/logo.png', largeur: 132, hauteur: 44 };
+      },
     );
     const service = new InvitationsService(db, new AuthService(db), avecLogo);
     const awa = await creerAgent('Awa');
+    const fatou = await creerAgent('Fatou');
     await service.invite(admin, awa.employeeId, 'employee');
     await avecLogo.envoyerCeQuiAttend();
-    const [parti] = transport.envoyes;
-    expect(parti!.images).toHaveLength(1);
-    expect(parti!.images![0]!.cid).toBe('logo-organisation');
-    expect(parti!.html).toContain('src="cid:logo-organisation"');
-    expect(parti!.html).toContain('Bienvenue, Awa');
+    await service.invite(admin, fatou.employeeId, 'employee');
+    await avecLogo.envoyerCeQuiAttend();
+    expect(transport.envoyes).toHaveLength(2);
+    for (const parti of transport.envoyes) {
+      expect(Object.keys(parti).sort()).toEqual(['from', 'html', 'subject', 'text', 'to']);
+      expect(parti.html).toContain(
+        '<img src="http://localhost:3002/courriel/logo.png" width="132" height="44" alt="APIX Test"',
+      );
+      expect(parti.html).not.toContain('cid:');
+    }
+    // Le site n'est interrogé qu'une fois pour les deux.
+    expect(sondes).toBe(1);
     await avecLogo.onModuleDestroy();
   });
 });
@@ -685,22 +707,6 @@ describe('transports', () => {
       },
       saveToSentItems: false,
     });
-
-    // Le logo voyage en pièce jointe affichée dans le corps.
-    await graph.envoyer({
-      ...message,
-      images: [{ cid: 'logo-organisation', nom: 'logo.png', png: Buffer.from('png') }],
-    });
-    expect(JSON.parse(appels.at(-1)!.init.body as string).message.attachments).toEqual([
-      {
-        '@odata.type': '#microsoft.graph.fileAttachment',
-        name: 'logo.png',
-        contentType: 'image/png',
-        contentBytes: Buffer.from('png').toString('base64'),
-        contentId: 'logo-organisation',
-        isInline: true,
-      },
-    ]);
 
     // Jeton révoqué : l'envoi échoue (il réessaiera), et le suivant en redemande un.
     refusSuivant = true;
