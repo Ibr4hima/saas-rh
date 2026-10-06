@@ -9,7 +9,7 @@ import type { LogoCourriel } from './logo';
    un mot de passe.
 
    L'habit est celui de l'écran de connexion : le dôme bleu, le logo en blanc,
-   « Système de gestion des ressources humaines » entre deux traits, la carte
+   « Direction du Capital Humain » entre deux traits, la carte
    blanche aux coins de 14 px, le bouton en pilule, Google Sans. Les
    messageries n'en rendent pas toutes autant : la mise en page tient dans des
    tableaux et des styles en ligne, et chaque effet a son repli. Outlook sur
@@ -188,7 +188,7 @@ a{text-decoration:none}
 <tr><td class="dome" align="center" bgcolor="#00427c" style="background-color:#00427c;background-image:radial-gradient(70% 32% at 50% 30%,rgba(255,255,255,0.12),rgba(255,255,255,0) 70%),linear-gradient(180deg,#00335f 0%,#00335f 16%,#00427c 30%,#004f91 44%,#2670b6 60%,#8fb6dd 78%,#e3ecf6 100%);border-radius:16px;padding:42px 28px 30px">
 ${logo}
 <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:16px auto 0">
-<tr>${trait('gauche')}<td align="center" style="${texte(10.5, '#c9d4e3', 'font-weight:700;letter-spacing:0.16em;text-transform:uppercase;line-height:16px')}">Système de gestion des ressources humaines</td>${trait('droite')}</tr>
+<tr>${trait('gauche')}<td align="center" style="${texte(10.5, '#c9d4e3', 'font-weight:700;letter-spacing:0.16em;text-transform:uppercase;line-height:16px')}">Direction du Capital Humain</td>${trait('droite')}</tr>
 </table>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="max-width:440px;margin:28px auto 0;background-color:#ffffff;border:1px solid #e3e5ea;border-radius:14px;box-shadow:0 18px 40px rgba(0,35,80,0.22),0 2px 6px rgba(0,0,0,0.06)">
 <tr><td class="carte-corps" align="center" style="padding:34px 32px 26px;border-radius:14px 14px 0 0">
@@ -199,12 +199,12 @@ ${bouton}
 ${o.apres.length ? `<p style="margin:18px 0 0;${texte(12.5, ENCRE_DOUCE, 'line-height:1.6')}">${o.apres.map(echapper).join('<br>')}</p>` : ''}
 </td></tr>
 <tr><td class="carte-pied" align="center" bgcolor="#fafaf9" style="background-color:#fafaf9;border-top:1px solid #eceae7;border-radius:0 0 14px 14px;padding:15px 32px;${texte(12.5, ENCRE_DOUCE)}">
-Le bouton ne s’ouvre pas ? Copiez ce lien :<br><a href="${lien}" target="_blank" style="color:${BLEU};font-weight:700;word-break:break-all;text-decoration:none">${lien}</a>
+Le bouton ne s’ouvre pas ? Copiez ce <a href="${lien}" target="_blank" style="color:${BLEU};font-weight:700;text-decoration:none">lien</a>.
 </td></tr>
 </table>
 </td></tr>
 </table>
-<p style="margin:18px 0 0;${texte(11.5, '#6b7186')}">© ${annee} ${echapper(o.organisation)} · Direction du Capital Humain</p>
+<p style="margin:18px 0 0;${texte(11.5, '#6b7186')}">© ${annee} APIX S.A · DCH. Tous droits réservés.</p>
 </td></tr>
 </table>
 </body>

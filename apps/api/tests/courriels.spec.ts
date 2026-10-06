@@ -397,7 +397,7 @@ describe('notifications par courriel', () => {
     expect(parti.subject).toBe('Votre congé annuel du 2 au 6 mars est approuvé');
     expect(parti.text).toContain('Bonjour Awa,');
     expect(parti.text).toContain(`${env.PUBLIC_WEB_URL.replace(/\/$/, '')}/moi/conges`);
-    expect(parti.html).toContain('APIX Test');
+    expect(parti.html).toContain('>APIX TEST</div>');
     expect((await courriels())[0]).toMatchObject({ status: 'sent', body_encrypted: null });
   });
 
@@ -544,11 +544,14 @@ describe('le gabarit', () => {
     );
     expect(c.subject).toBe('Hawa Ba demande son contrat de travail');
     expect(c.html).toContain("url('https://rh.apix.sn/fonts/google-sans-latin.woff2')");
-    expect(c.html).toContain('Système de gestion des ressources humaines');
+    expect(c.html).toContain('>Direction du Capital Humain</td>');
+    expect(c.html).toContain(
+      'Copiez ce <a href="https://rh.apix.sn/documents" target="_blank" style="color:#004f91;font-weight:700;text-decoration:none">lien</a>.',
+    );
     expect(c.html).toContain('>APIX</div>');
     expect(c.html).not.toContain('cid:');
     expect(c.html).toContain('Voir sur le portail');
-    expect(c.html).toContain('© 2026 APIX · Direction du Capital Humain');
+    expect(c.html).toContain('© 2026 APIX S.A · DCH. Tous droits réservés.');
     expect(c.html).not.toContain('\u2014');
   });
 });
