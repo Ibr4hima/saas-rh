@@ -26,3 +26,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0018](0018-contrat-a-venir.md)                       | Contrat à venir : hors contrat entre deux contrats, place appliquée le jour venu        | acceptée                                    |
 | [0019](0019-retour-tete-d-unite-et-contrat-annule.md) | Retour à la tête de son unité, contrat à venir annulable                                | acceptée, retour d’office remplacé par 0020 |
 | [0020](0020-reprise-des-responsabilites-au-choix.md)  | Au retour, la RH décide ce que l'agent reprend                                          | acceptée                                    |
+| [0021](0021-passage-de-minuit.md)                     | Le passage de minuit                                                                    | acceptée                                    |

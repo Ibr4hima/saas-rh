@@ -18,6 +18,7 @@ import { DashboardController } from './modules/analytics/dashboard.controller';
 import { TenantDb } from './db/tenant-db';
 import { loadEnv } from './config/env';
 import { ExpediteurCourriels } from './modules/courriels/expediteur';
+import { PassageDeMinuit } from './modules/people/passage-de-minuit';
 import { transportDepuisEnv } from './modules/courriels/transports';
 import { AuthController } from './modules/auth/auth.controller';
 import { DocumentRequestsController } from './modules/docs/document-requests.controller';
@@ -113,6 +114,7 @@ import { AbsencesService } from './modules/time/absences.service';
     AcademyEvaluationService,
     AcademyEquipeService,
     ObjectifsService,
+    PassageDeMinuit,
   ],
 })
 export class AppModule {}

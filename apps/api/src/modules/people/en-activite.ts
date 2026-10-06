@@ -9,9 +9,8 @@ import type { Tx } from '../../db/tenant-db';
    l'APIX, que la liste l'ait déjà rangé ou non : il ne dirige rien, n'est
    le n+1 de personne, ne reçoit pas d'affectation ni d'accès au portail, et
    ne se connecte plus. Son dossier passe de lui-même dans les inactifs le
-   lendemain de son dernier jour — la première fois que quelqu'un ouvre
-   l'application, puisqu'aucune tâche ne tourne la nuit ; d'ici là, chaque
-   porte vérifie la date elle-même.
+   lendemain de son dernier jour, au passage de minuit (cf.
+   `PassageDeMinuit`) ; chaque porte vérifie aussi la date elle-même.
 
    Ce qui fait foi, c'est d'être sous contrat AUJOURD'HUI. Un CDD renouvelé
    d'avance, sans interruption, enchaîne sur son successeur. Un contrat qui

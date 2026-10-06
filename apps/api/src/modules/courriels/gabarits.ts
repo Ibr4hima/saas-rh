@@ -68,21 +68,21 @@ export function objetDe(g: Gabarit): string {
 const ACCUEILS = {
   nouveau: {
     titre: 'Bienvenue',
-    accroche: () => 'La DCH vous invite à activer votre compte.',
+    accroche: 'La DCH vous invite à activer votre compte.',
     apercu: 'Choisissez votre mot de passe pour ouvrir votre accès au portail RH.',
     consigne: 'Pour choisir votre mot de passe',
     bouton: 'Choisir mon mot de passe',
   },
   retour: {
     titre: 'Bon retour',
-    accroche: () => 'La DCH vous invite à réactiver votre compte.',
+    accroche: 'La DCH vous invite à réactiver votre compte.',
     apercu: 'Choisissez un nouveau mot de passe pour retrouver votre compte.',
     consigne: 'Pour choisir votre nouveau mot de passe',
     bouton: 'Choisir mon mot de passe',
   },
   compte: {
     titre: 'Bienvenue',
-    accroche: (o: string) => `${o} relie votre compte à votre dossier sur son portail RH.`,
+    accroche: 'La DCH vous invite à relier votre compte.',
     apercu: 'Reliez votre compte à votre dossier sur le portail RH.',
     consigne: 'Pour relier votre compte',
     bouton: 'Relier mon compte',
@@ -94,7 +94,7 @@ export function composer(g: Gabarit, rendu: Rendu): ContenuCourriel {
   if (g.nom === 'invitation') {
     const jusquau = dateLongue(g.expireLe);
     const a = ACCUEILS[g.accueil ?? 'nouveau'];
-    const accroche = a.accroche(g.organisation);
+    const accroche = a.accroche;
     return {
       subject,
       text: [

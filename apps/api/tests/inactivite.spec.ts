@@ -44,6 +44,7 @@ import { DocumentRequestsService } from '../src/modules/docs/document-requests.s
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
 import { ObjectifsController } from '../src/modules/objectifs/objectifs.controller';
 import { inactiverLesContratsEchus } from '../src/modules/people/activite';
+import { delaiJusquAMinuit, PassageDeMinuit } from '../src/modules/people/passage-de-minuit';
 import { OrgUnitsService } from '../src/modules/people/org-units.service';
 import { PeopleController } from '../src/modules/people/people.controller';
 import { PeopleService } from '../src/modules/people/people.service';
@@ -436,6 +437,35 @@ describe('une tâche que le temps déclenche', () => {
     );
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.actor_user_id === null)).toBe(true);
+  });
+
+  it('chaque nuit, juste après minuit à Dakar, sans attendre qu’on ouvre la plateforme', async () => {
+    expect(delaiJusquAMinuit(new Date('2026-10-06T23:59:00Z'))).toBe(60_000 + 30_000);
+    expect(delaiJusquAMinuit(new Date('2026-10-07T00:00:10Z'))).toBe(
+      24 * 3600_000 - 10_000 + 30_000,
+    );
+    // Le passage, sans session ni utilisateur : Fatou, dont le CDD a pris
+    // fin hier, passe dans les inactifs ; le contrat de Moussa qui commence
+    // aujourd'hui applique sa place.
+    await raw(
+      `UPDATE contracts SET contract_type = 'cdd', end_date = CURRENT_DATE - 1 WHERE employee_id = $1`,
+      [moussa.employeeId],
+    );
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date,
+                              planned_position_title, planned_org_unit_id)
+       VALUES ($1, $2, $3, 'cdi', CURRENT_DATE, 'Analyste', $4)`,
+      [randomUUID(), tenantId, moussa.employeeId, uDFC],
+    );
+    const passage = new PassageDeMinuit(db);
+    expect(await passage.passer([tenantId])).toBe(1);
+    expect((await statut(fatou)).status).toBe('archived');
+    expect((await statut(moussa)).status).toBe('active');
+    expect((await affectations(moussa)).at(-1)).toEqual({
+      poste: 'Analyste',
+      du: await jour(0),
+      au: null,
+    });
   });
 });
 
