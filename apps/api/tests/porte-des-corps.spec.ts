@@ -235,12 +235,15 @@ describe('TRUST_PROXY', () => {
   });
 
   it('en production, il se règle, et la clé publiée est refusée', () => {
-    expect(lire({ NODE_ENV: 'production' }).success).toBe(false);
-    expect(lire({ NODE_ENV: 'production', TRUST_PROXY: '2' }).success).toBe(true);
+    // Le reste d'une production bien réglée (cf. securite.spec.ts) : HTTPS.
+    const https = { COOKIE_SECURE: 'true', PUBLIC_WEB_URL: 'https://rh.apix.sn' };
+    expect(lire({ NODE_ENV: 'production', ...https }).success).toBe(false);
+    expect(lire({ NODE_ENV: 'production', TRUST_PROXY: '2', ...https }).success).toBe(true);
     expect(
       lire({
         NODE_ENV: 'production',
         TRUST_PROXY: '2',
+        ...https,
         DATA_ENCRYPTION_KEY: 'mfM8qEsFfS1lIiWvm8hrM8zqi+O/PFhzPku1whgaMoU=',
       }).success,
     ).toBe(false);

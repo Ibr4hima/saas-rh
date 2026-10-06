@@ -21,6 +21,7 @@ import { join } from 'node:path';
 import { Client } from 'pg';
 import { loadEnv } from '../config/env';
 import { chiffrerLesCandidatures } from './chiffrer-candidatures';
+import { chiffrerLesPieces } from './chiffrer-pieces';
 import { OPTIONS_CONNEXION } from './tenant-db';
 
 /** La clé du verrou consultatif des migrations, propre à ce migrateur. */
@@ -158,10 +159,12 @@ export async function runMigrations(
       }
     }
     // Ce que le SQL ne sait pas faire, faute de clé : chiffrer les
-    // candidatures déposées avant 0079.
+    // candidatures déposées avant 0079, les pièces des dossiers avant 0090.
     if (!options.dossier) {
       const chiffrees = await chiffrerLesCandidatures(client);
       if (chiffrees > 0) process.stdout.write(`Candidatures chiffrées : ${chiffrees}\n`);
+      const pieces = await chiffrerLesPieces(client);
+      if (pieces > 0) process.stdout.write(`Pièces chiffrées : ${pieces}\n`);
     }
   } finally {
     await client.end();

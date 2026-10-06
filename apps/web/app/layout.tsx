@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import './globals.css';
 import { SCRIPT_AMORCAGE } from '../components/preferences';
 import { Providers } from './providers';
@@ -8,7 +9,10 @@ export const metadata: Metadata = {
   description: 'La gestion RH et la paie de la zone UEMOA, au niveau des meilleurs SaaS mondiaux.',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Le jeton de la page (cf. middleware.ts) : sans lui, le navigateur
+  // refuserait le script du thème comme n'importe quel script injecté.
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     // Aucune requête vers un tiers à l'exécution : Google Sans comme la police
     // d'icônes sont servies depuis /fonts (cf. scripts/fetch-text-font.mjs).
@@ -23,7 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // ignorait.
     <html lang="fr" data-theme="light" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: SCRIPT_AMORCAGE }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: SCRIPT_AMORCAGE }} />
       </head>
       <body>
         <Providers>{children}</Providers>

@@ -794,6 +794,33 @@ describe('les pièces justificatives', () => {
     expect(liste.find((p) => p.id === id)).not.toHaveProperty('data');
   });
 
+  it('la pièce est chiffrée au repos, pour sa place', async () => {
+    const lire = async (id: string) =>
+      (await raw(`SELECT filename, data, cle_version FROM employee_documents WHERE id = $1`, [id]))
+        .rows[0] as { filename: string; data: Buffer; cle_version: number | null };
+    const { id } = await deposer();
+    const stocke = await lire(id);
+    expect(stocke.cle_version).toBe(1);
+    expect(stocke.filename).not.toContain('master');
+    expect(stocke.data.includes(Buffer.from('%PDF'))).toBe(false);
+    expect(await pieces.content(moussa.session, id)).toMatchObject({
+      filename: 'master.pdf',
+      data: Buffer.from(PDF, 'base64'),
+    });
+    expect(
+      (await pieces.list(moussa.session, moussa.employeeId)).find((p) => p.id === id),
+    ).toMatchObject({ filename: 'master.pdf' });
+
+    // Recopiée sur une autre pièce, elle ne se lit plus.
+    const { id: autre } = await titre('cv', 'CV');
+    await raw(`UPDATE employee_documents SET filename = $2, data = $3 WHERE id = $1`, [
+      autre,
+      stocke.filename,
+      stocke.data,
+    ]);
+    await expect(pieces.content(moussa.session, autre)).rejects.toThrow();
+  });
+
   it('une déléguée aux seuls CV ne voit ni ne télécharge une CNI', async () => {
     const { id: cni } = await titre('cni', 'CNI', await dans(800));
     const { id: cv } = await titre('cv', 'CV');

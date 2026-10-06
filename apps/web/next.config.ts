@@ -42,11 +42,38 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Ce que chaque réponse dit au navigateur, en plus de la politique
+        // du contenu (cf. middleware.ts). Aucun référent : l'adresse d'un
+        // lien d'invitation ou de réinitialisation porte un jeton, elle ne
+        // part vers aucun autre site.
+        source: '/:chemin*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+          },
+          ...(process.env.NODE_ENV === 'production'
+            ? [
+                {
+                  key: 'Strict-Transport-Security',
+                  value: 'max-age=63072000; includeSubDomains',
+                },
+              ]
+            : []),
+        ],
+      },
+      {
         source: '/fonts/:fichier*',
         headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }],
       },
     ];
   },
+  // Le serveur ne dit pas ce qu'il est.
+  poweredByHeader: false,
 };
 
 export default nextConfig;

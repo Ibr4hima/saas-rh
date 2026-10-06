@@ -88,6 +88,23 @@ export const envSchema = z
      */
     PUBLIC_WEB_URL: z.string().url().default('http://localhost:3002'),
     /**
+     * D'autres sites qui appellent l'API avec la session de leurs visiteurs,
+     * en plus de PUBLIC_WEB_URL : des origines (« https://rh.apix.sn »)
+     * séparées par des virgules. Aucune par défaut.
+     */
+    CORS_ORIGINS: z
+      .string()
+      .default('')
+      .transform((v) =>
+        v
+          .split(',')
+          .map((x) => x.trim())
+          .filter(Boolean),
+      )
+      .refine((liste) => liste.every((o) => /^https?:\/\/[^/\s]+$/.test(o)), {
+        message: 'CORS_ORIGINS : des origines « https://hote » séparées par des virgules',
+      }),
+    /**
      * Comment partent les courriels. 'smtp' : un serveur SMTP (Mailpit en
      * développement, qui les garde tous sans rien envoyer au dehors) ;
      * 'graph' : Microsoft 365, par l'API Microsoft Graph ; 'aucun' : rien ne
@@ -135,6 +152,28 @@ export const envSchema = z
     message:
       'DATA_ENCRYPTION_KEY : la clé de développement est publique, en générer une (openssl rand -base64 32)',
     path: ['DATA_ENCRYPTION_KEY'],
+  })
+  // En production, rien ne passe en clair sur le réseau, et rien ne s'ouvre
+  // par défaut : l'API refuse de démarrer plutôt que de tourner mal réglée.
+  .refine((e) => e.NODE_ENV !== 'production' || e.COOKIE_SECURE, {
+    message: 'COOKIE_SECURE doit valoir true en production : la session ne passe qu’en HTTPS',
+    path: ['COOKIE_SECURE'],
+  })
+  .refine((e) => e.NODE_ENV !== 'production' || e.PUBLIC_WEB_URL.startsWith('https://'), {
+    message: 'PUBLIC_WEB_URL doit être en https:// en production',
+    path: ['PUBLIC_WEB_URL'],
+  })
+  .refine(
+    (e) => e.NODE_ENV !== 'production' || e.CORS_ORIGINS.every((o) => o.startsWith('https://')),
+    {
+      message: 'CORS_ORIGINS : seulement des origines https:// en production',
+      path: ['CORS_ORIGINS'],
+    },
+  )
+  .refine((e) => e.NODE_ENV !== 'production' || !e.INSCRIPTION_OUVERTE, {
+    message:
+      'INSCRIPTION_OUVERTE ne peut pas être ouverte en production : n’importe qui créerait une organisation',
+    path: ['INSCRIPTION_OUVERTE'],
   });
 
 export type Env = z.infer<typeof envSchema>;

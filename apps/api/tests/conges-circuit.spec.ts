@@ -14,7 +14,7 @@
  * dossier, et l'administrateur.
  */
 import { randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   CAPACITES_DELEGABLES,
@@ -25,6 +25,7 @@ import {
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
+import { chiffrerLesPieces } from '../src/db/chiffrer-pieces';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
 import { capacitesDe } from '../src/modules/acces/dch';
@@ -314,6 +315,7 @@ beforeEach(async () => {
 afterAll(async () => {
   for (const table of [
     'notifications',
+    'absence_documents',
     'absence_approvals',
     'absence_requests',
     'absence_types',
@@ -1515,5 +1517,77 @@ describe('un subordonné ne traite pas la demande de son chef', () => {
     await enConge(dg);
     const id = await poserDu(mariama, 3, 10);
     expect(await appels(id)).toEqual(['dch:Awa']);
+  });
+});
+
+describe('le justificatif, chiffré au repos', () => {
+  const certificat = Buffer.from('%PDF-1.4 certificat médical de Moussa');
+  const deposer = async (filename: string) =>
+    (
+      await absences.createRequest(moussa.session, {
+        employeeId: moussa.employeeId,
+        absenceTypeId: maladieId,
+        ...periode(),
+        document: { filename, contentBase64: certificat.toString('base64') },
+      })
+    ).id;
+  const ligne = async (requestId: string) =>
+    (
+      await raw(
+        `SELECT id, filename, data, cle_version FROM absence_documents WHERE request_id = $1`,
+        [requestId],
+      )
+    ).rows[0] as { id: string; filename: string; data: Buffer; cle_version: number | null };
+
+  it('la base ne garde ni le fichier ni son nom en clair ; l’application les rend', async () => {
+    const id = await deposer('certificat-medical.pdf');
+    const stocke = await ligne(id);
+    expect(stocke.cle_version).toBe(1);
+    expect(stocke.filename).not.toContain('certificat');
+    expect(stocke.data.includes(Buffer.from('%PDF'))).toBe(false);
+    expect(stocke.data.includes(Buffer.from('Moussa'))).toBe(false);
+
+    const lu = await absences.document(moussa.session, id);
+    expect(lu).toMatchObject({ filename: 'certificat-medical.pdf', data: certificat });
+    expect((await vue(id, mariama.session)).documentName).toBe('certificat-medical.pdf');
+  });
+
+  it('recopié sur une autre demande, le chiffré ne se lit plus', async () => {
+    const source = await ligne(await deposer('a.pdf'));
+    const cible = await deposer('b.pdf');
+    await raw(`UPDATE absence_documents SET filename = $2, data = $3 WHERE request_id = $1`, [
+      cible,
+      source.filename,
+      source.data,
+    ]);
+    await expect(absences.document(moussa.session, cible)).rejects.toThrow();
+  });
+
+  it('un justificatif d’avant le chiffrement se lit, puis le migrateur le chiffre', async () => {
+    const id = await deposer('ancien.pdf');
+    await raw(
+      `UPDATE absence_documents SET filename = 'ancien.pdf', data = $2, cle_version = NULL
+        WHERE request_id = $1`,
+      [id, certificat],
+    );
+    expect(await absences.document(moussa.session, id)).toMatchObject({
+      filename: 'ancien.pdf',
+      data: certificat,
+    });
+
+    const client = new Client({ connectionString: env.DATABASE_URL });
+    await client.connect();
+    try {
+      expect(await chiffrerLesPieces(client)).toBeGreaterThanOrEqual(1);
+    } finally {
+      await client.end();
+    }
+    const stocke = await ligne(id);
+    expect(stocke.cle_version).toBe(1);
+    expect(stocke.data.includes(Buffer.from('%PDF'))).toBe(false);
+    expect(await absences.document(moussa.session, id)).toMatchObject({
+      filename: 'ancien.pdf',
+      data: certificat,
+    });
   });
 });

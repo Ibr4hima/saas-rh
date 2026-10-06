@@ -22,6 +22,7 @@ import {
   titreDeLaFiche,
 } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
+import { chiffrerPiece, contenuDeLaPiece, nomDeLaPiece } from '../../common/pieces-chiffrees';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -231,10 +232,14 @@ export class EmployeeDocumentsService {
         employeeId,
         category: input.category,
         label: input.label,
-        filename: input.filename,
         contentType: input.contentType,
         sizeBytes: data.length,
-        data,
+        ...chiffrerPiece(
+          this.crypto,
+          'employee_documents',
+          { tenantId: user.tenantId, id },
+          { filename: input.filename, data },
+        ),
         status,
         uploadedByUserId: user.userId,
         uploadedBySide: 'employee',
@@ -282,10 +287,14 @@ export class EmployeeDocumentsService {
         .update(t.employeeDocuments)
         .set({
           label: input.label,
-          filename: input.filename,
           contentType: input.contentType,
           sizeBytes: data.length,
-          data,
+          ...chiffrerPiece(
+            this.crypto,
+            'employee_documents',
+            { tenantId: doc.tenantId, id: documentId },
+            { filename: input.filename, data },
+          ),
           expiresOn,
           ...(input.renouvellement !== undefined && aUneExpiration(doc.category as DocumentCategory)
             ? { renouvellement: input.renouvellement }
@@ -669,7 +678,7 @@ export class EmployeeDocumentsService {
       employeeId: doc.employeeId,
       category: doc.category as EmployeeDocumentView['category'],
       label: doc.label,
-      filename: doc.filename,
+      filename: nomDeLaPiece(this.crypto, 'employee_documents', doc),
       contentType: doc.contentType,
       sizeBytes: doc.sizeBytes,
       status: doc.status as EmployeeDocumentView['status'],
@@ -710,7 +719,11 @@ export class EmployeeDocumentsService {
         .select({ data: t.employeeDocuments.data })
         .from(t.employeeDocuments)
         .where(eq(t.employeeDocuments.id, documentId));
-      return { filename: doc.filename, contentType: doc.contentType, data: fichier!.data };
+      return {
+        filename: nomDeLaPiece(this.crypto, 'employee_documents', doc),
+        contentType: doc.contentType,
+        data: contenuDeLaPiece(this.crypto, 'employee_documents', { ...doc, data: fichier!.data }),
+      };
     });
   }
 

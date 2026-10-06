@@ -47,4 +47,11 @@ function messageFr(issue: z.core.$ZodRawIssue): string | undefined {
   }
 }
 
-z.config({ ...z.locales.fr(), customError: messageFr });
+z.config({
+  ...z.locales.fr(),
+  customError: messageFr,
+  // Dans le navigateur, le site interdit d'évaluer du code (politique de
+  // sécurité du contenu) : zod valide sans compiler, et n'essaie même pas.
+  // Réglé ici, avant qu'aucun schéma ne se crée.
+  ...('document' in globalThis ? { jitless: true } : {}),
+});

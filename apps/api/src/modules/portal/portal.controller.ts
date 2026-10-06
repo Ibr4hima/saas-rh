@@ -27,8 +27,7 @@ import { problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
-import { SESSION_COOKIE } from '../auth/auth.constants';
-import { loadEnv } from '../../config/env';
+import { SESSION_COOKIE, optionsDuCookie } from '../auth/auth.constants';
 import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { InvitationsService } from './invitations.service';
@@ -181,14 +180,7 @@ export class PortalController {
       userAgent: req.headers['user-agent'],
     });
     if (session) {
-      const env = loadEnv();
-      res.cookie(SESSION_COOKIE, session.token, {
-        httpOnly: true,
-        secure: env.COOKIE_SECURE,
-        sameSite: 'lax',
-        path: '/',
-        expires: session.expiresAt,
-      });
+      res.cookie(SESSION_COOKIE, session.token, optionsDuCookie(session.expiresAt));
     }
     return result;
   }

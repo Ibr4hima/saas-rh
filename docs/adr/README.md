@@ -28,3 +28,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0020](0020-reprise-des-responsabilites-au-choix.md)  | Au retour, la RH décide ce que l'agent reprend                                          | acceptée                                    |
 | [0021](0021-passage-de-minuit.md)                     | Le passage de minuit                                                                    | acceptée                                    |
 | [0022](0022-mot-de-passe-oublie.md)                   | Mot de passe oublié : un lien par courriel, valable une heure, qui sert une fois        | acceptée                                    |
+| [0023](0023-defense-en-profondeur.md)                 | Défense en profondeur : pièces chiffrées, origines, en-têtes                            | acceptée                                    |

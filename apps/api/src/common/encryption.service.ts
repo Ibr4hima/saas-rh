@@ -14,11 +14,17 @@ const VERSION = 'v1';
 export const VERSION_CANDIDATURES = 1;
 const PREFIXE_TEXTE = 'c1:';
 
+/**
+ * L'usage d'un chiffré : chacun a sa clé, dérivée de la clé maîtresse.
+ * `dossiers` : les pièces des agents et les justificatifs d'absence.
+ */
+export type UsageDeCle = 'candidatures' | 'dossiers';
+
 @Injectable()
 export class EncryptionService {
   private readonly key: Buffer;
   /** Une clé par usage, dérivée de la clé maîtresse : elles ne se croisent jamais. */
-  private readonly cleCandidatures: Buffer;
+  private readonly cles: Record<UsageDeCle, Buffer>;
   private readonly cleIndex: Buffer;
 
   constructor() {
@@ -29,7 +35,7 @@ export class EncryptionService {
     }
     const deriver = (usage: string) =>
       Buffer.from(hkdfSync('sha256', this.key, Buffer.alloc(0), `teranga:${usage}`, 32));
-    this.cleCandidatures = deriver('candidatures:v1');
+    this.cles = { candidatures: deriver('candidatures:v1'), dossiers: deriver('dossiers:v1') };
     this.cleIndex = deriver('index:v1');
   }
 
@@ -39,36 +45,38 @@ export class EncryptionService {
    * dans une autre organisation, le chiffré ne se déchiffre plus.
    * Format : version (1 octet) | iv (12) | tag (16) | chiffré.
    */
-  chiffrerOctets(clair: Buffer, contexte: string): Buffer {
+  chiffrerOctets(clair: Buffer, contexte: string, usage: UsageDeCle = 'candidatures'): Buffer {
     const iv = randomBytes(12);
-    const c = createCipheriv('aes-256-gcm', this.cleCandidatures, iv);
+    const c = createCipheriv('aes-256-gcm', this.cles[usage], iv);
     c.setAAD(Buffer.from(contexte, 'utf8'));
     const chiffre = Buffer.concat([c.update(clair), c.final()]);
     return Buffer.concat([Buffer.from([VERSION_CANDIDATURES]), iv, c.getAuthTag(), chiffre]);
   }
 
-  dechiffrerOctets(stocke: Buffer, contexte: string): Buffer {
+  dechiffrerOctets(stocke: Buffer, contexte: string, usage: UsageDeCle = 'candidatures'): Buffer {
     if (stocke.length < 29 || stocke[0] !== VERSION_CANDIDATURES) {
       throw new Error('Format de donnée chiffrée invalide');
     }
-    const d = createDecipheriv('aes-256-gcm', this.cleCandidatures, stocke.subarray(1, 13));
+    const d = createDecipheriv('aes-256-gcm', this.cles[usage], stocke.subarray(1, 13));
     d.setAAD(Buffer.from(contexte, 'utf8'));
     d.setAuthTag(stocke.subarray(13, 29));
     return Buffer.concat([d.update(stocke.subarray(29)), d.final()]);
   }
 
   /** Un champ texte, chiffré pour sa place : `c1:<base64>`. */
-  chiffrerTexte(clair: string, contexte: string): string {
+  chiffrerTexte(clair: string, contexte: string, usage: UsageDeCle = 'candidatures'): string {
     return (
-      PREFIXE_TEXTE + this.chiffrerOctets(Buffer.from(clair, 'utf8'), contexte).toString('base64')
+      PREFIXE_TEXTE +
+      this.chiffrerOctets(Buffer.from(clair, 'utf8'), contexte, usage).toString('base64')
     );
   }
 
-  dechiffrerTexte(stocke: string, contexte: string): string {
+  dechiffrerTexte(stocke: string, contexte: string, usage: UsageDeCle = 'candidatures'): string {
     if (!stocke.startsWith(PREFIXE_TEXTE)) throw new Error('Format de champ chiffré invalide');
     return this.dechiffrerOctets(
       Buffer.from(stocke.slice(PREFIXE_TEXTE.length), 'base64'),
       contexte,
+      usage,
     ).toString('utf8');
   }
 

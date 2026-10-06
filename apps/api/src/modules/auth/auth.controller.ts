@@ -36,8 +36,7 @@ import {
 } from '../../common/limiteur';
 import { ProblemException, problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { loadEnv } from '../../config/env';
-import { SESSION_COOKIE } from './auth.constants';
+import { SESSION_COOKIE, optionsDuCookie } from './auth.constants';
 import { AuthService, type IssuedSession } from './auth.service';
 import { ReinitialisationService } from './reinitialisation.service';
 import { AuthenticatedRequest, SessionGuard } from './session.guard';
@@ -60,14 +59,7 @@ export class AuthController {
   ) {}
 
   private setCookie(res: Response, session: IssuedSession): void {
-    const env = loadEnv();
-    res.cookie(SESSION_COOKIE, session.token, {
-      httpOnly: true,
-      secure: env.COOKIE_SECURE,
-      sameSite: 'lax',
-      path: '/',
-      expires: session.expiresAt,
-    });
+    res.cookie(SESSION_COOKIE, session.token, optionsDuCookie(session.expiresAt));
   }
 
   /** La page d'inscription demande d'abord si elle peut s'afficher. */
@@ -189,7 +181,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
     await this.auth.logout(req.sessionToken);
-    res.clearCookie(SESSION_COOKIE, { path: '/' });
+    res.clearCookie(SESSION_COOKIE, optionsDuCookie());
   }
 
   /** Fermer toutes ses sessions, sur tous ses appareils : celle-ci comprise. */
@@ -201,7 +193,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
     await this.auth.deconnecterPartout(req.sessionUser.userId);
-    res.clearCookie(SESSION_COOKIE, { path: '/' });
+    res.clearCookie(SESSION_COOKIE, optionsDuCookie());
   }
 
   @Get('me')

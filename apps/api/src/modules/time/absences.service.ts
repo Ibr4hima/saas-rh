@@ -43,6 +43,8 @@ import {
   SENEGAL_MOBILE_HOLIDAYS,
   type AbsenceFrequency,
 } from '@teranga/contracts';
+import { EncryptionService } from '../../common/encryption.service';
+import { chiffrerPiece, contenuDeLaPiece, nomDeLaPiece } from '../../common/pieces-chiffrees';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -273,7 +275,10 @@ function reporterSur(year: number, modele: ModeleFerie): string | null {
 
 @Injectable()
 export class AbsencesService {
-  constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
+  constructor(
+    @Inject(TenantDb) private readonly db: TenantDb,
+    @Inject(EncryptionService) private readonly crypto: EncryptionService = new EncryptionService(),
+  ) {}
 
   // ---------- Types ----------
 
@@ -1125,13 +1130,18 @@ export class AbsencesService {
           requestedByUserId: user.userId,
         });
         if (document) {
+          const pieceId = uuidv7();
           await tx.insert(t.absenceDocuments).values({
-            id: uuidv7(),
+            id: pieceId,
             tenantId: user.tenantId,
             requestId: id,
-            filename: document.filename,
             sizeBytes: document.data.length,
-            data: document.data,
+            ...chiffrerPiece(
+              this.crypto,
+              'absence_documents',
+              { tenantId: user.tenantId, id: pieceId },
+              document,
+            ),
           });
         }
         // ——— Le circuit : le N+1 d'abord ; sans N+1 qui puisse viser, la
@@ -1823,9 +1833,12 @@ export class AbsencesService {
       }
       const [doc] = await tx
         .select({
+          id: t.absenceDocuments.id,
+          tenantId: t.absenceDocuments.tenantId,
           filename: t.absenceDocuments.filename,
           contentType: t.absenceDocuments.contentType,
           data: t.absenceDocuments.data,
+          cleVersion: t.absenceDocuments.cleVersion,
         })
         .from(t.absenceDocuments)
         .where(eq(t.absenceDocuments.requestId, requestId))
@@ -1833,7 +1846,11 @@ export class AbsencesService {
       if (!doc) {
         problem(404, 'absence.document_not_found', 'Aucun justificatif joint à cette demande');
       }
-      return doc;
+      return {
+        filename: nomDeLaPiece(this.crypto, 'absence_documents', doc),
+        contentType: doc.contentType,
+        data: contenuDeLaPiece(this.crypto, 'absence_documents', doc),
+      };
     });
   }
 
@@ -1876,13 +1893,18 @@ export class AbsencesService {
       if (existant) {
         await tx.delete(t.absenceDocuments).where(eq(t.absenceDocuments.id, existant.id));
       }
+      const pieceId = uuidv7();
       await tx.insert(t.absenceDocuments).values({
-        id: uuidv7(),
+        id: pieceId,
         tenantId: user.tenantId,
         requestId,
-        filename: fichier.filename,
         sizeBytes: fichier.data.length,
-        data: fichier.data,
+        ...chiffrerPiece(
+          this.crypto,
+          'absence_documents',
+          { tenantId: user.tenantId, id: pieceId },
+          fichier,
+        ),
       });
     });
   }
@@ -2082,10 +2104,21 @@ export class AbsencesService {
     if (rows.length === 0) return [];
     const ids = rows.map((r) => r.request.id);
 
-    const documentRows = await tx
-      .select({ requestId: t.absenceDocuments.requestId, filename: t.absenceDocuments.filename })
-      .from(t.absenceDocuments)
-      .where(inArray(t.absenceDocuments.requestId, ids));
+    const documentRows = (
+      await tx
+        .select({
+          id: t.absenceDocuments.id,
+          tenantId: t.absenceDocuments.tenantId,
+          requestId: t.absenceDocuments.requestId,
+          filename: t.absenceDocuments.filename,
+          cleVersion: t.absenceDocuments.cleVersion,
+        })
+        .from(t.absenceDocuments)
+        .where(inArray(t.absenceDocuments.requestId, ids))
+    ).map((d) => ({
+      requestId: d.requestId,
+      filename: nomDeLaPiece(this.crypto, 'absence_documents', d),
+    }));
 
     const { rows: approvalRows } = await tx.execute<{
       request_id: string;

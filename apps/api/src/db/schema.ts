@@ -422,6 +422,8 @@ export const absenceDocuments = pgTable('absence_documents', {
   contentType: text('content_type').notNull().default('application/pdf'),
   sizeBytes: integer('size_bytes').notNull(),
   data: bytea('data').notNull(),
+  /** NULL : déposé avant le chiffrement (migration 0090), en clair. */
+  cleVersion: smallint('cle_version'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -437,6 +439,8 @@ export const employeeDocuments = pgTable('employee_documents', {
   contentType: text('content_type').notNull(),
   sizeBytes: integer('size_bytes').notNull(),
   data: bytea('data').notNull(),
+  /** NULL : déposé avant le chiffrement (migration 0090), en clair. */
+  cleVersion: smallint('cle_version'),
   status: text('status').notNull().default('pending'),
   uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
   uploadedBySide: text('uploaded_by_side').notNull(),
