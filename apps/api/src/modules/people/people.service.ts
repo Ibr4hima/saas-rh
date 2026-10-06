@@ -71,6 +71,31 @@ function pgCode(err: unknown): string | undefined {
   return e?.code ?? e?.cause?.code;
 }
 
+/**
+ * Le temps de corriger une erreur de saisie. Passé ce délai, un dossier se
+ * garde, quel que soit le temps écoulé depuis le départ de la personne : il
+ * ne s'efface plus, et son matricule ne change plus. Une personne qui revient
+ * retrouve son dossier et son matricule ; celui d'une personne partie, ou
+ * décédée, n'est jamais donné à une autre.
+ */
+export const DELAI_DE_CORRECTION_JOURS = 30;
+
+/** Saisi il y a plus de 30 jours : en SQL, pour le dossier `e`. */
+const dossierFige = sql`(e.created_at < now() - make_interval(days => ${DELAI_DE_CORRECTION_JOURS}))`;
+
+/** Un nom, pour reconnaître une personne : sans accents, sans casse, sans espaces en trop. */
+const nomComparable = (v: string) =>
+  v
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’'`-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+/** Un numéro de pièce, pour le comparer : sans espaces ni séparateurs, en capitales. */
+const pieceComparable = (v: string) => v.replace(/[\s.\-/]/g, '').toUpperCase();
+
 /** Une ligne du SQL de liste, en snake_case comme la base la rend. */
 interface LigneListe extends Record<string, unknown> {
   id: string;
@@ -94,6 +119,7 @@ interface LigneListe extends Record<string, unknown> {
   unite: string | null;
   inactivite_motif: string | null;
   archived_at: string | null;
+  effacable: boolean;
 }
 
 interface Cursor {
@@ -183,6 +209,7 @@ export class PeopleService {
             e.hired_on::text            AS hired_on,
             e.work_email,
             e.created_at,
+            NOT ${dossierFige}          AS effacable,
             a.position_title,
             o.name                      AS org_unit_name,
             ${directionDeLUnite(sql`a.org_unit_id`, 'short_name')} AS direction_short_name,
@@ -327,6 +354,7 @@ export class PeopleService {
           teamSize: Number(r.team_size ?? 0),
           inactiviteMotif: (r.inactivite_motif as MotifInactivite | null) ?? null,
           archivedAt: r.archived_at ? new Date(r.archived_at).toISOString() : null,
+          effacable: Boolean(r.effacable),
         })),
         nextOffset: trop ? query.offset + query.limit : null,
         total: Number(totalRows.rows[0]?.n ?? 0),
@@ -366,6 +394,7 @@ export class PeopleService {
         if (input.assignment?.orgUnitId) {
           await this.requireLiveOrgUnit(tx, input.assignment.orgUnitId);
         }
+        await this.exigerUnSeulDossier(tx, input.person);
         const { nationalId, ...person } = input.person;
         await tx.insert(t.persons).values({
           id: personId,
@@ -510,6 +539,7 @@ export class PeopleService {
         id: employee.id,
         soi: isSelf,
         employeeNumber: employee.employeeNumber,
+        matriculeFige: await this.estFige(tx, employee.id),
         status: employee.status,
         archivedAt: employee.archivedAt?.toISOString() ?? null,
         inactiviteMotif: (employee.inactiviteMotif as MotifInactivite | null) ?? null,
@@ -664,6 +694,16 @@ export class PeopleService {
           const e = input.employee;
           if (e.employeeNumber !== undefined) {
             champs.employeeNumber = e.employeeNumber.trim().toUpperCase();
+            // Le matricule reste à la personne : il se corrige le temps d'une
+            // erreur de saisie, puis il ne change plus.
+            if (champs.employeeNumber !== employee.employeeNumber && (await this.estFige(tx, id))) {
+              problem(
+                409,
+                'people.matricule_fige',
+                'Le matricule ne change plus',
+                `Il se corrige dans les ${DELAI_DE_CORRECTION_JOURS} jours qui suivent la saisie du dossier ; il reste ensuite à la personne.`,
+              );
+            }
           }
           if (e.hiredOn !== undefined) champs.hiredOn = e.hiredOn;
           if (e.workEmail !== undefined) champs.workEmail = e.workEmail;
@@ -1566,6 +1606,11 @@ export class PeopleService {
     if (cible.userId && cible.userId === user.userId) {
       return 'Vous ne pouvez pas fermer ni effacer votre propre dossier';
     }
+    // Un dossier se garde : il ne s'efface que le temps de corriger une
+    // erreur de saisie. La personne partie, on le désactive.
+    if (geste === 'suppression' && (await this.estFige(tx, cible.id))) {
+      return `Saisi il y a plus de ${DELAI_DE_CORRECTION_JOURS} jours, ce dossier se garde : désactivez-le`;
+    }
     // Rouvrir un dossier ne retire d'administrateur à personne.
     if (cible.userId && geste !== 'reouverture') {
       // Un autre administrateur EN FONCTION : celui dont le dossier est déjà
@@ -1842,6 +1887,70 @@ export class PeopleService {
       sql`SELECT erase_audit_payload(string_to_array(${traces.join(',')}, ',')::uuid[])`,
     );
     return detaches.map((d) => d.id).filter((d) => d !== id);
+  }
+
+  /** Saisi il y a plus de 30 jours : le dossier se garde, son matricule ne change plus. */
+  private async estFige(tx: Tx, employeeId: string): Promise<boolean> {
+    const { rows } = await tx.execute<{ fige: boolean }>(sql`
+      SELECT ${dossierFige} AS fige FROM employees e WHERE e.id = ${employeeId}`);
+    return Boolean(rows[0]?.fige);
+  }
+
+  /**
+   * Une personne n'a qu'un dossier, et qu'un matricule, pour toujours : celle
+   * qui revient, même des années plus tard, retrouve le sien. On la reconnaît
+   * au numéro de sa pièce d'identité, ou à son nom et sa date de naissance.
+   */
+  private async exigerUnSeulDossier(
+    tx: Tx,
+    personne: {
+      givenName: string;
+      familyName: string;
+      birthDate?: string | null;
+      nationalId?: string | null;
+    },
+  ): Promise<void> {
+    const { rows } = await tx.execute<{
+      nom: string;
+      given_name: string;
+      family_name: string;
+      birth_date: string | null;
+      national_id_encrypted: string | null;
+      matricule: string;
+      statut: string;
+    }>(sql`
+      SELECT p.given_name || ' ' || p.family_name AS nom, p.given_name, p.family_name,
+             p.birth_date::text AS birth_date, p.national_id_encrypted,
+             e.employee_number AS matricule, e.status AS statut
+        FROM persons p JOIN employees e ON e.person_id = p.id
+       WHERE p.deleted_at IS NULL`);
+    const piece = personne.nationalId?.trim() ? pieceComparable(personne.nationalId) : null;
+    const nom = `${nomComparable(personne.givenName)}|${nomComparable(personne.familyName)}`;
+    const memePiece = (chiffre: string | null) => {
+      if (!piece || !chiffre) return false;
+      try {
+        return pieceComparable(this.crypto.decrypt(chiffre)) === piece;
+      } catch {
+        return false;
+      }
+    };
+    const deja = rows.find(
+      (r) =>
+        memePiece(r.national_id_encrypted) ||
+        (Boolean(personne.birthDate) &&
+          r.birth_date === personne.birthDate &&
+          `${nomComparable(r.given_name)}|${nomComparable(r.family_name)}` === nom),
+    );
+    if (!deja) return;
+    // Le détail se suffit : c'est lui que l'écran et l'import affichent.
+    problem(
+      409,
+      'people.deja_un_dossier',
+      'Cette personne a déjà un dossier',
+      deja.statut === 'active'
+        ? `${deja.nom} a déjà un dossier, matricule ${deja.matricule}.`
+        : `${deja.nom} a déjà un dossier, inactif, matricule ${deja.matricule} : réactivez-le avec son nouveau contrat.`,
+    );
   }
 
   private async requireEmployee(tx: Tx, id: string) {

@@ -205,6 +205,8 @@ export default function EmployeesPage() {
   };
   const actifsChoisis = choisis.filter((e) => e.status === 'active');
   const archivesChoisis = choisis.filter((e) => e.status === 'archived');
+  // Un dossier ne s'efface que le temps de corriger une erreur de saisie.
+  const effacablesChoisis = choisis.filter((e) => e.effacable);
 
   /**
    * Un clic sur une colonne : on trie dessus, ou l'on retourne le sens si
@@ -395,9 +397,12 @@ export default function EmployeesPage() {
                 {archivesChoisis.length < choisis.length ? ` (${archivesChoisis.length})` : ''}
               </Button>
             ) : null}
-            <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
-              Supprimer
-            </Button>
+            {effacablesChoisis.length > 0 ? (
+              <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
+                Supprimer
+                {effacablesChoisis.length < choisis.length ? ` (${effacablesChoisis.length})` : ''}
+              </Button>
+            ) : null}
           </BarreSelection>
         </CardHeader>
 
@@ -564,7 +569,7 @@ export default function EmployeesPage() {
 
       {panneau === 'supprimer' ? (
         <SupprimerModal
-          employes={choisis}
+          employes={effacablesChoisis}
           onClose={() => setPanneau(null)}
           onFini={async (res) => {
             setPanneau(null);
@@ -714,9 +719,8 @@ function SupprimerModal({
           ))}
         </ul>
         <p className="mt-3 rounded-[9px] bg-bg px-3 py-2 text-[12px] text-ink-muted">
-          Si l’employé a quitté l’organisation mais que vous avez encore le droit de conserver ses
-          données, désactivez son profil : le dossier reste, le portail se ferme un mois plus tard,
-          et le rendre actif rouvre l’accès avec les mêmes identifiants.
+          Réservé aux dossiers saisis par erreur : passé 30 jours, un dossier se garde et se
+          désactive.
         </p>
       </ModalSection>
 

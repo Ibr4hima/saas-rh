@@ -155,7 +155,7 @@ export const employees = pgTable('employees', {
   employeeNumber: text('employee_number').notNull(),
   hiredOn: date('hired_on').notNull(),
   status: text('status').notNull().default('active'),
-  /** Quand le dossier a été archivé — le délai de conservation part de là. */
+  /** Quand le dossier a été archivé : il est devenu inactif ce jour-là. */
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   /** Pourquoi il est inactif — `fin_de_contrat` se pose d'elle-même. */
   inactiviteMotif: text('inactivite_motif'),

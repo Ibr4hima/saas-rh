@@ -8,10 +8,10 @@ export const genderSchema = z.enum(['female', 'male']);
 /**
  * Deux états, et deux seulement.
  *
- * `active` : l'agent est dans l'organisation. `archived` : il n'y est plus,
- * mais on a encore le droit de conserver son dossier — le portail se ferme,
- * le dossier reste, et le rendre actif rouvre l'accès tel quel. Au-delà du
- * délai de conservation, le dossier ne s'archive plus : il s'efface.
+ * `active` : l'agent est dans l'organisation. `archived` : il n'y est plus.
+ * Le portail se ferme, le dossier reste, pour toujours : qui revient, même
+ * des années plus tard, retrouve le sien et son matricule. Un dossier ne
+ * s'efface que dans les 30 jours qui suivent sa saisie, une erreur.
  */
 export const employeeStatusSchema = z.enum(['active', 'archived']);
 export type EmployeeStatus = z.infer<typeof employeeStatusSchema>;
@@ -663,6 +663,8 @@ export interface EmployeeListItem {
   /** Inactif : pourquoi (`null` : dossier désactivé avant qu'on le demande), et depuis quand. */
   inactiviteMotif: MotifInactivite | null;
   archivedAt: string | null;
+  /** Saisi il y a moins de 30 jours : une erreur de saisie s'efface encore. */
+  effacable: boolean;
 }
 
 export interface AssignmentView {
@@ -701,8 +703,10 @@ export interface EmployeeDetail {
    */
   soi: boolean;
   employeeNumber: string;
+  /** Saisi il y a plus de 30 jours : le matricule reste à la personne, il ne change plus. */
+  matriculeFige: boolean;
   status: string;
-  /** Date d'archivage — c'est elle qui fait courir le délai de conservation. */
+  /** Date d'archivage : quand il est devenu inactif. */
   archivedAt: string | null;
   /** Pourquoi il est inactif ; `null` quand il est actif, ou désactivé avant la règle. */
   inactiviteMotif: MotifInactivite | null;

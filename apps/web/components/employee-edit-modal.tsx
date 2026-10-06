@@ -404,7 +404,13 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
           >
             <Input
               id="employeeNumber"
-              className="uppercase"
+              // Passé 30 jours, le matricule reste à la personne.
+              className={
+                employee.matriculeFige
+                  ? 'cursor-default bg-bg text-ink-muted uppercase focus:border-line'
+                  : 'uppercase'
+              }
+              readOnly={employee.matriculeFige}
               {...form.register('employeeNumber', {
                 required: 'Le matricule est requis',
                 setValueAs: (v: string) => v.toUpperCase(),

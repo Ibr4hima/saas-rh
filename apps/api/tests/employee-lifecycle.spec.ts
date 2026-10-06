@@ -14,7 +14,7 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionUser } from '@teranga/contracts';
+import type { CreateEmployeeInput, SessionUser } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -578,6 +578,81 @@ describe('suppression définitive', () => {
     const r = await people.remove(admin, { ids: [moi.employeeId] });
     expect(r.done).toBe(0);
     expect(await compte('employees', 'id = $1', [moi.employeeId])).toBe(1);
+  });
+});
+
+describe('un dossier, un matricule, pour toujours', () => {
+  /** Saisi il y a `jours` jours. */
+  const vieillir = (d: Dossier, jours: number) =>
+    raw(`UPDATE employees SET created_at = now() - make_interval(days => $2) WHERE id = $1`, [
+      d.employeeId,
+      jours,
+    ]);
+  const nouveau = (person: Partial<CreateEmployeeInput['person']>, matricule: string) =>
+    ({
+      person: { givenName: 'Awa', familyName: 'Test', ...person },
+      employee: { employeeNumber: matricule, hiredOn: '2026-01-05' },
+    }) as CreateEmployeeInput;
+
+  it('passé 30 jours, un dossier ne s’efface plus : il se désactive', async () => {
+    await vieillir(awa, 31);
+    const r = await people.remove(admin, { ids: [awa.employeeId] });
+    expect(r.done).toBe(0);
+    expect(r.skipped[0]!.reason).toBe(
+      'Saisi il y a plus de 30 jours, ce dossier se garde : désactivez-le',
+    );
+    expect(await compte('employees', 'id = $1', [awa.employeeId])).toBe(1);
+  });
+
+  it('le matricule se corrige le temps d’une erreur de saisie, puis ne change plus', async () => {
+    expect((await people.detail(admin, awa.employeeId)).matriculeFige).toBe(false);
+    await people.update(admin, awa.employeeId, { employee: { employeeNumber: 'awa-1' } });
+    await vieillir(awa, 31);
+    expect((await people.detail(admin, awa.employeeId)).matriculeFige).toBe(true);
+    expect(
+      await codeOf(() =>
+        people.update(admin, awa.employeeId, { employee: { employeeNumber: 'AWA-2' } }),
+      ),
+    ).toBe('people.matricule_fige');
+    // Le formulaire renvoie le matricule tel quel : rien ne s'y oppose.
+    await people.update(admin, awa.employeeId, {
+      employee: { employeeNumber: 'AWA-1', workPhone: '+221770000001' },
+    });
+    expect((await people.detail(admin, awa.employeeId)).employeeNumber).toBe('AWA-1');
+  });
+
+  it('qui revient retrouve son dossier : ni second dossier, ni second matricule', async () => {
+    await people.archive(admin, { ids: [awa.employeeId], archived: true, motif: 'demission' });
+    const refus = await people
+      .create(admin, nouveau({ givenName: 'awa', birthDate: '1990-05-04' }, 'AWA-BIS'))
+      .catch((e: ProblemException) => e.problem);
+    expect(refus).toMatchObject({
+      code: 'people.deja_un_dossier',
+      detail:
+        'AWA Test a déjà un dossier, inactif, matricule AWA : réactivez-le avec son nouveau contrat.',
+    });
+    // Un homonyme né un autre jour est une autre personne.
+    expect(
+      await codeOf(() =>
+        people.create(admin, nouveau({ birthDate: '1991-02-03' }, 'AWA-HOMONYME')),
+      ),
+    ).toBe('AUCUNE ERREUR');
+    // Sa pièce d'identité la reconnaît, même sous un autre nom.
+    await raw(`UPDATE persons SET national_id_encrypted = $2 WHERE id = $1`, [
+      awa.personId,
+      new EncryptionService().encrypt('1 234 5678 90123'),
+    ]);
+    expect(
+      await codeOf(() =>
+        people.create(
+          admin,
+          nouveau(
+            { givenName: 'Aïssatou', familyName: 'Diallo', nationalId: '1234567890123' },
+            'AWA-TER',
+          ),
+        ),
+      ),
+    ).toBe('people.deja_un_dossier');
   });
 });
 
