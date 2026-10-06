@@ -52,9 +52,8 @@ export interface LigneImport {
   colonne: string | null;
   /** Ce qui manquera au dossier, sans l'empêcher d'exister. */
   avertissements: AvertissementImport[];
-  /** Ses adresses : l'invitation au portail part à la professionnelle. */
+  /** Son adresse professionnelle : l'invitation au portail y part. */
   emailPro?: string | null;
-  emailPerso?: string | null;
   /** Le dossier créé, une fois l'import appliqué. */
   employeeId?: string | null;
 }

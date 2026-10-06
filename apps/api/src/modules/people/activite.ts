@@ -7,14 +7,24 @@ import { CONTRAT } from '../notifications/phrases';
 import { reconcilierDemande, reconcilierLeCircuit, reconcilierReprise } from '../time/visas';
 import {
   directionDeEmploye,
+  directionDeLUnite,
   equipeDe,
   n1DOffice,
   rattacher,
+  rattacherDOffice,
   validerRattachement,
   verrouillerLaChaine,
 } from './chaine';
-import { dernierContrat, effacerLesMotsDePasseEchus } from './en-activite';
+import {
+  debutDuContratAVenir,
+  dernierContrat,
+  effacerLesMotsDePasseEchus,
+  sousContrat,
+} from './en-activite';
+import { muter } from './mutation';
 import { parLeSysteme } from '../../db/systeme';
+import { expediteurEnService } from '../courriels/expediteur';
+import { preparerInvitation } from '../portal/invitation';
 
 /* ————————————————————————————————————————————————————————————————
    La fin de contrat, d'elle-même : les dossiers des contrats arrivés à
@@ -25,12 +35,15 @@ import { parLeSysteme } from '../../db/systeme';
  * L'activité s'arrête : le dernier jour se note au dossier et dans ses
  * départs, et sa dernière affectation s'arrête ce jour-là ; une affectation
  * prévue après n'aura pas lieu. `fin` : le dernier jour, en SQL (une date).
+ * `repriseLe` : le premier jour d'un contrat déjà enregistré ; ses congés
+ * validés à partir de ce jour-là tiennent.
  */
 export async function arreterLActivite(
   tx: Tx,
   employeeId: string,
   fin: SQL,
   motif: string | null,
+  repriseLe: string | null = null,
 ): Promise<void> {
   await tx.execute(sql`UPDATE employees SET fin_activite = ${fin} WHERE id = ${employeeId}`);
   await tx.execute(sql`
@@ -68,6 +81,7 @@ export async function arreterLActivite(
   const { rows: annules } = await tx.execute<{ id: string }>(sql`
     UPDATE absence_requests SET status = 'cancelled', decided_at = now(), reprise_demandee = NULL
      WHERE employee_id = ${employeeId} AND status = 'approved' AND end_date > (${fin})::date
+       AND (${repriseLe}::date IS NULL OR start_date < ${repriseLe}::date)
     RETURNING id`);
   for (const { id } of [...annules, ...ecourtes]) await reconcilierReprise(tx, id);
   // Une invitation en attente ne s'ouvre plus : le portail lui serait fermé.
@@ -195,9 +209,100 @@ export async function reprendreLActivite(
 export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promise<number> {
   return parLeSysteme(tx, async () => {
     const n = await inactiverLesEchus(tx, tenantId);
+    await appliquerLesContratsQuiCommencent(tx, tenantId);
     await effacerLesMotsDePasseEchus(tx);
     return n;
   });
+}
+
+/**
+ * Les contrats qui commencent : leur place s'applique, le jour venu, pas
+ * avant. L'agent hors contrat depuis la fin du précédent reprend son
+ * activité, à cette place : son dossier se réactive, et son portail lui
+ * est rendu en entier. Parti depuis plus de trente jours, il a perdu son
+ * mot de passe : son invitation part d'elle-même. L'agent qui enchaîne
+ * sans interruption change de place comme par un nouveau contrat du jour
+ * (cf. `muter`).
+ */
+async function appliquerLesContratsQuiCommencent(tx: Tx, tenantId: string): Promise<void> {
+  const { rows } = await tx.execute<{
+    contrat: string;
+    id: string;
+    debut: string;
+    fini: boolean;
+    poste: string;
+    unite: string | null;
+    status: string;
+    finActivite: string | null;
+  }>(sql`
+    SELECT c.id AS contrat, c.employee_id AS id, c.start_date::text AS debut,
+           COALESCE(c.end_date < CURRENT_DATE, false) AS fini,
+           c.planned_position_title AS poste, c.planned_org_unit_id AS unite,
+           e.status, e.fin_activite::text AS "finActivite"
+      FROM contracts c JOIN employees e ON e.id = c.employee_id
+     WHERE c.planned_position_title IS NOT NULL AND c.start_date <= CURRENT_DATE
+     ORDER BY c.start_date, c.id`);
+  if (rows.length === 0) return;
+  await verrouillerLaChaine(tx);
+  const expediteur = expediteurEnService();
+  const journal: ChangementRattachement[] = [];
+  for (const c of rows) {
+    await tx.execute(sql`
+      UPDATE contracts SET planned_position_title = NULL, planned_org_unit_id = NULL
+       WHERE id = ${c.contrat}`);
+    // Un contrat déjà terminé n'a plus de place à prendre.
+    if (c.fini) continue;
+    const place = { positionTitle: c.poste, orgUnitId: c.unite };
+
+    if (c.status === 'active') {
+      const { rows: actuelle } = await tx.execute<{ poste: string; unite: string | null }>(sql`
+        SELECT position_title AS poste, org_unit_id AS unite FROM assignments
+         WHERE employee_id = ${c.id} AND validity @> CURRENT_DATE LIMIT 1`);
+      const a = actuelle[0];
+      if (a && a.poste === place.positionTitle && a.unite === place.orgUnitId) continue;
+      try {
+        await tx.transaction((sp) =>
+          muter(sp, tenantId, c.id, { ...place, startDate: c.debut }, { parContrat: true }),
+        );
+      } catch (err) {
+        if (!(err instanceof ProblemException)) throw err;
+      }
+      continue;
+    }
+
+    // Parti avant que ce contrat commence : il revient.
+    if (!c.finActivite || c.finActivite >= c.debut) continue;
+    const { rows: avant } = await tx.execute<{ autre: boolean }>(sql`
+      SELECT ${directionDeLUnite(sql`a.org_unit_id`, 'id')}
+               IS DISTINCT FROM ${directionDeLUnite(sql`${place.orgUnitId}::uuid`, 'id')} AS autre
+        FROM assignments a WHERE a.employee_id = ${c.id}
+       ORDER BY lower(a.validity) DESC LIMIT 1`);
+    // Une autre direction : son ancien n+1 n'en est plus.
+    if (avant[0]?.autre) {
+      await tx.execute(sql`UPDATE employees SET manager_employee_id = NULL WHERE id = ${c.id}`);
+    }
+    await reprendreLActivite(tx, tenantId, c.id, c.debut, place);
+    await tx.execute(sql`
+      UPDATE employees
+         SET status = 'active', archived_at = NULL, inactivite_motif = NULL, updated_at = now()
+       WHERE id = ${c.id}`);
+    await rattacherDOffice(tx, journal, c.id);
+    const { rows: compte } = await tx.execute<{ ferme: boolean }>(sql`
+      SELECT u.password_hash IS NULL AS ferme
+        FROM employees e JOIN persons p ON p.id = e.person_id JOIN users u ON u.id = p.user_id
+       WHERE e.id = ${c.id}`);
+    if (expediteur?.actif && compte[0]?.ferme) {
+      try {
+        await tx.transaction((sp) =>
+          preparerInvitation(sp, expediteur, { tenantId, userId: null }, c.id, 'employee'),
+        );
+        expediteur.bientot();
+      } catch (err) {
+        if (!(err instanceof ProblemException)) throw err;
+      }
+    }
+  }
+  await reconcilierLeCircuit(tx, tenantId);
 }
 
 async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
@@ -207,18 +312,22 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
     contrat: string;
     type: string;
     fin: string;
+    reprise: string | null;
     n1: string | null;
     admin: string | null;
   }>(sql`
     SELECT e.id, p.given_name || ' ' || p.family_name AS nom, c.id AS contrat,
            c.contract_type AS type, c.end_date::text AS fin,
+           (${debutDuContratAVenir(sql`e.id`)})::text AS reprise,
            e.manager_employee_id AS n1,
            (SELECT m.user_id FROM user_tenant_memberships m
              WHERE m.user_id = p.user_id AND m.tenant_id = e.tenant_id AND m.role = 'admin') AS admin
       FROM employees e
       JOIN persons p ON p.id = e.person_id
-      JOIN contracts c ON c.id = ${dernierContrat(sql`e.id`)}
-     WHERE e.status = 'active' AND c.end_date < CURRENT_DATE
+      JOIN contracts c ON c.id = (SELECT cf.id FROM contracts cf
+                                   WHERE cf.employee_id = e.id AND cf.end_date < CURRENT_DATE
+                                   ORDER BY cf.end_date DESC LIMIT 1)
+     WHERE e.status = 'active' AND NOT ${sousContrat(sql`e.id`)}
      ORDER BY c.end_date, e.id`);
   if (rows.length === 0) return 0;
   await verrouillerLaChaine(tx);
@@ -232,7 +341,7 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
          SET status = 'archived', inactivite_motif = 'fin_de_contrat',
              archived_at = (${a.fin}::date + 1)::timestamptz, updated_at = now()
        WHERE id = ${a.id}`);
-    await arreterLActivite(tx, a.id, sql`${a.fin}::date`, 'fin_de_contrat');
+    await arreterLActivite(tx, a.id, sql`${a.fin}::date`, 'fin_de_contrat', a.reprise);
     await tx.execute(sql`
       UPDATE org_units SET manager_employee_id = NULL, updated_at = now()
        WHERE manager_employee_id = ${a.id} AND deleted_at IS NULL`);

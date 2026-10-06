@@ -166,7 +166,6 @@ export class ImportEmployesService {
         uniteResolue: unite?.nom ?? null,
         responsable: responsableMatricule,
         emailPro: converti.ok.entree.employee.workEmail ?? null,
-        emailPerso: converti.ok.entree.person.personalEmail ?? null,
         // Résolu dans une seconde passe : le responsable peut se trouver PLUS
         // BAS dans le même fichier, et l'on ne le sait qu'après avoir lu
         // toutes les lignes.

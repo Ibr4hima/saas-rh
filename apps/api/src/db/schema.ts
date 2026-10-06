@@ -190,6 +190,9 @@ export const contracts = pgTable('contracts', {
   endDate: date('end_date'),
   trialPeriodEnd: date('trial_period_end'),
   notes: text('notes'),
+  /** La place d'un contrat qui n'a pas commencé : elle s'applique le jour venu (migration 0085). */
+  plannedPositionTitle: text('planned_position_title'),
+  plannedOrgUnitId: uuid('planned_org_unit_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -294,7 +297,8 @@ export const invitations = pgTable('invitations', {
   email: text('email').notNull(),
   role: text('role').notNull(),
   tokenHash: text('token_hash').notNull(),
-  invitedByUserId: uuid('invited_by_user_id').notNull(),
+  /** Null : partie d'elle-même, le jour où son contrat commence (migration 0085). */
+  invitedByUserId: uuid('invited_by_user_id'),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

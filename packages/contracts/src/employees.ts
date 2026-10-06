@@ -741,6 +741,8 @@ export interface ContractView {
   endDate: string | null;
   trialPeriodEnd: string | null;
   notes: string | null;
+  /** Un contrat qui n'a pas commencé : la place où l'agent prendra son poste ce jour-là. */
+  placePrevue: { poste: string; direction: string | null } | null;
 }
 
 export interface EmployeeDetail {

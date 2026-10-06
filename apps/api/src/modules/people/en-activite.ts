@@ -13,8 +13,10 @@ import type { Tx } from '../../db/tenant-db';
    l'application, puisqu'aucune tâche ne tourne la nuit ; d'ici là, chaque
    porte vérifie la date elle-même.
 
-   Le contrat qui fait foi est le DERNIER, par date de début : un CDD
-   renouvelé d'avance compte par son successeur, déjà enregistré.
+   Ce qui fait foi, c'est d'être sous contrat AUJOURD'HUI. Un CDD renouvelé
+   d'avance, sans interruption, enchaîne sur son successeur. Un contrat qui
+   commence plus tard, après une interruption, ne couvre pas l'intervalle :
+   l'agent y est hors contrat, et ne reprend que le jour où il commence.
 
    Son compte, lui, reste ouvert trente jours après son dernier jour, le
    temps de demander et de récupérer ses documents : un portail restreint,
@@ -38,10 +40,33 @@ export const dernierContrat = (employeeId: SQL | string) => sql`(
   SELECT dc.id FROM contracts dc WHERE dc.employee_id = ${employeeId}
    ORDER BY dc.start_date DESC, dc.created_at DESC LIMIT 1)`;
 
-/** Son dernier contrat a pris fin : sa date de fin est passée. En SQL. */
-export const contratEchu = (employeeId: SQL | string) => sql`EXISTS (
-  SELECT 1 FROM contracts ce
-   WHERE ce.id = ${dernierContrat(employeeId)} AND ce.end_date < CURRENT_DATE)`;
+/** Un contrat le couvre aujourd'hui. En SQL. */
+export const sousContrat = (employeeId: SQL | string) => sql`EXISTS (
+  SELECT 1 FROM contracts sc
+   WHERE sc.employee_id = ${employeeId} AND sc.start_date <= CURRENT_DATE
+     AND (sc.end_date IS NULL OR sc.end_date >= CURRENT_DATE))`;
+
+/** Le dernier jour de son dernier contrat terminé, en SQL ; null s'il n'en a pas. */
+const finDuDernierContrat = (employeeId: SQL | string) => sql`(
+  SELECT max(cf.end_date) FROM contracts cf
+   WHERE cf.employee_id = ${employeeId} AND cf.end_date < CURRENT_DATE)`;
+
+/**
+ * Il n'est plus sous contrat : son dernier contrat a pris fin, et le
+ * suivant, s'il est déjà enregistré, n'a pas commencé. Entre les deux, il
+ * n'est pas agent de l'APIX. En SQL.
+ */
+export const contratEchu = (employeeId: SQL | string) =>
+  sql`(NOT ${sousContrat(employeeId)} AND ${finDuDernierContrat(employeeId)} IS NOT NULL)`;
+
+/** Le dernier jour de son contrat quand il n'est plus sous contrat ; sinon null. En SQL. */
+const finDeContrat = (employeeId: SQL | string) =>
+  sql`CASE WHEN ${contratEchu(employeeId)} THEN ${finDuDernierContrat(employeeId)} END`;
+
+/** Le premier jour d'un contrat qui n'a pas commencé, en SQL ; null s'il n'y en a pas. */
+export const debutDuContratAVenir = (employeeId: SQL | string) => sql`(
+  SELECT min(cv.start_date) FROM contracts cv
+   WHERE cv.employee_id = ${employeeId} AND cv.start_date > CURRENT_DATE)`;
 
 /** Dossier actif et contrat en cours. En SQL, pour les listes de qui choisir. */
 export const enActivite = (employeeId: SQL) =>
@@ -54,10 +79,15 @@ export const enActivite = (employeeId: SQL) =>
  * « ne peut pas … ».
  */
 export async function exigerEnActivite(tx: Tx, employeeId: string, pour: string): Promise<void> {
-  const { rows } = await tx.execute<{ nom: string; status: string; fin: string | null }>(sql`
+  const { rows } = await tx.execute<{
+    nom: string;
+    status: string;
+    fin: string | null;
+    suivant: string | null;
+  }>(sql`
     SELECT p.given_name || ' ' || p.family_name AS nom, e.status,
-           (SELECT ce.end_date::text FROM contracts ce
-             WHERE ce.id = ${dernierContrat(sql`e.id`)} AND ce.end_date < CURRENT_DATE) AS fin
+           (${finDeContrat(sql`e.id`)})::text AS fin,
+           (${debutDuContratAVenir(sql`e.id`)})::text AS suivant
       FROM employees e JOIN persons p ON p.id = e.person_id
      WHERE e.id = ${employeeId}`);
   const a = rows[0];
@@ -75,16 +105,19 @@ export async function exigerEnActivite(tx: Tx, employeeId: string, pour: string)
       422,
       'people.contrat_echu',
       `Le contrat de ${a.nom} a pris fin le ${jour(a.fin)}`,
-      `Un agent dont le contrat est arrivé à terme ne peut pas ${pour}. Enregistrez d’abord son nouveau contrat.`,
+      `Un agent dont le contrat est arrivé à terme ne peut pas ${pour}. ${
+        a.suivant
+          ? `Son nouveau contrat commence le ${jour(a.suivant)}.`
+          : 'Enregistrez d’abord son nouveau contrat.'
+      }`,
     );
   }
 }
 
-/** La date de fin passée de son dernier contrat — `null` s'il court encore. */
+/** Le dernier jour de son contrat quand il n'est plus sous contrat ; `null` s'il l'est. */
 export async function finDeContratPassee(tx: Tx, employeeId: string): Promise<string | null> {
-  const { rows } = await tx.execute<{ fin: string }>(sql`
-    SELECT ce.end_date::text AS fin FROM contracts ce
-     WHERE ce.id = ${dernierContrat(employeeId)} AND ce.end_date < CURRENT_DATE`);
+  const { rows } = await tx.execute<{ fin: string | null }>(sql`
+    SELECT (${finDeContrat(employeeId)})::text AS fin`);
   return rows[0]?.fin ?? null;
 }
 
@@ -93,13 +126,12 @@ export const DELAI_D_ACCES_JOURS = 30;
 
 /**
  * Le dernier jour d'activité d'un dossier, en SQL : celui du dossier
- * inactif ; d'un contrat échu que la liste n'a pas encore rangé, sa date de
- * fin. `null` : en activité.
+ * inactif ; d'un agent qui n'est plus sous contrat et que la liste n'a pas
+ * encore rangé, la fin de son contrat. `null` : en activité.
  */
 const finDActivite = (e: SQL) => sql`CASE WHEN ${e}.status = 'archived'
   THEN COALESCE(${e}.fin_activite, (${e}.archived_at AT TIME ZONE 'UTC')::date - 1)
-  ELSE (SELECT ce.end_date FROM contracts ce
-         WHERE ce.id = ${dernierContrat(sql`${e}.id`)} AND ce.end_date < CURRENT_DATE)
+  ELSE ${finDeContrat(sql`${e}.id`)}
   END`;
 
 /**

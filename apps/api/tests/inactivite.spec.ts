@@ -31,6 +31,7 @@ import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
 import { AcademyController } from '../src/modules/academy/academy.controller';
 import { AccesGuard, FERME_AUX_INACTIFS_KEY } from '../src/modules/auth/acces.guard';
+import { accesDuCompte } from '../src/modules/people/en-activite';
 import {
   agentDuCompte,
   directionDuPersonnel,
@@ -212,6 +213,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   for (const table of [
     'outbound_emails',
+    'habilitations',
     'notifications',
     'document_requests',
     'sessions',
@@ -264,6 +266,7 @@ beforeEach(async () => {
 afterAll(async () => {
   for (const table of [
     'outbound_emails',
+    'habilitations',
     'notifications',
     'document_requests',
     'sessions',
@@ -1638,7 +1641,7 @@ describe('les invitations partent d’elles-mêmes', () => {
     });
     expect(r).toMatchObject({
       rouvert: true,
-      invitation: { email: null, raison: 'Aucun email dans le dossier' },
+      invitation: { email: null, raison: 'Aucune adresse professionnelle' },
     });
     expect((await statut(fatou)).status).toBe('active');
     expect((await rh.detail(admin, fatou.employeeId)).portal.status).toBe('ferme');
@@ -1739,7 +1742,16 @@ describe('les invitations partent d’elles-mêmes', () => {
     const avec = await creer('NV-1', 'nouvel@apix.test');
     expect(avec.invitation).toEqual({ email: 'nouvel@apix.test', raison: null });
     const sans = await creer('NV-2');
-    expect(sans.invitation).toEqual({ email: null, raison: 'Aucun email dans le dossier' });
+    expect(sans.invitation).toEqual({ email: null, raison: 'Aucune adresse professionnelle' });
+    // Le portail s'ouvre avec l'adresse professionnelle : la personnelle ne sert pas.
+    const perso = await rh.create(admin, {
+      person: { givenName: 'Nouvel', familyName: 'NV-3', personalEmail: 'perso@test.local' },
+      employee: { employeeNumber: 'NV-3', hiredOn: '2026-10-01' },
+      contract: { contractType: 'cdi', startDate: '2026-10-01' },
+      assignment: { positionTitle: 'Agent', orgUnitId: uDFC, startDate: '2026-10-01' },
+      inviter: true,
+    });
+    expect(perso.invitation).toEqual({ email: null, raison: 'Aucune adresse professionnelle' });
     expect(await enFile()).toEqual(['nouvel@apix.test']);
   });
 
@@ -1768,16 +1780,26 @@ describe('les invitations partent d’elles-mêmes', () => {
       [ibou.employeeId],
     );
     await adresse(ibou, 'ibou@apix.test');
+    await raw(
+      `UPDATE persons SET personal_email = 'moussa@perso.test'
+        WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [moussa.employeeId],
+    );
     await portail.inviterPlusieurs(admin, [ibou.employeeId]);
     const { agents, parCourriel } = await portail.etatDesAcces(admin);
     expect(parCourriel).toBe(true);
     const etat = (a: Agent) => agents.find((x) => x.employeeId === a.employeeId);
-    expect(etat(moussa)).toMatchObject({ etat: 'actif', adresse: null });
-    expect(etat(ibou)).toMatchObject({
-      etat: 'invite',
-      adresse: 'ibou@apix.test',
-      adresseProfessionnelle: true,
+    // Seule l'adresse professionnelle compte : la personnelle ne s'affiche pas.
+    expect(etat(moussa)).toEqual({
+      employeeId: moussa.employeeId,
+      nom: 'Moussa Test',
+      matricule: 'INA-Moussa',
+      unite: 'Direction Financière',
+      etat: 'actif',
+      adresse: null,
+      courriel: null,
     });
+    expect(etat(ibou)).toMatchObject({ etat: 'invite', adresse: 'ibou@apix.test' });
 
     const controleur = new PortalController(portail, db);
     const requete = (dirigeLaDCH: boolean) =>
@@ -1788,5 +1810,288 @@ describe('les invitations partent d’elles-mêmes', () => {
       'acces.reserve_au_directeur',
     );
     expect(await codeOf(() => controleur.etatDesAcces(requete(true)))).toBe('AUCUNE ERREUR');
+  });
+  describe('un contrat qui commence plus tard', () => {
+    /** Le premier jour d'un contrat en attente : c'est aujourd'hui. */
+    async function leJourVenu(a: Agent): Promise<void> {
+      await raw(
+        `UPDATE contracts SET start_date = CURRENT_DATE
+          WHERE employee_id = $1 AND planned_position_title IS NOT NULL`,
+        [a.employeeId],
+      );
+      await inactiver();
+    }
+    /** Son contrat en cours s'est arrêté il y a `jours` jours. */
+    const finiIlYA = (a: Agent, jours: number) =>
+      raw(
+        `UPDATE contracts SET end_date = CURRENT_DATE - $2::int
+          WHERE employee_id = $1 AND planned_position_title IS NULL`,
+        [a.employeeId, jours],
+      );
+    const acces = (a: Agent) =>
+      db.withTenant({ tenantId, userId: adminUserId }, (tx) => accesDuCompte(tx, a.userId));
+    const enAttente = async (a: Agent) =>
+      (
+        await raw(
+          `SELECT count(*)::int AS n FROM contracts
+            WHERE employee_id = $1 AND planned_position_title IS NOT NULL`,
+          [a.employeeId],
+        )
+      ).rows[0].n as number;
+    const chefDe = async (unite: string) =>
+      (await raw(`SELECT manager_employee_id AS id FROM org_units WHERE id = $1`, [unite])).rows[0]
+        .id as string | null;
+
+    it('entre deux contrats, hors contrat : inactif, portail restreint ; le jour venu, tout revient', async () => {
+      // Le CDD de Moussa a pris fin il y a trois jours ; le suivant commence dans dix jours.
+      await raw(`UPDATE contracts SET contract_type = 'cdd' WHERE employee_id = $1`, [
+        moussa.employeeId,
+      ]);
+      await finiIlYA(moussa, 3);
+      const typeId = randomUUID();
+      await raw(`INSERT INTO absence_types (id, tenant_id, name) VALUES ($1,$2,'Congé annuel')`, [
+        typeId,
+        tenantId,
+      ]);
+      const conge = randomUUID();
+      await raw(
+        `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+         VALUES ($1,$2,$3,$4, CURRENT_DATE + 12, CURRENT_DATE + 13, 2, 'approved')`,
+        [conge, tenantId, moussa.employeeId, typeId],
+      );
+      const r = await rh.newContract(admin, moussa.employeeId, {
+        contractType: 'cdd',
+        startDate: await jour(10),
+        endDate: await jour(200),
+        affectation: { positionTitle: 'Analyste', orgUnitId: uDFC },
+      });
+      expect(r).toMatchObject({ rouvert: false, invitation: null });
+
+      await inactiver();
+      expect(await statut(moussa)).toMatchObject({
+        status: 'archived',
+        inactivite_motif: 'fin_de_contrat',
+      });
+      expect(await acces(moussa)).toEqual({ finDAcces: await jour(27), ferme: false });
+      expect((await rh.detail(admin, moussa.employeeId)).contracts[0]).toMatchObject({
+        startDate: await jour(10),
+        placePrevue: { poste: 'Analyste', direction: 'Direction Financière' },
+      });
+      // Son congé tombe dans le contrat suivant : il tient.
+      expect(
+        (await raw(`SELECT status FROM absence_requests WHERE id = $1`, [conge])).rows[0].status,
+      ).toBe('approved');
+      // Rien avant son premier jour : ni réactivation, ni affectation.
+      const re = await rh.archive(admin, { ids: [moussa.employeeId], archived: false });
+      expect(re.done).toBe(0);
+      expect(re.skipped[0]?.reason).toMatch(/commence le .+ se réactivera ce jour-là/);
+      expect(
+        await codeOf(async () =>
+          people.newAssignment(admin, moussa.employeeId, {
+            positionTitle: 'Analyste',
+            orgUnitId: uDFC,
+            startDate: await jour(0),
+          }),
+        ),
+      ).toBe('people.agent_inactif');
+
+      await leJourVenu(moussa);
+      expect((await statut(moussa)).status).toBe('active');
+      expect((await affectations(moussa)).slice(-2)).toEqual([
+        { poste: 'Poste', du: '2024-01-01', au: await jour(-3) },
+        { poste: 'Analyste', du: await jour(0), au: null },
+      ]);
+      expect(await acces(moussa)).toEqual({ finDAcces: null, ferme: false });
+      expect(await n1De(moussa)).toBe(omar.employeeId);
+      expect(await enAttente(moussa)).toBe(0);
+    });
+
+    it('enregistré pendant qu’il travaille encore, rien ne bouge avant son premier jour', async () => {
+      await raw(
+        `UPDATE contracts SET contract_type = 'cdd', end_date = CURRENT_DATE + 5 WHERE employee_id = $1`,
+        [moussa.employeeId],
+      );
+      const avant = await affectations(moussa);
+      await rh.newContract(admin, moussa.employeeId, {
+        contractType: 'cdi',
+        startDate: await jour(10),
+        affectation: { positionTitle: 'Chargé RH', orgUnitId: uDCH },
+      });
+      await inactiver();
+      expect((await statut(moussa)).status).toBe('active');
+      expect(await affectations(moussa)).toEqual(avant);
+      expect(await n1De(moussa)).toBe(omar.employeeId);
+
+      // Son contrat s'arrête : hors contrat jusqu'au suivant.
+      await finiIlYA(moussa, 2);
+      await inactiver();
+      expect((await statut(moussa)).status).toBe('archived');
+
+      await leJourVenu(moussa);
+      expect((await statut(moussa)).status).toBe('active');
+      expect((await affectations(moussa)).at(-1)).toEqual({
+        poste: 'Chargé RH',
+        du: await jour(0),
+        au: null,
+      });
+      expect(await n1De(moussa)).toBe(mariama.employeeId);
+    });
+
+    it('un agent de la DCH n’a plus son espace RH entre deux contrats ; le jour venu, il le retrouve', async () => {
+      const awa = await agent(
+        'Awa',
+        uDCH,
+        { type: 'cdd', debut: -300, fin: 5 },
+        mariama.employeeId,
+      );
+      await raw(
+        `INSERT INTO habilitations (id, tenant_id, capacite, employee_id)
+         VALUES ($1,$2,'demandes.conges',$3)`,
+        [randomUUID(), tenantId, awa.employeeId],
+      );
+      const connexion = async () =>
+        (await auth.login({ email: awa.email, password: MOT_DE_PASSE }, {})).user;
+      expect((await connexion()).capacites).toContain('demandes.conges');
+      await rh.newContract(admin, awa.employeeId, {
+        contractType: 'cdd',
+        startDate: await jour(10),
+        endDate: await jour(375),
+        affectation: { positionTitle: 'Gestionnaire RH', orgUnitId: uDCH },
+      });
+
+      await finiIlYA(awa, 2);
+      await inactiver();
+      const pendant = await connexion();
+      expect(pendant).toMatchObject({ capacites: [], estAgent: false, finDAcces: await jour(28) });
+      // Ses délégations ne lui sont pas retirées : elles l'attendent.
+      const ouvertes = async () =>
+        (
+          await raw(
+            `SELECT count(*)::int AS n FROM habilitations WHERE employee_id = $1 AND fin_at IS NULL`,
+            [awa.employeeId],
+          )
+        ).rows[0].n as number;
+      expect(await ouvertes()).toBe(1);
+
+      await leJourVenu(awa);
+      const apres = await connexion();
+      expect(apres).toMatchObject({ finDAcces: null, estAgent: true });
+      expect(apres.capacites).toContain('demandes.conges');
+      expect(await ouvertes()).toBe(1);
+    });
+
+    it('un responsable qui change de direction par un nouveau contrat : son équipe remonte à son n+1', async () => {
+      // Fatou dirige la comptabilité, où travaille Ibou ; elle relève d'Omar.
+      await raw(`UPDATE contracts SET end_date = NULL WHERE employee_id = $1`, [fatou.employeeId]);
+      // Une mutation, elle, demande toujours qui reprend l'unité et l'équipe.
+      expect(
+        await codeOf(async () =>
+          people.newAssignment(admin, fatou.employeeId, {
+            positionTitle: 'Analyste RH',
+            orgUnitId: uDCH,
+            startDate: await jour(0),
+          }),
+        ),
+      ).toBe('people.manager_cannot_leave_unit');
+
+      const r = await rh.newContract(admin, fatou.employeeId, {
+        contractType: 'cdi',
+        startDate: await jour(0),
+        affectation: { positionTitle: 'Analyste RH', orgUnitId: uDCH },
+      });
+      expect(await n1De(ibou)).toBe(omar.employeeId);
+      expect(await n1De(fatou)).toBe(mariama.employeeId);
+      expect(await chefDe(uCompta)).toBeNull();
+      expect(r.changements).toContainEqual(
+        expect.objectContaining({ employeeId: ibou.employeeId, motif: 'reprise_equipe' }),
+      );
+      expect((await affectations(fatou)).at(-1)).toEqual({
+        poste: 'Analyste RH',
+        du: await jour(0),
+        au: null,
+      });
+    });
+
+    it('enchaîné plus tard dans une autre direction : l’équipe remonte le jour venu, pas avant', async () => {
+      await raw(`UPDATE contracts SET end_date = NULL WHERE employee_id = $1`, [fatou.employeeId]);
+      await rh.newContract(admin, fatou.employeeId, {
+        contractType: 'cdi',
+        startDate: await jour(7),
+        affectation: { positionTitle: 'Analyste RH', orgUnitId: uDCH },
+      });
+      await inactiver();
+      expect(await n1De(ibou)).toBe(fatou.employeeId);
+      expect(await chefDe(uCompta)).toBe(fatou.employeeId);
+
+      // Le jour venu, sans interruption : son contrat précédent finissait la veille.
+      await finiIlYA(fatou, 1);
+      await leJourVenu(fatou);
+      expect((await statut(fatou)).status).toBe('active');
+      expect(await n1De(ibou)).toBe(omar.employeeId);
+      expect(await n1De(fatou)).toBe(mariama.employeeId);
+      expect(await chefDe(uCompta)).toBeNull();
+    });
+
+    it('le directeur général reste à la Direction Générale, contrat du jour ou à venir', async () => {
+      for (const decalage of [0, 5]) {
+        expect(
+          await codeOf(async () =>
+            rh.newContract(admin, dg.employeeId, {
+              contractType: 'cdi',
+              startDate: await jour(decalage),
+              affectation: { positionTitle: 'Analyste', orgUnitId: uDFC },
+            }),
+          ),
+        ).toBe('people.dg_quitte_la_dg');
+      }
+    });
+
+    it('partie plus de trente jours : son invitation part le jour où son contrat commence', async () => {
+      await partieIlYA45Jours();
+      await adresse(fatou, 'f.retour@apix.test');
+      const r = await rh.newContract(admin, fatou.employeeId, {
+        contractType: 'cdi',
+        startDate: await jour(3),
+        affectation: await placeDe(fatou),
+      });
+      expect(r).toMatchObject({ rouvert: false, invitation: null });
+      expect(await enFile()).toEqual([]);
+      expect((await statut(fatou)).status).toBe('archived');
+
+      expediteur.brancher();
+      await leJourVenu(fatou);
+      expect((await statut(fatou)).status).toBe('active');
+      expect(await enFile()).toEqual(['f.retour@apix.test']);
+      // Personne ne l'a envoyée : la plateforme, d'elle-même.
+      const { rows } = await raw(
+        `SELECT invited_by_user_id AS par FROM invitations WHERE tenant_id = $1`,
+        [tenantId],
+      );
+      expect(rows).toEqual([{ par: null }]);
+    });
+
+    it('un départ enregistré avant le début : le contrat suivant n’aura pas lieu', async () => {
+      await raw(
+        `UPDATE contracts SET contract_type = 'cdd', end_date = CURRENT_DATE + 5 WHERE employee_id = $1`,
+        [moussa.employeeId],
+      );
+      await rh.newContract(admin, moussa.employeeId, {
+        contractType: 'cdi',
+        startDate: await jour(10),
+        affectation: await placeDe(moussa),
+      });
+      const r = await rh.archive(admin, {
+        ids: [moussa.employeeId],
+        archived: true,
+        motif: 'demission',
+      });
+      expect(r.done).toBe(1);
+      expect(await enAttente(moussa)).toBe(0);
+      const { rows } = await raw(
+        `SELECT count(*)::int AS n FROM contracts WHERE employee_id = $1 AND start_date > CURRENT_DATE`,
+        [moussa.employeeId],
+      );
+      expect(rows[0].n).toBe(0);
+    });
   });
 });

@@ -90,7 +90,8 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
     (idIssuedOn && idExpiresOn && idIssuedOn >= idExpiresOn) ||
     (idExpiresOn !== '' && idExpiresOn <= todayIso());
 
-  const aUneAdresse = Boolean(composeWorkEmail(workEmail) || personalEmail.trim());
+  // Le portail s'ouvre avec l'adresse professionnelle.
+  const aUneAdresse = Boolean(composeWorkEmail(workEmail));
 
   const canSubmit =
     givenName.trim() &&

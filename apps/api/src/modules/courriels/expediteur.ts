@@ -100,6 +100,9 @@ async function annulerCeQuiNaPlusLieu(tx: Tx): Promise<void> {
  */
 let enService: ExpediteurCourriels | null = null;
 
+/** L'expéditeur en service, pour ce qui part hors de l'injection (le balayage des contrats). */
+export const expediteurEnService = (): ExpediteurCourriels | null => enService;
+
 /**
  * Toute notification part aussi par courriel, à l'adresse du compte de son
  * destinataire : on n'a pas toujours le réflexe d'ouvrir la plateforme, le

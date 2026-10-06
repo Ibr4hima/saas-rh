@@ -68,14 +68,20 @@ async function creerAgent(prenom: string): Promise<{ employeeId: string; personI
   const personId = randomUUID();
   const employeeId = randomUUID();
   await raw(
-    `INSERT INTO persons (id, tenant_id, given_name, family_name, personal_email)
-     VALUES ($1,$2,$3,'Test',$4)`,
-    [personId, tenantId, prenom, `${prenom.toLowerCase()}@courriel.test.local`],
+    `INSERT INTO persons (id, tenant_id, given_name, family_name) VALUES ($1,$2,$3,'Test')`,
+    [personId, tenantId, prenom],
   );
+  // Le portail s'ouvre avec l'adresse professionnelle : l'invitation y part.
   await raw(
-    `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on)
-     VALUES ($1,$2,$3,$4, CURRENT_DATE)`,
-    [employeeId, tenantId, personId, `C-${prenom.toUpperCase()}`],
+    `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on, work_email)
+     VALUES ($1,$2,$3,$4, CURRENT_DATE, $5)`,
+    [
+      employeeId,
+      tenantId,
+      personId,
+      `C-${prenom.toUpperCase()}`,
+      `${prenom.toLowerCase()}@courriel.test.local`,
+    ],
   );
   return { employeeId, personId };
 }

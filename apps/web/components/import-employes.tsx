@@ -293,7 +293,7 @@ function InvitationsDuLot({
   setChoix: (s: Set<string>) => void;
   invites: InviterPlusieursResult | null;
 }) {
-  const invitables = crees.filter((l) => l.emailPro || l.emailPerso);
+  const invitables = crees.filter((l) => l.emailPro);
   const tous = invitables.length > 0 && invitables.every((l) => choix.has(l.employeeId));
   const basculer = (id: string, oui: boolean) => {
     const s = new Set(choix);
@@ -336,7 +336,7 @@ function InvitationsDuLot({
         </label>
         <ul className="max-h-[14rem] divide-y divide-line-soft overflow-auto">
           {crees.map((l) => {
-            const adresse = l.emailPro ?? l.emailPerso ?? null;
+            const adresse = l.emailPro ?? null;
             return (
               <li key={l.employeeId}>
                 <label
@@ -353,7 +353,7 @@ function InvitationsDuLot({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold text-ink">{l.nom}</span>
                     <span className="block truncate text-[11.5px] text-ink-muted">
-                      {adresse ?? 'Sans adresse'}
+                      {adresse ?? 'Sans adresse pro'}
                     </span>
                   </span>
                   <span className="hidden font-mono text-[11.5px] text-ink-muted sm:block">

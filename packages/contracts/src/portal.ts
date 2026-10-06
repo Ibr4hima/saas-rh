@@ -11,7 +11,7 @@ export type InvitableRole = z.infer<typeof invitableRoleSchema>;
 
 export const inviteEmployeeSchema = z.object({
   role: invitableRoleSchema.default('employee'),
-  /** Par défaut : email professionnel, sinon personnel, du dossier. */
+  /** Par défaut : l'adresse professionnelle du dossier. */
   email: z.email().optional(),
 });
 export type InviteEmployeeInput = z.infer<typeof inviteEmployeeSchema>;
@@ -126,16 +126,10 @@ export interface AccesAgent {
   /** L'abrégé de sa direction (ou le nom de son unité). */
   unite: string | null;
   etat: EtatAcces;
-  /** L'adresse où partirait l'invitation : professionnelle, sinon personnelle. */
+  /** Son adresse professionnelle : c'est elle qui ouvre le portail. */
   adresse: string | null;
-  adresseProfessionnelle: boolean;
-  /** La dernière invitation : envoyée le, valable jusqu'au, son courriel. */
-  inviteLe: string | null;
-  expireLe: string | null;
+  /** Le courriel de l'invitation en attente. */
   courriel: 'en_attente' | 'envoye' | 'echec' | null;
-  /** Le jour où son compte a été relié au dossier. */
-  activeLe: string | null;
-  derniereConnexion: string | null;
 }
 
 export interface EtatDesAcces {

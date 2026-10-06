@@ -167,10 +167,14 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
   // consulte, son contrat se renouvelle, et le dossier se réactive.
   const actif = e.status === 'active';
   // Son dernier contrat court encore (désactivé à la main) : il se réactive
-  // tel quel. Échu, c'est le nouveau contrat qui le réactive.
+  // tel quel. Échu, c'est le nouveau contrat qui le réactive ; à venir, il
+  // le réactivera le jour où il commence.
   const dernierContrat = [...e.contracts].sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
+  const jour = new Date().toISOString().slice(0, 10);
   const contratEnCours =
-    !dernierContrat?.endDate || dernierContrat.endDate >= new Date().toISOString().slice(0, 10);
+    !dernierContrat ||
+    (dernierContrat.startDate <= jour &&
+      (!dernierContrat.endDate || dernierContrat.endDate >= jour));
 
   return (
     <Page>
@@ -493,7 +497,17 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                   {e.contracts.map((c, i) => (
                     <Tr key={c.id}>
                       <Td className="font-medium text-ink-strong">
-                        {CONTRACT_LABELS[c.contractType] ?? c.contractType}
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          {CONTRACT_LABELS[c.contractType] ?? c.contractType}
+                          {c.placePrevue ? <Badge tone="orange">À venir</Badge> : null}
+                        </span>
+                        {c.placePrevue ? (
+                          <span className="block text-[11.5px] font-normal text-ink-muted">
+                            {[c.placePrevue.poste, c.placePrevue.direction]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        ) : null}
                       </Td>
                       <Td>{formatDate(c.startDate)}</Td>
                       <Td>{c.endDate ? formatDate(c.endDate) : null}</Td>
@@ -1709,11 +1723,15 @@ function NouveauContrat({
         // En composant, pas en texte : la phrase passe à la ligne sur
         // téléphone au lieu d'être coupée.
         subtitle={
-          <p className="text-xs text-ink-muted">
-            {inactif
-              ? `Le dossier de ${prenom} se réactive avec ce contrat.`
-              : 'Le contrat en cours s’arrête la veille du début du nouveau.'}
-          </p>
+          inactif || remplace ? (
+            <p className="text-xs text-ink-muted">
+              {!inactif
+                ? 'Le contrat en cours s’arrête la veille du début du nouveau.'
+                : debut > aujourdhui
+                  ? `Le dossier de ${prenom} se réactivera le ${formatDate(debut)}.`
+                  : `Le dossier de ${prenom} se réactive avec ce contrat.`}
+            </p>
+          ) : undefined
         }
         maxWidth="max-w-lg"
         footer={

@@ -29,7 +29,7 @@ import type {
 import { peut } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
 import { problem, ProblemException } from '../../common/problem';
-import { preparerInvitation } from '../portal/invitations.service';
+import { preparerInvitation } from '../portal/invitation';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import {
@@ -39,13 +39,8 @@ import {
   directionDeLUnite,
   directionDeUnite,
   equipeDe,
-  perimetre,
-  n1DOffice,
   planifierReprise,
-  rattacher,
   rattacherDOffice,
-  reprendreEquipe,
-  sortDuPerimetre,
   uniteRacine,
   validerRattachement,
   verrouillerLaChaine,
@@ -61,8 +56,9 @@ import {
   jourDeReprise,
   reprendreLActivite,
 } from './activite';
-import { dernierContrat, exigerEnActivite, finDeContratPassee } from './en-activite';
+import { exigerEnActivite, finDeContratPassee } from './en-activite';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
+import { exigerUniteVivante, muter } from './mutation';
 
 /** Rôles autorisés à lire les champs ultra-sensibles (CNI). */
 
@@ -400,7 +396,7 @@ export class PeopleService {
       await this.db.withTenant(ctxOf(user), async (tx) => {
         await verrouillerLaChaine(tx);
         if (input.assignment?.orgUnitId) {
-          await this.requireLiveOrgUnit(tx, input.assignment.orgUnitId);
+          await exigerUniteVivante(tx, input.assignment.orgUnitId);
         }
         await this.exigerUnSeulDossier(tx, input.person);
         const { nationalId, ...person } = input.person;
@@ -550,7 +546,18 @@ export class PeopleService {
         .orderBy(desc(sql`lower(${t.assignments.validity})`));
 
       const contractRows = await tx
-        .select()
+        .select({
+          id: t.contracts.id,
+          contractType: t.contracts.contractType,
+          startDate: t.contracts.startDate,
+          endDate: t.contracts.endDate,
+          trialPeriodEnd: t.contracts.trialPeriodEnd,
+          notes: t.contracts.notes,
+          poste: t.contracts.plannedPositionTitle,
+          direction: sql<string | null>`COALESCE(
+            ${directionDeLUnite(sql`${t.contracts.plannedOrgUnitId}`, 'short_name')},
+            ${directionDeLUnite(sql`${t.contracts.plannedOrgUnitId}`, 'name')})`,
+        })
         .from(t.contracts)
         .where(eq(t.contracts.employeeId, id))
         .orderBy(desc(t.contracts.startDate));
@@ -640,6 +647,7 @@ export class PeopleService {
           endDate: c.endDate,
           trialPeriodEnd: c.trialPeriodEnd,
           notes: c.notes,
+          placePrevue: c.poste ? { poste: c.poste, direction: c.direction } : null,
         })),
         portal: await this.portalStatus(tx, user.tenantId, person.id, person.userId),
       };
@@ -835,11 +843,17 @@ export class PeopleService {
    * Il dit aussi où l'agent travaille : son poste et sa direction. Dans la
    * même direction, l'unité en cours est gardée (un service reste un
    * service) ; inchangés, rien ne bouge ; changés, une nouvelle affectation
-   * part du début du contrat, sous les règles d'une mutation.
+   * part du début du contrat. Une autre direction, c'est un départ : les
+   * unités qu'il dirigeait perdent leur responsable, son équipe remonte à
+   * son propre n+1 (cf. `muter`).
    *
    * Sur un dossier inactif, il le réactive, à cette place. Parti plus de
    * trente jours, son compte a perdu son mot de passe : l'invitation à
    * revenir part d'elle-même. Le tout ou rien : un refus n'enregistre rien.
+   *
+   * Un contrat qui commence plus tard ne change rien avant son premier
+   * jour : ce jour-là seulement, sa place s'applique et le dossier se
+   * réactive.
    */
   async newContract(
     user: SessionUser,
@@ -851,7 +865,7 @@ export class PeopleService {
       resultat = await this.db.withTenant(ctxOf(user), async (tx) => {
         const dossier = await this.requireEmployee(tx, id);
         await pasSurSoi(tx, user.userId, [id], 'modifier votre propre contrat');
-        await this.requireLiveOrgUnit(tx, input.affectation.orgUnitId);
+        await exigerUniteVivante(tx, input.affectation.orgUnitId);
         const [precedent] = await tx
           .select({
             id: t.contracts.id,
@@ -881,18 +895,6 @@ export class PeopleService {
           await tx.execute(sql`
             DELETE FROM notifications WHERE dedupe_key LIKE ${`contract_deadline:${precedent.id}%`}`);
         }
-        const contractId = uuidv7();
-        await tx.insert(t.contracts).values({
-          id: contractId,
-          tenantId: user.tenantId,
-          employeeId: id,
-          contractType: input.contractType,
-          startDate: input.startDate,
-          endDate: input.endDate ?? null,
-          trialPeriodEnd: input.trialPeriodEnd ?? null,
-          notes: input.notes ?? null,
-        });
-
         // Où il travaille sous ce contrat.
         const [derniere] = await tx
           .select({
@@ -914,6 +916,42 @@ export class PeopleService {
           positionTitle: input.affectation.positionTitle,
           orgUnitId: memeDirection ? derniere!.unite : input.affectation.orgUnitId,
         };
+
+        // Un contrat qui commence plus tard ne change rien avant son
+        // premier jour : il garde sa place, qui s'applique ce jour-là
+        // (cf. `appliquerLesContratsQuiCommencent`). Entre la fin du
+        // précédent et ce jour, l'agent est hors contrat.
+        const { rows: quand } = await tx.execute<{ aVenir: boolean }>(
+          sql`SELECT ${input.startDate}::date > CURRENT_DATE AS "aVenir"`,
+        );
+        const aVenir = Boolean(quand[0]?.aVenir);
+        const contractId = uuidv7();
+        await tx.insert(t.contracts).values({
+          id: contractId,
+          tenantId: user.tenantId,
+          employeeId: id,
+          contractType: input.contractType,
+          startDate: input.startDate,
+          endDate: input.endDate ?? null,
+          trialPeriodEnd: input.trialPeriodEnd ?? null,
+          notes: input.notes ?? null,
+          plannedPositionTitle: aVenir ? cible.positionTitle : null,
+          plannedOrgUnitId: aVenir ? cible.orgUnitId : null,
+        });
+        if (aVenir) {
+          // Le directeur général reste à la Direction Générale : refusé
+          // tout de suite, plutôt que le jour venu.
+          const racine = await uniteRacine(tx);
+          if (racine?.managerId === id && directionVisee?.id !== racine.id) {
+            problem(
+              422,
+              'people.dg_quitte_la_dg',
+              'Le directeur général reste affecté à la Direction Générale',
+              'Pour lui confier une autre direction, désignez d’abord son successeur à la tête de la Direction Générale.',
+            );
+          }
+          return { id: contractId, rouvert: false, invitation: null, changements: [], aRevoir: [] };
+        }
 
         if (dossier.status === 'archived') {
           // Une autre direction : son ancien n+1 n'en est plus. Le responsable
@@ -950,9 +988,16 @@ export class PeopleService {
 
         const inchangee =
           derniere && derniere.poste === cible.positionTitle && derniere.unite === cible.orgUnitId;
+        // Une autre direction : il part, son équipe remonte d'un cran.
         const c = inchangee
           ? { changements: [], aRevoir: [] }
-          : await this.affecter(tx, user, id, { ...cible, startDate: input.startDate });
+          : await muter(
+              tx,
+              user.tenantId,
+              id,
+              { ...cible, startDate: input.startDate },
+              { parContrat: true },
+            );
         return { id: contractId, rouvert: false, invitation: null, ...c };
       });
     } catch (err) {
@@ -1035,6 +1080,15 @@ export class PeopleService {
           updatedAt: new Date(),
         })
         .where(eq(t.contracts.id, contratId));
+      // Reporté à plus tard, il prendra sa place ce jour-là : celle où
+      // l'agent travaille.
+      await tx.execute(sql`
+        UPDATE contracts c
+           SET planned_position_title = a.position_title, planned_org_unit_id = a.org_unit_id
+          FROM (SELECT position_title, org_unit_id FROM assignments
+                 WHERE employee_id = ${id} ORDER BY lower(validity) DESC LIMIT 1) a
+         WHERE c.id = ${contratId} AND c.start_date > CURRENT_DATE
+           AND c.planned_position_title IS NULL`);
       // Les alertes d'échéance parlaient de l'ancienne date de fin.
       await tx.execute(sql`
         DELETE FROM notifications
@@ -1178,27 +1232,6 @@ export class PeopleService {
   }
 
   /**
-   * Une affectation ne peut viser qu'une unité VIVANTE. Seule la clé étrangère
-   * protégeait : elle accepte une unité dissoute, ce qui annulait la garantie
-   * de la dissolution (les membres réaffectés y revenaient aussitôt).
-   */
-  private async requireLiveOrgUnit(tx: Tx, orgUnitId: string): Promise<void> {
-    const [unit] = await tx
-      .select({ id: t.orgUnits.id })
-      .from(t.orgUnits)
-      .where(and(eq(t.orgUnits.id, orgUnitId), isNull(t.orgUnits.deletedAt)))
-      .limit(1);
-    if (!unit) {
-      problem(
-        422,
-        'people.org_unit_not_found',
-        'Cette unité n’existe pas ou a été dissoute',
-        'Choisissez une unité de l’organigramme actuel.',
-      );
-    }
-  }
-
-  /**
    * Nouvelle affectation effective-dated (ADR-0003) : clôt l'affectation
    * courante à startDate (borne exclusive) et ouvre la nouvelle [startDate,).
    * Jamais d'UPDATE destructif : l'historique reste intégralement lisible.
@@ -1234,217 +1267,7 @@ export class PeopleService {
     input: NewAssignmentInput,
   ): Promise<ConsequencesHierarchie> {
     await pasSurSoi(tx, user.userId, [id], 'changer votre propre affectation');
-    await exigerEnActivite(tx, id, 'recevoir d’affectation');
-    await verrouillerLaChaine(tx);
-    const [dossier] = await tx
-      .select({ managerId: t.employees.managerEmployeeId })
-      .from(t.employees)
-      .where(eq(t.employees.id, id))
-      .limit(1);
-    if (!dossier) problem(404, 'people.employee_not_found', 'Employé introuvable');
-    if (input.orgUnitId) await this.requireLiveOrgUnit(tx, input.orgUnitId);
-    const avant = await lireLaChaine(tx);
-    const journal: ChangementRattachement[] = [];
-
-    // 1. Le directeur général siège à la Direction Générale : il n'en
-    // sort pas, sans quoi ses collaborateurs directs relèveraient d'une
-    // autre direction que la leur.
-    const racine = await uniteRacine(tx);
-    const directionVisee = await directionDeUnite(tx, input.orgUnitId ?? null);
-    if (racine?.managerId === id && directionVisee?.id !== racine.id) {
-      problem(
-        422,
-        'people.dg_quitte_la_dg',
-        'Le directeur général reste affecté à la Direction Générale',
-        'Pour lui confier une autre direction, désignez d’abord son successeur à la tête de la Direction Générale.',
-      );
-    }
-
-    // 2. Un responsable ne quitte pas le périmètre de l'unité qu'il
-    // dirige sans qu'un successeur soit désigné : sinon l'organigramme
-    // affiche un chef parti ailleurs. On refuse plutôt que de le retirer
-    // en douce : la RH décide qui reprend l'unité.
-    const [dirigee] = await tx
-      .select({ id: t.orgUnits.id, name: t.orgUnits.name })
-      .from(t.orgUnits)
-      .where(and(eq(t.orgUnits.managerEmployeeId, id), isNull(t.orgUnits.deletedAt)))
-      .limit(1);
-    if (dirigee) {
-      const dedans = input.orgUnitId
-        ? await tx.execute(sql`
-            ${perimetre(dirigee.id)}
-            SELECT 1 FROM perimetre WHERE id = ${input.orgUnitId} LIMIT 1`)
-        : { rows: [] };
-      if (dedans.rows.length === 0) {
-        problem(
-          422,
-          'people.manager_cannot_leave_unit',
-          `Cet employé dirige « ${dirigee.name} »`,
-          'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
-        );
-      }
-    }
-
-    // 3. Le n+1 n'est pas daté : il vaut dès aujourd'hui. Une mutation
-    // PROGRAMMÉE vers une autre direction laisserait donc la chaîne
-    // fausse jusqu'à la date, ou fausse après : selon qu'on change le
-    // n+1 maintenant ou pas. Tant qu'elle touche à la hiérarchie, elle
-    // s'enregistre le jour où elle prend effet.
-    const equipe = await equipeDe(tx, id);
-    const directionActuelle = await directionDeEmploye(tx, id);
-    const changeDeDirection = directionVisee?.id !== directionActuelle?.id;
-    const [{ futur }] = (
-      await tx.execute<{ futur: boolean }>(
-        sql`SELECT ${input.startDate}::date > CURRENT_DATE AS futur`,
-      )
-    ).rows as [{ futur: boolean }];
-    if (
-      futur &&
-      changeDeDirection &&
-      (dossier.managerId || input.managerEmployeeId || equipe.length > 0)
-    ) {
-      problem(
-        422,
-        'people.mutation_programmee_hors_direction',
-        'Une mutation vers une autre direction s’enregistre le jour où elle prend effet',
-        'Le n+1 vaut dès aujourd’hui : programmée, la mutation laisserait la chaîne hiérarchique fausse jusqu’à sa date. Enregistrez-la ce jour-là, avec son nouveau n+1.',
-      );
-    }
-
-    // Ce qui tenait AVANT la mutation doit tenir APRÈS. Une anomalie
-    // ancienne ne bloque pas une mutation qui n'y est pour rien : le
-    // contrôle de la chaîne continue de la signaler.
-    const tenait = async (agent: string, n1: string) => {
-      try {
-        await validerRattachement(tx, agent, n1, await directionDeEmploye(tx, agent));
-        return true;
-      } catch (err) {
-        if (err instanceof ProblemException) return false;
-        throw err;
-      }
-    };
-    const equipeEnRegle = new Set<string>();
-    for (const a of equipe) if (await tenait(a.id, id)) equipeEnRegle.add(a.id);
-    const n1Garde = input.managerEmployeeId ? null : dossier.managerId;
-    const n1GardeEnRegle = n1Garde ? await tenait(id, n1Garde) : false;
-
-    // 4. L'équipe, confiée si l'on en désigne le repreneur.
-    if (input.repreneurEquipeId) {
-      await reprendreEquipe(tx, journal, id, input.repreneurEquipeId);
-    }
-
-    // L'écriture : on clôt l'affectation courante, on ouvre la neuve.
-    const [current] = await tx
-      .select({
-        id: t.assignments.id,
-        validFrom: sql<string>`lower(${t.assignments.validity})::text`,
-      })
-      .from(t.assignments)
-      .where(and(eq(t.assignments.employeeId, id), sql`upper_inf(${t.assignments.validity})`))
-      .limit(1);
-    // Une affectation qui commencerait après la fin de son contrat ne
-    // prendrait jamais effet.
-    const { rows: finContrat } = await tx.execute<{ fin: string }>(sql`
-      SELECT c.end_date::text AS fin FROM contracts c
-       WHERE c.id = ${dernierContrat(id)} AND c.end_date IS NOT NULL
-         AND c.end_date < ${input.startDate}::date`);
-    if (finContrat[0]) {
-      problem(
-        422,
-        'people.affectation_apres_contrat',
-        'L’affectation commencerait après la fin de son contrat',
-        `Son contrat prend fin le ${frDate(finContrat[0].fin)}. Enregistrez d’abord son nouveau contrat.`,
-      );
-    }
-    if (current) {
-      if (input.startDate <= current.validFrom) {
-        problem(
-          422,
-          'people.assignment_start_too_early',
-          "La nouvelle affectation doit démarrer après le début de l'affectation courante",
-          `Affectation courante depuis le ${current.validFrom}`,
-        );
-      }
-      await tx
-        .update(t.assignments)
-        .set({
-          validity: sql`daterange(lower(${t.assignments.validity}), ${input.startDate}::date)`,
-        })
-        .where(eq(t.assignments.id, current.id));
-    }
-    await tx.insert(t.assignments).values({
-      id: uuidv7(),
-      tenantId: user.tenantId,
-      employeeId: id,
-      orgUnitId: input.orgUnitId ?? null,
-      positionTitle: input.positionTitle,
-      validity: `[${input.startDate},)`,
-    });
-
-    // Relu sur l'état écrit. Le responsable d'unité, d'abord : une
-    // affectation déjà programmée ailleurs le ferait sortir plus tard.
-    if (dirigee && (await sortDuPerimetre(tx, id, dirigee.id))) {
-      problem(
-        422,
-        'people.manager_cannot_leave_unit',
-        `Cet employé dirige « ${dirigee.name} »`,
-        'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
-      );
-    }
-
-    // L'équipe qui reste doit pouvoir le suivre ; sinon, un repreneur.
-    const restants = (await equipeDe(tx, id)).filter((a) => equipeEnRegle.has(a.id));
-    for (const a of restants) {
-      if (!(await tenait(a.id, id))) {
-        problem(
-          422,
-          'people.equipe_sans_repreneur',
-          `Cet agent encadre ${restants.length > 1 ? `${restants.length} agents` : 'un agent'}`,
-          'Ils restent dans leur direction : choisissez qui reprend son équipe, dans la même opération.',
-        );
-      }
-    }
-
-    // 5. Son n+1 : le nouveau, désigné dans le même geste : changer de
-    // direction rend l'ancien caduc, et le corriger avant serait refusé
-    // (il ne serait pas encore de la direction de l'agent), ou celui
-    // qu'il garde, s'il tient toujours. Sinon, le responsable de sa
-    // nouvelle direction le reprend d'office, s'il y en a un.
-    if (input.managerEmployeeId) {
-      await validerRattachement(tx, id, input.managerEmployeeId, await directionDeEmploye(tx, id));
-      await tx
-        .update(t.employees)
-        .set({ managerEmployeeId: input.managerEmployeeId, updatedAt: new Date() })
-        .where(eq(t.employees.id, id));
-    } else if (n1Garde && n1GardeEnRegle && !(await tenait(id, n1Garde))) {
-      const direction = await directionDeEmploye(tx, id);
-      if (!direction) {
-        problem(
-          422,
-          'people.mutation_sans_direction',
-          'Un agent rattaché à un n+1 reste affecté à une direction',
-          'Choisissez une unité rattachée à une direction, ou retirez d’abord son n+1.',
-        );
-      }
-      const tete = await n1DOffice(tx, id);
-      if (!tete || !(await tenait(id, tete.id))) {
-        problem(
-          422,
-          'people.responsable_hors_nouvelle_direction',
-          'Le responsable actuel n’appartient pas à la nouvelle direction',
-          `L’agent rejoint « ${direction.nom} » : désignez son nouveau responsable dans la même opération.`,
-        );
-      }
-      await rattacher(tx, journal, id, tete.id, tete.motif);
-    } else if (!dossier.managerId && !futur) {
-      await rattacherDOffice(tx, journal, id);
-    }
-
-    await this.faireSuivre(tx, user.tenantId, journal);
-    return {
-      changements: journal,
-      aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
-    };
+    return muter(tx, user.tenantId, id, input);
   }
 
   /** Historique d'audit du dossier : qui a changé quoi, quand (ADR-0008). */
@@ -1601,12 +1424,11 @@ export class PeopleService {
       // Son dernier jour, celui qu'on donne, ou aujourd'hui : sa dernière
       // affectation s'arrête là, ses congés validés au-delà n'auront pas lieu.
       for (const c of retenus) {
-        await arreterLActivite(
-          tx,
-          c.id,
-          le ? sql`${le}::date` : sql`CURRENT_DATE`,
-          input.motif ?? null,
-        );
+        const fin = le ? sql`${le}::date` : sql`CURRENT_DATE`;
+        await arreterLActivite(tx, c.id, fin, input.motif ?? null);
+        // Un contrat qui devait commencer après son départ n'aura pas lieu.
+        await tx.execute(sql`
+          DELETE FROM contracts WHERE employee_id = ${c.id} AND start_date > ${fin}`);
       }
       // Qui part ne prend plus de congé : ses demandes encore en attente
       // sont annulées, et leurs appels à viser retirés des boîtes.
@@ -1840,6 +1662,15 @@ export class PeopleService {
     // Rouvrir le dossier d'un contrat arrivé à terme : il repasserait aussitôt
     // dans les inactifs. Le nouveau contrat d'abord.
     if (geste === 'reouverture') {
+      // Un contrat qui commence plus tard réactive le dossier ce jour-là,
+      // pas avant.
+      const { rows: prevu } = await tx.execute<{ debut: string }>(sql`
+        SELECT start_date::text AS debut FROM contracts
+         WHERE employee_id = ${cible.id} AND planned_position_title IS NOT NULL
+         ORDER BY start_date LIMIT 1`);
+      if (prevu[0]) {
+        return `Le contrat de ${cible.prenom} commence le ${frDate(prevu[0].debut)} : son dossier se réactivera ce jour-là.`;
+      }
       const fin = await finDeContratPassee(tx, cible.id);
       if (fin) {
         return `Le contrat de ${cible.prenom} a pris fin le ${frDate(fin)}. Enregistrez son nouveau contrat avant de réactiver son compte.`;

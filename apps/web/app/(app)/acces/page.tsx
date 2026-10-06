@@ -32,7 +32,6 @@ import {
   useSelection,
 } from '../../../components/tableau';
 import { api, ApiError } from '../../../lib/api';
-import { formatDate } from '../../../lib/hooks';
 import { compte } from '../../../lib/mots';
 
 /*
@@ -76,22 +75,6 @@ function badgeDe(a: AccesAgent): { ton: 'teal' | 'orange' | 'rouge' | 'gris'; mo
   }
 }
 
-/** Ce qu'on sait de plus, en une ligne. */
-function detailDe(a: AccesAgent): string | null {
-  if (a.etat === 'actif') {
-    return a.derniereConnexion
-      ? `Dernière connexion le ${formatDate(a.derniereConnexion)}`
-      : a.activeLe
-        ? `Activé le ${formatDate(a.activeLe)}`
-        : null;
-  }
-  if (a.etat === 'invite' && a.inviteLe && a.expireLe) {
-    return `Envoyée le ${formatDate(a.inviteLe)} · valable jusqu’au ${formatDate(a.expireLe)}`;
-  }
-  if (a.etat === 'expire' && a.expireLe) return `Expirée le ${formatDate(a.expireLe)}`;
-  return null;
-}
-
 /** La recherche ignore les accents et la casse : « Ndeye » trouve « Ndèye ». */
 const plat = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -127,7 +110,7 @@ export default function GestionDesAccesPage() {
   }, [agents, filtre, recherche]);
 
   // Ne se cochent que ceux qu'une invitation peut atteindre : un compte qui
-  // n'en a pas besoin, ou sans adresse, n'a rien à recevoir.
+  // n'en a pas besoin, ou sans adresse professionnelle, n'a rien à recevoir.
   const invitable = (a: AccesAgent) =>
     parCourriel && a.adresse !== null && a.etat !== 'actif' && a.etat !== 'coupe';
   const invitables = useMemo(() => lignes.filter(invitable), [lignes, parCourriel]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -266,16 +249,14 @@ export default function GestionDesAccesPage() {
                 {parCourriel ? <ThCases sel={sel} /> : null}
                 <Th>Agent</Th>
                 <Th className="hidden md:table-cell">Direction</Th>
-                <Th className="hidden lg:table-cell">Adresse</Th>
+                <Th className="hidden lg:table-cell">Adresse professionnelle</Th>
                 <Th>État</Th>
-                <Th className="hidden md:table-cell" />
                 <Th className="hidden w-0 md:table-cell" />
               </tr>
             </THead>
             <TBody>
               {lignes.map((a) => {
                 const b = badgeDe(a);
-                const detail = detailDe(a);
                 const peutInviter = invitable(a);
                 return (
                   <Tr key={a.id} className={cn(sel.coche(a.id) && LIGNE_COCHEE)}>
@@ -301,13 +282,7 @@ export default function GestionDesAccesPage() {
                       {a.unite ?? ''}
                     </Td>
                     <Td className="hidden text-[12.5px] lg:table-cell">
-                      {a.adresse ? (
-                        <span className={a.adresseProfessionnelle ? 'text-ink' : 'text-ink-muted'}>
-                          {a.adresse}
-                        </span>
-                      ) : (
-                        <span className="text-ink-muted">Sans adresse</span>
-                      )}
+                      {a.adresse ?? <span className="text-ink-muted">Sans adresse pro</span>}
                     </Td>
                     <Td className="whitespace-nowrap">
                       <Badge tone={b.ton}>{b.mot}</Badge>
@@ -315,7 +290,6 @@ export default function GestionDesAccesPage() {
                           dernière colonne sortirait de l'écran. */}
                       {peutInviter ? <div className="mt-1.5 md:hidden">{bouton(a)}</div> : null}
                     </Td>
-                    <Td className="hidden text-[12px] text-ink-muted md:table-cell">{detail}</Td>
                     <Td className="hidden text-right whitespace-nowrap md:table-cell">
                       {peutInviter ? bouton(a) : null}
                     </Td>

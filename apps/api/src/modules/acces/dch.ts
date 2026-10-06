@@ -134,6 +134,20 @@ export async function membreDCH(
   return direction?.id === dch.uniteId ? v : 'parti';
 }
 
+/** Hors contrat, son contrat à venir le ramène à la DCH. */
+async function revientALaDCH(
+  tx: Tx,
+  dch: DirectionDuPersonnel,
+  employeeId: string,
+): Promise<boolean> {
+  const { rows } = await tx.execute<{ oui: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM contracts c
+       WHERE c.employee_id = ${employeeId} AND c.planned_position_title IS NOT NULL
+         AND ${directionDeLUnite(sql`c.planned_org_unit_id`, 'id')} = ${dch.uniteId}) AS oui`);
+  return Boolean(rows[0]?.oui);
+}
+
 /**
  * Un agent de la DCH, sous contrat — qu'il ait activé son compte ou non :
  * c'est à lui que les tâches se délèguent, et sa délégation tient. Il ne
@@ -433,7 +447,8 @@ export async function nomDe(tx: Tx, employeeId: string): Promise<string> {
  * Un membre qui n'est plus de la DCH — muté, parti — perd ses habilitations :
  * elles se closent, et le directeur l'apprend. Ce qu'il traitait revient au
  * directeur. Un compte pas encore activé ne les fait pas tomber : elles
- * l'attendent.
+ * l'attendent. Celles d'un membre entre deux contrats, que le suivant ramène
+ * à la DCH, l'attendent aussi : il les retrouve le jour où il commence.
  */
 export async function verifierLesHabilitations(tx: Tx, tenantId: string): Promise<void> {
   const { rows } = await tx.execute<{ employee_id: string }>(sql`
@@ -442,6 +457,7 @@ export async function verifierLesHabilitations(tx: Tx, tenantId: string): Promis
   const dch = await directionDuPersonnel(tx);
   for (const r of rows) {
     if (dch && (await estDeLaDCH(tx, dch, r.employee_id))) continue;
+    if (dch && (await revientALaDCH(tx, dch, r.employee_id))) continue;
     await tx.execute(sql`
       UPDATE habilitations SET fin_at = now(), fin_motif = 'partie'
        WHERE employee_id = ${r.employee_id} AND fin_at IS NULL`);
