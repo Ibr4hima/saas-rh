@@ -196,6 +196,9 @@ export const contracts = pgTable('contracts', {
   /** Il a arrêté le précédent la veille de son début : sa fin d'origine, pour l'annuler (migration 0086). */
   previousEndReplaced: boolean('previous_end_replaced').notNull().default(false),
   previousEndDate: date('previous_end_date'),
+  /** Un retour : les unités et l'équipe qu'il reprend le jour venu, au choix de la RH (migration 0087). */
+  resumeUnitIds: uuid('resume_unit_ids').array().notNull().default([]),
+  resumeTeam: boolean('resume_team').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

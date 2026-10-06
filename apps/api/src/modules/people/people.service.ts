@@ -492,6 +492,42 @@ export class PeopleService {
     }
   }
 
+  /**
+   * Ce qu'il pourrait reprendre à son retour, au choix de la RH (cf.
+   * `EmployeeDetail.responsabilites`).
+   */
+  private async responsabilites(
+    tx: Tx,
+    employeeId: string,
+    status: string,
+    team: { id: string }[],
+  ): Promise<EmployeeDetail['responsabilites']> {
+    const unite = (o: string) => sql`json_build_object(
+      'id', ${sql.raw(o)}.id, 'nom', ${sql.raw(o)}.name,
+      'directionId', ${directionDeLUnite(sql.raw(`${o}.id`), 'id')})`;
+    if (status === 'active') {
+      const { rows } = await tx.execute<{ u: EmployeeDetail['responsabilites']['unites'][number] }>(
+        sql`SELECT ${unite('o')} AS u FROM org_units o
+             WHERE o.manager_employee_id = ${employeeId} AND o.deleted_at IS NULL
+             ORDER BY o.name`,
+      );
+      return { unites: rows.map((r) => r.u), equipe: team.length };
+    }
+    const { rows } = await tx.execute<{
+      unites: EmployeeDetail['responsabilites']['unites'] | null;
+      equipe: number;
+    }>(sql`
+      SELECT (SELECT json_agg(${unite('o')} ORDER BY o.name) FROM org_units o
+               WHERE o.id = ANY(p.headed_unit_ids) AND o.deleted_at IS NULL
+                 AND o.manager_employee_id IS NULL) AS unites,
+             (SELECT count(*)::int FROM jsonb_to_recordset(p.team_reassignments) AS m(id uuid, n1 uuid)
+                JOIN employees e ON e.id = m.id AND e.status = 'active'
+                                AND e.manager_employee_id = m.n1) AS equipe
+        FROM periodes_inactivite p
+       WHERE p.employee_id = ${employeeId} AND p.reprise_le IS NULL`);
+    return { unites: rows[0]?.unites ?? [], equipe: rows[0]?.equipe ?? 0 };
+  }
+
   /** Son compte a perdu son mot de passe (parti plus de trente jours). */
   private async compteFerme(tx: Tx, employeeId: string): Promise<boolean> {
     const { rows } = await tx.execute<{ ferme: boolean }>(sql`
@@ -573,6 +609,7 @@ export class PeopleService {
             .limit(1)
         : [];
       const team = await equipeDe(tx, employee.id);
+      const responsabilites = await this.responsabilites(tx, employee.id, employee.status, team);
       const { rows: interruptions } = await tx.execute<{
         dernierJour: string;
         repriseLe: string;
@@ -602,6 +639,7 @@ export class PeopleService {
         finActivite: employee.finActivite ?? null,
         interruptions,
         repriseParDefaut,
+        responsabilites,
         hiredOn: employee.hiredOn,
         workEmail: employee.workEmail,
         workPhone: employee.workPhone,
@@ -946,6 +984,9 @@ export class PeopleService {
           plannedOrgUnitId: aVenir ? cible.orgUnitId : null,
           previousEndReplaced: remplaceLaFin,
           previousEndDate: remplaceLaFin ? (precedent?.endDate ?? null) : null,
+          // Ce qu'il reprendra le jour venu, s'il revient d'une interruption.
+          resumeUnitIds: aVenir ? (input.reprendre?.unites ?? []) : [],
+          resumeTeam: aVenir ? (input.reprendre?.equipe ?? false) : false,
         });
         if (aVenir) {
           // Le directeur général reste à la Direction Générale : refusé
@@ -974,7 +1015,11 @@ export class PeopleService {
           const r = await this.archiverOuRouvrir(
             tx,
             user,
-            { ids: [id], archived: false },
+            {
+              ids: [id],
+              archived: false,
+              ...(input.reprendre ? { reprendre: { [id]: input.reprendre } } : {}),
+            },
             new Map([[id, cible]]),
           );
           if (r.done === 0) {
@@ -1478,10 +1523,20 @@ export class PeopleService {
     // Réactivé sans n+1, il relève d'office du responsable de sa direction.
     const invitations: NonNullable<EmployeeBatchResult['invitations']> = [];
     if (!input.archived) {
-      // Il retrouve ce que son départ a défait et que personne n'a refait.
+      // Il reprend ce que la RH a choisi, parmi ce que son départ a défait.
       for (const c of retenus) {
         const laisse = laisses.get(c.id);
-        if (laisse) await retrouverSaPlace(tx, journal, c.id, laisse);
+        if (!laisse) continue;
+        const choix = input.reprendre?.[c.id] ?? { unites: [], equipe: false };
+        const [refusee] = await retrouverSaPlace(tx, journal, c.id, laisse, choix);
+        if (refusee) {
+          problem(
+            422,
+            'people.responsabilite_non_rendue',
+            `${c.prenom} ne peut pas redevenir responsable de « ${refusee.nom} »`,
+            'Un responsable a été nommé depuis, ou sa nouvelle place est hors de cette unité.',
+          );
+        }
       }
       for (const c of retenus) await rattacherDOffice(tx, journal, c.id);
       // Parti plus de trente jours, il revient sans mot de passe : son

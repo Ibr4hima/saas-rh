@@ -1,5 +1,10 @@
 import { sql, type SQL } from 'drizzle-orm';
-import type { ChangementRattachement, ContractType, MotifChangement } from '@teranga/contracts';
+import type {
+  ChangementRattachement,
+  ContractType,
+  MotifChangement,
+  RepriseDesResponsabilites,
+} from '@teranga/contracts';
 import { ProblemException } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
 import { administrateursEnFonction, alerterLaDCH } from '../acces/dch';
@@ -209,26 +214,39 @@ export type CeQuIlALaisse = {
 };
 
 /**
- * Revenu, il retrouve ce que son départ a défait et que personne n'a refait
- * depuis : la tête des unités restées sans responsable, s'il travaille dans
- * leur périmètre (avec ce que la règle impose à un directeur ou au DG), et
- * les membres de son équipe encore là où son départ les avait mis. Un
- * successeur nommé à la tête de son unité garde aussi l'équipe. À appeler
- * une fois le dossier redevenu actif.
+ * Revenu, il reprend ce que la RH a choisi, parmi ce que son départ a
+ * défait : la tête des unités choisies, si elles sont restées sans
+ * responsable et qu'il travaille dans leur périmètre (avec ce que la règle
+ * impose à un directeur ou au DG) ; avec elles, son équipe, pour ceux qui
+ * sont encore là où son départ les avait mis. Sans unité à diriger, son
+ * équipe ne revient que si la RH l'a choisi. À appeler une fois le dossier
+ * redevenu actif. Rend les unités choisies qu'il n'a pas pu reprendre.
  */
 export async function retrouverSaPlace(
   tx: Tx,
   journal: ChangementRattachement[],
   employeeId: string,
   laisse: CeQuIlALaisse,
-): Promise<void> {
+  choix: RepriseDesResponsabilites,
+): Promise<{ id: string; nom: string }[]> {
+  const refusees: { id: string; nom: string }[] = [];
   let rendues = 0;
-  for (const uniteId of laisse.unites) {
-    const { rows } = await tx.execute<{ direction: boolean; sommet: boolean }>(sql`
-      SELECT unit_type = 'direction' AS direction, id = ${SOMMET} AS sommet FROM org_units
-       WHERE id = ${uniteId} AND deleted_at IS NULL AND manager_employee_id IS NULL`);
+  for (const uniteId of laisse.unites.filter((u) => choix.unites.includes(u))) {
+    const { rows } = await tx.execute<{
+      nom: string;
+      libre: boolean;
+      direction: boolean;
+      sommet: boolean;
+    }>(sql`
+      SELECT name AS nom, manager_employee_id IS NULL AS libre,
+             unit_type = 'direction' AS direction, id = ${SOMMET} AS sommet
+        FROM org_units WHERE id = ${uniteId} AND deleted_at IS NULL`);
     const u = rows[0];
-    if (!u || (await sortDuPerimetre(tx, employeeId, uniteId))) continue;
+    if (!u) continue;
+    if (!u.libre || (await sortDuPerimetre(tx, employeeId, uniteId))) {
+      refusees.push({ id: uniteId, nom: u.nom });
+      continue;
+    }
     await tx.execute(sql`
       UPDATE org_units SET manager_employee_id = ${employeeId}, updated_at = now()
        WHERE id = ${uniteId}`);
@@ -236,7 +254,8 @@ export async function retrouverSaPlace(
     if (u.sommet) await apresNouveauDG(tx, journal, null, employeeId);
     else if (u.direction) await apresNouveauDirecteur(tx, journal, uniteId, null, employeeId);
   }
-  if (laisse.unites.length > 0 && rendues === 0) return;
+  const equipe = laisse.unites.length > 0 ? rendues > 0 : choix.equipe;
+  if (!equipe) return refusees;
   for (const m of laisse.equipe) {
     const { rows } = await tx.execute<{ id: string }>(sql`
       SELECT id FROM employees
@@ -250,6 +269,7 @@ export async function retrouverSaPlace(
     }
     await rattacher(tx, journal, m.id, employeeId, 'retour_du_responsable');
   }
+  return refusees;
 }
 
 /**
@@ -294,12 +314,15 @@ async function appliquerLesContratsQuiCommencent(tx: Tx, tenantId: string): Prom
     fini: boolean;
     poste: string;
     unite: string | null;
+    reprendUnites: string[];
+    reprendEquipe: boolean;
     status: string;
     finActivite: string | null;
   }>(sql`
     SELECT c.id AS contrat, c.employee_id AS id, c.start_date::text AS debut,
            COALESCE(c.end_date < CURRENT_DATE, false) AS fini,
            c.planned_position_title AS poste, c.planned_org_unit_id AS unite,
+           c.resume_unit_ids AS "reprendUnites", c.resume_team AS "reprendEquipe",
            e.status, e.fin_activite::text AS "finActivite"
       FROM contracts c JOIN employees e ON e.id = c.employee_id
      WHERE c.planned_position_title IS NOT NULL AND c.start_date <= CURRENT_DATE
@@ -348,7 +371,11 @@ async function appliquerLesContratsQuiCommencent(tx: Tx, tenantId: string): Prom
       UPDATE employees
          SET status = 'active', archived_at = NULL, inactivite_motif = NULL, updated_at = now()
        WHERE id = ${c.id}`);
-    await retrouverSaPlace(tx, journal, c.id, laisse);
+    // Ce que la RH a choisi qu'il reprenne, à l'enregistrement du contrat.
+    await retrouverSaPlace(tx, journal, c.id, laisse, {
+      unites: c.reprendUnites,
+      equipe: c.reprendEquipe,
+    });
     await rattacherDOffice(tx, journal, c.id);
     const { rows: compte } = await tx.execute<{ ferme: boolean }>(sql`
       SELECT u.password_hash IS NULL AS ferme

@@ -10,12 +10,14 @@ import type {
   EmployeeDetail,
   EmployeeHistoryEntry,
   InviteResult,
+  RepriseDesResponsabilites,
 } from '@teranga/contracts';
 import { peut, titreDeLaFiche } from '@teranga/contracts';
 import {
   Badge,
   Button,
   Card,
+  Checkbox,
   cn,
   CardContent,
   CardHeader,
@@ -32,6 +34,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
+import { compte } from '../lib/mots';
 import { CarteCertificatsAgent } from './academy-certificat';
 import { CarteEvaluationsAgent } from './evaluation-objectifs';
 import { EmployeeDocumentsCard } from './employee-documents-card';
@@ -472,6 +475,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                   contrats={e.contracts}
                   assignments={e.assignments}
                   inactif={!actif}
+                  responsabilites={e.responsabilites}
                 />
               ) : null}
             </CardHeader>
@@ -1617,6 +1621,67 @@ function lendemain(iso: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+const SANS_REPRISE: RepriseDesResponsabilites = { unites: [], equipe: false };
+const reprendQuelqueChose = (r: RepriseDesResponsabilites) => r.unites.length > 0 || r.equipe;
+
+/**
+ * Ce qu'il reprend à son retour : la RH le décide, rien d'office. Les unités
+ * qu'il dirigeait, restées sans responsable ; son équipe, s'il n'en
+ * dirigeait aucune (sinon, elle suit l'unité).
+ */
+function ChoixDuRetour({
+  responsabilites,
+  directionId,
+  valeur,
+  onChange,
+}: {
+  responsabilites: EmployeeDetail['responsabilites'];
+  /** La direction où il revient : seules ses unités s'y proposent. */
+  directionId?: string;
+  valeur: RepriseDesResponsabilites;
+  onChange: (v: RepriseDesResponsabilites) => void;
+}) {
+  const unites = responsabilites.unites.filter(
+    (u) => !directionId || u.directionId === directionId,
+  );
+  const equipe = responsabilites.unites.length === 0 && responsabilites.equipe > 0;
+  if (unites.length === 0 && !equipe) return null;
+  return (
+    <Field label="À son retour">
+      <div className="flex flex-col gap-2">
+        {unites.map((u) => (
+          <label
+            key={u.id}
+            className="flex cursor-pointer items-center gap-2.5 text-[13px] text-ink"
+          >
+            <Checkbox
+              checked={valeur.unites.includes(u.id)}
+              onChange={(ev) =>
+                onChange({
+                  ...valeur,
+                  unites: ev.target.checked
+                    ? [...valeur.unites, u.id]
+                    : valeur.unites.filter((x) => x !== u.id),
+                })
+              }
+            />
+            Redevient responsable de « {u.nom} »
+          </label>
+        ))}
+        {equipe ? (
+          <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-ink">
+            <Checkbox
+              checked={valeur.equipe}
+              onChange={(ev) => onChange({ ...valeur, equipe: ev.target.checked })}
+            />
+            Reprend son équipe ({compte(responsabilites.equipe, 'agent', 'agents')})
+          </label>
+        ) : null}
+      </div>
+    </Field>
+  );
+}
+
 /**
  * Réactiver le dossier, à la place du stylo : la fiche d'un inactif ne se
  * modifie pas. La reprise se date : par défaut le début du contrat
@@ -1636,12 +1701,18 @@ function BoutonReactiver({
   const premier = e.finActivite ? lendemain(e.finActivite) : null;
   const parDefaut = e.repriseParDefaut ?? jour;
   const [le, setLe] = useState(parDefaut);
+  const [reprise, setReprise] = useState<RepriseDesResponsabilites>(SANS_REPRISE);
   const reactiver = useMutation({
     mutationFn: () =>
       api<EmployeeBatchResult>('/employees/archive', {
         method: 'POST',
         // La date proposée est celle du serveur : il ne la reçoit que changée.
-        body: { ids: [e.id], archived: false, ...(le !== parDefaut ? { le } : {}) },
+        body: {
+          ids: [e.id],
+          archived: false,
+          ...(le !== parDefaut ? { le } : {}),
+          ...(reprendQuelqueChose(reprise) ? { reprendre: { [e.id]: reprise } } : {}),
+        },
       }),
     onSuccess: async (r) => {
       setOuvert(false);
@@ -1666,6 +1737,7 @@ function BoutonReactiver({
         className="shrink-0"
         onClick={() => {
           setLe(parDefaut);
+          setReprise(SANS_REPRISE);
           setOuvert(true);
         }}
       >
@@ -1704,6 +1776,13 @@ function BoutonReactiver({
             onChange={(ev) => setLe(ev.target.value)}
           />
         </Field>
+        <div className="mt-3.5">
+          <ChoixDuRetour
+            responsabilites={e.responsabilites}
+            valeur={reprise}
+            onChange={setReprise}
+          />
+        </div>
       </Modal>
     </>
   );
@@ -1722,6 +1801,7 @@ function NouveauContrat({
   contrats,
   assignments,
   inactif,
+  responsabilites,
 }: {
   employeeId: string;
   prenom: string;
@@ -1729,6 +1809,7 @@ function NouveauContrat({
   assignments: EmployeeDetail['assignments'];
   /** Le dossier est inactif : ce contrat le réactive. */
   inactif: boolean;
+  responsabilites: EmployeeDetail['responsabilites'];
 }) {
   const queryClient = useQueryClient();
   const aujourdhui = new Date().toISOString().slice(0, 10);
@@ -1765,10 +1846,24 @@ function NouveauContrat({
     (c) =>
       c.startDate <= aujourdhui && (!c.endDate || (c.endDate >= aujourdhui && c.endDate >= debut)),
   );
+  // Un retour : après un départ, ou après l'interruption que ce contrat
+  // laisse avec celui qui court. La RH dit ce qu'il reprend.
+  const enCours = contrats.find(
+    (c) => c.startDate <= aujourdhui && (!c.endDate || c.endDate >= aujourdhui),
+  );
+  const interruption = Boolean(enCours?.endDate && lendemain(enCours.endDate) < debut);
+  const [reprise, setReprise] = useState<RepriseDesResponsabilites>(SANS_REPRISE);
+  const repriseVisible = {
+    unites: reprise.unites.filter((id) =>
+      responsabilites.unites.some((u) => u.id === id && u.directionId === directionId),
+    ),
+    equipe: reprise.equipe,
+  };
   const fermer = () => {
     setOuvert(false);
     setMois('');
     setErreur(null);
+    setReprise(SANS_REPRISE);
   };
   const enregistrer = useMutation({
     mutationFn: () =>
@@ -1779,6 +1874,9 @@ function NouveauContrat({
           startDate: debut,
           ...(fin ? { endDate: fin } : {}),
           affectation: { positionTitle: poste.trim(), orgUnitId: directionId },
+          ...((inactif || interruption) && reprendQuelqueChose(repriseVisible)
+            ? { reprendre: repriseVisible }
+            : {}),
         },
       }),
     onSuccess: async () => {
@@ -1909,6 +2007,14 @@ function NouveauContrat({
               </Select>
             </Field>
           </div>
+          {inactif || interruption ? (
+            <ChoixDuRetour
+              responsabilites={responsabilites}
+              directionId={directionId}
+              valeur={reprise}
+              onChange={setReprise}
+            />
+          ) : null}
         </div>
       </Modal>
     </>

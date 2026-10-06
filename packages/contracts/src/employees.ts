@@ -378,6 +378,17 @@ export const initialContractSchema = reglesDuContrat(z.object(champsDuContrat));
  * inchangés, rien ne bouge ; changés, une nouvelle affectation part du début
  * du contrat. Sur un dossier inactif, il le réactive.
  */
+/**
+ * Ce qu'un agent qui revient reprend : la RH le décide. Les unités dont il
+ * redevient responsable, parmi celles qu'il dirigeait ; son équipe, quand il
+ * n'en dirigeait aucune (sinon, elle suit l'unité).
+ */
+export const repriseDesResponsabilitesSchema = z.object({
+  unites: z.array(z.uuid()).max(20).default([]),
+  equipe: z.boolean().default(false),
+});
+export type RepriseDesResponsabilites = z.infer<typeof repriseDesResponsabilitesSchema>;
+
 export const newContractSchema = reglesDuContrat(
   z.object({
     ...champsDuContrat,
@@ -386,6 +397,8 @@ export const newContractSchema = reglesDuContrat(
       /** La direction : dans la même direction, l'unité en cours est gardée. */
       orgUnitId: z.uuid(),
     }),
+    /** Un retour : ce qu'il reprend, à la reprise ou le jour où le contrat commence. */
+    reprendre: repriseDesResponsabilitesSchema.optional(),
   }),
 );
 export type NewContractInput = z.infer<typeof newContractSchema>;
@@ -625,6 +638,8 @@ export const archiveEmployeesSchema = z
      */
     le: isoDate.optional(),
     repreneurs: repreneursSchema,
+    /** Réactivation : ce que chaque agent reprend, par identifiant. */
+    reprendre: z.record(z.uuid(), repriseDesResponsabilitesSchema).optional(),
   })
   .refine((v) => !v.archived || v.motif !== undefined, {
     message: 'Précisez pourquoi le dossier devient inactif',
@@ -777,6 +792,16 @@ export interface EmployeeDetail {
   managerName: string | null;
   /** Ses agents directs, actifs — ceux qu'il faudra confier s'il part. */
   team: { id: string; name: string }[];
+  /**
+   * Ce qu'il pourrait reprendre à son retour, au choix de la RH. Inactif :
+   * les unités qu'il dirigeait, restées sans responsable, et son équipe
+   * restée où son départ l'avait mise. Actif : les unités qu'il dirige et son
+   * équipe, qu'une interruption entre deux contrats lui ferait quitter.
+   */
+  responsabilites: {
+    unites: { id: string; nom: string; directionId: string | null }[];
+    equipe: number;
+  };
   customFields: Record<string, unknown>;
   person: {
     id: string;
