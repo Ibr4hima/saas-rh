@@ -939,7 +939,7 @@ function AssignmentsCard({
                     <div className="mt-1.5 -ml-2.5 flex gap-1 sm:hidden">{gestesDerniere}</div>
                   ) : null}
                 </Td>
-                <Td>{a.orgUnitName ?? '—'}</Td>
+                <Td>{a.orgUnitName}</Td>
                 <Td className="whitespace-nowrap">{formatDate(a.validFrom)}</Td>
                 {/* La colonne « Au » porte seule l'état : « aujourd'hui » dit
                     l'affectation en cours, « à venir » celle qui n'a pas
@@ -1017,17 +1017,11 @@ function BalancesCard({ employeeId }: { employeeId: string }) {
                     </Badge>
                   ) : null}
                 </Td>
-                <Td className="text-right font-mono">
-                  {b.deductsBalance ? b.entitledDays : <span className="text-ink-muted/45">—</span>}
-                </Td>
+                <Td className="text-right font-mono">{b.deductsBalance ? b.entitledDays : null}</Td>
                 <Td className="text-right font-mono">{b.takenDays}</Td>
                 <Td className="text-right font-mono">{b.pendingDays}</Td>
                 <Td className="text-right font-mono font-semibold text-ink-strong">
-                  {b.deductsBalance ? (
-                    b.remainingDays
-                  ) : (
-                    <span className="font-normal text-ink-muted/45">—</span>
-                  )}
+                  {b.deductsBalance ? b.remainingDays : null}
                 </Td>
               </Tr>
             ))}

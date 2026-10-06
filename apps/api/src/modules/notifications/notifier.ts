@@ -2,11 +2,15 @@ import { and, eq, isNull, like, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import * as t from '../../db/schema';
 import type { Tx } from '../../db/tenant-db';
+import { doublerParCourriel } from '../courriels/expediteur';
 
 /* L'envoi d'une notification, dans la transaction appelante. À part du
    service : le circuit des congés prévient ses valideurs depuis des
    opérations qui ne passent pas par l'injection, et le service, lui, relit
-   ce circuit — deux modules qui s'importeraient l'un l'autre. */
+   ce circuit : deux modules qui s'importeraient l'un l'autre.
+
+   C'est le seul endroit où une notification naît (un test y veille) : chacune
+   part aussi par courriel, une fois, à sa création. */
 
 export interface NotificationDraft {
   type: string;
@@ -51,8 +55,11 @@ export async function notifier(
     })
     .onConflictDoNothing()
     .returning({ id: t.notifications.id });
-  // Déjà envoyée : rien ne change. Nouvelle : elle chasse les précédentes.
-  if (!cree || !draft.remplace) return;
+  // Déjà envoyée : rien ne change. Nouvelle : elle part aussi par courriel, et
+  // chasse les précédentes (dont le courriel, s'il attend encore, ne part plus).
+  if (!cree) return;
+  await doublerParCourriel(tx, tenantId, [{ id, recipientUserId: userId, title: draft.title }]);
+  if (!draft.remplace) return;
   await tx
     .update(t.notifications)
     .set({ remplaceeLe: sql`now()` })
@@ -65,4 +72,37 @@ export async function notifier(
         isNull(t.notifications.remplaceeLe),
       ),
     );
+}
+
+/**
+ * Plusieurs notifications d'un coup, sans remplacement (les rappels de
+ * fériés) : celles qui existaient déjà ne repartent pas.
+ */
+export async function notifierChacun(
+  tx: Tx,
+  tenantId: string,
+  envois: ({ userId: string } & Omit<NotificationDraft, 'remplace'>)[],
+): Promise<void> {
+  if (envois.length === 0) return;
+  const creees = await tx
+    .insert(t.notifications)
+    .values(
+      envois.map((e) => ({
+        id: uuidv7(),
+        tenantId,
+        recipientUserId: e.userId,
+        type: e.type,
+        title: e.title,
+        body: e.body ?? null,
+        link: e.link ?? null,
+        dedupeKey: e.dedupeKey ?? null,
+      })),
+    )
+    .onConflictDoNothing()
+    .returning({
+      id: t.notifications.id,
+      recipientUserId: t.notifications.recipientUserId,
+      title: t.notifications.title,
+    });
+  await doublerParCourriel(tx, tenantId, creees);
 }

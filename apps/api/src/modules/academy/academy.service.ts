@@ -35,6 +35,7 @@ import {
   TENTATIVES_PAR_JOUR,
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
+import { notifier } from '../notifications/notifier';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import {
@@ -1072,6 +1073,7 @@ export class AcademyService {
       // si son contenu a changé : elle est alors à revoir, elle seule. Les
       // certificats déjà délivrés restent.
       const aRevoir = remplacement && lecon.remplacementARevoir === true;
+      if (aRevoir) await this.prevenirDeRevoir(tx, user.tenantId, lecon, uid);
       await tx
         .delete(t.academyLessonProgress)
         .where(
@@ -1095,6 +1097,36 @@ export class AcademyService {
       ]);
     }
     return { durationSeconds: duree };
+  }
+
+  /**
+   * Le contenu d'une leçon a changé : ceux qui l'avaient validée doivent la
+   * revoir, elle seule. Ils en sont prévenus (et par courriel), une fois par
+   * remplacement ; un remplacement suivant chasse l'avis du précédent.
+   */
+  private async prevenirDeRevoir(
+    tx: Tx,
+    tenantId: string,
+    lecon: { id: string; title: string; courseId: string },
+    uid: string,
+  ): Promise<void> {
+    const { rows } = await tx.execute<{ user_id: string; formation: string }>(sql`
+      SELECT DISTINCT p.user_id, c.title AS formation
+        FROM academy_lesson_progress lp
+        JOIN employees e ON e.id = lp.employee_id
+        JOIN persons p ON p.id = e.person_id
+        JOIN academy_courses c ON c.id = ${lecon.courseId}
+       WHERE lp.lesson_id = ${lecon.id} AND lp.completed_at IS NOT NULL
+         AND p.user_id IS NOT NULL AND e.status = 'active'`);
+    for (const r of rows) {
+      await notifier(tx, tenantId, r.user_id, {
+        type: 'academy_lecon_a_revoir',
+        title: `La leçon « ${lecon.title} » de « ${r.formation} » a changé : revoyez-la`,
+        link: `/academy/${lecon.courseId}/lecon/${lecon.id}`,
+        dedupeKey: `academy:lecon:${lecon.id}:revoir:${uid}`,
+        remplace: `academy:lecon:${lecon.id}:revoir:`,
+      });
+    }
   }
 
   // ———————————————————————————— support PDF

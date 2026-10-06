@@ -150,11 +150,13 @@ beforeAll(async () => {
 beforeEach(async () => {
   await raw(`DELETE FROM academy_courses WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM academy_viewers WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM notifications WHERE tenant_id = $1`, [tenantId]);
 });
 
 afterAll(async () => {
   await raw(`DELETE FROM academy_courses WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM academy_viewers WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM notifications WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM employees WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM persons WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM audit_log WHERE tenant_id = $1`, [tenantId]);
@@ -440,6 +442,8 @@ describe('le support et la vidéo', () => {
       [tenantId],
     );
     expect(rows).toEqual([{ lesson_id: l1, validee: true }]);
+    // Rien à revoir, personne à prévenir.
+    expect(await avisDeRevoir()).toEqual([]);
   });
 
   it('le contenu a changé : cette leçon est à revoir, elle seule, et l’ancienne vidéo s’en va', async () => {
@@ -457,6 +461,16 @@ describe('le support et la vidéo', () => {
     );
     expect(rows).toEqual([{ lesson_id: l2, validee: true }]);
     expect(existsSync(stockage.chemin(tenantId, avant))).toBe(false);
+    // L'agent qui l'avait validée en est prévenu, pour cette leçon seule.
+    const avis = await avisDeRevoir();
+    expect(avis).toHaveLength(1);
+    expect(avis[0]).toMatchObject({ recipient_user_id: agent.userId });
+    expect(avis[0]!.link).toContain(`/lecon/${l1}`);
+    expect(avis[0]!.title).toMatch(/a changé : revoyez-la$/);
+    // Un second remplacement chasse l'avis du premier.
+    await regarder(l1, 110);
+    await deposerVideo(l1, 105, true);
+    expect(await avisDeRevoir()).toHaveLength(1);
     // L'agent la reprend ; la suivante reste validée.
     expect((await academy.demarrer(agent, l1)).source).toBeDefined();
   });
@@ -503,6 +517,16 @@ describe('le support et la vidéo', () => {
     expect(rows).toEqual([{ validee: true }]);
   });
 });
+
+/** Les avis « leçon à revoir » encore dans la boîte. */
+async function avisDeRevoir() {
+  const { rows } = await raw(
+    `SELECT recipient_user_id, title, link FROM notifications
+      WHERE tenant_id = $1 AND type = 'academy_lecon_a_revoir' AND remplacee_le IS NULL`,
+    [tenantId],
+  );
+  return rows as { recipient_user_id: string; title: string; link: string }[];
+}
 
 describe('« Ma liste »', () => {
   it('garde une formation, la rend dernière gardée en tête, et l’oublie', async () => {

@@ -5,12 +5,15 @@
  * (un lien à usage unique) n'est jamais en clair en base, et n'y reste pas
  * après l'envoi ; un serveur qui ne répond pas ne fait rien perdre ; une
  * invitation remplacée ne laisse pas partir l'ancien lien ; l'effacement d'un
- * dossier emporte l'adresse.
+ * dossier emporte l'adresse. Toute notification part aussi par courriel, une
+ * fois, sauf si elle a été lue ou remplacée avant, ou si l'accès est coupé.
  */
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionUser } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { envSchema, loadEnv } from '../src/config/env';
@@ -26,6 +29,7 @@ import {
   TransportSmtp,
   transportDepuisEnv,
 } from '../src/modules/courriels/transports';
+import { notifier, notifierChacun } from '../src/modules/notifications/notifier';
 import { PeopleService } from '../src/modules/people/people.service';
 import { InvitationsService } from '../src/modules/portal/invitations.service';
 
@@ -102,9 +106,27 @@ const avancerLHorloge = () =>
   raw(`UPDATE outbound_emails SET next_attempt_at = now() WHERE tenant_id = $1`, [tenantId]);
 
 async function vider() {
-  for (const table of ['outbound_emails', 'invitations', 'employees', 'persons', 'audit_log']) {
+  const { rows: comptes } = await raw(
+    `SELECT user_id FROM persons WHERE tenant_id = $1 AND user_id IS NOT NULL`,
+    [tenantId],
+  );
+  for (const table of [
+    'outbound_emails',
+    'notifications',
+    'invitations',
+    'employees',
+    'persons',
+    'audit_log',
+  ]) {
     await raw(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
   }
+  await raw(`DELETE FROM user_tenant_memberships WHERE tenant_id = $1 AND user_id <> $2`, [
+    tenantId,
+    adminUserId,
+  ]);
+  await raw(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [
+    comptes.map((c: { user_id: string }) => c.user_id),
+  ]);
 }
 
 beforeAll(async () => {
@@ -311,6 +333,168 @@ describe('invitation par courriel', () => {
       tx.execute(sql`SELECT count(*)::int AS n FROM outbound_emails`),
     );
     expect((ailleurs.rows[0] as { n: number }).n).toBe(0);
+  });
+});
+
+describe('notifications par courriel', () => {
+  /** Un agent qui a son compte sur le portail. */
+  async function agentAvecCompte(prenom: string) {
+    const agent = await creerAgent(prenom);
+    const userId = randomUUID();
+    await raw(
+      `INSERT INTO users (id, email, password_hash, given_name, family_name)
+       VALUES ($1,$2,'x',$3,'Test')`,
+      [userId, `${prenom.toLowerCase()}.compte@courriel.test.local`, prenom],
+    );
+    await raw(
+      `INSERT INTO user_tenant_memberships (id, tenant_id, user_id, role)
+       VALUES ($1,$2,$3,'employee')`,
+      [randomUUID(), tenantId, userId],
+    );
+    await raw(`UPDATE persons SET user_id = $1 WHERE id = $2`, [userId, agent.personId]);
+    return { ...agent, userId };
+  }
+
+  const notifie = (userId: string, title: string, extra: Record<string, string> = {}) =>
+    db.withTenant({ tenantId, userId: adminUserId }, (tx) =>
+      notifier(tx, tenantId, userId, { type: 'test', title, ...extra }),
+    );
+
+  beforeEach(() => expediteur.brancher());
+  afterEach(() => expediteur.debrancher());
+
+  it('part à l’adresse du compte, composée au départ, sans corps gardé', async () => {
+    const awa = await agentAvecCompte('Awa');
+    await notifie(awa.userId, 'Votre congé annuel du 2 au 6 mars est approuvé', {
+      link: '/moi/conges',
+    });
+
+    const [enFile] = await courriels();
+    expect(enFile).toMatchObject({
+      kind: 'notification',
+      recipient: 'awa.compte@courriel.test.local',
+      subject: 'Votre congé annuel du 2 au 6 mars est approuvé',
+      body_encrypted: null,
+      status: 'pending',
+    });
+
+    await expediteur.envoyerCeQuiAttend();
+
+    expect(transport.envoyes).toHaveLength(1);
+    const parti = transport.envoyes[0]!;
+    expect(parti.to).toBe('awa.compte@courriel.test.local');
+    expect(parti.subject).toBe('Votre congé annuel du 2 au 6 mars est approuvé');
+    expect(parti.text).toContain('Bonjour Awa,');
+    expect(parti.text).toContain(`${env.PUBLIC_WEB_URL.replace(/\/$/, '')}/moi/conges`);
+    expect(parti.html).toContain('APIX Test');
+    expect((await courriels())[0]).toMatchObject({ status: 'sent', body_encrypted: null });
+  });
+
+  it('une seule fois : la même notification reposée ne repart pas', async () => {
+    const awa = await agentAvecCompte('Awa');
+    await notifie(awa.userId, 'Rappel', { dedupeKey: 'rappel:1' });
+    await notifie(awa.userId, 'Rappel', { dedupeKey: 'rappel:1' });
+    expect(await courriels()).toHaveLength(1);
+  });
+
+  it('lue, rangée ou remplacée avant l’envoi : elle ne part pas', async () => {
+    const awa = await agentAvecCompte('Awa');
+    await notifie(awa.userId, 'Lue avant', { dedupeKey: 'a:1' });
+    await notifie(awa.userId, 'Rangée avant', { dedupeKey: 'b:1' });
+    await notifie(awa.userId, 'Échéance dans 15 jours', { dedupeKey: 'echeance:x:j15' });
+    await notifie(awa.userId, 'Échéance aujourd’hui', {
+      dedupeKey: 'echeance:x:j0',
+      remplace: 'echeance:x:',
+    });
+    await raw(`UPDATE notifications SET read_at = now() WHERE title = 'Lue avant'`);
+    await raw(`UPDATE notifications SET archived_at = now() WHERE title = 'Rangée avant'`);
+
+    await expediteur.envoyerCeQuiAttend();
+
+    expect(transport.envoyes.map((c) => c.subject)).toEqual(['Échéance aujourd’hui']);
+    expect((await courriels()).map((c) => c.status)).toEqual([
+      'cancelled',
+      'cancelled',
+      'cancelled',
+      'sent',
+    ]);
+  });
+
+  it('accès coupé : rien ne part', async () => {
+    const awa = await agentAvecCompte('Awa');
+    await notifie(awa.userId, 'Avant la coupure');
+    await raw(`UPDATE user_tenant_memberships SET acces_coupe_le = now() WHERE user_id = $1`, [
+      awa.userId,
+    ]);
+    await notifie(awa.userId, 'Après la coupure');
+
+    await expediteur.envoyerCeQuiAttend();
+
+    expect(transport.envoyes).toHaveLength(0);
+    expect((await courriels()).map((c) => c.status)).toEqual(['cancelled']);
+  });
+
+  it('sans serveur de courrier, rien en file', async () => {
+    const awa = await agentAvecCompte('Awa');
+    expediteur.debrancher();
+    await notifie(awa.userId, 'Sans serveur');
+    expect(await courriels()).toHaveLength(0);
+  });
+
+  it('les rappels en nombre partent aussi, une fois chacun', async () => {
+    const awa = await agentAvecCompte('Awa');
+    const fatou = await agentAvecCompte('Fatou');
+    const rappels = [awa, fatou].map((a) => ({
+      userId: a.userId,
+      type: 'holiday_reminder',
+      title: 'Tabaski, férié le lundi 25 mai',
+      link: '/calendrier',
+      dedupeKey: 'holiday:2026-05-25',
+    }));
+    for (let i = 0; i < 2; i++) {
+      await db.withTenant({ tenantId }, (tx) => notifierChacun(tx, tenantId, rappels));
+    }
+    await expediteur.envoyerCeQuiAttend();
+    expect(transport.envoyes.map((c) => c.to).sort()).toEqual([
+      'awa.compte@courriel.test.local',
+      'fatou.compte@courriel.test.local',
+    ]);
+  });
+
+  it('l’effacement définitif emporte ses courriels, et ceux qui le nomment', async () => {
+    const awa = await agentAvecCompte('Awa');
+    await notifie(awa.userId, 'Votre attestation est prête');
+    await notifie(adminUserId, 'Awa Test demande des documents', {
+      link: `/employees/${awa.employeeId}`,
+    });
+    await expediteur.envoyerCeQuiAttend();
+    expect(transport.envoyes).toHaveLength(2);
+
+    await people.remove(admin, { ids: [awa.employeeId] });
+
+    const restants = await raw(
+      `SELECT recipient, subject FROM outbound_emails
+        WHERE recipient = 'awa.compte@courriel.test.local' OR subject LIKE '%Awa Test%'`,
+    );
+    expect(restants.rows).toEqual([]);
+  });
+
+  it('une notification ne naît qu’en un seul endroit, qui la double par courriel', () => {
+    const fichiers: string[] = [];
+    const parcourir = (dossier: string) => {
+      for (const nom of readdirSync(dossier)) {
+        const chemin = join(dossier, nom);
+        if (statSync(chemin).isDirectory()) parcourir(chemin);
+        else if (chemin.endsWith('.ts')) fichiers.push(chemin);
+      }
+    };
+    parcourir(join(__dirname, '../src'));
+    const createurs = fichiers.filter((f) =>
+      /insert\(t\.notifications\)|INSERT\s+INTO\s+notifications\b/i.test(readFileSync(f, 'utf8')),
+    );
+    expect(createurs.map((f) => f.slice(f.indexOf('src/')))).toEqual([
+      'src/modules/notifications/notifier.ts',
+    ]);
   });
 });
 

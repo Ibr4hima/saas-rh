@@ -9,9 +9,9 @@ import { api, ApiError } from '../lib/api';
 import { timeAgo } from './document-request-list';
 import { valeurSignalee } from './telephone';
 
-/** Le tiret cadratin reste local : l'agent, lui, lit « non renseigné ». */
+/** « Avant → après » : un côté vide se dit, comme l'agent le lit. */
 const lisible = (champ: string, valeur: string | null | undefined) =>
-  valeurSignalee(champ, valeur) ?? '—';
+  valeurSignalee(champ, valeur) ?? 'non renseigné';
 
 /**
  * Les corrections signalées par l'employé, côté RH.

@@ -1814,24 +1814,12 @@ export class PeopleService {
     recolter(
       await tx.delete(t.employees).where(eq(t.employees.id, id)).returning({ id: t.employees.id }),
     );
-    const invitationsEffacees = await tx
-      .delete(t.invitations)
-      .where(eq(t.invitations.personId, personId))
-      .returning({ id: t.invitations.id });
-    recolter(invitationsEffacees);
-    // Les courriels qui les ont portées gardent son adresse : ils s'en vont
-    // avec elles.
-    if (invitationsEffacees.length > 0) {
-      await tx.delete(t.outboundEmails).where(
-        and(
-          eq(t.outboundEmails.kind, 'invitation'),
-          inArray(
-            t.outboundEmails.subjectId,
-            invitationsEffacees.map((i) => i.id),
-          ),
-        ),
-      );
-    }
+    recolter(
+      await tx
+        .delete(t.invitations)
+        .where(eq(t.invitations.personId, personId))
+        .returning({ id: t.invitations.id }),
+    );
     recolter(
       await tx.delete(t.persons).where(eq(t.persons.id, personId)).returning({ id: t.persons.id }),
     );
@@ -1874,7 +1862,13 @@ export class PeopleService {
       );
     }
 
+    let adresse: string | null = null;
     if (userId) {
+      const [compte] = await tx
+        .select({ email: t.users.email })
+        .from(t.users)
+        .where(eq(t.users.id, userId));
+      adresse = compte?.email ?? null;
       recolter(
         await tx
           .delete(t.notifications)
@@ -1920,6 +1914,15 @@ export class PeopleService {
           .where(eq(t.users.id, userId));
       }
     }
+
+    // Les courriels partis ou en attente : ceux qui portaient une ligne effacée
+    // (son invitation, ses notifications, celles qui le nommaient chez les
+    // autres) et tous ceux adressés à son compte. Destinataire et objet le
+    // nomment ; ils s'en vont avec le reste.
+    await tx.execute(sql`
+      DELETE FROM outbound_emails
+       WHERE subject_id = ANY(string_to_array(${traces.join(',')}, ',')::uuid[])
+          OR lower(recipient) = lower(${adresse ?? ''})`);
 
     // Ce que le journal garde de lignes retirées AVANT l'effacement : une pièce
     // annulée, remplacée par une plus récente ou retirée du dossier. Elles ne

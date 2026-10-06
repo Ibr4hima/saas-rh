@@ -504,12 +504,24 @@ await applyAs(
   'Actuellement analyste, disponible sous un mois.',
 );
 await applyAs('Mariama', 'Ba', 'mariama.ba@outlook.com', undefined, undefined);
-const candidates = await call('GET', `/jobs/${job.id}/applications`);
+// Les dossiers se lisent à la DCH : Mariama les fait avancer. L'administrateur
+// ne voit pas les candidatures.
+const parMariama = async (method, path, body) => {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', cookie: employeeCookies[directriceRh.id] },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`${method} ${path} → ${res.status} : ${text}`);
+  return text ? JSON.parse(text) : null;
+};
+const candidates = await parMariama('GET', `/jobs/${job.id}/applications`);
 const byEmail = (email) => candidates.find((a) => a.email === email);
-await call('PATCH', `/applications/${byEmail('aminata.sow@gmail.com').id}`, {
+await parMariama('PATCH', `/applications/${byEmail('aminata.sow@gmail.com').id}`, {
   stage: 'screening',
 });
-await call('PATCH', `/applications/${byEmail('ousmane.diallo@yahoo.fr').id}`, {
+await parMariama('PATCH', `/applications/${byEmail('ousmane.diallo@yahoo.fr').id}`, {
   stage: 'interview',
 });
 

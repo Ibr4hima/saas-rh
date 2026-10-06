@@ -1,7 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import {
   CAPACITES_DELEGABLES,
-  CAPACITES_GESTION,
+  CAPACITES_DE_L_ADMINISTRATEUR,
   type Capacite,
   type CapaciteDemande,
 } from '@teranga/contracts';
@@ -401,7 +401,7 @@ export async function capacitesDe(
   userId: string,
   role: string,
 ): Promise<{ capacites: Capacite[]; estAgent: boolean; dirigeLaDCH: boolean; estDG: boolean }> {
-  const base = new Set<Capacite>(role === 'admin' ? CAPACITES_GESTION : []);
+  const base = new Set<Capacite>(role === 'admin' ? CAPACITES_DE_L_ADMINISTRATEUR : []);
   const moi = await agentDuCompte(tx, userId);
   if (!moi) return { capacites: [...base], estAgent: false, dirigeLaDCH: false, estDG: false };
   const estDG = (await directeurGeneral(tx)) === moi;

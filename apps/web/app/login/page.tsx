@@ -10,6 +10,15 @@ import { BoutonOeil, ChampMarque, EcranMarque, SaisieMarque } from '../../compon
 import { BoutonMarque } from '../../components/bouton-marque';
 import { api, ApiError } from '../../lib/api';
 
+/**
+ * La page d'où l'on venait (le lien d'un courriel), si c'en est une du
+ * portail : un chemin, jamais une adresse d'un autre site.
+ */
+function pageDeRetour(): string {
+  const suite = new URLSearchParams(window.location.search).get('suite');
+  return suite && /^\/(?![/\\])/.test(suite) ? suite : '/';
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -22,7 +31,7 @@ export default function LoginPage() {
     setServerError(null);
     try {
       await api<{ user: SessionUser }>('/auth/login', { method: 'POST', body: values });
-      router.replace('/');
+      router.replace(pageDeRetour());
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : 'Connexion impossible, réessayez.');
     }

@@ -102,6 +102,18 @@ export const estCapaciteDemande = (c: string): c is CapaciteDemande =>
  */
 export const CAPACITES_ADMINISTRATEUR = ['textes'] as const satisfies readonly Capacite[];
 
+/**
+ * Ce que le rôle d'administrateur ne donne pas (décision APIX) : les dossiers
+ * de candidature. Un administrateur qui dirige la DCH, ou à qui elle les
+ * confie, les lit à ce titre-là, jamais en tant qu'administrateur.
+ */
+export const HORS_ADMINISTRATEUR: readonly Capacite[] = ['recrutement.candidatures'];
+
+/** Ce que le rôle d'administrateur donne de lui-même. */
+export const CAPACITES_DE_L_ADMINISTRATEUR: readonly Capacite[] = CAPACITES_GESTION.filter(
+  (c) => !HORS_ADMINISTRATEUR.includes(c),
+);
+
 /** Ce qu'a qui dirige la DCH, et ce qu'il peut confier : tout, sauf ce qui est à l'administrateur. */
 export const CAPACITES_DELEGABLES: readonly Capacite[] = CAPACITES.filter(
   (c) => !(CAPACITES_ADMINISTRATEUR as readonly string[]).includes(c),
@@ -381,13 +393,13 @@ const EMPORTE: Partial<Record<Capacite, readonly Capacite[]>> = {
   'personnel.consulter': ['personnel.gerer', 'personnel.sensible', 'personnel.effacer'],
 };
 
-/** Ce qu'un utilisateur peut, dans la session. L'administrateur a toute la gestion. */
+/** Ce qu'un utilisateur peut, dans la session. L'administrateur a toute la gestion, hors les candidatures. */
 export function peut(
   user: { role: string; capacites?: readonly string[] } | null | undefined,
   capacite: Capacite,
 ): boolean {
   if (!user) return false;
-  if (user.role === 'admin' && !estCapaciteDemande(capacite)) return true;
+  if (user.role === 'admin' && CAPACITES_DE_L_ADMINISTRATEUR.includes(capacite)) return true;
   const detenues = user.capacites ?? [];
   return detenues.includes(capacite) || (EMPORTE[capacite] ?? []).some((c) => detenues.includes(c));
 }

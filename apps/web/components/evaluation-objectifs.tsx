@@ -1029,7 +1029,7 @@ export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
                   {e.annee}
                 </Td>
                 <Td className="whitespace-nowrap">Semestre {e.semestre}</Td>
-                <Td>{e.manager ?? '—'}</Td>
+                <Td>{e.manager}</Td>
                 <Td>
                   <LettreNote note={e.note} />
                 </Td>

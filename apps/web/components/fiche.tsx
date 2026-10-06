@@ -127,12 +127,26 @@ export function Repere({
         )}
         title={titre ?? (typeof valeur === 'string' ? valeur : undefined)}
       >
-        {vide ? '—' : valeur}
+        {vide ? <Vide /> : valeur}
       </dd>
       {children ? (
         <dd className="mt-1 text-[11.5px] leading-tight font-normal text-ink-muted">{children}</dd>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Un champ vide reste vide : on balaie la carte pour ce qui est renseigné, pas
+ * pour compter les tirets. La ligne garde sa hauteur, et un lecteur d'écran
+ * dit ce que l'œil voit.
+ */
+function Vide() {
+  return (
+    <>
+      <span aria-hidden>{'\u00a0'}</span>
+      <span className="sr-only">Non renseigné</span>
+    </>
   );
 }
 
@@ -163,12 +177,10 @@ export function Donnee({
       <dd
         className={cn(
           'mt-1.5 text-[13.5px] leading-snug font-semibold break-words',
-          // Un champ vide s'efface : on balaie la carte pour ce qui est
-          // renseigné, pas pour compter les tirets.
           vide ? 'text-ink-muted/45' : 'text-ink-strong',
         )}
       >
-        {vide ? '—' : children}
+        {vide ? <Vide /> : children}
       </dd>
     </div>
   );

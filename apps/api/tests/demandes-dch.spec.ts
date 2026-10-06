@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Capacite, SessionUser } from '@teranga/contracts';
+import { peut } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -1427,6 +1428,24 @@ describe('on ne contourne pas le système : rien sur soi-même', () => {
         )
       ).capacites,
     ).toContain('academy');
+  });
+
+  it('l’administrateur ne lit pas les candidatures, sauf à la DCH qui les lui confie', async () => {
+    const commeAdmin = await db.withTenant({ tenantId, userId: admin.userId }, (tx) =>
+      capacitesDe(tx, admin.userId, 'admin'),
+    );
+    expect(commeAdmin.capacites).not.toContain('recrutement.candidatures');
+    expect(commeAdmin.capacites).toContain('recrutement.offres');
+    expect(
+      peut({ role: 'admin', capacites: commeAdmin.capacites }, 'recrutement.candidatures'),
+    ).toBe(false);
+    expect(peut({ role: 'admin', capacites: [] }, 'recrutement.offres')).toBe(true);
+    // Administrateur ET délégué de la DCH : il les lit à ce titre-là.
+    expect(
+      peut({ role: 'admin', capacites: ['recrutement.candidatures'] }, 'recrutement.candidatures'),
+    ).toBe(true);
+    // Et la directrice les tient toujours.
+    expect((await session(mariama)).capacites).toContain('recrutement.candidatures');
   });
 
   it('qui gère les dossiers ne touche pas au sien — celui d’un collègue, si', async () => {

@@ -2,9 +2,10 @@ import { Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common'
 import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { EncryptionService } from '../../common/encryption.service';
+import { loadEnv } from '../../config/env';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
-import type { ContenuCourriel } from './gabarits';
+import { courrielNotification, type ContenuCourriel } from './gabarits';
 import type { Transport } from './transports';
 
 /* ────────────────────────────────────────────────────────────────
@@ -20,6 +21,11 @@ import type { Transport } from './transports';
    sous verrou (SKIP LOCKED) et les réserve dix minutes. Une instance qui
    tombe en plein envoi les laisse repartir après ce délai : un courriel peut
    alors arriver deux fois, jamais se perdre.
+
+   Deux sortes de courriels. L'invitation porte son corps, chiffré : il tient
+   un lien à usage unique qu'on ne retrouverait nulle part ailleurs. La
+   notification n'en porte aucun : elle se compose au moment de partir, de la
+   notification elle-même, qui dit si elle a encore lieu d'être.
    ──────────────────────────────────────────────────────────────── */
 
 /** Au-delà, on renonce : un peu plus de quatre heures d'essais. */
@@ -27,6 +33,20 @@ export const ESSAIS_MAX = 8;
 const PAR_PASSAGE = 20;
 const RESERVATION = "interval '10 minutes'";
 const INTERVALLE_MS = 30_000;
+
+/** Un courriel pris pour l'envoi, et de quoi composer une notification. */
+type APrendre = {
+  id: string;
+  kind: string;
+  recipient: string;
+  subject: string;
+  body_encrypted: string | null;
+  attempts: number;
+  titre: string | null;
+  lien: string | null;
+  prenom: string | null;
+  organisation: string | null;
+};
 
 export interface CourrielEnFile extends ContenuCourriel {
   tenantId: string;
@@ -43,18 +63,68 @@ export const delaiAvantEssai = (essais: number) =>
 const contexteDuCorps = (tenantId: string, id: string) => `${tenantId}:outbound_emails:${id}:body`;
 
 /**
- * Un courriel qui n'a plus lieu d'être ne part pas : l'invitation qu'il porte
- * a été remplacée par une autre, close (dossier archivé) ou déjà acceptée.
- * Vérifié au moment d'envoyer, quel que soit le chemin qui l'a close.
+ * Un courriel qui n'a plus lieu d'être ne part pas. L'invitation qu'il porte
+ * a été remplacée par une autre, close (dossier archivé) ou déjà acceptée ;
+ * la notification a été lue, rangée, remplacée par une plus récente ou
+ * effacée, ou l'accès de son destinataire a été coupé. Vérifié au moment
+ * d'envoyer, quel que soit le chemin qui y a mené.
  */
 async function annulerCeQuiNaPlusLieu(tx: Tx): Promise<void> {
   await tx.execute(sql`
     UPDATE outbound_emails o
        SET status = 'cancelled', body_encrypted = NULL
-     WHERE o.status = 'pending' AND o.next_attempt_at <= now() AND o.kind = 'invitation'
-       AND NOT EXISTS (SELECT 1 FROM invitations i
-                        WHERE i.id = o.subject_id
-                          AND i.accepted_at IS NULL AND i.expires_at > now())`);
+     WHERE o.status = 'pending' AND o.next_attempt_at <= now()
+       AND CASE o.kind
+             WHEN 'invitation' THEN NOT EXISTS (
+               SELECT 1 FROM invitations i
+                WHERE i.id = o.subject_id
+                  AND i.accepted_at IS NULL AND i.expires_at > now())
+             WHEN 'notification' THEN NOT EXISTS (
+               SELECT 1 FROM notifications n
+                 JOIN user_tenant_memberships m
+                   ON m.user_id = n.recipient_user_id AND m.tenant_id = n.tenant_id
+                WHERE n.id = o.subject_id
+                  AND n.read_at IS NULL AND n.archived_at IS NULL AND n.remplacee_le IS NULL
+                  AND m.acces_coupe_le IS NULL)
+             ELSE FALSE
+           END`);
+}
+
+/**
+ * L'expéditeur en service, quand un serveur de courrier est configuré.
+ * `notifier` est une fonction, appelée hors de l'injection (cf. notifier.ts) :
+ * c'est ici qu'elle le trouve.
+ */
+let enService: ExpediteurCourriels | null = null;
+
+/**
+ * Toute notification part aussi par courriel, à l'adresse du compte de son
+ * destinataire : on n'a pas toujours le réflexe d'ouvrir la plateforme, le
+ * courriel le rappelle. Dans la transaction qui crée les notifications ;
+ * rien pour qui n'a plus accès à l'organisation.
+ */
+export async function doublerParCourriel(
+  tx: Tx,
+  tenantId: string,
+  notifications: { id: string; recipientUserId: string; title: string }[],
+): Promise<void> {
+  const expediteur = enService;
+  if (!expediteur || notifications.length === 0) return;
+  const lignes = notifications.map((n) => ({
+    id: uuidv7(),
+    notification_id: n.id,
+    user_id: n.recipientUserId,
+    titre: n.title,
+  }));
+  await tx.execute(sql`
+    INSERT INTO outbound_emails (id, tenant_id, kind, subject_id, recipient, subject)
+    SELECT x.id, ${tenantId}, 'notification', x.notification_id, u.email, left(x.titre, 300)
+      FROM jsonb_to_recordset(${JSON.stringify(lignes)}::jsonb)
+             AS x(id uuid, notification_id uuid, user_id uuid, titre text)
+      JOIN users u ON u.id = x.user_id AND u.status = 'active'
+      JOIN user_tenant_memberships m ON m.user_id = x.user_id AND m.tenant_id = ${tenantId}
+     WHERE m.acces_coupe_le IS NULL`);
+  expediteur.bientot();
 }
 
 export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
@@ -69,6 +139,7 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
     private readonly enc: EncryptionService,
     private readonly transport: Transport | null,
     private readonly expediteur: string,
+    private readonly portail = loadEnv().PUBLIC_WEB_URL.replace(/\/$/, ''),
     private readonly cadence = INTERVALLE_MS,
   ) {}
 
@@ -80,14 +151,25 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     if (!this.transport) return;
     this.logger.log(`Envoi des courriels par ${this.transport.nom}`);
+    this.brancher();
     this.minuterie = setInterval(() => void this.envoyerCeQuiAttend(), this.cadence);
     this.minuterie.unref();
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.debrancher();
     if (this.minuterie) clearInterval(this.minuterie);
     if (this.relance) clearTimeout(this.relance);
     await this.passage?.catch(() => undefined);
+  }
+
+  /** Les notifications partent désormais aussi par lui. */
+  brancher(): void {
+    if (this.transport) enService = this;
+  }
+
+  debrancher(): void {
+    if (enService === this) enService = null;
   }
 
   /**
@@ -152,22 +234,25 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
     for (const { tenant_id: tenantId } of organisations) {
       const { rows: lot } = await this.db.withTenant({ tenantId }, async (tx) => {
         await annulerCeQuiNaPlusLieu(tx);
-        return tx.execute<{
-          id: string;
-          recipient: string;
-          subject: string;
-          body_encrypted: string;
-          attempts: number;
-        }>(sql`
-          UPDATE outbound_emails
-             SET attempts = attempts + 1,
-                 next_attempt_at = now() + ${sql.raw(RESERVATION)}
-           WHERE id IN (SELECT id FROM outbound_emails
-                         WHERE status = 'pending' AND next_attempt_at <= now()
-                         ORDER BY created_at
-                         LIMIT ${PAR_PASSAGE}
-                         FOR UPDATE SKIP LOCKED)
-       RETURNING id, recipient, subject, body_encrypted, attempts`);
+        // Une notification se compose de ce qu'elle est au moment de partir.
+        return tx.execute<APrendre>(sql`
+          WITH pris AS (
+            UPDATE outbound_emails
+               SET attempts = attempts + 1,
+                   next_attempt_at = now() + ${sql.raw(RESERVATION)}
+             WHERE id IN (SELECT id FROM outbound_emails
+                           WHERE status = 'pending' AND next_attempt_at <= now()
+                           ORDER BY created_at
+                           LIMIT ${PAR_PASSAGE}
+                           FOR UPDATE SKIP LOCKED)
+         RETURNING id, kind, subject_id, recipient, subject, body_encrypted, attempts, created_at)
+          SELECT p.id, p.kind, p.recipient, p.subject, p.body_encrypted, p.attempts,
+                 n.title AS titre, n.link AS lien, u.given_name AS prenom, o.name AS organisation
+            FROM pris p
+            LEFT JOIN notifications n ON p.kind = 'notification' AND n.id = p.subject_id
+            LEFT JOIN users u ON u.id = n.recipient_user_id
+            LEFT JOIN tenants o ON o.id = n.tenant_id
+           ORDER BY p.created_at`);
       });
       for (const courriel of lot) {
         const issue = await this.envoyerUn(transport, tenantId, courriel);
@@ -176,25 +261,42 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Ce que dit le courriel : son corps chiffré, ou la notification qu'il double. */
+  private contenu(tenantId: string, c: APrendre): ContenuCourriel | null {
+    if (c.kind === 'notification') {
+      if (c.titre === null) return null;
+      return courrielNotification({
+        prenom: c.prenom ?? '',
+        organisation: c.organisation ?? '',
+        titre: c.titre,
+        lien: `${this.portail}${c.lien?.startsWith('/') ? c.lien : '/'}`,
+      });
+    }
+    if (!c.body_encrypted) return null;
+    try {
+      const corps = JSON.parse(
+        this.enc.dechiffrerTexte(c.body_encrypted, contexteDuCorps(tenantId, c.id)),
+      ) as { text: string; html: string };
+      return { subject: c.subject, ...corps };
+    } catch {
+      return null;
+    }
+  }
+
   private async envoyerUn(
     transport: Transport,
     tenantId: string,
-    c: { id: string; recipient: string; subject: string; body_encrypted: string },
+    c: APrendre,
   ): Promise<{ ok: true } | { ok: false; erreur: string; definitif: boolean }> {
-    let corps: { text: string; html: string };
-    try {
-      corps = JSON.parse(
-        this.enc.dechiffrerTexte(c.body_encrypted, contexteDuCorps(tenantId, c.id)),
-      );
-    } catch {
-      // Clé changée ou ligne recopiée : aucun essai ne le rendra lisible.
-      return { ok: false, erreur: 'Corps illisible', definitif: true };
-    }
+    const corps = this.contenu(tenantId, c);
+    // Clé changée, ligne recopiée, notification disparue : aucun essai ne le
+    // rendra lisible.
+    if (!corps) return { ok: false, erreur: 'Corps illisible', definitif: true };
     try {
       await transport.envoyer({
         from: this.expediteur,
         to: c.recipient,
-        subject: c.subject,
+        subject: corps.subject,
         text: corps.text,
         html: corps.html,
       });

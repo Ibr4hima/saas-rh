@@ -1217,8 +1217,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
   };
   const allowed = autorise(pathname);
 
+  // Le lien d'un courriel mène à une page précise : la connexion y ramène.
   useEffect(() => {
-    if (me.isError) router.replace('/login');
+    if (me.isError) {
+      const suite = `${window.location.pathname}${window.location.search}`;
+      router.replace(`/login?suite=${encodeURIComponent(suite)}`);
+    }
   }, [me.isError, router]);
 
   useEffect(() => {

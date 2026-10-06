@@ -15,7 +15,7 @@ import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayReminderDate } from '../time/workdays';
 import { reconcilierSiLeTempsEstVenu } from '../time/visas';
-import { notifier, type NotificationDraft } from './notifier';
+import { notifier, notifierChacun, type NotificationDraft } from './notifier';
 import { CONTRAT, frDate, PIECE, rappel } from './phrases';
 import { alerterLaDCH } from '../acces/dch';
 import { inactiverSiLeTempsEstVenu } from '../people/activite';
@@ -376,20 +376,17 @@ export class NotificationsService {
     });
     if (due.length === 0) return; // cas courant : rien à écrire
 
-    await tx
-      .insert(t.notifications)
-      .values(
-        due.map((h) => ({
-          id: uuidv7(),
-          tenantId,
-          recipientUserId: userId,
-          type: 'holiday_reminder',
-          title: `${h.label}, férié le ${frDate(h.day, true)}`,
-          link: '/calendrier',
-          dedupeKey: holidayDedupeKey(h.day),
-        })),
-      )
-      .onConflictDoNothing();
+    await notifierChacun(
+      tx,
+      tenantId,
+      due.map((h) => ({
+        userId,
+        type: 'holiday_reminder',
+        title: `${h.label}, férié le ${frDate(h.day, true)}`,
+        link: '/calendrier',
+        dedupeKey: holidayDedupeKey(h.day),
+      })),
+    );
   }
 
   /**

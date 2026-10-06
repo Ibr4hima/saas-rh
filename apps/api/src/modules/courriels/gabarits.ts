@@ -1,9 +1,10 @@
 /* ────────────────────────────────────────────────────────────────
    Ce que disent les courriels.
 
-   Court, et sans rien de la personne au-delà de son prénom : un courriel se
-   transfère, se lit par-dessus l'épaule, dort dans une boîte des années. Le
-   lien mène au portail, où le reste se lit derrière un mot de passe.
+   Court, et rien de plus que ce que la plateforme montre déjà à la même
+   personne : un courriel se transfère, se lit par-dessus l'épaule, dort dans
+   une boîte des années. Le lien mène au portail, où le reste se lit derrière
+   un mot de passe.
 
    La mise en page tient dans des tableaux et des styles en ligne : Outlook,
    que l'APIX utilise, ignore le reste.
@@ -92,6 +93,36 @@ export function courrielInvitation(o: {
         `Ce lien vous est personnel et vaut jusqu’au ${jusquau}.`,
         'Si vous n’attendiez pas ce courriel, ignorez-le.',
       ],
+    }),
+  };
+}
+
+/**
+ * Une notification, doublée par courriel : on n'a pas toujours le réflexe
+ * d'ouvrir la plateforme, le courriel le rappelle. Son titre, tel que la
+ * cloche le montre à la même personne, et le lien vers la page qu'il désigne.
+ */
+export function courrielNotification(o: {
+  prenom: string;
+  organisation: string;
+  titre: string;
+  lien: string;
+}): ContenuCourriel {
+  return {
+    subject: o.titre,
+    text: [
+      `Bonjour ${o.prenom},`,
+      '',
+      o.titre,
+      '',
+      'Pour la voir sur le portail RH :',
+      o.lien,
+    ].join('\n'),
+    html: page({
+      organisation: o.organisation,
+      paragraphes: [`Bonjour ${echapper(o.prenom)},`, `<strong>${echapper(o.titre)}</strong>`],
+      bouton: { libelle: 'Voir sur le portail', lien: o.lien },
+      apres: [],
     }),
   };
 }
