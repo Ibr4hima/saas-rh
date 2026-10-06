@@ -32,6 +32,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
 import { AttestationService } from './modules/documents/attestation.service';
 import { DocumentsController } from './modules/documents/documents.controller';
 import { AuthService } from './modules/auth/auth.service';
+import { ReinitialisationService } from './modules/auth/reinitialisation.service';
 import { AccesGuard } from './modules/auth/acces.guard';
 import { SessionGuard } from './modules/auth/session.guard';
 import { HealthController } from './modules/health/health.controller';
@@ -92,6 +93,7 @@ import { AbsencesService } from './modules/time/absences.service';
       inject: [TenantDb, EncryptionService],
     },
     AuthService,
+    ReinitialisationService,
     HabilitationsService,
     SessionGuard,
     AccesGuard,

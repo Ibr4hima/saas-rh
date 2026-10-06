@@ -38,6 +38,11 @@ export const ECHECS_PAR_COMPTE: Regle = {
   max: 10,
 };
 
+/** Les liens « mot de passe oublié » demandés d'une adresse : dix par heure. */
+export const OUBLIS_PAR_ADRESSE: Regle = { bucket: 'oubli_ip', fenetreSecondes: 3600, max: 10 };
+/** Les liens demandés pour une même adresse email : trois par heure. */
+export const OUBLIS_PAR_COMPTE: Regle = { bucket: 'oubli_compte', fenetreSecondes: 3600, max: 3 };
+
 /**
  * L'adresse du client, telle qu'Express la lit derrière les proxys de
  * confiance (TRUST_PROXY). Une IPv6 compte pour son /64 : un abonné en a

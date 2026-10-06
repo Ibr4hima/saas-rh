@@ -123,6 +123,17 @@ export const loginInputSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginInputSchema>;
 
+/** Mot de passe oublié : l'adresse du compte, rien d'autre. */
+export const demandeDeLienSchema = z.object({ email: z.email().max(254) });
+export type DemandeDeLien = z.infer<typeof demandeDeLienSchema>;
+
+/** Le mot de passe choisi depuis le lien : la politique se vérifie au serveur, avec l'adresse. */
+export const nouveauMotDePasseSchema = z.object({ password: z.string().min(1).max(128) });
+export type NouveauMotDePasse = z.infer<typeof nouveauMotDePasseSchema>;
+
+/** Ce que la page du lien apprend : l'adresse du compte, pour la règle qui la croise. */
+export type LienDeReinitialisation = { valide: true; email: string } | { valide: false };
+
 /**
  * Deux sortes de comptes : l'administrateur (compte technique, hors
  * organigramme) et l'agent. Le reste — viser, traiter, gérer — se lit dans

@@ -53,6 +53,16 @@ export const sessions = pgTable('sessions', {
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 });
 
+/** Les liens « mot de passe oublié » : globaux, comme les sessions (migration 0089). */
+export const passwordResets = pgTable('password_resets', {
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey(),
   name: text('name').notNull(),

@@ -2022,7 +2022,9 @@ export class PeopleService {
       );
       if (!ailleurs[0]?.oui) {
         // Plus aucune organisation : le compte ne sert plus qu'à porter les
-        // références des dossiers d'autrui. On le vide de la personne.
+        // références des dossiers d'autrui. On le vide de la personne, et ses
+        // liens « mot de passe oublié » s'en vont avec.
+        await tx.delete(t.passwordResets).where(eq(t.passwordResets.userId, userId));
         await tx
           .update(t.users)
           .set({

@@ -24,8 +24,9 @@ import type { Transport } from './transports';
    alors arriver deux fois, jamais se perdre.
 
    Un courriel se compose au moment de partir : il prend la dernière mise en
-   forme et le logo du jour. L'invitation garde, chiffré, ce qu'elle dit (un
-   lien à usage unique qu'on ne retrouverait nulle part ailleurs). La
+   forme et le logo du jour. L'invitation et le lien « mot de passe oublié »
+   gardent, chiffré, ce qu'ils disent (un lien à usage unique qu'on ne
+   retrouverait nulle part ailleurs). La
    notification ne garde rien : elle se compose de la notification elle-même,
    qui dit aussi si elle a encore lieu d'être.
    ──────────────────────────────────────────────────────────────── */
@@ -68,8 +69,9 @@ const contexteDuCorps = (tenantId: string, id: string) => `${tenantId}:outbound_
 /**
  * Un courriel qui n'a plus lieu d'être ne part pas. L'invitation qu'il porte
  * a été remplacée par une autre, close (dossier archivé) ou déjà acceptée ;
- * la notification a été lue, rangée, remplacée par une plus récente ou
- * effacée, ou l'accès de son destinataire a été coupé. Vérifié au moment
+ * le lien « mot de passe oublié » a servi, expiré ou cédé la place à un
+ * autre ; la notification a été lue, rangée, remplacée par une plus récente
+ * ou effacée, ou l'accès de son destinataire a été coupé. Vérifié au moment
  * d'envoyer, quel que soit le chemin qui y a mené.
  */
 async function annulerCeQuiNaPlusLieu(tx: Tx): Promise<void> {
@@ -82,6 +84,10 @@ async function annulerCeQuiNaPlusLieu(tx: Tx): Promise<void> {
                SELECT 1 FROM invitations i
                 WHERE i.id = o.subject_id
                   AND i.accepted_at IS NULL AND i.expires_at > now())
+             WHEN 'reinitialisation' THEN NOT EXISTS (
+               SELECT 1 FROM password_resets r
+                WHERE r.id = o.subject_id
+                  AND r.used_at IS NULL AND r.expires_at > now())
              WHEN 'notification' THEN NOT EXISTS (
                SELECT 1 FROM notifications n
                  JOIN user_tenant_memberships m

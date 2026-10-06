@@ -1,7 +1,19 @@
 'use client';
 
+import Link from 'next/link';
 import * as React from 'react';
 import { Icon } from './icons';
+
+const PILULE =
+  'group inline-flex h-[46px] w-full items-center justify-center gap-2 rounded-full bg-primary text-[14.5px] font-bold text-primary-ink shadow-[0_4px_18px_rgb(0_79_145/0.35)] transition-[background-color,transform,box-shadow] duration-150 hover:-translate-y-px hover:bg-primary-hover hover:shadow-[0_10px_28px_rgb(0_79_145/0.42)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-0';
+
+const Fleche = () => (
+  <Icon
+    name="arrow_forward"
+    size={16}
+    className="transition-transform duration-150 group-hover:translate-x-1"
+  />
+);
 
 /**
  * L'action unique de ces écrans : pleine largeur, en pilule.
@@ -26,7 +38,7 @@ export function BoutonMarque({
     <button
       type="submit"
       disabled={enCours || disabled}
-      className="group mt-0.5 inline-flex h-[46px] w-full items-center justify-center gap-2 rounded-full bg-primary text-[14.5px] font-bold text-primary-ink shadow-[0_4px_18px_rgb(0_79_145/0.35)] transition-[background-color,transform,box-shadow] duration-150 hover:-translate-y-px hover:bg-primary-hover hover:shadow-[0_10px_28px_rgb(0_79_145/0.42)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:translate-y-0 disabled:pointer-events-none disabled:opacity-65"
+      className={`${PILULE} mt-0.5 disabled:pointer-events-none disabled:opacity-65`}
     >
       {enCours ? (
         <>
@@ -39,13 +51,19 @@ export function BoutonMarque({
       ) : (
         <>
           {children}
-          <Icon
-            name="arrow_forward"
-            size={16}
-            className="transition-transform duration-150 group-hover:translate-x-1"
-          />
+          <Fleche />
         </>
       )}
     </button>
+  );
+}
+
+/** La même pilule quand l'action mène ailleurs : vers la connexion, une fois le geste fait. */
+export function LienMarque({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className={PILULE}>
+      {children}
+      <Fleche />
+    </Link>
   );
 }

@@ -35,7 +35,8 @@ export type Gabarit =
       /** Absent : un nouveau compte (cf. AccueilInvitation). */
       accueil?: 'retour' | 'compte';
     }
-  | { nom: 'notification'; prenom: string; organisation: string; titre: string; lien: string };
+  | { nom: 'notification'; prenom: string; organisation: string; titre: string; lien: string }
+  | { nom: 'reinitialisation'; prenom: string; organisation: string; lien: string };
 
 /** Ce qui ne se décide qu'au départ : le logo, l'adresse du site (polices), l'année. */
 export interface Rendu {
@@ -61,8 +62,16 @@ const dateLongue = (iso: string) =>
   });
 
 export function objetDe(g: Gabarit): string {
-  return g.nom === 'invitation' ? `${g.organisation} : votre accès au portail RH` : g.titre;
+  if (g.nom === 'invitation') return `${g.organisation} : votre accès au portail RH`;
+  if (g.nom === 'reinitialisation') return `${g.organisation} : votre mot de passe`;
+  return g.titre;
 }
+
+/** Le lien « mot de passe oublié » vaut une heure (cf. REINITIALISATION_TTL_MINUTES). */
+const APRES_REINITIALISATION = [
+  'Ce lien vous est personnel et vaut une heure.',
+  'Si vous n’avez rien demandé, ignorez ce courriel : votre mot de passe ne change pas.',
+];
 
 /** L'invitation selon qui la reçoit : un nouveau compte, un retour, un compte en service. */
 const ACCUEILS = {
@@ -118,6 +127,28 @@ export function composer(g: Gabarit, rendu: Rendu): ContenuCourriel {
           `Ce lien vous est personnel et vaut jusqu’au ${jusquau}.`,
           'Si vous n’attendiez pas ce courriel, ignorez-le.',
         ],
+      }),
+    };
+  }
+  if (g.nom === 'reinitialisation') {
+    return {
+      subject,
+      text: [
+        `Bonjour ${g.prenom},`,
+        '',
+        'Pour choisir votre nouveau mot de passe, ouvrez ce lien :',
+        g.lien,
+        '',
+        ...APRES_REINITIALISATION,
+      ].join('\n'),
+      html: page(rendu, {
+        organisation: g.organisation,
+        apercu: 'Choisissez votre nouveau mot de passe.',
+        salutation: `Bonjour ${g.prenom},`,
+        titre: 'Mot de passe oublié',
+        sousTitre: 'Choisissez votre nouveau mot de passe.',
+        bouton: { libelle: 'Choisir mon mot de passe', lien: g.lien },
+        apres: APRES_REINITIALISATION,
       }),
     };
   }
