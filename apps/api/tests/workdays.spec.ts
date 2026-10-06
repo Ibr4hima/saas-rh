@@ -3,6 +3,7 @@ import {
   countWorkdays,
   holidayReminderDate,
   joursOuvresEcoules,
+  joursParAnnee,
 } from '../src/modules/time/workdays';
 
 const noHolidays = new Set<string>();
@@ -100,5 +101,28 @@ describe('joursOuvresEcoules — le délai avant un rappel', () => {
 
   it('un férié ne compte pas non plus', () => {
     expect(joursOuvresEcoules('2026-09-28', '2026-10-01', new Set(['2026-09-29']))).toBe(1);
+  });
+});
+
+describe('joursParAnnee', () => {
+  it('ventile un congé de fin d’année sur chacune, sans perdre de jour', () => {
+    // Lundi 28 décembre 2026 → vendredi 8 janvier 2027, 1er janvier férié.
+    const feries = new Set(['2027-01-01']);
+    expect(joursParAnnee('2026-12-28', '2027-01-08', feries)).toEqual([
+      { annee: 2026, jours: 4 },
+      { annee: 2027, jours: 5 },
+    ]);
+    expect(countWorkdays('2026-12-28', '2027-01-08', feries).workingDays).toBe(9);
+  });
+
+  it('une année sans jour ouvré n’y figure pas', () => {
+    // Samedi 30 et dimanche 31 décembre 2028 : tout le congé est sur 2029.
+    expect(joursParAnnee('2028-12-30', '2029-01-03', noHolidays)).toEqual([
+      { annee: 2029, jours: 3 },
+    ]);
+    expect(joursParAnnee('2027-12-25', '2028-01-04', noHolidays)).toEqual([
+      { annee: 2027, jours: 5 },
+      { annee: 2028, jours: 2 },
+    ]);
   });
 });

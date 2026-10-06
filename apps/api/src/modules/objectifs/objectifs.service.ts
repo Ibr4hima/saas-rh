@@ -460,7 +460,9 @@ export class ObjectifsService {
         );
       }
 
-      if (ficheRemplie(contenu)) {
+      // L'agent est prévenu quand la fiche lui fixe un objectif : un titre
+      // posé en premier ne lui annonce rien.
+      if (objectifsDeLaFiche(contenu as Record<string, unknown>[]).length > 0) {
         const compte = await this.compteDe(tx, employeeId);
         if (compte) {
           const [auteur] = (
@@ -606,9 +608,15 @@ export class ObjectifsService {
       const moi = await this.exigerAgent(tx, user);
       const f = await this.uneFiche(tx, moi, annee, semestre);
       exigerNonEnvoyee(f);
+      const objectifs = objectifsDeLaFiche(f.contenu);
+      // Seules les cases à cocher sont des objectifs : une fiche en titres, en
+      // puces ou en tableau n'a rien à évaluer, et se verrouillerait vide.
+      if (objectifs.length === 0) {
+        problem(422, 'objectifs.sans_objectif', 'Cette fiche n’a encore aucun objectif à évaluer');
+      }
       // Un statut donné à un texte que le n+1 a réécrit depuis ne compte pas.
       const { statuts } = statutsEnVigueur(f);
-      const restants = objectifsDeLaFiche(f.contenu).filter(
+      const restants = objectifs.filter(
         (o) => !statuts[o.id] || !f.commentaires_agent[o.id]?.trim(),
       ).length;
       if (restants > 0) {

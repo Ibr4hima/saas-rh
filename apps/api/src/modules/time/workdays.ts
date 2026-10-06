@@ -47,6 +47,26 @@ export function countWorkdays(
   return { workingDays, holidaysSkipped };
 }
 
+/**
+ * Les jours ouvrés d'une période, année par année : un congé du 28 décembre
+ * au 8 janvier se retranche pour partie du solde de chaque année. Les années
+ * sans jour ouvré n'y figurent pas.
+ */
+export function joursParAnnee(
+  startIso: string,
+  endIso: string,
+  holidays: ReadonlySet<string>,
+): { annee: number; jours: number }[] {
+  const parts: { annee: number; jours: number }[] = [];
+  for (let annee = Number(startIso.slice(0, 4)); annee <= Number(endIso.slice(0, 4)); annee += 1) {
+    const debut = startIso > `${annee}-01-01` ? startIso : `${annee}-01-01`;
+    const fin = endIso < `${annee}-12-31` ? endIso : `${annee}-12-31`;
+    const jours = countWorkdays(debut, fin, holidays).workingDays;
+    if (jours > 0) parts.push({ annee, jours });
+  }
+  return parts;
+}
+
 /** Décale une date ISO de `days` jours (négatif = vers le passé). */
 function shiftDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);

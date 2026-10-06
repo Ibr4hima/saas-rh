@@ -158,13 +158,16 @@ function CarteSemestre({
     }
   };
 
-  const bascule = (
+  // Une fiche sans case à cocher n'a rien à auto-évaluer.
+  const aEvaluer =
+    Boolean(fiche.evaluation.envoyesLe) || objectifsDeLaFiche(fiche.contenu).length > 0;
+  const bascule = aEvaluer ? (
     <BoutonAutoEvaluation
       fiche={{ ...fiche, statuts }}
       actif={autoEvaluation}
       onClick={() => setAutoEvaluation((v) => !v)}
     />
-  );
+  ) : null;
 
   return (
     <FicheSemestre
@@ -177,7 +180,7 @@ function CarteSemestre({
         </>
       }
     >
-      {autoEvaluation ? (
+      {autoEvaluation && aEvaluer ? (
         <AutoEvaluationAgent
           fiche={fiche}
           statuts={statuts}

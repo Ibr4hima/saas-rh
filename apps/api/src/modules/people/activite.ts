@@ -2,7 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { ChangementRattachement, ContractType, MotifChangement } from '@teranga/contracts';
 import { ProblemException } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
-import { alerterLaDCH } from '../acces/dch';
+import { administrateursEnFonction, alerterLaDCH } from '../acces/dch';
 import { CONTRAT } from '../notifications/phrases';
 import { reconcilierDemande, reconcilierLeCircuit, reconcilierReprise } from '../time/visas';
 import {
@@ -188,10 +188,13 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
     type: string;
     fin: string;
     n1: string | null;
+    admin: string | null;
   }>(sql`
     SELECT e.id, p.given_name || ' ' || p.family_name AS nom, c.id AS contrat,
            c.contract_type AS type, c.end_date::text AS fin,
-           e.manager_employee_id AS n1
+           e.manager_employee_id AS n1,
+           (SELECT m.user_id FROM user_tenant_memberships m
+             WHERE m.user_id = p.user_id AND m.tenant_id = e.tenant_id AND m.role = 'admin') AS admin
       FROM employees e
       JOIN persons p ON p.id = e.person_id
       JOIN contracts c ON c.id = ${dernierContrat(sql`e.id`)}
@@ -254,6 +257,23 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
       },
       a.id,
     );
+
+    // Le contrat d'un administrateur prend fin : ses droits s'arrêtent avec.
+    // S'il était le dernier, l'organisation n'en a plus : qu'on le sache.
+    if (a.admin && (await administrateursEnFonction(tx, tenantId)).length === 0) {
+      await alerterLaDCH(
+        tx,
+        tenantId,
+        'personnel.gerer',
+        {
+          type: 'contract_ended',
+          title: `${a.nom} était le dernier administrateur : l’organisation n’en a plus`,
+          link: `/employees/${a.id}`,
+          dedupeKey: `dernier_admin:${a.id}`,
+        },
+        a.id,
+      );
+    }
   }
   await reconcilierLeCircuit(tx, tenantId);
   return rows.length;

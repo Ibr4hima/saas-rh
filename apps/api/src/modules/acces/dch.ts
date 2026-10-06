@@ -342,8 +342,11 @@ export async function pasSurSoi(
   employeeIds: readonly (string | null | undefined)[],
   geste: string,
 ): Promise<void> {
-  const moi = await agentDuCompte(tx, userId);
-  if (!moi || !employeeIds.includes(moi)) return;
+  // Son dossier, même inactif : un agent parti ne s'ajoute pas un contrat.
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    SELECT e.id FROM employees e JOIN persons p ON p.id = e.person_id
+     WHERE p.user_id = ${userId}`);
+  if (!rows.some((r) => employeeIds.includes(r.id))) return;
   problem(
     403,
     'acces.son_propre_dossier',
@@ -364,6 +367,28 @@ export async function agentDuCompte(tx: Tx, userId: string): Promise<string | nu
        AND NOT ${contratEchu(sql`e.id`)}
      LIMIT 1`);
   return rows[0]?.id ?? null;
+}
+
+/**
+ * Les administrateurs en fonction, `sauf` un : accès ouvert, et dossier en
+ * activité s'ils en ont un. Un administrateur relié à un dossier parti ne
+ * compte plus, même pendant le mois où son portail reste ouvert.
+ */
+export async function administrateursEnFonction(
+  tx: Tx,
+  tenantId: string,
+  sauf: string | null = null,
+): Promise<string[]> {
+  const { rows } = await tx.execute<{ user_id: string }>(sql`
+    SELECT m.user_id FROM user_tenant_memberships m
+     WHERE m.tenant_id = ${tenantId} AND m.role = 'admin' AND m.acces_coupe_le IS NULL
+       AND m.user_id IS DISTINCT FROM ${sauf}
+       AND (NOT EXISTS (SELECT 1 FROM persons p JOIN employees e ON e.person_id = p.id
+                         WHERE p.user_id = m.user_id AND p.deleted_at IS NULL)
+            OR EXISTS (SELECT 1 FROM persons p JOIN employees e ON e.person_id = p.id
+                        WHERE p.user_id = m.user_id AND p.deleted_at IS NULL
+                          AND e.status = 'active' AND NOT ${contratEchu(sql`e.id`)}))`);
+  return rows.map((r) => r.user_id);
 }
 
 /**
@@ -458,9 +483,7 @@ export async function alerterLaDCH(
     }
   }
   if (qui.size === 0) {
-    const { rows } = await tx.execute<{ user_id: string }>(sql`
-      SELECT user_id FROM user_tenant_memberships WHERE tenant_id = ${tenantId} AND role = 'admin'`);
-    for (const r of rows) qui.add(r.user_id);
+    for (const id of await administrateursEnFonction(tx, tenantId)) qui.add(id);
   }
   for (const userId of qui) await notifier(tx, tenantId, userId, draft);
 }

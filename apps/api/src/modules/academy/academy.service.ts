@@ -90,6 +90,8 @@ type LigneLecon = {
   videoStatus: string;
   videoError: string | null;
   durationSeconds: number | null;
+  remplacementUid: string | null;
+  remplacementARevoir: boolean | null;
   supportFilename: string | null;
   supportSize: number | null;
 };
@@ -201,6 +203,8 @@ export class AcademyService {
         videoStatus: t.academyLessons.videoStatus,
         videoError: t.academyLessons.videoError,
         durationSeconds: t.academyLessons.durationSeconds,
+        remplacementUid: t.academyLessons.remplacementUid,
+        remplacementARevoir: t.academyLessons.remplacementARevoir,
         supportFilename: t.academyLessonSupports.filename,
         supportSize: t.academyLessonSupports.size,
       })
@@ -702,11 +706,19 @@ export class AcademyService {
   /** Les vidéos à effacer du stockage, une fois la base à jour. */
   private async effacerVideos(
     tenantId: string,
-    lecons: Array<{ videoUid: string | null; videoProvider: string | null }>,
+    lecons: Array<{
+      videoUid: string | null;
+      videoProvider: string | null;
+      remplacementUid?: string | null;
+    }>,
   ) {
     for (const l of lecons) {
       if (l.videoUid && l.videoProvider === 'local') {
         await this.stockage.supprimer(tenantId, l.videoUid).catch(() => undefined);
+      }
+      // L'envoi qui devait la remplacer, s'il en restait un.
+      if (l.remplacementUid) {
+        await this.stockage.supprimer(tenantId, l.remplacementUid).catch(() => undefined);
       }
     }
   }
@@ -908,9 +920,10 @@ export class AcademyService {
    * Préparer l'envoi d'une vidéo : un identifiant neuf chez le fournisseur,
    * et l'adresse où l'écran enverra le fichier.
    *
-   * Remplacer la vidéo d'une leçon efface l'ancienne dès maintenant : la
-   * leçon disparaît du parcours des agents le temps que la nouvelle soit
-   * prête, plutôt que de montrer une vidéo qu'on a décidé de retirer.
+   * Une vidéo prête reste en place jusqu'à ce que celle qui la remplace le
+   * soit : la leçon ne sort pas du parcours le temps de l'envoi, et
+   * l'évaluation finale continue de l'attendre. Un envoi refusé ne lui fait
+   * rien.
    */
   async preparerVideo(
     user: SessionUser,
@@ -927,8 +940,16 @@ export class AcademyService {
       );
     }
     const { uid, cible } = this.stockage.preparerEnvoi(lessonId);
-    const ancienne = await this.db.withTenant(this.ctx(user), async (tx) => {
+    const caduque = await this.db.withTenant(this.ctx(user), async (tx) => {
       const l = await this.lecon(tx, lessonId);
+      if (l.videoStatus === 'prete') {
+        await tx
+          .update(t.academyLessons)
+          .set({ remplacementUid: uid, remplacementARevoir: input.aRevoir ?? true })
+          .where(eq(t.academyLessons.id, lessonId));
+        // Un remplacement préparé avant celui-ci, et jamais arrivé.
+        return { videoUid: null, videoProvider: null, remplacementUid: l.remplacementUid };
+      }
       await tx
         .update(t.academyLessons)
         .set({
@@ -937,27 +958,44 @@ export class AcademyService {
           videoStatus: 'envoi',
           videoError: null,
           durationSeconds: null,
+          remplacementUid: null,
+          remplacementARevoir: null,
           updatedAt: new Date(),
         })
         .where(eq(t.academyLessons.id, lessonId));
       await this.toucher(tx, l.courseId);
       return l;
     });
-    await this.effacerVideos(user.tenantId, [ancienne]);
+    await this.effacerVideos(user.tenantId, [caduque]);
     return cible;
   }
 
-  private async marquerErreur(user: SessionUser, lessonId: string, uid: string, texte: string) {
+  private async marquerErreur(
+    user: SessionUser,
+    lessonId: string,
+    uid: string,
+    texte: string,
+    remplacement: boolean,
+  ) {
     await this.db.withTenant(this.ctx(user), (tx) =>
-      tx
-        .update(t.academyLessons)
-        .set({ videoStatus: 'erreur', videoError: texte, updatedAt: new Date() })
-        .where(and(eq(t.academyLessons.id, lessonId), eq(t.academyLessons.videoUid, uid))),
+      remplacement
+        ? // La vidéo en place ne bouge pas : l'envoi refusé s'oublie.
+          tx
+            .update(t.academyLessons)
+            .set({ remplacementUid: null, remplacementARevoir: null })
+            .where(
+              and(eq(t.academyLessons.id, lessonId), eq(t.academyLessons.remplacementUid, uid)),
+            )
+        : tx
+            .update(t.academyLessons)
+            .set({ videoStatus: 'erreur', videoError: texte, updatedAt: new Date() })
+            .where(and(eq(t.academyLessons.id, lessonId), eq(t.academyLessons.videoUid, uid))),
     );
   }
 
   /**
-   * Recevoir le fichier (stockage LOCAL seulement).
+   * Recevoir le fichier (stockage LOCAL seulement) : la première vidéo de la
+   * leçon, ou celle qui remplace sa vidéo prête.
    *
    * Aucune transaction n'est ouverte pendant l'envoi : il peut durer des
    * minutes, et une transaction ouverte aussi longtemps retiendrait une
@@ -970,10 +1008,16 @@ export class AcademyService {
   ): Promise<{ durationSeconds: number }> {
     this.exigerGestion(user);
     const lecon = await this.db.withTenant(this.ctx(user), (tx) => this.lecon(tx, lessonId));
-    if (lecon.videoStatus !== 'envoi' || lecon.videoProvider !== 'local' || !lecon.videoUid) {
+    const remplacement = lecon.videoStatus === 'prete' && lecon.remplacementUid !== null;
+    if (
+      !remplacement &&
+      (lecon.videoStatus !== 'envoi' || lecon.videoProvider !== 'local' || !lecon.videoUid)
+    ) {
       problem(409, 'academy.upload_not_prepared', 'Aucun envoi n’est attendu pour cette leçon');
     }
-    const uid = lecon.videoUid;
+    const uid = remplacement ? lecon.remplacementUid! : lecon.videoUid!;
+    const refuser = async (texte: string) =>
+      this.marquerErreur(user, lessonId, uid, texte, remplacement);
 
     let temporaire: string;
     try {
@@ -981,7 +1025,7 @@ export class AcademyService {
     } catch (err) {
       const tropLourde = err instanceof VideoTropLourde;
       const texte = tropLourde ? 'Le fichier dépasse 2 Go.' : 'L’envoi a été interrompu.';
-      await this.marquerErreur(user, lessonId, uid, texte);
+      await refuser(texte);
       problem(tropLourde ? 413 : 400, 'academy.upload_failed', texte);
     }
 
@@ -989,13 +1033,13 @@ export class AcademyService {
     if (duree === null) {
       await rm(temporaire, { force: true });
       const texte = 'Ce fichier n’est pas une vidéo MP4 lisible.';
-      await this.marquerErreur(user, lessonId, uid, texte);
+      await refuser(texte);
       problem(422, 'academy.video_unreadable', texte, 'Exportez la vidéo au format MP4 (H.264).');
     }
     if (duree > DUREE_MAX_LECON_S + MARGE_DUREE_S) {
       await rm(temporaire, { force: true });
       const texte = `La vidéo dure ${formatDuree(duree)} : une leçon fait 12 minutes au plus.`;
-      await this.marquerErreur(user, lessonId, uid, texte);
+      await refuser(texte);
       problem(422, 'academy.video_too_long', texte, 'Découpez-la en plusieurs leçons.');
     }
 
@@ -1004,22 +1048,36 @@ export class AcademyService {
       const res = await tx
         .update(t.academyLessons)
         .set({
+          videoProvider: this.stockage.nom,
+          videoUid: uid,
           videoStatus: 'prete',
           videoError: null,
           durationSeconds: duree,
+          remplacementUid: null,
+          remplacementARevoir: null,
           updatedAt: new Date(),
         })
-        .where(and(eq(t.academyLessons.id, lessonId), eq(t.academyLessons.videoUid, uid)))
+        .where(
+          and(
+            eq(t.academyLessons.id, lessonId),
+            remplacement
+              ? eq(t.academyLessons.remplacementUid, uid)
+              : eq(t.academyLessons.videoUid, uid),
+          ),
+        )
         .returning({ id: t.academyLessons.id });
       if (res.length === 0) return false;
       // La vidéo a changé : ce qu'on avait vu de l'ANCIENNE ne vaut plus pour
-      // la nouvelle. Ceux qui avaient validé la leçon la gardent validée.
+      // la nouvelle. Ceux qui avaient validé la leçon la gardent validée, sauf
+      // si son contenu a changé : elle est alors à revoir, elle seule. Les
+      // certificats déjà délivrés restent.
+      const aRevoir = remplacement && lecon.remplacementARevoir === true;
       await tx
         .delete(t.academyLessonProgress)
         .where(
           and(
             eq(t.academyLessonProgress.lessonId, lessonId),
-            isNull(t.academyLessonProgress.completedAt),
+            aRevoir ? undefined : isNull(t.academyLessonProgress.completedAt),
           ),
         );
       await this.toucher(tx, lecon.courseId);
@@ -1029,6 +1087,12 @@ export class AcademyService {
       // Un autre envoi a été préparé entre-temps : celui-ci est déjà caduc.
       await this.stockage.supprimer(user.tenantId, uid);
       problem(409, 'academy.upload_superseded', 'Un autre envoi a remplacé celui-ci');
+    }
+    // La nouvelle est en place : l'ancienne s'en va.
+    if (remplacement) {
+      await this.effacerVideos(user.tenantId, [
+        { videoUid: lecon.videoUid, videoProvider: lecon.videoProvider },
+      ]);
     }
     return { durationSeconds: duree };
   }

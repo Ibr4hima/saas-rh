@@ -562,6 +562,9 @@ export const academyLessons = pgTable('academy_lessons', {
   videoStatus: text('video_status').notNull().default('absente'),
   videoError: text('video_error'),
   durationSeconds: doublePrecision('duration_seconds'),
+  /** L'envoi qui remplacera la vidéo prête, et si la leçon sera à revoir. */
+  remplacementUid: text('remplacement_uid'),
+  remplacementARevoir: boolean('remplacement_a_revoir'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

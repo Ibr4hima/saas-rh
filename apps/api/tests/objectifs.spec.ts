@@ -911,6 +911,59 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
       agents.moussa,
     ]);
   });
+
+  it('une fiche sans case à cocher n’a rien à évaluer : ni annonce, ni envoi', async () => {
+    const texte = (type: string, t: string) => ({
+      id: randomUUID(),
+      type,
+      props: {},
+      content: [{ type: 'text', text: t, styles: {} }],
+      children: [],
+    });
+    const redigee = [
+      texte('heading', 'Objectifs du semestre'),
+      texte('bulletListItem', 'Livrer la note de conjoncture'),
+      {
+        id: randomUUID(),
+        type: 'table',
+        props: {},
+        content: {
+          type: 'tableContent',
+          rows: [{ cells: [[{ type: 'text', text: 'Former deux stagiaires', styles: {} }]] }],
+        },
+        children: [],
+      },
+    ];
+    const annonces = async () =>
+      (await notifications('moussa')).filter((n) =>
+        n.title.includes('vos objectifs du 1er semestre 2021'),
+      );
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      annee: 2021,
+      semestre: 1,
+      contenu: redigee,
+    });
+    // L'agent la lit, mais rien ne lui est annoncé, et elle ne part pas vide.
+    expect(de((await objectifs.mesObjectifs(session('moussa'))).fiches, 2021, 1)).toBeDefined();
+    expect(await annonces()).toEqual([]);
+    expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2021, 1))).toBe(
+      'objectifs.sans_objectif',
+    );
+    expect(
+      de((await objectifs.mesObjectifs(session('moussa'))).fiches, 2021, 1).evaluation.envoyesLe,
+    ).toBeNull();
+
+    // Une case à cocher : c'est un objectif, l'agent en est prévenu.
+    await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      annee: 2021,
+      semestre: 1,
+      contenu: [...redigee, caseACocher('o1', 'Livrer la note de conjoncture')],
+    });
+    expect(await annonces()).toHaveLength(1);
+    await raw(`DELETE FROM objectifs_fiches WHERE employee_id = $1 AND annee = 2021`, [
+      agents.moussa,
+    ]);
+  });
 });
 
 describe('un agent parti avant son évaluation', () => {
@@ -1030,6 +1083,32 @@ describe('le n+1 change pendant l’évaluation', () => {
       });
     } finally {
       await nouveauN1('awa');
+    }
+  });
+
+  it('une auto-évaluation rouverte ne laisse pas d’appel derrière elle', async () => {
+    const appelsDe = async () =>
+      (
+        await raw(`SELECT count(*)::int AS n FROM notifications WHERE dedupe_key LIKE $1`, [
+          `objectifs:${agents.moussa}:2020:1:appel:%`,
+        ])
+      ).rows[0].n as number;
+    try {
+      await remplie(2020, 1);
+      await objectifs.envoyerCommentaires(session('moussa'), 2020, 1);
+      expect(await appelsDe()).toBe(1);
+      // Rouverte (cf. 0081) : au passage suivant du circuit, l'appel s'en va.
+      await raw(
+        `UPDATE objectifs_fiches SET commentaires_envoyes_le = NULL
+          WHERE employee_id = $1 AND annee = 2020`,
+        [agents.moussa],
+      );
+      await nouveauN1('awa');
+      expect(await appelsDe()).toBe(0);
+    } finally {
+      await raw(`DELETE FROM objectifs_fiches WHERE employee_id = $1 AND annee = 2020`, [
+        agents.moussa,
+      ]);
     }
   });
 

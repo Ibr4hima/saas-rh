@@ -6,6 +6,7 @@ import { relancer, retirerLesAppels, tenirLesAppels } from '../acces/appels';
 import { ABSENCE, absence, accord, de, duAu, frDate, leLa, sonSa } from '../notifications/phrases';
 import type { Nom } from '../notifications/phrases';
 import {
+  administrateursEnFonction,
   directionDuPersonnel,
   nomsDe,
   traitementDe,
@@ -656,10 +657,8 @@ async function verifierLaVacance(tx: Tx, tenantId: string, enAttente: string[]):
     await tx.execute(sql`DELETE FROM notifications WHERE dedupe_key = 'dch:vacante'`);
     return;
   }
-  const { rows } = await tx.execute<{ user_id: string }>(sql`
-    SELECT user_id FROM user_tenant_memberships WHERE tenant_id = ${tenantId} AND role = 'admin'`);
-  for (const r of rows) {
-    await notifier(tx, tenantId, r.user_id, {
+  for (const userId of await administrateursEnFonction(tx, tenantId)) {
+    await notifier(tx, tenantId, userId, {
       type: 'dch_vacante',
       title: dch
         ? `${bloquees > 1 ? 'Des demandes attendent' : 'Une demande attend'} un responsable à la ${dch.nom}`

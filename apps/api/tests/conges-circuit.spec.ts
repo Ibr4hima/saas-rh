@@ -1277,6 +1277,58 @@ describe('les envois simultanés', () => {
   });
 });
 
+describe('un congé à cheval sur deux années', () => {
+  it('chaque année retranche ses jours de son solde, et chacune doit les avoir', async () => {
+    const court = randomUUID();
+    await raw(
+      `INSERT INTO absence_types (id, tenant_id, name, deducts_balance, allowance_days, frequency)
+       VALUES ($1,$2,'Congé court',true,5,'annual')`,
+      [court, tenantId],
+    );
+    const poserCourt = (debut: string, fin: string) =>
+      absences.createRequest(moussa.session, {
+        employeeId: moussa.employeeId,
+        absenceTypeId: court,
+        startDate: debut,
+        endDate: fin,
+      });
+    const solde = async (annee: number) =>
+      (await absences.balances(admin, moussa.employeeId, annee)).find(
+        (b) => b.absenceTypeId === court,
+      )!;
+    try {
+      // Du lundi 29 décembre 2031 au mercredi 7 janvier 2032 : 3 jours sur
+      // 2031, le reste sur 2032. Le tout dépasse le droit d'une année, pas
+      // la part de chacune.
+      const apercu = await absences.preview(moussa.session, '2031-12-29', '2032-01-07');
+      const [sur2031, sur2032] = apercu.parAnnee;
+      expect(sur2031).toEqual({ annee: 2031, jours: 3 });
+      expect(sur2032!.annee).toBe(2032);
+      expect(sur2031!.jours + sur2032!.jours).toBe(apercu.workingDays);
+      expect(apercu.workingDays).toBeGreaterThan(5);
+
+      const { daysCount } = await poserCourt('2031-12-29', '2032-01-07');
+      expect(daysCount).toBe(apercu.workingDays);
+      expect(await solde(2031)).toMatchObject({ pendingDays: 3, remainingDays: 2 });
+      expect(await solde(2032)).toMatchObject({
+        pendingDays: sur2032!.jours,
+        remainingDays: 5 - sur2032!.jours,
+      });
+
+      // Ce qui reste à 2031 se pose encore ; 2032, déjà entamé, refuse ce qui le dépasse.
+      await poserCourt('2031-12-26', '2031-12-26');
+      const refus = await poserCourt('2032-01-12', '2032-01-16').catch(
+        (e: ProblemException) => e.problem,
+      );
+      expect(refus).toMatchObject({ code: 'absence.insufficient_balance' });
+      expect((refus as { detail: string }).detail).toMatch(/ sur 2032 /);
+    } finally {
+      await raw(`DELETE FROM absence_requests WHERE absence_type_id = $1`, [court]);
+      await raw(`DELETE FROM absence_types WHERE id = $1`, [court]);
+    }
+  });
+});
+
 describe('le tableau de bord compte ce que ses listes montrent', () => {
   const tableau = () => new DashboardController(db, absences);
   const chiffres = (session: SessionUser) =>

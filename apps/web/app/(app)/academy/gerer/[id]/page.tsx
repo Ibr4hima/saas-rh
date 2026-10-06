@@ -24,6 +24,7 @@ import { Page } from '../../../../../components/gabarit';
 import { Icon } from '../../../../../components/icons';
 import { LoadFailure } from '../../../../../components/load-failure';
 import { FenetreDocument } from '../../../../../components/fenetre-document';
+import { Modal } from '../../../../../components/modal';
 import { FenetreSuppression } from '../../../../../components/reglages-absences';
 import { dureeLisible, FAMILLES, horloge } from '../../../../../lib/academy';
 import { api, ApiError, apiUrl } from '../../../../../lib/api';
@@ -120,6 +121,10 @@ export default function AtelierFormationPage() {
   >(null);
   const [envois, setEnvois] = useState<Record<string, Envoi>>({});
   const [erreur, setErreur] = useState<string | null>(null);
+  // Remplacer la vidéo d'une formation publiée : la leçon est-elle à revoir ?
+  const [remplacement, setRemplacement] = useState<{ lecon: LessonView; fichier: File } | null>(
+    null,
+  );
 
   const rafraichir = () => qc.invalidateQueries({ queryKey: ['academy'] });
 
@@ -150,14 +155,16 @@ export default function AtelierFormationPage() {
     action.mutate({ chemin, methode, corps });
   };
 
+  const poserEnvoi = (lecon: LessonView, e: Envoi | null) =>
+    setEnvois((tous) => {
+      const suite = { ...tous };
+      if (e) suite[lecon.id] = e;
+      else delete suite[lecon.id];
+      return suite;
+    });
+
   async function deposerVideo(lecon: LessonView, fichier: File) {
-    const poser = (e: Envoi | null) =>
-      setEnvois((tous) => {
-        const suite = { ...tous };
-        if (e) suite[lecon.id] = e;
-        else delete suite[lecon.id];
-        return suite;
-      });
+    const poser = (e: Envoi | null) => poserEnvoi(lecon, e);
     if (fichier.size > MAX_VIDEO_LOCALE_BYTES) {
       poser({ erreur: 'Le fichier dépasse 2 Go : exportez la vidéo en 1080p ou 720p.' });
       return;
@@ -169,6 +176,17 @@ export default function AtelierFormationPage() {
       });
       return;
     }
+    // Des agents l'ont peut-être déjà suivie : la question d'abord.
+    if (vue.data?.published && lecon.videoStatus === 'prete') {
+      poser(null);
+      setRemplacement({ lecon, fichier });
+      return;
+    }
+    await envoyerVideo(lecon, fichier);
+  }
+
+  async function envoyerVideo(lecon: LessonView, fichier: File, aRevoir?: boolean) {
+    const poser = (e: Envoi | null) => poserEnvoi(lecon, e);
     poser({ part: 0 });
     try {
       const cible = await api<VideoUploadTarget>(`/academy/lessons/${lecon.id}/video`, {
@@ -177,6 +195,7 @@ export default function AtelierFormationPage() {
           filename: fichier.name,
           size: fichier.size,
           contentType: fichier.type || undefined,
+          aRevoir,
         },
       });
       await rafraichir();
@@ -362,6 +381,17 @@ export default function AtelierFormationPage() {
       <SectionEvaluation formation={f} />
 
       {edition ? <FormationModal open formation={f} onClose={() => setEdition(false)} /> : null}
+
+      {remplacement ? (
+        <FenetreRemplacement
+          lecon={remplacement.lecon}
+          onClose={() => setRemplacement(null)}
+          onRemplacer={(aRevoir) => {
+            setRemplacement(null);
+            void envoyerVideo(remplacement.lecon, remplacement.fichier, aRevoir);
+          }}
+        />
+      ) : null}
 
       {suppression?.type === 'formation' ? (
         <FenetreSuppression
@@ -848,5 +878,68 @@ function LigneLecon({
         />
       ) : null}
     </li>
+  );
+}
+
+/** Remplacer la vidéo d'une leçon publiée : ceux qui l'ont suivie la revoient-ils ? */
+function FenetreRemplacement({
+  lecon,
+  onClose,
+  onRemplacer,
+}: {
+  lecon: LessonView;
+  onClose: () => void;
+  onRemplacer: (aRevoir: boolean) => void;
+}) {
+  const [aRevoir, setARevoir] = useState<boolean | null>(null);
+  const question = 'Les agents qui l’ont déjà suivie doivent-ils la revoir ?';
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Remplacer la vidéo"
+      subtitle={lecon.title}
+      maxWidth="max-w-lg"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button disabled={aRevoir === null} onClick={() => onRemplacer(aRevoir!)}>
+            Remplacer
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[12.5px] font-semibold text-ink">{question}</span>
+        <div
+          role="radiogroup"
+          aria-label={question}
+          className="flex flex-col gap-1 rounded-[18px] border border-line-soft bg-bg p-1 sm:w-fit sm:flex-row sm:rounded-full"
+        >
+          {[
+            { oui: true, label: 'Oui, le contenu a changé' },
+            { oui: false, label: 'Non, le contenu est le même' },
+          ].map((o) => (
+            <button
+              key={o.label}
+              type="button"
+              role="radio"
+              aria-checked={aRevoir === o.oui}
+              onClick={() => setARevoir(o.oui)}
+              className={cn(
+                'rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors',
+                aRevoir === o.oui
+                  ? 'bg-surface text-primary shadow-sm'
+                  : 'text-ink-muted hover:text-ink',
+              )}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </Modal>
   );
 }

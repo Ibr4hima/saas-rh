@@ -16,7 +16,12 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { archiveEmployeesSchema, newContractSchema, type SessionUser } from '@teranga/contracts';
+import {
+  archiveEmployeesSchema,
+  newContractSchema,
+  peut,
+  type SessionUser,
+} from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -24,7 +29,13 @@ import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
 import { AcademyController } from '../src/modules/academy/academy.controller';
 import { AccesGuard, FERME_AUX_INACTIFS_KEY } from '../src/modules/auth/acces.guard';
-import { agentDuCompte, directionDuPersonnel, estDeLaDCH, viseur } from '../src/modules/acces/dch';
+import {
+  agentDuCompte,
+  directionDuPersonnel,
+  estDeLaDCH,
+  pasSurSoi,
+  viseur,
+} from '../src/modules/acces/dch';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { DocumentRequestsService } from '../src/modules/docs/document-requests.service';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
@@ -612,6 +623,83 @@ describe('un mois pour récupérer ses documents', () => {
     expect(
       code(() => garde.canActivate(contexte(academie.catalogue, '2026-11-02', AcademyController))),
     ).toBe('acces.inactif');
+  });
+});
+
+describe('un administrateur dont le dossier part', () => {
+  const role = (a: { userId: string }, r: 'admin' | 'employee') =>
+    raw(`UPDATE user_tenant_memberships SET role = $3 WHERE tenant_id = $1 AND user_id = $2`, [
+      tenantId,
+      a.userId,
+      r,
+    ]);
+  const dernierAdmin = async (a: Agent) =>
+    (
+      await raw(`SELECT recipient_user_id AS qui FROM notifications WHERE dedupe_key = $1`, [
+        `dernier_admin:${a.employeeId}`,
+      ])
+    ).rows.map((r) => r.qui as string);
+
+  it('pendant le mois restreint, le rôle d’administrateur ne lui donne plus rien', async () => {
+    await role(fatou, 'admin');
+    const { token, user } = await auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {});
+    expect(user).toMatchObject({ role: 'employee', capacites: [] });
+    expect(peut(user, 'personnel.gerer')).toBe(false);
+    expect(peut(user, 'textes')).toBe(false);
+    expect((await auth.resolveSession(token))?.role).toBe('employee');
+    // Son dossier, même parti, lui reste fermé.
+    expect(
+      await codeOf(() =>
+        db.withTenant({ tenantId, userId: fatou.userId }, (tx) =>
+          pasSurSoi(tx, fatou.userId, [fatou.employeeId], 'modifier'),
+        ),
+      ),
+    ).toBe('acces.son_propre_dossier');
+  });
+
+  it('le dernier administrateur parti, la gestion du personnel en est prévenue', async () => {
+    await role(fatou, 'admin');
+    // Un autre administrateur en fonction : rien à signaler.
+    expect(await inactiver()).toBe(1);
+    expect(await dernierAdmin(fatou)).toEqual([]);
+
+    // Le seul administrateur restant voit son CDD finir : plus personne.
+    const awa = await agent('Awa', uDFC, { type: 'cdd', debut: -200, fin: -1 }, omar.employeeId);
+    await role(awa, 'admin');
+    await role({ userId: adminUserId }, 'employee');
+    try {
+      expect(await inactiver()).toBe(1);
+      expect(await dernierAdmin(awa)).toEqual([mariama.userId]);
+    } finally {
+      await role({ userId: adminUserId }, 'admin');
+    }
+  });
+
+  it('un administrateur dont le dossier est parti ne compte plus comme « un autre administrateur »', async () => {
+    await role(fatou, 'admin');
+    await role(moussa, 'admin');
+    await role({ userId: adminUserId }, 'employee');
+    try {
+      const fermer = () =>
+        people.archive(admin, { ids: [moussa.employeeId], archived: true, motif: 'demission' });
+      const r = await fermer();
+      expect(r.done).toBe(0);
+      expect(JSON.stringify(r)).toContain("Dernier administrateur de l'organisation");
+      // Rouvrir un dossier ne retire d'administrateur à personne.
+      await raw(
+        `UPDATE contracts SET end_date = NULL, contract_type = 'cdi' WHERE employee_id = $1`,
+        [fatou.employeeId],
+      );
+      await raw(
+        `UPDATE employees SET status = 'archived', archived_at = now(), inactivite_motif = 'demission',
+                fin_activite = CURRENT_DATE - 1 WHERE id = $1`,
+        [fatou.employeeId],
+      );
+      const rouvrir = await people.archive(admin, { ids: [fatou.employeeId], archived: false });
+      expect(rouvrir.done).toBe(1);
+    } finally {
+      await role({ userId: adminUserId }, 'admin');
+    }
   });
 });
 

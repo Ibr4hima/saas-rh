@@ -68,9 +68,13 @@ function mp4(dureeSecondes: number): Buffer {
   ]);
 }
 
-async function deposerVideo(lessonId: string, dureeSecondes: number) {
+async function deposerVideo(lessonId: string, dureeSecondes: number, aRevoir?: boolean) {
   const fichier = mp4(dureeSecondes);
-  await academy.preparerVideo(rh, lessonId, { filename: 'lecon.mp4', size: fichier.length });
+  await academy.preparerVideo(rh, lessonId, {
+    filename: 'lecon.mp4',
+    size: fichier.length,
+    aRevoir,
+  });
   return academy.recevoirVideo(rh, lessonId, Readable.from([fichier]));
 }
 
@@ -427,14 +431,76 @@ describe('le support et la vidéo', () => {
     horloge += 10_000;
     await academy.battement(agent, l2, { sessionId: lecture.sessionId!, de: 0, a: 10 });
 
-    await deposerVideo(l1, 100);
-    await deposerVideo(l2, 100);
+    // Le même contenu, rogné : rien n'est à revoir.
+    await deposerVideo(l1, 100, false);
+    await deposerVideo(l2, 100, false);
     const { rows } = await raw(
       `SELECT lesson_id, completed_at IS NOT NULL AS validee FROM academy_lesson_progress
        WHERE tenant_id = $1`,
       [tenantId],
     );
     expect(rows).toEqual([{ lesson_id: l1, validee: true }]);
+  });
+
+  it('le contenu a changé : cette leçon est à revoir, elle seule, et l’ancienne vidéo s’en va', async () => {
+    const { l1, l2 } = await formationPubliee();
+    await regarder(l1, 120);
+    await regarder(l2, 120);
+    const avant = (await raw(`SELECT video_uid FROM academy_lessons WHERE id = $1`, [l1])).rows[0]
+      .video_uid as string;
+
+    await deposerVideo(l1, 110, true);
+    const { rows } = await raw(
+      `SELECT lesson_id, completed_at IS NOT NULL AS validee FROM academy_lesson_progress
+       WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    expect(rows).toEqual([{ lesson_id: l2, validee: true }]);
+    expect(existsSync(stockage.chemin(tenantId, avant))).toBe(false);
+    // L'agent la reprend ; la suivante reste validée.
+    expect((await academy.demarrer(agent, l1)).source).toBeDefined();
+  });
+
+  it('pendant l’envoi de la nouvelle, l’ancienne reste en place ; refusée, rien ne change', async () => {
+    const { l1 } = await formationPubliee();
+    await regarder(l1, 120);
+    const lecon = async () =>
+      (
+        await raw(
+          `SELECT video_status, duration_seconds, video_uid, remplacement_uid
+             FROM academy_lessons WHERE id = $1`,
+          [l1],
+        )
+      ).rows[0] as {
+        video_status: string;
+        duration_seconds: number;
+        video_uid: string;
+        remplacement_uid: string | null;
+      };
+    const avant = await lecon();
+
+    await academy.preparerVideo(rh, l1, { filename: 'v2.mp4', size: 10, aRevoir: true });
+    // Toujours prête : dans le parcours, lisible, et attendue par l'évaluation.
+    expect(await lecon()).toMatchObject({
+      video_status: 'prete',
+      duration_seconds: 120,
+      video_uid: avant.video_uid,
+    });
+    expect((await lecon()).remplacement_uid).not.toBeNull();
+    expect((await academy.demarrer(agent, l1)).source).toBeDefined();
+
+    expect(
+      await codeOf(() =>
+        academy.recevoirVideo(rh, l1, Readable.from([Buffer.from('pas une vidéo')])),
+      ),
+    ).toBe('academy.video_unreadable');
+    expect(await lecon()).toEqual({ ...avant, remplacement_uid: null });
+    expect(existsSync(stockage.chemin(tenantId, avant.video_uid))).toBe(true);
+    const { rows } = await raw(
+      `SELECT completed_at IS NOT NULL AS validee FROM academy_lesson_progress WHERE lesson_id = $1`,
+      [l1],
+    );
+    expect(rows).toEqual([{ validee: true }]);
   });
 });
 

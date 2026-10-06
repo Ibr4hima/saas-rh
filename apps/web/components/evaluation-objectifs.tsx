@@ -731,7 +731,11 @@ export function AutoEvaluationAgent({
               enCours={action.enCours === 'enregistrer'}
               onClick={() => void enregistrer()}
             />
-            <Button size="sm" disabled={Boolean(reste)} onClick={() => setConfirmer(true)}>
+            <Button
+              size="sm"
+              disabled={Boolean(reste) || objectifs.length === 0}
+              onClick={() => setConfirmer(true)}
+            >
               Envoyer à mon N+1
             </Button>
           </>

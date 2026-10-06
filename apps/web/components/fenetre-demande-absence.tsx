@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import type { AbsencePreview, AbsenceType, AgentSaisieView, BalanceView } from '@teranga/contracts';
 import { Button, cn, Field, Input, Select, Skeleton, Textarea } from '@teranga/ui';
@@ -84,13 +84,19 @@ export function FenetreDemandeAbsence({
       api<AbsencePreview>('/absence-preview', { method: 'POST', body: { startDate, endDate } }),
     enabled: Boolean(startDate && endDate && endDate >= startDate),
   });
-  // Le solde de l'année de la demande : un congé posé en janvier prochain se
-  // retranche du droit de l'an prochain.
-  const annee = (startDate || aujourdhui()).slice(0, 4);
-  const balances = useQuery({
-    queryKey: ['balances', employeeId, annee],
-    queryFn: () => api<BalanceView[]>(`/employees/${employeeId}/balances?year=${annee}`),
-    enabled: Boolean(employeeId),
+  // Le solde de chaque année touchée : un congé du 28 décembre au 8 janvier
+  // se retranche pour partie du droit de chacune.
+  const parts = preview.data?.parAnnee ?? [];
+  const annees =
+    parts.length > 0
+      ? parts.map((p) => String(p.annee))
+      : [(startDate || aujourdhui()).slice(0, 4)];
+  const soldes = useQueries({
+    queries: annees.map((annee) => ({
+      queryKey: ['balances', employeeId, annee],
+      queryFn: () => api<BalanceView[]>(`/employees/${employeeId}/balances?year=${annee}`),
+      enabled: Boolean(employeeId),
+    })),
   });
 
   useEffect(() => {
@@ -128,15 +134,22 @@ export function FenetreDemandeAbsence({
     if (v && endDate && endDate < v) setEndDate(v);
   };
 
-  const balance = balances.data?.find((b) => b.absenceTypeId === typeId);
   const days = preview.data?.workingDays ?? 0;
   const feries = preview.data?.holidaysSkipped ?? [];
   const periodeInvalide = Boolean(startDate && endDate && endDate < startDate);
   const calendaires = joursCalendaires(startDate, endDate);
   const weekEnd = Math.max(0, calendaires - days - feries.length);
-  const decompte = Boolean(selectedType?.deductsBalance) && balance !== undefined;
-  const restantApres = balance ? balance.remainingDays - days : 0;
-  const insufficient = decompte && restantApres < 0;
+  const lignes = annees.map((annee, i) => {
+    const balance = soldes[i]?.data?.find((b) => b.absenceTypeId === typeId);
+    const jours =
+      parts.length > 0 ? (parts.find((p) => String(p.annee) === annee)?.jours ?? 0) : days;
+    return { annee, balance, apres: balance ? balance.remainingDays - jours : 0 };
+  });
+  const plusieurs = lignes.length > 1;
+  const decompte =
+    Boolean(selectedType?.deductsBalance) && lignes.every((l) => l.balance !== undefined);
+  const manquent = decompte ? lignes.filter((l) => l.apres < 0) : [];
+  const insufficient = manquent.length > 0;
 
   const retires: string[] = [];
   if (weekEnd > 0) retires.push(`${compte(weekEnd, 'jour')} de week-end`);
@@ -328,25 +341,37 @@ export function FenetreDemandeAbsence({
           <Skeleton className="h-9 w-56" />
         ) : (
           <>
-            <dl className="grid grid-cols-2 gap-x-10 gap-y-[18px]">
+            <dl
+              className={cn(
+                'grid grid-cols-2 gap-x-10 gap-y-[18px]',
+                plusieurs && 'sm:grid-cols-3',
+              )}
+            >
               <Donnee label="Jours ouvrés">
                 <span className={cn(days === 0 && 'text-ink-muted')}>{compte(days, 'jour')}</span>
-              </Donnee>
-              <Donnee label="Solde après">
-                {decompte && balance ? (
-                  <span className={cn(insufficient && 'text-danger')}>
-                    {compte(restantApres, 'jour')}
-                    {insufficient ? null : (
-                      <span className="font-normal text-ink-muted">
-                        {' '}
-                        sur {balance.entitledDays}
-                      </span>
-                    )}
+                {plusieurs ? (
+                  <span className="block text-[12px] font-normal text-ink-muted">
+                    {parts.map((p) => `${p.jours} en ${p.annee}`).join(' · ')}
                   </span>
-                ) : (
-                  <span className="font-normal text-ink-muted">Non décompté</span>
-                )}
+                ) : null}
               </Donnee>
+              {lignes.map((l) => (
+                <Donnee key={l.annee} label={plusieurs ? `Solde ${l.annee} après` : 'Solde après'}>
+                  {decompte && l.balance ? (
+                    <span className={cn(l.apres < 0 && 'text-danger')}>
+                      {compte(l.apres, 'jour')}
+                      {l.apres < 0 ? null : (
+                        <span className="font-normal text-ink-muted">
+                          {' '}
+                          sur {l.balance.entitledDays}
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="font-normal text-ink-muted">Non décompté</span>
+                  )}
+                </Donnee>
+              ))}
             </dl>
             {days === 0 ? (
               <p className="mt-3 text-[12px] text-accent-text">
@@ -354,7 +379,12 @@ export function FenetreDemandeAbsence({
               </p>
             ) : insufficient ? (
               <p className="mt-3 text-[12px] text-danger">
-                Solde insuffisant : il manque {compte(-restantApres, 'jour')}.
+                {manquent
+                  .map(
+                    (l) =>
+                      `Solde${plusieurs ? ` ${l.annee}` : ''} insuffisant : il manque ${compte(-l.apres, 'jour')}.`,
+                  )
+                  .join(' ')}
               </p>
             ) : retires.length > 0 ? (
               <p className="mt-3 text-[12px] text-ink-muted">

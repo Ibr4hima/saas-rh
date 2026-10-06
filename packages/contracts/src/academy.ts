@@ -127,6 +127,11 @@ export const prepareVideoSchema = z.object({
   filename: z.string().trim().min(1).max(255),
   size: z.number().int().positive(),
   contentType: z.string().max(120).optional(),
+  /**
+   * Remplacer une vidéo prête : la leçon est-elle à revoir par ceux qui
+   * l'avaient validée ? Sans réponse, elle l'est.
+   */
+  aRevoir: z.boolean().optional(),
 });
 export type PrepareVideoInput = z.infer<typeof prepareVideoSchema>;
 

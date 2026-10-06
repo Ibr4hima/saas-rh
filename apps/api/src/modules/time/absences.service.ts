@@ -78,7 +78,7 @@ import {
   reconcilierReprise,
   type Attendu,
 } from './visas';
-import { countWorkdays } from './workdays';
+import { countWorkdays, joursParAnnee } from './workdays';
 
 type DefaultType = {
   name: string;
@@ -197,6 +197,32 @@ const decompteDeLaDemande = sql<boolean>`COALESCE(
       AND extract(year FROM absence_requests.start_date) < extract(year FROM CURRENT_DATE)
     ORDER BY p.jusqu_a_annee LIMIT 1),
   absence_types.deducts_balance)`;
+
+/** Une demande `r` qui a au moins un jour dans l'année. */
+const toucheLAnnee = (annee: number) => sql`(
+  r.start_date <= make_date(${annee}::int, 12, 31) AND r.end_date >= make_date(${annee}::int, 1, 1))`;
+
+/** Les jours ouvrés d'une période, comptés comme `days_count` (week-ends et fériés exclus). */
+const ouvresEntre = (debut: SQL, fin: SQL) => sql`(
+  SELECT count(*) FROM generate_series(${debut}, ${fin}, interval '1 day') g(d)
+   WHERE extract(isodow FROM g.d) < 6
+     AND NOT EXISTS (SELECT 1 FROM holidays h WHERE h.day = g.d::date))`;
+
+/**
+ * Ce qu'une demande `r` retranche du solde d'une année : ses jours ouvrés
+ * de cette année-là. L'année où elle commence garde le reste de `days_count`,
+ * pour que les parts fassent toujours le total.
+ */
+const joursSurLAnnee = (annee: number) => sql`(CASE
+  WHEN extract(year FROM r.start_date) = extract(year FROM r.end_date) THEN r.days_count
+  WHEN extract(year FROM r.start_date) = ${annee}::int
+    THEN greatest(r.days_count
+           - ${ouvresEntre(sql`make_date(${annee}::int + 1, 1, 1)`, sql`r.end_date`)}, 0)
+  ELSE ${ouvresEntre(
+    sql`greatest(r.start_date, make_date(${annee}::int, 1, 1))`,
+    sql`least(r.end_date, make_date(${annee}::int, 12, 31))`,
+  )}
+END)`;
 
 /** Ce qu'un solde d'année lit d'un type d'absence. */
 type TypePourSolde = {
@@ -913,7 +939,7 @@ export class AbsencesService {
            AND (EXISTS (SELECT 1 FROM absence_requests r
                          WHERE r.absence_type_id = ty.id AND r.employee_id = ${employeeId}
                            AND r.status IN ('approved', 'pending')
-                           AND extract(year FROM r.start_date) = ${year})
+                           AND ${toucheLAnnee(year)})
                 OR EXISTS (SELECT 1 FROM absence_balances b
                             WHERE b.absence_type_id = ty.id AND b.employee_id = ${employeeId}
                               AND b.year = ${year}))
@@ -982,13 +1008,15 @@ export class AbsencesService {
         .select({ day: sql<string>`${t.holidays.day}`, label: t.holidays.label })
         .from(t.holidays)
         .where(isNotNull(t.holidays.day));
-      const result = countWorkdays(startDate, endDate, new Set(holidayRows.map((h) => h.day)));
+      const feries = new Set(holidayRows.map((h) => h.day));
+      const result = countWorkdays(startDate, endDate, feries);
       return {
         workingDays: result.workingDays,
         holidaysSkipped: result.holidaysSkipped.map((day) => ({
           day,
           label: holidayRows.find((h) => h.day === day)?.label ?? '',
         })),
+        parAnnee: joursParAnnee(startDate, endDate, feries),
       };
     });
   }
@@ -1055,11 +1083,8 @@ export class AbsencesService {
           .select({ day: sql<string>`${t.holidays.day}` })
           .from(t.holidays)
           .where(isNotNull(t.holidays.day));
-        daysCount = countWorkdays(
-          input.startDate,
-          input.endDate,
-          new Set(holidayRows.map((h) => h.day)),
-        ).workingDays;
+        const feries = new Set(holidayRows.map((h) => h.day));
+        daysCount = countWorkdays(input.startDate, input.endDate, feries).workingDays;
         if (daysCount === 0) {
           problem(
             422,
@@ -1073,16 +1098,17 @@ export class AbsencesService {
         // arrive après l'arrêt) : il n'est exigé qu'à la validation.
         const document = input.document ? lireJustificatif(input.document) : null;
 
-        {
-          // Le solde de l'année de la demande, au paramétrage de cette année-là.
-          const year = Number(input.startDate.slice(0, 4));
-          const [view] = await this.balancesInTx(tx, user, input.employeeId, year, [type]);
-          if (view?.deductsBalance && daysCount > view.remainingDays) {
+        // Chaque année touchée retranche ses jours de son solde, au
+        // paramétrage de cette année-là : du 28 décembre au 8 janvier, une
+        // part sur chacune.
+        for (const { annee, jours } of joursParAnnee(input.startDate, input.endDate, feries)) {
+          const [view] = await this.balancesInTx(tx, user, input.employeeId, annee, [type]);
+          if (view?.deductsBalance && jours > view.remainingDays) {
             problem(
               422,
               'absence.insufficient_balance',
               'Solde insuffisant',
-              `Il reste ${view.remainingDays} jour(s) de « ${type.name} » sur ${year} (demande : ${daysCount} j, dont soldes en attente déjà réservés).`,
+              `Il reste ${view.remainingDays} jour(s) de « ${type.name} » sur ${annee} (demande : ${jours} j sur ${annee}, dont soldes en attente déjà réservés).`,
             );
           }
         }
@@ -2001,21 +2027,19 @@ export class AbsencesService {
       .select()
       .from(t.absenceBalances)
       .where(and(eq(t.absenceBalances.employeeId, employeeId), eq(t.absenceBalances.year, year)));
-    const sums = await tx
-      .select({
-        absenceTypeId: t.absenceRequests.absenceTypeId,
-        status: t.absenceRequests.status,
-        days: sql<string>`coalesce(sum(${t.absenceRequests.daysCount}), 0)`,
-      })
-      .from(t.absenceRequests)
-      .where(
-        and(
-          eq(t.absenceRequests.employeeId, employeeId),
-          sql`extract(year from ${t.absenceRequests.startDate}) = ${year}`,
-          inArray(t.absenceRequests.status, ['approved', 'pending']),
-        ),
-      )
-      .groupBy(t.absenceRequests.absenceTypeId, t.absenceRequests.status);
+    // Les demandes qui touchent l'année, pour leurs jours de cette année-là.
+    const { rows: sums } = await tx.execute<{
+      absenceTypeId: string;
+      status: string;
+      days: string;
+    }>(sql`
+      SELECT r.absence_type_id AS "absenceTypeId", r.status,
+             coalesce(sum(${joursSurLAnnee(year)}), 0)::text AS days
+        FROM absence_requests r
+       WHERE r.employee_id = ${employeeId}
+         AND r.status IN ('approved', 'pending')
+         AND ${toucheLAnnee(year)}
+       GROUP BY r.absence_type_id, r.status`);
 
     return types.map((type) => {
       const balance = balanceRows.find((b) => b.absenceTypeId === type.id);

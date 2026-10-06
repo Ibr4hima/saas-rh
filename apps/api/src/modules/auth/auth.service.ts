@@ -264,7 +264,9 @@ export class AuthService {
           familyName: row.familyName,
           organizationName: row.organizationName,
           organizationSlug: row.organizationSlug,
-          role: row.role as SessionUser['role'],
+          // Plus en activité, il n'est plus que l'agent qui s'en va : le rôle
+          // d'administrateur ne lui donne plus rien pendant ce mois-là.
+          role: (finDAcces ? 'employee' : row.role) as SessionUser['role'],
           capacites,
           estAgent,
           dirigeLaDCH,

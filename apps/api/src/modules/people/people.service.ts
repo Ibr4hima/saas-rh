@@ -49,7 +49,7 @@ import {
   type PlanDeReprise,
 } from './chaine';
 import { frDate } from '../acces/appels';
-import { pasSurSoi } from '../acces/dch';
+import { administrateursEnFonction, pasSurSoi } from '../acces/dch';
 import { faireSuivreLesDemandes, reconcilierDemande, reconcilierLeCircuit } from '../time/visas';
 import {
   arreterLActivite,
@@ -1566,18 +1566,12 @@ export class PeopleService {
     if (cible.userId && cible.userId === user.userId) {
       return 'Vous ne pouvez pas fermer ni effacer votre propre dossier';
     }
-    if (cible.userId) {
-      const [autreAdmin] = await tx
-        .select({ id: t.userTenantMemberships.id })
-        .from(t.userTenantMemberships)
-        .where(
-          and(
-            eq(t.userTenantMemberships.tenantId, user.tenantId),
-            eq(t.userTenantMemberships.role, 'admin'),
-            sql`${t.userTenantMemberships.userId} <> ${cible.userId}`,
-          ),
-        )
-        .limit(1);
+    // Rouvrir un dossier ne retire d'administrateur à personne.
+    if (cible.userId && geste !== 'reouverture') {
+      // Un autre administrateur EN FONCTION : celui dont le dossier est déjà
+      // parti ne rendra les droits à personne.
+      const autreAdmin =
+        (await administrateursEnFonction(tx, user.tenantId, cible.userId)).length > 0;
       const [estAdmin] = await tx
         .select({ id: t.userTenantMemberships.id })
         .from(t.userTenantMemberships)

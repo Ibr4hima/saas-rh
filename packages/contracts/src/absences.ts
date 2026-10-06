@@ -393,4 +393,6 @@ export const previewAbsenceSchema = z.object({
 export interface AbsencePreview {
   workingDays: number;
   holidaysSkipped: { day: string; label: string }[];
+  /** Les jours ouvrés de chaque année touchée : chacune les retranche de son solde. */
+  parAnnee: { annee: number; jours: number }[];
 }
