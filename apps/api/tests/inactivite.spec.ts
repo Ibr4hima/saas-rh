@@ -2070,6 +2070,136 @@ describe('les invitations partent d’elles-mêmes', () => {
       expect(rows).toEqual([{ par: null }]);
     });
 
+    it('revenue, elle retrouve la tête de son unité et son équipe, si personne ne les a reprises', async () => {
+      // Fatou dirige la comptabilité, où travaille Ibou ; son CDD a pris fin hier.
+      await inactiver();
+      expect(await chefDe(uCompta)).toBeNull();
+      expect(await n1De(ibou)).toBe(omar.employeeId);
+
+      const r = await rh.newContract(admin, fatou.employeeId, {
+        contractType: 'cdi',
+        startDate: await jour(0),
+        affectation: await placeDe(fatou),
+      });
+      expect(r.rouvert).toBe(true);
+      expect(await chefDe(uCompta)).toBe(fatou.employeeId);
+      expect(await n1De(ibou)).toBe(fatou.employeeId);
+      expect(r.changements).toContainEqual(
+        expect.objectContaining({ employeeId: ibou.employeeId, motif: 'retour_du_responsable' }),
+      );
+    });
+
+    it('un successeur nommé entre-temps garde l’unité, et l’équipe avec', async () => {
+      await inactiver();
+      await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [
+        uCompta,
+        ibou.employeeId,
+      ]);
+      await rh.newContract(admin, fatou.employeeId, {
+        contractType: 'cdi',
+        startDate: await jour(0),
+        affectation: await placeDe(fatou),
+      });
+      expect((await statut(fatou)).status).toBe('active');
+      expect(await chefDe(uCompta)).toBe(ibou.employeeId);
+      expect(await n1De(ibou)).toBe(omar.employeeId);
+    });
+
+    it('un directeur revenu après une interruption reprend sa direction, le jour venu', async () => {
+      // Omar dirige la Direction Financière ; Moussa et Fatou relèvent de lui.
+      await raw(`UPDATE contracts SET end_date = NULL WHERE employee_id = $1`, [fatou.employeeId]);
+      await raw(`UPDATE contracts SET contract_type = 'cdd' WHERE employee_id = $1`, [
+        omar.employeeId,
+      ]);
+      await finiIlYA(omar, 2);
+      await inactiver();
+      expect(await chefDe(uDFC)).toBeNull();
+      expect(await n1De(moussa)).toBe(dg.employeeId);
+
+      await rh.newContract(admin, omar.employeeId, {
+        contractType: 'cdi',
+        startDate: await jour(5),
+        affectation: { positionTitle: 'Poste', orgUnitId: uDFC },
+      });
+      await inactiver();
+      expect(await chefDe(uDFC)).toBeNull();
+
+      await leJourVenu(omar);
+      expect((await statut(omar)).status).toBe('active');
+      expect(await chefDe(uDFC)).toBe(omar.employeeId);
+      expect(await n1De(omar)).toBe(dg.employeeId);
+      expect(await n1De(moussa)).toBe(omar.employeeId);
+      expect(await n1De(fatou)).toBe(omar.employeeId);
+    });
+
+    it('un contrat qui n’a pas commencé s’annule : le contrat en cours retrouve sa fin', async () => {
+      const contrats = async () =>
+        (
+          await raw(
+            `SELECT start_date::text AS debut, end_date::text AS fin FROM contracts
+              WHERE employee_id = $1 ORDER BY start_date`,
+            [moussa.employeeId],
+          )
+        ).rows as { debut: string; fin: string | null }[];
+      const avant = await contrats();
+      expect(avant).toHaveLength(1);
+      expect(avant[0]!.fin).toBeNull();
+      const r = await rh.newContract(admin, moussa.employeeId, {
+        contractType: 'cdd',
+        startDate: await jour(10),
+        endDate: await jour(100),
+        affectation: { positionTitle: 'Analyste', orgUnitId: uDFC },
+      });
+      expect((await contrats())[0]!.fin).toBe(await jour(9));
+
+      // Seul le dernier s'annule ; commencé, il ne s'annule plus.
+      const premier = (
+        await raw(`SELECT id FROM contracts WHERE employee_id = $1 ORDER BY start_date LIMIT 1`, [
+          moussa.employeeId,
+        ])
+      ).rows[0].id as string;
+      expect(await codeOf(() => rh.annulerContrat(admin, moussa.employeeId, premier))).toBe(
+        'people.contrat_pas_le_dernier',
+      );
+
+      await rh.annulerContrat(admin, moussa.employeeId, r.id);
+      expect(await contrats()).toEqual(avant);
+      expect(await codeOf(() => rh.annulerContrat(admin, moussa.employeeId, premier))).toBe(
+        'people.contrat_commence',
+      );
+    });
+
+    it('annulé, le contrat qui ramenait un membre à la DCH ne lui garde plus ses délégations', async () => {
+      const awa = await agent(
+        'Awa',
+        uDCH,
+        { type: 'cdd', debut: -300, fin: -2 },
+        mariama.employeeId,
+      );
+      await raw(
+        `INSERT INTO habilitations (id, tenant_id, capacite, employee_id)
+         VALUES ($1,$2,'demandes.conges',$3)`,
+        [randomUUID(), tenantId, awa.employeeId],
+      );
+      const r = await rh.newContract(admin, awa.employeeId, {
+        contractType: 'cdd',
+        startDate: await jour(10),
+        endDate: await jour(375),
+        affectation: { positionTitle: 'Gestionnaire RH', orgUnitId: uDCH },
+      });
+      await inactiver();
+      const ouvertes = async () =>
+        (
+          await raw(
+            `SELECT count(*)::int AS n FROM habilitations WHERE employee_id = $1 AND fin_at IS NULL`,
+            [awa.employeeId],
+          )
+        ).rows[0].n as number;
+      expect(await ouvertes()).toBe(1);
+      await rh.annulerContrat(admin, awa.employeeId, r.id);
+      expect(await ouvertes()).toBe(0);
+    });
+
     it('un départ enregistré avant le début : le contrat suivant n’aura pas lieu', async () => {
       await raw(
         `UPDATE contracts SET contract_type = 'cdd', end_date = CURRENT_DATE + 5 WHERE employee_id = $1`,

@@ -97,7 +97,9 @@ export type MotifChangement =
   /** Le repreneur, pris dans l'équipe, prend la place du partant. */
   | 'prend_la_place'
   /** Sans n+1, dans une direction qui a sa tête : relève d'office du directeur. */
-  | 'responsable_de_sa_direction';
+  | 'responsable_de_sa_direction'
+  /** Son responsable, parti à la fin de son contrat, est revenu : il relève de nouveau de lui. */
+  | 'retour_du_responsable';
 
 export interface ChangementRattachement {
   employeeId: string;

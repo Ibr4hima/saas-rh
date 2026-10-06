@@ -6,12 +6,16 @@ import { administrateursEnFonction, alerterLaDCH } from '../acces/dch';
 import { CONTRAT } from '../notifications/phrases';
 import { reconcilierDemande, reconcilierLeCircuit, reconcilierReprise } from '../time/visas';
 import {
+  apresNouveauDG,
+  apresNouveauDirecteur,
   directionDeEmploye,
   directionDeLUnite,
   equipeDe,
   n1DOffice,
   rattacher,
   rattacherDOffice,
+  SOMMET,
+  sortDuPerimetre,
   validerRattachement,
   verrouillerLaChaine,
 } from './chaine';
@@ -125,7 +129,11 @@ export async function reprendreLActivite(
   demandee: string | null = null,
   /** Le poste et l'unité où il reprend, quand un nouveau contrat les dit. */
   affectation?: { positionTitle: string; orgUnitId: string | null },
-): Promise<void> {
+): Promise<CeQuIlALaisse> {
+  const { rows: depart } = await tx.execute<CeQuIlALaisse>(sql`
+    SELECT headed_unit_ids AS unites, team_reassignments AS equipe FROM periodes_inactivite
+     WHERE employee_id = ${employeeId} AND reprise_le IS NULL`);
+  const laisse: CeQuIlALaisse = depart[0] ?? { unites: [], equipe: [] };
   const { rows } = await tx.execute<{
     reprise: string | null;
     lendemain: string | null;
@@ -152,7 +160,7 @@ export async function reprendreLActivite(
   if (!r?.reprise || !r.lendemain) {
     await tx.execute(sql`
       DELETE FROM periodes_inactivite WHERE employee_id = ${employeeId} AND reprise_le IS NULL`);
-    return;
+    return laisse;
   }
 
   // Un nouveau contrat dit où il reprend : la même place, ou une autre.
@@ -171,7 +179,7 @@ export async function reprendreLActivite(
       await tx.execute(sql`
         UPDATE assignments SET validity = daterange(lower(validity), NULL)
          WHERE id = ${r.affectation}`);
-      return;
+      return laisse;
     }
   } else {
     await tx.execute(sql`
@@ -179,15 +187,69 @@ export async function reprendreLActivite(
        WHERE employee_id = ${employeeId} AND reprise_le IS NULL`);
   }
 
-  if (!poste) return;
+  if (!poste) return laisse;
   const { rows: ouverte } = await tx.execute(sql`
     SELECT 1 FROM assignments WHERE employee_id = ${employeeId}
        AND (upper_inf(validity) OR upper(validity) > ${r.reprise}::date) LIMIT 1`);
-  if (ouverte.length > 0) return;
+  if (ouverte.length > 0) return laisse;
   await tx.execute(sql`
     INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
     VALUES (gen_random_uuid(), ${tenantId}, ${employeeId}, ${unite}, ${poste},
             daterange(${r.reprise}::date, NULL))`);
+  return laisse;
+}
+
+/**
+ * Ce qu'un départ à la fin du contrat a défait : les unités qu'il
+ * dirigeait, et où chacun de son équipe est allé.
+ */
+export type CeQuIlALaisse = {
+  unites: string[];
+  equipe: { id: string; n1: string }[];
+};
+
+/**
+ * Revenu, il retrouve ce que son départ a défait et que personne n'a refait
+ * depuis : la tête des unités restées sans responsable, s'il travaille dans
+ * leur périmètre (avec ce que la règle impose à un directeur ou au DG), et
+ * les membres de son équipe encore là où son départ les avait mis. Un
+ * successeur nommé à la tête de son unité garde aussi l'équipe. À appeler
+ * une fois le dossier redevenu actif.
+ */
+export async function retrouverSaPlace(
+  tx: Tx,
+  journal: ChangementRattachement[],
+  employeeId: string,
+  laisse: CeQuIlALaisse,
+): Promise<void> {
+  let rendues = 0;
+  for (const uniteId of laisse.unites) {
+    const { rows } = await tx.execute<{ direction: boolean; sommet: boolean }>(sql`
+      SELECT unit_type = 'direction' AS direction, id = ${SOMMET} AS sommet FROM org_units
+       WHERE id = ${uniteId} AND deleted_at IS NULL AND manager_employee_id IS NULL`);
+    const u = rows[0];
+    if (!u || (await sortDuPerimetre(tx, employeeId, uniteId))) continue;
+    await tx.execute(sql`
+      UPDATE org_units SET manager_employee_id = ${employeeId}, updated_at = now()
+       WHERE id = ${uniteId}`);
+    rendues += 1;
+    if (u.sommet) await apresNouveauDG(tx, journal, null, employeeId);
+    else if (u.direction) await apresNouveauDirecteur(tx, journal, uniteId, null, employeeId);
+  }
+  if (laisse.unites.length > 0 && rendues === 0) return;
+  for (const m of laisse.equipe) {
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      SELECT id FROM employees
+       WHERE id = ${m.id} AND status = 'active' AND manager_employee_id = ${m.n1}`);
+    if (rows.length === 0) continue;
+    try {
+      await validerRattachement(tx, m.id, employeeId, await directionDeEmploye(tx, m.id));
+    } catch (err) {
+      if (err instanceof ProblemException) continue;
+      throw err;
+    }
+    await rattacher(tx, journal, m.id, employeeId, 'retour_du_responsable');
+  }
 }
 
 /**
@@ -281,11 +343,12 @@ async function appliquerLesContratsQuiCommencent(tx: Tx, tenantId: string): Prom
     if (avant[0]?.autre) {
       await tx.execute(sql`UPDATE employees SET manager_employee_id = NULL WHERE id = ${c.id}`);
     }
-    await reprendreLActivite(tx, tenantId, c.id, c.debut, place);
+    const laisse = await reprendreLActivite(tx, tenantId, c.id, c.debut, place);
     await tx.execute(sql`
       UPDATE employees
          SET status = 'active', archived_at = NULL, inactivite_motif = NULL, updated_at = now()
        WHERE id = ${c.id}`);
+    await retrouverSaPlace(tx, journal, c.id, laisse);
     await rattacherDOffice(tx, journal, c.id);
     const { rows: compte } = await tx.execute<{ ferme: boolean }>(sql`
       SELECT u.password_hash IS NULL AS ferme
@@ -342,13 +405,15 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
              archived_at = (${a.fin}::date + 1)::timestamptz, updated_at = now()
        WHERE id = ${a.id}`);
     await arreterLActivite(tx, a.id, sql`${a.fin}::date`, 'fin_de_contrat', a.reprise);
-    await tx.execute(sql`
+    const { rows: quittees } = await tx.execute<{ id: string }>(sql`
       UPDATE org_units SET manager_employee_id = NULL, updated_at = now()
-       WHERE manager_employee_id = ${a.id} AND deleted_at IS NULL`);
+       WHERE manager_employee_id = ${a.id} AND deleted_at IS NULL
+      RETURNING id`);
 
     // L'équipe remonte d'un cran — rattachement par rattachement, sous la
     // règle —, ou passe au responsable de sa direction.
     const journal: ChangementRattachement[] = [];
+    const parties: CeQuIlALaisse['equipe'] = [];
     for (const m of equipe) {
       const candidats: [string | null, MotifChangement][] = [
         [a.n1, 'reprise_equipe'],
@@ -359,12 +424,20 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
         try {
           await validerRattachement(tx, m.id, cible, await directionDeEmploye(tx, m.id));
           await rattacher(tx, journal, m.id, cible, motif);
+          parties.push({ id: m.id, n1: cible });
           break;
         } catch (err) {
           if (!(err instanceof ProblemException)) throw err;
         }
       }
     }
+
+    // S'il revient, il retrouvera ce que personne n'aura refait (cf. `retrouverSaPlace`).
+    await tx.execute(sql`
+      UPDATE periodes_inactivite
+         SET headed_unit_ids = ${`{${quittees.map((u) => u.id).join(',')}}`}::uuid[],
+             team_reassignments = ${JSON.stringify(parties)}::jsonb
+       WHERE employee_id = ${a.id} AND reprise_le IS NULL`);
 
     const { rows: annulees } = await tx.execute<{ id: string }>(sql`
       UPDATE absence_requests SET status = 'cancelled', decided_at = now()

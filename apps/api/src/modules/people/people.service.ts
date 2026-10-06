@@ -55,6 +55,8 @@ import {
   inactiverLesContratsEchus,
   jourDeReprise,
   reprendreLActivite,
+  retrouverSaPlace,
+  type CeQuIlALaisse,
 } from './activite';
 import { exigerEnActivite, finDeContratPassee } from './en-activite';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
@@ -884,7 +886,12 @@ export class PeopleService {
             `Le contrat en place a commencé le ${frDate(precedent.startDate)}.`,
           );
         }
-        if (precedent && (precedent.endDate === null || precedent.endDate >= input.startDate)) {
+        // Le précédent s'arrête la veille ; sa fin d'origine se garde, pour
+        // le cas où ce contrat serait annulé avant de commencer.
+        const remplaceLaFin = Boolean(
+          precedent && (precedent.endDate === null || precedent.endDate >= input.startDate),
+        );
+        if (precedent && remplaceLaFin) {
           await tx
             .update(t.contracts)
             .set({ endDate: sql`${input.startDate}::date - 1`, updatedAt: new Date() })
@@ -937,6 +944,8 @@ export class PeopleService {
           notes: input.notes ?? null,
           plannedPositionTitle: aVenir ? cible.positionTitle : null,
           plannedOrgUnitId: aVenir ? cible.orgUnitId : null,
+          previousEndReplaced: remplaceLaFin,
+          previousEndDate: remplaceLaFin ? (precedent?.endDate ?? null) : null,
         });
         if (aVenir) {
           // Le directeur général reste à la Direction Générale : refusé
@@ -1111,6 +1120,60 @@ export class PeopleService {
     if (!rouvrir) return { rouvert: false };
     const r = await this.archive(user, { ids: [id], archived: false });
     return { rouvert: r.done === 1 };
+  }
+
+  /**
+   * Annuler un contrat qui n'a pas commencé, saisi par erreur : il est
+   * retiré, et le contrat qu'il arrêtait la veille de son début retrouve sa
+   * fin d'origine. Seul le dernier contrat s'annule ; commencé, il se
+   * corrige, ou l'agent part.
+   */
+  async annulerContrat(user: SessionUser, id: string, contratId: string): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.requireEmployee(tx, id);
+      await pasSurSoi(tx, user.userId, [id], 'modifier votre propre contrat');
+      const contrats = await tx
+        .select({
+          id: t.contracts.id,
+          startDate: t.contracts.startDate,
+          aVenir: sql<boolean>`${t.contracts.startDate} > CURRENT_DATE`,
+          finRemplacee: t.contracts.previousEndReplaced,
+          finDOrigine: t.contracts.previousEndDate,
+        })
+        .from(t.contracts)
+        .where(eq(t.contracts.employeeId, id))
+        .orderBy(desc(t.contracts.startDate), desc(t.contracts.createdAt))
+        .for('update');
+      const [dernier, precedent] = contrats;
+      if (!dernier || dernier.id !== contratId) {
+        problem(
+          422,
+          'people.contrat_pas_le_dernier',
+          'Seul le dernier contrat s’annule',
+          'Les contrats précédents sont clos.',
+        );
+      }
+      if (!dernier.aVenir) {
+        problem(
+          422,
+          'people.contrat_commence',
+          'Ce contrat a commencé',
+          `Il a commencé le ${frDate(dernier.startDate)} : corrigez-le, ou enregistrez le départ de l’agent.`,
+        );
+      }
+      if (precedent && dernier.finRemplacee) {
+        await tx
+          .update(t.contracts)
+          .set({ endDate: dernier.finDOrigine, updatedAt: new Date() })
+          .where(eq(t.contracts.id, precedent.id));
+      }
+      await tx.execute(sql`
+        DELETE FROM notifications WHERE dedupe_key LIKE ${`contract_deadline:${contratId}%`}`);
+      await tx.delete(t.contracts).where(eq(t.contracts.id, contratId));
+      // Un membre de la DCH qui n'y revient plus perd les délégations qui
+      // l'attendaient.
+      await reconcilierLeCircuit(tx, user.tenantId);
+    });
   }
 
   /** L'affectation en cours ou à venir la plus récente, et celle qu'elle a suivie. */
@@ -1394,9 +1457,13 @@ export class PeopleService {
     const ids = retenus.map((c) => c.id);
     // Rouvert, il retrouve son poste et son unité : avant de redevenir
     // actif : un dossier actif n'a pas de dernier jour.
+    const laisses = new Map<string, CeQuIlALaisse>();
     if (!input.archived) {
       for (const c of retenus) {
-        await reprendreLActivite(tx, user.tenantId, c.id, le, affectations?.get(c.id));
+        laisses.set(
+          c.id,
+          await reprendreLActivite(tx, user.tenantId, c.id, le, affectations?.get(c.id)),
+        );
       }
     }
     await tx
@@ -1411,6 +1478,11 @@ export class PeopleService {
     // Réactivé sans n+1, il relève d'office du responsable de sa direction.
     const invitations: NonNullable<EmployeeBatchResult['invitations']> = [];
     if (!input.archived) {
+      // Il retrouve ce que son départ a défait et que personne n'a refait.
+      for (const c of retenus) {
+        const laisse = laisses.get(c.id);
+        if (laisse) await retrouverSaPlace(tx, journal, c.id, laisse);
+      }
       for (const c of retenus) await rattacherDOffice(tx, journal, c.id);
       // Parti plus de trente jours, il revient sans mot de passe : son
       // invitation part d'elle-même.

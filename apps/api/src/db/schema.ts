@@ -193,6 +193,9 @@ export const contracts = pgTable('contracts', {
   /** La place d'un contrat qui n'a pas commencé : elle s'applique le jour venu (migration 0085). */
   plannedPositionTitle: text('planned_position_title'),
   plannedOrgUnitId: uuid('planned_org_unit_id'),
+  /** Il a arrêté le précédent la veille de son début : sa fin d'origine, pour l'annuler (migration 0086). */
+  previousEndReplaced: boolean('previous_end_replaced').notNull().default(false),
+  previousEndDate: date('previous_end_date'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -513,8 +513,20 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                       <Td>{c.endDate ? formatDate(c.endDate) : null}</Td>
                       {peutGerer ? (
                         <Td className="text-right">
-                          {/* Le plus récent d'abord : seul le dernier se corrige. */}
-                          {i === 0 ? <CorrectionContrat employeeId={e.id} contrat={c} /> : null}
+                          {/* Le plus récent d'abord : seul le dernier se corrige, et
+                              s'annule tant qu'il n'a pas commencé. */}
+                          {i === 0 ? (
+                            <span className="inline-flex flex-wrap justify-end gap-1">
+                              <CorrectionContrat employeeId={e.id} contrat={c} />
+                              {c.startDate > jour ? (
+                                <AnnulationContrat
+                                  employeeId={e.id}
+                                  contrat={c}
+                                  prenom={e.person.givenName}
+                                />
+                              ) : null}
+                            </span>
+                          ) : null}
                         </Td>
                       ) : null}
                     </Tr>
@@ -1140,6 +1152,74 @@ function GesteAffectation({
         </p>
       ) : null}
     </Modal>
+  );
+}
+
+/**
+ * Annuler le dernier contrat, saisi par erreur, tant qu'il n'a pas commencé.
+ * Le contrat qu'il arrêtait la veille de son début retrouve sa fin.
+ */
+function AnnulationContrat({
+  employeeId,
+  contrat: c,
+  prenom,
+}: {
+  employeeId: string;
+  contrat: EmployeeDetail['contracts'][number];
+  prenom: string;
+}) {
+  const queryClient = useQueryClient();
+  const [ouvert, setOuvert] = useState(false);
+  const annuler = useMutation({
+    mutationFn: () => api(`/employees/${employeeId}/contracts/${c.id}`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      setOuvert(false);
+      await queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+      await queryClient.invalidateQueries({ queryKey: ['employees'] });
+      await queryClient.invalidateQueries({ queryKey: ['contrats'] });
+    },
+  });
+  const erreur = annuler.error
+    ? annuler.error instanceof ApiError
+      ? annuler.error.message
+      : 'Annulation impossible.'
+    : null;
+  return (
+    <>
+      <Button size="sm" variant="ghost" onClick={() => setOuvert(true)}>
+        Annuler
+      </Button>
+      <div className="text-left">
+        <Modal
+          open={ouvert}
+          onClose={() => setOuvert(false)}
+          title={`Annuler le contrat de ${prenom}`}
+          subtitle={`${CONTRACT_LABELS[c.contractType] ?? c.contractType} · ${
+            c.endDate
+              ? `du ${formatDate(c.startDate)} au ${formatDate(c.endDate)}`
+              : `à partir du ${formatDate(c.startDate)}`
+          }`}
+          maxWidth="max-w-md"
+          footer={
+            <div className="flex w-full justify-end gap-2">
+              <Button variant="secondary" onClick={() => setOuvert(false)}>
+                Garder le contrat
+              </Button>
+              <Button variant="danger" loading={annuler.isPending} onClick={() => annuler.mutate()}>
+                Annuler le contrat
+              </Button>
+            </div>
+          }
+        >
+          <p className="text-[13px] text-ink">Ce contrat ne prendra pas effet.</p>
+          {erreur ? (
+            <p role="alert" className="mt-3 text-[12.5px] text-danger">
+              {erreur}
+            </p>
+          ) : null}
+        </Modal>
+      </div>
+    </>
   );
 }
 

@@ -24,3 +24,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0016](0016-compte-d-un-agent-parti.md)               | Compte d’un agent parti : mot de passe effacé après trente jours, retour par invitation | acceptée |
 | [0017](0017-invitations-au-portail.md)                | Invitations au portail : d’office au retour, groupées, suivies sur une page             | acceptée |
 | [0018](0018-contrat-a-venir.md)                       | Contrat à venir : hors contrat entre deux contrats, place appliquée le jour venu        | acceptée |
+| [0019](0019-retour-tete-d-unite-et-contrat-annule.md) | Retour à la tête de son unité, contrat à venir annulable                                | acceptée |

@@ -213,6 +213,18 @@ export class PeopleController {
     return this.people.corrigerContrat(req.sessionUser, id, contratId, body);
   }
 
+  /** Annuler le dernier contrat, s'il n'a pas commencé. */
+  @Delete('employees/:id/contracts/:contratId')
+  @HttpCode(204)
+  @Peut('personnel.gerer')
+  async annulerContrat(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('contratId', ParseUUIDPipe) contratId: string,
+  ) {
+    await this.people.annulerContrat(req.sessionUser, id, contratId);
+  }
+
   @Get('employees/:id/history')
   @Peut('personnel.consulter')
   history(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
