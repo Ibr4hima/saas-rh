@@ -193,6 +193,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/demandes/informations': 'Mise à jour d’infos',
   '/demandes/pieces': 'Vérification des documents',
   '/moi/delegations': 'Déléguer des tâches',
+  '/acces': 'Gestion des accès',
   '/calendrier': 'Calendrier · Jours fériés',
   '/recrutement': "Offres d'emploi",
   '/recrutement/candidatures': 'Dossiers de candidature',
@@ -481,6 +482,16 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
         break;
       case '/employees':
         if (peut(user, 'personnel.consulter')) items.push(i);
+        // Qui est entré au portail, qui attend son invitation : au directeur.
+        if (user.dirigeLaDCH) {
+          items.push({
+            href: '/acces',
+            label: 'Gestion des accès',
+            short: 'Accès',
+            icon: 'verified_user',
+            groupe: i.groupe,
+          });
+        }
         break;
       case '/organisation':
         // Tout le monde le consulte dans son espace ; ici, qui le gère.
@@ -1202,6 +1213,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       return peut(u, 'personnel.gerer');
     }
     if (commence('/employees')) return peut(u, 'personnel.consulter');
+    if (commence('/acces')) return u.dirigeLaDCH;
     if (commence('/absences/feries')) return peut(u, 'feries');
     if (commence('/absences/parametres')) return peut(u, 'conges.parametres');
     if (commence('/absences')) return peut(u, 'demandes.conges') || u.role === 'admin';

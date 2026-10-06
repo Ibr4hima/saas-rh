@@ -10,7 +10,9 @@ import type {
   CreateEmployeeInput,
   CursorPage,
   DeleteEmployeesInput,
+  CreateEmployeeResult,
   EmployeeBatchResult,
+  InvitationAuPassage,
   EmployeeDetail,
   EmployeeHistoryEntry,
   EmployeeListItem,
@@ -18,6 +20,7 @@ import type {
   MotifInactivite,
   NewAssignmentInput,
   NewContractInput,
+  NewContractResult,
   CorrigerAffectationInput,
   CorrigerContratInput,
   SessionUser,
@@ -26,6 +29,7 @@ import type {
 import { peut } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
 import { problem, ProblemException } from '../../common/problem';
+import { preparerInvitation } from '../portal/invitations.service';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import {
@@ -387,9 +391,10 @@ export class PeopleService {
    * Ce qui est vérifié, en revanche, c'est le rattachement QUAND il est
    * donné : même direction, responsable actif, pas de boucle.
    */
-  async create(user: SessionUser, input: CreateEmployeeInput): Promise<{ id: string }> {
+  async create(user: SessionUser, input: CreateEmployeeInput): Promise<CreateEmployeeResult> {
     const employeeId = uuidv7();
     const personId = uuidv7();
+    let invitation: InvitationAuPassage | null = null;
 
     try {
       await this.db.withTenant(ctxOf(user), async (tx) => {
@@ -449,6 +454,8 @@ export class PeopleService {
         }
         // Sans n+1 choisi, il relève d'office du responsable de sa direction.
         if (!input.employee.managerEmployeeId) await rattacherDOffice(tx, [], employeeId);
+        // L'invitation demandée dans la foulée : manquée, le dossier reste.
+        if (input.inviter) invitation = await this.inviterAuPassage(tx, user, employeeId);
       });
     } catch (err) {
       if (pgCode(err) === '23505') {
@@ -456,7 +463,44 @@ export class PeopleService {
       }
       throw err;
     }
-    return { id: employeeId };
+    // Écrite dans la transaction : TypeScript ne voit pas l'affectation.
+    const partie = invitation as InvitationAuPassage | null;
+    if (partie?.email) this.expediteur?.bientot();
+    return { id: employeeId, invitation: partie };
+  }
+
+  /**
+   * Une invitation au portail, au passage d'un autre geste (une création, un
+   * retour) : dans sa propre sous-transaction, si bien qu'un refus (pas
+   * d'adresse, accès coupé) n'annule pas le geste. Sans serveur de courrier,
+   * rien ne part : le lien se génère depuis la fiche.
+   */
+  private async inviterAuPassage(
+    tx: Tx,
+    user: SessionUser,
+    employeeId: string,
+  ): Promise<InvitationAuPassage> {
+    if (!this.expediteur?.actif) {
+      return { email: null, raison: 'Aucun serveur de courrier n’est configuré' };
+    }
+    try {
+      const r = await tx.transaction((sp) =>
+        preparerInvitation(sp, this.expediteur, user, employeeId, 'employee'),
+      );
+      return { email: r.email, raison: null };
+    } catch (err) {
+      if (!(err instanceof ProblemException)) throw err;
+      return { email: null, raison: err.problem.title };
+    }
+  }
+
+  /** Son compte a perdu son mot de passe (parti plus de trente jours). */
+  private async compteFerme(tx: Tx, employeeId: string): Promise<boolean> {
+    const { rows } = await tx.execute<{ ferme: boolean }>(sql`
+      SELECT u.password_hash IS NULL AS ferme
+        FROM employees e JOIN persons p ON p.id = e.person_id JOIN users u ON u.id = p.user_id
+       WHERE e.id = ${employeeId}`);
+    return Boolean(rows[0]?.ferme);
   }
 
   async detail(user: SessionUser, id: string): Promise<EmployeeDetail> {
@@ -786,59 +830,143 @@ export class PeopleService {
   /**
    * Un nouveau contrat : un CDD renouvelé, un stage suivi d'un CDD, un CDI.
    * Il commence après le précédent ; celui-ci, s'il courait encore, s'arrête
-   * la veille. Possible sur un dossier inactif : c'est ce qui permet de le
-   * réactiver quand le contrat reprend.
+   * la veille.
+   *
+   * Il dit aussi où l'agent travaille : son poste et sa direction. Dans la
+   * même direction, l'unité en cours est gardée (un service reste un
+   * service) ; inchangés, rien ne bouge ; changés, une nouvelle affectation
+   * part du début du contrat, sous les règles d'une mutation.
+   *
+   * Sur un dossier inactif, il le réactive, à cette place. Parti plus de
+   * trente jours, son compte a perdu son mot de passe : l'invitation à
+   * revenir part d'elle-même. Le tout ou rien : un refus n'enregistre rien.
    */
   async newContract(
     user: SessionUser,
     id: string,
     input: NewContractInput,
-  ): Promise<{ id: string }> {
-    return this.db.withTenant(ctxOf(user), async (tx) => {
-      await this.requireEmployee(tx, id);
-      await pasSurSoi(tx, user.userId, [id], 'modifier votre propre contrat');
-      const [precedent] = await tx
-        .select({
-          id: t.contracts.id,
-          startDate: t.contracts.startDate,
-          endDate: t.contracts.endDate,
-        })
-        .from(t.contracts)
-        .where(eq(t.contracts.employeeId, id))
-        .orderBy(desc(t.contracts.startDate), desc(t.contracts.createdAt))
-        .limit(1);
-      if (precedent && input.startDate <= precedent.startDate) {
+  ): Promise<NewContractResult> {
+    let resultat: NewContractResult;
+    try {
+      resultat = await this.db.withTenant(ctxOf(user), async (tx) => {
+        const dossier = await this.requireEmployee(tx, id);
+        await pasSurSoi(tx, user.userId, [id], 'modifier votre propre contrat');
+        await this.requireLiveOrgUnit(tx, input.affectation.orgUnitId);
+        const [precedent] = await tx
+          .select({
+            id: t.contracts.id,
+            startDate: t.contracts.startDate,
+            endDate: t.contracts.endDate,
+          })
+          .from(t.contracts)
+          .where(eq(t.contracts.employeeId, id))
+          .orderBy(desc(t.contracts.startDate), desc(t.contracts.createdAt))
+          .limit(1);
+        if (precedent && input.startDate <= precedent.startDate) {
+          problem(
+            422,
+            'people.contrat_avant_le_precedent',
+            'Le nouveau contrat doit commencer après le précédent',
+            `Le contrat en place a commencé le ${frDate(precedent.startDate)}.`,
+          );
+        }
+        if (precedent && (precedent.endDate === null || precedent.endDate >= input.startDate)) {
+          await tx
+            .update(t.contracts)
+            .set({ endDate: sql`${input.startDate}::date - 1`, updatedAt: new Date() })
+            .where(eq(t.contracts.id, precedent.id));
+        }
+        // Renouvelé, le précédent ne « prend plus fin » : ses alertes s'en vont.
+        if (precedent) {
+          await tx.execute(sql`
+            DELETE FROM notifications WHERE dedupe_key LIKE ${`contract_deadline:${precedent.id}%`}`);
+        }
+        const contractId = uuidv7();
+        await tx.insert(t.contracts).values({
+          id: contractId,
+          tenantId: user.tenantId,
+          employeeId: id,
+          contractType: input.contractType,
+          startDate: input.startDate,
+          endDate: input.endDate ?? null,
+          trialPeriodEnd: input.trialPeriodEnd ?? null,
+          notes: input.notes ?? null,
+        });
+
+        // Où il travaille sous ce contrat.
+        const [derniere] = await tx
+          .select({
+            unite: t.assignments.orgUnitId,
+            poste: t.assignments.positionTitle,
+          })
+          .from(t.assignments)
+          .where(eq(t.assignments.employeeId, id))
+          .orderBy(sql`lower(${t.assignments.validity}) DESC`)
+          .limit(1);
+        const directionVisee = await directionDeUnite(tx, input.affectation.orgUnitId);
+        const directionActuelle = derniere?.unite
+          ? await directionDeUnite(tx, derniere.unite)
+          : null;
+        const memeDirection = Boolean(
+          directionActuelle && directionVisee && directionActuelle.id === directionVisee.id,
+        );
+        const cible = {
+          positionTitle: input.affectation.positionTitle,
+          orgUnitId: memeDirection ? derniere!.unite : input.affectation.orgUnitId,
+        };
+
+        if (dossier.status === 'archived') {
+          // Une autre direction : son ancien n+1 n'en est plus. Le responsable
+          // de la nouvelle le reprend d'office à la réouverture.
+          if (derniere && !memeDirection) {
+            await tx
+              .update(t.employees)
+              .set({ managerEmployeeId: null })
+              .where(eq(t.employees.id, id));
+          }
+          const r = await this.archiverOuRouvrir(
+            tx,
+            user,
+            { ids: [id], archived: false },
+            new Map([[id, cible]]),
+          );
+          if (r.done === 0) {
+            problem(
+              422,
+              'people.reactivation_refusee',
+              'Le dossier ne peut pas être réactivé',
+              r.skipped[0]?.reason,
+            );
+          }
+          const inv = r.invitations?.[0];
+          return {
+            id: contractId,
+            rouvert: true,
+            invitation: inv ? { email: inv.email, raison: inv.raison } : null,
+            changements: r.changements ?? [],
+            aRevoir: r.aRevoir ?? [],
+          };
+        }
+
+        const inchangee =
+          derniere && derniere.poste === cible.positionTitle && derniere.unite === cible.orgUnitId;
+        const c = inchangee
+          ? { changements: [], aRevoir: [] }
+          : await this.affecter(tx, user, id, { ...cible, startDate: input.startDate });
+        return { id: contractId, rouvert: false, invitation: null, ...c };
+      });
+    } catch (err) {
+      if (pgCode(err) === '23P01') {
         problem(
-          422,
-          'people.contrat_avant_le_precedent',
-          'Le nouveau contrat doit commencer après le précédent',
-          `Le contrat en place a commencé le ${frDate(precedent.startDate)}.`,
+          409,
+          'people.assignment_overlap',
+          'Cette affectation chevaucherait une affectation existante',
         );
       }
-      if (precedent && (precedent.endDate === null || precedent.endDate >= input.startDate)) {
-        await tx
-          .update(t.contracts)
-          .set({ endDate: sql`${input.startDate}::date - 1`, updatedAt: new Date() })
-          .where(eq(t.contracts.id, precedent.id));
-      }
-      // Renouvelé, le précédent ne « prend plus fin » : ses alertes s'en vont.
-      if (precedent) {
-        await tx.execute(sql`
-          DELETE FROM notifications WHERE dedupe_key LIKE ${`contract_deadline:${precedent.id}%`}`);
-      }
-      const contractId = uuidv7();
-      await tx.insert(t.contracts).values({
-        id: contractId,
-        tenantId: user.tenantId,
-        employeeId: id,
-        contractType: input.contractType,
-        startDate: input.startDate,
-        endDate: input.endDate ?? null,
-        trialPeriodEnd: input.trialPeriodEnd ?? null,
-        notes: input.notes ?? null,
-      });
-      return { id: contractId };
-    });
+      throw err;
+    }
+    if (resultat.invitation?.email) this.expediteur?.bientot();
+    return resultat;
   }
 
   /**
@@ -1084,228 +1212,8 @@ export class PeopleService {
     id: string,
     input: NewAssignmentInput,
   ): Promise<ConsequencesHierarchie> {
-    let resultat: ConsequencesHierarchie = { changements: [], aRevoir: [] };
     try {
-      await this.db.withTenant(ctxOf(user), async (tx) => {
-        await pasSurSoi(tx, user.userId, [id], 'changer votre propre affectation');
-        await exigerEnActivite(tx, id, 'recevoir d’affectation');
-        await verrouillerLaChaine(tx);
-        const [dossier] = await tx
-          .select({ managerId: t.employees.managerEmployeeId })
-          .from(t.employees)
-          .where(eq(t.employees.id, id))
-          .limit(1);
-        if (!dossier) problem(404, 'people.employee_not_found', 'Employé introuvable');
-        if (input.orgUnitId) await this.requireLiveOrgUnit(tx, input.orgUnitId);
-        const avant = await lireLaChaine(tx);
-        const journal: ChangementRattachement[] = [];
-
-        // ——— 1. Le directeur général siège à la Direction Générale : il n'en
-        // sort pas, sans quoi ses collaborateurs directs relèveraient d'une
-        // autre direction que la leur.
-        const racine = await uniteRacine(tx);
-        const directionVisee = await directionDeUnite(tx, input.orgUnitId ?? null);
-        if (racine?.managerId === id && directionVisee?.id !== racine.id) {
-          problem(
-            422,
-            'people.dg_quitte_la_dg',
-            'Le directeur général reste affecté à la Direction Générale',
-            'Pour lui confier une autre direction, désignez d’abord son successeur à la tête de la Direction Générale.',
-          );
-        }
-
-        // ——— 2. Un responsable ne quitte pas le périmètre de l'unité qu'il
-        // dirige sans qu'un successeur soit désigné : sinon l'organigramme
-        // affiche un chef parti ailleurs. On refuse plutôt que de le retirer
-        // en douce — la RH décide qui reprend l'unité.
-        const [dirigee] = await tx
-          .select({ id: t.orgUnits.id, name: t.orgUnits.name })
-          .from(t.orgUnits)
-          .where(and(eq(t.orgUnits.managerEmployeeId, id), isNull(t.orgUnits.deletedAt)))
-          .limit(1);
-        if (dirigee) {
-          const dedans = input.orgUnitId
-            ? await tx.execute(sql`
-                ${perimetre(dirigee.id)}
-                SELECT 1 FROM perimetre WHERE id = ${input.orgUnitId} LIMIT 1`)
-            : { rows: [] };
-          if (dedans.rows.length === 0) {
-            problem(
-              422,
-              'people.manager_cannot_leave_unit',
-              `Cet employé dirige « ${dirigee.name} »`,
-              'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
-            );
-          }
-        }
-
-        // ——— 3. Le n+1 n'est pas daté : il vaut dès aujourd'hui. Une mutation
-        // PROGRAMMÉE vers une autre direction laisserait donc la chaîne
-        // fausse jusqu'à la date, ou fausse après — selon qu'on change le
-        // n+1 maintenant ou pas. Tant qu'elle touche à la hiérarchie, elle
-        // s'enregistre le jour où elle prend effet.
-        const equipe = await equipeDe(tx, id);
-        const directionActuelle = await directionDeEmploye(tx, id);
-        const changeDeDirection = directionVisee?.id !== directionActuelle?.id;
-        const [{ futur }] = (
-          await tx.execute<{ futur: boolean }>(
-            sql`SELECT ${input.startDate}::date > CURRENT_DATE AS futur`,
-          )
-        ).rows as [{ futur: boolean }];
-        if (
-          futur &&
-          changeDeDirection &&
-          (dossier.managerId || input.managerEmployeeId || equipe.length > 0)
-        ) {
-          problem(
-            422,
-            'people.mutation_programmee_hors_direction',
-            'Une mutation vers une autre direction s’enregistre le jour où elle prend effet',
-            'Le n+1 vaut dès aujourd’hui : programmée, la mutation laisserait la chaîne hiérarchique fausse jusqu’à sa date. Enregistrez-la ce jour-là, avec son nouveau n+1.',
-          );
-        }
-
-        // Ce qui tenait AVANT la mutation doit tenir APRÈS. Une anomalie
-        // ancienne ne bloque pas une mutation qui n'y est pour rien : le
-        // contrôle de la chaîne continue de la signaler.
-        const tenait = async (agent: string, n1: string) => {
-          try {
-            await validerRattachement(tx, agent, n1, await directionDeEmploye(tx, agent));
-            return true;
-          } catch (err) {
-            if (err instanceof ProblemException) return false;
-            throw err;
-          }
-        };
-        const equipeEnRegle = new Set<string>();
-        for (const a of equipe) if (await tenait(a.id, id)) equipeEnRegle.add(a.id);
-        const n1Garde = input.managerEmployeeId ? null : dossier.managerId;
-        const n1GardeEnRegle = n1Garde ? await tenait(id, n1Garde) : false;
-
-        // ——— 4. L'équipe, confiée si l'on en désigne le repreneur.
-        if (input.repreneurEquipeId) {
-          await reprendreEquipe(tx, journal, id, input.repreneurEquipeId);
-        }
-
-        // ——— L'écriture : on clôt l'affectation courante, on ouvre la neuve.
-        const [current] = await tx
-          .select({
-            id: t.assignments.id,
-            validFrom: sql<string>`lower(${t.assignments.validity})::text`,
-          })
-          .from(t.assignments)
-          .where(and(eq(t.assignments.employeeId, id), sql`upper_inf(${t.assignments.validity})`))
-          .limit(1);
-        // Une affectation qui commencerait après la fin de son contrat ne
-        // prendrait jamais effet.
-        const { rows: finContrat } = await tx.execute<{ fin: string }>(sql`
-          SELECT c.end_date::text AS fin FROM contracts c
-           WHERE c.id = ${dernierContrat(id)} AND c.end_date IS NOT NULL
-             AND c.end_date < ${input.startDate}::date`);
-        if (finContrat[0]) {
-          problem(
-            422,
-            'people.affectation_apres_contrat',
-            'L’affectation commencerait après la fin de son contrat',
-            `Son contrat prend fin le ${frDate(finContrat[0].fin)}. Enregistrez d’abord son nouveau contrat.`,
-          );
-        }
-        if (current) {
-          if (input.startDate <= current.validFrom) {
-            problem(
-              422,
-              'people.assignment_start_too_early',
-              "La nouvelle affectation doit démarrer après le début de l'affectation courante",
-              `Affectation courante depuis le ${current.validFrom}`,
-            );
-          }
-          await tx
-            .update(t.assignments)
-            .set({
-              validity: sql`daterange(lower(${t.assignments.validity}), ${input.startDate}::date)`,
-            })
-            .where(eq(t.assignments.id, current.id));
-        }
-        await tx.insert(t.assignments).values({
-          id: uuidv7(),
-          tenantId: user.tenantId,
-          employeeId: id,
-          orgUnitId: input.orgUnitId ?? null,
-          positionTitle: input.positionTitle,
-          validity: `[${input.startDate},)`,
-        });
-
-        // ——— Relu sur l'état écrit. Le responsable d'unité, d'abord : une
-        // affectation déjà programmée ailleurs le ferait sortir plus tard.
-        if (dirigee && (await sortDuPerimetre(tx, id, dirigee.id))) {
-          problem(
-            422,
-            'people.manager_cannot_leave_unit',
-            `Cet employé dirige « ${dirigee.name} »`,
-            'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
-          );
-        }
-
-        // L'équipe qui reste doit pouvoir le suivre ; sinon, un repreneur.
-        const restants = (await equipeDe(tx, id)).filter((a) => equipeEnRegle.has(a.id));
-        for (const a of restants) {
-          if (!(await tenait(a.id, id))) {
-            problem(
-              422,
-              'people.equipe_sans_repreneur',
-              `Cet agent encadre ${restants.length > 1 ? `${restants.length} agents` : 'un agent'}`,
-              'Ils restent dans leur direction : choisissez qui reprend son équipe, dans la même opération.',
-            );
-          }
-        }
-
-        // ——— 5. Son n+1 : le nouveau, désigné dans le même geste — changer de
-        // direction rend l'ancien caduc, et le corriger avant serait refusé
-        // (il ne serait pas encore de la direction de l'agent) —, ou celui
-        // qu'il garde, s'il tient toujours. Sinon, le responsable de sa
-        // nouvelle direction le reprend d'office, s'il y en a un.
-        if (input.managerEmployeeId) {
-          await validerRattachement(
-            tx,
-            id,
-            input.managerEmployeeId,
-            await directionDeEmploye(tx, id),
-          );
-          await tx
-            .update(t.employees)
-            .set({ managerEmployeeId: input.managerEmployeeId, updatedAt: new Date() })
-            .where(eq(t.employees.id, id));
-        } else if (n1Garde && n1GardeEnRegle && !(await tenait(id, n1Garde))) {
-          const direction = await directionDeEmploye(tx, id);
-          if (!direction) {
-            problem(
-              422,
-              'people.mutation_sans_direction',
-              'Un agent rattaché à un n+1 reste affecté à une direction',
-              'Choisissez une unité rattachée à une direction, ou retirez d’abord son n+1.',
-            );
-          }
-          const tete = await n1DOffice(tx, id);
-          if (!tete || !(await tenait(id, tete.id))) {
-            problem(
-              422,
-              'people.responsable_hors_nouvelle_direction',
-              'Le responsable actuel n’appartient pas à la nouvelle direction',
-              `L’agent rejoint « ${direction.nom} » : désignez son nouveau responsable dans la même opération.`,
-            );
-          }
-          await rattacher(tx, journal, id, tete.id, tete.motif);
-        } else if (!dossier.managerId && !futur) {
-          await rattacherDOffice(tx, journal, id);
-        }
-
-        await this.faireSuivre(tx, user.tenantId, journal);
-        resultat = {
-          changements: journal,
-          aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
-        };
-      });
-      return resultat;
+      return await this.db.withTenant(ctxOf(user), (tx) => this.affecter(tx, user, id, input));
     } catch (err) {
       if (pgCode(err) === '23P01') {
         problem(
@@ -1316,6 +1224,227 @@ export class PeopleService {
       }
       throw err;
     }
+  }
+
+  /** La mutation, dans la transaction de l'appelant (cf. `newAssignment`). */
+  private async affecter(
+    tx: Tx,
+    user: SessionUser,
+    id: string,
+    input: NewAssignmentInput,
+  ): Promise<ConsequencesHierarchie> {
+    await pasSurSoi(tx, user.userId, [id], 'changer votre propre affectation');
+    await exigerEnActivite(tx, id, 'recevoir d’affectation');
+    await verrouillerLaChaine(tx);
+    const [dossier] = await tx
+      .select({ managerId: t.employees.managerEmployeeId })
+      .from(t.employees)
+      .where(eq(t.employees.id, id))
+      .limit(1);
+    if (!dossier) problem(404, 'people.employee_not_found', 'Employé introuvable');
+    if (input.orgUnitId) await this.requireLiveOrgUnit(tx, input.orgUnitId);
+    const avant = await lireLaChaine(tx);
+    const journal: ChangementRattachement[] = [];
+
+    // 1. Le directeur général siège à la Direction Générale : il n'en
+    // sort pas, sans quoi ses collaborateurs directs relèveraient d'une
+    // autre direction que la leur.
+    const racine = await uniteRacine(tx);
+    const directionVisee = await directionDeUnite(tx, input.orgUnitId ?? null);
+    if (racine?.managerId === id && directionVisee?.id !== racine.id) {
+      problem(
+        422,
+        'people.dg_quitte_la_dg',
+        'Le directeur général reste affecté à la Direction Générale',
+        'Pour lui confier une autre direction, désignez d’abord son successeur à la tête de la Direction Générale.',
+      );
+    }
+
+    // 2. Un responsable ne quitte pas le périmètre de l'unité qu'il
+    // dirige sans qu'un successeur soit désigné : sinon l'organigramme
+    // affiche un chef parti ailleurs. On refuse plutôt que de le retirer
+    // en douce : la RH décide qui reprend l'unité.
+    const [dirigee] = await tx
+      .select({ id: t.orgUnits.id, name: t.orgUnits.name })
+      .from(t.orgUnits)
+      .where(and(eq(t.orgUnits.managerEmployeeId, id), isNull(t.orgUnits.deletedAt)))
+      .limit(1);
+    if (dirigee) {
+      const dedans = input.orgUnitId
+        ? await tx.execute(sql`
+            ${perimetre(dirigee.id)}
+            SELECT 1 FROM perimetre WHERE id = ${input.orgUnitId} LIMIT 1`)
+        : { rows: [] };
+      if (dedans.rows.length === 0) {
+        problem(
+          422,
+          'people.manager_cannot_leave_unit',
+          `Cet employé dirige « ${dirigee.name} »`,
+          'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
+        );
+      }
+    }
+
+    // 3. Le n+1 n'est pas daté : il vaut dès aujourd'hui. Une mutation
+    // PROGRAMMÉE vers une autre direction laisserait donc la chaîne
+    // fausse jusqu'à la date, ou fausse après : selon qu'on change le
+    // n+1 maintenant ou pas. Tant qu'elle touche à la hiérarchie, elle
+    // s'enregistre le jour où elle prend effet.
+    const equipe = await equipeDe(tx, id);
+    const directionActuelle = await directionDeEmploye(tx, id);
+    const changeDeDirection = directionVisee?.id !== directionActuelle?.id;
+    const [{ futur }] = (
+      await tx.execute<{ futur: boolean }>(
+        sql`SELECT ${input.startDate}::date > CURRENT_DATE AS futur`,
+      )
+    ).rows as [{ futur: boolean }];
+    if (
+      futur &&
+      changeDeDirection &&
+      (dossier.managerId || input.managerEmployeeId || equipe.length > 0)
+    ) {
+      problem(
+        422,
+        'people.mutation_programmee_hors_direction',
+        'Une mutation vers une autre direction s’enregistre le jour où elle prend effet',
+        'Le n+1 vaut dès aujourd’hui : programmée, la mutation laisserait la chaîne hiérarchique fausse jusqu’à sa date. Enregistrez-la ce jour-là, avec son nouveau n+1.',
+      );
+    }
+
+    // Ce qui tenait AVANT la mutation doit tenir APRÈS. Une anomalie
+    // ancienne ne bloque pas une mutation qui n'y est pour rien : le
+    // contrôle de la chaîne continue de la signaler.
+    const tenait = async (agent: string, n1: string) => {
+      try {
+        await validerRattachement(tx, agent, n1, await directionDeEmploye(tx, agent));
+        return true;
+      } catch (err) {
+        if (err instanceof ProblemException) return false;
+        throw err;
+      }
+    };
+    const equipeEnRegle = new Set<string>();
+    for (const a of equipe) if (await tenait(a.id, id)) equipeEnRegle.add(a.id);
+    const n1Garde = input.managerEmployeeId ? null : dossier.managerId;
+    const n1GardeEnRegle = n1Garde ? await tenait(id, n1Garde) : false;
+
+    // 4. L'équipe, confiée si l'on en désigne le repreneur.
+    if (input.repreneurEquipeId) {
+      await reprendreEquipe(tx, journal, id, input.repreneurEquipeId);
+    }
+
+    // L'écriture : on clôt l'affectation courante, on ouvre la neuve.
+    const [current] = await tx
+      .select({
+        id: t.assignments.id,
+        validFrom: sql<string>`lower(${t.assignments.validity})::text`,
+      })
+      .from(t.assignments)
+      .where(and(eq(t.assignments.employeeId, id), sql`upper_inf(${t.assignments.validity})`))
+      .limit(1);
+    // Une affectation qui commencerait après la fin de son contrat ne
+    // prendrait jamais effet.
+    const { rows: finContrat } = await tx.execute<{ fin: string }>(sql`
+      SELECT c.end_date::text AS fin FROM contracts c
+       WHERE c.id = ${dernierContrat(id)} AND c.end_date IS NOT NULL
+         AND c.end_date < ${input.startDate}::date`);
+    if (finContrat[0]) {
+      problem(
+        422,
+        'people.affectation_apres_contrat',
+        'L’affectation commencerait après la fin de son contrat',
+        `Son contrat prend fin le ${frDate(finContrat[0].fin)}. Enregistrez d’abord son nouveau contrat.`,
+      );
+    }
+    if (current) {
+      if (input.startDate <= current.validFrom) {
+        problem(
+          422,
+          'people.assignment_start_too_early',
+          "La nouvelle affectation doit démarrer après le début de l'affectation courante",
+          `Affectation courante depuis le ${current.validFrom}`,
+        );
+      }
+      await tx
+        .update(t.assignments)
+        .set({
+          validity: sql`daterange(lower(${t.assignments.validity}), ${input.startDate}::date)`,
+        })
+        .where(eq(t.assignments.id, current.id));
+    }
+    await tx.insert(t.assignments).values({
+      id: uuidv7(),
+      tenantId: user.tenantId,
+      employeeId: id,
+      orgUnitId: input.orgUnitId ?? null,
+      positionTitle: input.positionTitle,
+      validity: `[${input.startDate},)`,
+    });
+
+    // Relu sur l'état écrit. Le responsable d'unité, d'abord : une
+    // affectation déjà programmée ailleurs le ferait sortir plus tard.
+    if (dirigee && (await sortDuPerimetre(tx, id, dirigee.id))) {
+      problem(
+        422,
+        'people.manager_cannot_leave_unit',
+        `Cet employé dirige « ${dirigee.name} »`,
+        'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
+      );
+    }
+
+    // L'équipe qui reste doit pouvoir le suivre ; sinon, un repreneur.
+    const restants = (await equipeDe(tx, id)).filter((a) => equipeEnRegle.has(a.id));
+    for (const a of restants) {
+      if (!(await tenait(a.id, id))) {
+        problem(
+          422,
+          'people.equipe_sans_repreneur',
+          `Cet agent encadre ${restants.length > 1 ? `${restants.length} agents` : 'un agent'}`,
+          'Ils restent dans leur direction : choisissez qui reprend son équipe, dans la même opération.',
+        );
+      }
+    }
+
+    // 5. Son n+1 : le nouveau, désigné dans le même geste : changer de
+    // direction rend l'ancien caduc, et le corriger avant serait refusé
+    // (il ne serait pas encore de la direction de l'agent), ou celui
+    // qu'il garde, s'il tient toujours. Sinon, le responsable de sa
+    // nouvelle direction le reprend d'office, s'il y en a un.
+    if (input.managerEmployeeId) {
+      await validerRattachement(tx, id, input.managerEmployeeId, await directionDeEmploye(tx, id));
+      await tx
+        .update(t.employees)
+        .set({ managerEmployeeId: input.managerEmployeeId, updatedAt: new Date() })
+        .where(eq(t.employees.id, id));
+    } else if (n1Garde && n1GardeEnRegle && !(await tenait(id, n1Garde))) {
+      const direction = await directionDeEmploye(tx, id);
+      if (!direction) {
+        problem(
+          422,
+          'people.mutation_sans_direction',
+          'Un agent rattaché à un n+1 reste affecté à une direction',
+          'Choisissez une unité rattachée à une direction, ou retirez d’abord son n+1.',
+        );
+      }
+      const tete = await n1DOffice(tx, id);
+      if (!tete || !(await tenait(id, tete.id))) {
+        problem(
+          422,
+          'people.responsable_hors_nouvelle_direction',
+          'Le responsable actuel n’appartient pas à la nouvelle direction',
+          `L’agent rejoint « ${direction.nom} » : désignez son nouveau responsable dans la même opération.`,
+        );
+      }
+      await rattacher(tx, journal, id, tete.id, tete.motif);
+    } else if (!dossier.managerId && !futur) {
+      await rattacherDOffice(tx, journal, id);
+    }
+
+    await this.faireSuivre(tx, user.tenantId, journal);
+    return {
+      changements: journal,
+      aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
+    };
   }
 
   /** Historique d'audit du dossier : qui a changé quoi, quand (ADR-0008). */
@@ -1378,104 +1507,129 @@ export class PeopleService {
    * nouveau mot de passe, sur le même compte.
    */
   async archive(user: SessionUser, input: ArchiveEmployeesInput): Promise<EmployeeBatchResult> {
-    return this.db.withTenant(ctxOf(user), async (tx) => {
-      await verrouillerLaChaine(tx);
-      const avant = await lireLaChaine(tx);
-      const cibles = await this.chargerCibles(tx, input.ids);
-      const skipped: EmployeeBatchResult['skipped'] = [];
-      const geste = input.archived ? 'archive' : 'reouverture';
-      const le = input.le ?? null;
-      if (le) {
-        const { rows } = await tx.execute<{ futur: boolean }>(
-          sql`SELECT ${le}::date > CURRENT_DATE AS futur`,
+    const r = await this.db.withTenant(ctxOf(user), (tx) =>
+      this.archiverOuRouvrir(tx, user, input),
+    );
+    if (r.invitations?.some((i) => i.email)) this.expediteur?.bientot();
+    return r;
+  }
+
+  /**
+   * Archiver ou rouvrir, dans la transaction de l'appelant (cf. `archive`).
+   * `affectations` : le poste et l'unité où reprend chaque dossier rouvert,
+   * quand un nouveau contrat les dit ; sinon, ceux de sa dernière affectation.
+   * Rouvert, un compte fermé (parti plus de trente jours) reçoit d'office
+   * son invitation à revenir.
+   */
+  private async archiverOuRouvrir(
+    tx: Tx,
+    user: SessionUser,
+    input: ArchiveEmployeesInput,
+    affectations?: Map<string, { positionTitle: string; orgUnitId: string | null }>,
+  ): Promise<EmployeeBatchResult> {
+    await verrouillerLaChaine(tx);
+    const avant = await lireLaChaine(tx);
+    const cibles = await this.chargerCibles(tx, input.ids);
+    const skipped: EmployeeBatchResult['skipped'] = [];
+    const geste = input.archived ? 'archive' : 'reouverture';
+    const le = input.le ?? null;
+    if (le) {
+      const { rows } = await tx.execute<{ futur: boolean }>(
+        sql`SELECT ${le}::date > CURRENT_DATE AS futur`,
+      );
+      if (rows[0]?.futur) {
+        problem(
+          422,
+          'people.date_future',
+          input.archived
+            ? 'Le dernier jour ne peut pas être dans le futur'
+            : 'La reprise ne peut pas être dans le futur',
+          input.archived
+            ? 'Un départ prévu s’enregistre le jour venu, ou par la date de fin de son contrat.'
+            : 'Une reprise prévue s’enregistre par le contrat qui la porte.',
         );
-        if (rows[0]?.futur) {
-          problem(
-            422,
-            'people.date_future',
-            input.archived
-              ? 'Le dernier jour ne peut pas être dans le futur'
-              : 'La reprise ne peut pas être dans le futur',
-            input.archived
-              ? 'Un départ prévu s’enregistre le jour venu, ou par la date de fin de son contrat.'
-              : 'Une reprise prévue s’enregistre par le contrat qui la porte.',
-          );
-        }
       }
-      let retenus: typeof cibles = [];
-      for (const c of cibles) {
-        const motif =
-          (await this.motifDeRefus(tx, user, c, geste)) ??
-          (le ? await this.dateHorsActivite(tx, c.id, le, input.archived) : null);
-        if (motif) skipped.push({ id: c.id, name: c.nom, reason: motif });
-        else retenus.push(c);
-      }
+    }
+    let retenus: typeof cibles = [];
+    for (const c of cibles) {
+      const motif =
+        (await this.motifDeRefus(tx, user, c, geste)) ??
+        (le ? await this.dateHorsActivite(tx, c.id, le, input.archived) : null);
+      if (motif) skipped.push({ id: c.id, name: c.nom, reason: motif });
+      else retenus.push(c);
+    }
 
-      const journal: ChangementRattachement[] = [];
-      if (input.archived) {
-        const depart = await this.planifierLesDeparts(tx, retenus, input.repreneurs);
-        skipped.push(...depart.refus);
-        retenus = depart.retenus;
-        for (const plan of depart.plans) await appliquerReprise(tx, journal, plan);
-      }
-      if (retenus.length === 0) return { done: 0, skipped, changements: journal, aRevoir: [] };
+    const journal: ChangementRattachement[] = [];
+    if (input.archived) {
+      const depart = await this.planifierLesDeparts(tx, retenus, input.repreneurs);
+      skipped.push(...depart.refus);
+      retenus = depart.retenus;
+      for (const plan of depart.plans) await appliquerReprise(tx, journal, plan);
+    }
+    if (retenus.length === 0) return { done: 0, skipped, changements: journal, aRevoir: [] };
 
-      const ids = retenus.map((c) => c.id);
-      // Rouvert, il retrouve son poste et son unité — avant de redevenir
-      // actif : un dossier actif n'a pas de dernier jour.
-      if (!input.archived) {
-        for (const c of retenus) await reprendreLActivite(tx, user.tenantId, c.id, le);
+    const ids = retenus.map((c) => c.id);
+    // Rouvert, il retrouve son poste et son unité : avant de redevenir
+    // actif : un dossier actif n'a pas de dernier jour.
+    if (!input.archived) {
+      for (const c of retenus) {
+        await reprendreLActivite(tx, user.tenantId, c.id, le, affectations?.get(c.id));
       }
-      await tx
-        .update(t.employees)
-        .set({
-          status: input.archived ? 'archived' : 'active',
-          archivedAt: input.archived ? new Date() : null,
-          inactiviteMotif: input.archived ? (input.motif ?? null) : null,
-          updatedAt: new Date(),
-        })
-        .where(inArray(t.employees.id, ids));
-      // Réactivé sans n+1, il relève d'office du responsable de sa direction.
-      if (!input.archived) {
-        for (const c of retenus) await rattacherDOffice(tx, journal, c.id);
+    }
+    await tx
+      .update(t.employees)
+      .set({
+        status: input.archived ? 'archived' : 'active',
+        archivedAt: input.archived ? new Date() : null,
+        inactiviteMotif: input.archived ? (input.motif ?? null) : null,
+        updatedAt: new Date(),
+      })
+      .where(inArray(t.employees.id, ids));
+    // Réactivé sans n+1, il relève d'office du responsable de sa direction.
+    const invitations: NonNullable<EmployeeBatchResult['invitations']> = [];
+    if (!input.archived) {
+      for (const c of retenus) await rattacherDOffice(tx, journal, c.id);
+      // Parti plus de trente jours, il revient sans mot de passe : son
+      // invitation part d'elle-même.
+      for (const c of retenus) {
+        if (!this.expediteur?.actif || !(await this.compteFerme(tx, c.id))) continue;
+        invitations.push({ id: c.id, ...(await this.inviterAuPassage(tx, user, c.id)) });
       }
+    }
 
-      if (input.archived) {
-        // Son dernier jour, celui qu'on donne, ou aujourd'hui : sa dernière
-        // affectation s'arrête là, ses congés validés au-delà n'auront pas lieu.
-        for (const c of retenus) {
-          await arreterLActivite(
-            tx,
-            c.id,
-            le ? sql`${le}::date` : sql`CURRENT_DATE`,
-            input.motif ?? null,
-          );
-        }
-        // Qui part ne prend plus de congé : ses demandes encore en attente
-        // sont annulées, et leurs appels à viser retirés des boîtes.
-        const annulees = await tx
-          .update(t.absenceRequests)
-          .set({ status: 'cancelled', decidedAt: new Date() })
-          .where(
-            and(
-              inArray(t.absenceRequests.employeeId, ids),
-              eq(t.absenceRequests.status, 'pending'),
-            ),
-          )
-          .returning({ id: t.absenceRequests.id });
-        for (const d of annulees) await reconcilierDemande(tx, d.id);
+    if (input.archived) {
+      // Son dernier jour, celui qu'on donne, ou aujourd'hui : sa dernière
+      // affectation s'arrête là, ses congés validés au-delà n'auront pas lieu.
+      for (const c of retenus) {
+        await arreterLActivite(
+          tx,
+          c.id,
+          le ? sql`${le}::date` : sql`CURRENT_DATE`,
+          input.motif ?? null,
+        );
       }
-      await this.faireSuivre(tx, user.tenantId, journal);
-      // Un dossier rouvert revient avec le n+1 et l'affectation qu'il avait :
-      // l'un ou l'autre a pu changer depuis. Ce qu'il faut revoir se dit
-      // tout de suite, plutôt que d'attendre le prochain contrôle.
-      return {
-        done: retenus.length,
-        skipped,
-        changements: journal,
-        aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
-      };
-    });
+      // Qui part ne prend plus de congé : ses demandes encore en attente
+      // sont annulées, et leurs appels à viser retirés des boîtes.
+      const annulees = await tx
+        .update(t.absenceRequests)
+        .set({ status: 'cancelled', decidedAt: new Date() })
+        .where(
+          and(inArray(t.absenceRequests.employeeId, ids), eq(t.absenceRequests.status, 'pending')),
+        )
+        .returning({ id: t.absenceRequests.id });
+      for (const d of annulees) await reconcilierDemande(tx, d.id);
+    }
+    await this.faireSuivre(tx, user.tenantId, journal);
+    // Un dossier rouvert revient avec le n+1 et l'affectation qu'il avait :
+    // l'un ou l'autre a pu changer depuis. Ce qu'il faut revoir se dit
+    // tout de suite, plutôt que d'attendre le prochain contrôle.
+    return {
+      done: retenus.length,
+      skipped,
+      changements: journal,
+      aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
+      ...(invitations.length > 0 ? { invitations } : {}),
+    };
   }
 
   /**

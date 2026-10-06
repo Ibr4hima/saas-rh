@@ -109,6 +109,8 @@ export async function reprendreLActivite(
   tenantId: string,
   employeeId: string,
   demandee: string | null = null,
+  /** Le poste et l'unité où il reprend, quand un nouveau contrat les dit. */
+  affectation?: { positionTitle: string; orgUnitId: string | null },
 ): Promise<void> {
   const { rows } = await tx.execute<{
     reprise: string | null;
@@ -117,11 +119,13 @@ export async function reprendreLActivite(
     au: string | null;
     poste: string | null;
     unite: string | null;
+    uniteDOrigine: string | null;
   }>(sql`
     SELECT ${jourDeReprise(employeeId, demandee)}::text AS reprise,
            (e.fin_activite + 1)::text AS lendemain,
            a.id AS affectation, upper(a.validity)::text AS au, a.position_title AS poste,
-           (SELECT o.id FROM org_units o WHERE o.id = a.org_unit_id AND o.deleted_at IS NULL) AS unite
+           (SELECT o.id FROM org_units o WHERE o.id = a.org_unit_id AND o.deleted_at IS NULL) AS unite,
+           a.org_unit_id AS "uniteDOrigine"
       FROM employees e
       LEFT JOIN assignments a ON a.id = (SELECT ax.id FROM assignments ax WHERE ax.employee_id = e.id
                                           ORDER BY lower(ax.validity) DESC LIMIT 1)
@@ -137,11 +141,19 @@ export async function reprendreLActivite(
     return;
   }
 
+  // Un nouveau contrat dit où il reprend : la même place, ou une autre.
+  const memePlace =
+    !affectation ||
+    (affectation.positionTitle === r.poste && affectation.orgUnitId === r.uniteDOrigine);
+  const poste = affectation?.positionTitle ?? r.poste;
+  const unite = affectation ? affectation.orgUnitId : r.unite;
+
   if (r.reprise === r.lendemain) {
     await tx.execute(sql`
       DELETE FROM periodes_inactivite WHERE employee_id = ${employeeId} AND reprise_le IS NULL`);
-    // L'affectation arrêtée au départ reprend, si son unité existe encore.
-    if (r.affectation && r.au === r.lendemain && r.unite) {
+    // L'affectation arrêtée au départ reprend, si son unité existe encore et
+    // qu'il revient à la même place.
+    if (r.affectation && r.au === r.lendemain && r.unite && memePlace) {
       await tx.execute(sql`
         UPDATE assignments SET validity = daterange(lower(validity), NULL)
          WHERE id = ${r.affectation}`);
@@ -153,14 +165,14 @@ export async function reprendreLActivite(
        WHERE employee_id = ${employeeId} AND reprise_le IS NULL`);
   }
 
-  if (!r.poste) return;
+  if (!poste) return;
   const { rows: ouverte } = await tx.execute(sql`
     SELECT 1 FROM assignments WHERE employee_id = ${employeeId}
        AND (upper_inf(validity) OR upper(validity) > ${r.reprise}::date) LIMIT 1`);
   if (ouverte.length > 0) return;
   await tx.execute(sql`
     INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
-    VALUES (gen_random_uuid(), ${tenantId}, ${employeeId}, ${r.unite}, ${r.poste},
+    VALUES (gen_random_uuid(), ${tenantId}, ${employeeId}, ${unite}, ${poste},
             daterange(${r.reprise}::date, NULL))`);
 }
 

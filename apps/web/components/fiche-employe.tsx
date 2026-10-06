@@ -166,6 +166,11 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
   // Un agent inactif n'a ni portail, ni affectation nouvelle : sa fiche se
   // consulte, son contrat se renouvelle, et le dossier se réactive.
   const actif = e.status === 'active';
+  // Son dernier contrat court encore (désactivé à la main) : il se réactive
+  // tel quel. Échu, c'est le nouveau contrat qui le réactive.
+  const dernierContrat = [...e.contracts].sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
+  const contratEnCours =
+    !dernierContrat?.endDate || dernierContrat.endDate >= new Date().toISOString().slice(0, 10);
 
   return (
     <Page>
@@ -264,7 +269,9 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
               Signaler un changement
             </Button>
           ) : peutGerer && !actif ? (
-            <BoutonReactiver employe={e} onRefus={setRefusReactivation} />
+            contratEnCours ? (
+              <BoutonReactiver employe={e} onRefus={setRefusReactivation} />
+            ) : null
           ) : peutGerer ? (
             <Link
               href={`/employees/${e.id}?modifier=1`}
@@ -459,6 +466,8 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                   employeeId={e.id}
                   prenom={e.person.givenName}
                   contrats={e.contracts}
+                  assignments={e.assignments}
+                  inactif={!actif}
                 />
               ) : null}
             </CardHeader>
@@ -1617,10 +1626,15 @@ function NouveauContrat({
   employeeId,
   prenom,
   contrats,
+  assignments,
+  inactif,
 }: {
   employeeId: string;
   prenom: string;
   contrats: { startDate: string; endDate: string | null }[];
+  assignments: EmployeeDetail['assignments'];
+  /** Le dossier est inactif : ce contrat le réactive. */
+  inactif: boolean;
 }) {
   const queryClient = useQueryClient();
   const aujourdhui = new Date().toISOString().slice(0, 10);
@@ -1629,6 +1643,27 @@ function NouveauContrat({
   const [debut, setDebut] = useState(aujourdhui);
   const [mois, setMois] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
+  // La place sous ce contrat : proposée d'après sa dernière affectation.
+  const orgUnits = useQuery({
+    queryKey: ['org-units'],
+    queryFn: () => api<OrgUnitView[]>('/org-units'),
+    enabled: ouvert,
+  });
+  const unites = orgUnits.data ?? [];
+  const directions = unites.filter((u) => u.unitType === 'direction');
+  const derniere = [...assignments].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
+  const [poste, setPoste] = useState('');
+  const [directionId, setDirectionId] = useState('');
+  useEffect(() => {
+    if (!ouvert) return;
+    setPoste(derniere?.positionTitle ?? '');
+  }, [ouvert, derniere?.positionTitle]);
+  useEffect(() => {
+    if (!ouvert || !orgUnits.isSuccess) return;
+    setDirectionId(directionDe(unites, derniere?.orgUnitId)?.id ?? '');
+    // Une seule fois par ouverture, une fois les unités connues.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ouvert, orgUnits.isSuccess]);
   const avecDuree = type === 'cdd' || type === 'stage';
   const fin = avecDuree && debut && Number(mois) > 0 ? contractEnd(debut, Number(mois)) : null;
   // Le contrat qui court aujourd'hui, s'il s'arrête pour laisser place au nouveau.
@@ -1645,20 +1680,26 @@ function NouveauContrat({
     mutationFn: () =>
       api(`/employees/${employeeId}/contracts`, {
         method: 'POST',
-        body: { contractType: type, startDate: debut, ...(fin ? { endDate: fin } : {}) },
+        body: {
+          contractType: type,
+          startDate: debut,
+          ...(fin ? { endDate: fin } : {}),
+          affectation: { positionTitle: poste.trim(), orgUnitId: directionId },
+        },
       }),
     onSuccess: async () => {
       fermer();
       await queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
       await queryClient.invalidateQueries({ queryKey: ['contrats'] });
+      await queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
     },
     onError: (err) =>
       setErreur(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
   });
   return (
     <>
-      <Button variant="secondary" size="sm" onClick={() => setOuvert(true)}>
+      <Button variant={inactif ? 'primary' : 'secondary'} size="sm" onClick={() => setOuvert(true)}>
         Nouveau contrat
       </Button>
       <Modal
@@ -1669,7 +1710,9 @@ function NouveauContrat({
         // téléphone au lieu d'être coupée.
         subtitle={
           <p className="text-xs text-ink-muted">
-            Le contrat en cours s’arrête la veille du début du nouveau.
+            {inactif
+              ? `Le dossier de ${prenom} se réactive avec ce contrat.`
+              : 'Le contrat en cours s’arrête la veille du début du nouveau.'}
           </p>
         }
         maxWidth="max-w-lg"
@@ -1688,7 +1731,7 @@ function NouveauContrat({
             </Button>
             <Button
               loading={enregistrer.isPending}
-              disabled={!debut || (avecDuree && !fin)}
+              disabled={!debut || (avecDuree && !fin) || !poste.trim() || !directionId}
               onClick={() => {
                 setErreur(null);
                 enregistrer.mutate();
@@ -1700,7 +1743,7 @@ function NouveauContrat({
         }
       >
         <div className="flex flex-col gap-3.5">
-          {remplace ? (
+          {remplace && !inactif ? (
             <p className="flex items-start gap-2 rounded-[12px] bg-warning-soft px-3.5 py-2.5 text-[12.5px] font-semibold text-warning ring-1 ring-current/15 ring-inset">
               <Icon name="warning" size={16} className="mt-px shrink-0" />
               {prenom} est actuellement sous contrat, ce nouveau contrat remplacera l’ancien.
@@ -1741,6 +1784,32 @@ function NouveauContrat({
                 ) : null}
               </Field>
             ) : null}
+          </div>
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            <Field label="Poste" htmlFor="contrat-poste" required>
+              <Input
+                id="contrat-poste"
+                placeholder="Ex : Chargé d’études"
+                value={poste}
+                onChange={(ev) => setPoste(ev.target.value)}
+              />
+            </Field>
+            <Field label="Direction affectée" htmlFor="contrat-direction" required>
+              <Select
+                id="contrat-direction"
+                value={directionId}
+                onChange={(ev) => setDirectionId(ev.target.value)}
+              >
+                <option value="" disabled>
+                  Choisir une direction
+                </option>
+                {directions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.shortName ? `${d.shortName} · ${d.name}` : d.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
           </div>
         </div>
       </Modal>

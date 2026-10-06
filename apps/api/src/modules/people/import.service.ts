@@ -165,6 +165,8 @@ export class ImportEmployesService {
         uniteAbrege,
         uniteResolue: unite?.nom ?? null,
         responsable: responsableMatricule,
+        emailPro: converti.ok.entree.employee.workEmail ?? null,
+        emailPerso: converti.ok.entree.person.personalEmail ?? null,
         // Résolu dans une seconde passe : le responsable peut se trouver PLUS
         // BAS dans le même fichier, et l'on ne le sait qu'après avoir lu
         // toutes les lignes.
@@ -334,6 +336,8 @@ export class ImportEmployesService {
             : {}),
         });
         nes.set(cleMatricule(matricule), id);
+        const creee = rapport.lignes.find((l) => l.ligne === ligne);
+        if (creee) creee.employeeId = id;
         crees++;
       } catch (err) {
         // La ligne échoue seule. Le cas courant : un matricule créé entre

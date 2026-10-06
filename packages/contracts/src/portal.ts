@@ -93,3 +93,53 @@ export interface MyEmployeeView {
 }
 
 export type PortalStatus = 'none' | 'invited' | 'active';
+
+/** Inviter plusieurs agents d'un coup : après un import, depuis la gestion des accès. */
+export const inviterPlusieursSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(1000),
+});
+export type InviterPlusieursInput = z.infer<typeof inviterPlusieursSchema>;
+
+export interface InviterPlusieursResult {
+  invites: { employeeId: string; nom: string; email: string }[];
+  refus: { employeeId: string; nom: string; raison: string }[];
+  /** Un serveur de courrier est configuré : les invitations partent par courriel. */
+  parCourriel: boolean;
+}
+
+/**
+ * Où en est l'accès d'un agent au portail.
+ *   - `actif` : son compte fonctionne ;
+ *   - `invite` : une invitation attend d'être acceptée ;
+ *   - `expire` : la dernière invitation a expiré sans être acceptée ;
+ *   - `jamais` : aucune invitation ;
+ *   - `ferme` : parti plus de trente jours puis revenu, son compte attend
+ *     une invitation ;
+ *   - `coupe` : son accès est coupé.
+ */
+export type EtatAcces = 'actif' | 'invite' | 'expire' | 'jamais' | 'ferme' | 'coupe';
+
+export interface AccesAgent {
+  employeeId: string;
+  nom: string;
+  matricule: string;
+  /** L'abrégé de sa direction (ou le nom de son unité). */
+  unite: string | null;
+  etat: EtatAcces;
+  /** L'adresse où partirait l'invitation : professionnelle, sinon personnelle. */
+  adresse: string | null;
+  adresseProfessionnelle: boolean;
+  /** La dernière invitation : envoyée le, valable jusqu'au, son courriel. */
+  inviteLe: string | null;
+  expireLe: string | null;
+  courriel: 'en_attente' | 'envoye' | 'echec' | null;
+  /** Le jour où son compte a été relié au dossier. */
+  activeLe: string | null;
+  derniereConnexion: string | null;
+}
+
+export interface EtatDesAcces {
+  /** Un serveur de courrier est configuré : les invitations partent par courriel. */
+  parCourriel: boolean;
+  agents: AccesAgent[];
+}

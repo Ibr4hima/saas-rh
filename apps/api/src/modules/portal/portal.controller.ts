@@ -16,9 +16,11 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import {
   acceptInvitationSchema,
   inviteEmployeeSchema,
+  inviterPlusieursSchema,
   titreDeLaFiche,
   type AcceptInvitationInput,
   type InviteEmployeeInput,
+  type InviterPlusieursInput,
   type MyEmployeeView,
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
@@ -50,6 +52,33 @@ export class PortalController {
     @Body(new ZodValidationPipe(inviteEmployeeSchema)) body: InviteEmployeeInput,
   ) {
     return this.invitations.invite(req.sessionUser, id, body.role, body.email);
+  }
+
+  /** Inviter plusieurs agents d'un coup : après un import, depuis la gestion des accès. */
+  @Post('portail/invitations')
+  @HttpCode(200)
+  @UseGuards(SessionGuard, AccesGuard)
+  @Peut('personnel.gerer')
+  inviterPlusieurs(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(inviterPlusieursSchema)) body: InviterPlusieursInput,
+  ) {
+    return this.invitations.inviterPlusieurs(req.sessionUser, body.ids);
+  }
+
+  /** La gestion des accès : le directeur du Capital Humain, lui seul. */
+  @Get('portail/acces')
+  @UseGuards(SessionGuard)
+  etatDesAcces(@Req() req: AuthenticatedRequest) {
+    if (!req.sessionUser.dirigeLaDCH) {
+      problem(
+        403,
+        'acces.reserve_au_directeur',
+        'Réservé au directeur du Capital Humain',
+        'La gestion des accès au portail est réservée au directeur du Capital Humain.',
+      );
+    }
+    return this.invitations.etatDesAcces(req.sessionUser);
   }
 
   /** Couper l'accès d'un agent : déconnecté partout, il ne se reconnecte plus. */

@@ -2,8 +2,12 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
-import type { LigneImport, RapportImportEmployes } from '@teranga/contracts';
-import { Badge, Button, cn, Table, TBody, Td, Th, THead, Tr } from '@teranga/ui';
+import type {
+  InviterPlusieursResult,
+  LigneImport,
+  RapportImportEmployes,
+} from '@teranga/contracts';
+import { Badge, Button, Checkbox, cn, Table, TBody, Td, Th, THead, Tr } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { compte } from '../lib/mots';
 import { Icon } from './icons';
@@ -58,6 +62,14 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [survol, setSurvol] = useState(false);
+  // Après l'import, l'invitation au portail : ceux qui ont une adresse
+  // professionnelle sont cochés d'office ; on décoche, ou l'on coche les
+  // autres.
+  const [choix, setChoix] = useState<Set<string>>(new Set());
+  const [invites, setInvites] = useState<InviterPlusieursResult | null>(null);
+  const crees = (rapport?.lignes ?? []).filter((l): l is LigneImport & { employeeId: string } =>
+    Boolean(l.employeeId),
+  );
 
   const envoyer = async (f: File, apercu: boolean) => {
     setEnCours(true);
@@ -69,6 +81,11 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
       });
       setRapport(r);
       setEtape(apercu ? 'apercu' : 'fait');
+      if (!apercu) {
+        setChoix(
+          new Set(r.lignes.filter((l) => l.employeeId && l.emailPro).map((l) => l.employeeId!)),
+        );
+      }
       if (!apercu) {
         await queryClient.invalidateQueries({ queryKey: ['employees'] });
         await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -115,6 +132,24 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
 
   const bloquant = rapport !== null && rapport.colonnesManquantes.length > 0;
 
+  const inviter = async () => {
+    setEnCours(true);
+    setErreur(null);
+    try {
+      setInvites(
+        await api<InviterPlusieursResult>('/portail/invitations', {
+          method: 'POST',
+          body: { ids: [...choix] },
+        }),
+      );
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Envoi impossible, réessayez.');
+    } finally {
+      setEnCours(false);
+    }
+  };
+  const proposerLesInvitations = etape === 'fait' && crees.length > 0 && !invites;
+
   return (
     <Modal
       open
@@ -150,6 +185,15 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
               {rapport.aCreer === 0
                 ? 'Rien à importer'
                 : `Importer ${compte(rapport.aCreer, 'dossier')}`}
+            </Button>
+          </>
+        ) : proposerLesInvitations ? (
+          <>
+            <Button variant="secondary" onClick={onClose}>
+              Plus tard
+            </Button>
+            <Button loading={enCours} disabled={choix.size === 0} onClick={() => void inviter()}>
+              {choix.size === 0 ? 'Inviter' : `Inviter ${compte(choix.size, 'agent')}`}
             </Button>
           </>
         ) : (
@@ -226,8 +270,102 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
         </>
       ) : null}
 
+      {etape === 'fait' && crees.length > 0 ? (
+        <InvitationsDuLot crees={crees} choix={choix} setChoix={setChoix} invites={invites} />
+      ) : null}
       {etape !== 'depot' && rapport ? <Compte rapport={rapport} /> : null}
     </Modal>
+  );
+}
+
+/**
+ * Les dossiers créés, à inviter au portail : tous d'un coup, ou ceux qu'on
+ * coche. Une fois parties, ce qui est parti et ce qui ne l'a pas pu.
+ */
+function InvitationsDuLot({
+  crees,
+  choix,
+  setChoix,
+  invites,
+}: {
+  crees: (LigneImport & { employeeId: string })[];
+  choix: Set<string>;
+  setChoix: (s: Set<string>) => void;
+  invites: InviterPlusieursResult | null;
+}) {
+  const invitables = crees.filter((l) => l.emailPro || l.emailPerso);
+  const tous = invitables.length > 0 && invitables.every((l) => choix.has(l.employeeId));
+  const basculer = (id: string, oui: boolean) => {
+    const s = new Set(choix);
+    if (oui) s.add(id);
+    else s.delete(id);
+    setChoix(s);
+  };
+  if (invites) {
+    return (
+      <ModalSection title="Accès au portail">
+        <p className="flex items-center gap-2 text-[12.5px] font-semibold text-ink-strong">
+          <Icon name="task_alt" size={17} className="text-success" />
+          {compte(invites.invites.length, 'invitation envoyée', 'invitations envoyées')}
+        </p>
+        {invites.refus.length > 0 ? (
+          <ul className="mt-2 flex flex-col gap-1 text-[12px] text-ink-muted">
+            {invites.refus.map((r) => (
+              <li key={r.employeeId}>
+                <span className="font-semibold text-ink">{r.nom}</span> : {r.raison}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </ModalSection>
+    );
+  }
+  return (
+    <ModalSection title="Accès au portail">
+      <div className="mb-4 overflow-hidden rounded-[12px] border border-line-soft">
+        <label className="flex cursor-pointer items-center gap-3 border-b border-line-soft bg-surface-raised px-3.5 py-2.5 text-[12.5px] font-semibold text-ink-strong">
+          <Checkbox
+            checked={tous}
+            indeterminate={!tous && choix.size > 0}
+            disabled={invitables.length === 0}
+            onChange={(e) =>
+              setChoix(new Set(e.target.checked ? invitables.map((l) => l.employeeId) : []))
+            }
+          />
+          Inviter tous les agents importés
+        </label>
+        <ul className="max-h-[14rem] divide-y divide-line-soft overflow-auto">
+          {crees.map((l) => {
+            const adresse = l.emailPro ?? l.emailPerso ?? null;
+            return (
+              <li key={l.employeeId}>
+                <label
+                  className={cn(
+                    'flex items-center gap-3 px-3.5 py-2 text-[12.5px]',
+                    adresse ? 'cursor-pointer' : 'text-ink-muted',
+                  )}
+                >
+                  <Checkbox
+                    checked={choix.has(l.employeeId)}
+                    disabled={!adresse}
+                    onChange={(e) => basculer(l.employeeId, e.target.checked)}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-ink">{l.nom}</span>
+                    <span className="block truncate text-[11.5px] text-ink-muted">
+                      {adresse ?? 'Sans adresse'}
+                    </span>
+                  </span>
+                  <span className="hidden font-mono text-[11.5px] text-ink-muted sm:block">
+                    {l.matricule}
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </ModalSection>
   );
 }
 

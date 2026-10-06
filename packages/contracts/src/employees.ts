@@ -344,37 +344,58 @@ export const employeeFieldsSchema = z.object({
  * dans les inactifs. Les mêmes règles à la création, au formulaire comme à
  * l'import, et pour un nouveau contrat.
  */
-export const initialContractSchema = z
-  .object({
-    contractType: contractTypeSchema,
-    startDate: isoDate,
-    endDate: isoDate.optional(),
-    trialPeriodEnd: isoDate.optional(),
-    notes: optionalTrimmed(2000),
-  })
-  .refine((c) => ['cdi', 'cdd', 'stage'].includes(c.contractType), {
-    message: 'Un contrat est un CDI, un CDD ou un stage',
-    path: ['contractType'],
-  })
-  .refine((c) => !['cdd', 'stage'].includes(c.contractType) || c.endDate !== undefined, {
-    message: 'Un CDD ou un stage a une date de fin',
-    path: ['endDate'],
-  })
-  .refine((c) => !c.endDate || c.endDate >= c.startDate, {
-    message: 'La fin du contrat précède son début',
-    path: ['endDate'],
-  });
+const champsDuContrat = {
+  contractType: contractTypeSchema,
+  startDate: isoDate,
+  endDate: isoDate.optional(),
+  trialPeriodEnd: isoDate.optional(),
+  notes: optionalTrimmed(2000),
+};
+const reglesDuContrat = <
+  S extends z.ZodType<{ contractType: string; startDate: string; endDate?: string }>,
+>(
+  schema: S,
+) =>
+  schema
+    .refine((c) => ['cdi', 'cdd', 'stage'].includes(c.contractType), {
+      message: 'Un contrat est un CDI, un CDD ou un stage',
+      path: ['contractType'],
+    })
+    .refine((c) => !['cdd', 'stage'].includes(c.contractType) || c.endDate !== undefined, {
+      message: 'Un CDD ou un stage a une date de fin',
+      path: ['endDate'],
+    })
+    .refine((c) => !c.endDate || c.endDate >= c.startDate, {
+      message: 'La fin du contrat précède son début',
+      path: ['endDate'],
+    });
 
-/** Un nouveau contrat : le précédent s'arrête la veille, s'il courait encore. */
-export const newContractSchema = initialContractSchema;
+export const initialContractSchema = reglesDuContrat(z.object(champsDuContrat));
+
+/**
+ * Un nouveau contrat : le précédent s'arrête la veille, s'il courait encore.
+ * Il dit aussi le poste et la direction où l'agent travaille sous ce contrat :
+ * inchangés, rien ne bouge ; changés, une nouvelle affectation part du début
+ * du contrat. Sur un dossier inactif, il le réactive.
+ */
+export const newContractSchema = reglesDuContrat(
+  z.object({
+    ...champsDuContrat,
+    affectation: z.object({
+      positionTitle: trimmed(120),
+      /** La direction : dans la même direction, l'unité en cours est gardée. */
+      orgUnitId: z.uuid(),
+    }),
+  }),
+);
 export type NewContractInput = z.infer<typeof newContractSchema>;
 
 /**
  * Corriger le dernier contrat, saisi par erreur : un CDD saisi à un mois au
  * lieu de douze. Les mêmes règles qu'un nouveau contrat.
  */
-export const corrigerContratSchema = newContractSchema;
-export type CorrigerContratInput = NewContractInput;
+export const corrigerContratSchema = initialContractSchema;
+export type CorrigerContratInput = z.infer<typeof corrigerContratSchema>;
 
 /** Corriger l'affectation en cours : son intitulé de poste, sa date de début. */
 export const corrigerAffectationSchema = z.object({
@@ -394,8 +415,16 @@ export const createEmployeeSchema = z.object({
   employee: employeeFieldsSchema,
   contract: initialContractSchema.optional(),
   assignment: initialAssignmentSchema.optional(),
+  /** Envoyer l'invitation au portail dans la foulée. */
+  inviter: z.boolean().optional(),
 });
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
+
+export interface CreateEmployeeResult {
+  id: string;
+  /** Demandée à la création : partie, ou ce qui l'a empêchée. */
+  invitation: InvitationAuPassage | null;
+}
 
 /** En mise à jour : absent = inchangé, null = effacé, valeur = remplacée. */
 const clearableString = (max: number) =>
@@ -615,6 +644,24 @@ export const deleteEmployeesSchema = z.object({
 export type DeleteEmployeesInput = z.infer<typeof deleteEmployeesSchema>;
 
 /** Ce qu'un lot a réellement fait, et ce qu'il a laissé de côté, avec le motif. */
+/** Une invitation au portail partie d'elle-même, ou qui n'a pas pu partir. */
+export interface InvitationAuPassage {
+  /** L'adresse à laquelle elle part ; `null` : elle n'est pas partie. */
+  email: string | null;
+  /** Ce qui l'a empêchée, quand elle n'est pas partie. */
+  raison: string | null;
+}
+
+export interface NewContractResult {
+  id: string;
+  /** Le dossier inactif s'est rouvert avec ce contrat. */
+  rouvert: boolean;
+  /** Son compte était fermé : l'invitation à revenir, envoyée d'office. */
+  invitation: InvitationAuPassage | null;
+  changements: ChangementRattachement[];
+  aRevoir: AnomalieHierarchie[];
+}
+
 export interface EmployeeBatchResult {
   done: number;
   skipped: { id: string; name: string; reason: string }[];
@@ -625,6 +672,8 @@ export interface EmployeeBatchResult {
    * n+1 est parti, par exemple. À revoir, pas bloquant.
    */
   aRevoir?: AnomalieHierarchie[];
+  /** Les dossiers rouverts dont le compte était fermé : leur invitation. */
+  invitations?: (InvitationAuPassage & { id: string })[];
 }
 
 export interface EmployeeListItem {

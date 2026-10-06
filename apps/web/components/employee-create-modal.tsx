@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { EmployeeListItem, EmployeeListPage, OrgUnitView } from '@teranga/contracts';
 import { orgUnitLabel } from '@teranga/contracts';
-import { Button, Field, Input, Select } from '@teranga/ui';
+import { Button, Checkbox, cn, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../lib/countries';
 import { contractEnd, maritalLabels, maxBirthDate } from '../lib/person';
@@ -58,6 +58,9 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   const [workPhoneLocal, setWorkPhoneLocal] = useState('');
   const [positionTitle, setPositionTitle] = useState('');
   const [directionId, setDirectionId] = useState('');
+  // L'invitation au portail part dans la foulée, à l'adresse professionnelle
+  // (sinon personnelle) : on la demande, cochée par défaut.
+  const [inviter, setInviter] = useState(true);
 
   const orgUnits = useQuery({
     queryKey: ['org-units'],
@@ -86,6 +89,8 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   const idDatesInvalid =
     (idIssuedOn && idExpiresOn && idIssuedOn >= idExpiresOn) ||
     (idExpiresOn !== '' && idExpiresOn <= todayIso());
+
+  const aUneAdresse = Boolean(composeWorkEmail(workEmail) || personalEmail.trim());
 
   const canSubmit =
     givenName.trim() &&
@@ -138,6 +143,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             startDate: contractStart,
             endDate: computedEnd ?? undefined,
           },
+          inviter: inviter && aUneAdresse,
         },
       });
       // La liste derrière la fenêtre doit montrer l'arrivant à la fermeture.
@@ -361,6 +367,19 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
           ) : null}
           <Field label="Email professionnel" htmlFor="workEmail">
             <WorkEmailInput id="workEmail" value={workEmail} onChange={setWorkEmail} />
+            <label
+              className={cn(
+                'mt-2 flex items-center gap-2 text-[12.5px]',
+                aUneAdresse ? 'cursor-pointer text-ink' : 'text-ink-muted',
+              )}
+            >
+              <Checkbox
+                checked={inviter && aUneAdresse}
+                disabled={!aUneAdresse}
+                onChange={(e) => setInviter(e.target.checked)}
+              />
+              Envoyer l’invitation d’accès au portail
+            </label>
           </Field>
           <Field label="Téléphone professionnel" htmlFor="workPhone">
             <PhoneInput

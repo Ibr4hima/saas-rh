@@ -1,24 +1,28 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
+  AccesAgent,
   AcceptResult,
+  EtatDesAcces,
   AccueilInvitation,
   InvitationInfo,
   InvitableRole,
   InviteResult,
+  InviterPlusieursResult,
   SessionUser,
 } from '@teranga/contracts';
 import { passwordDiffersFromEmail, passwordShortfall } from '@teranga/contracts';
 import { loadEnv } from '../../config/env';
-import { problem } from '../../common/problem';
+import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { AuthService, IssuedSession } from '../auth/auth.service';
 import { directionDuPersonnel } from '../acces/dch';
 import { ExpediteurCourriels } from '../courriels/expediteur';
+import { directionDeLUnite, uniteEnVigueur } from '../people/chaine';
 import { finDeContratPassee } from '../people/en-activite';
 import { reconcilierLeCircuit } from '../time/visas';
 
@@ -85,6 +89,162 @@ async function accueilDe(
   return compte?.passwordHash && compte.status === 'active' ? 'compte' : 'nouveau';
 }
 
+/**
+ * Génère un lien d'invitation pour l'employé (compte relié à son dossier),
+ * et le met en file pour partir par courriel quand un serveur de courrier
+ * est configuré. Dans la transaction de l'appelant : à lui de réveiller
+ * l'expéditeur (`bientot`) une fois validée. Le lien reste rendu : la DCH
+ * peut toujours le transmettre elle-même.
+ */
+export async function preparerInvitation(
+  tx: Tx,
+  expediteur: ExpediteurCourriels | undefined,
+  user: SessionUser,
+  employeeId: string,
+  role: InvitableRole,
+  emailOverride?: string,
+): Promise<InviteResult> {
+  const token = randomBytes(32).toString('base64url');
+  const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 3600 * 1000);
+  let email = emailOverride ?? '';
+  let courriel = false;
+  const [row] = await tx
+    .select({
+      personId: t.employees.personId,
+      personUserId: t.persons.userId,
+      givenName: t.persons.givenName,
+      status: t.employees.status,
+      workEmail: t.employees.workEmail,
+      personalEmail: t.persons.personalEmail,
+    })
+    .from(t.employees)
+    .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+    .where(eq(t.employees.id, employeeId))
+    .limit(1)
+    .for('update');
+  if (!row) {
+    problem(404, 'people.employee_not_found', 'Employé introuvable');
+  }
+  // Un compte relié qui a encore son mot de passe : il a déjà son accès.
+  // Sans mot de passe (parti depuis plus de trente jours), il revient
+  // par une invitation, sur ce même compte.
+  if (row.personUserId) {
+    const [compte] = await tx
+      .select({ passwordHash: t.users.passwordHash })
+      .from(t.users)
+      .where(eq(t.users.id, row.personUserId));
+    if (compte?.passwordHash) {
+      problem(409, 'portal.already_active', 'Cet employé a déjà un accès au portail');
+    }
+    const [membre] = await tx
+      .select({ accesCoupeLe: t.userTenantMemberships.accesCoupeLe })
+      .from(t.userTenantMemberships)
+      .where(
+        and(
+          eq(t.userTenantMemberships.userId, row.personUserId),
+          eq(t.userTenantMemberships.tenantId, user.tenantId),
+        ),
+      );
+    if (membre?.accesCoupeLe) {
+      problem(
+        409,
+        'portal.acces_coupe',
+        'Son accès est coupé',
+        'Rétablissez son accès avant de lui envoyer une invitation.',
+      );
+    }
+  }
+  // Ouvrir un portail à un dossier archivé donnerait un accès que la
+  // première requête refuserait : l'invitation partirait pour rien, et
+  // l'agent buterait sur une porte fermée après avoir choisi son mot de
+  // passe.
+  if (row.status !== 'active') {
+    problem(
+      422,
+      'portal.employee_archived',
+      'Ce dossier est inactif',
+      'Un agent inactif n’a pas accès au portail : réactivez son dossier d’abord.',
+    );
+  }
+  if (await finDeContratPassee(tx, employeeId)) {
+    problem(
+      422,
+      'portal.contrat_echu',
+      'Son contrat est arrivé à terme',
+      'Un agent dont le contrat a pris fin n’a pas accès au portail : enregistrez d’abord son nouveau contrat.',
+    );
+  }
+  email = emailOverride ?? row.workEmail ?? row.personalEmail ?? '';
+  if (!email) {
+    problem(
+      422,
+      'portal.email_required',
+      'Aucun email dans le dossier',
+      "Renseignez un email professionnel ou personnel sur la fiche, ou fournissez-en un avec l'invitation.",
+    );
+  }
+  // Qui revient garde son compte : l'adresse ne peut pas être celle d'un
+  // autre compte en service.
+  if (row.personUserId) {
+    const autre = await compteALAdresse(tx, email);
+    if (autre && autre.id !== row.personUserId && autre.passwordHash) {
+      problem(
+        409,
+        'portal.adresse_prise',
+        'Cette adresse est celle d’un autre compte',
+        'Changez l’adresse de sa fiche, puis envoyez l’invitation.',
+      );
+    }
+  }
+  const accueil = await accueilDe(tx, row.personUserId, email);
+
+  // Une seule invitation active par personne : on expire les précédentes.
+  await tx
+    .update(t.invitations)
+    .set({ expiresAt: new Date() })
+    .where(and(eq(t.invitations.personId, row.personId), isNull(t.invitations.acceptedAt)));
+
+  const invitationId = uuidv7();
+  await tx.insert(t.invitations).values({
+    id: invitationId,
+    tenantId: user.tenantId,
+    personId: row.personId,
+    email,
+    role,
+    tokenHash: hashToken(token),
+    invitedByUserId: user.userId,
+    expiresAt,
+  });
+
+  if (expediteur?.actif) {
+    const [organisation] = await tx
+      .select({ name: t.tenants.name })
+      .from(t.tenants)
+      .where(eq(t.tenants.id, user.tenantId));
+    courriel = await expediteur.mettreEnFile(tx, {
+      gabarit: {
+        nom: 'invitation',
+        prenom: row.givenName,
+        organisation: organisation?.name ?? 'Votre organisation',
+        lien: `${loadEnv().PUBLIC_WEB_URL.replace(/\/$/, '')}/invitation/${token}`,
+        expireLe: expiresAt.toISOString(),
+        ...(accueil === 'nouveau' ? {} : { accueil }),
+      },
+      tenantId: user.tenantId,
+      kind: 'invitation',
+      subjectId: invitationId,
+      to: email,
+    });
+  }
+  return {
+    invitePath: `/invitation/${token}`,
+    email,
+    role,
+    expiresAt: expiresAt.toISOString(),
+    courriel,
+  };
+}
+
 @Injectable()
 export class InvitationsService {
   constructor(
@@ -95,161 +255,163 @@ export class InvitationsService {
     private readonly expediteur?: ExpediteurCourriels,
   ) {}
 
-  /**
-   * Génère un lien d'invitation pour l'employé (compte relié à son dossier),
-   * et le lui envoie par courriel quand un serveur de courrier est configuré.
-   * Le lien reste affiché : la DCH peut toujours le transmettre elle-même.
-   */
+  /** Une invitation, depuis la fiche de l'agent. */
   async invite(
     user: SessionUser,
     employeeId: string,
     role: InvitableRole,
     emailOverride?: string,
   ): Promise<InviteResult> {
-    const token = randomBytes(32).toString('base64url');
-    const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 3600 * 1000);
-    let email = emailOverride ?? '';
-    let courriel = false;
+    const r = await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      preparerInvitation(tx, this.expediteur, user, employeeId, role, emailOverride),
+    );
+    if (r.courriel) this.expediteur?.bientot();
+    return r;
+  }
 
-    await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
-      const [row] = await tx
+  /**
+   * Plusieurs invitations d'un coup. Chacune dans sa transaction : un agent
+   * sans adresse ou déjà inscrit n'empêche pas les autres de partir.
+   */
+  async inviterPlusieurs(user: SessionUser, ids: string[]): Promise<InviterPlusieursResult> {
+    // Sans courrier, une invitation n'est qu'un lien à transmettre à la main :
+    // en lot, personne ne le recevrait.
+    if (!this.expediteur?.actif) {
+      problem(
+        422,
+        'portal.sans_courrier',
+        'Aucun serveur de courrier n’est configuré',
+        'Les invitations ne partent pas d’elles-mêmes : générez le lien depuis la fiche de chaque agent.',
+      );
+    }
+    const invites: InviterPlusieursResult['invites'] = [];
+    const refus: InviterPlusieursResult['refus'] = [];
+    const noms = await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      tx
         .select({
-          personId: t.employees.personId,
-          personUserId: t.persons.userId,
-          givenName: t.persons.givenName,
-          status: t.employees.status,
-          workEmail: t.employees.workEmail,
-          personalEmail: t.persons.personalEmail,
+          id: t.employees.id,
+          nom: sql<string>`${t.persons.givenName} || ' ' || ${t.persons.familyName}`,
         })
         .from(t.employees)
         .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-        .where(eq(t.employees.id, employeeId))
-        .limit(1)
-        .for('update');
-      if (!row) {
-        problem(404, 'people.employee_not_found', 'Employé introuvable');
+        .where(inArray(t.employees.id, ids)),
+    );
+    const nomDe = new Map(noms.map((n) => [n.id, n.nom]));
+    for (const id of new Set(ids)) {
+      const nom = nomDe.get(id);
+      if (!nom) {
+        refus.push({ employeeId: id, nom: '', raison: 'Employé introuvable' });
+        continue;
       }
-      // Un compte relié qui a encore son mot de passe : il a déjà son accès.
-      // Sans mot de passe (parti depuis plus de trente jours), il revient
-      // par une invitation, sur ce même compte.
-      if (row.personUserId) {
-        const [compte] = await tx
-          .select({ passwordHash: t.users.passwordHash })
-          .from(t.users)
-          .where(eq(t.users.id, row.personUserId));
-        if (compte?.passwordHash) {
-          problem(409, 'portal.already_active', 'Cet employé a déjà un accès au portail');
-        }
-        const [membre] = await tx
-          .select({ accesCoupeLe: t.userTenantMemberships.accesCoupeLe })
-          .from(t.userTenantMemberships)
-          .where(
-            and(
-              eq(t.userTenantMemberships.userId, row.personUserId),
-              eq(t.userTenantMemberships.tenantId, user.tenantId),
-            ),
-          );
-        if (membre?.accesCoupeLe) {
-          problem(
-            409,
-            'portal.acces_coupe',
-            'Son accès est coupé',
-            'Rétablissez son accès avant de lui envoyer une invitation.',
-          );
-        }
-      }
-      // Ouvrir un portail à un dossier archivé donnerait un accès que la
-      // première requête refuserait : l'invitation partirait pour rien, et
-      // l'agent buterait sur une porte fermée après avoir choisi son mot de
-      // passe.
-      if (row.status !== 'active') {
-        problem(
-          422,
-          'portal.employee_archived',
-          'Ce dossier est inactif',
-          'Un agent inactif n’a pas accès au portail : réactivez son dossier d’abord.',
+      try {
+        const r = await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+          preparerInvitation(tx, this.expediteur, user, id, 'employee'),
         );
+        invites.push({ employeeId: id, nom, email: r.email });
+      } catch (err) {
+        if (!(err instanceof ProblemException)) throw err;
+        refus.push({ employeeId: id, nom, raison: err.problem.title });
       }
-      if (await finDeContratPassee(tx, employeeId)) {
-        problem(
-          422,
-          'portal.contrat_echu',
-          'Son contrat est arrivé à terme',
-          'Un agent dont le contrat a pris fin n’a pas accès au portail : enregistrez d’abord son nouveau contrat.',
-        );
-      }
-      email = emailOverride ?? row.workEmail ?? row.personalEmail ?? '';
-      if (!email) {
-        problem(
-          422,
-          'portal.email_required',
-          'Aucun email dans le dossier',
-          "Renseignez un email professionnel ou personnel sur la fiche, ou fournissez-en un avec l'invitation.",
-        );
-      }
-      // Qui revient garde son compte : l'adresse ne peut pas être celle d'un
-      // autre compte en service.
-      if (row.personUserId) {
-        const autre = await compteALAdresse(tx, email);
-        if (autre && autre.id !== row.personUserId && autre.passwordHash) {
-          problem(
-            409,
-            'portal.adresse_prise',
-            'Cette adresse est celle d’un autre compte',
-            'Changez l’adresse de sa fiche, puis envoyez l’invitation.',
-          );
-        }
-      }
-      const accueil = await accueilDe(tx, row.personUserId, email);
+    }
+    if (invites.length > 0) this.expediteur?.bientot();
+    return { invites, refus, parCourriel: this.expediteur?.actif ?? false };
+  }
 
-      // Une seule invitation active par personne : on expire les précédentes.
-      await tx
-        .update(t.invitations)
-        .set({ expiresAt: new Date() })
-        .where(and(eq(t.invitations.personId, row.personId), isNull(t.invitations.acceptedAt)));
-
-      const invitationId = uuidv7();
-      await tx.insert(t.invitations).values({
-        id: invitationId,
-        tenantId: user.tenantId,
-        personId: row.personId,
-        email,
-        role,
-        tokenHash: hashToken(token),
-        invitedByUserId: user.userId,
-        expiresAt,
-      });
-
-      if (this.expediteur?.actif) {
-        const [organisation] = await tx
-          .select({ name: t.tenants.name })
-          .from(t.tenants)
-          .where(eq(t.tenants.id, user.tenantId));
-        courriel = await this.expediteur.mettreEnFile(tx, {
-          gabarit: {
-            nom: 'invitation',
-            prenom: row.givenName,
-            organisation: organisation?.name ?? 'Votre organisation',
-            lien: `${loadEnv().PUBLIC_WEB_URL.replace(/\/$/, '')}/invitation/${token}`,
-            expireLe: expiresAt.toISOString(),
-            ...(accueil === 'nouveau' ? {} : { accueil }),
-          },
-          tenantId: user.tenantId,
-          kind: 'invitation',
-          subjectId: invitationId,
-          to: email,
+  /**
+   * Où en est l'accès au portail de chaque agent en activité : la vue de la
+   * DCH sur qui est entré, qui attend, qui n'a jamais été invité.
+   */
+  async etatDesAcces(user: SessionUser): Promise<EtatDesAcces> {
+    const agents = await this.db.withTenant(
+      { tenantId: user.tenantId, userId: user.userId },
+      async (tx) => {
+        const { rows } = await tx.execute<{
+          employee_id: string;
+          nom: string;
+          matricule: string;
+          unite: string | null;
+          work_email: string | null;
+          personal_email: string | null;
+          user_id: string | null;
+          ferme: boolean | null;
+          coupe: boolean | null;
+          active_le: string | null;
+          derniere_connexion: string | null;
+          invite_le: string | null;
+          expire_le: string | null;
+          acceptee: boolean | null;
+          courriel: string | null;
+          erreur: boolean | null;
+        }>(sql`
+        SELECT e.id AS employee_id, p.given_name || ' ' || p.family_name AS nom,
+               e.employee_number AS matricule,
+               COALESCE(${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'short_name')},
+                        ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'name')}) AS unite,
+               e.work_email, p.personal_email, p.user_id,
+               u.password_hash IS NULL AS ferme,
+               m.acces_coupe_le IS NOT NULL AS coupe,
+               m.created_at AS active_le,
+               (SELECT max(se.created_at) FROM sessions se
+                 WHERE se.user_id = p.user_id AND se.tenant_id = e.tenant_id) AS derniere_connexion,
+               i.created_at AS invite_le, i.expires_at AS expire_le,
+               i.accepted_at IS NOT NULL AS acceptee,
+               o.status AS courriel, o.last_error IS NOT NULL AS erreur
+          FROM employees e
+          JOIN persons p ON p.id = e.person_id
+          LEFT JOIN users u ON u.id = p.user_id
+          LEFT JOIN user_tenant_memberships m ON m.user_id = p.user_id AND m.tenant_id = e.tenant_id
+          LEFT JOIN LATERAL (
+            SELECT iv.id, iv.created_at, iv.expires_at, iv.accepted_at FROM invitations iv
+             WHERE iv.person_id = p.id ORDER BY iv.created_at DESC LIMIT 1) i ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT ob.status, ob.last_error FROM outbound_emails ob
+             WHERE ob.subject_id = i.id AND ob.kind = 'invitation'
+             ORDER BY ob.created_at DESC LIMIT 1) o ON TRUE
+         WHERE e.status = 'active' AND p.deleted_at IS NULL
+         ORDER BY p.family_name, p.given_name`);
+        const maintenant = Date.now();
+        return rows.map((r): AccesAgent => {
+          const enAttente =
+            r.invite_le !== null && !r.acceptee && new Date(r.expire_le!).getTime() > maintenant;
+          const etat: AccesAgent['etat'] = r.coupe
+            ? 'coupe'
+            : r.user_id && !r.ferme
+              ? 'actif'
+              : enAttente
+                ? 'invite'
+                : r.user_id
+                  ? 'ferme'
+                  : r.invite_le && !r.acceptee
+                    ? 'expire'
+                    : 'jamais';
+          const iso = (d: string | null) => (d ? new Date(d).toISOString() : null);
+          return {
+            employeeId: r.employee_id,
+            nom: r.nom,
+            matricule: r.matricule,
+            unite: r.unite,
+            etat,
+            adresse: r.work_email ?? r.personal_email ?? null,
+            adresseProfessionnelle: Boolean(r.work_email),
+            inviteLe: iso(r.invite_le),
+            expireLe: iso(r.expire_le),
+            // Un essai manqué se dit tout de suite, même si d'autres suivent.
+            courriel: !enAttente
+              ? null
+              : r.courriel === 'sent'
+                ? 'envoye'
+                : r.courriel === 'failed' || (r.courriel === 'pending' && r.erreur)
+                  ? 'echec'
+                  : r.courriel === 'pending'
+                    ? 'en_attente'
+                    : null,
+            activeLe: etat === 'actif' ? iso(r.active_le) : null,
+            derniereConnexion: iso(r.derniere_connexion),
+          };
         });
-      }
-    });
-    if (courriel) this.expediteur?.bientot();
-
-    return {
-      invitePath: `/invitation/${token}`,
-      email,
-      role,
-      expiresAt: expiresAt.toISOString(),
-      courriel,
-    };
+      },
+    );
+    return { parCourriel: this.expediteur?.actif ?? false, agents };
   }
 
   /**
