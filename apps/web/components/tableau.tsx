@@ -65,7 +65,7 @@ export function useSelection<T extends { id: string }>(lignes: T[]): Selection<T
   };
 }
 
-/** La case d'en-tête : tout cocher, tout relâcher. */
+/** La case d'en-tête : tout cocher, tout désélectionner. */
 export function ThCases<T>({ sel }: { sel: Selection<T> }) {
   return (
     <Th className="w-9 pr-0">
@@ -154,7 +154,7 @@ export function BarreSelection<T>({
         onClick={sel.vider}
         className="rounded-full px-2 py-1 text-[11.5px] font-semibold text-ink-muted transition-colors hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
       >
-        Relâcher
+        Désélectionner
       </button>
     </div>
   );

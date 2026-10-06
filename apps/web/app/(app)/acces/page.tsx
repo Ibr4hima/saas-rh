@@ -162,17 +162,21 @@ export default function GestionDesAccesPage() {
         <div
           role="status"
           className={cn(
-            'mb-3 flex items-start gap-2.5 rounded-[12px] px-3.5 py-2.5 text-[12.5px] ring-1 ring-inset',
+            'mb-3 flex items-start gap-2.5 rounded-[12px] px-3.5 py-2.5 text-[12.5px] leading-5 ring-1 ring-inset',
             erreur
               ? 'bg-danger-soft/55 text-danger ring-danger/25'
               : 'bg-success-soft/55 text-ink ring-success/25',
           )}
         >
-          <Icon
-            name={erreur ? 'error' : 'task_alt'}
-            size={17}
-            className={cn('mt-px shrink-0', erreur ? 'text-danger' : 'text-success')}
-          />
+          {/* Icône, première ligne et croix sur une même hauteur de 20 px :
+              le texte reste au milieu du cadre. */}
+          <span className="flex h-5 shrink-0 items-center">
+            <Icon
+              name={erreur ? 'error' : 'task_alt'}
+              size={17}
+              className={erreur ? 'text-danger' : 'text-success'}
+            />
+          </span>
           <div className="min-w-0 flex-1">
             {erreur ? (
               erreur
@@ -196,7 +200,7 @@ export default function GestionDesAccesPage() {
               setBilan(null);
               setErreur(null);
             }}
-            className="shrink-0 rounded-full p-0.5 text-ink-muted hover:bg-hover hover:text-ink"
+            className="flex size-5 shrink-0 items-center justify-center rounded-full text-ink-muted hover:bg-hover hover:text-ink"
           >
             <Icon name="close" size={16} />
           </button>

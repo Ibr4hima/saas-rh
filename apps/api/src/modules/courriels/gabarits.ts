@@ -68,16 +68,14 @@ export function objetDe(g: Gabarit): string {
 const ACCUEILS = {
   nouveau: {
     titre: 'Bienvenue',
-    accroche: (o: string) =>
-      `${o} vous ouvre l’accès à son portail RH : vos congés, vos documents, vos objectifs.`,
+    accroche: () => 'La DCH vous invite à activer votre compte.',
     apercu: 'Choisissez votre mot de passe pour ouvrir votre accès au portail RH.',
     consigne: 'Pour choisir votre mot de passe',
     bouton: 'Choisir mon mot de passe',
   },
   retour: {
     titre: 'Bon retour',
-    accroche: (o: string) =>
-      `${o} vous rouvre l’accès à son portail RH : vous y retrouvez votre compte.`,
+    accroche: () => 'La DCH vous invite à réactiver votre compte.',
     apercu: 'Choisissez un nouveau mot de passe pour retrouver votre compte.',
     consigne: 'Pour choisir votre nouveau mot de passe',
     bouton: 'Choisir mon mot de passe',

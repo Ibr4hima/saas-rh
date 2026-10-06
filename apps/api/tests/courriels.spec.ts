@@ -557,7 +557,8 @@ describe('le gabarit', () => {
       );
     expect(invitation().html).toContain('Bienvenue, Fatou');
     expect(invitation('retour').html).toContain('Bon retour, Fatou');
-    expect(invitation('retour').html).toContain('vous y retrouvez votre compte');
+    expect(invitation().html).toContain('La DCH vous invite à activer votre compte.');
+    expect(invitation('retour').html).toContain('La DCH vous invite à réactiver votre compte.');
     expect(invitation('retour').text).toContain('Pour choisir votre nouveau mot de passe');
     expect(invitation('compte').html).toContain('Relier mon compte');
     expect(invitation('compte').html).not.toContain('Choisir mon mot de passe');
