@@ -115,6 +115,11 @@ export const envSchema = z
     GRAPH_CLIENT_SECRET: z.string().min(1).optional(),
     /** La boîte qui envoie (rh@apix.sn) ; par défaut, l'adresse de MAIL_FROM. */
     GRAPH_SENDER: z.string().min(3).optional(),
+    /**
+     * Le logo des courriels (SVG ou PNG transparent), mis en blanc sur le
+     * bleu. Par défaut, celui que le site sert (apps/web/public/logo-apix.*).
+     */
+    MAIL_LOGO: z.string().min(1).optional(),
   })
   .refine((e) => e.NODE_ENV !== 'production' || e.TRUST_PROXY !== undefined, {
     message:

@@ -13,12 +13,20 @@ import type { Env } from '../../config/env';
    passe de boîte dans la plateforme : un secret d'application, révocable.
    ──────────────────────────────────────────────────────────────── */
 
+/** Une image affichée dans le corps (`<img src="cid:…">`), jointe au courriel. */
+export interface ImageJointe {
+  cid: string;
+  nom: string;
+  png: Buffer;
+}
+
 export interface Courriel {
   from: string;
   to: string;
   subject: string;
   text: string;
   html: string;
+  images?: ImageJointe[];
 }
 
 export interface Transport {
@@ -57,6 +65,13 @@ export class TransportSmtp implements Transport {
       subject: c.subject,
       text: c.text,
       html: c.html,
+      attachments: (c.images ?? []).map((i) => ({
+        filename: i.nom,
+        content: i.png,
+        contentType: 'image/png',
+        cid: i.cid,
+        contentDisposition: 'inline' as const,
+      })),
     });
   }
 }
@@ -111,6 +126,18 @@ export class TransportGraph implements Transport {
             subject: c.subject,
             body: { contentType: 'HTML', content: c.html },
             toRecipients: [{ emailAddress: { address: c.to } }],
+            ...(c.images?.length
+              ? {
+                  attachments: c.images.map((i) => ({
+                    '@odata.type': '#microsoft.graph.fileAttachment',
+                    name: i.nom,
+                    contentType: 'image/png',
+                    contentBytes: i.png.toString('base64'),
+                    contentId: i.cid,
+                    isInline: true,
+                  })),
+                }
+              : {}),
           },
           saveToSentItems: false,
         }),

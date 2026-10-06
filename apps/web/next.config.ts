@@ -37,6 +37,16 @@ const nextConfig: NextConfig = {
   // menu du compte lui-même. Il n'existe qu'en développement ; en bas à
   // droite, il ne cache plus rien d'utile.
   devIndicators: { position: 'bottom-right' },
+  // Les courriels chargent Google Sans depuis le site. Une police venue d'un
+  // autre domaine ne s'applique qu'avec la permission du site qui la sert.
+  async headers() {
+    return [
+      {
+        source: '/fonts/:fichier*',
+        headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

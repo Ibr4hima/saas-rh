@@ -18,7 +18,6 @@ import { TenantDb, type Tx } from '../../db/tenant-db';
 import { AuthService, IssuedSession } from '../auth/auth.service';
 import { directionDuPersonnel } from '../acces/dch';
 import { ExpediteurCourriels } from '../courriels/expediteur';
-import { courrielInvitation } from '../courriels/gabarits';
 import { finDeContratPassee } from '../people/en-activite';
 import { reconcilierLeCircuit } from '../time/visas';
 
@@ -150,12 +149,13 @@ export class InvitationsService {
           .from(t.tenants)
           .where(eq(t.tenants.id, user.tenantId));
         courriel = await this.expediteur.mettreEnFile(tx, {
-          ...courrielInvitation({
+          gabarit: {
+            nom: 'invitation',
             prenom: row.givenName,
             organisation: organisation?.name ?? 'Votre organisation',
             lien: `${loadEnv().PUBLIC_WEB_URL.replace(/\/$/, '')}/invitation/${token}`,
-            expireLe: expiresAt,
-          }),
+            expireLe: expiresAt.toISOString(),
+          },
           tenantId: user.tenantId,
           kind: 'invitation',
           subjectId: invitationId,

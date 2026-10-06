@@ -5,8 +5,9 @@ import { EncryptionService } from '../../common/encryption.service';
 import { loadEnv } from '../../config/env';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
-import { courrielNotification, type ContenuCourriel } from './gabarits';
-import type { Transport } from './transports';
+import { composer, objetDe, type ContenuCourriel, type Gabarit } from './gabarits';
+import { fichiersDuLogo, preparerLogo, type LogoCourriel } from './logo';
+import type { ImageJointe, Transport } from './transports';
 
 /* ────────────────────────────────────────────────────────────────
    La file des courriels.
@@ -22,10 +23,11 @@ import type { Transport } from './transports';
    tombe en plein envoi les laisse repartir après ce délai : un courriel peut
    alors arriver deux fois, jamais se perdre.
 
-   Deux sortes de courriels. L'invitation porte son corps, chiffré : il tient
-   un lien à usage unique qu'on ne retrouverait nulle part ailleurs. La
-   notification n'en porte aucun : elle se compose au moment de partir, de la
-   notification elle-même, qui dit si elle a encore lieu d'être.
+   Un courriel se compose au moment de partir : il prend la dernière mise en
+   forme et le logo du jour. L'invitation garde, chiffré, ce qu'elle dit (un
+   lien à usage unique qu'on ne retrouverait nulle part ailleurs). La
+   notification ne garde rien : elle se compose de la notification elle-même,
+   qui dit aussi si elle a encore lieu d'être.
    ──────────────────────────────────────────────────────────────── */
 
 /** Au-delà, on renonce : un peu plus de quatre heures d'essais. */
@@ -48,13 +50,20 @@ type APrendre = {
   organisation: string | null;
 };
 
-export interface CourrielEnFile extends ContenuCourriel {
+export interface CourrielEnFile {
   tenantId: string;
   /** Ce qui le fait partir (« invitation ») et ce dont il parle. */
   kind: string;
   subjectId: string;
   to: string;
+  gabarit: Gabarit;
 }
+
+const imageDuLogo = (logo: LogoCourriel): ImageJointe => ({
+  cid: logo.cid,
+  nom: 'logo.png',
+  png: logo.png,
+});
 
 /** Le délai avant l'essai suivant : 1, 2, 4… minutes, au plus 6 heures. */
 export const delaiAvantEssai = (essais: number) =>
@@ -140,8 +149,12 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
     private readonly transport: Transport | null,
     private readonly expediteur: string,
     private readonly portail = loadEnv().PUBLIC_WEB_URL.replace(/\/$/, ''),
+    private readonly fichiersLogo = fichiersDuLogo(loadEnv().MAIL_LOGO),
     private readonly cadence = INTERVALLE_MS,
   ) {}
+
+  /** Le logo, préparé une fois pour toutes au premier envoi. */
+  private logo: Promise<LogoCourriel | null> | null = null;
 
   /** Un serveur de courrier est configuré : les invitations partent seules. */
   get actif(): boolean {
@@ -185,9 +198,9 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
       kind: c.kind,
       subjectId: c.subjectId,
       recipient: c.to,
-      subject: c.subject,
+      subject: objetDe(c.gabarit),
       bodyEncrypted: this.enc.chiffrerTexte(
-        JSON.stringify({ text: c.text, html: c.html }),
+        JSON.stringify(c.gabarit),
         contexteDuCorps(c.tenantId, id),
       ),
     });
@@ -254,30 +267,44 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
             LEFT JOIN tenants o ON o.id = n.tenant_id
            ORDER BY p.created_at`);
       });
+      if (lot.length === 0) continue;
+      this.logo ??= preparerLogo(this.fichiersLogo);
+      const logo = await this.logo;
       for (const courriel of lot) {
-        const issue = await this.envoyerUn(transport, tenantId, courriel);
+        const issue = await this.envoyerUn(transport, tenantId, courriel, logo);
         await this.db.withTenant({ tenantId }, (tx) => this.consigner(tx, courriel, issue));
       }
     }
   }
 
-  /** Ce que dit le courriel : son corps chiffré, ou la notification qu'il double. */
-  private contenu(tenantId: string, c: APrendre): ContenuCourriel | null {
+  /** Ce que dit le courriel : ce qu'il garde, chiffré, ou la notification qu'il double. */
+  private contenu(
+    tenantId: string,
+    c: APrendre,
+    logo: LogoCourriel | null,
+  ): ContenuCourriel | null {
+    const rendu = { logo, portail: this.portail };
     if (c.kind === 'notification') {
       if (c.titre === null) return null;
-      return courrielNotification({
-        prenom: c.prenom ?? '',
-        organisation: c.organisation ?? '',
-        titre: c.titre,
-        lien: `${this.portail}${c.lien?.startsWith('/') ? c.lien : '/'}`,
-      });
+      return composer(
+        {
+          nom: 'notification',
+          prenom: c.prenom ?? '',
+          organisation: c.organisation ?? '',
+          titre: c.titre,
+          lien: `${this.portail}${c.lien?.startsWith('/') ? c.lien : '/'}`,
+        },
+        rendu,
+      );
     }
     if (!c.body_encrypted) return null;
     try {
-      const corps = JSON.parse(
+      const garde = JSON.parse(
         this.enc.dechiffrerTexte(c.body_encrypted, contexteDuCorps(tenantId, c.id)),
-      ) as { text: string; html: string };
-      return { subject: c.subject, ...corps };
+      ) as Gabarit | { text: string; html: string };
+      // Mis en file avant que le courriel ne se compose au départ : déjà écrit.
+      if ('html' in garde) return { subject: c.subject, ...garde };
+      return composer(garde, rendu);
     } catch {
       return null;
     }
@@ -287,8 +314,9 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
     transport: Transport,
     tenantId: string,
     c: APrendre,
+    logo: LogoCourriel | null,
   ): Promise<{ ok: true } | { ok: false; erreur: string; definitif: boolean }> {
-    const corps = this.contenu(tenantId, c);
+    const corps = this.contenu(tenantId, c, logo);
     // Clé changée, ligne recopiée, notification disparue : aucun essai ne le
     // rendra lisible.
     if (!corps) return { ok: false, erreur: 'Corps illisible', definitif: true };
@@ -299,6 +327,7 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
         subject: corps.subject,
         text: corps.text,
         html: corps.html,
+        images: logo && corps.html.includes(`cid:${logo.cid}`) ? [imageDuLogo(logo)] : [],
       });
       return { ok: true };
     } catch (e) {

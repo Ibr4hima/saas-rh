@@ -21,7 +21,11 @@ import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { ESSAIS_MAX, ExpediteurCourriels } from '../src/modules/courriels/expediteur';
-import { courrielInvitation } from '../src/modules/courriels/gabarits';
+import { composer } from '../src/modules/courriels/gabarits';
+import { fichiersDuLogo, preparerLogo } from '../src/modules/courriels/logo';
+import sharp from 'sharp';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import {
   type Courriel,
   type Transport,
@@ -156,6 +160,12 @@ beforeEach(async () => {
   people = new PeopleService(db, enc, expediteur);
 });
 
+// Chaque expéditeur s'arrête avec son test : son envoi différé (`bientot`)
+// partirait sinon pendant le suivant, vers le transport d'un autre.
+afterEach(async () => {
+  await expediteur.onModuleDestroy();
+});
+
 afterAll(async () => {
   await vider();
   await raw(`DELETE FROM user_tenant_memberships WHERE tenant_id = $1`, [tenantId]);
@@ -284,12 +294,13 @@ describe('invitation par courriel', () => {
     await expect(
       db.withTenant({ tenantId, userId: adminUserId }, async (tx) => {
         await expediteur.mettreEnFile(tx, {
-          ...courrielInvitation({
+          gabarit: {
+            nom: 'invitation',
             prenom: 'Awa',
             organisation: 'APIX Test',
             lien: 'http://localhost/invitation/x',
-            expireLe: new Date(),
-          }),
+            expireLe: new Date().toISOString(),
+          },
           tenantId,
           kind: 'invitation',
           subjectId: randomUUID(),
@@ -499,19 +510,98 @@ describe('notifications par courriel', () => {
 });
 
 describe('le gabarit', () => {
+  const rendu = { logo: null, portail: 'https://rh.apix.sn/', annee: 2026 };
+
   it('échappe ce qui vient de la fiche', () => {
-    const c = courrielInvitation({
-      prenom: '<b>Awa</b>',
-      organisation: 'A & B',
-      lien: 'https://rh.apix.sn/invitation/abc"def',
-      expireLe: new Date('2026-10-13T10:00:00Z'),
-    });
-    expect(c.html).toContain('&lt;b&gt;Awa&lt;/b&gt;');
+    const c = composer(
+      {
+        nom: 'invitation',
+        prenom: '<b>Awa</b>',
+        organisation: 'A & B',
+        lien: 'https://rh.apix.sn/invitation/abc"def',
+        expireLe: '2026-10-13T10:00:00Z',
+      },
+      rendu,
+    );
+    expect(c.html).toContain('Bienvenue, &lt;b&gt;Awa&lt;/b&gt;');
     expect(c.html).not.toContain('<b>Awa</b>');
     expect(c.html).toContain('A &amp; B');
     expect(c.html).toContain('abc&quot;def');
     expect(c.text).toContain('13 octobre 2026');
     expect(c.subject).toBe('A & B : votre accès au portail RH');
+  });
+
+  it('porte l’habit de l’écran de connexion : Google Sans du site, le nom à défaut de logo', () => {
+    const c = composer(
+      {
+        nom: 'notification',
+        prenom: 'Mariama',
+        organisation: 'APIX',
+        titre: 'Hawa Ba demande son contrat de travail',
+        lien: 'https://rh.apix.sn/documents',
+      },
+      rendu,
+    );
+    expect(c.subject).toBe('Hawa Ba demande son contrat de travail');
+    expect(c.html).toContain("url('https://rh.apix.sn/fonts/google-sans-latin.woff2')");
+    expect(c.html).toContain('Système de gestion des ressources humaines');
+    expect(c.html).toContain('>APIX</div>');
+    expect(c.html).not.toContain('cid:');
+    expect(c.html).toContain('Voir sur le portail');
+    expect(c.html).toContain('© 2026 APIX · Direction du Capital Humain');
+    expect(c.html).not.toContain('\u2014');
+  });
+});
+
+describe('le logo', () => {
+  const dossier = mkdtempSync(join(tmpdir(), 'logo-'));
+  /** Un logo d'encre foncée sur fond transparent, comme celui de l'organisation. */
+  const svg = join(dossier, 'logo-apix.svg');
+  writeFileSync(
+    svg,
+    '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100"><ellipse cx="150" cy="50" rx="140" ry="40" fill="none" stroke="#003366" stroke-width="8"/><rect x="40" y="35" width="120" height="30" fill="#0b2a4a"/></svg>',
+  );
+
+  it('se met en blanc, garde sa transparence, à la hauteur de l’écran de connexion', async () => {
+    const logo = await preparerLogo([join(dossier, 'absent.svg'), svg]);
+    expect(logo).not.toBeNull();
+    expect(logo!.hauteur).toBe(44);
+    expect(logo!.largeur).toBe(132);
+    const { data } = await sharp(logo!.png).raw().toBuffer({ resolveWithObject: true });
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3]! > 0) expect([data[i], data[i + 1], data[i + 2]]).toEqual([255, 255, 255]);
+    }
+  });
+
+  it('sans fichier, ou sans transparence : le nom de l’organisation', async () => {
+    expect(await preparerLogo([join(dossier, 'absent.svg')])).toBeNull();
+    const opaque = join(dossier, 'opaque.png');
+    await sharp({ create: { width: 30, height: 10, channels: 3, background: '#ffffff' } })
+      .png()
+      .toFile(opaque);
+    expect(await preparerLogo([opaque])).toBeNull();
+    expect(fichiersDuLogo('/ici/logo.png')).toEqual(['/ici/logo.png']);
+  });
+
+  it('voyage dans le courriel, affiché dans le corps', async () => {
+    const avecLogo = new ExpediteurCourriels(
+      db,
+      enc,
+      transport,
+      'Capital Humain <rh@apix.test>',
+      'http://localhost:3002',
+      [svg],
+    );
+    const service = new InvitationsService(db, new AuthService(db), avecLogo);
+    const awa = await creerAgent('Awa');
+    await service.invite(admin, awa.employeeId, 'employee');
+    await avecLogo.envoyerCeQuiAttend();
+    const [parti] = transport.envoyes;
+    expect(parti!.images).toHaveLength(1);
+    expect(parti!.images![0]!.cid).toBe('logo-organisation');
+    expect(parti!.html).toContain('src="cid:logo-organisation"');
+    expect(parti!.html).toContain('Bienvenue, Awa');
+    await avecLogo.onModuleDestroy();
   });
 });
 
@@ -592,6 +682,22 @@ describe('transports', () => {
       },
       saveToSentItems: false,
     });
+
+    // Le logo voyage en pièce jointe affichée dans le corps.
+    await graph.envoyer({
+      ...message,
+      images: [{ cid: 'logo-organisation', nom: 'logo.png', png: Buffer.from('png') }],
+    });
+    expect(JSON.parse(appels.at(-1)!.init.body as string).message.attachments).toEqual([
+      {
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: 'logo.png',
+        contentType: 'image/png',
+        contentBytes: Buffer.from('png').toString('base64'),
+        contentId: 'logo-organisation',
+        isInline: true,
+      },
+    ]);
 
     // Jeton révoqué : l'envoi échoue (il réessaiera), et le suivant en redemande un.
     refusSuivant = true;
