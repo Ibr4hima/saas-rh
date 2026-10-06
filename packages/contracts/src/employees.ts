@@ -752,6 +752,16 @@ export interface EmployeeDetail {
     /** `coupe` : un compte existe, mais son accès est coupé. */
     status: 'none' | 'invited' | 'active' | 'coupe';
     role: string | null;
+    /** Un serveur de courrier est configuré : l'invitation part par courriel. */
+    parCourriel: boolean;
+    /** L'invitation en cours, quand `status` vaut `invited`. */
+    invitation: {
+      email: string;
+      expiresAt: string;
+      /** Le courriel qui l'a portée ; `null` : lien transmis à la main. */
+      courriel: 'en_attente' | 'envoye' | 'echec' | null;
+      envoyeLe: string | null;
+    } | null;
   };
 }
 

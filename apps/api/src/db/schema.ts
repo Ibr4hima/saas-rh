@@ -726,3 +726,21 @@ export const objectifsFiches = pgTable('objectifs_fiches', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Les courriels qui partent : mis en file avec le geste, envoyés après (0083). */
+export const outboundEmails = pgTable('outbound_emails', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  kind: text('kind').notNull(),
+  subjectId: uuid('subject_id'),
+  recipient: text('recipient').notNull(),
+  subject: text('subject').notNull(),
+  // Chiffré, et effacé dès que le courriel est parti ou abandonné.
+  bodyEncrypted: text('body_encrypted'),
+  status: text('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+});

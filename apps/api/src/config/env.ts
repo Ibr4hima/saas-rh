@@ -87,12 +87,50 @@ export const envSchema = z
      * certificat, pour qu'un tiers le vérifie. En production : l'URL réelle.
      */
     PUBLIC_WEB_URL: z.string().url().default('http://localhost:3002'),
+    /**
+     * Comment partent les courriels. 'smtp' : un serveur SMTP (Mailpit en
+     * développement, qui les garde tous sans rien envoyer au dehors) ;
+     * 'graph' : Microsoft 365, par l'API Microsoft Graph ; 'aucun' : rien ne
+     * part, les liens se transmettent à la main. Par défaut : 'smtp' en
+     * développement (Mailpit, localhost:1025), 'aucun' ailleurs.
+     */
+    MAIL_TRANSPORT: z.enum(['aucun', 'smtp', 'graph']).optional(),
+    /** L'expéditeur, tel que le destinataire le lit : « Capital Humain <rh@apix.sn> ». */
+    MAIL_FROM: z.string().min(3).default('Capital Humain <rh@localhost>'),
+    SMTP_HOST: z.string().min(1).default('localhost'),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),
+    /** 'true' : TLS dès la connexion (port 465). Sinon STARTTLS si le serveur le propose. */
+    SMTP_SECURE: z
+      .string()
+      .default('false')
+      .transform((v) => v === 'true'),
+    SMTP_USER: z.string().min(1).optional(),
+    SMTP_PASSWORD: z.string().min(1).optional(),
+    /**
+     * Microsoft 365 : une application enregistrée dans Entra ID, avec la
+     * permission d'application Mail.Send limitée à la boîte qui envoie.
+     */
+    GRAPH_TENANT_ID: z.string().min(1).optional(),
+    GRAPH_CLIENT_ID: z.string().min(1).optional(),
+    GRAPH_CLIENT_SECRET: z.string().min(1).optional(),
+    /** La boîte qui envoie (rh@apix.sn) ; par défaut, l'adresse de MAIL_FROM. */
+    GRAPH_SENDER: z.string().min(3).optional(),
   })
   .refine((e) => e.NODE_ENV !== 'production' || e.TRUST_PROXY !== undefined, {
     message:
       "TRUST_PROXY doit être réglé en production : les proxys devant l'API, ou 'false' si elle est exposée directement",
     path: ['TRUST_PROXY'],
   })
+  .refine(
+    (e) =>
+      e.MAIL_TRANSPORT !== 'graph' ||
+      Boolean(e.GRAPH_TENANT_ID && e.GRAPH_CLIENT_ID && e.GRAPH_CLIENT_SECRET),
+    {
+      message:
+        'MAIL_TRANSPORT=graph : GRAPH_TENANT_ID, GRAPH_CLIENT_ID et GRAPH_CLIENT_SECRET sont requis',
+      path: ['MAIL_TRANSPORT'],
+    },
+  )
   .refine((e) => e.NODE_ENV !== 'production' || e.DATA_ENCRYPTION_KEY !== CLE_DE_DEVELOPPEMENT, {
     message:
       'DATA_ENCRYPTION_KEY : la clé de développement est publique, en générer une (openssl rand -base64 32)',

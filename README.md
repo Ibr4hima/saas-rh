@@ -14,6 +14,7 @@
 
 ```bash
 pnpm install && pnpm db:up && cp .env.example .env
+pnpm mail:up                   # Mailpit : les courriels de dev sur http://localhost:8025
 pnpm db:migrate && pnpm dev   # web sur :3000, API sur :3001/v1/health
 # pnpm db:reset               # repart d'une base vierge (dev/CI — destructeur)
 pnpm test                     # dont le test d'étanchéité RLS

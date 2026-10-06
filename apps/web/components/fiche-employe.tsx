@@ -1284,6 +1284,22 @@ function PortalCard({
   const inviteUrl = invite ? `${window.location.origin}${invite.invitePath}` : null;
   const actif = portal.status === 'active';
   const coupe = portal.status === 'coupe';
+  const invitation = portal.status === 'invited' ? portal.invitation : null;
+  const envoi = invitation?.courriel ?? null;
+  const echec = envoi === 'echec';
+
+  // Le courriel part juste après le clic : la carte le suit le temps qu'il
+  // parte, une trentaine de secondes au plus.
+  useEffect(() => {
+    if (envoi !== 'en_attente') return;
+    let tours = 0;
+    const id = setInterval(() => {
+      tours += 1;
+      void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
+      if (tours >= 12) clearInterval(id);
+    }, 2500);
+    return () => clearInterval(id);
+  }, [envoi, employeeId, queryClient]);
 
   return (
     <Card>
@@ -1313,10 +1329,15 @@ function PortalCard({
                 ? 'bg-success-soft text-success'
                 : coupe
                   ? 'bg-danger-soft text-danger'
-                  : 'bg-primary/[0.07] text-primary',
+                  : echec
+                    ? 'bg-warning-soft text-warning'
+                    : 'bg-primary/[0.07] text-primary',
             )}
           >
-            <Icon name={actif ? 'how_to_reg' : 'lock'} size={19} />
+            <Icon
+              name={actif ? 'how_to_reg' : echec ? 'warning' : invitation ? 'mail' : 'lock'}
+              size={19}
+            />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[13px] leading-tight font-semibold text-ink-strong">
@@ -1326,9 +1347,13 @@ function PortalCard({
                   : 'Compte actif'
                 : coupe
                   ? 'Accès coupé'
-                  : portal.status === 'invited'
-                    ? 'Invitation envoyée, pas encore acceptée'
-                    : 'Pas encore de compte'}
+                  : envoi === 'en_attente'
+                    ? 'Invitation en cours d’envoi'
+                    : echec
+                      ? 'Le courriel d’invitation n’est pas parti'
+                      : portal.status === 'invited'
+                        ? 'Invitation envoyée, pas encore acceptée'
+                        : 'Pas encore de compte'}
             </p>
             <p className="mt-1 text-[12px] leading-snug text-ink-muted">
               {coupe ? (
@@ -1339,12 +1364,27 @@ function PortalCard({
                   Ce qu&apos;on y fait de plus vient de sa place dans l&apos;organigramme (N+1
                   d&apos;une équipe, Direction du Capital Humain), pas d&apos;un rôle.
                 </>
+              ) : invitation && envoi ? (
+                <>
+                  {echec ? 'Adressé à ' : envoi === 'envoye' ? 'Envoyée à ' : 'À '}
+                  <span className="font-semibold text-ink">{invitation.email}</span>
+                  {envoi === 'envoye' && invitation.envoyeLe
+                    ? ` le ${formatDate(invitation.envoyeLe)}`
+                    : null}
+                  {echec ? (
+                    <>. Vérifiez l’adresse, puis renvoyez l’invitation ou transmettez le lien.</>
+                  ) : (
+                    <> · valable jusqu’au {formatDate(invitation.expiresAt)}.</>
+                  )}
+                </>
               ) : (
                 <>
                   {/* Le pronom suit le sexe au dossier quand il y est. « Il ou
                       elle » n'est pas une faute, mais quand on connaît la
                       personne à qui l'on écrit, la phrase n'a pas à hésiter. */}
-                  Transmettez le lien d&apos;invitation à{' '}
+                  {portal.parCourriel
+                    ? 'Envoyez l’invitation à'
+                    : 'Transmettez le lien d’invitation à'}{' '}
                   <span className="font-semibold text-ink">{prenom}</span>.{' '}
                   {gender === 'female' ? 'Elle' : gender === 'male' ? 'Il' : 'Il ou elle'} choisira
                   son mot de passe et son compte sera relié à ce dossier.
@@ -1411,7 +1451,13 @@ function PortalCard({
                 loading={generate.isPending}
                 className="w-full @[24rem]:w-auto"
               >
-                {portal.status === 'invited' ? 'Régénérer le lien' : 'Générer le lien'}
+                {portal.parCourriel
+                  ? portal.status === 'invited'
+                    ? 'Renvoyer l’invitation'
+                    : 'Envoyer l’invitation'
+                  : portal.status === 'invited'
+                    ? 'Régénérer le lien'
+                    : 'Générer le lien'}
               </Button>
             </div>
 
@@ -1445,9 +1491,12 @@ function PortalCard({
                 <p className="mt-2 truncate font-mono text-[11.5px] text-ink" title={inviteUrl}>
                   {inviteUrl}
                 </p>
-                <p className="mt-2 text-[11px] text-ink-muted">
-                  Pour {invite.email} · valable jusqu&apos;au {formatDate(invite.expiresAt)}
-                </p>
+                {/* Le courriel suivi, la ligne d'état le dit déjà. */}
+                {envoi ? null : (
+                  <p className="mt-2 text-[11px] text-ink-muted">
+                    Pour {invite.email} · valable jusqu&apos;au {formatDate(invite.expiresAt)}
+                  </p>
+                )}
               </div>
             ) : null}
           </>

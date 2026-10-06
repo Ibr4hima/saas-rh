@@ -8,6 +8,7 @@ SaaS de gestion RH et de paie pour l'Afrique de l'Ouest francophone (nom de code
 ```bash
 pnpm install              # installe tout le monorepo
 pnpm db:up                # démarre Postgres 16 (docker compose)
+pnpm mail:up              # démarre Mailpit (courriels de dev, http://localhost:8025)
 pnpm db:migrate           # applique les migrations SQL (apps/api/src/db/sql)
 pnpm db:reset             # DÉTRUIT la base puis remigre à neuf (dev/CI seulement)
 pnpm dev                  # api (:3001) + web (:3000)

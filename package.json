@@ -12,6 +12,7 @@
     "test": "turbo run test",
     "dev": "turbo run dev",
     "db:up": "docker compose up -d db",
+    "mail:up": "docker compose up -d mailpit",
     "db:migrate": "pnpm --filter @teranga/api db:migrate",
     "db:reset": "pnpm --filter @teranga/api db:reset",
     "format": "prettier --write ."

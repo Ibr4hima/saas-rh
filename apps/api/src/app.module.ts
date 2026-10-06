@@ -16,6 +16,9 @@ import { AcademyService } from './modules/academy/academy.service';
 import { StockageVideoLocal } from './modules/academy/stockage-local';
 import { DashboardController } from './modules/analytics/dashboard.controller';
 import { TenantDb } from './db/tenant-db';
+import { loadEnv } from './config/env';
+import { ExpediteurCourriels } from './modules/courriels/expediteur';
+import { transportDepuisEnv } from './modules/courriels/transports';
 import { AuthController } from './modules/auth/auth.controller';
 import { DocumentRequestsController } from './modules/docs/document-requests.controller';
 import { ProfileChangesController } from './modules/profile/profile-changes.controller';
@@ -79,6 +82,14 @@ import { AbsencesService } from './modules/time/absences.service';
     TenantDb,
     EncryptionService,
     Limiteur,
+    {
+      provide: ExpediteurCourriels,
+      useFactory: (db: TenantDb, enc: EncryptionService) => {
+        const env = loadEnv();
+        return new ExpediteurCourriels(db, enc, transportDepuisEnv(env), env.MAIL_FROM);
+      },
+      inject: [TenantDb, EncryptionService],
+    },
     AuthService,
     HabilitationsService,
     SessionGuard,

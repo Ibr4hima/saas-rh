@@ -22,6 +22,8 @@ export interface InviteResult {
   email: string;
   role: InvitableRole;
   expiresAt: string;
+  /** Le lien part aussi par courriel (un serveur de courrier est configuré). */
+  courriel: boolean;
 }
 
 export interface InvitationInfo {

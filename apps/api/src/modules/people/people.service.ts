@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
@@ -50,6 +50,7 @@ import {
 } from './chaine';
 import { frDate } from '../acces/appels';
 import { administrateursEnFonction, pasSurSoi } from '../acces/dch';
+import { ExpediteurCourriels } from '../courriels/expediteur';
 import { faireSuivreLesDemandes, reconcilierDemande, reconcilierLeCircuit } from '../time/visas';
 import {
   arreterLActivite,
@@ -148,6 +149,9 @@ export class PeopleService {
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(EncryptionService) private readonly crypto: EncryptionService,
+    @Optional()
+    @Inject(ExpediteurCourriels)
+    private readonly expediteur?: ExpediteurCourriels,
   ) {}
 
   /**
@@ -605,7 +609,8 @@ export class PeopleService {
     tenantId: string,
     personId: string,
     personUserId: string | null,
-  ): Promise<{ status: 'none' | 'invited' | 'active' | 'coupe'; role: string | null }> {
+  ): Promise<EmployeeDetail['portal']> {
+    const parCourriel = this.expediteur?.actif ?? false;
     if (personUserId) {
       const [membership] = await tx
         .select({
@@ -623,10 +628,22 @@ export class PeopleService {
       return {
         status: membership?.accesCoupeLe ? 'coupe' : 'active',
         role: membership?.role ?? null,
+        parCourriel,
+        invitation: null,
       };
     }
     const [pending] = await tx
-      .select({ role: t.invitations.role })
+      .select({
+        role: t.invitations.role,
+        email: t.invitations.email,
+        expiresAt: t.invitations.expiresAt,
+        courriel: sql<{ status: string; sent_at: string | null; erreur: boolean } | null>`(
+          SELECT json_build_object('status', o.status, 'sent_at', o.sent_at,
+                                   'erreur', o.last_error IS NOT NULL)
+            FROM outbound_emails o
+           WHERE o.subject_id = invitations.id AND o.kind = 'invitation'
+           ORDER BY o.created_at DESC LIMIT 1)`,
+      })
       .from(t.invitations)
       .where(
         and(
@@ -636,7 +653,30 @@ export class PeopleService {
         ),
       )
       .limit(1);
-    return pending ? { status: 'invited', role: pending.role } : { status: 'none', role: null };
+    if (!pending) return { status: 'none', role: null, parCourriel, invitation: null };
+    const etat = pending.courriel?.status;
+    return {
+      status: 'invited',
+      role: pending.role,
+      parCourriel,
+      invitation: {
+        email: pending.email,
+        expiresAt: pending.expiresAt.toISOString(),
+        // Un essai manqué se dit tout de suite, même si d'autres suivent :
+        // la DCH peut corriger l'adresse ou transmettre le lien sans attendre.
+        courriel:
+          etat === 'sent'
+            ? 'envoye'
+            : etat === 'failed' || (etat === 'pending' && pending.courriel?.erreur)
+              ? 'echec'
+              : etat === 'pending'
+                ? 'en_attente'
+                : null,
+        envoyeLe: pending.courriel?.sent_at
+          ? new Date(pending.courriel.sent_at).toISOString()
+          : null,
+      },
+    };
   }
 
   async update(user: SessionUser, id: string, input: UpdateEmployeeInput): Promise<void> {
@@ -1774,12 +1814,24 @@ export class PeopleService {
     recolter(
       await tx.delete(t.employees).where(eq(t.employees.id, id)).returning({ id: t.employees.id }),
     );
-    recolter(
-      await tx
-        .delete(t.invitations)
-        .where(eq(t.invitations.personId, personId))
-        .returning({ id: t.invitations.id }),
-    );
+    const invitationsEffacees = await tx
+      .delete(t.invitations)
+      .where(eq(t.invitations.personId, personId))
+      .returning({ id: t.invitations.id });
+    recolter(invitationsEffacees);
+    // Les courriels qui les ont portées gardent son adresse : ils s'en vont
+    // avec elles.
+    if (invitationsEffacees.length > 0) {
+      await tx.delete(t.outboundEmails).where(
+        and(
+          eq(t.outboundEmails.kind, 'invitation'),
+          inArray(
+            t.outboundEmails.subjectId,
+            invitationsEffacees.map((i) => i.id),
+          ),
+        ),
+      );
+    }
     recolter(
       await tx.delete(t.persons).where(eq(t.persons.id, personId)).returning({ id: t.persons.id }),
     );

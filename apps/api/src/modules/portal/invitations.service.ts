@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
@@ -11,11 +11,14 @@ import type {
   SessionUser,
 } from '@teranga/contracts';
 import { passwordDiffersFromEmail, passwordShortfall } from '@teranga/contracts';
+import { loadEnv } from '../../config/env';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { AuthService, IssuedSession } from '../auth/auth.service';
 import { directionDuPersonnel } from '../acces/dch';
+import { ExpediteurCourriels } from '../courriels/expediteur';
+import { courrielInvitation } from '../courriels/gabarits';
 import { finDeContratPassee } from '../people/en-activite';
 import { reconcilierLeCircuit } from '../time/visas';
 
@@ -51,9 +54,16 @@ export class InvitationsService {
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(AuthService) private readonly auth: AuthService,
+    @Optional()
+    @Inject(ExpediteurCourriels)
+    private readonly expediteur?: ExpediteurCourriels,
   ) {}
 
-  /** Génère un lien d'invitation pour l'employé (compte relié à son dossier). */
+  /**
+   * Génère un lien d'invitation pour l'employé (compte relié à son dossier),
+   * et le lui envoie par courriel quand un serveur de courrier est configuré.
+   * Le lien reste affiché : la DCH peut toujours le transmettre elle-même.
+   */
   async invite(
     user: SessionUser,
     employeeId: string,
@@ -63,12 +73,14 @@ export class InvitationsService {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 3600 * 1000);
     let email = emailOverride ?? '';
+    let courriel = false;
 
     await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       const [row] = await tx
         .select({
           personId: t.employees.personId,
           personUserId: t.persons.userId,
+          givenName: t.persons.givenName,
           status: t.employees.status,
           workEmail: t.employees.workEmail,
           personalEmail: t.persons.personalEmail,
@@ -120,8 +132,9 @@ export class InvitationsService {
         .set({ expiresAt: new Date() })
         .where(and(eq(t.invitations.personId, row.personId), isNull(t.invitations.acceptedAt)));
 
+      const invitationId = uuidv7();
       await tx.insert(t.invitations).values({
-        id: uuidv7(),
+        id: invitationId,
         tenantId: user.tenantId,
         personId: row.personId,
         email,
@@ -130,13 +143,34 @@ export class InvitationsService {
         invitedByUserId: user.userId,
         expiresAt,
       });
+
+      if (this.expediteur?.actif) {
+        const [organisation] = await tx
+          .select({ name: t.tenants.name })
+          .from(t.tenants)
+          .where(eq(t.tenants.id, user.tenantId));
+        courriel = await this.expediteur.mettreEnFile(tx, {
+          ...courrielInvitation({
+            prenom: row.givenName,
+            organisation: organisation?.name ?? 'Votre organisation',
+            lien: `${loadEnv().PUBLIC_WEB_URL.replace(/\/$/, '')}/invitation/${token}`,
+            expireLe: expiresAt,
+          }),
+          tenantId: user.tenantId,
+          kind: 'invitation',
+          subjectId: invitationId,
+          to: email,
+        });
+      }
     });
+    if (courriel) this.expediteur?.bientot();
 
     return {
       invitePath: `/invitation/${token}`,
       email,
       role,
       expiresAt: expiresAt.toISOString(),
+      courriel,
     };
   }
 
