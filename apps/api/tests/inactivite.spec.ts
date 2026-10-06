@@ -6,8 +6,10 @@
  * n'est plus de l'agence. Son dossier passe de lui-même dans les inactifs le
  * lendemain de son dernier jour ; d'ici là, chaque porte vérifie la date :
  * il ne dirige rien, n'est le n+1 de personne, ne reçoit ni affectation ni
- * invitation au portail. Son compte reste ouvert un mois, restreint, le temps
- * de récupérer ses documents ; ensuite il ne se connecte plus.
+ * invitation au portail. Son compte reste ouvert trente jours, restreint, le
+ * temps de récupérer ses documents ; ensuite il ne se connecte plus, et son
+ * mot de passe s'efface. S'il revient, une invitation le lui fait choisir à
+ * nouveau, sur le même compte.
  */
 import { randomUUID } from 'node:crypto';
 import { hash as argonHash } from '@node-rs/argon2';
@@ -337,7 +339,7 @@ describe('la fin de contrat, d’elle-même', () => {
     ]);
     expect(n1[0].manager_employee_id).toBe(omar.employeeId);
     // Plus de congé en attente ; sa session, elle, reste ouverte : son
-    // portail lui sert encore un mois.
+    // portail lui sert encore trente jours.
     const { rows: conges } = await raw(
       `SELECT status FROM absence_requests WHERE employee_id = $1`,
       [fatou.employeeId],
@@ -510,22 +512,22 @@ describe('avant même le passage, un contrat échu ferme les portes', () => {
   });
 });
 
-describe('un mois pour récupérer ses documents', () => {
-  /** Le dernier jour d'accès : un mois après la fin d'activité, selon la base. */
-  const unMoisApres = async (fin: string) => {
-    const { rows } = await raw(`SELECT ($1::date + interval '1 month')::date::text AS d`, [fin]);
+describe('trente jours pour récupérer ses documents', () => {
+  /** Le dernier jour d'accès : trente jours après la fin d'activité, selon la base. */
+  const trenteJoursApres = async (fin: string) => {
+    const { rows } = await raw(`SELECT ($1::date + 30)::text AS d`, [fin]);
     return rows[0].d as string;
   };
 
-  it('son contrat terminé, elle se connecte encore un mois : un portail restreint, sans habilitation', async () => {
+  it('son contrat terminé, elle se connecte encore trente jours : un portail restreint, sans habilitation', async () => {
     const { token, user } = await auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {});
     expect(user).toMatchObject({
-      finDAcces: await unMoisApres(await jour(-1)),
+      finDAcces: await trenteJoursApres(await jour(-1)),
       estAgent: false,
       dirigeLaDCH: false,
       capacites: [],
     });
-    // Passé ce mois, la porte se ferme : à la connexion, et pour la session ouverte.
+    // Passé ce délai, la porte se ferme : à la connexion, et pour la session ouverte.
     await raw(`UPDATE contracts SET end_date = CURRENT_DATE - 40 WHERE employee_id = $1`, [
       fatou.employeeId,
     ]);
@@ -556,22 +558,21 @@ describe('un mois pour récupérer ses documents', () => {
     });
     expect(r.done).toBe(1);
     const { user } = await auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {});
-    expect(user.finDAcces).toBe(await unMoisApres(await jour(0)));
+    expect(user.finDAcces).toBe(await trenteJoursApres(await jour(0)));
     // Elle suit encore les documents qu'elle a demandés.
     const documents = new DocumentRequestsService(db, new NotificationsService(db));
     await documents.create(user, { docTypes: ['certificat_travail'] });
     expect(await documents.list(user, { scope: 'mine' })).toHaveLength(1);
-    // Un mois et un jour plus tard, c'est fini.
-    await raw(
-      `UPDATE employees SET fin_activite = CURRENT_DATE - interval '1 month' - interval '1 day' WHERE id = $1`,
-      [fatou.employeeId],
-    );
+    // Trente et un jours plus tard, c'est fini.
+    await raw(`UPDATE employees SET fin_activite = CURRENT_DATE - 31 WHERE id = $1`, [
+      fatou.employeeId,
+    ]);
     expect(await codeOf(() => auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {}))).toBe(
       'auth.employee_archived',
     );
   });
 
-  it('ce qui lui est fermé ce mois-là : demandes d’absence, objectifs, Academy, organigramme', () => {
+  it('ce qui lui est fermé ces trente jours : demandes d’absence, objectifs, Academy, organigramme', () => {
     const ferme = (cible: object) => Reflect.getMetadata(FERME_AUX_INACTIFS_KEY, cible) === true;
     expect(ferme(AcademyController)).toBe(true);
     expect(ferme(ObjectifsController)).toBe(true);
@@ -640,7 +641,7 @@ describe('un administrateur dont le dossier part', () => {
       ])
     ).rows.map((r) => r.qui as string);
 
-  it('pendant le mois restreint, le rôle d’administrateur ne lui donne plus rien', async () => {
+  it('pendant les trente jours restreints, le rôle d’administrateur ne lui donne plus rien', async () => {
     await role(fatou, 'admin');
     const { token, user } = await auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {});
     expect(user).toMatchObject({ role: 'employee', capacites: [] });
@@ -969,7 +970,7 @@ describe('un départ et ses congés', () => {
 describe('couper un accès', () => {
   const entrer = (a: Agent) => auth.login({ email: a.email, password: MOT_DE_PASSE }, {});
 
-  it('un licenciement ou un décès ferme le portail le jour même, sans le mois de délai', async () => {
+  it('un licenciement ou un décès ferme le portail le jour même, sans les trente jours', async () => {
     const { token } = await entrer(moussa);
     await people.archive(admin, {
       ids: [moussa.employeeId],
@@ -1287,5 +1288,240 @@ describe('un départ daté, un retour daté', () => {
     expect(await periodes(fatou)).toEqual([
       { dernier: await jour(-1), motif: 'fin_de_contrat', reprise: null },
     ]);
+  });
+});
+
+describe('qui revient', () => {
+  const NEUF = 'UnMotDePasseNeuf1!';
+  const motDePasse = async (a: Agent) =>
+    (await raw(`SELECT password_hash FROM users WHERE id = $1`, [a.userId])).rows[0]
+      .password_hash as string | null;
+  const portail = async (a: Agent) => (await people.detail(admin, a.employeeId)).portal.status;
+  const jeton = (invitePath: string) => invitePath.split('/').pop() as string;
+
+  /** Fatou, partie depuis `jours` jours, revient avec un CDI : son dossier se rouvre. */
+  async function revient(a: Agent): Promise<void> {
+    await people.newContract(admin, a.employeeId, {
+      contractType: 'cdi',
+      startDate: await jour(0),
+    });
+    const r = await people.archive(admin, { ids: [a.employeeId], archived: false });
+    expect(r.done).toBe(1);
+  }
+
+  it('trente jours après son dernier jour, elle se connecte encore ; le lendemain, son mot de passe s’efface', async () => {
+    await raw(`UPDATE contracts SET end_date = CURRENT_DATE - 30 WHERE employee_id = $1`, [
+      fatou.employeeId,
+    ]);
+    await inactiver();
+    const { token, user } = await auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {});
+    expect(user.finDAcces).toBe(await jour(0));
+
+    await raw(`UPDATE employees SET fin_activite = CURRENT_DATE - 31 WHERE id = $1`, [
+      fatou.employeeId,
+    ]);
+    await inactiver();
+    expect(await motDePasse(fatou)).toBeNull();
+    expect(await auth.resolveSession(token)).toBeNull();
+    // Rien ne la distingue d'un compte inconnu.
+    expect(await codeOf(() => auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {}))).toBe(
+      'auth.invalid_credentials',
+    );
+  });
+
+  it('revenue dans les trente jours, elle retrouve son accès avec son mot de passe', async () => {
+    await inactiver();
+    await revient(fatou);
+    expect(await motDePasse(fatou)).not.toBeNull();
+    expect(await portail(fatou)).toBe('active');
+    expect(await codeOf(() => auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {}))).toBe(
+      'AUCUNE ERREUR',
+    );
+    expect(await codeOf(() => invitations.invite(admin, fatou.employeeId, 'employee'))).toBe(
+      'portal.already_active',
+    );
+  });
+
+  it('revenue après, elle est invitée comme une nouvelle, et retrouve son compte : rien ne se perd', async () => {
+    // Pendant ses trente jours, elle demande un certificat de travail.
+    await inactiver();
+    const { user: avant } = await auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {});
+    const documents = new DocumentRequestsService(db, new NotificationsService(db));
+    await documents.create(avant, { docTypes: ['certificat_travail'] });
+
+    // Quarante-cinq jours ont passé.
+    await raw(`UPDATE contracts SET end_date = CURRENT_DATE - 45 WHERE employee_id = $1`, [
+      fatou.employeeId,
+    ]);
+    await raw(`UPDATE employees SET fin_activite = CURRENT_DATE - 45 WHERE id = $1`, [
+      fatou.employeeId,
+    ]);
+    await raw(
+      `UPDATE periodes_inactivite SET dernier_jour = CURRENT_DATE - 45 WHERE employee_id = $1`,
+      [fatou.employeeId],
+    );
+    await inactiver();
+    expect(await motDePasse(fatou)).toBeNull();
+    expect(await portail(fatou)).toBe('ferme');
+    // Inactive, pas d'invitation : son dossier se rouvre d'abord.
+    expect(await codeOf(() => invitations.invite(admin, fatou.employeeId, 'employee'))).toBe(
+      'portal.employee_archived',
+    );
+
+    await revient(fatou);
+    expect(await portail(fatou)).toBe('ferme');
+    const { invitePath } = await invitations.invite(
+      admin,
+      fatou.employeeId,
+      'employee',
+      fatou.email,
+    );
+    expect(await invitations.info(jeton(invitePath))).toMatchObject({
+      valid: true,
+      accueil: 'retour',
+      email: fatou.email,
+    });
+    // Comme un nouveau : le mot de passe se choisit, sous la règle.
+    expect(await codeOf(() => invitations.accept(jeton(invitePath), 'court', {}))).toBe(
+      'portal.weak_password',
+    );
+    const { result, session } = await invitations.accept(jeton(invitePath), NEUF, {});
+    expect(result.existingUser).toBe(false);
+    expect(session?.user.userId).toBe(fatou.userId);
+    expect(session?.user.finDAcces).toBeNull();
+    expect(await portail(fatou)).toBe('active');
+
+    // Son ancien mot de passe ne sert plus ; le nouveau, si. Son certificat
+    // demandé avant son départ l'attend toujours.
+    expect(await codeOf(() => auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {}))).toBe(
+      'auth.invalid_credentials',
+    );
+    const { user: apres } = await auth.login({ email: fatou.email, password: NEUF }, {});
+    expect(await documents.list(apres, { scope: 'mine' })).toHaveLength(1);
+  });
+
+  it('trente ans après, c’est le même compte', async () => {
+    await raw(
+      `UPDATE contracts SET start_date = CURRENT_DATE - 11315, end_date = CURRENT_DATE - 10950
+        WHERE employee_id = $1`,
+      [fatou.employeeId],
+    );
+    await inactiver();
+    expect(await motDePasse(fatou)).toBeNull();
+    await revient(fatou);
+    const { invitePath } = await invitations.invite(
+      admin,
+      fatou.employeeId,
+      'employee',
+      fatou.email,
+    );
+    const { session } = await invitations.accept(jeton(invitePath), NEUF, {});
+    expect(session?.user.userId).toBe(fatou.userId);
+  });
+
+  it('elle revient avec une autre adresse : son compte la prend', async () => {
+    await raw(`UPDATE contracts SET end_date = CURRENT_DATE - 45 WHERE employee_id = $1`, [
+      fatou.employeeId,
+    ]);
+    await inactiver();
+    await revient(fatou);
+    const nouvelle = `fatou-retour-${randomUUID()}@test.local`;
+    const { invitePath } = await invitations.invite(admin, fatou.employeeId, 'employee', nouvelle);
+    const { session } = await invitations.accept(jeton(invitePath), NEUF, {});
+    expect(session?.user).toMatchObject({ userId: fatou.userId, email: nouvelle });
+  });
+
+  it('son ancienne adresse donnée à un autre agent : il a son propre compte, elle garde le sien', async () => {
+    await raw(`UPDATE contracts SET end_date = CURRENT_DATE - 45 WHERE employee_id = $1`, [
+      fatou.employeeId,
+    ]);
+    await inactiver();
+    // Moussa, sans compte, reçoit l'adresse que Fatou avait.
+    await raw(
+      `UPDATE persons SET user_id = NULL WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [moussa.employeeId],
+    );
+    const pourMoussa = await invitations.invite(admin, moussa.employeeId, 'employee', fatou.email);
+    expect(await invitations.info(jeton(pourMoussa.invitePath))).toMatchObject({
+      accueil: 'nouveau',
+    });
+    const { session: moussaEntre } = await invitations.accept(
+      jeton(pourMoussa.invitePath),
+      NEUF,
+      {},
+    );
+    expect(moussaEntre?.user.userId).not.toBe(fatou.userId);
+    expect(moussaEntre?.user.email).toBe(fatou.email);
+
+    // Fatou revient : son compte, à une adresse neuve. L'ancienne est prise
+    // par un compte en service : refusée.
+    await revient(fatou);
+    expect(
+      await codeOf(() => invitations.invite(admin, fatou.employeeId, 'employee', fatou.email)),
+    ).toBe('portal.adresse_prise');
+    const nouvelle = `fatou-${randomUUID()}@test.local`;
+    const { invitePath } = await invitations.invite(admin, fatou.employeeId, 'employee', nouvelle);
+    const { session } = await invitations.accept(jeton(invitePath), 'UnAutreMotDePasse2!', {});
+    expect(session?.user).toMatchObject({ userId: fatou.userId, email: nouvelle });
+  });
+
+  it('un compte en service à l’adresse de l’invitation se relie avec son mot de passe (83)', async () => {
+    // Moussa a déjà un compte (comme celle qui a ouvert l'organisation),
+    // mais son dossier n'y est pas relié.
+    await raw(
+      `UPDATE persons SET user_id = NULL WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [moussa.employeeId],
+    );
+    const { invitePath } = await invitations.invite(
+      admin,
+      moussa.employeeId,
+      'employee',
+      moussa.email,
+    );
+    expect(await invitations.info(jeton(invitePath))).toMatchObject({ accueil: 'compte' });
+    expect(await codeOf(() => invitations.accept(jeton(invitePath), NEUF, {}))).toBe(
+      'portal.existing_account',
+    );
+    const { result, session } = await invitations.accept(jeton(invitePath), MOT_DE_PASSE, {});
+    expect(result.existingUser).toBe(true);
+    expect(session?.user.userId).toBe(moussa.userId);
+    expect(await portail(moussa)).toBe('active');
+  });
+
+  it('son accès coupé, on le rétablit avant de l’inviter', async () => {
+    await raw(`UPDATE contracts SET end_date = CURRENT_DATE - 45 WHERE employee_id = $1`, [
+      fatou.employeeId,
+    ]);
+    await inactiver();
+    await revient(fatou);
+    await invitations.couperLAcces(admin, fatou.employeeId, true);
+    expect(await portail(fatou)).toBe('coupe');
+    expect(
+      await codeOf(() => invitations.invite(admin, fatou.employeeId, 'employee', fatou.email)),
+    ).toBe('portal.acces_coupe');
+    await invitations.couperLAcces(admin, fatou.employeeId, false);
+    expect(await portail(fatou)).toBe('ferme');
+  });
+
+  it('un compte qui sert dans une autre organisation garde son mot de passe', async () => {
+    const autre = randomUUID();
+    await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1,'Ailleurs',$2)`, [
+      autre,
+      `ailleurs-${autre.slice(0, 8)}`,
+    ]);
+    await raw(
+      `INSERT INTO user_tenant_memberships (id, tenant_id, user_id, role) VALUES ($1,$2,$3,'employee')`,
+      [randomUUID(), autre, fatou.userId],
+    );
+    try {
+      await raw(`UPDATE contracts SET end_date = CURRENT_DATE - 45 WHERE employee_id = $1`, [
+        fatou.employeeId,
+      ]);
+      await inactiver();
+      expect(await motDePasse(fatou)).not.toBeNull();
+    } finally {
+      await raw(`DELETE FROM user_tenant_memberships WHERE tenant_id = $1`, [autre]);
+      await raw(`DELETE FROM tenants WHERE id = $1`, [autre]);
+    }
   });
 });

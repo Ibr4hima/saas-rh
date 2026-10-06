@@ -16,11 +16,12 @@ import type { Tx } from '../../db/tenant-db';
    Le contrat qui fait foi est le DERNIER, par date de début : un CDD
    renouvelé d'avance compte par son successeur, déjà enregistré.
 
-   Son compte, lui, reste ouvert un mois après son dernier jour, le temps de
-   demander et de récupérer ses documents : un portail restreint, sans
-   demande d'absence, objectifs, équipe, Academy ni organigramme. Passé ce
-   délai, il ne se connecte plus, jusqu'à ce qu'un nouveau contrat rouvre
-   son dossier.
+   Son compte, lui, reste ouvert trente jours après son dernier jour, le
+   temps de demander et de récupérer ses documents : un portail restreint,
+   sans demande d'absence, objectifs, équipe, Academy ni organigramme. Passé
+   ce délai, il ne se connecte plus, et son mot de passe s'efface. S'il
+   revient, une invitation le lui fait choisir à nouveau, sur le même
+   compte : rien de ce qu'il y avait laissé ne se perd.
    ———————————————————————————————————————————————————————————————— */
 
 /** « 17 octobre 2026 » — jamais d'ISO brut dans un message lu par un humain. */
@@ -87,15 +88,27 @@ export async function finDeContratPassee(tx: Tx, employeeId: string): Promise<st
   return rows[0]?.fin ?? null;
 }
 
+/** Combien de jours le portail reste ouvert, restreint, après le dernier jour. */
+export const DELAI_D_ACCES_JOURS = 30;
+
+/**
+ * Le dernier jour d'activité d'un dossier, en SQL : celui du dossier
+ * inactif ; d'un contrat échu que la liste n'a pas encore rangé, sa date de
+ * fin. `null` : en activité.
+ */
+const finDActivite = (e: SQL) => sql`CASE WHEN ${e}.status = 'archived'
+  THEN COALESCE(${e}.fin_activite, (${e}.archived_at AT TIME ZONE 'UTC')::date - 1)
+  ELSE (SELECT ce.end_date FROM contracts ce
+         WHERE ce.id = ${dernierContrat(sql`${e}.id`)} AND ce.end_date < CURRENT_DATE)
+  END`;
+
 /**
  * L'accès au portail d'un compte, dans ce tenant.
  *   - `finDAcces` null : agent en activité, ou compte sans dossier ;
- *   - sinon, le dernier jour où il peut encore se connecter, un mois après
- *     sa fin d'activité ; `ferme` : ce jour est passé.
- * La fin d'activité est celle du dossier inactif ; d'un contrat échu que la
- * liste n'a pas encore rangé, sa date de fin.
+ *   - sinon, le dernier jour où il peut encore se connecter, trente jours
+ *     après sa fin d'activité ; `ferme` : ce jour est passé.
  *
- * Un licenciement ou un décès ne laisse pas ce mois : l'accès se ferme le
+ * Un licenciement ou un décès ne laisse pas ce délai : l'accès se ferme le
  * jour même.
  */
 export async function accesDuCompte(
@@ -104,21 +117,39 @@ export async function accesDuCompte(
 ): Promise<{ finDAcces: string | null; ferme: boolean }> {
   const { rows } = await tx.execute<{ dernier: string | null; ferme: boolean | null }>(sql`
     WITH dossier AS (
-      SELECT CASE WHEN e.status = 'archived'
-                  THEN COALESCE(e.fin_activite, (e.archived_at AT TIME ZONE 'UTC')::date - 1)
-                  ELSE (SELECT ce.end_date FROM contracts ce
-                         WHERE ce.id = ${dernierContrat(sql`e.id`)} AND ce.end_date < CURRENT_DATE)
-             END AS fin,
+      SELECT ${finDActivite(sql`e`)} AS fin,
              e.status = 'archived' AND e.inactivite_motif IN ('licenciement', 'deces') AS sans_delai
         FROM employees e JOIN persons p ON p.id = e.person_id
        WHERE p.user_id = ${userId}
        LIMIT 1)
-    SELECT CASE WHEN sans_delai THEN fin ELSE (fin + interval '1 month')::date END::text AS dernier,
-           sans_delai OR (fin + interval '1 month')::date < CURRENT_DATE AS ferme
+    SELECT CASE WHEN sans_delai THEN fin ELSE fin + ${DELAI_D_ACCES_JOURS}::int END::text AS dernier,
+           sans_delai OR fin + ${DELAI_D_ACCES_JOURS}::int < CURRENT_DATE AS ferme
       FROM dossier`);
   const a = rows[0];
   if (!a?.dernier) return { finDAcces: null, ferme: false };
   return { finDAcces: a.dernier, ferme: Boolean(a.ferme) };
+}
+
+/**
+ * Parti depuis plus de trente jours, quel qu'en soit le motif : son mot de
+ * passe s'efface, et ses sessions se ferment. Sauf si le compte sert aussi
+ * dans une autre organisation : son mot de passe vaut pour elle aussi.
+ * Tous les dossiers de l'organisation, ou celui qu'on nomme.
+ */
+export async function effacerLesMotsDePasseEchus(tx: Tx, employeeId?: string): Promise<number> {
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    UPDATE users u SET password_hash = NULL
+      FROM employees e JOIN persons p ON p.id = e.person_id
+     WHERE p.user_id = u.id AND u.password_hash IS NOT NULL
+       AND ${employeeId ? sql`e.id = ${employeeId}` : sql`TRUE`}
+       AND ${finDActivite(sql`e`)} + ${DELAI_D_ACCES_JOURS}::int < CURRENT_DATE
+       AND NOT compte_d_une_autre_organisation(u.id)
+    RETURNING u.id`);
+  if (rows.length === 0) return 0;
+  await tx.execute(sql`
+    UPDATE sessions SET revoked_at = now()
+     WHERE user_id = ANY(${`{${rows.map((r) => r.id).join(',')}}`}::uuid[]) AND revoked_at IS NULL`);
+  return rows.length;
 }
 
 /** « 30 octobre 2026 », pour les messages qui parlent de l'accès. */

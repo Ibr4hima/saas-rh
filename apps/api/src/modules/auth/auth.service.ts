@@ -111,7 +111,9 @@ export class AuthService {
       .limit(1);
 
     // Vérification systématique pour ne pas révéler l'existence du compte par le timing.
-    const validPassword = user
+    // Un compte sans mot de passe (parti depuis plus de trente jours) ne
+    // s'ouvre pas, et ne se distingue pas d'un compte inconnu.
+    const validPassword = user?.passwordHash
       ? await argonVerify(user.passwordHash, input.password)
       : (await argonHash(input.password), false);
     if (!user || !validPassword || user.status !== 'active') {

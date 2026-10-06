@@ -749,8 +749,12 @@ export interface EmployeeDetail {
   assignments: AssignmentView[];
   contracts: ContractView[];
   portal: {
-    /** `coupe` : un compte existe, mais son accès est coupé. */
-    status: 'none' | 'invited' | 'active' | 'coupe';
+    /**
+     * `coupe` : un compte existe, mais son accès est coupé. `ferme` : son
+     * compte a perdu son mot de passe, trente jours après un départ ; une
+     * invitation le lui fait choisir à nouveau.
+     */
+    status: 'none' | 'invited' | 'active' | 'coupe' | 'ferme';
     role: string | null;
     /** Un serveur de courrier est configuré : l'invitation part par courriel. */
     parCourriel: boolean;

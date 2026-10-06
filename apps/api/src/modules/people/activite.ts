@@ -13,7 +13,7 @@ import {
   validerRattachement,
   verrouillerLaChaine,
 } from './chaine';
-import { dernierContrat } from './en-activite';
+import { dernierContrat, effacerLesMotsDePasseEchus } from './en-activite';
 import { parLeSysteme } from '../../db/systeme';
 
 /* ————————————————————————————————————————————————————————————————
@@ -127,6 +127,9 @@ export async function reprendreLActivite(
                                           ORDER BY lower(ax.validity) DESC LIMIT 1)
      WHERE e.id = ${employeeId}`);
   const r = rows[0];
+  // Parti depuis plus de trente jours, il revient sans mot de passe : une
+  // invitation le lui fera choisir, sur le même compte.
+  await effacerLesMotsDePasseEchus(tx, employeeId);
   await tx.execute(sql`UPDATE employees SET fin_activite = NULL WHERE id = ${employeeId}`);
   if (!r?.reprise || !r.lendemain) {
     await tx.execute(sql`
@@ -172,12 +175,17 @@ export async function reprendreLActivite(
  *     permet ; sinon au responsable de sa direction ; sinon elle attend
  *     un n+1 ;
  *   - ses demandes de congé en attente sont annulées ; son portail reste
- *     ouvert un mois, restreint, puis se ferme.
+ *     ouvert trente jours, restreint, puis se ferme.
+ * Les comptes partis depuis plus de trente jours perdent leur mot de passe.
  * Qui suit les échéances pour la DCH l'apprend.
  * Rend le nombre de dossiers passés dans les inactifs.
  */
 export async function inactiverLesContratsEchus(tx: Tx, tenantId: string): Promise<number> {
-  return parLeSysteme(tx, () => inactiverLesEchus(tx, tenantId));
+  return parLeSysteme(tx, async () => {
+    const n = await inactiverLesEchus(tx, tenantId);
+    await effacerLesMotsDePasseEchus(tx);
+    return n;
+  });
 }
 
 async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {

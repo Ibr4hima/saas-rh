@@ -21,3 +21,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0013](0013-coherence-organigramme.md)                | Règles de cohérence de l'organigramme                                                   | acceptée |
 | [0014](0014-corrections-informations-personnelles.md) | Corrections des informations personnelles par l'employé                                 | acceptée |
 | [0015](0015-courriels-sortants.md)                    | Courriels sortants : file dédiée, Mailpit en développement, Microsoft 365 en production | acceptée |
+| [0016](0016-compte-d-un-agent-parti.md)               | Compte d’un agent parti : mot de passe effacé après trente jours, retour par invitation | acceptée |

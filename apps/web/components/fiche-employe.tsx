@@ -1278,6 +1278,7 @@ function PortalCard({
   const inviteUrl = invite ? `${window.location.origin}${invite.invitePath}` : null;
   const actif = portal.status === 'active';
   const coupe = portal.status === 'coupe';
+  const ferme = portal.status === 'ferme';
   const invitation = portal.status === 'invited' ? portal.invitation : null;
   const envoi = invitation?.courriel ?? null;
   const echec = envoi === 'echec';
@@ -1305,6 +1306,8 @@ function PortalCard({
           <Badge tone="rouge">Accès coupé</Badge>
         ) : portal.status === 'invited' ? (
           <Badge tone="orange">Invitation en cours</Badge>
+        ) : ferme ? (
+          <Badge tone="gris">Compte fermé</Badge>
         ) : (
           <Badge tone="gris">Aucun accès</Badge>
         )}
@@ -1347,7 +1350,9 @@ function PortalCard({
                       ? 'Le courriel d’invitation n’est pas parti'
                       : portal.status === 'invited'
                         ? 'Invitation envoyée, pas encore acceptée'
-                        : 'Pas encore de compte'}
+                        : ferme
+                          ? 'Compte fermé depuis son départ'
+                          : 'Pas encore de compte'}
             </p>
             <p className="mt-1 text-[12px] leading-snug text-ink-muted">
               {coupe ? (
@@ -1380,8 +1385,10 @@ function PortalCard({
                     ? 'Envoyez l’invitation à'
                     : 'Transmettez le lien d’invitation à'}{' '}
                   <span className="font-semibold text-ink">{prenom}</span>.{' '}
-                  {gender === 'female' ? 'Elle' : gender === 'male' ? 'Il' : 'Il ou elle'} choisira
-                  son mot de passe et son compte sera relié à ce dossier.
+                  {gender === 'female' ? 'Elle' : gender === 'male' ? 'Il' : 'Il ou elle'}{' '}
+                  {ferme
+                    ? 'choisira un nouveau mot de passe et retrouvera son compte.'
+                    : 'choisira son mot de passe et son compte sera relié à ce dossier.'}
                 </>
               )}
             </p>

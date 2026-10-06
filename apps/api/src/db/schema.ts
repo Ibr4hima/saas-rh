@@ -31,7 +31,8 @@ export const daterange = customType<{ data: string }>({
 export const users = pgTable('users', {
   id: uuid('id').primaryKey(),
   email: text('email').notNull(),
-  passwordHash: text('password_hash').notNull(),
+  /** `null` : effacé, trente jours après un départ (0084). Le compte ne s'ouvre plus. */
+  passwordHash: text('password_hash'),
   givenName: text('given_name').notNull(),
   familyName: text('family_name').notNull(),
   status: text('status').notNull().default('active'),

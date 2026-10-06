@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
@@ -603,7 +602,10 @@ export class PeopleService {
     });
   }
 
-  /** Statut d'accès au portail : compte actif, invitation en cours, ou rien. */
+  /**
+   * Statut d'accès au portail : compte actif, coupé, fermé (parti depuis
+   * plus de trente jours, sans mot de passe), invitation en cours, ou rien.
+   */
   private async portalStatus(
     tx: Tx,
     tenantId: string,
@@ -616,8 +618,10 @@ export class PeopleService {
         .select({
           role: t.userTenantMemberships.role,
           accesCoupeLe: t.userTenantMemberships.accesCoupeLe,
+          ferme: sql<boolean>`${t.users.passwordHash} IS NULL`,
         })
         .from(t.userTenantMemberships)
+        .innerJoin(t.users, eq(t.users.id, t.userTenantMemberships.userId))
         .where(
           and(
             eq(t.userTenantMemberships.userId, personUserId),
@@ -625,12 +629,15 @@ export class PeopleService {
           ),
         )
         .limit(1);
-      return {
-        status: membership?.accesCoupeLe ? 'coupe' : 'active',
-        role: membership?.role ?? null,
-        parCourriel,
-        invitation: null,
-      };
+      if (membership?.accesCoupeLe || !membership?.ferme) {
+        return {
+          status: membership?.accesCoupeLe ? 'coupe' : 'active',
+          role: membership?.role ?? null,
+          parCourriel,
+          invitation: null,
+        };
+      }
+      // Fermé : son retour passe par une invitation, peut-être déjà partie.
     }
     const [pending] = await tx
       .select({
@@ -653,7 +660,9 @@ export class PeopleService {
         ),
       )
       .limit(1);
-    if (!pending) return { status: 'none', role: null, parCourriel, invitation: null };
+    if (!pending) {
+      return { status: personUserId ? 'ferme' : 'none', role: null, parCourriel, invitation: null };
+    }
     const etat = pending.courriel?.status;
     return {
       status: 'invited',
@@ -1362,9 +1371,11 @@ export class PeopleService {
    * Archiver un dossier, ou le rouvrir. Le même geste dans les deux sens.
    *
    * Archiver ne touche pas au compte : ni le mot de passe, ni l'identifiant,
-   * ni le rôle ne bougent. L'agent garde un mois son portail, restreint, pour
-   * récupérer ses documents ; ensuite il ne se connecte plus. Rouvrir le
-   * dossier lui rend l'accès avec ce qu'il connaît déjà.
+   * ni le rôle ne bougent. L'agent garde trente jours son portail, restreint,
+   * pour récupérer ses documents ; ensuite il ne se connecte plus, et son mot
+   * de passe s'efface. Rouvrir le dossier dans ce délai lui rend l'accès avec
+   * ce qu'il connaît déjà ; au-delà, une invitation lui fait choisir un
+   * nouveau mot de passe, sur le même compte.
    */
   async archive(user: SessionUser, input: ArchiveEmployeesInput): Promise<EmployeeBatchResult> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
@@ -1892,19 +1903,19 @@ export class PeopleService {
           .returning({ id: t.userTenantMemberships.id }),
       );
 
-      const restantes = await tx
-        .select({ id: t.userTenantMemberships.id })
-        .from(t.userTenantMemberships)
-        .where(eq(t.userTenantMemberships.userId, userId))
-        .limit(1);
-      if (restantes.length === 0) {
+      // Les appartenances aux autres organisations sont hors de vue (RLS) :
+      // la base répond pour elles.
+      const { rows: ailleurs } = await tx.execute<{ oui: boolean }>(
+        sql`SELECT compte_d_une_autre_organisation(${userId}) AS oui`,
+      );
+      if (!ailleurs[0]?.oui) {
         // Plus aucune organisation : le compte ne sert plus qu'à porter les
         // références des dossiers d'autrui. On le vide de la personne.
         await tx
           .update(t.users)
           .set({
             email: `supprime+${userId}@compte.invalide`,
-            passwordHash: randomBytes(32).toString('base64'),
+            passwordHash: null,
             givenName: 'Compte',
             familyName: 'supprimé',
             status: 'deleted',

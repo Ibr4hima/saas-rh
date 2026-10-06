@@ -37,7 +37,16 @@ export interface InvitationInfo {
   gender?: 'female' | 'male' | null;
   email?: string;
   role?: string;
+  /**
+   * Qui ouvre le lien : `nouveau`, sans compte ; `retour`, parti depuis plus
+   * de trente jours, il retrouve son compte avec un mot de passe neuf ;
+   * `compte`, un compte en service existe à cette adresse : son mot de passe
+   * le relie au dossier.
+   */
+  accueil?: AccueilInvitation;
 }
+
+export type AccueilInvitation = 'nouveau' | 'retour' | 'compte';
 
 /**
  * Volontairement permissif, à la différence de l'inscription.

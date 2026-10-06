@@ -32,6 +32,8 @@ export type Gabarit =
       lien: string;
       /** ISO 8601. */
       expireLe: string;
+      /** Absent : un nouveau compte (cf. AccueilInvitation). */
+      accueil?: 'retour' | 'compte';
     }
   | { nom: 'notification'; prenom: string; organisation: string; titre: string; lien: string };
 
@@ -62,11 +64,39 @@ export function objetDe(g: Gabarit): string {
   return g.nom === 'invitation' ? `${g.organisation} : votre accès au portail RH` : g.titre;
 }
 
+/** L'invitation selon qui la reçoit : un nouveau compte, un retour, un compte en service. */
+const ACCUEILS = {
+  nouveau: {
+    titre: 'Bienvenue',
+    accroche: (o: string) =>
+      `${o} vous ouvre l’accès à son portail RH : vos congés, vos documents, vos objectifs.`,
+    apercu: 'Choisissez votre mot de passe pour ouvrir votre accès au portail RH.',
+    consigne: 'Pour choisir votre mot de passe',
+    bouton: 'Choisir mon mot de passe',
+  },
+  retour: {
+    titre: 'Bon retour',
+    accroche: (o: string) =>
+      `${o} vous rouvre l’accès à son portail RH : vous y retrouvez votre compte.`,
+    apercu: 'Choisissez un nouveau mot de passe pour retrouver votre compte.',
+    consigne: 'Pour choisir votre nouveau mot de passe',
+    bouton: 'Choisir mon mot de passe',
+  },
+  compte: {
+    titre: 'Bienvenue',
+    accroche: (o: string) => `${o} relie votre compte à votre dossier sur son portail RH.`,
+    apercu: 'Reliez votre compte à votre dossier sur le portail RH.',
+    consigne: 'Pour relier votre compte',
+    bouton: 'Relier mon compte',
+  },
+} as const;
+
 export function composer(g: Gabarit, rendu: Rendu): ContenuCourriel {
   const subject = objetDe(g);
   if (g.nom === 'invitation') {
     const jusquau = dateLongue(g.expireLe);
-    const accroche = `${g.organisation} vous ouvre l’accès à son portail RH : vos congés, vos documents, vos objectifs.`;
+    const a = ACCUEILS[g.accueil ?? 'nouveau'];
+    const accroche = a.accroche(g.organisation);
     return {
       subject,
       text: [
@@ -74,7 +104,7 @@ export function composer(g: Gabarit, rendu: Rendu): ContenuCourriel {
         '',
         accroche,
         '',
-        'Pour choisir votre mot de passe, ouvrez ce lien :',
+        `${a.consigne}, ouvrez ce lien :`,
         g.lien,
         '',
         `Ce lien vous est personnel et vaut jusqu’au ${jusquau}.`,
@@ -82,10 +112,10 @@ export function composer(g: Gabarit, rendu: Rendu): ContenuCourriel {
       ].join('\n'),
       html: page(rendu, {
         organisation: g.organisation,
-        apercu: 'Choisissez votre mot de passe pour ouvrir votre accès au portail RH.',
-        titre: `Bienvenue, ${g.prenom}`,
+        apercu: a.apercu,
+        titre: `${a.titre}, ${g.prenom}`,
         sousTitre: accroche,
-        bouton: { libelle: 'Choisir mon mot de passe', lien: g.lien },
+        bouton: { libelle: a.bouton, lien: g.lien },
         apres: [
           `Ce lien vous est personnel et vaut jusqu’au ${jusquau}.`,
           'Si vous n’attendiez pas ce courriel, ignorez-le.',

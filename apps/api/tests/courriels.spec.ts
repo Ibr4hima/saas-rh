@@ -536,6 +536,27 @@ describe('le gabarit', () => {
     expect(c.subject).toBe('A & B : votre accès au portail RH');
   });
 
+  it('accueille selon qui revient : un retour, un compte à relier', () => {
+    const invitation = (accueil?: 'retour' | 'compte') =>
+      composer(
+        {
+          nom: 'invitation',
+          prenom: 'Fatou',
+          organisation: 'APIX',
+          lien: 'https://rh.apix.sn/invitation/abc',
+          expireLe: '2026-10-13T10:00:00Z',
+          ...(accueil ? { accueil } : {}),
+        },
+        rendu,
+      );
+    expect(invitation().html).toContain('Bienvenue, Fatou');
+    expect(invitation('retour').html).toContain('Bon retour, Fatou');
+    expect(invitation('retour').html).toContain('vous y retrouvez votre compte');
+    expect(invitation('retour').text).toContain('Pour choisir votre nouveau mot de passe');
+    expect(invitation('compte').html).toContain('Relier mon compte');
+    expect(invitation('compte').html).not.toContain('Choisir mon mot de passe');
+  });
+
   it('porte l’habit de l’écran de connexion : Google Sans du site, le nom à défaut de logo', () => {
     const c = composer(
       {

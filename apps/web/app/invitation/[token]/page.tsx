@@ -87,13 +87,24 @@ export default function InvitationPage() {
   }
 
   const invite = info.data;
+  // Un compte en service porte cette adresse : son mot de passe le relie au
+  // dossier, sans en choisir un autre.
+  const relier = invite.accueil === 'compte';
   const conforme = motDePasseConforme(password, invite.email ?? '');
   const discordance = conforme && confirm.length > 0 && password !== confirm;
 
   return (
     <EcranMarque
-      titre={`Bienvenue, ${invite.givenName}`}
-      sousTitre={<>Rejoignez-nous en tant qu’{apixien(invite.gender)}.</>}
+      titre={`${invite.accueil === 'retour' ? 'Bon retour' : 'Bienvenue'}, ${invite.givenName}`}
+      sousTitre={
+        invite.accueil === 'retour' ? (
+          'Ravis de vous revoir.'
+        ) : relier ? (
+          'Reliez votre compte à votre dossier.'
+        ) : (
+          <>Rejoignez-nous en tant qu’{apixien(invite.gender)}.</>
+        )
+      }
     >
       <form
         className="mt-6 flex flex-col gap-4"
@@ -119,56 +130,72 @@ export default function InvitationPage() {
           />
         </ChampMarque>
 
-        <div>
-          <ChampMarque id="password" label="Choisissez un mot de passe" icone="lock">
+        {relier ? (
+          <ChampMarque id="password" label="Mot de passe de votre compte" icone="lock">
             <SaisieMarque
               id="password"
               type={showPwd ? 'text' : 'password'}
-              autoComplete="new-password"
+              autoComplete="current-password"
               autoFocus
-              placeholder="12 caractères minimum"
+              placeholder="••••••••"
               className="pr-11"
               value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                // Redevenu non conforme : la confirmation repart de zéro.
-                if (!motDePasseConforme(e.target.value, invite.email ?? '')) setConfirm('');
-              }}
-              {...SANS_COPIER_COLLER}
+              onChange={(e) => setPassword(e.target.value)}
             />
             <BoutonOeil visible={showPwd} onToggle={() => setShowPwd((v) => !v)} />
           </ChampMarque>
-          {/* Les règles verrouillent la confirmation. Revers connu : une
-              personne qui a déjà un compte, avec un ancien mot de passe qui
-              ne les remplit pas, passe d'abord par « Mot de passe oublié ». */}
-          <ReglesMotDePasse password={password} email={invite.email ?? ''} />
-        </div>
+        ) : (
+          <>
+            <div>
+              <ChampMarque id="password" label="Choisissez un mot de passe" icone="lock">
+                <SaisieMarque
+                  id="password"
+                  type={showPwd ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  autoFocus
+                  placeholder="12 caractères minimum"
+                  className="pr-11"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    // Redevenu non conforme : la confirmation repart de zéro.
+                    if (!motDePasseConforme(e.target.value, invite.email ?? '')) setConfirm('');
+                  }}
+                  {...SANS_COPIER_COLLER}
+                />
+                <BoutonOeil visible={showPwd} onToggle={() => setShowPwd((v) => !v)} />
+              </ChampMarque>
+              {/* Les règles verrouillent la confirmation. */}
+              <ReglesMotDePasse password={password} email={invite.email ?? ''} />
+            </div>
 
-        <ChampMarque
-          id="confirm"
-          label="Confirmez le mot de passe"
-          icone="check_circle"
-          erreur={discordance ? 'Les deux mots de passe ne correspondent pas.' : undefined}
-        >
-          <SaisieMarque
-            id="confirm"
-            type={showConfirm ? 'text' : 'password'}
-            autoComplete="new-password"
-            placeholder="••••••••"
-            className="pr-11"
-            value={confirm}
-            disabled={!conforme}
-            onChange={(e) => setConfirm(e.target.value)}
-            aria-invalid={discordance ? true : undefined}
-            aria-describedby={discordance ? 'confirm-erreur' : undefined}
-            {...SANS_COPIER_COLLER}
-          />
-          <BoutonOeil
-            visible={showConfirm}
-            onToggle={() => setShowConfirm((v) => !v)}
-            disabled={!conforme}
-          />
-        </ChampMarque>
+            <ChampMarque
+              id="confirm"
+              label="Confirmez le mot de passe"
+              icone="check_circle"
+              erreur={discordance ? 'Les deux mots de passe ne correspondent pas.' : undefined}
+            >
+              <SaisieMarque
+                id="confirm"
+                type={showConfirm ? 'text' : 'password'}
+                autoComplete="new-password"
+                placeholder="••••••••"
+                className="pr-11"
+                value={confirm}
+                disabled={!conforme}
+                onChange={(e) => setConfirm(e.target.value)}
+                aria-invalid={discordance ? true : undefined}
+                aria-describedby={discordance ? 'confirm-erreur' : undefined}
+                {...SANS_COPIER_COLLER}
+              />
+              <BoutonOeil
+                visible={showConfirm}
+                onToggle={() => setShowConfirm((v) => !v)}
+                disabled={!conforme}
+              />
+            </ChampMarque>
+          </>
+        )}
 
         {serverError ? (
           <p
@@ -181,10 +208,12 @@ export default function InvitationPage() {
 
         <BoutonMarque
           enCours={accept.isPending}
-          libelleEnCours="Activation…"
-          disabled={!conforme || confirm.length === 0 || discordance}
+          libelleEnCours={relier ? 'Connexion…' : 'Activation…'}
+          disabled={
+            relier ? password.length === 0 : !conforme || confirm.length === 0 || discordance
+          }
         >
-          Activer mon compte
+          {relier ? 'Relier mon compte' : 'Activer mon compte'}
         </BoutonMarque>
       </form>
     </EcranMarque>
