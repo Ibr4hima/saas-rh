@@ -1,13 +1,19 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import type { ApplicationView, JobPostingView } from '@teranga/contracts';
-import { LANGUE_LABELS, NIVEAU_ETUDES_LABELS, nomAbrege, peut } from '@teranga/contracts';
+import {
+  LANGUE_LABELS,
+  NIVEAU_ETUDES_LABELS,
+  nomAbrege,
+  peut,
+  premierPrenom,
+} from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
-import { api, apiUrl } from '../../../../lib/api';
+import { api, ApiError, apiUrl } from '../../../../lib/api';
 import { ApercuDocument, type ViewableDoc } from '../../../../components/doc-viewer';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import { Telephone, telHref } from '../../../../components/telephone';
@@ -37,6 +43,7 @@ import { anciennete, useHorlogeMinute } from '../../../../lib/temps';
 export default function JobPage() {
   const { id } = useParams<{ id: string }>();
   const [ouvert, setOuvert] = useState<string | null>(null);
+  const [aRejeter, setARejeter] = useState<ApplicationView | null>(null);
   // Les dossiers se confient à part : qui rédige les offres voit le texte seul.
   const lit = peut(useMe().data, 'recrutement.candidatures');
 
@@ -135,7 +142,15 @@ export default function JobPage() {
         </section>
       )}
 
-      <FenetreCandidat dossier={candidat} onClose={() => setOuvert(null)} />
+      <FenetreCandidat
+        dossier={candidat}
+        onClose={() => setOuvert(null)}
+        onRejeter={() => setARejeter(candidat)}
+      />
+      {/* Par-dessus le dossier, et après lui dans la page : elle le recouvre. */}
+      {aRejeter ? (
+        <ConfirmerRejet jobId={id} dossier={aRejeter} onClose={() => setARejeter(null)} />
+      ) : null}
     </Page>
   );
 }
@@ -281,8 +296,15 @@ function CarteCandidat({
         {a.familyName[0]}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-bold text-ink-strong">
-          {nomAbrege(a.givenName, a.familyName)}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[13px] font-bold text-ink-strong">
+            {nomAbrege(a.givenName, a.familyName)}
+          </span>
+          {a.stage === 'rejected' ? (
+            <Badge tone="rouge" size="sm">
+              Rejetée
+            </Badge>
+          ) : null}
         </span>
         <span className="mt-1 flex flex-col gap-[3px]">
           <Ligne icon="mail">{a.email}</Ligne>
@@ -346,9 +368,11 @@ function Joindre({
 function FenetreCandidat({
   dossier: a,
   onClose,
+  onRejeter,
 }: {
   dossier: ApplicationView | null;
   onClose: () => void;
+  onRejeter: () => void;
 }) {
   const [onglet, setOnglet] = useState(0);
 
@@ -435,14 +459,19 @@ function FenetreCandidat({
         ) : null
       }
       footer={
-        // Les deux décisions du tri. Elles n'agissent pas encore : le champ
-        // `stage` existe en base, la route aussi, mais le geste et ce qu'il
-        // déclenche — un courriel ? une trace ? — restent à décider.
+        // Les deux décisions du tri. Rejeter envoie au candidat un courriel de
+        // refus, après confirmation ; la présélection n'agit pas encore.
         <div className="flex w-full items-center justify-end gap-2">
-          <Button variant="secondary" size="sm">
-            Rejeter
-          </Button>
-          <Button size="sm">Présélectionner</Button>
+          {a.stage === 'rejected' ? (
+            <Badge tone="rouge">Candidature rejetée</Badge>
+          ) : (
+            <>
+              <Button variant="secondary" size="sm" onClick={onRejeter}>
+                Rejeter
+              </Button>
+              <Button size="sm">Présélectionner</Button>
+            </>
+          )}
         </div>
       }
     >
@@ -463,6 +492,75 @@ function FenetreCandidat({
           <ApercuDocument key={courante.cle} doc={courante.doc} />
         </div>
       )}
+    </Modal>
+  );
+}
+
+/**
+ * Rejeter, c'est répondre au candidat : un courriel de refus part avec le
+ * geste, et la candidature ne se rouvre plus. La fenêtre le dit avant.
+ */
+function ConfirmerRejet({
+  jobId,
+  dossier: a,
+  onClose,
+}: {
+  jobId: string;
+  dossier: ApplicationView;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [erreur, setErreur] = useState<string | null>(null);
+  const rejeter = useMutation({
+    mutationFn: () =>
+      api(`/applications/${a.id}`, { method: 'PATCH', body: { stage: 'rejected' } }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['job-applications', jobId] });
+      onClose();
+    },
+    onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Rejet impossible.'),
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Rejeter la candidature ?"
+      maxWidth="max-w-md"
+      footer={
+        <>
+          {erreur ? (
+            <p
+              role="alert"
+              className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+            >
+              {erreur}
+            </p>
+          ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button
+            variant="danger"
+            loading={rejeter.isPending}
+            onClick={() => {
+              setErreur(null);
+              rejeter.mutate();
+            }}
+          >
+            Rejeter
+          </Button>
+        </>
+      }
+    >
+      <Card>
+        <CardContent className="py-4 text-[13.5px] leading-relaxed text-ink">
+          Un courriel de refus sera envoyé à{' '}
+          <span className="font-semibold text-ink-strong">{premierPrenom(a.givenName)}</span> à
+          l’adresse <span className="font-semibold text-ink-strong">{a.email}</span>. Confirmez-vous
+          votre décision ?
+        </CardContent>
+      </Card>
     </Modal>
   );
 }

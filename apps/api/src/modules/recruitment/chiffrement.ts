@@ -62,6 +62,15 @@ export function dechiffrerCandidature(
   };
 }
 
+/** L'adresse seule, pour le courriel qui part au candidat. */
+export function adresseDuCandidat(
+  enc: EncryptionService,
+  ligne: { tenantId: string; id: string; email: string; cleVersion: number | null },
+): string {
+  if (ligne.cleVersion === null) return ligne.email;
+  return enc.dechiffrerTexte(ligne.email, place(ligne.tenantId, 'applications', ligne.id, 'email'));
+}
+
 export function chiffrerPiece(
   enc: EncryptionService,
   ligne: { tenantId: string; id: string },

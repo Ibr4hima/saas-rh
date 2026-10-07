@@ -28,6 +28,17 @@ let locks = 0;
 let before = { body: '', root: '', paddingRight: '', pane: '' };
 
 /**
+ * Les surfaces ouvertes, la dernière au-dessus. Une confirmation s'ouvre
+ * par-dessus un dossier : le clavier ne parle qu'à elle (Tab y reste, Échap
+ * ne ferme qu'elle).
+ */
+const pile: HTMLElement[] = [];
+
+/** Cette surface est-elle celle du dessus ? */
+export const estAuDessus = (el: HTMLElement | null): boolean =>
+  el !== null && pile[pile.length - 1] === el;
+
+/**
  * Le panneau qui défile réellement. Depuis que l'application est une coquille
  * à hauteur d'écran, ce n'est plus le document : geler <body> ne suffit pas,
  * la molette continuerait de faire défiler le contenu DERRIÈRE la fenêtre. Le
@@ -80,13 +91,14 @@ export function useDialogue(active: boolean, label?: string) {
     const el = ref.current;
     if (!el) return;
     const trigger = document.activeElement as HTMLElement | null;
+    pile.push(el);
 
     // Le panneau prend le focus (tabIndex −1) : le premier Tab part du début
     // de la fenêtre, et un lecteur d'écran annonce le dialogue.
     el.focus({ preventScroll: true });
 
     const trap = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return;
+      if (e.key !== 'Tab' || !estAuDessus(el)) return;
       // offsetParent écarte les éléments masqués — sauf celui qui a le focus,
       // un élément en position fixe n'ayant pas d'offsetParent.
       const focusable = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
@@ -115,6 +127,7 @@ export function useDialogue(active: boolean, label?: string) {
     document.addEventListener('keydown', trap, true);
     return () => {
       document.removeEventListener('keydown', trap, true);
+      pile.splice(pile.lastIndexOf(el), 1);
       // Restitution — seulement si le déclencheur est encore dans la page.
       if (trigger && document.contains(trigger)) trigger.focus({ preventScroll: true });
     };

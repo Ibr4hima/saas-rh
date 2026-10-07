@@ -22,6 +22,8 @@ import { EncryptionService } from '../src/common/encryption.service';
 import { pourLeJournal } from '../src/common/problem';
 import { chiffrerLesCandidatures } from '../src/db/chiffrer-candidatures';
 import { ApplyService } from '../src/modules/recruitment/apply.service';
+import { ExpediteurCourriels } from '../src/modules/courriels/expediteur';
+import type { Courriel, Transport } from '../src/modules/courriels/transports';
 
 const env = loadEnv();
 
@@ -97,6 +99,7 @@ beforeEach(async () => {
 afterAll(async () => {
   for (const id of [tenantId, autreTenantId]) {
     for (const table of [
+      'outbound_emails',
       'application_access_log',
       'applications',
       'job_postings',
@@ -346,6 +349,124 @@ describe('une candidature supprimée', () => {
     );
     expect(rows.map((r) => r.action).sort()).toEqual(['DELETE', 'INSERT', 'UPDATE']);
     expect(rows.every((r) => r.vide)).toBe(true);
+  });
+});
+
+describe('une candidature rejetée', () => {
+  /** Un transport qui garde ce qu'on lui confie. */
+  class TransportDeTest implements Transport {
+    readonly nom = 'test';
+    envoyes: Courriel[] = [];
+    async envoyer(c: Courriel): Promise<void> {
+      this.envoyes.push(c);
+    }
+  }
+  const enc = new EncryptionService();
+
+  /** Une offre publiée, et la candidature d'Amadou Way Samb, chiffrée comme au dépôt. */
+  async function candidature(rh2: JobsService) {
+    const { id: offreId } = await rh2.create(rh, offre('Économiste'));
+    await rh2.update(rh, offreId, { status: 'published' });
+    const { rows } = await raw(`SELECT public_slug FROM job_postings WHERE id = $1`, [offreId]);
+    await new ApplyService(db, enc).apply(rows[0].public_slug as string, {
+      givenName: 'Amadou Way',
+      familyName: 'Samb',
+      email: 'amadou.samb@exemple.sn',
+      documents: [
+        {
+          label: 'cv',
+          filename: 'CV.pdf',
+          contentType: 'application/pdf',
+          contentBase64: Buffer.from('%PDF-1.4 cv').toString('base64'),
+        },
+      ],
+    });
+    const [dossier] = await rh2.applications(rh, offreId);
+    return dossier!.id;
+  }
+  const courriels = async (applicationId: string) =>
+    (
+      await raw(
+        `SELECT kind, recipient, subject, body_encrypted, status FROM outbound_emails
+          WHERE tenant_id = $1 AND subject_id = $2`,
+        [tenantId, applicationId],
+      )
+    ).rows;
+
+  it('vaut au candidat un courriel de refus, sans que son adresse s’écrive en clair', async () => {
+    const transport = new TransportDeTest();
+    const expediteur = new ExpediteurCourriels(
+      db,
+      enc,
+      transport,
+      'Capital Humain <rh@apix.test>',
+      'http://localhost:3002',
+      async () => null,
+    );
+    const jobs = new JobsService(db, enc, expediteur);
+    try {
+      const id = await candidature(jobs);
+      await jobs.updateStage(rh, id, 'rejected');
+
+      const [enFile] = await courriels(id);
+      expect(enFile).toMatchObject({
+        kind: 'candidature_refusee',
+        recipient: null,
+        subject: 'Votre candidature au poste d’Économiste',
+        status: 'pending',
+      });
+      expect(JSON.stringify(enFile)).not.toMatch(/amadou|samb|exemple\.sn/i);
+
+      // Rejetée deux fois : un seul courriel. Rouverte : refusé, la réponse est partie.
+      await jobs.updateStage(rh, id, 'rejected');
+      const rouvrir = await jobs.updateStage(rh, id, 'screening').catch((e) => e.problem);
+      expect(rouvrir).toMatchObject({ code: 'recruitment.candidature_rejetee' });
+      expect(await courriels(id)).toHaveLength(1);
+
+      await expediteur.envoyerCeQuiAttend();
+      expect(transport.envoyes).toHaveLength(1);
+      const [parti] = transport.envoyes;
+      expect(parti).toMatchObject({
+        to: 'amadou.samb@exemple.sn',
+        subject: 'Votre candidature au poste d’Économiste',
+      });
+      expect(parti!.text).toContain('Bonjour Amadou,');
+      expect(parti!.text).toContain('il n’a pas été retenu');
+      expect(parti!.text).toContain('La Direction du Capital Humain');
+      expect(parti!.html).toContain('Votre candidature');
+      // Aucun geste attendu du candidat : ni bouton, ni lien de secours.
+      expect(parti!.html).not.toContain('Copiez ce');
+
+      // Parti, il ne garde rien du candidat.
+      expect(await courriels(id)).toEqual([
+        expect.objectContaining({ status: 'sent', recipient: null, body_encrypted: null }),
+      ]);
+    } finally {
+      await expediteur.onModuleDestroy();
+    }
+  });
+
+  it('supprimée avant le départ, rien ne part', async () => {
+    const transport = new TransportDeTest();
+    const expediteur = new ExpediteurCourriels(
+      db,
+      enc,
+      transport,
+      'Capital Humain <rh@apix.test>',
+      'http://localhost:3002',
+      async () => null,
+    );
+    const jobs = new JobsService(db, enc, expediteur);
+    try {
+      const id = await candidature(jobs);
+      await jobs.updateStage(rh, id, 'rejected');
+      await jobs.deleteApplication(rh, id);
+      await expediteur.envoyerCeQuiAttend();
+      expect(transport.envoyes).toHaveLength(0);
+      expect(await courriels(id)).toEqual([expect.objectContaining({ status: 'cancelled' })]);
+    } finally {
+      await expediteur.onModuleDestroy();
+    }
   });
 });
 

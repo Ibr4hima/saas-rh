@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { cn } from '@teranga/ui';
-import { useDialogue } from '../lib/dialogue';
+import { estAuDessus, useDialogue } from '../lib/dialogue';
 import { Icon } from './icons';
 
 /**
@@ -67,15 +67,6 @@ export function Modal({
   children: React.ReactNode;
   maxWidth?: string;
 }) {
-  React.useEffect(() => {
-    if (!open || !onClose) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
   /**
    * Ne fermer sur le voile que si le clic a COMMENCÉ dessus. Sélectionner du
    * texte dans un champ et relâcher hors de la fenêtre ne doit pas la fermer :
@@ -84,6 +75,16 @@ export function Modal({
   const startedOnBackdrop = React.useRef(false);
   const dialog = useDialogue(open);
   const titleId = React.useId();
+
+  // Échap ferme la fenêtre du dessus, pas celle qu'une confirmation recouvre.
+  React.useEffect(() => {
+    if (!open || !onClose) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && estAuDessus(dialog.ref.current)) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose, dialog.ref]);
 
   /**
    * « Il y a la suite en dessous ».

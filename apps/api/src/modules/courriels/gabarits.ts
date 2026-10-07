@@ -1,3 +1,4 @@
+import { deElide } from '@teranga/contracts';
 import type { LogoCourriel } from './logo';
 
 /* ────────────────────────────────────────────────────────────────
@@ -36,7 +37,14 @@ export type Gabarit =
       accueil?: 'retour' | 'compte';
     }
   | { nom: 'notification'; prenom: string; organisation: string; titre: string; lien: string }
-  | { nom: 'reinitialisation'; prenom: string; organisation: string; lien: string };
+  | { nom: 'reinitialisation'; prenom: string; organisation: string; lien: string }
+  | {
+      nom: 'refus_candidature';
+      prenom: string;
+      organisation: string;
+      poste: string;
+      reference: string | null;
+    };
 
 /** Ce qui ne se décide qu'au départ : le logo, l'adresse du site (polices), l'année. */
 export interface Rendu {
@@ -61,12 +69,32 @@ const dateLongue = (iso: string) =>
     timeZone: 'Africa/Dakar',
   });
 
+/** « au poste de Chargé d'études », « au poste d'Analyste ». */
+const auPoste = (poste: string) => `au poste ${deElide(poste).replace("'", '’')}${poste}`;
+
 /** L'objet dit la chose, sans le nom de l'organisation devant. */
 export function objetDe(g: Gabarit): string {
   if (g.nom === 'invitation') return 'Votre accès au portail RH';
   if (g.nom === 'reinitialisation') return 'Votre mot de passe';
+  if (g.nom === 'refus_candidature') return `Votre candidature ${auPoste(g.poste)}`;
   return g.titre;
 }
+
+/**
+ * Le refus d'une candidature : remercier, dire la décision sans détour, ne
+ * pas fermer la porte. Aucun lien : le candidat n'a pas de compte, et rien
+ * ne l'attend ailleurs.
+ */
+function lettreDeRefus(g: Extract<Gabarit, { nom: 'refus_candidature' }>): string[] {
+  return [
+    `Nous vous remercions de l’intérêt que vous portez à ${g.organisation} et du temps que vous avez consacré à votre candidature ${auPoste(g.poste)}.`,
+    'Votre dossier a été étudié avec attention. Nous sommes toutefois au regret de vous informer qu’il n’a pas été retenu, votre profil ne correspondant pas entièrement aux critères recherchés pour ce poste.',
+    'Cette décision ne remet en cause ni vos compétences ni votre parcours. Nous vous invitons à consulter nos prochaines offres et à y postuler si elles correspondent à votre projet.',
+    'Nous vous souhaitons pleine réussite dans la suite de vos démarches.',
+  ];
+}
+
+const SIGNATURE_DCH = ['Cordialement,', 'La Direction du Capital Humain'];
 
 /** Le lien « mot de passe oublié » vaut une heure (cf. REINITIALISATION_TTL_MINUTES). */
 const APRES_REINITIALISATION = [
@@ -131,6 +159,32 @@ export function composer(g: Gabarit, rendu: Rendu): ContenuCourriel {
       }),
     };
   }
+  if (g.nom === 'refus_candidature') {
+    const lettre = lettreDeRefus(g);
+    const reference = g.reference ? `Référence de l’offre : ${g.reference}` : null;
+    return {
+      subject,
+      text: [
+        `Bonjour ${g.prenom},`,
+        '',
+        ...lettre.flatMap((p) => [p, '']),
+        ...SIGNATURE_DCH,
+        ...(reference ? ['', reference] : []),
+      ].join('\n'),
+      html: page(rendu, {
+        organisation: g.organisation,
+        apercu: lettre[0]!,
+        titre: 'Votre candidature',
+        sousTitre: g.poste,
+        ...(g.reference ? { reference: g.reference } : {}),
+        lettre: {
+          paragraphes: [`Bonjour ${g.prenom},`, ...lettre],
+          signature: SIGNATURE_DCH,
+        },
+        apres: [],
+      }),
+    };
+  }
   if (g.nom === 'reinitialisation') {
     return {
       subject,
@@ -187,15 +241,20 @@ function page(
     salutation?: string;
     titre: string;
     sousTitre?: string;
-    bouton: { libelle: string; lien: string };
+    /** Après le sous-titre, d'un seul tenant : « OFF-2026-001 » ne se coupe pas. */
+    reference?: string;
+    /** Absent : un courriel qui n'appelle aucun geste (un refus). */
+    bouton?: { libelle: string; lien: string };
+    /** Un courrier en toutes lettres, aligné à gauche sous le titre. */
+    lettre?: { paragraphes: string[]; signature: string[] };
     apres: string[];
     /** Le lien vers ses réglages, sous la signature : une notification se règle. */
     reglages?: boolean;
   },
 ): string {
   const portail = echapper(rendu.portail.replace(/\/$/, ''));
-  const lien = echapper(o.bouton.lien);
-  const libelle = echapper(o.bouton.libelle);
+  const lien = o.bouton ? echapper(o.bouton.lien) : '';
+  const libelle = o.bouton ? echapper(o.bouton.libelle) : '';
   const annee = rendu.annee ?? new Date().getFullYear();
   const texte = (taille: number, couleur: string, extra = '') =>
     `font-family:${POLICE};font-size:${taille}px;line-height:1.55;color:${couleur};${extra}`;
@@ -207,7 +266,9 @@ function page(
   const trait = (sens: 'gauche' | 'droite') =>
     `<td class="trait" width="44" valign="middle" style="width:44px;${sens === 'gauche' ? 'padding-right:14px' : 'padding-left:14px'}"><div style="height:1px;line-height:1px;font-size:0;background-color:#5b80aa;background-image:linear-gradient(90deg,${sens === 'gauche' ? 'rgba(255,255,255,0),rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.4),rgba(255,255,255,0)'})">&nbsp;</div></td>`;
 
-  const bouton = `<!--[if mso]>
+  const bouton = !o.bouton
+    ? ''
+    : `<!--[if mso]>
 <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${lien}" style="height:50px;v-text-anchor:middle;width:376px;" arcsize="50%" stroke="f" fillcolor="${BLEU}"><w:anchorlock/><center style="color:#ffffff;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:bold;">${libelle} &rarr;</center></v:roundrect>
 <![endif]--><!--[if !mso]><!-->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:26px">
@@ -215,6 +276,14 @@ function page(
 <a href="${lien}" target="_blank" style="display:block;padding:15px 24px;border-radius:999px;${texte(15, '#ffffff', 'font-weight:700;line-height:20px;text-decoration:none')}">${libelle}&nbsp;&nbsp;<span style="font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:20px">&rarr;</span></a>
 </td></tr></table>
 <!--<![endif]-->`;
+
+  const lettre = o.lettre
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;border-top:1px solid #eceae7">
+<tr><td align="left" style="padding-top:22px;text-align:left">
+${o.lettre.paragraphes.map((p) => `<p style="margin:0 0 14px;${texte(14, ENCRE, 'line-height:1.65;text-align:left')}">${echapper(p)}</p>`).join('\n')}
+<p style="margin:20px 0 0;${texte(14, ENCRE, 'line-height:1.65;text-align:left')}">${o.lettre.signature.map(echapper).join('<br>')}</p>
+</td></tr></table>`
+    : '';
 
   const police = (sousEnsemble: string, plage: string) =>
     `@font-face{font-family:'Google Sans';font-style:normal;font-weight:400 700;src:url('${portail}/fonts/google-sans-${sousEnsemble}.woff2') format('woff2');unicode-range:${plage};}`;
@@ -256,16 +325,21 @@ ${logo}
 <tr>${trait('gauche')}<td align="center" style="${texte(10.5, '#c9d4e3', 'font-weight:700;letter-spacing:0.16em;text-transform:uppercase;line-height:16px')}">Direction du Capital Humain</td>${trait('droite')}</tr>
 </table>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="max-width:440px;margin:28px auto 0;background-color:#ffffff;border:1px solid #e3e5ea;border-radius:14px;box-shadow:0 18px 40px rgba(0,35,80,0.22),0 2px 6px rgba(0,0,0,0.06)">
-<tr><td class="carte-corps" align="center" style="padding:34px 32px 26px;border-radius:14px 14px 0 0">
+<tr><td class="carte-corps" align="center" style="padding:34px 32px ${o.bouton ? '26px' : '30px'};border-radius:${o.bouton ? '14px 14px 0 0' : '14px'}">
 ${o.salutation ? `<p style="margin:0 0 8px;${texte(14, ENCRE_DOUCE)}">${echapper(o.salutation)}</p>` : ''}
 <h1 class="titre" style="margin:0;${texte(o.salutation ? 22 : 24, ENCRE, 'font-weight:700;letter-spacing:-0.02em;line-height:1.28')}">${echapper(o.titre)}</h1>
-${o.sousTitre ? `<p style="margin:10px 0 0;${texte(14, ENCRE_DOUCE, 'line-height:1.6')}">${echapper(o.sousTitre)}</p>` : ''}
+${o.sousTitre ? `<p style="margin:10px 0 0;${texte(14, ENCRE_DOUCE, 'line-height:1.6')}">${echapper(o.sousTitre)}${o.reference ? ` · <span style="white-space:nowrap">${echapper(o.reference)}</span>` : ''}</p>` : ''}
+${lettre}
 ${bouton}
 ${o.apres.length ? `<p style="margin:18px 0 0;${texte(12.5, ENCRE_DOUCE, 'line-height:1.6')}">${o.apres.map(echapper).join('<br>')}</p>` : ''}
 </td></tr>
-<tr><td class="carte-pied" align="center" bgcolor="#fafaf9" style="background-color:#fafaf9;border-top:1px solid #eceae7;border-radius:0 0 14px 14px;padding:15px 32px;${texte(12.5, ENCRE_DOUCE)}">
+${
+  o.bouton
+    ? `<tr><td class="carte-pied" align="center" bgcolor="#fafaf9" style="background-color:#fafaf9;border-top:1px solid #eceae7;border-radius:0 0 14px 14px;padding:15px 32px;${texte(12.5, ENCRE_DOUCE)}">
 Le bouton ne s’ouvre pas ? Copiez ce <a href="${lien}" target="_blank" style="color:${BLEU};font-weight:700;text-decoration:none">lien</a>.
-</td></tr>
+</td></tr>`
+    : ''
+}
 </table>
 </td></tr>
 </table>

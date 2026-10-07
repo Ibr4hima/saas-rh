@@ -5,6 +5,7 @@ import { EncryptionService } from '../../common/encryption.service';
 import { loadEnv } from '../../config/env';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
+import { adresseDuCandidat } from '../recruitment/chiffrement';
 import { composer, objetDe, type ContenuCourriel, type Gabarit } from './gabarits';
 import { sonderLogo, type LogoCourriel } from './logo';
 import type { Transport } from './transports';
@@ -28,7 +29,9 @@ import type { Transport } from './transports';
    gardent, chiffré, ce qu'ils disent (un lien à usage unique qu'on ne
    retrouverait nulle part ailleurs). La
    notification ne garde rien : elle se compose de la notification elle-même,
-   qui dit aussi si elle a encore lieu d'être.
+   qui dit aussi si elle a encore lieu d'être. Le refus d'une candidature
+   garde ce qu'il dit, mais pas l'adresse : elle se lit, chiffrée, dans la
+   candidature au moment de partir (0094).
    ──────────────────────────────────────────────────────────────── */
 
 /** Au-delà, on renonce : un peu plus de quatre heures d'essais. */
@@ -41,7 +44,9 @@ const INTERVALLE_MS = 30_000;
 type APrendre = {
   id: string;
   kind: string;
-  recipient: string;
+  subject_id: string | null;
+  /** Vide pour un candidat : cf. candidat_email. */
+  recipient: string | null;
   subject: string;
   body_encrypted: string | null;
   attempts: number;
@@ -49,6 +54,8 @@ type APrendre = {
   lien: string | null;
   prenom: string | null;
   organisation: string | null;
+  candidat_email: string | null;
+  candidat_cle: number | null;
 };
 
 export interface CourrielEnFile {
@@ -56,7 +63,8 @@ export interface CourrielEnFile {
   /** Ce qui le fait partir (« invitation ») et ce dont il parle. */
   kind: string;
   subjectId: string;
-  to: string;
+  /** `null` : un candidat, dont l'adresse se lit au départ (kind « candidature_refusee »). */
+  to: string | null;
   gabarit: Gabarit;
 }
 
@@ -71,7 +79,8 @@ const contexteDuCorps = (tenantId: string, id: string) => `${tenantId}:outbound_
  * a été remplacée par une autre, close (dossier archivé) ou déjà acceptée ;
  * le lien « mot de passe oublié » a servi, expiré ou cédé la place à un
  * autre ; la notification a été lue, rangée, remplacée par une plus récente
- * ou effacée, ou l'accès de son destinataire a été coupé. Vérifié au moment
+ * ou effacée, ou l'accès de son destinataire a été coupé ; la candidature
+ * refusée a été supprimée ou rouverte. Vérifié au moment
  * d'envoyer, quel que soit le chemin qui y a mené.
  */
 async function annulerCeQuiNaPlusLieu(tx: Tx): Promise<void> {
@@ -95,6 +104,9 @@ async function annulerCeQuiNaPlusLieu(tx: Tx): Promise<void> {
                 WHERE n.id = o.subject_id
                   AND n.read_at IS NULL AND n.archived_at IS NULL AND n.remplacee_le IS NULL
                   AND m.acces_coupe_le IS NULL)
+             WHEN 'candidature_refusee' THEN NOT EXISTS (
+               SELECT 1 FROM applications a
+                WHERE a.id = o.subject_id AND a.stage = 'rejected')
              ELSE FALSE
            END`);
 }
@@ -262,12 +274,14 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
                            LIMIT ${PAR_PASSAGE}
                            FOR UPDATE SKIP LOCKED)
          RETURNING id, kind, subject_id, recipient, subject, body_encrypted, attempts, created_at)
-          SELECT p.id, p.kind, p.recipient, p.subject, p.body_encrypted, p.attempts,
-                 n.title AS titre, n.link AS lien, u.given_name AS prenom, o.name AS organisation
+          SELECT p.id, p.kind, p.subject_id, p.recipient, p.subject, p.body_encrypted, p.attempts,
+                 n.title AS titre, n.link AS lien, u.given_name AS prenom, o.name AS organisation,
+                 a.email AS candidat_email, a.cle_version AS candidat_cle
             FROM pris p
             LEFT JOIN notifications n ON p.kind = 'notification' AND n.id = p.subject_id
             LEFT JOIN users u ON u.id = n.recipient_user_id
             LEFT JOIN tenants o ON o.id = n.tenant_id
+            LEFT JOIN applications a ON p.kind = 'candidature_refusee' AND a.id = p.subject_id
            ORDER BY p.created_at`);
       });
       if (lot.length === 0) continue;
@@ -325,10 +339,12 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
     // Clé changée, ligne recopiée, notification disparue : aucun essai ne le
     // rendra lisible.
     if (!corps) return { ok: false, erreur: 'Corps illisible', definitif: true };
+    const to = c.recipient ?? this.adresseDuCandidat(tenantId, c);
+    if (!to) return { ok: false, erreur: 'Destinataire illisible', definitif: true };
     try {
       await transport.envoyer({
         from: this.expediteur,
-        to: c.recipient,
+        to,
         subject: corps.subject,
         text: corps.text,
         html: corps.html,
@@ -336,6 +352,21 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
       return { ok: true };
     } catch (e) {
       return { ok: false, erreur: (e as Error).message || 'Envoi refusé', definitif: false };
+    }
+  }
+
+  /** L'adresse d'un candidat, lue dans sa candidature, chiffrée là où elle vit. */
+  private adresseDuCandidat(tenantId: string, c: APrendre): string | null {
+    if (c.kind !== 'candidature_refusee' || !c.subject_id || !c.candidat_email) return null;
+    try {
+      return adresseDuCandidat(this.enc, {
+        tenantId,
+        id: c.subject_id,
+        email: c.candidat_email,
+        cleVersion: c.candidat_cle,
+      });
+    } catch {
+      return null;
     }
   }
 

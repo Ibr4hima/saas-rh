@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import { CONTRATS_A_DUREE } from '@teranga/contracts';
+import { CONTRATS_A_DUREE, premierPrenom } from '@teranga/contracts';
 import type {
   ApplicationStage,
   ApplicationView,
@@ -18,6 +18,7 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { parLeSysteme } from '../../db/systeme';
+import { ExpediteurCourriels } from '../courriels/expediteur';
 import { contenuDeLaPiece, dechiffrerCandidature, nomDeLaPiece } from './chiffrement';
 
 /**
@@ -69,6 +70,8 @@ export class JobsService {
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(EncryptionService) private readonly enc: EncryptionService,
+    @Inject(ExpediteurCourriels)
+    private readonly expediteur?: ExpediteurCourriels,
   ) {}
 
   /** Qui a consulté quoi : la liste d'une offre, ou une pièce. */
@@ -261,17 +264,62 @@ export class JobsService {
     });
   }
 
+  /**
+   * L'étape d'une candidature. Rejetée, elle vaut au candidat un courriel de
+   * refus, mis en file avec le geste ; elle ne se rouvre plus : le candidat a
+   * reçu la réponse.
+   */
   async updateStage(user: SessionUser, applicationId: string, stage: string): Promise<void> {
-    await this.db.withTenant(ctxOf(user), async (tx) => {
-      const updated = await tx
-        .update(t.applications)
-        .set({ stage, updatedAt: new Date() })
+    const enFile = await this.db.withTenant(ctxOf(user), async (tx) => {
+      const [avant] = await tx
+        .select()
+        .from(t.applications)
         .where(eq(t.applications.id, applicationId))
-        .returning({ id: t.applications.id });
-      if (updated.length === 0) {
+        .for('update');
+      if (!avant) {
         problem(404, 'recruitment.application_not_found', 'Candidature introuvable');
       }
+      if (avant.stage === stage) return false;
+      if (avant.stage === 'rejected') {
+        problem(
+          409,
+          'recruitment.candidature_rejetee',
+          'Cette candidature a été rejetée : le candidat en a reçu la réponse.',
+        );
+      }
+      await tx
+        .update(t.applications)
+        .set({ stage, updatedAt: new Date() })
+        .where(eq(t.applications.id, applicationId));
+      if (stage !== 'rejected' || !this.expediteur) return false;
+
+      const [offre] = await tx
+        .select({
+          titre: t.jobPostings.title,
+          reference: t.jobPostings.reference,
+          organisation: t.tenants.name,
+        })
+        .from(t.jobPostings)
+        .innerJoin(t.tenants, eq(t.tenants.id, t.jobPostings.tenantId))
+        .where(eq(t.jobPostings.id, avant.jobPostingId));
+      if (!offre) return false;
+      const candidat = dechiffrerCandidature(this.enc, avant);
+      // L'adresse ne se recopie pas : elle se lit dans la candidature au départ.
+      return this.expediteur.mettreEnFile(tx, {
+        tenantId: user.tenantId,
+        kind: 'candidature_refusee',
+        subjectId: applicationId,
+        to: null,
+        gabarit: {
+          nom: 'refus_candidature',
+          prenom: premierPrenom(candidat.givenName),
+          organisation: offre.organisation,
+          poste: offre.titre,
+          reference: offre.reference,
+        },
+      });
     });
+    if (enFile) this.expediteur?.bientot();
   }
 
   /**
