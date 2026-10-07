@@ -24,8 +24,10 @@ import {
 } from '@teranga/ui';
 import { Page } from '../../../components/gabarit';
 import { Icon, type IconName } from '../../../components/icons';
+import { PhoneInput } from '../../../components/phone-input';
 import { BandeauMessage, texteErreur, type Message } from '../../../components/traitement-dch';
 import { api } from '../../../lib/api';
+import { composePhone, splitPhone } from '../../../lib/countries';
 
 /* Notifications : où chacun les reçoit.
 
@@ -121,7 +123,7 @@ export default function NotificationsPage() {
 
       <div
         className={cn(
-          'grid shrink-0 gap-4',
+          'grid shrink-0 grid-cols-1 gap-4',
           r.whatsapp.disponible && r.pauseConges !== null && 'lg:grid-cols-[3fr_2fr]',
         )}
       >
@@ -235,7 +237,10 @@ function CarteWhatsApp({
   onMessage: (m: Message) => void;
 }) {
   const w = r.whatsapp;
-  const [saisie, setSaisie] = useState(w.numeroDuDossier ?? '');
+  // Le pays d'abord, puis le numéro local : comme sur la fiche d'un employé.
+  const [pays, setPays] = useState(() => splitPhone(w.numeroDuDossier).country);
+  const [local, setLocal] = useState(() => splitPhone(w.numeroDuDossier).local);
+  const saisie = composePhone(pays, local) ?? '';
   const [code, setCode] = useState('');
   // « Changer » rouvre la saisie sans retirer le numéro en service.
   const [changer, setChanger] = useState(false);
@@ -312,7 +317,7 @@ function CarteWhatsApp({
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 placeholder="000000"
-                className="w-32 text-center text-[15px] tracking-[0.3em] tabular-nums"
+                className="h-[34px] w-32 text-center text-[15px] tracking-[0.3em] tabular-nums"
               />
               <Button
                 type="submit"
@@ -346,15 +351,19 @@ function CarteWhatsApp({
               Numéro WhatsApp
             </label>
             <div className="flex flex-wrap gap-2">
-              <Input
-                id="numero-whatsapp"
-                value={saisie}
-                onChange={(e) => setSaisie(e.target.value)}
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="77 123 45 67"
-                className="w-52 tabular-nums"
-              />
+              <div className="w-full sm:w-80">
+                <PhoneInput
+                  id="numero-whatsapp"
+                  country={pays}
+                  local={local}
+                  onCountryChange={(c) => {
+                    setPays(c);
+                    setLocal('');
+                  }}
+                  onLocalChange={setLocal}
+                  compact
+                />
+              </div>
               <Button type="submit" size="md" disabled={!numeroValide} loading={demander.isPending}>
                 Recevoir le code
               </Button>

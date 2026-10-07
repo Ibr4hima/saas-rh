@@ -30,6 +30,7 @@ export function PhoneInput({
   onCountryChange,
   onLocalChange,
   disabled,
+  compact,
 }: {
   id: string;
   country: string;
@@ -37,8 +38,12 @@ export function PhoneInput({
   onCountryChange: (code: string) => void;
   onLocalChange: (value: string) => void;
   disabled?: boolean;
+  /** À la hauteur d'un bouton moyen (34 px), quand il est posé à côté de lui. */
+  compact?: boolean;
 }) {
   const pays = countryByCode(country);
+  // L'enveloppe du numéro a sa bordure : son contenu fait 2 px de moins.
+  const hauteur = compact ? 'h-8' : 'h-10';
   return (
     <div className="flex gap-2">
       <Select
@@ -46,7 +51,7 @@ export function PhoneInput({
         value={country}
         onChange={(e) => onCountryChange(e.target.value)}
         disabled={disabled}
-        className="w-[104px] shrink-0 px-3.5"
+        className={cn('w-[104px] shrink-0 px-3.5', compact && 'h-[34px]')}
       >
         {COUNTRIES_BY_ISO3.map((c) => (
           // La liste dit « SEN · +221 », le bouton refermé dit « SEN ». C'est
@@ -69,7 +74,10 @@ export function PhoneInput({
       >
         <span
           aria-hidden
-          className="flex h-10 shrink-0 items-center pr-2.5 pl-4 text-sm font-medium text-ink-muted tabular-nums"
+          className={cn(
+            'flex shrink-0 items-center pr-2.5 pl-4 text-sm font-medium text-ink-muted tabular-nums',
+            hauteur,
+          )}
         >
           +{pays?.dial ?? ''}
         </span>
@@ -80,7 +88,10 @@ export function PhoneInput({
           inputMode="tel"
           autoComplete="tel-national"
           disabled={disabled}
-          className="h-10 min-w-0 flex-1 rounded-r-full bg-transparent pr-4 pl-3 text-sm text-ink tabular-nums placeholder:text-ink-muted/70 focus:outline-none disabled:cursor-not-allowed"
+          className={cn(
+            'min-w-0 flex-1 rounded-r-full bg-transparent pr-4 pl-3 text-sm text-ink tabular-nums placeholder:text-ink-muted/70 focus:outline-none disabled:cursor-not-allowed',
+            hauteur,
+          )}
           placeholder={examplePhone(country)}
           value={local}
           onChange={(e) => onLocalChange(formatAsYouType(country, e.target.value))}

@@ -629,6 +629,7 @@ function UnitPanel({
                     id="unit-manager"
                     value={managerId}
                     onChange={(ev) => setManagerId(ev.target.value)}
+                    className="h-[34px]"
                   >
                     <option value="">Aucun</option>
                     {(eligible.data ?? [])
@@ -640,7 +641,7 @@ function UnitPanel({
                       ))}
                   </Select>
                   <Button
-                    size="sm"
+                    size="md"
                     variant="secondary"
                     loading={verification || appliquer.isPending}
                     disabled={(unit.managerEmployeeId ?? '') === managerId}
