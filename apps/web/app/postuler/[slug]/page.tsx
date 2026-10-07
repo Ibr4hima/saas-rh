@@ -105,6 +105,7 @@ function PieceJointe({
               value={sansExtension(fichier.filename)}
               onChange={(e) => onRenommer(e.target.value)}
               aria-label={`Renommer ${label}`}
+              autoComplete="off"
               placeholder={label}
               maxLength={120}
               spellCheck={false}
@@ -645,6 +646,7 @@ export default function ApplyPage() {
                         local={phoneLocal}
                         onCountryChange={setPhonePays}
                         onLocalChange={setPhoneLocal}
+                        autoComplete="tel-national"
                       />
                     </Field>
                   </div>

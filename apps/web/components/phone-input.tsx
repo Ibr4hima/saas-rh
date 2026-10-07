@@ -31,6 +31,7 @@ export function PhoneInput({
   onLocalChange,
   disabled,
   compact,
+  autoComplete = 'off',
 }: {
   id: string;
   country: string;
@@ -40,6 +41,8 @@ export function PhoneInput({
   disabled?: boolean;
   /** À la hauteur d'un bouton moyen (34 px), quand il est posé à côté de lui. */
   compact?: boolean;
+  /** Pas de proposition du navigateur, sauf pour son propre numéro (« tel-national »). */
+  autoComplete?: string;
 }) {
   const pays = countryByCode(country);
   // L'enveloppe du numéro a sa bordure : son contenu fait 2 px de moins.
@@ -86,7 +89,7 @@ export function PhoneInput({
           id={id}
           type="tel"
           inputMode="tel"
-          autoComplete="tel-national"
+          autoComplete={autoComplete}
           disabled={disabled}
           className={cn(
             'min-w-0 flex-1 rounded-r-full bg-transparent pr-4 pl-3 text-sm text-ink tabular-nums placeholder:text-ink-muted/70 focus:outline-none disabled:cursor-not-allowed',

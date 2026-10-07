@@ -667,6 +667,7 @@ function FenetreDepot({
               <div className="flex items-center gap-1 border-b border-line pb-1 transition-colors focus-within:border-primary">
                 <input
                   id={`${id}-nom`}
+                  autoComplete="off"
                   value={nom}
                   maxLength={120}
                   onChange={(e) => setNom(e.target.value)}

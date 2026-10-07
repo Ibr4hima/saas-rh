@@ -224,6 +224,7 @@ export function Pagination({
         <input
           id={champ}
           inputMode="numeric"
+          autoComplete="off"
           value={saisie}
           onChange={(e) => setSaisie(e.target.value.replace(/[^0-9]/g, '').slice(0, 5))}
           onBlur={valider}

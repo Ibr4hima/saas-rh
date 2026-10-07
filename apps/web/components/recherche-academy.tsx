@@ -84,6 +84,7 @@ export function RechercheAcademy() {
           <input
             ref={champ}
             type="search"
+            autoComplete="off"
             value={valeur}
             onChange={(e) => chercher(e.target.value)}
             onKeyDown={(e) => {
