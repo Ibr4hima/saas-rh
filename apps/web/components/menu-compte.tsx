@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import { cn } from '@teranga/ui';
 import { api } from '../lib/api';
 import { useMe } from '../lib/hooks';
+import { fermerSession } from '../lib/session';
 import { LIBELLES_ESPACE, type Espace } from './espace';
 import { Icon, type IconName } from './icons';
 import { usePreferences } from './preferences';
@@ -91,8 +92,9 @@ export function MenuCompte({
   const seDeconnecter = async (partout = false) => {
     setOuvert(false);
     await api(partout ? '/auth/deconnecter-partout' : '/auth/logout', { method: 'POST' });
-    // Ce qui a été lu (candidatures, dossiers) ne reste pas dans l'onglet.
-    queryClient.clear();
+    // Ce qui a été lu (candidatures, dossiers) ne reste pas dans l'onglet,
+    // ni dans les autres onglets ouverts sur la même session.
+    fermerSession(queryClient);
     router.replace('/login');
   };
 

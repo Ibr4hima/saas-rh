@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -17,6 +17,7 @@ import {
   SANS_COPIER_COLLER,
 } from '../../../components/ecran-marque';
 import { api, ApiError } from '../../../lib/api';
+import { ouvrirSession } from '../../../lib/session';
 
 /**
  * L'accueil s'accorde avec la personne invitée. Sans genre au dossier, la
@@ -38,6 +39,7 @@ const INVALID_MESSAGES: Record<string, string> = {
 export default function InvitationPage() {
   const { token } = useParams<{ token: string }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPwd, setShowPwd] = useState(false);
@@ -53,7 +55,10 @@ export default function InvitationPage() {
   const accept = useMutation({
     mutationFn: () =>
       api<AcceptResult>(`/invitations/${token}/accept`, { method: 'POST', body: { password } }),
-    onSuccess: () => router.replace('/moi'),
+    onSuccess: () => {
+      ouvrirSession(queryClient);
+      router.replace('/moi');
+    },
     onError: (err) =>
       setServerError(err instanceof ApiError ? err.message : 'Activation impossible, réessayez.'),
   });

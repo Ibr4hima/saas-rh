@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { LogoContext } from '../components/brand-mark';
 import { ThemeProvider } from '../components/preferences';
+import { useGardeDeSession } from '../lib/session';
 
 export function Providers({
   children,
@@ -19,6 +20,7 @@ export function Providers({
         defaultOptions: { queries: { refetchOnWindowFocus: false } },
       }),
   );
+  useGardeDeSession(client);
   return (
     <QueryClientProvider client={client}>
       <LogoContext.Provider value={logo}>

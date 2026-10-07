@@ -1,6 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -9,6 +10,7 @@ import { loginInputSchema, type LoginInput, type SessionUser } from '@teranga/co
 import { BoutonOeil, ChampMarque, EcranMarque, SaisieMarque } from '../../components/ecran-marque';
 import { BoutonMarque } from '../../components/bouton-marque';
 import { api, ApiError } from '../../lib/api';
+import { ouvrirSession } from '../../lib/session';
 
 /**
  * La page d'où l'on venait (le lien d'un courriel), si c'en est une du
@@ -21,6 +23,7 @@ function pageDeRetour(): string {
 
 export default function LoginPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [showPwd, setShowPwd] = useState(false);
   const [majuscules, setMajuscules] = useState(false);
@@ -31,6 +34,8 @@ export default function LoginPage() {
     setServerError(null);
     try {
       await api<{ user: SessionUser }>('/auth/login', { method: 'POST', body: values });
+      // Rien de ce qu'un autre compte a lu dans cet onglet ne lui survit.
+      ouvrirSession(queryClient);
       router.replace(pageDeRetour());
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : 'Connexion impossible, réessayez.');
