@@ -22,6 +22,7 @@ export function Modal({
   onClose,
   avatar,
   title,
+  titreEntier = false,
   subtitle,
   enTete,
   corpsFixe = false,
@@ -43,6 +44,11 @@ export function Modal({
    */
   avatar?: React.ReactNode;
   title: string;
+  /**
+   * Le titre passe à la ligne au lieu de se couper : un nom long qui EST
+   * l'objet de la fenêtre (une direction) doit se lire en entier.
+   */
+  titreEntier?: boolean;
   subtitle?: React.ReactNode;
   /**
    * Commandes posées sur la MÊME ligne que le titre — navigation, légende.
@@ -144,7 +150,10 @@ export function Modal({
             <div className="min-w-0">
               <h2
                 id={titleId}
-                className="truncate text-[17px] leading-tight font-bold text-ink-strong"
+                className={cn(
+                  'text-[17px] leading-tight font-bold text-ink-strong',
+                  titreEntier ? 'text-balance' : 'truncate',
+                )}
               >
                 {title}
               </h2>
