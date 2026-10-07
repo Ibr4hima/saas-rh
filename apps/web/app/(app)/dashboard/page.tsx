@@ -464,6 +464,90 @@ function DateFerie({
   );
 }
 
+/** Les directions visibles d'emblée ; la suite se déplie. */
+const DIRECTIONS_VISIBLES = 10;
+
+interface LigneDirection {
+  cle: string;
+  label: string;
+  title: string;
+  value: number;
+  onOpen?: () => void;
+}
+
+/**
+ * Les effectifs par direction, les plus fournies d'abord. Au-delà de dix,
+ * la liste se replie : « Afficher la suite » la déplie sur place, sans
+ * changer de page, et « Réduire » la referme.
+ */
+function ListeDirections({
+  lignes,
+  max,
+  total,
+}: {
+  lignes: LigneDirection[];
+  max: number;
+  total: number;
+}) {
+  const [ouverte, setOuverte] = useState(false);
+  const premieres = lignes.slice(0, DIRECTIONS_VISIBLES);
+  const suite = lignes.slice(DIRECTIONS_VISIBLES);
+  const barre = (x: LigneDirection) => (
+    <DirectionBar
+      key={x.cle}
+      onOpen={x.onOpen}
+      label={x.label}
+      title={x.title}
+      value={x.value}
+      max={max}
+      total={total}
+    />
+  );
+  return (
+    <>
+      <ul className="flex flex-col gap-1.5">{premieres.map(barre)}</ul>
+      {suite.length > 0 ? (
+        <>
+          {/* La hauteur passe de 0 à la sienne : la suite glisse en place. */}
+          <div
+            id="directions-suite"
+            inert={!ouverte}
+            className={cn(
+              'grid transition-[grid-template-rows,opacity] duration-300 ease-out',
+              ouverte ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+            )}
+          >
+            <div className="-mx-2 min-h-0 overflow-hidden px-2">
+              <ul className="flex flex-col gap-1.5 pt-1.5 pb-0.5">{suite.map(barre)}</ul>
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <span aria-hidden className="h-px flex-1 bg-line-soft" />
+            <button
+              type="button"
+              aria-expanded={ouverte}
+              aria-controls="directions-suite"
+              onClick={() => setOuverte((o) => !o)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-surface pr-2.5 pl-4 text-[12px] font-semibold text-ink shadow-xs transition-colors duration-150 hover:border-primary/40 hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+            >
+              {ouverte ? 'Réduire' : 'Afficher la suite'}
+              <Icon
+                name="chevron_right"
+                size={16}
+                className={cn(
+                  'transition-transform duration-300 ease-out',
+                  ouverte ? '-rotate-90' : 'rotate-90',
+                )}
+              />
+            </button>
+            <span aria-hidden className="h-px flex-1 bg-line-soft" />
+          </div>
+        </>
+      ) : null}
+    </>
+  );
+}
+
 /* ———— Parité ———— */
 
 /**
@@ -597,30 +681,31 @@ export default function DashboardPage() {
           ) : (d?.headcountByDirection ?? []).length === 0 ? (
             <p className="text-sm text-ink-muted">Créez vos directions dans l&apos;organigramme.</p>
           ) : (
-            <>
-              <ul className="flex flex-col gap-1.5">
-                {d!.headcountByDirection.map((x) => (
-                  <DirectionBar
-                    key={x.id}
-                    onOpen={() => setDirection(x)}
-                    label={x.shortName ?? x.name}
-                    title={x.name}
-                    value={x.headcount}
-                    max={maxHeadcount}
-                    total={d!.activeEmployees}
-                  />
-                ))}
-                {unassigned > 0 ? (
-                  <DirectionBar
-                    label="Aucune"
-                    title="Sans affectation"
-                    value={unassigned}
-                    max={maxHeadcount}
-                    total={d!.activeEmployees}
-                  />
-                ) : null}
-              </ul>
-            </>
+            <ListeDirections
+              // Les sans-affectation se rangent à leur effectif, parmi les
+              // directions (le tri est stable : à égalité, après elles).
+              lignes={[
+                ...d!.headcountByDirection.map((x) => ({
+                  cle: x.id,
+                  label: x.shortName ?? x.name,
+                  title: x.name,
+                  value: x.headcount,
+                  onOpen: () => setDirection(x),
+                })),
+                ...(unassigned > 0
+                  ? [
+                      {
+                        cle: 'aucune',
+                        label: 'Aucune',
+                        title: 'Sans affectation',
+                        value: unassigned,
+                      },
+                    ]
+                  : []),
+              ].sort((a, b) => b.value - a.value)}
+              max={maxHeadcount}
+              total={d!.activeEmployees}
+            />
           )}
         </CardContent>
       </Card>
