@@ -227,7 +227,9 @@ function greeting(): string {
 function pageTitle(pathname: string, givenName: string): string {
   // Les deux accueils — le tableau de bord, et « Mes infos personnelles » —
   // saluent : c'est là qu'on arrive.
-  if (pathname === '/dashboard' || pathname === '/moi') return `${greeting()}, ${givenName}`;
+  if (pathname === '/dashboard' || pathname === '/moi/tableau-de-bord' || pathname === '/moi') {
+    return `${greeting()}, ${givenName}`;
+  }
   const exact = PAGE_TITLES[pathname];
   if (exact) return exact;
   // Une fiche garde le titre de sa SECTION : le dossier nomme déjà la personne
@@ -564,6 +566,18 @@ function accueilDeLaGestion(user: SessionUser, items: NavItem[]): string {
  */
 function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
   return [
+    // Le DG a le tableau de bord de l'APIX, en tête de son espace.
+    ...(estDG
+      ? [
+          {
+            href: '/moi/tableau-de-bord',
+            label: 'Tableau de bord',
+            short: 'Tableau',
+            icon: 'dashboard' as const,
+            groupe: 'pilotage' as const,
+          },
+        ]
+      : []),
     {
       href: '/moi',
       label: 'Mes infos personnelles',
@@ -1180,7 +1194,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     }
     if (commence('/moi/delegations')) return u.dirigeLaDCH || u.role === 'admin';
     // Les objectifs : chacun les siens, le DG ceux de l'APIX, qui encadre son équipe.
-    if (commence('/moi/objectifs-apix')) return u.estDG;
+    if (commence('/moi/objectifs-apix') || commence('/moi/tableau-de-bord')) return u.estDG;
     if (commence('/moi/objectifs')) return u.estAgent && !u.estDG;
     if (commence('/moi/equipe/suivi')) return !validations.data || (aUneEquipe && !u.estDG);
     if (commence('/moi') || commence('/calendrier') || commence('/notifications')) return true;

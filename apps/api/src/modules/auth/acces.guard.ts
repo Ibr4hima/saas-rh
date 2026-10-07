@@ -13,6 +13,14 @@ export const CAPACITES_KEY = 'capacites';
  */
 export const Peut = (...capacites: Capacite[]) => SetMetadata(CAPACITES_KEY, capacites);
 
+export const OUVERT_AU_DG_KEY = 'ouvertAuDG';
+
+/**
+ * Ouvert aussi au directeur général, quelles que soient ses habilitations :
+ * le tableau de bord, qu'il a dans son espace.
+ */
+export const OuvertAuDG = () => SetMetadata(OUVERT_AU_DG_KEY, true);
+
 export const FERME_AUX_INACTIFS_KEY = 'fermeAuxInactifs';
 
 /**
@@ -48,6 +56,11 @@ export class AccesGuard implements CanActivate {
       context.getClass(),
     ]);
     if (!requises || requises.length === 0) return true;
+    const auDG = this.reflector.getAllAndOverride<boolean | undefined>(OUVERT_AU_DG_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (auDG && req.sessionUser.estDG) return true;
 
     if (!requises.some((c) => peut(req.sessionUser, c))) {
       problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');

@@ -14,6 +14,8 @@
  * dossier, et l'administrateur.
  */
 import { randomUUID } from 'node:crypto';
+import type { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Client, Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -34,6 +36,7 @@ import { OrgUnitsService } from '../src/modules/people/org-units.service';
 import { PeopleService } from '../src/modules/people/people.service';
 import { AbsencesService } from '../src/modules/time/absences.service';
 import { DashboardController } from '../src/modules/analytics/dashboard.controller';
+import { AccesGuard } from '../src/modules/auth/acces.guard';
 import type { AuthenticatedRequest } from '../src/modules/auth/session.guard';
 import { reconcilierLeCircuit } from '../src/modules/time/visas';
 import { countWorkdays } from '../src/modules/time/workdays';
@@ -1506,6 +1509,45 @@ describe('le tableau de bord compte ce que ses listes montrent', () => {
       await raw(`UPDATE persons SET gender = NULL, birth_date = NULL WHERE tenant_id = $1`, [
         tenantId,
       ]);
+    }
+  });
+
+  it('le directeur général l’ouvre dans son espace, sans le suivi des contrats', async () => {
+    const garde = new AccesGuard(new Reflector());
+    const ouvre = (sessionUser: object) => {
+      try {
+        return garde.canActivate({
+          getHandler: () => DashboardController.prototype.stats,
+          getClass: () => DashboardController,
+          switchToHttp: () => ({ getRequest: () => ({ sessionUser }) }),
+        } as unknown as ExecutionContext);
+      } catch {
+        return false;
+      }
+    };
+    expect(ouvre({ role: 'employee', capacites: [], estDG: true })).toBe(true);
+    expect(ouvre({ role: 'employee', capacites: [], estDG: false })).toBe(false);
+    expect(ouvre({ role: 'employee', capacites: ['pilotage'], estDG: false })).toBe(true);
+
+    const droits = await db.withTenant({ tenantId, userId: dg.session.userId }, (tx) =>
+      capacitesDe(tx, dg.session.userId, 'employee'),
+    );
+    expect(droits).toMatchObject({ capacites: [], estDG: true });
+    const cdd = randomUUID();
+    try {
+      await raw(
+        `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+         VALUES ($1, $2, $3, 'cdd', CURRENT_DATE - 30, CURRENT_DATE + 60)`,
+        [cdd, tenantId, moussa.employeeId],
+      );
+      const pourLeDG = await chiffres({ ...dg.session, ...droits });
+      const pourLaGestion = await chiffres(admin);
+      expect(pourLeDG.headcountByDirection).toEqual(pourLaGestion.headcountByDirection);
+      expect(pourLeDG.activeEmployees).toBe(pourLaGestion.activeEmployees);
+      expect(pourLaGestion.contractFollowUp.map((c) => c.employeeId)).toContain(moussa.employeeId);
+      expect(pourLeDG.contractFollowUp).toEqual([]);
+    } finally {
+      await raw(`DELETE FROM contracts WHERE id = $1`, [cdd]);
     }
   });
 

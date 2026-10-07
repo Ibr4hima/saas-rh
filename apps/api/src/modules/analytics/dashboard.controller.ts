@@ -3,7 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { peut, type DashboardView } from '@teranga/contracts';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
-import { AccesGuard, Peut } from '../auth/acces.guard';
+import { AccesGuard, OuvertAuDG, Peut } from '../auth/acces.guard';
 import { AbsencesService } from '../time/absences.service';
 import { expirerLesDemandes } from '../time/visas';
 import { inactiverLesContratsEchus } from '../people/activite';
@@ -13,6 +13,7 @@ import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 @Controller()
 @UseGuards(SessionGuard, AccesGuard)
 @Peut('pilotage')
+@OuvertAuDG()
 export class DashboardController {
   private readonly logger = new Logger(DashboardController.name);
 
