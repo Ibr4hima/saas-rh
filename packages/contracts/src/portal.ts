@@ -92,6 +92,8 @@ export interface MyEmployeeView {
   demandeDuDirecteur: boolean;
   /** Le titre d'identité de sa fiche — à déposer : sa CNI ou son passeport. */
   pieceDIdentite: 'cni' | 'passeport' | null;
+  /** En stage aujourd'hui : le congé annuel lui est fermé. */
+  stagiaire: boolean;
 }
 
 export type PortalStatus = 'none' | 'invited' | 'active';

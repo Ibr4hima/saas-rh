@@ -32,6 +32,7 @@ import { SESSION_COOKIE, optionsDuCookie } from '../auth/auth.constants';
 import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { InvitationsService } from './invitations.service';
+import { typeDeContratAu } from '../people/en-activite';
 import { quiViseraPour } from '../time/visas';
 
 @Controller()
@@ -138,11 +139,15 @@ export class PortalController {
         );
       }
       const { idDocumentType, ...dossier } = row;
+      const { rows: contrat } = await tx.execute<{ type: string | null }>(
+        sql`SELECT ${typeDeContratAu(row.employeeId, sql`CURRENT_DATE`)} AS type`,
+      );
       return {
         ...dossier,
         positionTitle: row.positionTitle ?? null,
         orgUnitName: row.orgUnitName ?? null,
         pieceDIdentite: titreDeLaFiche(idDocumentType),
+        stagiaire: contrat[0]?.type === 'stage',
         ...(await (async () => {
           const qui = await quiViseraPour(tx, row.employeeId);
           return {

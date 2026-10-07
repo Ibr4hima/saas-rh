@@ -39,6 +39,16 @@ export const dernierContrat = (employeeId: SQL | string) => sql`(
   SELECT dc.id FROM contracts dc WHERE dc.employee_id = ${employeeId}
    ORDER BY dc.start_date DESC, dc.created_at DESC LIMIT 1)`;
 
+/**
+ * Le type du contrat qui le couvre ce jour-là, le plus récent s'il y en a
+ * deux, en SQL ; null : aucun ne le couvre.
+ */
+export const typeDeContratAu = (employeeId: SQL | string, jour: SQL) => sql`(
+  SELECT tc.contract_type FROM contracts tc
+   WHERE tc.employee_id = ${employeeId} AND tc.start_date <= ${jour}
+     AND (tc.end_date IS NULL OR tc.end_date >= ${jour})
+   ORDER BY tc.start_date DESC, tc.created_at DESC LIMIT 1)`;
+
 /** Un contrat le couvre aujourd'hui. En SQL. */
 export const sousContrat = (employeeId: SQL | string) => sql`EXISTS (
   SELECT 1 FROM contracts sc

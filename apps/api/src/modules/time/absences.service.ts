@@ -51,7 +51,7 @@ import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayDedupeKey } from '../notifications/notifications.service';
 import { absence, accord, duAu, frDate } from '../notifications/phrases';
 import { DG } from '../people/chaine';
-import { contratEchu, dernierContrat } from '../people/en-activite';
+import { contratEchu, dernierContrat, typeDeContratAu } from '../people/en-activite';
 import { notifier } from '../notifications/notifier';
 import {
   detenteursDe,
@@ -1083,6 +1083,18 @@ export class AbsencesService {
           );
         }
 
+        // Un stage n'est pas un emploi : il n'ouvre pas de congé payé. Un type
+        // qui se décompte d'un solde (le congé annuel) est fermé à qui est en
+        // stage le premier jour de l'absence.
+        if (type.deductsBalance) {
+          const { rows: contrat } = await tx.execute<{ type: string | null }>(
+            sql`SELECT ${typeDeContratAu(input.employeeId, sql`${input.startDate}::date`)} AS type`,
+          );
+          if (contrat[0]?.type === 'stage') {
+            problem(422, 'absence.stagiaire', `« ${type.name} » n’est pas ouvert aux stagiaires`);
+          }
+        }
+
         await this.semerLaPeriode(tx, user.tenantId, input.startDate, input.endDate);
         const holidayRows = await tx
           .select({ day: sql<string>`${t.holidays.day}` })
@@ -1958,8 +1970,15 @@ export class AbsencesService {
         problem(403, 'absence.reserve_a_la_dch', 'Réservé à qui traite les congés pour la DCH');
       }
       const moi = await this.selfEmployeeId(tx, user);
-      const { rows } = await tx.execute<{ id: string; nom: string; matricule: string }>(sql`
-        SELECT e.id, p.given_name || ' ' || p.family_name AS nom, e.employee_number AS matricule
+      const { rows } = await tx.execute<{
+        id: string;
+        nom: string;
+        matricule: string;
+        stagiaire: boolean;
+      }>(sql`
+        SELECT e.id, p.given_name || ' ' || p.family_name AS nom, e.employee_number AS matricule,
+               COALESCE(${typeDeContratAu(sql`e.id`, sql`CURRENT_DATE`)} = 'stage', false)
+                 AS stagiaire
           FROM employees e JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
          WHERE e.status = 'active' AND NOT ${contratEchu(sql`e.id`)}
            AND e.id IS DISTINCT FROM ${moi}

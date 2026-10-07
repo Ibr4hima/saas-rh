@@ -498,6 +498,51 @@ describe('la DCH saisit pour un agent ; le justificatif suit', () => {
   });
 });
 
+describe('un stagiaire n’a pas de congé annuel', () => {
+  const stage = randomUUID();
+  const crees: string[] = [];
+  beforeAll(() =>
+    raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+       VALUES ($1,$2,$3,'stage','2026-01-01','2027-12-31')`,
+      [stage, tenantId, fatou.employeeId],
+    ),
+  );
+  afterAll(async () => {
+    await raw(`DELETE FROM absence_requests WHERE id = ANY($1)`, [crees]);
+    await raw(`DELETE FROM contracts WHERE employee_id = $1`, [fatou.employeeId]);
+  });
+  const demande = async (par: Agent, type: string, p = periode()) => {
+    const { id } = await absences.createRequest(par.session, {
+      employeeId: fatou.employeeId,
+      absenceTypeId: type,
+      ...p,
+    });
+    crees.push(id);
+    return id;
+  };
+
+  it('ni posé par lui, ni saisi par la DCH ; le reste lui est ouvert', async () => {
+    expect(await codeOf(() => demande(fatou, typeId))).toBe('absence.stagiaire');
+    expect(await codeOf(() => demande(mariama, typeId))).toBe('absence.stagiaire');
+    expect(await codeOf(() => demande(fatou, maladieId))).toBe('AUCUNE ERREUR');
+    const agents = await absences.agentsPourSaisie(mariama.session);
+    expect(agents.find((a) => a.nom === 'Fatou Test')?.stagiaire).toBe(true);
+    expect(agents.find((a) => a.nom === 'Moussa Test')?.stagiaire).toBe(false);
+  });
+
+  it('embauché à la fin du stage : le congé annuel s’ouvre au premier jour du contrat', async () => {
+    const p = periode();
+    await raw(`UPDATE contracts SET end_date = $2::date - 1 WHERE id = $1`, [stage, p.startDate]);
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+       VALUES ($1,$2,$3,'cdd',$4,'2027-12-31')`,
+      [randomUUID(), tenantId, fatou.employeeId, p.startDate],
+    );
+    expect(await codeOf(() => demande(fatou, typeId, p))).toBe('AUCUNE ERREUR');
+  });
+});
+
 describe('les cas où une seule signature suffit', () => {
   it('la demande du directeur du Capital Humain : le visa du DG suffit', async () => {
     const id = await poser(mariama);

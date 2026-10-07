@@ -237,6 +237,8 @@ export interface AgentSaisieView {
   id: string;
   nom: string;
   matricule: string;
+  /** En stage aujourd'hui : le congé annuel lui est fermé. */
+  stagiaire: boolean;
 }
 
 export const decideAbsenceRequestSchema = z.object({

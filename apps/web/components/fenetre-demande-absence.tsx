@@ -42,12 +42,15 @@ function joursCalendaires(debut: string, fin: string): number {
 
 export function FenetreDemandeAbsence({
   employeeId: pourMoi,
+  stagiaire: moiStagiaire = false,
   pourAutrui = false,
   onClose,
   onEnvoyee,
 }: {
   /** L'agent qui pose sa demande ; absent quand la DCH saisit pour un autre. */
   employeeId?: string;
+  /** L'agent est en stage : le congé annuel lui est fermé. */
+  stagiaire?: boolean;
   /** La DCH saisit pour un agent qui ne le peut pas : elle le choisit. */
   pourAutrui?: boolean;
   onClose: () => void;
@@ -99,9 +102,21 @@ export function FenetreDemandeAbsence({
     })),
   });
 
+  // Un stage n'ouvre pas de congé payé : ce qui se décompte d'un solde (le
+  // congé annuel) reste dans la liste, grisé.
+  const stagiaire = pourAutrui
+    ? Boolean(agents.data?.find((a) => a.id === agentId)?.stagiaire)
+    : moiStagiaire;
+  const ferme = (t: AbsenceType) => stagiaire && t.deductsBalance;
+
+  // Le premier type ouvert, et un autre si l'agent choisi ne peut pas prendre
+  // celui qui l'était.
   useEffect(() => {
-    if (!typeId && types.data && types.data.length > 0) setTypeId(types.data[0]!.id);
-  }, [types.data, typeId]);
+    const courant = types.data?.find((t) => t.id === typeId);
+    if (courant && !ferme(courant)) return;
+    const ouvert = types.data?.find((t) => !ferme(t));
+    if (ouvert) setTypeId(ouvert.id);
+  }, [types.data, typeId, stagiaire]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedType = types.data?.find((t) => t.id === typeId);
   const needsDocument = Boolean(selectedType?.requiresDocument);
@@ -248,7 +263,7 @@ export function FenetreDemandeAbsence({
           <Field label="Type d'absence" htmlFor="type" required>
             <Select id="type" value={typeId} onChange={(e) => setTypeId(e.target.value)}>
               {types.data?.map((t) => (
-                <option key={t.id} value={t.id}>
+                <option key={t.id} value={t.id} disabled={ferme(t)}>
                   {t.name}
                 </option>
               ))}

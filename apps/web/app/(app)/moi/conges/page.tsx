@@ -36,17 +36,21 @@ export default function PoserUneDemandePage() {
     queryFn: () => api<BalanceView[]>(`/employees/${employeeId}/balances?year=${annee}`),
     enabled: Boolean(employeeId),
   });
-  // Le solde qui se décompte — le congé annuel, en pratique.
-  const solde = (balances.data ?? []).find((b) => b.deductsBalance && !b.retire);
+  // Le solde qui se décompte : le congé annuel, en pratique. Un stagiaire
+  // n'en a pas.
+  const stagiaire = Boolean(myEmployee.data?.stagiaire);
+  const solde = stagiaire
+    ? undefined
+    : (balances.data ?? []).find((b) => b.deductsBalance && !b.retire);
 
   return (
     <Page>
       <EnTete
         titre={solde ? `${solde.absenceTypeName} ${solde.year}` : 'Absences & Congés'}
-        sousTitre={`Solde au ${formatDate(aujourdhui())}`}
+        sousTitre={stagiaire ? undefined : `Solde au ${formatDate(aujourdhui())}`}
         colonnes={3}
         reperes={
-          balances.isLoading || !employeeId ? (
+          stagiaire ? null : balances.isLoading || !employeeId ? (
             <>
               {[0, 1, 2].map((i) => (
                 <div key={i}>
@@ -102,6 +106,7 @@ export default function PoserUneDemandePage() {
       {ouverte && employeeId ? (
         <FenetreDemandeAbsence
           employeeId={employeeId}
+          stagiaire={stagiaire}
           onClose={() => setOuverte(false)}
           onEnvoyee={(jours) => {
             setOuverte(false);
