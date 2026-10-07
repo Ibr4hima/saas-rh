@@ -1338,24 +1338,31 @@ describe('le tableau de bord compte ce que ses listes montrent', () => {
   const chiffres = (session: SessionUser) =>
     tableau().stats({ sessionUser: session } as AuthenticatedRequest);
 
-  it('les congés à valider : la file de qui regarde, celle de « Congés à traiter »', async () => {
-    await habiliter(awa);
-    const id = await poser(moussa);
-    await viser(ousmane, id);
-    // Une demande dont le début est passé sans visa : échue, elle ne compte plus.
-    const echue = await poser(moussa);
-    await raw(
-      `UPDATE absence_requests SET start_date = CURRENT_DATE - 1, end_date = CURRENT_DATE
-        WHERE id = $1`,
-      [echue],
-    );
-    for (const qui of [mariama, awa]) {
-      const file = (await absences.compteurs(qui.session)).aTraiter.conges;
-      expect((await chiffres(qui.session)).pendingRequests).toBe(file);
-      expect(file).toBe(1);
+  it('l’âge moyen : l’effectif actif de toute l’agence, en années révolues', async () => {
+    const naissance = (qui: Agent, ans: number) =>
+      raw(
+        `UPDATE persons SET birth_date = CURRENT_DATE - make_interval(years => $2)
+          WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+        [qui.employeeId, ans],
+      );
+    try {
+      await naissance(moussa, 30);
+      await naissance(ousmane, 41);
+      // Parti, il ne compte plus.
+      await naissance(fatou, 60);
+      await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [fatou.employeeId]);
+      // La moyenne est la même pour tous ceux qui ouvrent l'accueil.
+      for (const qui of [admin, awa.session]) {
+        expect(await chiffres(qui)).toMatchObject({
+          averageAge: 35.5,
+          youngestAge: 30,
+          oldestAge: 41,
+          agesKnown: 2,
+        });
+      }
+    } finally {
+      await raw(`UPDATE persons SET birth_date = NULL WHERE tenant_id = $1`, [tenantId]);
     }
-    // Qui ne traite pas les congés lit ce qui attend la DCH, pour l'agence.
-    expect((await chiffres(admin)).pendingRequests).toBe(1);
   });
 
   it('absents aujourd’hui et à venir : les lignes du calendrier, sur trente jours', async () => {

@@ -124,21 +124,39 @@ async function seedDirecteur(person, employee, positionTitle, uniteId, dgId) {
 }
 
 const dgAgent = await seedDirecteur(
-  { givenName: 'Cheikh', familyName: 'Mbaye', gender: 'male', phone: '770000001' },
+  {
+    givenName: 'Cheikh',
+    familyName: 'Mbaye',
+    gender: 'male',
+    birthDate: '1968-04-12',
+    phone: '770000001',
+  },
   { employeeNumber: 'EMP-000', hiredOn: '2019-03-01', workEmail: 'c.mbaye@apix.sn' },
   'Directeur général',
   dg.id,
   null,
 );
 const directriceRh = await seedDirecteur(
-  { givenName: 'Mariama', familyName: 'Cissé', gender: 'female', phone: '770000002' },
+  {
+    givenName: 'Mariama',
+    familyName: 'Cissé',
+    gender: 'female',
+    birthDate: '1979-09-23',
+    phone: '770000002',
+  },
   { employeeNumber: 'EMP-004', hiredOn: '2021-09-01', workEmail: 'm.cisse@apix.sn' },
   'Directrice du Capital Humain',
   drh.id,
   dgAgent.id,
 );
 const directeurFin = await seedDirecteur(
-  { givenName: 'Ousmane', familyName: 'Fall', gender: 'male', phone: '770000003' },
+  {
+    givenName: 'Ousmane',
+    familyName: 'Fall',
+    gender: 'male',
+    birthDate: '1975-02-08',
+    phone: '770000003',
+  },
   { employeeNumber: 'EMP-005', hiredOn: '2020-11-02', workEmail: 'o.fall@apix.sn' },
   'Directeur financier et comptable',
   dfin.id,
@@ -146,7 +164,13 @@ const directeurFin = await seedDirecteur(
 );
 
 const awa = await seedEmployee(
-  { givenName: 'Awa', familyName: 'Diop', gender: 'female', phone: '771234567' },
+  {
+    givenName: 'Awa',
+    familyName: 'Diop',
+    gender: 'female',
+    birthDate: '1990-06-17',
+    phone: '771234567',
+  },
   {
     employeeNumber: 'EMP-001',
     hiredOn: '2024-01-15',
@@ -157,7 +181,13 @@ const awa = await seedEmployee(
   etudes.id,
 );
 const moussa = await seedEmployee(
-  { givenName: 'Moussa', familyName: 'Ndiaye', gender: 'male', phone: '779876543' },
+  {
+    givenName: 'Moussa',
+    familyName: 'Ndiaye',
+    gender: 'male',
+    birthDate: '1994-11-03',
+    phone: '779876543',
+  },
   {
     employeeNumber: 'EMP-002',
     hiredOn: '2023-06-01',
@@ -171,7 +201,7 @@ const moussa = await seedEmployee(
 // notifications RH et sur le tableau de bord (démonstration du suivi).
 const in20Days = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
 const fatou = await seedEmployee(
-  { givenName: 'Fatou', familyName: 'Sall', gender: 'female' },
+  { givenName: 'Fatou', familyName: 'Sall', gender: 'female', birthDate: '1998-03-21' },
   {
     employeeNumber: 'EMP-003',
     hiredOn: '2025-02-01',

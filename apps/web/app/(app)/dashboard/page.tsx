@@ -96,6 +96,31 @@ function localToday(): string {
 /* ———— Pièces communes ———— */
 
 /** Le total d'une carte, à droite de son titre : « 3 agents ». */
+/** L'âge moyen, en années : le nombre en grand, l'unité en retrait. */
+function AgeMoyen({ d }: { d: DashboardView }) {
+  if (d.averageAge === null) {
+    return <span className="text-[15px] font-semibold text-ink-muted">Non renseignée</span>;
+  }
+  return (
+    <>
+      {d.averageAge.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}
+      <span className="ml-1 text-[15px] font-semibold tracking-normal text-ink-muted">ans</span>
+    </>
+  );
+}
+
+/**
+ * Sous l'âge moyen : l'écart entre le plus jeune et le plus âgé, ou, s'il
+ * manque des dates de naissance, sur combien d'agents la moyenne porte.
+ */
+function contexteDesAges(d: DashboardView): string | undefined {
+  if (d.agesKnown === 0) return undefined;
+  if (d.agesKnown < d.activeEmployees) {
+    return `${d.agesKnown} âges connus sur ${d.activeEmployees}`;
+  }
+  return `de ${d.youngestAge} à ${d.oldestAge} ans`;
+}
+
 function TotalCarte({ children }: { children: React.ReactNode }) {
   return (
     <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
@@ -420,12 +445,12 @@ export default function DashboardPage() {
           href={canManage ? '/employees' : undefined}
         />
         <StatTile
-          icon="free_cancellation"
-          label="Demandes à valider"
-          short="À valider"
-          value={d?.pendingRequests}
-          context="congés en attente de visa"
-          href={voitLesConges ? '/moi/dch' : undefined}
+          icon="cake"
+          label="Moyenne d'âge"
+          short="Âge moyen"
+          value={d ? <AgeMoyen d={d} /> : undefined}
+          context={d ? contexteDesAges(d) : undefined}
+          href={canManage ? '/employees' : undefined}
         />
         <StatTile
           icon="event_busy"

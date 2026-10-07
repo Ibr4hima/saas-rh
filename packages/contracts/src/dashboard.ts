@@ -42,10 +42,16 @@ export interface DashboardView {
   /** Absents AUJOURD'HUI (congé approuvé couvrant la date du jour). */
   absentToday: number;
   /**
-   * Les congés à valider : la file de qui regarde (celle de « Congés à
-   * traiter ») ; pour qui n'en traite pas, ce qui attend la DCH.
+   * L'âge moyen de l'effectif actif de toute l'organisation, en années
+   * révolues, à une décimale : sur les agents dont la date de naissance est
+   * connue (`agesKnown`). null : aucune n'est connue.
    */
-  pendingRequests: number;
+  averageAge: number | null;
+  /** Le plus jeune et le plus âgé, en années révolues. */
+  youngestAge: number | null;
+  oldestAge: number | null;
+  /** Combien d'agents actifs ont une date de naissance connue. */
+  agesKnown: number;
   /** Absences approuvées démarrant dans les 30 prochains jours. */
   upcomingAbsences: number;
   /** Parité de l'effectif actif. */

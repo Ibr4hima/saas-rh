@@ -34,6 +34,7 @@ export const ICON_NAMES = [
   'badge',
   'bookmark',
   'business_center',
+  'cake',
   'calendar_month',
   'call',
   'campaign',

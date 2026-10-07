@@ -3,10 +3,9 @@ import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import { peut, type DashboardView } from '@teranga/contracts';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
-import { agentDuCompte } from '../acces/dch';
 import { AccesGuard, Peut } from '../auth/acces.guard';
 import { absencesDesTrenteJours, AbsencesService } from '../time/absences.service';
-import { compterEnAttenteDCH, compterLesVisas, expirerLesDemandes } from '../time/visas';
+import { expirerLesDemandes } from '../time/visas';
 import { inactiverLesContratsEchus } from '../people/activite';
 import { suiviDesContrats } from '../people/suivi-contrats';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
@@ -53,18 +52,13 @@ export class DashboardController {
       // avant qu'on les compte : comme sur leurs écrans.
       await expirerLesDemandes(tx);
       await this.absences.semerAutourDAujourdhui(tx, user.tenantId);
-      // Les congés à valider : la file de qui regarde, celle que « Congés à
-      // traiter » lui montre. Qui n'en traite pas lit celle de l'agence.
-      const moi = await agentDuCompte(tx, user.userId);
-      const file = moi ? (await compterLesVisas(tx, moi)).conges : 0;
-      const pendingRequests =
-        moi && (file > 0 || peut(user, 'demandes.conges')) ? file : await compterEnAttenteDCH(tx);
 
       const [
         activeEmployees,
         absentToday,
         upcomingAbsences,
         genders,
+        ages,
         directions,
         holidays,
         followUp,
@@ -96,6 +90,19 @@ export class DashboardController {
           .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
           .where(eq(t.employees.status, 'active'))
           .groupBy(t.persons.gender),
+        // L'âge de l'effectif actif, en années révolues : ceux dont la date de
+        // naissance est connue.
+        tx.execute<{
+          moyenne: string | null;
+          jeune: number | null;
+          age: number | null;
+          n: number;
+        }>(sql`
+          SELECT round(avg(a.ans)::numeric, 1)::text AS moyenne, min(a.ans)::int AS jeune,
+                 max(a.ans)::int AS age, count(*)::int AS n
+            FROM (SELECT date_part('year', age(CURRENT_DATE, p.birth_date)) AS ans
+                    FROM employees e JOIN persons p ON p.id = e.person_id
+                   WHERE e.status = 'active' AND p.birth_date IS NOT NULL) a`),
         // Effectif par DIRECTION : l'affectation vise souvent un service — on
         // remonte l'arbre jusqu'à la PLUS PROCHE direction qui le coiffe, et
         // chacun n'est compté qu'une fois. Descendre depuis chaque direction
@@ -153,11 +160,15 @@ export class DashboardController {
       ]);
 
       const byGender = Object.fromEntries(genders.map((g) => [g.gender ?? '?', g.n]));
+      const age = ages.rows[0];
 
       return {
         activeEmployees,
         absentToday,
-        pendingRequests,
+        averageAge: age?.moyenne != null ? Number(age.moyenne) : null,
+        youngestAge: age?.jeune ?? null,
+        oldestAge: age?.age ?? null,
+        agesKnown: age?.n ?? 0,
         upcomingAbsences,
         women: byGender['female'] ?? 0,
         men: byGender['male'] ?? 0,
