@@ -135,6 +135,27 @@ export const envSchema = z
     GRAPH_CLIENT_SECRET: z.string().min(1).optional(),
     /** La boîte qui envoie (rh@apix.sn) ; par défaut, l'adresse de MAIL_FROM. */
     GRAPH_SENDER: z.string().min(3).optional(),
+    /**
+     * Comment partent les messages WhatsApp. 'meta' : l'API WhatsApp Cloud de
+     * Meta, depuis le numéro professionnel de l'organisation ; 'boite' : en
+     * développement, chaque message arrive dans Mailpit comme un courriel, rien
+     * ne part ; 'aucun' : WhatsApp ne s'offre pas. Par défaut : 'boite' en
+     * développement, 'aucun' ailleurs.
+     */
+    WHATSAPP_TRANSPORT: z.enum(['aucun', 'boite', 'meta']).optional(),
+    /** Le jeton d'accès permanent d'un utilisateur système de Meta Business. */
+    WHATSAPP_TOKEN: z.string().min(1).optional(),
+    /** L'identifiant du numéro qui envoie (Meta, « Phone number ID »). */
+    WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
+    /** Le modèle approuvé d'une notification : {{1}} le prénom, {{2}} le texte, bouton vers le portail. */
+    WHATSAPP_MODELE_NOTIFICATION: z.string().min(1).default('notification_rh'),
+    /** Le modèle d'authentification qui porte un code (catégorie AUTHENTICATION de Meta). */
+    WHATSAPP_MODELE_CODE: z.string().min(1).default('code_verification'),
+    WHATSAPP_LANGUE: z.string().min(2).default('fr'),
+    WHATSAPP_API_VERSION: z
+      .string()
+      .regex(/^v\d+\.\d+$/)
+      .default('v21.0'),
   })
   .refine((e) => e.NODE_ENV !== 'production' || e.TRUST_PROXY !== undefined, {
     message:
@@ -151,6 +172,18 @@ export const envSchema = z
       path: ['MAIL_TRANSPORT'],
     },
   )
+  .refine(
+    (e) =>
+      e.WHATSAPP_TRANSPORT !== 'meta' || Boolean(e.WHATSAPP_TOKEN && e.WHATSAPP_PHONE_NUMBER_ID),
+    {
+      message: 'WHATSAPP_TRANSPORT=meta : WHATSAPP_TOKEN et WHATSAPP_PHONE_NUMBER_ID sont requis',
+      path: ['WHATSAPP_TRANSPORT'],
+    },
+  )
+  .refine((e) => e.NODE_ENV !== 'production' || e.WHATSAPP_TRANSPORT !== 'boite', {
+    message: 'WHATSAPP_TRANSPORT=boite ne sert qu’en développement',
+    path: ['WHATSAPP_TRANSPORT'],
+  })
   .refine((e) => e.NODE_ENV !== 'production' || e.DATA_ENCRYPTION_KEY !== CLE_DE_DEVELOPPEMENT, {
     message:
       'DATA_ENCRYPTION_KEY : la clé de développement est publique, en générer une (openssl rand -base64 32)',

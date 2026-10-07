@@ -66,10 +66,15 @@ export function holidayAlreadySentSql(userId: string) {
 
 /**
  * Les trois prédicats qui reviennent partout, nommés une fois pour toutes.
- * Une notification remplacée par une plus récente n'est plus à personne.
+ * Une notification remplacée par une plus récente n'est plus à personne ;
+ * celle qu'on ne veut que par courriel ou WhatsApp ne se montre pas ici.
  */
 const mien = (userId: string) =>
-  and(eq(t.notifications.recipientUserId, userId), isNull(t.notifications.remplaceeLe))!;
+  and(
+    eq(t.notifications.recipientUserId, userId),
+    isNull(t.notifications.remplaceeLe),
+    eq(t.notifications.dansLaPlateforme, true),
+  )!;
 const dansLaBoite = () => isNull(t.notifications.archivedAt);
 const range = () => sql`${t.notifications.archivedAt} IS NOT NULL`;
 
@@ -382,6 +387,7 @@ export class NotificationsService {
       due.map((h) => ({
         userId,
         type: 'holiday_reminder',
+        sujet: 'feries',
         title: `${h.label}, férié le ${frDate(h.day, true)}`,
         link: '/calendrier',
         dedupeKey: holidayDedupeKey(h.day),
@@ -452,6 +458,7 @@ export class NotificationsService {
       // une date corrigée, celle de l'avis donné sur l'ancienne.
       await notifier(tx, tenantId, userId, {
         type: 'document_expiry',
+        sujet: 'pieces.expiration',
         title,
         link: '/moi/documents/justificatifs',
         dedupeKey: `expiration:${r.id}:${r.etape}`,
@@ -481,6 +488,7 @@ export class NotificationsService {
         'personnel.gerer',
         {
           type: 'contract_deadline',
+          sujet: 'dch.contrats',
           title: etape ? rappel(echeance) : echeance,
           link: `/employees/${r.employeeId}`,
           dedupeKey: `contract_deadline:${r.contractId}${etape}`,

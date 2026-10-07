@@ -478,6 +478,7 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
       'personnel.gerer',
       {
         type: 'contract_ended',
+        sujet: 'dch.contrats',
         title: `Le ${CONTRAT[a.type as ContractType] ?? 'contrat'} de ${a.nom} a pris fin`,
         link: `/employees/${a.id}`,
         dedupeKey: `contrat_termine:${a.contrat}`,
@@ -496,6 +497,7 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
         'personnel.gerer',
         {
           type: 'contract_ended',
+          sujet: 'dch.contrats',
           title: `${a.nom} était le dernier administrateur : l’organisation n’en a plus`,
           link: `/employees/${a.id}`,
           dedupeKey: `dernier_admin:${a.id}`,

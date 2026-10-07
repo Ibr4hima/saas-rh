@@ -200,6 +200,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/academy': 'APIX Academy',
   '/academy/gerer': 'Gérer le catalogue',
   '/academy/certificats': 'Mes certificats',
+  '/notifications': 'Notifications',
   '/evaluation': 'Évaluation des objectifs',
   '/organisation': 'Organigramme',
   '/reglementations/code-du-travail': 'Code du travail',
@@ -1182,7 +1183,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (commence('/moi/objectifs-apix')) return u.estDG;
     if (commence('/moi/objectifs')) return u.estAgent && !u.estDG;
     if (commence('/moi/equipe/suivi')) return !validations.data || (aUneEquipe && !u.estDG);
-    if (commence('/moi') || commence('/calendrier')) return true;
+    if (commence('/moi') || commence('/calendrier') || commence('/notifications')) return true;
     // L'organigramme est un annuaire interne ; les textes de référence, le
     // cadre de tous ; l'Academy est faite pour les agents.
     if (commence('/organisation')) return true;

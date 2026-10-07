@@ -1145,6 +1145,7 @@ export class AcademyEvaluationService {
       if (destinataire) {
         await notifier(tx, user.tenantId, destinataire, {
           type: 'certificat_revoque',
+          sujet: 'academy',
           title: `Votre certificat « ${c.courseTitle} » est révoqué : ${input.motif}`,
           link: '/academy/certificats',
           dedupeKey: `certificat:${c.id}:revoque`,
@@ -1214,6 +1215,7 @@ export class AcademyEvaluationService {
       if (destinataire) {
         await notifier(tx, user.tenantId, destinataire, {
           type: 'certificat_reemis',
+          sujet: 'academy',
           title: `Votre certificat « ${ancien.courseTitle} » est réémis sous le n° ${nouveau.number}`,
           link: '/academy/certificats',
           dedupeKey: `certificat:${ancien.id}:reemis`,

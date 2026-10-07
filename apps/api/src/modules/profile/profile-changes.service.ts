@@ -342,6 +342,7 @@ export class ProfileChangesService {
       if (!target?.userId) return; // dossier sans compte portail : rien à notifier
       await this.notifications.notifyUser(tx, user.tenantId, target.userId, {
         type: `profile_change_${input.decision}`,
+        sujet: 'informations',
         title:
           input.decision === 'approve'
             ? 'Vos informations sont mises à jour'

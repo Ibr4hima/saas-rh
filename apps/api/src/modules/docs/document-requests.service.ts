@@ -412,6 +412,7 @@ export class DocumentRequestsService {
       const doc = DOCUMENT[row.docTypes[0] as RequestableDoc] ?? DOCUMENT.autre;
       await this.notifications.notifyUser(tx, user.tenantId, row.handledByUserId, {
         type: 'document_request_cancelled',
+        sujet: 'dch.documents',
         title: `${soi.givenName} ${soi.familyName} annule sa demande ${de(doc.nom)}`,
         link: '/documents',
         dedupeKey: `document:${requestId}:annulee`,
@@ -568,6 +569,7 @@ export class DocumentRequestsService {
     const sujet = `document:${e.requestId}:suivi:`;
     await this.notifications.notifyUser(tx, tenantId, userId, {
       type: `document_request_${e.status}`,
+      sujet: 'documents',
       title,
       link: '/moi/documents/suivi',
       dedupeKey: `${sujet}${e.status}${e.isCorrection ? `:${Date.now()}` : ''}`,

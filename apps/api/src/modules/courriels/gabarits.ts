@@ -162,6 +162,8 @@ export function composer(g: Gabarit, rendu: Rendu): ContenuCourriel {
       '',
       'Pour la voir sur le portail RH :',
       g.lien,
+      '',
+      `Gérer mes notifications : ${rendu.portail.replace(/\/$/, '')}/notifications`,
     ].join('\n'),
     html: page(rendu, {
       organisation: g.organisation,
@@ -170,6 +172,7 @@ export function composer(g: Gabarit, rendu: Rendu): ContenuCourriel {
       titre: g.titre,
       bouton: { libelle: 'Voir sur le portail', lien: g.lien },
       apres: [],
+      reglages: true,
     }),
   };
 }
@@ -186,6 +189,8 @@ function page(
     sousTitre?: string;
     bouton: { libelle: string; lien: string };
     apres: string[];
+    /** Le lien vers ses réglages, sous la signature : une notification se règle. */
+    reglages?: boolean;
   },
 ): string {
   const portail = echapper(rendu.portail.replace(/\/$/, ''));
@@ -265,6 +270,7 @@ Le bouton ne s’ouvre pas ? Copiez ce <a href="${lien}" target="_blank" style="
 </td></tr>
 </table>
 <p style="margin:18px 0 0;${texte(11.5, '#6b7186')}">© ${annee} APIX S.A · DCH. Tous droits réservés.</p>
+${o.reglages ? `<p style="margin:6px 0 0;${texte(11.5, '#6b7186')}"><a href="${portail}/notifications" target="_blank" style="color:#6b7186;text-decoration:underline">Gérer mes notifications</a></p>` : ''}
 </td></tr>
 </table>
 </body>

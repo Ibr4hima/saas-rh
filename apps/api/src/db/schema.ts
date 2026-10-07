@@ -473,7 +473,67 @@ export const notifications = pgTable('notifications', {
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   /** Remplacée par une plus récente sur le même sujet : hors de la boîte. Voir 0054. */
   remplaceeLe: timestamp('remplacee_le', { withTimezone: true }),
+  /** Le sujet que la personne règle (catalogue des contrats). Voir 0093. */
+  sujet: text('sujet'),
+  /** Faux : voulue par courriel ou WhatsApp seulement, elle ne se montre pas. */
+  dansLaPlateforme: boolean('dans_la_plateforme').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Un sujet réglé par une personne : où ses notifications la trouvent. Voir 0093. */
+export const notificationPreferences = pgTable('notification_preferences', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  sujet: text('sujet').notNull(),
+  plateforme: boolean('plateforme').notNull(),
+  courriel: boolean('courriel').notNull(),
+  whatsapp: boolean('whatsapp').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Ce qui vaut pour tous ses sujets : le numéro WhatsApp, les heures calmes, la pause en congé. */
+export const notificationReglages = pgTable('notification_reglages', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  whatsappNumeroChiffre: text('whatsapp_numero_chiffre'),
+  whatsappNumeroMasque: text('whatsapp_numero_masque'),
+  whatsappVerifieLe: timestamp('whatsapp_verifie_le', { withTimezone: true }),
+  heuresCalmes: boolean('heures_calmes').notNull().default(true),
+  pauseConges: boolean('pause_conges').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Un numéro en cours de vérification, et son code. */
+export const whatsappVerifications = pgTable('whatsapp_verifications', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  numeroChiffre: text('numero_chiffre').notNull(),
+  numeroMasque: text('numero_masque').notNull(),
+  codeHash: text('code_hash').notNull(),
+  codeChiffre: text('code_chiffre'),
+  essais: integer('essais').notNull().default(0),
+  expireLe: timestamp('expire_le', { withTimezone: true }).notNull(),
+  utiliseeLe: timestamp('utilisee_le', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Les messages WhatsApp qui partent (file d'envoi). */
+export const outboundWhatsapp = pgTable('outbound_whatsapp', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  kind: text('kind').notNull(),
+  subjectId: uuid('subject_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  status: text('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
 });
 
 export const documentRequests = pgTable('document_requests', {

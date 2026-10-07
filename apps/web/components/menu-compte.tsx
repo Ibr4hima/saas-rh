@@ -21,7 +21,7 @@ import { usePreferences } from './preferences';
    Une silhouette ouvre donc un menu : ce qui appartient à la PERSONNE plutôt
    qu'à un écran — l'espace où elle travaille (« Mon espace » ou « Gestion
    RH », pour qui a les deux), ses certificats APIX Academy (dans Mon espace),
-   le thème — et la
+   ses notifications, le thème, et la
    sortie. L'autre espace s'y choisit comme le thème : la rangée dit où l'on
    va, et un point sur la silhouette dit que quelque chose y attend.
    (La densité des tableaux y figurait ; elle a été retirée, les tableaux
@@ -165,6 +165,14 @@ export function MenuCompte({
               }}
             />
           ) : null}
+          <Rangee
+            icone="notifications"
+            libelle="Notifications"
+            onClick={() => {
+              setOuvert(false);
+              router.push('/notifications');
+            }}
+          />
           <Rangee
             icone={nuit ? 'light_mode' : 'dark_mode'}
             libelle={nuit ? 'Mode clair' : 'Mode sombre'}

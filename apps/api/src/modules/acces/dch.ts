@@ -488,6 +488,7 @@ export async function verifierLesHabilitations(tx: Tx, tenantId: string): Promis
     const nom = await nomDe(tx, r.employee_id);
     await notifier(tx, tenantId, dch.directeur.userId, {
       type: 'delegation_rompue',
+      sujet: 'dch.delegations',
       title: `${nom} a quitté la DCH, ses délégations sont retirées`,
       link: '/moi/delegations',
       dedupeKey: `habilitations:${r.employee_id}:partie:${new Date().toISOString().slice(0, 10)}`,

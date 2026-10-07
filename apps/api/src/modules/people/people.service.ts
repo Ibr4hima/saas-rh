@@ -2070,6 +2070,22 @@ export class PeopleService {
           .where(eq(t.notifications.recipientUserId, userId))
           .returning({ id: t.notifications.id }),
       );
+      // Ses réglages de notifications, son numéro WhatsApp, ses messages
+      // WhatsApp partis ou en attente : ils le désignent.
+      recolter(
+        await tx
+          .delete(t.notificationPreferences)
+          .where(eq(t.notificationPreferences.userId, userId))
+          .returning({ id: t.notificationPreferences.id }),
+      );
+      recolter(
+        await tx
+          .delete(t.notificationReglages)
+          .where(eq(t.notificationReglages.userId, userId))
+          .returning({ id: t.notificationReglages.id }),
+      );
+      await tx.delete(t.whatsappVerifications).where(eq(t.whatsappVerifications.userId, userId));
+      await tx.delete(t.outboundWhatsapp).where(eq(t.outboundWhatsapp.userId, userId));
       // Une session porte l'adresse IP et le navigateur : la révoquer laisserait
       // ces traces-là. Ici on efface, on ne range pas.
       await tx
@@ -2120,6 +2136,10 @@ export class PeopleService {
       DELETE FROM outbound_emails
        WHERE subject_id = ANY(string_to_array(${traces.join(',')}, ',')::uuid[])
           OR lower(recipient) = lower(${adresse ?? ''})`);
+    // De même les messages WhatsApp qui doublaient une notification effacée.
+    await tx.execute(sql`
+      DELETE FROM outbound_whatsapp
+       WHERE subject_id = ANY(string_to_array(${traces.join(',')}, ',')::uuid[])`);
 
     // Ce que le journal garde de lignes retirées AVANT l'effacement : une pièce
     // annulée, remplacée par une plus récente ou retirée du dossier. Elles ne

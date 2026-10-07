@@ -500,6 +500,7 @@ export class ObjectifsService {
              WHERE recipient_user_id = ${compte} AND dedupe_key LIKE ${`${sujet}%`} LIMIT 1`);
           await notifier(tx, user.tenantId, compte, {
             type: 'objectif',
+            sujet: 'objectifs',
             title: `${auteur?.nom ?? 'Votre n+1'} a ${deja.length > 0 ? 'mis à jour' : 'fixé'} vos objectifs ${duSemestre(input.semestre, an)}`,
             link: '/moi/objectifs',
             dedupeKey: `${sujet}${this.aujourdhui()}`,
@@ -747,6 +748,7 @@ export class ObjectifsService {
       if (compte) {
         await notifier(tx, user.tenantId, compte, {
           type: 'objectif',
+          sujet: 'objectifs',
           title: `${await this.nomDe(tx, moi)} a évalué vos objectifs ${duSemestre(semestre, annee)}`,
           link: '/moi/objectifs',
           dedupeKey: `objectifs:evaluation:${employeeId}:${annee}:${semestre}`,
@@ -962,6 +964,7 @@ export class ObjectifsService {
           // Revue le lendemain, l'évaluation prend la place de la précédente.
           await notifier(tx, user.tenantId, compte, {
             type: 'objectif',
+            sujet: 'objectifs',
             title: `${await this.nomDe(tx, moi)} a évalué votre objectif « ${apres.titre} »`,
             link: '/moi/objectifs',
             dedupeKey: `objectif:${apres.id}:evaluation:${this.aujourdhui()}`,
@@ -1176,6 +1179,7 @@ export class ObjectifsService {
       if (!compte) return;
       await notifier(tx, user.tenantId, compte, {
         type: 'objectif',
+        sujet: 'objectifs',
         title: `${o.auteur ?? 'Votre n+1'} vous a fixé ${o.nature === 'formation' ? 'une formation' : 'un objectif'} : ${o.titre}`,
         link: '/moi/objectifs',
         dedupeKey: `objectif:${o.id}`,
@@ -1214,6 +1218,7 @@ export class ObjectifsService {
     for (const compte of destinataires) {
       await notifier(tx, user.tenantId, compte, {
         type: 'objectif',
+        sujet: 'objectifs.apix',
         title,
         link: '/moi/objectifs',
         dedupeKey: `${sujet}${le}`,

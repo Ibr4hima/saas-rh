@@ -51,6 +51,7 @@ export async function reconcilierLesEvaluations(tx: Tx, employeeId?: string): Pr
     }
     await tenirLesAppels(tx, r.tenant_id, prefixe, 'n1', [r.n1], {
       type: 'objectif',
+      sujet: 'equipe.objectifs',
       title: `${r.nom} a envoyé son auto-évaluation ${duSemestre(r.semestre, r.annee)}`,
       link: `/moi/equipe/suivi/${r.employee_id}?vue=evaluation`,
     });

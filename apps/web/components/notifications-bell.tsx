@@ -185,6 +185,10 @@ export function NotificationsBell({ espace }: { espace?: Espace }) {
           archivageEnCours={ranger.isPending || toutArchiver.isPending}
           onOuvrir={ouvrir}
           onFermer={fermer}
+          onRegler={() => {
+            fermer();
+            router.push('/notifications');
+          }}
         />
       ) : null}
     </>
@@ -236,6 +240,7 @@ function PanneauNotifications({
   archivageEnCours,
   onOuvrir,
   onFermer,
+  onRegler,
 }: {
   ancre: React.RefObject<HTMLButtonElement | null>;
   panneauRef: React.RefObject<HTMLDivElement | null>;
@@ -256,6 +261,8 @@ function PanneauNotifications({
   archivageEnCours: boolean;
   onOuvrir: (n: NotificationView) => void;
   onFermer: () => void;
+  /** Ses réglages : où chaque sujet le trouve. */
+  onRegler: () => void;
 }) {
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
 
@@ -317,26 +324,30 @@ function PanneauNotifications({
             <p className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
               Notifications
             </p>
-            {!archive ? (
-              <div className="flex items-center gap-0.5">
-                {unread > 0 ? (
-                  <ActionEntete
-                    onClick={onTousLus}
-                    disabled={tousLusEnCours}
-                    icone="check"
-                    libelle="Tout marquer lu"
-                  />
-                ) : null}
-                {items.length > 0 ? (
-                  <ActionEntete
-                    onClick={onToutArchiver}
-                    disabled={archivageEnCours}
-                    icone="archive"
-                    libelle="Tout archiver"
-                  />
-                ) : null}
-              </div>
-            ) : null}
+            <div className="flex items-center gap-0.5">
+              {!archive && unread > 0 ? (
+                <ActionEntete
+                  onClick={onTousLus}
+                  disabled={tousLusEnCours}
+                  icone="check"
+                  libelle="Tout marquer lu"
+                />
+              ) : null}
+              {!archive && items.length > 0 ? (
+                <ActionEntete
+                  onClick={onToutArchiver}
+                  disabled={archivageEnCours}
+                  icone="archive"
+                  libelle="Tout archiver"
+                />
+              ) : null}
+              <ActionEntete
+                onClick={onRegler}
+                disabled={false}
+                icone="settings"
+                libelle="Régler mes notifications"
+              />
+            </div>
           </div>
           {/* Deux vues, jamais plus : ce qui reste à voir, ce qu'on a archivé. */}
           <div className="mt-2 flex items-center gap-1 rounded-full bg-bg p-0.5">

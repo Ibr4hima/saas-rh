@@ -443,7 +443,8 @@ export function espaceDuChemin(chemin: string): Espace | null {
   if (sous('/academy/gerer')) return 'gestion';
   // Apprendre, ses certificats : Mon espace seulement (décision APIX).
   if (sous('/academy')) return 'agent';
-  if (sous('/calendrier') || sous('/organisation')) return null;
+  // Ses notifications se règlent d'où qu'on vienne : la page est des deux.
+  if (sous('/calendrier') || sous('/organisation') || sous('/notifications')) return null;
   // Les textes se lisent dans Mon espace ; seul l'administrateur les dépose.
   if (sous('/reglementations')) return path.endsWith('/deposer') ? 'gestion' : 'agent';
   return 'gestion';

@@ -1,33 +1,93 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Inject,
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import {
+  type ChangerReglagesInput,
+  changerReglagesSchema,
+  type ChangerSujetsInput,
+  changerSujetsSchema,
+  codeWhatsAppSchema,
   type Espace,
   notificationEspaceQuerySchema,
   type NotificationIdsInput,
   notificationIdsSchema,
   type NotificationScope,
   notificationScopeQuerySchema,
+  numeroWhatsAppSchema,
 } from '@teranga/contracts';
+import { z } from 'zod';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { NotificationsService } from './notifications.service';
+import { NotificationsReglagesService } from './reglages.service';
 
 @Controller()
 @UseGuards(SessionGuard, AccesGuard)
 export class NotificationsController {
-  constructor(@Inject(NotificationsService) private readonly notifications: NotificationsService) {}
+  constructor(
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(NotificationsReglagesService) private readonly reglages: NotificationsReglagesService,
+  ) {}
+
+  // Ses réglages : où chaque sujet le trouve, son numéro WhatsApp.
+
+  @Get('notifications/reglages')
+  lireReglages(@Req() req: AuthenticatedRequest) {
+    return this.reglages.lire(req.sessionUser);
+  }
+
+  @Put('notifications/reglages/sujets')
+  changerSujets(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(changerSujetsSchema)) body: ChangerSujetsInput,
+  ) {
+    return this.reglages.changerSujets(req.sessionUser, body);
+  }
+
+  @Put('notifications/reglages')
+  changerReglages(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(changerReglagesSchema)) body: ChangerReglagesInput,
+  ) {
+    return this.reglages.changerReglages(req.sessionUser, body);
+  }
+
+  @Post('notifications/reglages/whatsapp/code')
+  demanderCode(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(z.object({ numero: numeroWhatsAppSchema })))
+    body: { numero: string },
+  ) {
+    return this.reglages.demanderCode(req.sessionUser, body.numero);
+  }
+
+  @Post('notifications/reglages/whatsapp/verification')
+  verifierCode(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(codeWhatsAppSchema)) body: { code: string },
+  ) {
+    return this.reglages.verifierCode(req.sessionUser, body.code);
+  }
+
+  @Delete('notifications/reglages/whatsapp')
+  retirerNumero(@Req() req: AuthenticatedRequest) {
+    return this.reglages.retirerNumero(req.sessionUser);
+  }
+
+  // La boîte
 
   @Get('notifications')
   list(

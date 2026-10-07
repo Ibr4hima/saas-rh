@@ -763,6 +763,7 @@ export class AbsencesService {
         const a = absence(r.type);
         await notifier(tx, tenantId, r.user_id, {
           type: 'conge_annule',
+          sujet: 'conges',
           title: `Votre ${a.nom} ${duAu(r.debut, r.fin)} est ${accord('annulé', a)} : ce jour est férié`,
           link: '/moi/conges/historique',
           dedupeKey: `conge:${r.id}:ferie`,
@@ -1174,6 +1175,7 @@ export class AbsencesService {
             const a = absence(d.type);
             await notifier(tx, user.tenantId, d.demandeurUserId, {
               type: 'conge_saisi',
+              sujet: 'conges',
               title: `La DCH a saisi pour vous ${a.article} ${a.nom} ${duAu(d.debut, d.fin)}`,
               link: '/moi/conges/historique',
               dedupeKey: `conge:${id}:saisie`,
@@ -1486,6 +1488,7 @@ export class AbsencesService {
     }
     await notifier(tx, user.tenantId, dch.directeur.userId, {
       type: 'delegation',
+      sujet: 'dch.delegations',
       title: 'Les demandes de congé vous attendront jusqu’à votre retour',
       link: '/moi/delegations',
       dedupeKey: `delegation:absence:${demande.id}`,

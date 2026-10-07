@@ -20,6 +20,9 @@ import { loadEnv } from './config/env';
 import { ExpediteurCourriels } from './modules/courriels/expediteur';
 import { PassageDeMinuit } from './modules/people/passage-de-minuit';
 import { transportDepuisEnv } from './modules/courriels/transports';
+import { ExpediteurWhatsApp } from './modules/whatsapp/expediteur';
+import { transportWhatsAppDepuisEnv } from './modules/whatsapp/transports';
+import { NotificationsReglagesService } from './modules/notifications/reglages.service';
 import { AuthController } from './modules/auth/auth.controller';
 import { DocumentRequestsController } from './modules/docs/document-requests.controller';
 import { ProfileChangesController } from './modules/profile/profile-changes.controller';
@@ -92,6 +95,13 @@ import { AbsencesService } from './modules/time/absences.service';
       },
       inject: [TenantDb, EncryptionService],
     },
+    {
+      provide: ExpediteurWhatsApp,
+      useFactory: (db: TenantDb, enc: EncryptionService) =>
+        new ExpediteurWhatsApp(db, enc, transportWhatsAppDepuisEnv(loadEnv())),
+      inject: [TenantDb, EncryptionService],
+    },
+    NotificationsReglagesService,
     AuthService,
     ReinitialisationService,
     HabilitationsService,

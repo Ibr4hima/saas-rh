@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
-import type { EtapeConge } from '@teranga/contracts';
+import type { EtapeConge, SujetNotification } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
-import { notifier } from '../notifications/notifier';
+import { notifier, type NotificationDraft } from '../notifications/notifier';
 import { relancer, retirerLesAppels, tenirLesAppels } from '../acces/appels';
 import { ABSENCE, absence, accord, de, duAu, frDate, leLa, sonSa } from '../notifications/phrases';
 import type { Nom } from '../notifications/phrases';
@@ -301,6 +301,7 @@ export async function annoncerLeVerdict(
   const a = absence(d.type);
   await notifier(tx, d.tenantId, d.demandeurUserId, {
     type: verdict === 'approved' ? 'conge_approuve' : 'conge_refuse',
+    sujet: 'conges',
     title: `Votre ${a.nom} ${duAu(d.debut, d.fin)} est ${accord(verdict === 'approved' ? 'approuvé' : 'refusé', a)}`,
     link: '/moi/conges/historique',
     dedupeKey: cleVerdict(d.id),
@@ -336,6 +337,7 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
   if (att.etape === 'n1') {
     await tenirLesAppels(tx, d.tenantId, prefixe, 'n1', destinataires, {
       type: 'conge_a_viser',
+      sujet: 'equipe.conges',
       title: demandeDe(d, motif(d, 'n1')),
       link: '/moi/equipe',
     });
@@ -343,6 +345,7 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
   }
   await tenirLesAppels(tx, d.tenantId, prefixe, 'dch', destinataires, {
     type: 'conge_a_viser',
+    sujet: 'dch.conges',
     title: demandeDe(d, motif(d, 'dch')),
     link: '/moi/dch',
   });
@@ -415,6 +418,7 @@ export async function reconcilierReprise(tx: Tx, requestId: string): Promise<voi
     att.valideurs.map((v) => v.userId),
     {
       type: 'reprise_a_confirmer',
+      sujet: att.etape === 'n1' ? 'equipe.conges' : 'dch.conges',
       title: `${d.nom} écourte ${sonSa(a)} ${a.nom} : reprise le ${frDate(r.reprise)}`,
       link: att.etape === 'n1' ? '/moi/equipe' : '/moi/dch',
     },
@@ -453,19 +457,24 @@ export async function annoncerLeChangement(
   const cle = (suite: string) => `conge:${d.id}:${suite}`;
   const envoyer = async (
     userId: string | null | undefined,
-    message: { type: string; title: string; link: string; dedupeKey: string; remplace?: string },
+    message: Omit<NotificationDraft, 'sujet'>,
+    sujet: SujetNotification,
   ) => {
     if (!userId || userId === auteurUserId) return;
-    await notifier(tx, d.tenantId, userId, message);
+    await notifier(tx, d.tenantId, userId, { ...message, sujet });
   };
 
   if (changement.quoi === 'reprise_refusee') {
-    await envoyer(d.demandeurUserId, {
-      type: 'conge_refuse',
-      title: `Votre reprise le ${frDate(changement.reprise)} n’est pas confirmée`,
-      link: '/moi/conges/historique',
-      dedupeKey: cle(`reprise-refusee:${changement.reprise}`),
-    });
+    await envoyer(
+      d.demandeurUserId,
+      {
+        type: 'conge_refuse',
+        title: `Votre reprise le ${frDate(changement.reprise)} n’est pas confirmée`,
+        link: '/moi/conges/historique',
+        dedupeKey: cle(`reprise-refusee:${changement.reprise}`),
+      },
+      'conges',
+    );
     return;
   }
 
@@ -476,20 +485,18 @@ export async function annoncerLeChangement(
   });
   // Le N+1 et la DCH lisent la même phrase, chacun avec le motif qu'il voit.
   const aux = async (title: (a: Nom) => string, dedupeKey: string) => {
-    await envoyer(n1?.userId, {
-      type: 'conge_modifie',
-      title: title(motif(d, 'n1')),
-      link: '/moi/equipe',
-      dedupeKey,
-    });
+    await envoyer(
+      n1?.userId,
+      { type: 'conge_modifie', title: title(motif(d, 'n1')), link: '/moi/equipe', dedupeKey },
+      'equipe.conges',
+    );
     for (const v of dch.traitants) {
       if (v.userId === n1?.userId) continue;
-      await envoyer(v.userId, {
-        type: 'conge_modifie',
-        title: title(motif(d, 'dch')),
-        link: '/moi/dch',
-        dedupeKey,
-      });
+      await envoyer(
+        v.userId,
+        { type: 'conge_modifie', title: title(motif(d, 'dch')), link: '/moi/dch', dedupeKey },
+        'dch.conges',
+      );
     }
   };
   const leConge = (a: Nom) => `${leLa(a)}${a.nom} ${de(d.nom)} ${duAu(d.debut, d.fin)}`;
@@ -502,27 +509,35 @@ export async function annoncerLeChangement(
          WHERE dedupe_key = ${cle('verdict')} AND recipient_user_id = ${d.demandeurUserId}
            AND remplacee_le IS NULL`);
     }
-    await envoyer(d.demandeurUserId, {
-      type: 'conge_refuse',
-      title: `Votre ${a.nom} ${duAu(d.debut, d.fin)} est ${accord('annulé', a)}`,
-      link: '/moi/conges/historique',
-      dedupeKey: cle('annule'),
-      remplace: cle('verdict'),
-    });
+    await envoyer(
+      d.demandeurUserId,
+      {
+        type: 'conge_refuse',
+        title: `Votre ${a.nom} ${duAu(d.debut, d.fin)} est ${accord('annulé', a)}`,
+        link: '/moi/conges/historique',
+        dedupeKey: cle('annule'),
+        remplace: cle('verdict'),
+      },
+      'conges',
+    );
     await aux((a) => `${leConge(a)} est ${accord('annulé', a)}`, cle('annule'));
     return;
   }
 
   const reprise = frDate(changement.reprise);
-  await envoyer(d.demandeurUserId, {
-    type: 'conge_modifie',
-    title:
-      changement.nature === 'retour'
-        ? `Votre reprise le ${reprise} est confirmée`
-        : `Votre ${a.nom} est ${accord('écourté', a)} : reprise le ${reprise}`,
-    link: '/moi/conges/historique',
-    dedupeKey: cle(`ecourte:${changement.reprise}`),
-  });
+  await envoyer(
+    d.demandeurUserId,
+    {
+      type: 'conge_modifie',
+      title:
+        changement.nature === 'retour'
+          ? `Votre reprise le ${reprise} est confirmée`
+          : `Votre ${a.nom} est ${accord('écourté', a)} : reprise le ${reprise}`,
+      link: '/moi/conges/historique',
+      dedupeKey: cle(`ecourte:${changement.reprise}`),
+    },
+    'conges',
+  );
   await aux(
     (a) => `${leConge(a)} est ${accord('écourté', a)} : reprise le ${reprise}`,
     cle(`ecourte:${changement.reprise}`),
@@ -581,6 +596,7 @@ async function expirer(tx: Tx): Promise<void> {
     if (d.demandeurUserId) {
       await notifier(tx, d.tenantId, d.demandeurUserId, {
         type: 'conge_expire',
+        sujet: 'conges',
         title: `Votre demande ${de(a.nom)} ${periode} a expiré sans réponse`,
         link: '/moi/conges/historique',
         dedupeKey: cle,
@@ -594,6 +610,7 @@ async function expirer(tx: Tx): Promise<void> {
       prevenus.add(userId);
       await notifier(tx, d.tenantId, userId, {
         type: 'conge_expire',
+        sujet: pour === 'n1' ? 'equipe.conges' : 'dch.conges',
         title: titre(motif(d, pour)),
         link: pour === 'n1' ? '/moi/equipe' : '/moi/dch',
         dedupeKey: cle,
@@ -660,6 +677,7 @@ async function verifierLaVacance(tx: Tx, tenantId: string, enAttente: string[]):
   for (const userId of await administrateursEnFonction(tx, tenantId)) {
     await notifier(tx, tenantId, userId, {
       type: 'dch_vacante',
+      sujet: 'admin.dch',
       title: dch
         ? `${bloquees > 1 ? 'Des demandes attendent' : 'Une demande attend'} un responsable à la ${dch.nom}`
         : `${bloquees > 1 ? 'Des demandes attendent' : 'Une demande attend'} une direction du personnel`,

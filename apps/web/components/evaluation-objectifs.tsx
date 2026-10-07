@@ -284,14 +284,6 @@ function LigneObjectif({
       <div className="flex items-start gap-[11px]">
         <Case statut={statut} />
         <p className="min-w-0 flex-1 text-[12.5px] leading-[1.5] text-ink-strong">
-          {objectif.formation ? (
-            // Une formation de l'APIX Academy : son statut vient de là.
-            <Icon
-              name="school"
-              size={15}
-              className="mr-1.5 inline-block align-[-3px] text-primary"
-            />
-          ) : null}
           <TexteObjectif contenu={objectif.contenu} />
         </p>
       </div>

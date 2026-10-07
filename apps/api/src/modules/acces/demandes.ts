@@ -7,6 +7,7 @@ import {
   type CapaciteDemande,
   type RequestableDoc,
   type SessionUser,
+  type SujetNotification,
   type TraitementView,
   type TypeDemande,
 } from '@teranga/contracts';
@@ -58,6 +59,8 @@ export const TYPES_DCH: readonly TypeDCH[] = ['documents', 'informations', 'piec
 
 interface Definition {
   prefixe: string;
+  /** Le sujet que règle qui la traite. */
+  sujet: SujetNotification;
   table: SQL;
   /** La demande attend la DCH (alias `r`). */
   enAttente: SQL;
@@ -73,6 +76,7 @@ interface Definition {
 const DEFINITIONS: Record<TypeDCH, Definition> = {
   documents: {
     prefixe: 'document',
+    sujet: 'dch.documents',
     table: sql.raw('document_requests'),
     enAttente: sql.raw(`r.status IN ('received', 'processing')`),
     detail: sql.raw('to_jsonb(r.doc_types)'),
@@ -89,6 +93,7 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
   },
   informations: {
     prefixe: 'information',
+    sujet: 'dch.informations',
     table: sql.raw('profile_change_requests'),
     enAttente: sql.raw(`r.status = 'pending'`),
     detail: sql.raw('r.changes'),
@@ -98,6 +103,7 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
   },
   pieces: {
     prefixe: 'piece',
+    sujet: 'dch.pieces',
     table: sql.raw('employee_documents'),
     // Déposée par l'agent sur son dossier : la DCH la vérifie.
     enAttente: sql.raw(`r.status = 'pending'`),
@@ -165,6 +171,7 @@ async function tenir(tx: Tx, d: DemandeDCH, dch: DirectionDuPersonnel | null): P
   if (t.aConfier && t.dch?.directeur) {
     await tenirLesAppels(tx, d.tenantId, prefixe, 'a-confier', [t.dch.directeur.userId], {
       type: 'demande_a_confier',
+      sujet: 'dch.delegations',
       title: 'Votre demande est à confier à un membre de la DCH',
       link: def.lien,
     });
@@ -178,6 +185,7 @@ async function tenir(tx: Tx, d: DemandeDCH, dch: DirectionDuPersonnel | null): P
     t.traitants.map((v) => v.userId),
     {
       type: 'demande_a_traiter',
+      sujet: def.sujet,
       title: def.titre(d.nom, d.detail),
       link: def.lien,
     },

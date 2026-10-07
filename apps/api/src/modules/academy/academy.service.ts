@@ -1123,6 +1123,7 @@ export class AcademyService {
     for (const r of rows) {
       await notifier(tx, tenantId, r.user_id, {
         type: 'academy_lecon_a_revoir',
+        sujet: 'academy',
         title: `La leçon « ${lecon.title} » de « ${r.formation} » a changé : revoyez-la`,
         link: `/academy/${lecon.courseId}/lecon/${lecon.id}`,
         dedupeKey: `academy:lecon:${lecon.id}:revoir:${uid}`,

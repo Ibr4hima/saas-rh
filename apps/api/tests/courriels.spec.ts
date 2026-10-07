@@ -379,7 +379,7 @@ describe('notifications par courriel', () => {
 
   const notifie = (userId: string, title: string, extra: Record<string, string> = {}) =>
     db.withTenant({ tenantId, userId: adminUserId }, (tx) =>
-      notifier(tx, tenantId, userId, { type: 'test', title, ...extra }),
+      notifier(tx, tenantId, userId, { type: 'test', sujet: 'conges', title, ...extra }),
     );
 
   beforeEach(() => expediteur.brancher());
@@ -469,6 +469,7 @@ describe('notifications par courriel', () => {
     const rappels = [awa, fatou].map((a) => ({
       userId: a.userId,
       type: 'holiday_reminder',
+      sujet: 'feries' as const,
       title: 'Tabaski, férié le lundi 25 mai',
       link: '/calendrier',
       dedupeKey: 'holiday:2026-05-25',

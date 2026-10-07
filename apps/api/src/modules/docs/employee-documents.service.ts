@@ -389,6 +389,7 @@ export class EmployeeDocumentsService {
       const nom = doc.category === 'autre' ? `document « ${doc.label} »` : piece.nom;
       await this.notifications.notifyUser(tx, user.tenantId, destinataire, {
         type: 'document_reviewed',
+        sujet: 'pieces',
         title: approved
           ? `Votre ${nom} est ${accord('ajouté', piece)} à votre dossier`
           : `Votre ${nom} est ${accord('refusé', piece)} : ${input.comment!.trim()}`,
