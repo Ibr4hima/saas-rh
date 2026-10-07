@@ -95,7 +95,6 @@ function localToday(): string {
 
 /* ———— Pièces communes ———— */
 
-/** Le total d'une carte, à droite de son titre : « 3 agents ». */
 /** L'âge moyen, en années : le nombre en grand, l'unité en retrait. */
 function AgeMoyen({ d }: { d: DashboardView }) {
   if (d.averageAge === null) {
@@ -116,11 +115,53 @@ function AgeMoyen({ d }: { d: DashboardView }) {
 function contexteDesAges(d: DashboardView): string | undefined {
   if (d.agesKnown === 0) return undefined;
   if (d.agesKnown < d.activeEmployees) {
-    return `${d.agesKnown} âges connus sur ${d.activeEmployees}`;
+    const s = d.agesKnown > 1 ? 's' : '';
+    return `${d.agesKnown} âge${s} connu${s} sur ${d.activeEmployees}`;
   }
+  if (d.youngestAge === d.oldestAge) return undefined;
   return `de ${d.youngestAge} à ${d.oldestAge} ans`;
 }
 
+/** « an » jusqu'à deux, « ans » ensuite : 1,5 an, 2 ans. */
+const ans = (n: number) => (n < 2 ? 'an' : 'ans');
+
+/** Une durée en mois révolus, comme on la dit : « 8 mois », « 7 ans ». */
+function duree(mois: number): string {
+  if (mois < 1) return "moins d'un mois";
+  if (mois < 12) return `${mois} mois`;
+  const a = Math.floor(mois / 12);
+  return `${a} ${ans(a)}`;
+}
+
+/** L'ancienneté moyenne, en années ; en mois sous un an. */
+function AncienneteMoyenne({ d }: { d: DashboardView }) {
+  const v = d.averageSeniority;
+  if (v === null) {
+    return <span className="text-[15px] font-semibold text-ink-muted">Aucune</span>;
+  }
+  const [nombre, unite] =
+    v < 1
+      ? [String(Math.max(1, Math.round(v * 12))), 'mois']
+      : [v.toLocaleString('fr-FR', { maximumFractionDigits: 1 }), ans(v)];
+  return (
+    <>
+      {nombre}
+      <span className="ml-1 text-[15px] font-semibold tracking-normal text-ink-muted">{unite}</span>
+    </>
+  );
+}
+
+/** Sous l'ancienneté moyenne : de la plus courte à la plus longue. */
+function contexteDesAnciennetes(d: DashboardView): string | undefined {
+  const courte = d.shortestSeniorityMonths;
+  const longue = d.longestSeniorityMonths;
+  if (courte === null || longue === null || duree(courte) === duree(longue)) return undefined;
+  if (courte >= 12) return `de ${Math.floor(courte / 12)} à ${duree(longue)}`;
+  if (longue < 12) return `de ${courte} à ${longue} mois`;
+  return `de ${duree(courte)} à ${duree(longue)}`;
+}
+
+/** Le total d'une carte, à droite de son titre : « 3 agents ». */
 function TotalCarte({ children }: { children: React.ReactNode }) {
   return (
     <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
@@ -141,7 +182,7 @@ function StatTile({
 }: {
   icon: IconName;
   label: string;
-  /** L'étiquette d'un téléphone, où deux tuiles se partagent 360 px. */
+  /** L'étiquette d'une tuile étroite : un téléphone, ou quatre tuiles à côté du menu. */
   short: string;
   /** Un nombre le plus souvent, une date pour le prochain férié. */
   value: React.ReactNode;
@@ -157,11 +198,13 @@ function StatTile({
        permanente, alors qu'elle ne fait qu'ouvrir un écran. La flèche
        n'apparaît qu'au survol : la tuile est une porte, on ne le voit qu'en
        s'approchant. */
-    <CardInteractive className="relative h-full px-4 pt-3.5 pb-4">
+    <CardInteractive className="@container relative h-full px-4 pt-3.5 pb-4">
       <div className="flex items-center justify-between gap-3">
+        {/* L'étiquette courte dès que la TUILE est étroite, pas l'écran : à
+            1024 px, quatre tuiles et le menu ne laissent pas la place. */}
         <p className="truncate text-[10px] font-bold tracking-[0.1em] text-ink-muted uppercase">
-          <span className="sm:hidden">{short}</span>
-          <span className="hidden sm:inline">{label}</span>
+          <span className="@[10rem]:hidden">{short}</span>
+          <span className="hidden @[10rem]:inline">{label}</span>
         </p>
         <span className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-primary/[0.07] text-primary transition-colors duration-200 group-hover:bg-primary/[0.12]">
           <Icon name={icon} size={17} />
@@ -453,12 +496,12 @@ export default function DashboardPage() {
           href={canManage ? '/employees' : undefined}
         />
         <StatTile
-          icon="event_busy"
-          label="Abs. aujourd'hui"
-          short="Absents"
-          value={d?.absentToday}
-          context={d ? `${d.upcomingAbsences} à venir sous 30 jours` : undefined}
-          href={voitLesConges ? '/moi/dch' : undefined}
+          icon="work_history"
+          label="Ancienneté moy."
+          short="Ancienneté"
+          value={d ? <AncienneteMoyenne d={d} /> : undefined}
+          context={d ? contexteDesAnciennetes(d) : undefined}
+          href={canManage ? '/employees' : undefined}
         />
         <StatTile
           icon="flag"

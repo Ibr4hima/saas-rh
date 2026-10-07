@@ -89,7 +89,9 @@ function lastDay(exclusiveEnd: string): string {
 
 /**
  * Ancienneté en clair : « 3 ans et 2 mois », pas une date à soustraire. Les
- * intervalles entre un départ et un retour n'en font pas partie.
+ * intervalles entre un départ et un retour n'en font pas partie. Les mois
+ * sont ceux du calendrier, comme sur le tableau de bord : quatre ans jour
+ * pour jour font « 4 ans ».
  */
 function seniority(
   hiredOn: string,
@@ -98,16 +100,28 @@ function seniority(
 ): string {
   const JOUR = 1000 * 60 * 60 * 24;
   const t = (iso: string) => new Date(`${iso}T12:00:00Z`).getTime();
-  // Inactif : l'ancienneté s'arrête à son dernier jour, pas à aujourd'hui.
-  const fin = jusquAu ? t(jusquAu) : Date.now();
+  const maintenant = new Date();
+  // Inactif : l'ancienneté s'arrête au soir de son dernier jour.
+  const fin = jusquAu
+    ? t(jusquAu) + JOUR
+    : Date.UTC(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate(), 12);
   const absent = interruptions.reduce(
     (total, i) => total + Math.max(0, t(i.repriseLe) - t(i.dernierJour) - JOUR),
     0,
   );
-  const months = Math.max(0, (fin - t(hiredOn) - absent) / (JOUR * 30.44));
+  // La fin reculée des jours passés hors de l'APIX, puis les mois révolus.
+  const debut = new Date(t(hiredOn));
+  const arrivee = new Date(fin - absent);
+  const months = Math.max(
+    0,
+    (arrivee.getUTCFullYear() - debut.getUTCFullYear()) * 12 +
+      arrivee.getUTCMonth() -
+      debut.getUTCMonth() -
+      (arrivee.getUTCDate() < debut.getUTCDate() ? 1 : 0),
+  );
   const years = Math.floor(months / 12);
-  const rest = Math.floor(months % 12);
-  if (years === 0) return rest <= 1 ? '< 1 mois' : `${rest} mois`;
+  const rest = months % 12;
+  if (years === 0) return rest < 1 ? '< 1 mois' : `${rest} mois`;
   const y = `${years} an${years > 1 ? 's' : ''}`;
   return rest === 0 ? y : `${y} et ${rest} mois`;
 }

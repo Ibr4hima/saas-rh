@@ -1362,11 +1362,70 @@ describe('le tableau de bord compte ce que ses listes montrent', () => {
       }
     } finally {
       await raw(`UPDATE persons SET birth_date = NULL WHERE tenant_id = $1`, [tenantId]);
+      await raw(`UPDATE employees SET status = 'active' WHERE id = $1`, [fatou.employeeId]);
     }
   });
 
-  it('absents aujourd’hui et à venir : les lignes du calendrier, sur trente jours', async () => {
-    await enConge(moussa);
+  it('l’ancienneté moyenne : comme la fiche, hors départs, sans les stagiaires', async () => {
+    const { rows: avant } = await raw(
+      `SELECT id, hired_on::text AS embauche FROM employees WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    const embauche = (qui: Agent, jours: number) =>
+      raw(`UPDATE employees SET hired_on = CURRENT_DATE - $2::int WHERE id = $1`, [
+        qui.employeeId,
+        jours,
+      ]);
+    const stage = randomUUID();
+    const depart = randomUUID();
+    try {
+      // Tous les actifs : quatre ans, jour pour jour.
+      await raw(
+        `UPDATE employees SET hired_on = CURRENT_DATE - 1461 WHERE tenant_id = $1 AND status = 'active'`,
+        [tenantId],
+      );
+      // Embauché il y a dix ans, parti deux ans : huit ans d'ancienneté.
+      await embauche(moussa, 3653);
+      await raw(
+        `INSERT INTO periodes_inactivite (id, tenant_id, employee_id, dernier_jour, reprise_le)
+         VALUES ($1, $2, $3, CURRENT_DATE - 2000, CURRENT_DATE - 2000 + 732)`,
+        [depart, tenantId, moussa.employeeId],
+      );
+      // En stage aujourd'hui : il ne compte pas, si ancien soit-il.
+      await embauche(ousmane, 10000);
+      await raw(
+        `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+         VALUES ($1, $2, $3, 'stage', CURRENT_DATE - 30, CURRENT_DATE + 30)`,
+        [stage, tenantId, ousmane.employeeId],
+      );
+      // Pas encore arrivé : il ne compte pas non plus.
+      await embauche(fatou, -10);
+
+      const { rows } = await raw(
+        `SELECT count(*)::int AS n FROM employees WHERE tenant_id = $1 AND status = 'active'`,
+        [tenantId],
+      );
+      const comptes = rows[0].n - 2;
+      // (comptes - 1) fois quatre ans, et huit ans.
+      const moyenne = Math.round((40 * (comptes + 1)) / comptes) / 10;
+      for (const qui of [admin, awa.session]) {
+        expect(await chiffres(qui)).toMatchObject({
+          averageSeniority: moyenne,
+          shortestSeniorityMonths: 48,
+          longestSeniorityMonths: 96,
+        });
+      }
+    } finally {
+      await raw(`DELETE FROM contracts WHERE id = $1`, [stage]);
+      await raw(`DELETE FROM periodes_inactivite WHERE id = $1`, [depart]);
+      for (const r of avant) {
+        await raw(`UPDATE employees SET hired_on = $2::date WHERE id = $1`, [r.id, r.embauche]);
+      }
+    }
+  });
+
+  it('le calendrier des absences : en cours et à venir, sur trente jours', async () => {
+    const enCours = await enConge(moussa);
     const validee = async (debut: number) => {
       const id = randomUUID();
       await raw(
@@ -1376,13 +1435,11 @@ describe('le tableau de bord compte ce que ses listes montrent', () => {
       );
       return id;
     };
-    await validee(10);
+    const bientot = await validee(10);
     const tard = await validee(40);
-    const d = await chiffres(admin);
-    expect([d.absentToday, d.upcomingAbsences]).toEqual([1, 1]);
-    const calendrier = await absences.upcoming(admin);
-    expect(calendrier.map((r) => r.id)).not.toContain(tard);
-    expect(calendrier).toHaveLength(d.absentToday + d.upcomingAbsences);
+    const calendrier = (await absences.upcoming(admin)).map((r) => r.id);
+    expect(calendrier).toEqual(expect.arrayContaining([enCours, bientot]));
+    expect(calendrier).not.toContain(tard);
   });
 });
 

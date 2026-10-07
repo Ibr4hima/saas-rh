@@ -39,8 +39,6 @@ export interface DashboardContractFollowUp {
 
 export interface DashboardView {
   activeEmployees: number;
-  /** Absents AUJOURD'HUI (congé approuvé couvrant la date du jour). */
-  absentToday: number;
   /**
    * L'âge moyen de l'effectif actif de toute l'organisation, en années
    * révolues, à une décimale : sur les agents dont la date de naissance est
@@ -52,8 +50,16 @@ export interface DashboardView {
   oldestAge: number | null;
   /** Combien d'agents actifs ont une date de naissance connue. */
   agesKnown: number;
-  /** Absences approuvées démarrant dans les 30 prochains jours. */
-  upcomingAbsences: number;
+  /**
+   * L'ancienneté moyenne de l'effectif actif, en années, à une décimale.
+   * Elle se compte comme sur la fiche : depuis la date d'embauche, hors des
+   * intervalles entre un départ et un retour. Les agents en stage aujourd'hui
+   * n'y entrent pas, ni ceux dont le contrat n'a pas commencé. null : personne.
+   */
+  averageSeniority: number | null;
+  /** La plus courte et la plus longue, en mois révolus. */
+  shortestSeniorityMonths: number | null;
+  longestSeniorityMonths: number | null;
   /** Parité de l'effectif actif. */
   women: number;
   men: number;

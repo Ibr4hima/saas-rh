@@ -179,7 +179,7 @@ const lendemain = (iso: string) => decaler(iso, 1);
 
 /**
  * Les absences du calendrier : validées, en cours ou commençant dans les
- * trente jours. Le tableau de bord compte les mêmes qu'il liste.
+ * trente jours.
  */
 export const absencesDesTrenteJours = () => [
   eq(t.absenceRequests.status, 'approved'),

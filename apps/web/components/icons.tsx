@@ -114,6 +114,7 @@ export const ICON_NAMES = [
   'volume_off',
   'volume_up',
   'warning',
+  'work_history',
   'workspace_premium',
 ] as const;
 
