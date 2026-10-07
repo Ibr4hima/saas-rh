@@ -38,13 +38,16 @@ export type Gabarit =
     }
   | { nom: 'notification'; prenom: string; organisation: string; titre: string; lien: string }
   | { nom: 'reinitialisation'; prenom: string; organisation: string; lien: string }
-  | {
-      nom: 'refus_candidature';
-      prenom: string;
-      organisation: string;
-      poste: string;
-      reference: string | null;
-    };
+  | ({ nom: 'accuse_candidature' } & AuCandidat)
+  | ({ nom: 'refus_candidature' } & AuCandidat);
+
+/** Ce que disent les courriels au candidat : l'accusé de réception, le refus. */
+interface AuCandidat {
+  prenom: string;
+  organisation: string;
+  poste: string;
+  reference: string | null;
+}
 
 /** Ce qui ne se décide qu'au départ : le logo, l'adresse du site (polices), l'année. */
 export interface Rendu {
@@ -77,6 +80,9 @@ export function objetDe(g: Gabarit): string {
   if (g.nom === 'invitation') return 'Votre accès au portail RH';
   if (g.nom === 'reinitialisation') return 'Votre mot de passe';
   if (g.nom === 'refus_candidature') return `Votre candidature ${auPoste(g.poste)}`;
+  if (g.nom === 'accuse_candidature') {
+    return `Nous avons bien reçu votre candidature ${auPoste(g.poste)}`;
+  }
   return g.titre;
 }
 
@@ -85,7 +91,7 @@ export function objetDe(g: Gabarit): string {
  * pas fermer la porte. Aucun lien : le candidat n'a pas de compte, et rien
  * ne l'attend ailleurs.
  */
-function lettreDeRefus(g: Extract<Gabarit, { nom: 'refus_candidature' }>): string[] {
+function lettreDeRefus(g: LettreAuCandidat): string[] {
   return [
     `Nous vous remercions de l’intérêt que vous portez à ${g.organisation} et du temps que vous avez consacré à votre candidature ${auPoste(g.poste)}.`,
     'Votre dossier a été étudié avec attention. Nous sommes toutefois au regret de vous informer qu’il n’a pas été retenu, votre profil ne correspondant pas entièrement aux critères recherchés pour ce poste.',
@@ -93,6 +99,19 @@ function lettreDeRefus(g: Extract<Gabarit, { nom: 'refus_candidature' }>): strin
     'Nous vous souhaitons pleine réussite dans la suite de vos démarches.',
   ];
 }
+
+/**
+ * L'accusé de réception : le dossier est arrivé, il sera étudié, la réponse
+ * viendra par courriel (refus, cf. lettreDeRefus, ou suite du recrutement).
+ */
+function lettreDAccuse(g: LettreAuCandidat): string[] {
+  return [
+    `Nous accusons bonne réception de votre candidature ${auPoste(g.poste)} et vous remercions de l’intérêt que vous portez à ${g.organisation}.`,
+    'Votre dossier va être étudié avec attention par la Direction du Capital Humain. Nous reviendrons vers vous par courriel dès que son examen sera terminé.',
+  ];
+}
+
+type LettreAuCandidat = Extract<Gabarit, { nom: 'accuse_candidature' | 'refus_candidature' }>;
 
 const SIGNATURE_DCH = ['Cordialement,', 'La Direction du Capital Humain'];
 
@@ -127,7 +146,15 @@ const ACCUEILS = {
   },
 } as const;
 
+/** Sous chaque courriel : personne ne lit les réponses (cf. transports.ts). */
+export const SANS_REPONSE = 'Message automatique, merci de ne pas y répondre.';
+
 export function composer(g: Gabarit, rendu: Rendu): ContenuCourriel {
+  const c = corps(g, rendu);
+  return { ...c, text: `${c.text}\n\n${SANS_REPONSE}` };
+}
+
+function corps(g: Gabarit, rendu: Rendu): ContenuCourriel {
   const subject = objetDe(g);
   if (g.nom === 'invitation') {
     const jusquau = dateLongue(g.expireLe);
@@ -159,8 +186,8 @@ export function composer(g: Gabarit, rendu: Rendu): ContenuCourriel {
       }),
     };
   }
-  if (g.nom === 'refus_candidature') {
-    const lettre = lettreDeRefus(g);
+  if (g.nom === 'refus_candidature' || g.nom === 'accuse_candidature') {
+    const lettre = g.nom === 'refus_candidature' ? lettreDeRefus(g) : lettreDAccuse(g);
     const reference = g.reference ? `Référence de l’offre : ${g.reference}` : null;
     return {
       subject,
@@ -174,7 +201,7 @@ export function composer(g: Gabarit, rendu: Rendu): ContenuCourriel {
       html: page(rendu, {
         organisation: g.organisation,
         apercu: lettre[0]!,
-        titre: 'Votre candidature',
+        titre: g.nom === 'refus_candidature' ? 'Votre candidature' : 'Candidature reçue',
         sousTitre: g.poste,
         ...(g.reference ? { reference: g.reference } : {}),
         lettre: {
@@ -344,6 +371,7 @@ Le bouton ne s’ouvre pas ? Copiez ce <a href="${lien}" target="_blank" style="
 </td></tr>
 </table>
 <p style="margin:18px 0 0;${texte(11.5, '#6b7186')}">© ${annee} APIX S.A · DCH. Tous droits réservés.</p>
+<p style="margin:4px 0 0;${texte(11.5, '#6b7186')}">${echapper(SANS_REPONSE)}</p>
 ${o.reglages ? `<p style="margin:6px 0 0;${texte(11.5, '#6b7186')}"><a href="${portail}/notifications" target="_blank" style="color:#6b7186;text-decoration:underline">Gérer mes notifications</a></p>` : ''}
 </td></tr>
 </table>

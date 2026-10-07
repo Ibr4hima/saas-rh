@@ -21,6 +21,17 @@ export interface Courriel {
   html: string;
 }
 
+/**
+ * Aucune réponse automatique à un courriel de la plateforme : ni absence du
+ * bureau, ni accusé de lecture (RFC 3834, et Exchange). Une réponse écrite à
+ * la main, aucun en-tête ne l'empêche : c'est la boîte d'envoi qui la refuse
+ * (ADR-0031).
+ */
+export const SANS_REPONSE_AUTOMATIQUE = {
+  'Auto-Submitted': 'auto-generated',
+  'X-Auto-Response-Suppress': 'All',
+} as const;
+
 export interface Transport {
   readonly nom: string;
   envoyer(c: Courriel): Promise<void>;
@@ -57,6 +68,7 @@ export class TransportSmtp implements Transport {
       subject: c.subject,
       text: c.text,
       html: c.html,
+      headers: SANS_REPONSE_AUTOMATIQUE,
     });
   }
 }
@@ -111,6 +123,13 @@ export class TransportGraph implements Transport {
             subject: c.subject,
             body: { contentType: 'HTML', content: c.html },
             toRecipients: [{ emailAddress: { address: c.to } }],
+            // Graph n'accepte que les en-têtes « X- ».
+            internetMessageHeaders: [
+              {
+                name: 'X-Auto-Response-Suppress',
+                value: SANS_REPONSE_AUTOMATIQUE['X-Auto-Response-Suppress'],
+              },
+            ],
           },
           saveToSentItems: false,
         }),

@@ -92,10 +92,10 @@ export default function CandidaturesNonRetenuesPage() {
             <THead>
               <tr>
                 <Th>Nom</Th>
-                <Th>Poste</Th>
-                <Th>Réf.</Th>
+                <Th>Offre postulée</Th>
+                <Th>Référence</Th>
                 <Th>Publiée le</Th>
-                <Th className="text-right">Dossier de candidature</Th>
+                <Th className="text-right">Dossier</Th>
               </tr>
             </THead>
             <TBody>

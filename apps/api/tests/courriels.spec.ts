@@ -734,6 +734,7 @@ describe('transports', () => {
         subject: 'Votre accès au portail RH',
         body: { contentType: 'HTML', content: '<p>html</p>' },
         toRecipients: [{ emailAddress: { address: 'awa@apix.sn' } }],
+        internetMessageHeaders: [{ name: 'X-Auto-Response-Suppress', value: 'All' }],
       },
       saveToSentItems: false,
     });

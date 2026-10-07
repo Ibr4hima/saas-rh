@@ -2,11 +2,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { ApplyInput, Langue, NiveauEtudes, PublicJobInfo } from '@teranga/contracts';
-import { MAX_DOCUMENT_BYTES } from '@teranga/contracts';
+import { MAX_DOCUMENT_BYTES, premierPrenom } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
+import { ExpediteurCourriels } from '../courriels/expediteur';
+import { ENTETE } from '../documents/entete';
 import { chiffrerCandidature, chiffrerPiece } from './chiffrement';
 
 function pgCode(err: unknown): string | undefined {
@@ -38,6 +40,8 @@ export class ApplyService {
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(EncryptionService) private readonly enc: EncryptionService,
+    @Inject(ExpediteurCourriels)
+    private readonly expediteur?: ExpediteurCourriels,
   ) {}
 
   /** Ce que voit le candidat qui suit le lien : l'offre publiée, rien d'autre. */
@@ -110,12 +114,15 @@ export class ApplyService {
       return { label: d.label, filename: nomSur(d.filename), contentType: d.contentType, data };
     });
 
+    let accuse = false;
     try {
       await this.db.withJobSlug(slug, async (tx) => {
         const [posting] = await tx
           .select({
             id: t.jobPostings.id,
             tenantId: t.jobPostings.tenantId,
+            title: t.jobPostings.title,
+            reference: t.jobPostings.reference,
             deadline: t.jobPostings.deadline,
             requiredDocuments: t.jobPostings.requiredDocuments,
           })
@@ -186,7 +193,26 @@ export class ApplyService {
             ...chiffrerPiece(this.enc, { tenantId: posting.tenantId, id }, f),
           });
         }
+
+        // L'accusé de réception, avec le dépôt. L'adresse ne se recopie pas :
+        // elle se lit dans la candidature au départ (0095).
+        if (this.expediteur) {
+          accuse = await this.expediteur.mettreEnFile(tx, {
+            tenantId: posting.tenantId,
+            kind: 'candidature_recue',
+            subjectId: applicationId,
+            to: null,
+            gabarit: {
+              nom: 'accuse_candidature',
+              prenom: premierPrenom(input.givenName),
+              organisation: ENTETE.raisonSociale,
+              poste: posting.title,
+              reference: posting.reference,
+            },
+          });
+        }
       });
+      if (accuse) this.expediteur?.bientot();
     } catch (err) {
       if (pgCode(err) === '23505') {
         problem(

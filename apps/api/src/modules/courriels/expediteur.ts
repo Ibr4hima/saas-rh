@@ -29,9 +29,9 @@ import type { Transport } from './transports';
    gardent, chiffré, ce qu'ils disent (un lien à usage unique qu'on ne
    retrouverait nulle part ailleurs). La
    notification ne garde rien : elle se compose de la notification elle-même,
-   qui dit aussi si elle a encore lieu d'être. Le refus d'une candidature
-   garde ce qu'il dit, mais pas l'adresse : elle se lit, chiffrée, dans la
-   candidature au moment de partir (0094).
+   qui dit aussi si elle a encore lieu d'être. L'accusé de réception et le
+   refus d'une candidature gardent ce qu'ils disent, mais pas l'adresse :
+   elle se lit, chiffrée, dans la candidature au moment de partir (0094).
    ──────────────────────────────────────────────────────────────── */
 
 /** Au-delà, on renonce : un peu plus de quatre heures d'essais. */
@@ -63,10 +63,13 @@ export interface CourrielEnFile {
   /** Ce qui le fait partir (« invitation ») et ce dont il parle. */
   kind: string;
   subjectId: string;
-  /** `null` : un candidat, dont l'adresse se lit au départ (kind « candidature_refusee »). */
+  /** `null` : un candidat, dont l'adresse se lit au départ (cf. AU_CANDIDAT). */
   to: string | null;
   gabarit: Gabarit;
 }
+
+/** Les courriels au candidat : son adresse se lit dans sa candidature au départ (0094, 0095). */
+const AU_CANDIDAT: readonly string[] = ['candidature_recue', 'candidature_refusee'];
 
 /** Le délai avant l'essai suivant : 1, 2, 4… minutes, au plus 6 heures. */
 export const delaiAvantEssai = (essais: number) =>
@@ -80,7 +83,7 @@ const contexteDuCorps = (tenantId: string, id: string) => `${tenantId}:outbound_
  * le lien « mot de passe oublié » a servi, expiré ou cédé la place à un
  * autre ; la notification a été lue, rangée, remplacée par une plus récente
  * ou effacée, ou l'accès de son destinataire a été coupé ; la candidature
- * refusée a été supprimée ou rouverte. Vérifié au moment
+ * a été supprimée (ou rouverte, pour un refus). Vérifié au moment
  * d'envoyer, quel que soit le chemin qui y a mené.
  */
 async function annulerCeQuiNaPlusLieu(tx: Tx): Promise<void> {
@@ -107,6 +110,8 @@ async function annulerCeQuiNaPlusLieu(tx: Tx): Promise<void> {
              WHEN 'candidature_refusee' THEN NOT EXISTS (
                SELECT 1 FROM applications a
                 WHERE a.id = o.subject_id AND a.stage = 'rejected')
+             WHEN 'candidature_recue' THEN NOT EXISTS (
+               SELECT 1 FROM applications a WHERE a.id = o.subject_id)
              ELSE FALSE
            END`);
 }
@@ -281,7 +286,8 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
             LEFT JOIN notifications n ON p.kind = 'notification' AND n.id = p.subject_id
             LEFT JOIN users u ON u.id = n.recipient_user_id
             LEFT JOIN tenants o ON o.id = n.tenant_id
-            LEFT JOIN applications a ON p.kind = 'candidature_refusee' AND a.id = p.subject_id
+            LEFT JOIN applications a
+                   ON p.kind IN ('candidature_recue', 'candidature_refusee') AND a.id = p.subject_id
            ORDER BY p.created_at`);
       });
       if (lot.length === 0) continue;
@@ -357,7 +363,7 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
 
   /** L'adresse d'un candidat, lue dans sa candidature, chiffrée là où elle vit. */
   private adresseDuCandidat(tenantId: string, c: APrendre): string | null {
-    if (c.kind !== 'candidature_refusee' || !c.subject_id || !c.candidat_email) return null;
+    if (!AU_CANDIDAT.includes(c.kind) || !c.subject_id || !c.candidat_email) return null;
     try {
       return adresseDuCandidat(this.enc, {
         tenantId,

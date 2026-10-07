@@ -828,7 +828,7 @@ export const outboundEmails = pgTable('outbound_emails', {
   tenantId: uuid('tenant_id').notNull(),
   kind: text('kind').notNull(),
   subjectId: uuid('subject_id'),
-  // Vide pour un candidat : son adresse se lit, chiffrée, au départ (0094).
+  // Vide pour un candidat : son adresse se lit, chiffrée, au départ (0094, 0095).
   recipient: text('recipient'),
   subject: text('subject').notNull(),
   // Chiffré, et effacé dès que le courriel est parti ou abandonné.

@@ -82,6 +82,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   for (const id of [tenantId, autreTenantId]) {
+    await raw(`DELETE FROM outbound_emails WHERE tenant_id = $1`, [id]);
     await raw(
       `DELETE FROM application_documents WHERE application_id IN
          (SELECT id FROM applications WHERE tenant_id = $1)`,
@@ -352,15 +353,94 @@ describe('une candidature supprimée', () => {
   });
 });
 
-describe('une candidature rejetée', () => {
-  /** Un transport qui garde ce qu'on lui confie. */
-  class TransportDeTest implements Transport {
-    readonly nom = 'test';
-    envoyes: Courriel[] = [];
-    async envoyer(c: Courriel): Promise<void> {
-      this.envoyes.push(c);
-    }
+/** Un transport qui garde ce qu'on lui confie. */
+class TransportDeTest implements Transport {
+  readonly nom = 'test';
+  envoyes: Courriel[] = [];
+  async envoyer(c: Courriel): Promise<void> {
+    this.envoyes.push(c);
   }
+}
+
+describe('une candidature déposée', () => {
+  const enc = new EncryptionService();
+  const PDF = Buffer.from('%PDF-1.4 cv').toString('base64');
+
+  it('vaut au candidat un accusé de réception, sans que son adresse s’écrive en clair', async () => {
+    const transport = new TransportDeTest();
+    const expediteur = new ExpediteurCourriels(
+      db,
+      enc,
+      transport,
+      'Capital Humain <rh@apix.test>',
+      'http://localhost:3002',
+      async () => null,
+    );
+    try {
+      const { id: offreId } = await service.create(rh, offre('Analyste Marketing'));
+      await service.update(rh, offreId, { status: 'published' });
+      const { rows } = await raw(`SELECT public_slug FROM job_postings WHERE id = $1`, [offreId]);
+      const deposer = new ApplyService(db, enc, expediteur);
+      const slug = rows[0].public_slug as string;
+
+      // Un dépôt refusé n'accuse rien.
+      const refus = await deposer
+        .apply(slug, {
+          givenName: 'Awa',
+          familyName: 'Ndiaye',
+          email: 'awa.ndiaye@exemple.sn',
+          documents: [],
+        })
+        .catch((e) => e.problem);
+      expect(refus).toMatchObject({ code: 'recruitment.documents_missing' });
+
+      await deposer.apply(slug, {
+        givenName: 'Amadou Way',
+        familyName: 'Samb',
+        email: 'amadou.samb@exemple.sn',
+        documents: [
+          { label: 'cv', filename: 'CV.pdf', contentType: 'application/pdf', contentBase64: PDF },
+        ],
+      });
+      const enFile = async () =>
+        (
+          await raw(
+            `SELECT kind, recipient, subject, body_encrypted, status FROM outbound_emails
+              WHERE tenant_id = $1 ORDER BY created_at`,
+            [tenantId],
+          )
+        ).rows;
+      const [accuse, ...autres] = await enFile();
+      expect(autres).toEqual([]);
+      expect(accuse).toMatchObject({
+        kind: 'candidature_recue',
+        recipient: null,
+        subject: 'Nous avons bien reçu votre candidature au poste d’Analyste Marketing',
+        status: 'pending',
+      });
+      expect(JSON.stringify(accuse)).not.toMatch(/amadou|samb|exemple\.sn/i);
+
+      await expediteur.envoyerCeQuiAttend();
+      expect(transport.envoyes).toHaveLength(1);
+      const [parti] = transport.envoyes;
+      expect(parti!.to).toBe('amadou.samb@exemple.sn');
+      expect(parti!.text).toContain('Bonjour Amadou,');
+      expect(parti!.text).toContain(
+        'Nous accusons bonne réception de votre candidature au poste d’Analyste Marketing',
+      );
+      expect(parti!.text).toContain('l’intérêt que vous portez à APIX S.A.');
+      expect(parti!.html).toContain('Candidature reçue');
+      expect(parti!.html).not.toContain('Copiez ce');
+      expect(await enFile()).toEqual([
+        expect.objectContaining({ status: 'sent', recipient: null, body_encrypted: null }),
+      ]);
+    } finally {
+      await expediteur.onModuleDestroy();
+    }
+  });
+});
+
+describe('une candidature rejetée', () => {
   const enc = new EncryptionService();
 
   /** Une offre publiée, et la candidature d'Amadou Way Samb, chiffrée comme au dépôt. */
