@@ -482,13 +482,14 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
         break;
       case '/employees':
         if (peut(user, 'personnel.consulter')) items.push(i);
-        // Qui est entré au portail, qui attend son invitation : au directeur.
-        if (user.dirigeLaDCH) {
+        // Qui est entré au portail, qui attend son invitation : au directeur,
+        // et à qui il le confie.
+        if (peut(user, 'acces')) {
           items.push({
             href: '/acces',
             label: 'Gestion des accès',
             short: 'Accès',
-            icon: 'verified_user',
+            icon: 'security',
             groupe: i.groupe,
           });
         }
@@ -1214,7 +1215,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       return peut(u, 'personnel.gerer');
     }
     if (commence('/employees')) return peut(u, 'personnel.consulter');
-    if (commence('/acces')) return u.dirigeLaDCH;
+    if (commence('/acces')) return peut(u, 'acces');
     if (commence('/absences/feries')) return peut(u, 'feries');
     if (commence('/absences/parametres')) return peut(u, 'conges.parametres');
     if (commence('/absences')) return peut(u, 'demandes.conges') || u.role === 'admin';

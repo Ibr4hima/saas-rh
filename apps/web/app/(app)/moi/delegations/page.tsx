@@ -58,6 +58,14 @@ const SECTIONS: { titre: string; lignes: Ligne[]; avertissement?: string }[] = [
         capacites: CAPACITES_PERSONNEL,
       },
       {
+        cle: 'acces',
+        description:
+          'Le délégué verra qui est entré sur le portail et qui attend son invitation, et pourra inviter les agents. L’invitation du directeur général et des administrateurs reste à vous.',
+        libelle: 'Gestion des accès',
+        icone: 'security',
+        capacites: ['acces'],
+      },
+      {
         cle: 'organigramme',
         description:
           'Le délégué pourra créer, modifier et réorganiser les directions et les départements de l’organigramme, et en désigner les responsables.',

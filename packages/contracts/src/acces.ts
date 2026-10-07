@@ -71,6 +71,7 @@ export const CAPACITES_GESTION = [
   'personnel.gerer',
   'personnel.sensible',
   'personnel.effacer',
+  'acces',
   'conges.soldes',
   'conges.parametres',
   'feries',
@@ -104,10 +105,11 @@ export const CAPACITES_ADMINISTRATEUR = ['textes'] as const satisfies readonly C
 
 /**
  * Ce que le rôle d'administrateur ne donne pas (décision APIX) : les dossiers
- * de candidature. Un administrateur qui dirige la DCH, ou à qui elle les
- * confie, les lit à ce titre-là, jamais en tant qu'administrateur.
+ * de candidature, et la gestion des accès, que la DCH tient et confie. Un
+ * administrateur qui dirige la DCH, ou à qui elle les confie, les a à ce
+ * titre-là, jamais en tant qu'administrateur.
  */
-export const HORS_ADMINISTRATEUR: readonly Capacite[] = ['recrutement.candidatures'];
+export const HORS_ADMINISTRATEUR: readonly Capacite[] = ['recrutement.candidatures', 'acces'];
 
 /** Ce que le rôle d'administrateur donne de lui-même. */
 export const CAPACITES_DE_L_ADMINISTRATEUR: readonly Capacite[] = CAPACITES_GESTION.filter(
@@ -264,6 +266,11 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
     description: 'Supprimer définitivement un dossier et tout ce qui s’y rattache.',
     groupe: 'Personnel',
     sensible: true,
+  },
+  acces: {
+    libelle: 'Gestion des accès',
+    description: 'Voir qui est entré sur le portail, et inviter les agents.',
+    groupe: 'Personnel',
   },
   'conges.soldes': {
     libelle: 'Soldes de congés',

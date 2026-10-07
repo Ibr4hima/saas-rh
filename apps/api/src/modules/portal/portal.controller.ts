@@ -59,7 +59,7 @@ export class PortalController {
   @Post('portail/invitations')
   @HttpCode(200)
   @UseGuards(SessionGuard, AccesGuard)
-  @Peut('personnel.gerer')
+  @Peut('personnel.gerer', 'acces')
   inviterPlusieurs(
     @Req() req: AuthenticatedRequest,
     @Body(new ZodValidationPipe(inviterPlusieursSchema)) body: InviterPlusieursInput,
@@ -67,18 +67,16 @@ export class PortalController {
     return this.invitations.inviterPlusieurs(req.sessionUser, body.ids);
   }
 
-  /** La gestion des accès : le directeur du Capital Humain, lui seul. */
+  /**
+   * La gestion des accès : le directeur du Capital Humain, et qui il la
+   * confie. Le délégué voit où en est chacun et invite ; les comptes de la
+   * direction et de l'administration restent hors de sa main
+   * (invitations.service.ts). Couper un accès se fait depuis la fiche.
+   */
   @Get('portail/acces')
-  @UseGuards(SessionGuard)
+  @UseGuards(SessionGuard, AccesGuard)
+  @Peut('acces')
   etatDesAcces(@Req() req: AuthenticatedRequest) {
-    if (!req.sessionUser.dirigeLaDCH) {
-      problem(
-        403,
-        'acces.reserve_au_directeur',
-        'Réservé au directeur du Capital Humain',
-        'La gestion des accès au portail est réservée au directeur du Capital Humain.',
-      );
-    }
     return this.invitations.etatDesAcces(req.sessionUser);
   }
 

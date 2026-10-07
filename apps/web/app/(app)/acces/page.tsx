@@ -3,7 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import type { AccesAgent, EtatDesAcces, InviterPlusieursResult } from '@teranga/contracts';
+import {
+  peut,
+  type AccesAgent,
+  type EtatDesAcces,
+  type InviterPlusieursResult,
+} from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -19,6 +24,7 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
+import { BandeauDeleguer } from '../../../components/deleguer-membres';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
@@ -33,6 +39,7 @@ import {
   useSelection,
 } from '../../../components/tableau';
 import { api, ApiError } from '../../../lib/api';
+import { useMe } from '../../../lib/hooks';
 import { compte } from '../../../lib/mots';
 
 /*
@@ -40,7 +47,8 @@ import { compte } from '../../../lib/mots';
 
    Qui est entré, qui a une invitation en attente, qui n'en a jamais reçu,
    qui revient sans mot de passe. On coche, on invite d'un coup ; une
-   ligne s'invite aussi seule. Au directeur du Capital Humain.
+   ligne s'invite aussi seule. Au directeur du Capital Humain, et à qui il
+   la délègue.
 */
 
 type Filtre = 'tous' | 'actif' | 'invite' | 'sans' | 'coupe';
@@ -81,6 +89,9 @@ const plat = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 
 export default function GestionDesAccesPage() {
   const queryClient = useQueryClient();
+  // La fiche ne s'ouvre qu'à qui consulte les dossiers : un délégué aux
+  // seuls accès lit le nom, sans lien.
+  const voitLesFiches = peut(useMe().data, 'personnel.consulter');
   const [filtre, setFiltre] = useState<Filtre>('tous');
   const [recherche, setRecherche] = useState('');
   const [bilan, setBilan] = useState<InviterPlusieursResult | null>(null);
@@ -148,6 +159,15 @@ export default function GestionDesAccesPage() {
 
   return (
     <Page>
+      <BandeauDeleguer
+        capacite="acces"
+        verbe="gérer"
+        objet="les accès au portail"
+        delegue="la gestion des accès"
+        retrait="Vous gérerez de vous-même les accès au portail."
+        titre="Déléguer la gestion des accès"
+        invitation="Vous pouvez déléguer la gestion des accès à votre équipe."
+      />
       <div className="mb-3 overflow-x-auto">
         <Onglets
           courant={filtre}
@@ -275,12 +295,16 @@ export default function GestionDesAccesPage() {
                       )
                     ) : null}
                     <Td>
-                      <Link
-                        href={`/employees/${a.employeeId}`}
-                        className="font-bold text-ink-strong hover:underline"
-                      >
-                        {a.nom}
-                      </Link>
+                      {voitLesFiches ? (
+                        <Link
+                          href={`/employees/${a.employeeId}`}
+                          className="font-bold text-ink-strong hover:underline"
+                        >
+                          {a.nom}
+                        </Link>
+                      ) : (
+                        <span className="font-bold text-ink-strong">{a.nom}</span>
+                      )}
                       <span className="block font-mono text-[11px] text-ink-muted">
                         {a.matricule}
                       </span>

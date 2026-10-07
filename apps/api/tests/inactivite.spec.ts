@@ -35,11 +35,13 @@ import { AccesGuard, FERME_AUX_INACTIFS_KEY } from '../src/modules/auth/acces.gu
 import { accesDuCompte } from '../src/modules/people/en-activite';
 import {
   agentDuCompte,
+  capacitesDe,
   directionDuPersonnel,
   estDeLaDCH,
   pasSurSoi,
   viseur,
 } from '../src/modules/acces/dch';
+import { HabilitationsService } from '../src/modules/acces/habilitations.service';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { DocumentRequestsService } from '../src/modules/docs/document-requests.service';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
@@ -1927,7 +1929,7 @@ describe('les invitations partent d’elles-mêmes', () => {
     ]);
   });
 
-  it('la gestion des accès : l’état de chacun, au directeur du Capital Humain seul', async () => {
+  it('la gestion des accès : l’état de chacun', async () => {
     await raw(
       `UPDATE persons SET user_id = NULL WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
       [ibou.employeeId],
@@ -1953,16 +1955,69 @@ describe('les invitations partent d’elles-mêmes', () => {
       courriel: null,
     });
     expect(etat(ibou)).toMatchObject({ etat: 'invite', adresse: 'ibou@apix.test' });
+  });
 
-    const controleur = new PortalController(portail, db, new Limiteur(db));
-    const requete = (dirigeLaDCH: boolean) =>
-      ({ sessionUser: { ...admin, dirigeLaDCH } }) as unknown as Parameters<
-        PortalController['etatDesAcces']
-      >[0];
-    expect(await codeOf(() => controleur.etatDesAcces(requete(false)))).toBe(
-      'acces.reserve_au_directeur',
+  it('la gestion des accès se délègue : la page et les invitations, pas la direction', async () => {
+    const awa = await agent(
+      'Awa',
+      uDCH,
+      { type: 'cdi', debut: -900, fin: null },
+      mariama.employeeId,
     );
-    expect(await codeOf(() => controleur.etatDesAcces(requete(true)))).toBe('AUCUNE ERREUR');
+    await new HabilitationsService(db).accorder(
+      { userId: mariama.userId, tenantId, role: 'employee' } as SessionUser,
+      { employeeId: awa.employeeId, capacite: 'acces', accordee: true },
+    );
+    const droits = await db.withTenant({ tenantId, userId: awa.userId }, (tx) =>
+      capacitesDe(tx, awa.userId, 'employee'),
+    );
+    expect(droits.capacites).toEqual(['acces']);
+    const delegue = { userId: awa.userId, tenantId, role: 'employee', ...droits } as SessionUser;
+
+    // Les portes : la page et les invitations. Couper un accès reste à la
+    // gestion du personnel ; l'administrateur n'a pas la page.
+    const garde = new AccesGuard(new Reflector());
+    const passe = (handler: object, sessionUser: object) => {
+      try {
+        return garde.canActivate({
+          getHandler: () => handler,
+          getClass: () => PortalController,
+          switchToHttp: () => ({ getRequest: () => ({ sessionUser }) }),
+        } as unknown as ExecutionContext);
+      } catch {
+        return false;
+      }
+    };
+    const { etatDesAcces, inviterPlusieurs, couper, retablir } = PortalController.prototype;
+    expect(
+      [etatDesAcces, inviterPlusieurs, couper, retablir].map((h) => passe(h, delegue)),
+    ).toEqual([true, true, false, false]);
+    expect(passe(etatDesAcces, { role: 'admin', capacites: [] })).toBe(false);
+    expect(passe(etatDesAcces, { role: 'employee', capacites: ['personnel.gerer'] })).toBe(false);
+    expect(passe(etatDesAcces, { role: 'employee', capacites: [] })).toBe(false);
+
+    // Il invite un agent ; le directeur général, non.
+    for (const [a, courriel] of [
+      [ibou, 'ibou@apix.test'],
+      [dg, 'cheikh@apix.test'],
+    ] as const) {
+      await raw(
+        `UPDATE persons SET user_id = NULL WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+        [a.employeeId],
+      );
+      await adresse(a, courriel);
+    }
+    const r = await portail.inviterPlusieurs(delegue, [dg.employeeId, ibou.employeeId]);
+    expect(r.invites.map((i) => i.employeeId)).toEqual([ibou.employeeId]);
+    expect(r.refus).toEqual([
+      {
+        employeeId: dg.employeeId,
+        nom: 'Cheikh Test',
+        raison: 'Seuls l’administrateur et le directeur du Capital Humain invitent cet agent',
+      },
+    ]);
+    const { agents } = await portail.etatDesAcces(delegue);
+    expect(agents.find((a) => a.employeeId === ibou.employeeId)?.etat).toBe('invite');
   });
   describe('un contrat qui commence plus tard', () => {
     /** Le premier jour d'un contrat en attente : c'est aujourd'hui. */

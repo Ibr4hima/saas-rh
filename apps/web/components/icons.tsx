@@ -99,6 +99,7 @@ export const ICON_NAMES = [
   'schedule',
   'school',
   'search',
+  'security',
   'settings',
   'task_alt',
   'timer',
