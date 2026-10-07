@@ -12,6 +12,7 @@ import { api, ApiError } from '../lib/api';
 import { compte } from '../lib/mots';
 import { Icon } from './icons';
 import { Modal, ModalSection } from './modal';
+import { Pagination, usePagination } from './pagination';
 
 /* ————————————————————————————————————————————————————————————————
    Importer l'effectif depuis le classeur du RH.
@@ -372,6 +373,7 @@ function InvitationsDuLot({
 /** Le compte rendu : les totaux d'abord, le détail ensuite. */
 function Compte({ rapport }: { rapport: RapportImportEmployes }) {
   const bloquant = rapport.colonnesManquantes.length > 0;
+  const { tranche, barre } = usePagination(rapport.lignes);
   return (
     <div className="flex flex-col gap-4">
       {bloquant ? (
@@ -414,129 +416,126 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
       ) : null}
 
       {rapport.lignes.length > 0 ? (
-        // Le tableau défile : trois cents lignes ne tiennent pas dans une
-        // fenêtre, et l'on veut pouvoir chercher SA ligne.
-        <div className="max-h-[22rem] overflow-auto rounded-[12px] border border-line-soft">
-          <Table>
-            <THead>
-              <tr>
-                <Th className="w-14 text-right">Ligne</Th>
-                <Th>Matricule</Th>
-                <Th>Nom</Th>
-                {/* Sous 768 px, le poste et la direction sortent : c'est
+        // Quinze lignes par page ; le tableau défile encore quand des
+        // avertissements allongent les lignes.
+        <>
+          <div className="max-h-[22rem] overflow-auto rounded-[12px] border border-line-soft">
+            <Table>
+              <THead>
+                <tr>
+                  <Th className="w-14 text-right">Ligne</Th>
+                  <Th>Matricule</Th>
+                  <Th>Nom</Th>
+                  {/* Sous 768 px, le poste et la direction sortent : c'est
                     l'ÉTAT qu'on vient lire, et il ne doit pas se trouver hors
                     de l'écran. Le motif d'un abrégé introuvable le nomme de
                     toute façon en clair. */}
-                <Th className="hidden md:table-cell">Poste</Th>
-                <Th className="hidden md:table-cell">Direction</Th>
-                <Th className="hidden lg:table-cell">Responsable</Th>
-                <Th>État</Th>
-              </tr>
-            </THead>
-            <TBody>
-              {rapport.lignes.map((l) => (
-                <Fragment key={l.ligne}>
-                  <Tr>
-                    <Td className="text-right font-mono text-[11.5px] text-ink-muted tabular-nums">
-                      {l.ligne}
-                    </Td>
-                    <Td className="font-mono text-[11.5px] whitespace-nowrap">
-                      {l.matricule ?? '—'}
-                    </Td>
-                    <Td className="font-semibold text-ink-strong">{l.nom ?? '—'}</Td>
-                    <Td className="hidden text-ink-muted md:table-cell">{l.poste ?? '—'}</Td>
-                    <Td className="hidden whitespace-nowrap md:table-cell">
-                      {l.uniteResolue ? (
-                        <span title={l.uniteResolue}>{l.uniteAbrege ?? l.uniteResolue}</span>
-                      ) : l.uniteAbrege ? (
-                        // L'abrégé s'allume quand il laisse un dossier sans
-                        // rattachement — pas sur une ligne qu'on n'écrit pas.
-                        <span
-                          className={cn(l.etat === 'a-creer' && 'text-accent-text')}
-                          title={l.etat === 'a-creer' ? 'Acronyme inconnu' : undefined}
-                        >
-                          {l.uniteAbrege}
-                        </span>
-                      ) : (
-                        <span className="text-ink-muted/60">—</span>
-                      )}
-                    </Td>
-                    {/* Le n+1 : le nom quand le matricule a été retrouvé, le
-                        matricule en orange quand il ne l'a pas été — c'est
+                  <Th className="hidden md:table-cell">Poste</Th>
+                  <Th className="hidden md:table-cell">Direction</Th>
+                  <Th className="hidden lg:table-cell">Responsable</Th>
+                  <Th>État</Th>
+                </tr>
+              </THead>
+              <TBody>
+                {tranche.map((l) => (
+                  <Fragment key={l.ligne}>
+                    <Tr>
+                      <Td className="text-right font-mono text-[11.5px] text-ink-muted tabular-nums">
+                        {l.ligne}
+                      </Td>
+                      <Td className="font-mono text-[11.5px] whitespace-nowrap">{l.matricule}</Td>
+                      <Td className="font-semibold text-ink-strong">{l.nom}</Td>
+                      <Td className="hidden text-ink-muted md:table-cell">{l.poste}</Td>
+                      <Td className="hidden whitespace-nowrap md:table-cell">
+                        {l.uniteResolue ? (
+                          <span title={l.uniteResolue}>{l.uniteAbrege ?? l.uniteResolue}</span>
+                        ) : l.uniteAbrege ? (
+                          // L'abrégé s'allume quand il laisse un dossier sans
+                          // rattachement, pas sur une ligne qu'on n'écrit pas.
+                          <span
+                            className={cn(l.etat === 'a-creer' && 'text-accent-text')}
+                            title={l.etat === 'a-creer' ? 'Acronyme inconnu' : undefined}
+                          >
+                            {l.uniteAbrege}
+                          </span>
+                        ) : null}
+                      </Td>
+                      {/* Le n+1 : le nom quand le matricule a été retrouvé, le
+                        matricule en orange quand il ne l'a pas été : c'est
                         alors lui qu'on corrige dans le tableur. */}
-                    <Td className="hidden whitespace-nowrap lg:table-cell">
-                      {l.responsableResolu ? (
-                        <span title={l.responsable ?? undefined}>{l.responsableResolu}</span>
-                      ) : l.responsable ? (
-                        // Le matricule ne s'allume que si le rattachement
-                        // MANQUERA vraiment : sur une ligne ignorée, rien
-                        // n'est écrit et il n'y a donc rien en attente.
-                        <span
-                          className={cn(
-                            'font-mono text-[11.5px]',
-                            l.etat === 'a-creer' && 'text-accent-text',
-                          )}
-                        >
-                          {l.responsable}
-                        </span>
-                      ) : (
-                        <span className="text-ink-muted/60">—</span>
-                      )}
-                    </Td>
-                    <Td>
-                      <span className="flex flex-col items-start gap-1">
-                        <Badge tone={TONS[l.etat]}>{motDeLEtat(l.etat, rapport.applique)}</Badge>
-                        {/* Le motif tient dans la colonne quand l'écran est
+                      <Td className="hidden whitespace-nowrap lg:table-cell">
+                        {l.responsableResolu ? (
+                          <span title={l.responsable ?? undefined}>{l.responsableResolu}</span>
+                        ) : l.responsable ? (
+                          // Le matricule ne s'allume que si le rattachement
+                          // MANQUERA vraiment : sur une ligne ignorée, rien
+                          // n'est écrit et il n'y a donc rien en attente.
+                          <span
+                            className={cn(
+                              'font-mono text-[11.5px]',
+                              l.etat === 'a-creer' && 'text-accent-text',
+                            )}
+                          >
+                            {l.responsable}
+                          </span>
+                        ) : null}
+                      </Td>
+                      <Td>
+                        <span className="flex flex-col items-start gap-1">
+                          <Badge tone={TONS[l.etat]}>{motDeLEtat(l.etat, rapport.applique)}</Badge>
+                          {/* Le motif tient dans la colonne quand l'écran est
                             large ; sous 768 px il passe à la ligne suivante,
                             en pleine largeur. Serré dans un cinquième de
                             390 px, il se hachait sur huit lignes. */}
-                        {l.motif ? (
-                          <span className="hidden text-[11px] leading-snug text-ink-muted md:inline">
-                            {l.colonne ? <b>{l.colonne} : </b> : null}
-                            {l.motif}
-                          </span>
-                        ) : null}
-                        {l.avertissements.map((a, i) => (
-                          <span
-                            key={`${a.colonne}-${i}`}
-                            className="hidden text-[11px] leading-snug text-ink-muted md:inline"
-                          >
-                            <b>{a.colonne} : </b>
-                            {a.texte}
-                          </span>
-                        ))}
-                      </span>
-                    </Td>
-                  </Tr>
-                  {l.motif || l.avertissements.length > 0 ? (
-                    <tr className="md:hidden">
-                      {/* `display:flex` sur un <td> lui fait perdre son
-                          `colspan` : la cellule cesse de couvrir les quatre
-                          colonnes et le texte se tasse dans la largeur de la
-                          première. La pile vit donc DANS la cellule. */}
-                      <td colSpan={4} className="px-4 pb-3">
-                        <span className="flex flex-col gap-1 text-[11px] leading-snug text-ink-muted">
                           {l.motif ? (
-                            <span>
+                            <span className="hidden text-[11px] leading-snug text-ink-muted md:inline">
                               {l.colonne ? <b>{l.colonne} : </b> : null}
                               {l.motif}
                             </span>
                           ) : null}
                           {l.avertissements.map((a, i) => (
-                            <span key={`${a.colonne}-${i}`}>
+                            <span
+                              key={`${a.colonne}-${i}`}
+                              className="hidden text-[11px] leading-snug text-ink-muted md:inline"
+                            >
                               <b>{a.colonne} : </b>
                               {a.texte}
                             </span>
                           ))}
                         </span>
-                      </td>
-                    </tr>
-                  ) : null}
-                </Fragment>
-              ))}
-            </TBody>
-          </Table>
-        </div>
+                      </Td>
+                    </Tr>
+                    {l.motif || l.avertissements.length > 0 ? (
+                      <tr className="md:hidden">
+                        {/* `display:flex` sur un <td> lui fait perdre son
+                          `colspan` : la cellule cesse de couvrir les quatre
+                          colonnes et le texte se tasse dans la largeur de la
+                          première. La pile vit donc DANS la cellule. */}
+                        <td colSpan={4} className="px-4 pb-3">
+                          <span className="flex flex-col gap-1 text-[11px] leading-snug text-ink-muted">
+                            {l.motif ? (
+                              <span>
+                                {l.colonne ? <b>{l.colonne} : </b> : null}
+                                {l.motif}
+                              </span>
+                            ) : null}
+                            {l.avertissements.map((a, i) => (
+                              <span key={`${a.colonne}-${i}`}>
+                                <b>{a.colonne} : </b>
+                                {a.texte}
+                              </span>
+                            ))}
+                          </span>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                ))}
+              </TBody>
+            </Table>
+          </div>
+          <Pagination {...barre} />
+        </>
       ) : null}
     </div>
   );

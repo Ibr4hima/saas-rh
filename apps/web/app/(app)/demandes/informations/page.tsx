@@ -25,6 +25,7 @@ import { DeleguerMembres } from '../../../../components/deleguer-membres';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
+import { Pagination, usePagination } from '../../../../components/pagination';
 import { valeurSignalee } from '../../../../components/telephone';
 import {
   BandeauDelegation,
@@ -114,6 +115,7 @@ export default function InformationsATraiterPage() {
     (r) => r.status === 'pending' && (!traite || r.canDecide || Boolean(r.traitement?.aConfier)),
   );
   const habilites = membres.filter((m) => m.capacites.includes('demandes.informations'));
+  const { tranche, barre } = usePagination(aTraiter);
 
   return (
     <Page>
@@ -166,73 +168,76 @@ export default function InformationsATraiterPage() {
             title="Rien à traiter"
           />
         ) : (
-          <Table>
-            <THead>
-              <tr>
-                <Th>Employé</Th>
-                <Th>Changement</Th>
-                <Th>Signalé le</Th>
-                <Th className="text-right">{traite ? 'Décision' : 'Traitée par'}</Th>
-              </tr>
-            </THead>
-            <TBody>
-              {aTraiter.map((r) => (
-                <Tr key={r.id}>
-                  <Td className="font-semibold whitespace-nowrap text-ink-strong">
-                    {r.employeeName}
-                  </Td>
-                  <Td>
-                    <Changements demande={r} />
-                  </Td>
-                  <Td className="whitespace-nowrap tabular-nums">
-                    {formatDate(r.createdAt.slice(0, 10))}
-                  </Td>
-                  <Td>
-                    {!traite ? (
-                      <p className="text-right text-[12px] text-ink-muted">
-                        {r.traitement?.traitants ?? '—'}
-                      </p>
-                    ) : r.canDecide ? (
-                      <div className="flex items-center justify-end gap-1.5">
-                        <BoutonDecision
-                          geste="approuver"
-                          objet="le changement"
-                          employe={r.employeeName}
-                          enCours={
-                            decider.isPending &&
-                            decider.variables?.demande.id === r.id &&
-                            decider.variables.decision === 'approve'
-                          }
-                          bloque={decider.isPending}
-                          onClick={() => {
-                            setMessage(null);
-                            if (r.fields.some((f) => f.modifieDepuis)) setARemplacer(r);
-                            else decider.mutate({ demande: r, decision: 'approve' });
-                          }}
-                        />
-                        <BoutonDecision
-                          geste="refuser"
-                          objet="le changement"
-                          employe={r.employeeName}
-                          enCours={false}
-                          bloque={decider.isPending}
-                          onClick={() => {
-                            setMessage(null);
-                            setMotif('');
-                            setRefus(r);
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <p className="text-right text-[11.5px] font-semibold text-accent-text">
-                        Votre propre demande, à déléguer
-                      </p>
-                    )}
-                  </Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
+          <>
+            <Table>
+              <THead>
+                <tr>
+                  <Th>Employé</Th>
+                  <Th>Changement</Th>
+                  <Th>Signalé le</Th>
+                  <Th className="text-right">{traite ? 'Décision' : 'Traitée par'}</Th>
+                </tr>
+              </THead>
+              <TBody>
+                {tranche.map((r) => (
+                  <Tr key={r.id}>
+                    <Td className="font-semibold whitespace-nowrap text-ink-strong">
+                      {r.employeeName}
+                    </Td>
+                    <Td>
+                      <Changements demande={r} />
+                    </Td>
+                    <Td className="whitespace-nowrap tabular-nums">
+                      {formatDate(r.createdAt.slice(0, 10))}
+                    </Td>
+                    <Td>
+                      {!traite ? (
+                        <p className="text-right text-[12px] text-ink-muted">
+                          {r.traitement?.traitants}
+                        </p>
+                      ) : r.canDecide ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <BoutonDecision
+                            geste="approuver"
+                            objet="le changement"
+                            employe={r.employeeName}
+                            enCours={
+                              decider.isPending &&
+                              decider.variables?.demande.id === r.id &&
+                              decider.variables.decision === 'approve'
+                            }
+                            bloque={decider.isPending}
+                            onClick={() => {
+                              setMessage(null);
+                              if (r.fields.some((f) => f.modifieDepuis)) setARemplacer(r);
+                              else decider.mutate({ demande: r, decision: 'approve' });
+                            }}
+                          />
+                          <BoutonDecision
+                            geste="refuser"
+                            objet="le changement"
+                            employe={r.employeeName}
+                            enCours={false}
+                            bloque={decider.isPending}
+                            onClick={() => {
+                              setMessage(null);
+                              setMotif('');
+                              setRefus(r);
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <p className="text-right text-[11.5px] font-semibold text-accent-text">
+                          Votre propre demande, à déléguer
+                        </p>
+                      )}
+                    </Td>
+                  </Tr>
+                ))}
+              </TBody>
+            </Table>
+            <Pagination {...barre} className="py-4" />
+          </>
         )}
       </Card>
 

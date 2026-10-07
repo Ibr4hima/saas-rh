@@ -3,20 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { AbsenceRequestView, MyEmployeeView } from '@teranga/contracts';
-import {
-  Button,
-  Card,
-  CardHeader,
-  CardTitle,
-  EmptyState,
-  Skeleton,
-  Table,
-  TBody,
-  Td,
-  Th,
-  THead,
-  Tr,
-} from '@teranga/ui';
+import { Button, Card, EmptyState, Skeleton, Table, TBody, Td, Th, THead, Tr } from '@teranga/ui';
 import {
   FenetreAnnulation,
   FenetreReprise,
@@ -26,6 +13,7 @@ import { type ViewableDoc } from '../../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../../components/fenetre-document';
 import { Icon } from '../../../../../components/icons';
 import { JoindreJustificatif } from '../../../../../components/joindre-justificatif';
+import { Pagination, usePagination } from '../../../../../components/pagination';
 import { StatutAbsence } from '../../../../../components/statut-absence';
 import { Page } from '../../../../../components/gabarit';
 import { api, ApiError, apiUrl } from '../../../../../lib/api';
@@ -34,9 +22,10 @@ import { formatDate } from '../../../../../lib/hooks';
 import { compte } from '../../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
-   L'historique des absences et congés : une carte par année, un tableau
-   d'une ligne par demande — type, période, durée, statut. Le détail du
-   circuit (qui a visé, pourquoi un refus) se lit au survol du statut.
+   L'historique des absences et congés : un tableau, une ligne par demande
+   (type, début, fin, durée, statut), quinze par page, la plus récente en
+   tête. Le détail du circuit (qui a visé, pourquoi un refus) se lit au
+   survol du statut.
    ———————————————————————————————————————————————————————————————— */
 
 export default function HistoriqueCongesPage() {
@@ -87,7 +76,7 @@ export default function HistoriqueCongesPage() {
   const demandes = (requests.data ?? [])
     .filter((r) => r.employeeId === employeeId)
     .sort((a, b) => b.startDate.localeCompare(a.startDate));
-  const annees = [...new Set(demandes.map((r) => r.startDate.slice(0, 4)))];
+  const { tranche, barre } = usePagination(demandes);
 
   return (
     <Page>
@@ -112,59 +101,58 @@ export default function HistoriqueCongesPage() {
           />
         </Card>
       ) : (
-        annees.map((annee) => (
-          <Card key={annee}>
-            <CardHeader>
-              <CardTitle>Demandes {annee}</CardTitle>
-            </CardHeader>
-            {/* Des colonnes de largeur fixe : d'une année à l'autre, les
-                périodes et les statuts tombent au même endroit. */}
+        <>
+          {/* Sans titre au-dessus, l'en-tête du tableau touche les coins
+              arrondis de la carte : elle le rogne. */}
+          <Card className="overflow-hidden">
+            {/* Des colonnes de largeur fixe : d'une page à l'autre, les dates
+                et les statuts tombent au même endroit. */}
             <Table className="sm:table-fixed">
               {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
               <THead className="hidden sm:table-header-group">
                 <tr>
-                  <Th className="sm:w-[20%]">Type</Th>
-                  <Th className="sm:w-[26%]">Période</Th>
+                  <Th className="sm:w-[18%]">Type</Th>
+                  <Th className="sm:w-[13%]">Date début</Th>
+                  <Th className="sm:w-[17%]">Date fin</Th>
                   <Th className="text-right sm:w-[9%]">Durée</Th>
                   <Th className="sm:w-[14%]">Justificatif</Th>
-                  <Th className="sm:w-[19%]">Statut</Th>
+                  <Th className="sm:w-[17%]">Statut</Th>
                   <Th className="sm:w-[12%]">
                     <span className="sr-only">Actions</span>
                   </Th>
                 </tr>
               </THead>
               <TBody>
-                {demandes
-                  .filter((r) => r.startDate.startsWith(annee))
-                  .map((r) => (
-                    <Ligne
-                      key={r.id}
-                      demande={r}
-                      onJustificatif={() =>
-                        setViewedDoc({
-                          url: apiUrl(`/absence-requests/${r.id}/document`),
-                          filename: r.documentName!,
-                          contentType: 'application/pdf',
-                          titre: 'Justificatif',
-                        })
-                      }
-                      onAnnuler={() =>
-                        r.status === 'pending' ? cancel.mutate(r.id) : setAAnnuler(r)
-                      }
-                      onEcourter={() => setAEcourter(r)}
-                      onRetirerReprise={() => retirerReprise.mutate(r.id)}
-                      onJoint={rafraichir}
-                      onErreur={setErreur}
-                      enCours={
-                        (cancel.isPending && cancel.variables === r.id) ||
-                        (retirerReprise.isPending && retirerReprise.variables === r.id)
-                      }
-                    />
-                  ))}
+                {tranche.map((r) => (
+                  <Ligne
+                    key={r.id}
+                    demande={r}
+                    onJustificatif={() =>
+                      setViewedDoc({
+                        url: apiUrl(`/absence-requests/${r.id}/document`),
+                        filename: r.documentName!,
+                        contentType: 'application/pdf',
+                        titre: 'Justificatif',
+                      })
+                    }
+                    onAnnuler={() =>
+                      r.status === 'pending' ? cancel.mutate(r.id) : setAAnnuler(r)
+                    }
+                    onEcourter={() => setAEcourter(r)}
+                    onRetirerReprise={() => retirerReprise.mutate(r.id)}
+                    onJoint={rafraichir}
+                    onErreur={setErreur}
+                    enCours={
+                      (cancel.isPending && cancel.variables === r.id) ||
+                      (retirerReprise.isPending && retirerReprise.variables === r.id)
+                    }
+                  />
+                ))}
               </TBody>
             </Table>
           </Card>
-        ))
+          <Pagination {...barre} />
+        </>
       )}
 
       <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
@@ -258,8 +246,11 @@ function Ligne({
           <span className="ml-auto">{geste}</span>
         </div>
       </Td>
+      <Td className="hidden whitespace-nowrap tabular-nums sm:table-cell">
+        {formatDate(r.startDate)}
+      </Td>
       <Td className="hidden tabular-nums sm:table-cell">
-        {periode}
+        <span className="whitespace-nowrap">{formatDate(r.endDate)}</span>
         <MentionConge demande={r} />
       </Td>
       <Td className="hidden text-right whitespace-nowrap tabular-nums sm:table-cell">

@@ -24,6 +24,7 @@ import {
 import { BandeauDeleguer } from '../../../../components/deleguer-membres';
 import { Icon } from '../../../../components/icons';
 import { Modal, ModalGrid, ModalSection } from '../../../../components/modal';
+import { Pagination, usePagination } from '../../../../components/pagination';
 import {
   Actions,
   FenetreSuppression,
@@ -105,6 +106,7 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
 
   const jour = aujourdhui();
   const lignes = feries.data ?? [];
+  const { tranche, barre } = usePagination(lignes, annee);
   const colonnes = peutGerer ? 5 : 4;
 
   return (
@@ -148,86 +150,91 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
             }
           />
         ) : (
-          <Table>
-            <THead>
-              <tr>
-                <Th className="w-44">Date</Th>
-                <Th>Intitulé</Th>
-                <Th className="w-40">Jour de la semaine</Th>
-                <Th className="w-28">Statut</Th>
-                {peutGerer ? <Th className="w-20 text-right">Actions</Th> : null}
-              </tr>
-            </THead>
-            <TBody>
-              {lignes.map((h) => {
-                const passe = h.day != null && h.day < jour;
-                const etat = statutDuJour(h.day, jour);
-                return (
-                  <Tr key={h.id} className={passe ? 'group bg-line-soft/70' : 'group'}>
-                    <Td
-                      className={passe ? 'text-ink-muted' : 'text-ink'}
-                      style={{ fontVariantNumeric: 'tabular-nums' }}
-                    >
-                      {h.day != null ? (
-                        formatDate(h.day)
-                      ) : peutGerer ? (
-                        <button
-                          type="button"
-                          aria-label={`Dater ${h.label} sur ${h.year}`}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-line px-2.5 py-1 text-[12px] text-ink-muted transition-colors duration-150 hover:border-primary hover:text-primary"
-                          onClick={() => setEdition(h)}
-                        >
-                          <Icon name="calendar_month" size={15} />
-                          Définir la date
-                        </button>
-                      ) : (
-                        <span className="text-ink-muted">—</span>
-                      )}
-                    </Td>
-                    <Td
-                      className={
-                        passe || h.day == null ? 'text-ink-muted' : 'font-semibold text-ink-strong'
-                      }
-                    >
-                      <span className="inline-flex items-center gap-1.5">
-                        {h.label}
-                        {h.fixed ? (
-                          <Icon
-                            name="lock"
-                            size={13}
-                            className="text-ink-muted"
-                            title="Date fixe : ce jour tombe à la même date chaque année"
-                          />
+          <>
+            <Table>
+              <THead>
+                <tr>
+                  <Th className="w-44">Date</Th>
+                  <Th>Intitulé</Th>
+                  <Th className="w-40">Jour de la semaine</Th>
+                  <Th className="w-28">Statut</Th>
+                  {peutGerer ? <Th className="w-20 text-right">Actions</Th> : null}
+                </tr>
+              </THead>
+              <TBody>
+                {tranche.map((h) => {
+                  const passe = h.day != null && h.day < jour;
+                  const etat = statutDuJour(h.day, jour);
+                  return (
+                    <Tr key={h.id} className={passe ? 'group bg-line-soft/70' : 'group'}>
+                      <Td
+                        className={passe ? 'text-ink-muted' : 'text-ink'}
+                        style={{ fontVariantNumeric: 'tabular-nums' }}
+                      >
+                        {h.day != null ? (
+                          formatDate(h.day)
+                        ) : peutGerer ? (
+                          <button
+                            type="button"
+                            aria-label={`Dater ${h.label} sur ${h.year}`}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-line px-2.5 py-1 text-[12px] text-ink-muted transition-colors duration-150 hover:border-primary hover:text-primary"
+                            onClick={() => setEdition(h)}
+                          >
+                            <Icon name="calendar_month" size={15} />
+                            Définir la date
+                          </button>
                         ) : null}
-                      </span>
-                    </Td>
-                    <Td className="text-ink-muted">{h.day != null ? jourSemaine(h.day) : '—'}</Td>
-                    <Td className={etat.classe}>{etat.texte}</Td>
-                    {peutGerer ? (
-                      <Td className="text-right">
-                        <Actions
-                          nom={h.label}
-                          // Une date civile se retire, mais ne se déplace pas :
-                          // pas de crayon, sinon le formulaire proposerait un
-                          // champ que l'API refuse.
-                          onModifier={h.fixed ? undefined : () => setEdition(h)}
-                          onSupprimer={() => setASupprimer(h)}
-                        />
                       </Td>
-                    ) : null}
-                  </Tr>
-                );
-              })}
+                      <Td
+                        className={
+                          passe || h.day == null
+                            ? 'text-ink-muted'
+                            : 'font-semibold text-ink-strong'
+                        }
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          {h.label}
+                          {h.fixed ? (
+                            <Icon
+                              name="lock"
+                              size={13}
+                              className="text-ink-muted"
+                              title="Date fixe : ce jour tombe à la même date chaque année"
+                            />
+                          ) : null}
+                        </span>
+                      </Td>
+                      <Td className="text-ink-muted">
+                        {h.day != null ? jourSemaine(h.day) : null}
+                      </Td>
+                      <Td className={etat.classe}>{etat.texte}</Td>
+                      {peutGerer ? (
+                        <Td className="text-right">
+                          <Actions
+                            nom={h.label}
+                            // Une date civile se retire, mais ne se déplace pas :
+                            // pas de crayon, sinon le formulaire proposerait un
+                            // champ que l'API refuse.
+                            onModifier={h.fixed ? undefined : () => setEdition(h)}
+                            onSupprimer={() => setASupprimer(h)}
+                          />
+                        </Td>
+                      ) : null}
+                    </Tr>
+                  );
+                })}
 
-              {lignes.length === 0 ? (
-                <Tr>
-                  <Td colSpan={colonnes} className="py-8 text-center text-ink-muted">
-                    Aucun jour férié sur {annee}.
-                  </Td>
-                </Tr>
-              ) : null}
-            </TBody>
-          </Table>
+                {lignes.length === 0 ? (
+                  <Tr>
+                    <Td colSpan={colonnes} className="py-8 text-center text-ink-muted">
+                      Aucun jour férié sur {annee}.
+                    </Td>
+                  </Tr>
+                ) : null}
+              </TBody>
+            </Table>
+            <Pagination {...barre} className="py-4" />
+          </>
         )}
       </CardContent>
 

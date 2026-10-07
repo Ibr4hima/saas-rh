@@ -37,6 +37,7 @@ import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
+import { Pagination, usePagination } from '../../../components/pagination';
 import { DeleguerDocuments, DOCUMENTS_DELEGABLES } from '../../../components/deleguer-documents';
 import {
   BandeauDelegation,
@@ -163,7 +164,11 @@ export default function DocumentRequestsPage() {
     { createdAt: 'desc', employeeNumber: 'asc', employeeName: 'asc', requete: 'asc' },
   );
   const aTraiter = tri.lignes;
-  const sel = useSelection(aTraiter);
+  // Quinze par page ; comme pour le personnel, la sélection porte sur la
+  // page affichée.
+  const fileVue = usePagination(aTraiter, `${tri.colonne}|${tri.sens}`);
+  const historique = usePagination(traitees);
+  const sel = useSelection(fileVue.tranche);
   const selectionnees = sel.choisis;
 
   if (requests.isError) {
@@ -264,7 +269,7 @@ export default function DocumentRequestsPage() {
               </tr>
             </THead>
             <TBody>
-              {aTraiter.map((r) => {
+              {fileVue.tranche.map((r) => {
                 const h = hoursSince(r.createdAt);
                 return (
                   <Tr key={r.id} className={cn(sel.coche(r.id) && LIGNE_COCHEE)}>
@@ -319,6 +324,13 @@ export default function DocumentRequestsPage() {
           </Table>
         )}
       </CartePleine>
+      <Pagination
+        {...fileVue.barre}
+        onPage={(p) => {
+          sel.vider();
+          fileVue.barre.onPage(p);
+        }}
+      />
 
       <CartePleine>
         <EnTetePliable
@@ -353,7 +365,7 @@ export default function DocumentRequestsPage() {
               </tr>
             </THead>
             <TBody>
-              {traitees.map((r) => (
+              {historique.tranche.map((r) => (
                 <Tr key={r.id}>
                   <TdGouttiere />
                   <Td className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</Td>
@@ -401,6 +413,7 @@ export default function DocumentRequestsPage() {
           </Table>
         )}
       </CartePleine>
+      {traiteesOuvertes ? <Pagination {...historique.barre} /> : null}
 
       {panneau === 'traiter' ? (
         <TraiterModal

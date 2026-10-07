@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { cn } from '@teranga/ui';
 import { Icon } from './icons';
 
@@ -83,19 +83,64 @@ function useEtroit(): boolean {
   return etroit;
 }
 
+/** Quinze lignes par page : la règle de tous les tableaux de la plateforme. */
+export const LIGNES_PAR_PAGE = 15;
+
+/**
+ * La pagination d'une liste déjà chargée : la tranche à afficher, et ce que
+ * la barre attend.
+ *
+ * Une liste qui se réduit (un filtre, une demande traitée qui s'en va) ne
+ * laisse pas sur une page vide : on retombe sur la dernière page réelle.
+ * `cle` remet à la première page quand la liste change de nature (un
+ * onglet, une recherche).
+ */
+export function usePagination<T>(lignes: readonly T[], cle?: unknown) {
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [cle]);
+  const pages = Math.max(1, Math.ceil(lignes.length / LIGNES_PAR_PAGE));
+  const courante = Math.min(page, pages);
+  const tranche = useMemo(
+    () => lignes.slice((courante - 1) * LIGNES_PAR_PAGE, courante * LIGNES_PAR_PAGE),
+    [lignes, courante],
+  );
+  return { tranche, barre: { page: courante, pages, onPage: setPage, remonter: true } };
+}
+
+/**
+ * Remonter au début de ce qu'on pagine : l'élément juste avant la barre, s'il
+ * est sorti de l'écran par le haut. On clique la barre EN BAS de la liste ;
+ * sans ce geste, on atterrirait sous la quinzième ligne d'une page qu'on n'a
+ * pas encore lue. C'est le panneau de l'application qui défile
+ * (`data-scroll-root`), pas la fenêtre.
+ */
+function remonterA(barre: HTMLElement | null) {
+  const cible = barre?.previousElementSibling;
+  const panneau = document.querySelector<HTMLElement>('[data-scroll-root]');
+  if (!cible || !panneau) return;
+  const haut = cible.getBoundingClientRect().top - panneau.getBoundingClientRect().top;
+  if (haut < 0) panneau.scrollBy({ top: haut - 16, behavior: 'smooth' });
+}
+
 export function Pagination({
   page,
   pages,
   onPage,
+  remonter,
   className,
 }: {
   /** La page courante, de 1 à `pages`. */
   page: number;
   pages: number;
   onPage: (page: number) => void;
+  /** Revenir au début du tableau à chaque changement de page. */
+  remonter?: boolean;
   className?: string;
 }) {
   const etroit = useEtroit();
+  const racine = useRef<HTMLDivElement>(null);
+  // Plusieurs tableaux paginés sur une page : un champ, un identifiant.
+  const champ = useId();
   // Le champ garde SA valeur pendant qu'on la tape — « 1 » puis « 12 » —, et
   // se réaligne sur la page dès qu'elle change par un autre chemin.
   const [saisie, setSaisie] = useState(String(page));
@@ -107,7 +152,10 @@ export function Pagination({
 
   const aller = (n: number) => {
     const cible = Math.min(pages, Math.max(1, n));
-    if (cible !== page) onPage(cible);
+    if (cible !== page) {
+      onPage(cible);
+      if (remonter) remonterA(racine.current);
+    }
     return cible;
   };
 
@@ -120,7 +168,7 @@ export function Pagination({
   };
 
   return (
-    <div className={cn('flex shrink-0 flex-col items-center gap-2.5', className)}>
+    <div ref={racine} className={cn('flex shrink-0 flex-col items-center gap-2.5', className)}>
       <nav
         aria-label="Pagination"
         className="inline-flex items-center gap-1 rounded-full border border-card-line bg-surface p-1.5 shadow-sm"
@@ -172,9 +220,9 @@ export function Pagination({
       </nav>
 
       <p className="flex items-center gap-2 text-[12px] text-ink-muted">
-        <label htmlFor="aller-page">Aller à la page</label>
+        <label htmlFor={champ}>Aller à la page</label>
         <input
-          id="aller-page"
+          id={champ}
           inputMode="numeric"
           value={saisie}
           onChange={(e) => setSaisie(e.target.value.replace(/[^0-9]/g, '').slice(0, 5))}

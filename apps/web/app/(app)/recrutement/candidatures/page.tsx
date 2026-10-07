@@ -24,6 +24,7 @@ import { LoadFailure } from '../../../../components/load-failure';
 import { correspond } from '../../../../lib/recherche';
 import { CONTRACT_LABELS } from '../../../../lib/recruitment';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
+import { Pagination, usePagination } from '../../../../components/pagination';
 import { SqueletteTableau, ThTri, useTriLocal } from '../../../../components/tableau';
 import { formatDate } from '../../../../lib/hooks';
 
@@ -75,6 +76,7 @@ export default function CandidaturesPage() {
     },
   );
   const lignes = tri.lignes;
+  const { tranche, barre } = usePagination(lignes, `${q}|${tri.colonne}|${tri.sens}`);
 
   if (jobs.isError) {
     return <LoadFailure error={jobs.error} onRetry={() => void jobs.refetch()} />;
@@ -164,7 +166,7 @@ export default function CandidaturesPage() {
               </tr>
             </THead>
             <TBody>
-              {lignes.map((o) => {
+              {tranche.map((o) => {
                 const n = postulants(o);
                 return (
                   // La ligne entière ouvre le pipeline : c'est le seul geste
@@ -216,6 +218,7 @@ export default function CandidaturesPage() {
           </Table>
         )}
       </CartePleine>
+      <Pagination {...barre} />
     </Page>
   );
 }

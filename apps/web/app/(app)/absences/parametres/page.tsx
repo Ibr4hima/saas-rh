@@ -24,6 +24,7 @@ import {
 } from '@teranga/ui';
 import { BandeauDeleguer } from '../../../../components/deleguer-membres';
 import { Icon } from '../../../../components/icons';
+import { Pagination, usePagination } from '../../../../components/pagination';
 import { Modal, ModalGrid, ModalSection } from '../../../../components/modal';
 import {
   Actions,
@@ -82,6 +83,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
   };
 
   const liste = types.data ?? [];
+  const { tranche, barre } = usePagination(liste);
 
   return (
     <CartePleine>
@@ -115,53 +117,56 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
           />
         </CorpsDefilant>
       ) : (
-        <Table pleine>
-          <THead>
-            <tr>
-              <Th>Type d&apos;absence</Th>
-              <Th>Quota</Th>
-              <Th>Règles</Th>
-              {peutGerer ? <Th className="w-20 text-right">Actions</Th> : null}
-            </tr>
-          </THead>
-          <TBody>
-            {(types.data ?? []).map((t) => (
-              <Tr key={t.id} className="group">
-                <Td className="font-semibold text-ink-strong">{t.name}</Td>
-                <Td style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {t.frequency === 'annual' && t.allowanceDays != null ? (
-                    <>
-                      {t.allowanceDays} <span className="text-ink-muted">j par an</span>
-                    </>
-                  ) : (
-                    <span className="text-ink-muted">Sans quota</span>
-                  )}
-                </Td>
-                <Td>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {t.deductsBalance ? (
-                      <Badge tone="bleu">Décompté du solde</Badge>
+        <>
+          <Table pleine>
+            <THead>
+              <tr>
+                <Th>Type d&apos;absence</Th>
+                <Th>Quota</Th>
+                <Th>Règles</Th>
+                {peutGerer ? <Th className="w-20 text-right">Actions</Th> : null}
+              </tr>
+            </THead>
+            <TBody>
+              {tranche.map((t) => (
+                <Tr key={t.id} className="group">
+                  <Td className="font-semibold text-ink-strong">{t.name}</Td>
+                  <Td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {t.frequency === 'annual' && t.allowanceDays != null ? (
+                      <>
+                        {t.allowanceDays} <span className="text-ink-muted">j par an</span>
+                      </>
                     ) : (
-                      <Badge tone="gris">Suivi seul</Badge>
+                      <span className="text-ink-muted">Sans quota</span>
                     )}
-                    {t.requiresDocument ? <Badge tone="orange">Justificatif</Badge> : null}
-                    {t.resteJoignable ? <Badge tone="teal">Joignable</Badge> : null}
-                    {t.motifConfidentiel ? <Badge tone="prune">Confidentiel</Badge> : null}
-                  </div>
-                </Td>
-                {peutGerer ? (
-                  <Td className="text-right">
-                    <Actions
-                      nom={t.name}
-                      onModifier={() => setEdition(t)}
-                      onSupprimer={() => setASupprimer(t)}
-                    />
                   </Td>
-                ) : null}
-              </Tr>
-            ))}
-          </TBody>
-        </Table>
+                  <Td>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {t.deductsBalance ? (
+                        <Badge tone="bleu">Décompté du solde</Badge>
+                      ) : (
+                        <Badge tone="gris">Suivi seul</Badge>
+                      )}
+                      {t.requiresDocument ? <Badge tone="orange">Justificatif</Badge> : null}
+                      {t.resteJoignable ? <Badge tone="teal">Joignable</Badge> : null}
+                      {t.motifConfidentiel ? <Badge tone="prune">Confidentiel</Badge> : null}
+                    </div>
+                  </Td>
+                  {peutGerer ? (
+                    <Td className="text-right">
+                      <Actions
+                        nom={t.name}
+                        onModifier={() => setEdition(t)}
+                        onSupprimer={() => setASupprimer(t)}
+                      />
+                    </Td>
+                  ) : null}
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+          <Pagination {...barre} className="py-4" />
+        </>
       )}
       {edition ? (
         <FenetreType

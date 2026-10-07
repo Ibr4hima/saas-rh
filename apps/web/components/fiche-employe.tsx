@@ -44,6 +44,7 @@ import { Telephone } from './telephone';
 import { Donnee, EnTete, Groupe, Peremption, Repere } from './fiche';
 import { Icon } from './icons';
 import { Modal } from './modal';
+import { Pagination, usePagination } from './pagination';
 import { contractEnd, ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../lib/person';
 import { formatDate, useMe } from '../lib/hooks';
 import { aujourdhui } from '../lib/temps';
@@ -149,6 +150,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
     queryFn: () => api<EmployeeHistoryEntry[]>(`/employees/${id}/history`),
     enabled: Boolean(canSeeHistory),
   });
+  const contrats = usePagination(detail.data?.contracts ?? []);
 
   if (detail.isLoading) {
     return (
@@ -484,59 +486,62 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                 <p className="text-sm text-ink-muted">Aucun contrat enregistré.</p>
               </CardContent>
             ) : (
-              <Table>
-                <THead>
-                  <tr>
-                    <Th>Type</Th>
-                    <Th>Début</Th>
-                    <Th>Fin</Th>
-                    {peutGerer ? (
-                      <Th>
-                        <span className="sr-only">Actions</span>
-                      </Th>
-                    ) : null}
-                  </tr>
-                </THead>
-                <TBody>
-                  {e.contracts.map((c, i) => (
-                    <Tr key={c.id}>
-                      <Td className="font-medium text-ink-strong">
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          {CONTRACT_LABELS[c.contractType] ?? c.contractType}
-                          {c.placePrevue ? <Badge tone="orange">À venir</Badge> : null}
-                        </span>
-                        {c.placePrevue ? (
-                          <span className="block text-[11.5px] font-normal text-ink-muted">
-                            {[c.placePrevue.poste, c.placePrevue.direction]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </span>
-                        ) : null}
-                      </Td>
-                      <Td>{formatDate(c.startDate)}</Td>
-                      <Td>{c.endDate ? formatDate(c.endDate) : null}</Td>
+              <>
+                <Table>
+                  <THead>
+                    <tr>
+                      <Th>Type</Th>
+                      <Th>Début</Th>
+                      <Th>Fin</Th>
                       {peutGerer ? (
-                        <Td className="text-right">
-                          {/* Le plus récent d'abord : seul le dernier se corrige, et
-                              s'annule tant qu'il n'a pas commencé. */}
-                          {i === 0 ? (
-                            <span className="inline-flex flex-wrap justify-end gap-1">
-                              <CorrectionContrat employeeId={e.id} contrat={c} />
-                              {c.startDate > jour ? (
-                                <AnnulationContrat
-                                  employeeId={e.id}
-                                  contrat={c}
-                                  prenom={e.person.givenName}
-                                />
-                              ) : null}
+                        <Th>
+                          <span className="sr-only">Actions</span>
+                        </Th>
+                      ) : null}
+                    </tr>
+                  </THead>
+                  <TBody>
+                    {contrats.tranche.map((c) => (
+                      <Tr key={c.id}>
+                        <Td className="font-medium text-ink-strong">
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            {CONTRACT_LABELS[c.contractType] ?? c.contractType}
+                            {c.placePrevue ? <Badge tone="orange">À venir</Badge> : null}
+                          </span>
+                          {c.placePrevue ? (
+                            <span className="block text-[11.5px] font-normal text-ink-muted">
+                              {[c.placePrevue.poste, c.placePrevue.direction]
+                                .filter(Boolean)
+                                .join(' · ')}
                             </span>
                           ) : null}
                         </Td>
-                      ) : null}
-                    </Tr>
-                  ))}
-                </TBody>
-              </Table>
+                        <Td>{formatDate(c.startDate)}</Td>
+                        <Td>{c.endDate ? formatDate(c.endDate) : null}</Td>
+                        {peutGerer ? (
+                          <Td className="text-right">
+                            {/* Le plus récent d'abord : seul le dernier se corrige, et
+                              s'annule tant qu'il n'a pas commencé. */}
+                            {c.id === e.contracts[0]?.id ? (
+                              <span className="inline-flex flex-wrap justify-end gap-1">
+                                <CorrectionContrat employeeId={e.id} contrat={c} />
+                                {c.startDate > jour ? (
+                                  <AnnulationContrat
+                                    employeeId={e.id}
+                                    contrat={c}
+                                    prenom={e.person.givenName}
+                                  />
+                                ) : null}
+                              </span>
+                            ) : null}
+                          </Td>
+                        ) : null}
+                      </Tr>
+                    ))}
+                  </TBody>
+                </Table>
+                <Pagination {...contrats.barre} className="py-4" />
+              </>
             )}
           </Card>
 
@@ -719,6 +724,7 @@ function AssignmentsCard({
   const [geste, setGeste] = useState<'corriger' | 'annuler' | null>(null);
   const parDate = [...assignments].sort((a, b) => b.validFrom.localeCompare(a.validFrom));
   const derniere = parDate[0];
+  const pages = usePagination(assignments);
   const annulable = Boolean(derniere && parDate[1] && parDate[1].validTo === derniere.validFrom);
   const gestesDerniere = (
     <>
@@ -953,54 +959,57 @@ function AssignmentsCard({
           <p className="text-sm text-ink-muted">Aucune affectation enregistrée.</p>
         </CardContent>
       ) : (
-        <Table>
-          <THead>
-            <tr>
-              <Th>Poste</Th>
-              <Th>Unité</Th>
-              <Th>Du</Th>
-              <Th>Au</Th>
-              {canManage ? (
-                <Th className="hidden sm:table-cell">
-                  <span className="sr-only">Actions</span>
-                </Th>
-              ) : null}
-            </tr>
-          </THead>
-          <TBody>
-            {assignments.map((a) => (
-              <Tr key={a.id}>
-                <Td className="font-medium text-ink-strong">
-                  {a.positionTitle}
-                  {/* Sur téléphone, les gestes passent sous le poste : une
+        <>
+          <Table>
+            <THead>
+              <tr>
+                <Th>Poste</Th>
+                <Th>Unité</Th>
+                <Th>Du</Th>
+                <Th>Au</Th>
+                {canManage ? (
+                  <Th className="hidden sm:table-cell">
+                    <span className="sr-only">Actions</span>
+                  </Th>
+                ) : null}
+              </tr>
+            </THead>
+            <TBody>
+              {pages.tranche.map((a) => (
+                <Tr key={a.id}>
+                  <Td className="font-medium text-ink-strong">
+                    {a.positionTitle}
+                    {/* Sur téléphone, les gestes passent sous le poste : une
                       cinquième colonne sortirait de l'écran. */}
-                  {canManage && a.id === derniere?.id ? (
-                    <div className="mt-1.5 -ml-2.5 flex gap-1 sm:hidden">{gestesDerniere}</div>
-                  ) : null}
-                </Td>
-                <Td>{a.orgUnitName}</Td>
-                <Td className="whitespace-nowrap">{formatDate(a.validFrom)}</Td>
-                {/* La colonne « Au » porte seule l'état : « aujourd'hui » dit
+                    {canManage && a.id === derniere?.id ? (
+                      <div className="mt-1.5 -ml-2.5 flex gap-1 sm:hidden">{gestesDerniere}</div>
+                    ) : null}
+                  </Td>
+                  <Td>{a.orgUnitName}</Td>
+                  <Td className="whitespace-nowrap">{formatDate(a.validFrom)}</Td>
+                  {/* La colonne « Au » porte seule l'état : « aujourd'hui » dit
                     l'affectation en cours, « à venir » celle qui n'a pas
                     commencé. Un badge à côté répétait ce que la date dit. */}
-                <Td className="whitespace-nowrap">
-                  {a.validTo ? (
-                    formatDate(lastDay(a.validTo))
-                  ) : a.current ? (
-                    <span className="font-semibold text-primary">aujourd&apos;hui</span>
-                  ) : (
-                    <span className="text-ink-muted">à venir</span>
-                  )}
-                </Td>
-                {canManage ? (
-                  <Td className="hidden text-right whitespace-nowrap sm:table-cell">
-                    {a.id === derniere?.id ? gestesDerniere : null}
+                  <Td className="whitespace-nowrap">
+                    {a.validTo ? (
+                      formatDate(lastDay(a.validTo))
+                    ) : a.current ? (
+                      <span className="font-semibold text-primary">aujourd&apos;hui</span>
+                    ) : (
+                      <span className="text-ink-muted">à venir</span>
+                    )}
                   </Td>
-                ) : null}
-              </Tr>
-            ))}
-          </TBody>
-        </Table>
+                  {canManage ? (
+                    <Td className="hidden text-right whitespace-nowrap sm:table-cell">
+                      {a.id === derniere?.id ? gestesDerniere : null}
+                    </Td>
+                  ) : null}
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+          <Pagination {...pages.barre} className="py-4" />
+        </>
       )}
     </Card>
   );
@@ -1021,6 +1030,7 @@ function BalancesCard({ employeeId }: { employeeId: string }) {
     queryKey: ['balances', employeeId, String(year)],
     queryFn: () => api<BalanceView[]>(`/employees/${employeeId}/balances?year=${year}`),
   });
+  const { tranche, barre } = usePagination(balances.data ?? []);
 
   return (
     <Card>
@@ -1032,40 +1042,45 @@ function BalancesCard({ employeeId }: { employeeId: string }) {
           <Skeleton className="h-16 w-full" />
         </CardContent>
       ) : (
-        <Table>
-          <THead>
-            <tr>
-              <Th>Type</Th>
-              {/* Quatre colonnes de nombres, cadrées à DROITE et en chiffres
+        <>
+          <Table>
+            <THead>
+              <tr>
+                <Th>Type</Th>
+                {/* Quatre colonnes de nombres, cadrées à DROITE et en chiffres
                     de largeur fixe : les unités tombent sous les unités, et on
                     compare deux lignes sans les lire. */}
-              <Th className="text-right">Droit</Th>
-              <Th className="text-right">Pris</Th>
-              <Th className="text-right">En attente</Th>
-              <Th className="text-right">Restant</Th>
-            </tr>
-          </THead>
-          <TBody>
-            {balances.data?.map((b) => (
-              <Tr key={b.absenceTypeId}>
-                <Td className="font-medium text-ink-strong">
-                  {b.absenceTypeName}
-                  {b.retire ? (
-                    <Badge tone="gris" size="sm" className="ml-2 align-middle">
-                      Retiré
-                    </Badge>
-                  ) : null}
-                </Td>
-                <Td className="text-right font-mono">{b.deductsBalance ? b.entitledDays : null}</Td>
-                <Td className="text-right font-mono">{b.takenDays}</Td>
-                <Td className="text-right font-mono">{b.pendingDays}</Td>
-                <Td className="text-right font-mono font-semibold text-ink-strong">
-                  {b.deductsBalance ? b.remainingDays : null}
-                </Td>
-              </Tr>
-            ))}
-          </TBody>
-        </Table>
+                <Th className="text-right">Droit</Th>
+                <Th className="text-right">Pris</Th>
+                <Th className="text-right">En attente</Th>
+                <Th className="text-right">Restant</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {tranche.map((b) => (
+                <Tr key={b.absenceTypeId}>
+                  <Td className="font-medium text-ink-strong">
+                    {b.absenceTypeName}
+                    {b.retire ? (
+                      <Badge tone="gris" size="sm" className="ml-2 align-middle">
+                        Retiré
+                      </Badge>
+                    ) : null}
+                  </Td>
+                  <Td className="text-right font-mono">
+                    {b.deductsBalance ? b.entitledDays : null}
+                  </Td>
+                  <Td className="text-right font-mono">{b.takenDays}</Td>
+                  <Td className="text-right font-mono">{b.pendingDays}</Td>
+                  <Td className="text-right font-mono font-semibold text-ink-strong">
+                    {b.deductsBalance ? b.remainingDays : null}
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+          <Pagination {...barre} className="py-4" />
+        </>
       )}
     </Card>
   );

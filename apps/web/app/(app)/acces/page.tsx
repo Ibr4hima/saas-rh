@@ -23,6 +23,7 @@ import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
 import { Onglets } from '../../../components/onglets-bandeau';
+import { Pagination, usePagination } from '../../../components/pagination';
 import {
   BarreSelection,
   LIGNE_COCHEE,
@@ -108,12 +109,14 @@ export default function GestionDesAccesPage() {
       )
       .map((a) => ({ ...a, id: a.employeeId }));
   }, [agents, filtre, recherche]);
+  const { tranche, barre } = usePagination(lignes, `${filtre}|${recherche}`);
 
   // Ne se cochent que ceux qu'une invitation peut atteindre : un compte qui
   // n'en a pas besoin, ou sans adresse professionnelle, n'a rien à recevoir.
   const invitable = (a: AccesAgent) =>
     parCourriel && a.adresse !== null && a.etat !== 'actif' && a.etat !== 'coupe';
-  const invitables = useMemo(() => lignes.filter(invitable), [lignes, parCourriel]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Comme pour le personnel : la sélection porte sur la page affichée.
+  const invitables = useMemo(() => tranche.filter(invitable), [tranche, parCourriel]); // eslint-disable-line react-hooks/exhaustive-deps
   const sel = useSelection(invitables);
 
   const inviter = useMutation({
@@ -259,7 +262,7 @@ export default function GestionDesAccesPage() {
               </tr>
             </THead>
             <TBody>
-              {lignes.map((a) => {
+              {tranche.map((a) => {
                 const b = badgeDe(a);
                 const peutInviter = invitable(a);
                 return (
@@ -304,6 +307,13 @@ export default function GestionDesAccesPage() {
           </Table>
         )}
       </CartePleine>
+      <Pagination
+        {...barre}
+        onPage={(p) => {
+          sel.vider();
+          barre.onPage(p);
+        }}
+      />
     </Page>
   );
 }

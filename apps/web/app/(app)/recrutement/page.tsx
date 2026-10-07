@@ -26,6 +26,7 @@ import { JobModal } from '../../../components/job-modal';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalSection } from '../../../components/modal';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
+import { Pagination, usePagination } from '../../../components/pagination';
 import { CONTRACT_LABELS, JOB_STATUS_LABELS } from '../../../lib/recruitment';
 import {
   BarreSelection,
@@ -69,7 +70,9 @@ export default function OffresPage() {
     { createdAt: 'desc', deadline: 'asc', reference: 'asc', title: 'asc', contractType: 'asc' },
   );
   const offres = tri.lignes;
-  const sel = useSelection(offres);
+  // Comme pour le personnel : la sélection porte sur la page affichée.
+  const { tranche, barre } = usePagination(offres, `${tri.colonne}|${tri.sens}`);
+  const sel = useSelection(tranche);
   const choisies = sel.choisis;
   const seule = choisies.length === 1 ? choisies[0] : undefined;
 
@@ -211,7 +214,7 @@ export default function OffresPage() {
               </tr>
             </THead>
             <TBody>
-              {offres.map((o) => (
+              {tranche.map((o) => (
                 <Tr key={o.id} className={cn(sel.coche(o.id) && LIGNE_COCHEE)}>
                   <TdCase sel={sel} id={o.id} quoi={o.title} />
                   <Td className="font-mono text-[11.5px] whitespace-nowrap text-ink-muted">
@@ -248,6 +251,13 @@ export default function OffresPage() {
           </Table>
         )}
       </CartePleine>
+      <Pagination
+        {...barre}
+        onPage={(p) => {
+          sel.vider();
+          barre.onPage(p);
+        }}
+      />
 
       {creation ? <JobModal open onClose={fermerCreation} /> : null}
       {panneau === 'modifier' && seule ? (

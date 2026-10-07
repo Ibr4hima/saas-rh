@@ -28,6 +28,7 @@ import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
+import { Pagination, usePagination } from '../../../../components/pagination';
 import {
   BandeauDelegation,
   BandeauMessage,
@@ -123,6 +124,7 @@ export default function PiecesAVerifierPage() {
   const aVerifier = toutes.filter(
     (p) => p.status === 'pending' && (!traite || p.canReview || Boolean(p.traitement?.aConfier)),
   );
+  const { tranche, barre } = usePagination(aVerifier);
 
   return (
     <Page>
@@ -172,89 +174,92 @@ export default function PiecesAVerifierPage() {
             title="Rien à vérifier"
           />
         ) : (
-          <Table>
-            <THead>
-              <tr>
-                <Th>Employé</Th>
-                <Th>Type</Th>
-                <Th>Document</Th>
-                <Th>Déposé le</Th>
-                <Th className="text-right">{traite ? 'Décision' : 'Traitée par'}</Th>
-              </tr>
-            </THead>
-            <TBody>
-              {aVerifier.map((p) => (
-                <Tr key={p.id}>
-                  <Td className="font-semibold whitespace-nowrap text-ink-strong">
-                    {p.employeeName}
-                  </Td>
-                  <Td className="whitespace-nowrap">
-                    {DOCUMENT_CATEGORY_LABELS[p.category]}
-                    {p.renouvellement ? (
-                      <span className="block text-[11px] text-ink-muted">Renouvellement</span>
-                    ) : null}
-                  </Td>
-                  <Td>
-                    <button
-                      type="button"
-                      onClick={() => ouvrir(p)}
-                      title={`Voir « ${p.label} »`}
-                      className="inline-flex max-w-64 items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-medium text-primary transition-colors hover:bg-primary-soft"
-                    >
-                      <Icon name="description" size={14} className="shrink-0" />
-                      <span className="truncate">{p.label}</span>
-                    </button>
-                  </Td>
-                  <Td className="whitespace-nowrap tabular-nums">
-                    {formatDate(p.createdAt.slice(0, 10))}
-                  </Td>
-                  <Td>
-                    {!traite ? (
-                      <p className="text-right text-[12px] text-ink-muted">
-                        {p.traitement?.traitants ?? '—'}
-                      </p>
-                    ) : p.canReview ? (
-                      <div className="flex items-center justify-end gap-1.5">
-                        <BoutonDecision
-                          geste="approuver"
-                          objet="le document"
-                          employe={p.employeeName}
-                          enCours={
-                            verifier.isPending &&
-                            verifier.variables?.piece.id === p.id &&
-                            verifier.variables.decision === 'approved'
-                          }
-                          bloque={verifier.isPending}
-                          onClick={() => {
-                            setMessage(null);
-                            // Le titre de la fiche se vérifie contre elle.
-                            if (p.controle) setAControler(p);
-                            else verifier.mutate({ piece: p, decision: 'approved' });
-                          }}
-                        />
-                        <BoutonDecision
-                          geste="refuser"
-                          objet="le document"
-                          employe={p.employeeName}
-                          enCours={false}
-                          bloque={verifier.isPending}
-                          onClick={() => {
-                            setMessage(null);
-                            setMotif('');
-                            setRejet(p);
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <p className="text-right text-[11.5px] font-semibold text-accent-text">
-                        Votre propre document, à déléguer
-                      </p>
-                    )}
-                  </Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
+          <>
+            <Table>
+              <THead>
+                <tr>
+                  <Th>Employé</Th>
+                  <Th>Type</Th>
+                  <Th>Document</Th>
+                  <Th>Déposé le</Th>
+                  <Th className="text-right">{traite ? 'Décision' : 'Traitée par'}</Th>
+                </tr>
+              </THead>
+              <TBody>
+                {tranche.map((p) => (
+                  <Tr key={p.id}>
+                    <Td className="font-semibold whitespace-nowrap text-ink-strong">
+                      {p.employeeName}
+                    </Td>
+                    <Td className="whitespace-nowrap">
+                      {DOCUMENT_CATEGORY_LABELS[p.category]}
+                      {p.renouvellement ? (
+                        <span className="block text-[11px] text-ink-muted">Renouvellement</span>
+                      ) : null}
+                    </Td>
+                    <Td>
+                      <button
+                        type="button"
+                        onClick={() => ouvrir(p)}
+                        title={`Voir « ${p.label} »`}
+                        className="inline-flex max-w-64 items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-medium text-primary transition-colors hover:bg-primary-soft"
+                      >
+                        <Icon name="description" size={14} className="shrink-0" />
+                        <span className="truncate">{p.label}</span>
+                      </button>
+                    </Td>
+                    <Td className="whitespace-nowrap tabular-nums">
+                      {formatDate(p.createdAt.slice(0, 10))}
+                    </Td>
+                    <Td>
+                      {!traite ? (
+                        <p className="text-right text-[12px] text-ink-muted">
+                          {p.traitement?.traitants}
+                        </p>
+                      ) : p.canReview ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <BoutonDecision
+                            geste="approuver"
+                            objet="le document"
+                            employe={p.employeeName}
+                            enCours={
+                              verifier.isPending &&
+                              verifier.variables?.piece.id === p.id &&
+                              verifier.variables.decision === 'approved'
+                            }
+                            bloque={verifier.isPending}
+                            onClick={() => {
+                              setMessage(null);
+                              // Le titre de la fiche se vérifie contre elle.
+                              if (p.controle) setAControler(p);
+                              else verifier.mutate({ piece: p, decision: 'approved' });
+                            }}
+                          />
+                          <BoutonDecision
+                            geste="refuser"
+                            objet="le document"
+                            employe={p.employeeName}
+                            enCours={false}
+                            bloque={verifier.isPending}
+                            onClick={() => {
+                              setMessage(null);
+                              setMotif('');
+                              setRejet(p);
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <p className="text-right text-[11.5px] font-semibold text-accent-text">
+                          Votre propre document, à déléguer
+                        </p>
+                      )}
+                    </Td>
+                  </Tr>
+                ))}
+              </TBody>
+            </Table>
+            <Pagination {...barre} className="py-4" />
+          </>
         )}
       </Card>
 

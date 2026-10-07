@@ -25,6 +25,7 @@ import { Icon, type IconName } from '../../../components/icons';
 import { api } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { Page } from '../../../components/gabarit';
+import { Pagination, usePagination } from '../../../components/pagination';
 import { compte } from '../../../lib/mots';
 import { deadlineLabel } from '../../../lib/contrats';
 import { SqueletteTableau } from '../../../components/tableau';
@@ -390,6 +391,7 @@ export default function DashboardPage() {
   });
   const d = stats.data;
   const todayIso = localToday();
+  const contrats = usePagination(d?.contractFollowUp ?? []);
 
   // La quatrième tuile montre le prochain férié : la fenêtre renvoyée par
   // l'API contient aussi le dernier passé, on prend la première date à venir.
@@ -641,49 +643,52 @@ export default function DashboardPage() {
               }
             />
           ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <Th>Matricule</Th>
-                  <Th>Nom</Th>
-                  <Th>Poste</Th>
-                  <Th>Contrat</Th>
-                  <Th>Date fin</Th>
-                  <Th className="text-right whitespace-nowrap">Jours restants</Th>
-                </tr>
-              </THead>
-              <TBody>
-                {d!.contractFollowUp.map((c) => {
-                  const deadline = deadlineLabel(c.daysLeft);
-                  return (
-                    <Tr key={c.employeeId}>
-                      <Td className="font-mono text-ink-muted">{c.employeeNumber}</Td>
-                      <Td className="whitespace-nowrap">
-                        <Link
-                          href={`/employees/${c.employeeId}`}
-                          className="font-medium text-ink-strong hover:underline"
+            <>
+              <Table>
+                <THead>
+                  <tr>
+                    <Th>Matricule</Th>
+                    <Th>Nom</Th>
+                    <Th>Poste</Th>
+                    <Th>Contrat</Th>
+                    <Th>Date fin</Th>
+                    <Th className="text-right whitespace-nowrap">Jours restants</Th>
+                  </tr>
+                </THead>
+                <TBody>
+                  {contrats.tranche.map((c) => {
+                    const deadline = deadlineLabel(c.daysLeft);
+                    return (
+                      <Tr key={c.employeeId}>
+                        <Td className="font-mono text-ink-muted">{c.employeeNumber}</Td>
+                        <Td className="whitespace-nowrap">
+                          <Link
+                            href={`/employees/${c.employeeId}`}
+                            className="font-medium text-ink-strong hover:underline"
+                          >
+                            {c.name}
+                          </Link>
+                        </Td>
+                        <Td
+                          className="max-w-40 truncate text-ink-muted"
+                          title={c.positionTitle ?? undefined}
                         >
-                          {c.name}
-                        </Link>
-                      </Td>
-                      <Td
-                        className="max-w-40 truncate text-ink-muted"
-                        title={c.positionTitle ?? undefined}
-                      >
-                        {c.positionTitle ?? '—'}
-                      </Td>
-                      <Td className="uppercase">{c.contractType}</Td>
-                      <Td className="whitespace-nowrap">
-                        {c.endDate ? formatDate(c.endDate) : '—'}
-                      </Td>
-                      <Td className="text-right">
-                        <Badge tone={deadline.tone}>{deadline.text}</Badge>
-                      </Td>
-                    </Tr>
-                  );
-                })}
-              </TBody>
-            </Table>
+                          {c.positionTitle}
+                        </Td>
+                        <Td className="uppercase">{c.contractType}</Td>
+                        <Td className="whitespace-nowrap">
+                          {c.endDate ? formatDate(c.endDate) : null}
+                        </Td>
+                        <Td className="text-right">
+                          <Badge tone={deadline.tone}>{deadline.text}</Badge>
+                        </Td>
+                      </Tr>
+                    );
+                  })}
+                </TBody>
+              </Table>
+              <Pagination {...contrats.barre} className="py-4" />
+            </>
           )}
         </Card>
       ) : null}

@@ -12,8 +12,6 @@ import {
   Badge,
   Button,
   Card,
-  CardHeader,
-  CardTitle,
   EmptyState,
   Skeleton,
   Table,
@@ -28,15 +26,16 @@ import { formatDate } from '../../../../../lib/hooks';
 import { timeAgo } from '../../../../../components/document-request-list';
 import { Icon } from '../../../../../components/icons';
 import { Page } from '../../../../../components/gabarit';
+import { Pagination, usePagination } from '../../../../../components/pagination';
 
 /**
  * Suivi de mes demandes de documents : où en est chacune, jusqu'au lieu de
  * retrait.
  *
  * Même facture que l'historique des congés, sa voisine dans l'espace
- * personnel : une carte par année, un tableau aux colonnes fixes, le statut
- * en badge. Ce qui appelle un geste (aller chercher un document prêt) se lit
- * dans la colonne « Retrait » et se compte dans le titre de la carte.
+ * personnel : un tableau aux colonnes fixes, quinze lignes par page, le
+ * statut en badge. Ce qui appelle un geste (aller chercher un document prêt)
+ * se lit dans la colonne « Retrait ».
  */
 export default function SuiviDemandesDocumentsPage() {
   const queryClient = useQueryClient();
@@ -59,7 +58,7 @@ export default function SuiviDemandesDocumentsPage() {
   const demandes = [...(docRequests.data ?? [])].sort((a, b) =>
     b.createdAt.localeCompare(a.createdAt),
   );
-  const annees = [...new Set(demandes.map((r) => r.createdAt.slice(0, 4)))];
+  const { tranche, barre } = usePagination(demandes);
 
   return (
     <Page>
@@ -84,44 +83,39 @@ export default function SuiviDemandesDocumentsPage() {
           />
         </Card>
       ) : (
-        annees.map((annee) => {
-          const lignes = demandes.filter((r) => r.createdAt.startsWith(annee));
-          const aRetirer = lignes.filter((r) => r.status === 'ready').length;
-          return (
-            <Card key={annee}>
-              <CardHeader className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-                <CardTitle>Demandes {annee}</CardTitle>
-                {aRetirer > 0 ? <Badge tone="bleu">{aRetirer} à retirer</Badge> : null}
-              </CardHeader>
-              {/* Des colonnes de largeur fixe : d'une année à l'autre, les dates
-                  et les statuts tombent au même endroit. */}
-              <Table className="sm:table-fixed">
-                {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
-                <THead className="hidden sm:table-header-group">
-                  <tr>
-                    <Th className="sm:w-[32%]">Document</Th>
-                    <Th className="sm:w-[15%]">Demandée le</Th>
-                    <Th className="sm:w-[29%]">Retrait</Th>
-                    <Th className="sm:w-[14%]">Statut</Th>
-                    <Th className="sm:w-[10%]">
-                      <span className="sr-only">Actions</span>
-                    </Th>
-                  </tr>
-                </THead>
-                <TBody>
-                  {lignes.map((r) => (
-                    <Ligne
-                      key={r.id}
-                      demande={r}
-                      onAnnuler={() => annuler.mutate(r.id)}
-                      enCours={annuler.isPending && annuler.variables === r.id}
-                    />
-                  ))}
-                </TBody>
-              </Table>
-            </Card>
-          );
-        })
+        <>
+          {/* Sans titre au-dessus, l'en-tête du tableau touche les coins
+              arrondis de la carte : elle le rogne. */}
+          <Card className="overflow-hidden">
+            {/* Des colonnes de largeur fixe : d'une page à l'autre, les dates
+                et les statuts tombent au même endroit. */}
+            <Table className="sm:table-fixed">
+              {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
+              <THead className="hidden sm:table-header-group">
+                <tr>
+                  <Th className="sm:w-[32%]">Document</Th>
+                  <Th className="sm:w-[15%]">Demandée le</Th>
+                  <Th className="sm:w-[29%]">Retrait</Th>
+                  <Th className="sm:w-[14%]">Statut</Th>
+                  <Th className="sm:w-[10%]">
+                    <span className="sr-only">Actions</span>
+                  </Th>
+                </tr>
+              </THead>
+              <TBody>
+                {tranche.map((r) => (
+                  <Ligne
+                    key={r.id}
+                    demande={r}
+                    onAnnuler={() => annuler.mutate(r.id)}
+                    enCours={annuler.isPending && annuler.variables === r.id}
+                  />
+                ))}
+              </TBody>
+            </Table>
+          </Card>
+          <Pagination {...barre} />
+        </>
       )}
     </Page>
   );

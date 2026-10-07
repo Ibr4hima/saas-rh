@@ -34,6 +34,7 @@ import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
+import { Pagination, usePagination } from '../../../../components/pagination';
 import { StatutAbsence } from '../../../../components/statut-absence';
 import {
   BandeauDelegation,
@@ -151,7 +152,8 @@ export default function CongesATraiterPage() {
     : toutes
         .filter((r) => r.status === 'pending' && r.etapeAttendue === 'dch')
         .sort((a, b) => a.startDate.localeCompare(b.startDate));
-  const traitees = toutes.filter((r) => r.status !== 'pending').slice(0, 40);
+  const traitees = toutes.filter((r) => r.status !== 'pending');
+  const file = usePagination(enAttente);
   const habilites = membres.filter((m) => m.capacites.includes('demandes.conges'));
   // Le justificatif peut dire une maladie : à qui traite, ou lit les données sensibles.
   const voitJustificatifs = traite || peut(me.data, 'personnel.sensible');
@@ -247,108 +249,111 @@ export default function CongesATraiterPage() {
             description="Une fois visée par le N+1, une demande d’absence ou de congé arrive ici, avec une notification."
           />
         ) : (
-          <Table>
-            <THead>
-              <tr>
-                <Th>Employé</Th>
-                <Th>Type</Th>
-                <Th>Période</Th>
-                <Th className="text-right">Jours</Th>
-                <Th>Justificatif</Th>
-                <Th className="text-right">{traite ? 'Décision' : 'Traitée par'}</Th>
-              </tr>
-            </THead>
-            <TBody>
-              {enAttente.map((r) => (
-                <Tr key={r.id}>
-                  <Td className="font-semibold whitespace-nowrap text-ink-strong">
-                    {r.employeeName}
-                    {r.saisiePar ? (
-                      <p className="text-[11.5px] font-normal text-ink-muted">
-                        Saisie par {r.saisiePar}
-                      </p>
-                    ) : null}
-                  </Td>
-                  <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
-                  <Td className="whitespace-nowrap tabular-nums">
-                    <Periode demande={r} />
-                    <MentionConge demande={r} />
-                  </Td>
-                  <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
-                  <Td>{justificatif(r)}</Td>
-                  <Td>
-                    {r.gestes.confirmerReprise ? (
-                      <div className="flex items-center justify-end gap-1.5">
-                        <BoutonDecision
-                          geste="approuver"
-                          employe={r.employeeName}
-                          objet="le retour"
-                          enCours={
-                            confirmer.isPending &&
-                            confirmer.variables?.demande.id === r.id &&
-                            confirmer.variables.decision === 'approved'
-                          }
-                          bloque={occupe}
-                          onClick={() => {
-                            setMessage(null);
-                            confirmer.mutate({ demande: r, decision: 'approved' });
-                          }}
-                        />
-                        <BoutonDecision
-                          geste="refuser"
-                          employe={r.employeeName}
-                          objet="le retour"
-                          enCours={
-                            confirmer.isPending &&
-                            confirmer.variables?.demande.id === r.id &&
-                            confirmer.variables.decision === 'rejected'
-                          }
-                          bloque={occupe}
-                          onClick={() => {
-                            setMessage(null);
-                            confirmer.mutate({ demande: r, decision: 'rejected' });
-                          }}
-                        />
-                      </div>
-                    ) : traite ? (
-                      <div className="flex items-center justify-end gap-1.5">
-                        <BoutonDecision
-                          geste="approuver"
-                          employe={r.employeeName}
-                          enCours={
-                            decider.isPending &&
-                            decider.variables?.demande.id === r.id &&
-                            decider.variables.decision === 'approved'
-                          }
-                          // Un type qui l'exige se valide avec son justificatif.
-                          bloque={occupe || r.justificatifAttendu}
-                          onClick={() => {
-                            setMessage(null);
-                            decider.mutate({ demande: r, decision: 'approved' });
-                          }}
-                        />
-                        <BoutonDecision
-                          geste="refuser"
-                          employe={r.employeeName}
-                          enCours={false}
-                          bloque={occupe}
-                          onClick={() => {
-                            setMessage(null);
-                            setMotif('');
-                            setRefus(r);
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <p className="text-right text-[12px] text-ink-muted">
-                        {quiTraite(r.traitement)}
-                      </p>
-                    )}
-                  </Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
+          <>
+            <Table>
+              <THead>
+                <tr>
+                  <Th>Employé</Th>
+                  <Th>Type</Th>
+                  <Th>Période</Th>
+                  <Th className="text-right">Jours</Th>
+                  <Th>Justificatif</Th>
+                  <Th className="text-right">{traite ? 'Décision' : 'Traitée par'}</Th>
+                </tr>
+              </THead>
+              <TBody>
+                {file.tranche.map((r) => (
+                  <Tr key={r.id}>
+                    <Td className="font-semibold whitespace-nowrap text-ink-strong">
+                      {r.employeeName}
+                      {r.saisiePar ? (
+                        <p className="text-[11.5px] font-normal text-ink-muted">
+                          Saisie par {r.saisiePar}
+                        </p>
+                      ) : null}
+                    </Td>
+                    <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
+                    <Td className="whitespace-nowrap tabular-nums">
+                      <Periode demande={r} />
+                      <MentionConge demande={r} />
+                    </Td>
+                    <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
+                    <Td>{justificatif(r)}</Td>
+                    <Td>
+                      {r.gestes.confirmerReprise ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <BoutonDecision
+                            geste="approuver"
+                            employe={r.employeeName}
+                            objet="le retour"
+                            enCours={
+                              confirmer.isPending &&
+                              confirmer.variables?.demande.id === r.id &&
+                              confirmer.variables.decision === 'approved'
+                            }
+                            bloque={occupe}
+                            onClick={() => {
+                              setMessage(null);
+                              confirmer.mutate({ demande: r, decision: 'approved' });
+                            }}
+                          />
+                          <BoutonDecision
+                            geste="refuser"
+                            employe={r.employeeName}
+                            objet="le retour"
+                            enCours={
+                              confirmer.isPending &&
+                              confirmer.variables?.demande.id === r.id &&
+                              confirmer.variables.decision === 'rejected'
+                            }
+                            bloque={occupe}
+                            onClick={() => {
+                              setMessage(null);
+                              confirmer.mutate({ demande: r, decision: 'rejected' });
+                            }}
+                          />
+                        </div>
+                      ) : traite ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <BoutonDecision
+                            geste="approuver"
+                            employe={r.employeeName}
+                            enCours={
+                              decider.isPending &&
+                              decider.variables?.demande.id === r.id &&
+                              decider.variables.decision === 'approved'
+                            }
+                            // Un type qui l'exige se valide avec son justificatif.
+                            bloque={occupe || r.justificatifAttendu}
+                            onClick={() => {
+                              setMessage(null);
+                              decider.mutate({ demande: r, decision: 'approved' });
+                            }}
+                          />
+                          <BoutonDecision
+                            geste="refuser"
+                            employe={r.employeeName}
+                            enCours={false}
+                            bloque={occupe}
+                            onClick={() => {
+                              setMessage(null);
+                              setMotif('');
+                              setRefus(r);
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <p className="text-right text-[12px] text-ink-muted">
+                          {quiTraite(r.traitement)}
+                        </p>
+                      )}
+                    </Td>
+                  </Tr>
+                ))}
+              </TBody>
+            </Table>
+            <Pagination {...file.barre} className="py-4" />
+          </>
         )}
       </Card>
 
@@ -481,6 +486,7 @@ function DemandesTraitees({
   chargement: boolean;
 }) {
   const [ouvert, setOuvert] = useState(false);
+  const { tranche, barre } = usePagination(demandes);
   return (
     <Card className="shrink-0">
       <EnTetePliable
@@ -501,41 +507,44 @@ function DemandesTraitees({
           description="Les demandes approuvées, refusées ou annulées s’affichent ici."
         />
       ) : (
-        <Table>
-          <THead>
-            <tr>
-              <Th>Employé</Th>
-              <Th>Type</Th>
-              <Th>Période</Th>
-              <Th className="text-right">Jours</Th>
-              <Th className="text-right">Statut</Th>
-            </tr>
-          </THead>
-          <TBody>
-            {demandes.map((r) => (
-              <Tr key={r.id}>
-                <Td className="font-semibold whitespace-nowrap text-ink-strong">
-                  {r.employeeName}
-                </Td>
-                <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
-                <Td className="whitespace-nowrap tabular-nums">
-                  <Periode demande={r} />
-                  <MentionConge demande={r} />
-                </Td>
-                <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
-                <Td>
-                  <div className="flex justify-end">
-                    <StatutAbsence
-                      statut={r.status}
-                      etape={r.etapeAttendue}
-                      titre={resumeVisas(r)}
-                    />
-                  </div>
-                </Td>
-              </Tr>
-            ))}
-          </TBody>
-        </Table>
+        <>
+          <Table>
+            <THead>
+              <tr>
+                <Th>Employé</Th>
+                <Th>Type</Th>
+                <Th>Période</Th>
+                <Th className="text-right">Jours</Th>
+                <Th className="text-right">Statut</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {tranche.map((r) => (
+                <Tr key={r.id}>
+                  <Td className="font-semibold whitespace-nowrap text-ink-strong">
+                    {r.employeeName}
+                  </Td>
+                  <Td className="whitespace-nowrap">{r.absenceTypeName}</Td>
+                  <Td className="whitespace-nowrap tabular-nums">
+                    <Periode demande={r} />
+                    <MentionConge demande={r} />
+                  </Td>
+                  <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
+                  <Td>
+                    <div className="flex justify-end">
+                      <StatutAbsence
+                        statut={r.status}
+                        etape={r.etapeAttendue}
+                        titre={resumeVisas(r)}
+                      />
+                    </div>
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+          <Pagination {...barre} className="py-4" />
+        </>
       )}
     </Card>
   );
@@ -577,6 +586,7 @@ function CalendrierDesAbsences({
   });
   const jour = aujourdhui();
   const liste = absences.data ?? [];
+  const { tranche, barre } = usePagination(liste);
   // La colonne des gestes n'existe que pour qui peut rappeler ou annuler.
   const gestes = liste.some((r) => r.gestes.rappeler || r.gestes.annuler);
   return (
@@ -596,57 +606,60 @@ function CalendrierDesAbsences({
           description="Aucune absence approuvée dans les 30 prochains jours."
         />
       ) : (
-        <Table>
-          <THead>
-            <tr>
-              <Th>Nom</Th>
-              <Th>Type</Th>
-              <Th>Début</Th>
-              <Th>Fin</Th>
-              <Th className="text-right">Jours</Th>
-              <Th>Statut</Th>
-              {gestes ? (
-                <Th>
-                  <span className="sr-only">Actions</span>
-                </Th>
-              ) : null}
-            </tr>
-          </THead>
-          <TBody>
-            {liste.map((r) => (
-              <Tr key={r.id}>
-                <Td className="font-medium whitespace-nowrap text-ink-strong">
-                  {r.employeeName}
-                  <MentionConge demande={r} />
-                </Td>
-                <Td>{r.absenceTypeName}</Td>
-                <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
-                <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
-                <Td className="text-right tabular-nums">{r.daysCount}</Td>
-                <Td>
-                  {r.startDate <= jour ? (
-                    <Badge tone="teal">En cours</Badge>
-                  ) : (
-                    <Badge tone="bleu">À venir</Badge>
-                  )}
-                </Td>
+        <>
+          <Table>
+            <THead>
+              <tr>
+                <Th>Nom</Th>
+                <Th>Type</Th>
+                <Th>Début</Th>
+                <Th>Fin</Th>
+                <Th className="text-right">Jours</Th>
+                <Th>Statut</Th>
                 {gestes ? (
-                  <Td className="text-right">
-                    {r.gestes.rappeler ? (
-                      <Button size="sm" variant="ghost" onClick={() => onRappeler(r)}>
-                        Rappeler
-                      </Button>
-                    ) : r.gestes.annuler ? (
-                      <Button size="sm" variant="ghost" onClick={() => onAnnuler(r)}>
-                        Annuler
-                      </Button>
-                    ) : null}
-                  </Td>
+                  <Th>
+                    <span className="sr-only">Actions</span>
+                  </Th>
                 ) : null}
-              </Tr>
-            ))}
-          </TBody>
-        </Table>
+              </tr>
+            </THead>
+            <TBody>
+              {tranche.map((r) => (
+                <Tr key={r.id}>
+                  <Td className="font-medium whitespace-nowrap text-ink-strong">
+                    {r.employeeName}
+                    <MentionConge demande={r} />
+                  </Td>
+                  <Td>{r.absenceTypeName}</Td>
+                  <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
+                  <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
+                  <Td className="text-right tabular-nums">{r.daysCount}</Td>
+                  <Td>
+                    {r.startDate <= jour ? (
+                      <Badge tone="teal">En cours</Badge>
+                    ) : (
+                      <Badge tone="bleu">À venir</Badge>
+                    )}
+                  </Td>
+                  {gestes ? (
+                    <Td className="text-right">
+                      {r.gestes.rappeler ? (
+                        <Button size="sm" variant="ghost" onClick={() => onRappeler(r)}>
+                          Rappeler
+                        </Button>
+                      ) : r.gestes.annuler ? (
+                        <Button size="sm" variant="ghost" onClick={() => onAnnuler(r)}>
+                          Annuler
+                        </Button>
+                      ) : null}
+                    </Td>
+                  ) : null}
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+          <Pagination {...barre} className="py-4" />
+        </>
       )}
     </Card>
   );

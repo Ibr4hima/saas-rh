@@ -24,6 +24,7 @@ import { RetourAcademy } from '../../../../components/academy-carte';
 import { BandeauDeleguer } from '../../../../components/deleguer-membres';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
+import { Pagination, usePagination } from '../../../../components/pagination';
 import { LoadFailure } from '../../../../components/load-failure';
 import { dureeLisible, FAMILLES, FOND_COUVERTURE } from '../../../../lib/academy';
 import { api } from '../../../../lib/api';
@@ -60,6 +61,7 @@ export default function GererCataloguePage() {
     queryKey: ['academy', 'gestion'],
     queryFn: () => api<CourseAdminSummary[]>('/academy/gestion/courses'),
   });
+  const { tranche, barre } = usePagination(liste.data ?? []);
 
   const modale = (
     <FormationModal
@@ -130,7 +132,7 @@ export default function GererCataloguePage() {
               </Tr>
             </THead>
             <TBody>
-              {formations.map((f) => (
+              {tranche.map((f) => (
                 <Tr
                   key={f.id}
                   className="cursor-pointer"
@@ -172,6 +174,7 @@ export default function GererCataloguePage() {
           </Table>
         )}
       </Card>
+      <Pagination {...barre} />
       {modale}
     </Page>
   );
