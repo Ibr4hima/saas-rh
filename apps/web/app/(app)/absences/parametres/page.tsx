@@ -49,10 +49,10 @@ export default function AbsenceSettingsPage() {
       <BandeauDeleguer
         capacite="conges.parametres"
         verbe="gérer"
-        objet="les paramètres des congés"
-        delegue="la gestion des paramètres des congés"
-        retrait="Vous gérerez de vous-même les paramètres des congés."
-        titre="Déléguer les paramètres des congés"
+        objet="les paramètres des absences"
+        delegue="la gestion des paramètres des absences"
+        retrait="Vous gérerez de vous-même les paramètres des absences."
+        titre="Déléguer les paramètres des absences"
       />
 
       {/* Le catalogue des types prend la hauteur qui reste ; le circuit, qui

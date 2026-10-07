@@ -121,7 +121,7 @@ const NAV_ITEMS: NavItem[] = [
   // réglages ont leur page.
   {
     href: '/absences/parametres',
-    label: 'Paramètres des congés',
+    label: 'Paramètres des absences',
     short: 'Paramètres',
     icon: 'settings',
     groupe: 'quotidien',
@@ -187,7 +187,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/employees/new': 'Nouvel employé',
   '/absences': 'Absences & Congés',
   '/absences/feries': 'Gestion des jours fériés',
-  '/absences/parametres': 'Paramètres des congés',
+  '/absences/parametres': 'Paramètres des absences',
   '/documents': 'Demandes de documents',
   '/demandes/informations': 'Mise à jour d’infos',
   '/demandes/pieces': 'Vérification des documents',

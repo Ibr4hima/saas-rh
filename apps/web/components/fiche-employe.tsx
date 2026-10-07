@@ -1045,7 +1045,7 @@ function AssignmentsCard({
  * Les compteurs de congés de l'année.
  *
  * Le DROIT ne se saisit pas ici. Il est fixé par type d'absence dans
- * « Paramètres des congés » (le champ « Droit ouvert »), et c'est de là qu'il
+ * « Paramètres des absences » (le champ « Droit ouvert »), et c'est de là qu'il
  * doit venir : un droit modifiable sur chaque fiche se serait mis à diverger
  * agent par agent, et plus personne n'aurait su lequel faisait foi. Cette
  * carte montre l'état du compteur ; elle ne le décide pas.

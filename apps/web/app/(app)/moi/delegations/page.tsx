@@ -120,7 +120,7 @@ const SECTIONS: { titre: string; lignes: Ligne[]; avertissement?: string }[] = [
         cle: 'parametres',
         description:
           'Le délégué pourra créer et modifier les types d’absence : jours autorisés, fréquence, décompte du solde et justificatif demandé.',
-        libelle: 'Paramètres des congés',
+        libelle: 'Paramètres des absences',
         icone: 'settings',
         capacites: ['conges.parametres'],
       },

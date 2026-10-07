@@ -31,7 +31,7 @@ export const CAPACITES_PERSONNEL = [
 ] as const satisfies readonly Capacite[];
 
 /**
- * Le bandeau d'une page de la DCH qu'un accès ouvre (paramètres des congés,
+ * Le bandeau d'une page de la DCH qu'un accès ouvre (paramètres des absences,
  * offres d'emploi, organigramme, gestion du personnel…) : au directeur, qui
  * peut — et « Déléguer » ; au membre, ce qui lui est délégué. Rien pour les
  * autres. Plusieurs accès se délèguent ensemble : la gestion du personnel

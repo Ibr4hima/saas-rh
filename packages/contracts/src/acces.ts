@@ -278,7 +278,7 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
     groupe: 'Congés',
   },
   'conges.parametres': {
-    libelle: 'Paramètres des congés',
+    libelle: 'Paramètres des absences',
     description: 'Les types d’absence : leurs droits, leur décompte, leurs justificatifs.',
     groupe: 'Congés',
   },
