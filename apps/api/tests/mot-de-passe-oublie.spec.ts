@@ -220,7 +220,7 @@ describe('la demande', () => {
       kind: 'reinitialisation',
       subject_id: lien!.id,
       recipient: awa.email,
-      subject: 'APIX Test : votre mot de passe',
+      subject: 'Votre mot de passe',
       status: 'pending',
     });
     expect(enFile!.body_encrypted).not.toContain('reinitialisation');

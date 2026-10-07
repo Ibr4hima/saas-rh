@@ -197,7 +197,7 @@ describe('invitation par courriel', () => {
     expect(enFile).toMatchObject({
       kind: 'invitation',
       recipient: 'awa@courriel.test.local',
-      subject: 'APIX Test : votre accès au portail RH',
+      subject: 'Votre accès au portail RH',
       status: 'pending',
       attempts: 0,
     });
@@ -539,7 +539,7 @@ describe('le gabarit', () => {
     expect(c.html).toContain('A &amp; B');
     expect(c.html).toContain('abc&quot;def');
     expect(c.text).toContain('13 octobre 2026');
-    expect(c.subject).toBe('A & B : votre accès au portail RH');
+    expect(c.subject).toBe('Votre accès au portail RH');
   });
 
   it('accueille selon qui revient : un retour, un compte à relier', () => {
@@ -706,7 +706,7 @@ describe('transports', () => {
     const message = {
       from: 'Capital Humain <rh@apix.sn>',
       to: 'awa@apix.sn',
-      subject: 'APIX : votre accès au portail RH',
+      subject: 'Votre accès au portail RH',
       text: 'texte',
       html: '<p>html</p>',
     };
@@ -730,7 +730,7 @@ describe('transports', () => {
     expect((envoi.init.headers as Record<string, string>).authorization).toBe('Bearer jeton-1');
     expect(JSON.parse(envoi.init.body as string)).toEqual({
       message: {
-        subject: 'APIX : votre accès au portail RH',
+        subject: 'Votre accès au portail RH',
         body: { contentType: 'HTML', content: '<p>html</p>' },
         toRecipients: [{ emailAddress: { address: 'awa@apix.sn' } }],
       },

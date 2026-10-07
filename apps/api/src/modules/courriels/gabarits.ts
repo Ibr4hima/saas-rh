@@ -61,9 +61,10 @@ const dateLongue = (iso: string) =>
     timeZone: 'Africa/Dakar',
   });
 
+/** L'objet dit la chose, sans le nom de l'organisation devant. */
 export function objetDe(g: Gabarit): string {
-  if (g.nom === 'invitation') return `${g.organisation} : votre accès au portail RH`;
-  if (g.nom === 'reinitialisation') return `${g.organisation} : votre mot de passe`;
+  if (g.nom === 'invitation') return 'Votre accès au portail RH';
+  if (g.nom === 'reinitialisation') return 'Votre mot de passe';
   return g.titre;
 }
 
