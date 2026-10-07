@@ -53,7 +53,7 @@ import { aDesConsequences, ListeConsequences } from './consequences-hierarchie';
 import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { LoadFailure } from './load-failure';
 import { Page } from './gabarit';
-import { FenetreSignalement, SuiviSignalements } from './signalement';
+import { FenetreSignalement, useMesSignalements } from './signalement';
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Actif',
@@ -146,6 +146,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
   const editOpen = useSearchParams().get('modifier') !== null;
   const [refusReactivation, setRefusReactivation] = useState<string | null>(null);
   const [signalement, setSignalement] = useState(false);
+  useMesSignalements(soi);
   const me = useMe();
   // Dans l'espace personnel, rien de la gestion : ni l'historique du dossier,
   // ni les signalements à traiter — même pour un membre de la DCH.
@@ -478,9 +479,6 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
               </Groupe>
             </CardContent>
           </Card>
-
-          {/* Ce que l'agent a fait corriger, sous ce qu'il a signalé. */}
-          {soi ? <SuiviSignalements /> : null}
 
           <AssignmentsCard
             employeeId={e.id}

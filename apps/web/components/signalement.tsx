@@ -7,40 +7,16 @@ import type {
   ProfileChangeField,
   ProfileChangeRequestView,
 } from '@teranga/contracts';
-import {
-  PROFILE_CHANGE_FIELDS,
-  PROFILE_CHANGE_LABELS,
-  PROFILE_CHANGE_STATUS_LABELS,
-  PROFILE_CHANGE_STATUS_TONES,
-} from '@teranga/contracts';
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  cn,
-  Field,
-  Input,
-  Select,
-  Table,
-  TBody,
-  Td,
-  Th,
-  THead,
-} from '@teranga/ui';
+import { PROFILE_CHANGE_FIELDS, PROFILE_CHANGE_LABELS } from '@teranga/contracts';
+import { Button, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
-import { formatDate } from '../lib/hooks';
 import { composePhone, splitPhone } from '../lib/countries';
 import { maritalLabels } from '../lib/person';
 import { compte } from '../lib/mots';
-import { timeAgo } from './document-request-list';
 import { Icon } from './icons';
 import { Modal, ModalSection } from './modal';
-import { Pagination, usePagination } from './pagination';
 import { PhoneInput } from './phone-input';
-import { formatTelephone, valeurSignalee } from './telephone';
+import { formatTelephone } from './telephone';
 
 /* ————————————————————————————————————————————————————————————————
    Signaler un changement — ce que l'agent fait corriger lui-même.
@@ -48,7 +24,7 @@ import { formatTelephone, valeurSignalee } from './telephone';
    Quatre informations relèvent d'une déclaration (situation matrimoniale,
    email personnel, téléphone, adresse) ; le reste s'appuie sur une pièce
    officielle ou sur le contrat. Le signalement part à la Direction du
-   Capital Humain, qui le valide ; son suivi se lit sur la fiche.
+   Capital Humain, qui le valide.
    ———————————————————————————————————————————————————————————————— */
 
 type Draft = Partial<Record<ProfileChangeField, string>>;
@@ -61,11 +37,16 @@ function enumerer(mots: string[]): string {
   return `${mots.slice(0, -1).join(', ')} et ${mots[mots.length - 1]}`;
 }
 
-/** Les signalements de l'agent — scope=mine : même pour un membre de la DCH. */
-export function useMesSignalements() {
+/**
+ * Les signalements de l'agent (scope=mine : même pour un membre de la DCH).
+ * Sa propre fiche les charge d'avance : la fenêtre sait dès l'ouverture si
+ * un signalement attend déjà.
+ */
+export function useMesSignalements(actif = true) {
   return useQuery({
     queryKey: CLE_SIGNALEMENTS,
     queryFn: () => api<ProfileChangeRequestView[]>('/profile-changes?scope=mine'),
+    enabled: actif,
   });
 }
 
@@ -82,6 +63,9 @@ export function FenetreSignalement({
   const [error, setError] = useState<string | null>(null);
   const signalements = useMesSignalements();
   const enAttente = (signalements.data ?? []).find((r) => r.status === 'pending');
+  // Tant que la liste n'est pas là, pas de formulaire : il pourrait céder la
+  // place à l'avis d'un signalement en attente sous les doigts de l'agent.
+  const pret = !signalements.isLoading;
 
   const p = employe.person;
   const marital = maritalLabels(p.gender);
@@ -132,7 +116,7 @@ export function FenetreSignalement({
       title="Signaler un changement"
       maxWidth="max-w-xl"
       footer={
-        enAttente ? (
+        !pret || enAttente ? (
           <Button variant="secondary" onClick={onClose}>
             Fermer
           </Button>
@@ -165,7 +149,7 @@ export function FenetreSignalement({
         )
       }
     >
-      {enAttente ? (
+      {!pret ? null : enAttente ? (
         <p className="flex items-start gap-2 rounded-[12px] bg-accent-soft px-3.5 py-2.5 text-[12.5px] leading-snug text-accent-text ring-1 ring-current/15 ring-inset">
           <Icon name="schedule" size={15} className="mt-px shrink-0" />
           <span>
@@ -237,232 +221,6 @@ export function FenetreSignalement({
         </ModalSection>
       )}
     </Modal>
-  );
-}
-
-/**
- * Le suivi des signalements de l'agent, en tableau : ce qui change (avant,
- * après), quand il l'a signalé, qui l'a traité, où en est la demande. La
- * plus récente en tête.
- */
-export function SuiviSignalements() {
-  const queryClient = useQueryClient();
-  const signalements = useMesSignalements();
-  const liste = signalements.data ?? [];
-  const { tranche, barre } = usePagination(liste);
-  // La colonne des gestes n'existe que si un signalement s'annule encore.
-  const avecGestes = liste.some((r) => r.canCancel);
-  const [erreur, setErreur] = useState<string | null>(null);
-  // Tant que la DCH n'a pas tranché, le signalement s'annule d'un clic.
-  const annuler = useMutation({
-    mutationFn: (id: string) => api(`/profile-changes/${id}/cancel`, { method: 'POST' }),
-    onSuccess: () => {
-      setErreur(null);
-      void queryClient.invalidateQueries({ queryKey: ['profile-changes'] });
-    },
-    onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Annulation impossible.'),
-  });
-  return (
-    <>
-      <Card className="@container overflow-hidden">
-        <CardHeader>
-          <CardTitle>Mes signalements</CardTitle>
-        </CardHeader>
-        {erreur ? (
-          <p role="alert" className="px-5 pb-2 text-[12.5px] text-danger">
-            {erreur}
-          </p>
-        ) : null}
-        {liste.length === 0 ? (
-          <CardContent>
-            <p className="text-sm text-ink-muted">
-              {signalements.isLoading ? '\u00a0' : 'Aucun signalement.'}
-            </p>
-          </CardContent>
-        ) : (
-          // Le tableau ne s'ouvre que si la carte a la place de ses sept
-          // colonnes ; plus étroite, chaque signalement se range sur une pile.
-          // Les dates, les statuts et le geste gardent une largeur fixe.
-          <Table className="@5xl:table-fixed">
-            <THead className="hidden @5xl:table-header-group">
-              <tr>
-                <Th className="@5xl:w-44">Information</Th>
-                <Th>Avant</Th>
-                <Th>Après</Th>
-                <Th className="@5xl:w-[7.5rem]">Signalé le</Th>
-                <Th className="@5xl:w-32">Traité par</Th>
-                <Th className="@5xl:w-28">Statut</Th>
-                {avecGestes ? (
-                  <Th className="@5xl:w-24">
-                    <span className="sr-only">Actions</span>
-                  </Th>
-                ) : null}
-              </tr>
-            </THead>
-            {tranche.map((r) => (
-              <LigneSignalement
-                key={r.id}
-                signalement={r}
-                avecGestes={avecGestes}
-                onAnnuler={() => annuler.mutate(r.id)}
-                enCours={annuler.isPending && annuler.variables === r.id}
-              />
-            ))}
-          </Table>
-        )}
-      </Card>
-      <Pagination {...barre} />
-    </>
-  );
-}
-
-/**
- * Un signalement, dans son propre groupe de lignes : une ligne par
- * information changée (information, avant, après), puis la note et le motif
- * sur toute la largeur de ces trois colonnes. La date, le traitant, le
- * statut et le geste couvrent tout le groupe. Une valeur longue passe à la
- * ligne sans décaler les autres. Dans une carte étroite, tout se range dans
- * une seule cellule.
- */
-function LigneSignalement({
-  signalement: r,
-  avecGestes,
-  onAnnuler,
-  enCours,
-}: {
-  signalement: ProfileChangeRequestView;
-  avecGestes: boolean;
-  onAnnuler: () => void;
-  enCours: boolean;
-}) {
-  const avant = (f: ProfileChangeRequestView['fields'][number]) =>
-    valeurSignalee(f.field, f.previous) ?? 'Non renseigné';
-  const apres = (f: ProfileChangeRequestView['fields'][number]) =>
-    valeurSignalee(f.field, f.next) ?? 'Effacé';
-  const signale = formatDate(r.createdAt.slice(0, 10));
-  const statut = (
-    <Badge tone={PROFILE_CHANGE_STATUS_TONES[r.status]}>
-      {PROFILE_CHANGE_STATUS_LABELS[r.status]}
-    </Badge>
-  );
-  const geste = r.canCancel ? (
-    <Button size="sm" variant="ghost" onClick={onAnnuler} loading={enCours}>
-      Annuler
-    </Button>
-  ) : null;
-  const commentaires =
-    r.note || r.hrMessage ? (
-      <>
-        {r.note ? <p className="text-[11.5px] text-ink-muted italic">« {r.note} »</p> : null}
-        {r.hrMessage ? (
-          <p
-            className={cn(
-              'text-[11.5px]',
-              r.status === 'rejected' ? 'font-semibold text-danger' : 'text-ink-muted italic',
-            )}
-          >
-            {r.status === 'rejected' ? `Motif : ${r.hrMessage}` : `« ${r.hrMessage} »`}
-          </p>
-        ) : null}
-      </>
-    ) : null;
-  const hauteur = r.fields.length + (commentaires ? 1 : 0);
-  const large = 'hidden @5xl:table-cell';
-  return (
-    <TBody className="group border-t border-line-soft">
-      {r.fields.map((f, i) => {
-        const premiere = i === 0;
-        const derniere = i === r.fields.length - 1 && !commentaires;
-        // Les lignes d'un même signalement se serrent ; le groupe garde
-        // l'aération d'une ligne de tableau ordinaire.
-        const marge = cn(premiere ? 'pt-3.5' : 'pt-1', derniere ? 'pb-3.5' : 'pb-1');
-        return (
-          <tr
-            key={f.field}
-            className={cn(
-              'transition-colors duration-150 group-hover:bg-hover',
-              !premiere && 'hidden @5xl:table-row',
-            )}
-          >
-            {premiere ? (
-              <Td className="@5xl:hidden">
-                <ul className="flex flex-col gap-1">
-                  {r.fields.map((g) => (
-                    <li key={g.field} className="text-[12.5px] leading-snug text-ink-muted">
-                      <span className="font-semibold text-ink-strong">{g.label}</span> : {avant(g)}{' '}
-                      <span aria-hidden>→</span>{' '}
-                      <span className="font-semibold text-ink-strong">{apres(g)}</span>
-                    </li>
-                  ))}
-                </ul>
-                {commentaires ? (
-                  <div className="mt-1 flex flex-col gap-1">{commentaires}</div>
-                ) : null}
-                <p className="mt-1.5 text-[11.5px] text-ink-muted tabular-nums">
-                  Signalé le {signale}
-                  {r.handledByName ? ` · traité par ${r.handledByName}` : ''}
-                </p>
-                <div className="mt-2.5 flex items-center gap-3">
-                  {statut}
-                  <span className="ml-auto">{geste}</span>
-                </div>
-              </Td>
-            ) : null}
-            <Td className={cn(large, 'align-top font-semibold text-ink-strong', marge)}>
-              {f.label}
-            </Td>
-            <Td className={cn(large, 'align-top break-words text-ink-muted', marge)}>
-              <Coupable valeur={avant(f)} />
-            </Td>
-            <Td className={cn(large, 'align-top font-semibold break-words text-ink-strong', marge)}>
-              <Coupable valeur={apres(f)} />
-            </Td>
-            {premiere ? (
-              <>
-                <Td
-                  rowSpan={hauteur}
-                  className={cn(large, 'align-top whitespace-nowrap tabular-nums')}
-                  title={timeAgo(r.createdAt)}
-                >
-                  {signale}
-                </Td>
-                <Td rowSpan={hauteur} className={cn(large, 'align-top break-words')}>
-                  {r.handledByName}
-                </Td>
-                <Td rowSpan={hauteur} className={cn(large, 'align-top')}>
-                  {statut}
-                </Td>
-                {avecGestes ? (
-                  <Td rowSpan={hauteur} className={cn(large, 'pl-0 text-right align-top')}>
-                    {geste}
-                  </Td>
-                ) : null}
-              </>
-            ) : null}
-          </tr>
-        );
-      })}
-      {commentaires ? (
-        <tr className="hidden transition-colors duration-150 group-hover:bg-hover @5xl:table-row">
-          <Td colSpan={3} className={cn(large, 'pt-1 pb-3.5')}>
-            <div className="flex flex-col gap-1">{commentaires}</div>
-          </Td>
-        </tr>
-      ) : null}
-    </TBody>
-  );
-}
-
-/** Une adresse électronique trop longue passe à la ligne après l'arobase. */
-function Coupable({ valeur }: { valeur: string }) {
-  const i = valeur.indexOf('@');
-  if (i < 0) return <>{valeur}</>;
-  return (
-    <>
-      {valeur.slice(0, i + 1)}
-      <wbr />
-      {valeur.slice(i + 1)}
-    </>
   );
 }
 
