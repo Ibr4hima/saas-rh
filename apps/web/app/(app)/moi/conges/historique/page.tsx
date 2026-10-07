@@ -3,7 +3,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { AbsenceRequestView, MyEmployeeView } from '@teranga/contracts';
-import { Button, Card, EmptyState, Skeleton, Table, TBody, Td, Th, THead, Tr } from '@teranga/ui';
+import {
+  Button,
+  Card,
+  cn,
+  EmptyState,
+  Skeleton,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+  Tr,
+} from '@teranga/ui';
 import {
   FenetreAnnulation,
   FenetreReprise,
@@ -77,6 +89,12 @@ export default function HistoriqueCongesPage() {
     .filter((r) => r.employeeId === employeeId)
     .sort((a, b) => b.startDate.localeCompare(a.startDate));
   const { tranche, barre } = usePagination(demandes);
+  // La colonne des gestes n'existe que si une demande en a un : vide, elle
+  // laissait un blanc à droite et serrait les dates.
+  const avecGestes = demandes.some(
+    (r) => Boolean(r.repriseDemandee) || r.gestes.annuler || r.gestes.demanderReprise,
+  );
+  const largeurs = avecGestes ? LARGEURS_AVEC_GESTES : LARGEURS;
 
   return (
     <Page>
@@ -111,15 +129,17 @@ export default function HistoriqueCongesPage() {
               {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
               <THead className="hidden sm:table-header-group">
                 <tr>
-                  <Th className="sm:w-[18%]">Type</Th>
-                  <Th className="sm:w-[13%]">Date début</Th>
-                  <Th className="sm:w-[17%]">Date fin</Th>
-                  <Th className="text-right sm:w-[9%]">Durée</Th>
-                  <Th className="sm:w-[14%]">Justificatif</Th>
-                  <Th className="sm:w-[17%]">Statut</Th>
-                  <Th className="sm:w-[12%]">
-                    <span className="sr-only">Actions</span>
-                  </Th>
+                  <Th className={largeurs.type}>Type</Th>
+                  <Th className={largeurs.debut}>Date début</Th>
+                  <Th className={largeurs.fin}>Date fin</Th>
+                  <Th className={cn('text-right', largeurs.duree)}>Durée</Th>
+                  <Th className={largeurs.justificatif}>Justificatif</Th>
+                  <Th className={largeurs.statut}>Statut</Th>
+                  {avecGestes ? (
+                    <Th className="sm:w-[10%]">
+                      <span className="sr-only">Actions</span>
+                    </Th>
+                  ) : null}
                 </tr>
               </THead>
               <TBody>
@@ -127,6 +147,7 @@ export default function HistoriqueCongesPage() {
                   <Ligne
                     key={r.id}
                     demande={r}
+                    avecGestes={avecGestes}
                     onJustificatif={() =>
                       setViewedDoc({
                         url: apiUrl(`/absence-requests/${r.id}/document`),
@@ -176,12 +197,34 @@ export default function HistoriqueCongesPage() {
 }
 
 /**
+ * Les largeurs des colonnes, fixes d'une page à l'autre : avec la colonne
+ * des gestes, ou sans elle quand aucune demande n'en a.
+ */
+const LARGEURS = {
+  type: 'sm:w-[19%]',
+  debut: 'sm:w-[16%]',
+  fin: 'sm:w-[22%]',
+  duree: 'sm:w-[11%]',
+  justificatif: 'sm:w-[16%]',
+  statut: 'sm:w-[16%]',
+};
+const LARGEURS_AVEC_GESTES = {
+  type: 'sm:w-[17%]',
+  debut: 'sm:w-[15%]',
+  fin: 'sm:w-[20%]',
+  duree: 'sm:w-[10%]',
+  justificatif: 'sm:w-[14%]',
+  statut: 'sm:w-[14%]',
+};
+
+/**
  * Une demande, sur une ligne. Sur téléphone, la période, la durée, le statut,
  * le justificatif et les gestes se rangent sous le type : six colonnes n'y
  * tiennent pas.
  */
 function Ligne({
   demande: r,
+  avecGestes,
   onJustificatif,
   onAnnuler,
   onEcourter,
@@ -191,6 +234,7 @@ function Ligne({
   enCours,
 }: {
   demande: AbsenceRequestView;
+  avecGestes: boolean;
   onJustificatif: () => void;
   onAnnuler: () => void;
   onEcourter: () => void;
@@ -258,7 +302,7 @@ function Ligne({
       </Td>
       <Td className="hidden sm:table-cell">{justificatif}</Td>
       <Td className="hidden sm:table-cell">{statut}</Td>
-      <Td className="hidden text-right sm:table-cell">{geste}</Td>
+      {avecGestes ? <Td className="hidden text-right sm:table-cell">{geste}</Td> : null}
     </Tr>
   );
 }

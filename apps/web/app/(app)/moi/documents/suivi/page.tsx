@@ -59,6 +59,8 @@ export default function SuiviDemandesDocumentsPage() {
     b.createdAt.localeCompare(a.createdAt),
   );
   const { tranche, barre } = usePagination(demandes);
+  // La colonne des gestes n'existe que si une demande s'annule encore.
+  const avecGestes = demandes.some((r) => r.canCancel);
 
   return (
     <Page>
@@ -93,13 +95,15 @@ export default function SuiviDemandesDocumentsPage() {
               {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
               <THead className="hidden sm:table-header-group">
                 <tr>
-                  <Th className="sm:w-[32%]">Document</Th>
-                  <Th className="sm:w-[15%]">Demandée le</Th>
-                  <Th className="sm:w-[29%]">Retrait</Th>
-                  <Th className="sm:w-[14%]">Statut</Th>
-                  <Th className="sm:w-[10%]">
-                    <span className="sr-only">Actions</span>
-                  </Th>
+                  <Th className={avecGestes ? 'sm:w-[32%]' : 'sm:w-[34%]'}>Document</Th>
+                  <Th className={avecGestes ? 'sm:w-[15%]' : 'sm:w-[17%]'}>Demandée le</Th>
+                  <Th className={avecGestes ? 'sm:w-[29%]' : 'sm:w-[33%]'}>Retrait</Th>
+                  <Th className={avecGestes ? 'sm:w-[14%]' : 'sm:w-[16%]'}>Statut</Th>
+                  {avecGestes ? (
+                    <Th className="sm:w-[10%]">
+                      <span className="sr-only">Actions</span>
+                    </Th>
+                  ) : null}
                 </tr>
               </THead>
               <TBody>
@@ -107,6 +111,7 @@ export default function SuiviDemandesDocumentsPage() {
                   <Ligne
                     key={r.id}
                     demande={r}
+                    avecGestes={avecGestes}
                     onAnnuler={() => annuler.mutate(r.id)}
                     enCours={annuler.isPending && annuler.variables === r.id}
                   />
@@ -127,10 +132,12 @@ export default function SuiviDemandesDocumentsPage() {
  */
 function Ligne({
   demande: r,
+  avecGestes,
   onAnnuler,
   enCours,
 }: {
   demande: DocumentRequestView;
+  avecGestes: boolean;
   onAnnuler: () => void;
   enCours: boolean;
 }) {
@@ -175,7 +182,7 @@ function Ligne({
       </Td>
       <Td className="hidden sm:table-cell">{retrait}</Td>
       <Td className="hidden sm:table-cell">{statut}</Td>
-      <Td className="hidden text-right sm:table-cell">{geste}</Td>
+      {avecGestes ? <Td className="hidden text-right sm:table-cell">{geste}</Td> : null}
     </Tr>
   );
 }
