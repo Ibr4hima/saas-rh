@@ -260,6 +260,22 @@ body {
   background: var(--tg-hero-line);
 }
 
+/* ── Frise des jours fériés ───────────────────────────────────────────────
+   La date à venir porte deux anneaux : le premier à la couleur de la carte,
+   qui DÉCOUPE le rail autour d'elle (le trait s'arrête net au lieu de la
+   traverser), le second en bleu très dilué, qui la fait avancer d'un plan.
+   Deux ombres portées plutôt que deux bordures : une bordure agrandirait la
+   pastille et casserait l'alignement des quatre dates sur le rail. */
+.ferie-prochain {
+  box-shadow:
+    0 0 0 4px var(--tg-surface),
+    0 0 0 9px color-mix(in oklab, var(--tg-primary) 12%, transparent);
+}
+
+.ferie-neutre {
+  box-shadow: 0 0 0 4px var(--tg-surface);
+}
+
 /* Le point pulsant : une onde blanche qui s'ouvre et s'éteint. */
 @keyframes hero-pulse {
   0% {

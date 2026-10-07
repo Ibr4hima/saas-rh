@@ -375,24 +375,24 @@ function FicheDirection({
 /* ———— La frise des fériés ———— */
 
 /**
- * Le calendrier des fériés : le dernier passé, puis les trois qui viennent,
- * sur un rail fin, une pastille par date, comme la frise de l'année.
+ * Le calendrier des fériés : le dernier passé, puis les trois qui viennent.
  *
  * Les dates sont à intervalles ÉGAUX : l'espacement dit l'ordre, la mention
- * « dans 25 jours » dit la distance. Le prochain se reconnaît à sa pastille
- * bleue cerclée et à sa date en bleu, le passé à son gris ; rien d'autre ne
- * l'annonce.
+ * « dans 49 j » dit la distance. Rien n'est écrit au-dessus des pastilles :
+ * le prochain férié se reconnaît à son aplat bleu et à son double anneau, et
+ * le passé à son gris ; un intitulé par-dessus ne faisait que répéter ce que
+ * la couleur montrait déjà.
  */
 function Frise({ jours }: { jours: DashboardHoliday[] }) {
   const passes = jours.filter((h) => ecartJours(h.day) < 0).length;
-  // Le rail court d'une pastille à l'autre, jamais d'un bord à l'autre de la
-  // carte : un trait qui dépasse ne mène à rien.
+  // Le rail court d'un centre de date à l'autre, jamais d'un bord à l'autre de
+  // la carte : un trait qui dépasse ne mène à rien.
   const garde = `${50 / jours.length}%`;
   return (
     <div className="relative">
       <span
         aria-hidden
-        className="absolute top-[12.5px] h-px bg-line-soft"
+        className="absolute top-[33px] h-[2px] rounded-full bg-line-soft"
         style={{ left: garde, right: garde }}
       />
       <ol className="relative flex">
@@ -422,46 +422,43 @@ function DateFerie({
   const prochain = etat === 'prochain';
   const passe = etat === 'passe';
   return (
-    <li className="flex min-w-0 flex-1 flex-col items-center px-1 text-center sm:px-3">
-      {/* Le disque extérieur, à la couleur de la carte, découpe le rail
-          autour de la pastille au lieu de le laisser la traverser. */}
-      <span className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-surface">
+    <li className="relative flex min-w-0 flex-1 flex-col items-center px-1 pt-2 text-center sm:px-3">
+      {/* Un carré aux angles très adoucis plutôt qu'un rond : la date y tient
+          sur deux lignes sans que le mois vienne toucher le bord. */}
+      <span
+        className={cn(
+          'flex size-[52px] shrink-0 flex-col items-center justify-center rounded-[15px] border transition-colors duration-200',
+          prochain
+            ? 'ferie-prochain border-transparent bg-primary text-primary-ink'
+            : passe
+              ? 'ferie-neutre border-line-soft bg-bg text-ink-muted'
+              : 'ferie-neutre border-line bg-surface text-ink-strong',
+        )}
+      >
+        <span className="text-[17px] leading-none font-bold" style={TABULAIRE}>
+          {Number(day.slice(8, 10))}
+        </span>
         <span
           className={cn(
-            'rounded-full',
-            prochain
-              ? 'size-[12px] bg-primary ring-4 ring-primary/15'
-              : passe
-                ? 'size-[9px] bg-line'
-                : 'size-[9px] bg-primary/40',
+            'mt-1 text-[9px] leading-none font-bold tracking-[0.06em] uppercase',
+            prochain ? 'text-primary-ink/75' : 'text-ink-muted',
           )}
-        />
+        >
+          {date.toLocaleDateString('fr-FR', { month: 'short' })}
+        </span>
       </span>
       <span
         className={cn(
-          'mt-3 text-[16px] leading-none font-bold tracking-[-0.01em]',
-          prochain ? 'text-primary' : passe ? 'text-ink-muted' : 'text-ink-strong',
-        )}
-        style={TABULAIRE}
-      >
-        {date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-      </span>
-      <span
-        className={cn(
-          'mt-2 line-clamp-2 text-[12.5px] leading-tight font-semibold',
+          'mt-3 line-clamp-2 text-[12.5px] leading-tight font-semibold',
           passe ? 'text-ink-muted' : 'text-ink-strong',
         )}
       >
         {label}
       </span>
-      {/* Étroit, le jour et la distance prennent chacun leur ligne plutôt que
-          de se couper au milieu. */}
       <span className="mt-1 text-[11px] leading-tight text-ink-muted">
         <span className="capitalize">{date.toLocaleDateString('fr-FR', { weekday: 'long' })}</span>
-        <span className="hidden sm:inline"> · </span>
-        <span className={cn('block sm:inline', prochain && 'font-semibold text-primary')}>
-          {inDays(day)}
-        </span>
+        {' · '}
+        <span className={prochain ? 'font-semibold text-primary' : undefined}>{inDays(day)}</span>
       </span>
     </li>
   );
