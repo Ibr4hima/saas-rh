@@ -620,7 +620,6 @@ export default function DashboardPage() {
                   />
                 ) : null}
               </ul>
-              {d ? <Parite femmes={d.women} hommes={d.men} /> : null}
             </>
           )}
         </CardContent>
