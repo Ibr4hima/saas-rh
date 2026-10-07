@@ -57,6 +57,15 @@ export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHead
   );
 }
 
+/**
+ * Au bord de la carte, le contenu en reprend l'arrondi : un tableau posé
+ * dedans le reçoit à son tour, et sa ligne survolée reste dans les coins.
+ */
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('px-5 pt-0 pb-5', className)} {...props} />;
+  return (
+    <div
+      className={cn('px-5 pt-0 pb-5 first:rounded-t-[inherit] last:rounded-b-[inherit]', className)}
+      {...props}
+    />
+  );
 }

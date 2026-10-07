@@ -35,7 +35,14 @@ export function Table({
   pleine?: boolean;
 }) {
   return (
-    <div className={cn(pleine ? 'min-h-0 flex-1 overflow-auto' : 'overflow-x-auto')}>
+    <div
+      className={cn(
+        pleine ? 'min-h-0 flex-1 overflow-auto' : 'overflow-x-auto',
+        // Au bord d'une carte arrondie, le tableau en prend les coins : la
+        // ligne survolée et l'en-tête ne débordent plus de l'arrondi.
+        'first:rounded-t-[inherit] last:rounded-b-[inherit]',
+      )}
+    >
       <table className={cn('w-full text-[12.5px]', className)} {...props} />
     </div>
   );
