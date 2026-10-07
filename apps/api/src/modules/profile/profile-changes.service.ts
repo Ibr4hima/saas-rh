@@ -167,8 +167,10 @@ export class ProfileChangesService {
       } else if (!toute) {
         if (!moi) return [];
         conditions.push(
+          // Confiée : tant qu'elle attend seulement (cf. les congés).
           sql`(${t.profileChangeRequests.employeeId} = ${moi}
-               OR ${t.profileChangeRequests.confieeAEmployeeId} = ${moi})`,
+               OR (${t.profileChangeRequests.confieeAEmployeeId} = ${moi}
+                   AND ${t.profileChangeRequests.status} = 'pending'))`,
         );
       }
       if (!selfOnly && filters.employeeId) {

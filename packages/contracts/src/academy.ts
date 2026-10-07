@@ -440,9 +440,10 @@ export interface EvaluationView {
   /**
    * Pourquoi elle est fermée à l'agent connecté : `formateur` — il a fait la
    * formation, il en suit les leçons mais ne la passe pas ; `gestion` — son
-   * compte gère le catalogue, il en connaît les questions.
+   * compte gère le catalogue, il en connaît les questions ; `reponses` : il
+   * en a vu les bonnes réponses quand il gérait le catalogue.
    */
-  fermeture: 'formateur' | 'gestion' | null;
+  fermeture: 'formateur' | 'gestion' | 'reponses' | null;
   /** La limite par vingt-quatre heures ; `null` : sans limite. */
   tentativesParJour: number | null;
   /** Ce qu'il en reste dans la fenêtre ; `null` : sans limite. */

@@ -47,7 +47,7 @@ import {
   type PlanDeReprise,
 } from './chaine';
 import { frDate } from '../acces/appels';
-import { administrateursEnFonction, pasSurSoi } from '../acces/dch';
+import { administrateursEnFonction, pasResponsableDeSoi, pasSurSoi } from '../acces/dch';
 import { ExpediteurCourriels } from '../courriels/expediteur';
 import { faireSuivreLesDemandes, reconcilierDemande, reconcilierLeCircuit } from '../time/visas';
 import {
@@ -81,6 +81,10 @@ function pgCode(err: unknown): string | undefined {
  * décédée, n'est jamais donné à une autre.
  */
 export const DELAI_DE_CORRECTION_JOURS = 30;
+
+/** Rouvert, le compte d'un administrateur retrouve ses droits : comme son invitation. */
+const REOUVERTURE_RESERVEE =
+  'Compte administrateur : sa réactivation revient à l’administrateur ou au directeur du Capital Humain';
 
 /** Saisi il y a plus de 30 jours : en SQL, pour le dossier `e`. */
 const dossierFige = sql`(e.created_at < now() - make_interval(days => ${DELAI_DE_CORRECTION_JOURS}))`;
@@ -409,12 +413,9 @@ export class PeopleService {
           nationalIdEncrypted: nationalId ? this.crypto.encrypt(nationalId) : null,
         });
         if (input.employee.managerEmployeeId) {
-          await validerRattachement(
-            tx,
-            employeeId,
-            input.employee.managerEmployeeId,
-            await directionDeUnite(tx, input.assignment?.orgUnitId ?? null),
-          );
+          const direction = await directionDeUnite(tx, input.assignment?.orgUnitId ?? null);
+          await pasResponsableDeSoi(tx, user.userId, input.employee.managerEmployeeId, direction);
+          await validerRattachement(tx, employeeId, input.employee.managerEmployeeId, direction);
         }
         await tx.insert(t.employees).values({
           id: employeeId,
@@ -819,12 +820,16 @@ export class PeopleService {
         if (input.employee && Object.keys(input.employee).length > 0) {
           if (input.employee.managerEmployeeId) {
             await exigerEnActivite(tx, id, 'recevoir de n+1');
-            await validerRattachement(
-              tx,
-              id,
-              input.employee.managerEmployeeId,
-              await directionDeEmploye(tx, id),
-            );
+            const direction = await directionDeEmploye(tx, id);
+            if (input.employee.managerEmployeeId !== employee.managerEmployeeId) {
+              await pasResponsableDeSoi(
+                tx,
+                user.userId,
+                input.employee.managerEmployeeId,
+                direction,
+              );
+            }
+            await validerRattachement(tx, id, input.employee.managerEmployeeId, direction);
           }
           // Les colonnes sont nommées une à une, jamais l'objet reçu en bloc.
           // Le schéma Zod ne laisse déjà rien passer d'autre, mais il ne
@@ -905,6 +910,13 @@ export class PeopleService {
       resultat = await this.db.withTenant(ctxOf(user), async (tx) => {
         const dossier = await this.requireEmployee(tx, id);
         await pasSurSoi(tx, user.userId, [id], 'modifier votre propre contrat');
+        // Le contrat d'un dossier inactif le rouvre, aujourd'hui ou le jour venu.
+        if (dossier.status === 'archived') {
+          const [cible] = await this.chargerCibles(tx, [id]);
+          if (await this.rouvertureReservee(tx, user, cible?.userId ?? null)) {
+            problem(403, 'people.reactivation_reservee', `${REOUVERTURE_RESERVEE}.`);
+          }
+        }
         await exigerUniteVivante(tx, input.affectation.orgUnitId);
         const [precedent] = await tx
           .select({
@@ -924,6 +936,7 @@ export class PeopleService {
             `Le contrat en place a commencé le ${frDate(precedent.startDate)}.`,
           );
         }
+        await this.exigerUneFinPermise(tx, user, id, input.endDate);
         // Le précédent s'arrête la veille ; sa fin d'origine se garde, pour
         // le cas où ce contrat serait annulé avant de commencer.
         const remplaceLaFin = Boolean(
@@ -1112,6 +1125,7 @@ export class PeopleService {
           `Le contrat précédent a commencé le ${frDate(precedent.startDate)}.`,
         );
       }
+      await this.exigerUneFinPermise(tx, user, id, input.endDate);
       // Le précédent s'arrêtait la veille de ce contrat : il suit son début.
       if (precedent && precedent.endDate && input.startDate !== dernier.startDate) {
         const { rows } = await tx.execute<{ veille: boolean }>(sql`
@@ -1375,6 +1389,18 @@ export class PeopleService {
     input: NewAssignmentInput,
   ): Promise<ConsequencesHierarchie> {
     await pasSurSoi(tx, user.userId, [id], 'changer votre propre affectation');
+    await pasResponsableDeSoi(
+      tx,
+      user.userId,
+      input.managerEmployeeId,
+      await directionDeUnite(tx, input.orgUnitId ?? null),
+    );
+    await pasResponsableDeSoi(
+      tx,
+      user.userId,
+      input.repreneurEquipeId,
+      await directionDeEmploye(tx, id),
+    );
     return muter(tx, user.tenantId, id, input);
   }
 
@@ -1492,7 +1518,7 @@ export class PeopleService {
 
     const journal: ChangementRattachement[] = [];
     if (input.archived) {
-      const depart = await this.planifierLesDeparts(tx, retenus, input.repreneurs);
+      const depart = await this.planifierLesDeparts(tx, user, retenus, input.repreneurs);
       skipped.push(...depart.refus);
       retenus = depart.retenus;
       for (const plan of depart.plans) await appliquerReprise(tx, journal, plan);
@@ -1635,6 +1661,7 @@ export class PeopleService {
    */
   private async planifierLesDeparts<C extends { id: string; nom: string }>(
     tx: Tx,
+    user: SessionUser,
     candidats: C[],
     repreneurs: Record<string, string> | undefined,
   ): Promise<{ retenus: C[]; plans: PlanDeReprise[]; refus: EmployeeBatchResult['skipped'] }> {
@@ -1658,13 +1685,14 @@ export class PeopleService {
           continue;
         }
         try {
+          await pasResponsableDeSoi(tx, user.userId, repreneur, await directionDeEmploye(tx, c.id));
           plans.push(await planifierReprise(tx, c.id, repreneur, equipe, partants));
         } catch (err) {
           if (!(err instanceof ProblemException)) throw err;
           tour.push({
             id: c.id,
             name: c.nom,
-            reason: [err.problem.title, err.problem.detail].filter(Boolean).join(' — '),
+            reason: [err.problem.title, err.problem.detail].filter(Boolean).join('. '),
           });
         }
       }
@@ -1705,7 +1733,7 @@ export class PeopleService {
       }
 
       const journal: ChangementRattachement[] = [];
-      const depart = await this.planifierLesDeparts(tx, candidats, input.repreneurs);
+      const depart = await this.planifierLesDeparts(tx, user, candidats, input.repreneurs);
       skipped.push(...depart.refus);
       for (const plan of depart.plans) await appliquerReprise(tx, journal, plan);
       const detaches: string[] = [];
@@ -1744,6 +1772,29 @@ export class PeopleService {
   }
 
   /**
+   * Une fin de contrat déjà passée ferme un dossier en activité, comme une
+   * désactivation : les mêmes garde-fous s'appliquent (le dernier
+   * administrateur, qui dirige une unité).
+   */
+  private async exigerUneFinPermise(
+    tx: Tx,
+    user: SessionUser,
+    id: string,
+    fin: string | null | undefined,
+  ): Promise<void> {
+    if (!fin) return;
+    const { rows } = await tx.execute<{ ferme: boolean }>(sql`
+      SELECT status = 'active' AND ${fin}::date < CURRENT_DATE AS ferme
+        FROM employees WHERE id = ${id}`);
+    if (!rows[0]?.ferme) return;
+    const [cible] = await this.chargerCibles(tx, [id]);
+    const motif = cible ? await this.motifDeRefus(tx, user, cible, 'archive') : null;
+    if (motif) {
+      problem(422, 'people.fin_refusee', 'Cette fin de contrat fermerait le dossier', `${motif}.`);
+    }
+  }
+
+  /**
    * Ce qui interdit de fermer ou d'effacer un dossier — null si rien ne s'y
    * oppose. Trois garde-fous, et chacun a coûté cher ailleurs :
    *
@@ -1765,23 +1816,19 @@ export class PeopleService {
     if (geste === 'suppression' && (await this.estFige(tx, cible.id))) {
       return `Saisi il y a plus de ${DELAI_DE_CORRECTION_JOURS} jours, ce dossier se garde : désactivez-le`;
     }
+    // Rouvert, le compte d'un administrateur retrouve ses droits : comme
+    // son invitation, sa réactivation revient à l'administrateur ou au
+    // directeur du Capital Humain.
+    if (geste === 'reouverture' && (await this.rouvertureReservee(tx, user, cible.userId))) {
+      return REOUVERTURE_RESERVEE;
+    }
     // Rouvrir un dossier ne retire d'administrateur à personne.
     if (cible.userId && geste !== 'reouverture') {
       // Un autre administrateur EN FONCTION : celui dont le dossier est déjà
       // parti ne rendra les droits à personne.
       const autreAdmin =
         (await administrateursEnFonction(tx, user.tenantId, cible.userId)).length > 0;
-      const [estAdmin] = await tx
-        .select({ id: t.userTenantMemberships.id })
-        .from(t.userTenantMemberships)
-        .where(
-          and(
-            eq(t.userTenantMemberships.tenantId, user.tenantId),
-            eq(t.userTenantMemberships.userId, cible.userId),
-            eq(t.userTenantMemberships.role, 'admin'),
-          ),
-        )
-        .limit(1);
+      const estAdmin = await this.estAdministrateur(tx, user.tenantId, cible.userId);
       if (estAdmin && !autreAdmin) {
         return "Dernier administrateur de l'organisation";
       }
@@ -1814,6 +1861,31 @@ export class PeopleService {
       if (unite) return `Dirige « ${unite.name} » : nommez d'abord un successeur`;
     }
     return null;
+  }
+
+  /** Le compte d'un administrateur ne se rouvre que par l'administrateur ou le directeur. */
+  private async rouvertureReservee(
+    tx: Tx,
+    user: SessionUser,
+    userId: string | null,
+  ): Promise<boolean> {
+    if (!userId || user.role === 'admin' || user.dirigeLaDCH) return false;
+    return this.estAdministrateur(tx, user.tenantId, userId);
+  }
+
+  private async estAdministrateur(tx: Tx, tenantId: string, userId: string): Promise<boolean> {
+    const [m] = await tx
+      .select({ id: t.userTenantMemberships.id })
+      .from(t.userTenantMemberships)
+      .where(
+        and(
+          eq(t.userTenantMemberships.tenantId, tenantId),
+          eq(t.userTenantMemberships.userId, userId),
+          eq(t.userTenantMemberships.role, 'admin'),
+        ),
+      )
+      .limit(1);
+    return Boolean(m);
   }
 
   /**

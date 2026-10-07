@@ -390,6 +390,17 @@ export async function confierLaDemande(
   employeeId: string | null,
 ): Promise<{ proposerHabilitation: boolean }> {
   const def = DEFINITIONS[type];
+  // Qui appelle, d'abord : un autre que le directeur n'apprend rien de la
+  // demande, ni qu'elle attend, ni qu'elle existe, et ne la verrouille pas.
+  const moi = await agentDuCompte(tx, user.userId);
+  const dch = await directionDuPersonnel(tx);
+  if (!dch || !moi || dch.directeurEmployeeId !== moi) {
+    problem(
+      403,
+      'demandes.reserve_au_directeur_dch',
+      'Seul le directeur du Capital Humain confie les demandes',
+    );
+  }
   await tx.execute(sql`SELECT 1 FROM ${def.table} WHERE id = ${id} FOR UPDATE`);
   const [d] = await enAttente(tx, type, id);
   if (!d) {
@@ -398,15 +409,6 @@ export async function confierLaDemande(
       'demandes.close',
       'Cette demande n’attend plus la DCH',
       'Elle est déjà traitée, ou introuvable.',
-    );
-  }
-  const moi = await agentDuCompte(tx, user.userId);
-  const dch = await directionDuPersonnel(tx);
-  if (!dch || !moi || dch.directeurEmployeeId !== moi) {
-    problem(
-      403,
-      'demandes.reserve_au_directeur_dch',
-      'Seul le directeur du Capital Humain confie les demandes',
     );
   }
   if (employeeId) {

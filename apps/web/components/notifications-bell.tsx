@@ -64,6 +64,7 @@ export function NotificationsBell({ espace }: { espace?: Espace }) {
     queryFn: () =>
       api<NotificationsPage>(
         `/notifications?scope=${vue}&limite=${limite}${filtre ? `&${filtre}` : ''}`,
+        { arrierePlan: true },
       ),
     // « Voir plus » garde la liste affichée pendant qu'elle s'allonge ; un
     // changement d'onglet, lui, ne montre jamais les lignes de l'autre vue.

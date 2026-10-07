@@ -18,6 +18,7 @@ import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ECHECS_PAR_COMPTE, Limiteur, empreinte } from '../src/common/limiteur';
 import {
   archiveEmployeesSchema,
   newContractSchema,
@@ -1086,6 +1087,128 @@ describe('couper un accès', () => {
   });
 });
 
+describe('les droits du portail (audit)', () => {
+  const NEUF = 'UnMotDePasseNeuf1!';
+  const cdi = { type: 'cdi', debut: -900, fin: null };
+  const jeton = (invitePath: string) => invitePath.split('/').pop() as string;
+  const gestionnaire = () =>
+    ({
+      userId: omar.userId,
+      tenantId,
+      role: 'employee',
+      capacites: ['personnel.gerer'],
+    }) as unknown as SessionUser;
+
+  it('un délégué ne rouvre pas l’accès qu’un autre a coupé ; le sien, oui', async () => {
+    await invitations.couperLAcces(admin, moussa.employeeId, true);
+    expect(
+      await codeOf(() => invitations.couperLAcces(gestionnaire(), moussa.employeeId, false)),
+    ).toBe('portal.retablir_reserve');
+    await invitations.couperLAcces(admin, moussa.employeeId, false);
+
+    await invitations.couperLAcces(gestionnaire(), moussa.employeeId, true);
+    expect(
+      await codeOf(() => invitations.couperLAcces(gestionnaire(), moussa.employeeId, false)),
+    ).toBe('AUCUNE ERREUR');
+  });
+
+  it('un délégué n’invite ni le DG, ni le directeur du Capital Humain, ni un administrateur', async () => {
+    for (const protege of [dg, mariama]) {
+      expect(
+        await codeOf(() => invitations.invite(gestionnaire(), protege.employeeId, 'employee')),
+      ).toBe('portal.invitation_reservee');
+    }
+    await raw(`UPDATE user_tenant_memberships SET role = 'admin' WHERE user_id = $1`, [
+      moussa.userId,
+    ]);
+    try {
+      expect(
+        await codeOf(() => invitations.invite(gestionnaire(), moussa.employeeId, 'employee')),
+      ).toBe('portal.invitation_reservee');
+    } finally {
+      await raw(`UPDATE user_tenant_memberships SET role = 'employee' WHERE user_id = $1`, [
+        moussa.userId,
+      ]);
+    }
+    // Un agent comme les autres : la règle ne l'arrête pas (il a déjà son accès).
+    expect(
+      await codeOf(() => invitations.invite(gestionnaire(), moussa.employeeId, 'employee')),
+    ).toBe('portal.already_active');
+  });
+
+  it('deviner le mot de passe d’un compte par une invitation : le compteur de la connexion', async () => {
+    const limiteur = new Limiteur(db);
+    const surveillee = new InvitationsService(db, auth, undefined, limiteur);
+    const sujet = empreinte(moussa.email);
+    await raw(
+      `UPDATE persons SET user_id = NULL WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [moussa.employeeId],
+    );
+    try {
+      const { invitePath } = await surveillee.invite(
+        admin,
+        moussa.employeeId,
+        'employee',
+        moussa.email,
+      );
+      for (let i = 0; i < 10; i++) {
+        expect(
+          await codeOf(() => surveillee.accept(jeton(invitePath), `Faux${i}MotDePasse!`, {})),
+        ).toBe('portal.existing_account');
+      }
+      // Même le bon mot de passe attend : le compte est sous surveillance.
+      expect(await codeOf(() => surveillee.accept(jeton(invitePath), MOT_DE_PASSE, {}))).toBe(
+        'auth.too_many_attempts',
+      );
+      expect((await limiteur.consulter(ECHECS_PAR_COMPTE, sujet)).bloque).toBe(true);
+    } finally {
+      await limiteur.oublier(ECHECS_PAR_COMPTE, sujet);
+      await raw(
+        `UPDATE persons SET user_id = $2 WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+        [moussa.employeeId, moussa.userId],
+      );
+    }
+  });
+
+  it('une invitation ne reprend pas l’adresse d’un compte qui sert ailleurs', async () => {
+    const autreTenant = randomUUID();
+    const compteFerme = randomUUID();
+    const adresse = `ailleurs-${compteFerme}@test.local`;
+    await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1, 'Autre', $2)`, [
+      autreTenant,
+      `autre-${autreTenant.slice(0, 8)}`,
+    ]);
+    await raw(
+      `INSERT INTO users (id, email, password_hash, given_name, family_name)
+       VALUES ($1, $2, NULL, 'Ailleurs', 'Test')`,
+      [compteFerme, adresse],
+    );
+    await raw(
+      `INSERT INTO user_tenant_memberships (id, tenant_id, user_id, role) VALUES ($1,$2,$3,'employee')`,
+      [randomUUID(), autreTenant, compteFerme],
+    );
+    const nouveau = await agent('Nouveau', uDFC, cdi, dg.employeeId);
+    await raw(`UPDATE persons SET user_id = NULL WHERE user_id = $1`, [nouveau.userId]);
+    try {
+      const { invitePath } = await invitations.invite(
+        admin,
+        nouveau.employeeId,
+        'employee',
+        adresse,
+      );
+      expect(await codeOf(() => invitations.accept(jeton(invitePath), NEUF, {}))).toBe(
+        'portal.adresse_prise',
+      );
+      const { rows } = await raw(`SELECT email FROM users WHERE id = $1`, [compteFerme]);
+      expect(rows[0].email).toBe(adresse);
+    } finally {
+      await raw(`DELETE FROM user_tenant_memberships WHERE tenant_id = $1`, [autreTenant]);
+      await raw(`DELETE FROM users WHERE id = $1`, [compteFerme]);
+      await raw(`DELETE FROM tenants WHERE id = $1`, [autreTenant]);
+    }
+  });
+});
+
 describe('corriger ce qui a été saisi par erreur', () => {
   const contrats = async (a: Agent) =>
     (
@@ -1831,7 +1954,7 @@ describe('les invitations partent d’elles-mêmes', () => {
     });
     expect(etat(ibou)).toMatchObject({ etat: 'invite', adresse: 'ibou@apix.test' });
 
-    const controleur = new PortalController(portail, db);
+    const controleur = new PortalController(portail, db, new Limiteur(db));
     const requete = (dirigeLaDCH: boolean) =>
       ({ sessionUser: { ...admin, dirigeLaDCH } }) as unknown as Parameters<
         PortalController['etatDesAcces']
@@ -2309,5 +2432,93 @@ describe('les invitations partent d’elles-mêmes', () => {
       );
       expect(rows[0].n).toBe(0);
     });
+  });
+});
+
+describe('une fin de contrat ne contourne pas la désactivation (audit)', () => {
+  const role = (userId: string, r: 'admin' | 'employee') =>
+    raw(`UPDATE user_tenant_memberships SET role = $3 WHERE tenant_id = $1 AND user_id = $2`, [
+      tenantId,
+      userId,
+      r,
+    ]);
+  const contratDe = async (a: Agent) =>
+    (
+      await raw(
+        `SELECT id, start_date::text AS du FROM contracts WHERE employee_id = $1
+          ORDER BY start_date DESC LIMIT 1`,
+        [a.employeeId],
+      )
+    ).rows[0] as { id: string; du: string };
+  /** Un membre de la DCH : ni administrateur, ni directeur. */
+  const rh = () => ({ userId: ibou.userId, tenantId, role: 'employee' }) as SessionUser;
+
+  it('une fin passée ne ferme ni le dossier d’un responsable d’unité, ni celui du dernier administrateur', async () => {
+    const c = await contratDe(omar);
+    const finir = async () =>
+      people.corrigerContrat(admin, omar.employeeId, c.id, {
+        contractType: 'cdd',
+        startDate: c.du,
+        endDate: await jour(-2),
+      } as never);
+    expect(await codeOf(finir)).toBe('people.fin_refusee');
+    expect(
+      await codeOf(async () =>
+        people.newContract(admin, omar.employeeId, {
+          affectation: await placeDe(omar),
+          contractType: 'cdd',
+          startDate: await jour(-10),
+          endDate: await jour(-2),
+        }),
+      ),
+    ).toBe('people.fin_refusee');
+    expect((await statut(omar)).status).toBe('active');
+
+    await role(moussa.userId, 'admin');
+    await role(adminUserId, 'employee');
+    try {
+      const m = await contratDe(moussa);
+      expect(
+        await codeOf(async () =>
+          people.corrigerContrat(admin, moussa.employeeId, m.id, {
+            contractType: 'cdd',
+            startDate: m.du,
+            endDate: await jour(-2),
+          }),
+        ),
+      ).toBe('people.fin_refusee');
+    } finally {
+      await role(adminUserId, 'admin');
+      await role(moussa.userId, 'employee');
+    }
+  });
+
+  it('le compte d’un administrateur parti ne se rouvre que par l’administrateur ou le directeur', async () => {
+    expect(await inactiver()).toBe(1);
+    await role(fatou.userId, 'admin');
+    const contrat = async (debut: number) => ({
+      affectation: await placeDe(fatou),
+      contractType: 'cdi' as const,
+      startDate: await jour(debut),
+    });
+    expect(
+      await codeOf(async () => people.newContract(rh(), fatou.employeeId, await contrat(0))),
+    ).toBe('people.reactivation_reservee');
+    // Le jour venu non plus : un contrat qui commence plus tard rouvrirait le dossier.
+    expect(
+      await codeOf(async () => people.newContract(rh(), fatou.employeeId, await contrat(5))),
+    ).toBe('people.reactivation_reservee');
+    const r = await people.archive(rh(), { ids: [fatou.employeeId], archived: false });
+    expect(r.skipped[0]?.reason).toMatch(/^Compte administrateur/);
+    const directrice = {
+      userId: mariama.userId,
+      tenantId,
+      role: 'employee',
+      dirigeLaDCH: true,
+    } as SessionUser;
+    expect(
+      await codeOf(async () => people.newContract(directrice, fatou.employeeId, await contrat(0))),
+    ).toBe('AUCUNE ERREUR');
+    expect((await statut(fatou)).status).toBe('active');
   });
 });

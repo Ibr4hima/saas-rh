@@ -40,6 +40,12 @@ export const ECHECS_PAR_COMPTE: Regle = {
 
 /** Les liens « mot de passe oublié » demandés d'une adresse : dix par heure. */
 export const OUBLIS_PAR_ADRESSE: Regle = { bucket: 'oubli_ip', fenetreSecondes: 3600, max: 10 };
+/** Les vérifications publiques de certificat d'une adresse : soixante par dix minutes. */
+export const VERIFICATIONS_DE_CERTIFICAT: Regle = {
+  bucket: 'certificat_ip',
+  fenetreSecondes: 600,
+  max: 60,
+};
 /** Les liens demandés pour une même adresse email : trois par heure. */
 export const OUBLIS_PAR_COMPTE: Regle = { bucket: 'oubli_compte', fenetreSecondes: 3600, max: 3 };
 

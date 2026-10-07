@@ -160,7 +160,11 @@ export function porteDesCorps(portier: Portier): RequestHandler {
       res.setHeader('Connection', 'close');
       next(e);
     };
-    const route = routes.find((r) => r.methode === req.method && r.chemin.test(req.path));
+    // Express route sans tenir compte de la casse ni d'une barre finale :
+    // la porte lit le chemin de la même façon, sans quoi « …/Apply/ »
+    // passerait à côté de ses limites et atteindrait la même route.
+    const chemin = req.path.toLowerCase().replace(/\/+$/, '');
+    const route = routes.find((r) => r.methode === req.method && r.chemin.test(chemin));
     if (!route) {
       // Annoncé trop gros, il ne se vide même pas : la réponse part tout de suite.
       if (Number(req.headers['content-length'] ?? 0) > LIMITE_AILLEURS) {

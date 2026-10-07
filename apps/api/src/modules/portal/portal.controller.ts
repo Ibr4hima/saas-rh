@@ -23,7 +23,8 @@ import {
   type InviterPlusieursInput,
   type MyEmployeeView,
 } from '@teranga/contracts';
-import { problem } from '../../common/problem';
+import { ECHECS_PAR_ADRESSE, Limiteur, adresseDuClient } from '../../common/limiteur';
+import { problem, ProblemException } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
@@ -38,6 +39,7 @@ export class PortalController {
   constructor(
     @Inject(InvitationsService) private readonly invitations: InvitationsService,
     @Inject(TenantDb) private readonly db: TenantDb,
+    @Inject(Limiteur) private readonly limiteur: Limiteur,
   ) {}
 
   // ---------- Côté gestionnaire (session requise) ----------
@@ -50,7 +52,7 @@ export class PortalController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(inviteEmployeeSchema)) body: InviteEmployeeInput,
   ) {
-    return this.invitations.invite(req.sessionUser, id, body.role, body.email);
+    return this.invitations.invite(req.sessionUser, id, body.role);
   }
 
   /** Inviter plusieurs agents d'un coup : après un import, depuis la gestion des accès. */
@@ -175,10 +177,33 @@ export class PortalController {
     if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) {
       problem(410, 'portal.invitation_invalid', "Cette invitation n'est plus valable");
     }
-    const { result, session } = await this.invitations.accept(token, body.password, {
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
+    // Relier un compte existant demande son mot de passe : les échecs se
+    // comptent par adresse, comme à la connexion (le compte, lui, est
+    // compté dans le service).
+    const adresse = adresseDuClient(req);
+    const verdict = await this.limiteur.consulter(ECHECS_PAR_ADRESSE, adresse);
+    if (verdict.bloque) {
+      res.setHeader('Retry-After', String(verdict.reessayerDans));
+      problem(
+        429,
+        'auth.too_many_attempts',
+        'Trop de tentatives',
+        `Réessayez dans ${Math.ceil(verdict.reessayerDans / 60)} min.`,
+      );
+    }
+    let accepte: Awaited<ReturnType<InvitationsService['accept']>>;
+    try {
+      accepte = await this.invitations.accept(token, body.password, {
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    } catch (err) {
+      if (err instanceof ProblemException && err.problem.code === 'portal.existing_account') {
+        await this.limiteur.compter(ECHECS_PAR_ADRESSE, adresse);
+      }
+      throw err;
+    }
+    const { result, session } = accepte;
     if (session) {
       res.cookie(SESSION_COOKIE, session.token, optionsDuCookie(session.expiresAt));
     }

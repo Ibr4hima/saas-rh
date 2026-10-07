@@ -163,8 +163,10 @@ export class DocumentRequestsService {
       } else if (!toute) {
         if (!moi) return [];
         conditions.push(
+          // Confiée : tant qu'elle est ouverte seulement (cf. les congés).
           sql`(${t.documentRequests.employeeId} = ${moi}
-               OR ${t.documentRequests.confieeAEmployeeId} = ${moi})`,
+               OR (${t.documentRequests.confieeAEmployeeId} = ${moi}
+                   AND ${inArray(t.documentRequests.status, OPEN_STATUSES)}))`,
         );
       }
       if (!selfOnly && filters.employeeId) {

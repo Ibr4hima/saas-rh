@@ -370,6 +370,29 @@ export async function pasSurSoi(
 }
 
 /**
+ * Personne ne se désigne N+1 d'un agent, ni repreneur d'une équipe : il se
+ * donnerait le visa de leurs congés et leur évaluation, sans que personne
+ * l'ait décidé. Sauf ce que la règle fait déjà : le responsable de la
+ * direction de l'agent en est le N+1 d'office.
+ */
+export async function pasResponsableDeSoi(
+  tx: Tx,
+  userId: string,
+  responsableId: string | null | undefined,
+  direction: { id: string } | null,
+): Promise<void> {
+  if (!responsableId) return;
+  if (direction) {
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      SELECT id FROM org_units
+       WHERE id = ${direction.id} AND manager_employee_id = ${responsableId}
+         AND deleted_at IS NULL`);
+    if (rows.length > 0) return;
+  }
+  await pasSurSoi(tx, userId, [responsableId], 'vous désigner responsable');
+}
+
+/**
  * L'agent relié à ce compte, s'il est en activité : dossier actif et contrat
  * en cours. Un contrat échu compte dès le lendemain du dernier jour, sans
  * attendre que la liste range le dossier dans les inactifs.

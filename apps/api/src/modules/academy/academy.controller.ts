@@ -47,6 +47,7 @@ import {
   titleSchema,
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
+import { Limiteur, VERIFICATIONS_DE_CERTIFICAT, adresseDuClient } from '../../common/limiteur';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { AccesGuard, FermeAuxInactifs, OuvertAuxInactifs, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
@@ -505,10 +506,21 @@ export class AcademyController {
 export class PublicCertificatsController {
   constructor(
     @Inject(AcademyEvaluationService) private readonly evaluation: AcademyEvaluationService,
+    @Inject(Limiteur) private readonly limiteur: Limiteur,
   ) {}
 
+  /** Une adresse qui essaie des numéros à la chaîne s'arrête vite. */
   @Get(':numero')
-  verifier(@Param('numero') numero: string) {
+  async verifier(@Param('numero') numero: string, @Req() req: Request) {
+    const verdict = await this.limiteur.compter(VERIFICATIONS_DE_CERTIFICAT, adresseDuClient(req));
+    if (verdict.bloque) {
+      problem(
+        429,
+        'academy.trop_de_verifications',
+        'Trop de vérifications',
+        `Réessayez dans ${Math.ceil(verdict.reessayerDans / 60)} min.`,
+      );
+    }
     return this.evaluation.verifier(numero.slice(0, 40));
   }
 }

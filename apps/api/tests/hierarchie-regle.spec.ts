@@ -171,6 +171,11 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await vider();
+  const comptes = await raw(`SELECT user_id FROM user_tenant_memberships WHERE tenant_id = $1`, [
+    tenantId,
+  ]);
+  await raw(`DELETE FROM user_tenant_memberships WHERE tenant_id = $1`, [tenantId]);
+  for (const c of comptes.rows) await raw(`DELETE FROM users WHERE id = $1`, [c.user_id]);
   await raw(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
   await raw(`DELETE FROM users WHERE id = $1`, [userId]);
   await db?.pool.end();
@@ -543,5 +548,98 @@ describe('le contrôle de la chaîne', () => {
     const c = await hierarchie.controle(user);
     expect(c.anomalies.map((a) => `${a.matricule}:${a.type}`)).toEqual(['SECOND:hors_direction']);
     expect(second).toBeTruthy();
+  });
+});
+
+describe('personne ne se désigne N+1 ni repreneur', () => {
+  /** Un compte relié à ce dossier : celui d'un membre de la DCH. */
+  async function compteDe(employeeId: string): Promise<SessionUser> {
+    const id = randomUUID();
+    await raw(
+      `INSERT INTO users (id, email, password_hash, given_name, family_name)
+       VALUES ($1,$2,'x','Rh','Test')`,
+      [id, `rh-${id}@test.local`],
+    );
+    await raw(
+      `INSERT INTO user_tenant_memberships (id, tenant_id, user_id, role)
+       VALUES ($1,$2,$3,'employee')`,
+      [randomUUID(), tenantId, id],
+    );
+    await raw(
+      `UPDATE persons SET user_id = $2
+        WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [employeeId, id],
+    );
+    return { userId: id, tenantId, role: 'employee' } as SessionUser;
+  }
+
+  async function bac() {
+    const dg = await creerLeDG();
+    const chef = await creerUnDirecteur('CHEF', uDCH, dg);
+    const rh = (await people.create(user, dossier('RH', uDCH, chef))).id;
+    const agent = (await people.create(user, dossier('A', uDCH, chef))).id;
+    return { dg, chef, rh, agent, session: await compteDe(rh) };
+  }
+
+  it('ni à la modification, ni à la création, ni à la mutation', async () => {
+    const { rh, agent, session } = await bac();
+    const service = await unite('Service paie', 'department', uDCH);
+    expect(
+      await codeOf(() => people.update(session, agent, { employee: { managerEmployeeId: rh } })),
+    ).toBe('acces.son_propre_dossier');
+    expect(await codeOf(() => people.create(session, dossier('B', uDCH, rh)))).toBe(
+      'acces.son_propre_dossier',
+    );
+    const muter = (qui: SessionUser) =>
+      people.newAssignment(qui, agent, {
+        positionTitle: 'Gestionnaire paie',
+        orgUnitId: service,
+        startDate: '2025-06-01',
+        managerEmployeeId: rh,
+      } as never);
+    expect(await codeOf(() => muter(session))).toBe('acces.son_propre_dossier');
+    // Le même geste, fait par un autre, passe.
+    expect(await codeOf(() => muter(user))).toBe('AUCUNE ERREUR');
+    expect((await people.detail(user, agent)).managerId).toBe(rh);
+    // Déjà son N+1 : le formulaire qui renvoie la même valeur passe.
+    expect(
+      await codeOf(() =>
+        people.update(session, agent, {
+          employee: { managerEmployeeId: rh, workPhone: '+221 33 000 00 00' },
+        }),
+      ),
+    ).toBe('AUCUNE ERREUR');
+  });
+
+  it('ni repreneur de l’équipe d’un partant', async () => {
+    const { chef, rh, session } = await bac();
+    const enc = (await people.create(user, dossier('ENC', uDCH, chef))).id;
+    await people.create(user, dossier('X', uDCH, enc));
+    const r = await people.archive(session, {
+      ids: [enc],
+      archived: true,
+      repreneurs: { [enc]: rh },
+    });
+    expect(r.done).toBe(0);
+    expect(r.skipped[0]?.reason).toMatch(/^Vous ne pouvez pas vous désigner responsable/);
+    expect(r.skipped[0]?.reason).not.toContain('\u2014');
+    expect(
+      await codeOf(() =>
+        people.newAssignment(session, enc, {
+          positionTitle: 'Chargé de mission',
+          orgUnitId: uDCH,
+          startDate: '2025-06-01',
+          repreneurEquipeId: rh,
+        } as never),
+      ),
+    ).toBe('acces.son_propre_dossier');
+  });
+
+  it('le directeur reste le N+1 d’office des agents de sa direction', async () => {
+    const { chef } = await bac();
+    const session = await compteDe(chef);
+    expect(await codeOf(() => people.create(session, dossier('C', uDCH, chef)))).toBe(
+      'AUCUNE ERREUR',
+    );
   });
 });

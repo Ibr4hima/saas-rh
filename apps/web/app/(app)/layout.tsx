@@ -1113,7 +1113,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // encadre), ce qui attend son visa, ce qu'il traite pour la DCH (badges).
   const validations = useQuery({
     queryKey: ['validations-compteurs'],
-    queryFn: () => api<CompteursValidations>('/absences/validations/compteurs'),
+    queryFn: () =>
+      api<CompteursValidations>('/absences/validations/compteurs', { arrierePlan: true }),
     enabled: Boolean(me.data),
     refetchInterval: 60_000,
   });

@@ -715,9 +715,48 @@ describe('le formateur, et qui gère le catalogue', () => {
     expect(await codeOf(() => evaluation.demarrer(adminAgent, courseId))).toBe('academy.gestion');
     // Un membre de la DCH à qui l'Academy est déléguée : de même.
     const delegue = { ...autre, capacites: ['academy'] } as SessionUser;
-    expect((await academy.gestionDetail(delegue, courseId)).id).toBe(courseId);
     expect(await codeOf(() => evaluation.demarrer(delegue, courseId))).toBe('academy.gestion');
+    // Sans avoir ouvert la banque, sa délégation retirée, il la passe.
     expect(await codeOf(() => evaluation.demarrer(autre, courseId))).toBe('AUCUNE ERREUR');
+  });
+
+  it('qui a vu les réponses ne passe pas l’évaluation, même sa délégation retirée (audit)', async () => {
+    await validerLecons(autreEmployeeId);
+    const delegue = { ...autre, capacites: ['academy'] } as SessionUser;
+    expect((await academy.gestionDetail(delegue, courseId)).id).toBe(courseId);
+    // La délégation retirée : il redevient un agent, qui connaît les réponses.
+    expect((await academy.detail(autre, courseId)).evaluation).toMatchObject({
+      etat: 'fermee',
+      fermeture: 'reponses',
+    });
+    expect(await codeOf(() => evaluation.demarrer(autre, courseId))).toBe('academy.reponses_vues');
+    // Les autres agents, eux, la passent.
+    expect((await academy.detail(agent, courseId)).evaluation?.fermeture).toBeNull();
+  });
+
+  it('un essai corrigé, une question écrite : les réponses sont vues aussi (audit)', async () => {
+    const vues = async () =>
+      (
+        await raw(`SELECT employee_id FROM academy_reponses_vues WHERE course_id = $1`, [courseId])
+      ).rows.map((r) => r.employee_id as string);
+    const delegue = { ...autre, capacites: ['academy'] } as SessionUser;
+    const essai = await evaluation.essayer(delegue, courseId);
+    expect(await vues()).toEqual([]);
+    await evaluation.corrigerEssai(delegue, courseId, {
+      questionIds: essai.questions.map((q) => q.id),
+      answers: {},
+    });
+    expect(await vues()).toEqual([autreEmployeeId]);
+    await raw(`DELETE FROM academy_reponses_vues WHERE course_id = $1`, [courseId]);
+    await evaluation.creerQuestion(delegue, courseId, {
+      prompt: 'Quel raccourci duplique une diapositive ?',
+      kind: 'unique',
+      options: [
+        { text: 'Ctrl + D', correct: true },
+        { text: 'Ctrl + P', correct: false },
+      ],
+    });
+    expect(await vues()).toEqual([autreEmployeeId]);
   });
 
   it('sans l’habilitation « APIX Academy », on ne gère pas le catalogue', async () => {

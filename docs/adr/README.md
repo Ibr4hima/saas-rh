@@ -29,3 +29,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0021](0021-passage-de-minuit.md)                     | Le passage de minuit                                                                    | acceptée                                    |
 | [0022](0022-mot-de-passe-oublie.md)                   | Mot de passe oublié : un lien par courriel, valable une heure, qui sert une fois        | acceptée                                    |
 | [0023](0023-defense-en-profondeur.md)                 | Défense en profondeur : pièces chiffrées, origines, en-têtes                            | acceptée                                    |
+| [0024](0024-inactivite-et-revue-des-droits.md)        | Déconnexion après trois jours d'inactivité, revue des droits d'accès                    | acceptée                                    |

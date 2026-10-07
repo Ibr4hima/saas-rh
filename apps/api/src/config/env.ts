@@ -22,7 +22,10 @@ export const envSchema = z
     DATABASE_URL: z.string().min(1),
     /** Rôle applicatif non-owner : tout le runtime (soumis à la RLS, ADR-0002). */
     APP_DATABASE_URL: z.string().min(1),
-    SESSION_TTL_HOURS: z.coerce.number().int().min(1).default(12),
+    /** Sans activité pendant ce délai, la session se ferme : trois jours. */
+    SESSION_INACTIVITE_HEURES: z.coerce.number().int().min(1).default(72),
+    /** Même active, une session ne dure pas plus : trente jours, puis on se reconnecte. */
+    SESSION_DUREE_MAX_JOURS: z.coerce.number().int().min(1).default(30),
     /** Clé AES-256 (32 octets base64) pour le chiffrement applicatif des champs sensibles. */
     DATA_ENCRYPTION_KEY: z.string().min(40),
     COOKIE_SECURE: z

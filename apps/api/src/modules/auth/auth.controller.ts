@@ -90,32 +90,34 @@ export class AuthController {
   ): Promise<{ user: SessionUser }> {
     // Chaque essai coûte un calcul de mot de passe volontairement lent : les
     // échecs se comptent, par adresse et par compte, avant d'en lancer un.
-    const essais = [
-      [ECHECS_PAR_ADRESSE, adresseDuClient(req)],
-      [ECHECS_PAR_COMPTE, empreinte(body.email)],
-    ] as const;
-    for (const [regle, sujet] of essais) {
-      const verdict = await this.limiteur.consulter(regle, sujet);
-      if (verdict.bloque) {
-        res.setHeader('Retry-After', String(verdict.reessayerDans));
-        problem(
-          429,
-          'auth.too_many_attempts',
-          'Trop de tentatives de connexion',
-          `Réessayez dans ${Math.ceil(verdict.reessayerDans / 60)} min.`,
-        );
-      }
-    }
+    // Le compte : chaque essai se compte AVANT la vérification, d'un seul
+    // geste ; des essais simultanés ne passent pas tous sous la limite. Une
+    // réussite efface le compte. L'adresse : seuls les échecs comptent (un
+    // bureau entier se connecte depuis la même).
+    const bloquer = (verdict: { bloque: boolean; reessayerDans: number }) => {
+      if (!verdict.bloque) return;
+      res.setHeader('Retry-After', String(verdict.reessayerDans));
+      problem(
+        429,
+        'auth.too_many_attempts',
+        'Trop de tentatives de connexion',
+        `Réessayez dans ${Math.ceil(verdict.reessayerDans / 60)} min.`,
+      );
+    };
+    const adresse = adresseDuClient(req);
+    const compte = empreinte(body.email);
+    bloquer(await this.limiteur.consulter(ECHECS_PAR_ADRESSE, adresse));
+    bloquer(await this.limiteur.compter(ECHECS_PAR_COMPTE, compte));
     let session: IssuedSession;
     try {
       session = await this.auth.login(body, meta(req));
     } catch (err) {
       if (err instanceof ProblemException && err.problem.code === 'auth.invalid_credentials') {
-        for (const [regle, sujet] of essais) await this.limiteur.compter(regle, sujet);
+        await this.limiteur.compter(ECHECS_PAR_ADRESSE, adresse);
       }
       throw err;
     }
-    await this.limiteur.oublier(ECHECS_PAR_COMPTE, empreinte(body.email));
+    await this.limiteur.oublier(ECHECS_PAR_COMPTE, compte);
     this.setCookie(res, session);
     return { user: session.user };
   }

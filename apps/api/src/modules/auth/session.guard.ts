@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/commo
 import type { Request } from 'express';
 import type { SessionUser } from '@teranga/contracts';
 import { problem } from '../../common/problem';
-import { SESSION_COOKIE } from './auth.constants';
+import { EN_ARRIERE_PLAN, SESSION_COOKIE } from './auth.constants';
 import { AuthService } from './auth.service';
 
 export interface AuthenticatedRequest extends Request {
@@ -20,7 +20,12 @@ export class SessionGuard implements CanActivate {
     if (!token) {
       problem(401, 'auth.session_required', 'Authentification requise');
     }
-    const user = await this.auth.resolveSession(token);
+    // Un relevé automatique de la page (la cloche, les compteurs) ne compte
+    // pas comme une activité : un onglet resté ouvert ne garde pas la
+    // session en vie.
+    const user = await this.auth.resolveSession(token, {
+      activite: req.headers[EN_ARRIERE_PLAN] !== '1',
+    });
     if (!user) {
       problem(401, 'auth.session_invalid', 'Session expirée ou invalide');
     }

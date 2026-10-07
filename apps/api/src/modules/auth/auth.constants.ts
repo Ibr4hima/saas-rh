@@ -8,6 +8,9 @@ import { loadEnv } from '../../config/env';
  */
 export const SESSION_COOKIE = loadEnv().COOKIE_SECURE ? '__Host-tg_session' : 'tg_session';
 
+/** L'en-tête des relevés automatiques de la page : ils ne prolongent pas la session. */
+export const EN_ARRIERE_PLAN = 'x-arriere-plan';
+
 /**
  * Comment le cookie se pose, et s'efface (les mêmes attributs, sans quoi le
  * navigateur garde l'ancien). Illisible par le script de la page ; envoyé

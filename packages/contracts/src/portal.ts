@@ -9,10 +9,12 @@ import { z } from 'zod';
 export const invitableRoleSchema = z.enum(['employee']);
 export type InvitableRole = z.infer<typeof invitableRoleSchema>;
 
+/**
+ * L'invitation part à l'adresse professionnelle du dossier, et à elle seule :
+ * qui invite ne choisit pas où arrive le lien.
+ */
 export const inviteEmployeeSchema = z.object({
   role: invitableRoleSchema.default('employee'),
-  /** Par défaut : l'adresse professionnelle du dossier. */
-  email: z.email().optional(),
 });
 export type InviteEmployeeInput = z.infer<typeof inviteEmployeeSchema>;
 

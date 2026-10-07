@@ -27,7 +27,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     // ignorait.
     <html lang="fr" data-theme="light" suppressHydrationWarning>
       <head>
-        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: SCRIPT_AMORCAGE }} />
+        {/* Le navigateur efface la valeur du nonce une fois la page chargée,
+            pour qu'un script injecté ne la lise pas : React trouverait
+            `nonce=""` là où le serveur l'a écrite. */}
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: SCRIPT_AMORCAGE }}
+        />
       </head>
       <body>
         <Providers>{children}</Providers>

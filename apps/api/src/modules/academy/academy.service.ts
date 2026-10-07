@@ -44,6 +44,7 @@ import {
   quizAdmin,
   taillesDesBanques,
   vueEvaluation,
+  retenirLesReponsesVues,
 } from './academy-evaluation.service';
 import { dureeMp4 } from './mp4';
 import { StockageVideoLocal, VideoTropLourde } from './stockage-local';
@@ -562,6 +563,7 @@ export class AcademyService {
       // L'atelier montre la banque de questions : qui l'ouvre la connaît.
       const { modules, lecons } = await this.structure(tx, [f.id]);
       const quiz = await quizAdmin(tx, f);
+      if (quiz.questions.length > 0) await retenirLesReponsesVues(tx, user, f.id);
       return {
         ...this.detailDe(f, modules, lecons, new Map(), 'apercu', true),
         hasEvaluation: quiz.questions.length > 0,

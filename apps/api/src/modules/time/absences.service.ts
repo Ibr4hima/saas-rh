@@ -954,7 +954,7 @@ export class AbsencesService {
       const voitLesMotifs =
         (await this.selfEmployeeId(tx, user)) === employeeId ||
         peut(user, 'personnel.sensible') ||
-        (await this.voitTout(tx, user));
+        ((await this.voitTout(tx, user)) && !(await this.horsDeMaMain(tx, user)).has(employeeId));
       const types: TypePourSolde[] = [
         ...(await this.selectTypes(tx)),
         ...retires.map((r) => ({
@@ -1249,9 +1249,12 @@ export class AbsencesService {
         // Hors DCH, chacun voit les siennes, et celles qu'on lui a confiées.
         const self = await this.selfEmployeeId(tx, user);
         if (!self) return [];
+        // Une demande confiée ne se voit que tant qu'elle attend : traitée,
+        // elle n'appartient plus à qui l'a traitée.
         conditions.push(
           sql`(${t.absenceRequests.employeeId} = ${self}
-               OR ${t.absenceRequests.confieeAEmployeeId} = ${self})`,
+               OR (${t.absenceRequests.confieeAEmployeeId} = ${self}
+                   AND ${t.absenceRequests.status} = 'pending'))`,
         );
       }
 
@@ -1500,7 +1503,7 @@ export class AbsencesService {
           );
         }
       } else {
-        if (!(await this.gereLesConges(tx, user))) {
+        if (!(await this.gereLeCongeDe(tx, user, request.employeeId))) {
           problem(
             403,
             'absence.cancel_forbidden',
@@ -1772,6 +1775,36 @@ export class AbsencesService {
     return (await membreDCH(tx, dch, moi)) !== 'parti';
   }
 
+  /**
+   * Les agents dont le congé échappe à qui le gère pour la DCH : ses
+   * supérieurs, de son N+1 au sommet. Un délégué n'annule, ne rappelle ni
+   * ne touche au justificatif du congé de son chef, comme il ne le traite
+   * pas seul (cf. traitementDe). Le directeur du Capital Humain garde la
+   * main, et son propre congé reste traité par les membres de sa direction.
+   */
+  private async horsDeMaMain(tx: Tx, user: SessionUser): Promise<Set<string>> {
+    const moi = await this.selfEmployeeId(tx, user);
+    const dch = await directionDuPersonnel(tx);
+    if (!moi || !dch || dch.directeurEmployeeId === moi) return new Set();
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      WITH RECURSIVE chefs AS (
+        SELECT e.manager_employee_id AS id, 1 AS n FROM employees e
+         WHERE e.id = ${moi} AND e.manager_employee_id IS NOT NULL
+        UNION
+        SELECT e.manager_employee_id, c.n + 1 FROM employees e JOIN chefs c ON e.id = c.id
+         WHERE e.manager_employee_id IS NOT NULL AND c.n < 50)
+      SELECT id FROM chefs`);
+    const chefs = new Set(rows.map((r) => r.id));
+    if (dch.directeurEmployeeId) chefs.delete(dch.directeurEmployeeId);
+    return chefs;
+  }
+
+  /** Gère les congés pour la DCH, et CE congé n'est pas celui d'un de ses chefs. */
+  private async gereLeCongeDe(tx: Tx, user: SessionUser, employeeId: string): Promise<boolean> {
+    if (!(await this.gereLesConges(tx, user))) return false;
+    return !(await this.horsDeMaMain(tx, user)).has(employeeId);
+  }
+
   /** Son N+1, ou la DCH, rappellent un agent. */
   private async peutRappeler(tx: Tx, user: SessionUser, employeeId: string): Promise<boolean> {
     const moi = await this.selfEmployeeId(tx, user);
@@ -1780,7 +1813,7 @@ export class AbsencesService {
       SELECT manager_employee_id AS n1 FROM employees WHERE id = ${employeeId}`);
     // Le DG ne relève de personne : il n'a pas de N+1 qui le rappelle.
     if (rows[0]?.n1 === moi) return true;
-    return this.gereLesConges(tx, user);
+    return this.gereLeCongeDe(tx, user, employeeId);
   }
 
   /** Celui qui doit confirmer ce retour, ou le directeur, qui garde la main. */
@@ -1807,6 +1840,7 @@ export class AbsencesService {
         .select({
           employeeId: t.absenceRequests.employeeId,
           confieeA: t.absenceRequests.confieeAEmployeeId,
+          status: t.absenceRequests.status,
         })
         .from(t.absenceRequests)
         .where(eq(t.absenceRequests.id, requestId))
@@ -1819,8 +1853,13 @@ export class AbsencesService {
         // Le titulaire ; et qui traite pour la DCH — son directeur, les
         // membres habilités aux congés, le membre à qui la demande est
         // confiée. Jamais le N+1.
+        // Confiée : tant qu'elle attend seulement.
+        // Le congé d'un de ses chefs : ni le motif, ni la pièce (cf. horsDeMaMain).
         const traite = Boolean(
-          self && (request.confieeA === self || (await voitToutLaFile(tx, user, 'conges'))),
+          self &&
+          ((request.confieeA === self && request.status === 'pending') ||
+            ((await voitToutLaFile(tx, user, 'conges')) &&
+              !(await this.horsDeMaMain(tx, user)).has(request.employeeId))),
         );
         if (self !== request.employeeId && !traite) {
           // Données de santé potentielles : ni managers ni paie n'y accèdent.
@@ -1872,7 +1911,7 @@ export class AbsencesService {
       const autorise =
         request.employeeId === self ||
         request.requestedByUserId === user.userId ||
-        (await this.gereLesConges(tx, user));
+        (await this.gereLeCongeDe(tx, user, request.employeeId));
       if (!autorise) {
         problem(403, 'absence.document_forbidden', 'Justificatif réservé à la DCH et au titulaire');
       }
@@ -2144,11 +2183,13 @@ export class AbsencesService {
 
     const moi = await this.selfEmployeeId(tx, user);
     const today = aujourdhui();
-    const gere = await this.gereLesConges(tx, user);
+    const gereLesConges = await this.gereLesConges(tx, user);
+    const horsDeMaMain = await this.horsDeMaMain(tx, user);
     // Un motif confidentiel (la maladie) : l'agent et qui ouvre son
     // justificatif le lisent, cf. `document`. Le N+1, le tableau de bord,
     // qui consulte les dossiers voient une absence.
-    const voitLesMotifs = peut(user, 'personnel.sensible') || (await this.voitTout(tx, user));
+    const sensible = peut(user, 'personnel.sensible');
+    const voitLaFile = await this.voitTout(tx, user);
     // Qui a écourté ou annulé, et le N+1 de chaque agent : lus une fois.
     const auteurs = [
       ...new Set(
@@ -2286,12 +2327,14 @@ export class AbsencesService {
 
       // Ce que l'utilisateur peut faire de ce congé, s'il est validé.
       const sienne = moi !== null && moi === request.employeeId;
+      const gere = gereLesConges && !horsDeMaMain.has(request.employeeId);
       const motif =
         !confidentiel ||
-        voitLesMotifs ||
+        sensible ||
+        (voitLaFile && !horsDeMaMain.has(request.employeeId)) ||
         sienne ||
         request.requestedByUserId === user.userId ||
-        (moi !== null && request.confieeAEmployeeId === moi);
+        (moi !== null && request.confieeAEmployeeId === moi && request.status === 'pending');
       const justificatif = documentRows.find((d) => d.requestId === request.id)?.filename ?? null;
       const valide = request.status === 'approved';
       const commence = valide && request.startDate <= today;

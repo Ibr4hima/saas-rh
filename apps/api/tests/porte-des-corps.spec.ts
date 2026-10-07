@@ -196,6 +196,28 @@ describe('la porte des corps', () => {
   });
 });
 
+describe('la porte lit le chemin comme Express (audit)', () => {
+  it('une barre finale ou des capitales ne contournent pas la limite des candidatures', async () => {
+    const slug = `essai-${randomUUID().slice(0, 8)}`;
+    const ip = '203.0.113.9';
+    const variantes = [
+      `/v1/public/jobs/${slug}/apply/`,
+      `/v1/public/jobs/${slug}/APPLY`,
+      `/V1/Public/Jobs/${slug}/apply//`,
+    ];
+    for (let i = 0; i < 10; i++) {
+      const r = await envoyer('POST', variantes[i % variantes.length]!, {
+        longueur: JSON_PETIT.length,
+        envoyes: JSON_PETIT,
+        ip,
+      });
+      expect(r.status).toBe(200);
+    }
+    const onzieme = await envoyer('POST', variantes[0]!, { longueur: 30 * 1024 * 1024, ip });
+    expect(onzieme).toMatchObject({ status: 429, code: 'recruitment.too_many_requests' });
+  });
+});
+
 describe('le compteur partagé', () => {
   const regle: Regle = { bucket: 'essai', fenetreSecondes: 600, max: 3 };
 
@@ -214,6 +236,26 @@ describe('le compteur partagé', () => {
     expect(adresseDuClient({ ip: '::ffff:41.82.10.3' })).toBe('41.82.10.3');
     expect(adresseDuClient({ ip: '2001:db8:1:2:3:4:5:6' })).toBe('2001:db8:1:2::/64');
     expect(adresseDuClient({ ip: undefined })).toBe('inconnue');
+  });
+});
+
+describe('la vérification publique d’un certificat (audit)', () => {
+  it('une adresse qui essaie des numéros à la chaîne s’arrête à soixante', async () => {
+    const { PublicCertificatsController } =
+      await import('../src/modules/academy/academy.controller');
+    const { ProblemException } = await import('../src/common/problem');
+    const controleur = new PublicCertificatsController(
+      { verifier: async () => ({}) } as never,
+      limiteur,
+    );
+    const req = { ip: `essai-${randomUUID()}` } as Request;
+    for (let i = 0; i < 60; i++) await controleur.verifier('APX-AAAA-0000', req);
+    const refus = await controleur.verifier('APX-AAAA-0000', req).catch((e: unknown) => e);
+    expect(refus).toBeInstanceOf(ProblemException);
+    expect((refus as InstanceType<typeof ProblemException>).problem).toMatchObject({
+      status: 429,
+      code: 'academy.trop_de_verifications',
+    });
   });
 });
 

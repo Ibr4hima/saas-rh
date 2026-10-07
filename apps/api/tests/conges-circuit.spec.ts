@@ -1591,3 +1591,106 @@ describe('le justificatif, chiffré au repos', () => {
     });
   });
 });
+
+describe('ce qui reste à qui a traité, et le congé d’un chef', () => {
+  const PDF = Buffer.from('%PDF-1.4 certificat').toString('base64');
+  const certificat = { filename: 'certificat.pdf', contentBase64: PDF };
+  const jour = (n: number) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  async function congeValide(qui: Agent, debut: number, fin: number, type = typeId) {
+    const id = randomUUID();
+    await raw(
+      `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date,
+         days_count, status, current_level, requested_by_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,5,'approved',1,$7)`,
+      [id, tenantId, qui.employeeId, type, jour(debut), jour(fin), qui.session.userId],
+    );
+    return id;
+  }
+  const liste = async (qui: Agent) =>
+    (await absences.listRequests(qui.session, { limit: 100 } as never)).map((r) => r.id);
+
+  it('une demande confiée, une fois traitée, ne reste pas à qui l’a traitée', async () => {
+    const { id } = await absences.createRequest(moussa.session, {
+      employeeId: moussa.employeeId,
+      absenceTypeId: maladieId,
+      ...periode(),
+      document: { filename: 'certificat.pdf', contentBase64: PDF },
+    });
+    await viser(ousmane, id);
+    await absences.confier(mariama.session, id, awa.employeeId);
+    expect(await liste(awa)).toContain(id);
+    expect((await absences.document(awa.session, id)).filename).toBe('certificat.pdf');
+    await viser(awa, id);
+    expect((await vue(id)).status).toBe('approved');
+    expect(await liste(awa)).not.toContain(id);
+    expect(await codeOf(() => absences.document(awa.session, id))).toBe(
+      'absence.document_forbidden',
+    );
+  });
+
+  it('un délégué n’annule, ne rappelle ni ne touche au justificatif du congé de son chef', async () => {
+    await habiliter(binta);
+    const aVenir = await congeValide(awa, 10, 14);
+    const enCours = await congeValide(awa, -2, 6);
+    expect((await vue(aVenir, binta.session)).gestes.annuler).toBe(false);
+    expect((await vue(enCours, binta.session)).gestes.rappeler).toBe(false);
+    expect(await codeOf(() => absences.cancel(binta.session, aVenir, { motif: 'x' }))).toBe(
+      'absence.cancel_forbidden',
+    );
+    expect(
+      await codeOf(() =>
+        absences.rappeler(binta.session, enCours, { reprise: jour(1), motif: 'x' }),
+      ),
+    ).toBe('absence.rappel_reserve');
+    expect(
+      await codeOf(() => absences.joindreJustificatif(binta.session, aVenir, certificat)),
+    ).toBe('absence.document_forbidden');
+    // Le congé d'un autre agent, elle le gère.
+    const autre = await congeValide(moussa, 10, 14);
+    expect((await vue(autre, binta.session)).gestes.annuler).toBe(true);
+    await absences.cancel(binta.session, autre, { motif: 'Audit' });
+    expect((await vue(autre)).status).toBe('cancelled');
+  });
+
+  it('le motif et le certificat d’un chef restent cachés au délégué qui relève de lui', async () => {
+    await raw(`UPDATE absence_types SET motif_confidentiel = true WHERE id = $1`, [maladieId]);
+    try {
+      await habiliter(binta);
+      await habiliter(khady);
+      const { id } = await absences.createRequest(awa.session, {
+        employeeId: awa.employeeId,
+        absenceTypeId: maladieId,
+        ...periode(),
+        reason: 'Grippe',
+        document: { filename: 'certificat.pdf', contentBase64: PDF },
+      });
+      expect(await vue(id, binta.session)).toMatchObject({
+        absenceTypeName: 'Absence',
+        reason: null,
+        documentName: null,
+      });
+      expect(await codeOf(() => absences.document(binta.session, id))).toBe(
+        'absence.document_forbidden',
+      );
+      expect(await vue(id, khady.session)).toMatchObject({
+        absenceTypeName: 'Maladie',
+        reason: 'Grippe',
+      });
+      expect((await absences.document(khady.session, id)).filename).toBe('certificat.pdf');
+    } finally {
+      await raw(`UPDATE absence_types SET motif_confidentiel = false WHERE id = $1`, [maladieId]);
+    }
+  });
+
+  it('le congé du directeur du Capital Humain reste géré par les membres de sa direction', async () => {
+    await habiliter(awa);
+    const id = await congeValide(mariama, 10, 14);
+    expect((await vue(id, awa.session)).gestes.annuler).toBe(true);
+    await absences.cancel(awa.session, id, { motif: 'Mission annulée' });
+    expect((await vue(id)).status).toBe('cancelled');
+  });
+});

@@ -203,8 +203,20 @@ export class AuthService {
       );
   }
 
-  /** Résout une session active et reconstruit le SessionUser courant. */
-  async resolveSession(token: string): Promise<SessionUser | null> {
+  /**
+   * Résout une session active et reconstruit le SessionUser courant.
+   *
+   * Une session vit tant qu'on s'en sert : trois jours sans activité la
+   * ferment (SESSION_INACTIVITE_HEURES), et elle ne dépasse jamais sa durée
+   * maximale (`expires_at`). `activite` : la requête est un geste de
+   * l'agent, qui la prolonge ; un relevé automatique de la page ne la
+   * prolonge pas.
+   */
+  async resolveSession(token: string, o: { activite?: boolean } = {}): Promise<SessionUser | null> {
+    const maintenant = new Date();
+    const inactiveDepuis = new Date(
+      maintenant.getTime() - loadEnv().SESSION_INACTIVITE_HEURES * 3600_000,
+    );
     const [session] = await this.db.global
       .select()
       .from(t.sessions)
@@ -212,11 +224,19 @@ export class AuthService {
         and(
           eq(t.sessions.tokenHash, hashToken(token)),
           isNull(t.sessions.revokedAt),
-          gt(t.sessions.expiresAt, new Date()),
+          gt(t.sessions.expiresAt, maintenant),
+          gt(t.sessions.lastSeenAt, inactiveDepuis),
         ),
       )
       .limit(1);
     if (!session) return null;
+    // Au plus une écriture par minute : un geste suffit à prolonger.
+    if (o.activite && maintenant.getTime() - session.lastSeenAt.getTime() > 60_000) {
+      await this.db.global
+        .update(t.sessions)
+        .set({ lastSeenAt: maintenant })
+        .where(eq(t.sessions.id, session.id));
+    }
 
     return this.db.withTenant(
       { tenantId: session.tenantId, userId: session.userId },
@@ -284,7 +304,7 @@ export class AuthService {
   async issueSession(userId: string, tenantId: string, meta: RequestMeta): Promise<IssuedSession> {
     const env = loadEnv();
     const token = randomBytes(32).toString('base64url');
-    const expiresAt = new Date(Date.now() + env.SESSION_TTL_HOURS * 3600 * 1000);
+    const expiresAt = new Date(Date.now() + env.SESSION_DUREE_MAX_JOURS * 24 * 3600 * 1000);
 
     await this.db.global.insert(t.sessions).values({
       id: uuidv7(),

@@ -537,7 +537,13 @@ export class EmployeeDocumentsService {
           ? undefined
           : or(
               familles.size > 0 ? inArray(t.employeeDocuments.category, [...familles]) : sql`false`,
-              moi ? eq(t.employeeDocuments.confieeAEmployeeId, moi) : sql`false`,
+              // Confiée : tant qu'elle attend la vérification seulement.
+              moi
+                ? and(
+                    eq(t.employeeDocuments.confieeAEmployeeId, moi),
+                    eq(t.employeeDocuments.status, 'pending'),
+                  )
+                : sql`false`,
             );
       const uploader = t.users;
       // Les pièces en vérification viennent toutes ; la limite ne porte que
@@ -622,7 +628,9 @@ export class EmployeeDocumentsService {
     const familles = await this.famillesVues(tx, user);
     if (familles === 'toutes' || familles.has(doc.category)) return true;
     const moi = await agentDuCompte(tx, user.userId);
-    return Boolean(moi && doc.confieeAEmployeeId === moi);
+    // Confiée à la main : tant qu'elle attend la vérification. Vérifiée, la
+    // pièce ne reste pas lisible par qui n'en a pas le type délégué.
+    return Boolean(moi && doc.confieeAEmployeeId === moi && doc.status === 'pending');
   }
 
   private async vue(

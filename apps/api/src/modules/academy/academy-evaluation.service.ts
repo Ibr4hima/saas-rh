@@ -104,10 +104,49 @@ export function fermeture(
   f: LigneFormation,
   employeeId: string | null,
   gereLeCatalogue: boolean,
-): 'formateur' | 'gestion' | null {
+  aVuLesReponses = false,
+): 'formateur' | 'gestion' | 'reponses' | null {
   if (!employeeId) return null;
   if (gereLeCatalogue) return 'gestion';
-  return f.formateurEmployeeId === employeeId ? 'formateur' : null;
+  if (f.formateurEmployeeId === employeeId) return 'formateur';
+  return aVuLesReponses ? 'reponses' : null;
+}
+
+/**
+ * Qui ouvre les bonnes réponses d'une formation s'en souvient : la banque à
+ * l'atelier, une question écrite, un essai corrigé. Retenu une fois pour
+ * toutes, son évaluation lui reste fermée, même sa délégation retirée.
+ */
+export async function retenirLesReponsesVues(
+  tx: Tx,
+  user: SessionUser,
+  courseId: string,
+): Promise<void> {
+  const employeeId = await sonDossier(tx, user.userId);
+  if (!employeeId) return;
+  await tx
+    .insert(t.academyReponsesVues)
+    .values({ tenantId: user.tenantId, employeeId, courseId })
+    .onConflictDoNothing();
+}
+
+export async function aVuLesReponses(
+  tx: Tx,
+  employeeId: string | null,
+  courseId: string,
+): Promise<boolean> {
+  if (!employeeId) return false;
+  const [vue] = await tx
+    .select({ courseId: t.academyReponsesVues.courseId })
+    .from(t.academyReponsesVues)
+    .where(
+      and(
+        eq(t.academyReponsesVues.employeeId, employeeId),
+        eq(t.academyReponsesVues.courseId, courseId),
+      ),
+    )
+    .limit(1);
+  return Boolean(vue);
 }
 
 /** Combien de questions compte la banque de chaque formation. */
@@ -219,7 +258,12 @@ export async function vueEvaluation(
       renouvellement: false,
     };
   }
-  const raison = fermeture(f, employeeId, gereLeCatalogue);
+  const raison = fermeture(
+    f,
+    employeeId,
+    gereLeCatalogue,
+    await aVuLesReponses(tx, employeeId, f.id),
+  );
 
   const certificats = await tx
     .select()
@@ -394,6 +438,7 @@ export class AcademyEvaluationService {
         options: this.options(input),
       });
       await this.toucher(tx, courseId);
+      await retenirLesReponsesVues(tx, user, courseId);
     });
     return { id };
   }
@@ -426,6 +471,7 @@ export class AcademyEvaluationService {
         })
         .where(eq(t.academyQuestions.id, id));
       await this.toucher(tx, q.courseId);
+      await retenirLesReponsesVues(tx, user, q.courseId);
     });
   }
 
@@ -516,6 +562,8 @@ export class AcademyEvaluationService {
     this.exigerGestion(user);
     return this.db.withTenant(this.ctx(user), async (tx) => {
       await this.formation(tx, courseId);
+      // La correction rend les bonnes réponses.
+      await retenirLesReponsesVues(tx, user, courseId);
       const rows = await tx
         .select()
         .from(t.academyQuestions)
@@ -645,7 +693,12 @@ export class AcademyEvaluationService {
       if (banque.length === 0) {
         problem(409, 'academy.no_evaluation', 'Cette formation n’a pas d’évaluation');
       }
-      const raison = fermeture(f, employeeId, this.gere(user));
+      const raison = fermeture(
+        f,
+        employeeId,
+        this.gere(user),
+        await aVuLesReponses(tx, employeeId, f.id),
+      );
       if (raison === 'formateur') {
         problem(
           403,
@@ -660,6 +713,14 @@ export class AcademyEvaluationService {
           'academy.gestion',
           'Vous gérez le catalogue : les évaluations vous sont fermées',
           'Vous en connaissez les questions.',
+        );
+      }
+      if (raison === 'reponses') {
+        problem(
+          403,
+          'academy.reponses_vues',
+          'Vous avez vu les réponses de cette évaluation : elle vous est fermée',
+          'Vous les avez ouvertes en gérant le catalogue.',
         );
       }
       if (!(await toutesLeconsValidees(tx, courseId, employeeId))) {
@@ -807,7 +868,13 @@ export class AcademyEvaluationService {
       const f = await this.formation(tx, a.courseId);
       let certificat: CertificateSummary | null = null;
       // Désigné formateur pendant sa copie : elle compte, sans certificat.
-      if (c.passed && fermeture(f, employeeId, this.gere(user)) === null) {
+      const fermee = fermeture(
+        f,
+        employeeId,
+        this.gere(user),
+        await aVuLesReponses(tx, employeeId, f.id),
+      );
+      if (c.passed && fermee === null) {
         certificat = resumeCertificat(
           await this.emettre(tx, user, employeeId, f, a.id, c.score, maintenant),
           maintenant,

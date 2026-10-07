@@ -65,7 +65,7 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
 
   const fiche = useQuery({
     queryKey: [...CLE_OBJECTIFS, 'equipe', employeeId],
-    queryFn: () => api<FicheSuivi>(`/objectifs/equipe/${employeeId}`),
+    queryFn: () => api<FicheSuivi>(`/objectifs/equipe/${employeeId}`, { arrierePlan: true }),
     retry: false,
     // L'auto-évaluation de l'agent se voit à mesure, sans recharger la page.
     refetchInterval: 4000,

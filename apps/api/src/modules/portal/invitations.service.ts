@@ -13,13 +13,14 @@ import type {
   SessionUser,
 } from '@teranga/contracts';
 import { passwordDiffersFromEmail, passwordShortfall } from '@teranga/contracts';
+import { ECHECS_PAR_COMPTE, Limiteur, empreinte } from '../../common/limiteur';
 import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { AuthService, IssuedSession } from '../auth/auth.service';
 import { directionDuPersonnel } from '../acces/dch';
 import { ExpediteurCourriels } from '../courriels/expediteur';
-import { directionDeLUnite, uniteEnVigueur } from '../people/chaine';
+import { directeurGeneral, directionDeLUnite, uniteEnVigueur } from '../people/chaine';
 import { finDeContratPassee } from '../people/en-activite';
 import { reconcilierLeCircuit } from '../time/visas';
 import { accueilDe, compteALAdresse, hashToken, preparerInvitation } from './invitation';
@@ -51,9 +52,53 @@ async function dossierFerme(tx: Tx, personId: string): Promise<boolean> {
  * S'il revient, son invitation lui en donnera une.
  */
 async function libererLAdresse(tx: Tx, userId: string): Promise<void> {
+  // Un compte qui sert ailleurs n'appartient pas à cette organisation : son
+  // adresse ne se reprend pas d'ici.
+  const { rows } = await tx.execute<{ oui: boolean }>(
+    sql`SELECT compte_d_une_autre_organisation(${userId}) AS oui`,
+  );
+  if (rows[0]?.oui) {
+    problem(
+      409,
+      'portal.adresse_prise',
+      'Cette adresse est celle d’un autre compte',
+      'Demandez à la Direction du Capital Humain une invitation à une autre adresse.',
+    );
+  }
   await tx.execute(sql`
     UPDATE users SET email = 'ancien+' || id || '@compte.invalide'
      WHERE id = ${userId} AND password_hash IS NULL`);
+}
+
+/**
+ * Le portail de la direction (le DG, le directeur du Capital Humain) et
+ * celui d'un administrateur portent tous les droits : seul un
+ * administrateur ou le directeur du Capital Humain en envoie l'invitation.
+ * Un délégué qui l'enverrait choisirait qui hérite de ces droits.
+ */
+async function exigerDePouvoirInviter(
+  tx: Tx,
+  user: SessionUser,
+  employeeId: string,
+): Promise<void> {
+  if (user.role === 'admin' || user.dirigeLaDCH) return;
+  const dch = await directionDuPersonnel(tx);
+  const protege =
+    dch?.directeurEmployeeId === employeeId || (await directeurGeneral(tx)) === employeeId;
+  const { rows } = await tx.execute<{ admin: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM employees e
+        JOIN persons p ON p.id = e.person_id
+        JOIN user_tenant_memberships m ON m.user_id = p.user_id AND m.tenant_id = e.tenant_id
+       WHERE e.id = ${employeeId} AND m.role = 'admin') AS admin`);
+  if (protege || rows[0]?.admin) {
+    problem(
+      403,
+      'portal.invitation_reservee',
+      'Seuls l’administrateur et le directeur du Capital Humain invitent cet agent',
+      'Son portail porte les droits de la direction ou de l’administration.',
+    );
+  }
 }
 
 @Injectable()
@@ -64,6 +109,9 @@ export class InvitationsService {
     @Optional()
     @Inject(ExpediteurCourriels)
     private readonly expediteur?: ExpediteurCourriels,
+    @Optional()
+    @Inject(Limiteur)
+    private readonly limiteur?: Limiteur,
   ) {}
 
   /** Une invitation, depuis la fiche de l'agent. */
@@ -73,8 +121,12 @@ export class InvitationsService {
     role: InvitableRole,
     emailOverride?: string,
   ): Promise<InviteResult> {
-    const r = await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
-      preparerInvitation(tx, this.expediteur, user, employeeId, role, emailOverride),
+    const r = await this.db.withTenant(
+      { tenantId: user.tenantId, userId: user.userId },
+      async (tx) => {
+        await exigerDePouvoirInviter(tx, user, employeeId);
+        return preparerInvitation(tx, this.expediteur, user, employeeId, role, emailOverride);
+      },
     );
     if (r.courriel) this.expediteur?.bientot();
     return r;
@@ -115,8 +167,12 @@ export class InvitationsService {
         continue;
       }
       try {
-        const r = await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
-          preparerInvitation(tx, this.expediteur, user, id, 'employee'),
+        const r = await this.db.withTenant(
+          { tenantId: user.tenantId, userId: user.userId },
+          async (tx) => {
+            await exigerDePouvoirInviter(tx, user, id);
+            return preparerInvitation(tx, this.expediteur, user, id, 'employee');
+          },
         );
         invites.push({ employeeId: id, nom, email: r.email });
       } catch (err) {
@@ -249,6 +305,23 @@ export class InvitationsService {
           .limit(1);
         if (!membre) {
           problem(422, 'portal.sans_compte', 'Cet agent n’a pas de compte sur le portail');
+        }
+        // Rétablir un accès coupé : l'administrateur, le directeur du
+        // Capital Humain, ou qui l'a coupé. Un délégué ne rouvre pas la
+        // porte qu'un autre a fermée (un licenciement, une fraude).
+        if (!coupe && user.role !== 'admin' && !user.dirigeLaDCH) {
+          const [etat] = await tx
+            .select({ par: t.userTenantMemberships.accesCoupeParUserId })
+            .from(t.userTenantMemberships)
+            .where(eq(t.userTenantMemberships.id, membre.id));
+          if (etat?.par && etat.par !== user.userId) {
+            problem(
+              403,
+              'portal.retablir_reserve',
+              'Seul qui a coupé cet accès le rétablit',
+              'Ou l’administrateur, ou le directeur du Capital Humain.',
+            );
+          }
         }
         if (user.role !== 'admin') {
           const dch = await directionDuPersonnel(tx);
@@ -392,10 +465,24 @@ export class InvitationsService {
           // Preuve de possession : relier un compte EXISTANT à un dossier exige
           // le mot de passe de CE compte. Un email saisi par l'invitant ne
           // suffit jamais à rattacher le compte d'un tiers.
+          // Le même compteur que la connexion : une invitation n'ouvre pas
+          // un second guichet pour deviner le mot de passe d'un compte. Compté
+          // AVANT de vérifier : des essais simultanés ne passent pas tous.
+          const sujet = empreinte(invitation.email);
+          const verdict = await this.limiteur?.compter(ECHECS_PAR_COMPTE, sujet);
+          if (verdict?.bloque) {
+            problem(
+              429,
+              'auth.too_many_attempts',
+              'Trop de tentatives',
+              `Réessayez dans ${Math.ceil(verdict.reessayerDans / 60)} min.`,
+            );
+          }
           const owned = await argonVerify(existing.passwordHash, password);
           if (!owned || existing.status !== 'active') {
             problem(401, 'portal.existing_account', 'Mot de passe incorrect');
           }
+          await this.limiteur?.oublier(ECHECS_PAR_COMPTE, sujet);
           userId = existing.id;
           cas = 'compte';
         } else {

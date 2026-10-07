@@ -51,6 +51,8 @@ export const sessions = pgTable('sessions', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  /** Le dernier geste de l'agent (migration 0091) : trois jours sans, la session se ferme. */
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 /** Les liens « mot de passe oublié » : globaux, comme les sessions (migration 0089). */
@@ -636,6 +638,14 @@ export const academyBookmarks = pgTable('academy_bookmarks', {
   userId: uuid('user_id').notNull(),
   courseId: uuid('course_id').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Qui a vu les bonnes réponses d'une formation : son évaluation lui reste fermée (0092). */
+export const academyReponsesVues = pgTable('academy_reponses_vues', {
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  vuesLe: timestamp('vues_le', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ---------- APIX Academy — évaluation et certificats (0027) ----------

@@ -63,7 +63,9 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
     texte =
       ev.fermeture === 'formateur'
         ? 'Vous êtes le formateur de cette formation : l’évaluation ne vous concerne pas. Les leçons restent ouvertes, et votre dossier indique que vous l’avez animée.'
-        : 'Vous gérez le catalogue et en connaissez les questions : les évaluations vous sont fermées.';
+        : ev.fermeture === 'reponses'
+          ? 'Vous en avez vu les réponses en gérant le catalogue : cette évaluation vous est fermée.'
+          : 'Vous gérez le catalogue et en connaissez les questions : les évaluations vous sont fermées.';
   } else if (ev.etat === 'ouverte' && ev.renouvellement && ev.certificat?.expiresAt) {
     icone = 'workspace_premium';
     titre = 'Renouveler le certificat';

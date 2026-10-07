@@ -375,7 +375,7 @@ describe('la route', () => {
       ctrl: new AuthController(new AuthService(db), new Limiteur(db), reinit),
     };
   }
-  const requete = (ip: string) => ({ ip }) as never;
+  const requete = (ip: string) => ({ ip, headers: {} }) as never;
   const reponse = () => ({ setHeader: () => undefined }) as never;
 
   it('répond pareil pour une adresse connue ou non, puis limite les demandes', async () => {
@@ -399,6 +399,23 @@ describe('la route', () => {
     expect(demandes).toEqual([awa.email, `personne@${domaine}`, awa.email, awa.email]);
 
     await raw(`DELETE FROM rate_limit_counters WHERE bucket IN ('oubli_ip', 'oubli_compte')`);
+  });
+
+  it('des essais de connexion simultanés ne passent pas tous sous la limite (audit)', async () => {
+    const { ctrl } = controleur();
+    const email = `rafale-${randomUUID()}@${domaine}`;
+    const ip = `10.${Math.floor(Math.random() * 250)}.2.${Math.floor(Math.random() * 250)}`;
+    const issues = await Promise.all(
+      Array.from({ length: 15 }, (_, i) =>
+        refus(ctrl.login({ email, password: `Faux${i}!` }, requete(ip), reponse())),
+      ),
+    );
+    const bloques = issues.filter((r) => r.code === 'auth.too_many_attempts').length;
+    expect(bloques).toBeGreaterThanOrEqual(5);
+    expect(issues.length - bloques).toBeLessThanOrEqual(10);
+    await raw(
+      `DELETE FROM rate_limit_counters WHERE bucket IN ('connexion_ip', 'connexion_compte')`,
+    );
   });
 
   it('un jeton mal formé n’ouvre rien', async () => {

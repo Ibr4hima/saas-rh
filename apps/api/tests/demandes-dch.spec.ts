@@ -362,6 +362,20 @@ describe('les demandes de documents', () => {
     ]);
   });
 
+  it('qui n’est pas le directeur n’apprend rien d’une demande en la confiant (audit)', async () => {
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
+    for (const cible of [id, randomUUID()]) {
+      expect(
+        await codeOf(() =>
+          db.withTenant({ tenantId, userId: khady.session.userId }, (tx) =>
+            confierLaDemande(tx, khady.session, 'documents', cible, null),
+          ),
+        ),
+      ).toBe('demandes.reserve_au_directeur_dch');
+    }
+  });
+
   it('un ancien directeur ne garde pas ce qu’il avait repris', async () => {
     const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
       .ids as [string];
@@ -407,6 +421,19 @@ describe('les demandes de documents', () => {
         uDCH,
       ]);
     }
+  });
+
+  it('confiée à la main : elle se voit tant qu’elle est ouverte (audit)', async () => {
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
+      .ids as [string];
+    await db.withTenant({ tenantId, userId: mariama.session.userId }, (tx) =>
+      confierLaDemande(tx, mariama.session, 'documents', id, khady.employeeId),
+    );
+    const voit = async () => (await documents.list(khady.session, {})).some((r) => r.id === id);
+    await documents.advance(khady.session, id, { status: 'processing' });
+    expect(await voit()).toBe(true);
+    await documents.advance(khady.session, id, { status: 'ready', pickupContact: 'Accueil' });
+    expect(await voit()).toBe(false);
   });
 
   it('qui a traité une demande prête ne la corrige plus une fois sa délégation retirée', async () => {
@@ -565,6 +592,20 @@ describe('les demandes de documents', () => {
 });
 
 describe('les changements d’informations', () => {
+  it('confiée à la main : elle se voit tant qu’elle attend (audit)', async () => {
+    const { id } = await informations.create(moussa.session, {
+      changes: { addressLine: 'Cité Keur Gorgui' },
+    });
+    await db.withTenant({ tenantId, userId: mariama.session.userId }, (tx) =>
+      confierLaDemande(tx, mariama.session, 'informations', id, khady.employeeId),
+    );
+    const voit = async () =>
+      (await informations.list(khady.session, {} as never)).some((r) => r.id === id);
+    expect(await voit()).toBe(true);
+    await informations.decide(khady.session, id, { decision: 'approve' });
+    expect(await voit()).toBe(false);
+  });
+
   it('vont au directeur, puis au membre habilité — qui tranche', async () => {
     const { id } = await informations.create(moussa.session, {
       changes: { addressLine: 'Cité Malick Sy' },
