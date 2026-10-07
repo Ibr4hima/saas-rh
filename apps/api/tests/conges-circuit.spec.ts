@@ -529,6 +529,14 @@ describe('un stagiaire n’a pas de congé annuel', () => {
     const agents = await absences.agentsPourSaisie(mariama.session);
     expect(agents.find((a) => a.nom === 'Fatou Test')?.stagiaire).toBe(true);
     expect(agents.find((a) => a.nom === 'Moussa Test')?.stagiaire).toBe(false);
+    // Sa fiche ne montre pas de solde de congé annuel ; celle d'un salarié, si.
+    const soldes = async (qui: Agent) =>
+      (await absences.balances(mariama.session, qui.employeeId, 2026)).map(
+        (b) => b.absenceTypeName,
+      );
+    expect(await soldes(fatou)).not.toContain('Congé annuel');
+    expect(await soldes(fatou)).toContain('Maladie');
+    expect(await soldes(moussa)).toContain('Congé annuel');
   });
 
   it('embauché à la fin du stage : le congé annuel s’ouvre au premier jour du contrat', async () => {

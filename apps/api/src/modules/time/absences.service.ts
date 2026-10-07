@@ -967,13 +967,20 @@ export class AbsencesService {
           motifConfidentiel: r.motif_confidentiel,
         })),
       ];
-      return this.balancesInTx(
+      const soldes = await this.balancesInTx(
         tx,
         user,
         employeeId,
         year,
         types.filter((ty) => voitLesMotifs || !ty.motifConfidentiel),
       );
+      // Un stagiaire n'a pas de congé annuel : sa ligne n'apparaît pas, sauf
+      // si des jours y sont déjà pris ou demandés. Rien du passé ne s'efface.
+      const { rows: contrat } = await tx.execute<{ type: string | null }>(
+        sql`SELECT ${typeDeContratAu(employeeId, sql`CURRENT_DATE`)} AS type`,
+      );
+      if (contrat[0]?.type !== 'stage') return soldes;
+      return soldes.filter((b) => !b.deductsBalance || b.takenDays > 0 || b.pendingDays > 0);
     });
   }
 

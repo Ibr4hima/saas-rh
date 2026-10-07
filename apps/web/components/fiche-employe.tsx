@@ -1045,6 +1045,8 @@ function BalancesCard({ employeeId }: { employeeId: string }) {
     queryFn: () => api<BalanceView[]>(`/employees/${employeeId}/balances?year=${year}`),
   });
   const { tranche, barre } = usePagination(balances.data ?? []);
+  // Droit et restant n'existent que pour un solde : un stagiaire n'en a pas.
+  const avecSolde = (balances.data ?? []).some((b) => b.deductsBalance);
 
   return (
     <Card>
@@ -1064,10 +1066,10 @@ function BalancesCard({ employeeId }: { employeeId: string }) {
                 {/* Quatre colonnes de nombres, cadrées à DROITE et en chiffres
                     de largeur fixe : les unités tombent sous les unités, et on
                     compare deux lignes sans les lire. */}
-                <Th className="text-right">Droit</Th>
+                {avecSolde ? <Th className="text-right">Droit</Th> : null}
                 <Th className="text-right">Pris</Th>
                 <Th className="text-right">En attente</Th>
-                <Th className="text-right">Restant</Th>
+                {avecSolde ? <Th className="text-right">Restant</Th> : null}
               </tr>
             </THead>
             <TBody>
@@ -1081,14 +1083,18 @@ function BalancesCard({ employeeId }: { employeeId: string }) {
                       </Badge>
                     ) : null}
                   </Td>
-                  <Td className="text-right font-mono">
-                    {b.deductsBalance ? b.entitledDays : null}
-                  </Td>
+                  {avecSolde ? (
+                    <Td className="text-right font-mono">
+                      {b.deductsBalance ? b.entitledDays : null}
+                    </Td>
+                  ) : null}
                   <Td className="text-right font-mono">{b.takenDays}</Td>
                   <Td className="text-right font-mono">{b.pendingDays}</Td>
-                  <Td className="text-right font-mono font-semibold text-ink-strong">
-                    {b.deductsBalance ? b.remainingDays : null}
-                  </Td>
+                  {avecSolde ? (
+                    <Td className="text-right font-mono font-semibold text-ink-strong">
+                      {b.deductsBalance ? b.remainingDays : null}
+                    </Td>
+                  ) : null}
                 </Tr>
               ))}
             </TBody>
