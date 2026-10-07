@@ -185,6 +185,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
   // Un agent inactif n'a ni portail, ni affectation nouvelle : sa fiche se
   // consulte, son contrat se renouvelle, et le dossier se réactive.
   const actif = e.status === 'active';
+  const colonneDroite = (peutGerer && actif) || canSeeHistory;
   // Son dernier contrat court encore (désactivé à la main) : il se réactive
   // tel quel. Échu, c'est le nouveau contrat qui le réactive ; à venir, il
   // le réactivera le jour où il commence.
@@ -399,7 +400,12 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
           et son emploi, à droite ce qui s'administre — accès, soldes, traces.
           En une colonne, la fiche demandait quatre écrans de défilement. */}
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
-        <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
+        <div
+          className={cn(
+            'flex min-w-0 flex-col gap-4',
+            colonneDroite ? 'xl:col-span-2' : 'xl:col-span-3',
+          )}
+        >
           <Card>
             <CardHeader>
               <CardTitle>État civil et contact</CardTitle>
@@ -472,6 +478,9 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
               </Groupe>
             </CardContent>
           </Card>
+
+          {/* Ce que l'agent a fait corriger, sous ce qu'il a signalé. */}
+          {soi ? <SuiviSignalements /> : null}
 
           <AssignmentsCard
             employeeId={e.id}
@@ -585,23 +594,23 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
           <BalancesCard employeeId={e.id} />
         </div>
 
-        {/* ———— Colonne d'administration : accès et traces — pour l'agent
-            sur sa propre fiche, le suivi de ses signalements. ———— */}
-        <div className="flex min-w-0 flex-col gap-4">
-          {soi ? <SuiviSignalements /> : null}
+        {/* Colonne d'administration : accès et traces. Sur sa propre fiche,
+            l'agent n'en a pas : la fiche prend toute la largeur. */}
+        {colonneDroite ? (
+          <div className="flex min-w-0 flex-col gap-4">
+            {/* Inactif : pas d'accès au portail, donc rien à lui transmettre. */}
+            {peutGerer && actif ? (
+              <PortalCard
+                employeeId={e.id}
+                portal={e.portal}
+                prenom={e.person.givenName}
+                gender={e.person.gender}
+              />
+            ) : null}
 
-          {/* Inactif : pas d'accès au portail, donc rien à lui transmettre. */}
-          {peutGerer && actif ? (
-            <PortalCard
-              employeeId={e.id}
-              portal={e.portal}
-              prenom={e.person.givenName}
-              gender={e.person.gender}
-            />
-          ) : null}
-
-          {canSeeHistory ? <CarteHistorique history={history} /> : null}
-        </div>
+            {canSeeHistory ? <CarteHistorique history={history} /> : null}
+          </div>
+        ) : null}
       </div>
     </Page>
   );
