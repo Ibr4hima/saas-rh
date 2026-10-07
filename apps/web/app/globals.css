@@ -21,6 +21,8 @@
   --color-ink-muted: var(--tg-ink-muted);
   --color-line: var(--tg-line);
   --color-line-soft: var(--tg-line-soft);
+  --color-bloc: var(--tg-bloc);
+  --color-bloc-line: var(--tg-bloc-line);
   --color-primary: var(--tg-primary);
   --color-primary-ink: var(--tg-primary-ink);
   --color-primary-hover: var(--tg-primary-hover);

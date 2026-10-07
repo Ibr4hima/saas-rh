@@ -7,7 +7,8 @@ import { cn } from './cn';
  *
  * Une liste dt/dd donne deux lignes de texte gris et noir qui se ressemblent :
  * l'œil doit relire pour savoir où finit un champ et où commence le suivant.
- * Le bloc, lui, est BORNÉ — un fond de marque à 4 %, un filet à 10 % — et son
+ * Le bloc, lui, est BORNÉ par un fond et un filet à lui (--tg-bloc : en clair,
+ * le gris chaud des surfaces, sans bleu), et son
  * intitulé est écrit assez petit pour ne jamais concurrencer la valeur. On
  * balaie une fiche de trente champs sans jamais la lire.
  */
@@ -27,7 +28,7 @@ export function DataBlock({
   return (
     <div
       className={cn(
-        'min-w-0 rounded-xl border border-primary/10 bg-primary/[0.04] px-3 py-2.5',
+        'min-w-0 rounded-xl border border-bloc-line bg-bloc px-3 py-2.5',
         full && 'col-span-full',
         className,
       )}

@@ -39,6 +39,11 @@
   --tg-ink-muted: #5a5f75;
   --tg-line: #d8d3cf;
   --tg-line-soft: #eceae7;
+  /* Le bloc d'une donnée en lecture (DataBlock) : le gris chaud des
+     surfaces et son filet, sans teinte de marque. Le bleu reste à
+     l'intitulé, qui structure ; le fond, lui, se tait. */
+  --tg-bloc: var(--tg-surface-raised);
+  --tg-bloc-line: var(--tg-line-soft);
 
   --tg-primary: #004f91;
   --tg-primary-ink: #ffffff;
@@ -246,6 +251,8 @@
     --tg-ink-muted: #9ba0b4;
     --tg-line: rgb(122 138 164 / 0.32);
     --tg-line-soft: rgb(122 138 164 / 0.17);
+    --tg-bloc: color-mix(in oklab, var(--tg-primary) 4%, transparent);
+    --tg-bloc-line: color-mix(in oklab, var(--tg-primary) 10%, transparent);
     /* Aplat, pas dégradé : entre #16213A et #22406A l'écart est trop faible
        pour se lire comme une matière. */
     --tg-card-line: rgb(237 241 247 / 0.12);
@@ -332,6 +339,8 @@
   --tg-ink-muted: #9ba0b4;
   --tg-line: rgb(122 138 164 / 0.32);
   --tg-line-soft: rgb(122 138 164 / 0.17);
+  --tg-bloc: color-mix(in oklab, var(--tg-primary) 4%, transparent);
+  --tg-bloc-line: color-mix(in oklab, var(--tg-primary) 10%, transparent);
   --tg-card-line: rgb(237 241 247 / 0.12);
   --tg-card-line-hover: rgb(133 185 236 / 0.35);
   --tg-hover: #1e2839;
