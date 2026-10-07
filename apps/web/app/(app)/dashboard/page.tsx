@@ -35,6 +35,7 @@ import { api } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { Page } from '../../../components/gabarit';
 import { Pagination, usePagination } from '../../../components/pagination';
+import { CarteFerie, PastilleFerie } from '../../../components/frise-feries';
 import { compte } from '../../../lib/mots';
 import { deadlineLabel } from '../../../lib/contrats';
 import { SqueletteTableau } from '../../../components/tableau';
@@ -375,92 +376,49 @@ function FicheDirection({
 /* ———— La frise des fériés ———— */
 
 /**
- * Le calendrier des fériés : le dernier passé, puis les trois qui viennent.
+ * Le calendrier des fériés : le dernier passé, puis les trois qui viennent,
+ * avec les cartes de la page Calendrier (nom, distance, date fixe ou
+ * variable, date et jour).
  *
- * Les dates sont à intervalles ÉGAUX : l'espacement dit l'ordre, la mention
- * « dans 49 j » dit la distance. Rien n'est écrit au-dessus des pastilles —
- * le prochain férié se reconnaît à son aplat bleu et à son double anneau, et
- * le passé à son gris ; un intitulé par-dessus ne faisait que répéter ce que
- * la couleur montrait déjà.
+ * La forme suit la largeur de la CARTE, pas celle de l'écran : assez large,
+ * les dates s'alignent sur un rail horizontal, une colonne chacune, et le
+ * rail court d'une pastille à l'autre ; plus étroite, elles s'empilent le
+ * long d'un rail vertical, comme la frise de l'année sur un téléphone.
  */
 function Frise({ jours }: { jours: DashboardHoliday[] }) {
   const passes = jours.filter((h) => ecartJours(h.day) < 0).length;
-  // Le rail court d'un centre de date à l'autre, jamais d'un bord à l'autre de
-  // la carte : un trait qui dépasse ne mène à rien.
-  const garde = `${50 / jours.length}%`;
   return (
-    <div className="relative">
-      <span
-        aria-hidden
-        className="absolute top-[33px] h-[2px] rounded-full bg-line-soft"
-        style={{ left: garde, right: garde }}
-      />
-      <ol className="relative flex">
-        {jours.map((h, i) => (
-          <DateFerie
-            key={h.day}
-            day={h.day}
-            label={h.label}
-            etat={i < passes ? 'passe' : i === passes ? 'prochain' : 'avenir'}
-          />
-        ))}
+    <div className="@container">
+      <ol
+        className="relative grid gap-3 @[56rem]:auto-cols-fr @[56rem]:grid-flow-col @[56rem]:gap-4"
+        // D'un centre de colonne à l'autre : un trait qui dépasse ne mène à rien.
+        style={{ '--garde': `${50 / jours.length}%` } as React.CSSProperties}
+      >
+        <span
+          aria-hidden
+          className="absolute top-0 bottom-0 left-[12.5px] w-px bg-line-soft @[56rem]:top-[12.5px] @[56rem]:right-(--garde) @[56rem]:bottom-auto @[56rem]:left-(--garde) @[56rem]:h-px @[56rem]:w-auto"
+          // Étroite, la frise n'a pas de pastille aux extrémités du rail : il
+          // s'efface plutôt que de s'arrêter net.
+          style={{
+            maskImage: 'linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent)',
+          }}
+        />
+        {jours.map((h, i) => {
+          const etat = i < passes ? 'passe' : i === passes ? 'prochain' : 'avenir';
+          return (
+            <li
+              key={h.day}
+              className="relative grid grid-cols-[26px_minmax(0,1fr)] items-center gap-3 @[56rem]:grid-cols-1 @[56rem]:grid-rows-[26px_1fr] @[56rem]:gap-2.5"
+            >
+              <span className="flex justify-center">
+                <PastilleFerie etat={etat} fond="surface" />
+              </span>
+              <CarteFerie ferie={h} etat={etat} bandeau={false} compacte className="h-full" />
+            </li>
+          );
+        })}
       </ol>
     </div>
-  );
-}
-
-function DateFerie({
-  day,
-  label,
-  etat,
-}: {
-  day: string;
-  label: string;
-  etat: 'passe' | 'prochain' | 'avenir';
-}) {
-  const date = new Date(`${day}T00:00:00`);
-  const prochain = etat === 'prochain';
-  const passe = etat === 'passe';
-  return (
-    <li className="relative flex min-w-0 flex-1 flex-col items-center px-1 pt-2 text-center sm:px-3">
-      {/* Un carré aux angles très adoucis plutôt qu'un rond : la date y tient
-          sur deux lignes sans que le mois vienne toucher le bord. */}
-      <span
-        className={cn(
-          'flex size-[52px] shrink-0 flex-col items-center justify-center rounded-[15px] border transition-colors duration-200',
-          prochain
-            ? 'ferie-prochain border-transparent bg-primary text-primary-ink'
-            : passe
-              ? 'ferie-neutre border-line-soft bg-bg text-ink-muted'
-              : 'ferie-neutre border-line bg-surface text-ink-strong',
-        )}
-      >
-        <span className="text-[17px] leading-none font-bold" style={TABULAIRE}>
-          {Number(day.slice(8, 10))}
-        </span>
-        <span
-          className={cn(
-            'mt-1 text-[9px] leading-none font-bold tracking-[0.06em] uppercase',
-            prochain ? 'text-primary-ink/75' : 'text-ink-muted',
-          )}
-        >
-          {date.toLocaleDateString('fr-FR', { month: 'short' })}
-        </span>
-      </span>
-      <span
-        className={cn(
-          'mt-3 line-clamp-2 text-[12.5px] leading-tight font-semibold',
-          passe ? 'text-ink-muted' : 'text-ink-strong',
-        )}
-      >
-        {label}
-      </span>
-      <span className="mt-1 text-[11px] leading-tight text-ink-muted">
-        <span className="capitalize">{date.toLocaleDateString('fr-FR', { weekday: 'long' })}</span>
-        {' · '}
-        <span className={prochain ? 'font-semibold text-primary' : undefined}>{inDays(day)}</span>
-      </span>
-    </li>
   );
 }
 

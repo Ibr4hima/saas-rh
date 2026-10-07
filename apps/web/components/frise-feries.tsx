@@ -25,7 +25,7 @@ import { distance, ecartJours } from '../lib/feries';
 
 const TABULAIRE = { fontVariantNumeric: 'tabular-nums' } as const;
 
-type Etat = 'passe' | 'prochain' | 'avenir';
+export type Etat = 'passe' | 'prochain' | 'avenir';
 
 function majuscule(texte: string): string {
   return texte.charAt(0).toUpperCase() + texte.slice(1);
@@ -225,33 +225,10 @@ function Entree({
   etat: Etat;
   aGauche: boolean;
 }) {
-  const prochain = etat === 'prochain';
-  const passe = etat === 'passe';
-  const d = new Date(`${ferie.day}T00:00:00`);
-  const weekend = d.getDay() === 0 || d.getDay() === 6;
-
   return (
     <li className="grid grid-cols-[26px_minmax(0,1fr)] items-center md:grid-cols-[minmax(0,1fr)_16px_minmax(0,1fr)]">
-      {/* La pastille. Son disque extérieur porte la couleur du FOND de page :
-          c'est lui qui interrompt le rail, sans qu'on ait à le découper. */}
       <span className="col-start-1 row-start-1 flex justify-center md:col-start-2">
-        <span
-          className={cn(
-            'flex items-center justify-center rounded-full bg-bg',
-            prochain ? 'size-[26px]' : 'size-[20px]',
-          )}
-        >
-          <span
-            className={cn(
-              'rounded-full',
-              prochain
-                ? 'size-[12px] bg-primary ring-4 ring-primary/15'
-                : passe
-                  ? 'size-[9px] bg-line'
-                  : 'size-[9px] bg-primary/40',
-            )}
-          />
-        </span>
+        <PastilleFerie etat={etat} />
       </span>
 
       <div
@@ -272,76 +249,169 @@ function Entree({
           )}
         />
 
-        <article
-          className={cn(
-            'overflow-hidden rounded-[16px] border transition-shadow duration-200',
-            prochain
-              ? 'border-primary/40 bg-surface shadow-md'
-              : passe
-                ? 'border-card-line bg-surface-raised shadow-xs'
-                : 'border-card-line bg-surface shadow-xs',
-          )}
-        >
-          {prochain ? (
-            <p className="flex items-center gap-1.5 bg-primary px-4 py-[6px] text-[9.5px] font-extrabold tracking-[0.12em] text-primary-ink uppercase">
-              <span aria-hidden className="size-[5px] rounded-full bg-primary-ink/80" />
-              Prochain jour férié
-            </p>
-          ) : null}
-
-          <div className="px-4 py-3.5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p
-                  className={cn(
-                    'truncate text-[14.5px] leading-tight font-bold tracking-[-0.01em]',
-                    passe ? 'text-ink' : 'text-ink-strong',
-                  )}
-                >
-                  {ferie.label}
-                </p>
-                <p className="mt-1 text-[11.5px] leading-tight text-ink-muted">
-                  {distance(ferie.day)}
-                </p>
-              </div>
-              {/* Une fête mobile se date à l'annonce — le dire évite de croire
-                  qu'une date déjà posée ne bougera plus. */}
-              <Badge tone={ferie.fixed ? 'gris' : 'bleu'}>
-                {ferie.fixed ? 'Date fixe' : 'Date variable'}
-              </Badge>
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-x-4 border-t border-line-soft pt-3">
-              <Colonne intitule="Date">
-                <span style={TABULAIRE}>
-                  {d.toLocaleDateString('fr-FR', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })}
-                </span>
-              </Colonne>
-              <Colonne intitule="Jour">
-                {majuscule(d.toLocaleDateString('fr-FR', { weekday: 'long' }))}
-                {/* Un férié qui tombe un samedi n'offre pas de jour de repos :
-                    c'est la première chose qu'on veut savoir en le lisant. */}
-                {weekend ? <span className="font-medium text-ink-muted"> · week-end</span> : null}
-              </Colonne>
-            </div>
-          </div>
-        </article>
+        <CarteFerie ferie={ferie} etat={etat} />
       </div>
     </li>
   );
 }
 
-function Colonne({ intitule, children }: { intitule: string; children: React.ReactNode }) {
+/**
+ * La pastille d'une date sur le rail. Son disque extérieur porte la couleur
+ * du FOND qu'elle traverse (la page, ou la carte du tableau de bord) : c'est
+ * lui qui interrompt le rail, sans qu'on ait à le découper.
+ */
+export function PastilleFerie({ etat, fond = 'bg' }: { etat: Etat; fond?: 'bg' | 'surface' }) {
+  const prochain = etat === 'prochain';
+  return (
+    <span
+      className={cn(
+        'flex items-center justify-center rounded-full',
+        fond === 'surface' ? 'bg-surface' : 'bg-bg',
+        prochain ? 'size-[26px]' : 'size-[20px]',
+      )}
+    >
+      <span
+        className={cn(
+          'rounded-full',
+          prochain
+            ? 'size-[12px] bg-primary ring-4 ring-primary/15'
+            : etat === 'passe'
+              ? 'size-[9px] bg-line'
+              : 'size-[9px] bg-primary/40',
+        )}
+      />
+    </span>
+  );
+}
+
+/**
+ * La carte d'un jour férié : son nom, sa distance à aujourd'hui, s'il est à
+ * date fixe, puis la date et le jour de la semaine. La même sur la page du
+ * calendrier et sur le tableau de bord. `bandeau` : le prochain porte son
+ * bandeau « Prochain jour férié » (la frise de l'année) ; sans lui, il se
+ * signale par son filet bleu (les cartes alignées du tableau de bord, qu'un
+ * bandeau sur une seule désalignerait). `compacte` : quatre cartes côte à
+ * côte n'ont pas la largeur d'une demi-page, la date et le jour y tiennent
+ * chacun sur leur ligne.
+ */
+export function CarteFerie({
+  ferie,
+  etat,
+  bandeau = true,
+  compacte = false,
+  className,
+}: {
+  ferie: { day: string; label: string; fixed: boolean };
+  etat: Etat;
+  bandeau?: boolean;
+  compacte?: boolean;
+  className?: string;
+}) {
+  const prochain = etat === 'prochain';
+  const passe = etat === 'passe';
+  const d = new Date(`${ferie.day}T00:00:00`);
+  const weekend = d.getDay() === 0 || d.getDay() === 6;
+  return (
+    <article
+      className={cn(
+        'overflow-hidden rounded-[16px] border transition-shadow duration-200',
+        prochain
+          ? 'border-primary/40 bg-surface shadow-md'
+          : passe
+            ? 'border-card-line bg-surface-raised shadow-xs'
+            : 'border-card-line bg-surface shadow-xs',
+        className,
+      )}
+    >
+      {prochain && bandeau ? (
+        <p className="flex items-center gap-1.5 bg-primary px-4 py-[6px] text-[9.5px] font-extrabold tracking-[0.12em] text-primary-ink uppercase">
+          <span aria-hidden className="size-[5px] rounded-full bg-primary-ink/80" />
+          Prochain jour férié
+        </p>
+      ) : null}
+
+      <div className={compacte ? 'px-3.5 py-3' : 'px-4 py-3.5'}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p
+              className={cn(
+                'text-[14.5px] leading-tight font-bold tracking-[-0.01em]',
+                passe ? 'text-ink' : 'text-ink-strong',
+              )}
+            >
+              {ferie.label}
+            </p>
+            <p
+              className={cn(
+                'mt-1 text-[11.5px] leading-tight',
+                prochain && !bandeau ? 'font-semibold text-primary' : 'text-ink-muted',
+              )}
+            >
+              {distance(ferie.day)}
+            </p>
+          </div>
+          {/* Une fête mobile se date à l'annonce : le dire évite de croire
+              qu'une date déjà posée ne bougera plus. */}
+          <Badge tone={ferie.fixed ? 'gris' : 'bleu'}>
+            {ferie.fixed ? 'Date fixe' : 'Date variable'}
+          </Badge>
+        </div>
+
+        <div
+          className={cn(
+            'mt-3 grid grid-cols-2 border-t border-line-soft pt-3',
+            compacte ? 'gap-x-3' : 'gap-x-4',
+          )}
+        >
+          <Colonne intitule="Date" compacte={compacte}>
+            <span style={TABULAIRE}>
+              {d.toLocaleDateString('fr-FR', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })}
+            </span>
+          </Colonne>
+          <Colonne intitule="Jour" compacte={compacte}>
+            {majuscule(d.toLocaleDateString('fr-FR', { weekday: 'long' }))}
+            {/* Un férié qui tombe un samedi n'offre pas de jour de repos :
+                c'est la première chose qu'on veut savoir en le lisant. */}
+            {weekend ? (
+              compacte ? (
+                <span className="block text-[11px] font-medium text-ink-muted">Week-end</span>
+              ) : (
+                <span className="font-medium text-ink-muted"> · week-end</span>
+              )
+            ) : null}
+          </Colonne>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function Colonne({
+  intitule,
+  compacte = false,
+  children,
+}: {
+  intitule: string;
+  compacte?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <div className="min-w-0">
       <p className="text-[9px] font-extrabold tracking-[0.1em] text-ink-muted uppercase">
         {intitule}
       </p>
-      <p className="mt-1 text-[12.5px] leading-snug font-bold text-ink-strong">{children}</p>
+      <p
+        className={cn(
+          'mt-1 leading-snug font-bold text-ink-strong',
+          compacte ? 'text-[12px]' : 'text-[12.5px]',
+        )}
+      >
+        {children}
+      </p>
     </div>
   );
 }

@@ -26,6 +26,8 @@ export interface DashboardDirectionHeadcount {
 export interface DashboardHoliday {
   day: string;
   label: string;
+  /** Férié à date civile ; sinon fête mobile, datée à l'annonce. */
+  fixed: boolean;
 }
 
 /**
