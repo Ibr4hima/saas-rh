@@ -299,7 +299,8 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   'recrutement.candidatures': {
     libelle: 'Dossiers de candidature',
-    description: 'Lire les dossiers reçus (CV et pièces) et les faire avancer.',
+    description:
+      'Lire les dossiers reçus (CV et pièces), les faire avancer, et consulter les candidatures non retenues.',
     groupe: 'Recrutement',
     sensible: true,
   },

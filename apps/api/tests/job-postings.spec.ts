@@ -22,7 +22,11 @@ import { EncryptionService } from '../src/common/encryption.service';
 import { pourLeJournal } from '../src/common/problem';
 import { chiffrerLesCandidatures } from '../src/db/chiffrer-candidatures';
 import { ApplyService } from '../src/modules/recruitment/apply.service';
+import type { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { AccesGuard } from '../src/modules/auth/acces.guard';
 import { ExpediteurCourriels } from '../src/modules/courriels/expediteur';
+import { RecruitmentController } from '../src/modules/recruitment/recruitment.controller';
 import type { Courriel, Transport } from '../src/modules/courriels/transports';
 
 const env = loadEnv();
@@ -560,6 +564,32 @@ describe('une candidature rejetée', () => {
       [tenantId, offreId],
     );
     expect(traces.at(-1)).toEqual({ action: 'list', job_posting_id: offreId });
+  });
+
+  it('les non retenues s’ouvrent à qui a les dossiers de candidature, et à personne d’autre', () => {
+    const garde = new AccesGuard(new Reflector());
+    const ouvre = (handler: object, sessionUser: object) => {
+      try {
+        return garde.canActivate({
+          getHandler: () => handler,
+          getClass: () => RecruitmentController,
+          switchToHttp: () => ({ getRequest: () => ({ sessionUser }) }),
+        } as unknown as ExecutionContext);
+      } catch {
+        return false;
+      }
+    };
+    const { rejetees, nombreDeRejetees } = RecruitmentController.prototype;
+    for (const route of [rejetees, nombreDeRejetees]) {
+      // Déléguée « Dossiers de candidature » : oui.
+      expect(ouvre(route, { role: 'employee', capacites: ['recrutement.candidatures'] })).toBe(
+        true,
+      );
+      // Les offres seules, l'administrateur (qui n'a pas les dossiers), un agent : non.
+      expect(ouvre(route, { role: 'employee', capacites: ['recrutement.offres'] })).toBe(false);
+      expect(ouvre(route, { role: 'admin', capacites: [] })).toBe(false);
+      expect(ouvre(route, { role: 'employee', capacites: [] })).toBe(false);
+    }
   });
 
   it('supprimée avant le départ, rien ne part', async () => {
