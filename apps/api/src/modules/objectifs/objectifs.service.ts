@@ -31,7 +31,7 @@ import {
 import { problem } from '../../common/problem';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { duSemestre } from '../notifications/phrases';
-import { AcademyEquipeService } from '../academy/academy-equipe.service';
+import { AcademySuiviService } from '../academy/academy-suivi.service';
 import { employeActif } from '../academy/academy-evaluation.service';
 import { notifier } from '../notifications/notifier';
 import { retirerLesAppels } from '../acces/appels';
@@ -315,7 +315,7 @@ export class ObjectifsService {
 
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
-    @Inject(AcademyEquipeService) private readonly academy: AcademyEquipeService,
+    @Inject(AcademySuiviService) private readonly academy: AcademySuiviService,
   ) {}
 
   private ctx(user: SessionUser) {

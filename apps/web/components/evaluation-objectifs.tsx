@@ -187,15 +187,6 @@ function PastilleStatut({ statut }: { statut: StatutObjectif }) {
   );
 }
 
-/** Le statut d'une formation, sous l'objectif : il se lit, il ne se choisit pas. */
-function PastilleStatutSeule({ statut }: { statut: StatutObjectif }) {
-  return (
-    <span className="self-start">
-      <PastilleStatut statut={statut} />
-    </span>
-  );
-}
-
 /** Atteint, Partiellement, Non atteint : le choix de l'agent, sous l'objectif. */
 function ChoixStatut({
   objectif,
@@ -644,18 +635,11 @@ export function AutoEvaluationAgent({
   const base = `/objectifs/moi/fiches/${fiche.annee}/${fiche.semestre}/commentaires`;
   const cle = [...CLE_OBJECTIFS, 'moi'];
 
-  // Une formation a le statut que lui donne l'Academy, sans commentaire.
-  const cases = objectifs.filter((o) => !o.formation);
-  const sansStatut = cases.filter((o) => !statuts[o.id]).length;
-  const sansCommentaire = cases.filter((o) => !brouillon.valeur[o.id]?.trim()).length;
-  const reste = [
-    sansStatut ? `${sansStatut} statut${sansStatut > 1 ? 's' : ''} à choisir` : null,
-    sansCommentaire
-      ? `${sansCommentaire} commentaire${sansCommentaire > 1 ? 's' : ''} à écrire`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  // Une formation a le statut que lui donne l'Academy, sans commentaire :
+  // chaque autre objectif attend son statut et son commentaire.
+  const incomplet = objectifs.some(
+    (o) => !o.formation && (!statuts[o.id] || !brouillon.valeur[o.id]?.trim()),
+  );
   const erreur = action.erreur ?? erreurStatut;
 
   const enregistrer = () =>
@@ -687,8 +671,6 @@ export function AutoEvaluationAgent({
               <>
                 {ev.commentairesAgent[o.id] ? (
                   <Propos qui="Vous" texte={ev.commentairesAgent[o.id]!} statut={statuts[o.id]} />
-                ) : o.formation && statuts[o.id] ? (
-                  <PastilleStatutSeule statut={statuts[o.id]!} />
                 ) : null}
                 {ev.valideeLe && ev.commentairesN1[o.id]?.trim() ? (
                   <Propos
@@ -707,13 +689,9 @@ export function AutoEvaluationAgent({
                     Modifié par votre N+1
                   </Badge>
                 ) : null}
-                {o.formation ? (
-                  // Une formation : son statut vient de l'Academy, et ne se
-                  // commente pas.
-                  statuts[o.id] ? (
-                    <PastilleStatutSeule statut={statuts[o.id]!} />
-                  ) : null
-                ) : (
+                {/* Une formation : sa case dit le statut que lui donne
+                    l'Academy, rien à choisir ni à commenter. */}
+                {o.formation ? null : (
                   <>
                     <ChoixStatut
                       objectif={o.texte}
@@ -722,7 +700,6 @@ export function AutoEvaluationAgent({
                     />
                     <ZoneCommentaire
                       aria-label={`Commentaire : ${o.texte}`}
-                      placeholder="Ce que vous avez fait, ce qui reste…"
                       value={brouillon.valeur[o.id] ?? ''}
                       onChange={(e) =>
                         brouillon.changer({ ...brouillon.valeur, [o.id]: e.target.value })
@@ -754,8 +731,6 @@ export function AutoEvaluationAgent({
               ? `Évaluation validée le ${dateLongue(ev.valideeLe)}${ev.evaluateur ? ` par ${ev.evaluateur}` : ''}`
               : `Envoyée le ${dateLongue(ev.envoyesLe!)}`}
           </p>
-        ) : reste ? (
-          <p className="mr-auto text-[11.5px] text-ink-muted">{reste}</p>
         ) : null}
         {envoyes ? null : (
           <>
@@ -767,7 +742,7 @@ export function AutoEvaluationAgent({
             />
             <Button
               size="sm"
-              disabled={Boolean(reste) || objectifs.length === 0}
+              disabled={incomplet || objectifs.length === 0}
               onClick={() => setConfirmer(true)}
             >
               Envoyer à mon N+1
@@ -862,8 +837,6 @@ export function EvaluationSemestre({
                 texte={ev.commentairesAgent[o.id]!}
                 statut={fiche.statuts[o.id]}
               />
-            ) : o.formation && fiche.statuts[o.id] ? (
-              <PastilleStatutSeule statut={fiche.statuts[o.id]!} />
             ) : null}
             {envoyes && !validee && !o.formation ? (
               <ZoneCommentaire

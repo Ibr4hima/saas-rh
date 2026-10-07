@@ -8,7 +8,7 @@ import {
   AcademyMediaController,
   PublicCertificatsController,
 } from './modules/academy/academy.controller';
-import { AcademyEquipeService } from './modules/academy/academy-equipe.service';
+import { AcademySuiviService } from './modules/academy/academy-suivi.service';
 import { ObjectifsController } from './modules/objectifs/objectifs.controller';
 import { ObjectifsService } from './modules/objectifs/objectifs.service';
 import { AcademyEvaluationService } from './modules/academy/academy-evaluation.service';
@@ -114,7 +114,7 @@ import { AbsencesService } from './modules/time/absences.service';
     StockageVideoLocal,
     AcademyService,
     AcademyEvaluationService,
-    AcademyEquipeService,
+    AcademySuiviService,
     ObjectifsService,
     PassageDeMinuit,
   ],

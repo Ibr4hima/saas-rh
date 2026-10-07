@@ -51,7 +51,6 @@ import { Limiteur, VERIFICATIONS_DE_CERTIFICAT, adresseDuClient } from '../../co
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { AccesGuard, FermeAuxInactifs, OuvertAuxInactifs, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
-import { AcademyEquipeService } from './academy-equipe.service';
 import { AcademyEvaluationService } from './academy-evaluation.service';
 import { AcademyService } from './academy.service';
 import { contentDisposition } from '../../common/telechargement';
@@ -70,7 +69,6 @@ export class AcademyController {
   constructor(
     @Inject(AcademyService) private readonly academy: AcademyService,
     @Inject(AcademyEvaluationService) private readonly evaluation: AcademyEvaluationService,
-    @Inject(AcademyEquipeService) private readonly equipe: AcademyEquipeService,
   ) {}
 
   // ———————————— catalogue et lecture
@@ -406,27 +404,6 @@ export class AcademyController {
     @Body(new ZodValidationPipe(submitAttemptSchema)) body: SubmitAttemptInput,
   ) {
     return this.evaluation.soumettre(req.sessionUser, id, body);
-  }
-
-  // ———————————— « Mon équipe » : ouverte à tout membre, bornée par
-  // l'organigramme — le service ne rend que la chaîne de l'appelant.
-
-  @Get('equipe/effectif')
-  effectifEquipe(@Req() req: AuthenticatedRequest) {
-    return this.equipe.effectif(req.sessionUser);
-  }
-
-  @Get('equipe')
-  monEquipe(@Req() req: AuthenticatedRequest) {
-    return this.equipe.equipe(req.sessionUser);
-  }
-
-  @Get('equipe/:employeeId')
-  agentDeLEquipe(
-    @Req() req: AuthenticatedRequest,
-    @Param('employeeId', ParseUUIDPipe) employeeId: string,
-  ) {
-    return this.equipe.agent(req.sessionUser, employeeId);
   }
 
   // ———————————— les certificats

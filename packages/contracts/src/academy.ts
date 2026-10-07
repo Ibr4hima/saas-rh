@@ -569,28 +569,3 @@ export interface TeamCourseProgress {
     status: 'valide' | 'expire';
   } | null;
 }
-
-export interface TeamMember {
-  employeeId: string;
-  givenName: string;
-  familyName: string;
-  number: string;
-  positionTitle: string | null;
-  unitName: string | null;
-  /** Combien de formations dans chaque état (les « à commencer » comprises). */
-  counts: Record<StatutSuivi, number>;
-  lastActivityAt: string | null;
-}
-
-export interface TeamView {
-  members: TeamMember[];
-}
-
-export interface TeamMemberDetail extends TeamMember {
-  courses: TeamCourseProgress[];
-}
-
-/** Assez pour savoir s'il faut montrer l'entrée « Mon équipe ». */
-export interface TeamSize {
-  total: number;
-}

@@ -1,9 +1,8 @@
 /**
- * « Mon équipe » — les règles pures : l'état d'une formation pour un agent,
- * les comptes par état, et l'ordre de lecture d'une fiche.
+ * La règle pure : l'état d'une formation pour un agent.
  */
 import { describe, expect, it } from 'vitest';
-import { compterStatuts, ordreDeSuivi, statutSuivi } from '../src/modules/academy/equipe';
+import { statutSuivi } from '../src/modules/academy/suivi';
 
 const base = {
   lecons: 4,
@@ -53,42 +52,5 @@ describe('l’état d’une formation pour un agent', () => {
 
   it('une formation sans leçon prête n’est jamais « terminée »', () => {
     expect(statutSuivi({ ...base, lecons: 0 })).toBe('a_commencer');
-  });
-});
-
-describe('les comptes et l’ordre', () => {
-  it('compte chaque état, zéros compris', () => {
-    expect(compterStatuts(['en_cours', 'en_cours', 'certifiee'])).toEqual({
-      evaluation_a_passer: 0,
-      non_reussie: 0,
-      en_cours: 2,
-      certifiee: 1,
-      terminee: 0,
-      a_commencer: 0,
-    });
-  });
-
-  it('ce qui attend l’agent d’abord, puis le plus récent, puis l’alphabet', () => {
-    const f = (
-      title: string,
-      status: Parameters<typeof ordreDeSuivi>[0]['status'],
-      lastActivityAt: string | null = null,
-    ) => ({ title, status, lastActivityAt });
-    const rangees = [
-      f('Word', 'a_commencer'),
-      f('Excel', 'certifiee', '2026-09-01T00:00:00Z'),
-      f('PowerPoint', 'en_cours', '2026-09-10T00:00:00Z'),
-      f('Access', 'en_cours', '2026-09-20T00:00:00Z'),
-      f('Budget', 'evaluation_a_passer', '2026-09-05T00:00:00Z'),
-      f('Outlook', 'a_commencer'),
-    ].sort(ordreDeSuivi);
-    expect(rangees.map((r) => r.title)).toEqual([
-      'Budget',
-      'Access',
-      'PowerPoint',
-      'Excel',
-      'Outlook',
-      'Word',
-    ]);
   });
 });

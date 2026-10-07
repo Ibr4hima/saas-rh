@@ -12,11 +12,12 @@ import {
   type EvaluationObjectif,
   type FormationProposable,
   type ObjectifView,
+  type StatutSuivi,
 } from '@teranga/contracts';
 import { Badge, Button, cn, Field, Input, Select, Textarea, type BadgeTone } from '@teranga/ui';
 import { api } from '../lib/api';
+import { ETATS_SUIVI } from '../lib/academy';
 import { formatDate } from '../lib/hooks';
-import { PastilleEtat } from './academy-equipe';
 import { Icon, type IconName } from './icons';
 import { Modal, ModalSection } from './modal';
 import { messageErreur } from './reglages-absences';
@@ -46,6 +47,24 @@ function Pastille({ ton, icone, children }: { ton: BadgeTone; icone: IconName; c
     <Badge tone={ton}>
       <Icon name={icone} size={13} className="-ml-0.5" />
       {children}
+    </Badge>
+  );
+}
+
+const TONS_SUIVI: Record<(typeof ETATS_SUIVI)[StatutSuivi]['ton'], BadgeTone> = {
+  attente: 'orange',
+  succes: 'teal',
+  suivi: 'bleu',
+  neutre: 'gris',
+};
+
+/** Où en est l'agent d'une formation de l'APIX Academy. */
+function PastilleEtat({ statut }: { statut: StatutSuivi }) {
+  const e = ETATS_SUIVI[statut];
+  return (
+    <Badge tone={TONS_SUIVI[e.ton]}>
+      <Icon name={e.icone} size={13} fill={e.ton === 'succes'} className="-ml-0.5" />
+      {e.label}
     </Badge>
   );
 }

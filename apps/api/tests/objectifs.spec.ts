@@ -23,7 +23,7 @@ import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
-import { AcademyEquipeService } from '../src/modules/academy/academy-equipe.service';
+import { AcademySuiviService } from '../src/modules/academy/academy-suivi.service';
 import { capacitesDe } from '../src/modules/acces/dch';
 import { ObjectifsService } from '../src/modules/objectifs/objectifs.service';
 import { reconcilierLeCircuit } from '../src/modules/time/visas';
@@ -99,7 +99,7 @@ beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 3 });
   db = new TenantDb();
-  objectifs = new ObjectifsService(db, new AcademyEquipeService(db));
+  objectifs = new ObjectifsService(db, new AcademySuiviService());
   objectifs.horloge = () => maintenant;
 
   await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1,'Objectifs',$2)`, [

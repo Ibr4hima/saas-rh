@@ -1,52 +1,27 @@
 /**
- * « Mon équipe », contre la base.
- *
- * L'organigramme du test : Mariama encadre Awa, qui encadre Moussa et un
- * ancien agent archivé. Fatou est ailleurs. Le compte RH n'a pas de dossier.
- * Le directeur général, lui, a reçu Awa pour n+1 — une donnée fausse, comme
- * un import ancien a pu en laisser.
- *
- * On vérifie que l'équipe s'arrête aux DIRECTS, qu'un agent hors de
- * l'équipe est introuvable — plus bas, plus haut ou de côté —, que le
- * directeur général n'est dans l'équipe de personne, et que chaque état
- * d'une formation se lit juste, du premier clic au certificat, expiré ou
- * tenu d'une formation retirée depuis.
+ * Où en est un agent sur chaque formation, contre la base : chaque état se
+ * lit juste, du premier clic au certificat, expiré ou tenu d'une formation
+ * retirée depuis.
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionUser, TeamCourseProgress } from '@teranga/contracts';
-import { ProblemException } from '../src/common/problem';
+import type { TeamCourseProgress } from '@teranga/contracts';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
-import { AcademyEquipeService } from '../src/modules/academy/academy-equipe.service';
+import { AcademySuiviService } from '../src/modules/academy/academy-suivi.service';
 
 const env = loadEnv();
 const tenantId = randomUUID();
 const maintenant = new Date(Date.UTC(2026, 8, 26, 9, 0, 0));
 
-const comptes = {
-  rh: randomUUID(),
-  mariama: randomUUID(),
-  awa: randomUUID(),
-  moussa: randomUUID(),
-  fatou: randomUUID(),
-};
-const agents = {
-  mariama: randomUUID(),
-  awa: randomUUID(),
-  moussa: randomUUID(),
-  fatou: randomUUID(),
-  ancien: randomUUID(),
-  dg: randomUUID(),
-};
-const session = (userId: string) => ({ userId, tenantId, role: 'employee' }) as SessionUser;
-const rh = { userId: comptes.rh, tenantId, role: 'admin' } as SessionUser;
+const comptes = { rh: randomUUID(), moussa: randomUUID() };
+const agents = { moussa: randomUUID() };
 
 let ownerPool: Pool;
 let db: TenantDb;
-let equipe: AcademyEquipeService;
+let suivi: AcademySuiviService;
 /** La formation évaluée, ses deux leçons, et celle qui ne s'évalue pas. */
 let excel: string;
 let lecons: string[];
@@ -54,34 +29,16 @@ let word: string;
 
 const raw = (q: string, p: unknown[] = []) => ownerPool.query(q, p as never[]);
 
-async function codeOf(fn: () => Promise<unknown>): Promise<string> {
-  try {
-    await fn();
-    return 'AUCUNE ERREUR';
-  } catch (err) {
-    if (err instanceof ProblemException) return err.problem.code;
-    return `NON-PROBLEM: ${(err as Error).message}`;
-  }
-}
-
-async function agent(
-  id: string,
-  prenom: string,
-  nom: string,
-  numero: string,
-  compte: string | null,
-  responsable: string | null,
-  statut = 'active',
-) {
+async function agent(id: string, prenom: string, nom: string, numero: string, compte: string) {
   const personId = randomUUID();
   await raw(
     `INSERT INTO persons (id, tenant_id, user_id, given_name, family_name) VALUES ($1,$2,$3,$4,$5)`,
     [personId, tenantId, compte, prenom, nom],
   );
   await raw(
-    `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on, status, manager_employee_id)
-     VALUES ($1,$2,$3,$4,'2024-01-01',$5,$6)`,
-    [id, tenantId, personId, numero, statut, responsable],
+    `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on, status)
+     VALUES ($1,$2,$3,$4,'2024-01-01','active')`,
+    [id, tenantId, personId, numero],
   );
 }
 
@@ -152,61 +109,38 @@ async function certificat(
   await raw(
     `INSERT INTO academy_certificates (id, tenant_id, employee_id, course_id, number, holder_name,
        holder_number, course_title, course_category, organization_name, score, issued_at, expires_at)
-     VALUES ($1,$2,$3,$4,$5,'Moussa Ndiaye','EQ-003',$6,'bureautique','APIX',$7,$8,$9)`,
+     VALUES ($1,$2,$3,$4,$5,'Moussa Ndiaye','SV-003',$6,'bureautique','APIX',$7,$8,$9)`,
     [randomUUID(), tenantId, employeeId, courseId, numero, titre, score, emis, expire],
   );
 }
 
-/** La fiche de Moussa vue par Awa, formation par formation. */
+/** Où en est Moussa, formation par formation. */
 async function ficheDeMoussa(): Promise<Map<string, TeamCourseProgress>> {
-  const fiche = await equipe.agent(session(comptes.awa), agents.moussa);
-  return new Map(fiche.courses.map((c) => [c.title, c]));
+  const formations = await db.withTenant({ tenantId, userId: comptes.moussa }, (tx) =>
+    suivi.suivi(tx, [agents.moussa]),
+  );
+  return new Map((formations.get(agents.moussa) ?? []).map((c) => [c.title, c]));
 }
 
 beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 3 });
   db = new TenantDb();
-  equipe = new AcademyEquipeService(db);
-  equipe.horloge = () => maintenant;
+  suivi = new AcademySuiviService();
+  suivi.horloge = () => maintenant;
 
-  await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1,'Équipe',$2)`, [
+  await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1,'Suivi',$2)`, [
     tenantId,
-    `equipe-${tenantId.slice(0, 8)}`,
+    `suivi-${tenantId.slice(0, 8)}`,
   ]);
   for (const [nom, id] of Object.entries(comptes)) {
     await raw(
       `INSERT INTO users (id, email, password_hash, given_name, family_name)
        VALUES ($1,$2,'x','Test',$3)`,
-      [id, `equipe-${nom}-${id}@test.local`, nom],
+      [id, `suivi-${nom}-${id}@test.local`, nom],
     );
   }
-  await agent(agents.mariama, 'Mariama', 'Cissé', 'EQ-001', comptes.mariama, null);
-  await agent(agents.fatou, 'Fatou', 'Sall', 'EQ-004', comptes.fatou, null);
-  await agent(agents.awa, 'Awa', 'Diop', 'EQ-002', comptes.awa, agents.mariama);
-  await agent(agents.moussa, 'Moussa', 'Ndiaye', 'EQ-003', comptes.moussa, agents.awa);
-  await agent(agents.ancien, 'Ancien', 'Agent', 'EQ-009', null, agents.awa, 'archived');
-  // Le DG est le responsable de l'unité RACINE. Son n+1 est posé en SQL : la
-  // saisie le refuserait.
-  await agent(agents.dg, 'Mouhammad', 'Fall', 'EQ-000', null, agents.awa);
-  const generale = randomUUID();
-  await raw(
-    `INSERT INTO org_units (id, tenant_id, unit_type, name, manager_employee_id)
-     VALUES ($1,$2,'direction','Direction Générale',$3)`,
-    [generale, tenantId, agents.dg],
-  );
-
-  const unite = randomUUID();
-  await raw(
-    `INSERT INTO org_units (id, tenant_id, unit_type, name, parent_id)
-     VALUES ($1,$2,'department','Département Études',$3)`,
-    [unite, tenantId, generale],
-  );
-  await raw(
-    `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
-     VALUES ($1,$2,$3,$4,'Chargé d’études', daterange('2024-01-01', NULL))`,
-    [randomUUID(), tenantId, agents.moussa, unite],
-  );
+  await agent(agents.moussa, 'Moussa', 'Ndiaye', 'SV-003', comptes.moussa);
 });
 
 beforeEach(async () => {
@@ -226,9 +160,6 @@ beforeEach(async () => {
 afterAll(async () => {
   await raw(`DELETE FROM academy_certificates WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM academy_courses WHERE tenant_id = $1`, [tenantId]);
-  await raw(`DELETE FROM assignments WHERE tenant_id = $1`, [tenantId]);
-  await raw(`DELETE FROM org_units WHERE tenant_id = $1`, [tenantId]);
-  await raw(`UPDATE employees SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM employees WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM persons WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM audit_log WHERE tenant_id = $1`, [tenantId]);
@@ -238,61 +169,7 @@ afterAll(async () => {
   await ownerPool?.end();
 });
 
-describe('qui fait partie de l’équipe', () => {
-  it('les directs seulement : Mariama voit Awa, pas l’équipe d’Awa', async () => {
-    const vue = await equipe.equipe(session(comptes.mariama));
-    expect(vue.members.map((m) => m.givenName)).toEqual(['Awa']);
-    expect(await equipe.effectif(session(comptes.mariama))).toEqual({ total: 1 });
-    expect(await codeOf(() => equipe.agent(session(comptes.mariama), agents.moussa))).toBe(
-      'academy.team_member_not_found',
-    );
-  });
-
-  it('ni un dossier archivé, ni le directeur général — même rattaché par erreur', async () => {
-    const vue = await equipe.equipe(session(comptes.awa));
-    expect(vue.members.map((m) => m.givenName)).toEqual(['Moussa']);
-    expect(await equipe.effectif(session(comptes.awa))).toEqual({ total: 1 });
-    expect(await codeOf(() => equipe.agent(session(comptes.awa), agents.dg))).toBe(
-      'academy.team_member_not_found',
-    );
-  });
-
-  it('porte le poste et l’unité du jour', async () => {
-    const [moussa] = (await equipe.equipe(session(comptes.awa))).members;
-    expect(moussa).toMatchObject({
-      number: 'EQ-003',
-      positionTitle: 'Chargé d’études',
-      unitName: 'Département Études',
-    });
-  });
-
-  it('personne sous soi, ou pas de dossier : pas d’équipe — le rôle n’y change rien', async () => {
-    expect(await equipe.effectif(session(comptes.moussa))).toEqual({ total: 0 });
-    expect(await equipe.effectif(rh)).toEqual({ total: 0 });
-    expect((await equipe.equipe(rh)).members).toEqual([]);
-  });
-
-  it('hors de l’équipe, un agent est introuvable — de côté comme vers le haut', async () => {
-    expect(await codeOf(() => equipe.agent(session(comptes.awa), agents.fatou))).toBe(
-      'academy.team_member_not_found',
-    );
-    expect(await codeOf(() => equipe.agent(session(comptes.awa), agents.mariama))).toBe(
-      'academy.team_member_not_found',
-    );
-    expect(await codeOf(() => equipe.agent(session(comptes.moussa), agents.awa))).toBe(
-      'academy.team_member_not_found',
-    );
-    expect(await codeOf(() => equipe.agent(rh, agents.moussa))).toBe(
-      'academy.team_member_not_found',
-    );
-    expect(await codeOf(() => equipe.agent(session(comptes.awa), agents.ancien))).toBe(
-      'academy.team_member_not_found',
-    );
-    expect((await equipe.agent(session(comptes.awa), agents.moussa)).givenName).toBe('Moussa');
-  });
-});
-
-describe('où en est chaque agent', () => {
+describe('où en est un agent', () => {
   it('ne compte que le catalogue publié, leçons prêtes seulement', async () => {
     const fiche = await ficheDeMoussa();
     expect([...fiche.keys()].sort()).toEqual(['Excel', 'Word']);
@@ -354,8 +231,6 @@ describe('où en est chaque agent', () => {
         status: 'valide',
       },
     });
-    const [moussa] = (await equipe.equipe(session(comptes.awa))).members;
-    expect(moussa!.counts).toMatchObject({ certifiee: 1, a_commencer: 1 });
   });
 
   it('certificat expiré : l’évaluation est à repasser, et l’expiration se dit', async () => {
@@ -394,15 +269,5 @@ describe('où en est chaque agent', () => {
     await raw(`DELETE FROM academy_courses WHERE id = $1`, [word]);
     const retiree = (await ficheDeMoussa()).get('Word');
     expect(retiree).toMatchObject({ courseId: null, status: 'certifiee', lessonCount: 0 });
-  });
-
-  it('la fiche range ce qui attend l’agent devant ce qu’il n’a pas ouvert', async () => {
-    for (const l of lecons) await progres(agents.moussa, l, true);
-    const fiche = await equipe.agent(session(comptes.awa), agents.moussa);
-    expect(fiche.courses.map((c) => [c.title, c.status])).toEqual([
-      ['Excel', 'evaluation_a_passer'],
-      ['Word', 'a_commencer'],
-    ]);
-    expect(fiche.lastActivityAt).toBe(maintenant.toISOString());
   });
 });

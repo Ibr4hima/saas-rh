@@ -639,7 +639,7 @@ const faite = (suivi?: FormationDeLaFiche) =>
  * lieu d'être coupé.
  */
 const BADGE =
-  'inline-flex max-w-full items-center gap-1.5 rounded-[15px] border py-[5px] pr-3 pl-2 text-left text-[12px] font-semibold transition-colors duration-150';
+  'inline-flex max-w-full items-center gap-1.5 rounded-[15px] border px-3 py-[5px] text-left text-[12px] font-semibold transition-colors duration-150';
 
 /**
  * Les formations à suivre, en badges. Le n+1 voit celles que l'agent n'a pas
@@ -680,7 +680,6 @@ function FormationsASuivre({
                 'border-primary/20 bg-primary-soft text-primary hover:border-primary/45',
               )}
             >
-              <Icon name="school" size={15} className="shrink-0" />
               <span className="min-w-0">{titreDe(b) || 'Formation APIX Academy'}</span>
             </Link>
           ))}
@@ -732,11 +731,11 @@ function FormationsASuivre({
                 BADGE,
                 'outline-none focus-visible:ring-2 focus-visible:ring-primary/35',
                 choisie
-                  ? 'border-primary bg-primary text-primary-ink'
+                  ? 'border-primary bg-primary pl-2 text-primary-ink'
                   : 'border-line bg-surface text-ink hover:border-primary/40 hover:text-primary',
               )}
             >
-              <Icon name={choisie ? 'check' : 'school'} size={15} className="shrink-0" />
+              {choisie ? <Icon name="check" size={15} className="shrink-0" /> : null}
               <span className="min-w-0">{titre}</span>
             </button>
           );

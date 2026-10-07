@@ -12,7 +12,6 @@ import {
   peut,
   type CompteursValidations,
   type SessionUser,
-  type TeamSize,
 } from '@teranga/contracts';
 import { cn, Skeleton } from '@teranga/ui';
 import { BrandMark } from '../../components/brand-mark';
@@ -200,7 +199,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/recrutement/nouvelle': 'Nouvelle offre',
   '/academy': 'APIX Academy',
   '/academy/gerer': 'Gérer le catalogue',
-  '/academy/equipe': 'Mon équipe',
   '/academy/certificats': 'Mes certificats',
   '/evaluation': 'Évaluation des objectifs',
   '/organisation': 'Organigramme',
@@ -239,7 +237,6 @@ function pageTitle(pathname: string, givenName: string): string {
   }
   if (pathname.startsWith('/recrutement/')) return 'Offre de recrutement';
   if (pathname.startsWith('/academy/gerer/')) return 'Gérer le catalogue';
-  if (pathname.startsWith('/academy/equipe/')) return 'Mon équipe';
   if (pathname.startsWith('/moi/equipe/suivi/')) return 'Suivi & Évaluation';
   if (pathname.startsWith('/academy/')) return 'APIX Academy';
   if (pathname.endsWith('/deposer')) return 'Dépôt du texte';
@@ -1162,16 +1159,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (impose !== null) router.push(e === 'gestion' ? accueilGestion : '/moi');
   };
 
-  // « Mon équipe » ne s'affiche qu'à qui encadre quelqu'un : l'organigramme
-  // en décide, pas le rôle — d'où cette question au serveur, dans l'Academy
-  // seulement.
-  const equipe = useQuery({
-    queryKey: ['academy', 'equipe', 'effectif'],
-    queryFn: () => api<TeamSize>('/academy/equipe/effectif'),
-    enabled: Boolean(me.data) && espaceAcademy(pathname),
-    staleTime: 5 * 60_000,
-  });
-
   // Garde de routes : chacun reste dans ce que ses habilitations ouvrent. Le
   // serveur refuse de toute façon ; la garde évite d'ouvrir un écran vide.
   const autorise = (path: string): boolean => {
@@ -1206,7 +1193,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     // ne l'est pas, n'ouvre du côté apprenant que l'aperçu de l'atelier.
     // Ses certificats restent aussi à qui n'est plus en activité.
     if (commence('/academy/certificats')) return u.estAgent || Boolean(u.finDAcces);
-    if (commence('/academy/ma-liste') || commence('/academy/equipe')) return u.estAgent;
+    if (commence('/academy/ma-liste')) return u.estAgent;
     if (commence('/academy')) return true;
     if (commence('/dashboard') || commence('/evaluation')) {
       return peut(u, 'pilotage');
@@ -1331,14 +1318,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
             // que pour l'aperçu de l'atelier, n'en a pas.
             espace === 'agent' ? (
               <>
-                {(equipe.data?.total ?? 0) > 0 ? (
-                  <LienBandeau
-                    href="/academy/equipe"
-                    icone="groups"
-                    libelle="Mon équipe"
-                    actif={pathname.startsWith('/academy/equipe')}
-                  />
-                ) : null}
                 <LienBandeau
                   href="/academy/certificats"
                   icone="workspace_premium"

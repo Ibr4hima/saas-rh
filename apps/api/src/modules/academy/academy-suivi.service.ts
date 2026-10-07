@@ -1,124 +1,24 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { and, desc, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
-import type {
-  AcademyCategory,
-  SessionUser,
-  TeamCourseProgress,
-  TeamMember,
-  TeamMemberDetail,
-  TeamSize,
-  TeamView,
-} from '@teranga/contracts';
-import { problem } from '../../common/problem';
+import type { AcademyCategory, TeamCourseProgress } from '@teranga/contracts';
 import * as t from '../../db/schema';
-import { TenantDb, type Tx } from '../../db/tenant-db';
-import { DG } from '../people/chaine';
-import { employeActif, taillesDesBanques } from './academy-evaluation.service';
-import { compterStatuts, ordreDeSuivi, statutSuivi } from './equipe';
+import type { Tx } from '../../db/tenant-db';
+import { taillesDesBanques } from './academy-evaluation.service';
+import { statutSuivi } from './suivi';
 import { statutCertificat } from './evaluation';
 
-/* ————————————————————————————————————————————————————————————————
-   APIX Academy — « Mon équipe » : ce que le n+1 voit de la progression de
-   ceux qui lui rendent compte.
+/*
+   APIX Academy : où en sont des agents sur les formations du catalogue.
+   La fiche d'objectifs s'en sert pour les formations à suivre.
 
-   L'équipe se lit dans l'ORGANIGRAMME, à partir du dossier d'agent relié au
-   compte : les agents dont il est le n+1 IMMÉDIAT, et eux seuls. Chacun
-   répond de sa propre équipe à son n+1 — le directeur général voit ses
-   directeurs, pas toute l'agence. Aucun rôle n'entre en compte : un agent
-   qui encadre voit son équipe, un compte RH sans équipe n'en voit aucune.
-   Hors de l'équipe, un agent n'existe pas : sa fiche répond « introuvable »,
-   pas « interdit ».
-
-   Le directeur général ne figure dans AUCUNE équipe : il ne relève de
-   personne dans l'agence. La saisie le refuse ; une donnée ancienne qui lui
-   donnerait un n+1 est signalée par le contrôle de la chaîne, et ignorée ici.
-
-   Tout se calcule en quelques requêtes pour l'équipe entière : une équipe
-   de quarante agents ne fait pas quarante allers-retours.
-   ———————————————————————————————————————————————————————————————— */
-
-interface LigneAgent extends Record<string, unknown> {
-  id: string;
-  employee_number: string;
-  given_name: string;
-  family_name: string;
-  position_title: string | null;
-  unite: string | null;
-}
+   Tout se calcule en quelques requêtes pour tous les agents demandés :
+   quarante agents ne font pas quarante allers-retours.
+ */
 
 @Injectable()
-export class AcademyEquipeService {
-  /** L'horloge du serveur — remplaçable dans les tests seulement. */
+export class AcademySuiviService {
+  /** L'horloge du serveur, remplaçable dans les tests seulement. */
   horloge: () => Date = () => new Date();
-
-  constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
-
-  private ctx(user: SessionUser) {
-    return { tenantId: user.tenantId, userId: user.userId };
-  }
-
-  /** Combien d'agents vous rendent compte — de quoi montrer l'entrée, ou pas. */
-  async effectif(user: SessionUser): Promise<TeamSize> {
-    return this.db.withTenant(this.ctx(user), async (tx) => {
-      return { total: (await this.agents(tx, user)).length };
-    });
-  }
-
-  async equipe(user: SessionUser): Promise<TeamView> {
-    return this.db.withTenant(this.ctx(user), async (tx) => {
-      const agents = await this.agents(tx, user);
-      const suivi = await this.suivi(
-        tx,
-        agents.map((a) => a.id),
-      );
-      return { members: agents.map((a) => this.membre(a, suivi.get(a.id) ?? [])) };
-    });
-  }
-
-  async agent(user: SessionUser, employeeId: string): Promise<TeamMemberDetail> {
-    return this.db.withTenant(this.ctx(user), async (tx) => {
-      const agent = (await this.agents(tx, user)).find((a) => a.id === employeeId);
-      if (!agent) {
-        problem(
-          404,
-          'academy.team_member_not_found',
-          'Cet agent ne fait pas partie de votre équipe',
-        );
-      }
-      const formations = (await this.suivi(tx, [agent.id])).get(agent.id) ?? [];
-      formations.sort(ordreDeSuivi);
-      return { ...this.membre(agent, formations), courses: formations };
-    });
-  }
-
-  // ———————————————————————————— lectures
-
-  /** Les directs ACTIFS de l'appelant, avec leur poste du jour. */
-  private async agents(tx: Tx, user: SessionUser): Promise<LigneAgent[]> {
-    const moi = await employeActif(tx, user.userId);
-    if (!moi) return [];
-    const { rows } = await tx.execute<LigneAgent>(sql`
-      SELECT e.id, e.employee_number, p.given_name, p.family_name,
-             a.position_title, o.name AS unite
-        FROM employees e
-        JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
-        -- L'affectation qui fait foi : en cours, sinon la prochaine.
-        LEFT JOIN LATERAL (
-          SELECT position_title, org_unit_id
-            FROM assignments
-           WHERE employee_id = e.id
-             AND (validity @> CURRENT_DATE OR lower(validity) > CURRENT_DATE)
-           ORDER BY lower(validity)
-           LIMIT 1
-        ) a ON true
-        LEFT JOIN org_units o ON o.id = a.org_unit_id AND o.deleted_at IS NULL
-       WHERE e.manager_employee_id = ${moi}
-         AND e.status = 'active'
-         -- Le DG n'est de l'équipe de personne, même par une donnée ancienne.
-         AND e.id IS DISTINCT FROM ${DG}
-       ORDER BY p.family_name, p.given_name, e.id`);
-    return rows;
-  }
 
   /**
    * Où en est chaque agent sur chaque formation du catalogue — plus les
@@ -272,24 +172,5 @@ export class AcademyEquipeService {
       suivi.set(employeeId, lignes);
     }
     return suivi;
-  }
-
-  // ———————————————————————————— assemblage
-
-  private membre(a: LigneAgent, formations: TeamCourseProgress[]): TeamMember {
-    const activites = formations
-      .map((f) => f.lastActivityAt)
-      .filter((x): x is string => x !== null)
-      .sort();
-    return {
-      employeeId: a.id,
-      givenName: a.given_name,
-      familyName: a.family_name,
-      number: a.employee_number,
-      positionTitle: a.position_title,
-      unitName: a.unite,
-      counts: compterStatuts(formations.map((f) => f.status)),
-      lastActivityAt: activites.at(-1) ?? null,
-    };
   }
 }
