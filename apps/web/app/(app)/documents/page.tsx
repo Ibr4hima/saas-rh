@@ -234,8 +234,8 @@ export default function DocumentRequestsPage() {
               <tr>
                 {traite ? <ThCases sel={sel} /> : <ThGouttiere />}
                 <ThTri
-                  label="Matricule"
-                  colonne="employeeNumber"
+                  label="Requête"
+                  colonne="requete"
                   courant={tri.colonne}
                   sens={tri.sens}
                   onTrier={tri.trier}
@@ -248,8 +248,8 @@ export default function DocumentRequestsPage() {
                   onTrier={tri.trier}
                 />
                 <ThTri
-                  label="Requête"
-                  colonne="requete"
+                  label="Matricule"
+                  colonne="employeeNumber"
                   courant={tri.colonne}
                   sens={tri.sens}
                   onTrier={tri.trier}
@@ -278,15 +278,6 @@ export default function DocumentRequestsPage() {
                     ) : (
                       <TdGouttiere />
                     )}
-                    <Td className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</Td>
-                    <Td>
-                      <Link
-                        href={`/employees/${r.employeeId}`}
-                        className="font-bold text-ink-strong hover:underline"
-                      >
-                        {r.employeeName}
-                      </Link>
-                    </Td>
                     <Td>
                       {docLabels(r)}
                       {r.traitement?.aConfier ? (
@@ -300,6 +291,15 @@ export default function DocumentRequestsPage() {
                         </span>
                       ) : null}
                     </Td>
+                    <Td>
+                      <Link
+                        href={`/employees/${r.employeeId}`}
+                        className="font-bold text-ink-strong hover:underline"
+                      >
+                        {r.employeeName}
+                      </Link>
+                    </Td>
+                    <Td className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</Td>
                     <Td className="whitespace-nowrap text-ink-muted">
                       {formatDate(r.createdAt.slice(0, 10))}
                     </Td>
@@ -356,9 +356,9 @@ export default function DocumentRequestsPage() {
             <THead>
               <tr>
                 <ThGouttiere />
-                <Th>Matricule</Th>
-                <Th>Demandeur</Th>
                 <Th>Requête</Th>
+                <Th>Demandeur</Th>
+                <Th>Matricule</Th>
                 <Th>Date</Th>
                 <Th className="text-right">Durée traitement</Th>
                 <Th>Suite donnée</Th>
@@ -368,7 +368,7 @@ export default function DocumentRequestsPage() {
               {historique.tranche.map((r) => (
                 <Tr key={r.id}>
                   <TdGouttiere />
-                  <Td className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</Td>
+                  <Td>{docLabels(r)}</Td>
                   <Td>
                     <Link
                       href={`/employees/${r.employeeId}`}
@@ -377,7 +377,7 @@ export default function DocumentRequestsPage() {
                       {r.employeeName}
                     </Link>
                   </Td>
-                  <Td>{docLabels(r)}</Td>
+                  <Td className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</Td>
                   <Td className="whitespace-nowrap text-ink-muted">
                     {formatDate(r.createdAt.slice(0, 10))}
                   </Td>
