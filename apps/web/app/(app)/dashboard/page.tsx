@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import type {
-  AbsenceRequestView,
   DashboardDirectionHeadcount,
   DashboardHoliday,
   DashboardView,
@@ -43,8 +42,8 @@ import { SqueletteTableau } from '../../../components/tableau';
 /* ————————————————————————————————————————————————————————————————
    L'écran d'accueil répond à trois questions, dans l'ordre :
    1. « Y a-t-il quelque chose qui m'attend ? »  → indicateurs + À traiter
-   2. « Qui est là ? »                           → effectifs, parité, absents
-   3. « Que se passe-t-il bientôt ? »            → absences, échéances, fériés
+   2. « Qui est là ? »                           → effectifs, parité
+   3. « Que se passe-t-il bientôt ? »            → échéances, fériés
 
    Une seule grammaire pour toutes les cartes : un intitulé en petites
    capitales, à droite le geste ou le total, en dessous des RANGÉES — jamais
@@ -90,17 +89,6 @@ function inDays(iso: string): string {
   // « dans 45 jours », pas « dans 45 j » : l'abréviation se lisait comme une
   // unité de mesure dans une phrase qui, elle, est écrite en français.
   return days < 0 ? `il y a ${compte(-days, 'jour')}` : `dans ${compte(days, 'jour')}`;
-}
-
-/**
- * Jour courant au format ISO, dans le calendrier LOCAL de l'utilisateur.
- * `toISOString()` donnerait la date UTC : à Dakar (UTC+0) c'est identique,
- * ailleurs cela ferait basculer « en cours » un jour trop tôt ou trop tard.
- */
-function localToday(): string {
-  const d = new Date();
-  const p = (v: number) => String(v).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 /* ———— Pièces communes ———— */
@@ -521,8 +509,6 @@ export default function DashboardPage() {
   const me = useMe();
   const canManage = peut(me.data, 'personnel.consulter');
   const seesContracts = peut(me.data, 'pilotage') || canManage;
-  // Une tuile n'ouvre que la page que qui regarde peut ouvrir.
-  const voitLesConges = peut(me.data, 'demandes.conges') || me.data?.role === 'admin';
 
   // La direction dont la fiche est ouverte.
   const [direction, setDirection] = useState<DashboardDirectionHeadcount | null>(null);
@@ -531,22 +517,13 @@ export default function DashboardPage() {
     queryKey: ['dashboard'],
     queryFn: () => api<DashboardView>('/dashboard'),
   });
-  const upcoming = useQuery({
-    queryKey: ['absences-upcoming'],
-    queryFn: () => api<AbsenceRequestView[]>('/absences/upcoming'),
-  });
   const d = stats.data;
-  const todayIso = localToday();
   const contrats = usePagination(d?.contractFollowUp ?? []);
 
   // La quatrième tuile montre le prochain férié : la fenêtre renvoyée par
   // l'API contient aussi le dernier passé, on prend la première date à venir.
   const fenetreFeries = d?.holidayWindow ?? [];
   const prochainFerie = fenetreFeries.find((h) => ecartJours(h.day) >= 0);
-
-  const absences = upcoming.data ?? [];
-  const ABSENCES_VISIBLES = 6;
-  const absencesEnPlus = absences.length - ABSENCES_VISIBLES;
 
   const maxHeadcount = Math.max(...(d?.headcountByDirection.map((x) => x.headcount) ?? [0]), 1);
   const unassigned = d
@@ -606,136 +583,55 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {/* ———— Colonne principale : le calendrier s'étire à la hauteur de
-            la colonne de contexte, sans vide dessous. ———— */}
-        <div className="flex min-w-0 flex-col gap-4 xl:col-span-2">
-          <Card className="flex flex-1 flex-col">
-            <CardHeader>
-              <CardTitle>Calendrier des absences</CardTitle>
-            </CardHeader>
-            {upcoming.isLoading ? (
-              <SqueletteTableau lignes={3} />
-            ) : absences.length === 0 ? (
-              <EmptyState
-                className="flex-1 py-7"
-                icon={<Icon name="event_available" size={22} />}
-                title="Personne d'absent à l'horizon"
-                description="Aucune absence approuvée dans les 30 prochains jours."
-              />
-            ) : (
-              <>
-                <Table>
-                  <THead>
-                    <tr>
-                      <Th>Employé</Th>
-                      <Th>Type</Th>
-                      <Th>Du</Th>
-                      <Th>Au</Th>
-                      <Th className="text-right">Jours</Th>
-                      <Th>Statut</Th>
-                    </tr>
-                  </THead>
-                  <TBody>
-                    {absences.slice(0, ABSENCES_VISIBLES).map((r) => (
-                      <Tr key={r.id}>
-                        <Td className="font-medium whitespace-nowrap text-ink-strong">
-                          {r.employeeName}
-                        </Td>
-                        <Td className="whitespace-nowrap text-ink-muted">{r.absenceTypeName}</Td>
-                        <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
-                        <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
-                        <Td className="text-right font-mono">{r.daysCount}</Td>
-                        <Td>
-                          {r.startDate <= todayIso ? (
-                            <Badge tone="teal">En cours</Badge>
-                          ) : (
-                            // Bleu, comme sur l'écran des demandes : les deux
-                            // tableaux montrent le même état, ils ne peuvent pas
-                            // le dire de deux couleurs.
-                            <Badge tone="bleu">À venir</Badge>
-                          )}
-                        </Td>
-                      </Tr>
-                    ))}
-                  </TBody>
-                </Table>
-                {absencesEnPlus > 0 ? (
-                  <CardContent className="border-t border-line-soft py-3">
-                    {voitLesConges ? (
-                      <Link
-                        href="/moi/dch"
-                        className="text-xs font-semibold text-primary hover:underline"
-                      >
-                        {compte(absencesEnPlus, 'autre')} sous 30 jours
-                      </Link>
-                    ) : (
-                      <p className="text-xs text-ink-muted">
-                        {compte(absencesEnPlus, 'autre')} sous 30 jours
-                      </p>
-                    )}
-                  </CardContent>
+      <Card>
+        <CardHeader>
+          <CardTitle>Effectifs par direction</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {stats.isLoading ? (
+            <div className="flex flex-col gap-3">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-3/4" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+          ) : (d?.headcountByDirection ?? []).length === 0 ? (
+            <p className="text-sm text-ink-muted">Créez vos directions dans l&apos;organigramme.</p>
+          ) : (
+            <>
+              <ul className="flex flex-col gap-1.5">
+                {d!.headcountByDirection.map((x) => (
+                  <DirectionBar
+                    key={x.id}
+                    onOpen={() => setDirection(x)}
+                    label={x.shortName ?? x.name}
+                    title={x.name}
+                    value={x.headcount}
+                    max={maxHeadcount}
+                    total={d!.activeEmployees}
+                  />
+                ))}
+                {unassigned > 0 ? (
+                  <DirectionBar
+                    label="Aucune"
+                    title="Sans affectation"
+                    value={unassigned}
+                    max={maxHeadcount}
+                    total={d!.activeEmployees}
+                  />
                 ) : null}
-              </>
-            )}
-          </Card>
-        </div>
-
-        {/* ———— Colonne de contexte ———— */}
-        <div className="flex min-w-0 flex-col gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Effectifs par direction</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats.isLoading ? (
-                <div className="flex flex-col gap-3">
-                  <Skeleton className="h-3 w-full" />
-                  <Skeleton className="h-3 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
-                </div>
-              ) : (d?.headcountByDirection ?? []).length === 0 ? (
-                <p className="text-sm text-ink-muted">
-                  Créez vos directions dans l&apos;organigramme.
-                </p>
-              ) : (
-                <>
-                  <ul className="flex flex-col gap-1.5">
-                    {d!.headcountByDirection.map((x) => (
-                      <DirectionBar
-                        key={x.id}
-                        onOpen={() => setDirection(x)}
-                        label={x.shortName ?? x.name}
-                        title={x.name}
-                        value={x.headcount}
-                        max={maxHeadcount}
-                        total={d!.activeEmployees}
-                      />
-                    ))}
-                    {unassigned > 0 ? (
-                      <DirectionBar
-                        label="Aucune"
-                        title="Sans affectation"
-                        value={unassigned}
-                        max={maxHeadcount}
-                        total={d!.activeEmployees}
-                      />
-                    ) : null}
-                  </ul>
-                  {d ? <Parite femmes={d.women} hommes={d.men} /> : null}
-                </>
-              )}
-            </CardContent>
-          </Card>
-          {direction && d ? (
-            <FicheDirection
-              direction={direction}
-              total={d.activeEmployees}
-              onClose={() => setDirection(null)}
-            />
-          ) : null}
-        </div>
-      </div>
+              </ul>
+              {d ? <Parite femmes={d.women} hommes={d.men} /> : null}
+            </>
+          )}
+        </CardContent>
+      </Card>
+      {direction && d ? (
+        <FicheDirection
+          direction={direction}
+          total={d.activeEmployees}
+          onClose={() => setDirection(null)}
+        />
+      ) : null}
 
       {/* ———— Les fériés, en frise ———— */}
       <Card>
