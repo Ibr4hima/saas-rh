@@ -167,11 +167,11 @@ export class DashboardController {
           // Une frise a besoin d'un avant : le férié qui vient de passer ancre
           // « aujourd'hui » quelque part sur le rail, au lieu de le laisser
           // flotter avant la première date. Un seul, et les trois qui viennent.
-          tx.execute<{ day: string; label: string; fixed: boolean }>(sql`
-          (SELECT day::text AS day, label, fixed_date AS fixed FROM holidays
+          tx.execute<{ day: string; label: string }>(sql`
+          (SELECT day::text AS day, label FROM holidays
              WHERE day < CURRENT_DATE ORDER BY day DESC LIMIT 1)
           UNION ALL
-          (SELECT day::text AS day, label, fixed_date AS fixed FROM holidays
+          (SELECT day::text AS day, label FROM holidays
              WHERE day >= CURRENT_DATE ORDER BY day ASC LIMIT 3)
           ORDER BY day`),
           // Tous les contrats suivis : le tableau de bord en est la seule liste.
