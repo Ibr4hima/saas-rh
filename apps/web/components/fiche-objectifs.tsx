@@ -1,6 +1,7 @@
 'use client';
 
-import '@blocknote/mantine/style.css';
+// Sa feuille de style (@blocknote/mantine/style.css) est importée par les
+// pages qui l'affichent : chargé à la demande, l'éditeur ne la porte pas.
 import {
   BlockNoteSchema,
   defaultBlockSpecs,

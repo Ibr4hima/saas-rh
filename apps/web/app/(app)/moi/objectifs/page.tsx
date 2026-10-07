@@ -1,5 +1,9 @@
 'use client';
 
+// La feuille de l'éditeur part avec la page, pas avec l'éditeur chargé à la
+// demande : une feuille venue d'un module différé peut manquer à l'affichage
+// (cases au-dessus du texte, cadre de focus du navigateur autour de la fiche).
+import '@blocknote/mantine/style.css';
 import dynamic from 'next/dynamic';
 import { Fragment, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
