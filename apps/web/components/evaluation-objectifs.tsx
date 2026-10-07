@@ -644,7 +644,7 @@ export function AutoEvaluationAgent({
   const base = `/objectifs/moi/fiches/${fiche.annee}/${fiche.semestre}/commentaires`;
   const cle = [...CLE_OBJECTIFS, 'moi'];
 
-  // Une formation a le statut que lui donne l'Academy ; la commenter est libre.
+  // Une formation a le statut que lui donne l'Academy, sans commentaire.
   const cases = objectifs.filter((o) => !o.formation);
   const sansStatut = cases.filter((o) => !statuts[o.id]).length;
   const sansCommentaire = cases.filter((o) => !brouillon.valeur[o.id]?.trim()).length;
@@ -708,28 +708,28 @@ export function AutoEvaluationAgent({
                   </Badge>
                 ) : null}
                 {o.formation ? (
+                  // Une formation : son statut vient de l'Academy, et ne se
+                  // commente pas.
                   statuts[o.id] ? (
                     <PastilleStatutSeule statut={statuts[o.id]!} />
                   ) : null
                 ) : (
-                  <ChoixStatut
-                    objectif={o.texte}
-                    valeur={statuts[o.id]}
-                    onChange={(statut) => onStatuer(o.id, statut)}
-                  />
+                  <>
+                    <ChoixStatut
+                      objectif={o.texte}
+                      valeur={statuts[o.id]}
+                      onChange={(statut) => onStatuer(o.id, statut)}
+                    />
+                    <ZoneCommentaire
+                      aria-label={`Commentaire : ${o.texte}`}
+                      placeholder="Ce que vous avez fait, ce qui reste…"
+                      value={brouillon.valeur[o.id] ?? ''}
+                      onChange={(e) =>
+                        brouillon.changer({ ...brouillon.valeur, [o.id]: e.target.value })
+                      }
+                    />
+                  </>
                 )}
-                <ZoneCommentaire
-                  aria-label={`Commentaire : ${o.texte}`}
-                  placeholder={
-                    o.formation
-                      ? 'Ce que vous en retenez (facultatif)'
-                      : 'Ce que vous avez fait, ce qui reste…'
-                  }
-                  value={brouillon.valeur[o.id] ?? ''}
-                  onChange={(e) =>
-                    brouillon.changer({ ...brouillon.valeur, [o.id]: e.target.value })
-                  }
-                />
               </>
             )}
           </LigneObjectif>
@@ -865,7 +865,7 @@ export function EvaluationSemestre({
             ) : o.formation && fiche.statuts[o.id] ? (
               <PastilleStatutSeule statut={fiche.statuts[o.id]!} />
             ) : null}
-            {envoyes && !validee ? (
+            {envoyes && !validee && !o.formation ? (
               <ZoneCommentaire
                 aria-label={`Votre commentaire : ${o.texte}`}
                 placeholder="Votre commentaire"

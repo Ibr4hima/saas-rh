@@ -26,7 +26,6 @@ import {
 } from 'react';
 import type { FormationDeLaFiche, FormationProposable, StatutObjectif } from '@teranga/contracts';
 import { cn } from '@teranga/ui';
-import { PastilleEtat } from './academy-equipe';
 import { Icon, type IconName } from './icons';
 import { usePreferences } from './preferences';
 
@@ -339,7 +338,6 @@ export function EditeurFicheObjectifs({
 
   const objectifsEcrits = aDuTexte(depart.objectifs);
   const commentaireEcrit = aDuTexte(depart.commentaires);
-  const avecFormations = modifiable ? catalogue.length > 0 : choisies.length > 0;
 
   return (
     <div className={cn('fiche-objectifs', className)}>
@@ -355,22 +353,17 @@ export function EditeurFicheObjectifs({
           }}
         />
       ) : null}
-      {avecFormations ? (
-        <>
-          <Intertitre>Formations à suivre</Intertitre>
-          <FormationsASuivre
-            choisies={choisies}
-            catalogue={catalogue}
-            suivis={formations}
-            modifiable={modifiable}
-            onChange={(blocs) => {
-              setChoisies(blocs);
-              parties.current = { ...parties.current, formations: blocs };
-              publier();
-            }}
-          />
-        </>
-      ) : null}
+      <FormationsASuivre
+        choisies={choisies}
+        catalogue={catalogue}
+        suivis={formations}
+        modifiable={modifiable}
+        onChange={(blocs) => {
+          setChoisies(blocs);
+          parties.current = { ...parties.current, formations: blocs };
+          publier();
+        }}
+      />
       {modifiable || commentaireEcrit ? (
         <>
           <Intertitre>Commentaires</Intertitre>
@@ -633,10 +626,26 @@ function ZoneObjectifs({
 
 // Les formations à suivre
 
-/** Terminée ou certifiée : l'agent l'a faite, elle ne se demande plus. */
+/**
+ * Certifiée, ou terminée quand elle n'a pas d'évaluation : l'agent l'a
+ * obtenue, elle ne se demande plus.
+ */
 const faite = (suivi?: FormationDeLaFiche) =>
   suivi?.statut === 'terminee' || suivi?.statut === 'certifiee';
 
+/**
+ * Une formation en badge, sur une ligne avec les autres. Le rayon vaut la
+ * moitié d'une ligne : un titre trop long pour l'écran passe à la ligne au
+ * lieu d'être coupé.
+ */
+const BADGE =
+  'inline-flex max-w-full items-center gap-1.5 rounded-[15px] border py-[5px] pr-3 pl-2 text-left text-[12px] font-semibold transition-colors duration-150';
+
+/**
+ * Les formations à suivre, en badges. Le n+1 voit celles que l'agent n'a pas
+ * encore obtenues, commencées ou non, et choisit d'un clic ; l'agent lit
+ * celles qui lui sont demandées, chacune mène à sa page.
+ */
 function FormationsASuivre({
   choisies,
   catalogue,
@@ -654,50 +663,42 @@ function FormationsASuivre({
 }) {
   const idDe = (b: Bloc) => String((b.props as { courseId: string }).courseId);
   const titreDe = (b: Bloc) => String((b.props as { titre?: string }).titre ?? '');
+  const obtenue = (courseId: string) => faite(suivis.find((f) => f.courseId === courseId));
 
-  // En lecture, les formations demandées ; elles mènent à leur page.
   if (!modifiable) {
+    if (!choisies.length) return null;
     return (
-      <ul className="flex flex-col gap-2 px-5 pt-1 pb-2">
-        {choisies.map((b) => {
-          const courseId = idDe(b);
-          const suivi = suivis.find((f) => f.courseId === courseId);
-          return (
-            <li key={courseId}>
-              <Link
-                href={`/academy/${courseId}`}
-                className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] border border-card-line bg-surface px-3.5 py-2.5 transition-colors hover:border-card-line-hover hover:bg-hover"
-              >
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-primary/[0.08] text-primary">
-                  <Icon name="school" size={17} />
-                </span>
-                <span className="min-w-0 flex-1 basis-40">
-                  <span className="block truncate text-[12.5px] font-semibold text-ink-strong">
-                    {titreDe(b) || 'Formation APIX Academy'}
-                  </span>
-                  {suivi && suivi.lecons > 0 ? (
-                    <span className="mt-0.5 block text-[11px] text-ink-muted tabular-nums">
-                      {suivi.validees}/{suivi.lecons} leçons
-                    </span>
-                  ) : null}
-                </span>
-                <PastilleEtat statut={suivi?.statut ?? 'a_commencer'} className="shrink-0" />
-                <Icon name="chevron_right" size={16} className="shrink-0 text-ink-muted/60" />
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      <>
+        <Intertitre>Formations à suivre</Intertitre>
+        <div className="flex flex-wrap gap-2 px-5 pt-1.5 pb-2">
+          {choisies.map((b) => (
+            <Link
+              key={idDe(b)}
+              href={`/academy/${idDe(b)}`}
+              className={cn(
+                BADGE,
+                'border-primary/20 bg-primary-soft text-primary hover:border-primary/45',
+              )}
+            >
+              <Icon name="school" size={15} className="shrink-0" />
+              <span className="min-w-0">{titreDe(b) || 'Formation APIX Academy'}</span>
+            </Link>
+          ))}
+        </div>
+      </>
     );
   }
 
-  // Le catalogue, et ce qui en a été retiré depuis qu'on l'a demandé.
+  // Le catalogue, et ce qui en a été retiré depuis qu'on l'a demandé ; sans
+  // ce que l'agent a déjà obtenu.
   const lignes = [
     ...catalogue.map((c) => ({ courseId: c.id, titre: c.title })),
     ...choisies
       .filter((b) => !catalogue.some((c) => c.id === idDe(b)))
       .map((b) => ({ courseId: idDe(b), titre: titreDe(b) || 'Formation retirée' })),
-  ];
+  ].filter((l) => !obtenue(l.courseId));
+  if (!lignes.length) return null;
+
   const basculer = (courseId: string, titre: string) => {
     const deja = choisies.some((b) => idDe(b) === courseId);
     onChange(
@@ -716,36 +717,32 @@ function FormationsASuivre({
   };
 
   return (
-    <ul className="flex flex-col px-5 pt-1 pb-2">
-      {lignes.map(({ courseId, titre }) => {
-        const suivi = suivis.find((f) => f.courseId === courseId);
-        const terminee = faite(suivi);
-        const cochee = terminee || choisies.some((b) => idDe(b) === courseId);
-        const id = `formation-${courseId}`;
-        return (
-          <li key={courseId} className="flex min-h-7 items-center gap-x-[11px] gap-y-1 py-0.5">
-            <input
-              id={id}
-              type="checkbox"
-              className="case-formation"
-              checked={cochee}
-              disabled={terminee}
-              onChange={() => basculer(courseId, titre)}
-            />
-            <label
-              htmlFor={id}
+    <>
+      <Intertitre>Formations à suivre</Intertitre>
+      <div className="flex flex-wrap gap-2 px-5 pt-1.5 pb-2">
+        {lignes.map(({ courseId, titre }) => {
+          const choisie = choisies.some((b) => idDe(b) === courseId);
+          return (
+            <button
+              key={courseId}
+              type="button"
+              aria-pressed={choisie}
+              onClick={() => basculer(courseId, titre)}
               className={cn(
-                'min-w-0 flex-1 text-[12.5px]',
-                terminee ? 'text-ink-muted' : 'cursor-pointer text-ink',
+                BADGE,
+                'outline-none focus-visible:ring-2 focus-visible:ring-primary/35',
+                choisie
+                  ? 'border-primary bg-primary text-primary-ink'
+                  : 'border-line bg-surface text-ink hover:border-primary/40 hover:text-primary',
               )}
             >
-              {titre}
-            </label>
-            <PastilleEtat statut={suivi?.statut ?? 'a_commencer'} className="shrink-0" />
-          </li>
-        );
-      })}
-    </ul>
+              <Icon name={choisie ? 'check' : 'school'} size={15} className="shrink-0" />
+              <span className="min-w-0">{titre}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }
 

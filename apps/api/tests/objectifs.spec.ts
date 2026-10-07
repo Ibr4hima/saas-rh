@@ -17,8 +17,8 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { SessionUser } from '@teranga/contracts';
-import { objectifsDeLaFiche } from '@teranga/contracts';
+import type { SessionUser, StatutSuivi } from '@teranga/contracts';
+import { objectifsDeLaFiche, statutDeFormation } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
@@ -1201,5 +1201,32 @@ describe('la session', () => {
       });
     expect(await estDG('dg')).toBe(true);
     expect(await estDG('mariama')).toBe(false);
+  });
+});
+
+describe('statut d’une formation à suivre', () => {
+  const suivi = (validees: number, statut: StatutSuivi = 'en_cours', lecons = 10) => ({
+    courseId: 'c',
+    statut,
+    lecons,
+    validees,
+  });
+
+  it('non atteinte sous la moitié, partielle jusqu’au certificat, atteinte certifiée', () => {
+    expect(statutDeFormation(undefined)).toBe('non_atteint');
+    expect(statutDeFormation(suivi(0, 'a_commencer'))).toBe('non_atteint');
+    expect(statutDeFormation(suivi(4))).toBe('non_atteint');
+    expect(statutDeFormation(suivi(5))).toBe('partiel');
+    expect(statutDeFormation(suivi(9))).toBe('partiel');
+    // Toutes les leçons vues, l'évaluation pas encore réussie : partielle.
+    expect(statutDeFormation(suivi(10, 'evaluation_a_passer'))).toBe('partiel');
+    expect(statutDeFormation(suivi(10, 'non_reussie'))).toBe('partiel');
+    // Certifiée ; ou terminée, quand elle n'a pas d'évaluation : atteinte.
+    expect(statutDeFormation(suivi(10, 'certifiee'))).toBe('atteint');
+    expect(statutDeFormation(suivi(10, 'terminee'))).toBe('atteint');
+    // Certifiée, elle le reste si une leçon s'ajoute depuis.
+    expect(statutDeFormation(suivi(8, 'certifiee'))).toBe('atteint');
+    // Sans leçon, rien n'a été vu.
+    expect(statutDeFormation(suivi(0, 'en_cours', 0))).toBe('non_atteint');
   });
 });

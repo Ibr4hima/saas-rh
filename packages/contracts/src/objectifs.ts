@@ -327,14 +327,17 @@ export function objectifsDeLaFiche(contenu: Record<string, unknown>[]): Objectif
 }
 
 /**
- * Le statut d'une formation donnée à suivre, lu dans l'APIX Academy :
- * certifiée ou terminée, elle est atteinte ; commencée, partiellement ; pas
- * commencée, non atteinte.
+ * Le statut d'une formation donnée à suivre, lu dans l'APIX Academy.
+ * Atteinte : certifiée, ou terminée quand elle n'a pas d'évaluation.
+ * Partiellement : la moitié de ses leçons vues au moins, sans l'être
+ * encore (évaluation pas réussie, ou leçons pas toutes vues). Non atteinte :
+ * moins de la moitié.
  */
-export function statutDeFormation(statut: StatutSuivi | undefined): StatutObjectif {
-  if (statut === 'certifiee' || statut === 'terminee') return 'atteint';
-  if (!statut || statut === 'a_commencer') return 'non_atteint';
-  return 'partiel';
+export function statutDeFormation(suivi: FormationDeLaFiche | undefined): StatutObjectif {
+  if (!suivi) return 'non_atteint';
+  if (suivi.statut === 'certifiee' || suivi.statut === 'terminee') return 'atteint';
+  const part = suivi.lecons > 0 ? suivi.validees / suivi.lecons : 0;
+  return part >= 0.5 ? 'partiel' : 'non_atteint';
 }
 
 /** Les statuts des formations d'une fiche, selon l'état de chacune. */
@@ -345,7 +348,7 @@ export function statutsDesFormations(
   const statuts: Record<string, StatutObjectif> = {};
   for (const o of objectifs) {
     if (!o.formation) continue;
-    statuts[o.id] = statutDeFormation(formations.find((f) => f.courseId === o.formation)?.statut);
+    statuts[o.id] = statutDeFormation(formations.find((f) => f.courseId === o.formation));
   }
   return statuts;
 }
