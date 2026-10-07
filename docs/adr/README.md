@@ -34,4 +34,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0026](0026-fiche-objectifs-en-trois-parties.md)      | La fiche d'objectifs en trois parties : cases, formations à suivre, commentaires        | acceptée, formations remplacées par 0027    |
 | [0027](0027-formations-a-suivre-en-badges.md)         | Les formations à suivre en badges, atteintes au certificat                              | acceptée                                    |
 | [0028](0028-notifications-reglees-par-sujet.md)       | Les notifications réglées par sujet : plateforme, courriel, WhatsApp                    | acceptée                                    |
-| [0029](0029-refus-de-candidature-par-courriel.md)     | Le refus d'une candidature part par courriel, sans recopier l'adresse                   | acceptée                                    |
+| [0029](0029-refus-de-candidature-par-courriel.md)     | Le refus d'une candidature part par courriel, sans recopier l'adresse                   | acceptée, non retenues à part par 0030      |
+| [0030](0030-candidatures-non-retenues-a-part.md)      | Les candidatures non retenues ont leur page                                             | acceptée                                    |

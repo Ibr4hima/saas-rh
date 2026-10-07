@@ -185,6 +185,16 @@ export interface ApplicationView {
   documents: ApplicationDocumentMeta[];
 }
 
+/** Une candidature rejetée, avec l'offre à laquelle elle répondait. */
+export interface RejectedApplicationView extends ApplicationView {
+  jobTitle: string;
+  jobReference: string;
+  /** La date de l'offre, comme dans « Dossiers de candidature ». */
+  jobCreatedAt: string;
+  /** Le moment du rejet : la plus récente d'abord. */
+  rejectedAt: string;
+}
+
 export interface ApplicationDocumentMeta {
   id: string;
   label: string;

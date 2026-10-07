@@ -28,9 +28,12 @@ import { Pagination, usePagination } from '../../../../components/pagination';
 import { SqueletteTableau, ThTri, useTriLocal } from '../../../../components/tableau';
 import { formatDate } from '../../../../lib/hooks';
 
-/** Le nombre de dossiers reçus, toutes étapes confondues — refus compris. */
+/** Les dossiers en lice : les autres ont leur page, « Candidatures non retenues ». */
 function postulants(offre: JobPostingView): number {
-  return Object.values(offre.applicationCounts).reduce((n, v) => n + v, 0);
+  return Object.entries(offre.applicationCounts).reduce(
+    (n, [etape, v]) => (etape === 'rejected' ? n : n + v),
+    0,
+  );
 }
 
 /**

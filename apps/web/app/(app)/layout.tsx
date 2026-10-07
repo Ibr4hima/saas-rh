@@ -142,6 +142,7 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { href: '/recrutement', label: "Offres d'emploi" },
       { href: '/recrutement/candidatures', label: 'Dossiers de candidature' },
+      { href: '/recrutement/non-retenues', label: 'Candidatures non retenues' },
     ],
   },
   // ——— Ce qui fait grandir l'effectif, dans l'ordre du cycle : on recrute,
@@ -196,6 +197,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/calendrier': 'Calendrier · Jours fériés',
   '/recrutement': "Offres d'emploi",
   '/recrutement/candidatures': 'Dossiers de candidature',
+  '/recrutement/non-retenues': 'Candidatures non retenues',
   '/recrutement/nouvelle': 'Nouvelle offre',
   '/academy': 'APIX Academy',
   '/academy/gerer': 'Gérer le catalogue',
@@ -432,7 +434,12 @@ function gere(user: SessionUser, aTraiter: ATraiter | undefined): boolean {
  * apprendre : cela, il le fait dans son espace d'agent — comme tout le
  * monde. Aucune demande ne se fait d'ici.
  */
-function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): NavItem[] {
+function navigationGestion(
+  user: SessionUser,
+  aTraiter: ATraiter | undefined,
+  /** Les candidatures non retenues : leur page n'a d'entrée qu'à partir d'une. */
+  nonRetenues: number,
+): NavItem[] {
   const files = filesDe(user, aTraiter);
   const demandes: NavItem[] =
     files.length === 0
@@ -513,6 +520,7 @@ function navigationGestion(user: SessionUser, aTraiter: ATraiter | undefined): N
         const voit: Record<string, boolean> = {
           '/recrutement': peut(user, 'recrutement.offres'),
           '/recrutement/candidatures': peut(user, 'recrutement.candidatures'),
+          '/recrutement/non-retenues': peut(user, 'recrutement.candidatures') && nonRetenues > 0,
         };
         const children = (i.children ?? []).filter((c) => voit[c.href]);
         if (children.length > 0) items.push({ ...i, children });
@@ -1132,6 +1140,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
     refetchInterval: 60_000,
   });
   const aUneEquipe = (validations.data?.equipe ?? 0) > 0;
+  // « Candidatures non retenues » n'entre au menu qu'à partir d'une.
+  const nonRetenues = useQuery({
+    queryKey: ['candidatures-non-retenues', 'compte'],
+    queryFn: () => api<{ count: number }>('/applications/rejected/count', { arrierePlan: true }),
+    enabled: peut(me.data, 'recrutement.candidatures'),
+  });
+  const nbNonRetenues = nonRetenues.data?.count ?? 0;
   const aTraiter = validations.data?.aTraiter;
   const gestion = Boolean(me.data && gere(me.data, aTraiter));
 
@@ -1158,8 +1173,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
     return restreint ? restreindre(nav) : nav;
   }, [aUneEquipe, estDG, restreint]);
   const navGestion = useMemo(
-    () => (me.data && gestion ? navigationGestion(me.data, aTraiter) : []),
-    [me.data, gestion, aTraiter],
+    () => (me.data && gestion ? navigationGestion(me.data, aTraiter, nbNonRetenues) : []),
+    [me.data, gestion, aTraiter, nbNonRetenues],
   );
   const items = espace === 'gestion' ? navGestion : navAgent;
   const accueilGestion = me.data ? accueilDeLaGestion(me.data, navGestion) : '/moi';
@@ -1221,7 +1236,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (commence('/absences/feries')) return peut(u, 'feries');
     if (commence('/absences/parametres')) return peut(u, 'conges.parametres');
     if (commence('/absences')) return peut(u, 'demandes.conges') || u.role === 'admin';
-    if (commence('/recrutement/candidatures')) return peut(u, 'recrutement.candidatures');
+    if (commence('/recrutement/candidatures') || commence('/recrutement/non-retenues')) {
+      return peut(u, 'recrutement.candidatures');
+    }
     if (path === '/recrutement' || commence('/recrutement/nouvelle')) {
       return peut(u, 'recrutement.offres');
     }

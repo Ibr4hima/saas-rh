@@ -431,6 +431,7 @@ describe('une candidature rejetée', () => {
         subject: 'Votre candidature au poste d’Économiste',
       });
       expect(parti!.text).toContain('Bonjour Amadou,');
+      expect(parti!.text).toContain('l’intérêt que vous portez à APIX S.A et');
       expect(parti!.text).toContain('il n’a pas été retenu');
       expect(parti!.text).toContain('La Direction du Capital Humain');
       expect(parti!.html).toContain('Votre candidature');
@@ -444,6 +445,41 @@ describe('une candidature rejetée', () => {
     } finally {
       await expediteur.onModuleDestroy();
     }
+  });
+
+  it('quitte la liste de son offre pour celle des rejetées', async () => {
+    const jobs = new JobsService(db, enc);
+    const id = await candidature(jobs);
+    const [{ job_posting_id: offreId }] = (
+      await raw(`SELECT job_posting_id FROM applications WHERE id = $1`, [id])
+    ).rows;
+    expect(await jobs.nombreDeRejetees(rh)).toEqual({ count: 0 });
+    expect(await jobs.rejetees(rh)).toEqual([]);
+
+    await jobs.updateStage(rh, id, 'rejected');
+    expect(await jobs.applications(rh, offreId)).toEqual([]);
+    expect(await jobs.nombreDeRejetees(rh)).toEqual({ count: 1 });
+    const [rejetee] = await jobs.rejetees(rh);
+    expect(rejetee).toMatchObject({
+      id,
+      givenName: 'Amadou Way',
+      familyName: 'Samb',
+      email: 'amadou.samb@exemple.sn',
+      stage: 'rejected',
+      jobTitle: 'Économiste',
+      jobReference: expect.stringMatching(/^OFF-\d{4}-\d{3}$/),
+      documents: [{ label: 'cv', filename: 'CV.pdf' }],
+    });
+    // Une autre organisation n'en voit rien.
+    expect(await jobs.nombreDeRejetees(rhAilleurs)).toEqual({ count: 0 });
+    expect(await jobs.rejetees(rhAilleurs)).toEqual([]);
+    // Lue, la liste se trace comme celle de l'offre.
+    const { rows: traces } = await raw(
+      `SELECT action, job_posting_id FROM application_access_log
+        WHERE tenant_id = $1 AND job_posting_id = $2 ORDER BY occurred_at`,
+      [tenantId, offreId],
+    );
+    expect(traces.at(-1)).toEqual({ action: 'list', job_posting_id: offreId });
   });
 
   it('supprimée avant le départ, rien ne part', async () => {

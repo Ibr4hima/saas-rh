@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { CONTRATS_A_DUREE, premierPrenom } from '@teranga/contracts';
 import type {
@@ -10,6 +10,7 @@ import type {
   DeleteJobPostingsInput,
   DeleteJobPostingsResult,
   JobPostingView,
+  RejectedApplicationView,
   SessionUser,
   UpdateJobPostingInput,
 } from '@teranga/contracts';
@@ -19,6 +20,7 @@ import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { parLeSysteme } from '../../db/systeme';
 import { ExpediteurCourriels } from '../courriels/expediteur';
+import { ENTETE } from '../documents/entete';
 import { contenuDeLaPiece, dechiffrerCandidature, nomDeLaPiece } from './chiffrement';
 
 /**
@@ -216,52 +218,114 @@ export class JobsService {
     });
   }
 
-  /** Candidatures d'une offre, avec les métadonnées de leurs documents. */
+  /**
+   * Candidatures d'une offre, avec les métadonnées de leurs documents. Les
+   * rejetées n'y sont plus : elles ont leur page (`rejetees`).
+   */
   async applications(user: SessionUser, jobId: string): Promise<ApplicationView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       await this.requirePosting(tx, jobId);
       const apps = await tx
         .select()
         .from(t.applications)
-        .where(eq(t.applications.jobPostingId, jobId))
+        .where(and(eq(t.applications.jobPostingId, jobId), ne(t.applications.stage, 'rejected')))
         .orderBy(desc(t.applications.createdAt));
-      const docs = await tx
-        .select({
-          id: t.applicationDocuments.id,
-          tenantId: t.applicationDocuments.tenantId,
-          applicationId: t.applicationDocuments.applicationId,
-          label: t.applicationDocuments.label,
-          filename: t.applicationDocuments.filename,
-          contentType: t.applicationDocuments.contentType,
-          sizeBytes: t.applicationDocuments.sizeBytes,
-          cleVersion: t.applicationDocuments.cleVersion,
-        })
-        .from(t.applicationDocuments)
-        .innerJoin(t.applications, eq(t.applications.id, t.applicationDocuments.applicationId))
-        .where(eq(t.applications.jobPostingId, jobId));
-
-      const byApp = new Map<string, ApplicationView['documents']>();
-      for (const d of docs) {
-        const list = byApp.get(d.applicationId) ?? [];
-        list.push({
-          id: d.id,
-          label: d.label,
-          filename: nomDeLaPiece(this.enc, d),
-          contentType: d.contentType,
-          sizeBytes: d.sizeBytes,
-        });
-        byApp.set(d.applicationId, list);
-      }
+      const byApp = await this.piecesDe(
+        tx,
+        apps.map((a) => a.id),
+      );
       await this.tracer(tx, user, { action: 'list', jobPostingId: jobId });
-      return apps.map((a) => ({
-        id: a.id,
-        jobPostingId: a.jobPostingId,
-        ...dechiffrerCandidature(this.enc, a),
-        stage: a.stage as ApplicationStage,
-        createdAt: a.createdAt.toISOString(),
-        documents: byApp.get(a.id) ?? [],
+      return apps.map((a) => this.vueCandidature(a, byApp));
+    });
+  }
+
+  /**
+   * Les candidatures rejetées, toutes offres confondues, la plus récente
+   * d'abord. Leur lecture se trace comme celle d'une offre : une ligne par
+   * offre dont on a vu les dossiers.
+   */
+  async rejetees(user: SessionUser): Promise<RejectedApplicationView[]> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const lignes = await tx
+        .select({ candidature: t.applications, offre: t.jobPostings })
+        .from(t.applications)
+        .innerJoin(t.jobPostings, eq(t.jobPostings.id, t.applications.jobPostingId))
+        .where(eq(t.applications.stage, 'rejected'))
+        .orderBy(desc(t.applications.updatedAt));
+      const byApp = await this.piecesDe(
+        tx,
+        lignes.map((l) => l.candidature.id),
+      );
+      for (const jobPostingId of new Set(lignes.map((l) => l.offre.id))) {
+        await this.tracer(tx, user, { action: 'list', jobPostingId });
+      }
+      return lignes.map(({ candidature, offre }) => ({
+        ...this.vueCandidature(candidature, byApp),
+        jobTitle: offre.title,
+        jobReference: offre.reference,
+        jobCreatedAt: offre.createdAt.toISOString(),
+        rejectedAt: candidature.updatedAt.toISOString(),
       }));
     });
+  }
+
+  /** Combien de candidatures rejetées : la page n'a d'entrée au menu qu'à partir d'une. */
+  async nombreDeRejetees(user: SessionUser): Promise<{ count: number }> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const [r] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(t.applications)
+        .where(eq(t.applications.stage, 'rejected'));
+      return { count: r?.n ?? 0 };
+    });
+  }
+
+  private vueCandidature(
+    a: typeof t.applications.$inferSelect,
+    byApp: Map<string, ApplicationView['documents']>,
+  ): ApplicationView {
+    return {
+      id: a.id,
+      jobPostingId: a.jobPostingId,
+      ...dechiffrerCandidature(this.enc, a),
+      stage: a.stage as ApplicationStage,
+      createdAt: a.createdAt.toISOString(),
+      documents: byApp.get(a.id) ?? [],
+    };
+  }
+
+  /** Les pièces de ces candidatures, sans leur contenu. */
+  private async piecesDe(
+    tx: Tx,
+    applicationIds: string[],
+  ): Promise<Map<string, ApplicationView['documents']>> {
+    const byApp = new Map<string, ApplicationView['documents']>();
+    if (applicationIds.length === 0) return byApp;
+    const docs = await tx
+      .select({
+        id: t.applicationDocuments.id,
+        tenantId: t.applicationDocuments.tenantId,
+        applicationId: t.applicationDocuments.applicationId,
+        label: t.applicationDocuments.label,
+        filename: t.applicationDocuments.filename,
+        contentType: t.applicationDocuments.contentType,
+        sizeBytes: t.applicationDocuments.sizeBytes,
+        cleVersion: t.applicationDocuments.cleVersion,
+      })
+      .from(t.applicationDocuments)
+      .where(inArray(t.applicationDocuments.applicationId, applicationIds));
+    for (const d of docs) {
+      const list = byApp.get(d.applicationId) ?? [];
+      list.push({
+        id: d.id,
+        label: d.label,
+        filename: nomDeLaPiece(this.enc, d),
+        contentType: d.contentType,
+        sizeBytes: d.sizeBytes,
+      });
+      byApp.set(d.applicationId, list);
+    }
+    return byApp;
   }
 
   /**
@@ -294,13 +358,8 @@ export class JobsService {
       if (stage !== 'rejected' || !this.expediteur) return false;
 
       const [offre] = await tx
-        .select({
-          titre: t.jobPostings.title,
-          reference: t.jobPostings.reference,
-          organisation: t.tenants.name,
-        })
+        .select({ titre: t.jobPostings.title, reference: t.jobPostings.reference })
         .from(t.jobPostings)
-        .innerJoin(t.tenants, eq(t.tenants.id, t.jobPostings.tenantId))
         .where(eq(t.jobPostings.id, avant.jobPostingId));
       if (!offre) return false;
       const candidat = dechiffrerCandidature(this.enc, avant);
@@ -313,7 +372,8 @@ export class JobsService {
         gabarit: {
           nom: 'refus_candidature',
           prenom: premierPrenom(candidat.givenName),
-          organisation: offre.organisation,
+          // La raison sociale, comme dans le corps des actes : « APIX S.A ».
+          organisation: ENTETE.raisonSociale,
           poste: offre.titre,
           reference: offre.reference,
         },

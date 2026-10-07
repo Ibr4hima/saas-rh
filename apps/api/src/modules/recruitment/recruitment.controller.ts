@@ -97,6 +97,20 @@ export class RecruitmentController {
     return this.jobs.applications(req.sessionUser, id);
   }
 
+  /** Les candidatures rejetées, toutes offres confondues. */
+  @Get('applications/rejected')
+  @Peut('recrutement.candidatures')
+  rejetees(@Req() req: AuthenticatedRequest) {
+    return this.jobs.rejetees(req.sessionUser);
+  }
+
+  /** Leur nombre, pour l'entrée du menu : sans rien déchiffrer ni tracer. */
+  @Get('applications/rejected/count')
+  @Peut('recrutement.candidatures')
+  nombreDeRejetees(@Req() req: AuthenticatedRequest) {
+    return this.jobs.nombreDeRejetees(req.sessionUser);
+  }
+
   @Patch('applications/:id')
   @Peut('recrutement.candidatures')
   @HttpCode(204)
