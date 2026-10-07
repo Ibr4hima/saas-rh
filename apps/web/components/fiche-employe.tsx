@@ -1467,7 +1467,8 @@ function PortalCard({
             qui NOMME la situation, une ligne qui l'explique. La pastille de
             l'en-tête classe la carte quand on balaie la colonne ; ce bloc-ci
             répond à « et concrètement ? ». */}
-        <div className="flex items-start gap-3">
+        {/* Un compte actif n'a que son titre : il se centre sur l'icône. */}
+        <div className={cn('flex gap-3', actif ? 'items-center' : 'items-start')}>
           <span
             className={cn(
               'flex size-9 shrink-0 items-center justify-center rounded-[11px]',
@@ -1503,44 +1504,40 @@ function PortalCard({
                           ? 'Compte fermé depuis son départ'
                           : 'Pas encore de compte'}
             </p>
-            <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-              {coupe ? (
-                <>La connexion au portail est refusée à {prenom} jusqu&apos;au rétablissement.</>
-              ) : actif ? (
-                <>
-                  {prenom} se connecte au portail et y gère ses demandes de congés et de documents.
-                  Ce qu&apos;on y fait de plus vient de sa place dans l&apos;organigramme (N+1
-                  d&apos;une équipe, Direction du Capital Humain), pas d&apos;un rôle.
-                </>
-              ) : invitation && envoi ? (
-                <>
-                  {echec ? 'Adressé à ' : envoi === 'envoye' ? 'Envoyée à ' : 'À '}
-                  <span className="font-semibold text-ink">{invitation.email}</span>
-                  {envoi === 'envoye' && invitation.envoyeLe
-                    ? ` le ${formatDate(invitation.envoyeLe)}`
-                    : null}
-                  {echec ? (
-                    <>. Vérifiez l’adresse, puis renvoyez l’invitation ou transmettez le lien.</>
-                  ) : (
-                    <> · valable jusqu’au {formatDate(invitation.expiresAt)}.</>
-                  )}
-                </>
-              ) : (
-                <>
-                  {/* Le pronom suit le sexe au dossier quand il y est. « Il ou
+            {actif ? null : (
+              <p className="mt-1 text-[12px] leading-snug text-ink-muted">
+                {coupe ? (
+                  <>La connexion au portail est refusée à {prenom} jusqu&apos;au rétablissement.</>
+                ) : invitation && envoi ? (
+                  <>
+                    {echec ? 'Adressé à ' : envoi === 'envoye' ? 'Envoyée à ' : 'À '}
+                    <span className="font-semibold text-ink">{invitation.email}</span>
+                    {envoi === 'envoye' && invitation.envoyeLe
+                      ? ` le ${formatDate(invitation.envoyeLe)}`
+                      : null}
+                    {echec ? (
+                      <>. Vérifiez l’adresse, puis renvoyez l’invitation ou transmettez le lien.</>
+                    ) : (
+                      <> · valable jusqu’au {formatDate(invitation.expiresAt)}.</>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* Le pronom suit le sexe au dossier quand il y est. « Il ou
                       elle » n'est pas une faute, mais quand on connaît la
                       personne à qui l'on écrit, la phrase n'a pas à hésiter. */}
-                  {portal.parCourriel
-                    ? 'Envoyez l’invitation à'
-                    : 'Transmettez le lien d’invitation à'}{' '}
-                  <span className="font-semibold text-ink">{prenom}</span>.{' '}
-                  {gender === 'female' ? 'Elle' : gender === 'male' ? 'Il' : 'Il ou elle'}{' '}
-                  {ferme
-                    ? 'choisira un nouveau mot de passe et retrouvera son compte.'
-                    : 'choisira son mot de passe et son compte sera relié à ce dossier.'}
-                </>
-              )}
-            </p>
+                    {portal.parCourriel
+                      ? 'Envoyez l’invitation à'
+                      : 'Transmettez le lien d’invitation à'}{' '}
+                    <span className="font-semibold text-ink">{prenom}</span>.{' '}
+                    {gender === 'female' ? 'Elle' : gender === 'male' ? 'Il' : 'Il ou elle'}{' '}
+                    {ferme
+                      ? 'choisira un nouveau mot de passe et retrouvera son compte.'
+                      : 'choisira son mot de passe et son compte sera relié à ce dossier.'}
+                  </>
+                )}
+              </p>
+            )}
           </div>
         </div>
 
