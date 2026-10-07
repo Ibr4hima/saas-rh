@@ -2,29 +2,28 @@
 
 // Sa feuille de style (@blocknote/mantine/style.css) est importée par les
 // pages qui l'affichent : chargé à la demande, l'éditeur ne la porte pas.
-import {
-  BlockNoteSchema,
-  defaultBlockSpecs,
-  defaultInlineContentSpecs,
-  filterSuggestionItems,
-} from '@blocknote/core';
+import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from '@blocknote/core';
 import { fr } from '@blocknote/core/locales';
 import { BlockNoteView } from '@blocknote/mantine';
 import {
-  createReactBlockSpec,
-  createReactInlineContentSpec,
   FormattingToolbar,
   FormattingToolbarController,
-  getDefaultReactSlashMenuItems,
-  SuggestionMenuController,
   useBlockNoteEditor,
   useComponentsContext,
   useCreateBlockNote,
   useEditorState,
-  type DefaultReactSuggestionItem,
 } from '@blocknote/react';
 import Link from 'next/link';
-import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import type { FormationDeLaFiche, FormationProposable, StatutObjectif } from '@teranga/contracts';
 import { cn } from '@teranga/ui';
 import { PastilleEtat } from './academy-equipe';
@@ -32,39 +31,34 @@ import { Icon, type IconName } from './icons';
 import { usePreferences } from './preferences';
 
 /* ————————————————————————————————————————————————————————————————
-   La fiche d'objectifs d'un semestre — un éditeur de blocs, à la manière de
-   Notion, réduit à ce qu'une fiche demande : des objectifs à cocher, du
-   gras, de l'italique, du souligné. Le titre n'est pas à écrire : la page le
-   pose (« Objectifs du 1er semestre de 2026 »). Le reste (listes « - »,
-   citations « > », annuler, coller du texte mis en forme) reste au clavier,
-   sans menu. Et deux blocs propres à la fiche :
+   La fiche d'objectifs d'un semestre, en trois parties. Le titre n'est pas
+   à écrire : la page le pose (« Objectifs du 1er semestre de 2026 »).
 
-   — l'ÉCHÉANCE : une date posée dans le texte, qui se lit en pastille et se
-     colore quand elle approche ou qu'elle est passée. « / Échéance », ou
-     « @ » pour choisir d'un mot (demain, fin du mois, fin de l'année…) ;
-   — la FORMATION : un bloc qui cite une formation de l'APIX Academy et dit
-     où en est l'agent — à commencer, en cours, certifiée.
+   1. Les OBJECTIFS : des cases à cocher, et rien d'autre. Du texte simple,
+      sans gras, ni italique, ni puce, ni lien. Il reste toujours une case :
+      la première ne s'efface pas.
+   2. Les FORMATIONS À SUIVRE : le catalogue de l'APIX Academy. Celles que
+      l'agent a terminées ne se cochent pas ; cocher une autre la lui
+      demande, et elle s'évalue comme un objectif.
+   3. Les COMMENTAIRES : un texte libre sur les objectifs fixés (gras,
+      italique, souligné, listes, citations), sans case à cocher.
+
+   Les trois parties tiennent dans un seul contenu, dans cet ordre : les
+   cases, puis les blocs « formation », puis les blocs du commentaire. Le
+   type d'un bloc dit sa partie ; une fiche rédigée avant ce partage s'y
+   range à l'ouverture (ses paragraphes et ses puces deviennent le
+   commentaire, ses échéances du texte).
 
    Le n+1 rédige ; l'agent lit la même fiche, sans rien pouvoir y changer.
    ———————————————————————————————————————————————————————————————— */
 
-/** Ce que les blocs lisent autour d'eux : l'avancement de l'agent, le catalogue. */
-interface ContexteFiche {
-  formations: FormationDeLaFiche[];
-  catalogue: FormationProposable[];
-  /** Lu par l'agent : une formation mène à sa page dans l'Academy. */
-  lienAcademy: boolean;
-}
-const Contexte = createContext<ContexteFiche>({
-  formations: [],
-  catalogue: [],
-  lienAcademy: false,
-});
-
-function iso(d: Date): string {
-  const mois = String(d.getMonth() + 1).padStart(2, '0');
-  return `${d.getFullYear()}-${mois}-${String(d.getDate()).padStart(2, '0')}`;
-}
+type Bloc = Record<string, unknown> & {
+  id?: string;
+  type?: unknown;
+  props?: unknown;
+  content?: unknown;
+  children?: unknown;
+};
 
 function dateLisible(date: string): string {
   const d = new Date(`${date}T00:00:00`);
@@ -72,251 +66,112 @@ function dateLisible(date: string): string {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-// ———————————————————————————— l'échéance
-
-function PuceEcheance({
-  date,
-  modifiable,
-  onChange,
-}: {
-  date: string;
-  modifiable: boolean;
-  onChange: (date: string) => void;
-}) {
-  const champ = useRef<HTMLInputElement>(null);
-  const aujourdhui = iso(new Date());
-  const dans7 = iso(new Date(Date.now() + 7 * 86_400_000));
-  const passee = Boolean(date) && date < aujourdhui;
-  const proche = Boolean(date) && !passee && date <= dans7;
-
-  // Tout juste insérée sans date : le calendrier s'ouvre de lui-même.
-  useEffect(() => {
-    if (!date && modifiable) {
-      try {
-        champ.current?.showPicker();
-      } catch {
-        // Le navigateur exige un geste : la pastille reste là, un clic l'ouvre.
+/** Le texte d'un contenu, sans mise en forme : un lien donne son texte, une échéance sa date. */
+function texteDe(contenu: unknown): string {
+  if (!Array.isArray(contenu)) return '';
+  return (contenu as Bloc[])
+    .map((c) => {
+      if (c.type === 'text') return String(c.text ?? '');
+      if (c.type === 'link') return texteDe(c.content);
+      if (c.type === 'echeance') {
+        const date = String((c.props as { date?: unknown } | undefined)?.date ?? '');
+        return date ? dateLisible(date) : '';
       }
-    }
-    // Une seule fois, à l'insertion.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return (
-    <span className="relative inline-flex align-baseline" contentEditable={false}>
-      <button
-        type="button"
-        disabled={!modifiable}
-        onClick={() => {
-          try {
-            champ.current?.showPicker();
-          } catch {
-            champ.current?.focus();
-          }
-        }}
-        title={passee ? 'Échéance dépassée' : 'Échéance'}
-        className={cn(
-          // Plus basse que la ligne (16 px contre 18,75) : la pastille ne
-          // l'agrandit pas, et la case à cocher reste en face du texte.
-          'mx-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0 text-[0.9em] leading-4 font-semibold whitespace-nowrap ring-1 ring-inset transition-colors',
-          passee
-            ? 'bg-danger-soft text-danger ring-danger/20'
-            : proche
-              ? 'bg-accent-soft text-accent-text ring-accent/25'
-              : date
-                ? 'bg-primary-soft text-primary ring-primary/15'
-                : 'bg-line-soft text-ink-muted ring-line',
-          modifiable ? 'cursor-pointer hover:brightness-95' : 'cursor-default',
-        )}
-      >
-        <Icon name="event" size={13} />
-        {date ? dateLisible(date) : 'Choisir une date'}
-      </button>
-      {modifiable ? (
-        <input
-          ref={champ}
-          type="date"
-          tabIndex={-1}
-          aria-label="Date de l'échéance"
-          value={date}
-          onChange={(e) => onChange(e.target.value)}
-          className="pointer-events-none absolute inset-0 opacity-0"
-        />
-      ) : null}
-    </span>
-  );
+      return '';
+    })
+    .join('');
 }
 
-const Echeance = createReactInlineContentSpec(
-  { type: 'echeance', propSchema: { date: { default: '' } }, content: 'none' },
-  {
-    render: ({ inlineContent, updateInlineContent, editor }) => (
-      <PuceEcheance
-        date={inlineContent.props.date}
-        modifiable={editor.isEditable}
-        onChange={(date) => updateInlineContent({ type: 'echeance', props: { date } })}
-      />
-    ),
-  },
-);
+/** Un contenu où l'on a écrit quelque chose, à quelque profondeur que ce soit. */
+const aDuTexte = (blocs: unknown) => /"text":"\s*[^"\s]/.test(JSON.stringify(blocs));
 
-// ———————————————————————————— la formation
-
-function CarteFormation({
-  courseId,
-  titre,
-  modifiable,
-  onChoisir,
-}: {
-  courseId: string;
-  titre: string;
-  modifiable: boolean;
-  onChoisir: (courseId: string, titre: string) => void;
-}) {
-  const { formations, catalogue, lienAcademy } = useContext(Contexte);
-  const suivi = formations.find((f) => f.courseId === courseId);
-
-  if (!courseId) {
-    return (
-      <div
-        contentEditable={false}
-        className="my-1 flex w-full items-center gap-3 rounded-[12px] border border-dashed border-line bg-surface-raised px-3.5 py-3"
-      >
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-primary/[0.08] text-primary">
-          <Icon name="school" size={19} />
-        </span>
-        {modifiable ? (
-          <select
-            aria-label="Formation de l'APIX Academy"
-            value=""
-            onChange={(e) => {
-              const choisie = catalogue.find((c) => c.id === e.target.value);
-              if (choisie) onChoisir(choisie.id, choisie.title);
-            }}
-            className="min-w-0 flex-1 cursor-pointer rounded-full border border-line bg-surface px-3 py-1.5 text-[13px] text-ink outline-none focus:border-primary"
-          >
-            <option value="">Choisir une formation de l’APIX Academy…</option>
-            {catalogue.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span className="text-[13px] text-ink-muted">Formation à préciser</span>
-        )}
-      </div>
-    );
-  }
-
-  const nom = titre || catalogue.find((c) => c.id === courseId)?.title || 'Formation';
-  const contenu = (
-    <>
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-primary/[0.08] text-primary">
-        <Icon name="school" size={19} />
-      </span>
-      <span className="min-w-0 flex-1 basis-40">
-        <span className="block truncate text-[13.5px] font-semibold text-ink-strong">{nom}</span>
-        <span className="mt-0.5 block text-[11.5px] text-ink-muted">
-          Formation APIX Academy
-          {suivi && suivi.lecons > 0 ? ` · ${suivi.validees}/${suivi.lecons} leçons` : ''}
-        </span>
-      </span>
-      <PastilleEtat statut={suivi?.statut ?? 'a_commencer'} className="shrink-0" />
-    </>
-  );
-
-  return (
-    <div contentEditable={false} className="my-1 w-full">
-      {lienAcademy ? (
-        <Link
-          href={`/academy/${courseId}`}
-          className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] border border-card-line bg-surface px-3.5 py-3 transition-colors hover:border-card-line-hover hover:bg-hover"
-        >
-          {contenu}
-          <Icon name="chevron_right" size={16} className="shrink-0 text-ink-muted/60" />
-        </Link>
-      ) : (
-        <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] border border-card-line bg-surface px-3.5 py-3">
-          {contenu}
-          {modifiable ? (
-            <button
-              type="button"
-              onClick={() => onChoisir('', '')}
-              className="shrink-0 rounded-full px-2 py-1 text-[11.5px] font-semibold text-ink-muted transition-colors hover:bg-hover hover:text-ink"
-            >
-              Changer
-            </button>
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
+/** Un objectif : une case, son texte seul, sans rien dessous. */
+function enCase(b: Bloc): Bloc {
+  const texte = texteDe(b.content);
+  return {
+    ...(b.id ? { id: b.id } : {}),
+    type: 'checkListItem',
+    props: { checked: Boolean((b.props as { checked?: unknown } | undefined)?.checked) },
+    content: texte ? [{ type: 'text', text: texte, styles: {} }] : [],
+    children: [],
+  };
 }
 
-const Formation = createReactBlockSpec(
-  {
-    type: 'formation',
-    propSchema: { courseId: { default: '' }, titre: { default: '' } },
-    content: 'none',
-  },
-  {
-    render: ({ block, editor }) => (
-      <CarteFormation
-        courseId={block.props.courseId}
-        titre={block.props.titre}
-        modifiable={editor.isEditable}
-        onChoisir={(courseId, titre) =>
-          editor.updateBlock(block, { type: 'formation', props: { courseId, titre } })
+/** Les blocs que le commentaire connaît : tout, sauf la case à cocher. */
+const BLOCS_DU_COMMENTAIRE = new Set([
+  'paragraph',
+  'bulletListItem',
+  'numberedListItem',
+  'toggleListItem',
+  'quote',
+  'table',
+  'divider',
+]);
+
+/**
+ * Un bloc du commentaire. Un titre, d'un temps où l'éditeur en avait, devient
+ * un paragraphe en gras ; une échéance, sa date en texte.
+ */
+function enCommentaire(b: Bloc, enfants: Bloc[]): Bloc {
+  const titre = b.type === 'heading';
+  const enLigne = Array.isArray(b.content)
+    ? (b.content as Bloc[]).map((c) => {
+        if (c.type === 'echeance') return { type: 'text', text: texteDe([c]), styles: {} };
+        if (titre && c.type === 'text') {
+          return { ...c, styles: { ...(c.styles as Record<string, unknown>), bold: true } };
         }
-      />
-    ),
-  },
-);
-
-// ———————————————————————————— le schéma
-
-/**
- * Les blocs d'une fiche. Pas de titre — la page titre chaque semestre — ni
- * d'image, de vidéo, de son ou de fichier : une fiche d'objectifs n'en a pas
- * besoin, et chacun demanderait où le stocker.
- */
-const schema = BlockNoteSchema.create({
-  blockSpecs: {
-    paragraph: defaultBlockSpecs.paragraph,
-    checkListItem: defaultBlockSpecs.checkListItem,
-    bulletListItem: defaultBlockSpecs.bulletListItem,
-    numberedListItem: defaultBlockSpecs.numberedListItem,
-    toggleListItem: defaultBlockSpecs.toggleListItem,
-    quote: defaultBlockSpecs.quote,
-    table: defaultBlockSpecs.table,
-    divider: defaultBlockSpecs.divider,
-    formation: Formation(),
-  },
-  inlineContentSpecs: { ...defaultInlineContentSpecs, echeance: Echeance },
-});
-type Editeur = typeof schema.BlockNoteEditor;
-
-type Bloc = Record<string, unknown> & { type?: unknown; content?: unknown; children?: unknown };
+        return c;
+      })
+    : b.content;
+  const connu = BLOCS_DU_COMMENTAIRE.has(String(b.type));
+  return {
+    ...b,
+    type: connu ? b.type : 'paragraph',
+    props: connu ? b.props : {},
+    content: connu || Array.isArray(enLigne) ? enLigne : [],
+    children: enfants,
+  };
+}
 
 /**
- * Les fiches rédigées quand l'éditeur avait encore des titres les gardent
- * lisibles : un titre y devient un paragraphe en gras — l'éditeur, qui ne
- * connaît plus ce bloc, refuserait sinon d'ouvrir la fiche.
+ * Le contenu enregistré, rangé en trois parties. Une case, où qu'elle soit,
+ * est un objectif ; une formation choisie, une formation à suivre ; tout le
+ * reste, le commentaire.
  */
-function sansTitres(blocs: Bloc[]): Bloc[] {
-  return blocs.map((b) => {
-    const enfants = Array.isArray(b.children) ? sansTitres(b.children as Bloc[]) : [];
-    if (b.type !== 'heading') return { ...b, children: enfants };
-    const contenu = Array.isArray(b.content)
-      ? (b.content as Bloc[]).map((c) =>
-          c.type === 'text'
-            ? { ...c, styles: { ...(c.styles as Record<string, unknown>), bold: true } }
-            : c,
-        )
-      : [];
-    return { id: b.id, type: 'paragraph', props: {}, content: contenu, children: enfants };
-  });
+function partager(contenu: Bloc[]): {
+  objectifs: Bloc[];
+  formations: Bloc[];
+  commentaires: Bloc[];
+} {
+  const objectifs: Bloc[] = [];
+  const formations: Bloc[] = [];
+  const trier = (blocs: unknown): Bloc[] => {
+    if (!Array.isArray(blocs)) return [];
+    const gardes: Bloc[] = [];
+    for (const b of blocs as Bloc[]) {
+      if (b.type === 'checkListItem') {
+        objectifs.push(enCase(b));
+        gardes.push(...trier(b.children));
+        continue;
+      }
+      if (b.type === 'formation') {
+        const p = (b.props ?? {}) as { courseId?: unknown; titre?: unknown };
+        if (typeof p.courseId === 'string' && p.courseId) {
+          formations.push({
+            ...(b.id ? { id: b.id } : {}),
+            type: 'formation',
+            props: { courseId: p.courseId, titre: typeof p.titre === 'string' ? p.titre : '' },
+            children: [],
+          });
+        }
+        continue;
+      }
+      gardes.push(enCommentaire(b, trier(b.children)));
+    }
+    return gardes;
+  };
+  const commentaires = trier(contenu);
+  return { objectifs, formations, commentaires };
 }
 
 /** Une fiche neuve s'ouvre sur un objectif à cocher. */
@@ -338,37 +193,36 @@ const dictionnaire = {
 };
 
 /**
- * Le menu « / » : la liste de tâches, sans ligne d'explication ni raccourci —
- * pour repartir sur des cases à cocher après un paragraphe. « /tâche »,
- * « /obj » la retrouvent aussi.
+ * Les objectifs : la case, et le texte nu. Le paragraphe et le lien restent
+ * au schéma, l'éditeur ne s'en passe pas ; la fiche rechange aussitôt l'un en
+ * case, l'autre en texte.
  */
-const ENTREES_SLASH: Record<string, { titre: string; icone: IconName; alias: string[] }> = {
-  check_list: {
-    titre: 'Liste de tâches',
-    icone: 'checklist',
-    alias: ['tache', 'tâche', 'objectif', 'case', 'cocher', 'todo'],
+const schemaObjectifs = BlockNoteSchema.create({
+  blockSpecs: {
+    paragraph: defaultBlockSpecs.paragraph,
+    checkListItem: defaultBlockSpecs.checkListItem,
   },
-};
+  inlineContentSpecs: defaultInlineContentSpecs,
+  styleSpecs: {},
+});
 
-function entreesSlash(editeur: Editeur): DefaultReactSuggestionItem[] {
-  return getDefaultReactSlashMenuItems(editeur).flatMap((e) => {
-    const entree = ENTREES_SLASH[(e as { key?: string }).key ?? ''];
-    if (!entree) return [];
-    return [
-      {
-        ...e,
-        title: entree.titre,
-        aliases: [...(e.aliases ?? []), ...entree.alias],
-        icon: <Icon name={entree.icone} size={18} />,
-        subtext: undefined,
-        badge: undefined,
-        group: undefined,
-      },
-    ];
-  });
-}
+/**
+ * Le commentaire : un texte libre, sans case à cocher. Pas de titre (la
+ * page titre), ni d'image, de vidéo, de son ou de fichier.
+ */
+const schemaCommentaires = BlockNoteSchema.create({
+  blockSpecs: {
+    paragraph: defaultBlockSpecs.paragraph,
+    bulletListItem: defaultBlockSpecs.bulletListItem,
+    numberedListItem: defaultBlockSpecs.numberedListItem,
+    toggleListItem: defaultBlockSpecs.toggleListItem,
+    quote: defaultBlockSpecs.quote,
+    table: defaultBlockSpecs.table,
+    divider: defaultBlockSpecs.divider,
+  },
+});
 
-// ———————————————————————————— la barre de mise en forme
+// La barre de mise en forme (commentaire)
 
 const STYLES: { style: 'bold' | 'italic' | 'underline'; libelle: string; icone: IconName }[] = [
   { style: 'bold', libelle: 'Gras', icone: 'format_bold' },
@@ -379,7 +233,7 @@ const STYLES: { style: 'bold' | 'italic' | 'underline'; libelle: string; icone: 
 /** Un bouton de style : ni infobulle ni raccourci — B, I, U se lisent seuls. */
 function BoutonStyle({ style, libelle, icone }: (typeof STYLES)[number]) {
   const Composants = useComponentsContext()!;
-  const editeur = useBlockNoteEditor(schema);
+  const editeur = useBlockNoteEditor(schemaCommentaires);
   const actif = useEditorState({
     editor: editeur,
     selector: ({ editor }) => style in editor.getActiveStyles(),
@@ -399,13 +253,11 @@ function BoutonStyle({ style, libelle, icone }: (typeof STYLES)[number]) {
 }
 
 /**
- * La barre qui paraît sur une sélection : trois boutons. Pas de type de bloc,
- * de couleur, d'alignement ni de lien — une fiche d'objectifs n'en a pas
- * besoin. En lecture (l'agent), ou sur une formation sélectionnée (un bloc
- * sans texte), rien à mettre en forme : pas de barre.
+ * La barre qui paraît sur une sélection du commentaire : trois boutons. Pas
+ * de type de bloc, de couleur, d'alignement ni de lien.
  */
 function BarreDeMiseEnForme() {
-  const editeur = useBlockNoteEditor(schema);
+  const editeur = useBlockNoteEditor(schemaCommentaires);
   const texte = useEditorState({
     editor: editeur,
     selector: ({ editor }) =>
@@ -424,37 +276,7 @@ function BarreDeMiseEnForme() {
   );
 }
 
-/** « @ » : une échéance en un mot. */
-function datesProposees(editeur: Editeur): DefaultReactSuggestionItem[] {
-  const j = new Date();
-  const le = (d: Date) => iso(d);
-  const plus = (n: number) => new Date(j.getFullYear(), j.getMonth(), j.getDate() + n);
-  const finDuMois = new Date(j.getFullYear(), j.getMonth() + 1, 0);
-  const finDuTrimestre = new Date(j.getFullYear(), Math.floor(j.getMonth() / 3) * 3 + 3, 0);
-  const finDAnnee = new Date(j.getFullYear(), 11, 31);
-  const poser = (date: string) => () =>
-    editeur.insertInlineContent([{ type: 'echeance', props: { date } }, ' ']);
-  const entree = (title: string, d: Date | null, aliases: string[]) => ({
-    title,
-    subtext: d ? dateLisible(le(d)) : 'Dans le calendrier',
-    aliases,
-    group: 'Échéance',
-    icon: <Icon name="event" size={18} />,
-    onItemClick: poser(d ? le(d) : ''),
-  });
-  return [
-    entree('Aujourd’hui', j, ['aujourdhui', 'today']),
-    entree('Demain', plus(1), ['demain']),
-    entree('Dans une semaine', plus(7), ['semaine']),
-    entree('Dans deux semaines', plus(14), ['quinzaine']),
-    entree('Fin du mois', finDuMois, ['mois']),
-    entree('Fin du trimestre', finDuTrimestre, ['trimestre']),
-    entree('Fin de l’année', finDAnnee, ['annee', 'année', 'decembre']),
-    entree('Choisir une date…', null, ['date', 'calendrier']),
-  ];
-}
-
-// ———————————————————————————— l'éditeur
+// La fiche
 
 /** Les couleurs d'une case que l'agent ne dit pas atteinte (globals.css, `.fiche-statuts`). */
 const DESSIN_DU_STATUT: Record<StatutObjectif, string> = {
@@ -464,6 +286,19 @@ const DESSIN_DU_STATUT: Record<StatutObjectif, string> = {
   non_atteint:
     '--statut-fond: var(--tg-danger); --statut-filet: var(--tg-danger); --statut-signe: var(--croix);',
 };
+
+/** « Commentaires » entre deux filets : l'intitulé d'une partie. */
+function Intertitre({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 px-5 pt-5 pb-1.5">
+      <span aria-hidden className="h-px min-w-6 flex-1 bg-line" />
+      <h4 className="shrink-0 text-[10px] font-extrabold tracking-[0.14em] text-ink-muted uppercase">
+        {children}
+      </h4>
+      <span aria-hidden className="h-px min-w-6 flex-1 bg-line" />
+    </div>
+  );
+}
 
 export function EditeurFicheObjectifs({
   contenu,
@@ -480,9 +315,9 @@ export function EditeurFicheObjectifs({
   formations: FormationDeLaFiche[];
   catalogue?: FormationProposable[];
   onChange?: (blocs: Record<string, unknown>[]) => void;
-  /** Chaque changement ramène le curseur en fin de fiche (« Fixer des objectifs »). */
+  /** Chaque changement ramène le curseur en fin d'objectifs (« Fixer des objectifs »). */
   focusSignal?: number;
-  /** La marge autour du texte : un clic dedans, et l'on écrit en fin de fiche. */
+  /** La marge autour de la fiche. */
   className?: string;
   /**
    * Où l'agent dit en être de chaque objectif — c'est son auto-évaluation qui
@@ -491,26 +326,113 @@ export function EditeurFicheObjectifs({
    */
   statuts?: Record<string, StatutObjectif>;
 }) {
+  // La fiche se range une fois, à l'ouverture ; chaque partie vit ensuite
+  // de son côté, et l'enregistrement les remet bout à bout.
+  const [depart] = useState(() => partager(contenu as Bloc[]));
+  const parties = useRef(depart);
+  const [choisies, setChoisies] = useState(depart.formations);
+
+  const publier = useCallback(() => {
+    const { objectifs, formations: aSuivre, commentaires } = parties.current;
+    onChange?.([...objectifs, ...aSuivre, ...(aDuTexte(commentaires) ? commentaires : [])]);
+  }, [onChange]);
+
+  const objectifsEcrits = aDuTexte(depart.objectifs);
+  const commentaireEcrit = aDuTexte(depart.commentaires);
+  const avecFormations = modifiable ? catalogue.length > 0 : choisies.length > 0;
+
+  return (
+    <div className={cn('fiche-objectifs', className)}>
+      {modifiable || objectifsEcrits ? (
+        <ZoneObjectifs
+          initial={depart.objectifs}
+          modifiable={modifiable}
+          statuts={statuts}
+          focusSignal={focusSignal}
+          onChange={(blocs) => {
+            parties.current = { ...parties.current, objectifs: blocs };
+            publier();
+          }}
+        />
+      ) : null}
+      {avecFormations ? (
+        <>
+          <Intertitre>Formations à suivre</Intertitre>
+          <FormationsASuivre
+            choisies={choisies}
+            catalogue={catalogue}
+            suivis={formations}
+            modifiable={modifiable}
+            onChange={(blocs) => {
+              setChoisies(blocs);
+              parties.current = { ...parties.current, formations: blocs };
+              publier();
+            }}
+          />
+        </>
+      ) : null}
+      {modifiable || commentaireEcrit ? (
+        <>
+          <Intertitre>Commentaires</Intertitre>
+          <ZoneCommentaires
+            initial={depart.commentaires}
+            modifiable={modifiable}
+            onChange={(blocs) => {
+              parties.current = { ...parties.current, commentaires: blocs };
+              publier();
+            }}
+          />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+// Les objectifs
+
+/** Le texte nu de chaque case, à plat : les cases imbriquées remontent à la suite. */
+function aplatir(blocs: { props: unknown; content?: unknown; children: unknown[] }[]): Bloc[] {
+  return blocs.flatMap((b) => [
+    {
+      type: 'checkListItem',
+      props: { checked: Boolean((b.props as { checked?: unknown }).checked) },
+      content: texteDe(b.content),
+      children: [],
+    },
+    ...aplatir(b.children as typeof blocs),
+  ]);
+}
+
+function ZoneObjectifs({
+  initial,
+  modifiable,
+  statuts,
+  focusSignal,
+  onChange,
+}: {
+  initial: Bloc[];
+  modifiable: boolean;
+  statuts?: Record<string, StatutObjectif>;
+  focusSignal: number;
+  onChange: (blocs: Record<string, unknown>[]) => void;
+}) {
   const { theme } = usePreferences();
   const editeur = useCreateBlockNote({
-    schema,
+    schema: schemaObjectifs,
     dictionary: dictionnaire,
-    initialContent: (contenu.length ? sansTitres(contenu) : FICHE_NEUVE) as unknown as NonNullable<
+    // Pas de ligne fantôme sous la dernière case : cliquer sous les objectifs
+    // reprend la dernière, plutôt que d'en ouvrir une vide.
+    trailingBlock: false,
+    initialContent: (initial.length ? initial : FICHE_NEUVE) as unknown as NonNullable<
       Parameters<typeof useCreateBlockNote>[0]
     >['initialContent'],
   });
 
-  /** Le curseur au bout de la fiche : c'est là qu'on ajoute. */
+  /** Le curseur au bout de la dernière case : c'est là qu'on ajoute. */
   const ecrireALaFin = useCallback(() => {
     const dernier = editeur.document.at(-1);
     if (!dernier) return;
-    // Une formation n'a pas de texte où poser le curseur : une ligne s'ouvre
-    // sous elle.
-    const cible =
-      dernier.content === undefined
-        ? editeur.insertBlocks([{ type: 'paragraph' }], dernier, 'after')[0]!
-        : dernier;
-    editeur.setTextCursorPosition(cible, 'end');
+    editeur.setTextCursorPosition(dernier, 'end');
     editeur.focus();
   }, [editeur]);
 
@@ -519,28 +441,23 @@ export function EditeurFicheObjectifs({
   }, [focusSignal, modifiable, ecrireALaFin]);
 
   // Les cases suivent l'auto-évaluation de l'agent : cochée, l'objectif est
-  // atteint. Les poser n'est pas une rédaction : `onChange` n'en est pas
-  // prévenu, rien ne s'enregistre.
+  // atteint. Les poser n'est pas une rédaction : rien ne s'enregistre.
   const enPose = useRef(false);
   const statutsCle = statuts ? JSON.stringify(statuts) : undefined;
   useEffect(() => {
     if (!statuts) return;
-    const ecarts: { id: string; checked: boolean }[] = [];
-    const parcourir = (blocs: typeof editeur.document) => {
-      for (const b of blocs) {
-        const voulue = statuts[b.id] === 'atteint';
-        if (b.type === 'checkListItem' && Boolean(b.props.checked) !== voulue) {
-          ecarts.push({ id: b.id, checked: voulue });
-        }
-        parcourir(b.children);
-      }
-    };
-    parcourir(editeur.document);
+    const ecarts = editeur.document.filter(
+      (b) =>
+        b.type === 'checkListItem' && Boolean(b.props.checked) !== (statuts[b.id] === 'atteint'),
+    );
     if (!ecarts.length) return;
     enPose.current = true;
     try {
-      for (const e of ecarts) {
-        editeur.updateBlock(e.id, { type: 'checkListItem', props: { checked: e.checked } });
+      for (const b of ecarts) {
+        editeur.updateBlock(b.id, {
+          type: 'checkListItem',
+          props: { checked: statuts[b.id] === 'atteint' },
+        });
       }
     } finally {
       enPose.current = false;
@@ -565,19 +482,126 @@ export function EditeurFicheObjectifs({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statutsCle, portee]);
 
-  const contexte = useMemo(
-    () => ({ formations, catalogue, lienAcademy: !modifiable }),
-    [formations, catalogue, modifiable],
-  );
+  /**
+   * Tout ce qui n'est pas une case le redevient : la ligne que l'éditeur
+   * vient de sortir de la liste, un paragraphe collé, une case glissée sous
+   * une autre ; un lien redevient son texte. Vrai si la fiche a changé
+   * (l'enregistrement suivra).
+   */
+  const normaliser = (): boolean => {
+    const doc = editeur.document;
+    const textuel = (b: (typeof doc)[number]) =>
+      (Array.isArray(b.content) ? b.content : []).every((c) => c.type === 'text');
+    const enOrdre = (b: (typeof doc)[number]) =>
+      b.type === 'checkListItem' && b.children.length === 0 && textuel(b);
+    if (doc.every(enOrdre)) return false;
+    editeur.transact(() => {
+      if (doc.some((b) => b.children.length > 0)) {
+        editeur.replaceBlocks(doc, aplatir(doc) as Parameters<typeof editeur.insertBlocks>[0]);
+        return;
+      }
+      for (const b of doc) {
+        if (enOrdre(b)) continue;
+        editeur.updateBlock(b, {
+          type: 'checkListItem',
+          props: { checked: b.type === 'checkListItem' && Boolean(b.props.checked) },
+          ...(textuel(b) ? {} : { content: texteDe(b.content) }),
+        });
+      }
+    });
+    return true;
+  };
+
+  /**
+   * Le clavier d'une liste de cases : Entrée sur une case vide n'en ouvre pas
+   * une autre ; Retour arrière en tête de case la fond dans celle du dessus,
+   * et ne fait rien sur la première ; Tab ne range pas une case sous une
+   * autre ; tout sélectionner prend le texte de toutes les cases.
+   */
+  const auClavier = (e: KeyboardEvent) => {
+    // Une case ne se coche pas au clavier non plus : c'est l'agent qui dit
+    // où il en est.
+    if ((e.target as HTMLElement).tagName === 'INPUT' && (e.key === ' ' || e.key === 'Enter')) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (e.key === 'Tab') {
+      // ProseMirror ne la voit pas : le focus passe simplement à la suite.
+      e.stopPropagation();
+      return;
+    }
+    if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+      // Tout sélectionner, c'est tout le texte, de la première case à la
+      // dernière : effacé, il laisse une case vide.
+      e.preventDefault();
+      e.stopPropagation();
+      const doc = editeur.document;
+      editeur.setTextCursorPosition(doc[0]!, 'start');
+      const debut = editeur.prosemirrorState.selection.from;
+      editeur.setTextCursorPosition(doc.at(-1)!, 'end');
+      const fin = editeur.prosemirrorState.selection.from;
+      editeur._tiptapEditor.commands.setTextSelection({ from: debut, to: fin });
+      return;
+    }
+    if (e.key !== 'Enter' && e.key !== 'Backspace') return;
+    if (e.key === 'Enter' && e.shiftKey) {
+      // Un objectif tient sur une ligne.
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    // Une sélection de blocs (tout sélectionner) : l'éditeur s'en charge, et
+    // la fiche vidée garde sa case.
+    if (!('$cursor' in editeur.prosemirrorState.selection)) return;
+    // Le curseur tel que la page le montre : une touche de déplacement
+    // (Début, flèches) vient peut-être de le bouger sans que l'éditeur l'ait
+    // encore relevé.
+    const dom = window.getSelection();
+    const vue = editeur.prosemirrorView;
+    if (!dom?.isCollapsed || !dom.anchorNode || !vue.dom.contains(dom.anchorNode)) return;
+    const position = vue.posAtDOM(dom.anchorNode, dom.anchorOffset);
+    if (position !== editeur.prosemirrorState.selection.from) {
+      editeur._tiptapEditor.commands.setTextSelection(position);
+    }
+    const selection = editeur.prosemirrorState.selection;
+    if (!selection.empty) return;
+    const { block, prevBlock } = editeur.getTextCursorPosition();
+    const ici = texteDe(block.content);
+    if (e.key === 'Enter') {
+      if (!ici.trim()) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
+    if (selection.$from.parentOffset > 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!prevBlock) return;
+    const dessus = texteDe(prevBlock.content);
+    editeur.transact(() => {
+      editeur.updateBlock(prevBlock, { content: dessus + ici });
+      editeur.removeBlocks([block]);
+    });
+    // Le curseur à la jointure des deux textes.
+    editeur.setTextCursorPosition(prevBlock, 'end');
+    if (ici) {
+      editeur._tiptapEditor.commands.setTextSelection(
+        editeur.prosemirrorState.selection.from - ici.length,
+      );
+    }
+  };
 
   return (
-    <Contexte.Provider value={contexte}>
+    <>
       {couleurs ? <style>{couleurs}</style> : null}
       <div
         data-statuts={statuts ? portee : undefined}
-        className={cn(modifiable && 'cursor-text', statuts && 'fiche-statuts', className)}
+        className={cn(modifiable && 'cursor-text', statuts && 'fiche-statuts')}
+        onKeyDownCapture={modifiable ? auClavier : undefined}
         // Comme sur une page : cliquer sous le texte place le curseur en fin
-        // de fiche, au lieu de ne rien faire.
+        // de liste, au lieu de ne rien faire.
         onMouseDown={(e) => {
           if (!modifiable || e.target !== e.currentTarget) return;
           e.preventDefault();
@@ -590,30 +614,185 @@ export function EditeurFicheObjectifs({
           // Le clair et le sombre de la plateforme, pas ceux du système : les
           // couleurs elles-mêmes viennent des variables (globals.css).
           theme={theme === 'sombre' ? 'dark' : 'light'}
-          // Ni poignée de déplacement ni « + » en marge : la fiche s'écrit au
-          // clavier, comme un texte. Pas d'émojis au « : » — en français, il
-          // suit chaque intitulé (« Objectif : … »).
+          // Ni poignée, ni menu, ni barre : une liste de cases, au clavier.
           sideMenu={false}
           slashMenu={false}
           formattingToolbar={false}
+          linkToolbar={false}
           emojiPicker={false}
           onChange={() => {
             if (enPose.current) return;
-            onChange?.(editeur.document as unknown as Record<string, unknown>[]);
+            if (modifiable && normaliser()) return;
+            onChange(editeur.document as unknown as Record<string, unknown>[]);
           }}
-          className="fiche-objectifs"
-        >
-          <FormattingToolbarController formattingToolbar={BarreDeMiseEnForme} />
-          <SuggestionMenuController
-            triggerCharacter="/"
-            getItems={async (requete) => filterSuggestionItems(entreesSlash(editeur), requete)}
-          />
-          <SuggestionMenuController
-            triggerCharacter="@"
-            getItems={async (requete) => filterSuggestionItems(datesProposees(editeur), requete)}
-          />
-        </BlockNoteView>
+        />
       </div>
-    </Contexte.Provider>
+    </>
+  );
+}
+
+// Les formations à suivre
+
+/** Terminée ou certifiée : l'agent l'a faite, elle ne se demande plus. */
+const faite = (suivi?: FormationDeLaFiche) =>
+  suivi?.statut === 'terminee' || suivi?.statut === 'certifiee';
+
+function FormationsASuivre({
+  choisies,
+  catalogue,
+  suivis,
+  modifiable,
+  onChange,
+}: {
+  /** Les blocs « formation » de la fiche : ce que le n+1 a demandé. */
+  choisies: Bloc[];
+  catalogue: FormationProposable[];
+  /** Où en est l'agent de chaque formation. */
+  suivis: FormationDeLaFiche[];
+  modifiable: boolean;
+  onChange: (blocs: Bloc[]) => void;
+}) {
+  const idDe = (b: Bloc) => String((b.props as { courseId: string }).courseId);
+  const titreDe = (b: Bloc) => String((b.props as { titre?: string }).titre ?? '');
+
+  // En lecture, les formations demandées ; elles mènent à leur page.
+  if (!modifiable) {
+    return (
+      <ul className="flex flex-col gap-2 px-5 pt-1 pb-2">
+        {choisies.map((b) => {
+          const courseId = idDe(b);
+          const suivi = suivis.find((f) => f.courseId === courseId);
+          return (
+            <li key={courseId}>
+              <Link
+                href={`/academy/${courseId}`}
+                className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] border border-card-line bg-surface px-3.5 py-2.5 transition-colors hover:border-card-line-hover hover:bg-hover"
+              >
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-primary/[0.08] text-primary">
+                  <Icon name="school" size={17} />
+                </span>
+                <span className="min-w-0 flex-1 basis-40">
+                  <span className="block truncate text-[12.5px] font-semibold text-ink-strong">
+                    {titreDe(b) || 'Formation APIX Academy'}
+                  </span>
+                  {suivi && suivi.lecons > 0 ? (
+                    <span className="mt-0.5 block text-[11px] text-ink-muted tabular-nums">
+                      {suivi.validees}/{suivi.lecons} leçons
+                    </span>
+                  ) : null}
+                </span>
+                <PastilleEtat statut={suivi?.statut ?? 'a_commencer'} className="shrink-0" />
+                <Icon name="chevron_right" size={16} className="shrink-0 text-ink-muted/60" />
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
+  // Le catalogue, et ce qui en a été retiré depuis qu'on l'a demandé.
+  const lignes = [
+    ...catalogue.map((c) => ({ courseId: c.id, titre: c.title })),
+    ...choisies
+      .filter((b) => !catalogue.some((c) => c.id === idDe(b)))
+      .map((b) => ({ courseId: idDe(b), titre: titreDe(b) || 'Formation retirée' })),
+  ];
+  const basculer = (courseId: string, titre: string) => {
+    const deja = choisies.some((b) => idDe(b) === courseId);
+    onChange(
+      deja
+        ? choisies.filter((b) => idDe(b) !== courseId)
+        : [
+            ...choisies,
+            {
+              id: crypto.randomUUID(),
+              type: 'formation',
+              props: { courseId, titre },
+              children: [],
+            },
+          ],
+    );
+  };
+
+  return (
+    <ul className="flex flex-col px-5 pt-1 pb-2">
+      {lignes.map(({ courseId, titre }) => {
+        const suivi = suivis.find((f) => f.courseId === courseId);
+        const terminee = faite(suivi);
+        const cochee = terminee || choisies.some((b) => idDe(b) === courseId);
+        const id = `formation-${courseId}`;
+        return (
+          <li key={courseId} className="flex min-h-7 items-center gap-x-[11px] gap-y-1 py-0.5">
+            <input
+              id={id}
+              type="checkbox"
+              className="case-formation"
+              checked={cochee}
+              disabled={terminee}
+              onChange={() => basculer(courseId, titre)}
+            />
+            <label
+              htmlFor={id}
+              className={cn(
+                'min-w-0 flex-1 text-[12.5px]',
+                terminee ? 'text-ink-muted' : 'cursor-pointer text-ink',
+              )}
+            >
+              {titre}
+            </label>
+            <PastilleEtat statut={suivi?.statut ?? 'a_commencer'} className="shrink-0" />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// Les commentaires
+
+function ZoneCommentaires({
+  initial,
+  modifiable,
+  onChange,
+}: {
+  initial: Bloc[];
+  modifiable: boolean;
+  onChange: (blocs: Record<string, unknown>[]) => void;
+}) {
+  const { theme } = usePreferences();
+  const editeur = useCreateBlockNote({
+    schema: schemaCommentaires,
+    dictionary: dictionnaire,
+    initialContent: (initial.length ? initial : undefined) as unknown as NonNullable<
+      Parameters<typeof useCreateBlockNote>[0]
+    >['initialContent'],
+  });
+
+  return (
+    <div
+      className={cn('pb-1', modifiable && 'min-h-12 cursor-text')}
+      // Cliquer dans la zone, sous le texte, place le curseur à la fin.
+      onMouseDown={(e) => {
+        if (!modifiable || e.target !== e.currentTarget) return;
+        e.preventDefault();
+        const dernier = editeur.document.at(-1);
+        if (dernier) editeur.setTextCursorPosition(dernier, 'end');
+        editeur.focus();
+      }}
+    >
+      <BlockNoteView
+        editor={editeur}
+        editable={modifiable}
+        theme={theme === 'sombre' ? 'dark' : 'light'}
+        sideMenu={false}
+        slashMenu={false}
+        formattingToolbar={false}
+        emojiPicker={false}
+        onChange={() => onChange(editeur.document as unknown as Record<string, unknown>[])}
+      >
+        <FormattingToolbarController formattingToolbar={BarreDeMiseEnForme} />
+      </BlockNoteView>
+    </div>
   );
 }
