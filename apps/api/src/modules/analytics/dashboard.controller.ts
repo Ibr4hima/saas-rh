@@ -118,6 +118,11 @@ export class DashboardController {
             name: string;
             short_name: string | null;
             headcount: number;
+            responsable: string | null;
+            femmes: number;
+            hommes: number;
+            age_moyen: string | null;
+            ages_connus: number;
           }>(sql`
           WITH RECURSIVE remontee AS (
             SELECT id AS depart, id, parent_id, unit_type, 0 AS prof
@@ -142,12 +147,22 @@ export class DashboardController {
                      ORDER BY lower(av.validity) LIMIT 1) AS unite_id
               FROM employees e WHERE e.status = 'active'
           )
-          SELECT d.id AS dir_id, d.name, d.short_name, count(af.employee_id)::int AS headcount
+          SELECT d.id AS dir_id, d.name, d.short_name, count(af.employee_id)::int AS headcount,
+                 (SELECT rp.given_name || ' ' || rp.family_name
+                    FROM employees re JOIN persons rp ON rp.id = re.person_id
+                   WHERE re.id = d.manager_employee_id) AS responsable,
+                 count(*) FILTER (WHERE p.gender = 'female')::int AS femmes,
+                 count(*) FILTER (WHERE p.gender = 'male')::int AS hommes,
+                 round(avg(date_part('year', age(CURRENT_DATE, p.birth_date)))::numeric, 1)::text
+                   AS age_moyen,
+                 count(p.birth_date)::int AS ages_connus
           FROM org_units d
           LEFT JOIN direction_de dd ON dd.dir_id = d.id
           LEFT JOIN affecte af ON af.unite_id = dd.unite_id
+          LEFT JOIN employees e ON e.id = af.employee_id
+          LEFT JOIN persons p ON p.id = e.person_id
           WHERE d.unit_type = 'direction' AND d.deleted_at IS NULL
-          GROUP BY d.id, d.name, d.short_name
+          GROUP BY d.id, d.name, d.short_name, d.manager_employee_id
           ORDER BY headcount DESC, d.name`),
           // Une frise a besoin d'un avant : le férié qui vient de passer ancre
           // « aujourd'hui » quelque part sur le rail, au lieu de le laisser
@@ -183,6 +198,11 @@ export class DashboardController {
           name: d.name,
           shortName: d.short_name,
           headcount: d.headcount,
+          responsable: d.responsable,
+          women: d.femmes,
+          men: d.hommes,
+          averageAge: d.age_moyen != null ? Number(d.age_moyen) : null,
+          agesKnown: d.ages_connus,
         })),
         holidayWindow: holidays.rows,
         contractFollowUp: followUp,

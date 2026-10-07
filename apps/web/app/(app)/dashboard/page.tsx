@@ -2,16 +2,26 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import type { AbsenceRequestView, DashboardHoliday, DashboardView } from '@teranga/contracts';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import type {
+  AbsenceRequestView,
+  DashboardDirectionHeadcount,
+  DashboardHoliday,
+  DashboardView,
+} from '@teranga/contracts';
 import { peut } from '@teranga/contracts';
 import {
   Badge,
+  Button,
   Card,
   CardContent,
   CardHeader,
   CardInteractive,
   CardTitle,
   cn,
+  DataBlock,
+  DataGrid,
   EmptyState,
   Skeleton,
   Table,
@@ -22,6 +32,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { Icon, type IconName } from '../../../components/icons';
+import { Modal } from '../../../components/modal';
 import { api } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { Page } from '../../../components/gabarit';
@@ -251,15 +262,15 @@ function StatTile({
 /* ———— Barres d'effectifs (une teinte, étiquettes en encre de texte) ———— */
 
 function DirectionBar({
-  href,
+  onOpen,
   label,
   title,
   value,
   max,
   total,
 }: {
-  /** La liste du personnel filtrée sur la direction ; absente, rien à ouvrir. */
-  href: string | null;
+  /** Ouvre la fiche de la direction ; absent, rien à ouvrir. */
+  onOpen?: () => void;
   label: string;
   title: string;
   value: number;
@@ -297,15 +308,88 @@ function DirectionBar({
   );
   const forme = '-mx-2 flex items-center gap-3 rounded-[7px] px-2 py-1';
   return (
-    <li title={`${title} — ${compte(value, 'agent')} · ${part} %`}>
-      {href ? (
-        <Link href={href} className={cn(forme, 'transition-colors duration-150 hover:bg-hover')}>
+    <li title={`${title} · ${compte(value, 'agent')} · ${part} %`}>
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          className={cn(
+            forme,
+            'w-[calc(100%+1rem)] text-left transition-colors duration-150 hover:bg-hover focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
+          )}
+        >
           {contenu}
-        </Link>
+        </button>
       ) : (
         <span className={forme}>{contenu}</span>
       )}
     </li>
+  );
+}
+
+/**
+ * La fiche d'une direction, ouverte depuis sa barre : qui la dirige, combien
+ * elle compte, leur âge moyen, sa parité. Agents actifs de la direction et
+ * des unités en dessous, comme la barre.
+ */
+function FicheDirection({
+  direction: x,
+  total,
+  versLePersonnel,
+  onClose,
+}: {
+  direction: DashboardDirectionHeadcount;
+  total: number;
+  /** La liste du personnel filtrée sur elle ; absente, elle n'est pas ouverte à qui regarde. */
+  versLePersonnel: string | null;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const part = total > 0 ? Math.round((x.headcount / total) * 100) : 0;
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={x.name}
+      subtitle={x.shortName ?? undefined}
+      maxWidth="max-w-lg"
+      footer={
+        <div className="flex w-full justify-end gap-2">
+          {versLePersonnel && x.headcount > 0 ? (
+            <Button variant="secondary" onClick={() => router.push(versLePersonnel)}>
+              Voir les agents
+            </Button>
+          ) : null}
+          <Button onClick={onClose}>Fermer</Button>
+        </div>
+      }
+    >
+      <DataGrid>
+        <DataBlock label="Responsable" full>
+          {x.responsable ?? <span className="text-ink-muted">Non désigné</span>}
+        </DataBlock>
+        <DataBlock label="Effectif">
+          {compte(x.headcount, 'agent')}
+          <span className="font-medium text-ink-muted"> · {part} %</span>
+        </DataBlock>
+        <DataBlock label="Moyenne d'âge">
+          {x.averageAge === null ? (
+            <span className="text-ink-muted">Non renseignée</span>
+          ) : (
+            <>
+              {x.averageAge.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} ans
+              {x.agesKnown < x.headcount ? (
+                <span className="block text-[11.5px] font-medium text-ink-muted">
+                  {x.agesKnown} âge{x.agesKnown > 1 ? 's' : ''} connu{x.agesKnown > 1 ? 's' : ''}{' '}
+                  sur {x.headcount}
+                </span>
+              ) : null}
+            </>
+          )}
+        </DataBlock>
+      </DataGrid>
+      <Parite femmes={x.women} hommes={x.men} />
+    </Modal>
   );
 }
 
@@ -448,6 +532,9 @@ export default function DashboardPage() {
   const seesContracts = peut(me.data, 'pilotage') || canManage;
   // Une tuile n'ouvre que la page que qui regarde peut ouvrir.
   const voitLesConges = peut(me.data, 'demandes.conges') || me.data?.role === 'admin';
+
+  // La direction dont la fiche est ouverte.
+  const [direction, setDirection] = useState<DashboardDirectionHeadcount | null>(null);
 
   const stats = useQuery({
     queryKey: ['dashboard'],
@@ -626,13 +713,7 @@ export default function DashboardPage() {
                     {d!.headcountByDirection.map((x) => (
                       <DirectionBar
                         key={x.id}
-                        // La liste du personnel, filtrée sur la direction :
-                        // elle compte les mêmes agents que la barre.
-                        href={
-                          canManage
-                            ? `/employees?unite=${encodeURIComponent(x.shortName ?? x.name)}`
-                            : null
-                        }
+                        onOpen={() => setDirection(x)}
                         label={x.shortName ?? x.name}
                         title={x.name}
                         value={x.headcount}
@@ -642,8 +723,7 @@ export default function DashboardPage() {
                     ))}
                     {unassigned > 0 ? (
                       <DirectionBar
-                        href={null}
-                        label="—"
+                        label="Aucune"
                         title="Sans affectation"
                         value={unassigned}
                         max={maxHeadcount}
@@ -656,6 +736,20 @@ export default function DashboardPage() {
               )}
             </CardContent>
           </Card>
+          {direction && d ? (
+            <FicheDirection
+              direction={direction}
+              total={d.activeEmployees}
+              // La liste du personnel, filtrée sur la direction : elle
+              // compte les mêmes agents que la barre.
+              versLePersonnel={
+                canManage
+                  ? `/employees?unite=${encodeURIComponent(direction.shortName ?? direction.name)}`
+                  : null
+              }
+              onClose={() => setDirection(null)}
+            />
+          ) : null}
         </div>
       </div>
 

@@ -12,6 +12,15 @@ export interface DashboardDirectionHeadcount {
   shortName: string | null;
   /** Employés ACTIFS affectés à la direction ou à une unité en dessous. */
   headcount: number;
+  /** Son responsable, « Prénom Nom » ; null : aucun désigné. */
+  responsable: string | null;
+  /** La parité de ces agents. */
+  women: number;
+  men: number;
+  /** Leur âge moyen, en années révolues, à une décimale ; null : aucun connu. */
+  averageAge: number | null;
+  /** Combien ont une date de naissance connue. */
+  agesKnown: number;
 }
 
 export interface DashboardHoliday {

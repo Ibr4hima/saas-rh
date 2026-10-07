@@ -1477,6 +1477,38 @@ describe('le tableau de bord compte ce que ses listes montrent', () => {
     }
   });
 
+  it('la fiche d’une direction : son responsable, sa parité, son âge moyen', async () => {
+    const personne = (qui: Agent, genre: string, ans: number | null) =>
+      raw(
+        `UPDATE persons SET gender = $2,
+                birth_date = CASE WHEN $3::int IS NULL THEN NULL
+                                  ELSE CURRENT_DATE - make_interval(years => $3::int) END
+          WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+        [qui.employeeId, genre, ans],
+      );
+    try {
+      await personne(mariama, 'female', 50);
+      await personne(awa, 'female', 30);
+      await personne(khady, 'female', null);
+      await personne(binta, 'male', null);
+      const { headcountByDirection } = await chiffres(admin);
+      const de = (id: string) => headcountByDirection.find((x) => x.id === id);
+      expect(de(uDCH)).toMatchObject({
+        headcount: 4,
+        responsable: 'Mariama Test',
+        women: 3,
+        men: 1,
+        averageAge: 40,
+        agesKnown: 2,
+      });
+      expect(de(uDSID)).toMatchObject({ responsable: null, averageAge: null, agesKnown: 0 });
+    } finally {
+      await raw(`UPDATE persons SET gender = NULL, birth_date = NULL WHERE tenant_id = $1`, [
+        tenantId,
+      ]);
+    }
+  });
+
   it('le calendrier des absences : en cours et à venir, sur trente jours', async () => {
     const enCours = await enConge(moussa);
     const validee = async (debut: number) => {
