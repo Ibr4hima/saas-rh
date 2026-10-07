@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
 import { SCRIPT_AMORCAGE } from '../components/preferences';
+import { logoInstalle } from '../lib/logo-installe';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
@@ -37,7 +38,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
       </head>
       <body>
-        <Providers>{children}</Providers>
+        <Providers logo={logoInstalle()}>{children}</Providers>
       </body>
     </html>
   );

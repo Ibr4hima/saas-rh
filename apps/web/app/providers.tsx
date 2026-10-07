@@ -2,9 +2,17 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
+import { LogoContext } from '../components/brand-mark';
 import { ThemeProvider } from '../components/preferences';
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  logo,
+}: {
+  children: React.ReactNode;
+  /** Le logo installé, trouvé au serveur ; null sans fichier. */
+  logo: string | null;
+}) {
   const [client] = useState(
     () =>
       new QueryClient({
@@ -13,7 +21,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
   return (
     <QueryClientProvider client={client}>
-      <ThemeProvider>{children}</ThemeProvider>
+      <LogoContext.Provider value={logo}>
+        <ThemeProvider>{children}</ThemeProvider>
+      </LogoContext.Provider>
     </QueryClientProvider>
   );
 }

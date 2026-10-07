@@ -1,17 +1,16 @@
 'use client';
 
 import * as React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { cn } from '@teranga/ui';
 
 /**
- * Fichiers de logo essayés dans l'ordre. Le SVG passe en premier : c'est le
- * seul format qui reste net à toutes les tailles ET qui porte une vraie
- * transparence, donc le seul qui se pose sur le fond sans plaque blanche
- * derrière lui. Le PNG reste accepté pour ne pas casser une installation
- * existante ; sans aucun des deux, on retombe sur l'aplat de marque.
+ * L'adresse du logo installé, que le serveur a trouvé (cf.
+ * lib/logo-installe.ts) ; null sans fichier. Le navigateur n'essaie plus le
+ * SVG puis le PNG : une 404 arrivée avant l'hydratation se comptait deux
+ * fois, le PNG était sauté et « CH » prenait la place du logo.
  */
-const LOGO_SOURCES = ['/logo-apix.svg', '/logo-apix.png'];
+export const LogoContext = createContext<string | null>(null);
 
 /**
  * Marque de l'organisation, partagée par la barre latérale, l'en-tête mobile
@@ -31,40 +30,34 @@ export function BrandMark({
    */
   repli?: React.ReactNode;
 }) {
-  // Index dans LOGO_SOURCES ; au-delà de la liste, plus de fichier à tenter.
-  const [candidate, setCandidate] = useState(0);
-  // Une image qu'on n'a pas encore vue arriver ne se peint PAS.
-  //
-  // Le navigateur dessine sa propre vignette — l'icône de fichier cassé, plus
-  // le texte alternatif — dès qu'une source échoue. Sur une installation qui
-  // n'a que le PNG, le SVG essayé en premier rend 404 et cette vignette
-  // s'affichait une seconde avant la bascule. On garde donc l'image masquée
-  // tant qu'elle n'a pas réellement chargé : le temps d'essayer les sources,
-  // l'emplacement reste vide, ce que personne ne remarque.
-  const [charge, setCharge] = useState(false);
+  const src = useContext(LogoContext);
+  // Le fichier existe : il est là dès le HTML, visible sans attendre. Le
+  // repli ne vient que s'il ne se charge vraiment pas.
+  const [echec, setEchec] = useState(false);
   const img = useRef<HTMLImageElement>(null);
-  const src = LOGO_SOURCES[candidate];
 
-  // `onLoad` et `onError` ne suffisent pas. Sur une page rendue au serveur, le
-  // navigateur charge l'image AVANT que React n'ait attaché ses gestionnaires :
-  // l'événement est déjà passé et n'arrivera jamais. On relit donc l'état réel
-  // de l'image au montage — sans quoi, selon le cas, le repli ne viendrait
-  // jamais ou le logo resterait masqué pour toujours.
+  // Une erreur survenue avant l'hydratation n'arrive plus à `onError` : on
+  // relit l'image au montage. `decode()` et non `naturalWidth`, qui vaut 0
+  // pour un SVG sans dimensions dans certains navigateurs.
   useEffect(() => {
     const el = img.current;
     if (!el?.complete) return;
-    if (el.naturalWidth > 0) setCharge(true);
-    else setCandidate((i) => i + 1);
-  }, [candidate]);
+    let actif = true;
+    el.decode().catch(() => {
+      if (actif) setEchec(true);
+    });
+    return () => {
+      actif = false;
+    };
+  }, [src]);
 
-  if (src) {
+  if (src && !echec) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         ref={img}
         src={src}
         alt="Logo de l'organisation"
-        onLoad={() => setCharge(true)}
         className={cn(
           // La plaque est TRANSPARENTE en clair : le logo se pose directement
           // sur la barre. Elle réapparaît en sombre, faute de quoi un logo à
@@ -72,9 +65,6 @@ export function BrandMark({
           // Largeur imposée, hauteur libre plafonnée : un logo large occupe
           // toute la place offerte, un logo haut reste à sa mesure.
           'bg-[var(--tg-brand-plate)] object-contain',
-          // `invisible` et non `hidden` : l'élément garde sa place et reste
-          // dans l'arbre d'accessibilité, le lecteur d'écran l'annonce.
-          !charge && 'invisible',
           variant === 'full' && 'max-h-14 w-full rounded-lg px-1 py-0.5',
           // Sur le bandeau, le logo se pose en blanc pur : la plaque n'a plus
           // lieu d'être, et ses encres foncées disparaîtraient dans le bleu.
@@ -92,7 +82,7 @@ export function BrandMark({
           // sa largeur maximale et s'y centrerait, décollé du texte.
           variant === 'entete' && 'h-12 w-auto max-w-[200px] self-start bg-transparent',
         )}
-        onError={() => setCandidate((i) => i + 1)}
+        onError={() => setEchec(true)}
       />
     );
   }
