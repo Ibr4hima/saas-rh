@@ -134,6 +134,27 @@ const dateLongue = (iso: string) =>
     year: 'numeric',
   });
 
+/** Une adresse qui ne tient pas sur la ligne se coupe après l'arobase, pas au milieu d'un mot. */
+function Courriel({ adresse }: { adresse: string }) {
+  const arobase = adresse.indexOf('@');
+  return (
+    <a
+      href={`mailto:${adresse}`}
+      className="break-words transition-colors hover:text-primary hover:underline"
+    >
+      {arobase < 0 ? (
+        adresse
+      ) : (
+        <>
+          {adresse.slice(0, arobase + 1)}
+          <wbr />
+          {adresse.slice(arobase + 1)}
+        </>
+      )}
+    </a>
+  );
+}
+
 /**
  * La fiche d'un agent. `soi` : l'agent la lit dans son espace personnel —
  * « Mes infos personnelles » — la même fiche, sans les gestes de gestion, et
@@ -337,17 +358,10 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                 label="Email professionnel"
                 titre={e.workEmail ?? undefined}
                 valeur={
-                  e.workEmail ? (
-                    // Comme le numéro juste avant : une adresse qu'on ne peut
-                    // que recopier à la main est la seule donnée inerte d'une
-                    // bande qui sert à joindre quelqu'un.
-                    <a
-                      href={`mailto:${e.workEmail}`}
-                      className="break-all transition-colors hover:text-primary hover:underline"
-                    >
-                      {e.workEmail}
-                    </a>
-                  ) : null
+                  // Comme le numéro juste avant : une adresse qu'on ne peut
+                  // que recopier à la main est la seule donnée inerte d'une
+                  // bande qui sert à joindre quelqu'un.
+                  e.workEmail ? <Courriel adresse={e.workEmail} /> : null
                 }
               />
               <Repere label="Ancienneté" valeur={seniority(e.hiredOn, null, e.interruptions)}>
@@ -370,21 +384,12 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
               >
                 Arrivée le {formatDate(e.hiredOn)}
               </Repere>
+              {/* Parti, on ne le joint plus à l'APIX : son adresse personnelle. */}
               <Repere
-                label="Email professionnel"
-                titre={e.workEmail ?? undefined}
+                label="Email personnel"
+                titre={e.person.personalEmail ?? undefined}
                 valeur={
-                  e.workEmail ? (
-                    // Comme le numéro juste avant : une adresse qu'on ne peut
-                    // que recopier à la main est la seule donnée inerte d'une
-                    // bande qui sert à joindre quelqu'un.
-                    <a
-                      href={`mailto:${e.workEmail}`}
-                      className="break-all transition-colors hover:text-primary hover:underline"
-                    >
-                      {e.workEmail}
-                    </a>
-                  ) : null
+                  e.person.personalEmail ? <Courriel adresse={e.person.personalEmail} /> : null
                 }
               />
               <Repere
