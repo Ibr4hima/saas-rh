@@ -2,7 +2,6 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type {
   AbsenceRequestView,
@@ -335,16 +334,12 @@ function DirectionBar({
 function FicheDirection({
   direction: x,
   total,
-  versLePersonnel,
   onClose,
 }: {
   direction: DashboardDirectionHeadcount;
   total: number;
-  /** La liste du personnel filtrée sur elle ; absente, elle n'est pas ouverte à qui regarde. */
-  versLePersonnel: string | null;
   onClose: () => void;
 }) {
-  const router = useRouter();
   const part = total > 0 ? Math.round((x.headcount / total) * 100) : 0;
   return (
     <Modal
@@ -354,12 +349,7 @@ function FicheDirection({
       subtitle={x.shortName ?? undefined}
       maxWidth="max-w-lg"
       footer={
-        <div className="flex w-full justify-end gap-2">
-          {versLePersonnel && x.headcount > 0 ? (
-            <Button variant="secondary" onClick={() => router.push(versLePersonnel)}>
-              Voir les agents
-            </Button>
-          ) : null}
+        <div className="flex w-full justify-end">
           <Button onClick={onClose}>Fermer</Button>
         </div>
       }
@@ -740,13 +730,6 @@ export default function DashboardPage() {
             <FicheDirection
               direction={direction}
               total={d.activeEmployees}
-              // La liste du personnel, filtrée sur la direction : elle
-              // compte les mêmes agents que la barre.
-              versLePersonnel={
-                canManage
-                  ? `/employees?unite=${encodeURIComponent(direction.shortName ?? direction.name)}`
-                  : null
-              }
               onClose={() => setDirection(null)}
             />
           ) : null}
