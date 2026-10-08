@@ -200,7 +200,7 @@ export function FormationModal({
                 {agents.data?.map((a) => (
                   <option key={a.employeeId} value={a.employeeId}>
                     {a.nom}
-                    {a.poste ? ` — ${a.poste}` : ''}
+                    {a.poste ? ` · ${a.poste}` : ''}
                   </option>
                 ))}
               </Select>

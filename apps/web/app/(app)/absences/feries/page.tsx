@@ -255,7 +255,7 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
           titre="Retirer ce jour férié"
           nom={
             aSupprimer.day != null
-              ? `${aSupprimer.label} — ${formatDate(aSupprimer.day)}`
+              ? `${aSupprimer.label} · ${formatDate(aSupprimer.day)}`
               : aSupprimer.label
           }
           bouton="Retirer le jour"

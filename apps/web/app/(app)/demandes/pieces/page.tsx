@@ -107,7 +107,7 @@ export default function PiecesAVerifierPage() {
       url: apiUrl(`/employee-documents/${p.id}/content`),
       filename: p.filename,
       contentType: p.contentType,
-      titre: `${p.label} — ${p.employeeName}`,
+      titre: `${p.label} · ${p.employeeName}`,
     });
 
   // Ce que l'appelant peut vérifier — le directeur, tout, délégué ou non —,

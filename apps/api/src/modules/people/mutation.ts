@@ -218,7 +218,7 @@ export async function muter(
         422,
         'people.assignment_start_too_early',
         "La nouvelle affectation doit démarrer après le début de l'affectation courante",
-        `Affectation courante depuis le ${current.validFrom}`,
+        `L’affectation en cours a commencé le ${frDate(current.validFrom)} : la nouvelle commence au plus tôt le lendemain.`,
       );
     }
     await tx

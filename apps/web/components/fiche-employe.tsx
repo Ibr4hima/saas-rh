@@ -50,6 +50,7 @@ import { formatDate, useMe } from '../lib/hooks';
 import { aujourdhui } from '../lib/temps';
 import type { ConsequencesHierarchie, OrgUnit, OrgUnitView } from '@teranga/contracts';
 import { aDesConsequences, ListeConsequences } from './consequences-hierarchie';
+import { ChoixUnite, directionDe, libelleDUnite, parLibelle } from './choix-unite';
 import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { LoadFailure } from './load-failure';
 import { Page } from './gabarit';
@@ -217,6 +218,9 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
     !dernierContrat ||
     (dernierContrat.startDate <= jour &&
       (!dernierContrat.endDate || dernierContrat.endDate >= jour));
+  const enStage = e.contracts.some(
+    (c) => c.contractType === 'stage' && c.startDate <= jour && (!c.endDate || c.endDate >= jour),
+  );
 
   return (
     <Page>
@@ -492,6 +496,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
             managerId={e.managerId}
             genre={e.person.gender}
             dirige={e.responsabilites.unites}
+            enStage={enStage}
             canManage={peutGerer && actif}
           />
 
@@ -704,19 +709,6 @@ function CarteHistorique({
   );
 }
 
-/** La direction d'une unité : elle-même, ou sa plus proche aïeule de type direction. */
-function directionDe(unites: OrgUnit[], uniteId: string | null | undefined): OrgUnit | null {
-  let u = unites.find((x) => x.id === uniteId) ?? null;
-  // Une boucle d'unités d'avant la règle ne doit pas figer l'écran.
-  const vus = new Set<string>();
-  while (u && u.unitType !== 'direction' && !vus.has(u.id)) {
-    vus.add(u.id);
-    const parent: string | null = u.parentId;
-    u = unites.find((x) => x.id === parent) ?? null;
-  }
-  return u?.unitType === 'direction' ? u : null;
-}
-
 /**
  * L'affectation qui fait foi — en cours, sinon la prochaine —, comme au
  * serveur : un agent qui n'a pas encore pris son poste est déjà de sa
@@ -739,6 +731,7 @@ function AssignmentsCard({
   managerId,
   genre,
   dirige,
+  enStage,
   canManage,
 }: {
   employeeId: string;
@@ -748,6 +741,8 @@ function AssignmentsCard({
   genre: string | null;
   /** Les unités qu'il dirige : une personne n'en dirige qu'une. */
   dirige: EmployeeDetail['responsabilites']['unites'];
+  /** Les stagiaires ne dirigent pas d'unité. */
+  enStage: boolean;
   canManage: boolean;
 }) {
   const queryClient = useQueryClient();
@@ -794,6 +789,14 @@ function AssignmentsCard({
   // refusé par la règle.
   const unites = orgUnits.data ?? [];
   const actuelle = affectationEnVigueur(assignments);
+  // Ouverte, elle part de sa place actuelle : on change ce qui change.
+  useEffect(() => {
+    if (!open) return;
+    setOrgUnitId(actuelle?.orgUnitId ?? '');
+    setResponsable(false);
+    // Une fois par ouverture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   const directionActuelle = directionDe(unites, actuelle?.orgUnitId);
   const directionVisee = directionDe(unites, orgUnitId || null);
   const changeDeDirection =
@@ -820,8 +823,11 @@ function AssignmentsCard({
   const peutDesigner =
     peut(me.data, 'organigramme') &&
     Boolean(uniteVisee) &&
+    !enStage &&
     (!uniteVisee?.directionDuPersonnel || me.data?.role === 'admin');
-  const aLaTete = responsable && peutDesigner;
+  // Déjà à la tête de l'unité choisie : il l'est, la case ne se décoche pas.
+  const dejaALaTete = dirige.some((u) => u.id === orgUnitId);
+  const aLaTete = (responsable || dejaALaTete) && peutDesigner;
   const posteDeLaTete = aLaTete && uniteVisee ? posteDeResponsable(uniteVisee, genre) : '';
   // Désigné responsable, son n+1 est celui qu'impose sa place : il ne se
   // choisit pas.
@@ -833,6 +839,11 @@ function AssignmentsCard({
       ? uniteVisee
       : null;
   const dirigeAilleurs = aLaTete ? dirige.find((u) => u.id !== orgUnitId) : undefined;
+  // Même unité, même poste : rien ne change.
+  const inchangee =
+    Boolean(actuelle) &&
+    orgUnitId === (actuelle?.orgUnitId ?? '') &&
+    (aLaTete ? posteDeLaTete : positionTitle.trim()) === actuelle?.positionTitle;
   const aujourdhuiIso = new Date().toISOString().slice(0, 10);
   // Le directeur de la direction visée est son n+1 d'office : proposé d'emblée.
   const directeurVise = changeDeDirection ? n1DOffice(unites, orgUnitId || null, employeeId) : null;
@@ -888,38 +899,41 @@ function AssignmentsCard({
       </CardHeader>
       {open ? (
         <CardContent className="border-b border-line-soft">
-          {/* L'unité d'abord : c'est elle qui dit si l'on peut l'y désigner
-              responsable, et quel poste il y prend alors. */}
-          <div className="grid gap-3 sm:grid-cols-2 sm:items-start">
-            <div className="flex flex-col gap-2.5">
-              <Field label="Unité" htmlFor="asg-unit">
-                <Select
-                  id="asg-unit"
-                  value={orgUnitId}
-                  onChange={(ev) => setOrgUnitId(ev.target.value)}
-                >
-                  <option value="">Aucune</option>
-                  {orgUnits.data?.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              {peutDesigner ? (
-                <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-ink">
-                  <Checkbox
-                    checked={responsable}
-                    onChange={(ev) => setResponsable(ev.target.checked)}
-                  />
-                  Désigner comme responsable
-                </label>
-              ) : null}
-            </div>
+          {/* L'unité d'abord, de la direction au service : c'est elle qui dit
+              si l'on peut l'y désigner responsable, et quel poste il y prend
+              alors. La case vaut pour l'unité la plus précise choisie. */}
+          <div className="grid gap-3 sm:grid-cols-3 sm:items-start">
+            <ChoixUnite
+              unites={unites}
+              value={orgUnitId}
+              onChange={(id) => {
+                setOrgUnitId(id);
+                setResponsable(false);
+              }}
+              idPrefix="asg"
+              requis
+            />
+          </div>
+          {peutDesigner && uniteVisee ? (
+            <label
+              className={cn(
+                'mt-3 flex items-center gap-2.5 text-[13px] text-ink',
+                dejaALaTete ? 'cursor-default' : 'cursor-pointer',
+              )}
+            >
+              <Checkbox
+                checked={aLaTete}
+                disabled={dejaALaTete}
+                onChange={(ev) => setResponsable(ev.target.checked)}
+              />
+              Désigner comme{' '}
+              {posteDeResponsable(uniteVisee, null).replace(/^Responsable/, 'responsable')}
+            </label>
+          ) : null}
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:items-start">
             <Field label="Nouveau poste" htmlFor="asg-title" required={!aLaTete}>
               <Input
                 id="asg-title"
-                placeholder="Ex : Chef de service études"
                 value={aLaTete ? posteDeLaTete : positionTitle}
                 // Désigné responsable, son poste s'écrit tout seul : il se lit,
                 // il ne se saisit pas.
@@ -1012,6 +1026,8 @@ function AssignmentsCard({
               loading={create.isPending}
               disabled={
                 !startDate ||
+                !directionVisee ||
+                inchangee ||
                 (repreneurRequis && !repreneur) ||
                 (aLaTete
                   ? startDate > aujourdhuiIso ||
@@ -1955,7 +1971,7 @@ function NouveauContrat({
     enabled: ouvert,
   });
   const unites = orgUnits.data ?? [];
-  const directions = unites.filter((u) => u.unitType === 'direction');
+  const directions = parLibelle(unites.filter((u) => u.unitType === 'direction'));
   const derniere = [...assignments].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
   const [poste, setPoste] = useState('');
   const [directionId, setDirectionId] = useState('');
@@ -2134,7 +2150,7 @@ function NouveauContrat({
                 </option>
                 {directions.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.shortName ? `${d.shortName} · ${d.name}` : d.name}
+                    {libelleDUnite(d)}
                   </option>
                 ))}
               </Select>

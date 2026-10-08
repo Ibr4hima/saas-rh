@@ -3,13 +3,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { EmployeeListItem, EmployeeListPage, OrgUnitView } from '@teranga/contracts';
-import { orgUnitLabel } from '@teranga/contracts';
 import { Button, Checkbox, cn, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../lib/countries';
 import { contractEnd, maritalLabels, maxBirthDate } from '../lib/person';
 import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { formatDate } from '../lib/hooks';
+import { ChoixUnite, directionDe } from './choix-unite';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
 import { composeWorkEmail, WorkEmailInput } from './work-email-input';
@@ -57,7 +57,8 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   const [workPhoneCountry, setWorkPhoneCountry] = useState(DEFAULT_COUNTRY);
   const [workPhoneLocal, setWorkPhoneLocal] = useState('');
   const [positionTitle, setPositionTitle] = useState('');
-  const [directionId, setDirectionId] = useState('');
+  // L'unité d'affectation : la direction, ou un département ou un service de celle-ci.
+  const [uniteId, setUniteId] = useState('');
   // L'invitation au portail part dans la foulée, à l'adresse professionnelle
   // (sinon personnelle) : on la demande, cochée par défaut.
   const [inviter, setInviter] = useState(true);
@@ -66,8 +67,8 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
     queryKey: ['org-units'],
     queryFn: () => api<OrgUnitView[]>('/org-units'),
   });
-  const directions = (orgUnits.data ?? []).filter((u) => u.unitType === 'direction');
-  const directionChoisie = directions.find((u) => u.id === directionId);
+  const unites = orgUnits.data ?? [];
+  const directionChoisie = directionDe(unites, uniteId);
   // Les responsables possibles : ceux de la direction choisie, plus le
   // directeur général — de qui relève un directeur, et lui seul quand la
   // direction n'a pas encore de tête.
@@ -79,7 +80,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   // qu'avec un poste : sans direction ET poste, pas de n+1.
   const peutChoisirLeN1 = Boolean(directionChoisie) && positionTitle.trim().length > 0;
   // Le directeur coiffe sa direction : pourvue, il est le n+1 d'office.
-  const directeur = n1DOffice(orgUnits.data ?? [], directionId || null);
+  const directeur = n1DOffice(unites, uniteId || null);
 
   const needsDuration = contractType === 'cdd' || contractType === 'stage';
   const months = Number(durationMonths);
@@ -135,7 +136,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
           assignment: positionTitle.trim()
             ? {
                 positionTitle: positionTitle.trim(),
-                orgUnitId: directionId || undefined,
+                orgUnitId: uniteId || undefined,
                 startDate: contractStart,
               }
             : undefined,
@@ -398,27 +399,23 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               onChange={(e) => setPositionTitle(e.target.value)}
             />
           </Field>
-          <Field label="Direction affectée" htmlFor="directionId">
-            <Select
-              id="directionId"
-              value={directionId}
-              onChange={(e) => {
-                // Le responsable appartenait à l'ancienne direction : le
-                // garder ferait échouer l'enregistrement sur une règle qu'on
-                // vient de rendre fausse sous ses pieds. Le directeur de la
-                // nouvelle le remplace d'office.
-                setDirectionId(e.target.value);
-                setManagerId(n1DOffice(orgUnits.data ?? [], e.target.value || null) ?? '');
-              }}
-            >
-              <option value="">—</option>
-              {directions.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {orgUnitLabel(u)}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <ChoixUnite
+            unites={unites}
+            value={uniteId}
+            onChange={(id) => {
+              // Le responsable appartenait à l'ancienne direction : le
+              // garder ferait échouer l'enregistrement sur une règle qu'on
+              // vient de rendre fausse sous ses pieds. Le directeur de la
+              // nouvelle le remplace d'office.
+              if (directionDe(unites, id)?.id !== directionChoisie?.id) {
+                setManagerId(n1DOffice(unites, id || null) ?? '');
+              }
+              setUniteId(id);
+            }}
+            idPrefix="creation"
+            libelle="Direction affectée"
+            vide="—"
+          />
           <Field
             label="Responsable hiérarchique (n+1)"
             htmlFor="managerId"
@@ -440,7 +437,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.nom}
-                  {m.poste ? ` — ${m.poste}` : ''}
+                  {m.poste ? ` · ${m.poste}` : ''}
                 </option>
               ))}
             </Select>

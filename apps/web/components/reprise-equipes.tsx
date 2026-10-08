@@ -80,7 +80,7 @@ function LigneReprise({
   const id = `repreneur-${agent.id}`;
   return (
     <Field
-      label={`${agent.givenName} ${agent.familyName} — ${reste > 1 ? `${reste} agents` : 'un agent'}`}
+      label={`${agent.givenName} ${agent.familyName} · ${reste > 1 ? `${reste} agents` : 'un agent'}`}
       htmlFor={id}
       required
       hint={direction ? `Son équipe reste dans ${direction}.` : undefined}
@@ -90,7 +90,7 @@ function LigneReprise({
         {possibles.map((m) => (
           <option key={m.id} value={m.id}>
             {m.nom}
-            {m.poste ? ` — ${m.poste}` : ''}
+            {m.poste ? ` · ${m.poste}` : ''}
           </option>
         ))}
       </Select>
