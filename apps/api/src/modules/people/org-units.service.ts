@@ -27,6 +27,7 @@ import {
   apresNouveauDG,
   apresNouveauDirecteur,
   directeurGeneral,
+  directionDeLUnite,
   perimetre,
   placesDesChefs,
   SOMMET,
@@ -900,21 +901,42 @@ export class OrgUnitsService {
   }
 
   /**
-   * Un responsable doit être un employé ACTIF, hors stage, et travailler dans le
-   * PÉRIMÈTRE de l'unité qu'il dirige — elle ou ce qui en descend, sans ses
-   * sous-directions, qui ont leur propre tête — sans mutation déjà
-   * programmée ailleurs. Sans quoi l'organigramme affiche un chef parti
-   * ailleurs, et ses agents relèvent d'une autre direction que la leur.
+   * Où se choisit le responsable d'une unité : dans sa direction, sans les
+   * sous-directions, qui ont leur propre tête. Le chef d'un département ou
+   * d'un service vient de n'importe quelle unité de la direction, et sa
+   * désignation l'affecte à celle qu'il dirige (cf. `inscrireLaPassation`) ;
+   * un directeur vient de sa direction, le DG de la Direction Générale.
+   */
+  private async directionDuChoix(tx: Tx, unitId: string): Promise<{ id: string; nom: string }> {
+    const { rows } = await tx.execute<{ id: string | null; nom: string | null }>(sql`
+      SELECT ${directionDeLUnite(sql`${unitId}::uuid`, 'id')} AS id,
+             ${directionDeLUnite(sql`${unitId}::uuid`, 'name')} AS nom`);
+    if (rows[0]?.id) return { id: rows[0].id, nom: rows[0].nom ?? '' };
+    // Une unité d'avant la règle, sans direction au-dessus : la sienne.
+    const [u] = await tx
+      .select({ nom: t.orgUnits.name })
+      .from(t.orgUnits)
+      .where(eq(t.orgUnits.id, unitId))
+      .limit(1);
+    return { id: unitId, nom: u?.nom ?? '' };
+  }
+
+  /**
+   * Un responsable doit être un employé ACTIF, hors stage, et travailler dans
+   * la direction de l'unité qu'il dirige, sans mutation déjà programmée
+   * ailleurs. Sans quoi l'organigramme affiche un chef parti ailleurs, et ses
+   * agents relèvent d'une autre direction que la leur.
    */
   private async assertManagerEligible(tx: Tx, unitId: string, employeeId: string): Promise<void> {
     await this.assertEmployeActif(tx, employeeId);
     await exigerHorsStage(tx, employeeId);
-    if (await sortDuPerimetre(tx, employeeId, unitId)) {
+    const direction = await this.directionDuChoix(tx, unitId);
+    if (await sortDuPerimetre(tx, employeeId, direction.id)) {
       problem(
         422,
         'org.manager_outside_unit',
-        'Un responsable doit travailler dans l’unité qu’il dirige',
-        'Affectez-le d’abord à cette unité, ou à une unité qui en dépend, sans mutation programmée ailleurs.',
+        'Le responsable se choisit dans la direction de l’unité',
+        `Le responsable de cette unité se choisit parmi les agents de « ${direction.nom} » : affectez-le d’abord à cette direction, sans mutation programmée ailleurs.`,
       );
     }
   }
@@ -960,13 +982,15 @@ export class OrgUnitsService {
 
   /**
    * Qui peut diriger cette unité : exactement l'ensemble qu'accepte
-   * `assertManagerEligible` — le formulaire ne doit pas proposer ce que le
-   * serveur refusera. Actifs, hors stage, affectés dans le périmètre, sans
-   * mutation programmée ailleurs, et qui ne dirigent pas déjà une autre unité.
+   * `assertManagerEligible`, le formulaire ne doit pas proposer ce que le
+   * serveur refusera. Actifs, hors stage, affectés dans la direction de
+   * l'unité, sans mutation programmée ailleurs, et qui ne dirigent pas déjà
+   * une autre unité : le directeur ne dirige pas aussi un département.
    */
   async eligibleManagers(user: SessionUser, id: string): Promise<OrgUnitMember[]> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await this.requireUnit(tx, id, 'org.unit_not_found');
+      const direction = await this.directionDuChoix(tx, id);
       const rows = await tx.execute<{
         employee_id: string;
         employee_number: string;
@@ -975,7 +999,7 @@ export class OrgUnitsService {
         position_title: string | null;
         depuis: string;
       }>(sql`
-        ${perimetre(id)}
+        ${perimetre(direction.id)}
         SELECT e.id AS employee_id, e.employee_number, p.given_name, p.family_name,
                a.position_title, lower(a.validity)::text AS depuis
         FROM assignments a

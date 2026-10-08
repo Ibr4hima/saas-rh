@@ -311,6 +311,55 @@ describe('à la relève d’un chef, ses agents directs passent au nouveau', () 
   });
 });
 
+describe('le responsable se choisit dans la direction', () => {
+  /** Son affectation du jour : l'unité et le poste. */
+  async function place(employeeId: string): Promise<{ unite: string; poste: string }> {
+    const { rows } = await raw(
+      `SELECT org_unit_id AS unite, position_title AS poste FROM assignments
+        WHERE employee_id = $1 AND validity @> CURRENT_DATE`,
+      [employeeId],
+    );
+    return rows[0] as { unite: string; poste: string };
+  }
+
+  it('un département vide : un agent de la direction en prend la tête, et y est affecté', async () => {
+    const { directeur } = await laTete();
+    const x = await agent('X', uCourrier);
+    await nommer(uEtudes, x);
+    // Sans genre connu, l'intitulé reste neutre.
+    expect(await place(x)).toEqual({ unite: uEtudes, poste: 'Responsable du département Études' });
+    expect(await n1(x)).toBe(directeur);
+  });
+
+  it('chef d’un service rattaché au département : affecté au service, sous le chef du département', async () => {
+    await laTete();
+    const chefEtudes = await agent('ETUDES', uEtudes);
+    await nommer(uEtudes, chefEtudes);
+    const y = await agent('Y', uDGT);
+    await nommer(uCompta, y);
+    expect((await place(y)).unite).toBe(uCompta);
+    expect(await n1(y)).toBe(chefEtudes);
+  });
+
+  it('ni le directeur, ni un agent d’une autre direction', async () => {
+    const { dg, directeur } = await laTete();
+    expect(await codeOf(() => nommer(uEtudes, directeur))).toBe('org.manager_already_assigned');
+    const ailleurs = await agent('AILLEURS', uDG, dg);
+    expect(await codeOf(() => nommer(uEtudes, ailleurs))).toBe('org.manager_outside_unit');
+  });
+
+  it('la liste propose toute la direction, sans qui dirige déjà une unité', async () => {
+    const { dg } = await laTete();
+    const chefEtudes = await agent('ETUDES', uEtudes);
+    await nommer(uEtudes, chefEtudes);
+    await agent('COURRIER', uCourrier);
+    await agent('DGT', uDGT);
+    await agent('AILLEURS', uDG, dg);
+    const candidats = await organigramme.eligibleManagers(user, uCompta);
+    expect(candidats.map((c) => c.employeeNumber).sort()).toEqual(['COURRIER', 'DGT']);
+  });
+});
+
 describe('le n+1 d’un chef ne se choisit pas', () => {
   it('refusé dans la fiche, accepté pour le responsable au-dessus', async () => {
     const { directeur } = await laTete();

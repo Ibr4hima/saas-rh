@@ -560,7 +560,9 @@ describe('avant même le passage, un contrat échu ferme les portes', () => {
   it('la liste de qui peut diriger une unité ne propose pas un contrat échu', async () => {
     await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [uCompta]);
     const candidats = await unites.eligibleManagers(admin, uCompta);
-    expect(candidats.map((c) => c.givenName)).toEqual(['Ibou']);
+    // Toute la direction financière, sauf Fatou (contrat échu) et Omar, qui
+    // la dirige.
+    expect(candidats.map((c) => c.givenName)).toEqual(['Ibou', 'Moussa']);
   });
 });
 

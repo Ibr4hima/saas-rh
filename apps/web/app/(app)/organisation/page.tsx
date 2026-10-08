@@ -265,6 +265,10 @@ function UnitPanel({
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
       void queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
+      // Désigné, le responsable est affecté à l'unité : les membres et les
+      // candidats changent, ici comme dans l'unité qu'il quitte.
+      void queryClient.invalidateQueries({ queryKey: ['org-unit-members'] });
+      void queryClient.invalidateQueries({ queryKey: ['org-unit-eligible-managers'] });
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
@@ -307,6 +311,7 @@ function UnitPanel({
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
       void queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
+      void queryClient.invalidateQueries({ queryKey: ['org-unit-members'] });
       onClose();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Suppression impossible.'),
@@ -316,8 +321,8 @@ function UnitPanel({
     queryKey: ['org-unit-members', unit.id],
     queryFn: () => api<OrgUnitMember[]>(`/org-units/${unit.id}/members`),
   });
-  // Le responsable doit travailler dans l'unité ou en dessous : proposer tout
-  // le tenant, c'était offrir 69 noms pour 2 choix légaux — et faire découvrir
+  // Le responsable se choisit dans la direction de l'unité : proposer tout le
+  // tenant, c'était offrir des noms que le serveur refuse, et faire découvrir
   // la règle par un 422. Même principe que pour le rattachement.
   const eligible = useQuery({
     queryKey: ['org-unit-eligible-managers', unit.id],

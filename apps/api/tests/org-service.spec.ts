@@ -343,10 +343,21 @@ describe('responsable', () => {
     ).not.toContain('STAGE-DG');
   });
 
-  it('ne propose comme éligibles que le sous-arbre actif', async () => {
+  it('propose les agents de la direction de l’unité, pas ceux des autres', async () => {
     await creerEmploye('ETR-2', autreDirection);
-    const eligibles = await service.eligibleManagers(user, departement);
-    expect(eligibles.map((e) => e.employeeNumber)).toEqual(['CHEF-1']);
+    await creerEmploye('MERE-1', direction);
+    const numeros = async (unite: string) =>
+      (await service.eligibleManagers(user, unite)).map((e) => e.employeeNumber);
+    expect(await numeros(departement)).toEqual(['CHEF-1', 'MERE-1']);
+    // CHEF-1 dirige déjà le département : il ne dirige pas aussi le service.
+    expect(await numeros(serviceUnit)).toEqual(['MERE-1']);
+  });
+
+  it('refuse un agent d’une autre direction à la tête d’un département', async () => {
+    const etranger = await creerEmploye('ETR-3', autreDirection);
+    expect(
+      await codeOf(() => service.update(user, serviceUnit, { managerEmployeeId: etranger })),
+    ).toBe('org.manager_outside_unit');
   });
 });
 
