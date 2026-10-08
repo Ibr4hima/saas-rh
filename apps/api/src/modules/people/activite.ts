@@ -11,12 +11,15 @@ import { administrateursEnFonction, alerterLaDCH } from '../acces/dch';
 import { CONTRAT } from '../notifications/phrases';
 import { reconcilierDemande, reconcilierLeCircuit, reconcilierReprise } from '../time/visas';
 import {
+  alignerLesChefs,
   apresNouveauDG,
   apresNouveauDirecteur,
   directionDeEmploye,
   directionDeLUnite,
   equipeDe,
   n1DOffice,
+  placesDesChefs,
+  type PlaceDeChef,
   rattacher,
   rattacherDOffice,
   SOMMET,
@@ -220,8 +223,10 @@ export type CeQuIlALaisse = {
  * responsable, qu'il travaille dans leur périmètre (avec ce que la règle
  * impose à un directeur ou au DG) et qu'il ne revient pas en stage ; avec elles, son équipe, pour ceux qui
  * sont encore là où son départ les avait mis. Sans unité à diriger, son
- * équipe ne revient que si la RH l'a choisi. À appeler une fois le dossier
- * redevenu actif. Rend les unités choisies qu'il n'a pas pu reprendre.
+ * équipe ne revient que si la RH l'a choisi. Chef d'un département ou d'un
+ * service, il relève de l'unité au-dessus de la sienne, et les chefs des
+ * unités qu'elle coiffe relèvent de lui (règle 3 bis). À appeler une fois le
+ * dossier redevenu actif. Rend les unités choisies qu'il n'a pas pu reprendre.
  */
 export async function retrouverSaPlace(
   tx: Tx,
@@ -237,6 +242,7 @@ export async function retrouverSaPlace(
     sql`SELECT ${enStage(employeeId)} AS stage`,
   );
   const stagiaire = Boolean(contrat[0]?.stage);
+  let chefsAvant: Map<string, PlaceDeChef> | null = null;
   for (const uniteId of laisse.unites.filter((u) => choix.unites.includes(u))) {
     const { rows } = await tx.execute<{
       nom: string;
@@ -253,6 +259,7 @@ export async function retrouverSaPlace(
       refusees.push({ id: uniteId, nom: u.nom });
       continue;
     }
+    chefsAvant ??= await placesDesChefs(tx);
     await tx.execute(sql`
       UPDATE org_units SET manager_employee_id = ${employeeId}, updated_at = now()
        WHERE id = ${uniteId}`);
@@ -275,6 +282,7 @@ export async function retrouverSaPlace(
     }
     await rattacher(tx, journal, m.id, employeeId, 'retour_du_responsable');
   }
+  if (chefsAvant) await alignerLesChefs(tx, journal, chefsAvant);
   return refusees;
 }
 

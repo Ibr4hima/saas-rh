@@ -88,7 +88,8 @@ export function useResponsablesPossibles(
 
 /**
  * Le n+1 d'office — la règle du serveur, lue sur l'organigramme : le
- * directeur coiffe sa direction. Pour un directeur, le DG ; sinon le
+ * directeur coiffe sa direction. Pour un directeur, le DG ; pour le chef d'un
+ * département ou d'un service, l'unité au-dessus de la sienne ; sinon le
  * responsable de la direction de l'unité (le DG pour la Direction Générale).
  * `null` : l'agent est le DG, l'unité n'a pas de direction, ou la direction
  * attend sa tête — le n+1 reste alors à choisir.
@@ -109,6 +110,9 @@ export function n1DOffice(
   ) {
     return dg;
   }
+  // Le chef d'un département ou d'un service : l'unité au-dessus de la sienne.
+  const impose = agentId ? superieurImpose(unites, agentId) : undefined;
+  if (impose !== undefined) return impose?.id ?? null;
   let u = unites.find((x) => x.id === uniteId) ?? null;
   const vus = new Set<string>();
   while (u && u.unitType !== 'direction' && !vus.has(u.id)) {
@@ -118,4 +122,34 @@ export function n1DOffice(
   }
   const tete = u?.unitType === 'direction' ? u.managerEmployeeId : null;
   return tete && tete !== agentId ? tete : null;
+}
+
+/**
+ * Le n+1 qu'impose sa place au chef d'un département ou d'un service, lu sur
+ * l'organigramme comme le serveur le lit : en remontant depuis l'unité qu'il
+ * dirige, le premier responsable, jusqu'à la direction comprise, puis le DG
+ * quand elle attend sa tête. `undefined` : il ne dirige ni département ni
+ * service ; `null` : personne au-dessus de lui.
+ */
+export function superieurImpose(
+  unites: OrgUnitView[],
+  agentId: string,
+): OptionResponsable | null | undefined {
+  const dirigee = unites.find((u) => u.managerEmployeeId === agentId && u.unitType !== 'direction');
+  if (!dirigee) return undefined;
+  let u = unites.find((x) => x.id === dirigee.parentId) ?? null;
+  const vus = new Set<string>();
+  while (u && !vus.has(u.id)) {
+    vus.add(u.id);
+    if (u.managerEmployeeId && u.managerEmployeeId !== agentId && u.managerName) {
+      return { id: u.managerEmployeeId, nom: u.managerName, poste: u.managerPosition };
+    }
+    if (u.unitType === 'direction') break;
+    const parent: string | null = u.parentId;
+    u = unites.find((x) => x.id === parent) ?? null;
+  }
+  const sommet = unites.find((x) => x.sommet);
+  return sommet?.managerEmployeeId && sommet.managerName && sommet.managerEmployeeId !== agentId
+    ? { id: sommet.managerEmployeeId, nom: sommet.managerName, poste: sommet.managerPosition }
+    : null;
 }

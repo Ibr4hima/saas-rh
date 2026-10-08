@@ -7,7 +7,7 @@ import {
   type SessionUser,
 } from '@teranga/contracts';
 import { TenantDb, type Tx } from '../../db/tenant-db';
-import { DG, SOMMET, uniteEnVigueur } from './chaine';
+import { DG, placesDesChefs, SOMMET, uniteEnVigueur } from './chaine';
 import { classerAnomalies, compterParType, type LigneHierarchie } from './hierarchie';
 
 /* ————————————————————————————————————————————————————————————————
@@ -91,6 +91,12 @@ export class HierarchieService {
  */
 export async function lireLaChaine(tx: Tx) {
   const lignes = await photo(tx);
+  // Les chefs de département et de service : le n+1 que leur place impose.
+  const places = await placesDesChefs(tx);
+  for (const l of lignes) {
+    const place = places.get(l.employeeId);
+    if (place) l.superieurAttendu = place.superieur?.id ?? null;
+  }
   // Le directeur général est le responsable de l'unité RACINE. Il n'est
   // pas désigné par un rôle ni par une case à cocher : l'organigramme le
   // dit déjà, et deux sources se contrediraient.

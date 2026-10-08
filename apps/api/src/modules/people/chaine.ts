@@ -36,6 +36,10 @@ import { exigerEnActivite } from './en-activite';
         comme pour son n+1 ;
      3. le n+1 est de la même direction — sauf pour un directeur, qui relève
         du DG, et pour l'agent d'une direction sans tête, que le DG couvre ;
+     3 bis. le chef d'un département ou d'un service relève du responsable
+        de l'unité qui coiffe la sienne : le chef du département pour un
+        service qui en dépend, sinon le directeur, et le DG quand la
+        direction attend sa tête. Son n+1 ne se choisit pas ;
      4. pas de boucle, et un n+1 actif ;
      5. le directeur coiffe sa direction : qui n'y a pas de n+1 relève
         d'office de lui (le DG, à la Direction Générale ; le DG, pour un
@@ -220,6 +224,21 @@ export async function validerRattachement(
     return;
   }
 
+  // Le chef d'un département ou d'un service relève de l'unité qui coiffe
+  // la sienne (règle 3 bis) : son n+1 ne se choisit pas.
+  const place = await superieurAttendu(tx, employeeId);
+  if (place?.superieur) {
+    if (managerId !== place.superieur.id) {
+      problem(
+        422,
+        'people.chef_mal_rattache',
+        `Le responsable de « ${place.unite} » relève de ${place.superieur.nom}`,
+        `Le responsable de « ${place.unite} » relève de ${place.superieur.nom}, qui dirige « ${place.superieur.unite} », l’unité au-dessus de la sienne.`,
+      );
+    }
+    return;
+  }
+
   if (directionDuResponsable.id === directionCible.id) return;
 
   // ——— Une direction SANS directeur n'a personne d'autre au-dessus que le
@@ -343,6 +362,102 @@ export async function sortDuPerimetre(
   return !r?.dedans || Boolean(r.ailleurs);
 }
 
+/** La place du chef d'un département ou d'un service, et le n+1 qu'elle lui impose. */
+export interface PlaceDeChef {
+  /** Le nom de l'unité qu'il dirige. */
+  unite: string;
+  /** Son n+1, et l'unité qu'il dirige ; `null` : personne au-dessus de lui. */
+  superieur: { id: string; nom: string; unite: string } | null;
+}
+
+/**
+ * Les chefs de département et de service, et le n+1 que leur impose leur
+ * place (règle 3 bis) : en remontant depuis l'unité qu'ils dirigent, le
+ * premier responsable actif, jusqu'à la direction comprise, puis le DG
+ * quand elle attend sa tête. En une requête : l'organigramme compare
+ * l'avant et l'après d'une opération. `chef` : celui-là seulement.
+ */
+export async function placesDesChefs(tx: Tx, chef?: string): Promise<Map<string, PlaceDeChef>> {
+  const { rows } = await tx.execute<{
+    chef: string;
+    unite: string;
+    superieur: string | null;
+    superieur_nom: string | null;
+    superieur_unite: string | null;
+  }>(sql`
+    WITH RECURSIVE montee AS (
+      SELECT u.id AS unite, u.name AS unite_nom, u.manager_employee_id AS chef,
+             p.id AS anc, p.unit_type AS anc_type, p.parent_id AS anc_parent, 1 AS prof
+        FROM org_units u
+        JOIN org_units p ON p.id = u.parent_id AND p.deleted_at IS NULL
+       WHERE u.deleted_at IS NULL AND u.unit_type <> 'direction'
+         AND u.manager_employee_id IS NOT NULL
+         ${chef ? sql`AND u.manager_employee_id = ${chef}` : sql``}
+      UNION ALL
+      SELECT m.unite, m.unite_nom, m.chef, p.id, p.unit_type, p.parent_id, m.prof + 1
+        FROM montee m
+        JOIN org_units p ON p.id = m.anc_parent AND p.deleted_at IS NULL
+       WHERE m.anc_type <> 'direction' AND m.prof < 64
+    ),
+    pourvue AS (
+      SELECT DISTINCT ON (m.unite) m.unite, a.manager_employee_id AS superieur,
+             a.name AS superieur_unite
+        FROM montee m
+        JOIN org_units a ON a.id = m.anc
+        JOIN employees e ON e.id = a.manager_employee_id AND e.status = 'active'
+       WHERE a.manager_employee_id <> m.chef
+       ORDER BY m.unite, m.prof
+    ),
+    place AS (
+      SELECT DISTINCT ON (m.unite) m.chef, m.unite_nom,
+             COALESCE(pv.superieur, NULLIF(${DG}, m.chef)) AS superieur,
+             COALESCE(pv.superieur_unite, (SELECT so.name FROM org_units so WHERE so.id = ${SOMMET}))
+               AS superieur_unite
+        FROM montee m
+        LEFT JOIN pourvue pv ON pv.unite = m.unite
+       ORDER BY m.unite
+    )
+    SELECT pl.chef, pl.unite_nom AS unite, pl.superieur,
+           sp.given_name || ' ' || sp.family_name AS superieur_nom, pl.superieur_unite
+      FROM place pl
+      LEFT JOIN employees se ON se.id = pl.superieur
+      LEFT JOIN persons sp ON sp.id = se.person_id`);
+  return new Map(
+    rows.map((r) => [
+      r.chef,
+      {
+        unite: r.unite,
+        superieur: r.superieur
+          ? { id: r.superieur, nom: r.superieur_nom ?? '', unite: r.superieur_unite ?? '' }
+          : null,
+      },
+    ]),
+  );
+}
+
+/** Sa place de chef d'un département ou d'un service ; `null` : il n'en dirige pas. */
+export async function superieurAttendu(tx: Tx, employeeId: string): Promise<PlaceDeChef | null> {
+  return (await placesDesChefs(tx, employeeId)).get(employeeId) ?? null;
+}
+
+/**
+ * Après une opération sur l'organigramme : le chef dont le supérieur a
+ * changé (nouvelle désignation, responsable retiré, unité re-rattachée), ou
+ * qui vient de prendre la tête d'une unité, relève désormais de celui-ci.
+ * Un rattachement faux d'avant l'opération, qu'elle ne touche pas, reste
+ * signalé par le contrôle.
+ */
+export async function alignerLesChefs(
+  tx: Tx,
+  journal: ChangementRattachement[],
+  avant: Map<string, PlaceDeChef>,
+): Promise<void> {
+  for (const [chef, place] of await placesDesChefs(tx)) {
+    if (!place.superieur || avant.get(chef)?.superieur?.id === place.superieur.id) continue;
+    await tenterRattachement(tx, journal, chef, place.superieur.id, 'chef_d_unite');
+  }
+}
+
 // ———————————————————————————————————————————— équipes et cascades
 
 /**
@@ -458,9 +573,10 @@ async function sansN1DansLaDirection(tx: Tx, directionId: string | SQL): Promise
 
 /**
  * Le n+1 qui revient d'office à un agent qui n'en a pas (règle 5) : pour un
- * directeur, le DG ; sinon le responsable ACTIF de sa direction — le DG pour
- * la Direction Générale. `null` : il est le DG, il n'a pas de direction, ou
- * sa direction attend sa tête.
+ * directeur, le DG ; pour le chef d'un département ou d'un service, le
+ * responsable de l'unité au-dessus (règle 3 bis) ; sinon le responsable ACTIF
+ * de sa direction, le DG pour la Direction Générale. `null` : il est le DG,
+ * il n'a pas de direction, ou personne n'est au-dessus de lui.
  */
 export async function n1DOffice(
   tx: Tx,
@@ -469,6 +585,9 @@ export async function n1DOffice(
   const dg = await directeurGeneral(tx);
   if (employeeId === dg) return null;
   if (await dirigeUneDirection(tx, employeeId)) return dg ? { id: dg, motif: 'directeur' } : null;
+  // Le chef d'un département ou d'un service : l'unité qui coiffe la sienne.
+  const place = await superieurAttendu(tx, employeeId);
+  if (place) return place.superieur ? { id: place.superieur.id, motif: 'chef_d_unite' } : null;
   const direction = await directionDeEmploye(tx, employeeId);
   if (!direction) return null;
   const { rows } = await tx.execute<{ id: string }>(sql`

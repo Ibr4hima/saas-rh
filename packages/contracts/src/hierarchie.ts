@@ -1,12 +1,15 @@
 /**
  * La chaîne hiérarchique, et son contrôle.
  *
- * Deux règles, décidées avec l'APIX :
+ * Trois règles, décidées avec l'APIX :
  *
  *   1. TOUT agent actif a un responsable (n+1) — sauf le directeur général,
  *      qui n'en a pas dans l'agence (il répond au conseil d'administration).
  *   2. Ce responsable appartient à la MÊME DIRECTION que l'agent. L'exception
  *      est le directeur lui-même : son n+1 est le directeur général.
+ *   3. Le chef d'un département ou d'un service relève du responsable de
+ *      l'unité au-dessus de la sienne : le chef du département pour un
+ *      service qui en dépend, sinon le directeur.
  *
  * Elles ne sont pas décoratives : tout le module d'évaluation en dépend. Une
  * campagne ouverte sur un effectif où trente agents n'ont pas de n+1, c'est
@@ -34,6 +37,11 @@ export type TypeAnomalieHierarchie =
   | 'dg_hors_direction_generale'
   /** Un directeur dont le n+1 n'est pas le directeur général. */
   | 'directeur_mal_rattache'
+  /**
+   * Le chef d'un département ou d'un service dont le n+1 n'est pas le
+   * responsable de l'unité au-dessus de la sienne.
+   */
+  | 'chef_mal_rattache'
   /** Le n+1 appartient à une autre direction. */
   | 'hors_direction'
   /** Sans affectation : la règle de direction n'est pas vérifiable. */
@@ -90,6 +98,8 @@ export type MotifChangement =
   | 'ancien_dg'
   /** Rattaché au DG le temps que sa direction ait une tête : relève du directeur. */
   | 'direction_pourvue'
+  /** Le chef d'un département ou d'un service relève de l'unité au-dessus de la sienne. */
+  | 'chef_d_unite'
   /** L'ancien directeur, resté dans la direction, relève du nouveau. */
   | 'ancien_directeur'
   /** L'équipe d'un agent qui part passe à son repreneur. */

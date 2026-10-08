@@ -823,8 +823,8 @@ function AssignmentsCard({
     (!uniteVisee?.directionDuPersonnel || me.data?.role === 'admin');
   const aLaTete = responsable && peutDesigner;
   const posteDeLaTete = aLaTete && uniteVisee ? posteDeResponsable(uniteVisee, genre) : '';
-  // Un directeur relève du directeur général : son n+1 ne se choisit pas.
-  const dirigeraUneDirection = aLaTete && uniteVisee?.unitType === 'direction';
+  // Désigné responsable, son n+1 est celui qu'impose sa place : il ne se
+  // choisit pas.
   const ancien =
     aLaTete &&
     uniteVisee?.managerEmployeeId &&
@@ -854,9 +854,7 @@ function AssignmentsCard({
           ...(aLaTete ? { responsable: true } : { positionTitle }),
           orgUnitId: orgUnitId || undefined,
           startDate,
-          ...(changeDeDirection && nouveauN1 && !dirigeraUneDirection
-            ? { managerEmployeeId: nouveauN1 }
-            : {}),
+          ...(changeDeDirection && nouveauN1 && !aLaTete ? { managerEmployeeId: nouveauN1 } : {}),
           ...(repreneurRequis && repreneur ? { repreneurEquipeId: repreneur } : {}),
           ...(ancien ? { posteDeLAncien: posteAncien.trim() } : {}),
         },
@@ -962,7 +960,7 @@ function AssignmentsCard({
                 />
               </Field>
             ) : null}
-            {changeDeDirection && directionVisee && !dirigeraUneDirection ? (
+            {changeDeDirection && directionVisee && !aLaTete ? (
               <Field label="Nouveau n+1" htmlFor="asg-n1" hint={`Dans ${libelle(directionVisee)}.`}>
                 <Select
                   id="asg-n1"

@@ -61,6 +61,11 @@ export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: 
     court: 'Directeur mal rattaché',
     explication: 'Un directeur relève du directeur général, de personne d’autre.',
   },
+  chef_mal_rattache: {
+    court: 'Chef mal rattaché',
+    explication:
+      'Le responsable d’un département ou d’un service relève du responsable de l’unité au-dessus de la sienne.',
+  },
   hors_direction: {
     court: 'Autre direction',
     explication: 'Son responsable appartient à une autre direction que la sienne.',

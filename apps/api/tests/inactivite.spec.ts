@@ -2314,6 +2314,83 @@ describe('les invitations partent d’elles-mêmes', () => {
       );
     });
 
+    it('revenue cheffe de service, elle relève du directeur nommé pendant son absence', async () => {
+      await inactiver();
+      // Moussa prend la Direction Financière ; Omar y reste, conseiller.
+      await unites.update(admin, uDFC, {
+        managerEmployeeId: moussa.employeeId,
+        posteDeLAncien: 'Conseiller',
+      });
+      expect(await n1De(fatou)).toBe(omar.employeeId);
+
+      const r = await rh.newContract(admin, fatou.employeeId, {
+        contractType: 'cdi',
+        startDate: await jour(0),
+        affectation: await placeDe(fatou),
+        reprendre: { unites: [uCompta], equipe: false },
+      });
+      expect(await chefDe(uCompta)).toBe(fatou.employeeId);
+      expect(await n1De(fatou)).toBe(moussa.employeeId);
+      expect(r.changements).toContainEqual(
+        expect.objectContaining({ employeeId: fatou.employeeId, motif: 'chef_d_unite' }),
+      );
+    });
+
+    it('le jour venu aussi : revenue cheffe de service, elle relève du nouveau directeur', async () => {
+      await inactiver();
+      await unites.update(admin, uDFC, {
+        managerEmployeeId: moussa.employeeId,
+        posteDeLAncien: 'Conseiller',
+      });
+      await rh.newContract(admin, fatou.employeeId, {
+        contractType: 'cdi',
+        startDate: await jour(3),
+        affectation: await placeDe(fatou),
+        reprendre: { unites: [uCompta], equipe: false },
+      });
+      expect((await statut(fatou)).status).toBe('archived');
+
+      await leJourVenu(fatou);
+      expect(await chefDe(uCompta)).toBe(fatou.employeeId);
+      expect(await n1De(fatou)).toBe(moussa.employeeId);
+    });
+
+    it('revenue cheffe de département, le chef de service nommé entre-temps relève d’elle', async () => {
+      // Fatou dirige le département Études, dont dépend la comptabilité.
+      const uEtudes = await unite('Département Études', 'department', uDFC);
+      await raw(`UPDATE org_units SET parent_id = $2, manager_employee_id = NULL WHERE id = $1`, [
+        uCompta,
+        uEtudes,
+      ]);
+      await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [
+        uEtudes,
+        fatou.employeeId,
+      ]);
+      await inactiver();
+      // Pendant son absence, Awa arrive et prend la comptabilité : le
+      // département attend sa tête, elle relève du directeur.
+      const awa = await agent(
+        'Awa',
+        uCompta,
+        { type: 'cdi', debut: -30, fin: null },
+        omar.employeeId,
+      );
+      await unites.update(admin, uCompta, { managerEmployeeId: awa.employeeId });
+      expect(await n1De(awa)).toBe(omar.employeeId);
+
+      const r = await rh.newContract(admin, fatou.employeeId, {
+        contractType: 'cdi',
+        startDate: await jour(0),
+        affectation: await placeDe(fatou),
+        reprendre: { unites: [uEtudes], equipe: false },
+      });
+      expect(await n1De(awa)).toBe(fatou.employeeId);
+      expect(await n1De(fatou)).toBe(omar.employeeId);
+      expect(r.changements).toContainEqual(
+        expect.objectContaining({ employeeId: awa.employeeId, motif: 'chef_d_unite' }),
+      );
+    });
+
     it('revenue en stage, elle ne reprend pas la tête de son unité', async () => {
       await inactiver();
       expect(

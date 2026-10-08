@@ -22,10 +22,12 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import {
+  alignerLesChefs,
   apresNouveauDG,
   apresNouveauDirecteur,
   directeurGeneral,
   perimetre,
+  placesDesChefs,
   SOMMET,
   sortDuPerimetre,
   uniteRacine,
@@ -641,6 +643,10 @@ export class OrgUnitsService {
       );
     }
 
+    // La place des chefs de département et de service avant l'opération :
+    // ceux dont le supérieur change en dépendent ensuite (règle 3 bis).
+    const chefsAvant = await placesDesChefs(tx);
+
     // Re-rattacher une unité, ou en changer le type, déplace des PÉRIMÈTRES :
     // un responsable affecté dedans peut se retrouver hors de l'unité qu'il
     // dirige sans qu'aucune mutation d'employé n'ait eu lieu. Même invariant,
@@ -680,6 +686,7 @@ export class OrgUnitsService {
     } else if (nouveauDirecteur) {
       await apresNouveauDirecteur(tx, journal, id, responsableChange ? ancien : null, prochain);
     }
+    await alignerLesChefs(tx, journal, chefsAvant);
   }
 
   /**

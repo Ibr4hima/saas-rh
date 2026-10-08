@@ -80,7 +80,7 @@ export async function exigerUniteVivante(tx: Tx, orgUnitId: string): Promise<voi
  *
  * `responsable` : il prend la tête de l'unité dans la même opération.
  * L'appelant le désigne ensuite, puis relit le circuit : le n+1 d'un
- * directeur, c'est la désignation qui le pose.
+ * responsable, c'est la désignation qui le pose.
  */
 export async function muter(
   tx: Tx,
@@ -293,9 +293,10 @@ export async function muter(
   // (il ne serait pas encore de la direction de l'agent), ou celui
   // qu'il garde, s'il tient toujours. Sinon, le responsable de sa
   // nouvelle direction le reprend d'office, s'il y en a un.
-  if (responsable && directionVisee?.id === input.orgUnitId) {
-    // Il prend la tête d'une direction : il relèvera du directeur général,
-    // et c'est sa désignation qui l'y rattache.
+  if (responsable) {
+    // Il prend la tête de l'unité : son n+1 est celui qu'impose sa place
+    // (le DG pour un directeur, l'unité au-dessus pour un chef), et c'est
+    // sa désignation qui l'y rattache.
   } else if (input.managerEmployeeId) {
     await validerRattachement(tx, id, input.managerEmployeeId, await directionDeEmploye(tx, id));
     await tx

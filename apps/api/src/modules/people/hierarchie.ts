@@ -31,6 +31,11 @@ export interface LigneHierarchie {
   directionPourvue: boolean;
   /** Sa direction est la Direction Générale — le sommet. */
   aLaDirectionGenerale: boolean;
+  /**
+   * Il dirige un département ou un service : le n+1 que lui impose l'unité
+   * au-dessus de la sienne (`null` : personne au-dessus). Absent sinon.
+   */
+  superieurAttendu?: string | null;
 }
 
 /**
@@ -104,6 +109,11 @@ function anomalieDe(
   if (l.dirigeUneDirection) {
     return l.responsableId === directeurGeneralId ? null : 'directeur_mal_rattache';
   }
+  // Le chef d'un département ou d'un service relève de l'unité au-dessus de
+  // la sienne.
+  if (l.superieurAttendu) {
+    return l.responsableId === l.superieurAttendu ? null : 'chef_mal_rattache';
+  }
   // 4. Le n+1 est de la même direction…
   if (l.responsableDirectionId === l.directionId) return null;
   // … sauf dans une direction sans tête : personne d'autre au-dessus que le
@@ -120,6 +130,7 @@ export const TYPES_ANOMALIE: TypeAnomalieHierarchie[] = [
   'responsable_archive',
   'dg_hors_direction_generale',
   'directeur_mal_rattache',
+  'chef_mal_rattache',
   'hors_direction',
   'sans_direction',
   'responsable_sans_direction',

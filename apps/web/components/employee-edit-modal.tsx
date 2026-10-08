@@ -16,7 +16,7 @@ import { api, ApiError } from '../lib/api';
 import { composePhone, COUNTRIES, splitPhone } from '../lib/countries';
 import { useMe } from '../lib/hooks';
 import { maritalLabels, maxBirthDate } from '../lib/person';
-import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
+import { n1DOffice, superieurImpose, useResponsablesPossibles } from '../lib/responsables';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
 import { composeWorkEmail, localWorkEmail, WorkEmailInput } from './work-email-input';
@@ -214,6 +214,9 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
     estDirecteur,
   );
   const peutChoisir = Boolean(direction) && !estDG;
+  // Le chef d'un département ou d'un service relève de l'unité au-dessus de
+  // la sienne : c'est le seul choix proposé.
+  const impose = superieurImpose(unites.data ?? [], employee.id);
   // Dans une direction pourvue, personne n'est sans n+1 : vidé, le champ
   // reviendrait d'office au directeur. On ne propose donc pas de le vider.
   const dOffice = n1DOffice(unites.data ?? [], affectation?.orgUnitId, employee.id);
@@ -221,8 +224,9 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
     employee.managerId && employee.managerName
       ? { id: employee.managerId, nom: employee.managerName, poste: null }
       : null;
+  const choix = impose ? [impose] : possibles;
   const managers = peutChoisir
-    ? [...possibles, ...(actuel && !possibles.some((m) => m.id === actuel.id) ? [actuel] : [])]
+    ? [...choix, ...(actuel && !choix.some((m) => m.id === actuel.id) ? [actuel] : [])]
     : actuel
       ? [actuel]
       : [];
@@ -423,9 +427,13 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
             hint={
               estDG
                 ? 'Le directeur général ne relève de personne.'
-                : direction
-                  ? `Les agents de ${direction}, et le directeur général.`
-                  : 'Affectez d’abord l’agent à une direction : le n+1 se choisit ensuite.'
+                : estDirecteur
+                  ? 'Un directeur relève du directeur général.'
+                  : impose
+                    ? 'Le responsable d’une unité relève de l’unité au-dessus de la sienne.'
+                    : direction
+                      ? `Les agents de ${direction}, et le directeur général.`
+                      : 'Affectez d’abord l’agent à une direction : le n+1 se choisit ensuite.'
             }
           >
             <Select id="managerEmployeeId" {...form.register('managerEmployeeId')}>

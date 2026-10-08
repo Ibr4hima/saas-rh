@@ -1513,8 +1513,8 @@ export class PeopleService {
       {
         ...input,
         positionTitle,
-        // Un directeur relève du directeur général : sa désignation l'y rattache.
-        managerEmployeeId: unite.unit_type === 'direction' ? undefined : input.managerEmployeeId,
+        // Son n+1 est celui qu'impose sa place : sa désignation l'y rattache.
+        managerEmployeeId: undefined,
       },
       { responsable: true },
     );

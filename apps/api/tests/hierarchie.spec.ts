@@ -182,6 +182,24 @@ describe('la règle de direction', () => {
     expect(types([directeur])).toEqual(['directeur:directeur_mal_rattache']);
   });
 
+  it('signale le chef d’un département ou d’un service mal rattaché, même dans sa direction', () => {
+    // Un collègue de la direction ne suffit pas : son n+1 est le responsable
+    // de l'unité au-dessus de la sienne.
+    const chef = agent('chef-service', { responsableId: 'collegue', superieurAttendu: 'chef-dep' });
+    expect(types([chef])).toEqual(['chef-service:chef_mal_rattache']);
+    expect(bloqueLEvaluation('chef_mal_rattache')).toBe(false);
+    const enRegle = agent('chef-service', {
+      responsableId: 'chef-dep',
+      superieurAttendu: 'chef-dep',
+    });
+    expect(types([enRegle])).toEqual([]);
+  });
+
+  it('sans personne au-dessus de lui, un chef suit la règle de direction', () => {
+    const chef = agent('chef-service', { superieurAttendu: null });
+    expect(types([chef])).toEqual([]);
+  });
+
   it('signale un directeur quand AUCUN directeur général n’est désigné', () => {
     const directeur = agent('directeur', { dirigeUneDirection: true, responsableId: 'x' });
     expect(types([directeur], null)).toEqual(['directeur:directeur_mal_rattache']);
@@ -283,7 +301,8 @@ describe('l’ordre et les décomptes', () => {
     );
     expect(parType.sans_responsable).toBe(1);
     expect(parType.hors_direction).toBe(0);
-    expect(Object.keys(parType)).toHaveLength(9);
+    expect(parType.chef_mal_rattache).toBe(0);
+    expect(Object.keys(parType)).toHaveLength(10);
   });
 
   it('dit lesquelles empêchent d’évaluer', () => {

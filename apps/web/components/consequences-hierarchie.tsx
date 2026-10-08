@@ -19,6 +19,7 @@ const MOTIFS: Record<MotifChangement, string> = {
   directeur: 'un directeur relève du directeur général',
   ancien_dg: 'ancien directeur général, resté à la Direction Générale',
   direction_pourvue: 'sa direction a désormais un directeur',
+  chef_d_unite: 'relève du responsable de l’unité au-dessus de la sienne',
   ancien_directeur: 'ancien directeur, resté dans la direction',
   reprise_equipe: 'reprise de l’équipe',
   prend_la_place: 'prend la place de celui qui part',
