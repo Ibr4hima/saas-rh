@@ -49,6 +49,29 @@ export const typeDeContratAu = (employeeId: SQL | string, jour: SQL) => sql`(
      AND (tc.end_date IS NULL OR tc.end_date >= ${jour})
    ORDER BY tc.start_date DESC, tc.created_at DESC LIMIT 1)`;
 
+/** En stage aujourd'hui : le contrat qui le couvre est un stage. En SQL. */
+export const enStage = (employeeId: SQL | string) =>
+  sql`COALESCE(${typeDeContratAu(employeeId, sql`CURRENT_DATE`)} = 'stage', false)`;
+
+/**
+ * Les stagiaires ne dirigent pas d'unité : le stage n'est pas un emploi.
+ * Refuse de faire d'un stagiaire le responsable d'une unité.
+ */
+export async function exigerHorsStage(tx: Tx, employeeId: string): Promise<void> {
+  const { rows } = await tx.execute<{ nom: string; stage: boolean }>(sql`
+    SELECT p.given_name || ' ' || p.family_name AS nom, ${enStage(sql`e.id`)} AS stage
+      FROM employees e JOIN persons p ON p.id = e.person_id
+     WHERE e.id = ${employeeId}`);
+  if (rows[0]?.stage) {
+    problem(
+      422,
+      'org.manager_stagiaire',
+      `${rows[0].nom} est en stage`,
+      'Les stagiaires ne dirigent pas d’unité.',
+    );
+  }
+}
+
 /** Un contrat le couvre aujourd'hui. En SQL. */
 export const sousContrat = (employeeId: SQL | string) => sql`EXISTS (
   SELECT 1 FROM contracts sc

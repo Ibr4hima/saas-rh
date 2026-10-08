@@ -31,7 +31,7 @@ import {
   uniteRacine,
   verrouillerLaChaine,
 } from './chaine';
-import { contratEchu, exigerEnActivite } from './en-activite';
+import { contratEchu, enStage, exigerEnActivite, exigerHorsStage } from './en-activite';
 import { pasSurSoi } from '../acces/dch';
 import { reconcilierLeCircuit } from '../time/visas';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
@@ -595,6 +595,7 @@ export class OrgUnitsService {
       // programmée ailleurs : c'est là que ses collaborateurs directs relèvent
       // de lui, dans la même direction.
       await this.assertEmployeActif(tx, prochain);
+      await exigerHorsStage(tx, prochain);
       if (await sortDuPerimetre(tx, prochain, id)) {
         problem(
           422,
@@ -851,7 +852,7 @@ export class OrgUnitsService {
   }
 
   /**
-   * Un responsable doit être un employé ACTIF, et travailler dans le
+   * Un responsable doit être un employé ACTIF, hors stage, et travailler dans le
    * PÉRIMÈTRE de l'unité qu'il dirige — elle ou ce qui en descend, sans ses
    * sous-directions, qui ont leur propre tête — sans mutation déjà
    * programmée ailleurs. Sans quoi l'organigramme affiche un chef parti
@@ -859,6 +860,7 @@ export class OrgUnitsService {
    */
   private async assertManagerEligible(tx: Tx, unitId: string, employeeId: string): Promise<void> {
     await this.assertEmployeActif(tx, employeeId);
+    await exigerHorsStage(tx, employeeId);
     if (await sortDuPerimetre(tx, employeeId, unitId)) {
       problem(
         422,
@@ -911,8 +913,8 @@ export class OrgUnitsService {
   /**
    * Qui peut diriger cette unité : exactement l'ensemble qu'accepte
    * `assertManagerEligible` — le formulaire ne doit pas proposer ce que le
-   * serveur refusera. Actifs, affectés dans le périmètre, sans mutation
-   * programmée ailleurs, et qui ne dirigent pas déjà une autre unité.
+   * serveur refusera. Actifs, hors stage, affectés dans le périmètre, sans
+   * mutation programmée ailleurs, et qui ne dirigent pas déjà une autre unité.
    */
   async eligibleManagers(user: SessionUser, id: string): Promise<OrgUnitMember[]> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
@@ -934,6 +936,7 @@ export class OrgUnitsService {
           AND a.validity @> CURRENT_DATE
           AND e.status = 'active'
           AND NOT ${contratEchu(sql`e.id`)}
+          AND NOT ${enStage(sql`e.id`)}
           AND NOT EXISTS (
             SELECT 1 FROM assignments ai
              WHERE ai.employee_id = e.id

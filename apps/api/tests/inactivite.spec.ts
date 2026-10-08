@@ -2314,6 +2314,81 @@ describe('les invitations partent d’elles-mêmes', () => {
       );
     });
 
+    it('revenue en stage, elle ne reprend pas la tête de son unité', async () => {
+      await inactiver();
+      expect(
+        await codeOf(async () =>
+          rh.newContract(admin, fatou.employeeId, {
+            contractType: 'stage',
+            startDate: await jour(0),
+            endDate: await jour(90),
+            affectation: await placeDe(fatou),
+            reprendre: { unites: [uCompta], equipe: false },
+          }),
+        ),
+      ).toBe('people.retour_en_stage');
+      expect((await statut(fatou)).status).toBe('archived');
+      expect(await chefDe(uCompta)).toBeNull();
+    });
+
+    it('réactivée sous un stage, elle ne redevient pas responsable', async () => {
+      await raw(
+        `UPDATE contracts SET contract_type = 'stage', end_date = CURRENT_DATE + 30 WHERE employee_id = $1`,
+        [fatou.employeeId],
+      );
+      await inactiver();
+      await raw(
+        `UPDATE employees SET status = 'archived', archived_at = now(), fin_activite = CURRENT_DATE - 1,
+                inactivite_motif = 'demission' WHERE id = $1`,
+        [fatou.employeeId],
+      );
+      await raw(
+        `INSERT INTO periodes_inactivite (tenant_id, employee_id, dernier_jour, motif, headed_unit_ids)
+         VALUES ($1, $2, CURRENT_DATE - 1, 'demission', ARRAY[$3]::uuid[])`,
+        [tenantId, fatou.employeeId, uCompta],
+      );
+      await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [uCompta]);
+      expect(
+        await codeOf(() =>
+          rh.archive(admin, {
+            ids: [fatou.employeeId],
+            archived: false,
+            reprendre: { [fatou.employeeId]: { unites: [uCompta], equipe: false } },
+          }),
+        ),
+      ).toBe('people.responsabilite_non_rendue');
+      expect(await chefDe(uCompta)).toBeNull();
+    });
+
+    it('qui dirige une unité ne passe pas sous contrat de stage, ni par correction', async () => {
+      // Omar dirige la Direction Financière.
+      expect(
+        await codeOf(async () =>
+          rh.newContract(admin, omar.employeeId, {
+            contractType: 'stage',
+            startDate: await jour(5),
+            endDate: await jour(60),
+            affectation: { positionTitle: 'Poste', orgUnitId: uDFC },
+          }),
+        ),
+      ).toBe('people.responsable_en_stage');
+      const { rows } = await raw(
+        `SELECT id, start_date::text AS debut FROM contracts WHERE employee_id = $1
+          ORDER BY start_date DESC LIMIT 1`,
+        [omar.employeeId],
+      );
+      expect(
+        await codeOf(() =>
+          rh.corrigerContrat(admin, omar.employeeId, rows[0].id, {
+            contractType: 'stage',
+            startDate: rows[0].debut,
+            endDate: '2099-12-31',
+          }),
+        ),
+      ).toBe('people.responsable_en_stage');
+      expect(await chefDe(uDFC)).toBe(omar.employeeId);
+    });
+
     it('un successeur nommé entre-temps garde l’unité : la reprendre est refusé', async () => {
       await inactiver();
       await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [

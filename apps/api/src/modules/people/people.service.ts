@@ -918,6 +918,18 @@ export class PeopleService {
           }
         }
         await exigerUniteVivante(tx, input.affectation.orgUnitId);
+        if (input.contractType === 'stage') {
+          await this.exigerQuIlNeDirigeRien(tx, id);
+          // Revenu en stage, il ne reprend la tête d'aucune unité.
+          if ((input.reprendre?.unites.length ?? 0) > 0) {
+            problem(
+              422,
+              'people.retour_en_stage',
+              'Les stagiaires ne dirigent pas d’unité',
+              'Retirez les unités à reprendre : sous un contrat de stage, aucune ne se reprend.',
+            );
+          }
+        }
         const [precedent] = await tx
           .select({
             id: t.contracts.id,
@@ -1126,6 +1138,7 @@ export class PeopleService {
         );
       }
       await this.exigerUneFinPermise(tx, user, id, input.endDate);
+      if (input.contractType === 'stage') await this.exigerQuIlNeDirigeRien(tx, id);
       // Le précédent s'arrêtait la veille de ce contrat : il suit son début.
       if (precedent && precedent.endDate && input.startDate !== dernier.startDate) {
         const { rows } = await tx.execute<{ veille: boolean }>(sql`
@@ -1560,7 +1573,7 @@ export class PeopleService {
             422,
             'people.responsabilite_non_rendue',
             `${c.prenom} ne peut pas redevenir responsable de « ${refusee.nom} »`,
-            'Un responsable a été nommé depuis, ou sa nouvelle place est hors de cette unité.',
+            'Un responsable a été nommé depuis, sa nouvelle place est hors de cette unité, ou son contrat est un stage.',
           );
         }
       }
@@ -1776,6 +1789,28 @@ export class PeopleService {
    * désactivation : les mêmes garde-fous s'appliquent (le dernier
    * administrateur, qui dirige une unité).
    */
+  /**
+   * Les stagiaires ne dirigent pas d'unité : un responsable en poste ne
+   * passe pas sous contrat de stage tant qu'un autre ne l'a pas remplacé.
+   */
+  private async exigerQuIlNeDirigeRien(tx: Tx, employeeId: string): Promise<void> {
+    const { rows } = await tx.execute<{ prenom: string; unite: string }>(sql`
+      SELECT p.given_name AS prenom, o.name AS unite
+        FROM org_units o
+        JOIN employees e ON e.id = o.manager_employee_id
+        JOIN persons p ON p.id = e.person_id
+       WHERE o.manager_employee_id = ${employeeId} AND o.deleted_at IS NULL
+       LIMIT 1`);
+    if (rows[0]) {
+      problem(
+        422,
+        'people.responsable_en_stage',
+        `${rows[0].prenom} dirige « ${rows[0].unite} »`,
+        'Les stagiaires ne dirigent pas d’unité : désignez d’abord un autre responsable.',
+      );
+    }
+  }
+
   private async exigerUneFinPermise(
     tx: Tx,
     user: SessionUser,

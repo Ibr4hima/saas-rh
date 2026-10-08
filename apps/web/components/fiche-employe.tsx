@@ -1676,18 +1676,21 @@ const reprendQuelqueChose = (r: RepriseDesResponsabilites) => r.unites.length > 
 function ChoixDuRetour({
   responsabilites,
   directionId,
+  enStage = false,
   valeur,
   onChange,
 }: {
   responsabilites: EmployeeDetail['responsabilites'];
   /** La direction où il revient : seules ses unités s'y proposent. */
   directionId?: string;
+  /** Revenu en stage : les stagiaires ne dirigent pas d'unité. */
+  enStage?: boolean;
   valeur: RepriseDesResponsabilites;
   onChange: (v: RepriseDesResponsabilites) => void;
 }) {
-  const unites = responsabilites.unites.filter(
-    (u) => !directionId || u.directionId === directionId,
-  );
+  const unites = enStage
+    ? []
+    : responsabilites.unites.filter((u) => !directionId || u.directionId === directionId);
   const equipe = responsabilites.unites.length === 0 && responsabilites.equipe > 0;
   if (unites.length === 0 && !equipe) return null;
   return (
@@ -1823,6 +1826,10 @@ function BoutonReactiver({
         <div className="mt-3.5">
           <ChoixDuRetour
             responsabilites={e.responsabilites}
+            enStage={
+              [...e.contracts].sort((a, b) => b.startDate.localeCompare(a.startDate))[0]
+                ?.contractType === 'stage'
+            }
             valeur={reprise}
             onChange={setReprise}
           />
@@ -1898,9 +1905,12 @@ function NouveauContrat({
   const interruption = Boolean(enCours?.endDate && lendemain(enCours.endDate) < debut);
   const [reprise, setReprise] = useState<RepriseDesResponsabilites>(SANS_REPRISE);
   const repriseVisible = {
-    unites: reprise.unites.filter((id) =>
-      responsabilites.unites.some((u) => u.id === id && u.directionId === directionId),
-    ),
+    unites:
+      type === 'stage'
+        ? []
+        : reprise.unites.filter((id) =>
+            responsabilites.unites.some((u) => u.id === id && u.directionId === directionId),
+          ),
     equipe: reprise.equipe,
   };
   const fermer = () => {
@@ -2055,6 +2065,7 @@ function NouveauContrat({
             <ChoixDuRetour
               responsabilites={responsabilites}
               directionId={directionId}
+              enStage={type === 'stage'}
               valeur={reprise}
               onChange={setReprise}
             />

@@ -28,6 +28,7 @@ import {
   debutDuContratAVenir,
   dernierContrat,
   effacerLesMotsDePasseEchus,
+  enStage,
   sousContrat,
 } from './en-activite';
 import { muter } from './mutation';
@@ -216,8 +217,8 @@ export type CeQuIlALaisse = {
 /**
  * Revenu, il reprend ce que la RH a choisi, parmi ce que son départ a
  * défait : la tête des unités choisies, si elles sont restées sans
- * responsable et qu'il travaille dans leur périmètre (avec ce que la règle
- * impose à un directeur ou au DG) ; avec elles, son équipe, pour ceux qui
+ * responsable, qu'il travaille dans leur périmètre (avec ce que la règle
+ * impose à un directeur ou au DG) et qu'il ne revient pas en stage ; avec elles, son équipe, pour ceux qui
  * sont encore là où son départ les avait mis. Sans unité à diriger, son
  * équipe ne revient que si la RH l'a choisi. À appeler une fois le dossier
  * redevenu actif. Rend les unités choisies qu'il n'a pas pu reprendre.
@@ -231,6 +232,11 @@ export async function retrouverSaPlace(
 ): Promise<{ id: string; nom: string }[]> {
   const refusees: { id: string; nom: string }[] = [];
   let rendues = 0;
+  // Les stagiaires ne dirigent pas d'unité.
+  const { rows: contrat } = await tx.execute<{ stage: boolean }>(
+    sql`SELECT ${enStage(employeeId)} AS stage`,
+  );
+  const stagiaire = Boolean(contrat[0]?.stage);
   for (const uniteId of laisse.unites.filter((u) => choix.unites.includes(u))) {
     const { rows } = await tx.execute<{
       nom: string;
@@ -243,7 +249,7 @@ export async function retrouverSaPlace(
         FROM org_units WHERE id = ${uniteId} AND deleted_at IS NULL`);
     const u = rows[0];
     if (!u) continue;
-    if (!u.libre || (await sortDuPerimetre(tx, employeeId, uniteId))) {
+    if (!u.libre || stagiaire || (await sortDuPerimetre(tx, employeeId, uniteId))) {
       refusees.push({ id: uniteId, nom: u.nom });
       continue;
     }

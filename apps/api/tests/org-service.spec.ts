@@ -115,6 +115,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await raw(`DELETE FROM assignments WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM job_postings WHERE tenant_id = $1`, [tenantId]);
   await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM employees WHERE tenant_id = $1`, [tenantId]);
@@ -137,7 +138,7 @@ beforeEach(async () => {
 afterAll(async () => {
   // Les responsables d'abord : org_units référence employees.
   await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
-  for (const table of ['assignments', 'job_postings', 'employees', 'persons']) {
+  for (const table of ['assignments', 'contracts', 'job_postings', 'employees', 'persons']) {
     await raw(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
   }
   await raw(`DELETE FROM org_units WHERE tenant_id = $1`, [tenantId]);
@@ -295,6 +296,51 @@ describe('responsable', () => {
     const dept = (await service.list(user)).find((u) => u.id === departement)!;
     expect(dept.managerName).toBe('Mouhamadou Moustapha Habib Kane');
     expect(dept.managerShortName).toBe('Mouhamadou M. H. Kane');
+  });
+
+  it('ne désigne ni ne propose un stagiaire ; embauché, il peut diriger', async () => {
+    const stagiaire = await creerEmploye('STAGE-1', direction);
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+       VALUES ($1,$2,$3,'stage', CURRENT_DATE - 30, CURRENT_DATE + 60)`,
+      [randomUUID(), tenantId, stagiaire],
+    );
+    expect(
+      await codeOf(() => service.update(user, direction, { managerEmployeeId: stagiaire })),
+    ).toBe('org.manager_stagiaire');
+    const proposes = async () =>
+      (await service.eligibleManagers(user, direction)).map((e) => e.employeeNumber);
+    expect(await proposes()).not.toContain('STAGE-1');
+
+    // Le stage fini hier, un CDI commence aujourd'hui.
+    await raw(`UPDATE contracts SET end_date = CURRENT_DATE - 1 WHERE employee_id = $1`, [
+      stagiaire,
+    ]);
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date)
+       VALUES ($1,$2,$3,'cdi', CURRENT_DATE)`,
+      [randomUUID(), tenantId, stagiaire],
+    );
+    expect(await proposes()).toContain('STAGE-1');
+    await service.update(user, direction, { managerEmployeeId: stagiaire });
+    expect((await service.list(user)).find((u) => u.id === direction)!.managerEmployeeId).toBe(
+      stagiaire,
+    );
+  });
+
+  it('ni à la tête de la Direction Générale', async () => {
+    const stagiaire = await creerEmploye('STAGE-DG', racine);
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+       VALUES ($1,$2,$3,'stage', CURRENT_DATE - 30, CURRENT_DATE + 60)`,
+      [randomUUID(), tenantId, stagiaire],
+    );
+    expect(await codeOf(() => service.update(user, racine, { managerEmployeeId: stagiaire }))).toBe(
+      'org.manager_stagiaire',
+    );
+    expect(
+      (await service.eligibleManagers(user, racine)).map((e) => e.employeeNumber),
+    ).not.toContain('STAGE-DG');
   });
 
   it('ne propose comme éligibles que le sous-arbre actif', async () => {
