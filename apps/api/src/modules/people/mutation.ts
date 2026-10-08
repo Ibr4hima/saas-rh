@@ -32,6 +32,14 @@ import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
    lui donne une autre place, le jour où il commence.
 */
 
+/** Ce que la mutation écrit : le poste est connu, saisi ou celui de responsable. */
+export type Mutation = Omit<
+  NewAssignmentInput,
+  'positionTitle' | 'responsable' | 'posteDeLAncien'
+> & {
+  positionTitle: string;
+};
+
 /**
  * Une affectation ne peut viser qu'une unité VIVANTE. Seule la clé étrangère
  * protégeait : elle accepte une unité dissoute, ce qui annulait la garantie
@@ -69,13 +77,17 @@ export async function exigerUniteVivante(tx: Tx, orgUnitId: string): Promise<voi
  * faute de responsable dans sa nouvelle direction, il garde son n+1, que
  * le contrôle signale aussi. Le directeur général, lui, reste à la
  * Direction Générale.
+ *
+ * `responsable` : il prend la tête de l'unité dans la même opération.
+ * L'appelant le désigne ensuite, puis relit le circuit : le n+1 d'un
+ * directeur, c'est la désignation qui le pose.
  */
 export async function muter(
   tx: Tx,
   tenantId: string,
   id: string,
-  input: NewAssignmentInput,
-  { parContrat = false }: { parContrat?: boolean } = {},
+  input: Mutation,
+  { parContrat = false, responsable = false }: { parContrat?: boolean; responsable?: boolean } = {},
 ): Promise<ConsequencesHierarchie> {
   await exigerEnActivite(tx, id, 'recevoir d’affectation');
   await verrouillerLaChaine(tx);
@@ -222,6 +234,7 @@ export async function muter(
     employeeId: id,
     orgUnitId: input.orgUnitId ?? null,
     positionTitle: input.positionTitle,
+    responsable,
     validity: `[${input.startDate},)`,
   });
 
@@ -280,7 +293,10 @@ export async function muter(
   // (il ne serait pas encore de la direction de l'agent), ou celui
   // qu'il garde, s'il tient toujours. Sinon, le responsable de sa
   // nouvelle direction le reprend d'office, s'il y en a un.
-  if (input.managerEmployeeId) {
+  if (responsable && directionVisee?.id === input.orgUnitId) {
+    // Il prend la tête d'une direction : il relèvera du directeur général,
+    // et c'est sa désignation qui l'y rattache.
+  } else if (input.managerEmployeeId) {
     await validerRattachement(tx, id, input.managerEmployeeId, await directionDeEmploye(tx, id));
     await tx
       .update(t.employees)
@@ -311,6 +327,8 @@ export async function muter(
     await rattacherDOffice(tx, journal, id);
   }
 
+  // Sa désignation suit, dans la même opération : l'appelant relit ensuite.
+  if (responsable) return { changements: journal, aRevoir: [] };
   await reconcilierLeCircuit(tx, tenantId);
   return {
     changements: journal,

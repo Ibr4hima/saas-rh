@@ -712,8 +712,11 @@ describe('le directeur habilite des membres de sa direction', () => {
     await habiliter(awa);
     const dejaConfiee = await poser(moussa);
     await viser(ousmane, dejaConfiee);
-    // Khady prend la tête de la DCH.
-    await organigramme.update(admin, uDCH, { managerEmployeeId: khady.employeeId });
+    // Khady prend la tête de la DCH ; Mariama y reste, conseillère.
+    await organigramme.update(admin, uDCH, {
+      managerEmployeeId: khady.employeeId,
+      posteDeLAncien: 'Conseillère',
+    });
     expect(await appels(dejaConfiee)).toEqual(['dch:Awa']);
     const nouvelle = await poser(fatou);
     expect(await appels(nouvelle)).toEqual(['dch:Awa']);

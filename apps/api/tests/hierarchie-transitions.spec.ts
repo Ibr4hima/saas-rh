@@ -66,8 +66,13 @@ async function agent(matricule: string, uniteId: string, n1?: string): Promise<s
   return (await people.create(user, input)).id;
 }
 
-const nommer = (uniteId: string, employeeId: string | null) =>
-  organigramme.update(user, uniteId, { managerEmployeeId: employeeId });
+/** Celui qu'il remplace, s'il y en a un, reste dans l'unité comme conseiller. */
+const nommer = (uniteId: string, employeeId: string | null, depuis?: string) =>
+  organigramme.update(user, uniteId, {
+    managerEmployeeId: employeeId,
+    posteDeLAncien: 'Conseiller',
+    ...(depuis ? { depuis } : {}),
+  });
 const n1 = async (id: string) => (await people.detail(user, id)).managerId;
 const anomalies = async () =>
   (await hierarchie.controle(user)).anomalies.map((a) => `${a.matricule}:${a.type}`);
@@ -82,14 +87,14 @@ const muter = (id: string, orgUnitId: string | null, plus: Record<string, string
 /** Le DG, affecté à la Direction Générale puis nommé à sa tête. */
 async function leDG(matricule = 'DG'): Promise<string> {
   const id = await agent(matricule, uDG);
-  await nommer(uDG, id);
+  await nommer(uDG, id, '2024-01-01');
   return id;
 }
 
 /** Un directeur : affecté dans sa direction, puis nommé — il passe sous le DG. */
 async function unDirecteur(matricule: string, direction: string): Promise<string> {
   const id = await agent(matricule, direction);
-  await nommer(direction, id);
+  await nommer(direction, id, '2024-01-01');
   return id;
 }
 
@@ -183,7 +188,10 @@ describe('le directeur général', () => {
     const dsid = await unDirecteur('DSID', uDSID);
     const adjoint = await agent('ADJOINT', uDG, ancien);
 
-    const apercu = await organigramme.apercu(user, uDG, { managerEmployeeId: adjoint });
+    const apercu = await organigramme.apercu(user, uDG, {
+      managerEmployeeId: adjoint,
+      posteDeLAncien: 'Conseiller',
+    });
     expect(apercu.changements).toHaveLength(3);
     // Rien n'a bougé.
     expect((await hierarchie.controle(user)).directeurGeneral?.employeeId).toBe(ancien);

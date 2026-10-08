@@ -26,7 +26,7 @@ import type {
   SessionUser,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
-import { peut } from '@teranga/contracts';
+import { peut, posteDeResponsable, type OrgUnitType } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
 import { problem, ProblemException } from '../../common/problem';
 import { preparerInvitation } from '../portal/invitation';
@@ -41,6 +41,7 @@ import {
   equipeDe,
   planifierReprise,
   rattacherDOffice,
+  SOMMET,
   uniteRacine,
   validerRattachement,
   verrouillerLaChaine,
@@ -61,6 +62,7 @@ import {
 import { exigerEnActivite, finDeContratPassee } from './en-activite';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 import { exigerUniteVivante, muter } from './mutation';
+import { OrgUnitsService } from './org-units.service';
 
 /** Rôles autorisés à lire les champs ultra-sensibles (CNI). */
 
@@ -1357,6 +1359,24 @@ export class PeopleService {
           'Corrigez plutôt son poste ou sa date : l’agent resterait sans affectation.',
         );
       }
+      // Elle porte sa fonction de responsable : elle reste tant qu'il dirige
+      // l'unité.
+      const { rows: tete } = await tx.execute<{ unite: string; nom: string }>(sql`
+        SELECT o.name AS unite, p.given_name || ' ' || p.family_name AS nom
+          FROM assignments a
+          JOIN org_units o ON o.id = a.org_unit_id
+          JOIN employees e ON e.id = a.employee_id
+          JOIN persons p ON p.id = e.person_id
+         WHERE a.id = ${derniere.id} AND a.responsable
+           AND o.manager_employee_id = a.employee_id AND o.deleted_at IS NULL`);
+      if (tete[0]) {
+        problem(
+          422,
+          'people.affectation_de_responsable',
+          `${tete[0].nom} dirige toujours « ${tete[0].unite} »`,
+          `Cette affectation porte sa fonction à la tête de « ${tete[0].unite} » : désignez d’abord une autre personne à sa place dans l’organigramme.`,
+        );
+      }
       await tx.delete(t.assignments).where(eq(t.assignments.id, derniere.id));
       await tx.execute(sql`
         UPDATE assignments SET validity = daterange(lower(validity), ${derniere.au}::date)
@@ -1414,7 +1434,99 @@ export class PeopleService {
       input.repreneurEquipeId,
       await directionDeEmploye(tx, id),
     );
-    return muter(tx, user.tenantId, id, input);
+    if (input.responsable) return this.affecterALaTete(tx, user, id, input);
+    return muter(tx, user.tenantId, id, { ...input, positionTitle: input.positionTitle! });
+  }
+
+  /**
+   * La mutation qui le met à la tête de l'unité, en un geste : il y prend le
+   * poste de responsable à la date choisie, au plus tard aujourd'hui, et
+   * l'organigramme le désigne, avec ses règles et ses cascades. Celui qu'il
+   * remplace reçoit son nouveau poste ce jour-là.
+   */
+  private async affecterALaTete(
+    tx: Tx,
+    user: SessionUser,
+    id: string,
+    input: NewAssignmentInput,
+  ): Promise<ConsequencesHierarchie> {
+    if (!peut(user, 'organigramme')) {
+      problem(
+        403,
+        'auth.forbidden',
+        'Droits insuffisants pour cette action',
+        'La désignation à la tête d’une unité relève de l’organigramme.',
+      );
+    }
+    const uniteId = input.orgUnitId!;
+    await exigerUniteVivante(tx, uniteId);
+    const { rows } = await tx.execute<{
+      name: string;
+      unit_type: OrgUnitType;
+      short_name: string | null;
+      sommet: boolean;
+      responsable: string | null;
+      futur: boolean;
+    }>(sql`
+      SELECT name, unit_type, short_name, (id = ${SOMMET}) AS sommet,
+             manager_employee_id AS responsable, ${input.startDate}::date > CURRENT_DATE AS futur
+        FROM org_units WHERE id = ${uniteId}`);
+    const unite = rows[0]!;
+    if (unite.futur) {
+      problem(422, 'org.passation_future', 'La prise de fonction se date au plus tard aujourd’hui');
+    }
+    // Une personne ne dirige qu'une unité.
+    const { rows: autre } = await tx.execute<{ unite: string; nom: string }>(sql`
+      SELECT o.name AS unite, p.given_name || ' ' || p.family_name AS nom
+        FROM org_units o
+        JOIN employees e ON e.id = o.manager_employee_id
+        JOIN persons p ON p.id = e.person_id
+       WHERE o.manager_employee_id = ${id} AND o.deleted_at IS NULL AND o.id <> ${uniteId}
+       LIMIT 1`);
+    if (autre[0]) {
+      problem(
+        422,
+        'people.dirige_deja',
+        `${autre[0].nom} dirige « ${autre[0].unite} »`,
+        `${autre[0].nom} dirige « ${autre[0].unite} » : désignez d’abord une autre personne à sa tête.`,
+      );
+    }
+    const { rows: personne } = await tx.execute<{ genre: string | null }>(sql`
+      SELECT p.gender AS genre FROM employees e JOIN persons p ON p.id = e.person_id
+       WHERE e.id = ${id}`);
+    const positionTitle = posteDeResponsable(
+      {
+        name: unite.name,
+        unitType: unite.unit_type,
+        shortName: unite.short_name,
+        sommet: unite.sommet,
+      },
+      personne[0]?.genre,
+    );
+
+    await verrouillerLaChaine(tx);
+    const avant = await lireLaChaine(tx);
+    const { changements } = await muter(
+      tx,
+      user.tenantId,
+      id,
+      {
+        ...input,
+        positionTitle,
+        // Un directeur relève du directeur général : sa désignation l'y rattache.
+        managerEmployeeId: unite.unit_type === 'direction' ? undefined : input.managerEmployeeId,
+      },
+      { responsable: true },
+    );
+    if (unite.responsable !== id) {
+      await new OrgUnitsService(this.db).designerDansLaTransaction(tx, user, changements, uniteId, {
+        managerEmployeeId: id,
+        depuis: input.startDate,
+        posteDeLAncien: input.posteDeLAncien,
+      });
+    }
+    await reconcilierLeCircuit(tx, user.tenantId);
+    return { changements, aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)) };
   }
 
   /** Historique d'audit du dossier : qui a changé quoi, quand (ADR-0008). */

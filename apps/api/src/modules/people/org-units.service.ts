@@ -31,10 +31,11 @@ import {
   uniteRacine,
   verrouillerLaChaine,
 } from './chaine';
-import { contratEchu, enStage, exigerEnActivite, exigerHorsStage } from './en-activite';
+import { contratEchu, enActivite, enStage, exigerEnActivite, exigerHorsStage } from './en-activite';
 import { pasSurSoi } from '../acces/dch';
 import { reconcilierLeCircuit } from '../time/visas';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
+import { inscrireLaPassation } from './passation';
 
 interface TeteHorsPerimetre extends Record<string, unknown> {
   unit_id: string;
@@ -127,6 +128,12 @@ export class OrgUnitsService {
             WHERE a.employee_id = org_units.manager_employee_id
               AND a.validity @> CURRENT_DATE
             LIMIT 1)`,
+          managerDepuis: sql<string | null>`(
+            SELECT lower(a.validity)::text FROM assignments a
+            WHERE a.employee_id = org_units.manager_employee_id
+              AND a.validity @> CURRENT_DATE
+              AND ${enActivite(sql`a.employee_id`)}
+            LIMIT 1)`,
           // Qui perdrait son rattachement en cas de dissolution : sans filtre
           // de statut, et affectations futures comprises. On compte les
           // PERSONNES, pas les affectations — c'est ce que l'avertissement
@@ -176,6 +183,7 @@ export class OrgUnitsService {
           r.managerGender === 'female' || r.managerGender === 'male' ? r.managerGender : null,
         managerNumber: r.managerNumber,
         managerPosition: r.managerPosition,
+        managerDepuis: r.managerDepuis,
         sommet: Boolean(r.sommet),
         directionDuPersonnel: r.directionDuPersonnel,
         headcount: effectif.get(r.id) ?? 0,
@@ -390,6 +398,22 @@ export class OrgUnitsService {
     input: UpdateOrgUnitInput,
   ): Promise<ConsequencesHierarchie> {
     return this.executer(user, (tx, journal) => this.modifier(tx, user, journal, id, input), true);
+  }
+
+  /**
+   * La désignation, dans la transaction d'une mutation qui met l'agent à la
+   * tête de l'unité : les mêmes règles et les mêmes cascades que depuis
+   * l'organigramme. L'appelant tient le verrou de la chaîne et relit le
+   * circuit ensuite.
+   */
+  async designerDansLaTransaction(
+    tx: Tx,
+    user: SessionUser,
+    journal: ChangementRattachement[],
+    id: string,
+    input: UpdateOrgUnitInput,
+  ): Promise<void> {
+    await this.modifier(tx, user, journal, id, input);
   }
 
   /** La dissolution, jouée puis annulée. */
@@ -637,6 +661,17 @@ export class OrgUnitsService {
     if (Object.keys(changes).length === 0) return;
     changes.updatedAt = new Date();
     await tx.update(t.orgUnits).set(changes).where(eq(t.orgUnits.id, id));
+    // La passation s'écrit dans les affectations : le nouveau prend le
+    // poste de responsable, l'ancien celui qu'on lui donne.
+    if (responsableChange) {
+      await inscrireLaPassation(tx, user, {
+        uniteId: id,
+        nouveau: prochain,
+        ancien,
+        depuis: input.depuis,
+        posteDeLAncien: input.posteDeLAncien,
+      });
+    }
     await this.assertAucuneTeteSortie(tx, tetesAvant);
 
     // ——— Les cascades : ce que la règle impose, une fois l'unité écrite.
@@ -925,10 +960,11 @@ export class OrgUnitsService {
         given_name: string;
         family_name: string;
         position_title: string | null;
+        depuis: string;
       }>(sql`
         ${perimetre(id)}
         SELECT e.id AS employee_id, e.employee_number, p.given_name, p.family_name,
-               a.position_title
+               a.position_title, lower(a.validity)::text AS depuis
         FROM assignments a
         JOIN employees e ON e.id = a.employee_id
         JOIN persons p ON p.id = e.person_id
@@ -952,6 +988,7 @@ export class OrgUnitsService {
         givenName: r.given_name,
         familyName: r.family_name,
         positionTitle: r.position_title,
+        depuis: r.depuis,
       }));
     });
   }

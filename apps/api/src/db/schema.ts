@@ -191,6 +191,8 @@ export const assignments = pgTable('assignments', {
   orgUnitId: uuid('org_unit_id'),
   positionTitle: text('position_title').notNull(),
   validity: daterange('validity').notNull(),
+  /** Écrite par sa désignation à la tête de l'unité (migration 0097). */
+  responsable: boolean('responsable').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

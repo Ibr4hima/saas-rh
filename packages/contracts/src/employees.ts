@@ -103,6 +103,14 @@ export const updateOrgUnitSchema = z.object({
   parentId: z.uuid().nullable().optional(),
   managerEmployeeId: z.uuid().nullable().optional(),
   /**
+   * Avec un changement de responsable : le jour où le nouveau prend ses
+   * fonctions, et où l'ancien les quitte. Leurs affectations le disent dès ce
+   * jour-là. Au plus tard aujourd'hui ; par défaut, aujourd'hui.
+   */
+  depuis: isoDate.optional(),
+  /** Le poste que l'ancien responsable occupe ensuite, dans la même unité. */
+  posteDeLAncien: trimmed(120).optional(),
+  /**
    * `null` efface l'acronyme, l'absence le laisse inchangé. Attention : la chaîne
    * vide est traitée comme une ABSENCE (le formulaire web envoie `null`).
    */
@@ -135,6 +143,35 @@ export type OrgUnit = z.infer<typeof orgUnitSchema>;
 /** Libellé d'unité : « Direction du Capital Humain (DCH) ». */
 export function orgUnitLabel(unit: { name: string; shortName?: string | null }): string {
   return unit.shortName ? `${unit.name} (${unit.shortName})` : unit.name;
+}
+
+/**
+ * Le poste de qui dirige une unité, tel que ses affectations l'écrivent :
+ * « Directeur de la DGT », « Directrice générale », « Chef du service
+ * Comptabilité ». Sans genre connu, l'intitulé ne le devine pas :
+ * « Responsable de la DGT ».
+ */
+export function posteDeResponsable(
+  unite: { name: string; unitType: OrgUnitType; shortName?: string | null; sommet: boolean },
+  genre: string | null | undefined,
+): string {
+  const f = genre === 'female';
+  const m = genre === 'male';
+  let poste: string;
+  if (unite.sommet && (f || m)) {
+    poste = f ? 'Directrice générale' : 'Directeur général';
+  } else if (unite.unitType === 'direction') {
+    const titre = f ? 'Directrice' : m ? 'Directeur' : 'Responsable';
+    poste = `${titre} de la ${unite.shortName || unite.name}`;
+  } else {
+    const nature = unite.unitType === 'department' ? 'département' : 'service';
+    const titre = f ? 'Cheffe' : m ? 'Chef' : 'Responsable';
+    // « Service Comptabilité » se dit « du service Comptabilité » : le mot
+    // ne se répète pas.
+    const nom = unite.name.replace(new RegExp(`^${nature}\\s+`, 'iu'), '');
+    poste = `${titre} du ${nature} ${nom}`;
+  }
+  return poste.slice(0, 120);
 }
 
 /**
@@ -182,6 +219,12 @@ export interface OrgUnitView extends OrgUnit {
   managerNumber: string | null;
   managerPosition: string | null;
   /**
+   * Le début de l'affectation en cours du responsable, quand il est en
+   * activité : remplacé, il reçoit un nouveau poste, daté au plus tôt de ce
+   * jour. `null` : rien à lui donner.
+   */
+  managerDepuis: string | null;
+  /**
    * L'unité est LE sommet de l'organigramme — la Direction Générale, dont le
    * responsable est le directeur général. Dit par le serveur, avec la même
    * définition que l'écriture : un vestige d'avant la règle (une seconde
@@ -213,6 +256,11 @@ export interface OrgUnitMember {
   positionTitle: string | null;
   /** Membre d'une sous-unité : son nom ; affecté à l'unité même : `null`. */
   unite?: string | null;
+  /**
+   * Parmi qui peut diriger l'unité : le début de son affectation en cours.
+   * Ses fonctions de responsable commencent au plus tôt ce jour-là.
+   */
+  depuis?: string;
 }
 
 /**
@@ -504,10 +552,17 @@ export const updateEmployeeSchema = z.object({
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>;
 
 /** Nouvelle affectation effective-dated : clôt la précédente à startDate. */
-export const newAssignmentSchema = z.object({
-  positionTitle: trimmed(120),
+const nouvelleAffectation = z.object({
+  /** Sans objet pour qui prend la tête de l'unité : son poste est celui de responsable. */
+  positionTitle: trimmed(120).optional(),
   orgUnitId: z.uuid().nullish(),
   startDate: isoDate,
+  /**
+   * Il prend la tête de l'unité, ce jour-là : son poste est celui de
+   * responsable, et celui qu'il remplace reçoit `posteDeLAncien`.
+   */
+  responsable: z.boolean().optional(),
+  posteDeLAncien: trimmed(120).optional(),
   /**
    * Le nouveau responsable hiérarchique, dans la même opération.
    *
@@ -525,6 +580,15 @@ export const newAssignmentSchema = z.object({
    */
   repreneurEquipeId: z.uuid().optional(),
 });
+export const newAssignmentSchema = nouvelleAffectation
+  .refine((a) => a.responsable || a.positionTitle, {
+    message: 'Indiquez le poste',
+    path: ['positionTitle'],
+  })
+  .refine((a) => !a.responsable || a.orgUnitId, {
+    message: 'Choisissez l’unité qu’il dirigera',
+    path: ['orgUnitId'],
+  });
 export type NewAssignmentInput = z.infer<typeof newAssignmentSchema>;
 
 // ---------- Employé : lecture ----------

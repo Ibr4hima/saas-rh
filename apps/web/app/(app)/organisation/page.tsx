@@ -37,6 +37,7 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
+import { de } from '../../../lib/mots';
 import { aDesConsequences, ListeConsequences } from '../../../components/consequences-hierarchie';
 import { BandeauDeleguer } from '../../../components/deleguer-membres';
 import { useEspace } from '../../../components/espace';
@@ -222,6 +223,9 @@ function UnitPanel({
     enabled: canManage && !estAdmin,
   });
   const [managerId, setManagerId] = useState(unit.managerEmployeeId ?? '');
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const [depuis, setDepuis] = useState(aujourdhui);
+  const [posteAncien, setPosteAncien] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(unit.name);
@@ -256,6 +260,8 @@ function UnitPanel({
       setError(null);
       setEditing(false);
       setApercu(null);
+      setDepuis(new Date().toISOString().slice(0, 10));
+      setPosteAncien('');
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
       void queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
@@ -318,6 +324,20 @@ function UnitPanel({
     queryFn: () => api<OrgUnitMember[]>(`/org-units/${unit.id}/eligible-managers`),
     enabled: canManage,
   });
+
+  // La passation s'écrit dans les affectations : le nouveau prend ses
+  // fonctions à une date, au plus tôt le début de son affectation en cours ;
+  // l'ancien, encore en activité, reçoit son nouveau poste ce jour-là.
+  const change = (unit.managerEmployeeId ?? '') !== managerId;
+  const candidat = (eligible.data ?? []).find((e) => e.employeeId === managerId);
+  const ancienAPlacer = change && Boolean(unit.managerEmployeeId) && unit.managerDepuis !== null;
+  const dater = change && (Boolean(managerId) || ancienAPlacer);
+  const depuisMin = [candidat?.depuis ?? '', ancienAPlacer ? (unit.managerDepuis ?? '') : '']
+    .sort()
+    .at(-1);
+  const passationPrete =
+    (!dater || (depuis >= (depuisMin ?? '') && depuis <= aujourdhui)) &&
+    (!ancienAPlacer || posteAncien.trim().length > 0);
 
   // Ce que la dissolution rendrait faux, selon l'unité d'accueil choisie.
   const apercuDissolution = useQuery({
@@ -624,35 +644,81 @@ function UnitPanel({
           {canManage && (!unit.directionDuPersonnel || estAdmin) ? (
             <div className="mt-3 border-t border-line-soft pt-3">
               <Field label="Désigner un responsable" htmlFor="unit-manager">
-                <div className="flex gap-2">
-                  <Select
-                    id="unit-manager"
-                    value={managerId}
-                    onChange={(ev) => setManagerId(ev.target.value)}
-                    className="h-[34px]"
-                  >
-                    <option value="">Aucun</option>
-                    {(eligible.data ?? [])
-                      .filter((e) => e.employeeId !== moi.data?.employeeId)
-                      .map((e) => (
-                        <option key={e.employeeId} value={e.employeeId}>
-                          {nomAbrege(e.givenName, e.familyName)} · {e.employeeNumber}
-                        </option>
-                      ))}
-                  </Select>
+                <Select
+                  id="unit-manager"
+                  value={managerId}
+                  onChange={(ev) => setManagerId(ev.target.value)}
+                  className="h-[34px]"
+                >
+                  <option value="">Aucun</option>
+                  {(eligible.data ?? [])
+                    .filter((e) => e.employeeId !== moi.data?.employeeId)
+                    .map((e) => (
+                      <option key={e.employeeId} value={e.employeeId}>
+                        {nomAbrege(e.givenName, e.familyName)} · {e.employeeNumber}
+                      </option>
+                    ))}
+                </Select>
+              </Field>
+              {change ? (
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                  {dater ? (
+                    <div className="w-full sm:w-44">
+                      <Field
+                        label={managerId ? 'Début de fonction' : 'À compter du'}
+                        htmlFor="unit-depuis"
+                        required
+                      >
+                        <Input
+                          id="unit-depuis"
+                          type="date"
+                          value={depuis}
+                          min={depuisMin || undefined}
+                          max={aujourdhui}
+                          onChange={(ev) => setDepuis(ev.target.value)}
+                        />
+                      </Field>
+                    </div>
+                  ) : null}
+                  {ancienAPlacer ? (
+                    <div className="flex-1">
+                      <Field
+                        label={`Nouveau poste ${de(unit.managerShortName ?? '')}`}
+                        htmlFor="unit-poste-ancien"
+                        required
+                      >
+                        <Input
+                          id="unit-poste-ancien"
+                          placeholder={`Ex : ${
+                            unit.managerGender === 'female'
+                              ? 'Conseillère'
+                              : unit.managerGender === 'male'
+                                ? 'Conseiller'
+                                : 'Conseiller·ère'
+                          } technique`}
+                          value={posteAncien}
+                          maxLength={120}
+                          onChange={(ev) => setPosteAncien(ev.target.value)}
+                        />
+                      </Field>
+                    </div>
+                  ) : null}
                   <Button
-                    size="md"
-                    variant="secondary"
+                    className={dater || ancienAPlacer ? undefined : 'self-start'}
                     loading={verification || appliquer.isPending}
-                    disabled={(unit.managerEmployeeId ?? '') === managerId}
+                    disabled={!passationPrete}
                     onClick={() =>
-                      void verifierPuisAppliquer({ managerEmployeeId: managerId || null })
+                      void verifierPuisAppliquer({
+                        managerEmployeeId: managerId || null,
+                        ...(dater ? { depuis } : {}),
+                        ...(ancienAPlacer ? { posteDeLAncien: posteAncien.trim() } : {}),
+                      })
                     }
                   >
-                    OK
+                    Enregistrer
                   </Button>
                 </div>
-              </Field>
+              ) : null}
             </div>
           ) : null}
         </CardContent>

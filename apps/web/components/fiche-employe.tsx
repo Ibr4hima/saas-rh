@@ -12,7 +12,7 @@ import type {
   InviteResult,
   RepriseDesResponsabilites,
 } from '@teranga/contracts';
-import { peut, titreDeLaFiche } from '@teranga/contracts';
+import { peut, posteDeResponsable, titreDeLaFiche } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -34,7 +34,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
-import { compte } from '../lib/mots';
+import { compte, de } from '../lib/mots';
 import { CarteCertificatsAgent } from './academy-certificat';
 import { CarteEvaluationsAgent } from './evaluation-objectifs';
 import { EmployeeDocumentsCard } from './employee-documents-card';
@@ -490,6 +490,8 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
             assignments={e.assignments}
             team={e.team}
             managerId={e.managerId}
+            genre={e.person.gender}
+            dirige={e.responsabilites.unites}
             canManage={peutGerer && actif}
           />
 
@@ -735,15 +737,21 @@ function AssignmentsCard({
   assignments,
   team,
   managerId,
+  genre,
+  dirige,
   canManage,
 }: {
   employeeId: string;
   assignments: EmployeeDetail['assignments'];
   team: EmployeeDetail['team'];
   managerId: string | null;
+  genre: string | null;
+  /** Les unités qu'il dirige : une personne n'en dirige qu'une. */
+  dirige: EmployeeDetail['responsabilites']['unites'];
   canManage: boolean;
 }) {
   const queryClient = useQueryClient();
+  const me = useMe();
   const [open, setOpen] = useState(false);
   // La dernière affectation, saisie par erreur : son poste ou sa date se
   // corrigent ; une mutation se défait, et la précédente reprend.
@@ -769,6 +777,8 @@ function AssignmentsCard({
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [nouveauN1, setNouveauN1] = useState('');
   const [repreneur, setRepreneur] = useState('');
+  const [responsable, setResponsable] = useState(false);
+  const [posteAncien, setPosteAncien] = useState('');
   const [bilan, setBilan] = useState<ConsequencesHierarchie | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -802,6 +812,28 @@ function AssignmentsCard({
     open,
   );
   const repreneurRequis = changeDeDirection && team.length > 0;
+
+  // Désigné responsable de l'unité : son poste est celui de la tête de
+  // l'unité, au plus tard aujourd'hui, et celui qu'il remplace reçoit le sien.
+  // Désigner relève de l'organigramme ; la DCH, de l'administrateur.
+  const uniteVisee = unites.find((u) => u.id === orgUnitId);
+  const peutDesigner =
+    peut(me.data, 'organigramme') &&
+    Boolean(uniteVisee) &&
+    (!uniteVisee?.directionDuPersonnel || me.data?.role === 'admin');
+  const aLaTete = responsable && peutDesigner;
+  const posteDeLaTete = aLaTete && uniteVisee ? posteDeResponsable(uniteVisee, genre) : '';
+  // Un directeur relève du directeur général : son n+1 ne se choisit pas.
+  const dirigeraUneDirection = aLaTete && uniteVisee?.unitType === 'direction';
+  const ancien =
+    aLaTete &&
+    uniteVisee?.managerEmployeeId &&
+    uniteVisee.managerEmployeeId !== employeeId &&
+    uniteVisee.managerDepuis
+      ? uniteVisee
+      : null;
+  const dirigeAilleurs = aLaTete ? dirige.find((u) => u.id !== orgUnitId) : undefined;
+  const aujourdhuiIso = new Date().toISOString().slice(0, 10);
   // Le directeur de la direction visée est son n+1 d'office : proposé d'emblée.
   const directeurVise = changeDeDirection ? n1DOffice(unites, orgUnitId || null, employeeId) : null;
   useEffect(() => {
@@ -819,11 +851,14 @@ function AssignmentsCard({
       api<ConsequencesHierarchie>(`/employees/${employeeId}/assignments`, {
         method: 'POST',
         body: {
-          positionTitle,
+          ...(aLaTete ? { responsable: true } : { positionTitle }),
           orgUnitId: orgUnitId || undefined,
           startDate,
-          ...(changeDeDirection && nouveauN1 ? { managerEmployeeId: nouveauN1 } : {}),
+          ...(changeDeDirection && nouveauN1 && !dirigeraUneDirection
+            ? { managerEmployeeId: nouveauN1 }
+            : {}),
           ...(repreneurRequis && repreneur ? { repreneurEquipeId: repreneur } : {}),
+          ...(ancien ? { posteDeLAncien: posteAncien.trim() } : {}),
         },
       }),
     onSuccess: (res) => {
@@ -831,6 +866,8 @@ function AssignmentsCard({
       setPositionTitle('');
       setNouveauN1('');
       setRepreneur('');
+      setResponsable(false);
+      setPosteAncien('');
       setError(null);
       setBilan(res ?? null);
       void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
@@ -853,25 +890,17 @@ function AssignmentsCard({
       </CardHeader>
       {open ? (
         <CardContent className="border-b border-line-soft">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1">
-              <Field label="Nouveau poste" htmlFor="asg-title" required>
-                <Input
-                  id="asg-title"
-                  placeholder="Ex : Chef de service études"
-                  value={positionTitle}
-                  onChange={(ev) => setPositionTitle(ev.target.value)}
-                />
-              </Field>
-            </div>
-            <div className="flex-1">
+          {/* L'unité d'abord : c'est elle qui dit si l'on peut l'y désigner
+              responsable, et quel poste il y prend alors. */}
+          <div className="grid gap-3 sm:grid-cols-2 sm:items-start">
+            <div className="flex flex-col gap-2.5">
               <Field label="Unité" htmlFor="asg-unit">
                 <Select
                   id="asg-unit"
                   value={orgUnitId}
                   onChange={(ev) => setOrgUnitId(ev.target.value)}
                 >
-                  <option value="">—</option>
+                  <option value="">Aucune</option>
                   {orgUnits.data?.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.name}
@@ -879,32 +908,61 @@ function AssignmentsCard({
                   ))}
                 </Select>
               </Field>
+              {peutDesigner ? (
+                <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-ink">
+                  <Checkbox
+                    checked={responsable}
+                    onChange={(ev) => setResponsable(ev.target.checked)}
+                  />
+                  Désigner comme responsable
+                </label>
+              ) : null}
             </div>
-            <div className="w-full sm:w-44">
-              <Field label="À compter du" htmlFor="asg-start" required>
+            <Field label="Nouveau poste" htmlFor="asg-title" required={!aLaTete}>
+              <Input
+                id="asg-title"
+                placeholder="Ex : Chef de service études"
+                value={aLaTete ? posteDeLaTete : positionTitle}
+                // Désigné responsable, son poste s'écrit tout seul : il se lit,
+                // il ne se saisit pas.
+                readOnly={aLaTete}
+                tabIndex={aLaTete ? -1 : undefined}
+                className={aLaTete ? 'cursor-default bg-bg text-ink-strong' : undefined}
+                onChange={(ev) => setPositionTitle(ev.target.value)}
+              />
+            </Field>
+            <Field label="À compter du" htmlFor="asg-start" required>
+              <Input
+                id="asg-start"
+                type="date"
+                value={startDate}
+                min={ancien?.managerDepuis ?? undefined}
+                max={aLaTete ? aujourdhuiIso : undefined}
+                onChange={(ev) => setStartDate(ev.target.value)}
+              />
+            </Field>
+            {ancien ? (
+              <Field
+                label={`Nouveau poste ${de(ancien.managerShortName ?? '')}`}
+                htmlFor="asg-poste-ancien"
+                required
+              >
                 <Input
-                  id="asg-start"
-                  type="date"
-                  value={startDate}
-                  onChange={(ev) => setStartDate(ev.target.value)}
+                  id="asg-poste-ancien"
+                  placeholder={`Ex : ${
+                    ancien.managerGender === 'female'
+                      ? 'Conseillère'
+                      : ancien.managerGender === 'male'
+                        ? 'Conseiller'
+                        : 'Conseiller·ère'
+                  } technique`}
+                  value={posteAncien}
+                  maxLength={120}
+                  onChange={(ev) => setPosteAncien(ev.target.value)}
                 />
               </Field>
-            </div>
-            <Button
-              onClick={() => create.mutate()}
-              loading={create.isPending}
-              disabled={
-                !positionTitle.trim() ||
-                !startDate ||
-                (repreneurRequis && !repreneur) ||
-                bloqueeParLaDate
-              }
-            >
-              Enregistrer
-            </Button>
-          </div>
-          {changeDeDirection && directionVisee ? (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            ) : null}
+            {changeDeDirection && directionVisee && !dirigeraUneDirection ? (
               <Field label="Nouveau n+1" htmlFor="asg-n1" hint={`Dans ${libelle(directionVisee)}.`}>
                 <Select
                   id="asg-n1"
@@ -915,36 +973,59 @@ function AssignmentsCard({
                   {n1Possibles.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.nom}
-                      {m.poste ? ` — ${m.poste}` : ''}
+                      {m.poste ? ` · ${m.poste}` : ''}
                     </option>
                   ))}
                 </Select>
               </Field>
-              {repreneurRequis ? (
-                <Field
-                  label="Qui reprend son équipe"
-                  htmlFor="asg-repreneur"
-                  required
-                  hint={`${team.map((m) => m.name).join(', ')} ${team.length > 1 ? 'restent' : 'reste'} dans ${libelle(directionActuelle) ?? 'sa direction'}.`}
+            ) : null}
+            {repreneurRequis ? (
+              <Field
+                label="Qui reprend son équipe"
+                htmlFor="asg-repreneur"
+                required
+                hint={`${team.map((m) => m.name).join(', ')} ${team.length > 1 ? 'restent' : 'reste'} dans ${libelle(directionActuelle) ?? 'sa direction'}.`}
+              >
+                <Select
+                  id="asg-repreneur"
+                  value={repreneur}
+                  onChange={(ev) => setRepreneur(ev.target.value)}
                 >
-                  <Select
-                    id="asg-repreneur"
-                    value={repreneur}
-                    onChange={(ev) => setRepreneur(ev.target.value)}
-                  >
-                    <option value="">Choisir</option>
-                    {repreneursPossibles.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.nom}
-                        {m.poste ? ` — ${m.poste}` : ''}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              ) : null}
-            </div>
+                  <option value="">Choisir</option>
+                  {repreneursPossibles.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.nom}
+                      {m.poste ? ` · ${m.poste}` : ''}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
+          </div>
+          {dirigeAilleurs ? (
+            <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
+              Déjà à la tête de « {dirigeAilleurs.nom} » : désignez d’abord une autre personne à sa
+              place.
+            </p>
           ) : null}
-          {bloqueeParLaDate ? (
+          <div className="mt-3 flex justify-end">
+            <Button
+              onClick={() => create.mutate()}
+              loading={create.isPending}
+              disabled={
+                !startDate ||
+                (repreneurRequis && !repreneur) ||
+                (aLaTete
+                  ? startDate > aujourdhuiIso ||
+                    Boolean(dirigeAilleurs) ||
+                    (Boolean(ancien) && !posteAncien.trim())
+                  : !positionTitle.trim() || bloqueeParLaDate)
+              }
+            >
+              Enregistrer
+            </Button>
+          </div>
+          {bloqueeParLaDate && !aLaTete ? (
             <p className="mt-3 flex items-start gap-2 text-[12.5px] leading-relaxed text-ink">
               <Icon name="event" size={16} className="mt-px shrink-0 text-primary" />
               <span>
