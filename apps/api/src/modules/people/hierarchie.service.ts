@@ -8,6 +8,7 @@ import {
 } from '@teranga/contracts';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { DG, placesDesChefs, SOMMET, uniteEnVigueur } from './chaine';
+import { enStage } from './en-activite';
 import { classerAnomalies, compterParType, type LigneHierarchie } from './hierarchie';
 
 /* ————————————————————————————————————————————————————————————————
@@ -53,6 +54,7 @@ interface LigneBrute extends Record<string, unknown> {
   responsable_id: string | null;
   responsable_nom: string | null;
   responsable_statut: string | null;
+  responsable_stagiaire: boolean;
   responsable_direction_id: string | null;
   responsable_direction_nom: string | null;
   dirige_une_direction: boolean;
@@ -143,6 +145,7 @@ async function photo(tx: Tx): Promise<LigneHierarchie[]> {
       e.manager_employee_id                   AS responsable_id,
       rp.given_name || ' ' || rp.family_name  AS responsable_nom,
       r.status                                AS responsable_statut,
+      (r.id IS NOT NULL AND ${enStage(sql`r.id`)})       AS responsable_stagiaire,
       rd.direction_id                         AS responsable_direction_id,
       rd.direction_nom                        AS responsable_direction_nom,
       (e.id IN (SELECT employee_id FROM directeurs))     AS dirige_une_direction,
@@ -168,6 +171,7 @@ async function photo(tx: Tx): Promise<LigneHierarchie[]> {
     responsableId: r.responsable_id,
     responsableNom: r.responsable_nom,
     responsableActif: r.responsable_statut === null ? null : r.responsable_statut === 'active',
+    responsableStagiaire: r.responsable_stagiaire,
     responsableDirectionId: r.responsable_direction_id,
     responsableDirectionNom: r.responsable_direction_nom,
     dirigeUneDirection: r.dirige_une_direction,

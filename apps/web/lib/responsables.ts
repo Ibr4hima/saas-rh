@@ -8,7 +8,8 @@ import { api } from './api';
    Les responsables hiérarchiques qu'on peut désigner.
 
    La règle de l'APIX veut le n+1 dans la MÊME DIRECTION que l'agent, un
-   directeur exceptant — il relève du directeur général. Un formulaire qui
+   directeur exceptant : il relève du directeur général. Un stagiaire n'est
+   le n+1 de personne. Un formulaire qui
    proposerait les trois cents dossiers de l'agence ferait donc choisir un
    rattachement que le serveur refuse ensuite ; celui-ci ne propose que ce qui
    tient.
@@ -45,7 +46,7 @@ export function useResponsablesPossibles(
     queryKey: ['employees', 'responsables', unite],
     queryFn: () =>
       api<EmployeeListPage>(
-        `/employees?status=active&limit=100${unite ? `&unit=${encodeURIComponent(unite)}` : ''}`,
+        `/employees?status=active&horsStage=true&limit=100${unite ? `&unit=${encodeURIComponent(unite)}` : ''}`,
       ),
     enabled: actif && !directeur,
   });

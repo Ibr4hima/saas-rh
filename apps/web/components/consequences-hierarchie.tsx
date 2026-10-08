@@ -21,6 +21,8 @@ const MOTIFS: Record<MotifChangement, string> = {
   direction_pourvue: 'sa direction a désormais un directeur',
   chef_d_unite: 'relève du responsable de l’unité au-dessus de la sienne',
   ancien_directeur: 'ancien directeur, resté dans la direction',
+  suit_le_chef: 'relevait de l’ancien responsable de l’unité',
+  ancien_chef: 'ancien responsable, resté dans l’unité',
   reprise_equipe: 'reprise de l’équipe',
   prend_la_place: 'prend la place de celui qui part',
   responsable_de_sa_direction: 'relève d’office du responsable de sa direction',

@@ -23,6 +23,7 @@ import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import {
   alignerLesChefs,
+  apresNouveauChef,
   apresNouveauDG,
   apresNouveauDirecteur,
   directeurGeneral,
@@ -687,6 +688,11 @@ export class OrgUnitsService {
       await apresNouveauDirecteur(tx, journal, id, responsableChange ? ancien : null, prochain);
     }
     await alignerLesChefs(tx, journal, chefsAvant);
+    // Une fois les chefs à leur place : pris dans l'équipe de l'ancien, le
+    // nouveau ne relève déjà plus de lui.
+    if (responsableChange && prochain !== null && nextType !== 'direction') {
+      await apresNouveauChef(tx, journal, id, ancien, prochain);
+    }
   }
 
   /**

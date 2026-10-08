@@ -3,7 +3,8 @@ import type { ChangementRattachement, MotifChangement } from '@teranga/contracts
 import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import type { Tx } from '../../db/tenant-db';
-import { exigerEnActivite } from './en-activite';
+import { frDate } from '../notifications/phrases';
+import { debutDuStage, exigerEnActivite } from './en-activite';
 
 /* ————————————————————————————————————————————————————————————————
    La chaîne hiérarchique : ses définitions, la validation d'un rattachement,
@@ -158,6 +159,28 @@ export async function validerRattachement(
   // Un n+1 dont le contrat est arrivé à terme n'est plus de l'APIX, même si
   // son dossier n'est pas encore passé dans les inactifs.
   await exigerEnActivite(tx, managerId, 'être n+1');
+  // Un stagiaire n'est le n+1 de personne : ni pendant son stage, ni avant
+  // qu'il commence.
+  const { rows: stage } = await tx.execute<{ nom: string; debut: string | null; deja: boolean }>(
+    sql`
+    SELECT p.given_name || ' ' || p.family_name AS nom, s.debut::text AS debut,
+           s.debut <= CURRENT_DATE AS deja
+      FROM employees e
+      JOIN persons p ON p.id = e.person_id
+      CROSS JOIN LATERAL (SELECT ${debutDuStage(sql`e.id`)} AS debut) s
+     WHERE e.id = ${managerId}`,
+  );
+  const s = stage[0];
+  if (s?.debut) {
+    problem(
+      422,
+      'people.n1_stagiaire',
+      'Un stagiaire ne peut pas être n+1',
+      s.deja
+        ? `${s.nom} est en stage : un stagiaire ne peut pas être n+1.`
+        : `${s.nom} commence un stage le ${frDate(s.debut)} : un stagiaire ne peut pas être n+1.`,
+    );
+  }
   // UNION, pas UNION ALL : sur une boucle déjà présente dans les données, la
   // remontée s'arrête au lieu de tourner sans fin.
   const boucle = await tx.execute(sql`
@@ -705,6 +728,36 @@ export async function apresNouveauDirecteur(
     if (a?.status === 'active' && a.n1 === dg && direction?.id === directionId) {
       await tenterRattachement(tx, journal, ancien, nouveau, 'ancien_directeur');
     }
+  }
+}
+
+/**
+ * Un département ou un service change de responsable. Ce que la règle
+ * impose, outre la place du nouveau (règle 3 bis, cf. `alignerLesChefs`) :
+ *   - ce qui relevait de l'ancien relève du nouveau ;
+ *   - l'ancien, s'il reste dans l'unité, relève du nouveau.
+ * Le responsable de l'unité est DÉJÀ écrit quand on arrive ici.
+ */
+export async function apresNouveauChef(
+  tx: Tx,
+  journal: ChangementRattachement[],
+  uniteId: string,
+  ancien: string | null,
+  nouveau: string,
+): Promise<void> {
+  if (!ancien || ancien === nouveau) return;
+  for (const agent of await equipeDe(tx, ancien)) {
+    if (agent.id !== nouveau) {
+      await tenterRattachement(tx, journal, agent.id, nouveau, 'suit_le_chef');
+    }
+  }
+  const [a] = await tx
+    .select({ status: t.employees.status })
+    .from(t.employees)
+    .where(eq(t.employees.id, ancien))
+    .limit(1);
+  if (a?.status === 'active' && !(await sortDuPerimetre(tx, ancien, uniteId))) {
+    await tenterRattachement(tx, journal, ancien, nouveau, 'ancien_chef');
   }
 }
 

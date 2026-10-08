@@ -33,6 +33,8 @@ export type TypeAnomalieHierarchie =
   | 'sans_responsable'
   /** Le n+1 désigné a un dossier archivé : il n'encadre plus personne. */
   | 'responsable_archive'
+  /** Le n+1 désigné est en stage : un stagiaire n'est le n+1 de personne. */
+  | 'responsable_stagiaire'
   /** Le directeur général est affecté hors de la Direction Générale. */
   | 'dg_hors_direction_generale'
   /** Un directeur dont le n+1 n'est pas le directeur général. */
@@ -102,6 +104,10 @@ export type MotifChangement =
   | 'chef_d_unite'
   /** L'ancien directeur, resté dans la direction, relève du nouveau. */
   | 'ancien_directeur'
+  /** Relevait de l'ancien chef d'un département ou d'un service : relève du nouveau. */
+  | 'suit_le_chef'
+  /** L'ancien chef d'un département ou d'un service, resté dans l'unité, relève du nouveau. */
+  | 'ancien_chef'
   /** L'équipe d'un agent qui part passe à son repreneur. */
   | 'reprise_equipe'
   /** Le repreneur, pris dans l'équipe, prend la place du partant. */

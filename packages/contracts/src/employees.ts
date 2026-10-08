@@ -640,6 +640,8 @@ export const listEmployeesQuerySchema = z.object({
     .or(z.literal('').transform(() => undefined)),
   /** Les unités TELLES QU'ELLES S'AFFICHENT : l'abrégé de la direction, sinon le nom. */
   unit: filtreMultiple(120),
+  /** Ceux qui peuvent être n+1 : ni en stage, ni sur le point de l'être. */
+  horsStage: z.stringbool().optional(),
   sort: employeeSortSchema.default('recent'),
   dir: z.enum(['asc', 'desc']).default('desc'),
   offset: z.coerce.number().int().min(0).max(100_000).default(0),

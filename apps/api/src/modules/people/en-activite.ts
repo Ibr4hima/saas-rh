@@ -49,6 +49,16 @@ export const typeDeContratAu = (employeeId: SQL | string, jour: SQL) => sql`(
      AND (tc.end_date IS NULL OR tc.end_date >= ${jour})
    ORDER BY tc.start_date DESC, tc.created_at DESC LIMIT 1)`;
 
+/**
+ * Le premier jour de son stage en cours ou à venir ; null : aucun. Un
+ * stagiaire n'est le n+1 de personne, ni pendant son stage ni avant qu'il
+ * commence. En SQL.
+ */
+export const debutDuStage = (employeeId: SQL | string) => sql`(
+  SELECT min(ds.start_date) FROM contracts ds
+   WHERE ds.employee_id = ${employeeId} AND ds.contract_type = 'stage'
+     AND (ds.end_date IS NULL OR ds.end_date >= CURRENT_DATE))`;
+
 /** En stage aujourd'hui : le contrat qui le couvre est un stage. En SQL. */
 export const enStage = (employeeId: SQL | string) =>
   sql`COALESCE(${typeDeContratAu(employeeId, sql`CURRENT_DATE`)} = 'stage', false)`;

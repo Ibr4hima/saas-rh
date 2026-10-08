@@ -59,7 +59,7 @@ import {
   retrouverSaPlace,
   type CeQuIlALaisse,
 } from './activite';
-import { exigerEnActivite, finDeContratPassee } from './en-activite';
+import { debutDuStage, exigerEnActivite, finDeContratPassee } from './en-activite';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 import { exigerUniteVivante, muter } from './mutation';
 import { OrgUnitsService } from './org-units.service';
@@ -282,6 +282,7 @@ export class PeopleService {
               sql`, `,
             )})`
           : null,
+        query.horsStage ? sql`${debutDuStage(sql`vue.id`)} IS NULL` : null,
       ].filter((c): c is NonNullable<typeof c> => c !== null);
       const ou = filtres.length > 0 ? sql`WHERE ${sql.join(filtres, sql` AND `)}` : sql``;
 
@@ -1902,8 +1903,9 @@ export class PeopleService {
    * administrateur, qui dirige une unité).
    */
   /**
-   * Les stagiaires ne dirigent pas d'unité : un responsable en poste ne
-   * passe pas sous contrat de stage tant qu'un autre ne l'a pas remplacé.
+   * Les stagiaires ne dirigent pas d'unité, et ne sont le n+1 de personne :
+   * un responsable en poste, ou un n+1 qui a une équipe, ne passe pas sous
+   * contrat de stage tant que d'autres ne l'ont pas remplacé.
    */
   private async exigerQuIlNeDirigeRien(tx: Tx, employeeId: string): Promise<void> {
     const { rows } = await tx.execute<{ prenom: string; unite: string }>(sql`
@@ -1919,6 +1921,22 @@ export class PeopleService {
         'people.responsable_en_stage',
         `${rows[0].prenom} dirige « ${rows[0].unite} »`,
         'Les stagiaires ne dirigent pas d’unité : désignez d’abord un autre responsable.',
+      );
+    }
+    const equipe = await equipeDe(tx, employeeId);
+    if (equipe.length > 0) {
+      const [personne] = await tx
+        .select({ prenom: t.persons.givenName })
+        .from(t.employees)
+        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+        .where(eq(t.employees.id, employeeId))
+        .limit(1);
+      const agents = equipe.length > 1 ? `de ${equipe.length} agents` : 'd’un agent';
+      problem(
+        422,
+        'people.n1_en_stage',
+        `${personne?.prenom ?? ''} est le n+1 ${agents}`,
+        `${personne?.prenom ?? ''} est le n+1 ${agents} : un stagiaire ne peut pas être n+1. Confiez d’abord son équipe à une autre personne.`,
       );
     }
   }

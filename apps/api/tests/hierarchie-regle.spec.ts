@@ -5,6 +5,7 @@
  *      général, qui est le responsable de l'unité RACINE.
  *   2. Ce responsable appartient à la même direction que l'agent. Seule
  *      exception : un directeur, qui relève du directeur général.
+ *   3. Un stagiaire n'est le n+1 de personne.
  *
  * Ce que ces tests protègent surtout, c'est ce que la règle NE fait PAS : elle
  * ne touche jamais aux dossiers déjà créés sans n+1. Ils restent en place, le
@@ -19,7 +20,11 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { CreateEmployeeInput, SessionUser } from '@teranga/contracts';
+import {
+  listEmployeesQuerySchema,
+  type CreateEmployeeInput,
+  type SessionUser,
+} from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -641,5 +646,98 @@ describe('personne ne se désigne N+1 ni repreneur', () => {
     expect(await codeOf(() => people.create(session, dossier('C', uDCH, chef)))).toBe(
       'AUCUNE ERREUR',
     );
+  });
+});
+
+describe('un stagiaire n’est le n+1 de personne', () => {
+  /** Un contrat, daté par rapport à aujourd'hui : `fin` null, sans terme. */
+  async function contrat(
+    employeeId: string,
+    type: 'cdi' | 'cdd' | 'stage',
+    debut: number,
+    fin: number | null,
+  ): Promise<void> {
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+       VALUES ($1,$2,$3,$4, CURRENT_DATE + $5::int,
+               CASE WHEN $6::int IS NULL THEN NULL ELSE CURRENT_DATE + $6::int END)`,
+      [randomUUID(), tenantId, employeeId, type, debut, fin],
+    );
+  }
+
+  /** Le DG, le directeur de la DSID, et une stagiaire dans sa direction. */
+  async function bac(): Promise<{ chef: string; stagiaire: string }> {
+    const dg = await creerLeDG();
+    const chef = await creerUnDirecteur('CHEF', uDSID, dg);
+    const stagiaire = (await people.create(user, dossier('STAGE', uDSID, chef))).id;
+    await contrat(stagiaire, 'stage', -30, 60);
+    return { chef, stagiaire };
+  }
+
+  it('refusé à la création comme dans la fiche', async () => {
+    const { chef, stagiaire } = await bac();
+    expect(await codeOf(() => people.create(user, dossier('A', uDSID, stagiaire)))).toBe(
+      'people.n1_stagiaire',
+    );
+    const b = (await people.create(user, dossier('B', uDSID, chef))).id;
+    expect(
+      await codeOf(() => people.update(user, b, { employee: { managerEmployeeId: stagiaire } })),
+    ).toBe('people.n1_stagiaire');
+    expect((await people.detail(user, b)).managerId).toBe(chef);
+  });
+
+  it('refusé aussi quand son stage n’a pas commencé, permis une fois fini', async () => {
+    const { chef } = await bac();
+    const bientot = (await people.create(user, dossier('BIENTOT', uDSID, chef))).id;
+    await contrat(bientot, 'stage', 10, 100);
+    expect(await codeOf(() => people.create(user, dossier('A', uDSID, bientot)))).toBe(
+      'people.n1_stagiaire',
+    );
+    const ancien = (await people.create(user, dossier('ANCIEN', uDSID, chef))).id;
+    await contrat(ancien, 'stage', -200, -20);
+    await contrat(ancien, 'cdi', -19, null);
+    expect(await codeOf(() => people.create(user, dossier('C', uDSID, ancien)))).toBe(
+      'AUCUNE ERREUR',
+    );
+  });
+
+  it('qui a une équipe ne passe pas sous contrat de stage', async () => {
+    const { chef } = await bac();
+    const enc = (await people.create(user, dossier('ENC', uDSID, chef))).id;
+    await people.create(user, dossier('X', uDSID, enc));
+    const err = await people
+      .newContract(user, enc, {
+        contractType: 'stage',
+        startDate: '2026-11-01',
+        endDate: '2027-04-30',
+        affectation: { positionTitle: 'Stagiaire', orgUnitId: uDSID },
+      } as never)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ProblemException);
+    expect((err as ProblemException).problem).toMatchObject({
+      code: 'people.n1_en_stage',
+      detail: expect.stringMatching(/^ENC est le n\+1 d’un agent : /),
+    });
+  });
+
+  it('la liste des n+1 possibles l’écarte', async () => {
+    const { chef, stagiaire } = await bac();
+    const page = await people.list(
+      user,
+      listEmployeesQuerySchema.parse({ status: 'active', horsStage: 'true', limit: 100 }),
+    );
+    const ids = page.items.map((i) => i.id);
+    expect(ids).toContain(chef);
+    expect(ids).not.toContain(stagiaire);
+    const tous = await people.list(user, listEmployeesQuerySchema.parse({ limit: 100 }));
+    expect(tous.items.map((i) => i.id)).toContain(stagiaire);
+  });
+
+  it('le contrôle signale un n+1 stagiaire', async () => {
+    const { chef, stagiaire } = await bac();
+    const a = (await people.create(user, dossier('A', uDSID, chef))).id;
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [a, stagiaire]);
+    const c = await hierarchie.controle(user);
+    expect(c.anomalies.map((x) => `${x.matricule}:${x.type}`)).toEqual(['A:responsable_stagiaire']);
   });
 });

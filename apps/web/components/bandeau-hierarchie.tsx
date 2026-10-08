@@ -53,6 +53,10 @@ export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: 
     court: 'n+1 inactif',
     explication: 'Son responsable a quitté l’agence : il faut le remplacer.',
   },
+  responsable_stagiaire: {
+    court: 'n+1 stagiaire',
+    explication: 'Son responsable est en stage : il faut le remplacer.',
+  },
   dg_hors_direction_generale: {
     court: 'DG hors Direction Générale',
     explication: 'Le directeur général siège à la Direction Générale : réaffectez-le.',
@@ -152,7 +156,7 @@ function FenetreAnomalies({
       open
       onClose={onClose}
       title="Chaîne hiérarchique à compléter"
-      subtitle={`${compte(controle.anomalies.length, 'dossier')} sur ${compte(controle.effectif, 'agent')} — ${controle.nonEvaluables} hors du champ de l’évaluation`}
+      subtitle={`${compte(controle.anomalies.length, 'dossier')} sur ${compte(controle.effectif, 'agent')} · ${controle.nonEvaluables} hors du champ de l’évaluation`}
       maxWidth="max-w-3xl"
       footer={<Button onClick={onClose}>Fermer</Button>}
     >

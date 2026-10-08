@@ -302,7 +302,8 @@ describe('l’ordre et les décomptes', () => {
     expect(parType.sans_responsable).toBe(1);
     expect(parType.hors_direction).toBe(0);
     expect(parType.chef_mal_rattache).toBe(0);
-    expect(Object.keys(parType)).toHaveLength(10);
+    expect(parType.responsable_stagiaire).toBe(0);
+    expect(Object.keys(parType)).toHaveLength(11);
   });
 
   it('dit lesquelles empêchent d’évaluer', () => {

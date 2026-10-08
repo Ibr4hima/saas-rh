@@ -6,7 +6,8 @@
  * rattaché à un département relève du chef de ce département. Une unité
  * au-dessus sans tête renvoie au niveau suivant, et le DG couvre une
  * direction qui attend la sienne. Les autres agents restent libres : leur
- * n+1 est seulement de leur direction.
+ * n+1 est seulement de leur direction. À la relève d'un chef, ce qui
+ * relevait de lui passe au nouveau, et lui aussi s'il reste dans l'unité.
  *
  * Le bac d'essai : la Direction Générale au sommet, la DGT dessous, avec le
  * département Études (et son service Comptabilité) et le service Courrier
@@ -213,23 +214,29 @@ describe('quand l’unité au-dessus change de tête', () => {
     await nommer(uEtudes, chefEtudes);
     const y = await agent('Y', uCompta);
     await nommer(uCompta, y);
+    const a = await agent('A', uEtudes, chefEtudes);
     await nommer(uEtudes, null);
     expect(await n1(y)).toBe(directeur);
-    // L'ancien chef, resté dans la direction, garde son n+1.
+    // Sans successeur, l'ancien chef garde son n+1, et ses agents le gardent.
     expect(await n1(chefEtudes)).toBe(directeur);
+    expect(await n1(a)).toBe(chefEtudes);
   });
 
-  it('chef du département remplacé : le chef de service passe au nouveau, l’ancien ne bouge pas', async () => {
+  it('chef du département remplacé : le chef de service et l’ancien chef passent sous le nouveau', async () => {
     const { directeur } = await laTete();
     const ancien = await agent('ANCIEN', uEtudes);
     await nommer(uEtudes, ancien);
     const y = await agent('Y', uCompta);
     await nommer(uCompta, y);
     const nouveau = await agent('NOUVEAU', uEtudes);
-    await nommer(uEtudes, nouveau);
+    const r = await nommer(uEtudes, nouveau);
     expect(await n1(y)).toBe(nouveau);
     expect(await n1(nouveau)).toBe(directeur);
-    expect(await n1(ancien)).toBe(directeur);
+    // Resté dans le département, conseiller : il relève du nouveau chef.
+    expect(await n1(ancien)).toBe(nouveau);
+    expect(r.changements).toContainEqual(
+      expect.objectContaining({ employeeId: ancien, motif: 'ancien_chef' }),
+    );
   });
 
   it('direction sans tête : le DG couvre le chef du département, le directeur nommé le reprend', async () => {
@@ -253,6 +260,54 @@ describe('quand l’unité au-dessus change de tête', () => {
     expect(await n1(z)).toBe(directeur);
     await organigramme.update(user, uCourrier, { parentId: uEtudes });
     expect(await n1(z)).toBe(chefEtudes);
+  });
+});
+
+describe('à la relève d’un chef, ses agents directs passent au nouveau', () => {
+  it('dans l’unité comme ailleurs dans la direction', async () => {
+    await laTete();
+    const ancien = await agent('ANCIEN', uEtudes);
+    await nommer(uEtudes, ancien);
+    const dedans = await agent('DEDANS', uEtudes, ancien);
+    const ailleurs = await agent('AILLEURS', uCourrier, ancien);
+    const nouveau = await agent('NOUVEAU', uEtudes);
+
+    const r = await nommer(uEtudes, nouveau);
+    expect(await n1(dedans)).toBe(nouveau);
+    expect(await n1(ailleurs)).toBe(nouveau);
+    expect(r.changements.map((c) => `${c.nom}:${c.motif}`).sort()).toEqual([
+      'AILLEURS Test:suit_le_chef',
+      'ANCIEN Test:ancien_chef',
+      'DEDANS Test:suit_le_chef',
+    ]);
+  });
+
+  it('le nouveau, pris dans l’équipe de l’ancien, relève de l’unité au-dessus', async () => {
+    const { directeur } = await laTete();
+    const ancien = await agent('ANCIEN', uCompta);
+    await nommer(uCompta, ancien);
+    const nouveau = await agent('NOUVEAU', uCompta, ancien);
+    const collegue = await agent('COLLEGUE', uCompta, ancien);
+    await nommer(uCompta, nouveau);
+    expect(await n1(nouveau)).toBe(directeur);
+    expect(await n1(collegue)).toBe(nouveau);
+    expect(await n1(ancien)).toBe(nouveau);
+  });
+
+  it('par la case « Désigner comme responsable » aussi', async () => {
+    await laTete();
+    const ancien = await agent('ANCIEN', uEtudes);
+    await nommer(uEtudes, ancien);
+    const a = await agent('A', uEtudes, ancien);
+    const x = await agent('X', uCourrier);
+    await people.newAssignment(user, x, {
+      orgUnitId: uEtudes,
+      startDate: '2025-05-01',
+      responsable: true,
+      posteDeLAncien: 'Conseiller',
+    } as never);
+    expect(await n1(a)).toBe(x);
+    expect(await n1(ancien)).toBe(x);
   });
 });
 

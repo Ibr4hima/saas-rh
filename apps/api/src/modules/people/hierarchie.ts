@@ -21,6 +21,8 @@ export interface LigneHierarchie {
   responsableNom: string | null;
   /** `false` quand le dossier du n+1 est archivé ; `null` s'il n'y en a pas. */
   responsableActif: boolean | null;
+  /** Son n+1 est en stage. */
+  responsableStagiaire?: boolean;
   responsableDirectionId: string | null;
   responsableDirectionNom: string | null;
   /** L'agent est responsable d'une unité de type « direction ». */
@@ -101,6 +103,7 @@ function anomalieDe(
   if (boucles.has(l.employeeId)) return 'boucle';
   if (l.responsableId === null) return 'sans_responsable';
   if (l.responsableActif === false) return 'responsable_archive';
+  if (l.responsableStagiaire) return 'responsable_stagiaire';
   // 2. D'abord l'affectation, ensuite le n+1 — pour l'agent comme pour son
   //    n+1. Sans l'une ou l'autre, la règle de direction ne se vérifie pas.
   if (l.directionId === null) return 'sans_direction';
@@ -128,6 +131,7 @@ export const TYPES_ANOMALIE: TypeAnomalieHierarchie[] = [
   'dg_rattache',
   'sans_responsable',
   'responsable_archive',
+  'responsable_stagiaire',
   'dg_hors_direction_generale',
   'directeur_mal_rattache',
   'chef_mal_rattache',
