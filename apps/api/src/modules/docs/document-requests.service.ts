@@ -9,6 +9,7 @@ import type {
   CreateDocumentRequestResult,
   DocumentRequestStatus,
   DocumentRequestView,
+  PeriodeDuBulletin,
   RequestableDoc,
   SessionUser,
 } from '@teranga/contracts';
@@ -16,6 +17,8 @@ import {
   peut,
   DOC_REQUEST_STATUS_LABELS,
   documentsEnCours,
+  moisDeDuAu,
+  moisEnLettres,
   OPEN_DOCUMENT_REQUEST_STATUSES,
   REQUESTABLE_DOC_LABELS,
 } from '@teranga/contracts';
@@ -23,7 +26,8 @@ import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
-import { accord, de, DOCUMENT } from '../notifications/phrases';
+import { accord, bulletins, de, deBulletins, DOCUMENT } from '../notifications/phrases';
+import { colonnesDuBulletin, periodeDu } from './bulletin';
 import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
 import {
   capaciteDesDocuments,
@@ -117,12 +121,16 @@ export class DocumentRequestsService {
         );
       }
 
+      if (input.bulletin) await this.exigerDesMoisPossibles(tx, self.employeeId, input.bulletin);
+
       for (const [i, docType] of docTypes.entries()) {
         await tx.insert(t.documentRequests).values({
           id: ids[i]!,
           tenantId: user.tenantId,
           employeeId: self.employeeId,
           docTypes: [docType],
+          // Les mois vont au bulletin, et à lui seul.
+          ...(docType === 'bulletin_salaire' ? colonnesDuBulletin(input.bulletin) : {}),
           note: input.note ?? null,
           requestedByUserId: user.userId,
         });
@@ -131,6 +139,51 @@ export class DocumentRequestsService {
       }
     });
     return { ids };
+  }
+
+  /**
+   * Les mois d'un bulletin existent : ni à venir, ni d'avant l'arrivée de
+   * l'agent à l'APIX. Le mois en cours se demande (la paie tombe en fin de
+   * mois) ; la DCH dit, en refusant, s'il n'est pas encore établi.
+   */
+  private async exigerDesMoisPossibles(
+    tx: Tx,
+    employeeId: string,
+    p: PeriodeDuBulletin,
+  ): Promise<void> {
+    const {
+      rows: [m],
+    } = await tx.execute<{ courant: string; arrivee: string }>(sql`
+      SELECT to_char(CURRENT_DATE, 'YYYY-MM') AS courant, to_char(hired_on, 'YYYY-MM') AS arrivee
+        FROM employees WHERE id = ${employeeId}`);
+    if (!m) return;
+    const [premier, dernier] =
+      p.type === 'mois' ? [p.mois, p.mois] : p.type === 'periode' ? [p.du, p.au] : [null, null];
+    if (dernier && dernier > m.courant) {
+      problem(
+        422,
+        'documents.bulletin_a_venir',
+        'Ce bulletin n’existe pas encore',
+        `Le bulletin ${de(moisEnLettres(dernier))} n’est pas encore établi.`,
+      );
+    }
+    if (premier && premier < m.arrivee) {
+      problem(
+        422,
+        'documents.bulletin_avant_arrivee',
+        'Aucun bulletin avant votre arrivée',
+        `Votre arrivée à l’APIX date ${de(moisEnLettres(m.arrivee))} : aucun bulletin avant ce mois.`,
+      );
+    }
+    const depuisLArrivee = moisDeDuAu(m.arrivee, m.courant);
+    if (p.type === 'derniers' && p.nombre > depuisLArrivee) {
+      problem(
+        422,
+        'documents.bulletins_trop_nombreux',
+        'Pas autant de bulletins',
+        `Vous êtes à l’APIX depuis ${moisEnLettres(m.arrivee)} : ${depuisLArrivee} bulletins au plus.`,
+      );
+    }
   }
 
   /**
@@ -222,6 +275,11 @@ export class DocumentRequestsService {
           employeeNumber: r.employeeNumber,
           employeeStatus: r.employeeStatus,
           docTypes: r.request.docTypes as RequestableDoc[],
+          bulletin: periodeDu(
+            r.request.payslipFrom,
+            r.request.payslipTo,
+            r.request.payslipLastMonths,
+          ),
           note: r.request.note,
           status: r.request.status as DocumentRequestStatus,
           pickupContact: r.request.pickupContact,
@@ -375,6 +433,7 @@ export class DocumentRequestsService {
         requestId,
         status: input.status,
         docTypes: row.docTypes,
+        bulletin: periodeDu(row.payslipFrom, row.payslipTo, row.payslipLastMonths),
         pickupContact: changes.pickupContact ?? null,
         message: input.message?.trim() || null,
         isCorrection,
@@ -410,10 +469,12 @@ export class DocumentRequestsService {
       if (row.status !== 'processing' || !row.handledByUserId) return;
       if (row.handledByUserId === user.userId) return;
       const doc = DOCUMENT[row.docTypes[0] as RequestableDoc] ?? DOCUMENT.autre;
+      const periode = periodeDu(row.payslipFrom, row.payslipTo, row.payslipLastMonths);
+      const quoi = periode ? deBulletins(bulletins(periode)) : de(doc.nom);
       await this.notifications.notifyUser(tx, user.tenantId, row.handledByUserId, {
         type: 'document_request_cancelled',
         sujet: 'dch.documents',
-        title: `${soi.givenName} ${soi.familyName} annule sa demande ${de(doc.nom)}`,
+        title: `${soi.givenName} ${soi.familyName} annule sa demande ${quoi}`,
         link: '/documents',
         dedupeKey: `document:${requestId}:annulee`,
       });
@@ -525,6 +586,7 @@ export class DocumentRequestsService {
             requestId: id,
             status: input.status,
             docTypes: row.docTypes,
+            bulletin: periodeDu(row.payslipFrom, row.payslipTo, row.payslipLastMonths),
             pickupContact,
             message,
             isCorrection: false,
@@ -549,20 +611,30 @@ export class DocumentRequestsService {
       requestId: string;
       status: DocumentRequestStatus;
       docTypes: string[];
+      /** Les mois d'un bulletin de salaire : il se nomme avec eux. */
+      bulletin: PeriodeDuBulletin | null;
       pickupContact: string | null;
       message: string | null;
       isCorrection: boolean;
     },
   ): Promise<void> {
     const seul = e.docTypes.length === 1 ? DOCUMENT[e.docTypes[0] as RequestableDoc] : undefined;
-    const votre = seul ? `Votre ${seul.nom} est` : 'Vos documents sont';
-    const pret = seul ? accord('prêt', seul) : 'prêts';
+    const b = seul && e.bulletin ? bulletins(e.bulletin) : null;
+    const votre = b
+      ? b.pluriel
+        ? `Vos ${b.texte} sont`
+        : `Votre ${b.texte} est`
+      : seul
+        ? `Votre ${seul.nom} est`
+        : 'Vos documents sont';
+    const pret = b ? (b.pluriel ? 'prêts' : 'prêt') : seul ? accord('prêt', seul) : 'prêts';
+    const demande = b ? deBulletins(b) : seul ? de(seul.nom) : 'de documents';
     const titres: Partial<Record<DocumentRequestStatus, string>> = {
       processing: `${votre} en préparation`,
       ready: e.isCorrection
         ? `${votre} à retirer auprès ${de(e.pickupContact ?? 'la DCH')}`
         : `${votre} ${pret}, à retirer auprès ${de(e.pickupContact ?? 'la DCH')}`,
-      rejected: `Votre demande ${seul ? de(seul.nom) : 'de documents'} est refusée`,
+      rejected: `Votre demande ${demande} est refusée`,
     };
     const title = titres[e.status];
     if (!title) return;

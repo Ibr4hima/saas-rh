@@ -556,11 +556,11 @@ await parMariama('PATCH', `/applications/${byEmail('ousmane.diallo@yahoo.fr').id
 });
 
 console.log('→ Demandes de documents (circuit DCH : demandée → traitée → prête)');
-const requestDocs = async (employeeId, docTypes, note) => {
+const requestDocs = async (employeeId, docTypes, note, bulletin) => {
   const res = await fetch(`${BASE}/document-requests`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', cookie: employeeCookies[employeeId] },
-    body: JSON.stringify({ docTypes, note }),
+    body: JSON.stringify({ docTypes, note, bulletin }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`demande documents → ${res.status} : ${data.title}`);
@@ -591,6 +591,12 @@ await enTantQue(awa.id, 'POST', `/document-requests/${dr3}/advance`, {
   status: 'ready',
   pickupContact: 'Awa Diop',
   message: 'bureau 204, du lundi au vendredi 9h–16h',
+});
+// Fatou : ses trois derniers bulletins de salaire, pour un prêt. Le
+// bulletin se demande avec ses mois.
+await requestDocs(fatou.id, ['bulletin_salaire'], 'Dossier de prêt immobilier.', {
+  type: 'derniers',
+  nombre: 3,
 });
 
 console.log(

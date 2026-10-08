@@ -1,7 +1,10 @@
 import {
   heureEnLettres,
+  moisEnLettres,
+  periodeEnLettres,
   type ContractType,
   type DocumentCategory,
+  type PeriodeDuBulletin,
   type RequestableDoc,
 } from '@teranga/contracts';
 
@@ -116,6 +119,25 @@ export const accord = (mot: string, n: Pick<Nom, 'feminin'>) => (n.feminin ? `${
 
 /** « d’attestation », « de bulletin », « d’Awa Diop ». */
 export const de = (mot: string) => (/^[aeiouyéèêâîôû]/i.test(mot) ? `d’${mot}` : `de ${mot}`);
+
+/**
+ * Les bulletins de salaire d'une demande, dans une phrase : « bulletin de
+ * salaire de septembre 2026 », « 3 derniers bulletins de salaire »,
+ * « bulletins de salaire d’avril à juin 2026 ».
+ */
+export function bulletins(p: PeriodeDuBulletin): { texte: string; pluriel: boolean } {
+  if (p.type === 'mois') {
+    return { texte: `bulletin de salaire ${de(moisEnLettres(p.mois))}`, pluriel: false };
+  }
+  if (p.type === 'derniers') {
+    return { texte: `${p.nombre} derniers bulletins de salaire`, pluriel: true };
+  }
+  return { texte: `bulletins de salaire ${de(periodeEnLettres(p))}`, pluriel: true };
+}
+
+/** « de bulletin de salaire de… », « des 3 derniers bulletins… » : ce qu'on demande. */
+export const deBulletins = (b: { texte: string; pluriel: boolean }) =>
+  b.pluriel ? `des ${b.texte}` : de(b.texte);
 
 /** « Moussa Ndiaye et Awa Diop », « a, b et c ». */
 export function enumerer(mots: readonly string[]): string {

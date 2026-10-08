@@ -13,7 +13,8 @@ import {
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
-import { DOCUMENT, enumerer, PIECE } from '../notifications/phrases';
+import { bulletins, DOCUMENT, enumerer, PIECE } from '../notifications/phrases';
+import { periodeDu } from '../docs/bulletin';
 import { retirerLesAppels, tenirLesAppels } from './appels';
 import {
   agentDuCompte,
@@ -79,16 +80,27 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
     sujet: 'dch.documents',
     table: sql.raw('document_requests'),
     enAttente: sql.raw(`r.status IN ('received', 'processing')`),
-    detail: sql.raw('to_jsonb(r.doc_types)'),
+    detail: sql.raw(
+      `jsonb_build_object('types', to_jsonb(r.doc_types), 'du', r.payslip_from,
+                          'au', r.payslip_to, 'derniers', r.payslip_last_months)`,
+    ),
     // Un document par demande (cf. DocumentRequestsService.create).
-    capacite: (d) => capaciteDuDocument((d as RequestableDoc[])[0]!),
-    titre: (nom, d) =>
-      `${nom} demande ${enumerer(
-        (d as RequestableDoc[]).map((x) => {
+    capacite: (d) => capaciteDuDocument((d as DetailDocument).types[0]!),
+    titre: (nom, d) => {
+      const { types, du, au, derniers } = d as DetailDocument;
+      // Un bulletin de salaire se nomme avec ses mois : « ses 3 derniers… ».
+      const periode = periodeDu(du, au, derniers);
+      if (periode) {
+        const b = bulletins(periode);
+        return `${nom} demande ${b.pluriel ? 'ses' : 'son'} ${b.texte}`;
+      }
+      return `${nom} demande ${enumerer(
+        types.map((x) => {
           const doc = DOCUMENT[x] ?? DOCUMENT.autre;
           return `${doc.article} ${doc.nom}`;
         }),
-      )}`,
+      )}`;
+    },
     lien: '/documents',
   },
   informations: {
@@ -117,6 +129,14 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
     lien: '/demandes/pieces',
   },
 };
+
+/** Ce qu'une demande de document demande : son type, et les mois d'un bulletin. */
+interface DetailDocument {
+  types: RequestableDoc[];
+  du: string | null;
+  au: string | null;
+  derniers: number | null;
+}
 
 /** Une demande qui attend la DCH. */
 export interface DemandeDCH {

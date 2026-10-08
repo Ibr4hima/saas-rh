@@ -102,17 +102,107 @@ export const documentsEnCours = (
       .flatMap((d) => d.docTypes),
   );
 
-export const createDocumentRequestSchema = z.object({
-  /** Un ou plusieurs documents : chacun devient une demande, qui va à qui le traite. */
-  docTypes: z.array(requestableDocSchema).min(1).max(6),
-  /** Période du bulletin, motif (banque, visa…) — facultatif mais utile à la RH. */
-  note: z
-    .string()
-    .trim()
-    .max(500)
-    .transform((v) => (v === '' ? undefined : v))
-    .optional(),
-});
+/*
+   Le bulletin de salaire se demande pour une période (ADR-0039) : un mois,
+   les N derniers mois, ou de tel mois à tel mois. La DCH sait ainsi quels
+   bulletins sortir, sans les chercher dans une précision libre.
+*/
+
+/** « 2026-09 » : un mois de paie. */
+export const moisDePaieSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Mois invalide');
+
+/** Au plus douze bulletins par demande, quelle que soit la façon de les demander. */
+export const BULLETINS_PAR_DEMANDE_MAX = 12;
+
+export const MOIS_DE_L_ANNEE = [
+  'janvier',
+  'février',
+  'mars',
+  'avril',
+  'mai',
+  'juin',
+  'juillet',
+  'août',
+  'septembre',
+  'octobre',
+  'novembre',
+  'décembre',
+] as const;
+
+/** Le nombre de mois de `du` à `au`, l'un et l'autre compris. */
+export function moisDeDuAu(du: string, au: string): number {
+  const [a1, m1] = du.split('-').map(Number) as [number, number];
+  const [a2, m2] = au.split('-').map(Number) as [number, number];
+  return (a2 - a1) * 12 + (m2 - m1) + 1;
+}
+
+export const periodeDuBulletinSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('mois'), mois: moisDePaieSchema }),
+  z.object({
+    type: z.literal('derniers'),
+    nombre: z.number().int().min(2).max(BULLETINS_PAR_DEMANDE_MAX),
+  }),
+  z
+    .object({ type: z.literal('periode'), du: moisDePaieSchema, au: moisDePaieSchema })
+    .refine((p) => p.au > p.du, {
+      message: 'Le dernier mois vient après le premier',
+      path: ['au'],
+    })
+    .refine((p) => moisDeDuAu(p.du, p.au) <= BULLETINS_PAR_DEMANDE_MAX, {
+      message: `Au plus ${BULLETINS_PAR_DEMANDE_MAX} mois par demande`,
+      path: ['au'],
+    }),
+]);
+export type PeriodeDuBulletin = z.infer<typeof periodeDuBulletinSchema>;
+
+/** « septembre 2026 ». */
+export function moisEnLettres(mois: string): string {
+  const [annee, m] = mois.split('-');
+  return `${MOIS_DE_L_ANNEE[Number(m) - 1]} ${annee}`;
+}
+
+/**
+ * « septembre 2026 », « 3 derniers mois », « janvier à juin 2026 »,
+ * « novembre 2025 à février 2026 ».
+ */
+export function periodeEnLettres(p: PeriodeDuBulletin): string {
+  if (p.type === 'mois') return moisEnLettres(p.mois);
+  if (p.type === 'derniers') return `${p.nombre} derniers mois`;
+  const memeAnnee = p.du.slice(0, 4) === p.au.slice(0, 4);
+  const debut = memeAnnee ? MOIS_DE_L_ANNEE[Number(p.du.slice(5)) - 1] : moisEnLettres(p.du);
+  return `${debut} à ${moisEnLettres(p.au)}`;
+}
+
+/** Le document tel qu'il se lit dans une file : « Bulletin de salaire · 3 derniers mois ». */
+export function documentDemande(doc: RequestableDoc, bulletin: PeriodeDuBulletin | null): string {
+  const libelle = REQUESTABLE_DOC_LABELS[doc] ?? doc;
+  return doc === 'bulletin_salaire' && bulletin
+    ? `${libelle} · ${periodeEnLettres(bulletin)}`
+    : libelle;
+}
+
+export const createDocumentRequestSchema = z
+  .object({
+    /** Un ou plusieurs documents : chacun devient une demande, qui va à qui le traite. */
+    docTypes: z.array(requestableDocSchema).min(1).max(6),
+    /** Les mois du bulletin de salaire : requis avec lui, et seulement avec lui. */
+    bulletin: periodeDuBulletinSchema.optional(),
+    /** Le motif (banque, visa…) : facultatif mais utile à la RH. */
+    note: z
+      .string()
+      .trim()
+      .max(500)
+      .transform((v) => (v === '' ? undefined : v))
+      .optional(),
+  })
+  .refine((d) => !d.docTypes.includes('bulletin_salaire') || d.bulletin, {
+    message: 'Précisez les mois du bulletin de salaire',
+    path: ['bulletin'],
+  })
+  .refine((d) => d.docTypes.includes('bulletin_salaire') || !d.bulletin, {
+    message: 'Des mois ne se précisent que pour un bulletin de salaire',
+    path: ['bulletin'],
+  });
 export type CreateDocumentRequestInput = z.infer<typeof createDocumentRequestSchema>;
 
 /** Une demande par document demandé. */
@@ -165,6 +255,8 @@ export interface DocumentRequestView {
   /** Statut du dossier : conditionne la génération d'attestation. */
   employeeStatus: string;
   docTypes: RequestableDoc[];
+  /** Les mois demandés, pour un bulletin de salaire ; `null` sinon (ou demandé avant). */
+  bulletin: PeriodeDuBulletin | null;
   note: string | null;
   status: DocumentRequestStatus;
   pickupContact: string | null;

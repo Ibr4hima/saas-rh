@@ -6,7 +6,7 @@ import type { DocumentRequestView } from '@teranga/contracts';
 import {
   DOC_REQUEST_STATUS_LABELS,
   DOC_REQUEST_STATUS_TONES,
-  REQUESTABLE_DOC_LABELS,
+  documentDemande,
 } from '@teranga/contracts';
 import {
   Badge,
@@ -141,7 +141,7 @@ function Ligne({
   onAnnuler: () => void;
   enCours: boolean;
 }) {
-  const documents = r.docTypes.map((d) => REQUESTABLE_DOC_LABELS[d] ?? d).join(' · ');
+  const documents = r.docTypes.map((d) => documentDemande(d, r.bulletin)).join(' · ');
   const demandee = formatDate(r.createdAt.slice(0, 10));
   const statut = (
     <Badge tone={DOC_REQUEST_STATUS_TONES[r.status]}>{DOC_REQUEST_STATUS_LABELS[r.status]}</Badge>

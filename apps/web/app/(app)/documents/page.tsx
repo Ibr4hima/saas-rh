@@ -7,10 +7,12 @@ import type {
   AttestationApercu,
   BatchAdvanceResult,
   DocumentRequestView,
+  PeriodeDuBulletin,
   RequestableDoc,
 } from '@teranga/contracts';
 import {
   capaciteDuDocument,
+  documentDemande,
   GENERATED_DOCS,
   peut,
   REQUESTABLE_DOC_LABELS,
@@ -64,8 +66,9 @@ import {
 /** Demandes encore à la charge de la DCH — celles qui peuplent le premier tableau. */
 const OPEN = ['received', 'processing'];
 
+/** « Bulletin de salaire · 3 derniers mois » : le bulletin se lit avec ses mois. */
 function docLabels(r: DocumentRequestView): string {
-  return r.docTypes.map((d) => REQUESTABLE_DOC_LABELS[d] ?? d).join(' · ');
+  return r.docTypes.map((d) => documentDemande(d, r.bulletin)).join(' · ');
 }
 
 /** « d’attestation de travail », « de bulletin de salaire ». */
@@ -449,6 +452,8 @@ interface Piece {
   employeeNumber: string;
   employeeStatus: string;
   doc: RequestableDoc;
+  /** Les mois d'un bulletin de salaire. */
+  bulletin: PeriodeDuBulletin | null;
   /** L'application sait la produire elle-même (attestation de travail). */
   generable: boolean;
 }
@@ -505,6 +510,7 @@ function piecesOf(requests: DocumentRequestView[]): Piece[] {
       employeeNumber: r.employeeNumber,
       employeeStatus: r.employeeStatus,
       doc: d,
+      bulletin: r.bulletin,
       generable: (GENERATED_DOCS as string[]).includes(d) && r.employeeStatus === 'active',
     })),
   );
@@ -752,7 +758,7 @@ function TraiterModal({
                         active ? 'text-primary' : 'text-ink-strong',
                       )}
                     >
-                      {REQUESTABLE_DOC_LABELS[p.doc] ?? p.doc}
+                      {documentDemande(p.doc, p.bulletin)}
                     </span>
                     <span className="mt-0.5 block truncate text-[11px] leading-tight text-ink-muted">
                       {p.employeeName}
@@ -799,7 +805,7 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-line-soft bg-surface-raised px-5 py-3">
       <div className="min-w-0">
         <p className="truncate text-[13.5px] leading-tight font-bold text-ink-strong">
-          {REQUESTABLE_DOC_LABELS[piece.doc] ?? piece.doc}
+          {documentDemande(piece.doc, piece.bulletin)}
         </p>
         <p className="mt-0.5 truncate text-[11.5px] leading-tight text-ink-muted">
           {piece.employeeName}

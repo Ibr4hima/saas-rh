@@ -551,6 +551,11 @@ export const documentRequests = pgTable('document_requests', {
   tenantId: uuid('tenant_id').notNull(),
   employeeId: uuid('employee_id').notNull(),
   docTypes: text('doc_types').array().notNull(),
+  /** Bulletin de salaire : le premier et le dernier mois demandés, au 1er du mois (0098). */
+  payslipFrom: date('payslip_from'),
+  payslipTo: date('payslip_to'),
+  /** Bulletin de salaire : les N derniers mois. */
+  payslipLastMonths: smallint('payslip_last_months'),
   note: text('note'),
   status: text('status').notNull().default('received'),
   requestedByUserId: uuid('requested_by_user_id').notNull(),
