@@ -96,6 +96,41 @@ export const createOrgUnitSchema = z
   });
 export type CreateOrgUnitInput = z.infer<typeof createOrgUnitSchema>;
 
+/**
+ * Ce que devient celui qui quitte la tête d'une unité, quand un autre la
+ * prend ou qu'on la lui retire (ADR-0038). Il reste à l'APIX : dans son
+ * unité ou ailleurs, à un poste qu'on dit, ou à la tête d'une autre unité.
+ * Ou il la quitte : son dossier devient inactif, avec le motif et son
+ * dernier jour.
+ */
+export const devenirDeLAncienSchema = z.discriminatedUnion('choix', [
+  z
+    .object({
+      choix: z.literal('affectation'),
+      /** Son unité ensuite : la sienne, ou une autre. */
+      orgUnitId: z.uuid(),
+      /** Son poste ; sans objet s'il prend la tête de cette autre unité. */
+      positionTitle: trimmed(120).optional(),
+      /** Il prend la tête de cette autre unité. */
+      responsable: z.boolean().optional(),
+      /** Le poste de celui qu'il y remplace, qui y reste. */
+      posteDeLAncien: trimmed(120).optional(),
+      /** Son n+1, quand il change de direction ; sinon, celui d'office. */
+      managerEmployeeId: z.uuid().optional(),
+    })
+    .refine((d) => d.responsable || d.positionTitle, {
+      message: 'Indiquez son nouveau poste',
+      path: ['positionTitle'],
+    }),
+  z.object({
+    choix: z.literal('depart'),
+    motif: motifInactiviteSchema,
+    /** Son dernier jour. */
+    le: isoDate,
+  }),
+]);
+export type DevenirDeLAncien = z.infer<typeof devenirDeLAncienSchema>;
+
 export const updateOrgUnitSchema = z.object({
   name: trimmed(120).optional(),
   unitType: orgUnitTypeSchema.optional(),
@@ -110,6 +145,8 @@ export const updateOrgUnitSchema = z.object({
   depuis: isoDate.optional(),
   /** Le poste que l'ancien responsable occupe ensuite, dans la même unité. */
   posteDeLAncien: trimmed(120).optional(),
+  /** Ce que devient l'ancien responsable ; prime sur `posteDeLAncien`. */
+  devenirDeLAncien: devenirDeLAncienSchema.optional(),
   /**
    * `null` efface l'acronyme, l'absence le laisse inchangé. Attention : la chaîne
    * vide est traitée comme une ABSENCE (le formulaire web envoie `null`).
@@ -563,6 +600,8 @@ const nouvelleAffectation = z.object({
    */
   responsable: z.boolean().optional(),
   posteDeLAncien: trimmed(120).optional(),
+  /** Ce que devient celui qu'il remplace ; prime sur `posteDeLAncien`. */
+  devenirDeLAncien: devenirDeLAncienSchema.optional(),
   /**
    * Le nouveau responsable hiérarchique, dans la même opération.
    *

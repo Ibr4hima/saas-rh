@@ -37,9 +37,14 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
-import { de } from '../../../lib/mots';
 import { aDesConsequences, ListeConsequences } from '../../../components/consequences-hierarchie';
 import { BandeauDeleguer } from '../../../components/deleguer-membres';
+import {
+  DEVENIR_INITIAL,
+  DevenirDeLAncien,
+  lireLeDevenir,
+  type Devenir,
+} from '../../../components/devenir-de-l-ancien';
 import { useEspace } from '../../../components/espace';
 import { Icon } from '../../../components/icons';
 import { Modal } from '../../../components/modal';
@@ -225,7 +230,7 @@ function UnitPanel({
   const [managerId, setManagerId] = useState(unit.managerEmployeeId ?? '');
   const aujourdhui = new Date().toISOString().slice(0, 10);
   const [depuis, setDepuis] = useState(aujourdhui);
-  const [posteAncien, setPosteAncien] = useState('');
+  const [devenir, setDevenir] = useState<Devenir>(DEVENIR_INITIAL);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(unit.name);
@@ -261,7 +266,7 @@ function UnitPanel({
       setEditing(false);
       setApercu(null);
       setDepuis(new Date().toISOString().slice(0, 10));
-      setPosteAncien('');
+      setDevenir(DEVENIR_INITIAL);
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
       void queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
@@ -332,7 +337,8 @@ function UnitPanel({
 
   // La passation s'écrit dans les affectations : le nouveau prend ses
   // fonctions à une date, au plus tôt le début de son affectation en cours ;
-  // l'ancien, encore en activité, reçoit son nouveau poste ce jour-là.
+  // l'ancien, encore en activité, devient ce jour-là ce qu'on décide
+  // (ADR-0038).
   const change = (unit.managerEmployeeId ?? '') !== managerId;
   const candidat = (eligible.data ?? []).find((e) => e.employeeId === managerId);
   const ancienAPlacer = change && Boolean(unit.managerEmployeeId) && unit.managerDepuis !== null;
@@ -340,9 +346,18 @@ function UnitPanel({
   const depuisMin = [candidat?.depuis ?? '', ancienAPlacer ? (unit.managerDepuis ?? '') : '']
     .sort()
     .at(-1);
+  const devenirLu = ancienAPlacer
+    ? lireLeDevenir(devenir, {
+        quittee: unit,
+        unites: units,
+        ancienId: unit.managerEmployeeId!,
+        depuis,
+        min: unit.managerDepuis,
+      })
+    : null;
   const passationPrete =
     (!dater || (depuis >= (depuisMin ?? '') && depuis <= aujourdhui)) &&
-    (!ancienAPlacer || posteAncien.trim().length > 0);
+    (!ancienAPlacer || Boolean(devenirLu?.corps));
 
   // Ce que la dissolution rendrait faux, selon l'unité d'accueil choisie.
   const apercuDissolution = useQuery({
@@ -666,7 +681,7 @@ function UnitPanel({
                 </Select>
               </Field>
               {change ? (
-                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="mt-3 flex flex-col gap-3">
                   {dater ? (
                     <div className="w-full sm:w-44">
                       <Field
@@ -686,37 +701,32 @@ function UnitPanel({
                     </div>
                   ) : null}
                   {ancienAPlacer ? (
-                    <div className="flex-1">
-                      <Field
-                        label={`Nouveau poste ${de(unit.managerShortName ?? '')}`}
-                        htmlFor="unit-poste-ancien"
-                        required
-                      >
-                        <Input
-                          id="unit-poste-ancien"
-                          placeholder={`Ex : ${
-                            unit.managerGender === 'female'
-                              ? 'Conseillère'
-                              : unit.managerGender === 'male'
-                                ? 'Conseiller'
-                                : 'Conseiller·ère'
-                          } technique`}
-                          value={posteAncien}
-                          maxLength={120}
-                          onChange={(ev) => setPosteAncien(ev.target.value)}
-                        />
-                      </Field>
-                    </div>
+                    <DevenirDeLAncien
+                      ancien={{
+                        id: unit.managerEmployeeId!,
+                        nom: unit.managerShortName ?? '',
+                        genre: unit.managerGender,
+                      }}
+                      quittee={unit}
+                      unites={units}
+                      depuis={depuis}
+                      min={unit.managerDepuis}
+                      valeur={devenir}
+                      onChange={setDevenir}
+                      idPrefix="unit-ancien"
+                    />
                   ) : null}
                   <Button
-                    className={dater || ancienAPlacer ? undefined : 'self-start'}
+                    className="self-end"
                     loading={verification || appliquer.isPending}
                     disabled={!passationPrete}
                     onClick={() =>
                       void verifierPuisAppliquer({
                         managerEmployeeId: managerId || null,
                         ...(dater ? { depuis } : {}),
-                        ...(ancienAPlacer ? { posteDeLAncien: posteAncien.trim() } : {}),
+                        ...(ancienAPlacer && devenirLu?.corps
+                          ? { devenirDeLAncien: devenirLu.corps }
+                          : {}),
                       })
                     }
                   >

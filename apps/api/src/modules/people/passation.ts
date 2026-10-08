@@ -16,7 +16,8 @@ import { enActivite } from './en-activite';
    compter du jour où il prend ses fonctions : son affectation en cours est
    remplacée si elle commence ce jour-là (il dirige depuis qu'il y est),
    close la veille sinon. Celui qu'il remplace quitte la tête ce même jour,
-   pour le poste qu'on lui donne, dans son unité.
+   pour le poste qu'on lui donne, dans son unité ; ou il part ailleurs, ou
+   quitte l'APIX, et c'est l'appelant qui l'écrit (ADR-0038).
 */
 
 interface Place extends Record<string, unknown> {
@@ -91,6 +92,8 @@ export interface Passation {
   depuis?: string;
   /** Le poste de l'ancien ensuite, dans son unité. */
   posteDeLAncien?: string;
+  /** L'ancien ne reste pas dans l'unité : ce qu'il devient s'écrit ensuite. */
+  devenirAilleurs?: boolean;
 }
 
 /**
@@ -161,7 +164,7 @@ export async function inscrireLaPassation(tx: Tx, user: SessionUser, p: Passatio
     });
   }
 
-  if (p.ancien && ancien) {
+  if (p.ancien && ancien && !p.devenirAilleurs) {
     const { nom } = await nomEtGenre(tx, p.ancien);
     if (!p.posteDeLAncien) {
       problem(

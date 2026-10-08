@@ -6,6 +6,7 @@ import type {
   ConsequencesHierarchie,
   CreateOrgUnitInput,
   DeleteOrgUnitInput,
+  DevenirDeLAncien,
   OrgUnitMember,
   OrgUnitType,
   OrgUnitView,
@@ -52,6 +53,29 @@ interface TeteHorsPerimetre extends Record<string, unknown> {
 
 /** Lancée pour annuler la transaction d'un aperçu, une fois tout mesuré. */
 class AnnulerLApercu extends Error {}
+
+/** La passation d'une unité dont l'ancien responsable part ailleurs. */
+export interface PassationAilleurs {
+  uniteId: string;
+  ancien: string;
+  /** Qui prend la tête ; `null` : on la lui retire sans successeur. */
+  nouveau: string | null;
+  /** Le jour de la passation. */
+  depuis: string;
+  devenir: DevenirDeLAncien;
+}
+
+/**
+ * Ce que devient l'ancien responsable quand il ne reste pas à son poste
+ * dans l'unité (ADR-0038) : une autre affectation, la tête d'une autre
+ * unité, un départ. Écrit par le service du personnel, dans la transaction
+ * de la passation, une fois l'unité et ses cascades écrites.
+ */
+export type SuiteDeLaPassation = (
+  tx: Tx,
+  journal: ChangementRattachement[],
+  passation: PassationAilleurs,
+) => Promise<void>;
 
 /** Drizzle enveloppe l'erreur pg : le code est sur la cause (cf. les autres services). */
 function pgCode(err: unknown): string | undefined {
@@ -391,8 +415,13 @@ export class OrgUnitsService {
     user: SessionUser,
     id: string,
     input: UpdateOrgUnitInput,
+    suite?: SuiteDeLaPassation,
   ): Promise<ConsequencesHierarchie> {
-    return this.executer(user, (tx, journal) => this.modifier(tx, user, journal, id, input), false);
+    return this.executer(
+      user,
+      (tx, journal) => this.modifier(tx, user, journal, id, input, suite),
+      false,
+    );
   }
 
   /** La même opération, jouée puis annulée : ce qu'elle FERAIT, avant de valider. */
@@ -400,8 +429,13 @@ export class OrgUnitsService {
     user: SessionUser,
     id: string,
     input: UpdateOrgUnitInput,
+    suite?: SuiteDeLaPassation,
   ): Promise<ConsequencesHierarchie> {
-    return this.executer(user, (tx, journal) => this.modifier(tx, user, journal, id, input), true);
+    return this.executer(
+      user,
+      (tx, journal) => this.modifier(tx, user, journal, id, input, suite),
+      true,
+    );
   }
 
   /**
@@ -416,8 +450,9 @@ export class OrgUnitsService {
     journal: ChangementRattachement[],
     id: string,
     input: UpdateOrgUnitInput,
+    suite?: SuiteDeLaPassation,
   ): Promise<void> {
-    await this.modifier(tx, user, journal, id, input);
+    await this.modifier(tx, user, journal, id, input, suite);
   }
 
   /** La dissolution, jouée puis annulée. */
@@ -478,6 +513,7 @@ export class OrgUnitsService {
     journal: ChangementRattachement[],
     id: string,
     input: UpdateOrgUnitInput,
+    suite?: SuiteDeLaPassation,
   ): Promise<void> {
     await this.requireUnit(tx, id, 'org.unit_not_found');
 
@@ -645,6 +681,39 @@ export class OrgUnitsService {
       );
     }
 
+    // Ce que devient l'ancien (ADR-0038) : rester à un poste dans
+    // l'unité, comme avant, ou autre chose, que la suite écrit une fois
+    // l'unité et ses cascades en place. Parti de l'APIX, il n'a rien à
+    // recevoir.
+    const devenir: DevenirDeLAncien | undefined =
+      input.devenirDeLAncien ??
+      (input.posteDeLAncien
+        ? { choix: 'affectation', orgUnitId: id, positionTitle: input.posteDeLAncien }
+        : undefined);
+    const resteIci =
+      devenir?.choix === 'affectation' && devenir.orgUnitId === id && !devenir.responsable;
+    if (devenir?.choix === 'affectation' && devenir.orgUnitId === id && devenir.responsable) {
+      problem(
+        422,
+        'org.devenir_meme_unite',
+        'Choisissez une autre unité à diriger',
+        'La tête de cette unité change de main : choisissez une autre unité à diriger, ou un poste dans celle-ci.',
+      );
+    }
+    const { rows: etat } = await tx.execute<{ actif: boolean; aujourdhui: string }>(sql`
+      SELECT COALESCE(${ancien ? enActivite(sql`${ancien}::uuid`) : sql`false`}, false) AS actif,
+             CURRENT_DATE::text AS aujourdhui`);
+    const devenirAilleurs = Boolean(
+      responsableChange && ancien && etat[0]?.actif && devenir && !resteIci,
+    );
+    if (devenirAilleurs && !suite) {
+      problem(
+        422,
+        'org.devenir_hors_service',
+        'Ce que devient la personne remplacée s’écrit depuis l’organigramme ou sa fiche',
+      );
+    }
+
     // La place des chefs de département et de service avant l'opération :
     // ceux dont le supérieur change en dépendent ensuite (règle 3 bis).
     const chefsAvant = await placesDesChefs(tx);
@@ -677,22 +746,47 @@ export class OrgUnitsService {
         nouveau: prochain,
         ancien,
         depuis: input.depuis,
-        posteDeLAncien: input.posteDeLAncien,
+        posteDeLAncien:
+          resteIci && devenir?.choix === 'affectation' ? devenir.positionTitle : undefined,
+        devenirAilleurs,
       });
     }
     await this.assertAucuneTeteSortie(tx, tetesAvant);
 
     // ——— Les cascades : ce que la règle impose, une fois l'unité écrite.
     if (nouveauDG) {
-      await apresNouveauDG(tx, journal, estSommet && !devientSommet ? ancien : null, prochain);
+      await apresNouveauDG(
+        tx,
+        journal,
+        estSommet && !devientSommet ? ancien : null,
+        prochain,
+        !devenirAilleurs,
+      );
     } else if (nouveauDirecteur) {
-      await apresNouveauDirecteur(tx, journal, id, responsableChange ? ancien : null, prochain);
+      await apresNouveauDirecteur(
+        tx,
+        journal,
+        id,
+        responsableChange ? ancien : null,
+        prochain,
+        !devenirAilleurs,
+      );
     }
     await alignerLesChefs(tx, journal, chefsAvant);
     // Une fois les chefs à leur place : pris dans l'équipe de l'ancien, le
     // nouveau ne relève déjà plus de lui.
     if (responsableChange && prochain !== null && nextType !== 'direction') {
-      await apresNouveauChef(tx, journal, id, ancien, prochain);
+      await apresNouveauChef(tx, journal, id, ancien, prochain, !devenirAilleurs);
+    }
+    // Son équipe passée au nouveau, l'ancien part là où on l'envoie.
+    if (devenirAilleurs && devenir) {
+      await suite!(tx, journal, {
+        uniteId: id,
+        ancien: ancien!,
+        nouveau: prochain,
+        depuis: input.depuis ?? etat[0]!.aujourdhui,
+        devenir,
+      });
     }
   }
 

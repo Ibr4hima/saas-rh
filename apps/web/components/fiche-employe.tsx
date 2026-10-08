@@ -34,7 +34,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
-import { compte, de } from '../lib/mots';
+import { compte } from '../lib/mots';
 import { CarteCertificatsAgent } from './academy-certificat';
 import { CarteEvaluationsAgent } from './evaluation-objectifs';
 import { EmployeeDocumentsCard } from './employee-documents-card';
@@ -43,7 +43,7 @@ import { EmployeeEditModal } from './employee-edit-modal';
 import { Telephone } from './telephone';
 import { Donnee, EnTete, Groupe, Peremption, Repere } from './fiche';
 import { Icon } from './icons';
-import { Modal } from './modal';
+import { Modal, ModalGrid, ModalSection } from './modal';
 import { Pagination, usePagination } from './pagination';
 import { contractEnd, ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../lib/person';
 import { formatDate, useMe } from '../lib/hooks';
@@ -51,6 +51,12 @@ import { aujourdhui } from '../lib/temps';
 import type { ConsequencesHierarchie, OrgUnit, OrgUnitView } from '@teranga/contracts';
 import { aDesConsequences, ListeConsequences } from './consequences-hierarchie';
 import { ChoixUnite, directionDe, libelleDUnite, parLibelle } from './choix-unite';
+import {
+  DEVENIR_INITIAL,
+  DevenirDeLAncien,
+  lireLeDevenir,
+  type Devenir,
+} from './devenir-de-l-ancien';
 import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { LoadFailure } from './load-failure';
 import { Page } from './gabarit';
@@ -773,7 +779,7 @@ function AssignmentsCard({
   const [nouveauN1, setNouveauN1] = useState('');
   const [repreneur, setRepreneur] = useState('');
   const [responsable, setResponsable] = useState(false);
-  const [posteAncien, setPosteAncien] = useState('');
+  const [devenir, setDevenir] = useState<Devenir>(DEVENIR_INITIAL);
   const [bilan, setBilan] = useState<ConsequencesHierarchie | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -794,6 +800,8 @@ function AssignmentsCard({
     if (!open) return;
     setOrgUnitId(actuelle?.orgUnitId ?? '');
     setResponsable(false);
+    setDevenir(DEVENIR_INITIAL);
+    setError(null);
     // Une fois par ouverture.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -839,6 +847,16 @@ function AssignmentsCard({
       ? uniteVisee
       : null;
   const dirigeAilleurs = aLaTete ? dirige.find((u) => u.id !== orgUnitId) : undefined;
+  // Ce que devient celui qu'il remplace (ADR-0038).
+  const devenirLu = ancien
+    ? lireLeDevenir(devenir, {
+        quittee: ancien,
+        unites,
+        ancienId: ancien.managerEmployeeId!,
+        depuis: startDate,
+        min: ancien.managerDepuis,
+      })
+    : null;
   // Même unité, même poste : rien ne change.
   const inchangee =
     Boolean(actuelle) &&
@@ -867,7 +885,7 @@ function AssignmentsCard({
           startDate,
           ...(changeDeDirection && nouveauN1 && !aLaTete ? { managerEmployeeId: nouveauN1 } : {}),
           ...(repreneurRequis && repreneur ? { repreneurEquipeId: repreneur } : {}),
-          ...(ancien ? { posteDeLAncien: posteAncien.trim() } : {}),
+          ...(ancien && devenirLu?.corps ? { devenirDeLAncien: devenirLu.corps } : {}),
         },
       }),
     onSuccess: (res) => {
@@ -876,7 +894,7 @@ function AssignmentsCard({
       setNouveauN1('');
       setRepreneur('');
       setResponsable(false);
-      setPosteAncien('');
+      setDevenir(DEVENIR_INITIAL);
       setError(null);
       setBilan(res ?? null);
       void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
@@ -892,32 +910,76 @@ function AssignmentsCard({
       <CardHeader className="flex items-center justify-between">
         <CardTitle>Affectations</CardTitle>
         {canManage ? (
-          <Button variant="secondary" size="sm" onClick={() => setOpen(!open)}>
-            {open ? 'Fermer' : 'Nouvelle affectation'}
+          <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+            Nouvelle affectation
           </Button>
         ) : null}
       </CardHeader>
-      {open ? (
-        <CardContent className="border-b border-line-soft">
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Nouvelle affectation"
+        subtitle={
+          <p className="text-xs text-ink-muted">L’affectation en cours s’arrête la veille.</p>
+        }
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            {error ? (
+              <p
+                role="alert"
+                className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+              >
+                {error}
+              </p>
+            ) : null}
+            <Button variant="secondary" onClick={() => setOpen(false)}>
+              Annuler
+            </Button>
+            <Button
+              onClick={() => {
+                setError(null);
+                create.mutate();
+              }}
+              loading={create.isPending}
+              disabled={
+                !startDate ||
+                !directionVisee ||
+                inchangee ||
+                (repreneurRequis && !repreneur) ||
+                (aLaTete
+                  ? startDate > aujourdhuiIso ||
+                    Boolean(dirigeAilleurs) ||
+                    (Boolean(ancien) && !devenirLu?.corps)
+                  : !positionTitle.trim() || bloqueeParLaDate)
+              }
+            >
+              Enregistrer
+            </Button>
+          </>
+        }
+      >
+        <ModalSection title="Affectation">
           {/* L'unité d'abord, de la direction au service : c'est elle qui dit
               si l'on peut l'y désigner responsable, et quel poste il y prend
               alors. La case vaut pour l'unité la plus précise choisie. */}
-          <div className="grid gap-3 sm:grid-cols-3 sm:items-start">
+          <ModalGrid>
             <ChoixUnite
               unites={unites}
               value={orgUnitId}
               onChange={(id) => {
                 setOrgUnitId(id);
                 setResponsable(false);
+                setDevenir(DEVENIR_INITIAL);
               }}
               idPrefix="asg"
               requis
             />
-          </div>
+          </ModalGrid>
           {peutDesigner && uniteVisee ? (
             <label
               className={cn(
-                'mt-3 flex items-center gap-2.5 text-[13px] text-ink',
+                'mt-3.5 flex items-center gap-2.5 text-[13px] text-ink',
                 dejaALaTete ? 'cursor-default' : 'cursor-pointer',
               )}
             >
@@ -930,7 +992,7 @@ function AssignmentsCard({
               {posteDeResponsable(uniteVisee, null).replace(/^Responsable/, 'responsable')}
             </label>
           ) : null}
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:items-start">
+          <ModalGrid className="mt-3.5">
             <Field label="Nouveau poste" htmlFor="asg-title" required={!aLaTete}>
               <Input
                 id="asg-title"
@@ -953,94 +1015,15 @@ function AssignmentsCard({
                 onChange={(ev) => setStartDate(ev.target.value)}
               />
             </Field>
-            {ancien ? (
-              <Field
-                label={`Nouveau poste ${de(ancien.managerShortName ?? '')}`}
-                htmlFor="asg-poste-ancien"
-                required
-              >
-                <Input
-                  id="asg-poste-ancien"
-                  placeholder={`Ex : ${
-                    ancien.managerGender === 'female'
-                      ? 'Conseillère'
-                      : ancien.managerGender === 'male'
-                        ? 'Conseiller'
-                        : 'Conseiller·ère'
-                  } technique`}
-                  value={posteAncien}
-                  maxLength={120}
-                  onChange={(ev) => setPosteAncien(ev.target.value)}
-                />
-              </Field>
-            ) : null}
-            {changeDeDirection && directionVisee && !aLaTete ? (
-              <Field label="Nouveau n+1" htmlFor="asg-n1" hint={`Dans ${libelle(directionVisee)}.`}>
-                <Select
-                  id="asg-n1"
-                  value={nouveauN1}
-                  onChange={(ev) => setNouveauN1(ev.target.value)}
-                >
-                  <option value="">Garder le n+1 actuel</option>
-                  {n1Possibles.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.nom}
-                      {m.poste ? ` · ${m.poste}` : ''}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            ) : null}
-            {repreneurRequis ? (
-              <Field
-                label="Qui reprend son équipe"
-                htmlFor="asg-repreneur"
-                required
-                hint={`${team.map((m) => m.name).join(', ')} ${team.length > 1 ? 'restent' : 'reste'} dans ${libelle(directionActuelle) ?? 'sa direction'}.`}
-              >
-                <Select
-                  id="asg-repreneur"
-                  value={repreneur}
-                  onChange={(ev) => setRepreneur(ev.target.value)}
-                >
-                  <option value="">Choisir</option>
-                  {repreneursPossibles.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.nom}
-                      {m.poste ? ` · ${m.poste}` : ''}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            ) : null}
-          </div>
+          </ModalGrid>
           {dirigeAilleurs ? (
-            <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
+            <p className="mt-3.5 rounded-md bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
               Déjà à la tête de « {dirigeAilleurs.nom} » : désignez d’abord une autre personne à sa
               place.
             </p>
           ) : null}
-          <div className="mt-3 flex justify-end">
-            <Button
-              onClick={() => create.mutate()}
-              loading={create.isPending}
-              disabled={
-                !startDate ||
-                !directionVisee ||
-                inchangee ||
-                (repreneurRequis && !repreneur) ||
-                (aLaTete
-                  ? startDate > aujourdhuiIso ||
-                    Boolean(dirigeAilleurs) ||
-                    (Boolean(ancien) && !posteAncien.trim())
-                  : !positionTitle.trim() || bloqueeParLaDate)
-              }
-            >
-              Enregistrer
-            </Button>
-          </div>
           {bloqueeParLaDate && !aLaTete ? (
-            <p className="mt-3 flex items-start gap-2 text-[12.5px] leading-relaxed text-ink">
+            <p className="mt-3.5 flex items-start gap-2 text-[12.5px] leading-relaxed text-ink">
               <Icon name="event" size={16} className="mt-px shrink-0 text-primary" />
               <span>
                 Une mutation vers une autre direction s’enregistre le jour où elle prend effet : le
@@ -1049,15 +1032,77 @@ function AssignmentsCard({
               </span>
             </p>
           ) : null}
-          <p className="mt-2 text-xs text-ink-muted">
-            L&apos;affectation en cours sera automatiquement clôturée la veille. L&apos;historique
-            reste intact.
-          </p>
-          {error ? (
-            <p className="mt-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
-          ) : null}
-        </CardContent>
-      ) : null}
+        </ModalSection>
+
+        {ancien ? (
+          <ModalSection title="Passation">
+            <DevenirDeLAncien
+              ancien={{
+                id: ancien.managerEmployeeId!,
+                nom: ancien.managerShortName ?? '',
+                genre: ancien.managerGender,
+              }}
+              quittee={ancien}
+              unites={unites}
+              depuis={startDate}
+              min={ancien.managerDepuis}
+              valeur={devenir}
+              onChange={setDevenir}
+              idPrefix="asg-ancien"
+            />
+          </ModalSection>
+        ) : null}
+
+        {(changeDeDirection && directionVisee && !aLaTete) || repreneurRequis ? (
+          <ModalSection title="Hiérarchie">
+            <ModalGrid>
+              {changeDeDirection && directionVisee && !aLaTete ? (
+                <Field
+                  label="Nouveau n+1"
+                  htmlFor="asg-n1"
+                  hint={`Dans ${libelle(directionVisee)}.`}
+                >
+                  <Select
+                    id="asg-n1"
+                    value={nouveauN1}
+                    onChange={(ev) => setNouveauN1(ev.target.value)}
+                  >
+                    <option value="">Garder le n+1 actuel</option>
+                    {n1Possibles.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nom}
+                        {m.poste ? ` · ${m.poste}` : ''}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
+              {repreneurRequis ? (
+                <Field
+                  label="Qui reprend son équipe"
+                  htmlFor="asg-repreneur"
+                  required
+                  hint={`${team.map((m) => m.name).join(', ')} ${team.length > 1 ? 'restent' : 'reste'} dans ${libelle(directionActuelle) ?? 'sa direction'}.`}
+                >
+                  <Select
+                    id="asg-repreneur"
+                    value={repreneur}
+                    onChange={(ev) => setRepreneur(ev.target.value)}
+                  >
+                    <option value="">Choisir</option>
+                    {repreneursPossibles.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nom}
+                        {m.poste ? ` · ${m.poste}` : ''}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
+            </ModalGrid>
+          </ModalSection>
+        ) : null}
+      </Modal>
       {aDesConsequences(bilan) ? (
         <CardContent className="border-b border-line-soft">
           <ListeConsequences consequences={bilan!} faites />

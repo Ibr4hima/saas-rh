@@ -544,6 +544,27 @@ export async function rattacher(
 }
 
 /**
+ * Verse au journal d'une opération celui d'une opération qu'elle a menée en
+ * chemin (une mutation, un départ) : un agent déjà au journal y garde son
+ * n+1 d'avant et prend celui d'après, comme dans `rattacher`.
+ */
+export function fusionnerAuJournal(
+  journal: ChangementRattachement[],
+  autres: ChangementRattachement[],
+): void {
+  for (const c of autres) {
+    const precedent = journal.findIndex((j) => j.employeeId === c.employeeId);
+    if (precedent < 0) {
+      journal.push(c);
+      continue;
+    }
+    const avant = journal[precedent]!.avant;
+    journal.splice(precedent, 1);
+    journal.push({ ...c, avant });
+  }
+}
+
+/**
  * Comme `rattacher`, mais sous la règle : si le rattachement ne tient pas,
  * rien ne s'écrit et l'on rend `false`. Une cascade ne se laisse pas bloquer
  * par une anomalie ANCIENNE — l'agent reste où il était, et le contrôle de
@@ -643,18 +664,55 @@ export async function rattacherDOffice(
 }
 
 /**
+ * Son n+1 ne tient plus à sa nouvelle place (un ancien directeur resté sous
+ * le DG, par exemple) : celui d'office le remplace, s'il tient. Sinon rien
+ * ne change, et le contrôle de la chaîne le signale.
+ */
+export async function remettreEnRegle(
+  tx: Tx,
+  journal: ChangementRattachement[],
+  employeeId: string,
+): Promise<void> {
+  const [dossier] = await tx
+    .select({ n1: t.employees.managerEmployeeId, status: t.employees.status })
+    .from(t.employees)
+    .where(eq(t.employees.id, employeeId))
+    .limit(1);
+  if (!dossier || dossier.status !== 'active') return;
+  if (dossier.n1) {
+    try {
+      await validerRattachement(
+        tx,
+        employeeId,
+        dossier.n1,
+        await directionDeEmploye(tx, employeeId),
+      );
+      return;
+    } catch (err) {
+      if (!(err instanceof ProblemException)) throw err;
+    }
+  }
+  const cible = await n1DOffice(tx, employeeId);
+  if (cible && cible.id !== dossier.n1) {
+    await tenterRattachement(tx, journal, employeeId, cible.id, cible.motif);
+  }
+}
+
+/**
  * Un nouveau directeur général. Ce que la règle impose, dans l'ordre :
  *   — il ne relève plus de personne ;
  *   — ce qui relevait de l'ancien DG relève de lui ;
  *   — tout directeur relève de lui ;
  *   — l'ancien DG, s'il reste à la Direction Générale, relève de lui.
- * Le responsable du sommet est DÉJÀ écrit quand on arrive ici.
+ * Le responsable du sommet est DÉJÀ écrit quand on arrive ici. `ancienReste`
+ * faux : l'ancien part ailleurs, ce qu'il devient s'écrit ensuite (ADR-0038).
  */
 export async function apresNouveauDG(
   tx: Tx,
   journal: ChangementRattachement[],
   ancien: string | null,
   nouveau: string,
+  ancienReste = true,
 ): Promise<void> {
   await rattacher(tx, journal, nouveau, null, 'devient_dg');
   if (ancien && ancien !== nouveau) {
@@ -666,7 +724,7 @@ export async function apresNouveauDG(
   for (const d of await directeurs(tx)) {
     if (d !== nouveau) await tenterRattachement(tx, journal, d, nouveau, 'directeur');
   }
-  if (ancien && ancien !== nouveau) {
+  if (ancien && ancien !== nouveau && ancienReste) {
     const [a] = await tx
       .select({ status: t.employees.status, n1: t.employees.managerEmployeeId })
       .from(t.employees)
@@ -694,7 +752,7 @@ export async function apresNouveauDG(
  *   - l'ancien directeur, s'il reste dans la direction, relève de lui.
  * Le responsable de l'unité est DÉJÀ écrit quand on arrive ici. (Le DG ne
  * peut pas diriger une autre direction : il n'en sort pas, et une personne
- * ne dirige qu'une unité.)
+ * ne dirige qu'une unité.) `ancienReste` faux : l'ancien part ailleurs.
  */
 export async function apresNouveauDirecteur(
   tx: Tx,
@@ -702,6 +760,7 @@ export async function apresNouveauDirecteur(
   directionId: string,
   ancien: string | null,
   nouveau: string,
+  ancienReste = true,
 ): Promise<void> {
   const dg = await directeurGeneral(tx);
   if (!dg) return;
@@ -732,7 +791,7 @@ export async function apresNouveauDirecteur(
       .where(eq(t.employees.id, ancien))
       .limit(1);
     const direction = await directionDeEmploye(tx, ancien);
-    if (a?.status === 'active' && a.n1 === dg && direction?.id === directionId) {
+    if (ancienReste && a?.status === 'active' && a.n1 === dg && direction?.id === directionId) {
       await tenterRattachement(tx, journal, ancien, nouveau, 'ancien_directeur');
     }
   }
@@ -743,7 +802,8 @@ export async function apresNouveauDirecteur(
  * impose, outre la place du nouveau (règle 3 bis, cf. `alignerLesChefs`) :
  *   - ce qui relevait de l'ancien relève du nouveau ;
  *   - l'ancien, s'il reste dans l'unité, relève du nouveau.
- * Le responsable de l'unité est DÉJÀ écrit quand on arrive ici.
+ * Le responsable de l'unité est DÉJÀ écrit quand on arrive ici. `ancienReste`
+ * faux : l'ancien part ailleurs.
  */
 export async function apresNouveauChef(
   tx: Tx,
@@ -751,6 +811,7 @@ export async function apresNouveauChef(
   uniteId: string,
   ancien: string | null,
   nouveau: string,
+  ancienReste = true,
 ): Promise<void> {
   if (!ancien || ancien === nouveau) return;
   for (const agent of await equipeDe(tx, ancien)) {
@@ -763,7 +824,7 @@ export async function apresNouveauChef(
     .from(t.employees)
     .where(eq(t.employees.id, ancien))
     .limit(1);
-  if (a?.status === 'active' && !(await sortDuPerimetre(tx, ancien, uniteId))) {
+  if (ancienReste && a?.status === 'active' && !(await sortDuPerimetre(tx, ancien, uniteId))) {
     await tenterRattachement(tx, journal, ancien, nouveau, 'ancien_chef');
   }
 }

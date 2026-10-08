@@ -35,7 +35,7 @@ import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 /** Ce que la mutation écrit : le poste est connu, saisi ou celui de responsable. */
 export type Mutation = Omit<
   NewAssignmentInput,
-  'positionTitle' | 'responsable' | 'posteDeLAncien'
+  'positionTitle' | 'responsable' | 'posteDeLAncien' | 'devenirDeLAncien'
 > & {
   positionTitle: string;
 };

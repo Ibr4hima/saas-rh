@@ -23,6 +23,7 @@ import type {
   NewContractResult,
   CorrigerAffectationInput,
   CorrigerContratInput,
+  DevenirDeLAncien,
   SessionUser,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
@@ -39,8 +40,10 @@ import {
   directionDeLUnite,
   directionDeUnite,
   equipeDe,
+  fusionnerAuJournal,
   planifierReprise,
   rattacherDOffice,
+  remettreEnRegle,
   SOMMET,
   uniteRacine,
   validerRattachement,
@@ -62,7 +65,11 @@ import {
 import { debutDuStage, exigerEnActivite, finDeContratPassee } from './en-activite';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 import { exigerUniteVivante, muter } from './mutation';
-import { OrgUnitsService } from './org-units.service';
+import {
+  OrgUnitsService,
+  type PassationAilleurs,
+  type SuiteDeLaPassation,
+} from './org-units.service';
 
 /** Rôles autorisés à lire les champs ultra-sensibles (CNI). */
 
@@ -1440,10 +1447,9 @@ export class PeopleService {
   }
 
   /**
-   * La mutation qui le met à la tête de l'unité, en un geste : il y prend le
-   * poste de responsable à la date choisie, au plus tard aujourd'hui, et
-   * l'organigramme le désigne, avec ses règles et ses cascades. Celui qu'il
-   * remplace reçoit son nouveau poste ce jour-là.
+   * La mutation qui le met à la tête de l'unité, depuis sa fiche : elle se
+   * joue comme depuis l'organigramme, et celui qu'il remplace devient ce
+   * qu'on décide (ADR-0038).
    */
   private async affecterALaTete(
     tx: Tx,
@@ -1451,6 +1457,39 @@ export class PeopleService {
     id: string,
     input: NewAssignmentInput,
   ): Promise<ConsequencesHierarchie> {
+    await verrouillerLaChaine(tx);
+    const avant = await lireLaChaine(tx);
+    const journal: ChangementRattachement[] = [];
+    await this.prendreLaTete(tx, user, journal, id, {
+      uniteId: input.orgUnitId!,
+      startDate: input.startDate,
+      repreneurEquipeId: input.repreneurEquipeId,
+      posteDeLAncien: input.posteDeLAncien,
+      devenirDeLAncien: input.devenirDeLAncien,
+    });
+    await reconcilierLeCircuit(tx, user.tenantId);
+    return { changements: journal, aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)) };
+  }
+
+  /**
+   * Il prend la tête de l'unité, en un geste : il y prend le poste de
+   * responsable à la date choisie, au plus tard aujourd'hui, et
+   * l'organigramme le désigne, avec ses règles et ses cascades. L'appelant
+   * tient le verrou de la chaîne et relit le circuit ensuite.
+   */
+  private async prendreLaTete(
+    tx: Tx,
+    user: SessionUser,
+    journal: ChangementRattachement[],
+    id: string,
+    p: {
+      uniteId: string;
+      startDate: string;
+      repreneurEquipeId?: string;
+      posteDeLAncien?: string;
+      devenirDeLAncien?: DevenirDeLAncien;
+    },
+  ): Promise<void> {
     if (!peut(user, 'organigramme')) {
       problem(
         403,
@@ -1459,7 +1498,7 @@ export class PeopleService {
         'La désignation à la tête d’une unité relève de l’organigramme.',
       );
     }
-    const uniteId = input.orgUnitId!;
+    const uniteId = p.uniteId;
     await exigerUniteVivante(tx, uniteId);
     const { rows } = await tx.execute<{
       name: string;
@@ -1470,7 +1509,7 @@ export class PeopleService {
       futur: boolean;
     }>(sql`
       SELECT name, unit_type, short_name, (id = ${SOMMET}) AS sommet,
-             manager_employee_id AS responsable, ${input.startDate}::date > CURRENT_DATE AS futur
+             manager_employee_id AS responsable, ${p.startDate}::date > CURRENT_DATE AS futur
         FROM org_units WHERE id = ${uniteId}`);
     const unite = rows[0]!;
     if (unite.futur) {
@@ -1505,29 +1544,132 @@ export class PeopleService {
       personne[0]?.genre,
     );
 
-    await verrouillerLaChaine(tx);
-    const avant = await lireLaChaine(tx);
+    // Son n+1 est celui qu'impose sa place : sa désignation l'y rattache.
     const { changements } = await muter(
       tx,
       user.tenantId,
       id,
       {
-        ...input,
+        orgUnitId: uniteId,
+        startDate: p.startDate,
         positionTitle,
-        // Son n+1 est celui qu'impose sa place : sa désignation l'y rattache.
-        managerEmployeeId: undefined,
+        ...(p.repreneurEquipeId ? { repreneurEquipeId: p.repreneurEquipeId } : {}),
       },
       { responsable: true },
     );
+    fusionnerAuJournal(journal, changements);
     if (unite.responsable !== id) {
-      await new OrgUnitsService(this.db).designerDansLaTransaction(tx, user, changements, uniteId, {
-        managerEmployeeId: id,
-        depuis: input.startDate,
-        posteDeLAncien: input.posteDeLAncien,
-      });
+      await new OrgUnitsService(this.db).designerDansLaTransaction(
+        tx,
+        user,
+        journal,
+        uniteId,
+        {
+          managerEmployeeId: id,
+          depuis: p.startDate,
+          posteDeLAncien: p.posteDeLAncien,
+          devenirDeLAncien: p.devenirDeLAncien,
+        },
+        this.suiteDeLaPassation(user),
+      );
     }
-    await reconcilierLeCircuit(tx, user.tenantId);
-    return { changements, aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)) };
+  }
+
+  /**
+   * Ce que devient l'ancien responsable quand il ne reste pas à son poste
+   * dans l'unité (ADR-0038). Passée à l'organigramme, elle s'écrit dans la
+   * transaction de la passation, une fois l'unité et ses cascades écrites.
+   */
+  suiteDeLaPassation(user: SessionUser): SuiteDeLaPassation {
+    return (tx, journal, passation) => this.devenirDeLAncien(tx, user, journal, passation);
+  }
+
+  /**
+   * Il part ailleurs, à la tête d'une autre unité, ou quitte l'APIX. Son
+   * équipe est déjà passée au nouveau ; sans successeur, celle qu'il garde
+   * remonte d'un cran, à son propre n+1, quand elle ne peut pas le suivre.
+   */
+  private async devenirDeLAncien(
+    tx: Tx,
+    user: SessionUser,
+    journal: ChangementRattachement[],
+    { ancien, nouveau, depuis, devenir }: PassationAilleurs,
+  ): Promise<void> {
+    await pasSurSoi(tx, user.userId, [ancien], 'changer votre propre affectation');
+    const [cible] = await this.chargerCibles(tx, [ancien]);
+    const [dossier] = await tx
+      .select({ n1: t.employees.managerEmployeeId })
+      .from(t.employees)
+      .where(eq(t.employees.id, ancien))
+      .limit(1);
+    const equipe = await equipeDe(tx, ancien);
+    const repreneur = equipe.length > 0 ? (nouveau ?? dossier?.n1 ?? null) : null;
+
+    if (devenir.choix === 'depart') {
+      if (devenir.le > depuis) {
+        problem(
+          422,
+          'people.depart_apres_la_passation',
+          'Son dernier jour vient au plus tard le jour de la passation',
+          `${cible?.nom} quitte la tête de l’unité le ${frDate(depuis)} : son dernier jour ne peut pas venir après.`,
+        );
+      }
+      const { rows: poste } = await tx.execute<{ du: string }>(sql`
+        SELECT lower(validity)::text AS du FROM assignments
+         WHERE employee_id = ${ancien} AND validity @> CURRENT_DATE LIMIT 1`);
+      if (poste[0] && devenir.le < poste[0].du) {
+        problem(
+          422,
+          'people.depart_avant_son_poste',
+          `Son dernier jour ne peut pas précéder le ${frDate(poste[0].du)}`,
+          `${cible?.nom} occupe son poste actuel depuis le ${frDate(poste[0].du)}.`,
+        );
+      }
+      const r = await this.archiverOuRouvrir(tx, user, {
+        ids: [ancien],
+        archived: true,
+        motif: devenir.motif,
+        le: devenir.le,
+        ...(repreneur ? { repreneurs: { [ancien]: repreneur } } : {}),
+      });
+      if (r.done === 0) {
+        problem(
+          422,
+          'people.depart_refuse',
+          `${cible?.nom} ne peut pas quitter l’APIX ainsi`,
+          r.skipped[0]?.reason,
+        );
+      }
+      fusionnerAuJournal(journal, r.changements ?? []);
+      return;
+    }
+
+    const directionVisee = await directionDeUnite(tx, devenir.orgUnitId);
+    const changeDeDirection = directionVisee?.id !== (await directionDeEmploye(tx, ancien))?.id;
+    const reprise = repreneur && changeDeDirection ? { repreneurEquipeId: repreneur } : {};
+    if (devenir.responsable) {
+      await this.prendreLaTete(tx, user, journal, ancien, {
+        uniteId: devenir.orgUnitId,
+        startDate: depuis,
+        ...reprise,
+        posteDeLAncien: devenir.posteDeLAncien,
+      });
+      return;
+    }
+    if (devenir.managerEmployeeId) {
+      await pasResponsableDeSoi(tx, user.userId, devenir.managerEmployeeId, directionVisee);
+    }
+    const { changements } = await muter(tx, user.tenantId, ancien, {
+      orgUnitId: devenir.orgUnitId,
+      positionTitle: devenir.positionTitle!,
+      startDate: depuis,
+      ...(devenir.managerEmployeeId ? { managerEmployeeId: devenir.managerEmployeeId } : {}),
+      ...reprise,
+    });
+    fusionnerAuJournal(journal, changements);
+    // Le n+1 qu'il avait comme responsable ne tient peut-être plus à sa
+    // nouvelle place : un ancien directeur relevait du DG.
+    await remettreEnRegle(tx, journal, ancien);
   }
 
   /** Historique d'audit du dossier : qui a changé quoi, quand (ADR-0008). */

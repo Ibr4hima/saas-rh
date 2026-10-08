@@ -256,7 +256,14 @@ export class PeopleController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(updateOrgUnitSchema)) body: UpdateOrgUnitInput,
   ) {
-    return this.orgUnits.update(req.sessionUser, id, body);
+    // Ce que devient l'ancien responsable, quand il part ailleurs, relève du
+    // personnel : il l'écrit dans la même transaction (ADR-0038).
+    return this.orgUnits.update(
+      req.sessionUser,
+      id,
+      body,
+      this.people.suiteDeLaPassation(req.sessionUser),
+    );
   }
 
   /** Ce que FERAIT la modification — jouée puis annulée, rien n'est écrit. */
@@ -268,7 +275,12 @@ export class PeopleController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(updateOrgUnitSchema)) body: UpdateOrgUnitInput,
   ) {
-    return this.orgUnits.apercu(req.sessionUser, id, body);
+    return this.orgUnits.apercu(
+      req.sessionUser,
+      id,
+      body,
+      this.people.suiteDeLaPassation(req.sessionUser),
+    );
   }
 
   /** Ce que FERAIT la dissolution — jouée puis annulée. */
