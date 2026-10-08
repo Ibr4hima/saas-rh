@@ -145,14 +145,14 @@ export function DevenirDeLAncien({
   const choix: { v: ChoixDuDevenir; label: string }[] = [
     { v: 'reste', label: `Reste ${dansLUnite(quittee)}` },
     { v: 'ailleurs', label: 'Change d’affectation' },
-    { v: 'tete', label: 'Prend la tête d’une autre unité' },
-    { v: 'depart', label: 'Quitte l’APIX' },
+    { v: 'tete', label: 'Nouvelle responsabilité' },
+    { v: 'depart', label: 'A quitté l’APIX' },
   ];
 
   return (
     <div className="flex flex-col gap-3">
       <p id={`${idPrefix}-question`} className="text-[13px] font-semibold text-ink">
-        Que devient {ancien.nom} ?
+        Statut {de(ancien.nom)}
       </p>
       <div
         role="radiogroup"

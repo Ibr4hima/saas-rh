@@ -33,7 +33,7 @@ export type MotifInactivite = z.infer<typeof motifInactiviteSchema>;
 
 export const MOTIF_INACTIVITE_LABELS: Record<MotifInactivite, string> = {
   fin_de_contrat: 'Fin de contrat',
-  demission: 'A quitté l’APIX',
+  demission: 'Démission',
   licenciement: 'Licenciement',
   retraite: 'Départ à la retraite',
   deces: 'Décès',
