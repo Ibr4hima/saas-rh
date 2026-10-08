@@ -102,6 +102,8 @@ export type MotifChangement =
   | 'direction_pourvue'
   /** Le chef d'un département ou d'un service relève de l'unité au-dessus de la sienne. */
   | 'chef_d_unite'
+  /** Relevait de l'ancien directeur : relève du nouveau, sans le suivre. */
+  | 'suit_le_directeur'
   /** L'ancien directeur, resté dans la direction, relève du nouveau. */
   | 'ancien_directeur'
   /** Relevait de l'ancien chef d'un département ou d'un service : relève du nouveau. */

@@ -252,7 +252,7 @@ describe('les directeurs', () => {
     expect(await anomalies()).toEqual([]);
   });
 
-  it('un nouveau directeur : l’ancien, resté dans la direction, passe sous lui ; son équipe le garde', async () => {
+  it('un nouveau directeur : l’ancien, resté dans la direction, passe sous lui, son équipe aussi', async () => {
     const dg = await leDG();
     const ancien = await unDirecteur('ANCIEN', uDSID);
     const equipier = await agent('EQUIPIER', uDSID, ancien);
@@ -262,11 +262,26 @@ describe('les directeurs', () => {
 
     expect(await n1(nouveau)).toBe(dg);
     expect(await n1(ancien)).toBe(nouveau);
-    expect(await n1(equipier)).toBe(ancien);
+    expect(await n1(equipier)).toBe(nouveau);
     expect(r.changements.map((c) => `${c.nom}:${c.motif}`).sort()).toEqual([
       'ANCIEN Test:ancien_directeur',
+      'EQUIPIER Test:suit_le_directeur',
       'NOUVEAU Test:directeur',
     ]);
+    expect(await anomalies()).toEqual([]);
+  });
+
+  it('l’ancien directeur part dans une autre direction : son ancienne équipe ne le suit pas', async () => {
+    await leDG();
+    const ancien = await unDirecteur('ANCIEN', uDSID);
+    const equipier = await agent('EQUIPIER', uDSID, ancien);
+    const nouveau = await agent('NOUVEAU', uDSID);
+    await nommer(uDSID, nouveau, '2024-01-01');
+    // Conseiller à la DSID, il rejoint ensuite la DCH, qui a son directeur.
+    const dch = await unDirecteur('DCH', uDCH);
+    await muter(ancien, uDCH);
+    expect(await n1(equipier)).toBe(nouveau);
+    expect(await n1(ancien)).toBe(dch);
     expect(await anomalies()).toEqual([]);
   });
 

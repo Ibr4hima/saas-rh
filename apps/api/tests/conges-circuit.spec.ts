@@ -306,10 +306,14 @@ beforeEach(async () => {
     mariama.employeeId,
     dg.employeeId,
   ]);
-  await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [
-    khady.employeeId,
-    mariama.employeeId,
-  ]);
+  // Une relève à la tête de la DCH fait passer l'équipe de Mariama au
+  // nouveau directeur : chacune revient sous elle.
+  for (const membre of [khady, awa]) {
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [
+      membre.employeeId,
+      mariama.employeeId,
+    ]);
+  }
   await raw(`UPDATE assignments SET org_unit_id = $2 WHERE employee_id = $1`, [
     awa.employeeId,
     uDCH,

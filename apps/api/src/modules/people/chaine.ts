@@ -686,10 +686,12 @@ export async function apresNouveauDG(
 
 /**
  * Une direction reçoit un (nouveau) responsable. Ce que la règle impose :
- *   — il relève du directeur général ;
- *   — les agents de la direction rattachés au DG EN ATTENDANT une tête,
+ *   - il relève du directeur général ;
+ *   - les agents de la direction rattachés au DG EN ATTENDANT une tête,
  *     et ceux qui n'avaient pas de n+1, relèvent désormais de lui ;
- *   — l'ancien directeur, s'il reste dans la direction, relève de lui.
+ *   - ce qui relevait de l'ancien directeur relève de lui : l'équipe reste
+ *     à la direction, elle ne suit pas l'ancien là où il va ;
+ *   - l'ancien directeur, s'il reste dans la direction, relève de lui.
  * Le responsable de l'unité est DÉJÀ écrit quand on arrive ici. (Le DG ne
  * peut pas diriger une autre direction : il n'en sort pas, et une personne
  * ne dirige qu'une unité.)
@@ -719,6 +721,11 @@ export async function apresNouveauDirecteur(
   }
 
   if (ancien && ancien !== nouveau) {
+    for (const agent of await equipeDe(tx, ancien)) {
+      if (agent.id !== nouveau) {
+        await tenterRattachement(tx, journal, agent.id, nouveau, 'suit_le_directeur');
+      }
+    }
     const [a] = await tx
       .select({ status: t.employees.status, n1: t.employees.managerEmployeeId })
       .from(t.employees)
