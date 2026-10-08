@@ -20,15 +20,17 @@ import { Icon } from './icons';
    Il ne décide de rien. C'est le serveur qui crédite (cf. `visionnage.ts` de
    l'API) — un lecteur trafiqué ne gagne pas une seconde. Ce qu'il fait en
    plus relève du confort de l'agent HONNÊTE, pour qu'il ne triche pas par
-   facilité :
+   facilité, en PREMIÈRE LECTURE, tant que la leçon n'est pas validée :
 
-   · en première lecture, la barre ne laisse pas avancer au-delà du point le
+   · la barre ne laisse pas avancer au-delà du point le
      plus loin atteint — reculer reste libre ;
    · l'onglet quitté ou la fenêtre réduite mettent la vidéo en pause ;
-   · la vitesse reste à ×1.
+   · la vitesse reste à ×1, sans image dans l'image ;
+   · une lecture ouverte ailleurs (autre onglet, autre leçon) l'arrête.
 
-   Une fois la leçon validée, tout se libère : on révise comme on veut. En
-   aperçu (la RH qui relit), rien n'est compté et rien n'est retenu.
+   Une fois la leçon validée, tout se libère : on avance, on quitte l'onglet
+   sans que la vidéo s'arrête, on révise comme on veut. En aperçu (la RH qui
+   relit), tout est libre aussi, et rien n'est compté ni retenu.
    ———————————————————————————————————————————————————————————————— */
 
 /** La couleur des passages VUS : le bleu de la marque sur fond sombre. */
@@ -153,9 +155,13 @@ export function LecteurVideo({
         })
         .catch((err: unknown) => {
           if (err instanceof ApiError && err.problem.code === 'academy.playing_elsewhere') {
+            // Une autre lecture rend compte à sa place. En première lecture,
+            // celle-ci s'arrête ; leçon validée, elle continue sans rien dire.
             ailleursRef.current = true;
-            setAilleurs(true);
-            video.current?.pause();
+            if (!libreRef.current) {
+              setAilleurs(true);
+              video.current?.pause();
+            }
           } else if (!(err instanceof ApiError)) {
             echec.current = { de: depuis, a };
           }
@@ -184,9 +190,11 @@ export function LecteurVideo({
     return () => clearInterval(id);
   }, [enLecture, suivi, envoyer]);
 
-  // L'onglet quitté met la vidéo en pause — la pause ferme le passage.
+  // En première lecture, l'onglet quitté met la vidéo en pause (la pause ferme
+  // le passage). Leçon validée, elle continue.
   React.useEffect(() => {
     const surVisibilite = () => {
+      if (libreRef.current) return;
       if (document.hidden && video.current && !video.current.paused) {
         video.current.pause();
         direAvis('Pause automatique : la vidéo s’arrête quand vous quittez l’onglet.');
@@ -305,8 +313,8 @@ export function LecteurVideo({
     ecrireSon({ volume, muet });
   }, [muet, volume]);
 
-  const limite =
-    validee || !suivi ? duree : Math.max(plusLoinServeur, plusLoinLocal.current, temps);
+  const libre = validee || !suivi;
+  const limite = libre ? duree : Math.max(plusLoinServeur, plusLoinLocal.current, temps);
   const montrerCommandes = commandes || !enLecture || fini;
 
   return (
@@ -339,7 +347,7 @@ export function LecteurVideo({
         src={lecture.source.url.startsWith('/') ? apiUrl(lecture.source.url) : lecture.source.url}
         preload="metadata"
         playsInline
-        disablePictureInPicture
+        disablePictureInPicture={!libre}
         controlsList="nodownload noplaybackrate noremoteplayback"
         onContextMenu={(e) => e.preventDefault()}
         onClick={basculer}
@@ -399,7 +407,9 @@ export function LecteurVideo({
           if (suivi && !v.paused) segDebut.current = v.currentTime;
         }}
         onRateChange={(e) => {
-          if (suivi && e.currentTarget.playbackRate !== 1) e.currentTarget.playbackRate = 1;
+          if (!libreRef.current && e.currentTarget.playbackRate !== 1) {
+            e.currentTarget.playbackRate = 1;
+          }
         }}
       />
 
@@ -533,7 +543,7 @@ export function LecteurVideo({
           temps={temps}
           intervalles={suivi ? intervalles : []}
           limite={limite}
-          libre={validee || !suivi}
+          libre={libre}
           onAller={allerA}
         />
         <Temps attenue>{horloge(duree)}</Temps>
