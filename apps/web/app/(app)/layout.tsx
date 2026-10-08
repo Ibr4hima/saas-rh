@@ -620,8 +620,10 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
       short: 'Congés',
       icon: 'free_cancellation',
       groupe: 'quotidien',
+      // Le DG ne demande pas de congé : l'entrée reste, grisée. Son
+      // historique garde ce qu'il a posé avant de le devenir.
       children: [
-        { href: '/moi/conges', label: 'Poser une demande' },
+        { href: '/moi/conges', label: 'Poser une demande', ...(estDG ? { desactive: true } : {}) },
         { href: '/moi/conges/historique', label: 'Historique' },
       ],
     },
@@ -1196,6 +1198,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (!u) return true;
     const commence = (p: string) => path === p || path.startsWith(`${p}/`);
     if (u.finDAcces && fermeeAuxInactifs(path)) return false;
+    if (path === '/moi/conges') return !u.estDG;
     // Ce que traite la DCH : attendre les compteurs, qui disent si une
     // demande a été confiée à l'agent.
     const file = FILES.find((f) => commence(f.href));
@@ -1535,7 +1538,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
                 className="-mt-1 mb-4 flex gap-1.5 overflow-x-auto lg:hidden"
               >
                 {rubrique.children!.map((c) =>
-                  c.desactive ? null : (
+                  // Éteinte, comme dans le menu : à sa place, grisée, sans lien.
+                  c.desactive ? (
+                    <span
+                      key={c.href}
+                      aria-disabled
+                      className="shrink-0 cursor-not-allowed rounded-full border border-line-soft px-3 py-1.5 text-[12px] font-medium whitespace-nowrap text-ink-muted/45 select-none"
+                    >
+                      {c.label}
+                    </span>
+                  ) : (
                     <Link
                       key={c.href}
                       href={c.href}
