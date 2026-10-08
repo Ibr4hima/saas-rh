@@ -2,7 +2,17 @@
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import type { AbsencePreview, AbsenceType, AgentSaisieView, BalanceView } from '@teranga/contracts';
+import {
+  dureeEnLettres,
+  HEURE_DEBUT_JOURNEE,
+  HEURE_FIN_JOURNEE,
+  heureEnLettres,
+  minutesEntre,
+  type AbsencePreview,
+  type AbsenceType,
+  type AgentSaisieView,
+  type BalanceView,
+} from '@teranga/contracts';
 import { Button, cn, Field, Input, Select, Skeleton, Textarea } from '@teranga/ui';
 import { Donnee } from './fiche';
 import { Icon } from './icons';
@@ -32,6 +42,20 @@ function jourEnLettres(iso: string): string {
   return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
+/**
+ * Les heures qu'on choisit pour une absence à l'heure : de 8 h à 17 h, au
+ * quart d'heure, écrites à la française (pas de champ natif, qui afficherait
+ * AM et PM selon la langue du navigateur).
+ */
+const CRENEAUX = Array.from(
+  { length: minutesEntre(HEURE_DEBUT_JOURNEE, HEURE_FIN_JOURNEE) / 15 + 1 },
+  (_, i) => {
+    const minutes = Number(HEURE_DEBUT_JOURNEE.slice(0, 2)) * 60 + i * 15;
+    const hh = String(Math.floor(minutes / 60)).padStart(2, '0');
+    return `${hh}:${String(minutes % 60).padStart(2, '0')}`;
+  },
+);
+
 /** Nombre de jours du calendrier entre deux dates incluses. */
 function joursCalendaires(debut: string, fin: string): number {
   const a = Date.parse(`${debut}T00:00:00Z`);
@@ -54,8 +78,8 @@ export function FenetreDemandeAbsence({
   /** La DCH saisit pour un agent qui ne le peut pas : elle le choisit. */
   pourAutrui?: boolean;
   onClose: () => void;
-  /** La demande est partie : son nombre de jours. */
-  onEnvoyee: (jours: number) => void;
+  /** La demande est partie : sa durée, « 3 jours » ou « 2 h ». */
+  onEnvoyee: (duree: string) => void;
 }) {
   const queryClient = useQueryClient();
   const [agentId, setAgentId] = useState('');
@@ -68,6 +92,11 @@ export function FenetreDemandeAbsence({
   const [typeId, setTypeId] = useState('');
   const [startDate, setStartDate] = useState(aujourdhui());
   const [endDate, setEndDate] = useState(aujourdhui());
+  // Un type qui se demande à l'heure : quelques heures d'un jour, ou des
+  // journées entières.
+  const [aLHeure, setALHeure] = useState(true);
+  const [heureDebut, setHeureDebut] = useState('');
+  const [heureFin, setHeureFin] = useState('');
   const [reason, setReason] = useState('');
   const [doc, setDoc] = useState<{
     filename: string;
@@ -81,11 +110,18 @@ export function FenetreDemandeAbsence({
     queryKey: ['absence-types'],
     queryFn: () => api<AbsenceType[]>('/absence-types'),
   });
+  const selectedType = types.data?.find((t) => t.id === typeId);
+  const parHeures = Boolean(selectedType?.allowsHours) && aLHeure;
+  // À l'heure, la demande tient sur son jour.
+  const fin = parHeures ? startDate : endDate;
   const preview = useQuery({
-    queryKey: ['absence-preview', startDate, endDate],
+    queryKey: ['absence-preview', startDate, fin],
     queryFn: () =>
-      api<AbsencePreview>('/absence-preview', { method: 'POST', body: { startDate, endDate } }),
-    enabled: Boolean(startDate && endDate && endDate >= startDate),
+      api<AbsencePreview>('/absence-preview', {
+        method: 'POST',
+        body: { startDate, endDate: fin },
+      }),
+    enabled: Boolean(startDate && fin && fin >= startDate),
   });
   // Le solde de chaque année touchée : un congé du 28 décembre au 8 janvier
   // se retranche pour partie du droit de chacune.
@@ -109,16 +145,17 @@ export function FenetreDemandeAbsence({
     : moiStagiaire;
   const ferme = (t: AbsenceType) => stagiaire && t.deductsBalance;
 
-  // Le premier type ouvert, et un autre si l'agent choisi ne peut pas prendre
+  // Le congé qui se décompte d'un solde d'abord (le congé annuel), sinon le
+  // premier type ouvert ; et un autre si l'agent choisi ne peut pas prendre
   // celui qui l'était.
   useEffect(() => {
     const courant = types.data?.find((t) => t.id === typeId);
     if (courant && !ferme(courant)) return;
-    const ouvert = types.data?.find((t) => !ferme(t));
+    const ouvert =
+      types.data?.find((t) => t.deductsBalance && !ferme(t)) ?? types.data?.find((t) => !ferme(t));
     if (ouvert) setTypeId(ouvert.id);
   }, [types.data, typeId, stagiaire]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectedType = types.data?.find((t) => t.id === typeId);
   const needsDocument = Boolean(selectedType?.requiresDocument);
 
   const pickDocument = (file: File | null) => {
@@ -148,10 +185,21 @@ export function FenetreDemandeAbsence({
     setStartDate(v);
     if (v && endDate && endDate < v) setEndDate(v);
   };
+  /** De même pour les heures : une fin qui ne suit plus le début s'efface. */
+  const changerHeureDebut = (v: string) => {
+    setHeureDebut(v);
+    if (heureFin && v && heureFin <= v) setHeureFin('');
+  };
 
   const days = preview.data?.workingDays ?? 0;
   const feries = preview.data?.holidaysSkipped ?? [];
-  const periodeInvalide = Boolean(startDate && endDate && endDate < startDate);
+  const periodeInvalide = !parHeures && Boolean(startDate && endDate && endDate < startDate);
+  const heuresSaisies = Boolean(heureDebut && heureFin);
+  const heuresInvalides = parHeures && heuresSaisies && heureFin <= heureDebut;
+  const heuresValides = parHeures && heuresSaisies && !heuresInvalides;
+  // Le plafond du type, en jours ouvrés : quelques heures n'y touchent pas.
+  const plafond = selectedType?.maxDaysPerRequest ?? null;
+  const depasse = !parHeures && plafond !== null && days > plafond;
   const calendaires = joursCalendaires(startDate, endDate);
   const weekEnd = Math.max(0, calendaires - days - feries.length);
   const lignes = annees.map((annee, i) => {
@@ -186,7 +234,8 @@ export function FenetreDemandeAbsence({
           employeeId,
           absenceTypeId: typeId,
           startDate,
-          endDate,
+          endDate: fin,
+          ...(parHeures ? { startTime: heureDebut, endTime: heureFin } : {}),
           reason: reason.trim() || undefined,
           document: doc ? { filename: doc.filename, contentBase64: doc.contentBase64 } : undefined,
         },
@@ -195,7 +244,7 @@ export function FenetreDemandeAbsence({
       void queryClient.invalidateQueries({ queryKey: ['my-requests'] });
       void queryClient.invalidateQueries({ queryKey: ['absence-requests'] });
       void queryClient.invalidateQueries({ queryKey: ['balances'] });
-      onEnvoyee(r.daysCount);
+      onEnvoyee(parHeures ? dureeEnLettres(heureDebut, heureFin) : compte(r.daysCount, 'jour'));
     },
     onError: (err) =>
       setServerError(err instanceof ApiError ? err.message : 'Envoi impossible, réessayez.'),
@@ -203,7 +252,13 @@ export function FenetreDemandeAbsence({
 
   // Le justificatif peut suivre : la DCH ne valide qu'avec lui.
   const peutEnvoyer =
-    Boolean(employeeId) && Boolean(typeId) && days > 0 && !periodeInvalide && !insufficient;
+    Boolean(employeeId) &&
+    Boolean(typeId) &&
+    days > 0 &&
+    !periodeInvalide &&
+    !insufficient &&
+    !depasse &&
+    (!parHeures || heuresValides);
 
   return (
     <Modal
@@ -309,31 +364,107 @@ export function FenetreDemandeAbsence({
       </ModalSection>
 
       <ModalSection title="Période">
-        <ModalGrid>
-          <Field label="Du" htmlFor="start" required hint={jourEnLettres(startDate)}>
-            <Input
-              id="start"
-              type="date"
-              value={startDate}
-              onChange={(e) => changerDebut(e.target.value)}
-            />
-          </Field>
-          <Field
-            label="Au (inclus)"
-            htmlFor="end"
-            required
-            error={periodeInvalide ? 'La fin précède le début.' : undefined}
-            hint={jourEnLettres(endDate)}
+        {selectedType?.allowsHours ? (
+          <div
+            role="radiogroup"
+            aria-label="Durée de l’absence"
+            className="mb-4 flex gap-1 rounded-full border border-line-soft bg-bg p-1 sm:w-fit"
           >
-            <Input
-              id="end"
-              type="date"
-              min={startDate || undefined}
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </Field>
-        </ModalGrid>
+            {[
+              { heures: true, label: 'Quelques heures' },
+              { heures: false, label: 'Un ou plusieurs jours' },
+            ].map((o) => (
+              <button
+                key={o.label}
+                type="button"
+                role="radio"
+                aria-checked={aLHeure === o.heures}
+                onClick={() => setALHeure(o.heures)}
+                className={cn(
+                  'flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
+                  aLHeure === o.heures
+                    ? 'bg-surface text-primary shadow-sm'
+                    : 'text-ink-muted hover:text-ink',
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {parHeures ? (
+          <ModalGrid>
+            <Field label="Le" htmlFor="start" required hint={jourEnLettres(startDate)}>
+              <Input
+                id="start"
+                type="date"
+                value={startDate}
+                onChange={(e) => changerDebut(e.target.value)}
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="De" htmlFor="heureDebut" required>
+                <Select
+                  id="heureDebut"
+                  value={heureDebut}
+                  onChange={(e) => changerHeureDebut(e.target.value)}
+                >
+                  <option value="">Choisir</option>
+                  {CRENEAUX.slice(0, -1).map((h) => (
+                    <option key={h} value={h}>
+                      {heureEnLettres(h)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field
+                label="À"
+                htmlFor="heureFin"
+                required
+                error={heuresInvalides ? 'La fin précède le début.' : undefined}
+              >
+                <Select
+                  id="heureFin"
+                  value={heureFin}
+                  onChange={(e) => setHeureFin(e.target.value)}
+                >
+                  <option value="">Choisir</option>
+                  {CRENEAUX.filter((h) => h > (heureDebut || HEURE_DEBUT_JOURNEE)).map((h) => (
+                    <option key={h} value={h}>
+                      {heureEnLettres(h)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          </ModalGrid>
+        ) : (
+          <ModalGrid>
+            <Field label="Du" htmlFor="start" required hint={jourEnLettres(startDate)}>
+              <Input
+                id="start"
+                type="date"
+                value={startDate}
+                onChange={(e) => changerDebut(e.target.value)}
+              />
+            </Field>
+            <Field
+              label="Au (inclus)"
+              htmlFor="end"
+              required
+              error={periodeInvalide ? 'La fin précède le début.' : undefined}
+              hint={jourEnLettres(endDate)}
+            >
+              <Input
+                id="end"
+                type="date"
+                min={startDate || undefined}
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </Field>
+          </ModalGrid>
+        )}
       </ModalSection>
 
       <ModalSection title="Motif">
@@ -350,7 +481,23 @@ export function FenetreDemandeAbsence({
 
       {/* ———— Le décompte, arithmétique à l'appui ———— */}
       <ModalSection title="Décompte">
-        {periodeInvalide ? (
+        {parHeures ? (
+          <>
+            <dl className="grid grid-cols-2 gap-x-10 gap-y-[18px]">
+              <Donnee label="Durée">
+                <span className={cn(!heuresValides && 'text-ink-muted')}>
+                  {heuresValides ? dureeEnLettres(heureDebut, heureFin) : '0 h'}
+                </span>
+              </Donnee>
+              <Donnee label="Solde après">
+                <span className="font-normal text-ink-muted">Non décompté</span>
+              </Donnee>
+            </dl>
+            {preview.data && days === 0 ? (
+              <p className="mt-3 text-[12px] text-accent-text">Ce jour n’est pas un jour ouvré.</p>
+            ) : null}
+          </>
+        ) : periodeInvalide ? (
           <p className="text-[12.5px] text-danger">La date de fin précède la date de début.</p>
         ) : preview.isLoading && !preview.data ? (
           <Skeleton className="h-9 w-56" />
@@ -391,6 +538,11 @@ export function FenetreDemandeAbsence({
             {days === 0 ? (
               <p className="mt-3 text-[12px] text-accent-text">
                 Aucun jour ouvré sur cette période.
+              </p>
+            ) : depasse && plafond !== null ? (
+              <p className="mt-3 text-[12px] text-danger">
+                « {selectedType?.name} » se demande pour{' '}
+                {compte(plafond, 'jour ouvré', 'jours ouvrés')} au plus.
               </p>
             ) : insufficient ? (
               <p className="mt-3 text-[12px] text-danger">

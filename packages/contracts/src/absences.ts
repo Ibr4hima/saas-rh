@@ -29,6 +29,10 @@ const absenceTypeFields = z.object({
   resteJoignable: z.boolean().optional(),
   /** Le motif ne regarde que l'agent et la DCH : le N+1 voit une absence. */
   motifConfidentiel: z.boolean().optional(),
+  /** Se demande aussi à l'heure, sur un jour : un rendez-vous, une démarche. */
+  allowsHours: z.boolean().optional(),
+  /** Au plus tant de jours ouvrés par demande ; null : pas de plafond. */
+  maxDaysPerRequest: z.number().int().min(1).max(365).nullish(),
 });
 
 type ChampsDuType = {
@@ -50,15 +54,25 @@ const decompteMessage = {
   path: ['deductsBalance'] as PropertyKey[],
 };
 
+/** Les soldes se tiennent en jours : ce qui s'en décompte se prend à la journée. */
+const heuresHorsSolde = (v: ChampsDuType & { allowsHours?: boolean }) =>
+  !(v.allowsHours && v.deductsBalance);
+const heuresMessage = {
+  message: 'Un type décompté du solde se demande à la journée',
+  path: ['allowsHours'] as PropertyKey[],
+};
+
 export const createAbsenceTypeSchema = absenceTypeFields
   .refine(quotaCoherent, quotaMessage)
-  .refine(decompteSurQuota, decompteMessage);
+  .refine(decompteSurQuota, decompteMessage)
+  .refine(heuresHorsSolde, heuresMessage);
 export type CreateAbsenceTypeInput = z.infer<typeof createAbsenceTypeSchema>;
 
 /** La fenêtre de modification renvoie le type entier : même forme qu'à la création. */
 export const updateAbsenceTypeSchema = absenceTypeFields
   .refine(quotaCoherent, quotaMessage)
-  .refine(decompteSurQuota, decompteMessage);
+  .refine(decompteSurQuota, decompteMessage)
+  .refine(heuresHorsSolde, heuresMessage);
 export type UpdateAbsenceTypeInput = z.infer<typeof updateAbsenceTypeSchema>;
 
 export interface AbsenceType {
@@ -70,6 +84,8 @@ export interface AbsenceType {
   requiresDocument: boolean;
   resteJoignable: boolean;
   motifConfidentiel: boolean;
+  allowsHours: boolean;
+  maxDaysPerRequest: number | null;
   /** Nombre de demandes déjà déposées sur ce type : il ne se supprime pas à la légère. */
   usageCount: number;
 }
@@ -213,18 +229,86 @@ export const absenceJustificatifSchema = z.object({
     .max(Math.ceil((MAX_JUSTIFICATIF_BYTES * 4) / 3) + 4),
 });
 
+/** Une heure du jour, « 09:30 ». */
+const heure = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Heure attendue au format HH:MM');
+
+/**
+ * Une journée de travail, pour compter une absence à l'heure : quarante
+ * heures par semaine, sur cinq jours.
+ */
+export const HEURES_PAR_JOUR = 8;
+
+/** Une absence à l'heure se prend dans la journée de travail, de 8 h à 17 h. */
+export const HEURE_DEBUT_JOURNEE = '08:00';
+export const HEURE_FIN_JOURNEE = '17:00';
+
+/** Les minutes entre deux heures du même jour (« 10:00 », « 11:30 » : 90). */
+export function minutesEntre(debut: string, fin: string): number {
+  const enMinutes = (h: string) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5));
+  return enMinutes(fin) - enMinutes(debut);
+}
+
+/**
+ * Ce qu'une absence à l'heure compte, en jours : deux heures font 0,25 jour,
+ * et une journée au plus, même quand les heures la dépassent.
+ */
+export function joursDHeures(debut: string, fin: string): number {
+  const jours = Math.round((minutesEntre(debut, fin) / (HEURES_PAR_JOUR * 60)) * 100) / 100;
+  return Math.min(1, Math.max(0.01, jours));
+}
+
+/** « 10 h », « 10 h 30 » : une heure telle qu'on l'écrit, d'un seul tenant. */
+export function heureEnLettres(h: string): string {
+  const minutes = h.slice(3, 5);
+  return `${Number(h.slice(0, 2))}\u00a0h${minutes === '00' ? '' : `\u00a0${minutes}`}`;
+}
+
+/** De 8 h à 17 h au plus : les heures tiennent dans la journée de travail. */
+export const dansLaJournee = (debut: string, fin: string) =>
+  debut >= HEURE_DEBUT_JOURNEE && fin <= HEURE_FIN_JOURNEE;
+
+/** « Une absence à l'heure se situe entre 8 h et 17 h ». */
+export const horsDeLaJournee = `Une absence à l’heure se situe entre ${heureEnLettres(HEURE_DEBUT_JOURNEE)} et ${heureEnLettres(HEURE_FIN_JOURNEE)}`;
+
+/** « 2 h », « 1 h 30 », « 45 min » : la durée d'une absence à l'heure. */
+export function dureeEnLettres(debut: string, fin: string): string {
+  const total = minutesEntre(debut, fin);
+  const [heures, minutes] = [Math.floor(total / 60), total % 60];
+  if (heures === 0) return `${minutes}\u00a0min`;
+  return `${heures}\u00a0h${minutes === 0 ? '' : `\u00a0${String(minutes).padStart(2, '0')}`}`;
+}
+
 export const createAbsenceRequestSchema = z
   .object({
     employeeId: z.uuid(),
     absenceTypeId: z.uuid(),
     startDate: isoDate,
     endDate: isoDate,
+    /** À l'heure : de telle heure à telle heure, le même jour. */
+    startTime: heure.optional(),
+    endTime: heure.optional(),
     reason: z.string().trim().max(1000).optional(),
     document: absenceJustificatifSchema.optional(),
   })
   .refine((v) => v.endDate >= v.startDate, {
     message: 'La date de fin doit être postérieure ou égale à la date de début',
     path: ['endDate'],
+  })
+  .refine((v) => (v.startTime === undefined) === (v.endTime === undefined), {
+    message: 'Indiquez l’heure de début et l’heure de fin',
+    path: ['endTime'],
+  })
+  .refine((v) => v.startTime === undefined || v.startDate === v.endDate, {
+    message: 'Une absence à l’heure tient sur un seul jour',
+    path: ['endDate'],
+  })
+  .refine((v) => !v.startTime || !v.endTime || minutesEntre(v.startTime, v.endTime) > 0, {
+    message: 'L’heure de fin doit suivre l’heure de début',
+    path: ['endTime'],
+  })
+  .refine((v) => !v.startTime || !v.endTime || dansLaJournee(v.startTime, v.endTime), {
+    message: horsDeLaJournee,
+    path: ['startTime'],
   });
 export type CreateAbsenceRequestInput = z.infer<typeof createAbsenceRequestSchema>;
 
@@ -310,6 +394,9 @@ export interface AbsenceRequestView {
   deductsBalance: boolean;
   startDate: string;
   endDate: string;
+  /** À l'heure : « 10:00 » à « 12:00 », le même jour ; null : journées entières. */
+  startTime: string | null;
+  endTime: string | null;
   daysCount: number;
   reason: string | null;
   status: string;

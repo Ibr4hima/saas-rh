@@ -10,7 +10,7 @@ import type { Tx } from '../../db/tenant-db';
    · en congé, qui l'a demandé ne reçoit ni courriel ni WhatsApp : la
      notification l'attend dans la plateforme. « En congé » se lit comme
      pour la DCH (cf. acces/dch.ts) : une absence approuvée couvre ce jour,
-     et elle éloigne (une mission laisse joignable). */
+     et elle éloigne (une mission laisse joignable, quelques heures aussi). */
 
 /** L'utilisateur est en congé aujourd'hui (absence approuvée qui l'éloigne). */
 export const enCongeAujourdhui = (userId: SQL) => sql`EXISTS (
@@ -18,7 +18,7 @@ export const enCongeAujourdhui = (userId: SQL) => sql`EXISTS (
     JOIN absence_types ty ON ty.id = ab.absence_type_id AND NOT ty.reste_joignable
     JOIN employees e ON e.id = ab.employee_id
     JOIN persons pe ON pe.id = e.person_id
-   WHERE pe.user_id = ${userId} AND ab.status = 'approved'
+   WHERE pe.user_id = ${userId} AND ab.status = 'approved' AND ab.start_time IS NULL
      AND CURRENT_DATE BETWEEN ab.start_date AND ab.end_date)`;
 
 export interface CanauxDuDestinataire {

@@ -1,4 +1,9 @@
-import type { ContractType, DocumentCategory, RequestableDoc } from '@teranga/contracts';
+import {
+  heureEnLettres,
+  type ContractType,
+  type DocumentCategory,
+  type RequestableDoc,
+} from '@teranga/contracts';
 
 /* Les mots des notifications. Un titre se lit comme une phrase : « Votre CNI
    est ajoutée à votre dossier », « Le CDD de Fatou Sall prend fin le
@@ -18,8 +23,20 @@ export function frDate(iso: string, avecJour = false): string {
   return d.getUTCDate() === 1 ? texte.replace(/(^|\s)1 /, '$11er ') : texte;
 }
 
-/** « le 10 mai 2027 », « du 10 au 12 mai 2027 », « du 28 avril au 3 mai 2027 ». */
-export function duAu(debut: string, fin: string): string {
+/** Les heures d'une absence à l'heure, « 10:00 » à « 12:00 ». */
+export interface Heures {
+  debut: string;
+  fin: string;
+}
+
+/**
+ * « le 10 mai 2027 », « du 10 au 12 mai 2027 », « du 28 avril au 3 mai 2027 » ;
+ * à l'heure, « le 10 mai 2027 de 10 h à 12 h ».
+ */
+export function duAu(debut: string, fin: string, heures?: Heures | null): string {
+  if (heures) {
+    return `le ${frDate(debut)} de ${heureEnLettres(heures.debut)} à ${heureEnLettres(heures.fin)}`;
+  }
   if (debut === fin) return `le ${frDate(debut)}`;
   const [a, b] = [frDate(debut).split(' '), frDate(fin).split(' ')];
   if (a[2] !== b[2]) return `du ${a.join(' ')} au ${b.join(' ')}`;
@@ -73,10 +90,13 @@ export const CONTRAT: Record<ContractType, string> = {
   detachement: 'détachement',
 };
 
-/** Le nom d'un type d'absence dans une phrase : « congé annuel », « congé maladie », « mission ». */
+/**
+ * Le nom d'un type d'absence dans une phrase : « congé annuel », « congé
+ * maladie », « mission », « absence ponctuelle ».
+ */
 export function absence(type: string): Nom {
   const bas = type.toLowerCase();
-  if (bas === 'mission') return nom(bas, true);
+  if (bas === 'mission' || bas.startsWith('absence')) return nom(bas, true);
   return nom(bas.startsWith('congé') ? bas : `congé ${bas}`, false);
 }
 

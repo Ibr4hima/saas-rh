@@ -4,7 +4,7 @@ import type { Tx } from '../../db/tenant-db';
 import { notifier, type NotificationDraft } from '../notifications/notifier';
 import { relancer, retirerLesAppels, tenirLesAppels } from '../acces/appels';
 import { ABSENCE, absence, accord, de, duAu, frDate, leLa, sonSa } from '../notifications/phrases';
-import type { Nom } from '../notifications/phrases';
+import type { Heures, Nom } from '../notifications/phrases';
 import {
   administrateursEnFonction,
   directionDuPersonnel,
@@ -229,6 +229,8 @@ interface Demande {
   type: string;
   debut: string;
   fin: string;
+  /** À l'heure : de telle heure à telle heure, ce jour-là (null : journées entières). */
+  heures: Heures | null;
   jours: number;
   demandeurUserId: string | null;
   /** Le motif ne regarde que l'agent et la DCH (cf. migration 0076). */
@@ -245,12 +247,16 @@ export async function lireDemande(tx: Tx, requestId: string): Promise<Demande | 
     type: string;
     debut: string;
     fin: string;
+    heure_debut: string | null;
+    heure_fin: string | null;
     jours: string;
     user_id: string | null;
     confidentiel: boolean;
   }>(sql`
     SELECT r.id, r.tenant_id, r.employee_id, p.given_name || ' ' || p.family_name AS nom,
            ty.name AS type, r.start_date::text AS debut, r.end_date::text AS fin,
+           to_char(r.start_time, 'HH24:MI') AS heure_debut,
+           to_char(r.end_time, 'HH24:MI') AS heure_fin,
            r.days_count::text AS jours, p.user_id, ty.motif_confidentiel AS confidentiel
       FROM absence_requests r
       JOIN employees e ON e.id = r.employee_id
@@ -267,6 +273,7 @@ export async function lireDemande(tx: Tx, requestId: string): Promise<Demande | 
         type: r.type,
         debut: r.debut,
         fin: r.fin,
+        heures: r.heure_debut && r.heure_fin ? { debut: r.heure_debut, fin: r.heure_fin } : null,
         jours: Number(r.jours),
         demandeurUserId: r.user_id,
         confidentiel: r.confidentiel,
@@ -284,7 +291,7 @@ function motif(d: Demande, pour: 'agent' | 'n1' | 'dch'): Nom {
 
 /** « Moussa Ndiaye demande un congé annuel du 10 au 12 mai 2027 ». */
 function demandeDe(d: Demande, a: Nom): string {
-  return `${d.nom} demande ${a.article} ${a.nom} ${duAu(d.debut, d.fin)}`;
+  return `${d.nom} demande ${a.article} ${a.nom} ${duAu(d.debut, d.fin, d.heures)}`;
 }
 
 /** La clé de l'appel à viser : une par demande, par étape. */
@@ -302,7 +309,7 @@ export async function annoncerLeVerdict(
   await notifier(tx, d.tenantId, d.demandeurUserId, {
     type: verdict === 'approved' ? 'conge_approuve' : 'conge_refuse',
     sujet: 'conges',
-    title: `Votre ${a.nom} ${duAu(d.debut, d.fin)} est ${accord(verdict === 'approved' ? 'approuvé' : 'refusé', a)}`,
+    title: `Votre ${a.nom} ${duAu(d.debut, d.fin, d.heures)} est ${accord(verdict === 'approved' ? 'approuvé' : 'refusé', a)}`,
     link: '/moi/conges/historique',
     dedupeKey: cleVerdict(d.id),
   });
@@ -499,7 +506,7 @@ export async function annoncerLeChangement(
       );
     }
   };
-  const leConge = (a: Nom) => `${leLa(a)}${a.nom} ${de(d.nom)} ${duAu(d.debut, d.fin)}`;
+  const leConge = (a: Nom) => `${leLa(a)}${a.nom} ${de(d.nom)} ${duAu(d.debut, d.fin, d.heures)}`;
 
   if (changement.quoi === 'annule') {
     // L'avis « approuvé » ne dit plus vrai : il quitte la boîte de l'agent.
@@ -513,7 +520,7 @@ export async function annoncerLeChangement(
       d.demandeurUserId,
       {
         type: 'conge_refuse',
-        title: `Votre ${a.nom} ${duAu(d.debut, d.fin)} est ${accord('annulé', a)}`,
+        title: `Votre ${a.nom} ${duAu(d.debut, d.fin, d.heures)} est ${accord('annulé', a)}`,
         link: '/moi/conges/historique',
         dedupeKey: cle('annule'),
         remplace: cle('verdict'),
@@ -591,7 +598,7 @@ async function expirer(tx: Tx): Promise<void> {
     await retirerLesAppels(tx, `conge:${id}`);
 
     const a = absence(d.type);
-    const periode = duAu(d.debut, d.fin);
+    const periode = duAu(d.debut, d.fin, d.heures);
     const cle = `conge:${id}:expiree`;
     if (d.demandeurUserId) {
       await notifier(tx, d.tenantId, d.demandeurUserId, {

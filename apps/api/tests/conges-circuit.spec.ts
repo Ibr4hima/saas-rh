@@ -21,6 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   CAPACITES_DELEGABLES,
   CAPACITES_GESTION,
+  createAbsenceRequestSchema,
   type Capacite,
   type SessionUser,
 } from '@teranga/contracts';
@@ -1883,5 +1884,204 @@ describe('ce qui reste à qui a traité, et le congé d’un chef', () => {
     expect((await vue(id, awa.session)).gestes.annuler).toBe(true);
     await absences.cancel(awa.session, id, { motif: 'Mission annulée' });
     expect((await vue(id)).status).toBe('cancelled');
+  });
+});
+
+describe('une absence ponctuelle', () => {
+  let ponctuelleId: string;
+  beforeAll(async () => {
+    ponctuelleId = randomUUID();
+    await raw(
+      `INSERT INTO absence_types (id, tenant_id, name, allows_hours, max_days_per_request)
+       VALUES ($1,$2,'Absence ponctuelle',true,3)`,
+      [ponctuelleId, tenantId],
+    );
+  });
+
+  /** Le lundi 1er mars 2027 : un jour ouvré, sans férié. */
+  const LUNDI = '2027-03-01';
+  const aLHeure = (qui: Agent, debut: string, fin: string, jour = LUNDI) =>
+    absences.createRequest(qui.session, {
+      employeeId: qui.employeeId,
+      absenceTypeId: ponctuelleId,
+      startDate: jour,
+      endDate: jour,
+      startTime: debut,
+      endTime: fin,
+    });
+  const aLaJournee = (qui: Agent, debut: string, fin: string, type = ponctuelleId) =>
+    absences.createRequest(qui.session, {
+      employeeId: qui.employeeId,
+      absenceTypeId: type,
+      startDate: debut,
+      endDate: fin,
+    });
+  async function refusDe(fn: () => Promise<unknown>) {
+    try {
+      await fn();
+    } catch (err) {
+      if (err instanceof ProblemException) return err.problem;
+      throw err;
+    }
+    throw new Error('aucun refus');
+  }
+
+  it('à l’heure : deux rendez-vous du même jour tiennent ; un troisième qui les chevauche est refusé', async () => {
+    const matin = await aLHeure(moussa, '10:00', '12:00');
+    expect(matin.daysCount).toBe(0.25);
+    await aLHeure(moussa, '12:00', '13:30');
+    await aLHeure(moussa, '15:00', '16:00');
+    const p = await refusDe(() => aLHeure(moussa, '11:00', '12:30'));
+    expect(p.code).toBe('absence.overlap');
+    expect(p.title).toMatch(
+      /^Cette période chevauche votre demande d’absence ponctuelle le 1er mars 2027 de 10\sh à 12\sh$/,
+    );
+    expect(p.detail).toBeUndefined();
+    const v = await vue(matin.id);
+    expect([v.startTime, v.endTime, v.daysCount]).toEqual(['10:00', '12:00', 0.25]);
+  });
+
+  it('une journée posée refuse les heures de ce jour ; des heures posées refusent la journée', async () => {
+    await aLaJournee(moussa, '2027-03-02', '2027-03-02');
+    const p = await refusDe(() => aLHeure(moussa, '08:00', '09:00', '2027-03-02'));
+    expect(p.code).toBe('absence.overlap');
+    expect(p.title).toBe(
+      'Cette période chevauche votre demande d’absence ponctuelle le 2 mars 2027',
+    );
+    await aLHeure(moussa, '14:00', '15:00', '2027-03-03');
+    const q = await refusDe(() => aLaJournee(moussa, '2027-03-03', '2027-03-04', maladieId));
+    expect(q.title).toMatch(
+      /^Cette période chevauche votre demande d’absence ponctuelle le 3 mars 2027 de 14\sh à 15\sh$/,
+    );
+  });
+
+  it('à l’heure seulement si le type le permet, et un jour ouvré', async () => {
+    const annuel = await refusDe(() =>
+      absences.createRequest(moussa.session, {
+        employeeId: moussa.employeeId,
+        absenceTypeId: typeId,
+        startDate: LUNDI,
+        endDate: LUNDI,
+        startTime: '10:00',
+        endTime: '12:00',
+      }),
+    );
+    expect(annuel.code).toBe('absence.heures_refusees');
+    expect(annuel.title).toBe('« Congé annuel » se demande à la journée');
+    const samedi = await refusDe(() => aLHeure(moussa, '10:00', '12:00', '2027-03-06'));
+    expect(samedi.code).toBe('absence.no_working_days');
+    expect(samedi.title).toBe('Ce jour n’est pas un jour ouvré');
+  });
+
+  it('entre 8 h et 17 h seulement : la journée de travail', async () => {
+    const tot = await refusDe(() => aLHeure(moussa, '07:30', '09:00'));
+    expect(tot.code).toBe('absence.hors_horaires');
+    expect(tot.title).toMatch(/^Une absence à l’heure se situe entre 8\sh et 17\sh$/);
+    expect(await codeOf(() => aLHeure(moussa, '16:00', '17:30'))).toBe('absence.hors_horaires');
+    expect((await aLHeure(moussa, '08:00', '17:00')).daysCount).toBe(1);
+  });
+
+  it('le formulaire : les deux heures, le même jour, la fin après le début', () => {
+    const base = {
+      employeeId: randomUUID(),
+      absenceTypeId: randomUUID(),
+      startDate: LUNDI,
+      endDate: LUNDI,
+    };
+    const valide = (v: object) => createAbsenceRequestSchema.safeParse({ ...base, ...v }).success;
+    expect(valide({ startTime: '10:00', endTime: '12:00' })).toBe(true);
+    expect(valide({ startTime: '10:00' })).toBe(false);
+    expect(valide({ endDate: '2027-03-02', startTime: '10:00', endTime: '12:00' })).toBe(false);
+    expect(valide({ startTime: '12:00', endTime: '12:00' })).toBe(false);
+    expect(valide({ startTime: '9:00', endTime: '12:00' })).toBe(false);
+    expect(valide({ startTime: '07:45', endTime: '09:00' })).toBe(false);
+    expect(valide({ startTime: '16:00', endTime: '17:15' })).toBe(false);
+    expect(valide({ startTime: '08:00', endTime: '17:00' })).toBe(true);
+  });
+
+  it('trois jours ouvrés au plus par demande : le week-end ne compte pas', async () => {
+    // Du lundi au jeudi : quatre jours ouvrés.
+    const p = await refusDe(() => aLaJournee(moussa, '2027-03-08', '2027-03-11'));
+    expect(p.code).toBe('absence.duree_max');
+    expect(p.title).toBe('« Absence ponctuelle » se demande pour 3 jours ouvrés au plus');
+    expect(p.detail).toBe('Cette période en compte 4.');
+    // Du jeudi au lundi : trois.
+    expect((await aLaJournee(moussa, '2027-03-11', '2027-03-15')).daysCount).toBe(3);
+  });
+
+  it('un N+1 absent quelques heures garde la main sur les demandes de son équipe', async () => {
+    await raw(
+      `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date,
+                                     start_time, end_time, days_count, status)
+       VALUES ($1,$2,$3,$4, CURRENT_DATE, CURRENT_DATE, '00:00', '23:59', 1, 'approved')`,
+      [randomUUID(), tenantId, ousmane.employeeId, ponctuelleId],
+    );
+    const id = await poserDu(moussa, 2, 9);
+    expect(await appels(id)).toEqual(['n1:Ousmane']);
+    expect(await circuit(id)).toEqual(['n1:attendue:Ousmane Test', 'dch:a_venir:']);
+  });
+
+  it('les avis disent le jour et les heures', async () => {
+    const { id } = await aLHeure(moussa, '10:00', '12:00');
+    expect(await notif('Ousmane', `conge:${id}:appel:n1`)).toMatch(
+      /^Moussa Test demande une absence ponctuelle le 1er mars 2027 de 10\sh à 12\sh$/,
+    );
+    await viser(ousmane, id);
+    await viser(mariama, id);
+    expect(await notif('Moussa', `conge:${id}:verdict`)).toMatch(
+      /^Votre absence ponctuelle le 1er mars 2027 de 10\sh à 12\sh est approuvée$/,
+    );
+  });
+
+  it('validée pour plus tard dans la journée, elle s’annule encore ; commencée, plus', async () => {
+    const validee = async (debut: string, fin: string) => {
+      const id = randomUUID();
+      await raw(
+        `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date,
+                                       start_time, end_time, days_count, status)
+         VALUES ($1,$2,$3,$4, CURRENT_DATE, CURRENT_DATE, $5, $6, 0.01, 'approved')`,
+        [id, tenantId, moussa.employeeId, ponctuelleId, debut, fin],
+      );
+      return id;
+    };
+    const tot = await validee('00:00', '00:01');
+    const tard = await validee('23:58', '23:59');
+    // L'horloge de Dakar (UTC) : avant 23 h 58, l'absence du soir n'a pas commencé.
+    const avantLeSoir = new Date().toISOString().slice(11, 16) < '23:58';
+    expect((await vue(tot, moussa.session)).gestes.annuler).toBe(false);
+    expect((await vue(tard, moussa.session)).gestes.annuler).toBe(avantLeSoir);
+    expect(await codeOf(() => absences.cancel(moussa.session, tot))).toBe(
+      'absence.not_cancellable',
+    );
+    // Passées, ses heures quittent le calendrier des absences.
+    const calendrier = (await absences.upcoming(admin)).map((r) => r.id);
+    const passee = new Date().toISOString().slice(11, 16) >= '00:01';
+    expect(calendrier.includes(tot)).toBe(!passee);
+    expect(calendrier.includes(tard)).toBe(new Date().toISOString().slice(11, 16) < '23:59');
+    if (avantLeSoir) {
+      await absences.cancel(moussa.session, tard);
+      expect((await vue(tard)).status).toBe('cancelled');
+    }
+  });
+
+  it('son jour devenu férié, l’absence est annulée ; resté ouvré, elle garde ses heures', async () => {
+    const { id } = await aLHeure(moussa, '10:00', '12:00', '2027-03-02');
+    // Un recompte qui laisse le jour ouvré : les heures ne deviennent pas une journée.
+    const recompter = absences as unknown as {
+      recompterLesConges(tx: unknown, tenant: string, jours: string[]): Promise<void>;
+    };
+    await db.withTenant({ tenantId, userId: admin.userId }, (tx) =>
+      recompter.recompterLesConges(tx, tenantId, ['2027-03-02']),
+    );
+    expect((await vue(id)).daysCount).toBe(0.25);
+    try {
+      await absences.createHoliday(admin, { year: 2027, day: '2027-03-02', label: 'Jour chômé' });
+      expect((await vue(id)).status).toBe('cancelled');
+      expect(await notif('Moussa', `conge:${id}:ferie`)).toMatch(
+        /^Votre absence ponctuelle le 2 mars 2027 de 10\sh à 12\sh est annulée : ce jour est férié$/,
+      );
+    } finally {
+      await raw(`DELETE FROM holidays WHERE tenant_id = $1 AND day = '2027-03-02'`, [tenantId]);
+    }
   });
 });

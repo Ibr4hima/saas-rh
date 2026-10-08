@@ -37,6 +37,9 @@ import type {
   UpdateHolidayInput,
 } from '@teranga/contracts';
 import {
+  dansLaJournee,
+  horsDeLaJournee,
+  joursDHeures,
   peut,
   MAX_JUSTIFICATIF_BYTES,
   SENEGAL_FIXED_HOLIDAYS,
@@ -49,7 +52,7 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayDedupeKey } from '../notifications/notifications.service';
-import { absence, accord, duAu, frDate } from '../notifications/phrases';
+import { absence, accord, de, duAu, frDate, type Heures } from '../notifications/phrases';
 import { DG } from '../people/chaine';
 import { contratEchu, dernierContrat, typeDeContratAu } from '../people/en-activite';
 import { notifier } from '../notifications/notifier';
@@ -90,6 +93,8 @@ type DefaultType = {
   requiresDocument: boolean;
   resteJoignable?: boolean;
   motifConfidentiel?: boolean;
+  allowsHours?: boolean;
+  maxDaysPerRequest?: number;
 };
 
 // La maternité s'ouvre à la naissance : ses jours ne se rechargent ni au mois
@@ -133,7 +138,22 @@ const DEFAULT_TYPES: DefaultType[] = [
     requiresDocument: true,
     resteJoignable: true,
   },
+  // Quelques heures (un rendez-vous) ou un jour ou deux (un baptême, un
+  // décès), sans justificatif. Trois jours ouvrés au plus, tant que la DCH
+  // n'a pas fixé le sien.
+  {
+    name: 'Absence ponctuelle',
+    deductsBalance: false,
+    allowanceDays: null,
+    frequency: 'none',
+    requiresDocument: false,
+    allowsHours: true,
+    maxDaysPerRequest: 3,
+  },
 ];
+
+/** « 1 jour ouvré », « 3 jours ouvrés ». */
+const enJoursOuvres = (n: number) => (n > 1 ? `${n} jours ouvrés` : `${n} jour ouvré`);
 
 function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
   return { tenantId: user.tenantId, userId: user.userId };
@@ -168,6 +188,23 @@ function aujourdhui(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** L'heure qu'il est, à Dakar : « 14:05 ». */
+function maintenant(): string {
+  return new Date().toISOString().slice(11, 16);
+}
+
+/**
+ * Une absence qui n'a pas commencé : elle commence demain ou plus tard ; à
+ * l'heure, plus tard dans la journée aussi.
+ */
+function pasCommencee(r: { startDate: string; startTime: string | null }): boolean {
+  const jour = aujourdhui();
+  return (
+    r.startDate > jour ||
+    (r.startTime !== null && r.startDate === jour && r.startTime.slice(0, 5) > maintenant())
+  );
+}
+
 /** Le jour d'avant, le jour d'après : des dates ISO, sans fuseau. */
 function decaler(iso: string, jours: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -179,12 +216,14 @@ const lendemain = (iso: string) => decaler(iso, 1);
 
 /**
  * Les absences du calendrier : validées, en cours ou commençant dans les
- * trente jours.
+ * trente jours. Quelques heures déjà passées aujourd'hui en sortent.
  */
 export const absencesDesTrenteJours = () => [
   eq(t.absenceRequests.status, 'approved'),
   gte(t.absenceRequests.endDate, sql`CURRENT_DATE`),
   lte(t.absenceRequests.startDate, sql`CURRENT_DATE + 30`),
+  sql`NOT (${t.absenceRequests.endTime} IS NOT NULL AND ${t.absenceRequests.endDate} = CURRENT_DATE
+           AND ${t.absenceRequests.endTime} <= LOCALTIME)`,
 ];
 
 /**
@@ -297,6 +336,8 @@ export class AbsencesService {
             requiresDocument: d.requiresDocument,
             resteJoignable: d.resteJoignable ?? false,
             motifConfidentiel: d.motifConfidentiel ?? false,
+            allowsHours: d.allowsHours ?? false,
+            maxDaysPerRequest: d.maxDaysPerRequest ?? null,
           });
         }
         rows = await this.selectTypes(tx);
@@ -319,6 +360,8 @@ export class AbsencesService {
           requiresDocument: input.requiresDocument,
           resteJoignable: input.resteJoignable ?? false,
           motifConfidentiel: input.motifConfidentiel ?? false,
+          allowsHours: input.allowsHours ?? false,
+          maxDaysPerRequest: input.maxDaysPerRequest ?? null,
         }),
       );
     } catch (err) {
@@ -339,6 +382,15 @@ export class AbsencesService {
         .limit(1)
         .for('update');
       if (!row) problem(404, 'absence.type_not_found', 'Type d’absence introuvable');
+      // Omis, il reste ce qu'il était, comme le motif confidentiel.
+      const allowsHours = input.allowsHours ?? row.allowsHours;
+      if (allowsHours && input.deductsBalance) {
+        problem(
+          422,
+          'absence.heures_decomptees',
+          'Un type décompté du solde se demande à la journée',
+        );
+      }
       const quota = input.allowanceDays ?? null;
       const change =
         row.deductsBalance !== input.deductsBalance ||
@@ -368,6 +420,11 @@ export class AbsencesService {
             // Omis, il reste ce qu'il était : un motif confidentiel ne
             // redevient pas visible par oubli.
             motifConfidentiel: input.motifConfidentiel ?? row.motifConfidentiel,
+            allowsHours,
+            maxDaysPerRequest:
+              input.maxDaysPerRequest === undefined
+                ? row.maxDaysPerRequest
+                : input.maxDaysPerRequest,
           })
           .where(eq(t.absenceTypes.id, id));
       } catch (err) {
@@ -736,8 +793,12 @@ export class AbsencesService {
       type: string;
       debut: string;
       fin: string;
+      heure_debut: string | null;
+      heure_fin: string | null;
     }>(sql`
       SELECT r.id, p.user_id, ty.name AS type, r.start_date::text AS debut, r.end_date::text AS fin,
+             to_char(r.start_time, 'HH24:MI') AS heure_debut,
+             to_char(r.end_time, 'HH24:MI') AS heure_fin,
              (SELECT count(*)::int FROM generate_series(r.start_date, r.end_date, interval '1 day') g(d)
                WHERE extract(isodow FROM g.d) < 6
                  AND NOT EXISTS (SELECT 1 FROM holidays h WHERE h.day = g.d::date)) AS jours
@@ -749,7 +810,11 @@ export class AbsencesService {
          AND EXISTS (SELECT 1 FROM unnest(${`{${jours.join(',')}}`}::date[]) j
                       WHERE j BETWEEN r.start_date AND r.end_date)`);
     for (const r of rows) {
+      const heures =
+        r.heure_debut && r.heure_fin ? { debut: r.heure_debut, fin: r.heure_fin } : null;
       if (r.jours > 0) {
+        // Quelques heures gardent leur compte : leur jour reste ouvré.
+        if (heures) continue;
         await tx.execute(sql`
           UPDATE absence_requests SET days_count = ${r.jours}
            WHERE id = ${r.id} AND days_count <> ${r.jours}`);
@@ -764,7 +829,7 @@ export class AbsencesService {
         await notifier(tx, tenantId, r.user_id, {
           type: 'conge_annule',
           sujet: 'conges',
-          title: `Votre ${a.nom} ${duAu(r.debut, r.fin)} est ${accord('annulé', a)} : ce jour est férié`,
+          title: `Votre ${a.nom} ${duAu(r.debut, r.fin, heures)} est ${accord('annulé', a)} : ce jour est férié`,
           link: '/moi/conges/historique',
           dedupeKey: `conge:${r.id}:ferie`,
         });
@@ -1065,6 +1130,16 @@ export class AbsencesService {
         if (!type) {
           problem(422, 'absence.type_not_found', "Ce type d'absence n'existe pas");
         }
+        // À l'heure : un jour, de telle heure à telle heure, quand le type
+        // le permet. Le jour se contrôle ensuite comme une journée.
+        const heures: Heures | null =
+          input.startTime && input.endTime ? { debut: input.startTime, fin: input.endTime } : null;
+        if (heures && !type.allowsHours) {
+          problem(422, 'absence.heures_refusees', `« ${type.name} » se demande à la journée`);
+        }
+        if (heures && !dansLaJournee(heures.debut, heures.fin)) {
+          problem(422, 'absence.hors_horaires', horsDeLaJournee);
+        }
 
         // La période tient dans son contrat : ni avant son premier jour, ni
         // après la fin du dernier.
@@ -1114,10 +1189,23 @@ export class AbsencesService {
           problem(
             422,
             'absence.no_working_days',
-            'Aucun jour ouvré sur cette période',
-            'La période ne contient que des week-ends ou jours fériés.',
+            heures ? 'Ce jour n’est pas un jour ouvré' : 'Aucun jour ouvré sur cette période',
+            heures
+              ? 'Le jour choisi est un week-end ou un jour férié.'
+              : 'La période ne contient que des week-ends ou jours fériés.',
           );
         }
+        // Le plafond du type, en jours ouvrés, que la DCH fixe.
+        if (type.maxDaysPerRequest !== null && daysCount > type.maxDaysPerRequest) {
+          problem(
+            422,
+            'absence.duree_max',
+            `« ${type.name} » se demande pour ${enJoursOuvres(type.maxDaysPerRequest)} au plus`,
+            `Cette période en compte ${daysCount}.`,
+          );
+        }
+        // Quelques heures comptent pour une part de la journée.
+        if (heures) daysCount = joursDHeures(heures.debut, heures.fin);
 
         // Le justificatif peut suivre la demande (un certificat médical
         // arrive après l'arrêt) : il n'est exigé qu'à la validation.
@@ -1145,6 +1233,8 @@ export class AbsencesService {
           absenceTypeId: input.absenceTypeId,
           startDate: input.startDate,
           endDate: input.endDate,
+          startTime: heures?.debut ?? null,
+          endTime: heures?.fin ?? null,
           daysCount: daysCount.toString(),
           reason: input.reason,
           requestedByUserId: user.userId,
@@ -1176,7 +1266,7 @@ export class AbsencesService {
             await notifier(tx, user.tenantId, d.demandeurUserId, {
               type: 'conge_saisi',
               sujet: 'conges',
-              title: `La DCH a saisi pour vous ${a.article} ${a.nom} ${duAu(d.debut, d.fin)}`,
+              title: `La DCH a saisi pour vous ${a.article} ${a.nom} ${duAu(d.debut, d.fin, d.heures)}`,
               link: '/moi/conges/historique',
               dedupeKey: `conge:${id}:saisie`,
             });
@@ -1193,17 +1283,20 @@ export class AbsencesService {
   /**
    * La période en chevauche une autre : on dit laquelle. Quand elle ne
    * déborde que la fin d'un congé (un arrêt maladie qui prolonge un congé,
-   * par exemple), on dit aussi le jour où la commencer.
+   * par exemple), on dit aussi le jour où la commencer. Deux absences à
+   * l'heure du même jour ne se chevauchent que si leurs heures le font.
    */
   private async refuserLeChevauchement(
     user: SessionUser,
     input: CreateAbsenceRequestInput,
   ): Promise<never> {
-    const [autre] = await this.db.withTenant(ctxOf(user), (tx) =>
+    const candidates = await this.db.withTenant(ctxOf(user), (tx) =>
       tx
         .select({
           debut: t.absenceRequests.startDate,
           fin: t.absenceRequests.endDate,
+          heureDebut: t.absenceRequests.startTime,
+          heureFin: t.absenceRequests.endTime,
           statut: t.absenceRequests.status,
           type: t.absenceTypes.name,
         })
@@ -1217,8 +1310,16 @@ export class AbsencesService {
             gte(t.absenceRequests.endDate, input.startDate),
           ),
         )
-        .orderBy(asc(t.absenceRequests.startDate))
-        .limit(1),
+        .orderBy(asc(t.absenceRequests.startDate), asc(t.absenceRequests.startTime)),
+    );
+    // Le début et la fin, à la minute : une journée entière court de minuit
+    // à minuit.
+    const borne = (jour: string, heure: string | null | undefined, fin: boolean) =>
+      heure ? `${jour}T${heure.slice(0, 5)}` : fin ? `${lendemain(jour)}T00:00` : `${jour}T00:00`;
+    const debut = borne(input.startDate, input.startTime, false);
+    const fin = borne(input.endDate, input.endTime, true);
+    const autre = candidates.find(
+      (c) => borne(c.debut, c.heureDebut, false) < fin && debut < borne(c.fin, c.heureFin, true),
     );
     if (!autre) {
       problem(
@@ -1228,15 +1329,17 @@ export class AbsencesService {
       );
     }
     const a = absence(autre.type);
-    const periode = duAu(autre.debut, autre.fin);
+    const heures =
+      autre.heureDebut && autre.heureFin
+        ? { debut: autre.heureDebut.slice(0, 5), fin: autre.heureFin.slice(0, 5) }
+        : null;
+    const sienne = autre.statut === 'approved' ? `votre ${a.nom}` : `votre demande ${de(a.nom)}`;
     problem(
       409,
       'absence.overlap',
-      autre.statut === 'approved'
-        ? `Cette période chevauche votre ${a.nom} ${periode}`
-        : `Cette période chevauche votre demande de ${a.nom} ${periode}`,
-      autre.debut <= input.startDate && autre.fin < input.endDate
-        ? `${autre.statut === 'approved' ? 'Votre' : 'Votre demande de'} ${a.nom} va jusqu’au ${frDate(autre.fin)} : commencez celle-ci le ${frDate(lendemain(autre.fin))}.`
+      `Cette période chevauche ${sienne} ${duAu(autre.debut, autre.fin, heures)}`,
+      !heures && autre.debut <= input.startDate && autre.fin < input.endDate
+        ? `V${sienne.slice(1)} va jusqu’au ${frDate(autre.fin)} : commencez celle-ci le ${frDate(lendemain(autre.fin))}.`
         : undefined,
     );
   }
@@ -1510,7 +1613,7 @@ export class AbsencesService {
       const request = await this.verrouiller(tx, requestId);
       const self = await this.selfEmployeeId(tx, user);
       const sienne = request.employeeId === self || request.requestedByUserId === user.userId;
-      const aVenir = request.status === 'approved' && request.startDate > aujourdhui();
+      const aVenir = request.status === 'approved' && pasCommencee(request);
       if (sienne) {
         if (request.status !== 'pending' && !aVenir) {
           problem(
@@ -2049,6 +2152,8 @@ export class AbsencesService {
         requiresDocument: t.absenceTypes.requiresDocument,
         resteJoignable: t.absenceTypes.resteJoignable,
         motifConfidentiel: t.absenceTypes.motifConfidentiel,
+        allowsHours: t.absenceTypes.allowsHours,
+        maxDaysPerRequest: t.absenceTypes.maxDaysPerRequest,
       })
       .from(t.absenceTypes)
       .where(isNull(t.absenceTypes.deletedAt))
@@ -2366,8 +2471,8 @@ export class AbsencesService {
         (moi !== null && request.confieeAEmployeeId === moi && request.status === 'pending');
       const justificatif = documentRows.find((d) => d.requestId === request.id)?.filename ?? null;
       const valide = request.status === 'approved';
-      const commence = valide && request.startDate <= today;
-      const aVenir = valide && request.startDate > today;
+      const aVenir = valide && pasCommencee(request);
+      const commence = valide && !aVenir;
       const sonN1 = Boolean(moi && n1s.get(request.employeeId) === moi);
       let repriseAttendDe: string | null = null;
       let confirmerReprise = false;
@@ -2396,6 +2501,8 @@ export class AbsencesService {
         deductsBalance,
         startDate: request.startDate,
         endDate: request.endDate,
+        startTime: request.startTime?.slice(0, 5) ?? null,
+        endTime: request.endTime?.slice(0, 5) ?? null,
         daysCount: num(request.daysCount),
         reason: motif ? request.reason : null,
         status: request.status,

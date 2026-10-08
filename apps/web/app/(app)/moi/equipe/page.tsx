@@ -19,9 +19,8 @@ import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { StatutAbsence } from '../../../../components/statut-absence';
-import { resumeVisas } from '../../../../lib/absences';
+import { dureeAbsence, periodeAbsence, resumeVisas } from '../../../../lib/absences';
 import { api, ApiError } from '../../../../lib/api';
-import { formatDate } from '../../../../lib/hooks';
 import { compte, de } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
@@ -292,7 +291,7 @@ export default function CongesEquipePage() {
           open
           onClose={() => setRefus(null)}
           title={`Refuser le congé de ${refus.employeeName}`}
-          subtitle={`${refus.absenceTypeName} · ${formatDate(refus.startDate)} → ${formatDate(refus.endDate)} · ${compte(refus.daysCount, 'jour')}`}
+          subtitle={`${refus.absenceTypeName} · ${periodeAbsence(refus)} · ${dureeAbsence(refus)}`}
           maxWidth="max-w-lg"
           footer={
             <div className="flex w-full justify-end gap-2">
@@ -334,8 +333,7 @@ function Resume({ demande: r }: { demande: AbsenceRequestView }) {
     <div className="min-w-0 flex-1 basis-56">
       <p className="truncate text-[13px] font-semibold text-ink-strong">{r.employeeName}</p>
       <p className="mt-0.5 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-        {r.absenceTypeName} · {formatDate(r.startDate)} → {formatDate(r.endDate)} ·{' '}
-        {compte(r.daysCount, 'jour')}
+        {r.absenceTypeName} · {periodeAbsence(r)} · {dureeAbsence(r)}
       </p>
       <MentionConge demande={r} />
       {r.reason ? (

@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { AbsenceRequestView } from '@teranga/contracts';
 import { Button, Field, Input, Textarea } from '@teranga/ui';
+import { dureeAbsence, periodeAbsence } from '../lib/absences';
 import { api, ApiError } from '../lib/api';
 import { formatDate } from '../lib/hooks';
 import { compte, de } from '../lib/mots';
@@ -38,7 +39,7 @@ function bornesDeReprise(r: AbsenceRequestView): { min: string; max: string } {
 }
 
 const periodeDe = (r: AbsenceRequestView) =>
-  `${r.absenceTypeName} · ${formatDate(r.startDate)} → ${formatDate(r.endDate)} · ${compte(r.daysCount, 'jour')}`;
+  `${r.absenceTypeName} · ${periodeAbsence(r)} · ${dureeAbsence(r)}`;
 
 const message = (err: unknown) => (err instanceof ApiError ? err.message : 'Action impossible.');
 

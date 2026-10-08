@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { dureeEnLettres, heureEnLettres, joursDHeures } from '@teranga/contracts';
 import {
   ABSENCE,
   absence,
@@ -24,6 +25,24 @@ describe('les mots des notifications', () => {
     expect(duAu('2026-12-28', '2027-01-02')).toBe('du 28 décembre 2026 au 2 janvier 2027');
   });
 
+  it('dit les heures d’une absence à l’heure, d’un seul tenant', () => {
+    const espace = '\u00a0';
+    expect(duAu('2027-05-10', '2027-05-10', { debut: '10:00', fin: '12:30' })).toBe(
+      `le 10 mai 2027 de 10${espace}h à 12${espace}h${espace}30`,
+    );
+    expect(heureEnLettres('08:05')).toBe(`8${espace}h${espace}05`);
+    expect(dureeEnLettres('10:00', '12:00')).toBe(`2${espace}h`);
+    expect(dureeEnLettres('10:00', '11:30')).toBe(`1${espace}h${espace}30`);
+    expect(dureeEnLettres('10:00', '10:45')).toBe(`45${espace}min`);
+  });
+
+  it('compte quelques heures en part de journée, une journée au plus', () => {
+    expect(joursDHeures('10:00', '12:00')).toBe(0.25);
+    expect(joursDHeures('08:00', '12:00')).toBe(0.5);
+    expect(joursDHeures('08:00', '18:00')).toBe(1);
+    expect(joursDHeures('10:00', '10:01')).toBe(0.01);
+  });
+
   it('élide devant une voyelle', () => {
     expect(de('Awa Diop')).toBe('d’Awa Diop');
     expect(de('attestation de travail')).toBe('d’attestation de travail');
@@ -34,6 +53,11 @@ describe('les mots des notifications', () => {
     expect(absence('Congé annuel')).toMatchObject({ nom: 'congé annuel', article: 'un' });
     expect(absence('Maladie')).toMatchObject({ nom: 'congé maladie', article: 'un' });
     expect(absence('Mission')).toMatchObject({ nom: 'mission', article: 'une', feminin: true });
+    expect(absence('Absence ponctuelle')).toMatchObject({
+      nom: 'absence ponctuelle',
+      article: 'une',
+      feminin: true,
+    });
   });
 
   it('accorde l’article et le possessif, élision comprise', () => {
@@ -43,6 +67,10 @@ describe('les mots des notifications', () => {
     expect(sonSa(absence('Mission'))).toBe('sa');
     expect(sonSa(ABSENCE)).toBe('son');
     expect(sonSa(absence('Congé annuel'))).toBe('son');
+    const ponctuelle = absence('Absence ponctuelle');
+    expect(`${leLa(ponctuelle)}${ponctuelle.nom}`).toBe('L’absence ponctuelle');
+    expect(sonSa(ponctuelle)).toBe('son');
+    expect(de(ponctuelle.nom)).toBe('d’absence ponctuelle');
   });
 
   it('un rappel garde le nom propre, et met le reste en minuscule', () => {

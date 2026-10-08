@@ -1,4 +1,32 @@
-import { ETAPE_CONGE_LABELS, type AbsenceRequestView } from '@teranga/contracts';
+import {
+  dureeEnLettres,
+  ETAPE_CONGE_LABELS,
+  heureEnLettres,
+  type AbsenceRequestView,
+} from '@teranga/contracts';
+import { formatDate } from './hooks';
+import { compte } from './mots';
+
+type Periode = Pick<
+  AbsenceRequestView,
+  'startDate' | 'endDate' | 'startTime' | 'endTime' | 'daysCount'
+>;
+
+/** « 8 oct. 2026 → 10 oct. 2026 » ; à l'heure, « 8 oct. 2026, 10 h → 12 h ». */
+export function periodeAbsence(r: Periode): string {
+  if (r.startTime && r.endTime) {
+    // Les heures d'un seul tenant : la ligne ne se coupe pas entre elles.
+    return `${formatDate(r.startDate)}, ${heureEnLettres(r.startTime)}\u00a0→\u00a0${heureEnLettres(r.endTime)}`;
+  }
+  return `${formatDate(r.startDate)} → ${formatDate(r.endDate)}`;
+}
+
+/** « 3 jours » ; à l'heure, « 2 h ». */
+export function dureeAbsence(r: Periode): string {
+  return r.startTime && r.endTime
+    ? dureeEnLettres(r.startTime, r.endTime)
+    : compte(r.daysCount, 'jour');
+}
 
 export const ABSENCE_STATUS_LABELS: Record<string, string> = {
   pending: 'En attente',

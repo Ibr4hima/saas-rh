@@ -123,6 +123,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
               <tr>
                 <Th>Type d&apos;absence</Th>
                 <Th>Quota</Th>
+                <Th>Durée max</Th>
                 <Th>Règles</Th>
                 {peutGerer ? <Th className="w-20 text-right">Actions</Th> : null}
               </tr>
@@ -140,6 +141,18 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
                       <span className="text-ink-muted">Sans quota</span>
                     )}
                   </Td>
+                  <Td className="whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {t.maxDaysPerRequest != null ? (
+                      <>
+                        {t.maxDaysPerRequest}{' '}
+                        <span className="text-ink-muted">
+                          {t.maxDaysPerRequest > 1 ? 'j ouvrés' : 'j ouvré'}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-ink-muted">Sans plafond</span>
+                    )}
+                  </Td>
                   <Td>
                     <div className="flex flex-wrap items-center gap-1.5">
                       {t.deductsBalance ? (
@@ -147,6 +160,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
                       ) : (
                         <Badge tone="gris">Suivi seul</Badge>
                       )}
+                      {t.allowsHours ? <Badge tone="bleu">À l’heure</Badge> : null}
                       {t.requiresDocument ? <Badge tone="orange">Justificatif</Badge> : null}
                       {t.resteJoignable ? <Badge tone="teal">Joignable</Badge> : null}
                       {t.motifConfidentiel ? <Badge tone="prune">Confidentiel</Badge> : null}
@@ -215,6 +229,9 @@ type BrouillonType = {
   requiresDocument: boolean;
   resteJoignable: boolean;
   motifConfidentiel: boolean;
+  allowsHours: boolean;
+  /** Vide : sans plafond. */
+  maxDaysPerRequest: string;
 };
 
 function FenetreType({
@@ -233,12 +250,19 @@ function FenetreType({
     requiresDocument: cible?.requiresDocument ?? false,
     resteJoignable: cible?.resteJoignable ?? false,
     motifConfidentiel: cible?.motifConfidentiel ?? false,
+    allowsHours: cible?.allowsHours ?? false,
+    maxDaysPerRequest: cible?.maxDaysPerRequest == null ? '' : String(cible.maxDaysPerRequest),
   });
   const [erreur, setErreur] = useState<string | null>(null);
   const set = <K extends keyof BrouillonType>(k: K, v: BrouillonType[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   const avecQuota = form.allowanceDays.trim() !== '';
+  const decompte = avecQuota && form.deductsBalance;
+  const plafond = form.maxDaysPerRequest.trim();
+  const plafondInvalide =
+    plafond !== '' &&
+    !(Number.isInteger(Number(plafond)) && Number(plafond) >= 1 && Number(plafond) <= 365);
   const nomTropCourt = form.name.trim().length < 2;
   const annee = new Date().getFullYear();
 
@@ -247,12 +271,15 @@ function FenetreType({
       const body = {
         name: form.name.trim(),
         // Seul un quota se décompte : sans lui, toute demande serait refusée.
-        deductsBalance: avecQuota && form.deductsBalance,
+        deductsBalance: decompte,
         allowanceDays: avecQuota ? Number(form.allowanceDays) : null,
         frequency: avecQuota ? 'annual' : 'none',
         requiresDocument: form.requiresDocument,
         resteJoignable: form.resteJoignable,
         motifConfidentiel: form.motifConfidentiel,
+        // Ce qui se décompte du solde se prend à la journée.
+        allowsHours: form.allowsHours && !decompte,
+        maxDaysPerRequest: plafond === '' ? null : Number(plafond),
       };
       return cible
         ? api(`/absence-types/${cible.id}`, { method: 'PATCH', body })
@@ -282,7 +309,7 @@ function FenetreType({
             Annuler
           </Button>
           <Button
-            disabled={nomTropCourt}
+            disabled={nomTropCourt || plafondInvalide}
             loading={enregistrer.isPending}
             onClick={() => {
               setErreur(null);
@@ -324,6 +351,22 @@ function FenetreType({
               placeholder="Sans quota"
             />
           </Field>
+          <Field
+            label="Jours max par demande"
+            htmlFor="typeMax"
+            error={plafondInvalide ? 'Entre 1 et 365 jours ouvrés' : undefined}
+          >
+            <Input
+              id="typeMax"
+              type="number"
+              min={1}
+              max={365}
+              step={1}
+              value={form.maxDaysPerRequest}
+              onChange={(e) => set('maxDaysPerRequest', e.target.value)}
+              placeholder="Sans plafond"
+            />
+          </Field>
         </ModalGrid>
       </ModalSection>
 
@@ -332,8 +375,8 @@ function FenetreType({
           <label className="flex items-start gap-2.5 text-[12.5px] text-ink">
             <Checkbox
               className="mt-0.5"
-              checked={avecQuota && form.deductsBalance}
-              disabled={!avecQuota}
+              checked={decompte}
+              disabled={!avecQuota || form.allowsHours}
               onChange={(e) => set('deductsBalance', e.target.checked)}
             />
             <span>
@@ -355,6 +398,15 @@ function FenetreType({
                 La demande n’est validée qu’avec sa pièce jointe (certificat, ordre de mission…).
               </span>
             </span>
+          </label>
+          <label className="flex items-start gap-2.5 text-[12.5px] text-ink">
+            <Checkbox
+              className="mt-0.5"
+              checked={form.allowsHours && !decompte}
+              disabled={decompte}
+              onChange={(e) => set('allowsHours', e.target.checked)}
+            />
+            <span className="font-semibold text-ink-strong">Se demande aussi à l’heure</span>
           </label>
           <label className="flex items-start gap-2.5 text-[12.5px] text-ink">
             <Checkbox

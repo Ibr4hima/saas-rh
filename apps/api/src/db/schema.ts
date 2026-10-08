@@ -17,6 +17,7 @@ import {
   primaryKey,
   smallint,
   text,
+  time,
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
@@ -228,6 +229,10 @@ export const absenceTypes = pgTable('absence_types', {
   resteJoignable: boolean('reste_joignable').notNull().default(false),
   /** Le motif ne regarde que l'agent et la DCH : le N+1 voit une absence (migration 0076). */
   motifConfidentiel: boolean('motif_confidentiel').notNull().default(false),
+  /** Se demande aussi à l'heure, sur un jour (migration 0096). */
+  allowsHours: boolean('allows_hours').notNull().default(false),
+  /** Au plus tant de jours ouvrés par demande ; null : pas de plafond. */
+  maxDaysPerRequest: integer('max_days_per_request'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -271,6 +276,9 @@ export const absenceRequests = pgTable('absence_requests', {
   absenceTypeId: uuid('absence_type_id').notNull(),
   startDate: date('start_date').notNull(),
   endDate: date('end_date').notNull(),
+  /** À l'heure : de telle heure à telle heure, le même jour (null : journées entières). */
+  startTime: time('start_time'),
+  endTime: time('end_time'),
   daysCount: numeric('days_count', { precision: 5, scale: 2 }).notNull(),
   reason: text('reason'),
   status: text('status').notNull().default('pending'),

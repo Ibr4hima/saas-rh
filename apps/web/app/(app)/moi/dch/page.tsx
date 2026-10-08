@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { peut, type AbsenceRequestView } from '@teranga/contracts';
+import { heureEnLettres, peut, type AbsenceRequestView } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -47,10 +47,10 @@ import {
   useMembresDCH,
   type Message,
 } from '../../../../components/traitement-dch';
-import { resumeVisas } from '../../../../lib/absences';
+import { dureeAbsence, periodeAbsence, resumeVisas } from '../../../../lib/absences';
 import { api, apiUrl } from '../../../../lib/api';
 import { formatDate, useMe } from '../../../../lib/hooks';
-import { compte, de } from '../../../../lib/mots';
+import { de } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    « Absences & Congés » — les demandes de congé, pour la Direction du
@@ -277,7 +277,9 @@ export default function CongesATraiterPage() {
                       <Periode demande={r} />
                       <MentionConge demande={r} />
                     </Td>
-                    <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
+                    <Td className="text-right font-semibold whitespace-nowrap tabular-nums">
+                      <Jours demande={r} />
+                    </Td>
                     <Td>{justificatif(r)}</Td>
                     <Td>
                       {r.gestes.confirmerReprise ? (
@@ -377,7 +379,7 @@ export default function CongesATraiterPage() {
           open
           onClose={() => setRefus(null)}
           title={`Refuser le congé de ${refus.employeeName}`}
-          subtitle={`${refus.absenceTypeName} · ${formatDate(refus.startDate)} → ${formatDate(refus.endDate)} · ${compte(refus.daysCount, 'jour')}`}
+          subtitle={`${refus.absenceTypeName} · ${periodeAbsence(refus)} · ${dureeAbsence(refus)}`}
           maxWidth="max-w-lg"
           footer={
             <div className="flex w-full justify-end gap-2">
@@ -467,11 +469,24 @@ function BoutonJustificatif({ onClick }: { onClick: () => void }) {
 }
 
 function Periode({ demande: r }: { demande: AbsenceRequestView }) {
+  if (r.startTime && r.endTime) {
+    return (
+      <>
+        {formatDate(r.startDate)}, {heureEnLettres(r.startTime)}{' '}
+        <span className="text-ink-muted">→</span> {heureEnLettres(r.endTime)}
+      </>
+    );
+  }
   return (
     <>
       {formatDate(r.startDate)} <span className="text-ink-muted">→</span> {formatDate(r.endDate)}
     </>
   );
+}
+
+/** Les jours ouvrés d'une demande ; à l'heure, sa durée. */
+function Jours({ demande: r }: { demande: AbsenceRequestView }) {
+  return <>{r.startTime ? dureeAbsence(r) : r.daysCount}</>;
 }
 
 /**
@@ -529,7 +544,9 @@ function DemandesTraitees({
                     <Periode demande={r} />
                     <MentionConge demande={r} />
                   </Td>
-                  <Td className="text-right font-semibold tabular-nums">{r.daysCount}</Td>
+                  <Td className="text-right font-semibold whitespace-nowrap tabular-nums">
+                    <Jours demande={r} />
+                  </Td>
                   <Td>
                     <div className="flex justify-end">
                       <StatutAbsence
@@ -569,6 +586,12 @@ function aujourdhui(): string {
   return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
 }
 
+/** L'heure qu'il est, à l'horloge locale : « 14:05 ». */
+function maintenant(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 /**
  * Qui est absent, et qui le sera sous trente jours : un complément de la
  * file, pas la file — la carte garde sa taille.
@@ -585,6 +608,10 @@ function CalendrierDesAbsences({
     queryFn: () => api<AbsenceRequestView[]>('/absences/upcoming'),
   });
   const jour = aujourdhui();
+  const heure = maintenant();
+  // Commencée : avant aujourd'hui, ou aujourd'hui, à l'heure dite.
+  const enCours = (r: AbsenceRequestView) =>
+    r.startDate < jour || (r.startDate === jour && (!r.startTime || r.startTime <= heure));
   const liste = absences.data ?? [];
   const { tranche, barre } = usePagination(liste);
   // La colonne des gestes n'existe que pour qui peut rappeler ou annuler.
@@ -631,11 +658,19 @@ function CalendrierDesAbsences({
                     <MentionConge demande={r} />
                   </Td>
                   <Td>{r.absenceTypeName}</Td>
-                  <Td className="whitespace-nowrap">{formatDate(r.startDate)}</Td>
-                  <Td className="whitespace-nowrap">{formatDate(r.endDate)}</Td>
-                  <Td className="text-right tabular-nums">{r.daysCount}</Td>
+                  <Td className="whitespace-nowrap">
+                    {formatDate(r.startDate)}
+                    {r.startTime ? `, ${heureEnLettres(r.startTime)}` : null}
+                  </Td>
+                  <Td className="whitespace-nowrap">
+                    {formatDate(r.endDate)}
+                    {r.endTime ? `, ${heureEnLettres(r.endTime)}` : null}
+                  </Td>
+                  <Td className="text-right whitespace-nowrap tabular-nums">
+                    <Jours demande={r} />
+                  </Td>
                   <Td>
-                    {r.startDate <= jour ? (
+                    {enCours(r) ? (
                       <Badge tone="teal">En cours</Badge>
                     ) : (
                       <Badge tone="bleu">À venir</Badge>

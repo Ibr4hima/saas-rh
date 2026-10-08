@@ -48,12 +48,14 @@ export interface Viseur {
 
 /**
  * Le dernier jour de l'absence en cours : une absence approuvée couvre ce
- * jour, et elle l'éloigne (une mission le laisse joignable). Null : présent.
+ * jour, et elle l'éloigne (une mission le laisse joignable ; quelques heures
+ * d'absence le laissent présent dans la journée). Null : présent.
  */
 const finDAbsence = (employeeId: SQL) => sql`(
   SELECT max(ab.end_date)::text FROM absence_requests ab
     JOIN absence_types ty ON ty.id = ab.absence_type_id AND NOT ty.reste_joignable
    WHERE ab.employee_id = ${employeeId} AND ab.status = 'approved'
+     AND ab.start_time IS NULL
      AND CURRENT_DATE BETWEEN ab.start_date AND ab.end_date)`;
 const estAbsent = (employeeId: SQL) => sql`(${finDAbsence(employeeId)} IS NOT NULL)`;
 

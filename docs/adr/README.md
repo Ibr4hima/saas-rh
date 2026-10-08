@@ -37,3 +37,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0029](0029-refus-de-candidature-par-courriel.md)     | Le refus d'une candidature part par courriel, sans recopier l'adresse                   | acceptée, non retenues à part par 0030      |
 | [0030](0030-candidatures-non-retenues-a-part.md)      | Les candidatures non retenues ont leur page                                             | acceptée                                    |
 | [0031](0031-accuse-de-reception.md)                   | L'accusé de réception d'une candidature, et des courriels sans réponse                  | acceptée                                    |
+| [0032](0032-absence-ponctuelle-a-l-heure.md)          | L'absence ponctuelle, à l'heure ou à la journée, plafonnée par demande                  | acceptée                                    |

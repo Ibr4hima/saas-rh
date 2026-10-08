@@ -563,6 +563,32 @@ describe('en congé', () => {
     expect(courriels.envoyes).toHaveLength(1);
     expect(whatsapp.envoyes).toHaveLength(1);
   });
+
+  it('quelques heures d’absence ne mettent rien en pause : l’agent est là dans la journée', async () => {
+    await reglages.changerReglages(awa, { heuresCalmes: false, pauseConges: true });
+    await reglages.changerSujets(awa, {
+      sujets: [{ sujet: 'documents', plateforme: true, courriel: true, whatsapp: false }],
+    });
+    const type = randomUUID();
+    await raw(
+      `INSERT INTO absence_types (id, tenant_id, name, allows_hours, max_days_per_request)
+       VALUES ($1,$2,'Absence ponctuelle',true,3)`,
+      [type, tenantId],
+    );
+    await raw(
+      `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date,
+                                     start_time, end_time, days_count, status)
+       VALUES ($1,$2,$3,$4, CURRENT_DATE, CURRENT_DATE, '00:00', '23:59', 1, 'approved')`,
+      [randomUUID(), tenantId, agents.awa, type],
+    );
+    await notifie(comptes.awa, {
+      type: 'document_request_ready',
+      sujet: 'documents',
+      title: 'Votre attestation de travail est prête',
+    });
+    await toutPart();
+    expect(courriels.envoyes).toHaveLength(1);
+  });
 });
 
 describe('un rappel', () => {

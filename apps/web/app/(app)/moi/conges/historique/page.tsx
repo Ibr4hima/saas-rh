@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { AbsenceRequestView, MyEmployeeView } from '@teranga/contracts';
+import { heureEnLettres, type AbsenceRequestView, type MyEmployeeView } from '@teranga/contracts';
 import {
   Button,
   Card,
@@ -29,9 +29,8 @@ import { Pagination, usePagination } from '../../../../../components/pagination'
 import { StatutAbsence } from '../../../../../components/statut-absence';
 import { Page } from '../../../../../components/gabarit';
 import { api, ApiError, apiUrl } from '../../../../../lib/api';
-import { resumeVisas } from '../../../../../lib/absences';
+import { dureeAbsence, periodeAbsence, resumeVisas } from '../../../../../lib/absences';
 import { formatDate } from '../../../../../lib/hooks';
-import { compte } from '../../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    L'historique des absences et congés : un tableau, une ligne par demande
@@ -243,7 +242,7 @@ function Ligne({
   onErreur: (texte: string) => void;
   enCours: boolean;
 }) {
-  const periode = `${formatDate(r.startDate)} → ${formatDate(r.endDate)}`;
+  const periode = periodeAbsence(r);
   const statut = <StatutAbsence statut={r.status} etape={r.etapeAttendue} titre={resumeVisas(r)} />;
   const justificatif = r.documentName ? (
     <button
@@ -279,7 +278,7 @@ function Ligne({
           {r.absenceTypeName}
         </p>
         <p className="mt-0.5 text-[11.5px] text-ink-muted tabular-nums sm:hidden">
-          {periode} · {compte(r.daysCount, 'jour')}
+          {periode} · {dureeAbsence(r)}
         </p>
         <div className="sm:hidden">
           <MentionConge demande={r} />
@@ -292,17 +291,26 @@ function Ligne({
       </Td>
       <Td className="hidden whitespace-nowrap tabular-nums sm:table-cell">
         {formatDate(r.startDate)}
+        <Heure heure={r.startTime} />
       </Td>
       <Td className="hidden tabular-nums sm:table-cell">
         <span className="whitespace-nowrap">{formatDate(r.endDate)}</span>
+        <Heure heure={r.endTime} />
         <MentionConge demande={r} />
       </Td>
       <Td className="hidden text-right whitespace-nowrap tabular-nums sm:table-cell">
-        {compte(r.daysCount, 'jour')}
+        {dureeAbsence(r)}
       </Td>
       <Td className="hidden sm:table-cell">{justificatif}</Td>
       <Td className="hidden sm:table-cell">{statut}</Td>
       {avecGestes ? <Td className="hidden text-right sm:table-cell">{geste}</Td> : null}
     </Tr>
   );
+}
+
+/** L'heure d'une absence à l'heure, sous son jour. */
+function Heure({ heure }: { heure: string | null }) {
+  return heure ? (
+    <span className="block text-[11.5px] text-ink-muted">{heureEnLettres(heure)}</span>
+  ) : null;
 }

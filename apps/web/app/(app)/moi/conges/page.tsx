@@ -21,7 +21,7 @@ import { compte } from '../../../../lib/mots';
 
 export default function PoserUneDemandePage() {
   const [ouverte, setOuverte] = useState(false);
-  const [envoyee, setEnvoyee] = useState<number | null>(null);
+  const [envoyee, setEnvoyee] = useState<string | null>(null);
 
   const myEmployee = useQuery({
     queryKey: ['me-employee'],
@@ -94,7 +94,7 @@ export default function PoserUneDemandePage() {
           >
             <Icon name="check_circle" size={15} className="mt-px shrink-0" />
             <span>
-              Demande envoyée : {compte(envoyee, 'jour')}.{' '}
+              Demande envoyée : {envoyee}.{' '}
               <Link href="/moi/conges/historique" className="underline">
                 Voir l&apos;historique
               </Link>
@@ -108,9 +108,9 @@ export default function PoserUneDemandePage() {
           employeeId={employeeId}
           stagiaire={stagiaire}
           onClose={() => setOuverte(false)}
-          onEnvoyee={(jours) => {
+          onEnvoyee={(duree) => {
             setOuverte(false);
-            setEnvoyee(jours);
+            setEnvoyee(duree);
           }}
         />
       ) : null}

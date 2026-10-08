@@ -577,6 +577,71 @@ describe('quota et cadence', () => {
   });
 });
 
+describe('l’absence ponctuelle', () => {
+  it('fait partie des types posés d’office : à l’heure, sans justificatif, trois jours au plus', async () => {
+    const ponctuelle = (await absences.listTypes(admin)).find(
+      (t) => t.name === 'Absence ponctuelle',
+    );
+    expect(ponctuelle).toMatchObject({
+      allowsHours: true,
+      maxDaysPerRequest: 3,
+      requiresDocument: false,
+      deductsBalance: false,
+      frequency: 'none',
+    });
+  });
+
+  it('la DCH règle le plafond ; omis à la modification, il reste ce qu’il était', async () => {
+    const champs = {
+      name: 'Absence ponctuelle',
+      deductsBalance: false,
+      allowanceDays: null,
+      frequency: 'none' as const,
+      requiresDocument: false,
+    };
+    const { id } = await absences.createType(admin, {
+      ...champs,
+      allowsHours: true,
+      maxDaysPerRequest: 3,
+    });
+    const lu = async () => (await absences.listTypes(admin)).find((t) => t.id === id);
+    await absences.updateType(admin, id, { ...champs, maxDaysPerRequest: 5 });
+    expect(await lu()).toMatchObject({ allowsHours: true, maxDaysPerRequest: 5 });
+    await absences.updateType(admin, id, champs);
+    expect(await lu()).toMatchObject({ allowsHours: true, maxDaysPerRequest: 5 });
+    await absences.updateType(admin, id, {
+      ...champs,
+      allowsHours: false,
+      maxDaysPerRequest: null,
+    });
+    expect(await lu()).toMatchObject({ allowsHours: false, maxDaysPerRequest: null });
+  });
+
+  it('ce qui se décompte du solde se prend à la journée', async () => {
+    const champs = {
+      name: 'Congé annuel',
+      deductsBalance: true,
+      allowanceDays: 30,
+      frequency: 'annual' as const,
+      requiresDocument: false,
+    };
+    expect(createAbsenceTypeSchema.safeParse({ ...champs, allowsHours: true }).success).toBe(false);
+    expect(createAbsenceTypeSchema.safeParse({ ...champs, maxDaysPerRequest: 0 }).success).toBe(
+      false,
+    );
+    const { id } = await absences.createType(admin, {
+      ...champs,
+      name: 'Récupération',
+      deductsBalance: false,
+      allowsHours: true,
+    });
+    // Le type à l'heure qu'on voudrait décompter, sans redire qu'il est à l'heure.
+    expect(
+      await codeOf(() => absences.updateType(admin, id, { ...champs, name: 'Récupération' })),
+    ).toBe('absence.heures_decomptees');
+  });
+});
+
 describe('retirer un type d’absence', () => {
   async function deuxTypes(): Promise<{ retirable: string; autre: string }> {
     const { id: retirable } = await absences.createType(admin, {
