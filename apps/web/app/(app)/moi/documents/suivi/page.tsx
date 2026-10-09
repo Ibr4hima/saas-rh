@@ -1,7 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 import type { DocumentRequestView } from '@teranga/contracts';
 import {
   DOC_REQUEST_STATUS_TONES,
@@ -14,6 +15,7 @@ import {
   Button,
   CardHeader,
   CardTitle,
+  cn,
   EmptyState,
   Table,
   TBody,
@@ -49,17 +51,50 @@ const aUnEtat = (r: DocumentRequestView) =>
  * pliées par défaut. Une demande traitée dit, dans la colonne « État
  * traitement », où trouver le document. Une demande annulée, ou remplacée
  * par la même demande faite depuis, n'y figure plus : elle est effacée.
+ *
+ * Arrivé par l'avis d'une demande traitée (`?traitee=<id>`), « Demandes
+ * traitées » s'ouvre sur les seules demandes nouvellement traitées, en
+ * évidence : celle de l'avis, et celles dont l'avis attend encore d'être
+ * lu. Les autres suivent, sur demande. Vues, leurs avis passent pour lus
+ * (ADR-0048).
  */
 export default function SuiviDemandesDocumentsPage() {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const cible = useSearchParams().get('traitee');
   const [erreur, setErreur] = useState<string | null>(null);
   const [consultee, setConsultee] = useState<string | null>(null);
   const [traiteesOuvertes, setTraiteesOuvertes] = useState(false);
+  /**
+   * L'arrivée par l'avis : la demande qu'il désigne, et l'heure. On n'en
+   * juge que sur une liste relue depuis : celle du cache peut dater d'avant
+   * le traitement.
+   */
+  const [arrivee, setArrivee] = useState<{ cible: string; depuis: number } | null>(null);
+  /** Les demandes nouvellement traitées, retenues pour toute la visite. */
+  const [enEvidence, setEnEvidence] = useState<string[]>([]);
+  const [suite, setSuite] = useState(false);
   const docRequests = useQuery({
     // scope=mine : l'espace personnel reste personnel même pour un membre RH.
     queryKey: ['document-requests', 'me'],
     queryFn: () => api<DocumentRequestView[]>('/document-requests?scope=mine'),
   });
+  // Vues, elles restent en évidence à l'écran, mais leurs avis passent pour
+  // lus : la cloche ne les compte plus.
+  const vues = useMutation({
+    mutationFn: (ids: string[]) =>
+      api('/document-requests/vues', { method: 'POST', body: { ids } }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+  const marquerVues = vues.mutate;
+
+  useEffect(() => {
+    if (!cible) return;
+    setArrivee({ cible, depuis: Date.now() });
+    void queryClient.invalidateQueries({ queryKey: ['document-requests', 'me'] });
+    // L'adresse redevient celle du suivi : la recharger ne rejoue pas l'arrivée.
+    router.replace('/moi/documents/suivi', { scroll: false });
+  }, [cible, queryClient, router]);
   // Tant que le document n'est pas prêt, la demande s'annule d'un clic.
   const annuler = useMutation({
     mutationFn: (id: string) => api(`/document-requests/${id}/cancel`, { method: 'POST' }),
@@ -80,8 +115,41 @@ export default function SuiviDemandesDocumentsPage() {
       traitees: demandes.filter((r) => !OPEN_DOCUMENT_REQUEST_STATUSES.includes(r.status)),
     };
   }, [docRequests.data]);
+  const { dataUpdatedAt, isFetching } = docRequests;
+  // La liste relue : les nouvellement traitées sont celle de l'avis, et
+  // celles dont l'avis attend encore d'être lu.
+  useEffect(() => {
+    if (!arrivee || isFetching || dataUpdatedAt < arrivee.depuis) return;
+    const ids = traitees.filter((r) => r.nouvelle || r.id === arrivee.cible).map((r) => r.id);
+    setArrivee(null);
+    setEnEvidence(ids);
+    setSuite(false);
+    setTraiteesOuvertes(true);
+    if (ids.length > 0) marquerVues(ids);
+  }, [arrivee, isFetching, dataUpdatedAt, traitees, marquerVues]);
+
+  // La carte vient sous les yeux si elle n'y est pas déjà.
+  useEffect(() => {
+    if (enEvidence.length === 0) return;
+    const carte = document.getElementById('demandes-traitees');
+    const r = carte?.getBoundingClientRect();
+    if (!carte || !r || (r.top >= 0 && r.top < window.innerHeight - 160)) return;
+    const doux = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    carte.scrollIntoView({ behavior: doux ? 'smooth' : 'auto', block: 'start' });
+  }, [enEvidence]);
+
+  // En évidence, les nouvellement traitées seules, en tête ; les autres
+  // derrière, une fois la suite demandée.
+  const { lignesTraitees, reste } = useMemo(() => {
+    const neuves = traitees.filter((r) => enEvidence.includes(r.id));
+    if (neuves.length === 0) return { lignesTraitees: traitees, reste: 0 };
+    const autres = traitees.filter((r) => !enEvidence.includes(r.id));
+    return suite
+      ? { lignesTraitees: [...neuves, ...autres], reste: 0 }
+      : { lignesTraitees: neuves, reste: autres.length };
+  }, [traitees, enEvidence, suite]);
   const fileVue = usePagination(enCours);
-  const historique = usePagination(traitees);
+  const historique = usePagination(lignesTraitees, `${enEvidence.join()}:${suite}`);
   const aConsulter = traitees.find((r) => r.id === consultee) ?? null;
 
   return (
@@ -137,7 +205,7 @@ export default function SuiviDemandesDocumentsPage() {
       </CartePleine>
       <Pagination {...fileVue.barre} />
 
-      <CartePleine>
+      <CartePleine id="demandes-traitees" className="scroll-mt-4">
         <EnTetePliable
           titre="Demandes traitées"
           n={traitees.length}
@@ -161,6 +229,7 @@ export default function SuiviDemandesDocumentsPage() {
               <Ligne
                 key={r.id}
                 demande={r}
+                nouvelle={enEvidence.includes(r.id)}
                 etat={
                   aUnEtat(r) ? (
                     <EtatTraitement demande={r} onConsulter={() => setConsultee(r.id)} />
@@ -170,6 +239,16 @@ export default function SuiviDemandesDocumentsPage() {
             ))}
           </TableauDesDemandes>
         )}
+        {traiteesOuvertes && reste > 0 ? (
+          <div className="flex justify-center border-t border-line-soft px-5 py-3">
+            <Button size="sm" variant="secondary" onClick={() => setSuite(true)}>
+              {reste === 1
+                ? 'Afficher l’autre demande traitée'
+                : 'Afficher les autres demandes traitées'}
+              <Icon name="chevron_right" size={16} className="-mr-1 rotate-90" />
+            </Button>
+          </div>
+        ) : null}
       </CartePleine>
       {traiteesOuvertes ? <Pagination {...historique.barre} /> : null}
 
@@ -213,27 +292,46 @@ function TableauDesDemandes({
  * Une demande, sur une ligne. Sur téléphone, la date, le statut, le geste
  * et l'état du traitement se rangent sous le document : quatre colonnes n'y
  * tiennent pas.
+ *
+ * Nouvellement traitée, la ligne se teinte du bleu de la marque, un filet
+ * la borde à gauche et « Nouveau » suit le document : à l'arrivée, elle
+ * s'éclaire un instant, puis se pose (ADR-0048).
  */
 function Ligne({
   demande: r,
   geste,
   etat,
+  nouvelle,
 }: {
   demande: DocumentRequestView;
   /** En cours : « Annuler ». */
   geste?: React.ReactNode;
   /** Traitée : où trouver le document. */
   etat?: React.ReactNode;
+  /** Nouvellement traitée : en évidence. */
+  nouvelle?: boolean;
 }) {
   const documents = documentsDe(r);
   const demandee = formatDate(r.createdAt.slice(0, 10));
   const statut = <Badge tone={DOC_REQUEST_STATUS_TONES[r.status]}>{statutDeLaDemande(r)}</Badge>;
   return (
-    <Tr>
-      <Td>
-        <p className="truncate font-semibold text-ink-strong" title={documents}>
-          {documents}
-        </p>
+    <Tr className={cn(nouvelle && 'tg-nouvelle bg-primary-soft/60 hover:bg-primary-soft')}>
+      <Td
+        className={cn(
+          nouvelle &&
+            'relative before:absolute before:inset-y-2.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary',
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="min-w-0 truncate font-semibold text-ink-strong" title={documents}>
+            {documents}
+          </p>
+          {nouvelle ? (
+            <span className="shrink-0 rounded-full bg-primary px-[7px] text-[9.5px] leading-[17px] font-extrabold tracking-[0.06em] text-primary-ink uppercase">
+              Nouveau
+            </span>
+          ) : null}
+        </div>
         {r.note ? (
           <p className="mt-0.5 truncate text-[11.5px] text-ink-muted italic" title={r.note}>
             « {r.note} »

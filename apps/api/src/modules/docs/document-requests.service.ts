@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray, not, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, like, not, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   AdvanceDocumentRequestInput,
@@ -358,6 +358,7 @@ export class DocumentRequestsService {
 
       const dch = await directionDuPersonnel(tx);
       const traiteLesDocuments = !selfOnly && (await this.traiteLesDocuments(tx, user));
+      const nonVues = selfOnly ? await this.traiteesNonVues(tx, user.userId) : new Set<string>();
       const fichiers = await this.fichiersDe(
         tx,
         rows.map((r) => r.request.id),
@@ -427,6 +428,7 @@ export class DocumentRequestsService {
             (['rejected', 'cancelled'].includes(r.request.status)
               ? r.request.updatedAt.toISOString()
               : null),
+          nouvelle: !ouverte && nonVues.has(r.request.id),
           canAdvance: peutAvancer && (ALLOWED_TRANSITIONS[r.request.status]?.length ?? 0) > 0,
           canCancel: ouverte && r.request.employeeId === soi?.employeeId,
           canHandleFiles: gereLesFichiers,
@@ -435,6 +437,42 @@ export class DocumentRequestsService {
       }
       return vues;
     });
+  }
+
+  /**
+   * Les demandes traitées que l'agent n'a pas encore vues : l'avis qui les
+   * annonce (prête, refusée, corrigée) attend d'être lu (ADR-0048). L'avis
+   * en vigueur seulement, chaque étape remplaçant la précédente ; qu'il soit
+   * dans la cloche ou parti par courriel seulement.
+   */
+  private async traiteesNonVues(tx: Tx, userId: string): Promise<Set<string>> {
+    const avis = await tx
+      .select({ cle: t.notifications.dedupeKey })
+      .from(t.notifications)
+      .where(
+        and(
+          eq(t.notifications.recipientUserId, userId),
+          isNull(t.notifications.readAt),
+          isNull(t.notifications.archivedAt),
+          isNull(t.notifications.remplaceeLe),
+          inArray(t.notifications.type, ['document_request_ready', 'document_request_rejected']),
+          like(t.notifications.dedupeKey, 'document:%:suivi:%'),
+        ),
+      );
+    // « document:<id>:suivi:<étape> »
+    return new Set(avis.map((a) => a.cle?.split(':')[1] ?? ''));
+  }
+
+  /**
+   * L'agent a vu ses demandes nouvellement traitées sur son suivi : leurs
+   * avis passent pour lus, dans la cloche aussi (ADR-0048). Les siens
+   * seulement : la clé d'un avis de suivi ne part qu'à l'agent qui a demandé.
+   */
+  async marquerVues(user: SessionUser, ids: string[]): Promise<void> {
+    await this.notifications.marquerLusParCle(
+      user,
+      ids.map((id) => `document:${id}:suivi:`),
+    );
   }
 
   /** Traite les demandes de documents : le directeur du Capital Humain, les membres habilités. */
@@ -795,7 +833,12 @@ export class DocumentRequestsService {
       type: `document_request_${e.status}`,
       sujet: 'documents',
       title,
-      link: '/moi/documents/suivi',
+      // Traitée, l'avis désigne la demande : le suivi s'ouvre sur les
+      // demandes nouvellement traitées, elle comprise (ADR-0048).
+      link:
+        e.status === 'processing'
+          ? '/moi/documents/suivi'
+          : `/moi/documents/suivi?traitee=${e.requestId}`,
       dedupeKey: `${sujet}${e.status}${e.isCorrection ? `:${Date.now()}` : ''}`,
       remplace: sujet,
     });

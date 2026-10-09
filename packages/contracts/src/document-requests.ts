@@ -290,6 +290,15 @@ export const batchAdvanceDocumentRequestSchema = z.object({
 export type BatchAdvanceDocumentRequestInput = z.infer<typeof batchAdvanceDocumentRequestSchema>;
 
 /**
+ * Les demandes nouvellement traitées que l'agent vient de voir sur son
+ * suivi : leurs avis passent pour lus (ADR-0048).
+ */
+export const demandesVuesSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(100),
+});
+export type DemandesVuesInput = z.infer<typeof demandesVuesSchema>;
+
+/**
  * Ce que le lot a réellement fait. Une demande déjà traitée par un collègue
  * pendant que l'écran était ouvert n'annule pas les autres : elle est
  * ÉCARTÉE et nommée, pour que la RH sache exactement ce qui est parti.
@@ -329,6 +338,12 @@ export interface DocumentRequestView {
    * correction du point de retrait ne la déplace pas.
    */
   handledAt: string | null;
+  /**
+   * Traitée, et l'avis qui l'annonce n'est pas encore lu : l'agent ne l'a
+   * pas encore vue (ADR-0048). Dans son propre suivi seulement
+   * (`scope=mine`) ; ailleurs, toujours faux.
+   */
+  nouvelle: boolean;
   /** true si l'utilisateur courant peut la faire avancer : il la traite pour la DCH. */
   canAdvance: boolean;
   /** true si c'est la sienne, et qu'elle n'est pas encore prête : il peut l'annuler. */

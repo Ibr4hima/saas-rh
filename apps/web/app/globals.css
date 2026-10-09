@@ -231,6 +231,25 @@ body {
   }
 }
 
+/* Une demande nouvellement traitée (ADR-0048) : à l'arrivée, la ligne
+   s'éclaire un instant, puis se pose sur sa teinte. Sans état final
+   retenu : le survol reprend la main une fois l'éclat passé. */
+@keyframes tg-nouvelle {
+  from {
+    background-color: color-mix(in oklab, var(--tg-primary) 16%, transparent);
+  }
+}
+
+.tg-nouvelle {
+  animation: tg-nouvelle 1.4s ease-out 0.2s backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-nouvelle {
+    animation: none;
+  }
+}
+
 /* Le panneau prend le focus à l'ouverture (cf. useDialogue) : c'est une cible
    technique, pas un élément que l'on parcourt — pas de halo. */
 [role='dialog']:focus {

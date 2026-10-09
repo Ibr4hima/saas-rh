@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, like, or, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   ContractType,
@@ -317,6 +317,30 @@ export class NotificationsService {
         .update(t.notifications)
         .set({ readAt: new Date() })
         .where(and(mien(user.userId), deLEspace(espace), isNull(t.notifications.readAt))),
+    );
+  }
+
+  /**
+   * Lus, les avis d'un compte dont la clé commence par l'un de ces préfixes :
+   * ce qu'ils annonçaient a été vu ailleurs que dans la cloche (ADR-0048).
+   * Ceux partis par courriel seulement comme les autres ; le courriel
+   * encore en attente ne part plus.
+   */
+  async marquerLusParCle(user: SessionUser, prefixes: string[]): Promise<void> {
+    if (prefixes.length === 0) return;
+    // Le préfixe est pris à la lettre : ni « % » ni « _ » n'y sont des jokers.
+    const aLaLettre = (p: string) => p.replace(/[\\%_]/g, (c) => `\\${c}`);
+    await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      tx
+        .update(t.notifications)
+        .set({ readAt: new Date() })
+        .where(
+          and(
+            eq(t.notifications.recipientUserId, user.userId),
+            isNull(t.notifications.readAt),
+            or(...prefixes.map((p) => like(t.notifications.dedupeKey, `${aLaLettre(p)}%`))),
+          ),
+        ),
     );
   }
 

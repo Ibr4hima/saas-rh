@@ -341,3 +341,88 @@ describe('durée de traitement', () => {
     expect(apres?.handledAt).toBe(avant?.handledAt);
   });
 });
+
+describe('le suivi, les demandes nouvellement traitées (ADR-0048)', () => {
+  /** L'avis en vigueur d'une demande pour l'agent : son lien, et s'il est lu. */
+  async function avisEnVigueur(userId: string, id: string) {
+    const { rows } = await raw(
+      `SELECT id, link, read_at FROM notifications
+        WHERE tenant_id = $1 AND recipient_user_id = $2 AND remplacee_le IS NULL
+          AND dedupe_key LIKE $3`,
+      [tenantId, userId, `document:${id}:suivi:%`],
+    );
+    return rows[0] as { id: string; link: string; read_at: Date | null } | undefined;
+  }
+  const nouvelles = async (qui: SessionUser) =>
+    Object.fromEntries((await service.list(qui, { scope: 'mine' })).map((v) => [v.id, v.nouvelle]));
+
+  it('l’avis d’une demande traitée la désigne ; celui de sa mise en traitement, non', async () => {
+    const [prete] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [
+      string,
+    ];
+    const [refusee] = (await service.create(awa, { docTypes: ['contrat_travail'] })).ids as [
+      string,
+    ];
+    await service.advance(rh, prete, { status: 'processing' });
+    expect((await avisEnVigueur(awaUserId, prete))?.link).toBe('/moi/documents/suivi');
+    await service.advance(rh, prete, { status: 'ready', pickupContact: 'Mme Fatou Sall' });
+    expect((await avisEnVigueur(awaUserId, prete))?.link).toBe(
+      `/moi/documents/suivi?traitee=${prete}`,
+    );
+    await service.advance(rh, refusee, { status: 'rejected', message: 'Déjà remis' });
+    expect((await avisEnVigueur(awaUserId, refusee))?.link).toBe(
+      `/moi/documents/suivi?traitee=${refusee}`,
+    );
+  });
+
+  it('nouvelle tant que son avis n’est pas lu, dans le suivi de l’agent seulement', async () => {
+    const [prete] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [
+      string,
+    ];
+    const [refusee] = (await service.create(awa, { docTypes: ['contrat_travail'] })).ids as [
+      string,
+    ];
+    const [enCours] = (await service.create(awa, { docTypes: ['certificat_travail'] })).ids as [
+      string,
+    ];
+    await service.batchAdvance(rh, { ids: [prete], status: 'ready' });
+    await service.advance(rh, refusee, { status: 'rejected', message: 'Déjà remis' });
+    await service.advance(rh, enCours, { status: 'processing' });
+
+    expect(await nouvelles(awa)).toEqual({ [prete]: true, [refusee]: true, [enCours]: false });
+    // Dans la file de la DCH, la notion n'a pas de sens : toujours faux.
+    expect((await service.list(rh, {})).some((v) => v.nouvelle)).toBe(false);
+  });
+
+  it('vue sur le suivi, elle ne l’est plus : son avis passe pour lu, ceux des autres non', async () => {
+    const [a] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
+    const [b] = (await service.create(awa, { docTypes: ['contrat_travail'] })).ids as [string];
+    const [m] = (await service.create(moussa, { docTypes: ['attestation_travail'] })).ids as [
+      string,
+    ];
+    await service.batchAdvance(rh, { ids: [a, b, m], status: 'ready' });
+
+    await service.marquerVues(awa, [a]);
+    expect(await nouvelles(awa)).toEqual({ [a]: false, [b]: true });
+    expect((await avisEnVigueur(awaUserId, a))?.read_at).not.toBeNull();
+    expect((await avisEnVigueur(awaUserId, b))?.read_at).toBeNull();
+
+    // La demande d'un autre agent, désignée par erreur ou par malice : rien ne bouge.
+    await service.marquerVues(awa, [m]);
+    expect((await avisEnVigueur(moussaUserId, m))?.read_at).toBeNull();
+    expect(await nouvelles(moussa)).toEqual({ [m]: true });
+  });
+
+  it('lue dans la cloche, elle ne l’est plus non plus ; un nouvel avis la rend nouvelle', async () => {
+    const [id] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
+    await service.advance(rh, id, { status: 'processing' });
+    await service.advance(rh, id, { status: 'ready', pickupContact: 'Mme Fatou Sall' });
+    const avis = await avisEnVigueur(awaUserId, id);
+    await new NotificationsService(db).markRead(awa, avis!.id);
+    expect(await nouvelles(awa)).toEqual({ [id]: false });
+
+    // Le point de retrait change : un avis part, la demande redevient nouvelle.
+    await service.advance(rh, id, { status: 'ready', pickupContact: 'M. Diallo' });
+    expect(await nouvelles(awa)).toEqual({ [id]: true });
+  });
+});

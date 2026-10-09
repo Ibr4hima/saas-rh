@@ -19,12 +19,14 @@ import {
   advanceDocumentRequestSchema,
   batchAdvanceDocumentRequestSchema,
   createDocumentRequestSchema,
+  demandesVuesSchema,
   deposerFichierSchema,
   documentRequestStatusSchema,
   renommerFichierSchema,
   type AdvanceDocumentRequestInput,
   type BatchAdvanceDocumentRequestInput,
   type CreateDocumentRequestInput,
+  type DemandesVuesInput,
   type DeposerFichierInput,
   type RenommerFichierInput,
 } from '@teranga/contracts';
@@ -78,6 +80,16 @@ export class DocumentRequestsController {
     body: BatchAdvanceDocumentRequestInput,
   ) {
     return this.requests.batchAdvance(req.sessionUser, body);
+  }
+
+  /** L'agent a vu, sur son suivi, ses demandes nouvellement traitées (ADR-0048). */
+  @Post('document-requests/vues')
+  @HttpCode(204)
+  async vues(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(demandesVuesSchema)) body: DemandesVuesInput,
+  ) {
+    await this.requests.marquerVues(req.sessionUser, body.ids);
   }
 
   /** L'agent retire sa demande, tant qu'elle n'est pas prête. */
