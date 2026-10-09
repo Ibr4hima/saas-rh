@@ -59,7 +59,6 @@ export function FenetreSignalement({
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>({});
-  const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const signalements = useMesSignalements();
   const enAttente = (signalements.data ?? []).find((r) => r.status === 'pending');
@@ -74,7 +73,7 @@ export function FenetreSignalement({
     mutationFn: () =>
       api('/profile-changes', {
         method: 'POST',
-        body: { changes: draft, note: note.trim() || undefined },
+        body: { changes: draft },
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['profile-changes'] });
@@ -196,9 +195,6 @@ export function FenetreSignalement({
                 value={valueOf('addressLine')}
                 onChange={(e) => set('addressLine', e.target.value)}
               />
-            </Field>
-            <Field label="Précision" htmlFor="note" hint="Facultatif">
-              <Input id="note" value={note} onChange={(e) => setNote(e.target.value)} />
             </Field>
 
             {/* Ce qui part, ligne à ligne : l'ancienne valeur et la nouvelle se

@@ -189,6 +189,8 @@ export class AuthService {
   /**
    * Toutes les sessions d'un compte se ferment : chaque appareil devra se
    * reconnecter. Dans une organisation seulement, quand on la précise.
+   * La coupure d'un accès s'en sert ; on ne le déclenche plus soi-même
+   * (ADR-0047).
    */
   async deconnecterPartout(userId: string, tenantId?: string): Promise<void> {
     await this.db.global

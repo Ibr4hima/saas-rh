@@ -89,9 +89,9 @@ export function MenuCompte({
     };
   }, [ouvert]);
 
-  const seDeconnecter = async (partout = false) => {
+  const seDeconnecter = async () => {
     setOuvert(false);
-    await api(partout ? '/auth/deconnecter-partout' : '/auth/logout', { method: 'POST' });
+    await api('/auth/logout', { method: 'POST' });
     // Ce qui a été lu (candidatures, dossiers) ne reste pas dans l'onglet,
     // ni dans les autres onglets ouverts sur la même session.
     fermerSession(queryClient);
@@ -184,11 +184,6 @@ export function MenuCompte({
             }}
           />
           <div className="my-1 h-px bg-line-soft" />
-          <Rangee
-            icone="devices"
-            libelle="Se déconnecter partout"
-            onClick={() => void seDeconnecter(true)}
-          />
           <Rangee
             icone="logout"
             libelle="Se déconnecter"

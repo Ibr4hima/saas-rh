@@ -155,10 +155,6 @@ export function FormationModal({
 
       <ModalSection title="Formateur">
         <div className="flex flex-col gap-3">
-          <p className="text-[12px] leading-snug text-ink-muted">
-            Le formateur ne pourra pas obtenir une certification de ladite formation. Sa fiche
-            personnelle contiendra un récapitulatif de ses formations dispensées.
-          </p>
           <div
             role="radiogroup"
             aria-label="Formateur"
@@ -182,8 +178,16 @@ export function FormationModal({
               </button>
             ))}
           </div>
+          {/* Ce que le rôle emporte ne vaut que pour un agent : sous sa liste,
+              le texte part avec elle quand on choisit « Externe », et les
+              deux boutons ne bougent pas. */}
           {sorte === 'agent' ? (
-            <Field label="Agent" htmlFor="formateur-agent" required>
+            <Field
+              label="Agent"
+              htmlFor="formateur-agent"
+              required
+              hint="Le formateur ne pourra pas obtenir une certification de ladite formation. Sa fiche personnelle contiendra un récapitulatif de ses formations dispensées."
+            >
               <Select
                 id="formateur-agent"
                 value={agent}
