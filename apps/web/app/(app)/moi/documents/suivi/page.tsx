@@ -3,11 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { DocumentRequestView } from '@teranga/contracts';
-import {
-  DOC_REQUEST_STATUS_LABELS,
-  DOC_REQUEST_STATUS_TONES,
-  documentDemande,
-} from '@teranga/contracts';
+import { DOC_REQUEST_STATUS_TONES, documentDemande, statutDeLaDemande } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -22,20 +18,21 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError } from '../../../../../lib/api';
+import { enregistrer } from '../../../../../lib/fichiers';
 import { formatDate } from '../../../../../lib/hooks';
+import { de } from '../../../../../lib/mots';
 import { timeAgo } from '../../../../../components/document-request-list';
 import { Icon } from '../../../../../components/icons';
 import { Page } from '../../../../../components/gabarit';
 import { Pagination, usePagination } from '../../../../../components/pagination';
 
 /**
- * Suivi de mes demandes de documents : où en est chacune, jusqu'au lieu de
- * retrait.
+ * Suivi de mes demandes de documents : où en est chacune, jusqu'à sa remise.
  *
  * Même facture que l'historique des congés, sa voisine dans l'espace
  * personnel : un tableau aux colonnes fixes, quinze lignes par page, le
- * statut en badge. Ce qui appelle un geste (aller chercher un document prêt)
- * se lit dans la colonne « Retrait ».
+ * statut en badge. Ce qui appelle un geste (télécharger le document déposé,
+ * ou aller le chercher) se lit dans la colonne « Remise ».
  */
 export default function SuiviDemandesDocumentsPage() {
   const queryClient = useQueryClient();
@@ -97,7 +94,7 @@ export default function SuiviDemandesDocumentsPage() {
                 <tr>
                   <Th className={avecGestes ? 'sm:w-[32%]' : 'sm:w-[34%]'}>Document</Th>
                   <Th className={avecGestes ? 'sm:w-[15%]' : 'sm:w-[17%]'}>Demandée le</Th>
-                  <Th className={avecGestes ? 'sm:w-[29%]' : 'sm:w-[33%]'}>Retrait</Th>
+                  <Th className={avecGestes ? 'sm:w-[29%]' : 'sm:w-[33%]'}>Remise</Th>
                   <Th className={avecGestes ? 'sm:w-[14%]' : 'sm:w-[16%]'}>Statut</Th>
                   {avecGestes ? (
                     <Th className="sm:w-[10%]">
@@ -114,6 +111,7 @@ export default function SuiviDemandesDocumentsPage() {
                     avecGestes={avecGestes}
                     onAnnuler={() => annuler.mutate(r.id)}
                     enCours={annuler.isPending && annuler.variables === r.id}
+                    onErreur={setErreur}
                   />
                 ))}
               </TBody>
@@ -135,18 +133,18 @@ function Ligne({
   avecGestes,
   onAnnuler,
   enCours,
+  onErreur,
 }: {
   demande: DocumentRequestView;
   avecGestes: boolean;
   onAnnuler: () => void;
   enCours: boolean;
+  onErreur: (texte: string | null) => void;
 }) {
   const documents = r.docTypes.map((d) => documentDemande(d, r.bulletin)).join(' · ');
   const demandee = formatDate(r.createdAt.slice(0, 10));
-  const statut = (
-    <Badge tone={DOC_REQUEST_STATUS_TONES[r.status]}>{DOC_REQUEST_STATUS_LABELS[r.status]}</Badge>
-  );
-  const retrait = <Retrait demande={r} />;
+  const statut = <Badge tone={DOC_REQUEST_STATUS_TONES[r.status]}>{statutDeLaDemande(r)}</Badge>;
+  const retrait = <Retrait demande={r} onErreur={onErreur} />;
   const geste = r.canCancel ? (
     <Button size="sm" variant="ghost" onClick={onAnnuler} loading={enCours}>
       Annuler
@@ -192,12 +190,62 @@ function Ligne({
  * prêt, depuis quand il attend ; le jour où il a été remis. Tant que la
  * demande est en cours, la cellule reste vide.
  */
-function Retrait({ demande: r }: { demande: DocumentRequestView }) {
+function Retrait({
+  demande: r,
+  onErreur,
+}: {
+  demande: DocumentRequestView;
+  onErreur: (texte: string | null) => void;
+}) {
+  const [enCours, setEnCours] = useState<string | null>(null);
+  if (r.status === 'ready' && r.fichiers.length > 0) {
+    const n = r.fichiers.length;
+    // Disponible depuis la mise à disposition, ou depuis le dernier dépôt
+    // s'il est venu après (un document ajouté à une demande déjà prête).
+    const depuis = [r.readyAt, ...r.fichiers.map((f) => f.createdAt)]
+      .filter((d): d is string => Boolean(d))
+      .sort()
+      .at(-1);
+    return (
+      <div className="min-w-0">
+        <ul className="flex flex-col gap-1">
+          {r.fichiers.map((f) => (
+            <li key={f.id} className="min-w-0">
+              <button
+                type="button"
+                disabled={enCours === f.id}
+                onClick={async () => {
+                  setEnCours(f.id);
+                  const ok = await enregistrer(
+                    `/document-requests/${r.id}/fichiers/${f.id}`,
+                    f.filename,
+                  );
+                  setEnCours(null);
+                  onErreur(ok ? null : 'Téléchargement impossible, réessayez.');
+                }}
+                className="inline-flex max-w-full items-center gap-1.5 text-left font-semibold text-primary hover:underline disabled:opacity-60"
+              >
+                <Icon name="download" size={15} className="shrink-0" />
+                <span className="truncate" title={f.filename}>
+                  {f.filename}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-0.5 text-[11.5px] text-ink-muted">
+          {depuis ? `Déposé${n > 1 ? 's' : ''} ${timeAgo(depuis)}` : null}
+          {r.pickupContact ? ` · Original auprès ${de(r.pickupContact)}` : null}
+          {r.hrMessage ? ` · ${r.hrMessage}` : null}
+        </p>
+      </div>
+    );
+  }
   if (r.status === 'ready' && r.pickupContact) {
     return (
       <div className="min-w-0">
         <p className="truncate font-semibold text-primary" title={r.pickupContact}>
-          Auprès de {r.pickupContact}
+          Auprès {de(r.pickupContact)}
         </p>
         {/* L'ancienneté rend visible un document prêt que personne n'est
             venu chercher : l'agent est le seul à pouvoir y remédier. */}

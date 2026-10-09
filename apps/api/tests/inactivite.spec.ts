@@ -614,7 +614,11 @@ describe('trente jours pour récupérer ses documents', () => {
     const { user } = await auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {});
     expect(user.finDAcces).toBe(await trenteJoursApres(await jour(0)));
     // Elle suit encore les documents qu'elle a demandés.
-    const documents = new DocumentRequestsService(db, new NotificationsService(db));
+    const documents = new DocumentRequestsService(
+      db,
+      new NotificationsService(db),
+      new EncryptionService(),
+    );
     await documents.create(user, { docTypes: ['certificat_travail'] });
     expect(await documents.list(user, { scope: 'mine' })).toHaveLength(1);
     // Trente et un jours plus tard, c'est fini.
@@ -1533,7 +1537,11 @@ describe('qui revient', () => {
     // Pendant ses trente jours, elle demande un certificat de travail.
     await inactiver();
     const { user: avant } = await auth.login({ email: fatou.email, password: MOT_DE_PASSE }, {});
-    const documents = new DocumentRequestsService(db, new NotificationsService(db));
+    const documents = new DocumentRequestsService(
+      db,
+      new NotificationsService(db),
+      new EncryptionService(),
+    );
     await documents.create(avant, { docTypes: ['certificat_travail'] });
 
     // Quarante-cinq jours ont passé.

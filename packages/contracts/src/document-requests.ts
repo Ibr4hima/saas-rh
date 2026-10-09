@@ -77,6 +77,19 @@ export const DOC_REQUEST_STATUS_TONES: Record<
 };
 
 /**
+ * Le statut tel qu'il se lit : prête, une demande dont le document est
+ * déposé en ligne est « Disponible », plus « à retirer ».
+ */
+export function statutDeLaDemande(r: {
+  status: DocumentRequestStatus;
+  fichiers: readonly unknown[];
+}): string {
+  return r.status === 'ready' && r.fichiers.length > 0
+    ? 'Disponible'
+    : DOC_REQUEST_STATUS_LABELS[r.status];
+}
+
+/**
  * Statuts d'une demande encore OUVERTE — « prête » n'en fait pas partie :
  * c'est l'état final depuis que la remise en main propre n'est plus
  * enregistrée, et la compter bloquerait l'agent à vie.
@@ -210,10 +223,42 @@ export interface CreateDocumentRequestResult {
   ids: string[];
 }
 
+/*
+   La remise en ligne (ADR-0040) : qui traite la demande y dépose le
+   document, et l'agent le télécharge depuis son espace une fois la demande
+   prête. Plus besoin de passer au bureau, en télétravail ou en déplacement.
+   PDF, JPEG ou PNG, 5 Mo au plus par fichier, douze fichiers au plus.
+*/
+export const TYPES_DE_FICHIER_REMIS = ['application/pdf', 'image/jpeg', 'image/png'] as const;
+export const MAX_FICHIER_REMIS_BYTES = 5 * 1024 * 1024;
+export const FICHIERS_REMIS_MAX = 12;
+
+export const deposerFichierSchema = z.object({
+  filename: z.string().trim().min(1).max(200),
+  contentType: z.enum(TYPES_DE_FICHIER_REMIS),
+  contentBase64: z
+    .string()
+    .min(1)
+    .max(Math.ceil((MAX_FICHIER_REMIS_BYTES * 4) / 3) + 4),
+});
+export type DeposerFichierInput = z.infer<typeof deposerFichierSchema>;
+
+/** Un document remis en ligne, sans son contenu : seul le téléchargement le lit. */
+export interface FichierRemisView {
+  id: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
 /** Transitions pilotées par la RH — « prête » clôt le circuit. */
 export const advanceDocumentRequestSchema = z.object({
   status: z.enum(['processing', 'ready', 'rejected']),
-  /** Requis pour « prête » : à qui l'employé doit s'adresser. */
+  /**
+   * Pour « prête » : à qui s'adresser. Sans précision, à qui la traite ; à
+   * personne si le document est déposé en ligne.
+   */
   pickupContact: z.string().trim().max(120).optional(),
   /** Message libre (obligatoire en cas de refus : le motif). */
   message: z.string().trim().max(500).optional(),
@@ -260,6 +305,11 @@ export interface DocumentRequestView {
   note: string | null;
   status: DocumentRequestStatus;
   pickupContact: string | null;
+  /**
+   * Les documents remis en ligne. L'agent les voit une fois la demande
+   * prête ; qui la traite, dès leur dépôt.
+   */
+  fichiers: FichierRemisView[];
   hrMessage: string | null;
   handledByName: string | null;
   createdAt: string;
@@ -276,6 +326,12 @@ export interface DocumentRequestView {
   canAdvance: boolean;
   /** true si c'est la sienne, et qu'elle n'est pas encore prête : il peut l'annuler. */
   canCancel: boolean;
+  /**
+   * true quand la session y dépose, retire et télécharge les documents
+   * remis : ouverte, si elle la traite ; prête, si elle traite ce type de
+   * document pour la DCH.
+   */
+  canHandleFiles: boolean;
   /** Qui la traite, tant qu'elle est ouverte (sinon null). */
   traitement: TraitementView | null;
 }

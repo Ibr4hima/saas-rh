@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Inject,
@@ -9,18 +10,23 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   advanceDocumentRequestSchema,
   batchAdvanceDocumentRequestSchema,
   createDocumentRequestSchema,
+  deposerFichierSchema,
   documentRequestStatusSchema,
   type AdvanceDocumentRequestInput,
   type BatchAdvanceDocumentRequestInput,
   type CreateDocumentRequestInput,
+  type DeposerFichierInput,
 } from '@teranga/contracts';
 import { z } from 'zod';
+import { contentDisposition } from '../../common/telechargement';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
@@ -86,5 +92,40 @@ export class DocumentRequestsController {
     @Body(new ZodValidationPipe(advanceDocumentRequestSchema)) body: AdvanceDocumentRequestInput,
   ) {
     await this.requests.advance(req.sessionUser, id, body);
+  }
+
+  /** Qui traite la demande y dépose le document : l'agent le reçoit dans son espace. */
+  @Post('document-requests/:id/fichiers')
+  deposer(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(deposerFichierSchema)) body: DeposerFichierInput,
+  ) {
+    return this.requests.deposer(req.sessionUser, id, body);
+  }
+
+  @Delete('document-requests/:id/fichiers/:fichierId')
+  @HttpCode(204)
+  async retirerFichier(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fichierId', ParseUUIDPipe) fichierId: string,
+  ) {
+    await this.requests.retirerFichier(req.sessionUser, id, fichierId);
+  }
+
+  /** Le document remis, à enregistrer. */
+  @Get('document-requests/:id/fichiers/:fichierId')
+  async fichier(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fichierId', ParseUUIDPipe) fichierId: string,
+    @Res() res: Response,
+  ) {
+    const f = await this.requests.fichier(req.sessionUser, id, fichierId);
+    res.setHeader('Content-Type', f.contentType);
+    res.setHeader('Content-Disposition', contentDisposition('attachment', f.filename));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(f.data);
   }
 }

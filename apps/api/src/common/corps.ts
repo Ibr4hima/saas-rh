@@ -4,6 +4,7 @@ import {
   MAX_DOCUMENT_BYTES,
   MAX_DOCUMENTS_PER_APPLICATION,
   MAX_EMPLOYEE_DOCUMENT_BYTES,
+  MAX_FICHIER_REMIS_BYTES,
   MAX_JUSTIFICATIF_BYTES,
   MAX_REFERENCE_PDF_BYTES,
   MAX_SUPPORT_BYTES,
@@ -86,6 +87,13 @@ export const ROUTES_A_FICHIER: Route[] = [
     chemin: new RegExp(`^/v1/employee-documents/${UUID}$`),
     analyseur: 'json',
     limite: enBase64(MAX_EMPLOYEE_DOCUMENT_BYTES) + MARGE_JSON,
+    acces: { session: true },
+  },
+  {
+    methode: 'POST',
+    chemin: new RegExp(`^/v1/document-requests/${UUID}/fichiers$`),
+    analyseur: 'json',
+    limite: enBase64(MAX_FICHIER_REMIS_BYTES) + MARGE_JSON,
     acces: { session: true },
   },
   {

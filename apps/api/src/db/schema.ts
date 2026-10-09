@@ -570,6 +570,20 @@ export const documentRequests = pgTable('document_requests', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Le document remis en ligne : déposé par qui traite la demande, chiffré au repos (0099). */
+export const documentRequestFiles = pgTable('document_request_files', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  requestId: uuid('request_id').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  data: bytea('data').notNull(),
+  cleVersion: smallint('cle_version').notNull(),
+  uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- Textes de référence (0023) ----------
 
 export const referenceTexts = pgTable('reference_texts', {

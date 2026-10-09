@@ -7,8 +7,10 @@ import type {
   BatchAdvanceResult,
   CreateDocumentRequestInput,
   CreateDocumentRequestResult,
+  DeposerFichierInput,
   DocumentRequestStatus,
   DocumentRequestView,
+  FichierRemisView,
   PeriodeDuBulletin,
   RequestableDoc,
   SessionUser,
@@ -17,18 +19,22 @@ import {
   peut,
   DOC_REQUEST_STATUS_LABELS,
   documentsEnCours,
+  FICHIERS_REMIS_MAX,
+  MAX_FICHIER_REMIS_BYTES,
   moisDeDuAu,
   moisEnLettres,
   OPEN_DOCUMENT_REQUEST_STATUSES,
   REQUESTABLE_DOC_LABELS,
 } from '@teranga/contracts';
+import { EncryptionService } from '../../common/encryption.service';
+import { chiffrerPiece, contenuDeLaPiece, nomDeLaPiece } from '../../common/pieces-chiffrees';
 import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
 import { accord, bulletins, de, deBulletins, DOCUMENT } from '../notifications/phrases';
 import { colonnesDuBulletin, periodeDu } from './bulletin';
-import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
+import { agentDuCompte, detenteursDe, directionDuPersonnel } from '../acces/dch';
 import {
   capaciteDesDocuments,
   reconcilierUneDemande,
@@ -63,8 +69,58 @@ function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
   return { tenantId: user.tenantId, userId: user.userId };
 }
 
+/** La signature du fichier : le type annoncé seul ne prouve rien. */
+const SIGNATURES: Record<string, (b: Buffer) => boolean> = {
+  'application/pdf': (b) => b.subarray(0, 5).toString() === '%PDF-',
+  'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  'image/png': (b) =>
+    b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+};
+
+/** Le document déposé : PDF, JPEG ou PNG, 5 Mo au plus. Sa signature le prouve. */
+function lireLeFichier(input: DeposerFichierInput): Buffer {
+  const data = Buffer.from(input.contentBase64, 'base64');
+  if (data.length === 0 || data.length > MAX_FICHIER_REMIS_BYTES) {
+    problem(422, 'documents.too_large', 'Le fichier doit faire 5 Mo maximum');
+  }
+  if (!SIGNATURES[input.contentType]?.(data)) {
+    problem(
+      422,
+      'documents.bad_format',
+      'Le contenu ne correspond pas au format annoncé',
+      'Déposez un PDF, un JPEG ou un PNG.',
+    );
+  }
+  return data;
+}
+
 function labelList(types: string[]): string {
   return types.map((d) => REQUESTABLE_DOC_LABELS[d as RequestableDoc] ?? d).join(', ');
+}
+
+/**
+ * Traite-t-on CE document pour la DCH ? La personne qui dirige la DCH, qui
+ * détient l'habilitation de ce type, ou à qui la demande est confiée. Un
+ * bulletin de salaire ne s'ouvre pas à qui traite seulement les attestations.
+ * `detenteurs` garde les détenteurs déjà lus : une liste n'interroge la base
+ * qu'une fois par habilitation.
+ */
+async function traiteCeDocument(
+  tx: Tx,
+  moi: string | null,
+  directeur: string | null,
+  row: { docTypes: string[]; confieeAEmployeeId: string | null },
+  detenteurs = new Map<string, string[]>(),
+): Promise<boolean> {
+  if (!moi) return false;
+  if (row.confieeAEmployeeId === moi || directeur === moi) return true;
+  const capacite = capaciteDesDocuments(row.docTypes);
+  let qui = detenteurs.get(capacite);
+  if (!qui) {
+    qui = await detenteursDe(tx, capacite);
+    detenteurs.set(capacite, qui);
+  }
+  return qui.includes(moi);
 }
 
 @Injectable()
@@ -72,6 +128,7 @@ export class DocumentRequestsService {
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(EncryptionService) private readonly crypto: EncryptionService,
   ) {}
 
   /**
@@ -254,6 +311,11 @@ export class DocumentRequestsService {
 
       const dch = await directionDuPersonnel(tx);
       const traiteLesDocuments = !selfOnly && (await this.traiteLesDocuments(tx, user));
+      const fichiers = await this.fichiersDe(
+        tx,
+        rows.map((r) => r.request.id),
+      );
+      const detenteurs = new Map<string, string[]>();
       const vues: DocumentRequestView[] = [];
       for (const r of rows) {
         const ouverte = ['received', 'processing'].includes(r.request.status);
@@ -268,6 +330,19 @@ export class DocumentRequestsService {
           r.request.status === 'ready'
             ? traiteLesDocuments && r.request.employeeId !== moi
             : Boolean(tr?.peutTraiter);
+        // Les documents remis : ouverte, qui la traite ; prête, qui traite
+        // ce type de document pour la DCH (les mêmes règles que le serveur).
+        const gereLesFichiers =
+          r.request.status === 'ready'
+            ? peutAvancer &&
+              (await traiteCeDocument(
+                tx,
+                moi,
+                dch?.directeurEmployeeId ?? null,
+                r.request,
+                detenteurs,
+              ))
+            : peutAvancer;
         vues.push({
           id: r.request.id,
           employeeId: r.request.employeeId,
@@ -283,6 +358,12 @@ export class DocumentRequestsService {
           note: r.request.note,
           status: r.request.status as DocumentRequestStatus,
           pickupContact: r.request.pickupContact,
+          // L'agent les reçoit une fois la demande prête ; qui la traite, dès
+          // leur dépôt, pour vérifier ce qui part.
+          fichiers:
+            ['ready', 'delivered'].includes(r.request.status) || peutAvancer
+              ? (fichiers.get(r.request.id) ?? [])
+              : [],
           hrMessage: r.request.hrMessage,
           handledByName: r.handlerGivenName ? `${r.handlerGivenName} ${r.handlerFamilyName}` : null,
           createdAt: r.request.createdAt.toISOString(),
@@ -301,6 +382,7 @@ export class DocumentRequestsService {
               : null),
           canAdvance: peutAvancer && (ALLOWED_TRANSITIONS[r.request.status]?.length ?? 0) > 0,
           canCancel: ouverte && r.request.employeeId === soi?.employeeId,
+          canHandleFiles: gereLesFichiers,
           traitement: tr?.vue ?? null,
         });
       }
@@ -409,17 +491,22 @@ export class DocumentRequestsService {
         changes.confieeAEmployeeId =
           (await agentDuCompte(tx, user.userId)) ?? row.confieeAEmployeeId;
       }
+      const deposes = (await this.compteDesFichiers(tx, [requestId])).get(requestId) ?? 0;
       if (input.status === 'ready') {
         // readyAt date la mise à disposition, pas la correction : une coquille
         // rectifiée ne doit pas rajeunir une demande qui attend depuis 3 semaines.
         if (!isCorrection) changes.readyAt = now;
-        // Sans précision, l'employé s'adresse à celui qui a traité la demande.
+        // Sans précision, on s'adresse à qui a traité la demande ; le document
+        // déposé en ligne, lui, se télécharge sans passer au bureau.
         changes.pickupContact =
-          input.pickupContact?.trim() || `${user.givenName} ${user.familyName}`;
+          input.pickupContact?.trim() ||
+          (deposes > 0 ? null : `${user.givenName} ${user.familyName}`);
       }
 
       await tx.update(t.documentRequests).set(changes).where(eq(t.documentRequests.id, requestId));
       await reconcilierUneDemande(tx, 'documents', requestId);
+      // Refusée, elle ne garde pas les documents préparés pour elle.
+      if (input.status === 'rejected') await this.effacerLesFichiers(tx, [requestId]);
 
       const [person] = await tx
         .select({ userId: t.persons.userId })
@@ -435,6 +522,7 @@ export class DocumentRequestsService {
         docTypes: row.docTypes,
         bulletin: periodeDu(row.payslipFrom, row.payslipTo, row.payslipLastMonths),
         pickupContact: changes.pickupContact ?? null,
+        fichiers: input.status === 'rejected' ? 0 : deposes,
         message: input.message?.trim() || null,
         isCorrection,
       });
@@ -465,6 +553,8 @@ export class DocumentRequestsService {
         .set({ status: 'cancelled', updatedAt: new Date() })
         .where(eq(t.documentRequests.id, requestId));
       await reconcilierUneDemande(tx, 'documents', requestId);
+      // Annulée, elle ne garde pas les documents préparés pour elle.
+      await this.effacerLesFichiers(tx, [requestId]);
 
       if (row.status !== 'processing' || !row.handledByUserId) return;
       if (row.handledByUserId === user.userId) return;
@@ -533,7 +623,12 @@ export class DocumentRequestsService {
 
       const skipped: BatchAdvanceResult['skipped'] = [];
       const now = new Date();
-      const pickupContact = input.pickupContact?.trim() || `${user.givenName} ${user.familyName}`;
+      const deposes = await this.compteDesFichiers(tx, input.ids);
+      // Sans précision, on s'adresse à qui traite ; un document déposé en
+      // ligne se télécharge sans passer au bureau.
+      const retraitDe = (id: string) =>
+        input.pickupContact?.trim() ||
+        ((deposes.get(id) ?? 0) > 0 ? null : `${user.givenName} ${user.familyName}`);
       const message = input.message?.trim() || null;
       let advanced = 0;
 
@@ -568,7 +663,7 @@ export class DocumentRequestsService {
         };
         if (input.status === 'ready') {
           changes.readyAt = now;
-          changes.pickupContact = pickupContact;
+          changes.pickupContact = retraitDe(id);
           // Une demande encore « reçue » traverse l'étape de traitement au
           // même instant : le circuit reste celui de l'ADR-0012, et la durée
           // de traitement garde une borne de départ. L'employé ne reçoit en
@@ -579,6 +674,8 @@ export class DocumentRequestsService {
 
         await tx.update(t.documentRequests).set(changes).where(eq(t.documentRequests.id, id));
         await reconcilierUneDemande(tx, 'documents', id);
+        // Refusée, elle ne garde pas les documents préparés pour elle.
+        if (input.status === 'rejected') await this.effacerLesFichiers(tx, [id]);
         advanced += 1;
 
         if (who?.userId) {
@@ -587,7 +684,8 @@ export class DocumentRequestsService {
             status: input.status,
             docTypes: row.docTypes,
             bulletin: periodeDu(row.payslipFrom, row.payslipTo, row.payslipLastMonths),
-            pickupContact,
+            pickupContact: changes.pickupContact ?? null,
+            fichiers: input.status === 'rejected' ? 0 : (deposes.get(id) ?? 0),
             message,
             isCorrection: false,
           });
@@ -601,7 +699,8 @@ export class DocumentRequestsService {
   /**
    * Avis envoyé à l'employé, identique que la demande parte seule ou en lot.
    * Chaque étape prend la place de la précédente : « en préparation », puis
-   * « prête », puis un éventuel nouveau lieu de retrait.
+   * « prête » (à retirer, ou déposée dans son espace), puis une éventuelle
+   * correction.
    */
   private async notifyEmployee(
     tx: Tx,
@@ -614,6 +713,8 @@ export class DocumentRequestsService {
       /** Les mois d'un bulletin de salaire : il se nomme avec eux. */
       bulletin: PeriodeDuBulletin | null;
       pickupContact: string | null;
+      /** Les documents déposés en ligne, à télécharger depuis l'espace personnel. */
+      fichiers: number;
       message: string | null;
       isCorrection: boolean;
     },
@@ -627,13 +728,20 @@ export class DocumentRequestsService {
       : seul
         ? `Votre ${seul.nom} est`
         : 'Vos documents sont';
-    const pret = b ? (b.pluriel ? 'prêts' : 'prêt') : seul ? accord('prêt', seul) : 'prêts';
+    const accorde = (mot: string) =>
+      b ? (b.pluriel ? `${mot}s` : mot) : seul ? accord(mot, seul) : `${mot}s`;
     const demande = b ? deBulletins(b) : seul ? de(seul.nom) : 'de documents';
+    const retrait = `à retirer auprès ${de(e.pickupContact ?? 'la DCH')}`;
     const titres: Partial<Record<DocumentRequestStatus, string>> = {
       processing: `${votre} en préparation`,
-      ready: e.isCorrection
-        ? `${votre} à retirer auprès ${de(e.pickupContact ?? 'la DCH')}`
-        : `${votre} ${pret}, à retirer auprès ${de(e.pickupContact ?? 'la DCH')}`,
+      ready:
+        e.fichiers > 0
+          ? `${votre} ${accorde('déposé')} dans votre espace${
+              e.pickupContact ? `, l’original ${retrait}` : ''
+            }`
+          : e.isCorrection
+            ? `${votre} ${retrait}`
+            : `${votre} ${accorde('prêt')}, ${retrait}`,
       rejected: `Votre demande ${demande} est refusée`,
     };
     const title = titres[e.status];
@@ -647,6 +755,251 @@ export class DocumentRequestsService {
       dedupeKey: `${sujet}${e.status}${e.isCorrection ? `:${Date.now()}` : ''}`,
       remplace: sujet,
     });
+  }
+
+  /* La remise en ligne (ADR-0040). */
+
+  /**
+   * Déposer un document sur une demande : qui la traite, jamais la sienne.
+   * Ouverte, le document attend qu'elle soit prête pour partir ; prête, il
+   * part tout de suite, et un avis l'annonce.
+   */
+  async deposer(
+    user: SessionUser,
+    requestId: string,
+    input: DeposerFichierInput,
+  ): Promise<FichierRemisView> {
+    const data = lireLeFichier(input);
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const row = await this.demandeARemettre(tx, user, requestId);
+      const deja = (await this.compteDesFichiers(tx, [requestId])).get(requestId) ?? 0;
+      if (deja >= FICHIERS_REMIS_MAX) {
+        problem(
+          422,
+          'documents.trop_de_fichiers',
+          `Au plus ${FICHIERS_REMIS_MAX} fichiers par demande`,
+          'Regroupez les pages dans un seul PDF.',
+        );
+      }
+      const id = uuidv7();
+      const filename = input.filename.trim();
+      const [cree] = await tx
+        .insert(t.documentRequestFiles)
+        .values({
+          id,
+          tenantId: user.tenantId,
+          requestId,
+          contentType: input.contentType,
+          sizeBytes: data.length,
+          uploadedByUserId: user.userId,
+          ...chiffrerPiece(
+            this.crypto,
+            'document_request_files',
+            { tenantId: user.tenantId, id },
+            { filename, data },
+          ),
+        })
+        .returning({ createdAt: t.documentRequestFiles.createdAt });
+
+      // Prête, la demande remet ce document tout de suite : l'agent le sait.
+      if (row.status === 'ready') {
+        const userId = await this.compteDe(tx, row.employeeId);
+        if (userId) {
+          await this.notifyEmployee(tx, user.tenantId, userId, {
+            requestId,
+            status: 'ready',
+            docTypes: row.docTypes,
+            bulletin: periodeDu(row.payslipFrom, row.payslipTo, row.payslipLastMonths),
+            pickupContact: row.pickupContact,
+            fichiers: deja + 1,
+            message: null,
+            isCorrection: true,
+          });
+        }
+      }
+      return {
+        id,
+        filename,
+        contentType: input.contentType,
+        sizeBytes: data.length,
+        createdAt: cree!.createdAt.toISOString(),
+      };
+    });
+  }
+
+  /**
+   * Retirer un document déposé : un mauvais fichier ne reste pas dans
+   * l'espace de l'agent. Une demande prête sans point de retrait garde au
+   * moins un document : on dépose d'abord le bon.
+   */
+  async retirerFichier(user: SessionUser, requestId: string, fichierId: string): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const row = await this.demandeARemettre(tx, user, requestId);
+      const [f] = await tx
+        .select({ id: t.documentRequestFiles.id })
+        .from(t.documentRequestFiles)
+        .where(
+          and(
+            eq(t.documentRequestFiles.id, fichierId),
+            eq(t.documentRequestFiles.requestId, requestId),
+          ),
+        );
+      if (!f) problem(404, 'documents.fichier_introuvable', 'Fichier introuvable');
+      const restants = (await this.compteDesFichiers(tx, [requestId])).get(requestId) ?? 0;
+      if (row.status === 'ready' && !row.pickupContact && restants <= 1) {
+        problem(
+          422,
+          'documents.dernier_fichier',
+          'Le dernier document ne se retire pas',
+          'Déposez d’abord le bon fichier, puis retirez celui-ci.',
+        );
+      }
+      await tx.delete(t.documentRequestFiles).where(eq(t.documentRequestFiles.id, fichierId));
+    });
+  }
+
+  /**
+   * Un document remis, à télécharger : l'agent, une fois sa demande prête ;
+   * qui traite ce document pour la DCH, à tout moment, pour vérifier.
+   */
+  async fichier(
+    user: SessionUser,
+    requestId: string,
+    fichierId: string,
+  ): Promise<{ filename: string; contentType: string; data: Buffer }> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(t.documentRequests)
+        .where(eq(t.documentRequests.id, requestId))
+        .limit(1);
+      const [f] = row
+        ? await tx
+            .select()
+            .from(t.documentRequestFiles)
+            .where(
+              and(
+                eq(t.documentRequestFiles.id, fichierId),
+                eq(t.documentRequestFiles.requestId, requestId),
+              ),
+            )
+        : [];
+      if (!row || !f) problem(404, 'documents.fichier_introuvable', 'Fichier introuvable');
+
+      const soi = await this.selfEmployee(tx, user);
+      if (soi?.employeeId === row.employeeId) {
+        // Le sien : une fois remis seulement ; avant, l'agent n'en voit rien.
+        if (!['ready', 'delivered'].includes(row.status)) {
+          problem(404, 'documents.fichier_introuvable', 'Fichier introuvable');
+        }
+      } else if (
+        !(await traiteCeDocument(
+          tx,
+          await agentDuCompte(tx, user.userId),
+          (await directionDuPersonnel(tx))?.directeurEmployeeId ?? null,
+          row,
+        ))
+      ) {
+        problem(403, 'documents.forbidden_scope', 'Réservé à qui traite ce document pour la DCH');
+      }
+      const ligne = { tenantId: f.tenantId, id: f.id, cleVersion: f.cleVersion };
+      return {
+        filename: nomDeLaPiece(this.crypto, 'document_request_files', {
+          ...ligne,
+          filename: f.filename,
+        }),
+        contentType: f.contentType,
+        data: contenuDeLaPiece(this.crypto, 'document_request_files', { ...ligne, data: f.data }),
+      };
+    });
+  }
+
+  /** La demande où l'on dépose ou retire un document : ouverte ou prête, et à soi de la traiter. */
+  private async demandeARemettre(tx: Tx, user: SessionUser, requestId: string) {
+    const [row] = await tx
+      .select()
+      .from(t.documentRequests)
+      .where(eq(t.documentRequests.id, requestId))
+      .for('update')
+      .limit(1);
+    if (!row) problem(404, 'documents.request_not_found', 'Demande introuvable');
+    if (![...OPEN_STATUSES, 'ready'].includes(row.status)) {
+      problem(422, 'documents.deja_traitee', 'Cette demande est close');
+    }
+    if (row.status === 'ready') {
+      // Prête, ses documents restent à qui traite CE type de document : un
+      // bulletin de salaire ne se touche pas au titre des attestations.
+      const moi = await agentDuCompte(tx, user.userId);
+      const directeur = (await directionDuPersonnel(tx))?.directeurEmployeeId ?? null;
+      if (row.employeeId === moi || !(await traiteCeDocument(tx, moi, directeur, row))) {
+        problem(403, 'documents.forbidden_scope', 'Réservé à qui traite ce document pour la DCH');
+      }
+    } else {
+      const motif = await this.refus(tx, user, row);
+      if (motif) problem(403, 'demandes.pas_traitant', motif);
+    }
+    return row;
+  }
+
+  /** Les documents remis des demandes, sans leur contenu, noms déchiffrés. */
+  private async fichiersDe(tx: Tx, ids: string[]): Promise<Map<string, FichierRemisView[]>> {
+    const parDemande = new Map<string, FichierRemisView[]>();
+    if (ids.length === 0) return parDemande;
+    const lignes = await tx
+      .select({
+        id: t.documentRequestFiles.id,
+        tenantId: t.documentRequestFiles.tenantId,
+        requestId: t.documentRequestFiles.requestId,
+        filename: t.documentRequestFiles.filename,
+        cleVersion: t.documentRequestFiles.cleVersion,
+        contentType: t.documentRequestFiles.contentType,
+        sizeBytes: t.documentRequestFiles.sizeBytes,
+        createdAt: t.documentRequestFiles.createdAt,
+      })
+      .from(t.documentRequestFiles)
+      .where(inArray(t.documentRequestFiles.requestId, ids))
+      .orderBy(t.documentRequestFiles.createdAt);
+    for (const l of lignes) {
+      const liste = parDemande.get(l.requestId) ?? [];
+      liste.push({
+        id: l.id,
+        filename: nomDeLaPiece(this.crypto, 'document_request_files', l),
+        contentType: l.contentType,
+        sizeBytes: l.sizeBytes,
+        createdAt: l.createdAt.toISOString(),
+      });
+      parDemande.set(l.requestId, liste);
+    }
+    return parDemande;
+  }
+
+  private async compteDesFichiers(tx: Tx, ids: string[]): Promise<Map<string, number>> {
+    if (ids.length === 0) return new Map();
+    const lignes = await tx
+      .select({
+        requestId: t.documentRequestFiles.requestId,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(t.documentRequestFiles)
+      .where(inArray(t.documentRequestFiles.requestId, ids))
+      .groupBy(t.documentRequestFiles.requestId);
+    return new Map(lignes.map((l) => [l.requestId, l.n]));
+  }
+
+  private async effacerLesFichiers(tx: Tx, ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await tx.delete(t.documentRequestFiles).where(inArray(t.documentRequestFiles.requestId, ids));
+  }
+
+  /** Le compte portail d'un dossier, s'il en a un. */
+  private async compteDe(tx: Tx, employeeId: string): Promise<string | null> {
+    const [person] = await tx
+      .select({ userId: t.persons.userId })
+      .from(t.employees)
+      .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+      .where(eq(t.employees.id, employeeId))
+      .limit(1);
+    return person?.userId ?? null;
   }
 
   private async selfEmployee(tx: Tx, user: SessionUser) {

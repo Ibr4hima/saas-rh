@@ -2257,6 +2257,22 @@ export class PeopleService {
         .where(eq(t.employeeDocuments.employeeId, id))
         .returning({ id: t.employeeDocuments.id }),
     );
+    // Les documents remis partent avec leur demande : relevés d'abord, pour
+    // que le journal les oublie aussi.
+    recolter(
+      await tx
+        .delete(t.documentRequestFiles)
+        .where(
+          inArray(
+            t.documentRequestFiles.requestId,
+            tx
+              .select({ id: t.documentRequests.id })
+              .from(t.documentRequests)
+              .where(eq(t.documentRequests.employeeId, id)),
+          ),
+        )
+        .returning({ id: t.documentRequestFiles.id }),
+    );
     recolter(
       await tx
         .delete(t.documentRequests)

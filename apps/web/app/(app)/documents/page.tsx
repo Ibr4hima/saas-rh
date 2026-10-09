@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
@@ -34,7 +34,10 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../lib/api';
+import { enregistrer } from '../../../lib/fichiers';
 import { formatDate, useMe } from '../../../lib/hooks';
+import { de } from '../../../lib/mots';
+import { DocumentsDeposes } from '../../../components/documents-deposes';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
@@ -116,6 +119,9 @@ export default function DocumentRequestsPage() {
   const [panneau, setPanneau] = useState<'traiter' | 'decliner' | null>(null);
   const [message, setMessage] = useState<Message>(null);
   const [traiteesOuvertes, setTraiteesOuvertes] = useState(false);
+  // La demande prête dont on ouvre les documents remis : on la relit dans la
+  // liste à chaque rendu, pour voir le fichier qu'on vient d'ajouter.
+  const [documentsDe, setDocumentsDe] = useState<string | null>(null);
   const membres = useMembresDCH().data?.membres ?? [];
 
   // Le bandeau : au directeur, qui peut traiter ; au membre, ce qui lui est délégué.
@@ -293,6 +299,14 @@ export default function DocumentRequestsPage() {
                           « {r.note} »
                         </span>
                       ) : null}
+                      {r.fichiers.length > 0 ? (
+                        <span className="mt-0.5 flex items-center gap-1 text-[11px] text-ink-muted">
+                          <Icon name="upload_file" size={13} className="shrink-0" />
+                          {r.fichiers.length > 1
+                            ? `${r.fichiers.length} fichiers déposés`
+                            : '1 fichier déposé'}
+                        </span>
+                      ) : null}
                     </Td>
                     <Td>
                       <Link
@@ -391,23 +405,15 @@ export default function DocumentRequestsPage() {
                     {r.handledAt ? heures(ecartHeures(r.createdAt, r.handledAt)) : null}
                   </Td>
                   {/* Ce qui a été RÉPONDU au demandeur, pas l'étiquette d'un
-                        automate : une fois le retrait annoncé, la RH n'a plus
-                        rien à faire, et la seule chose qu'on relit ici c'est
-                        l'instruction envoyée — ou le motif du refus. */}
+                        automate : le document déposé dans son espace, le
+                        point de retrait annoncé, ou le motif du refus. */}
                   <Td>
                     {r.status === 'rejected' ? (
                       <span className="font-semibold text-danger">
                         Refusée{r.hrMessage ? ` : ${r.hrMessage}` : ''}
                       </span>
                     ) : (
-                      <>
-                        <span className="text-ink">
-                          {r.pickupContact ? `À retirer auprès de ${r.pickupContact}` : 'Prête'}
-                        </span>
-                        {r.hrMessage ? (
-                          <span className="block text-[11px] text-ink-muted">{r.hrMessage}</span>
-                        ) : null}
-                      </>
+                      <SuiteDonnee demande={r} onDocuments={() => setDocumentsDe(r.id)} />
                     )}
                   </Td>
                 </Tr>
@@ -428,6 +434,12 @@ export default function DocumentRequestsPage() {
           }}
         />
       ) : null}
+      {documentsDe ? (
+        <DocumentsRemisModal
+          demande={items.find((r) => r.id === documentsDe) ?? null}
+          onClose={() => setDocumentsDe(null)}
+        />
+      ) : null}
       {panneau === 'decliner' ? (
         <DeclinerModal
           requests={selectionnees}
@@ -439,6 +451,95 @@ export default function DocumentRequestsPage() {
         />
       ) : null}
     </Page>
+  );
+}
+
+/**
+ * La suite donnée à une demande prête : déposée dans l'espace de l'agent
+ * (l'original parfois à retirer), ou à retirer auprès de quelqu'un. Qui
+ * traite ce document ouvre ses fichiers pour les vérifier ou les corriger,
+ * et peut encore en déposer un pour qui ne peut pas passer au bureau.
+ */
+function SuiteDonnee({
+  demande: r,
+  onDocuments,
+}: {
+  demande: DocumentRequestView;
+  onDocuments: () => void;
+}) {
+  const n = r.fichiers.length;
+  const fichiers = `${n} fichier${n > 1 ? 's' : ''}`;
+  return (
+    <>
+      <span className="text-ink">
+        {n > 0
+          ? `Déposée en ligne${r.pickupContact ? ` · Original auprès ${de(r.pickupContact)}` : ''}`
+          : r.pickupContact
+            ? `À retirer auprès ${de(r.pickupContact)}`
+            : 'Prête'}
+      </span>
+      {n > 0 || r.hrMessage || (r.canHandleFiles && r.status === 'ready') ? (
+        <span className="block text-[11px] text-ink-muted">
+          {r.canHandleFiles && r.status === 'ready' ? (
+            <button
+              type="button"
+              onClick={onDocuments}
+              className="font-semibold text-primary hover:underline"
+            >
+              {n > 0 ? fichiers : 'Déposer en ligne'}
+            </button>
+          ) : n > 0 ? (
+            fichiers
+          ) : null}
+          {(n > 0 || (r.canHandleFiles && r.status === 'ready')) && r.hrMessage ? ' · ' : null}
+          {r.hrMessage}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Les documents remis d'une demande prête. Ajouter un fichier le met
+ * aussitôt dans l'espace de l'agent, et un avis l'annonce ; un mauvais
+ * fichier se retire, sans laisser la demande sans document.
+ */
+function DocumentsRemisModal({
+  demande: r,
+  onClose,
+}: {
+  demande: DocumentRequestView | null;
+  onClose: () => void;
+}) {
+  const [erreur, setErreur] = useState<string | null>(null);
+  if (!r) return null;
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={r.fichiers.length > 0 ? 'Documents déposés' : 'Déposer en ligne'}
+      subtitle={`${r.employeeName} · ${docLabels(r)}`}
+      maxWidth="max-w-xl"
+      footer={
+        <>
+          {erreur ? (
+            <p
+              role="alert"
+              className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+            >
+              {erreur}
+            </p>
+          ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            Fermer
+          </Button>
+        </>
+      }
+    >
+      <section className="rounded-[14px] border border-line-soft bg-surface px-4 py-4 sm:px-[18px]">
+        <DocumentsDeposes demande={r} onErreur={setErreur} />
+      </section>
+    </Modal>
   );
 }
 
@@ -461,41 +562,20 @@ interface Piece {
 /**
  * Enregistre sur le poste de la RH les pièces que l'application produit.
  *
- * Pas un simple lien `download` : l'API vit sur un autre port, et l'attribut
- * `download` est IGNORÉ pour une autre origine — le navigateur naviguerait
- * vers le PDF au lieu de l'enregistrer. On récupère donc chaque fichier en
- * mémoire, puis on le fait enregistrer depuis une adresse `blob:` locale, à
- * laquelle l'attribut s'applique.
- *
  * Une pièce que l'application ne produit pas (contrat, bulletin) n'a rien à
  * télécharger : elle est préparée à la main, hors de l'outil.
  *
- * Rend le nombre de fichiers réellement enregistrés — un échec ne doit pas
- * passer pour un succès.
+ * Rend le nombre de fichiers réellement enregistrés : un échec ne doit pas
+ * passer pour un succès. Un fichier manquant n'arrête pas les autres.
  */
 async function telechargerLesPieces(pieces: Piece[]): Promise<number> {
   let n = 0;
   for (const p of pieces.filter((x) => x.generable)) {
-    try {
-      const res = await fetch(apiUrl(`/employees/${p.employeeId}/attestation`), {
-        credentials: 'include',
-      });
-      if (!res.ok) continue;
-      const url = URL.createObjectURL(await res.blob());
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `attestation-travail-${p.employeeNumber}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // Le navigateur lit l'adresse après le clic : la révoquer tout de suite
-      // annulerait l'enregistrement qu'on vient de demander.
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      n += 1;
-    } catch {
-      // Un fichier manquant n'arrête pas les autres : la RH verra lesquels
-      // sont arrivés dans son dossier de téléchargements.
-    }
+    const ok = await enregistrer(
+      `/employees/${p.employeeId}/attestation`,
+      `attestation-travail-${p.employeeNumber}.pdf`,
+    );
+    if (ok) n += 1;
   }
   return n;
 }
@@ -535,7 +615,13 @@ function TraiterModal({
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [etape, setEtape] = useState<'apercu' | 'retrait'>('apercu');
+  const [etape, setEtape] = useState<'apercu' | 'remise'>('apercu');
+  // En main propre, ou dans l'espace de l'agent. Un lot dont un document
+  // est déjà déposé reprend là où on l'avait laissé.
+  const [remise, setRemise] = useState<'main_propre' | 'en_ligne'>(() =>
+    requests.some((r) => r.fichiers.length > 0) ? 'en_ligne' : 'main_propre',
+  );
+  const envois = useIsMutating({ mutationKey: ['documents-deposes'] });
   const [telechargement, setTelechargement] = useState(false);
   const [courante, setCourante] = useState(0);
   const [vues, setVues] = useState<string[]>([]);
@@ -556,8 +642,17 @@ function TraiterModal({
   }, []);
 
   const valider = useMutation({
-    mutationFn: () =>
-      api<BatchAdvanceResult>('/document-requests/batch-advance', {
+    mutationFn: async () => {
+      if (remise === 'main_propre') {
+        // Remis en main propre, rien ne part dans l'espace de l'agent : un
+        // fichier déposé puis laissé de côté n'y apparaît pas.
+        for (const r of requests) {
+          for (const f of r.fichiers) {
+            await api(`/document-requests/${r.id}/fichiers/${f.id}`, { method: 'DELETE' });
+          }
+        }
+      }
+      return api<BatchAdvanceResult>('/document-requests/batch-advance', {
         method: 'POST',
         body: {
           ids: requests.map((r) => r.id),
@@ -565,7 +660,8 @@ function TraiterModal({
           pickupContact: pickupContact.trim() || undefined,
           message: message.trim() || undefined,
         },
-      }),
+      });
+    },
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: ['document-requests'] });
       await queryClient.invalidateQueries({ queryKey: ['notifications'] });
@@ -595,8 +691,7 @@ function TraiterModal({
       >
         <ModalSection title="Demandes écartées">
           <p className="mb-3 text-[12.5px] text-ink-muted">
-            Les autres sont bien passées en « prête à retirer ». Celles-ci avaient changé
-            d&apos;état entre-temps :
+            Les autres ont bien été traitées. Celles-ci avaient changé d&apos;état entre-temps :
           </p>
           <ul className="flex flex-col gap-1.5">
             {ecartees.map((s) => (
@@ -614,14 +709,49 @@ function TraiterModal({
 
   const nbDemandes = `${requests.length} demande${requests.length > 1 ? 's' : ''}`;
 
-  if (etape === 'retrait') {
+  if (etape === 'remise') {
+    const enLigne = remise === 'en_ligne';
+    const sansDocument = requests.some((r) => r.fichiers.length === 0);
     return (
       <Modal
         open
         onClose={onClose}
         title="Mise à disposition"
-        subtitle="Étape 2 sur 2 · Point de retrait"
+        subtitle="Étape 2 sur 2 · Remise"
         maxWidth="max-w-2xl"
+        enTete={
+          <div
+            role="radiogroup"
+            aria-label="Remise"
+            className="flex items-center gap-0.5 rounded-full bg-bg p-0.5"
+          >
+            {(
+              [
+                ['main_propre', 'En main propre'],
+                ['en_ligne', 'En ligne'],
+              ] as const
+            ).map(([valeur, libelle]) => (
+              <button
+                key={valeur}
+                type="button"
+                role="radio"
+                aria-checked={remise === valeur}
+                onClick={() => {
+                  setErreur(null);
+                  setRemise(valeur);
+                }}
+                className={cn(
+                  'rounded-full px-3 py-1 text-[11.5px] font-bold whitespace-nowrap transition-colors',
+                  remise === valeur
+                    ? 'bg-surface text-primary shadow-sm'
+                    : 'text-ink-muted hover:text-ink',
+                )}
+              >
+                {libelle}
+              </button>
+            ))}
+          </div>
+        }
         footer={
           <>
             {erreur ? (
@@ -635,57 +765,106 @@ function TraiterModal({
             <Button variant="secondary" onClick={() => setEtape('apercu')}>
               Retour à l&apos;aperçu
             </Button>
-            <Button
-              loading={telechargement || valider.isPending}
-              onClick={async () => {
-                setErreur(null);
-                // Les fichiers PARTENT D'ABORD. Annoncer le retrait puis
-                // échouer au téléchargement laisserait l'employé prévenu d'un
-                // document que la RH n'a pas ; l'inverse se rattrape d'un clic.
-                setTelechargement(true);
-                await telechargerLesPieces(pieces);
-                setTelechargement(false);
-                valider.mutate();
-              }}
-            >
-              Télécharger et prévenir
-            </Button>
+            {enLigne ? (
+              <Button
+                disabled={sansDocument || envois > 0}
+                loading={valider.isPending}
+                onClick={() => {
+                  setErreur(null);
+                  valider.mutate();
+                }}
+              >
+                Déposer et prévenir
+              </Button>
+            ) : (
+              <Button
+                loading={telechargement || valider.isPending}
+                onClick={async () => {
+                  setErreur(null);
+                  // Les fichiers PARTENT D'ABORD. Annoncer le retrait puis
+                  // échouer au téléchargement annoncerait un document que la
+                  // RH n'a pas ; l'inverse se rattrape d'un clic.
+                  setTelechargement(true);
+                  await telechargerLesPieces(pieces);
+                  setTelechargement(false);
+                  valider.mutate();
+                }}
+              >
+                Télécharger et prévenir
+              </Button>
+            )}
           </>
         }
       >
-        <ModalSection title="Point de retrait">
-          <ModalGrid>
-            <Field label="À retirer auprès de" htmlFor="pickupContact">
-              <Input
-                id="pickupContact"
-                placeholder="Vous, si laissé vide"
-                value={pickupContact}
-                onChange={(e) => setPickupContact(e.target.value)}
-              />
-            </Field>
-            <Field label="Précision (facultatif)" htmlFor="pickupMessage">
-              <Input
-                id="pickupMessage"
-                placeholder="Ex : bureau 204, 9h–16h"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-              />
-            </Field>
-          </ModalGrid>
-        </ModalSection>
+        {enLigne ? (
+          <>
+            {/* Le pluriel compte les DOCUMENTS, pas les demandes : une seule
+                demande peut en porter deux (attestation de travail et de salaire). */}
+            <ModalSection title={pieces.length > 1 ? 'Documents à déposer' : 'Document à déposer'}>
+              <div className="flex flex-col gap-2">
+                {requests.map((r) => (
+                  <DocumentsDeposes key={r.id} demande={r} lot attendu onErreur={setErreur} />
+                ))}
+              </div>
+            </ModalSection>
+            <ModalSection title="Précisions">
+              <ModalGrid>
+                <Field label="Original à retirer auprès de" htmlFor="pickupContact">
+                  <Input
+                    id="pickupContact"
+                    placeholder="Facultatif"
+                    value={pickupContact}
+                    onChange={(e) => setPickupContact(e.target.value)}
+                  />
+                </Field>
+                <Field label="Précision (facultatif)" htmlFor="pickupMessage">
+                  <Input
+                    id="pickupMessage"
+                    placeholder="Ex : le bulletin d’octobre suivra"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                  />
+                </Field>
+              </ModalGrid>
+            </ModalSection>
+          </>
+        ) : (
+          <>
+            <ModalSection title="Point de retrait">
+              <ModalGrid>
+                <Field label="À retirer auprès de" htmlFor="pickupContact">
+                  <Input
+                    id="pickupContact"
+                    placeholder="Vous, si laissé vide"
+                    value={pickupContact}
+                    onChange={(e) => setPickupContact(e.target.value)}
+                  />
+                </Field>
+                <Field label="Précision (facultatif)" htmlFor="pickupMessage">
+                  <Input
+                    id="pickupMessage"
+                    placeholder="Ex : bureau 204, 9h–16h"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                  />
+                </Field>
+              </ModalGrid>
+            </ModalSection>
 
-        {/* Le pluriel compte les DOCUMENTS, pas les demandes : une seule
-            demande peut en porter deux (attestation de travail et de salaire). */}
-        <ModalSection title={pieces.length > 1 ? 'Documents demandés' : 'Document demandé'}>
-          <ul className="flex flex-col gap-1.5">
-            {requests.map((r) => (
-              <li key={r.id} className="text-[12.5px]">
-                <span className="font-bold text-ink-strong">{r.employeeName}</span>
-                <span className="text-ink-muted"> · {docLabels(r)}</span>
-              </li>
-            ))}
-          </ul>
-        </ModalSection>
+            {/* Le pluriel compte les DOCUMENTS, pas les demandes : une seule
+                demande peut en porter deux (attestation de travail et de salaire). */}
+            <ModalSection title={pieces.length > 1 ? 'Documents demandés' : 'Document demandé'}>
+              <ul className="flex flex-col gap-1.5">
+                {requests.map((r) => (
+                  <li key={r.id} className="text-[12.5px]">
+                    <span className="font-bold text-ink-strong">{r.employeeName}</span>
+                    <span className="text-ink-muted"> · {docLabels(r)}</span>
+                  </li>
+                ))}
+              </ul>
+            </ModalSection>
+          </>
+        )}
       </Modal>
     );
   }
@@ -707,7 +886,7 @@ function TraiterModal({
           <Button variant="secondary" onClick={onClose}>
             Annuler
           </Button>
-          <Button disabled={restantes > 0} onClick={() => setEtape('retrait')}>
+          <Button disabled={restantes > 0} onClick={() => setEtape('remise')}>
             Continuer
             <Icon name="chevron_right" size={15} />
           </Button>

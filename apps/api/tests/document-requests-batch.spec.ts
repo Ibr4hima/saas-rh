@@ -17,6 +17,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionUser } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
+import { EncryptionService } from '../src/common/encryption.service';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
@@ -80,7 +81,7 @@ beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 3 });
   db = new TenantDb();
-  service = new DocumentRequestsService(db, new NotificationsService(db));
+  service = new DocumentRequestsService(db, new NotificationsService(db), new EncryptionService());
 
   for (const [id, nom] of [
     [rhUserId, 'rh'],
