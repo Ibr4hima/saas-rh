@@ -3,12 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
-import type {
-  DocumentRequestView,
-  MyEmployeeView,
-  PeriodeDuBulletin,
-  RequestableDoc,
-} from '@teranga/contracts';
+import type { DocumentRequestView, MyEmployeeView, PeriodeDuBulletin } from '@teranga/contracts';
 import {
   BULLETINS_PAR_DEMANDE_MAX,
   documentsEnCours,
@@ -16,6 +11,7 @@ import {
   moisEnLettres,
   periodeEnLettres,
   REQUESTABLE_DOC_LABELS,
+  requestableDocSchema,
 } from '@teranga/contracts';
 import { Button, cn, Field, Select } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
@@ -34,15 +30,8 @@ import { aujourdhui } from '../../../../lib/temps';
    demandes » ; ce que l'agent fournit a sa page, « Joindre un document ».
 */
 
-const REQUESTABLE: RequestableDoc[] = [
-  'attestation_travail',
-  'attestation_stage',
-  'contrat_travail',
-  'bulletin_salaire',
-  'attestation_salaire',
-  'certificat_travail',
-  'autre',
-];
+const REQUESTABLE = requestableDocSchema.options;
+type Demandable = (typeof REQUESTABLE)[number];
 
 /** « a, b et c » — la virgule pour la liste, « et » pour le dernier. */
 function enumerer(mots: string[]): string {
@@ -158,7 +147,7 @@ function FenetreDemandeDocument({
   onEnvoyee: (n: number) => void;
 }) {
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<RequestableDoc[]>([]);
+  const [selected, setSelected] = useState<Demandable[]>([]);
   const [bulletin, setBulletin] = useState<ChoixBulletin>(BULLETIN_VIDE);
   const [error, setError] = useState<string | null>(null);
   const moisPossibles = moisDePaie(arrivee);
@@ -188,13 +177,13 @@ function FenetreDemandeDocument({
   // serveur le refuse, et la pastille le dit avant. On ne compose pas une
   // demande pour se la voir refuser à l'envoi.
   const enCours = documentsEnCours(docRequests.data ?? []);
-  const toggle = (doc: RequestableDoc) => {
+  const toggle = (doc: Demandable) => {
     if (enCours.has(doc)) return;
     if (doc === 'bulletin_salaire') setBulletin(BULLETIN_VIDE);
     setSelected(selected.includes(doc) ? selected.filter((d) => d !== doc) : [...selected, doc]);
   };
   // Le bulletin se lit avec ses mois : « Bulletin de salaire (3 derniers mois) ».
-  const libelleChoisi = (d: RequestableDoc) =>
+  const libelleChoisi = (d: Demandable) =>
     d === 'bulletin_salaire' && periode
       ? `${REQUESTABLE_DOC_LABELS[d]} (${periodeEnLettres(periode)})`
       : REQUESTABLE_DOC_LABELS[d];
@@ -259,9 +248,9 @@ function FenetreDemandeDocument({
           <span className="font-semibold text-ink-strong">
             Vous demandez {compte(selected.length, 'document')}
           </span>{' '}
-          {/* Les libellés gardent leur majuscule : « et autre document »
-              en bas de casse se lit comme une phrase inachevée, alors
-              que « et Autre document » se lit comme l'entrée cochée. */}
+          {/* Les libellés gardent leur majuscule : « et Contrat de travail »
+              se lit comme l'entrée cochée, pas comme la suite de la
+              phrase. */}
           : {enumerer(selected.map(libelleChoisi))}.
         </p>
       ) : null}

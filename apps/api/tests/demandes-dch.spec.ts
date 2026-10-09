@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Capacite, SessionUser } from '@teranga/contracts';
-import { peut } from '@teranga/contracts';
+import { createDocumentRequestSchema, peut } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -526,9 +526,27 @@ describe('les demandes de documents', () => {
     expect(rows[0].n).toBe(1);
     // Quatre documents d'un coup : aucun plafond ne s'y oppose.
     const r = await documents.create(moussa.session, {
-      docTypes: ['bulletin_salaire', 'attestation_salaire', 'certificat_travail', 'autre'],
+      docTypes: [
+        'bulletin_salaire',
+        'attestation_salaire',
+        'certificat_travail',
+        'contrat_travail',
+      ],
     });
     expect(r.ids).toHaveLength(4);
+  });
+
+  it('« Autre document » ne se demande plus ; une demande d’avant se traite encore', async () => {
+    expect(createDocumentRequestSchema.safeParse({ docTypes: ['autre'] }).success).toBe(false);
+    // Une demande faite avant l'ADR-0045 : qui dirige la DCH l'a dans sa file, et la traite.
+    const [id] = (await documents.create(moussa.session, { docTypes: ['autre'] as never })).ids as [
+      string,
+    ];
+    expect(await appels('document', id)).toEqual(['dch:Mariama']);
+    await documents.advance(mariama.session, id, { status: 'processing' });
+    await documents.advance(mariama.session, id, { status: 'ready' });
+    const [vue] = await documents.list(moussa.session, { scope: 'mine' });
+    expect(vue).toMatchObject({ docTypes: ['autre'], status: 'ready' });
   });
 
   it('chacun voit les siennes ; la file entière, qui la traite (l’administrateur la lit)', async () => {

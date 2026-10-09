@@ -49,4 +49,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0041](0041-remise-en-ligne-en-pdf.md)                | Remise en ligne : un PDF, un nom choisi, un aperçu                                      | acceptée                                    |
 | [0042](0042-demandes-effacees-et-consultees.md)       | Demandes de documents : ce qui s'efface, ce qui se consulte                             | acceptée, précisée par 0043                 |
 | [0043](0043-suivi-en-cours-puis-traitees.md)          | Suivi des demandes de documents : en cours, puis traitées                               | acceptée                                    |
-| [0044](0044-demander-un-document-en-fenetre.md)       | Demander un document : un bloc, une fenêtre, sans précision                             | acceptée                                    |
+| [0044](0044-demander-un-document-en-fenetre.md)       | Demander un document : un bloc, une fenêtre, sans précision                             | acceptée, précisée par 0045                 |
+| [0045](0045-autre-document-retire.md)                 | « Autre document » ne se demande plus                                                   | acceptée                                    |

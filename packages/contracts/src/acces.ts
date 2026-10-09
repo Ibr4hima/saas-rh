@@ -30,7 +30,11 @@ import type { DocumentCategory } from './documents';
  * travail et de stage se délèguent ensemble (0055).
  */
 
-/** Traiter un type de document : chaque document demandé va à qui le traite. */
+/**
+ * Traiter un type de document : chaque document demandé va à qui le traite.
+ * `autre` ne se lit plus que sur des demandes anciennes : leur traitement
+ * reste à qui dirige la DCH.
+ */
 export const CAPACITES_DOCUMENTS = [
   'demandes.documents.attestation_travail',
   'demandes.documents.attestation_stage',
@@ -186,7 +190,7 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   'demandes.documents.autre': {
     libelle: 'Autres documents',
-    description: 'Ce que l’agent demande hors de la liste, selon sa précision.',
+    description: 'Les demandes anciennes hors de la liste.',
     groupe: 'Documents',
   },
   'demandes.informations': {

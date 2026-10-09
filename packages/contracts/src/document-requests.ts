@@ -12,6 +12,7 @@ import type { TraitementView } from './acces';
  * en base, sans pouvoir être posé à nouveau.
  */
 
+/** Ce qu'un agent demande, dans l'ordre de la liste (ADR-0045). */
 export const requestableDocSchema = z.enum([
   'attestation_travail',
   'attestation_stage',
@@ -19,9 +20,9 @@ export const requestableDocSchema = z.enum([
   'bulletin_salaire',
   'attestation_salaire',
   'certificat_travail',
-  'autre',
 ]);
-export type RequestableDoc = z.infer<typeof requestableDocSchema>;
+/** Un document demandé : `autre` ne se lit plus que sur les demandes anciennes. */
+export type RequestableDoc = z.infer<typeof requestableDocSchema> | 'autre';
 
 export const REQUESTABLE_DOC_LABELS: Record<RequestableDoc, string> = {
   attestation_travail: 'Attestation de travail',
