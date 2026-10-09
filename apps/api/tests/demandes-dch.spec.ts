@@ -211,7 +211,7 @@ afterAll(async () => {
 });
 
 describe('les demandes de documents', () => {
-  it('l’agent annule la sienne tant qu’elle n’est pas prête : elle sort de la file', async () => {
+  it('l’agent annule la sienne tant qu’elle n’est pas prête : elle s’efface', async () => {
     const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
       .ids as [string];
     const vue = async (qui: Agent) =>
@@ -222,9 +222,11 @@ describe('les demandes de documents', () => {
       'documents.request_not_found',
     );
     await documents.cancel(moussa.session, id);
-    expect(await vue(moussa)).toMatchObject({ status: 'cancelled', canCancel: false });
+    expect(await vue(moussa)).toBeUndefined();
     expect(await appels('document', id)).toEqual([]);
-    expect(await codeOf(() => documents.cancel(moussa.session, id))).toBe('documents.deja_traitee');
+    expect(await codeOf(() => documents.cancel(moussa.session, id))).toBe(
+      'documents.request_not_found',
+    );
     // Annulée, elle se redemande.
     await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
   });
@@ -278,7 +280,7 @@ describe('les demandes de documents', () => {
     );
     expect(rows).toEqual([{ title: 'Moussa Test annule sa demande de bulletin de salaire' }]);
     expect(await codeOf(() => documents.advance(mariama.session, id, { status: 'ready' }))).toBe(
-      'documents.invalid_transition',
+      'documents.request_not_found',
     );
 
     const [prete] = (await documents.create(moussa.session, { docTypes: ['bulletin_salaire'] }))

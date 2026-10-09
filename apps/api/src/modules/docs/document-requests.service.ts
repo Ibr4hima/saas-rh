@@ -201,9 +201,48 @@ export class DocumentRequestsService {
         });
         // À qui traite ce document pour la DCH — et à eux seuls.
         await reconcilierUneDemande(tx, 'documents', ids[i]!);
+        // La même demande, faite avant, s'efface : la nouvelle la remplace.
+        await this.effacerLesDemandesIdentiques(tx, ids[i]!);
       }
     });
     return { ids };
+  }
+
+  /**
+   * Les demandes closes identiques à `nouvelle` s'effacent (ADR-0042) :
+   * le même document, les mêmes mois de bulletin. « Les N derniers mois » se
+   * comptent du mois de la demande : ils ne sont les mêmes que demandés le
+   * même mois. Une demande en cours ne s'efface jamais.
+   */
+  private async effacerLesDemandesIdentiques(tx: Tx, nouvelle: string): Promise<void> {
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      SELECT a.id
+        FROM document_requests a
+        JOIN document_requests n ON n.id = ${nouvelle}
+       WHERE a.employee_id = n.employee_id
+         AND a.id <> n.id
+         AND a.status NOT IN ('received', 'processing')
+         AND (SELECT array_agg(x ORDER BY x) FROM unnest(a.doc_types) x)
+           = (SELECT array_agg(x ORDER BY x) FROM unnest(n.doc_types) x)
+         AND a.payslip_from IS NOT DISTINCT FROM n.payslip_from
+         AND a.payslip_to IS NOT DISTINCT FROM n.payslip_to
+         AND a.payslip_last_months IS NOT DISTINCT FROM n.payslip_last_months
+         AND (n.payslip_last_months IS NULL
+              OR date_trunc('month', a.created_at) = date_trunc('month', n.created_at))`);
+    await this.effacerLesDemandes(
+      tx,
+      rows.map((r) => r.id),
+    );
+  }
+
+  /** Effacer des demandes : leurs documents remis et leurs avis partent avec elles. */
+  private async effacerLesDemandes(tx: Tx, ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    for (const id of ids) {
+      await tx.execute(sql`DELETE FROM notifications WHERE dedupe_key LIKE ${`document:${id}:%`}`);
+    }
+    await this.effacerLesFichiers(tx, ids);
+    await tx.delete(t.documentRequests).where(inArray(t.documentRequests.id, ids));
   }
 
   /**
@@ -538,8 +577,9 @@ export class DocumentRequestsService {
   }
 
   /**
-   * L'agent retire sa demande tant qu'elle n'est pas prête : elle sort de la
-   * file. Déjà prise en charge, qui la préparait en est prévenu.
+   * L'agent retire sa demande tant qu'elle n'est pas prête : elle s'efface,
+   * de son suivi comme de la file (ADR-0042). Déjà prise en charge, qui la
+   * préparait en est prévenu.
    */
   async cancel(user: SessionUser, requestId: string): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
@@ -556,13 +596,9 @@ export class DocumentRequestsService {
       if (!OPEN_STATUSES.includes(row.status)) {
         problem(422, 'documents.deja_traitee', 'Cette demande est déjà traitée');
       }
-      await tx
-        .update(t.documentRequests)
-        .set({ status: 'cancelled', updatedAt: new Date() })
-        .where(eq(t.documentRequests.id, requestId));
+      // Ses documents préparés et ses avis s'en vont avec elle.
+      await this.effacerLesDemandes(tx, [requestId]);
       await reconcilierUneDemande(tx, 'documents', requestId);
-      // Annulée, elle ne garde pas les documents préparés pour elle.
-      await this.effacerLesFichiers(tx, [requestId]);
 
       if (row.status !== 'processing' || !row.handledByUserId) return;
       if (row.handledByUserId === user.userId) return;

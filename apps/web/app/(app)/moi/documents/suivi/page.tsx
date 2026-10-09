@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { DocumentRequestView } from '@teranga/contracts';
 import { DOC_REQUEST_STATUS_TONES, documentDemande, statutDeLaDemande } from '@teranga/contracts';
 import {
@@ -17,26 +17,33 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
-import { api, ApiError } from '../../../../../lib/api';
-import { enregistrer } from '../../../../../lib/fichiers';
+import { api, ApiError, apiUrl } from '../../../../../lib/api';
 import { formatDate } from '../../../../../lib/hooks';
 import { de } from '../../../../../lib/mots';
 import { timeAgo } from '../../../../../components/document-request-list';
+import { FenetreDocument } from '../../../../../components/fenetre-document';
 import { Icon } from '../../../../../components/icons';
 import { Page } from '../../../../../components/gabarit';
 import { Pagination, usePagination } from '../../../../../components/pagination';
+
+/** « Attestation de travail », « Bulletin de salaire · 3 derniers mois ». */
+const documentsDe = (r: DocumentRequestView) =>
+  r.docTypes.map((d) => documentDemande(d, r.bulletin)).join(' · ');
 
 /**
  * Suivi de mes demandes de documents : où en est chacune, jusqu'à sa remise.
  *
  * Même facture que l'historique des congés, sa voisine dans l'espace
  * personnel : un tableau aux colonnes fixes, quinze lignes par page, le
- * statut en badge. Ce qui appelle un geste (télécharger le document déposé,
- * ou aller le chercher) se lit dans la colonne « Remise ».
+ * statut en badge. Ce qui appelle un geste (consulter le document déposé,
+ * ou aller le chercher) se lit dans la colonne « État traitement ». Une
+ * demande annulée, ou remplacée par la même demande faite depuis, n'y figure
+ * plus : elle est effacée.
  */
 export default function SuiviDemandesDocumentsPage() {
   const queryClient = useQueryClient();
   const [erreur, setErreur] = useState<string | null>(null);
+  const [consultee, setConsultee] = useState<string | null>(null);
   const docRequests = useQuery({
     // scope=mine : l'espace personnel reste personnel même pour un membre RH.
     queryKey: ['document-requests', 'me'],
@@ -58,6 +65,7 @@ export default function SuiviDemandesDocumentsPage() {
   const { tranche, barre } = usePagination(demandes);
   // La colonne des gestes n'existe que si une demande s'annule encore.
   const avecGestes = demandes.some((r) => r.canCancel);
+  const aConsulter = demandes.find((r) => r.id === consultee) ?? null;
 
   return (
     <Page>
@@ -92,10 +100,10 @@ export default function SuiviDemandesDocumentsPage() {
               {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
               <THead className="hidden sm:table-header-group">
                 <tr>
-                  <Th className={avecGestes ? 'sm:w-[32%]' : 'sm:w-[34%]'}>Document</Th>
+                  <Th className={avecGestes ? 'sm:w-[31%]' : 'sm:w-[35%]'}>Document</Th>
                   <Th className={avecGestes ? 'sm:w-[15%]' : 'sm:w-[17%]'}>Demandée le</Th>
-                  <Th className={avecGestes ? 'sm:w-[29%]' : 'sm:w-[33%]'}>Remise</Th>
-                  <Th className={avecGestes ? 'sm:w-[14%]' : 'sm:w-[16%]'}>Statut</Th>
+                  <Th className={avecGestes ? 'sm:w-[16%]' : 'sm:w-[18%]'}>Statut</Th>
+                  <Th className={avecGestes ? 'sm:w-[28%]' : 'sm:w-[30%]'}>État traitement</Th>
                   {avecGestes ? (
                     <Th className="sm:w-[10%]">
                       <span className="sr-only">Actions</span>
@@ -111,7 +119,7 @@ export default function SuiviDemandesDocumentsPage() {
                     avecGestes={avecGestes}
                     onAnnuler={() => annuler.mutate(r.id)}
                     enCours={annuler.isPending && annuler.variables === r.id}
-                    onErreur={setErreur}
+                    onConsulter={() => setConsultee(r.id)}
                   />
                 ))}
               </TBody>
@@ -120,31 +128,37 @@ export default function SuiviDemandesDocumentsPage() {
           <Pagination {...barre} />
         </>
       )}
+
+      {aConsulter ? (
+        <DocumentsDisponibles demande={aConsulter} onClose={() => setConsultee(null)} />
+      ) : null}
     </Page>
   );
 }
 
 /**
- * Une demande, sur une ligne. Sur téléphone, la date, le retrait, le statut
- * et le geste se rangent sous le document : cinq colonnes n'y tiennent pas.
+ * Une demande, sur une ligne. Sur téléphone, la date, le statut, le geste
+ * et l'état du traitement se rangent sous le document : cinq colonnes n'y
+ * tiennent pas.
  */
 function Ligne({
   demande: r,
   avecGestes,
   onAnnuler,
   enCours,
-  onErreur,
+  onConsulter,
 }: {
   demande: DocumentRequestView;
   avecGestes: boolean;
   onAnnuler: () => void;
   enCours: boolean;
-  onErreur: (texte: string | null) => void;
+  onConsulter: () => void;
 }) {
-  const documents = r.docTypes.map((d) => documentDemande(d, r.bulletin)).join(' · ');
+  const documents = documentsDe(r);
   const demandee = formatDate(r.createdAt.slice(0, 10));
   const statut = <Badge tone={DOC_REQUEST_STATUS_TONES[r.status]}>{statutDeLaDemande(r)}</Badge>;
-  const retrait = <Retrait demande={r} onErreur={onErreur} />;
+  const etat = <EtatTraitement demande={r} onConsulter={onConsulter} />;
+  const aUnEtat = r.status === 'ready' && (r.fichiers.length > 0 || Boolean(r.pickupContact));
   const geste = r.canCancel ? (
     <Button size="sm" variant="ghost" onClick={onAnnuler} loading={enCours}>
       Annuler
@@ -167,100 +181,122 @@ function Ligne({
         <p className="mt-1 text-[11.5px] text-ink-muted tabular-nums sm:hidden">
           Demandée le {demandee}
         </p>
-        {r.status === 'ready' || r.status === 'delivered' ? (
-          <div className="mt-2 text-[12.5px] sm:hidden">{retrait}</div>
-        ) : null}
         <div className="mt-2.5 flex items-center gap-3 sm:hidden">
           {statut}
           <span className="ml-auto">{geste}</span>
         </div>
+        {aUnEtat ? <div className="mt-2.5 text-[12.5px] sm:hidden">{etat}</div> : null}
       </Td>
       <Td className="hidden tabular-nums sm:table-cell" title={timeAgo(r.createdAt)}>
         {demandee}
       </Td>
-      <Td className="hidden sm:table-cell">{retrait}</Td>
       <Td className="hidden sm:table-cell">{statut}</Td>
+      <Td className="hidden sm:table-cell">{etat}</Td>
       {avecGestes ? <Td className="hidden text-right sm:table-cell">{geste}</Td> : null}
     </Tr>
   );
 }
 
 /**
- * Où en est le document, côté retrait : auprès de qui le chercher une fois
- * prêt, depuis quand il attend ; le jour où il a été remis. Tant que la
- * demande est en cours, la cellule reste vide.
+ * Où en est le traitement, une fois la demande prête : le document déposé en
+ * ligne se consulte (et l'original, s'il y en a un, attend quelque part) ;
+ * sinon, on sait auprès de qui le retirer. Avant, la cellule reste vide : le
+ * statut suffit.
  */
-function Retrait({
+function EtatTraitement({
   demande: r,
-  onErreur,
+  onConsulter,
 }: {
   demande: DocumentRequestView;
-  onErreur: (texte: string | null) => void;
+  onConsulter: () => void;
 }) {
-  const [enCours, setEnCours] = useState<string | null>(null);
-  if (r.status === 'ready' && r.fichiers.length > 0) {
-    const n = r.fichiers.length;
-    // Disponible depuis la mise à disposition, ou depuis le dernier dépôt
-    // s'il est venu après (un document ajouté à une demande déjà prête).
-    const depuis = [r.readyAt, ...r.fichiers.map((f) => f.createdAt)]
-      .filter((d): d is string => Boolean(d))
-      .sort()
-      .at(-1);
+  if (r.status !== 'ready') return null;
+  if (r.fichiers.length > 0) {
     return (
       <div className="min-w-0">
-        <ul className="flex flex-col gap-1">
-          {r.fichiers.map((f) => (
-            <li key={f.id} className="min-w-0">
-              <button
-                type="button"
-                disabled={enCours === f.id}
-                onClick={async () => {
-                  setEnCours(f.id);
-                  const ok = await enregistrer(
-                    `/document-requests/${r.id}/fichiers/${f.id}`,
-                    f.filename,
-                  );
-                  setEnCours(null);
-                  onErreur(ok ? null : 'Téléchargement impossible, réessayez.');
-                }}
-                className="inline-flex max-w-full items-center gap-1.5 text-left font-semibold text-primary hover:underline disabled:opacity-60"
-              >
-                <Icon name="download" size={15} className="shrink-0" />
-                <span className="truncate" title={f.filename}>
-                  {f.filename}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-0.5 text-[11.5px] text-ink-muted">
-          {depuis ? `Déposé${n > 1 ? 's' : ''} ${timeAgo(depuis)}` : null}
-          {r.pickupContact ? ` · Original auprès ${de(r.pickupContact)}` : null}
-          {r.hrMessage ? ` · ${r.hrMessage}` : null}
-        </p>
+        <Button size="sm" variant="secondary" onClick={onConsulter}>
+          <Icon name="visibility" size={15} />
+          Consulter
+        </Button>
+        {r.pickupContact ? (
+          <p className="mt-1 truncate text-[11.5px] text-ink-muted" title={r.pickupContact}>
+            Original auprès {de(r.pickupContact)}
+          </p>
+        ) : null}
+        {r.hrMessage ? <p className="mt-0.5 text-[11.5px] text-ink-muted">{r.hrMessage}</p> : null}
       </div>
     );
   }
-  if (r.status === 'ready' && r.pickupContact) {
-    return (
-      <div className="min-w-0">
-        <p className="truncate font-semibold text-primary" title={r.pickupContact}>
-          Auprès {de(r.pickupContact)}
-        </p>
-        {/* L'ancienneté rend visible un document prêt que personne n'est
-            venu chercher : l'agent est le seul à pouvoir y remédier. */}
-        <p className="mt-0.5 text-[11.5px] text-ink-muted">
-          {r.readyAt ? `Prête ${timeAgo(r.readyAt)}` : null}
-          {r.readyAt && r.hrMessage ? ' · ' : null}
-          {r.hrMessage}
-        </p>
-      </div>
-    );
-  }
-  if (r.status === 'delivered' && r.deliveredAt) {
-    return (
-      <span className="text-ink-muted">Remise le {formatDate(r.deliveredAt.slice(0, 10))}</span>
-    );
-  }
-  return null;
+  if (!r.pickupContact) return null;
+  return (
+    <div className="min-w-0">
+      <p className="truncate font-semibold text-primary" title={r.pickupContact}>
+        Auprès {de(r.pickupContact)}
+      </p>
+      {r.hrMessage ? <p className="mt-0.5 text-[11.5px] text-ink-muted">{r.hrMessage}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Les documents déposés pour une demande : on les lit l'un après l'autre,
+ * et on enregistre celui qu'on veut garder.
+ */
+function DocumentsDisponibles({
+  demande: r,
+  onClose,
+}: {
+  demande: DocumentRequestView;
+  onClose: () => void;
+}) {
+  const [rang, setRang] = useState(0);
+  const n = r.fichiers.length;
+  const f = r.fichiers[Math.min(rang, n - 1)];
+  const doc = useMemo(
+    () =>
+      f
+        ? {
+            url: apiUrl(`/document-requests/${r.id}/fichiers/${f.id}`),
+            filename: f.filename,
+            contentType: f.contentType,
+          }
+        : null,
+    [r.id, f],
+  );
+  if (!doc) return null;
+  return (
+    <FenetreDocument
+      doc={doc}
+      onClose={onClose}
+      sousTitre={documentsDe(r)}
+      telechargement={doc.url}
+      enTete={
+        n > 1 ? (
+          <div className="flex items-center gap-0.5 rounded-full bg-bg p-0.5">
+            <button
+              type="button"
+              aria-label="Document précédent"
+              disabled={rang === 0}
+              onClick={() => setRang((x) => x - 1)}
+              className="flex size-7 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:pointer-events-none disabled:opacity-35"
+            >
+              <Icon name="chevron_left" size={18} />
+            </button>
+            <span className="px-1.5 text-[11.5px] font-bold text-ink tabular-nums">
+              {rang + 1} / {n}
+            </span>
+            <button
+              type="button"
+              aria-label="Document suivant"
+              disabled={rang >= n - 1}
+              onClick={() => setRang((x) => x + 1)}
+              className="flex size-7 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:pointer-events-none disabled:opacity-35"
+            >
+              <Icon name="chevron_right" size={18} />
+            </button>
+          </div>
+        ) : undefined
+      }
+    />
+  );
 }

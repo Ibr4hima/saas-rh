@@ -17,7 +17,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0009](0009-auth-maison.md)                           | Auth maison : Argon2id, sessions opaques, MFA TOTP pour rôles sensibles                 | acceptée                                    |
 | [0010](0010-conventions-schema.md)                    | Conventions de schéma : UUIDv7 applicatif, timestamptz UTC, snake_case                  | acceptée                                    |
 | [0011](0011-signature-electronique-deux-etages.md)    | Signature électronique à deux étages (avancée maison V1, qualifiée V2)                  | acceptée                                    |
-| [0012](0012-arbitrages-direction-capital-humain.md)   | Arbitrages de la Direction du Capital Humain (APIX)                                     | acceptée, précisée par 0040                 |
+| [0012](0012-arbitrages-direction-capital-humain.md)   | Arbitrages de la Direction du Capital Humain (APIX)                                     | acceptée, précisée par 0040, 0042           |
 | [0013](0013-coherence-organigramme.md)                | Règles de cohérence de l'organigramme                                                   | acceptée, précisée par 0034 et 0036         |
 | [0014](0014-corrections-informations-personnelles.md) | Corrections des informations personnelles par l'employé                                 | acceptée                                    |
 | [0015](0015-courriels-sortants.md)                    | Courriels sortants : file dédiée, Mailpit en développement, Microsoft 365 en production | acceptée                                    |
@@ -45,5 +45,6 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0037](0037-directeur-remplace-son-equipe-passe.md)   | Directeur remplacé : son équipe passe au nouveau directeur                              | acceptée                                    |
 | [0038](0038-devenir-de-l-ancien-responsable.md)       | Responsable remplacé : il reste, change d'affectation, prend une autre tête ou part     | acceptée                                    |
 | [0039](0039-bulletin-de-salaire-avec-ses-mois.md)     | Le bulletin de salaire se demande avec ses mois                                         | acceptée                                    |
-| [0040](0040-document-remis-en-ligne.md)               | Le document demandé peut se remettre en ligne                                           | acceptée, précisée par 0041                 |
+| [0040](0040-document-remis-en-ligne.md)               | Le document demandé peut se remettre en ligne                                           | acceptée, précisée par 0041, 0042           |
 | [0041](0041-remise-en-ligne-en-pdf.md)                | Remise en ligne : un PDF, un nom choisi, un aperçu                                      | acceptée                                    |
+| [0042](0042-demandes-effacees-et-consultees.md)       | Demandes de documents : ce qui s'efface, ce qui se consulte                             | acceptée                                    |

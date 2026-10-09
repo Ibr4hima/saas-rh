@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Button } from '@teranga/ui';
 import { Icon } from './icons';
 import { Modal } from './modal';
@@ -23,6 +24,7 @@ export function FenetreDocument({
   onClose,
   sousTitre,
   telechargement,
+  enTete,
 }: {
   doc: ViewableDoc | null;
   onClose: () => void;
@@ -34,14 +36,20 @@ export function FenetreDocument({
    * sert qu'à consulter, comme avant.
    */
   telechargement?: string;
+  /** Commandes sur la ligne du titre : passer d'un document à l'autre. */
+  enTete?: React.ReactNode;
 }) {
-  if (!doc) return null;
+  // Le même objet tant que le document est le même : le lecteur ne le
+  // recharge pas à chaque rendu de la page qui l'ouvre.
+  const apercu = useMemo(() => (doc ? { ...doc, titre: null } : null), [doc]);
+  if (!doc || !apercu) return null;
   return (
     <Modal
       open
       onClose={onClose}
       title={doc.titre ?? doc.filename}
       subtitle={sousTitre}
+      enTete={enTete}
       maxWidth="max-w-4xl"
       footer={
         telechargement ? (
@@ -66,7 +74,7 @@ export function FenetreDocument({
           enfant qui réclame « toute la hauteur » d'un parent sans hauteur
           propre se réduit à zéro. */}
       <div className="h-[min(72vh,720px)] overflow-hidden rounded-[12px] border border-card-line">
-        <ApercuDocument doc={{ ...doc, titre: null }} />
+        <ApercuDocument doc={apercu} />
       </div>
     </Modal>
   );
