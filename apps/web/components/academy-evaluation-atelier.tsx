@@ -4,13 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { CourseAdminView, QuestionAdminView, TypeQuestion } from '@teranga/contracts';
-import {
-  OPTIONS_MAX,
-  OPTIONS_MIN,
-  questionSchema,
-  SECONDES_PAR_QUESTION,
-  VALIDITES_CERTIFICAT,
-} from '@teranga/contracts';
+import { OPTIONS_MAX, OPTIONS_MIN, questionSchema, VALIDITES_CERTIFICAT } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -37,8 +31,8 @@ import { FenetreSuppression } from './reglages-absences';
    mélangés. Plus la banque est large au regard des questions posées, moins
    une tentative ressemble à la précédente.
 
-   Sans question, la formation ne délivre pas de certificat : c'est dit ici,
-   pas découvert par un agent le jour où il finit.
+   Sans question, la formation délivre son certificat à qui en valide toutes
+   les leçons (ADR-0049).
    ———————————————————————————————————————————————————————————————— */
 
 const NOMBRES = [5, 10, 15, 20, 30];
@@ -50,7 +44,6 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
   const [erreur, setErreur] = useState<string | null>(null);
   const quiz = f.quiz;
   const banque = quiz.questions.length;
-  const posees = Math.min(quiz.questionCount, banque);
 
   const rafraichir = () => qc.invalidateQueries({ queryKey: ['academy'] });
   const action = useMutation({
@@ -95,24 +88,11 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
       </CardHeader>
 
       <div className="flex flex-col gap-4 px-5 py-4">
-        {banque === 0 ? (
-          <p className="flex items-start gap-2.5 rounded-[12px] bg-bg px-4 py-3 text-[12.5px] leading-relaxed text-ink-muted">
-            <Icon name="quiz" size={17} className="mt-px shrink-0 text-primary" />
-            Pas encore de question. Sans évaluation, la formation se suit mais ne délivre pas de
-            certificat. Une banque plus large que le nombre de questions posées rend chaque
-            tentative différente.
-          </p>
-        ) : null}
-
         <div className="grid gap-3 sm:grid-cols-2">
           <Field
             label="Questions par tentative"
             htmlFor="nombre"
-            hint={
-              banque > 0
-                ? `Tirées au hasard parmi ${compte(banque, 'question')} · ${Math.ceil((posees * SECONDES_PAR_QUESTION) / 60)} min pour répondre`
-                : 'Deux minutes par question'
-            }
+            hint={banque > 0 ? `Tirées au hasard parmi ${compte(banque, 'question')}` : undefined}
           >
             <Select
               id="nombre"

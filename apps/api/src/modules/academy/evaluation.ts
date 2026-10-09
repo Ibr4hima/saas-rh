@@ -2,7 +2,6 @@ import { randomInt } from 'node:crypto';
 import {
   FENETRE_RENOUVELLEMENT_JOURS,
   FENETRE_TENTATIVES_H,
-  SECONDES_PAR_QUESTION,
   SEUIL_REUSSITE,
   TENTATIVES_PAR_JOUR,
 } from '@teranga/contracts';
@@ -101,11 +100,6 @@ export function corriger(
   const exigees = Math.ceil(SEUIL_REUSSITE * total - 1e-9);
   const passed = total > 0 && correctCount >= exigees;
   return { score, correctCount, total, parQuestion, passed };
-}
-
-/** Le temps accordé à une tentative, en secondes. */
-export function dureeTentative(nombreDeQuestions: number): number {
-  return nombreDeQuestions * SECONDES_PAR_QUESTION;
 }
 
 /**

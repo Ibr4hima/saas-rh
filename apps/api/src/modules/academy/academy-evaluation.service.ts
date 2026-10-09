@@ -29,7 +29,6 @@ import { genererCertificatPdf } from './certificat-pdf';
 import { notifier } from '../notifications/notifier';
 import {
   corriger,
-  dureeTentative,
   expiration,
   fenetreTentatives,
   hasardSur,
@@ -45,17 +44,18 @@ import {
    APIX Academy — l'évaluation finale et le certificat.
 
    La RH tient une BANQUE de questions par formation. L'agent qui a validé
-   toutes les leçons compose : le serveur tire ses questions, fixe l'heure
-   limite, garde les bonnes réponses pour lui et corrige la copie rendue. À
-   80 % ou plus, il émet un certificat numéroté — et c'est tout : aucune
+   toutes les leçons compose, sans limite de temps : le serveur tire ses
+   questions, garde les bonnes réponses pour lui et corrige la copie rendue.
+   À 80 % ou plus, il émet un certificat numéroté, et c'est tout : aucune
    étape de l'écran ne peut décider d'une réussite.
+
+   Une formation sans banque délivre son certificat à la dernière leçon
+   validée : il atteste la formation suivie en entier, sans score
+   (ADR-0049).
 
    Les règles elles-mêmes vivent dans `evaluation.ts`, en fonctions pures ;
    ce service les applique aux données et tient les verrous.
    ———————————————————————————————————————————————————————————————— */
-
-/** La copie arrive par le réseau : trente secondes de marge après l'heure limite. */
-const GRACE_SOUMISSION_S = 30;
 
 type LigneFormation = typeof t.academyCourses.$inferSelect;
 type LigneCertificat = typeof t.academyCertificates.$inferSelect;
@@ -182,7 +182,7 @@ export async function formationsCertifiees(
   );
 }
 
-function resumeCertificat(
+export function resumeCertificat(
   c: LigneCertificat,
   maintenant: Date,
   gestes: CertificateSummary['gestes'] = { revoquer: false, reemettre: false },
@@ -223,10 +223,6 @@ export async function toutesLeconsValidees(
 /**
  * L'évaluation d'une formation, telle que la voit l'agent — ou `null` si la
  * formation n'a pas de banque de questions.
- *
- * Lecture seule : une copie ouverte dont le temps est écoulé est COMPTÉE
- * comme un échec, sans être réécrite ici ; elle le sera à la tentative
- * suivante.
  */
 export async function vueEvaluation(
   tx: Tx,
@@ -242,7 +238,6 @@ export async function vueEvaluation(
   const questionCount = Math.min(f.quizQuestionCount, taille);
   const base = {
     questionCount,
-    minutes: Math.ceil(dureeTentative(questionCount) / 60),
     seuil: SEUIL_REUSSITE,
     tentativesParJour: parJour,
   };
@@ -287,14 +282,13 @@ export async function vueEvaluation(
       ),
     )
     .orderBy(desc(t.academyQuizAttempts.startedAt));
-  const limite = (a: LigneTentative) => a.expiresAt.getTime() + GRACE_SOUMISSION_S * 1000;
-  const ouverte = tentatives.find((a) => !a.submittedAt && limite(a) > maintenant.getTime());
-  const rendue = tentatives.find((a) => a.submittedAt || limite(a) <= maintenant.getTime());
-  const derniere = rendue
+  const ouverte = tentatives.find((a) => !a.submittedAt);
+  const rendue = tentatives.find((a) => a.submittedAt);
+  const derniere = rendue?.submittedAt
     ? {
         score: rendue.score ?? 0,
         passed: rendue.passed ?? false,
-        submittedAt: (rendue.submittedAt ?? rendue.expiresAt).toISOString(),
+        submittedAt: rendue.submittedAt.toISOString(),
       }
     : null;
   const { restantes, prochaine } = fenetreTentatives(
@@ -350,6 +344,166 @@ export async function quizAdmin(tx: Tx, f: LigneFormation): Promise<QuizAdminVie
       options: q.options,
     })),
   };
+}
+
+/** Le certificat en cours de validité d'un agent pour une formation, ou `null`. */
+export async function certificatEnCours(
+  tx: Tx,
+  employeeId: string | null,
+  courseId: string,
+  maintenant: Date,
+): Promise<CertificateSummary | null> {
+  if (!employeeId) return null;
+  const rows = await tx
+    .select()
+    .from(t.academyCertificates)
+    .where(
+      and(
+        eq(t.academyCertificates.employeeId, employeeId),
+        eq(t.academyCertificates.courseId, courseId),
+      ),
+    )
+    .orderBy(desc(t.academyCertificates.issuedAt));
+  const valide = rows.find((c) => statutCertificat(c, maintenant) === 'valide');
+  return valide ? resumeCertificat(valide, maintenant) : null;
+}
+
+/**
+ * Émet un certificat, avec l'instantané de ce qu'il atteste : l'évaluation
+ * réussie, sa copie et son score ; ou, sans évaluation, la formation suivie
+ * en entier, sans copie ni score (ADR-0049).
+ */
+export async function emettreCertificat(
+  tx: Tx,
+  tenantId: string,
+  employeeId: string,
+  f: LigneFormation,
+  reussite: { attemptId: string; score: number } | null,
+  maintenant: Date,
+  hasard: Hasard,
+): Promise<LigneCertificat> {
+  const [agent] = await tx
+    .select({
+      givenName: t.persons.givenName,
+      familyName: t.persons.familyName,
+      number: t.employees.employeeNumber,
+    })
+    .from(t.employees)
+    .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+    .where(eq(t.employees.id, employeeId))
+    .limit(1);
+  if (!agent) problem(404, 'academy.agent_not_found', 'Dossier d’agent introuvable');
+  // Le numéro est tiré au hasard : une collision est improbable, pas
+  // impossible. On tire alors un autre numéro, sans faire échouer la remise.
+  for (let essai = 0; essai < 5; essai += 1) {
+    const [c] = await tx
+      .insert(t.academyCertificates)
+      .values({
+        id: uuidv7(),
+        tenantId,
+        employeeId,
+        courseId: f.id,
+        attemptId: reussite?.attemptId ?? null,
+        number: numeroCertificat(hasard),
+        holderName: `${agent.givenName} ${agent.familyName}`,
+        holderNumber: agent.number,
+        courseTitle: f.title,
+        courseCategory: f.category,
+        // L'émetteur, tel qu'il signe ses actes : la raison sociale, et non
+        // le nom court du compte.
+        organizationName: ENTETE.raisonSociale,
+        score: reussite?.score ?? null,
+        issuedAt: maintenant,
+        expiresAt: expiration(maintenant, f.certificateValidityMonths),
+      })
+      .onConflictDoNothing({ target: t.academyCertificates.number })
+      .returning();
+    if (c) return c;
+  }
+  problem(500, 'academy.certificate_number', 'Impossible d’attribuer un numéro de certificat');
+}
+
+/**
+ * Une formation sans évaluation délivre son certificat à qui en a validé
+ * toutes les leçons, sauf à qui l'anime et à qui gère le catalogue
+ * (`fermeture`) ; sans questions, il n'y a pas de réponses à avoir vues. Une
+ * seule fois : expiré ou révoqué, le certificat ne revient pas de lui-même.
+ * Rend le certificat émis, ou `null`.
+ */
+export async function certifierSansEvaluation(
+  tx: Tx,
+  user: SessionUser,
+  employeeId: string,
+  f: LigneFormation,
+  maintenant: Date,
+  hasard: Hasard = hasardSur,
+): Promise<LigneCertificat | null> {
+  if (f.publishedAt === null) return null;
+  if (((await taillesDesBanques(tx, [f.id])).get(f.id) ?? 0) > 0) return null;
+  if (fermeture(f, employeeId, peut(user, 'academy'))) return null;
+  if (!(await toutesLeconsValidees(tx, f.id, employeeId))) return null;
+  // Deux lectures parties ensemble ne délivrent pas deux certificats.
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${`academy-certificat:${employeeId}:${f.id}`}))`,
+  );
+  const [deja] = await tx
+    .select({ id: t.academyCertificates.id })
+    .from(t.academyCertificates)
+    .where(
+      and(
+        eq(t.academyCertificates.employeeId, employeeId),
+        eq(t.academyCertificates.courseId, f.id),
+      ),
+    )
+    .limit(1);
+  if (deja) return null;
+  return emettreCertificat(tx, user.tenantId, employeeId, f, null, maintenant, hasard);
+}
+
+/**
+ * Les certificats que des formations sans évaluation doivent encore à
+ * l'agent : leçons validées avant que la formation n'en délivre, ou avant
+ * qu'elle ne perde sa dernière question ou la leçon qui restait. Une requête
+ * les repère ; chacune passe ensuite par `certifierSansEvaluation`.
+ */
+export async function certifierLesFormationsTerminees(
+  tx: Tx,
+  user: SessionUser,
+  employeeId: string | null,
+  maintenant: Date,
+  hasard: Hasard = hasardSur,
+): Promise<void> {
+  if (!employeeId) return;
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    SELECT c.id
+      FROM academy_courses c
+     WHERE c.published_at IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM academy_questions q WHERE q.course_id = c.id)
+       AND NOT EXISTS (
+             SELECT 1 FROM academy_certificates a
+              WHERE a.course_id = c.id AND a.employee_id = ${employeeId})
+       AND EXISTS (
+             SELECT 1 FROM academy_lessons l
+              WHERE l.course_id = c.id AND l.video_status = 'prete')
+       AND NOT EXISTS (
+             SELECT 1 FROM academy_lessons l
+               LEFT JOIN academy_lesson_progress p
+                 ON p.lesson_id = l.id AND p.employee_id = ${employeeId}
+              WHERE l.course_id = c.id AND l.video_status = 'prete'
+                AND p.completed_at IS NULL)`);
+  if (rows.length === 0) return;
+  const formations = await tx
+    .select()
+    .from(t.academyCourses)
+    .where(
+      inArray(
+        t.academyCourses.id,
+        rows.map((r) => r.id),
+      ),
+    );
+  for (const f of formations) {
+    await certifierSansEvaluation(tx, user, employeeId, f, maintenant, hasard);
+  }
 }
 
 @Injectable()
@@ -518,10 +672,10 @@ export class AcademyEvaluationService {
   // ———————————————————————————— l'essai (RH)
 
   /**
-   * Une copie d'ESSAI pour la RH : tirée, mélangée et minutée comme celle
-   * d'un agent — mais rien n'est enregistré, ni tentative ni certificat. La
-   * RH relit ainsi ses questions dans les conditions de l'épreuve, que la
-   * formation soit publiée ou non.
+   * Une copie d'ESSAI pour la RH : tirée et mélangée comme celle d'un agent,
+   * mais rien n'est enregistré, ni tentative ni certificat. La RH relit
+   * ainsi ses questions dans les conditions de l'épreuve, que la formation
+   * soit publiée ou non.
    */
   async essayer(user: SessionUser, courseId: string): Promise<AttemptView> {
     this.exigerGestion(user);
@@ -535,15 +689,11 @@ export class AcademyEvaluationService {
         problem(409, 'academy.no_evaluation', 'Ajoutez d’abord des questions');
       }
       const posees = tirerQuestions(banque, f.quizQuestionCount, this.hasard);
-      const maintenant = this.horloge();
       return {
         id: uuidv7(),
         courseId: f.id,
         courseTitle: f.title,
-        startedAt: maintenant.toISOString(),
-        expiresAt: new Date(
-          maintenant.getTime() + dureeTentative(posees.length) * 1000,
-        ).toISOString(),
+        startedAt: this.horloge().toISOString(),
         questions: posees.map(({ correct: _c, ...q }) => q),
       };
     });
@@ -662,21 +812,23 @@ export class AcademyEvaluationService {
 
   // ———————————————————————————— la copie (agent)
 
-  private vueTentative(a: LigneTentative, f: LigneFormation): AttemptView {
+  private vueTentative(
+    a: Pick<LigneTentative, 'id' | 'startedAt' | 'questions'>,
+    f: LigneFormation,
+  ): AttemptView {
     return {
       id: a.id,
       courseId: f.id,
       courseTitle: f.title,
       startedAt: a.startedAt.toISOString(),
-      expiresAt: a.expiresAt.toISOString(),
       // Les bonnes réponses restent au serveur.
       questions: a.questions.map(({ correct: _c, ...q }) => q),
     };
   }
 
   /**
-   * Commencer l'évaluation — ou reprendre la copie ouverte, si le temps
-   * court encore : un rechargement de page ne coûte pas une tentative.
+   * Commencer l'évaluation, ou reprendre la copie ouverte : un rechargement
+   * de page ne coûte pas une tentative.
    */
   async demarrer(user: SessionUser, courseId: string): Promise<AttemptView> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
@@ -755,16 +907,7 @@ export class AcademyEvaluationService {
           ),
         )
         .for('update');
-      if (ouverte) {
-        if (ouverte.expiresAt.getTime() + GRACE_SOUMISSION_S * 1000 > maintenant.getTime()) {
-          return this.vueTentative(ouverte, f);
-        }
-        // Temps écoulé sans copie rendue : c'est un échec, et il compte.
-        await tx
-          .update(t.academyQuizAttempts)
-          .set({ submittedAt: ouverte.expiresAt, score: 0, passed: false })
-          .where(eq(t.academyQuizAttempts.id, ouverte.id));
-      }
+      if (ouverte) return this.vueTentative(ouverte, f);
 
       const debuts = await tx
         .select({ startedAt: t.academyQuizAttempts.startedAt })
@@ -797,7 +940,6 @@ export class AcademyEvaluationService {
         courseId,
         questions: posees,
         startedAt: maintenant,
-        expiresAt: new Date(maintenant.getTime() + dureeTentative(posees.length) * 1000),
       };
       // Deux clics sur « Commencer » partent ensemble : l'index d'unicité ne
       // laisse passer qu'une copie ouverte, et la seconde demande reçoit la
@@ -821,10 +963,7 @@ export class AcademyEvaluationService {
           .limit(1);
         if (deja) return this.vueTentative(deja, f);
       }
-      return this.vueTentative(
-        { ...tentative, submittedAt: null, answers: null, score: null, passed: null },
-        f,
-      );
+      return this.vueTentative(tentative, f);
     });
   }
 
@@ -857,12 +996,10 @@ export class AcademyEvaluationService {
       if (a.submittedAt) problem(409, 'academy.attempt_closed', 'Cette copie a déjà été rendue');
 
       const maintenant = this.horloge();
-      const expiree = maintenant.getTime() > a.expiresAt.getTime() + GRACE_SOUMISSION_S * 1000;
-      const reponses = expiree ? null : input.answers;
-      const c = corriger(a.questions, reponses);
+      const c = corriger(a.questions, input.answers);
       await tx
         .update(t.academyQuizAttempts)
-        .set({ submittedAt: maintenant, answers: reponses, score: c.score, passed: c.passed })
+        .set({ submittedAt: maintenant, answers: input.answers, score: c.score, passed: c.passed })
         .where(eq(t.academyQuizAttempts.id, a.id));
 
       const f = await this.formation(tx, a.courseId);
@@ -876,7 +1013,15 @@ export class AcademyEvaluationService {
       );
       if (c.passed && fermee === null) {
         certificat = resumeCertificat(
-          await this.emettre(tx, user, employeeId, f, a.id, c.score, maintenant),
+          await emettreCertificat(
+            tx,
+            user.tenantId,
+            employeeId,
+            f,
+            { attemptId: a.id, score: c.score },
+            maintenant,
+            this.hasard,
+          ),
           maintenant,
         );
       }
@@ -900,61 +1045,10 @@ export class AcademyEvaluationService {
           prompt: libelles.get(q.id) ?? '',
           correct: q.correct,
         })),
-        expired: expiree,
         certificat,
         evaluation: evaluation!,
       };
     });
-  }
-
-  /** Émet le certificat, avec l'instantané de ce qu'il atteste. */
-  private async emettre(
-    tx: Tx,
-    user: SessionUser,
-    employeeId: string,
-    f: LigneFormation,
-    attemptId: string,
-    score: number,
-    maintenant: Date,
-  ): Promise<LigneCertificat> {
-    const [agent] = await tx
-      .select({
-        givenName: t.persons.givenName,
-        familyName: t.persons.familyName,
-        number: t.employees.employeeNumber,
-      })
-      .from(t.employees)
-      .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-      .where(eq(t.employees.id, employeeId))
-      .limit(1);
-    // Le numéro est tiré au hasard : une collision est improbable, pas
-    // impossible — on retire alors, sans faire échouer la réussite.
-    for (let essai = 0; essai < 5; essai += 1) {
-      const [c] = await tx
-        .insert(t.academyCertificates)
-        .values({
-          id: uuidv7(),
-          tenantId: user.tenantId,
-          employeeId,
-          courseId: f.id,
-          attemptId,
-          number: numeroCertificat(this.hasard),
-          holderName: agent ? `${agent.givenName} ${agent.familyName}` : '—',
-          holderNumber: agent?.number ?? '—',
-          courseTitle: f.title,
-          courseCategory: f.category,
-          // L'émetteur, tel qu'il signe ses actes : la raison sociale, et non
-          // le nom court du compte.
-          organizationName: ENTETE.raisonSociale,
-          score,
-          issuedAt: maintenant,
-          expiresAt: expiration(maintenant, f.certificateValidityMonths),
-        })
-        .onConflictDoNothing({ target: t.academyCertificates.number })
-        .returning();
-      if (c) return c;
-    }
-    problem(500, 'academy.certificate_number', 'Impossible d’attribuer un numéro de certificat');
   }
 
   // ———————————————————————————— les certificats
@@ -1020,9 +1114,17 @@ export class AcademyEvaluationService {
   }
 
   async mesCertificats(user: SessionUser): Promise<CertificateSummary[]> {
-    const employeeId = await this.db.withTenant(this.ctx(user), (tx) =>
-      sonDossier(tx, user.userId),
-    );
+    const employeeId = await this.db.withTenant(this.ctx(user), async (tx) => {
+      // D'abord ceux que des formations sans évaluation doivent encore à l'agent.
+      await certifierLesFormationsTerminees(
+        tx,
+        user,
+        await employeActif(tx, user.userId),
+        this.horloge(),
+        this.hasard,
+      );
+      return sonDossier(tx, user.userId);
+    });
     return employeeId ? this.certificatsDe(user, employeeId) : [];
   }
 

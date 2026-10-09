@@ -148,12 +148,14 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  await raw(`DELETE FROM academy_certificates WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM academy_courses WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM academy_viewers WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM notifications WHERE tenant_id = $1`, [tenantId]);
 });
 
 afterAll(async () => {
+  await raw(`DELETE FROM academy_certificates WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM academy_courses WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM academy_viewers WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM notifications WHERE tenant_id = $1`, [tenantId]);
@@ -326,6 +328,26 @@ describe('ce que voit un agent', () => {
     // 108 s sur 120 : le seuil tombe au onzième battement, et une seule fois.
     expect(vus.filter(Boolean)).toHaveLength(1);
     expect(vus[10]).toBe(true);
+  });
+
+  it('sans évaluation, la dernière leçon validée délivre le certificat (ADR-0049)', async () => {
+    const { courseId, l1, l2 } = await formationPubliee();
+    const delivres = async () =>
+      (
+        await raw(`SELECT score, attempt_id FROM academy_certificates WHERE course_id = $1`, [
+          courseId,
+        ])
+      ).rows;
+    await regarder(l1, 120);
+    expect(await delivres()).toEqual([]);
+    await regarder(l2, 120);
+    // Délivré au battement qui valide la dernière leçon, avant toute lecture.
+    expect(await delivres()).toEqual([{ score: null, attempt_id: null }]);
+    expect(await academy.detail(agent, courseId)).toMatchObject({
+      evaluation: null,
+      certified: true,
+      certificat: expect.objectContaining({ score: null, status: 'valide' }),
+    });
   });
 });
 

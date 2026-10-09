@@ -66,7 +66,7 @@ export default function MesCertificatsPage() {
             description={
               restreint
                 ? undefined
-                : 'Réussissez l’évaluation finale d’une formation APIX Academy : son certificat apparaîtra ici.'
+                : 'Suivez une formation APIX Academy jusqu’au bout, évaluation comprise s’il y en a une : son certificat apparaîtra ici.'
             }
             action={
               restreint ? undefined : (

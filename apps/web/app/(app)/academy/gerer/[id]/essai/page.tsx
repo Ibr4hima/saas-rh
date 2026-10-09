@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useState } from 'react';
 import type { AttemptView, CourseAdminView, TrialResult } from '@teranga/contracts';
-import { SECONDES_PAR_QUESTION, SEUIL_REUSSITE } from '@teranga/contracts';
+import { SEUIL_REUSSITE } from '@teranga/contracts';
 import { Badge, Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { RetourAcademy } from '../../../../../../components/academy-carte';
 import {
@@ -27,8 +27,8 @@ import { compte } from '../../../../../../lib/mots';
 /* ————————————————————————————————————————————————————————————————
    L'essai de l'évaluation, pour la RH.
 
-   La RH passe l'épreuve EXACTEMENT comme un agent la passera — même tirage,
-   même minuterie, même copie, même correction — pour relire ses questions
+   La RH passe l'épreuve EXACTEMENT comme un agent la passera, avec le même
+   tirage, la même copie et la même correction, pour relire ses questions
    dans ces conditions-là. Rien n'est enregistré : ni tentative, ni
    certificat. À la fin, et c'est la seule différence, elle voit les bonnes
    réponses ; et si l'essai est réussi, le certificat qu'un agent recevrait,
@@ -113,7 +113,6 @@ export default function EssaiPage() {
             if (sansReponse(copie, reponses) > 0) setConfirmer(true);
             else rendre.mutate(reponses);
           }}
-          onTempsEcoule={() => rendre.mutate(reponses)}
           envoi={rendre.isPending}
           erreur={erreur}
           libelle="Essai"
@@ -188,7 +187,6 @@ function Accueil({
 }) {
   // Ce que l'agent verra : le réglage, borné par la taille de la banque.
   const n = Math.min(f.quiz.questionCount, f.quiz.questions.length);
-  const minutes = Math.ceil((n * SECONDES_PAR_QUESTION) / 60);
   return (
     <Card className="mx-auto w-full max-w-2xl">
       <div className="flex flex-col gap-5 p-6 sm:p-8">
@@ -200,8 +198,7 @@ function Accueil({
             {f.title}
           </h1>
           <p className="mt-1 text-[12.5px] font-semibold text-ink-muted">
-            {compte(n, 'question')} · {minutes} min · {Math.round(SEUIL_REUSSITE * 100)} % pour
-            réussir
+            {compte(n, 'question')} · {Math.round(SEUIL_REUSSITE * 100)} % pour réussir
           </p>
         </div>
         <p className="flex gap-3 rounded-[12px] bg-primary-soft/60 px-4 py-3 text-[12.5px] leading-relaxed text-ink">
@@ -212,7 +209,7 @@ function Accueil({
           </span>
         </p>
         <ul className="flex flex-col gap-3">
-          {reglesEpreuve(n, minutes, SEUIL_REUSSITE).map(([icone, texte]) => (
+          {reglesEpreuve(n, SEUIL_REUSSITE).map(([icone, texte]) => (
             <li key={texte} className="flex gap-3 text-[13px] leading-relaxed text-ink">
               <Icon name={icone} size={18} className="mt-0.5 shrink-0 text-primary" />
               {texte}

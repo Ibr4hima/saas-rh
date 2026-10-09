@@ -1,16 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
 import type { AttemptView } from '@teranga/contracts';
 import { Button, Card, cn } from '@teranga/ui';
-import { horloge } from '../lib/academy';
 import { compte } from '../lib/mots';
 import { Icon, type IconName } from './icons';
 import { Modal } from './modal';
 
 /* ————————————————————————————————————————————————————————————————
-   La copie de l'évaluation finale : une question à la fois, la minuterie
-   toujours en vue, le plan des questions pour y revenir.
+   La copie de l'évaluation finale : une question à la fois, sans limite de
+   temps (ADR-0049), et le plan des questions pour y revenir.
 
    Partagée entre l'épreuve de l'agent et l'ESSAI de la RH : la RH doit voir
    exactement ce que l'agent verra — un écran recopié finirait par diverger.
@@ -36,17 +34,10 @@ export function cocher(
 }
 
 /** Les règles de l'épreuve, dites avant de commencer — à l'agent comme à la RH qui l'essaie. */
-export function reglesEpreuve(
-  questionCount: number,
-  minutes: number,
-  seuil: number,
-): Array<[IconName, string]> {
+export function reglesEpreuve(questionCount: number, seuil: number): Array<[IconName, string]> {
   return [
     ['quiz', `${compte(questionCount, 'question')}, tirées au hasard pour chaque tentative.`],
-    [
-      'timer',
-      `${minutes} minutes, décomptées dès que vous commencez. À zéro, la copie part d’elle-même.`,
-    ],
+    ['schedule', 'Sans limite de temps : prenez celui qu’il vous faut.'],
     [
       'check_circle',
       `${Math.round(seuil * 100)} % de bonnes réponses pour réussir. Quand plusieurs réponses sont justes, il faut les cocher toutes.`,
@@ -59,40 +50,6 @@ export function sansReponse(copie: AttemptView, reponses: Reponses): number {
   return copie.questions.filter((q) => !(reponses[q.id]?.length ?? 0)).length;
 }
 
-export function Minuterie({ expiresAt, onZero }: { expiresAt: string; onZero: () => void }) {
-  const fin = new Date(expiresAt).getTime();
-  const [reste, setReste] = useState(() => Math.max(0, (fin - Date.now()) / 1000));
-  const parti = useRef(false);
-  useEffect(() => {
-    const t = setInterval(() => {
-      const r = Math.max(0, (fin - Date.now()) / 1000);
-      setReste(r);
-      if (r <= 0 && !parti.current) {
-        parti.current = true;
-        onZero();
-      }
-    }, 500);
-    return () => clearInterval(t);
-  }, [fin, onZero]);
-  const urgent = reste <= 60;
-  return (
-    <span
-      role="timer"
-      aria-live={urgent ? 'polite' : 'off'}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-bold ring-1',
-        urgent
-          ? 'bg-danger-soft text-danger ring-danger/30'
-          : 'bg-primary-soft/70 text-primary ring-primary/20',
-      )}
-      style={{ fontVariantNumeric: 'tabular-nums' }}
-    >
-      <Icon name="timer" size={16} />
-      {horloge(reste)}
-    </span>
-  );
-}
-
 export function Copie({
   copie,
   reponses,
@@ -100,7 +57,6 @@ export function Copie({
   onIndex,
   onRepondre,
   onRendre,
-  onTempsEcoule,
   envoi,
   erreur,
   libelle = 'Évaluation finale',
@@ -111,7 +67,6 @@ export function Copie({
   onIndex: (i: number) => void;
   onRepondre: (q: string, o: string, multiple: boolean) => void;
   onRendre: () => void;
-  onTempsEcoule: () => void;
   envoi: boolean;
   erreur: string | null;
   /** Ce qui précède le titre de la formation, en tête de copie. */
@@ -126,12 +81,9 @@ export function Copie({
   return (
     <Card className="mx-auto w-full max-w-3xl">
       <div className="flex flex-col gap-4 border-b border-line-soft px-5 py-4 sm:px-7">
-        <div className="flex items-center gap-3">
-          <p className="min-w-0 flex-1 truncate text-[12px] font-semibold text-ink-muted">
-            {libelle} · {copie.courseTitle}
-          </p>
-          <Minuterie expiresAt={copie.expiresAt} onZero={onTempsEcoule} />
-        </div>
+        <p className="truncate text-[12px] font-semibold text-ink-muted">
+          {libelle} · {copie.courseTitle}
+        </p>
         {/* Le plan des questions : on voit ce qui reste, on revient où l'on veut. */}
         <nav aria-label="Questions" className="flex flex-wrap gap-1.5">
           {copie.questions.map((x, i) => {

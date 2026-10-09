@@ -17,6 +17,7 @@ import {
   Skeleton,
 } from '@teranga/ui';
 import { BarreProgression, RetourAcademy } from '../../../../../../components/academy-carte';
+import { ApercuCertificat } from '../../../../../../components/academy-certificat';
 import { Programme } from '../../../../../../components/academy-programme';
 import { FenetreDocument } from '../../../../../../components/fenetre-document';
 import { Page } from '../../../../../../components/gabarit';
@@ -46,6 +47,7 @@ export default function LeconPage() {
   const qc = useQueryClient();
   const [ouverture, setOuverture] = useState(0);
   const [supportOuvert, setSupportOuvert] = useState(false);
+  const [certificatOuvert, setCertificatOuvert] = useState(false);
 
   const formation = useQuery({
     queryKey: ['academy', 'course', id],
@@ -243,6 +245,20 @@ export default function LeconPage() {
                 </Link>
               </div>
             ) : null}
+
+            {/* Sans évaluation, la dernière leçon validée délivre le
+                certificat (ADR-0049) : il se consulte d'ici. */}
+            {!l.suivante && suivi && !f.evaluation && f.certificat ? (
+              <div className="flex items-center justify-between gap-3 border-t border-line-soft pt-4">
+                <p className="text-[12.5px] text-ink-muted">
+                  C’était la dernière leçon : votre certificat est délivré.
+                </p>
+                <Button size="sm" className="shrink-0" onClick={() => setCertificatOuvert(true)}>
+                  <Icon name="workspace_premium" size={16} />
+                  Voir le certificat
+                </Button>
+              </div>
+            ) : null}
           </div>
         </Card>
 
@@ -272,6 +288,9 @@ export default function LeconPage() {
           telechargement={apiUrl(`/academy/lessons/${lessonId}/support`)}
           onClose={() => setSupportOuvert(false)}
         />
+      ) : null}
+      {certificatOuvert && f.certificat ? (
+        <ApercuCertificat certificat={f.certificat} onClose={() => setCertificatOuvert(false)} />
       ) : null}
     </Page>
   );

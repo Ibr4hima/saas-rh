@@ -39,7 +39,11 @@ import { notifier } from '../notifications/notifier';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import {
+  certificatEnCours,
+  certifierLesFormationsTerminees,
+  certifierSansEvaluation,
   employeActif,
+  fermeture,
   formationsCertifiees,
   quizAdmin,
   taillesDesBanques,
@@ -364,6 +368,8 @@ export class AcademyService {
       mode,
       modules: vues,
       evaluation: null,
+      certificat: null,
+      fermeture: null,
     };
   }
 
@@ -415,6 +421,8 @@ export class AcademyService {
         tx,
         formations.map((f) => f.id),
       );
+      // Ce que des formations sans évaluation doivent encore à l'agent.
+      await certifierLesFormationsTerminees(tx, user, employeeId, this.horloge());
       const certifiees = await formationsCertifiees(tx, employeeId, this.horloge());
       const signets = await this.signetsDe(tx, user.userId);
       return (
@@ -423,12 +431,21 @@ export class AcademyService {
           // Une formation publiée dont aucune vidéo n'est prête n'a rien à
           // offrir : elle ne s'affiche pas.
           .filter((d) => d.lessonCount > 0)
-          .map(({ modules: _m, mode: _mode, evaluation: _e, ...resume }) => ({
-            ...resume,
-            hasEvaluation: (banques.get(resume.id) ?? 0) > 0,
-            certified: certifiees.has(resume.id),
-            bookmarked: signets.has(resume.id),
-          }))
+          .map(
+            ({
+              modules: _m,
+              mode: _mode,
+              evaluation: _e,
+              certificat: _c,
+              fermeture: _f,
+              ...resume
+            }) => ({
+              ...resume,
+              hasEvaluation: (banques.get(resume.id) ?? 0) > 0,
+              certified: certifiees.has(resume.id),
+              bookmarked: signets.has(resume.id),
+            }),
+          )
       );
     });
   }
@@ -446,20 +463,29 @@ export class AcademyService {
       );
       const d = this.detailDe(f, modules, lecons, progres, employeeId ? 'suivi' : 'apercu', false);
       const toutesValidees = d.lessonCount > 0 && d.completedLessons === d.lessonCount;
+      const maintenant = this.horloge();
       const evaluation = await vueEvaluation(
         tx,
         f,
         employeeId,
         toutesValidees,
         this.gere(user),
-        this.horloge(),
+        maintenant,
         this.limiteTentatives,
       );
+      if (!evaluation && employeeId) {
+        await certifierSansEvaluation(tx, user, employeeId, f, maintenant);
+      }
+      const certificat = evaluation
+        ? evaluation.certificat
+        : await certificatEnCours(tx, employeeId, f.id, maintenant);
       return {
         ...d,
         evaluation,
+        certificat,
+        fermeture: evaluation || certificat ? null : fermeture(f, employeeId, this.gere(user)),
         hasEvaluation: evaluation !== null,
-        certified: evaluation?.etat === 'reussie',
+        certified: evaluation ? evaluation.etat === 'reussie' : certificat !== null,
         bookmarked: (await this.signetsDe(tx, user.userId)).has(f.id),
       };
     });
@@ -545,6 +571,8 @@ export class AcademyService {
           modules: _m,
           mode: _mode,
           evaluation: _e,
+          certificat: _c,
+          fermeture: _f,
           ...resume
         } = this.detailDe(f, modules, lecons, new Map(), 'apercu', true);
         return {
@@ -1367,12 +1395,20 @@ export class AcademyService {
         .set({ tokens: r.reserve.jetons, tokensAt: new Date(r.reserve.a) })
         .where(eq(t.academyViewers.employeeId, employeeId));
 
+      // La dernière leçon d'une formation sans évaluation délivre son
+      // certificat (ADR-0049).
+      const vientDeValider = !dejaValidee && completedAt !== null;
+      if (vientDeValider) {
+        const f = await this.formation(tx, lecon.courseId);
+        await certifierSansEvaluation(tx, user, employeeId, f, maintenant);
+      }
+
       return {
         intervalles: r.intervalles,
         plusLoin: loin,
         vu: partVue(r.intervalles, duree),
         validee: completedAt !== null,
-        vientDeValider: !dejaValidee && completedAt !== null,
+        vientDeValider,
         refus: r.refus,
       };
     });

@@ -126,7 +126,7 @@ function Certificat({ c }: { c: PublicCertificateView }) {
           valeur à droite. */}
       <section className="px-6 pt-6 pb-7 sm:px-8 court:pt-4 court:pb-5">
         <dl className="divide-y divide-line-soft rounded-[14px] px-4 ring-1 ring-line">
-          <Fait label="Score">{pourcent(c.score)}</Fait>
+          {c.score !== null ? <Fait label="Score">{pourcent(c.score)}</Fait> : null}
           <Fait label="Délivré le">{formatDate(c.issuedAt)}</Fait>
           <Fait label={c.status === 'expire' ? 'Expiré le' : 'Valable jusqu’au'}>
             {c.expiresAt ? formatDate(c.expiresAt) : 'Sans limite'}

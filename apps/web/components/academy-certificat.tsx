@@ -52,7 +52,7 @@ export function ApercuCertificat({
   );
 }
 
-/** Une ligne par certificat : la formation, la date, le score, le statut. */
+/** Une ligne par certificat : la formation, la date, le score s'il y en a un, le statut. */
 export function ListeCertificats({
   certificats,
   compact = false,
@@ -86,7 +86,8 @@ export function ListeCertificats({
                     {c.courseTitle}
                   </span>
                   <span className="block text-[11.5px] text-ink-muted">
-                    Obtenu le {formatDate(c.issuedAt)} · {pourcent(c.score)}
+                    Obtenu le {formatDate(c.issuedAt)}
+                    {c.score !== null ? ` · ${pourcent(c.score)}` : ''}
                     {c.expiresAt ? ` · jusqu’au ${formatDate(c.expiresAt)}` : ''}
                     {c.reemisSous
                       ? ` · réémis sous le n° ${c.reemisSous}`

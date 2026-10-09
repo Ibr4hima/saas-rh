@@ -774,7 +774,8 @@ export const academyQuizAttempts = pgTable('academy_quiz_attempts', {
   courseId: uuid('course_id').notNull(),
   questions: jsonb('questions').$type<QuestionPosee[]>().notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  /** L'ancienne heure limite : vide depuis que l'évaluation n'en a plus (ADR-0049). */
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
   submittedAt: timestamp('submitted_at', { withTimezone: true }),
   answers: jsonb('answers').$type<Record<string, string[]>>(),
   score: doublePrecision('score'),
@@ -793,7 +794,8 @@ export const academyCertificates = pgTable('academy_certificates', {
   courseTitle: text('course_title').notNull(),
   courseCategory: text('course_category').notNull(),
   organizationName: text('organization_name').notNull(),
-  score: doublePrecision('score').notNull(),
+  /** Vide pour une formation sans évaluation, suivie en entier (ADR-0049). */
+  score: doublePrecision('score'),
   issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),

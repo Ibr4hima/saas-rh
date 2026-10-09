@@ -3,9 +3,10 @@
  *
  * Les règles pures sont éprouvées dans `academy-evaluation.spec.ts` ; ici on
  * vérifie qu'elles sont BRANCHÉES : que l'écran ne reçoit jamais les bonnes
- * réponses, que le serveur tient le verrou des leçons, le temps, le rythme
- * des tentatives, et qu'une réussite produit un certificat vérifiable —
- * publiquement, et seulement lui.
+ * réponses, que le serveur tient le verrou des leçons et le rythme des
+ * tentatives, sans limite de temps, et qu'une réussite produit un
+ * certificat vérifiable, publiquement, et seulement lui. Sans évaluation, la
+ * formation suivie en entier délivre le sien (ADR-0049).
  */
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -232,10 +233,10 @@ describe('le verrou des leçons', () => {
     expect(ev).toMatchObject({
       etat: 'ouverte',
       questionCount: 5,
-      minutes: 10,
       tentativesParJour: null,
       tentativesRestantes: null,
     });
+    expect(ev).not.toHaveProperty('minutes');
   });
 
   it('un compte sans dossier d’agent ne compose pas', async () => {
@@ -244,14 +245,16 @@ describe('le verrou des leçons', () => {
 });
 
 describe('la copie', () => {
-  it('pose 5 questions sans jamais envoyer les bonnes réponses, et fixe l’heure limite', async () => {
+  it('pose 5 questions sans jamais envoyer les bonnes réponses, ni heure limite', async () => {
     await validerLecons();
     const copie = await evaluation.demarrer(agent, courseId);
     expect(copie.questions).toHaveLength(5);
     expect(JSON.stringify(copie)).not.toContain('"correct"');
-    expect(new Date(copie.expiresAt).getTime() - new Date(copie.startedAt).getTime()).toBe(
-      5 * 120 * 1000,
-    );
+    expect(copie).not.toHaveProperty('expiresAt');
+    const { rows } = await raw(`SELECT expires_at FROM academy_quiz_attempts WHERE id = $1`, [
+      copie.id,
+    ]);
+    expect(rows[0].expires_at).toBeNull();
   });
 
   it('un rechargement reprend la même copie : il ne coûte pas une tentative', async () => {
@@ -274,7 +277,8 @@ describe('la copie', () => {
     const r = await evaluation.soumettre(agent, copie.id, {
       answers: await bonnesReponses(copie.id),
     });
-    expect(r).toMatchObject({ passed: true, score: 1, correctCount: 5, total: 5, expired: false });
+    expect(r).toMatchObject({ passed: true, score: 1, correctCount: 5, total: 5 });
+    expect(r).not.toHaveProperty('expired');
     expect(r.certificat?.number).toMatch(/^APX-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
     expect(r.evaluation.etat).toBe('reussie');
     expect((await academy.catalogue(agent)).find((c) => c.id === courseId)?.certified).toBe(true);
@@ -314,24 +318,25 @@ describe('la copie', () => {
     );
   });
 
-  it('rendue après l’heure limite, elle compte pour zéro — même juste', async () => {
+  it('n’a pas de limite de temps : rendue le lendemain, elle est corrigée', async () => {
     await validerLecons();
     const a = await evaluation.demarrer(agent, courseId);
-    horloge += 10 * 60_000 + 31_000;
+    horloge += 26 * HEURE;
     const r = await evaluation.soumettre(agent, a.id, { answers: await bonnesReponses(a.id) });
-    expect(r).toMatchObject({ expired: true, passed: false, score: 0 });
+    expect(r).toMatchObject({ passed: true, score: 1 });
   });
 
-  it('une copie abandonnée compte comme un échec à la tentative suivante', async () => {
+  it('une copie laissée ouverte se reprend, même des jours plus tard', async () => {
     await validerLecons();
-    await evaluation.demarrer(agent, courseId);
-    horloge += 11 * 60_000;
-    const b = await evaluation.demarrer(agent, courseId);
+    const a = await evaluation.demarrer(agent, courseId);
+    horloge += 3 * 24 * HEURE;
+    expect((await academy.detail(agent, courseId)).evaluation?.etat).toBe('en_cours');
+    expect((await evaluation.demarrer(agent, courseId)).id).toBe(a.id);
     const { rows } = await raw(
-      `SELECT passed, score FROM academy_quiz_attempts WHERE employee_id = $1 AND id <> $2`,
-      [agentEmployeeId, b.id],
+      `SELECT count(*)::int AS n FROM academy_quiz_attempts WHERE employee_id = $1`,
+      [agentEmployeeId],
     );
-    expect(rows).toEqual([{ passed: false, score: 0 }]);
+    expect(rows[0].n).toBe(1);
   });
 
   it('se corrige contre ce qui a été posé, même si la RH change la banque entre-temps', async () => {
@@ -378,9 +383,7 @@ describe('l’essai de la RH', () => {
     const copie = await evaluation.essayer(rh, courseId);
     expect(copie.questions).toHaveLength(5);
     expect(JSON.stringify(copie)).not.toContain('"correct"');
-    expect(new Date(copie.expiresAt).getTime() - new Date(copie.startedAt).getTime()).toBe(
-      5 * 120 * 1000,
-    );
+    expect(copie).not.toHaveProperty('expiresAt');
     expect(await compter('academy_quiz_attempts')).toBe(0);
   });
 
@@ -859,5 +862,103 @@ describe('le formateur, et qui gère le catalogue', () => {
         [autreEmployeeId],
       );
     }
+  });
+});
+
+describe('une formation sans évaluation (ADR-0049)', () => {
+  const sansQuestions = () => raw(`DELETE FROM academy_questions WHERE course_id = $1`, [courseId]);
+  const certificats = async () =>
+    (
+      await raw(
+        `SELECT number, score, attempt_id FROM academy_certificates
+          WHERE employee_id = $1 AND course_id = $2`,
+        [agentEmployeeId, courseId],
+      )
+    ).rows;
+
+  it('suivie en entier, elle délivre un certificat sans score, une seule fois', async () => {
+    await sansQuestions();
+    await validerLecons();
+    const vue = await academy.detail(agent, courseId);
+    expect(vue).toMatchObject({ evaluation: null, certified: true, fermeture: null });
+    expect(vue.certificat).toMatchObject({ courseId, score: null, status: 'valide' });
+    // Relue, et par les autres chemins : toujours le même certificat.
+    await academy.detail(agent, courseId);
+    expect((await academy.catalogue(agent)).find((c) => c.id === courseId)?.certified).toBe(true);
+    expect(await evaluation.mesCertificats(agent)).toHaveLength(1);
+    expect(await certificats()).toEqual([
+      { number: vue.certificat!.number, score: null, attempt_id: null },
+    ]);
+    expect(await evaluation.verifier(vue.certificat!.number)).toMatchObject({
+      status: 'valide',
+      holderName: 'Awa Diop',
+      score: null,
+    });
+    const pdf = await evaluation.pdf(agent, vue.certificat!.id);
+    expect(pdf.data.subarray(0, 4).toString()).toBe('%PDF');
+  });
+
+  it('une leçon reste à valider : pas encore de certificat', async () => {
+    await sansQuestions();
+    await raw(
+      `INSERT INTO academy_lesson_progress (tenant_id, employee_id, lesson_id, watched, watched_seconds, completed_at)
+       VALUES ($1,$2,$3,'[[0,60]]',60, now())`,
+      [tenantId, agentEmployeeId, lecons[0]],
+    );
+    expect(await academy.detail(agent, courseId)).toMatchObject({
+      certificat: null,
+      certified: false,
+      fermeture: null,
+    });
+    expect(await evaluation.mesCertificats(agent)).toEqual([]);
+    expect(await certificats()).toEqual([]);
+  });
+
+  it('qui anime la formation ou gère le catalogue n’en reçoit pas', async () => {
+    await sansQuestions();
+    await academy.modifierFormation(rh, courseId, {
+      title: 'PowerPoint',
+      summary: null,
+      category: 'bureautique',
+      formateurEmployeeId: agentEmployeeId,
+    });
+    await validerLecons();
+    expect(await academy.detail(agent, courseId)).toMatchObject({
+      certificat: null,
+      fermeture: 'formateur',
+    });
+    expect(await evaluation.mesCertificats(agent)).toEqual([]);
+
+    const delegue = { ...autre, capacites: ['academy'] } as SessionUser;
+    await validerLecons(autreEmployeeId);
+    expect(await academy.detail(delegue, courseId)).toMatchObject({
+      certificat: null,
+      fermeture: 'gestion',
+    });
+    expect(await evaluation.mesCertificats(delegue)).toEqual([]);
+    // Sans la délégation, la formation suivie en entier délivre son certificat.
+    expect((await academy.detail(autre, courseId)).certificat).not.toBeNull();
+  });
+
+  it('révoqué, le certificat ne revient pas de lui-même', async () => {
+    await sansQuestions();
+    await validerLecons();
+    const { certificat } = await academy.detail(agent, courseId);
+    await evaluation.revoquer(rh, certificat!.id, { motif: 'Leçons suivies par un tiers' });
+    expect(await academy.detail(agent, courseId)).toMatchObject({
+      certificat: null,
+      certified: false,
+    });
+    expect(await certificats()).toHaveLength(1);
+  });
+
+  it('sa dernière question retirée, la formation suivie en entier délivre le certificat', async () => {
+    await validerLecons();
+    expect((await academy.detail(agent, courseId)).evaluation?.etat).toBe('ouverte');
+    expect(await evaluation.mesCertificats(agent)).toEqual([]);
+    await sansQuestions();
+    expect(await evaluation.mesCertificats(agent)).toEqual([
+      expect.objectContaining({ courseId, score: null, status: 'valide' }),
+    ]);
   });
 });

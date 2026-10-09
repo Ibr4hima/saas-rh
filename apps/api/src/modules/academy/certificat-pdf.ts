@@ -4,16 +4,17 @@ import { frDate } from '../documents/attestation.service';
 import { cheminLogo, ENTETE, enregistrerPolices, police } from '../documents/entete';
 
 /* ————————————————————————————————————————————————————————————————
-   Le certificat de réussite d'APIX Academy, en PDF.
+   Le certificat d'APIX Academy, en PDF.
 
    Une page A4 à l'italienne, dans le bleu de la marque : qui, quoi, avec
-   quel score, quand, jusqu'à quand — et comment le vérifier. Le QR code,
+   quel score, quand, jusqu'à quand, et comment le vérifier. Le QR code,
    en haut à droite, mène à la page publique de vérification ; la référence,
    en bas à droite, permet la même vérification à la main.
 
    Le document dit ce qu'il atteste, et pas plus : une formation suivie en
-   ligne et une évaluation réussie. Ce n'est pas un diplôme, et il ne le
-   prétend pas.
+   ligne et une évaluation réussie ; ou, sans évaluation, chacune de ses
+   leçons validée (ADR-0049). Ce n'est pas un diplôme, et il ne le prétend
+   pas.
 
    Le QR code est DESSINÉ en carrés vectoriels plutôt que collé en image :
    il reste net à l'impression, à n'importe quelle taille.
@@ -31,7 +32,8 @@ export interface DonneesCertificat {
   matricule: string | null;
   formation: string;
   organisation: string;
-  score: number;
+  /** `null` : une formation sans évaluation, suivie en entier. */
+  score: number | null;
   emisLe: Date;
   expireLe: Date | null;
   /** L'adresse de la page de vérification, que porte le QR code. */
@@ -77,7 +79,7 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
         ? `Spécimen de certificat : ${d.formation}`
         : `Certificat ${d.numero} : ${d.formation}`,
       Author: `${ENTETE.raisonSociale}, APIX Academy`,
-      Subject: `Certificat de réussite de ${d.titulaire}`,
+      Subject: `${d.score === null ? 'Certificat de formation' : 'Certificat de réussite'} de ${d.titulaire}`,
     },
   });
   enregistrerPolices(doc);
@@ -142,7 +144,14 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
   };
 
   let y = 184;
-  y = centre('CERTIFICAT DE RÉUSSITE', 27, 'bold', BLEU, y, 4);
+  y = centre(
+    d.score === null ? 'CERTIFICAT DE FORMATION' : 'CERTIFICAT DE RÉUSSITE',
+    27,
+    'bold',
+    BLEU,
+    y,
+    4,
+  );
   doc
     .moveTo(L / 2 - 32, y + 13)
     .lineTo(L / 2 + 32, y + 13)
@@ -162,8 +171,15 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
   );
   y = centre(intitule, lignes > 2 ? 15 : 18, 'bold', ENCRE, y + 6);
   // Arrondi par défaut, comme partout : 79,6 % ne s'affiche jamais « 80 % ».
-  const score = `${Math.floor(d.score * 100 + 1e-9)} %`;
-  centre(`et réussi son évaluation finale avec un score de ${score}.`, 12, 'normal', GRIS, y + 8);
+  centre(
+    d.score === null
+      ? 'et validé chacune de ses leçons.'
+      : `et réussi son évaluation finale avec un score de ${Math.floor(d.score * 100 + 1e-9)} %.`,
+    12,
+    'normal',
+    GRIS,
+    y + 8,
+  );
 
   // ———— Le pied, sur deux lignes qui se répondent : la date et sa validité
   // à gauche ; la référence et l'émetteur à droite.

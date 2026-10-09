@@ -232,6 +232,18 @@ export interface CourseDetail extends CourseSummary {
   modules: ModuleView[];
   /** L'évaluation finale, telle que l'agent la voit. Nulle sans banque de questions. */
   evaluation: EvaluationView | null;
+  /**
+   * Le certificat en cours de validité de l'agent : celui de l'évaluation
+   * réussie, ou, sans évaluation, celui des leçons suivies en entier
+   * (ADR-0049).
+   */
+  certificat: CertificateSummary | null;
+  /**
+   * Sans évaluation : pourquoi la formation ne délivre pas de certificat à
+   * l'agent, qui l'anime ou gère le catalogue. Avec une évaluation, la
+   * raison est dans `evaluation.fermeture`, et ce champ reste `null`.
+   */
+  fermeture: EvaluationView['fermeture'];
 }
 
 /** Ce qui empêche une formation d'être publiée, en mots de la RH. */
@@ -313,9 +325,6 @@ export const SEUIL_REUSSITE = 0.8;
  */
 export const TENTATIVES_PAR_JOUR: number | null = null;
 export const FENETRE_TENTATIVES_H = 24;
-
-/** Le temps accordé : deux minutes par question, décompté par le serveur. */
-export const SECONDES_PAR_QUESTION = 120;
 
 export const QUESTIONS_PAR_TENTATIVE_MAX = 50;
 export const OPTIONS_MIN = 2;
@@ -406,7 +415,11 @@ export interface CertificateSummary {
   courseId: string | null;
   courseTitle: string;
   courseCategory: AcademyCategory;
-  score: number;
+  /**
+   * Le score de l'évaluation réussie. `null` : la formation n'a pas
+   * d'évaluation, le certificat atteste qu'elle a été suivie en entier.
+   */
+  score: number | null;
   issuedAt: string;
   expiresAt: string | null;
   /** valide, expiré, ou révoqué — dit à la date d'aujourd'hui. */
@@ -432,14 +445,13 @@ export const FENETRE_RENOUVELLEMENT_JOURS = 60;
  * L'évaluation d'une formation, vue par l'agent.
  *
  * `verrouillee` : des leçons restent à valider. `ouverte` : il peut composer.
- * `en_cours` : une copie est ouverte et le temps court encore. `attente` :
+ * `en_cours` : une copie est ouverte, sans limite de temps. `attente` :
  * quand une limite est fixée, ses tentatives du jour sont passées. `reussie` : il tient un
  * certificat valide. `fermee` : elle ne le concerne pas — voir `fermeture`.
  */
 export interface EvaluationView {
   /** Questions posées à chaque tentative : le réglage, borné par la banque. */
   questionCount: number;
-  minutes: number;
   seuil: number;
   etat: 'verrouillee' | 'ouverte' | 'en_cours' | 'attente' | 'reussie' | 'fermee';
   /**
@@ -467,7 +479,6 @@ export interface AttemptView {
   courseId: string;
   courseTitle: string;
   startedAt: string;
-  expiresAt: string;
   questions: Array<{
     id: string;
     prompt: string;
@@ -483,8 +494,6 @@ export interface AttemptResult {
   total: number;
   /** Pour chaque question : juste ou non. Jamais la bonne réponse. */
   questions: Array<{ id: string; prompt: string; correct: boolean }>;
-  /** La copie est arrivée après la fin du temps : elle compte pour zéro. */
-  expired: boolean;
   certificat: CertificateSummary | null;
   evaluation: EvaluationView;
 }
@@ -517,7 +526,8 @@ export interface PublicCertificateView {
   courseTitle: string;
   courseCategory: AcademyCategory;
   organizationName: string;
-  score: number;
+  /** `null` : formation sans évaluation, suivie en entier. */
+  score: number | null;
   issuedAt: string;
   expiresAt: string | null;
   /** Réémis : le numéro qui le remplace. */
@@ -543,7 +553,9 @@ export interface PublicCertificateView {
  * - `evaluation_a_passer` : leçons terminées, l'évaluation attend l'agent.
  * - `non_reussie` : leçons terminées, évaluation tentée sans succès — pour
  *   l'instant ; les tentatives restent ouvertes.
- * - `terminee` : leçons terminées, et la formation n'a pas d'évaluation.
+ * - `terminee` : leçons terminées, la formation n'a pas d'évaluation, et pas
+ *   de certificat en cours (qui l'anime ou gère le catalogue n'en reçoit
+ *   pas ; le sien a pu expirer, ou être révoqué).
  * - `certifiee` : certificat en cours de validité.
  */
 export const STATUTS_SUIVI = [
@@ -568,7 +580,8 @@ export interface TeamCourseProgress {
   status: StatutSuivi;
   /** Le dernier certificat non révoqué — expiré compris, pour le dire. */
   certificate: {
-    score: number;
+    /** `null` : formation sans évaluation, suivie en entier. */
+    score: number | null;
     issuedAt: string;
     expiresAt: string | null;
     status: 'valide' | 'expire';
