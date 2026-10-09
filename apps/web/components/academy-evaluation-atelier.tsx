@@ -32,7 +32,8 @@ import { FenetreSuppression } from './reglages-absences';
    une tentative ressemble à la précédente.
 
    Sans question, la formation délivre son certificat à qui en valide toutes
-   les leçons (ADR-0049).
+   les leçons, sans limite de validité (ADR-0049, ADR-0050) : il n'y a alors
+   rien à régler, et la carte ne montre que « Ajouter une question ».
    ———————————————————————————————————————————————————————————————— */
 
 const NOMBRES = [5, 10, 15, 20, 30];
@@ -70,7 +71,12 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
 
   return (
     <Card className="shrink-0">
-      <CardHeader className="flex flex-wrap items-center gap-3 border-b border-line-soft pb-3.5">
+      <CardHeader
+        className={cn(
+          'flex flex-wrap items-center gap-3',
+          banque > 0 || erreur ? 'border-b border-line-soft' : 'pb-[17px]',
+        )}
+      >
         <CardTitle className="flex-1">Évaluation finale</CardTitle>
         {/* L'essai : l'épreuve telle qu'un agent la passera, sans rien enregistrer. */}
         {f.quiz.questions.length > 0 ? (
@@ -87,137 +93,144 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
         </Button>
       </CardHeader>
 
-      <div className="flex flex-col gap-4 px-5 py-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field
-            label="Questions par tentative"
-            htmlFor="nombre"
-            hint={banque > 0 ? `Tirées au hasard parmi ${compte(banque, 'question')}` : undefined}
-          >
-            <Select
-              id="nombre"
-              value={String(quiz.questionCount)}
-              onChange={(e) => regler(Number(e.target.value), quiz.certificateValidityMonths)}
-            >
-              {[...new Set([...NOMBRES, quiz.questionCount])]
-                .sort((a, b) => a - b)
-                .map((n) => (
-                  <option key={n} value={n}>
-                    {n} questions
-                  </option>
-                ))}
-            </Select>
-          </Field>
-          <Field
-            label="Validité du certificat"
-            htmlFor="validite"
-            hint="Une formation réglementaire se renouvelle."
-          >
-            <Select
-              id="validite"
-              value={
-                quiz.certificateValidityMonths === null
-                  ? ''
-                  : String(quiz.certificateValidityMonths)
-              }
-              onChange={(e) =>
-                regler(quiz.questionCount, e.target.value === '' ? null : Number(e.target.value))
-              }
-            >
-              {VALIDITES_CERTIFICAT.map((m) => (
-                <option key={m ?? 'jamais'} value={m ?? ''}>
-                  {m === null ? 'Sans limite de validité' : `${m} mois`}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-
-        {erreur ? (
-          <p
-            role="alert"
-            className="rounded-[10px] bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
-          >
-            {erreur}
-          </p>
-        ) : null}
-
-        {banque > 0 ? (
-          <ol className="flex flex-col">
-            {quiz.questions.map((q, i) => {
-              const bonnes = q.options.filter((o) => o.correct).length;
-              return (
-                <li
-                  key={q.id}
-                  className="flex flex-col gap-2 border-t border-line-soft py-3 md:flex-row md:items-center md:gap-4"
+      {banque > 0 || erreur ? (
+        <div className="flex flex-col gap-4 px-5 py-4">
+          {banque > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                label="Questions par tentative"
+                htmlFor="nombre"
+                hint={`Tirées au hasard parmi ${compte(banque, 'question')}`}
+              >
+                <Select
+                  id="nombre"
+                  value={String(quiz.questionCount)}
+                  onChange={(e) => regler(Number(e.target.value), quiz.certificateValidityMonths)}
                 >
-                  <button
-                    type="button"
-                    onClick={() => setEdition(q)}
-                    className="flex min-w-0 flex-1 items-start gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+                  {[...new Set([...NOMBRES, quiz.questionCount])]
+                    .sort((a, b) => a - b)
+                    .map((n) => (
+                      <option key={n} value={n}>
+                        {n} questions
+                      </option>
+                    ))}
+                </Select>
+              </Field>
+              <Field
+                label="Validité du certificat"
+                htmlFor="validite"
+                hint="Une formation réglementaire se renouvelle."
+              >
+                <Select
+                  id="validite"
+                  value={
+                    quiz.certificateValidityMonths === null
+                      ? ''
+                      : String(quiz.certificateValidityMonths)
+                  }
+                  onChange={(e) =>
+                    regler(
+                      quiz.questionCount,
+                      e.target.value === '' ? null : Number(e.target.value),
+                    )
+                  }
+                >
+                  {VALIDITES_CERTIFICAT.map((m) => (
+                    <option key={m ?? 'jamais'} value={m ?? ''}>
+                      {m === null ? 'Sans limite de validité' : `${m} mois`}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          ) : null}
+
+          {erreur ? (
+            <p
+              role="alert"
+              className="rounded-[10px] bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
+            >
+              {erreur}
+            </p>
+          ) : null}
+
+          {banque > 0 ? (
+            <ol className="flex flex-col">
+              {quiz.questions.map((q, i) => {
+                const bonnes = q.options.filter((o) => o.correct).length;
+                return (
+                  <li
+                    key={q.id}
+                    className="flex flex-col gap-2 border-t border-line-soft py-3 md:flex-row md:items-center md:gap-4"
                   >
-                    <span
-                      className="w-5 shrink-0 pt-px text-right text-[12px] font-semibold text-ink-muted"
-                      style={{ fontVariantNumeric: 'tabular-nums' }}
-                    >
-                      {i + 1}.
-                    </span>
-                    <span className="min-w-0">
-                      <span className="line-clamp-2 text-[12.5px] leading-snug font-semibold text-ink hover:text-primary">
-                        {q.prompt}
-                      </span>
-                      <span className="mt-0.5 block text-[11.5px] text-ink-muted">
-                        {compte(q.options.length, 'choix', 'choix')} ·{' '}
-                        {compte(bonnes, 'bonne réponse', 'bonnes réponses')}
-                      </span>
-                    </span>
-                  </button>
-                  <div className="flex items-center gap-1.5 pl-8 md:pl-0">
-                    <Badge tone="gris">
-                      {q.kind === 'multiple' ? 'Choix multiple' : 'Choix unique'}
-                    </Badge>
-                    <BoutonIcone
-                      icone="arrow_upward"
-                      label="Monter la question"
-                      disabled={i === 0}
-                      onClick={() =>
-                        action.mutate({
-                          chemin: `/academy/questions/${q.id}/deplacer`,
-                          methode: 'POST',
-                          corps: { sens: 'haut' },
-                        })
-                      }
-                    />
-                    <BoutonIcone
-                      icone="arrow_downward"
-                      label="Descendre la question"
-                      disabled={i === banque - 1}
-                      onClick={() =>
-                        action.mutate({
-                          chemin: `/academy/questions/${q.id}/deplacer`,
-                          methode: 'POST',
-                          corps: { sens: 'bas' },
-                        })
-                      }
-                    />
-                    <BoutonIcone
-                      icone="edit"
-                      label="Modifier la question"
+                    <button
+                      type="button"
                       onClick={() => setEdition(q)}
-                    />
-                    <BoutonIcone
-                      icone="delete"
-                      label="Supprimer la question"
-                      danger
-                      onClick={() => setSuppression(q)}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        ) : null}
-      </div>
+                      className="flex min-w-0 flex-1 items-start gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+                    >
+                      <span
+                        className="w-5 shrink-0 pt-px text-right text-[12px] font-semibold text-ink-muted"
+                        style={{ fontVariantNumeric: 'tabular-nums' }}
+                      >
+                        {i + 1}.
+                      </span>
+                      <span className="min-w-0">
+                        <span className="line-clamp-2 text-[12.5px] leading-snug font-semibold text-ink hover:text-primary">
+                          {q.prompt}
+                        </span>
+                        <span className="mt-0.5 block text-[11.5px] text-ink-muted">
+                          {compte(q.options.length, 'choix', 'choix')} ·{' '}
+                          {compte(bonnes, 'bonne réponse', 'bonnes réponses')}
+                        </span>
+                      </span>
+                    </button>
+                    <div className="flex items-center gap-1.5 pl-8 md:pl-0">
+                      <Badge tone="gris">
+                        {q.kind === 'multiple' ? 'Choix multiple' : 'Choix unique'}
+                      </Badge>
+                      <BoutonIcone
+                        icone="arrow_upward"
+                        label="Monter la question"
+                        disabled={i === 0}
+                        onClick={() =>
+                          action.mutate({
+                            chemin: `/academy/questions/${q.id}/deplacer`,
+                            methode: 'POST',
+                            corps: { sens: 'haut' },
+                          })
+                        }
+                      />
+                      <BoutonIcone
+                        icone="arrow_downward"
+                        label="Descendre la question"
+                        disabled={i === banque - 1}
+                        onClick={() =>
+                          action.mutate({
+                            chemin: `/academy/questions/${q.id}/deplacer`,
+                            methode: 'POST',
+                            corps: { sens: 'bas' },
+                          })
+                        }
+                      />
+                      <BoutonIcone
+                        icone="edit"
+                        label="Modifier la question"
+                        onClick={() => setEdition(q)}
+                      />
+                      <BoutonIcone
+                        icone="delete"
+                        label="Supprimer la question"
+                        danger
+                        onClick={() => setSuppression(q)}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : null}
+        </div>
+      ) : null}
 
       {edition ? (
         <FenetreQuestion

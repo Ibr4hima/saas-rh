@@ -99,7 +99,9 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
   } else if (ev.etat === 'reussie' && ev.certificat) {
     icone = 'workspace_premium';
     ton = 'bg-success-soft text-success';
-    titre = 'Évaluation réussie';
+    // Sans score, le certificat vient des leçons suivies avant que la
+    // formation n'ait une évaluation : il n'en dit pas la réussite.
+    titre = ev.certificat.score !== null ? 'Évaluation réussie' : 'Certificat obtenu';
     texte = `Certificat obtenu le ${formatDate(ev.certificat.issuedAt)}${ev.certificat.score !== null ? ` avec ${pourcent(ev.certificat.score)}` : ''}${ev.certificat.expiresAt ? `, valable jusqu’au ${formatDate(ev.certificat.expiresAt)}` : ''}.`;
     action = (
       <Button onClick={() => setApercu(true)}>

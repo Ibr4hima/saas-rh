@@ -405,6 +405,10 @@ export interface QuestionAdminView {
 export interface QuizAdminView {
   /** Questions tirées à chaque tentative (réglage de la RH). */
   questionCount: number;
+  /**
+   * La validité du certificat de l'évaluation, en mois (`null` : sans
+   * limite). Sans évaluation, le certificat n'en a pas (ADR-0050).
+   */
   certificateValidityMonths: number | null;
   questions: QuestionAdminView[];
 }

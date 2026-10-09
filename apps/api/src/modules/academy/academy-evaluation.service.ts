@@ -370,8 +370,9 @@ export async function certificatEnCours(
 
 /**
  * Émet un certificat, avec l'instantané de ce qu'il atteste : l'évaluation
- * réussie, sa copie et son score ; ou, sans évaluation, la formation suivie
- * en entier, sans copie ni score (ADR-0049).
+ * réussie, sa copie et son score, pour la validité réglée ; ou, sans
+ * évaluation, la formation suivie en entier, sans copie, ni score, ni
+ * limite de validité (ADR-0049, ADR-0050).
  */
 export async function emettreCertificat(
   tx: Tx,
@@ -414,7 +415,7 @@ export async function emettreCertificat(
         organizationName: ENTETE.raisonSociale,
         score: reussite?.score ?? null,
         issuedAt: maintenant,
-        expiresAt: expiration(maintenant, f.certificateValidityMonths),
+        expiresAt: reussite ? expiration(maintenant, f.certificateValidityMonths) : null,
       })
       .onConflictDoNothing({ target: t.academyCertificates.number })
       .returning();
@@ -426,9 +427,12 @@ export async function emettreCertificat(
 /**
  * Une formation sans évaluation délivre son certificat à qui en a validé
  * toutes les leçons, sauf à qui l'anime et à qui gère le catalogue
- * (`fermeture`) ; sans questions, il n'y a pas de réponses à avoir vues. Une
- * seule fois : expiré ou révoqué, le certificat ne revient pas de lui-même.
- * Rend le certificat émis, ou `null`.
+ * (`fermeture`) ; sans questions, il n'y a pas de réponses à avoir vues.
+ *
+ * Un certificat en cours suffit, et un certificat révoqué ne revient pas de
+ * lui-même. Seul un certificat expiré, celui d'une évaluation que la
+ * formation n'a plus, laisse place au nouveau (ADR-0050). Rend le
+ * certificat émis, ou `null`.
  */
 export async function certifierSansEvaluation(
   tx: Tx,
@@ -446,17 +450,19 @@ export async function certifierSansEvaluation(
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(hashtext(${`academy-certificat:${employeeId}:${f.id}`}))`,
   );
-  const [deja] = await tx
-    .select({ id: t.academyCertificates.id })
+  const siens = await tx
+    .select({
+      expiresAt: t.academyCertificates.expiresAt,
+      revokedAt: t.academyCertificates.revokedAt,
+    })
     .from(t.academyCertificates)
     .where(
       and(
         eq(t.academyCertificates.employeeId, employeeId),
         eq(t.academyCertificates.courseId, f.id),
       ),
-    )
-    .limit(1);
-  if (deja) return null;
+    );
+  if (siens.some((c) => statutCertificat(c, maintenant) !== 'expire')) return null;
   return emettreCertificat(tx, user.tenantId, employeeId, f, null, maintenant, hasard);
 }
 
@@ -481,7 +487,9 @@ export async function certifierLesFormationsTerminees(
        AND NOT EXISTS (SELECT 1 FROM academy_questions q WHERE q.course_id = c.id)
        AND NOT EXISTS (
              SELECT 1 FROM academy_certificates a
-              WHERE a.course_id = c.id AND a.employee_id = ${employeeId})
+              WHERE a.course_id = c.id AND a.employee_id = ${employeeId}
+                AND (a.revoked_at IS NOT NULL OR a.expires_at IS NULL
+                     OR a.expires_at > ${maintenant}))
        AND EXISTS (
              SELECT 1 FROM academy_lessons l
               WHERE l.course_id = c.id AND l.video_status = 'prete')

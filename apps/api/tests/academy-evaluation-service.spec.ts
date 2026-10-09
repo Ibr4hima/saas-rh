@@ -961,4 +961,35 @@ describe('une formation sans évaluation (ADR-0049)', () => {
       expect.objectContaining({ courseId, score: null, status: 'valide' }),
     ]);
   });
+
+  it('sans évaluation, le certificat n’a pas de limite de validité (ADR-0050)', async () => {
+    await evaluation.reglerEvaluation(rh, courseId, {
+      questionCount: 5,
+      certificateValidityMonths: 12,
+    });
+    await sansQuestions();
+    await validerLecons();
+    const { certificat } = await academy.detail(agent, courseId);
+    expect(certificat).toMatchObject({ score: null, expiresAt: null });
+    expect((await evaluation.verifier(certificat!.number)).expiresAt).toBeNull();
+  });
+
+  it('le certificat expiré d’une évaluation retirée laisse place à celui des leçons', async () => {
+    await evaluation.reglerEvaluation(rh, courseId, {
+      questionCount: 5,
+      certificateValidityMonths: 12,
+    });
+    await validerLecons();
+    const a = await evaluation.demarrer(agent, courseId);
+    const r = await evaluation.soumettre(agent, a.id, { answers: await bonnesReponses(a.id) });
+    expect(r.certificat?.expiresAt?.slice(0, 10)).toBe('2027-09-25');
+    await sansQuestions();
+    // Encore valide, il suffit.
+    expect(await evaluation.mesCertificats(agent)).toHaveLength(1);
+    horloge = Date.UTC(2027, 9, 1);
+    expect(await evaluation.mesCertificats(agent)).toEqual([
+      expect.objectContaining({ score: null, expiresAt: null, status: 'valide' }),
+      expect.objectContaining({ score: 1, status: 'expire' }),
+    ]);
+  });
 });
