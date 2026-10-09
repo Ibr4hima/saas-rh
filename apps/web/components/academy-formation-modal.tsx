@@ -10,13 +10,12 @@ import { api, ApiError } from '../lib/api';
 import { Icon } from './icons';
 import { Modal, ModalSection } from './modal';
 
-/** Qui a fait la formation : on ne le dit pas, un agent de l'APIX, ou quelqu'un d'extérieur. */
-type SorteFormateur = 'aucun' | 'agent' | 'exterieur';
+/** Qui a fait la formation : un agent de l'APIX, ou une personne externe. */
+type SorteFormateur = 'agent' | 'exterieur';
 
 const SORTES: { id: SorteFormateur; label: string }[] = [
-  { id: 'aucun', label: 'Non précisé' },
-  { id: 'agent', label: 'Agent APIX' },
-  { id: 'exterieur', label: 'Extérieur' },
+  { id: 'agent', label: 'Agent de l’APIX' },
+  { id: 'exterieur', label: 'Externe' },
 ];
 
 /**
@@ -27,8 +26,8 @@ const SORTES: { id: SorteFormateur; label: string }[] = [
  * elles sont cinq, et chacune porte l'icône qui habillera la couverture — la
  * RH voit ce que verront les agents avant de le décider.
  *
- * Le formateur est facultatif. Un agent de l'APIX en suit les leçons, pas
- * l'évaluation ; son dossier dit qu'il l'a animée.
+ * Le formateur est obligatoire : un agent de l'APIX, qui en suit les leçons
+ * mais pas l'évaluation, ou une personne externe.
  */
 export function FormationModal({
   open,
@@ -47,7 +46,7 @@ export function FormationModal({
   const [famille, setFamille] = useState<AcademyCategory>(formation?.category ?? 'bureautique');
   const [presentation, setPresentation] = useState(formation?.summary ?? '');
   const [sorte, setSorte] = useState<SorteFormateur>(
-    !formation?.formateur ? 'aucun' : formation.formateur.employeeId ? 'agent' : 'exterieur',
+    formation?.formateur && !formation.formateur.employeeId ? 'exterieur' : 'agent',
   );
   const [agent, setAgent] = useState(formation?.formateur?.employeeId ?? '');
   const [exterieur, setExterieur] = useState(
@@ -157,8 +156,8 @@ export function FormationModal({
       <ModalSection title="Formateur">
         <div className="flex flex-col gap-3">
           <p className="text-[12px] leading-snug text-ink-muted">
-            Facultatif : qui a fait cette formation. Une personne de l’APIX peut en suivre les
-            leçons, mais pas l’évaluation ; son dossier indique qu’elle l’a animée.
+            Le formateur ne pourra pas obtenir une certification de ladite formation. Sa fiche
+            personnelle contiendra un récapitulatif de ses formations dispensées.
           </p>
           <div
             role="radiogroup"
@@ -199,19 +198,13 @@ export function FormationModal({
                 ) : null}
                 {agents.data?.map((a) => (
                   <option key={a.employeeId} value={a.employeeId}>
-                    {a.nom}
-                    {a.poste ? ` · ${a.poste}` : ''}
+                    {a.nom} · {a.matricule}
                   </option>
                 ))}
               </Select>
             </Field>
           ) : sorte === 'exterieur' ? (
-            <Field
-              label="Nom"
-              htmlFor="formateur-exterieur"
-              required
-              hint="Une personne ou un organisme."
-            >
+            <Field label="Nom" htmlFor="formateur-exterieur" required>
               <Input
                 id="formateur-exterieur"
                 placeholder="Cabinet, intervenant…"

@@ -591,8 +591,9 @@ export class AcademyService {
   }
 
   /**
-   * Qui a fait la formation : un agent de l'APIX — son nom est relu dans
-   * son dossier —, une personne extérieure, ou personne.
+   * Qui a fait la formation : un agent de l'APIX, dont le nom est relu dans
+   * son dossier, ou une personne externe. Le contrat l'exige ; une formation
+   * d'avant peut n'en avoir aucun.
    */
   private async formateur(
     tx: Tx,
@@ -629,14 +630,12 @@ export class AcademyService {
   async agentsPourFormateur(user: SessionUser): Promise<AgentAcademy[]> {
     this.exigerGestion(user);
     return this.db.withTenant(this.ctx(user), async (tx) => {
-      const { rows } = await tx.execute<{ id: string; nom: string; poste: string | null }>(sql`
-        SELECT e.id, p.given_name || ' ' || p.family_name AS nom,
-               (SELECT a.position_title FROM assignments a
-                 WHERE a.employee_id = e.id AND a.validity @> CURRENT_DATE LIMIT 1) AS poste
+      const { rows } = await tx.execute<{ id: string; nom: string; matricule: string }>(sql`
+        SELECT e.id, p.given_name || ' ' || p.family_name AS nom, e.employee_number AS matricule
           FROM employees e JOIN persons p ON p.id = e.person_id
          WHERE e.status = 'active' AND NOT ${contratEchu(sql`e.id`)}
          ORDER BY p.family_name, p.given_name`);
-      return rows.map((r) => ({ employeeId: r.id, nom: r.nom, poste: r.poste }));
+      return rows.map((r) => ({ employeeId: r.id, nom: r.nom, matricule: r.matricule }));
     });
   }
 

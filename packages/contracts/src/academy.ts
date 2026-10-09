@@ -74,23 +74,28 @@ export type VideoStatus = 'absente' | 'envoi' | 'traitement' | 'prete' | 'erreur
 
 // ---------- Saisie (RH) ----------
 
-export const saveCourseSchema = z.object({
-  title: z.string().trim().min(3, '3 caractères minimum').max(160),
-  summary: z
-    .string()
-    .trim()
-    .max(2000)
-    .nullish()
-    .transform((v) => (v ? v : null)),
-  category: z.enum(ACADEMY_CATEGORIES),
-  /**
-   * Qui a fait la formation — facultatif. Un agent de l'APIX (son dossier) :
-   * il en suit les leçons, mais n'en passe pas l'évaluation. Ou une
-   * personne extérieure : son nom seul.
-   */
-  formateurEmployeeId: z.uuid().nullish(),
-  formateurNom: z.string().trim().max(160).nullish(),
-});
+export const saveCourseSchema = z
+  .object({
+    title: z.string().trim().min(3, '3 caractères minimum').max(160),
+    summary: z
+      .string()
+      .trim()
+      .max(2000)
+      .nullish()
+      .transform((v) => (v ? v : null)),
+    category: z.enum(ACADEMY_CATEGORIES),
+    /**
+     * Qui a fait la formation, obligatoire. Un agent de l'APIX (son
+     * dossier) : la personne en suit les leçons, mais n'en passe pas
+     * l'évaluation. Ou une personne externe : son nom seul.
+     */
+    formateurEmployeeId: z.uuid().nullish(),
+    formateurNom: z.string().trim().max(160).nullish(),
+  })
+  .refine((d) => Boolean(d.formateurEmployeeId) || (d.formateurNom ?? '').length >= 2, {
+    message: 'Choisissez le formateur',
+    path: ['formateurEmployeeId'],
+  });
 export type SaveCourseInput = z.infer<typeof saveCourseSchema>;
 
 /** Qui a fait la formation. */
@@ -104,7 +109,7 @@ export interface FormateurView {
 export interface AgentAcademy {
   employeeId: string;
   nom: string;
-  poste: string | null;
+  matricule: string;
 }
 
 /** Une formation que l'agent a faite — son dossier le dit. */

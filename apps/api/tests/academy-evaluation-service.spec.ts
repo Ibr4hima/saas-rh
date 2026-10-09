@@ -15,7 +15,7 @@ import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { QuestionInput, SessionUser } from '@teranga/contracts';
-import { questionSchema } from '@teranga/contracts';
+import { questionSchema, saveCourseSchema } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import type { QuestionPosee } from '../src/db/schema';
@@ -814,12 +814,27 @@ describe('le formateur, et qui gère le catalogue', () => {
         }),
       ),
     ).toBe('academy.formateur_inconnu');
-    await academy.modifierFormation(rh, courseId, {
-      title: 'PowerPoint',
-      summary: null,
-      category: 'bureautique',
-    });
-    expect((await academy.detail(agent, courseId)).formateur).toBeNull();
+  });
+
+  it('le formateur est obligatoire : un agent de l’APIX, ou un nom externe', () => {
+    const base = { title: 'PowerPoint', summary: null, category: 'bureautique' };
+    const refus = (x: unknown) => {
+      const r = saveCourseSchema.safeParse(x);
+      return r.success ? null : r.error.issues.map((i) => i.message);
+    };
+    expect(refus(base)).toEqual(['Choisissez le formateur']);
+    expect(refus({ ...base, formateurNom: '   ' })).toEqual(['Choisissez le formateur']);
+    expect(refus({ ...base, formateurNom: 'Cabinet Sénégal Formation' })).toBeNull();
+    expect(refus({ ...base, formateurEmployeeId: randomUUID() })).toBeNull();
+  });
+
+  it('les agents à désigner se lisent avec leur matricule', async () => {
+    expect(await academy.agentsPourFormateur(rh)).toEqual(
+      expect.arrayContaining([
+        { employeeId: agentEmployeeId, nom: 'Awa Diop', matricule: 'EVA-001' },
+        { employeeId: autreEmployeeId, nom: 'Moussa Diop', matricule: 'EVA-002' },
+      ]),
+    );
   });
 
   it('le formateur qui a quitté l’APIX reste le formateur quand on retouche la formation', async () => {
