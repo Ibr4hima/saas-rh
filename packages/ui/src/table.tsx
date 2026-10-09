@@ -36,6 +36,8 @@ export function Table({
 }) {
   return (
     <div
+      // La carte reconnaît ainsi le tableau posé contre son bord (voir Card).
+      data-tableau=""
       className={cn(
         pleine ? 'min-h-0 flex-1 overflow-auto' : 'overflow-x-auto',
         // Au bord d'une carte arrondie, le tableau en prend les coins : la

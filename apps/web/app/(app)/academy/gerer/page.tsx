@@ -100,7 +100,7 @@ export default function GererCataloguePage() {
         retrait="Vous gérerez de vous-même l’APIX Academy."
         titre="Déléguer l’APIX Academy"
       />
-      <Card className="pb-1">
+      <Card>
         {/* L'action « Nouvelle formation » vit dans le bandeau, comme l'action
             unique de chaque écran — la répéter ici en ferait deux. */}
         <CardHeader>
