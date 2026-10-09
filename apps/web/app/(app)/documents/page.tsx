@@ -2,7 +2,7 @@
 
 import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   AttestationApercu,
   BatchAdvanceResult,
@@ -597,6 +597,42 @@ function piecesOf(requests: DocumentRequestView[]): Piece[] {
 }
 
 /**
+ * Qui demande quoi : le nom, le matricule et la demande. Sur téléphone, le
+ * matricule passe à côté du nom et la demande dessous.
+ */
+function DemandesDuLot({ requests }: { requests: DocumentRequestView[] }) {
+  return (
+    <>
+      <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,0.7fr)_minmax(0,1.5fr)] gap-x-4 gap-y-2 text-[12.5px] sm:grid">
+        <span className="text-[11px] font-semibold text-ink-muted">Demandeur</span>
+        <span className="text-[11px] font-semibold text-ink-muted">Matricule</span>
+        <span className="text-[11px] font-semibold text-ink-muted">Demande</span>
+        {requests.map((r) => (
+          <Fragment key={r.id}>
+            <span className="truncate font-bold text-ink-strong" title={r.employeeName}>
+              {r.employeeName}
+            </span>
+            <span className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</span>
+            <span className="text-ink">{docLabels(r)}</span>
+          </Fragment>
+        ))}
+      </div>
+      <ul className="flex flex-col gap-2.5 text-[12.5px] sm:hidden">
+        {requests.map((r) => (
+          <li key={r.id}>
+            <p className="flex items-baseline gap-2">
+              <span className="font-bold text-ink-strong">{r.employeeName}</span>
+              <span className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</span>
+            </p>
+            <p className="text-ink">{docLabels(r)}</p>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+/**
  * Traiter un lot, en deux temps : PRÉVISUALISER, puis mettre à disposition.
  *
  * Valider annonce à l'employé que son document l'attend. Le faire sans avoir
@@ -652,13 +688,15 @@ function TraiterModal({
           }
         }
       }
+      // En ligne, ni point de retrait ni précision : le document est là.
+      const enMain = remise === 'main_propre';
       return api<BatchAdvanceResult>('/document-requests/batch-advance', {
         method: 'POST',
         body: {
           ids: requests.map((r) => r.id),
           status: 'ready',
-          pickupContact: pickupContact.trim() || undefined,
-          message: message.trim() || undefined,
+          pickupContact: (enMain && pickupContact.trim()) || undefined,
+          message: (enMain && message.trim()) || undefined,
         },
       });
     },
@@ -712,6 +750,9 @@ function TraiterModal({
   if (etape === 'remise') {
     const enLigne = remise === 'en_ligne';
     const sansDocument = requests.some((r) => r.fichiers.length === 0);
+    // Le pluriel compte les DOCUMENTS, pas les demandes : une seule demande
+    // peut en porter deux (attestation de travail et de salaire).
+    const plusieurs = pieces.length > 1;
     return (
       <Modal
         open
@@ -719,39 +760,6 @@ function TraiterModal({
         title="Mise à disposition"
         subtitle="Étape 2 sur 2 · Remise"
         maxWidth="max-w-2xl"
-        enTete={
-          <div
-            role="radiogroup"
-            aria-label="Remise"
-            className="flex items-center gap-0.5 rounded-full bg-bg p-0.5"
-          >
-            {(
-              [
-                ['main_propre', 'En main propre'],
-                ['en_ligne', 'En ligne'],
-              ] as const
-            ).map(([valeur, libelle]) => (
-              <button
-                key={valeur}
-                type="button"
-                role="radio"
-                aria-checked={remise === valeur}
-                onClick={() => {
-                  setErreur(null);
-                  setRemise(valeur);
-                }}
-                className={cn(
-                  'rounded-full px-3 py-1 text-[11.5px] font-bold whitespace-nowrap transition-colors',
-                  remise === valeur
-                    ? 'bg-surface text-primary shadow-sm'
-                    : 'text-ink-muted hover:text-ink',
-                )}
-              >
-                {libelle}
-              </button>
-            ))}
-          </div>
-        }
         footer={
           <>
             {erreur ? (
@@ -796,74 +804,77 @@ function TraiterModal({
           </>
         }
       >
+        <ModalSection title={plusieurs ? 'Documents demandés' : 'Document demandé'}>
+          <DemandesDuLot requests={requests} />
+        </ModalSection>
+
+        <ModalSection title="Remise">
+          <div
+            role="radiogroup"
+            aria-label="Remise"
+            className="flex gap-1 rounded-full border border-line-soft bg-bg p-1 sm:w-fit"
+          >
+            {(
+              [
+                ['main_propre', 'En main propre'],
+                ['en_ligne', 'En ligne'],
+              ] as const
+            ).map(([valeur, libelle]) => (
+              <button
+                key={valeur}
+                type="button"
+                role="radio"
+                aria-checked={remise === valeur}
+                onClick={() => {
+                  setErreur(null);
+                  setRemise(valeur);
+                }}
+                className={cn(
+                  'flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
+                  remise === valeur
+                    ? 'bg-surface text-primary shadow-sm'
+                    : 'text-ink-muted hover:text-ink',
+                )}
+              >
+                {libelle}
+              </button>
+            ))}
+          </div>
+        </ModalSection>
+
         {enLigne ? (
-          <>
-            {/* Le pluriel compte les DOCUMENTS, pas les demandes : une seule
-                demande peut en porter deux (attestation de travail et de salaire). */}
-            <ModalSection title={pieces.length > 1 ? 'Documents à déposer' : 'Document à déposer'}>
+          <ModalSection title={plusieurs ? 'Documents à déposer' : 'Document à déposer'}>
+            {requests.length > 1 ? (
               <div className="flex flex-col gap-2">
                 {requests.map((r) => (
                   <DocumentsDeposes key={r.id} demande={r} lot attendu onErreur={setErreur} />
                 ))}
               </div>
-            </ModalSection>
-            <ModalSection title="Précisions">
-              <ModalGrid>
-                <Field label="Original à retirer auprès de" htmlFor="pickupContact">
-                  <Input
-                    id="pickupContact"
-                    placeholder="Facultatif"
-                    value={pickupContact}
-                    onChange={(e) => setPickupContact(e.target.value)}
-                  />
-                </Field>
-                <Field label="Précision (facultatif)" htmlFor="pickupMessage">
-                  <Input
-                    id="pickupMessage"
-                    placeholder="Ex : le bulletin d’octobre suivra"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                  />
-                </Field>
-              </ModalGrid>
-            </ModalSection>
-          </>
+            ) : requests[0] ? (
+              <DocumentsDeposes demande={requests[0]} attendu onErreur={setErreur} />
+            ) : null}
+          </ModalSection>
         ) : (
-          <>
-            <ModalSection title="Point de retrait">
-              <ModalGrid>
-                <Field label="À retirer auprès de" htmlFor="pickupContact">
-                  <Input
-                    id="pickupContact"
-                    placeholder="Vous, si laissé vide"
-                    value={pickupContact}
-                    onChange={(e) => setPickupContact(e.target.value)}
-                  />
-                </Field>
-                <Field label="Précision (facultatif)" htmlFor="pickupMessage">
-                  <Input
-                    id="pickupMessage"
-                    placeholder="Ex : bureau 204, 9h–16h"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                  />
-                </Field>
-              </ModalGrid>
-            </ModalSection>
-
-            {/* Le pluriel compte les DOCUMENTS, pas les demandes : une seule
-                demande peut en porter deux (attestation de travail et de salaire). */}
-            <ModalSection title={pieces.length > 1 ? 'Documents demandés' : 'Document demandé'}>
-              <ul className="flex flex-col gap-1.5">
-                {requests.map((r) => (
-                  <li key={r.id} className="text-[12.5px]">
-                    <span className="font-bold text-ink-strong">{r.employeeName}</span>
-                    <span className="text-ink-muted"> · {docLabels(r)}</span>
-                  </li>
-                ))}
-              </ul>
-            </ModalSection>
-          </>
+          <ModalSection title="Point de retrait">
+            <ModalGrid>
+              <Field label="À retirer auprès de" htmlFor="pickupContact">
+                <Input
+                  id="pickupContact"
+                  placeholder="Vous, si laissé vide"
+                  value={pickupContact}
+                  onChange={(e) => setPickupContact(e.target.value)}
+                />
+              </Field>
+              <Field label="Précision (facultatif)" htmlFor="pickupMessage">
+                <Input
+                  id="pickupMessage"
+                  placeholder="Ex : bureau 204, 9h–16h"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                />
+              </Field>
+            </ModalGrid>
+          </ModalSection>
         )}
       </Modal>
     );

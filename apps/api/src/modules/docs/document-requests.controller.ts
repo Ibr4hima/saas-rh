@@ -7,6 +7,7 @@ import {
   Inject,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -20,10 +21,12 @@ import {
   createDocumentRequestSchema,
   deposerFichierSchema,
   documentRequestStatusSchema,
+  renommerFichierSchema,
   type AdvanceDocumentRequestInput,
   type BatchAdvanceDocumentRequestInput,
   type CreateDocumentRequestInput,
   type DeposerFichierInput,
+  type RenommerFichierInput,
 } from '@teranga/contracts';
 import { z } from 'zod';
 import { contentDisposition } from '../../common/telechargement';
@@ -112,6 +115,18 @@ export class DocumentRequestsController {
     @Param('fichierId', ParseUUIDPipe) fichierId: string,
   ) {
     await this.requests.retirerFichier(req.sessionUser, id, fichierId);
+  }
+
+  /** Son nom se corrige après dépôt : c'est celui que l'agent enregistre. */
+  @Patch('document-requests/:id/fichiers/:fichierId')
+  @HttpCode(204)
+  async renommerFichier(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fichierId', ParseUUIDPipe) fichierId: string,
+    @Body(new ZodValidationPipe(renommerFichierSchema)) body: RenommerFichierInput,
+  ) {
+    await this.requests.renommerFichier(req.sessionUser, id, fichierId, body.filename);
   }
 
   /** Le document remis, à enregistrer. */

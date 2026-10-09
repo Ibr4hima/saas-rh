@@ -2,28 +2,22 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type DragEvent } from 'react';
-import type { DocumentRequestView } from '@teranga/contracts';
-import {
-  documentDemande,
-  FICHIERS_REMIS_MAX,
-  MAX_FICHIER_REMIS_BYTES,
-  TYPES_DE_FICHIER_REMIS,
-} from '@teranga/contracts';
+import { createPortal } from 'react-dom';
+import type { DocumentRequestView, FichierRemisView } from '@teranga/contracts';
+import { documentDemande, FICHIERS_REMIS_MAX, MAX_FICHIER_REMIS_BYTES } from '@teranga/contracts';
 import { cn } from '@teranga/ui';
-import { api, ApiError } from '../lib/api';
-import { enregistrer, lireEnBase64, taille } from '../lib/fichiers';
+import { api, ApiError, apiUrl } from '../lib/api';
+import { lireEnBase64, taille } from '../lib/fichiers';
+import type { ViewableDoc } from './doc-viewer';
+import { FenetreDocument } from './fenetre-document';
 import { Icon } from './icons';
 
-type TypeRemis = (typeof TYPES_DE_FICHIER_REMIS)[number];
+/** Un PDF : celui que le poste annonce, ou à défaut son extension. */
+const estUnPdf = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
 
-/** Le type d'un fichier choisi : celui que le poste annonce, sinon son extension. */
-function typeDuFichier(f: File): TypeRemis | null {
-  if ((TYPES_DE_FICHIER_REMIS as readonly string[]).includes(f.type)) return f.type as TypeRemis;
-  const ext = f.name.toLowerCase().split('.').pop();
-  if (ext === 'pdf') return 'application/pdf';
-  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-  if (ext === 'png') return 'image/png';
-  return null;
+/** « Attestation Awa.pdf » → « Attestation Awa » : on nomme le document, pas son format. */
+function sansExtension(nom: string): string {
+  return nom.replace(/\.pdf$/i, '');
 }
 
 /** Un nom trop long se coupe avant l'extension, qui dit ce qu'est le fichier. */
@@ -36,14 +30,14 @@ function nomDuFichier(nom: string): string {
 
 /**
  * Les documents remis en ligne d'une demande : qui la traite y dépose le
- * document (« Joindre », ou en y glissant le fichier), le télécharge pour
- * vérifier, retire un mauvais fichier. Chaque geste part aussitôt au
- * serveur : rien ne se perd si la fenêtre se ferme.
+ * PDF (« Joindre », ou en y glissant le fichier), l'ouvre pour vérifier ce
+ * qui part, le renomme, retire un mauvais fichier. Chaque geste part aussitôt
+ * au serveur : rien ne se perd si la fenêtre se ferme.
  *
  * `lot` : une demande parmi d'autres, en carte, avec le nom de l'agent. Sinon,
  * la demande seule : ses fichiers, puis la zone où les déposer.
  * `attendu` : le dépôt est ce qu'attend la demande pour partir ; tant
- * qu'elle n'a aucun document, « Joindre » est orange.
+ * qu'elle n'a aucun document, l'appel à déposer est orange.
  */
 export function DocumentsDeposes({
   demande: r,
@@ -58,8 +52,7 @@ export function DocumentsDeposes({
 }) {
   const queryClient = useQueryClient();
   const [survol, setSurvol] = useState(false);
-  const [lecture, setLecture] = useState<string | null>(null);
-  const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['document-requests'] });
+  const [apercu, setApercu] = useState<ViewableDoc | null>(null);
 
   // Une clé commune : la fenêtre qui les contient attend la fin des envois.
   const deposer = useMutation({
@@ -70,20 +63,18 @@ export function DocumentsDeposes({
           `Au plus ${FICHIERS_REMIS_MAX} fichiers par demande : regroupez les pages dans un seul PDF.`,
         );
       }
-      const prets = fichiers.map((f) => {
-        const contentType = typeDuFichier(f);
-        if (!contentType) throw new Error(`« ${f.name} » : déposez un PDF, un JPEG ou un PNG.`);
+      for (const f of fichiers) {
+        if (!estUnPdf(f)) throw new Error(`« ${f.name} » n’est pas un PDF.`);
         if (f.size === 0 || f.size > MAX_FICHIER_REMIS_BYTES) {
           throw new Error(`« ${f.name} » dépasse ${taille(MAX_FICHIER_REMIS_BYTES)}.`);
         }
-        return { f, contentType };
-      });
-      for (const { f, contentType } of prets) {
+      }
+      for (const f of fichiers) {
         await api(`/document-requests/${r.id}/fichiers`, {
           method: 'POST',
           body: {
             filename: nomDuFichier(f.name),
-            contentType,
+            contentType: 'application/pdf',
             contentBase64: await lireEnBase64(f),
           },
         });
@@ -93,18 +84,13 @@ export function DocumentsDeposes({
     onError: (err) => onErreur(err instanceof Error ? err.message : 'Envoi impossible.'),
     // Le geste ne se termine qu'une fois la liste relue : le fichier apparaît
     // au moment où « Envoi… » disparaît.
-    onSettled: rafraichir,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['document-requests'] }),
   });
 
-  const retirer = useMutation({
-    mutationKey: ['documents-deposes'],
-    mutationFn: (fichierId: string) =>
-      api(`/document-requests/${r.id}/fichiers/${fichierId}`, { method: 'DELETE' }),
-    onSuccess: () => onErreur(null),
-    onError: (err) => onErreur(err instanceof ApiError ? err.message : 'Retrait impossible.'),
-    onSettled: rafraichir,
-  });
-
+  const choisir = (liste: FileList | null | undefined) => {
+    const fichiers = [...(liste ?? [])];
+    if (fichiers.length > 0) deposer.mutate(fichiers);
+  };
   const glisser = {
     onDragOver: (e: DragEvent) => {
       e.preventDefault();
@@ -117,17 +103,13 @@ export function DocumentsDeposes({
       choisir(e.dataTransfer.files);
     },
   };
-  const choisir = (liste: FileList | null | undefined) => {
-    const fichiers = [...(liste ?? [])];
-    if (fichiers.length > 0) deposer.mutate(fichiers);
-  };
   const champ = (
     <input
       type="file"
       // Dans un lot, chaque « Joindre » dit pour qui il dépose.
       aria-label={lot ? `Joindre un document pour ${r.employeeName}` : undefined}
       multiple
-      accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+      accept=".pdf,application/pdf"
       className="sr-only"
       onChange={(e) => {
         choisir(e.target.files);
@@ -135,55 +117,48 @@ export function DocumentsDeposes({
       }}
     />
   );
+  const enAttente = attendu && r.fichiers.length === 0;
 
   // Prête et sans point de retrait, la demande garde au moins un document :
   // on dépose d'abord le bon, puis on retire le mauvais.
   const dernierGarde = r.status === 'ready' && !r.pickupContact && r.fichiers.length <= 1;
-
   const liste =
     r.fichiers.length > 0 ? (
-      <ul className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-1.5">
         {r.fichiers.map((f) => (
-          <li key={f.id} className="flex min-w-0 items-center gap-2.5">
-            <Icon
-              name={f.contentType === 'application/pdf' ? 'picture_as_pdf' : 'image'}
-              size={17}
-              className="shrink-0 text-primary"
-            />
-            <button
-              type="button"
-              title={f.filename}
-              disabled={lecture === f.id}
-              onClick={async () => {
-                setLecture(f.id);
-                const ok = await enregistrer(
-                  `/document-requests/${r.id}/fichiers/${f.id}`,
-                  f.filename,
-                );
-                setLecture(null);
-                onErreur(ok ? null : 'Téléchargement impossible, réessayez.');
-              }}
-              className="min-w-0 flex-1 truncate text-left text-[12.5px] font-semibold text-ink-strong hover:text-primary hover:underline disabled:opacity-60"
-            >
-              {f.filename}
-            </button>
-            <span className="shrink-0 text-[11.5px] text-ink-muted tabular-nums">
-              {taille(f.sizeBytes)}
-            </span>
-            <button
-              type="button"
-              aria-label={`Retirer ${f.filename}`}
-              title={dernierGarde ? 'Déposez d’abord le bon fichier' : undefined}
-              disabled={dernierGarde || (retirer.isPending && retirer.variables === f.id)}
-              onClick={() => retirer.mutate(f.id)}
-              className="flex size-7 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-hover hover:text-danger disabled:pointer-events-none disabled:opacity-40"
-            >
-              <Icon name="close" size={16} />
-            </button>
-          </li>
+          <LigneDuFichier
+            key={f.id}
+            demande={r}
+            fichier={f}
+            dernierGarde={dernierGarde}
+            onApercu={() =>
+              setApercu({
+                url: apiUrl(`/document-requests/${r.id}/fichiers/${f.id}`),
+                filename: f.filename,
+                contentType: f.contentType,
+              })
+            }
+            onErreur={onErreur}
+          />
         ))}
       </ul>
     ) : null;
+
+  // L'aperçu s'ouvre AU-DESSUS de la fenêtre qui contient la liste : rendu
+  // dans le corps de la page, il n'est pas rogné par elle.
+  const fenetre =
+    apercu && typeof document !== 'undefined'
+      ? createPortal(
+          <FenetreDocument
+            doc={apercu}
+            onClose={() => setApercu(null)}
+            sousTitre={`${r.employeeName} · ${r.docTypes
+              .map((d) => documentDemande(d, r.bulletin))
+              .join(' · ')}`}
+          />,
+          document.body,
+        )
+      : null;
 
   if (!lot) {
     return (
@@ -196,12 +171,21 @@ export function DocumentsDeposes({
             'flex cursor-pointer flex-col items-center gap-2 rounded-[14px] border-[1.5px] border-dashed px-6 py-6 text-center transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary/40',
             survol
               ? 'border-primary bg-primary/[0.05]'
-              : 'border-line bg-surface-raised hover:border-primary/45 hover:bg-primary/[0.03]',
+              : enAttente
+                ? 'border-badge-orange-line bg-surface-raised hover:bg-accent-soft'
+                : 'border-line bg-surface-raised hover:border-primary/45 hover:bg-primary/[0.03]',
             deposer.isPending && 'pointer-events-none opacity-60',
           )}
         >
           {champ}
-          <span className="flex size-10 items-center justify-center rounded-full bg-primary-soft text-primary">
+          <span
+            className={cn(
+              'flex size-10 items-center justify-center rounded-full',
+              enAttente && !survol
+                ? 'bg-accent-soft text-badge-orange-ink'
+                : 'bg-primary-soft text-primary',
+            )}
+          >
             <Icon name="upload_file" size={20} />
           </span>
           <span className="text-[12.5px] text-ink">
@@ -209,7 +193,7 @@ export function DocumentsDeposes({
               'Envoi…'
             ) : (
               <>
-                Glissez vos fichiers ici, ou{' '}
+                Glissez le PDF ici, ou{' '}
                 <span className="font-semibold text-primary underline-offset-2 hover:underline">
                   parcourez
                 </span>
@@ -217,9 +201,10 @@ export function DocumentsDeposes({
             )}
           </span>
           <span className="text-[11.5px] text-ink-muted">
-            PDF, JPEG ou PNG · {taille(MAX_FICHIER_REMIS_BYTES)} maximum
+            PDF · {taille(MAX_FICHIER_REMIS_BYTES)} maximum
           </span>
         </label>
+        {fenetre}
       </div>
     );
   }
@@ -243,7 +228,7 @@ export function DocumentsDeposes({
           aria-disabled={deposer.isPending}
           className={cn(
             'inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors focus-within:ring-2 focus-within:ring-primary/40',
-            attendu && r.fichiers.length === 0
+            enAttente
               ? 'border-badge-orange-line text-badge-orange-ink hover:bg-accent-soft'
               : 'border-line text-primary hover:border-primary/40 hover:bg-primary/[0.07]',
             deposer.isPending && 'pointer-events-none opacity-60',
@@ -255,6 +240,142 @@ export function DocumentsDeposes({
         </label>
       </div>
       {liste ? <div className="mt-2.5 border-t border-line-soft pt-2.5">{liste}</div> : null}
+      {fenetre}
     </div>
+  );
+}
+
+/**
+ * Un document déposé. Un clic l'ouvre, pour voir ce qui part ; le crayon
+ * le renomme, sur place : c'est le nom que l'agent verra et enregistrera.
+ */
+function LigneDuFichier({
+  demande: r,
+  fichier: f,
+  dernierGarde,
+  onApercu,
+  onErreur,
+}: {
+  demande: DocumentRequestView;
+  fichier: FichierRemisView;
+  dernierGarde: boolean;
+  onApercu: () => void;
+  onErreur: (texte: string | null) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [edition, setEdition] = useState(false);
+  const [nom, setNom] = useState('');
+  const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['document-requests'] });
+
+  const renommer = useMutation({
+    mutationKey: ['documents-deposes'],
+    mutationFn: (nouveau: string) =>
+      api(`/document-requests/${r.id}/fichiers/${f.id}`, {
+        method: 'PATCH',
+        body: { filename: nouveau },
+      }),
+    onSuccess: () => {
+      onErreur(null);
+      setEdition(false);
+    },
+    onError: (err) => onErreur(err instanceof ApiError ? err.message : 'Renommage impossible.'),
+    onSettled: rafraichir,
+  });
+  const retirer = useMutation({
+    mutationKey: ['documents-deposes'],
+    mutationFn: () => api(`/document-requests/${r.id}/fichiers/${f.id}`, { method: 'DELETE' }),
+    onSuccess: () => onErreur(null),
+    onError: (err) => onErreur(err instanceof ApiError ? err.message : 'Retrait impossible.'),
+    onSettled: rafraichir,
+  });
+
+  const valider = () => {
+    const net = nom.trim();
+    if (!net || net === sansExtension(f.filename)) {
+      setEdition(false);
+      return;
+    }
+    renommer.mutate(net);
+  };
+
+  return (
+    <li className="flex min-w-0 items-center gap-2.5">
+      <button
+        type="button"
+        aria-label={`Ouvrir ${f.filename}`}
+        onClick={onApercu}
+        className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-primary-soft text-primary transition-colors hover:bg-primary/15"
+      >
+        <Icon name={f.contentType === 'application/pdf' ? 'picture_as_pdf' : 'image'} size={17} />
+      </button>
+      {edition ? (
+        // Le nom se modifie sur place, comme au dépôt d'une pièce : Entrée
+        // l'enregistre, Échap l'abandonne sans fermer la fenêtre.
+        <div className="flex min-w-0 flex-1 items-center gap-1 border-b border-primary pb-0.5">
+          <label htmlFor={`nom-${f.id}`} className="sr-only">
+            Nom du document
+          </label>
+          <input
+            id={`nom-${f.id}`}
+            autoFocus
+            autoComplete="off"
+            value={nom}
+            maxLength={120}
+            disabled={renommer.isPending}
+            onFocus={(e) => e.currentTarget.select()}
+            onChange={(e) => setNom(e.target.value)}
+            onBlur={valider}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                valider();
+              } else if (e.key === 'Escape') {
+                e.stopPropagation();
+                e.nativeEvent.stopImmediatePropagation();
+                setEdition(false);
+              }
+            }}
+            className="min-w-0 flex-1 bg-transparent text-[12.5px] font-semibold text-ink-strong outline-none disabled:opacity-60"
+          />
+          <Icon name="edit" size={14} className="shrink-0 text-ink-muted/70" />
+        </div>
+      ) : (
+        <>
+          <button
+            type="button"
+            title={f.filename}
+            onClick={onApercu}
+            className="min-w-0 truncate text-left text-[12.5px] font-semibold text-ink-strong hover:text-primary hover:underline"
+          >
+            {f.filename}
+          </button>
+          <button
+            type="button"
+            aria-label={`Renommer ${f.filename}`}
+            onClick={() => {
+              setNom(sansExtension(f.filename));
+              setEdition(true);
+            }}
+            className="flex size-7 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-hover hover:text-primary"
+          >
+            <Icon name="edit" size={15} />
+          </button>
+          <span className="flex-1" />
+        </>
+      )}
+      <span className="shrink-0 text-[11.5px] text-ink-muted tabular-nums">
+        {taille(f.sizeBytes)}
+      </span>
+      <button
+        type="button"
+        aria-label={`Retirer ${f.filename}`}
+        title={dernierGarde ? 'Déposez d’abord le bon fichier' : undefined}
+        disabled={dernierGarde || retirer.isPending}
+        onClick={() => retirer.mutate()}
+        className="flex size-7 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-hover hover:text-danger disabled:pointer-events-none disabled:opacity-40"
+      >
+        <Icon name="close" size={16} />
+      </button>
+    </li>
   );
 }

@@ -44,6 +44,18 @@ export function chiffrerPiece(
   };
 }
 
+/** Le nouveau nom d'une pièce renommée, chiffré pour sa place comme l'ancien. */
+export function nouveauNomDeLaPiece(
+  enc: EncryptionService,
+  table: TableDePieces,
+  ligne: { tenantId: string; id: string; cleVersion: number | null },
+  filename: string,
+): string {
+  return ligne.cleVersion === null
+    ? filename
+    : enc.chiffrerTexte(filename, place(table, ligne.tenantId, ligne.id, 'filename'), 'dossiers');
+}
+
 export function nomDeLaPiece(
   enc: EncryptionService,
   table: TableDePieces,

@@ -27,7 +27,12 @@ import {
   REQUESTABLE_DOC_LABELS,
 } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
-import { chiffrerPiece, contenuDeLaPiece, nomDeLaPiece } from '../../common/pieces-chiffrees';
+import {
+  chiffrerPiece,
+  contenuDeLaPiece,
+  nomDeLaPiece,
+  nouveauNomDeLaPiece,
+} from '../../common/pieces-chiffrees';
 import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -72,12 +77,15 @@ function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
 /** La signature du fichier : le type annoncé seul ne prouve rien. */
 const SIGNATURES: Record<string, (b: Buffer) => boolean> = {
   'application/pdf': (b) => b.subarray(0, 5).toString() === '%PDF-',
-  'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
-  'image/png': (b) =>
-    b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
 };
 
-/** Le document déposé : PDF, JPEG ou PNG, 5 Mo au plus. Sa signature le prouve. */
+/** « Attestation Awa » → « Attestation Awa.pdf » : le nom garde son format. */
+function nomDuPdf(nom: string): string {
+  const net = nom.trim();
+  return /\.pdf$/i.test(net) ? net : `${net}.pdf`;
+}
+
+/** Le document déposé : un PDF, 5 Mo au plus. Sa signature le prouve. */
 function lireLeFichier(input: DeposerFichierInput): Buffer {
   const data = Buffer.from(input.contentBase64, 'base64');
   if (data.length === 0 || data.length > MAX_FICHIER_REMIS_BYTES) {
@@ -88,7 +96,7 @@ function lireLeFichier(input: DeposerFichierInput): Buffer {
       422,
       'documents.bad_format',
       'Le contenu ne correspond pas au format annoncé',
-      'Déposez un PDF, un JPEG ou un PNG.',
+      'Déposez un PDF.',
     );
   }
   return data;
@@ -782,7 +790,7 @@ export class DocumentRequestsService {
         );
       }
       const id = uuidv7();
-      const filename = input.filename.trim();
+      const filename = nomDuPdf(input.filename);
       const [cree] = await tx
         .insert(t.documentRequestFiles)
         .values({
@@ -855,6 +863,46 @@ export class DocumentRequestsService {
         );
       }
       await tx.delete(t.documentRequestFiles).where(eq(t.documentRequestFiles.id, fichierId));
+    });
+  }
+
+  /**
+   * Renommer un document remis : son nom est celui que l'agent voit et
+   * enregistre. Mêmes règles que le dépôt ; le contenu, lui, ne change pas.
+   */
+  async renommerFichier(
+    user: SessionUser,
+    requestId: string,
+    fichierId: string,
+    filename: string,
+  ): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.demandeARemettre(tx, user, requestId);
+      const [f] = await tx
+        .select({
+          id: t.documentRequestFiles.id,
+          tenantId: t.documentRequestFiles.tenantId,
+          cleVersion: t.documentRequestFiles.cleVersion,
+        })
+        .from(t.documentRequestFiles)
+        .where(
+          and(
+            eq(t.documentRequestFiles.id, fichierId),
+            eq(t.documentRequestFiles.requestId, requestId),
+          ),
+        );
+      if (!f) problem(404, 'documents.fichier_introuvable', 'Fichier introuvable');
+      await tx
+        .update(t.documentRequestFiles)
+        .set({
+          filename: nouveauNomDeLaPiece(
+            this.crypto,
+            'document_request_files',
+            f,
+            nomDuPdf(filename),
+          ),
+        })
+        .where(eq(t.documentRequestFiles.id, fichierId));
     });
   }
 

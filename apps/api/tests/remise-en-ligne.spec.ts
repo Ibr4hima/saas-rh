@@ -237,20 +237,20 @@ describe('déposer', () => {
     );
   });
 
-  it('vérifie ce que le fichier est, et sa taille', async () => {
+  it('n’accepte qu’un PDF, et le vérifie', async () => {
     const id = await demander(awa);
     expect(await codeOf(() => service.deposer(rh, id, fichier(Buffer.from('pas un pdf'))))).toBe(
       'documents.bad_format',
     );
-    expect(await codeOf(() => service.deposer(rh, id, fichier(PDF, 'scan.png', 'image/png')))).toBe(
-      'documents.bad_format',
-    );
-    expect(await codeOf(() => service.deposer(rh, id, fichier(PNG, 'scan.png', 'image/png')))).toBe(
+    // Une image, même annoncée comme telle, ne se dépose plus.
+    const image = { ...fichier(PNG, 'scan.png'), contentType: 'image/png' };
+    expect(deposerFichierSchema.safeParse(image).success).toBe(false);
+    expect(
+      await codeOf(() => service.deposer(rh, id, image as unknown as DeposerFichierInput)),
+    ).toBe('documents.bad_format');
+    expect(await codeOf(() => service.deposer(rh, id, fichier(PDF, 'scan.pdf')))).toBe(
       'AUCUNE ERREUR',
     );
-    expect(
-      deposerFichierSchema.safeParse({ ...fichier(PDF), contentType: 'application/zip' }).success,
-    ).toBe(false);
   });
 
   it('refuse une demande close', async () => {
@@ -368,6 +368,31 @@ describe('côté DCH', () => {
     ]);
     await service.retirerFichier(rh, id, mauvais.id);
     expect((await vue(awa, id, 'mine')).fichiers.map((x) => x.filename)).toEqual(['bon.pdf']);
+  });
+
+  it('renomme un document : l’agent le voit sous son nouveau nom, toujours en PDF', async () => {
+    const id = await demander(awa);
+    const f = await service.deposer(rh, id, fichier(PDF, 'scan_0042.pdf'));
+    await service.renommerFichier(rh, id, f.id, '  Attestation de travail Awa Diop ');
+    await service.batchAdvance(rh, { ids: [id], status: 'ready' });
+    expect((await vue(awa, id, 'mine')).fichiers.map((x) => x.filename)).toEqual([
+      'Attestation de travail Awa Diop.pdf',
+    ]);
+    expect((await service.fichier(awa, id, f.id)).filename).toBe(
+      'Attestation de travail Awa Diop.pdf',
+    );
+    // Le nouveau nom est chiffré comme l'ancien.
+    const { rows } = await raw(`SELECT filename FROM document_request_files WHERE id = $1`, [f.id]);
+    expect((rows[0] as { filename: string }).filename).not.toContain('Attestation');
+    // Mêmes règles que le dépôt : ni l'agent, ni qui ne traite pas ce type.
+    expect(await codeOf(() => service.renommerFichier(awa, id, f.id, 'x'))).toBe(
+      'documents.forbidden_scope',
+    );
+    const bulletin = await demander(moussa, 'bulletin_salaire');
+    const b = await service.deposer(rh, bulletin, fichier(PDF));
+    expect(await codeOf(() => service.renommerFichier(khady, bulletin, b.id, 'x'))).toBe(
+      'demandes.pas_traitant',
+    );
   });
 
   it('n’en garde aucun d’une demande refusée ou annulée', async () => {

@@ -224,12 +224,12 @@ export interface CreateDocumentRequestResult {
 }
 
 /*
-   La remise en ligne (ADR-0040) : qui traite la demande y dépose le
-   document, et l'agent le télécharge depuis son espace une fois la demande
-   prête. Plus besoin de passer au bureau, en télétravail ou en déplacement.
-   PDF, JPEG ou PNG, 5 Mo au plus par fichier, douze fichiers au plus.
+   La remise en ligne (ADR-0040, ADR-0041) : qui traite la demande y dépose
+   le document, et l'agent le télécharge depuis son espace une fois la
+   demande prête. Plus besoin de passer au bureau, en télétravail ou en
+   déplacement. Un PDF, 5 Mo au plus par fichier, douze fichiers au plus.
 */
-export const TYPES_DE_FICHIER_REMIS = ['application/pdf', 'image/jpeg', 'image/png'] as const;
+export const TYPES_DE_FICHIER_REMIS = ['application/pdf'] as const;
 export const MAX_FICHIER_REMIS_BYTES = 5 * 1024 * 1024;
 export const FICHIERS_REMIS_MAX = 12;
 
@@ -242,6 +242,12 @@ export const deposerFichierSchema = z.object({
     .max(Math.ceil((MAX_FICHIER_REMIS_BYTES * 4) / 3) + 4),
 });
 export type DeposerFichierInput = z.infer<typeof deposerFichierSchema>;
+
+/** Le nom d'un document remis se corrige : c'est celui que l'agent enregistre. */
+export const renommerFichierSchema = z.object({
+  filename: z.string().trim().min(1).max(200),
+});
+export type RenommerFichierInput = z.infer<typeof renommerFichierSchema>;
 
 /** Un document remis en ligne, sans son contenu : seul le téléchargement le lit. */
 export interface FichierRemisView {
