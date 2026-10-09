@@ -4,10 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { BalanceView, MyEmployeeView } from '@teranga/contracts';
-import { Card, CardHeader, CardTitle, Skeleton } from '@teranga/ui';
-import { EnTete, Repere } from '../../../../components/fiche';
+import { Skeleton } from '@teranga/ui';
+import { BlocQuiOuvre, EnTete, Repere } from '../../../../components/fiche';
 import { aujourdhui, FenetreDemandeAbsence } from '../../../../components/fenetre-demande-absence';
-import { Icon } from '../../../../components/icons';
 import { Page } from '../../../../components/gabarit';
 import { api } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/hooks';
@@ -69,39 +68,24 @@ export default function PoserUneDemandePage() {
         }
       />
 
-      {/* ———— Le bloc qui ouvre la fiche de la demande ———— */}
-      <Card>
-        <CardHeader className="p-0">
-          <button
-            type="button"
-            disabled={!employeeId}
-            onClick={() => {
-              setEnvoyee(null);
-              setOuverte(true);
-            }}
-            className="group flex w-full items-center gap-3 px-5 py-4 text-left focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
-          >
-            <CardTitle className="min-w-0 flex-1">Poser une demande</CardTitle>
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink-muted transition-colors duration-200 group-hover:border-primary/40 group-hover:bg-primary/[0.06] group-hover:text-primary">
-              <Icon name="add" size={18} />
-            </span>
-          </button>
-        </CardHeader>
-        {envoyee !== null ? (
-          <p
-            role="status"
-            className="flex items-start gap-2 border-t border-line-soft px-5 py-3.5 text-[12.5px] font-semibold text-success"
-          >
-            <Icon name="check_circle" size={15} className="mt-px shrink-0" />
-            <span>
+      <BlocQuiOuvre
+        titre="Poser une demande"
+        disabled={!employeeId}
+        onOuvrir={() => {
+          setEnvoyee(null);
+          setOuverte(true);
+        }}
+        envoi={
+          envoyee !== null ? (
+            <>
               Demande envoyée : {envoyee}.{' '}
               <Link href="/moi/conges/historique" className="underline">
                 Voir l&apos;historique
               </Link>
-            </span>
-          </p>
-        ) : null}
-      </Card>
+            </>
+          ) : null
+        }
+      />
 
       {ouverte && employeeId ? (
         <FenetreDemandeAbsence

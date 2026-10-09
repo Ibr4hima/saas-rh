@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Card, cn } from '@teranga/ui';
+import { Card, CardHeader, CardTitle, cn } from '@teranga/ui';
+import { Icon } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
    Les pièces d'un registre : un intitulé gris, une valeur, des sections
@@ -79,6 +80,51 @@ export function EnTete({
             {reperes}
           </dl>
         </div>
+      ) : null}
+    </Card>
+  );
+}
+
+/**
+ * Le bloc qui ouvre la fiche d'une demande (« Poser une demande »,
+ * « Demander un document ») : son intitulé, et le « + » qui ouvre la fiche
+ * en fenêtre. Après l'envoi, ce qui vient de partir se lit dessous.
+ */
+export function BlocQuiOuvre({
+  titre,
+  onOuvrir,
+  disabled,
+  envoi,
+}: {
+  titre: string;
+  onOuvrir: () => void;
+  disabled?: boolean;
+  /** « Demande envoyée. », et où la suivre. */
+  envoi?: React.ReactNode;
+}) {
+  return (
+    <Card>
+      <CardHeader className="p-0">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onOuvrir}
+          className="group flex w-full items-center gap-3 px-5 py-4 text-left focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+        >
+          <CardTitle className="min-w-0 flex-1">{titre}</CardTitle>
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink-muted transition-colors duration-200 group-hover:border-primary/40 group-hover:bg-primary/[0.06] group-hover:text-primary">
+            <Icon name="add" size={18} />
+          </span>
+        </button>
+      </CardHeader>
+      {envoi ? (
+        <p
+          role="status"
+          className="flex items-start gap-2 border-t border-line-soft px-5 py-3.5 text-[12.5px] font-semibold text-success"
+        >
+          <Icon name="check_circle" size={15} className="mt-px shrink-0" />
+          <span>{envoi}</span>
+        </p>
       ) : null}
     </Card>
   );

@@ -17,29 +17,22 @@ import {
   periodeEnLettres,
   REQUESTABLE_DOC_LABELS,
 } from '@teranga/contracts';
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  cn,
-  Field,
-  Input,
-  Select,
-} from '@teranga/ui';
+import { Button, cn, Field, Select } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
+import { BlocQuiOuvre } from '../../../../components/fiche';
 import { Icon } from '../../../../components/icons';
+import { Modal, ModalSection } from '../../../../components/modal';
 import { Page } from '../../../../components/gabarit';
 import { compte } from '../../../../lib/mots';
 import { aujourdhui } from '../../../../lib/temps';
 
-/* ————————————————————————————————————————————————————————————————
-   « Demander un document » — ce que l'agent DEMANDE à la Direction du
-   Capital Humain (attestation, contrat, bulletin) : il coche, il envoie.
-   L'avancement se suit dans « Suivi de mes demandes » ; ce qu'il FOURNIT a
-   sa page, « Joindre un document ».
-   ———————————————————————————————————————————————————————————————— */
+/*
+   « Demander un document » : ce que l'agent demande à la Direction du
+   Capital Humain (attestation, contrat, bulletin). Comme « Poser une
+   demande », la page tient en un bloc, et son « + » ouvre la fiche en
+   fenêtre : on coche, on envoie. L'avancement se suit dans « Suivi de mes
+   demandes » ; ce que l'agent fournit a sa page, « Joindre un document ».
+*/
 
 const REQUESTABLE: RequestableDoc[] = [
   'attestation_travail',
@@ -103,22 +96,72 @@ const moisAffiche = (mois: string) => {
   return t.charAt(0).toUpperCase() + t.slice(1);
 };
 
-export default function MyDocumentsPage() {
-  const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<RequestableDoc[]>([]);
-  const [note, setNote] = useState('');
-  const [bulletin, setBulletin] = useState<ChoixBulletin>(BULLETIN_VIDE);
-  const [error, setError] = useState<string | null>(null);
-  /** Le nombre de documents qui viennent de partir — chacun est une demande. */
-  const [sent, setSent] = useState(0);
-
+export default function DemanderUnDocumentPage() {
+  const [ouverte, setOuverte] = useState(false);
+  /** Le nombre de documents qui viennent de partir : chacun est une demande. */
+  const [envoyes, setEnvoyes] = useState(0);
   // L'arrivée de l'agent borne les mois de paie à demander.
   const moi = useQuery({
     queryKey: ['me-employee'],
     queryFn: () => api<MyEmployeeView>('/me/employee'),
     retry: false,
   });
-  const moisPossibles = moisDePaie(moi.data?.hiredOn.slice(0, 7));
+
+  return (
+    <Page>
+      <BlocQuiOuvre
+        titre="Demander un document"
+        disabled={!moi.data}
+        onOuvrir={() => {
+          setEnvoyes(0);
+          setOuverte(true);
+        }}
+        envoi={
+          envoyes > 0 ? (
+            <>
+              {envoyes > 1 ? `${envoyes} demandes envoyées.` : 'Demande envoyée.'}{' '}
+              <Link href="/moi/documents/suivi" className="underline">
+                Suivre mes demandes
+              </Link>
+            </>
+          ) : null
+        }
+      />
+
+      {ouverte && moi.data ? (
+        <FenetreDemandeDocument
+          arrivee={moi.data.hiredOn.slice(0, 7)}
+          onClose={() => setOuverte(false)}
+          onEnvoyee={(n) => {
+            setOuverte(false);
+            setEnvoyes(n);
+          }}
+        />
+      ) : null}
+    </Page>
+  );
+}
+
+/**
+ * La fiche d'une demande de document : les documents qu'on coche, les mois
+ * du bulletin s'il en fait partie, et ce qui part, en toutes lettres.
+ */
+function FenetreDemandeDocument({
+  arrivee,
+  onClose,
+  onEnvoyee,
+}: {
+  /** Le mois d'arrivée de l'agent : les mois de paie ne remontent pas avant. */
+  arrivee: string;
+  onClose: () => void;
+  /** Le nombre de documents partis. */
+  onEnvoyee: (n: number) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<RequestableDoc[]>([]);
+  const [bulletin, setBulletin] = useState<ChoixBulletin>(BULLETIN_VIDE);
+  const [error, setError] = useState<string | null>(null);
+  const moisPossibles = moisDePaie(arrivee);
   const avecBulletin = selected.includes('bulletin_salaire');
   const periode = avecBulletin ? periodeChoisie(bulletin) : null;
 
@@ -132,31 +175,21 @@ export default function MyDocumentsPage() {
     mutationFn: () =>
       api('/document-requests', {
         method: 'POST',
-        body: {
-          docTypes: selected,
-          bulletin: periode ?? undefined,
-          note: note.trim() || undefined,
-        },
+        body: { docTypes: selected, bulletin: periode ?? undefined },
       }),
     onSuccess: () => {
-      setSelected([]);
-      setNote('');
-      setBulletin(BULLETIN_VIDE);
-      setError(null);
-      setSent(selected.length);
       void queryClient.invalidateQueries({ queryKey: ['document-requests'] });
+      onEnvoyee(selected.length);
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Envoi impossible.'),
   });
 
-  const demandes = docRequests.data ?? [];
   // Un document déjà demandé, et encore en cours, ne se redemande pas : le
-  // serveur le refuse, la pastille le dit avant — l'agent ne compose pas
-  // une demande pour se la voir rejeter à l'envoi.
-  const enCours = documentsEnCours(demandes);
+  // serveur le refuse, et la pastille le dit avant. On ne compose pas une
+  // demande pour se la voir refuser à l'envoi.
+  const enCours = documentsEnCours(docRequests.data ?? []);
   const toggle = (doc: RequestableDoc) => {
     if (enCours.has(doc)) return;
-    setSent(0);
     if (doc === 'bulletin_salaire') setBulletin(BULLETIN_VIDE);
     setSelected(selected.includes(doc) ? selected.filter((d) => d !== doc) : [...selected, doc]);
   };
@@ -167,82 +200,72 @@ export default function MyDocumentsPage() {
       : REQUESTABLE_DOC_LABELS[d];
 
   return (
-    <Page>
-      <Card>
-        <CardHeader>
-          <CardTitle>Demander un document</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-wrap gap-2">
-            {REQUESTABLE.map((doc) => (
-              <ChoixDocument
-                key={doc}
-                libelle={REQUESTABLE_DOC_LABELS[doc]}
-                choisi={selected.includes(doc)}
-                enCours={enCours.has(doc)}
-                onToggle={() => toggle(doc)}
-              />
-            ))}
-          </div>
-
-          {avecBulletin ? (
-            <ChoixDuBulletin valeur={bulletin} onChange={setBulletin} mois={moisPossibles} />
-          ) : null}
-
-          <Field label="Précision" htmlFor="doc-note">
-            <Input id="doc-note" value={note} onChange={(e) => setNote(e.target.value)} />
-          </Field>
-
-          {/* ———— Ce qui part, en toutes lettres ————
-              Deux pastilles cochées se lisent d'un coup d'œil ; à quatre,
-              relire la ligne est plus sûr que recompter les bordures bleues. */}
-          {selected.length > 0 ? (
-            <p className="text-[12.5px] leading-snug text-ink">
-              <span className="font-semibold text-ink-strong">
-                Vous demandez {compte(selected.length, 'document')}
-              </span>{' '}
-              {/* Les libellés gardent leur majuscule : « et autre document »
-                  en bas de casse se lit comme une phrase inachevée, alors
-                  que « et Autre document » se lit comme l'entrée cochée. */}
-              : {enumerer(selected.map(libelleChoisi))}.
-            </p>
-          ) : null}
-        </CardContent>
-
-        {/* ———— L'envoi ———— */}
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line-soft px-5 py-4">
+    <Modal
+      open
+      onClose={onClose}
+      title="Demander un document"
+      maxWidth="max-w-2xl"
+      footer={
+        <>
           {error ? (
             <p
               role="alert"
-              className="flex min-w-0 flex-1 basis-60 items-start gap-2 text-[12.5px] font-semibold text-danger"
+              className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
             >
-              <Icon name="error" size={15} className="mt-px shrink-0" />
               {error}
             </p>
-          ) : sent ? (
-            <p
-              role="status"
-              className="flex min-w-0 flex-1 basis-60 items-start gap-2 text-[12.5px] font-semibold text-success"
-            >
-              <Icon name="check_circle" size={15} className="mt-px shrink-0" />
-              <span>
-                {sent > 1 ? `${sent} demandes envoyées.` : 'Demande envoyée.'}{' '}
-                <Link href="/moi/documents/suivi" className="underline">
-                  Suivre mes demandes
-                </Link>
-              </span>
-            </p>
           ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
           <Button
             disabled={selected.length === 0 || (avecBulletin && !periode)}
             loading={submit.isPending}
-            onClick={() => submit.mutate()}
+            onClick={() => {
+              setError(null);
+              submit.mutate();
+            }}
           >
             Envoyer ma demande
           </Button>
+        </>
+      }
+    >
+      <ModalSection title="Documents">
+        <div className="flex flex-wrap gap-2">
+          {REQUESTABLE.map((doc) => (
+            <ChoixDocument
+              key={doc}
+              libelle={REQUESTABLE_DOC_LABELS[doc]}
+              choisi={selected.includes(doc)}
+              enCours={enCours.has(doc)}
+              onToggle={() => toggle(doc)}
+            />
+          ))}
         </div>
-      </Card>
-    </Page>
+      </ModalSection>
+
+      {avecBulletin ? (
+        <ModalSection title="Bulletin de salaire">
+          <ChoixDuBulletin valeur={bulletin} onChange={setBulletin} mois={moisPossibles} />
+        </ModalSection>
+      ) : null}
+
+      {/* Ce qui part, en toutes lettres : deux pastilles cochées se lisent
+          d'un coup d'œil ; à quatre, relire la ligne est plus sûr que
+          recompter les bordures bleues. */}
+      {selected.length > 0 ? (
+        <p className="px-1 text-[12.5px] leading-snug text-ink">
+          <span className="font-semibold text-ink-strong">
+            Vous demandez {compte(selected.length, 'document')}
+          </span>{' '}
+          {/* Les libellés gardent leur majuscule : « et autre document »
+              en bas de casse se lit comme une phrase inachevée, alors
+              que « et Autre document » se lit comme l'entrée cochée. */}
+          : {enumerer(selected.map(libelleChoisi))}.
+        </p>
+      ) : null}
+    </Modal>
   );
 }
 
@@ -283,43 +306,39 @@ function ChoixDuBulletin({
 
   return (
     <div className="flex flex-col gap-3">
-      <div>
-        {/* Le libellé d'un champ, comme « Précision » : un groupe de choix. */}
-        <p id="bulletin-question" className="mb-1.5 text-sm font-medium text-ink-strong">
-          Bulletin de salaire<span className="text-danger"> *</span>
-        </p>
-        <div role="radiogroup" aria-labelledby="bulletin-question" className="flex flex-wrap gap-2">
-          {modes.map((o) => {
-            const actif = valeur.mode === o.v;
-            return (
-              <button
-                key={o.v}
-                type="button"
-                role="radio"
-                aria-checked={actif}
-                onClick={() => onChange({ ...BULLETIN_VIDE, mode: o.v })}
+      {/* L'intitulé « Bulletin de salaire » est celui de la section : le
+          groupe de choix le reprend pour les lecteurs d'écran. */}
+      <div role="radiogroup" aria-label="Bulletin de salaire" className="flex flex-wrap gap-2">
+        {modes.map((o) => {
+          const actif = valeur.mode === o.v;
+          return (
+            <button
+              key={o.v}
+              type="button"
+              role="radio"
+              aria-checked={actif}
+              onClick={() => onChange({ ...BULLETIN_VIDE, mode: o.v })}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full border py-[7px] pr-3.5 pl-2.5 text-[12.5px] transition-colors duration-150',
+                actif
+                  ? 'border-primary bg-primary-soft font-semibold text-primary'
+                  : 'border-line text-ink hover:border-ink-muted/40 hover:bg-hover',
+              )}
+            >
+              <span
+                aria-hidden
                 className={cn(
-                  'inline-flex items-center gap-2 rounded-full border py-[7px] pr-3.5 pl-2.5 text-[12.5px] transition-colors duration-150',
-                  actif
-                    ? 'border-primary bg-primary-soft font-semibold text-primary'
-                    : 'border-line text-ink hover:border-ink-muted/40 hover:bg-hover',
+                  // Un rond : un seul choix à la fois.
+                  'flex size-[15px] shrink-0 items-center justify-center rounded-full border transition-colors duration-150',
+                  actif ? 'border-primary' : 'border-line bg-surface',
                 )}
               >
-                <span
-                  aria-hidden
-                  className={cn(
-                    // Un rond : un seul choix à la fois.
-                    'flex size-[15px] shrink-0 items-center justify-center rounded-full border transition-colors duration-150',
-                    actif ? 'border-primary' : 'border-line bg-surface',
-                  )}
-                >
-                  {actif ? <span className="size-[7px] rounded-full bg-primary" /> : null}
-                </span>
-                {o.label}
-              </button>
-            );
-          })}
-        </div>
+                {actif ? <span className="size-[7px] rounded-full bg-primary" /> : null}
+              </span>
+              {o.label}
+            </button>
+          );
+        })}
       </div>
 
       {valeur.mode === 'mois' ? (
