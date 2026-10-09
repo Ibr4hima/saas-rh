@@ -242,9 +242,7 @@ export default function SuiviDemandesDocumentsPage() {
         {traiteesOuvertes && reste > 0 ? (
           <div className="flex justify-center border-t border-line-soft px-5 py-3">
             <Button size="sm" variant="secondary" onClick={() => setSuite(true)}>
-              {reste === 1
-                ? 'Afficher l’autre demande traitée'
-                : 'Afficher les autres demandes traitées'}
+              Afficher la suite
               <Icon name="chevron_right" size={16} className="-mr-1 rotate-90" />
             </Button>
           </div>
