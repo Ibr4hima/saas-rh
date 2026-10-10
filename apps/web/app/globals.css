@@ -538,96 +538,11 @@ body {
   padding-inline: 20px;
 }
 
-/* Les cases à cocher, dessinées par la plateforme plutôt que par le
-   navigateur : un carré arrondi au trait fin, plein de bleu et coché de blanc
-   une fois l'objectif tenu — pareil en lecture, où la case grisée « désactivée »
-   du navigateur faisait croire à une erreur. Calées au centre de LEUR ligne :
-   BlockNote les posait sur 24 px, la hauteur d'une ligne à 16 px. */
-.fiche-objectifs {
-  --coche: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.4l2.9 2.9 5.9-6.4' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  /* Partiellement : un trait, brun sur le jaune. Non atteint : une croix. */
-  --tiret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8h8' fill='none' stroke='%233d2b00' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E");
-  --croix: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5 5l6 6M11 5l-6 6' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E");
-}
-:root[data-theme='dark'] .fiche-objectifs {
-  --coche: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.4l2.9 2.9 5.9-6.4' fill='none' stroke='%2314172a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  --tiret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8h8' fill='none' stroke='%2314172a' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E");
-  --croix: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5 5l6 6M11 5l-6 6' fill='none' stroke='%2314172a' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E");
-}
-.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div:has(> input) {
-  display: flex;
-  align-items: center;
-  height: 1.5em;
-}
-.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input {
-  appearance: none;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin: 0 11px 0 1px;
-  border: 1.5px solid color-mix(in srgb, var(--tg-ink-muted) 42%, transparent);
-  border-radius: 5px;
-  background: var(--tg-surface) center / 11px no-repeat;
-  cursor: pointer;
-  transition:
-    background-color 120ms ease-out,
-    border-color 120ms ease-out;
-}
-.fiche-objectifs
-  .bn-block-content[data-content-type='checkListItem']
-  > div
-  > input:hover:not(:disabled) {
-  border-color: var(--tg-primary);
-}
-.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input:checked {
-  border-color: var(--tg-primary);
-  background-color: var(--tg-primary);
-  background-image: var(--coche);
-}
-.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input:disabled {
-  cursor: default;
-}
-.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--tg-primary) 45%, transparent);
-  outline-offset: 2px;
-}
-/* Cocher se sent : la case s'enfonce puis revient — au clic seulement, pas
-   au chargement d'une fiche déjà cochée. */
-@keyframes fiche-coche {
-  from {
-    transform: scale(0.78);
-  }
-  to {
-    transform: none;
-  }
-}
-.fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input:checked:focus {
-  animation: fiche-coche 180ms cubic-bezier(0.2, 0.9, 0.3, 1.25);
-}
-@media (prefers-reduced-motion: reduce) {
-  .fiche-objectifs .bn-block-content[data-content-type='checkListItem'] > div > input {
-    animation: none !important;
-    transition: none;
-  }
-}
 /* Un rythme un peu plus ample : 8 px entre deux lignes plutôt que 6 — la
    fiche se lit comme une liste, pas comme un paragraphe tassé. */
 .fiche-objectifs .bn-block-content {
   padding-block: 4px;
 }
-.fiche-objectifs .bn-inline-content {
-  transition: color 150ms ease-out;
-}
-
-/* Un objectif tenu s'efface d'un ton : barré, et gris — ce qui reste à faire
-   ressort seul. */
-.fiche-objectifs
-  .bn-block-content[data-content-type='checkListItem'][data-checked='true']
-  .bn-inline-content {
-  color: var(--tg-ink-muted);
-  text-decoration-color: color-mix(in srgb, var(--tg-ink-muted) 55%, transparent);
-}
-
 /* Le bloc fantôme que BlockNote ajoute sous la fiche (un clic y ouvre une
    ligne) : assez haut pour être visé, pas au point de creuser la carte. En
    lecture, il n'a rien à offrir. */
@@ -636,18 +551,6 @@ body {
 }
 .fiche-objectifs .bn-editor[contenteditable='false'] .bn-trailing-block {
   display: none;
-}
-
-/* Les cases disent l'auto-évaluation de l'agent, et ne se cliquent pas :
-   cochée en bleu, atteint ; jaune, partiellement ; rouge, non atteint. Les
-   deux dernières, restées décochées, reçoivent leurs couleurs d'une règle par
-   objectif (EditeurFicheObjectifs). */
-.fiche-statuts .bn-block-content[data-content-type='checkListItem'] > div > input {
-  pointer-events: none;
-  cursor: default;
-  border-color: var(--statut-filet, color-mix(in srgb, var(--tg-ink-muted) 42%, transparent));
-  background-color: var(--statut-fond, var(--tg-surface));
-  background-image: var(--statut-signe, none);
 }
 
 /* ── Glissière du son du lecteur Academy ──────────────────────────────────

@@ -19,9 +19,19 @@ import {
   type CommentairesAgentInput,
   type EvaluationN1Input,
   type EvaluationValidee,
+  type FicheEnregistree,
+  type FixerObjectifsInput,
+  type JoursEvaluation,
   type NoteGlobale,
+  type ObjectifsFixes,
+  type PeriodeObjectifs,
+  JOURS_D_EVALUATION_PAR_DEFAUT,
+  dateDEvaluation,
+  dateEnLettres,
+  echeanceDuBloc,
   formationsDeLaFiche,
   objectifsDeLaFiche,
+  periodeDeLEcheance,
   statutsDesFormations,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
@@ -114,9 +124,6 @@ const iso = (d: string | Date | null): string | null =>
 const jour = (d: string | Date | null): string | null =>
   d === null ? null : typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10);
 
-/** Le jour d'évaluation de chaque semestre que personne n'a changé : la fin du semestre. */
-const JOURS_D_EVALUATION_PAR_DEFAUT = ['06-30', '12-31'] as const;
-
 /**
  * Une fiche vient du navigateur : on n'y garde que des liens qu'on peut
  * suivre sans risque — http(s) et mailto. Un « javascript: » glissé dans un
@@ -208,6 +215,115 @@ function avecLesStatuts(
   });
 }
 
+/** Un bloc de la fiche, tel que l'éditeur l'enregistre. */
+type Bloc = Record<string, unknown>;
+
+/** Une case sans texte n'est pas un objectif : elle ne s'enregistre pas. */
+const caseVide = (b: Bloc) => b.type === 'checkListItem' && objectifsDeLaFiche([b]).length === 0;
+
+/**
+ * La case telle qu'elle se garde : avec son échéance, ou sans échéance à elle
+ * (`null` : celle de sa fiche). Sans coche : c'est le statut donné par
+ * l'agent qui la pose, à la lecture.
+ */
+function caseAGarder(b: Bloc, echeance: string | null): Bloc {
+  const { echeance: _echeance, checked: _coche, ...props } = (b.props ?? {}) as Bloc;
+  return { ...b, props: echeance ? { ...props, echeance } : props };
+}
+
+/**
+ * À la lecture, chaque case porte son échéance. Une case fixée avant les
+ * échéances n'en a pas à elle : elle prend la date d'évaluation de sa fiche.
+ */
+function avecLesEcheances(blocs: unknown, implicite: string): Bloc[] {
+  if (!Array.isArray(blocs)) return [];
+  return (blocs as Bloc[]).map((b) => {
+    const enfants = avecLesEcheances(b.children, implicite);
+    if (b.type !== 'checkListItem' || echeanceDuBloc(b)) return { ...b, children: enfants };
+    const props = { ...((b.props ?? {}) as Bloc), echeance: implicite };
+    return { ...b, props, children: enfants };
+  });
+}
+
+/**
+ * Les objectifs d'une fiche, de la plus proche échéance à la plus lointaine ;
+ * à échéance égale, dans l'ordre où ils ont été fixés. Les formations et le
+ * commentaire suivent, dans leur ordre. Les cases vides s'en vont.
+ */
+function ranger(contenu: Bloc[], implicite: string): Bloc[] {
+  const cle = (b: Bloc) => echeanceDuBloc(b) ?? implicite;
+  const cases = contenu.filter((b) => b.type === 'checkListItem' && !caseVide(b));
+  // Le tri de JavaScript est stable : l'ordre d'arrivée départage.
+  cases.sort((a, b) => (cle(a) < cle(b) ? -1 : cle(a) > cle(b) ? 1 : 0));
+  return [...cases, ...contenu.filter((b) => b.type !== 'checkListItem')];
+}
+
+/**
+ * Une fiche, le temps d'un geste qui peut en toucher plusieurs : fixer des
+ * objectifs, enregistrer une fiche dont une échéance change de période,
+ * déplacer les dates d'évaluation. Le geste se fait en mémoire, puis les
+ * fiches touchées s'écrivent.
+ */
+interface FicheDuGeste extends PeriodeObjectifs {
+  /** `null` : la fiche n'existe pas encore. */
+  id: string | null;
+  contenu: Bloc[];
+  statuts: Record<string, StatutObjectif>;
+  statuts_empreintes: Record<string, string>;
+  commentaires_agent: Record<string, string>;
+  commentaires_n1: Record<string, string>;
+  /** L'agent a envoyé son auto-évaluation : la fiche ne change plus. */
+  envoyee: boolean;
+  auteur_employee_id: string | null;
+  updated_at: string | Date | null;
+  touchee: boolean;
+}
+
+/** La fiche d'une période, telle quelle, ou neuve si elle n'existe pas encore. */
+function laFiche(fiches: FicheDuGeste[], p: PeriodeObjectifs, auteur: string | null): FicheDuGeste {
+  const deja = fiches.find((f) => f.annee === p.annee && f.semestre === p.semestre);
+  if (deja) return deja;
+  const neuve: FicheDuGeste = {
+    id: null,
+    annee: p.annee,
+    semestre: p.semestre,
+    contenu: [],
+    statuts: {},
+    statuts_empreintes: {},
+    commentaires_agent: {},
+    commentaires_n1: {},
+    envoyee: false,
+    auteur_employee_id: auteur,
+    updated_at: null,
+    touchee: false,
+  };
+  fiches.push(neuve);
+  return neuve;
+}
+
+const PROPOS = ['statuts', 'statuts_empreintes', 'commentaires_agent', 'commentaires_n1'] as const;
+
+/** Un objectif change de fiche : son statut et ce qui s'en est dit le suivent. */
+function transfererLesPropos(id: string, de: FicheDuGeste, vers: FicheDuGeste): void {
+  for (const cle of PROPOS) {
+    const valeur = de[cle][id];
+    if (valeur === undefined) continue;
+    (vers[cle] as Record<string, string>)[id] = valeur;
+    delete de[cle][id];
+  }
+}
+
+/** Ce qui se disait d'un objectif retiré de la fiche s'en va avec lui. */
+function oublierLesAbsents(f: FicheDuGeste): void {
+  const presents = new Set(objectifsDeLaFiche(f.contenu).map((o) => o.id));
+  for (const cle of PROPOS) {
+    for (const id of Object.keys(f[cle])) if (!presents.has(id)) delete f[cle][id];
+  }
+}
+
+const memePeriode = (a: PeriodeObjectifs, b: PeriodeObjectifs) =>
+  a.annee === b.annee && a.semestre === b.semestre;
+
 /**
  * Les statuts qui valent encore : ceux d'un objectif toujours dans la fiche,
  * dont le texte est celui auquel l'agent a répondu. Réécrit par le n+1
@@ -244,22 +360,26 @@ function statutsDeSesFormations(
 /**
  * Ce que l'agent et le n+1 en lisent. Le brouillon du n+1 n'est qu'à son
  * auteur : un nouveau n+1 évalue sur une page blanche, il ne valide pas les
- * propos de l'ancien.
+ * propos de l'ancien. Les objectifs se lisent par échéance, chacun avec la
+ * sienne.
  */
 function vueFiche(
   l: LigneFiche,
   vue: 'agent' | 'n1',
   formations: FormationDeLaFiche[],
+  jours: JoursEvaluation,
   lecteur?: string,
 ): FicheObjectifs {
   const envoyes = l.commentaires_envoyes_le !== null;
   const validee = l.evaluation_validee_le !== null;
   const voitN1 = validee || (vue === 'n1' && l.evaluateur_employee_id === lecteur);
   const { statuts, caducs } = statutsEnVigueur(l);
+  const semestre: Semestre = l.semestre === 1 ? 1 : 2;
+  const implicite = dateDEvaluation(l.annee, semestre, jours);
   return {
     annee: l.annee,
-    semestre: l.semestre === 1 ? 1 : 2,
-    contenu: avecLesStatuts(l.contenu, statuts),
+    semestre,
+    contenu: ranger(avecLesEcheances(avecLesStatuts(l.contenu, statuts), implicite), implicite),
     majLe: iso(l.updated_at)!,
     auteur: l.auteur,
     statuts: { ...statuts, ...statutsDeSesFormations(l, formations) },
@@ -361,15 +481,17 @@ export class ObjectifsService {
         sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${moi}`,
       );
       const progression = await this.progression(tx, [moi]);
+      const jours = await this.joursEvaluation(tx);
       return {
         annee: an,
-        fiches: await this.lireFiches(tx, moi, 'agent', formationsDe(progression.get(moi))),
+        fiches: await this.lireFiches(tx, moi, 'agent', formationsDe(progression.get(moi)), jours),
         formations: formationsDe(progression.get(moi)),
         apix: apix.map((o) => this.vue(o)),
         direction: direction
           ? { ...direction, objectifs: deLaDirection.map((o) => this.vue(o)) }
           : null,
         individuels: individuels.map((o) => this.vue(o, progression.get(moi))),
+        joursEvaluation: jours,
       };
     });
   }
@@ -427,11 +549,13 @@ export class ObjectifsService {
           sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${membre.id}`,
         )
       ).map((o) => this.vue(o, progression.get(membre.id)));
+      const jours = await this.joursEvaluation(tx);
       const fiches = await this.lireFiches(
         tx,
         membre.id,
         'n1',
         formationsDe(progression.get(membre.id)),
+        jours,
         moi,
       );
       const aEvaluer = fiches.filter(
@@ -443,25 +567,73 @@ export class ObjectifsService {
         objectifs,
         fiches,
         formations: formationsDe(progression.get(membre.id)),
+        joursEvaluation: jours,
       };
     });
   }
 
   /**
+   * Le n+1 fixe des objectifs à son direct, chacun avec son échéance, sans
+   * choisir le semestre : un objectif compte pour la première évaluation qui
+   * tombe le jour de son échéance ou après (ADR-0055). Chaque fiche qui en
+   * reçoit les range par échéance, et l'agent en est prévenu.
+   */
+  async fixerObjectifs(
+    user: SessionUser,
+    employeeId: string,
+    input: FixerObjectifsInput,
+  ): Promise<ObjectifsFixes> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const moi = await this.exigerAgent(tx, user);
+      if (!(await this.directs(tx, moi)).some((m) => m.id === employeeId)) {
+        problem(404, 'objectifs.hors_equipe', 'Cet agent ne fait pas partie de votre équipe');
+      }
+      const jours = await this.joursEvaluation(tx);
+      const fiches = await this.fichesDuGeste(tx, employeeId);
+      for (const o of input.objectifs) {
+        this.exigerEcheancePossible(o.echeance, jours);
+        const cible = this.ficheQuiRecoit(
+          fiches,
+          periodeDeLEcheance(o.echeance, jours),
+          moi,
+          jours,
+        );
+        cible.contenu = [
+          ...cible.contenu,
+          {
+            id: uuidv7(),
+            type: 'checkListItem',
+            props: { echeance: o.echeance },
+            // Un objectif tient sur une ligne.
+            content: [{ type: 'text', text: o.texte.replace(/\s+/g, ' '), styles: {} }],
+            children: [],
+          },
+        ];
+        cible.touchee = true;
+      }
+      const ecrites = await this.ecrireLesFiches(tx, user, employeeId, fiches, jours, moi);
+      await this.prevenirDesFiches(tx, user, employeeId, moi, ecrites);
+      return { periodes: [...ecrites.keys()].map(({ annee, semestre }) => ({ annee, semestre })) };
+    });
+  }
+
+  /**
    * Le n+1 enregistre la fiche d'objectifs de son direct pour un semestre,
-   * d'un clic sur « Enregistrer » (ADR-0051). Chaque enregistrement qui la
-   * change prévient l'agent ; la dernière notification remplace les
-   * précédentes. Une fiche renvoyée telle quelle ne s'écrit pas.
+   * d'un clic sur « Enregistrer » (ADR-0051). Les objectifs s'y rangent par
+   * échéance ; celui dont l'échéance change de période part dans la fiche de
+   * sa nouvelle évaluation, avec son statut et ce qui s'en est dit
+   * (ADR-0055). Chaque enregistrement qui change une fiche prévient l'agent ;
+   * la dernière notification remplace les précédentes. Une fiche renvoyée
+   * telle quelle ne s'écrit pas.
    */
   async enregistrerFiche(
     user: SessionUser,
     employeeId: string,
     input: EnregistrerFicheObjectifsInput,
-  ): Promise<{ majLe: string }> {
+  ): Promise<FicheEnregistree> {
     const an = input.annee ?? this.anneeCourante();
-    const contenu = assainir(input.contenu);
-    const json = JSON.stringify(contenu);
-    if (json.length > FICHE_OBJECTIFS_MAX) {
+    const contenu = assainir(input.contenu) as Bloc[];
+    if (JSON.stringify(contenu).length > FICHE_OBJECTIFS_MAX) {
       problem(400, 'objectifs.fiche_trop_longue', 'La fiche est trop longue pour être enregistrée');
     }
     return this.db.withTenant(this.ctx(user), async (tx) => {
@@ -470,62 +642,233 @@ export class ObjectifsService {
       if (!membre) {
         problem(404, 'objectifs.hors_equipe', 'Cet agent ne fait pas partie de votre équipe');
       }
-      const { rows: avant } = await tx.execute<{ identique: boolean; updated_at: string | Date }>(
-        sql`
-        SELECT contenu = ${json}::jsonb AS identique, updated_at
-          FROM objectifs_fiches
-         WHERE tenant_id = ${user.tenantId} AND employee_id = ${employeeId}
-           AND annee = ${an} AND semestre = ${input.semestre}
-           FOR UPDATE`,
-      );
-      if (avant[0]?.identique) return { majLe: iso(avant[0].updated_at)! };
-      const { rows } = await tx.execute<{ updated_at: string | Date }>(sql`
-        INSERT INTO objectifs_fiches
-               (id, tenant_id, employee_id, annee, semestre, contenu, auteur_employee_id)
-        VALUES (${uuidv7()}, ${user.tenantId}, ${employeeId}, ${an}, ${input.semestre},
-                ${json}::jsonb, ${moi})
-        ON CONFLICT (tenant_id, employee_id, annee, semestre) DO UPDATE
-           SET contenu = EXCLUDED.contenu,
-               auteur_employee_id = EXCLUDED.auteur_employee_id,
-               updated_at = now()
-         WHERE objectifs_fiches.commentaires_envoyes_le IS NULL
-        RETURNING updated_at`);
+      const jours = await this.joursEvaluation(tx);
+      const fiches = await this.fichesDuGeste(tx, employeeId);
+      const ici = laFiche(fiches, { annee: an, semestre: input.semestre }, moi);
       // L'agent a rendu compte de ces objectifs : ils ne changent plus.
-      if (!rows[0]) {
+      if (ici.envoyee) {
         problem(
           409,
           'objectifs.fiche_verrouillee',
           'L’agent a envoyé son auto-évaluation : ces objectifs ne changent plus',
         );
       }
-
-      // L'agent est prévenu quand la fiche lui fixe un objectif : un titre
-      // posé en premier ne lui annonce rien.
-      if (objectifsDeLaFiche(contenu as Record<string, unknown>[]).length > 0) {
-        const compte = await this.compteDe(tx, employeeId);
-        if (compte) {
-          const [auteur] = (
-            await tx.execute<{ nom: string }>(sql`
-              SELECT p.given_name || ' ' || p.family_name AS nom
-                FROM employees e JOIN persons p ON p.id = e.person_id WHERE e.id = ${moi}`)
-          ).rows;
-          // Une par enregistrement, et seule la dernière reste dans la boîte.
-          const sujet = `objectifs:fiche:${employeeId}:${an}:${input.semestre}:`;
-          const { rows: deja } = await tx.execute(sql`
-            SELECT 1 FROM notifications
-             WHERE recipient_user_id = ${compte} AND dedupe_key LIKE ${`${sujet}%`} LIMIT 1`);
-          await notifier(tx, user.tenantId, compte, {
-            type: 'objectif',
-            sujet: 'objectifs',
-            title: `${auteur?.nom ?? 'Votre n+1'} a ${deja.length > 0 ? 'mis à jour' : 'fixé'} vos objectifs ${duSemestre(input.semestre, an)}`,
-            link: '/moi/objectifs',
-            dedupeKey: `${sujet}${iso(rows[0].updated_at)}`,
-            remplace: sujet,
-          });
-        }
+      const implicite = dateDEvaluation(an, input.semestre, jours);
+      const avant = new Map<string, Bloc>();
+      for (const b of ici.contenu) {
+        if (b.type === 'checkListItem' && typeof b.id === 'string') avant.set(b.id, b);
       }
-      return { majLe: iso(rows[0]!.updated_at)! };
+
+      const gardes: Bloc[] = [];
+      const partants: { bloc: Bloc; vers: PeriodeObjectifs }[] = [];
+      for (const brut of contenu) {
+        if (brut.type !== 'checkListItem') {
+          gardes.push(brut);
+          continue;
+        }
+        if (caseVide(brut)) continue;
+        const b = typeof brut.id === 'string' && brut.id ? brut : { ...brut, id: uuidv7() };
+        const ancien = avant.get(String(b.id));
+        const voulue = echeanceDuBloc(b);
+        // L'échéance ne change pas : celle que la case avait, ou aucune à elle
+        // (celle de la fiche, que la lecture lui prête).
+        if (voulue === null || (ancien && voulue === (echeanceDuBloc(ancien) ?? implicite))) {
+          gardes.push(caseAGarder(b, ancien ? echeanceDuBloc(ancien) : null));
+          continue;
+        }
+        // Une évaluation passée garde ses objectifs : on ne repousse pas une
+        // échéance pour en sortir un.
+        if (ancien && implicite < this.aujourdhui()) {
+          problem(
+            409,
+            'objectifs.evaluation_passee',
+            `L’évaluation du ${dateEnLettres(implicite)} est passée : les échéances de ses objectifs ne changent plus`,
+          );
+        }
+        this.exigerEcheancePossible(voulue, jours);
+        const vers = periodeDeLEcheance(voulue, jours);
+        if (memePeriode(vers, ici)) gardes.push(caseAGarder(b, voulue));
+        else partants.push({ bloc: caseAGarder(b, voulue), vers });
+      }
+
+      for (const { bloc, vers } of partants) {
+        const cible = this.ficheQuiRecoit(fiches, vers, moi, jours);
+        cible.contenu = [...cible.contenu, bloc];
+        transfererLesPropos(String(bloc.id), ici, cible);
+        cible.touchee = true;
+      }
+      ici.contenu = gardes;
+      oublierLesAbsents(ici);
+      ici.touchee = true;
+
+      const ecrites = await this.ecrireLesFiches(tx, user, employeeId, fiches, jours, moi);
+      await this.prevenirDesFiches(tx, user, employeeId, moi, ecrites);
+      return {
+        majLe: ecrites.get(ici) ?? iso(ici.updated_at)!,
+        periodes: [...ecrites.keys()].map(({ annee, semestre }) => ({ annee, semestre })),
+      };
     });
+  }
+
+  /**
+   * Les fiches de l'agent, verrouillées le temps du geste. Un geste à la fois
+   * par agent : deux enregistrements simultanés ne créent pas deux fiches du
+   * même semestre.
+   */
+  private async fichesDuGeste(tx: Tx, employeeId: string): Promise<FicheDuGeste[]> {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`objectifs:fiches:${employeeId}`}))`,
+    );
+    const { rows } = await tx.execute<Omit<FicheDuGeste, 'touchee'>>(sql`
+      SELECT id, annee, semestre, contenu, statuts, statuts_empreintes,
+             commentaires_agent, commentaires_n1,
+             commentaires_envoyes_le IS NOT NULL AS envoyee, auteur_employee_id, updated_at
+        FROM objectifs_fiches
+       WHERE employee_id = ${employeeId}
+       ORDER BY annee, semestre
+         FOR UPDATE`);
+    return rows.map((r) => ({
+      ...r,
+      semestre: r.semestre === 1 ? 1 : 2,
+      contenu: Array.isArray(r.contenu) ? r.contenu : [],
+      touchee: false,
+    }));
+  }
+
+  /**
+   * La fiche où va un objectif fixé ou déplacé. Envoyée, elle ne reçoit plus
+   * rien : l'échéance se choisit après sa date d'évaluation.
+   */
+  private ficheQuiRecoit(
+    fiches: FicheDuGeste[],
+    vers: PeriodeObjectifs,
+    auteur: string,
+    jours: JoursEvaluation,
+  ): FicheDuGeste {
+    const cible = laFiche(fiches, vers, auteur);
+    if (cible.envoyee) {
+      problem(
+        409,
+        'objectifs.fiche_verrouillee',
+        `L’agent a envoyé son auto-évaluation ${duSemestre(vers.semestre, vers.annee)} : choisissez une échéance après le ${dateEnLettres(dateDEvaluation(vers.annee, vers.semestre, jours))}`,
+      );
+    }
+    return cible;
+  }
+
+  /**
+   * Une échéance se fixe à partir d'aujourd'hui, jusqu'à la dernière
+   * évaluation de l'année suivante : la page du n+1 ne va pas au-delà.
+   */
+  private exigerEcheancePossible(echeance: string, jours: JoursEvaluation): void {
+    if (echeance < this.aujourdhui()) {
+      problem(
+        422,
+        'objectifs.echeance_passee',
+        `L’échéance du ${dateEnLettres(echeance)} est déjà passée`,
+      );
+    }
+    const horizon = dateDEvaluation(this.anneeCourante() + 1, 2, jours);
+    if (echeance > horizon) {
+      problem(
+        422,
+        'objectifs.echeance_trop_lointaine',
+        `Une échéance se fixe au plus tard le ${dateEnLettres(horizon)}`,
+      );
+    }
+  }
+
+  /**
+   * Écrit les fiches que le geste a touchées, chacune rangée par échéance.
+   * Une fiche que rien n'a changé ne s'écrit pas. `auteur` : qui signe la
+   * mise à jour (`null` : la fiche garde le sien). Rend les fiches écrites,
+   * avec l'heure de leur écriture, dans l'ordre du temps.
+   */
+  private async ecrireLesFiches(
+    tx: Tx,
+    user: SessionUser,
+    employeeId: string,
+    fiches: FicheDuGeste[],
+    jours: JoursEvaluation,
+    auteur: string | null,
+  ): Promise<Map<FicheDuGeste, string>> {
+    const ecrites = new Map<FicheDuGeste, string>();
+    const parPeriode = [...fiches].sort((a, b) => a.annee - b.annee || a.semestre - b.semestre);
+    for (const f of parPeriode) {
+      if (!f.touchee) continue;
+      f.contenu = ranger(f.contenu, dateDEvaluation(f.annee, f.semestre, jours));
+      const contenu = JSON.stringify(f.contenu);
+      if (contenu.length > FICHE_OBJECTIFS_MAX) {
+        problem(
+          400,
+          'objectifs.fiche_trop_longue',
+          'La fiche est trop longue pour être enregistrée',
+        );
+      }
+      const statuts = JSON.stringify(f.statuts);
+      const empreintes = JSON.stringify(f.statuts_empreintes);
+      const agent = JSON.stringify(f.commentaires_agent);
+      const n1 = JSON.stringify(f.commentaires_n1);
+      if (f.id === null) {
+        const { rows } = await tx.execute<{ updated_at: string | Date }>(sql`
+          INSERT INTO objectifs_fiches
+                 (id, tenant_id, employee_id, annee, semestre, contenu, statuts,
+                  statuts_empreintes, commentaires_agent, commentaires_n1, auteur_employee_id)
+          VALUES (${uuidv7()}, ${user.tenantId}, ${employeeId}, ${f.annee}, ${f.semestre},
+                  ${contenu}::jsonb, ${statuts}::jsonb, ${empreintes}::jsonb, ${agent}::jsonb,
+                  ${n1}::jsonb, ${auteur ?? f.auteur_employee_id})
+          RETURNING updated_at`);
+        ecrites.set(f, iso(rows[0]!.updated_at)!);
+        continue;
+      }
+      const { rows } = await tx.execute<{ updated_at: string | Date }>(sql`
+        UPDATE objectifs_fiches
+           SET contenu = ${contenu}::jsonb, statuts = ${statuts}::jsonb,
+               statuts_empreintes = ${empreintes}::jsonb,
+               commentaires_agent = ${agent}::jsonb, commentaires_n1 = ${n1}::jsonb,
+               auteur_employee_id = ${auteur ? sql`${auteur}` : sql`auteur_employee_id`},
+               updated_at = now()
+         WHERE id = ${f.id}
+           AND (contenu, statuts, statuts_empreintes, commentaires_agent, commentaires_n1)
+               IS DISTINCT FROM (${contenu}::jsonb, ${statuts}::jsonb, ${empreintes}::jsonb,
+                                 ${agent}::jsonb, ${n1}::jsonb)
+        RETURNING updated_at`);
+      if (rows[0]) ecrites.set(f, iso(rows[0].updated_at)!);
+    }
+    return ecrites;
+  }
+
+  /**
+   * Chaque fiche écrite qui porte un objectif prévient l'agent : un
+   * commentaire posé seul n'annonce rien. Une notification par
+   * enregistrement, et seule la dernière d'une fiche reste dans la boîte.
+   */
+  private async prevenirDesFiches(
+    tx: Tx,
+    user: SessionUser,
+    employeeId: string,
+    moi: string,
+    ecrites: Map<FicheDuGeste, string>,
+  ): Promise<void> {
+    const aPrevenir = [...ecrites].filter(([f]) => objectifsDeLaFiche(f.contenu).length > 0);
+    if (aPrevenir.length === 0) return;
+    const compte = await this.compteDe(tx, employeeId);
+    if (!compte) return;
+    const auteur = (await this.nomDe(tx, moi)) || 'Votre n+1';
+    for (const [f, majLe] of aPrevenir) {
+      const sujet = `objectifs:fiche:${employeeId}:${f.annee}:${f.semestre}:`;
+      const { rows: deja } = await tx.execute(sql`
+        SELECT 1 FROM notifications
+         WHERE recipient_user_id = ${compte} AND dedupe_key LIKE ${`${sujet}%`} LIMIT 1`);
+      await notifier(tx, user.tenantId, compte, {
+        type: 'objectif',
+        sujet: 'objectifs',
+        title: `${auteur} a ${deja.length > 0 ? 'mis à jour' : 'fixé'} vos objectifs ${duSemestre(f.semestre, f.annee)}`,
+        link: '/moi/objectifs',
+        dedupeKey: `${sujet}${majLe}`,
+        remplace: sujet,
+      });
+    }
   }
 
   /**
@@ -540,6 +883,7 @@ export class ObjectifsService {
     employeeId: string,
     vue: 'agent' | 'n1',
     formations: FormationDeLaFiche[],
+    jours: JoursEvaluation,
     lecteur?: string,
   ): Promise<FicheObjectifs[]> {
     const { rows } = await tx.execute<LigneFiche>(sql`
@@ -548,7 +892,7 @@ export class ObjectifsService {
        ORDER BY f.annee DESC, f.semestre DESC`);
     return rows
       .filter((l) => ficheRemplie(l.contenu))
-      .map((l) => vueFiche(l, vue, formations, lecteur));
+      .map((l) => vueFiche(l, vue, formations, jours, lecteur));
   }
 
   /** Une fiche, verrouillée le temps du geste — 404 si elle n'existe pas. */
@@ -904,12 +1248,52 @@ export class ObjectifsService {
            SET s1_month = EXCLUDED.s1_month, s1_day = EXCLUDED.s1_day,
                s2_month = EXCLUDED.s2_month, s2_day = EXCLUDED.s2_day,
                updated_at = now()`);
+      await this.suivreLesNouvellesDates(tx, user, voulus);
       return this.vueDesDates(user, voulus);
     });
   }
 
+  /**
+   * Les dates d'évaluation ont changé : chaque objectif encore à venir compte
+   * désormais pour la première évaluation qui tombe le jour de son échéance
+   * ou après, et passe dans sa fiche avec son statut et ce qui s'en est dit.
+   * Ce qui est passé reste où il est ; une fiche envoyée ne perd ni ne reçoit
+   * rien. Personne n'est prévenu : aucun objectif ne change.
+   */
+  private async suivreLesNouvellesDates(
+    tx: Tx,
+    user: SessionUser,
+    jours: JoursEvaluation,
+  ): Promise<void> {
+    const aujourdhui = this.aujourdhui();
+    const { rows } = await tx.execute<{ employee_id: string }>(sql`
+      SELECT DISTINCT employee_id FROM objectifs_fiches
+       WHERE commentaires_envoyes_le IS NULL
+         AND jsonb_path_exists(contenu, '$[*] ? (@.type == "checkListItem").props.echeance')`);
+    for (const { employee_id: employeeId } of rows) {
+      const fiches = await this.fichesDuGeste(tx, employeeId);
+      for (const de of [...fiches]) {
+        if (de.envoyee) continue;
+        for (const b of [...de.contenu]) {
+          const echeance = b.type === 'checkListItem' ? echeanceDuBloc(b) : null;
+          if (!echeance || echeance < aujourdhui) continue;
+          const vers = periodeDeLEcheance(echeance, jours);
+          if (memePeriode(vers, de)) continue;
+          const cible = laFiche(fiches, vers, de.auteur_employee_id);
+          if (cible.envoyee) continue;
+          de.contenu = de.contenu.filter((x) => x !== b);
+          cible.contenu = [...cible.contenu, b];
+          transfererLesPropos(String(b.id), de, cible);
+          de.touchee = true;
+          cible.touchee = true;
+        }
+      }
+      await this.ecrireLesFiches(tx, user, employeeId, fiches, jours, null);
+    }
+  }
+
   /** Les jours d'évaluation, « MM-JJ » : ceux par défaut tant que personne n'en a fixé. */
-  private async joursEvaluation(tx: Tx): Promise<readonly [string, string]> {
+  private async joursEvaluation(tx: Tx): Promise<JoursEvaluation> {
     const { rows } = await tx.execute<{
       s1_month: number;
       s1_day: number;
@@ -923,7 +1307,7 @@ export class ObjectifsService {
     return [mmjj(r.s1_month, r.s1_day), mmjj(r.s2_month, r.s2_day)];
   }
 
-  private vueDesDates(user: SessionUser, jours: readonly [string, string]): DatesEvaluation {
+  private vueDesDates(user: SessionUser, jours: JoursEvaluation): DatesEvaluation {
     const aujourdhui = this.aujourdhui();
     let annee = this.anneeCourante();
     if (jours.every((j) => `${annee}-${j}` < aujourdhui)) annee += 1;

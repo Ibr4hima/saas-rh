@@ -28,6 +28,8 @@ import {
   evaluationN1Schema,
   type EvaluationN1Input,
   evaluerObjectifSchema,
+  fixerObjectifsSchema,
+  type FixerObjectifsInput,
   modifierObjectifSchema,
   periodeParamsSchema,
   type CreerObjectifInput,
@@ -87,6 +89,16 @@ export class ObjectifsController {
     @Query(new ZodValidationPipe(anneeQuerySchema)) q: { annee?: number },
   ) {
     return this.objectifs.fiche(req.sessionUser, employeeId, q.annee);
+  }
+
+  /** « Fixer des objectifs » : chacun va dans la fiche de l'évaluation où son échéance le fait compter. */
+  @Post('equipe/:employeeId/objectifs')
+  fixerObjectifs(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Body(new ZodValidationPipe(fixerObjectifsSchema)) body: FixerObjectifsInput,
+  ) {
+    return this.objectifs.fixerObjectifs(req.sessionUser, employeeId, body);
   }
 
   @Put('equipe/:employeeId/fiche')

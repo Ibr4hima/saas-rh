@@ -51,7 +51,7 @@ export default function MesObjectifsPage() {
     );
   }
 
-  const { apix, direction, individuels, annee, fiches, formations } = mes.data;
+  const { apix, direction, individuels, annee, fiches, formations, joursEvaluation } = mes.data;
   // Les objectifs posés un à un, avant les fiches, restent lisibles tant
   // qu'aucune fiche ne les remplace.
   const anciens = fiches.length === 0 ? individuels : [];
@@ -79,7 +79,12 @@ export default function MesObjectifsPage() {
         <Fragment key={groupe.annee}>
           <SeparateurAnnee annee={groupe.annee} />
           {groupe.fiches.map((f) => (
-            <CarteSemestre key={`${f.annee}-${f.semestre}`} fiche={f} formations={formations} />
+            <CarteSemestre
+              key={`${f.annee}-${f.semestre}`}
+              fiche={f}
+              formations={formations}
+              jours={joursEvaluation}
+            />
           ))}
           {groupe.annee === annee ? (
             <>
@@ -109,9 +114,11 @@ export default function MesObjectifsPage() {
 function CarteSemestre({
   fiche,
   formations,
+  jours,
 }: {
   fiche: FicheObjectifs;
   formations: MesObjectifs['formations'];
+  jours: MesObjectifs['joursEvaluation'];
 }) {
   const queryClient = useQueryClient();
   const [autoEvaluation, setAutoEvaluation] = useState(false);
@@ -195,11 +202,14 @@ function CarteSemestre({
       ) : (
         <>
           <EditeurFicheObjectifs
-            // Le n+1 a changé la fiche : elle se relit telle qu'il l'a laissée.
-            key={fiche.majLe}
+            // Le n+1 a changé la fiche, ou la DCH ses dates : elle se relit.
+            key={`${fiche.majLe}-${jours.join()}`}
             className="pt-3 pb-1"
             contenu={fiche.contenu}
             modifiable={false}
+            annee={fiche.annee}
+            semestre={fiche.semestre}
+            jours={jours}
             // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
             formations={fiche.formations ?? formations}
             statuts={statuts}

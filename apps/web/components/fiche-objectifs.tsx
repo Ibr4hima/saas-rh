@@ -2,7 +2,7 @@
 
 // Sa feuille de style (@blocknote/mantine/style.css) est importée par les
 // pages qui l'affichent : chargé à la demande, l'éditeur ne la porte pas.
-import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from '@blocknote/core';
+import { BlockNoteSchema, defaultBlockSpecs } from '@blocknote/core';
 import { fr } from '@blocknote/core/locales';
 import { BlockNoteView } from '@blocknote/mantine';
 import {
@@ -18,24 +18,42 @@ import {
   useCallback,
   useEffect,
   useId,
-  useMemo,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import type { FormationDeLaFiche, FormationProposable, StatutObjectif } from '@teranga/contracts';
-import { cn } from '@teranga/ui';
+import {
+  dateDEvaluation,
+  echeanceDuBloc,
+  OBJECTIF_TEXTE_MAX,
+  type FormationDeLaFiche,
+  type FormationProposable,
+  type JoursEvaluation,
+  type Semestre,
+  type StatutObjectif,
+} from '@teranga/contracts';
+import { Button, cn } from '@teranga/ui';
+import { aujourdhui } from '../lib/temps';
+import { Case } from './evaluation-objectifs';
 import { Icon, type IconName } from './icons';
+import {
+  ChoixEcheance,
+  Echeance,
+  horizonDesEcheances,
+  ReglesDesEcheances,
+} from './objectifs-echeances';
 import { usePreferences } from './preferences';
 
-/* ————————————————————————————————————————————————————————————————
+/*
    La fiche d'objectifs d'un semestre, en trois parties. Le titre n'est pas
    à écrire : la page le pose (« Objectifs du 1er semestre de 2026 »).
 
-   1. Les OBJECTIFS : des cases à cocher, et rien d'autre. Du texte simple,
-      sans gras, ni italique, ni puce, ni lien. Il reste toujours une case :
-      la première ne s'efface pas.
+   1. Les OBJECTIFS : une liste, chacun avec son échéance, de la plus proche
+      à la plus lointaine. Du texte simple, sur une ligne. L'échéance décide
+      de l'évaluation où l'objectif compte (ADR-0055) : changée pour une
+      autre période, l'objectif y part à l'enregistrement.
    2. Les FORMATIONS À SUIVRE : le catalogue de l'APIX Academy. Celles que
       l'agent a terminées ne se cochent pas ; cocher une autre la lui
       demande, et elle s'évalue comme un objectif.
@@ -49,7 +67,7 @@ import { usePreferences } from './preferences';
    commentaire, ses échéances du texte).
 
    Le n+1 rédige ; l'agent lit la même fiche, sans rien pouvoir y changer.
-   ———————————————————————————————————————————————————————————————— */
+*/
 
 type Bloc = Record<string, unknown> & {
   id?: string;
@@ -84,14 +102,29 @@ function texteDe(contenu: unknown): string {
 /** Un contenu où l'on a écrit quelque chose, à quelque profondeur que ce soit. */
 const aDuTexte = (blocs: unknown) => /"text":"\s*[^"\s]/.test(JSON.stringify(blocs));
 
-/** Un objectif : une case, son texte seul, sans rien dessous. */
-function enCase(b: Bloc): Bloc {
-  const texte = texteDe(b.content);
+/** Un objectif de la fiche : son texte nu, et son échéance. */
+interface Objectif {
+  id: string;
+  texte: string;
+  echeance: string;
+}
+
+/** Un objectif : une case, son texte seul ; sans échéance à elle, celle de sa fiche. */
+function enObjectif(b: Bloc, implicite: string): Objectif {
   return {
-    ...(b.id ? { id: b.id } : {}),
+    id: typeof b.id === 'string' && b.id ? b.id : crypto.randomUUID(),
+    texte: texteDe(b.content).replace(/\s+/g, ' ').trim(),
+    echeance: echeanceDuBloc(b) ?? implicite,
+  };
+}
+
+/** L'objectif tel qu'il s'enregistre : le serveur le range, et le trie par échéance. */
+function enCase(o: Objectif): Bloc {
+  return {
+    id: o.id,
     type: 'checkListItem',
-    props: { checked: Boolean((b.props as { checked?: unknown } | undefined)?.checked) },
-    content: texte ? [{ type: 'text', text: texte, styles: {} }] : [],
+    props: { echeance: o.echeance },
+    content: [{ type: 'text', text: o.texte.replace(/\s+/g, ' ').trim(), styles: {} }],
     children: [],
   };
 }
@@ -137,19 +170,23 @@ function enCommentaire(b: Bloc, enfants: Bloc[]): Bloc {
  * est un objectif ; une formation choisie, une formation à suivre ; tout le
  * reste, le commentaire.
  */
-function partager(contenu: Bloc[]): {
-  objectifs: Bloc[];
+function partager(
+  contenu: Bloc[],
+  implicite: string,
+): {
+  objectifs: Objectif[];
   formations: Bloc[];
   commentaires: Bloc[];
 } {
-  const objectifs: Bloc[] = [];
+  const objectifs: Objectif[] = [];
   const formations: Bloc[] = [];
   const trier = (blocs: unknown): Bloc[] => {
     if (!Array.isArray(blocs)) return [];
     const gardes: Bloc[] = [];
     for (const b of blocs as Bloc[]) {
       if (b.type === 'checkListItem') {
-        objectifs.push(enCase(b));
+        const o = enObjectif(b, implicite);
+        if (o.texte) objectifs.push(o);
         gardes.push(...trier(b.children));
         continue;
       }
@@ -173,9 +210,6 @@ function partager(contenu: Bloc[]): {
   return { objectifs, formations, commentaires };
 }
 
-/** Une fiche neuve s'ouvre sur un objectif à cocher. */
-const FICHE_NEUVE: Bloc[] = [{ type: 'checkListItem' }];
-
 /** Aucune invite dans le texte : une ligne vide reste vide. */
 const dictionnaire = {
   ...fr,
@@ -190,20 +224,6 @@ const dictionnaire = {
     toggleListItem: '',
   },
 };
-
-/**
- * Les objectifs : la case, et le texte nu. Le paragraphe et le lien restent
- * au schéma, l'éditeur ne s'en passe pas ; la fiche rechange aussitôt l'un en
- * case, l'autre en texte.
- */
-const schemaObjectifs = BlockNoteSchema.create({
-  blockSpecs: {
-    paragraph: defaultBlockSpecs.paragraph,
-    checkListItem: defaultBlockSpecs.checkListItem,
-  },
-  inlineContentSpecs: defaultInlineContentSpecs,
-  styleSpecs: {},
-});
 
 /**
  * Le commentaire : un texte libre, sans case à cocher. Pas de titre (la
@@ -277,15 +297,6 @@ function BarreDeMiseEnForme() {
 
 // La fiche
 
-/** Les couleurs d'une case que l'agent ne dit pas atteinte (globals.css, `.fiche-statuts`). */
-const DESSIN_DU_STATUT: Record<StatutObjectif, string> = {
-  atteint: '',
-  partiel:
-    '--statut-fond: var(--tg-partiel); --statut-filet: var(--tg-partiel-line); --statut-signe: var(--tiret);',
-  non_atteint:
-    '--statut-fond: var(--tg-danger); --statut-filet: var(--tg-danger); --statut-signe: var(--croix);',
-};
-
 /** « Commentaires » entre deux filets : l'intitulé d'une partie. */
 function Intertitre({ children }: { children: ReactNode }) {
   return (
@@ -308,50 +319,65 @@ export function EditeurFicheObjectifs({
   focusSignal = 0,
   className,
   statuts,
+  annee,
+  semestre,
+  jours,
 }: {
   contenu: Record<string, unknown>[];
   modifiable: boolean;
   formations: FormationDeLaFiche[];
   catalogue?: FormationProposable[];
   onChange?: (blocs: Record<string, unknown>[]) => void;
-  /** Chaque changement ramène le curseur en fin d'objectifs (« Fixer des objectifs »). */
+  /** Chaque changement ramène le curseur sur le dernier objectif (le crayon). */
   focusSignal?: number;
   /** La marge autour de la fiche. */
   className?: string;
   /**
-   * Où l'agent dit en être de chaque objectif — c'est son auto-évaluation qui
-   * colore les cases : bleu (atteint, cochée), jaune (partiellement), rouge
-   * (non atteint). La fiche suit à mesure ; ses cases ne se cliquent pas.
+   * Où l'agent dit en être de chaque objectif : c'est son auto-évaluation qui
+   * colore les cases, bleu (atteint), jaune (partiellement), rouge (non
+   * atteint). La fiche suit à mesure ; ses cases ne se cliquent pas.
    */
   statuts?: Record<string, StatutObjectif>;
+  annee: number;
+  semestre: Semestre;
+  /** Les jours d'évaluation de la DCH : la date de la fiche, et la règle des échéances. */
+  jours: JoursEvaluation;
 }) {
+  const implicite = dateDEvaluation(annee, semestre, jours);
   // La fiche se range une fois, à l'ouverture ; chaque partie vit ensuite
   // de son côté, et l'enregistrement les remet bout à bout.
-  const [depart] = useState(() => partager(contenu as Bloc[]));
+  const [depart] = useState(() => partager(contenu as Bloc[], implicite));
   const parties = useRef(depart);
   const [choisies, setChoisies] = useState(depart.formations);
 
   const publier = useCallback(() => {
     const { objectifs, formations: aSuivre, commentaires } = parties.current;
-    onChange?.([...objectifs, ...aSuivre, ...(aDuTexte(commentaires) ? commentaires : [])]);
+    onChange?.([
+      ...objectifs.filter((o) => o.texte.trim()).map(enCase),
+      ...aSuivre,
+      ...(aDuTexte(commentaires) ? commentaires : []),
+    ]);
   }, [onChange]);
 
-  const objectifsEcrits = aDuTexte(depart.objectifs);
   const commentaireEcrit = aDuTexte(depart.commentaires);
 
   return (
     <div className={cn('fiche-objectifs', className)}>
-      {modifiable || objectifsEcrits ? (
-        <ZoneObjectifs
+      {modifiable ? (
+        <EditeurObjectifs
           initial={depart.objectifs}
-          modifiable={modifiable}
+          annee={annee}
+          implicite={implicite}
+          jours={jours}
           statuts={statuts}
           focusSignal={focusSignal}
-          onChange={(blocs) => {
-            parties.current = { ...parties.current, objectifs: blocs };
+          onChange={(objectifs) => {
+            parties.current = { ...parties.current, objectifs };
             publier();
           }}
         />
+      ) : depart.objectifs.length ? (
+        <ListeObjectifs objectifs={depart.objectifs} annee={annee} statuts={statuts} />
       ) : null}
       <FormationsASuivre
         choisies={choisies}
@@ -383,244 +409,236 @@ export function EditeurFicheObjectifs({
 
 // Les objectifs
 
-/** Le texte nu de chaque case, à plat : les cases imbriquées remontent à la suite. */
-function aplatir(blocs: { props: unknown; content?: unknown; children: unknown[] }[]): Bloc[] {
-  return blocs.flatMap((b) => [
-    {
-      type: 'checkListItem',
-      props: { checked: Boolean((b.props as { checked?: unknown }).checked) },
-      content: texteDe(b.content),
-      children: [],
-    },
-    ...aplatir(b.children as typeof blocs),
-  ]);
+/**
+ * Les objectifs, en lecture : la case à la couleur de l'auto-évaluation, le
+ * texte, l'échéance. Un objectif atteint s'efface d'un ton, barré et gris :
+ * ce qui reste à faire ressort seul.
+ */
+function ListeObjectifs({
+  objectifs,
+  annee,
+  statuts,
+}: {
+  objectifs: Objectif[];
+  annee: number;
+  statuts?: Record<string, StatutObjectif>;
+}) {
+  return (
+    <ul className="flex flex-col px-5">
+      {objectifs.map((o) => {
+        const statut = statuts?.[o.id];
+        return (
+          <li key={o.id} className="flex items-start gap-[11px] py-1">
+            <Case statut={statut} />
+            <p
+              className={cn(
+                'min-w-0 flex-1 text-[12.5px] leading-[1.5] break-words text-ink',
+                statut === 'atteint' && 'text-ink-muted line-through decoration-ink-muted/55',
+              )}
+            >
+              {o.texte}
+            </p>
+            <Echeance date={o.echeance} annee={annee} />
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
-function ZoneObjectifs({
+/**
+ * Les objectifs, à rédiger : chacun son texte et son échéance. Entrée ouvre
+ * un objectif dessous, à la même échéance ; Retour arrière sur un objectif
+ * vide le retire ; les flèches passent de l'un à l'autre. Une fiche dont
+ * l'évaluation est passée garde ses échéances : le texte seul s'y corrige, et
+ * rien ne s'y ajoute.
+ */
+function EditeurObjectifs({
   initial,
-  modifiable,
+  annee,
+  implicite,
+  jours,
   statuts,
   focusSignal,
   onChange,
 }: {
-  initial: Bloc[];
-  modifiable: boolean;
+  initial: Objectif[];
+  annee: number;
+  /** La date d'évaluation de la fiche. */
+  implicite: string;
+  jours: JoursEvaluation;
   statuts?: Record<string, StatutObjectif>;
   focusSignal: number;
-  onChange: (blocs: Record<string, unknown>[]) => void;
+  onChange: (objectifs: Objectif[]) => void;
 }) {
-  const { theme } = usePreferences();
-  const editeur = useCreateBlockNote({
-    schema: schemaObjectifs,
-    dictionary: dictionnaire,
-    // Pas de ligne fantôme sous la dernière case : cliquer sous les objectifs
-    // reprend la dernière, plutôt que d'en ouvrir une vide.
-    trailingBlock: false,
-    initialContent: (initial.length ? initial : FICHE_NEUVE) as unknown as NonNullable<
-      Parameters<typeof useCreateBlockNote>[0]
-    >['initialContent'],
-  });
+  const [lignes, setLignes] = useState(initial);
+  const uid = useId();
+  const idDe = (id: string) => `${uid}-${id}`;
+  const jour = aujourdhui();
+  const figee = implicite < jour;
+  const max = horizonDesEcheances(jours);
 
-  /** Le curseur au bout de la dernière case : c'est là qu'on ajoute. */
-  const ecrireALaFin = useCallback(() => {
-    const dernier = editeur.document.at(-1);
-    if (!dernier) return;
-    editeur.setTextCursorPosition(dernier, 'end');
-    editeur.focus();
-  }, [editeur]);
-
-  useEffect(() => {
-    if (focusSignal > 0 && modifiable) ecrireALaFin();
-  }, [focusSignal, modifiable, ecrireALaFin]);
-
-  // Les cases suivent l'auto-évaluation de l'agent : cochée, l'objectif est
-  // atteint. Les poser n'est pas une rédaction : rien ne s'enregistre.
-  const enPose = useRef(false);
-  const statutsCle = statuts ? JSON.stringify(statuts) : undefined;
-  useEffect(() => {
-    if (!statuts) return;
-    const ecarts = editeur.document.filter(
-      (b) =>
-        b.type === 'checkListItem' && Boolean(b.props.checked) !== (statuts[b.id] === 'atteint'),
-    );
-    if (!ecarts.length) return;
-    enPose.current = true;
-    try {
-      for (const b of ecarts) {
-        editeur.updateBlock(b.id, {
-          type: 'checkListItem',
-          props: { checked: statuts[b.id] === 'atteint' },
-        });
-      }
-    } finally {
-      enPose.current = false;
-    }
-    // `statutsCle` résume `statuts` : un nouvel objet de mêmes valeurs ne repose rien.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statutsCle, editeur]);
-
-  // Partiellement, non atteint : la case, restée décochée, prend la couleur
-  // du choix — une règle par objectif, que BlockNote ne peut pas effacer en
-  // redessinant ses blocs.
-  const portee = useId();
-  const couleurs = useMemo(() => {
-    if (!statuts) return '';
-    return Object.entries(statuts)
-      .filter(([, s]) => s !== 'atteint')
-      .map(
-        ([id, s]) =>
-          `[data-statuts="${portee}"] [data-id="${CSS.escape(id)}"] > .bn-block-content[data-content-type='checkListItem'] > div > input { ${DESSIN_DU_STATUT[s]} }`,
-      )
-      .join('\n');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statutsCle, portee]);
-
-  /**
-   * Tout ce qui n'est pas une case le redevient : la ligne que l'éditeur
-   * vient de sortir de la liste, un paragraphe collé, une case glissée sous
-   * une autre ; un lien redevient son texte. Vrai si la fiche a changé
-   * (l'enregistrement suivra).
-   */
-  const normaliser = (): boolean => {
-    const doc = editeur.document;
-    const textuel = (b: (typeof doc)[number]) =>
-      (Array.isArray(b.content) ? b.content : []).every((c) => c.type === 'text');
-    const enOrdre = (b: (typeof doc)[number]) =>
-      b.type === 'checkListItem' && b.children.length === 0 && textuel(b);
-    if (doc.every(enOrdre)) return false;
-    editeur.transact(() => {
-      if (doc.some((b) => b.children.length > 0)) {
-        editeur.replaceBlocks(doc, aplatir(doc) as Parameters<typeof editeur.insertBlocks>[0]);
-        return;
-      }
-      for (const b of doc) {
-        if (enOrdre(b)) continue;
-        editeur.updateBlock(b, {
-          type: 'checkListItem',
-          props: { checked: b.type === 'checkListItem' && Boolean(b.props.checked) },
-          ...(textuel(b) ? {} : { content: texteDe(b.content) }),
-        });
-      }
+  /** Le curseur dans un objectif, au début ou à la fin de son texte. */
+  const viser = (id: string, ou: 'debut' | 'fin' = 'fin') =>
+    requestAnimationFrame(() => {
+      const champ = document.getElementById(idDe(id));
+      if (!(champ instanceof HTMLTextAreaElement)) return;
+      champ.focus();
+      const position = ou === 'fin' ? champ.value.length : 0;
+      champ.setSelectionRange(position, position);
     });
-    return true;
+
+  const publier = (suivantes: Objectif[]) => {
+    setLignes(suivantes);
+    onChange(suivantes);
   };
 
-  /**
-   * Le clavier d'une liste de cases : Entrée sur une case vide n'en ouvre pas
-   * une autre ; Retour arrière en tête de case la fond dans celle du dessus,
-   * et ne fait rien sur la première ; Tab ne range pas une case sous une
-   * autre ; tout sélectionner prend le texte de toutes les cases.
-   */
-  const auClavier = (e: KeyboardEvent) => {
-    // Une case ne se coche pas au clavier non plus : c'est l'agent qui dit
-    // où il en est.
-    if ((e.target as HTMLElement).tagName === 'INPUT' && (e.key === ' ' || e.key === 'Enter')) {
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
-    if (e.key === 'Tab') {
-      // ProseMirror ne la voit pas : le focus passe simplement à la suite.
-      e.stopPropagation();
-      return;
-    }
-    if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
-      // Tout sélectionner, c'est tout le texte, de la première case à la
-      // dernière : effacé, il laisse une case vide.
-      e.preventDefault();
-      e.stopPropagation();
-      const doc = editeur.document;
-      editeur.setTextCursorPosition(doc[0]!, 'start');
-      const debut = editeur.prosemirrorState.selection.from;
-      editeur.setTextCursorPosition(doc.at(-1)!, 'end');
-      const fin = editeur.prosemirrorState.selection.from;
-      editeur._tiptapEditor.commands.setTextSelection({ from: debut, to: fin });
-      return;
-    }
-    if (e.key !== 'Enter' && e.key !== 'Backspace') return;
-    if (e.key === 'Enter' && e.shiftKey) {
-      // Un objectif tient sur une ligne.
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
-    // Une sélection de blocs (tout sélectionner) : l'éditeur s'en charge, et
-    // la fiche vidée garde sa case.
-    if (!('$cursor' in editeur.prosemirrorState.selection)) return;
-    // Le curseur tel que la page le montre : une touche de déplacement
-    // (Début, flèches) vient peut-être de le bouger sans que l'éditeur l'ait
-    // encore relevé.
-    const dom = window.getSelection();
-    const vue = editeur.prosemirrorView;
-    if (!dom?.isCollapsed || !dom.anchorNode || !vue.dom.contains(dom.anchorNode)) return;
-    const position = vue.posAtDOM(dom.anchorNode, dom.anchorOffset);
-    if (position !== editeur.prosemirrorState.selection.from) {
-      editeur._tiptapEditor.commands.setTextSelection(position);
-    }
-    const selection = editeur.prosemirrorState.selection;
-    if (!selection.empty) return;
-    const { block, prevBlock } = editeur.getTextCursorPosition();
-    const ici = texteDe(block.content);
+  const changer = (id: string, quoi: Partial<Objectif>) =>
+    publier(lignes.map((l) => (l.id === id ? { ...l, ...quoi } : l)));
+
+  /** Un objectif sous `apres`, à la même échéance tant qu'elle n'est pas passée. */
+  const ajouter = (apres?: Objectif) => {
+    const neuf: Objectif = {
+      id: crypto.randomUUID(),
+      texte: '',
+      echeance: apres && apres.echeance >= jour ? apres.echeance : implicite,
+    };
+    const i = apres ? lignes.findIndex((l) => l.id === apres.id) : lignes.length - 1;
+    publier([...lignes.slice(0, i + 1), neuf, ...lignes.slice(i + 1)]);
+    viser(neuf.id);
+  };
+
+  const retirer = (l: Objectif) => {
+    const i = lignes.findIndex((x) => x.id === l.id);
+    const voisine = lignes[i - 1] ?? lignes[i + 1];
+    publier(lignes.filter((x) => x.id !== l.id));
+    if (voisine) viser(voisine.id);
+  };
+
+  // Le crayon : le curseur au bout du dernier objectif, ou sur un premier.
+  useEffect(() => {
+    if (focusSignal === 0) return;
+    const dernier = lignes.at(-1);
+    if (dernier) viser(dernier.id);
+    else if (!figee) ajouter();
+    // Seul le signal compte : la liste qu'on rédige ne relance rien.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSignal]);
+
+  const auClavier = (e: KeyboardEvent<HTMLTextAreaElement>, l: Objectif) => {
+    const champ = e.currentTarget;
+    const i = lignes.findIndex((x) => x.id === l.id);
     if (e.key === 'Enter') {
-      if (!ici.trim()) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+      // Un objectif tient sur une ligne : Entrée en ouvre un autre.
+      e.preventDefault();
+      if (!e.shiftKey && !figee && l.texte.trim()) ajouter(l);
       return;
     }
-    if (selection.$from.parentOffset > 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (!prevBlock) return;
-    const dessus = texteDe(prevBlock.content);
-    editeur.transact(() => {
-      editeur.updateBlock(prevBlock, { content: dessus + ici });
-      editeur.removeBlocks([block]);
-    });
-    // Le curseur à la jointure des deux textes.
-    editeur.setTextCursorPosition(prevBlock, 'end');
-    if (ici) {
-      editeur._tiptapEditor.commands.setTextSelection(
-        editeur.prosemirrorState.selection.from - ici.length,
-      );
+    if (e.key === 'Backspace' && !l.texte) {
+      e.preventDefault();
+      retirer(l);
+      return;
+    }
+    const auDebut = champ.selectionStart === 0 && champ.selectionEnd === 0;
+    const aLaFin = champ.selectionStart === champ.value.length;
+    if (e.key === 'ArrowUp' && auDebut && lignes[i - 1]) {
+      e.preventDefault();
+      viser(lignes[i - 1]!.id);
+    } else if (e.key === 'ArrowDown' && aLaFin && lignes[i + 1]) {
+      e.preventDefault();
+      viser(lignes[i + 1]!.id, 'debut');
     }
   };
 
   return (
-    <>
-      {couleurs ? <style>{couleurs}</style> : null}
-      <div
-        data-statuts={statuts ? portee : undefined}
-        className={cn(modifiable && 'cursor-text', statuts && 'fiche-statuts')}
-        onKeyDownCapture={modifiable ? auClavier : undefined}
-        // Comme sur une page : cliquer sous le texte place le curseur en fin
-        // de liste, au lieu de ne rien faire.
-        onMouseDown={(e) => {
-          if (!modifiable || e.target !== e.currentTarget) return;
-          e.preventDefault();
-          ecrireALaFin();
-        }}
-      >
-        <BlockNoteView
-          editor={editeur}
-          editable={modifiable}
-          // Le clair et le sombre de la plateforme, pas ceux du système : les
-          // couleurs elles-mêmes viennent des variables (globals.css).
-          theme={theme === 'sombre' ? 'dark' : 'light'}
-          // Ni poignée, ni menu, ni barre : une liste de cases, au clavier.
-          sideMenu={false}
-          slashMenu={false}
-          formattingToolbar={false}
-          linkToolbar={false}
-          emojiPicker={false}
-          onChange={() => {
-            if (enPose.current) return;
-            if (modifiable && normaliser()) return;
-            onChange(editeur.document as unknown as Record<string, unknown>[]);
-          }}
-        />
-      </div>
-    </>
+    <div className="flex flex-col px-5">
+      {figee ? null : <ReglesDesEcheances jours={jours} className="mb-2" />}
+      <ul className="flex flex-col">
+        {lignes.map((l, i) => (
+          <li key={l.id} className="flex items-start gap-[11px] py-1">
+            <span className="pt-[2px]">
+              <Case statut={statuts?.[l.id]} />
+            </span>
+            <TexteModifiable
+              id={idDe(l.id)}
+              valeur={l.texte}
+              label={`Objectif ${i + 1}`}
+              onChange={(texte) => changer(l.id, { texte })}
+              onKeyDown={(e) => auClavier(e, l)}
+            />
+            {figee ? (
+              <Echeance date={l.echeance} annee={annee} className="pt-[3px]" />
+            ) : (
+              <ChoixEcheance
+                date={l.echeance}
+                annee={annee}
+                min={jour}
+                max={max}
+                label={`Échéance de l’objectif ${i + 1}`}
+                onChange={(echeance) => changer(l.id, { echeance })}
+              />
+            )}
+            <button
+              type="button"
+              aria-label={`Retirer l’objectif ${i + 1}`}
+              title="Retirer"
+              onClick={() => retirer(l)}
+              className="grid size-6 shrink-0 place-items-center rounded-full text-ink-muted/70 transition-colors duration-150 outline-none hover:bg-hover hover:text-danger focus-visible:ring-2 focus-visible:ring-primary/35"
+            >
+              <Icon name="close" size={16} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      {figee ? null : (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-1 -ml-2 self-start"
+          onClick={() => ajouter(lignes.at(-1))}
+        >
+          <Icon name="add" size={16} />
+          Ajouter un objectif
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** Le texte d'un objectif, à réécrire : une ligne, qui s'allonge avec ce qu'on y écrit. */
+function TexteModifiable({
+  id,
+  valeur,
+  label,
+  onChange,
+  onKeyDown,
+}: {
+  id: string;
+  valeur: string;
+  label: string;
+  onChange: (texte: string) => void;
+  onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+}) {
+  const champ = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = champ.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [valeur]);
+  return (
+    <textarea
+      ref={champ}
+      id={id}
+      rows={1}
+      aria-label={label}
+      value={valeur}
+      maxLength={OBJECTIF_TEXTE_MAX}
+      // Un texte collé sur plusieurs lignes se met sur une seule.
+      onChange={(e) => onChange(e.target.value.replace(/\s*\n\s*/g, ' '))}
+      onKeyDown={onKeyDown}
+      className="-mx-1.5 min-w-0 flex-1 resize-none overflow-hidden rounded-[8px] bg-transparent px-1.5 py-[3px] text-[12.5px] leading-[1.5] text-ink transition-colors duration-150 outline-none hover:bg-hover/70 focus:bg-hover"
+    />
   );
 }
 

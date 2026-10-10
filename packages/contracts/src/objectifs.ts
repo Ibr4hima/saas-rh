@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { StatutSuivi } from './academy';
+import { MOIS_DE_L_ANNEE } from './document-requests';
 
 /* ————————————————————————————————————————————————————————————————
    Les objectifs — trois niveaux qui descendent l'organigramme.
@@ -82,6 +83,8 @@ export interface MesObjectifs {
   fiches: FicheObjectifs[];
   /** Les formations qu'il a commencées, pour les blocs « Formation ». */
   formations: FormationDeLaFiche[];
+  /** Les jours d'évaluation de l'APIX : ils rangent chaque objectif par son échéance. */
+  joursEvaluation: JoursEvaluation;
 }
 
 // ---------- Fiche d'objectifs (éditeur de blocs) ----------
@@ -237,6 +240,11 @@ export interface ObjectifDeLaFiche {
   /** Le contenu du bloc, tel que l'éditeur l'enregistre (texte stylé, échéances…). */
   contenu: Record<string, unknown>[];
   /**
+   * L'échéance de l'objectif, date ISO. Une case d'avant les échéances n'en
+   * a pas : elle vaut la date d'évaluation de sa fiche.
+   */
+  echeance: string | null;
+  /**
    * Un bloc « Formation » : la formation qu'il donne à suivre. Son statut ne
    * se choisit pas, il vient de l'APIX Academy (cf. `statutDeFormation`).
    */
@@ -280,6 +288,19 @@ function empreinteDe(contenu: unknown): string {
     .trim();
 }
 
+/** Une date ISO (AAAA-MM-JJ) qui existe : pas de 30 février. */
+function dateExistante(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const t = Date.parse(`${date}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === date;
+}
+
+/** L'échéance d'une case, quand elle en a une : une date ISO. */
+export function echeanceDuBloc(b: Record<string, unknown>): string | null {
+  const echeance = (b.props as { echeance?: unknown } | undefined)?.echeance;
+  return typeof echeance === 'string' && dateExistante(echeance) ? echeance : null;
+}
+
 /**
  * Les objectifs d'une fiche : ses cases à cocher qui disent quelque chose, et
  * ses formations à suivre, dans l'ordre de lecture. Un paragraphe n'en est
@@ -298,6 +319,7 @@ export function objectifsDeLaFiche(contenu: Record<string, unknown>[]): Objectif
             texte,
             empreinte: empreinteDe(b.content),
             contenu: Array.isArray(b.content) ? (b.content as Record<string, unknown>[]) : [],
+            echeance: echeanceDuBloc(b),
             formation: null,
           });
         }
@@ -315,6 +337,7 @@ export function objectifsDeLaFiche(contenu: Record<string, unknown>[]): Objectif
             texte,
             empreinte: `formation:${courseId}`,
             contenu: [{ type: 'text', text: texte, styles: {} }],
+            echeance: null,
             formation: courseId,
           });
         }
@@ -422,6 +445,8 @@ export interface FicheSuivi {
   fiches: FicheObjectifs[];
   /** Les formations qu'il a commencées, pour les blocs « Formation ». */
   formations: FormationDeLaFiche[];
+  /** Les jours d'évaluation de l'APIX : ils rangent chaque objectif par son échéance. */
+  joursEvaluation: JoursEvaluation;
 }
 
 /** « Objectifs de l'APIX » : ce que le directeur général fixe. */
@@ -537,3 +562,112 @@ export const datesEvaluationSchema = z.object({
   semestre2: jourDeLAnneeSchema,
 });
 export type DatesEvaluationInput = z.infer<typeof datesEvaluationSchema>;
+
+/** Les jours d'évaluation de l'année, « MM-JJ » : celui du 1er semestre, puis celui du 2nd. */
+export type JoursEvaluation = readonly [string, string];
+
+/** Tant que la DCH n'en a pas fixé d'autres : la fin de chaque semestre. */
+export const JOURS_D_EVALUATION_PAR_DEFAUT: JoursEvaluation = ['06-30', '12-31'];
+
+/** La date d'évaluation d'un semestre, une année donnée. */
+export function dateDEvaluation(annee: number, semestre: Semestre, jours: JoursEvaluation): string {
+  return `${annee}-${jours[semestre - 1]}`;
+}
+
+/**
+ * L'évaluation où compte un objectif : la première qui tombe le jour de son
+ * échéance ou après. Une échéance après la dernière de l'année compte pour
+ * le 1er semestre de la suivante.
+ */
+export function periodeDeLEcheance(echeance: string, jours: JoursEvaluation): PeriodeObjectifs {
+  const annee = Number(echeance.slice(0, 4));
+  const jour = echeance.slice(5, 10);
+  if (jour <= jours[0]) return { annee, semestre: 1 };
+  if (jour <= jours[1]) return { annee, semestre: 2 };
+  return { annee: annee + 1, semestre: 1 };
+}
+
+/** « 30 juin », « 1er janvier » : un jour et un mois, « MM-JJ », en lettres. */
+export function jourEtMoisEnLettres(jour: string): string {
+  const [mois = 1, j = 1] = jour.split('-').map(Number);
+  return `${j === 1 ? '1er' : j} ${MOIS_DE_L_ANNEE[mois - 1]}`;
+}
+
+/** « 20 mars 2027 », ou « 20 mars » sans l'année : une date ISO en lettres. */
+export function dateEnLettres(date: string, avecAnnee = true): string {
+  const jour = jourEtMoisEnLettres(date.slice(5, 10));
+  return avecAnnee ? `${jour} ${date.slice(0, 4)}` : jour;
+}
+
+/** Le lendemain d'un « MM-JJ », dans une année ordinaire ; rien après le 31 décembre. */
+function lendemain(jour: string): string | null {
+  const [mois = 1, j = 1] = jour.split('-').map(Number);
+  if (j < JOURS_PAR_MOIS[mois - 1]!)
+    return `${String(mois).padStart(2, '0')}-${String(j + 1).padStart(2, '0')}`;
+  if (mois === 12) return null;
+  return `${String(mois + 1).padStart(2, '0')}-01`;
+}
+
+/** « entre le 1er juillet et le 31 décembre », ou « le 31 décembre » pour un seul jour. */
+function intervalle(du: string, au: string): string {
+  return du === au
+    ? `le ${jourEtMoisEnLettres(du)}`
+    : `entre le ${jourEtMoisEnLettres(du)} et le ${jourEtMoisEnLettres(au)}`;
+}
+
+/**
+ * La règle en phrases, avec les jours que la DCH a fixés : ce qu'on lit en
+ * fixant une échéance.
+ */
+export function reglesDesEcheances(jours: JoursEvaluation): string[] {
+  const [s1, s2] = jours;
+  const regles = [
+    `Une échéance ${intervalle('01-01', s1)} compte pour l’évaluation du ${jourEtMoisEnLettres(s1)} (S1) ;`,
+    `une échéance ${intervalle(lendemain(s1) ?? s1, s2)} compte pour celle du ${jourEtMoisEnLettres(s2)} (S2).`,
+  ];
+  const apres = lendemain(s2);
+  if (apres) {
+    regles[1] = regles[1]!.replace(/\.$/, ' ;');
+    regles.push(
+      `une échéance ${intervalle(apres, '12-31')} compte pour l’évaluation du ${jourEtMoisEnLettres(s1)} de l’année suivante (S1).`,
+    );
+  }
+  return regles;
+}
+
+/** Une fiche : l'évaluation où ses objectifs comptent. */
+export interface PeriodeObjectifs {
+  annee: number;
+  semestre: Semestre;
+}
+
+/**
+ * Ce que l'enregistrement d'une fiche a changé : la fiche elle-même, et
+ * celles où sont partis les objectifs dont l'échéance a changé de période.
+ */
+export interface FicheEnregistree {
+  majLe: string;
+  periodes: PeriodeObjectifs[];
+}
+
+/** Les fiches où les objectifs fixés sont allés, chacun selon son échéance. */
+export interface ObjectifsFixes {
+  periodes: PeriodeObjectifs[];
+}
+
+/** Un objectif ponctuel tient sur une ligne. */
+export const OBJECTIF_TEXTE_MAX = 500;
+
+/** « Fixer des objectifs » : chacun avec son échéance, qui décide de son semestre. */
+export const fixerObjectifsSchema = z.object({
+  objectifs: z
+    .array(
+      z.object({
+        texte: z.string().trim().min(1, 'Écrivez l’objectif').max(OBJECTIF_TEXTE_MAX),
+        echeance: z.iso.date(),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
+export type FixerObjectifsInput = z.infer<typeof fixerObjectifsSchema>;

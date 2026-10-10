@@ -16,9 +16,16 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionUser, StatutSuivi } from '@teranga/contracts';
-import { jourDeLAnneeSchema, objectifsDeLaFiche, statutDeFormation } from '@teranga/contracts';
+import {
+  fixerObjectifsSchema,
+  jourDeLAnneeSchema,
+  objectifsDeLaFiche,
+  periodeDeLEcheance,
+  reglesDesEcheances,
+  statutDeFormation,
+} from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
@@ -59,6 +66,17 @@ async function codeOf(fn: () => Promise<unknown>): Promise<string> {
     return 'AUCUNE ERREUR';
   } catch (err) {
     if (err instanceof ProblemException) return err.problem.code;
+    return `NON-PROBLEM: ${(err as Error).message}`;
+  }
+}
+
+/** Le message que l'écran affiche. */
+async function titreOf(fn: () => Promise<unknown>): Promise<string> {
+  try {
+    await fn();
+    return 'AUCUNE ERREUR';
+  } catch (err) {
+    if (err instanceof ProblemException) return err.problem.title;
     return `NON-PROBLEM: ${(err as Error).message}`;
   }
 }
@@ -1387,5 +1405,380 @@ describe('les dates d’évaluation', () => {
     // Le jour même, c'est encore l'année en cours.
     objectifs.horloge = le('2026-12-20');
     expect((await objectifs.datesEvaluation(dch())).annee).toBe(2026);
+  });
+});
+
+describe('les objectifs à échéance', () => {
+  // Ousmane fixe les objectifs de Fatou ; la DCH, les jours d'évaluation.
+  const dch = () => ({ ...session('mariama'), dirigeLaDCH: true }) as SessionUser;
+  const le = (jour: string) => () => new Date(`${jour}T09:00:00Z`);
+  const fixer = (...liste: [string, string][]) =>
+    objectifs.fixerObjectifs(session('ousmane'), agents.fatou, {
+      objectifs: liste.map(([texte, echeance]) => ({ texte, echeance })),
+    });
+  const jours = (semestre1: string, semestre2: string) =>
+    objectifs.fixerDatesEvaluation(dch(), { semestre1, semestre2 });
+  const ficheDe = async (annee: number, semestre: 1 | 2) =>
+    (await objectifs.fiche(session('ousmane'), agents.fatou)).fiches.find(
+      (f) => f.annee === annee && f.semestre === semestre,
+    );
+  /** Les objectifs d'une fiche, dans l'ordre où ils se lisent : « échéance texte ». */
+  const lignes = async (annee: number, semestre: 1 | 2) => {
+    const f = await ficheDe(annee, semestre);
+    return f ? objectifsDeLaFiche(f.contenu).map((o) => `${o.echeance} ${o.texte}`) : [];
+  };
+  const objectif = async (annee: number, semestre: 1 | 2, texte: string) =>
+    objectifsDeLaFiche((await ficheDe(annee, semestre))!.contenu).find((o) => o.texte === texte)!;
+  /** La fiche relue par le n+1, une échéance changée. */
+  const avecEcheance = async (annee: number, semestre: 1 | 2, texte: string, echeance: string) => {
+    const f = (await ficheDe(annee, semestre))!;
+    const { id } = await objectif(annee, semestre, texte);
+    return f.contenu.map((b) =>
+      b.id === id ? { ...b, props: { ...(b.props as object), echeance } } : b,
+    );
+  };
+  const enregistrer = (annee: number, semestre: 1 | 2, contenu: Record<string, unknown>[]) =>
+    objectifs.enregistrerFiche(session('ousmane'), agents.fatou, { annee, semestre, contenu });
+  const avis = async () =>
+    (await notifications('fatou'))
+      .map((n) => n.title)
+      .filter((t) => t.includes('vos objectifs du'))
+      .sort();
+
+  beforeEach(async () => {
+    await raw(`DELETE FROM objectifs_fiches WHERE employee_id = $1`, [agents.fatou]);
+    await raw(`DELETE FROM notifications WHERE recipient_user_id = $1`, [comptes.fatou]);
+    await raw(`DELETE FROM objective_review_schedule WHERE tenant_id = $1`, [tenantId]);
+    objectifs.horloge = le('2026-02-01');
+  });
+
+  afterAll(() => {
+    objectifs.horloge = () => maintenant;
+  });
+
+  it('la règle se lit avec les jours que la DCH a fixés', () => {
+    expect(reglesDesEcheances(['06-30', '12-31'])).toEqual([
+      'Une échéance entre le 1er janvier et le 30 juin compte pour l’évaluation du 30 juin (S1) ;',
+      'une échéance entre le 1er juillet et le 31 décembre compte pour celle du 31 décembre (S2).',
+    ]);
+    expect(reglesDesEcheances(['07-15', '12-15'])).toEqual([
+      'Une échéance entre le 1er janvier et le 15 juillet compte pour l’évaluation du 15 juillet (S1) ;',
+      'une échéance entre le 16 juillet et le 15 décembre compte pour celle du 15 décembre (S2) ;',
+      'une échéance entre le 16 décembre et le 31 décembre compte pour l’évaluation du 15 juillet de l’année suivante (S1).',
+    ]);
+    // Le jour de l'évaluation compte encore pour elle.
+    expect(periodeDeLEcheance('2026-06-30', ['06-30', '12-31'])).toEqual({
+      annee: 2026,
+      semestre: 1,
+    });
+    expect(periodeDeLEcheance('2026-07-01', ['06-30', '12-31'])).toEqual({
+      annee: 2026,
+      semestre: 2,
+    });
+    expect(periodeDeLEcheance('2026-12-31', ['06-30', '12-15'])).toEqual({
+      annee: 2027,
+      semestre: 1,
+    });
+  });
+
+  it('le n+1 ne choisit pas le semestre : chaque objectif compte pour l’évaluation de son échéance', async () => {
+    expect(
+      await fixer(
+        ['Rapport A', '2026-03-20'],
+        ['Rapport B', '2026-07-30'],
+        ['Bilan', '2026-06-30'],
+      ),
+    ).toEqual({
+      periodes: [
+        { annee: 2026, semestre: 1 },
+        { annee: 2026, semestre: 2 },
+      ],
+    });
+    expect(await lignes(2026, 1)).toEqual(['2026-03-20 Rapport A', '2026-06-30 Bilan']);
+    expect(await lignes(2026, 2)).toEqual(['2026-07-30 Rapport B']);
+    expect(await avis()).toEqual([
+      'Ousmane Fall a fixé vos objectifs du 1er semestre 2026',
+      'Ousmane Fall a fixé vos objectifs du 2nd semestre 2026',
+    ]);
+    // L'agent les lit de même, avec les jours d'évaluation qui les rangent.
+    const mes = await objectifs.mesObjectifs(session('fatou'));
+    expect(mes.joursEvaluation).toEqual(['06-30', '12-31']);
+    const s1 = mes.fiches.find((f) => f.annee === 2026 && f.semestre === 1)!;
+    expect(objectifsDeLaFiche(s1.contenu).map((o) => o.texte)).toEqual(['Rapport A', 'Bilan']);
+  });
+
+  it('rangés par échéance : un objectif fixé après passe devant s’il arrive plus tôt', async () => {
+    await fixer(['Note de conjoncture', '2026-03-20'], ['Bilan', '2026-06-30']);
+    await fixer(['Revue des comptes', '2026-02-10']);
+    // À échéance égale, l'ordre où ils ont été fixés.
+    await fixer(['Rapport C', '2026-03-20']);
+    expect(await lignes(2026, 1)).toEqual([
+      '2026-02-10 Revue des comptes',
+      '2026-03-20 Note de conjoncture',
+      '2026-03-20 Rapport C',
+      '2026-06-30 Bilan',
+    ]);
+    expect(await avis()).toEqual(['Ousmane Fall a mis à jour vos objectifs du 1er semestre 2026']);
+  });
+
+  it('une échéance se fixe d’aujourd’hui à la dernière évaluation de l’année suivante', async () => {
+    expect(await titreOf(() => fixer(['Hier', '2026-01-31']))).toBe(
+      'L’échéance du 31 janvier 2026 est déjà passée',
+    );
+    expect(await codeOf(() => fixer(['Hier', '2026-01-31']))).toBe('objectifs.echeance_passee');
+    expect(await titreOf(() => fixer(['Trop loin', '2028-01-01']))).toBe(
+      'Une échéance se fixe au plus tard le 31 décembre 2027',
+    );
+    expect(await codeOf(() => fixer(['Trop loin', '2028-01-01']))).toBe(
+      'objectifs.echeance_trop_lointaine',
+    );
+    // Un seul qui ne va pas, et rien n'est fixé.
+    expect(await codeOf(() => fixer(['Valable', '2026-05-01'], ['Hier', '2026-01-31']))).toBe(
+      'objectifs.echeance_passee',
+    );
+    expect(await ficheDe(2026, 1)).toBeUndefined();
+    // Aujourd'hui même, et le dernier jour possible.
+    await fixer(['Aujourd’hui', '2026-02-01'], ['Au plus tard', '2027-12-31']);
+    expect(await lignes(2026, 1)).toEqual(['2026-02-01 Aujourd’hui']);
+    expect(await lignes(2027, 2)).toEqual(['2027-12-31 Au plus tard']);
+    // L'échéance est obligatoire, et c'est une date qui existe ; le texte, une ligne.
+    const valable = (o: unknown) => fixerObjectifsSchema.safeParse({ objectifs: [o] }).success;
+    expect(valable({ texte: 'Écrire', echeance: '2026-03-01' })).toBe(true);
+    for (const o of [
+      { texte: 'Écrire' },
+      { texte: 'Écrire', echeance: '2026-02-30' },
+      { texte: '  ', echeance: '2026-03-01' },
+      { texte: 'x'.repeat(501), echeance: '2026-03-01' },
+    ]) {
+      expect(valable(o), JSON.stringify(o).slice(0, 60)).toBe(false);
+    }
+    expect(fixerObjectifsSchema.safeParse({ objectifs: [] }).success).toBe(false);
+  });
+
+  it('une échéance après la dernière évaluation de l’année compte pour le 1er semestre de la suivante', async () => {
+    await jours('06-30', '12-15');
+    expect(await fixer(['Clôture', '2026-12-20'])).toEqual({
+      periodes: [{ annee: 2027, semestre: 1 }],
+    });
+    expect(await lignes(2027, 1)).toEqual(['2026-12-20 Clôture']);
+    expect(await avis()).toEqual(['Ousmane Fall a fixé vos objectifs du 1er semestre 2027']);
+  });
+
+  it('le n+1 change une échéance : l’objectif part dans la fiche de sa nouvelle évaluation, avec ce qui s’en est dit', async () => {
+    await fixer(['Rapport A', '2026-03-20'], ['Bilan', '2026-06-30'], ['Rapport B', '2026-07-30']);
+    const a = await objectif(2026, 1, 'Rapport A');
+    await objectifs.statuer(session('fatou'), 2026, 1, {
+      id: a.id,
+      statut: 'partiel',
+      empreinte: a.empreinte,
+    });
+    await objectifs.enregistrerCommentaires(session('fatou'), 2026, 1, {
+      commentaires: { [a.id]: 'Plan rédigé.' },
+    });
+
+    expect(
+      await enregistrer(2026, 1, await avecEcheance(2026, 1, 'Rapport A', '2026-09-15')),
+    ).toMatchObject({
+      periodes: [
+        { annee: 2026, semestre: 1 },
+        { annee: 2026, semestre: 2 },
+      ],
+    });
+    expect(await lignes(2026, 1)).toEqual(['2026-06-30 Bilan']);
+    expect(await lignes(2026, 2)).toEqual(['2026-07-30 Rapport B', '2026-09-15 Rapport A']);
+    // Le même objectif : son statut et le commentaire de l'agent l'ont suivi.
+    const mes = (await objectifs.mesObjectifs(session('fatou'))).fiches;
+    const s1 = mes.find((f) => f.annee === 2026 && f.semestre === 1)!;
+    const s2 = mes.find((f) => f.annee === 2026 && f.semestre === 2)!;
+    expect(s2.statuts[a.id]).toBe('partiel');
+    expect(s2.evaluation.commentairesAgent[a.id]).toBe('Plan rédigé.');
+    expect(s1.statuts[a.id]).toBeUndefined();
+    expect(s1.evaluation.commentairesAgent[a.id]).toBeUndefined();
+    expect(await avis()).toEqual([
+      'Ousmane Fall a mis à jour vos objectifs du 1er semestre 2026',
+      'Ousmane Fall a mis à jour vos objectifs du 2nd semestre 2026',
+    ]);
+
+    // Une échéance avancée, dans la même évaluation : il reste, à sa place.
+    await enregistrer(2026, 2, await avecEcheance(2026, 2, 'Rapport A', '2026-07-01'));
+    expect(await lignes(2026, 2)).toEqual(['2026-07-01 Rapport A', '2026-07-30 Rapport B']);
+    // Une échéance passée ne se donne pas, pas plus qu'à un objectif neuf.
+    expect(
+      await codeOf(async () =>
+        enregistrer(2026, 2, await avecEcheance(2026, 2, 'Rapport A', '2026-01-15')),
+      ),
+    ).toBe('objectifs.echeance_passee');
+    // Retiré de la fiche, il emporte son statut et son commentaire.
+    const sansA = (await ficheDe(2026, 2))!.contenu.filter((b) => b.id !== a.id);
+    await enregistrer(2026, 2, sansA);
+    const { rows } = await raw(
+      `SELECT statuts, commentaires_agent FROM objectifs_fiches
+        WHERE employee_id = $1 AND annee = 2026 AND semestre = 2`,
+      [agents.fatou],
+    );
+    expect(rows[0]).toEqual({ statuts: {}, commentaires_agent: {} });
+  });
+
+  it('une case fixée avant les échéances prend la date d’évaluation de sa fiche, et la suit', async () => {
+    const ancienne = {
+      id: 'ancienne',
+      type: 'checkListItem',
+      props: { checked: false },
+      content: [{ type: 'text', text: 'Ancienne', styles: {} }],
+      children: [],
+    };
+    await enregistrer(2026, 2, [ancienne, { ...ancienne, id: 'vide', content: [] }]);
+    expect(await lignes(2026, 2)).toEqual(['2026-12-31 Ancienne']);
+    // Relue puis renvoyée telle quelle : rien ne s'écrit, elle n'a toujours
+    // pas d'échéance à elle ; la coche, que la lecture pose selon le statut
+    // de l'agent, ne se garde pas. La case vide ne s'est pas enregistrée.
+    const lue = (await ficheDe(2026, 2))!;
+    expect(await enregistrer(2026, 2, lue.contenu)).toEqual({ majLe: lue.majLe, periodes: [] });
+    const contenu = async () =>
+      (
+        await raw(
+          `SELECT contenu FROM objectifs_fiches WHERE employee_id = $1 AND annee = 2026 AND semestre = 2`,
+          [agents.fatou],
+        )
+      ).rows[0].contenu as { id: string; props: unknown }[];
+    expect((await contenu()).map((b) => [b.id, b.props])).toEqual([['ancienne', {}]]);
+    // La DCH déplace l'évaluation du 2nd semestre : la case la suit.
+    await jours('06-30', '12-15');
+    expect(await lignes(2026, 2)).toEqual(['2026-12-15 Ancienne']);
+    // Une date qui n'existe pas ne vaut pas échéance : la case garde la sienne.
+    await enregistrer(
+      2026,
+      2,
+      lue.contenu.map((b) => ({ ...b, props: { ...(b.props as object), echeance: '2026-02-30' } })),
+    );
+    expect((await contenu()).map((b) => b.props)).toEqual([{}]);
+  });
+
+  it('une évaluation passée garde ses objectifs : leur échéance ne change plus', async () => {
+    await fixer(['Revue des comptes', '2026-02-10'], ['Rapport B', '2026-08-30']);
+    objectifs.horloge = le('2026-07-10');
+    expect(
+      await titreOf(async () =>
+        enregistrer(2026, 1, await avecEcheance(2026, 1, 'Revue des comptes', '2026-08-01')),
+      ),
+    ).toBe(
+      'L’évaluation du 30 juin 2026 est passée : les échéances de ses objectifs ne changent plus',
+    );
+    // Le texte, lui, se corrige.
+    const revue = await objectif(2026, 1, 'Revue des comptes');
+    await enregistrer(
+      2026,
+      1,
+      (await ficheDe(2026, 1))!.contenu.map((b) =>
+        b.id === revue.id
+          ? { ...b, content: [{ type: 'text', text: 'Revue des comptes annuels', styles: {} }] }
+          : b,
+      ),
+    );
+    expect(await lignes(2026, 1)).toEqual(['2026-02-10 Revue des comptes annuels']);
+    // Aucun objectif ne s'y ajoute plus : son échéance serait passée.
+    expect(await codeOf(() => fixer(['Trop tard', '2026-06-30']))).toBe(
+      'objectifs.echeance_passee',
+    );
+    // Le 2nd semestre, à venir, change les siennes.
+    await enregistrer(2026, 2, await avecEcheance(2026, 2, 'Rapport B', '2026-09-30'));
+    expect(await lignes(2026, 2)).toEqual(['2026-09-30 Rapport B']);
+  });
+
+  it('une fiche dont l’auto-évaluation est envoyée ne reçoit plus d’objectif', async () => {
+    await fixer(['Revue des comptes', '2026-02-10'], ['Rapport B', '2026-08-30']);
+    const revue = await objectif(2026, 1, 'Revue des comptes');
+    await objectifs.statuer(session('fatou'), 2026, 1, { id: revue.id, statut: 'atteint' });
+    await objectifs.enregistrerCommentaires(session('fatou'), 2026, 1, {
+      commentaires: { [revue.id]: 'Faite.' },
+    });
+    await objectifs.envoyerCommentaires(session('fatou'), 2026, 1);
+
+    expect(await titreOf(() => fixer(['Encore un', '2026-05-01']))).toBe(
+      'L’agent a envoyé son auto-évaluation du 1er semestre 2026 : choisissez une échéance après le 30 juin 2026',
+    );
+    expect(await codeOf(() => fixer(['Encore un', '2026-05-01']))).toBe(
+      'objectifs.fiche_verrouillee',
+    );
+    // Ni par une échéance avancée.
+    expect(
+      await codeOf(async () =>
+        enregistrer(2026, 2, await avecEcheance(2026, 2, 'Rapport B', '2026-05-01')),
+      ),
+    ).toBe('objectifs.fiche_verrouillee');
+    expect(await lignes(2026, 2)).toEqual(['2026-08-30 Rapport B']);
+    // Après sa date d'évaluation, l'échéance va au semestre suivant.
+    await fixer(['Encore un', '2026-07-01']);
+    expect(await lignes(2026, 2)).toEqual(['2026-07-01 Encore un', '2026-08-30 Rapport B']);
+  });
+
+  it('la DCH déplace une date : les objectifs à venir la suivent, le passé et les fiches envoyées restent', async () => {
+    await fixer(['Juillet', '2026-07-10'], ['Fin d’année', '2026-12-20'], ['Mars', '2026-03-05']);
+    const juillet = await objectif(2026, 2, 'Juillet');
+    await objectifs.statuer(session('fatou'), 2026, 2, { id: juillet.id, statut: 'atteint' });
+    await objectifs.enregistrerCommentaires(session('fatou'), 2026, 2, {
+      commentaires: { [juillet.id]: 'Fait en avance.' },
+    });
+    // Une fiche d'avant, dont l'échéance est passée.
+    await raw(
+      `INSERT INTO objectifs_fiches (id, tenant_id, employee_id, annee, semestre, contenu)
+       VALUES ($1, $2, $3, 2025, 2, $4::jsonb)`,
+      [
+        randomUUID(),
+        tenantId,
+        agents.fatou,
+        JSON.stringify([
+          {
+            id: 'passe',
+            type: 'checkListItem',
+            props: { echeance: '2025-12-20' },
+            content: [{ type: 'text', text: 'Passé', styles: {} }],
+            children: [],
+          },
+        ]),
+      ],
+    );
+    const avant = await avis();
+
+    await jours('07-15', '12-15');
+    // Le 10 juillet compte désormais pour l'évaluation du 15 juillet, avec
+    // son statut et son commentaire ; le 20 décembre, pour le 1er semestre 2027.
+    expect(await lignes(2026, 1)).toEqual(['2026-03-05 Mars', '2026-07-10 Juillet']);
+    expect(await lignes(2026, 2)).toEqual([]);
+    expect(await lignes(2027, 1)).toEqual(['2026-12-20 Fin d’année']);
+    const s1 = (await objectifs.mesObjectifs(session('fatou'))).fiches.find(
+      (f) => f.annee === 2026 && f.semestre === 1,
+    )!;
+    expect(s1.statuts[juillet.id]).toBe('atteint');
+    expect(s1.evaluation.commentairesAgent[juillet.id]).toBe('Fait en avance.');
+    // Ce qui est passé reste où il est ; et personne n'est prévenu.
+    expect(await lignes(2025, 2)).toEqual(['2025-12-20 Passé']);
+    expect(await avis()).toEqual(avant);
+
+    // Le 1er semestre envoyé ne perd rien quand sa date revient au 30 juin.
+    const mars = await objectif(2026, 1, 'Mars');
+    for (const o of [mars, juillet]) {
+      await objectifs.statuer(session('fatou'), 2026, 1, { id: o.id, statut: 'atteint' });
+    }
+    await objectifs.enregistrerCommentaires(session('fatou'), 2026, 1, {
+      commentaires: { [mars.id]: 'Fait.', [juillet.id]: 'Fait en avance.' },
+    });
+    await objectifs.envoyerCommentaires(session('fatou'), 2026, 1);
+    await jours('06-30', '12-31');
+    expect(await lignes(2026, 1)).toEqual(['2026-03-05 Mars', '2026-07-10 Juillet']);
+    expect(await lignes(2026, 2)).toEqual(['2026-12-20 Fin d’année']);
+    expect(await lignes(2027, 1)).toEqual([]);
+  });
+
+  it('seul le n+1 fixe les objectifs de son direct', async () => {
+    for (const qui of ['mariama', 'fatou', 'awa'] as const) {
+      expect(
+        await codeOf(() =>
+          objectifs.fixerObjectifs(session(qui), agents.fatou, {
+            objectifs: [{ texte: 'Écrire', echeance: '2026-03-01' }],
+          }),
+        ),
+      ).toBe('objectifs.hors_equipe');
+    }
   });
 });

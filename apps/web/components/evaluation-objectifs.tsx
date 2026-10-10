@@ -45,6 +45,7 @@ import { api, ApiError } from '../lib/api';
 import { Icon, type IconName } from './icons';
 import { Modal } from './modal';
 import { CLE_OBJECTIFS } from './objectifs';
+import { Echeance } from './objectifs-echeances';
 
 /* ————————————————————————————————————————————————————————————————
    Ce que l'agent fait de ses objectifs, et ce que son n+1 en dit.
@@ -154,7 +155,7 @@ const DESSIN_STATUT: Record<
  * La case d'un objectif, dessinée comme celles de la fiche, à la couleur de
  * l'auto-évaluation. Elle ne barre pas le texte : ici, on rend compte.
  */
-function Case({ statut }: { statut?: StatutObjectif }) {
+export function Case({ statut }: { statut?: StatutObjectif }) {
   const d = statut ? DESSIN_STATUT[statut] : null;
   return (
     <span
@@ -269,14 +270,17 @@ function Propos({
   );
 }
 
-/** Une ligne d'objectif : la case, le texte, puis ce qui s'en dit dessous. */
+/** Une ligne d'objectif : la case, le texte et l'échéance, puis ce qui s'en dit dessous. */
 function LigneObjectif({
   objectif,
   statut,
+  annee,
   children,
 }: {
   objectif: ObjectifDeLaFiche;
   statut?: StatutObjectif;
+  /** L'année de la fiche : une échéance d'une autre année la dit. */
+  annee: number;
   children?: ReactNode;
 }) {
   return (
@@ -286,6 +290,7 @@ function LigneObjectif({
         <p className="min-w-0 flex-1 text-[12.5px] leading-[1.5] text-ink-strong">
           <TexteObjectif contenu={objectif.contenu} />
         </p>
+        {objectif.echeance ? <Echeance date={objectif.echeance} annee={annee} /> : null}
       </div>
       {children ? <div className="flex flex-col gap-2 pl-[27px]">{children}</div> : null}
     </li>
@@ -658,7 +663,7 @@ export function AutoEvaluationAgent({
     <div className="flex flex-col gap-5 px-5 pt-3 pb-4">
       <ol className="flex flex-col divide-y divide-line-soft">
         {objectifs.map((o) => (
-          <LigneObjectif key={o.id} objectif={o} statut={statuts[o.id]}>
+          <LigneObjectif key={o.id} objectif={o} statut={statuts[o.id]} annee={fiche.annee}>
             {envoyes ? (
               <>
                 {ev.commentairesAgent[o.id] ? (
@@ -822,7 +827,7 @@ export function EvaluationSemestre({
     <div className="flex flex-col gap-5 px-5 pt-3 pb-4">
       <ol className="flex flex-col divide-y divide-line-soft">
         {objectifs.map((o) => (
-          <LigneObjectif key={o.id} objectif={o} statut={fiche.statuts[o.id]}>
+          <LigneObjectif key={o.id} objectif={o} statut={fiche.statuts[o.id]} annee={fiche.annee}>
             {envoyes && ev.commentairesAgent[o.id] ? (
               <Propos
                 qui={prenom}
