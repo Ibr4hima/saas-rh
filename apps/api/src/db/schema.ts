@@ -1,0 +1,889 @@
+/**
+ * Schéma Drizzle : miroir typé des tables créées par les migrations SQL
+ * (src/db/sql). La source de vérité du DDL est le SQL — ce fichier ne sert
+ * qu'au typage des requêtes. Toute divergence est un bug.
+ */
+import {
+  boolean,
+  char,
+  customType,
+  date,
+  doublePrecision,
+  inet,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  primaryKey,
+  smallint,
+  text,
+  time,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
+
+/** daterange Postgres, manipulé sous forme textuelle `[start,end)`. */
+export const daterange = customType<{ data: string }>({
+  dataType() {
+    return 'daterange';
+  },
+});
+
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey(),
+  email: text('email').notNull(),
+  /** `null` : effacé, trente jours après un départ (0084). Le compte ne s'ouvre plus. */
+  passwordHash: text('password_hash'),
+  givenName: text('given_name').notNull(),
+  familyName: text('family_name').notNull(),
+  status: text('status').notNull().default('active'),
+  mfaTotpSecret: text('mfa_totp_secret'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const sessions = pgTable('sessions', {
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id').notNull(),
+  tenantId: uuid('tenant_id').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  ip: inet('ip'),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  /** Le dernier geste de l'agent (migration 0091) : trois jours sans, la session se ferme. */
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Les liens « mot de passe oublié » : globaux, comme les sessions (migration 0089). */
+export const passwordResets = pgTable('password_resets', {
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const tenants = pgTable('tenants', {
+  id: uuid('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull(),
+  countryCode: char('country_code', { length: 2 }).notNull().default('SN'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userTenantMemberships = pgTable('user_tenant_memberships', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  role: text('role').notNull(),
+  /** L'accès à cette organisation est coupé : le compte ne s'y connecte plus. */
+  accesCoupeLe: timestamp('acces_coupe_le', { withTimezone: true }),
+  accesCoupeParUserId: uuid('acces_coupe_par_user_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const orgUnits = pgTable('org_units', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  parentId: uuid('parent_id'),
+  unitType: text('unit_type').notNull(),
+  name: text('name').notNull(),
+  /** Abrégé d'une direction (« DCH ») — NULL pour les autres types. */
+  shortName: text('short_name'),
+  managerEmployeeId: uuid('manager_employee_id'),
+  /** La direction qui traite les demandes du personnel (la DCH) — une seule. */
+  directionDuPersonnel: boolean('direction_du_personnel').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
+/**
+ * Ce que le directeur du Capital Humain confie aux membres de la DCH. Close
+ * (fin_at) quand elle est retirée ou que le membre quitte la direction —
+ * jamais effacée.
+ */
+export const habilitations = pgTable('habilitations', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  capacite: text('capacite').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  accordeeParEmployeeId: uuid('accordee_par_employee_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  finAt: timestamp('fin_at', { withTimezone: true }),
+  finMotif: text('fin_motif'),
+});
+
+export const profileChangeRequests = pgTable('profile_change_requests', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  changes: jsonb('changes').notNull(),
+  previous: jsonb('previous').notNull(),
+  note: text('note'),
+  status: text('status').notNull(),
+  requestedByUserId: uuid('requested_by_user_id').notNull(),
+  handledByUserId: uuid('handled_by_user_id'),
+  hrMessage: text('hr_message'),
+  handledAt: timestamp('handled_at', { withTimezone: true }),
+  confieeAEmployeeId: uuid('confiee_a_employee_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const persons = pgTable('persons', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id'),
+  givenName: text('given_name').notNull(),
+  familyName: text('family_name').notNull(),
+  gender: text('gender'),
+  birthDate: date('birth_date'),
+  personalEmail: text('personal_email'),
+  phone: text('phone'),
+  addressLine: text('address_line'),
+  countryCode: char('country_code', { length: 2 }).notNull().default('SN'),
+  maritalStatus: text('marital_status'),
+  birthPlace: text('birth_place'),
+  /** NULL = pas encore renseignée (cf. migration 0015), jamais un défaut. */
+  nationality: char('nationality', { length: 2 }),
+  nationalIdEncrypted: text('national_id_encrypted'),
+  idDocumentType: text('id_document_type'),
+  idDocumentIssuedOn: date('id_document_issued_on'),
+  idDocumentExpiresOn: date('id_document_expires_on'),
+  emergencyContactName: text('emergency_contact_name'),
+  emergencyContactPhone: text('emergency_contact_phone'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
+export const employees = pgTable('employees', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  personId: uuid('person_id').notNull(),
+  employeeNumber: text('employee_number').notNull(),
+  hiredOn: date('hired_on').notNull(),
+  status: text('status').notNull().default('active'),
+  /** Quand le dossier a été archivé : il est devenu inactif ce jour-là. */
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+  /** Pourquoi il est inactif — `fin_de_contrat` se pose d'elle-même. */
+  inactiviteMotif: text('inactivite_motif'),
+  /** Inactif : son dernier jour d'activité — sa dernière affectation s'arrête là. */
+  finActivite: date('fin_activite'),
+  workEmail: text('work_email'),
+  workPhone: text('work_phone'),
+  customFields: jsonb('custom_fields').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  /** À qui l'agent rend compte — distinct du responsable d'unité. */
+  managerEmployeeId: uuid('manager_employee_id'),
+});
+
+export const assignments = pgTable('assignments', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  orgUnitId: uuid('org_unit_id'),
+  positionTitle: text('position_title').notNull(),
+  validity: daterange('validity').notNull(),
+  /** Écrite par sa désignation à la tête de l'unité (migration 0097). */
+  responsable: boolean('responsable').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const contracts = pgTable('contracts', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  contractType: text('contract_type').notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date'),
+  trialPeriodEnd: date('trial_period_end'),
+  notes: text('notes'),
+  /** La place d'un contrat qui n'a pas commencé : elle s'applique le jour venu (migration 0085). */
+  plannedPositionTitle: text('planned_position_title'),
+  plannedOrgUnitId: uuid('planned_org_unit_id'),
+  /** Il a arrêté le précédent la veille de son début : sa fin d'origine, pour l'annuler (migration 0086). */
+  previousEndReplaced: boolean('previous_end_replaced').notNull().default(false),
+  previousEndDate: date('previous_end_date'),
+  /** Un retour : les unités et l'équipe qu'il reprend le jour venu, au choix de la RH (migration 0087). */
+  resumeUnitIds: uuid('resume_unit_ids').array().notNull().default([]),
+  resumeTeam: boolean('resume_team').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const absenceTypes = pgTable('absence_types', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  name: text('name').notNull(),
+  deductsBalance: boolean('deducts_balance').notNull().default(false),
+  allowanceDays: numeric('allowance_days', { precision: 5, scale: 2 }),
+  /** 'annual' : un quota par an ; 'none' : pas de quota (migration 0075). */
+  frequency: text('frequency').notNull().default('none'),
+  requiresDocument: boolean('requires_document').notNull().default(false),
+  /** L'agent reste joignable (une mission) : il vise encore ce qui l'attend. */
+  resteJoignable: boolean('reste_joignable').notNull().default(false),
+  /** Le motif ne regarde que l'agent et la DCH : le N+1 voit une absence (migration 0076). */
+  motifConfidentiel: boolean('motif_confidentiel').notNull().default(false),
+  /** Se demande aussi à l'heure, sur un jour (migration 0096). */
+  allowsHours: boolean('allows_hours').notNull().default(false),
+  /** Au plus tant de jours ouvrés par demande ; null : pas de plafond. */
+  maxDaysPerRequest: integer('max_days_per_request'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
+export const holidays = pgTable('holidays', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  /** L'année de rattachement : elle tient même quand la date manque encore. */
+  year: integer('year').notNull(),
+  /** Null tant que la fête n'est pas datée (Korité, Tabaski… avant l'annonce). */
+  day: date('day'),
+  label: text('label').notNull(),
+  /** Férié à date civile (Nouvel an, Noël…) : sa date ne se déplace pas. */
+  fixedDate: boolean('fixed_date').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Années dont le socle de quatorze fériés a déjà été posé (cf. 0020). */
+export const holidaySeeds = pgTable('holiday_seeds', {
+  tenantId: uuid('tenant_id').notNull(),
+  year: integer('year').notNull(),
+  seededAt: timestamp('seeded_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const absenceBalances = pgTable('absence_balances', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  absenceTypeId: uuid('absence_type_id').notNull(),
+  year: integer('year').notNull(),
+  entitledDays: numeric('entitled_days', { precision: 5, scale: 2 }).notNull().default('0'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const absenceRequests = pgTable('absence_requests', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  absenceTypeId: uuid('absence_type_id').notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  /** À l'heure : de telle heure à telle heure, le même jour (null : journées entières). */
+  startTime: time('start_time'),
+  endTime: time('end_time'),
+  daysCount: numeric('days_count', { precision: 5, scale: 2 }).notNull(),
+  reason: text('reason'),
+  status: text('status').notNull().default('pending'),
+  currentLevel: integer('current_level').notNull().default(0),
+  requestedByUserId: uuid('requested_by_user_id'),
+  /** Confiée à la main à un membre de la DCH ; NULL : la règle s'applique. */
+  confieeAEmployeeId: uuid('confiee_a_employee_id'),
+  /** La fin validée au départ, quand le congé a été écourté. */
+  finInitiale: date('fin_initiale'),
+  /** Le jour de reprise que l'agent demande, en attente de confirmation. */
+  repriseDemandee: date('reprise_demandee'),
+  ecourteNature: text('ecourte_nature'),
+  ecourteParUserId: uuid('ecourte_par_user_id'),
+  ecourteLe: timestamp('ecourte_le', { withTimezone: true }),
+  ecourteMotif: text('ecourte_motif'),
+  annuleParUserId: uuid('annule_par_user_id'),
+  annuleMotif: text('annule_motif'),
+  /** Passée à la DCH faute de visa du N+1 dans le délai. */
+  n1SansReponse: boolean('n1_sans_reponse').notNull().default(false),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const absenceApprovals = pgTable('absence_approvals', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  requestId: uuid('request_id').notNull(),
+  level: integer('level').notNull(),
+  decision: text('decision').notNull(),
+  decidedByUserId: uuid('decided_by_user_id').notNull(),
+  comment: text('comment'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Visé pour le compte du directeur du Capital Humain, par délégation. */
+  parDelegationDe: uuid('par_delegation_de'),
+});
+
+export const invitations = pgTable('invitations', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  personId: uuid('person_id').notNull(),
+  email: text('email').notNull(),
+  role: text('role').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  /** Null : partie d'elle-même, le jour où son contrat commence (migration 0085). */
+  invitedByUserId: uuid('invited_by_user_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const auditLog = pgTable('audit_log', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id'),
+  tableName: text('table_name').notNull(),
+  rowId: uuid('row_id'),
+  action: text('action').notNull(),
+  actorUserId: uuid('actor_user_id'),
+  oldData: jsonb('old_data'),
+  newData: jsonb('new_data'),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- Recrutement ----------
+
+export const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});
+
+export const jobPostings = pgTable('job_postings', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  /** OFF-AAAA-NNN — numéroté par organisation et par année (cf. 0016). */
+  reference: text('reference').notNull(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  orgUnitId: uuid('org_unit_id'),
+  contractType: text('contract_type').notNull(),
+  location: text('location'),
+  deadline: date('deadline'),
+  requiredDocuments: text('required_documents').array().notNull(),
+  /** Le profil recherché (cf. 0056) : des listes fermées, rien de saisi. */
+  niveauEtudes: text('niveau_etudes'),
+  experienceMin: smallint('experience_min'),
+  langues: text('langues').array().notNull().default([]),
+  dureeMois: smallint('duree_mois'),
+  status: text('status').notNull().default('draft'),
+  publicSlug: text('public_slug').notNull(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+  /** Le jour où l'offre a été rendue publique (la dernière fois). */
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Numérotation des offres — à part de la table, et jamais décrémentée.
+ *
+ * Déduire le prochain numéro des offres présentes le rendrait à la suppression
+ * d'une offre : deux campagnes porteraient alors la même référence dans les
+ * archives (cf. migration 0017).
+ */
+export const jobPostingCounters = pgTable(
+  'job_posting_counters',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    year: integer('year').notNull(),
+    lastNumber: integer('last_number').notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.tenantId, table.year] })],
+);
+
+export const applications = pgTable('applications', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  jobPostingId: uuid('job_posting_id').notNull(),
+  givenName: text('given_name').notNull(),
+  familyName: text('family_name').notNull(),
+  email: text('email').notNull(),
+  phone: text('phone'),
+  message: text('message'),
+  stage: text('stage').notNull().default('received'),
+  /** Chiffrée au repos (migration 0079) : vide, la ligne date d'avant. */
+  cleVersion: smallint('cle_version'),
+  /** L'empreinte à clé de l'adresse : une candidature par adresse et par offre. */
+  emailIndex: bytea('email_index'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const applicationDocuments = pgTable('application_documents', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  applicationId: uuid('application_id').notNull(),
+  label: text('label').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  data: bytea('data').notNull(),
+  cleVersion: smallint('cle_version'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const absenceDocuments = pgTable('absence_documents', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  requestId: uuid('request_id').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull().default('application/pdf'),
+  sizeBytes: integer('size_bytes').notNull(),
+  data: bytea('data').notNull(),
+  /** NULL : déposé avant le chiffrement (migration 0090), en clair. */
+  cleVersion: smallint('cle_version'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- Pièces justificatives & notifications ----------
+
+export const employeeDocuments = pgTable('employee_documents', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  category: text('category').notNull(),
+  label: text('label').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  data: bytea('data').notNull(),
+  /** NULL : déposé avant le chiffrement (migration 0090), en clair. */
+  cleVersion: smallint('cle_version'),
+  status: text('status').notNull().default('pending'),
+  uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
+  uploadedBySide: text('uploaded_by_side').notNull(),
+  reviewedByUserId: uuid('reviewed_by_user_id'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewComment: text('review_comment'),
+  confieeAEmployeeId: uuid('confiee_a_employee_id'),
+  /** CNI et passeport : la date d'expiration, que l'agent donne au dépôt. */
+  expiresOn: date('expires_on'),
+  /** CNI et passeport : une nouvelle pièce, qui remplace celle de la fiche. */
+  renouvellement: boolean('renouvellement').notNull().default(false),
+  /** Avance à chaque fichier remplacé : qui vérifie dit lequel il a ouvert. */
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const notifications = pgTable('notifications', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  recipientUserId: uuid('recipient_user_id').notNull(),
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  body: text('body'),
+  link: text('link'),
+  dedupeKey: text('dedupe_key'),
+  readAt: timestamp('read_at', { withTimezone: true }),
+  /** Rangée hors de la boîte, jamais perdue : voir 0021. */
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+  /** Remplacée par une plus récente sur le même sujet : hors de la boîte. Voir 0054. */
+  remplaceeLe: timestamp('remplacee_le', { withTimezone: true }),
+  /** Le sujet que la personne règle (catalogue des contrats). Voir 0093. */
+  sujet: text('sujet'),
+  /** Faux : voulue par courriel ou WhatsApp seulement, elle ne se montre pas. */
+  dansLaPlateforme: boolean('dans_la_plateforme').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Un sujet réglé par une personne : où ses notifications la trouvent. Voir 0093. */
+export const notificationPreferences = pgTable('notification_preferences', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  sujet: text('sujet').notNull(),
+  plateforme: boolean('plateforme').notNull(),
+  courriel: boolean('courriel').notNull(),
+  whatsapp: boolean('whatsapp').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Ce qui vaut pour tous ses sujets : le numéro WhatsApp, les heures calmes, la pause en congé. */
+export const notificationReglages = pgTable('notification_reglages', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  whatsappNumeroChiffre: text('whatsapp_numero_chiffre'),
+  whatsappNumeroMasque: text('whatsapp_numero_masque'),
+  whatsappVerifieLe: timestamp('whatsapp_verifie_le', { withTimezone: true }),
+  heuresCalmes: boolean('heures_calmes').notNull().default(true),
+  pauseConges: boolean('pause_conges').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Un numéro en cours de vérification, et son code. */
+export const whatsappVerifications = pgTable('whatsapp_verifications', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  numeroChiffre: text('numero_chiffre').notNull(),
+  numeroMasque: text('numero_masque').notNull(),
+  codeHash: text('code_hash').notNull(),
+  codeChiffre: text('code_chiffre'),
+  essais: integer('essais').notNull().default(0),
+  expireLe: timestamp('expire_le', { withTimezone: true }).notNull(),
+  utiliseeLe: timestamp('utilisee_le', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Les messages WhatsApp qui partent (file d'envoi). */
+export const outboundWhatsapp = pgTable('outbound_whatsapp', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  kind: text('kind').notNull(),
+  subjectId: uuid('subject_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  status: text('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+});
+
+export const documentRequests = pgTable('document_requests', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  docTypes: text('doc_types').array().notNull(),
+  /** Bulletin de salaire : le premier et le dernier mois demandés, au 1er du mois (0098). */
+  payslipFrom: date('payslip_from'),
+  payslipTo: date('payslip_to'),
+  /** Bulletin de salaire : les N derniers mois. */
+  payslipLastMonths: smallint('payslip_last_months'),
+  note: text('note'),
+  status: text('status').notNull().default('received'),
+  requestedByUserId: uuid('requested_by_user_id').notNull(),
+  handledByUserId: uuid('handled_by_user_id'),
+  pickupContact: text('pickup_contact'),
+  hrMessage: text('hr_message'),
+  processingAt: timestamp('processing_at', { withTimezone: true }),
+  readyAt: timestamp('ready_at', { withTimezone: true }),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  confieeAEmployeeId: uuid('confiee_a_employee_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Le document remis en ligne : déposé par qui traite la demande, chiffré au repos (0099). */
+export const documentRequestFiles = pgTable('document_request_files', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  requestId: uuid('request_id').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  data: bytea('data').notNull(),
+  cleVersion: smallint('cle_version').notNull(),
+  uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- Textes de référence (0023) ----------
+
+export const referenceTexts = pgTable('reference_texts', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  slug: text('slug').notNull(),
+  title: text('title').notNull(),
+  reference: text('reference'),
+  effectiveOn: date('effective_on'),
+  pdfFilename: text('pdf_filename'),
+  pdfData: bytea('pdf_data'),
+  pdfSize: integer('pdf_size'),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const referenceChapters = pgTable('reference_chapters', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  textId: uuid('text_id').notNull(),
+  number: integer('number').notNull(),
+  title: text('title').notNull(),
+  body: text('body'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const referenceSections = pgTable('reference_sections', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  chapterId: uuid('chapter_id').notNull(),
+  number: integer('number').notNull(),
+  title: text('title').notNull(),
+  body: text('body'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const referenceArticles = pgTable('reference_articles', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  textId: uuid('text_id').notNull(),
+  chapterId: uuid('chapter_id').notNull(),
+  sectionId: uuid('section_id'),
+  number: integer('number').notNull(),
+  label: text('label'),
+  title: text('title'),
+  body: text('body').notNull().default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- APIX Academy (0025) ----------
+
+export const academyCourses = pgTable('academy_courses', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  title: text('title').notNull(),
+  summary: text('summary'),
+  category: text('category').notNull(),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  quizQuestionCount: integer('quiz_question_count').notNull().default(10),
+  certificateValidityMonths: integer('certificate_validity_months'),
+  /** Le formateur : un agent de l'APIX (son dossier), ou une personne extérieure (son nom). */
+  formateurEmployeeId: uuid('formateur_employee_id'),
+  formateurNom: text('formateur_nom'),
+});
+
+export const academyModules = pgTable('academy_modules', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  position: integer('position').notNull(),
+  title: text('title').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const academyLessons = pgTable('academy_lessons', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  moduleId: uuid('module_id').notNull(),
+  position: integer('position').notNull(),
+  title: text('title').notNull(),
+  videoProvider: text('video_provider'),
+  videoUid: text('video_uid'),
+  videoStatus: text('video_status').notNull().default('absente'),
+  videoError: text('video_error'),
+  durationSeconds: doublePrecision('duration_seconds'),
+  /** L'envoi qui remplacera la vidéo prête, et si la leçon sera à revoir. */
+  remplacementUid: text('remplacement_uid'),
+  remplacementARevoir: boolean('remplacement_a_revoir'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const academyLessonSupports = pgTable('academy_lesson_supports', {
+  lessonId: uuid('lesson_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  filename: text('filename').notNull(),
+  data: bytea('data').notNull(),
+  size: integer('size').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const academyLessonProgress = pgTable(
+  'academy_lesson_progress',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    lessonId: uuid('lesson_id').notNull(),
+    watched: jsonb('watched').$type<Array<[number, number]>>().notNull(),
+    watchedSeconds: doublePrecision('watched_seconds').notNull().default(0),
+    positionSeconds: doublePrecision('position_seconds').notNull().default(0),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.employeeId, t.lessonId] })],
+);
+
+export const academyViewers = pgTable('academy_viewers', {
+  employeeId: uuid('employee_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  sessionId: uuid('session_id').notNull(),
+  lessonId: uuid('lesson_id').notNull(),
+  tokens: doublePrecision('tokens').notNull(),
+  tokensAt: timestamp('tokens_at', { withTimezone: true }).notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- APIX Academy — « Ma liste » (0028) ----------
+
+export const academyBookmarks = pgTable('academy_bookmarks', {
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Qui a vu les bonnes réponses d'une formation : son évaluation lui reste fermée (0092). */
+export const academyReponsesVues = pgTable('academy_reponses_vues', {
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  vuesLe: timestamp('vues_le', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- APIX Academy — évaluation et certificats (0027) ----------
+
+/** Un choix de réponse, tel que la banque le garde. */
+export interface OptionQuestion {
+  id: string;
+  text: string;
+  correct: boolean;
+}
+
+export const academyQuestions = pgTable('academy_questions', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  position: integer('position').notNull(),
+  prompt: text('prompt').notNull(),
+  kind: text('kind').notNull(),
+  options: jsonb('options').$type<OptionQuestion[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Une question telle qu'elle a été POSÉE : ordre des choix et bonnes réponses figés. */
+export interface QuestionPosee {
+  id: string;
+  prompt: string;
+  kind: 'unique' | 'multiple';
+  options: Array<{ id: string; text: string }>;
+  correct: string[];
+}
+
+export const academyQuizAttempts = pgTable('academy_quiz_attempts', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  courseId: uuid('course_id').notNull(),
+  questions: jsonb('questions').$type<QuestionPosee[]>().notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  /** L'ancienne heure limite : vide depuis que l'évaluation n'en a plus (ADR-0049). */
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  answers: jsonb('answers').$type<Record<string, string[]>>(),
+  score: doublePrecision('score'),
+  passed: boolean('passed'),
+});
+
+export const academyCertificates = pgTable('academy_certificates', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  courseId: uuid('course_id'),
+  attemptId: uuid('attempt_id'),
+  number: text('number').notNull(),
+  holderName: text('holder_name').notNull(),
+  holderNumber: text('holder_number').notNull(),
+  courseTitle: text('course_title').notNull(),
+  courseCategory: text('course_category').notNull(),
+  organizationName: text('organization_name').notNull(),
+  /** Vide pour une formation sans évaluation, suivie en entier (ADR-0049). */
+  score: doublePrecision('score'),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  /** Pourquoi il a été révoqué (une réémission le dit par `reemisSous`). */
+  revocationMotif: text('revocation_motif'),
+  revoqueParUserId: uuid('revoque_par_user_id'),
+  /** Réémis : le numéro du certificat qui le remplace. */
+  reemisSous: text('reemis_sous'),
+});
+
+// ---------- Objectifs (0042) ----------
+
+export const objectifs = pgTable('objectifs', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  niveau: text('niveau').notNull(),
+  annee: integer('annee').notNull(),
+  diffusion: text('diffusion'),
+  directionId: uuid('direction_id'),
+  employeeId: uuid('employee_id'),
+  nature: text('nature').notNull().default('libre'),
+  courseId: uuid('course_id'),
+  titre: text('titre').notNull(),
+  description: text('description'),
+  echeance: date('echeance'),
+  evaluation: text('evaluation'),
+  evalueLe: timestamp('evalue_le', { withTimezone: true }),
+  commentaire: text('commentaire'),
+  auteurEmployeeId: uuid('auteur_employee_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- Fiches d'objectifs (0043, par semestre depuis 0044) ----------
+
+export const objectifsFiches = pgTable('objectifs_fiches', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  annee: integer('annee').notNull(),
+  // 0044 : 1 ou 2 — une fiche par semestre.
+  semestre: smallint('semestre').notNull(),
+  contenu: jsonb('contenu').notNull().default([]),
+  auteurEmployeeId: uuid('auteur_employee_id'),
+  // 0045 : ce que l'agent commente, ce que le n+1 en dit ; 0046 : où l'agent
+  // dit en être de chaque objectif (atteint, partiel, non_atteint).
+  statuts: jsonb('statuts').notNull().default({}),
+  commentairesAgent: jsonb('commentaires_agent').notNull().default({}),
+  commentairesEnvoyesLe: timestamp('commentaires_envoyes_le', { withTimezone: true }),
+  commentairesN1: jsonb('commentaires_n1').notNull().default({}),
+  evaluationNote: text('evaluation_note'),
+  evaluationValideeLe: timestamp('evaluation_validee_le', { withTimezone: true }),
+  evaluateurEmployeeId: uuid('evaluateur_employee_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Les jours d'évaluation (0104) : un jour et un mois par semestre, qui
+ * reviennent chaque année ; une ligne par organisation. Sans ligne, le 30 juin
+ * et le 31 décembre. Remplace objective_review_dates (0103), plus lue.
+ */
+export const objectiveReviewSchedule = pgTable('objective_review_schedule', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  s1Month: smallint('s1_month').notNull(),
+  s1Day: smallint('s1_day').notNull(),
+  s2Month: smallint('s2_month').notNull(),
+  s2Day: smallint('s2_day').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Les courriels qui partent : mis en file avec le geste, envoyés après (0083). */
+export const outboundEmails = pgTable('outbound_emails', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  kind: text('kind').notNull(),
+  subjectId: uuid('subject_id'),
+  // Vide pour un candidat : son adresse se lit, chiffrée, au départ (0094, 0095).
+  recipient: text('recipient'),
+  subject: text('subject').notNull(),
+  // Chiffré, et effacé dès que le courriel est parti ou abandonné.
+  bodyEncrypted: text('body_encrypted'),
+  status: text('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+});

@@ -1,0 +1,132 @@
+import { Module } from '@nestjs/common';
+import { AccesController } from './modules/acces/acces.controller';
+import { HabilitationsService } from './modules/acces/habilitations.service';
+import { EncryptionService } from './common/encryption.service';
+import { Limiteur } from './common/limiteur';
+import {
+  AcademyController,
+  AcademyMediaController,
+  PublicCertificatsController,
+} from './modules/academy/academy.controller';
+import { AcademySuiviService } from './modules/academy/academy-suivi.service';
+import { ObjectifsController } from './modules/objectifs/objectifs.controller';
+import { ObjectifsService } from './modules/objectifs/objectifs.service';
+import { AcademyEvaluationService } from './modules/academy/academy-evaluation.service';
+import { AcademyService } from './modules/academy/academy.service';
+import { StockageVideoLocal } from './modules/academy/stockage-local';
+import { DashboardController } from './modules/analytics/dashboard.controller';
+import { TenantDb } from './db/tenant-db';
+import { loadEnv } from './config/env';
+import { ExpediteurCourriels } from './modules/courriels/expediteur';
+import { PassageDeMinuit } from './modules/people/passage-de-minuit';
+import { transportDepuisEnv } from './modules/courriels/transports';
+import { ExpediteurWhatsApp } from './modules/whatsapp/expediteur';
+import { transportWhatsAppDepuisEnv } from './modules/whatsapp/transports';
+import { NotificationsReglagesService } from './modules/notifications/reglages.service';
+import { AuthController } from './modules/auth/auth.controller';
+import { DocumentRequestsController } from './modules/docs/document-requests.controller';
+import { ProfileChangesController } from './modules/profile/profile-changes.controller';
+import { ProfileChangesService } from './modules/profile/profile-changes.service';
+import { DocumentRequestsService } from './modules/docs/document-requests.service';
+import { EmployeeDocumentsController } from './modules/docs/employee-documents.controller';
+import { EmployeeDocumentsService } from './modules/docs/employee-documents.service';
+import { NotificationsController } from './modules/notifications/notifications.controller';
+import { NotificationsService } from './modules/notifications/notifications.service';
+import { AttestationService } from './modules/documents/attestation.service';
+import { DocumentsController } from './modules/documents/documents.controller';
+import { AuthService } from './modules/auth/auth.service';
+import { ReinitialisationService } from './modules/auth/reinitialisation.service';
+import { AccesGuard } from './modules/auth/acces.guard';
+import { SessionGuard } from './modules/auth/session.guard';
+import { HealthController } from './modules/health/health.controller';
+import { HierarchieService } from './modules/people/hierarchie.service';
+import { ImportEmployesService } from './modules/people/import.service';
+import { OrgUnitsService } from './modules/people/org-units.service';
+import { PeopleController } from './modules/people/people.controller';
+import { PeopleService } from './modules/people/people.service';
+import { InvitationsService } from './modules/portal/invitations.service';
+import { PortalController } from './modules/portal/portal.controller';
+import { ApplyService } from './modules/recruitment/apply.service';
+import { JobsService } from './modules/recruitment/jobs.service';
+import {
+  PublicJobsController,
+  RecruitmentController,
+} from './modules/recruitment/recruitment.controller';
+import { ReferenceTextsController } from './modules/reference/reference-texts.controller';
+import { ReferenceTextsService } from './modules/reference/reference-texts.service';
+import { AbsencesController } from './modules/time/absences.controller';
+import { AbsencesService } from './modules/time/absences.service';
+
+/**
+ * Monolithe modulaire (ADR-0001) : un module Nest par bounded context à mesure
+ * qu'ils naissent (people, time, payroll…). Phase 0 : socle auth + santé.
+ */
+@Module({
+  controllers: [
+    HealthController,
+    AccesController,
+    AuthController,
+    PeopleController,
+    AbsencesController,
+    DashboardController,
+    PortalController,
+    DocumentsController,
+    EmployeeDocumentsController,
+    DocumentRequestsController,
+    ProfileChangesController,
+    NotificationsController,
+    RecruitmentController,
+    PublicJobsController,
+    ReferenceTextsController,
+    AcademyController,
+    AcademyMediaController,
+    PublicCertificatsController,
+    ObjectifsController,
+  ],
+  providers: [
+    TenantDb,
+    EncryptionService,
+    Limiteur,
+    {
+      provide: ExpediteurCourriels,
+      useFactory: (db: TenantDb, enc: EncryptionService) => {
+        const env = loadEnv();
+        return new ExpediteurCourriels(db, enc, transportDepuisEnv(env), env.MAIL_FROM);
+      },
+      inject: [TenantDb, EncryptionService],
+    },
+    {
+      provide: ExpediteurWhatsApp,
+      useFactory: (db: TenantDb, enc: EncryptionService) =>
+        new ExpediteurWhatsApp(db, enc, transportWhatsAppDepuisEnv(loadEnv())),
+      inject: [TenantDb, EncryptionService],
+    },
+    NotificationsReglagesService,
+    AuthService,
+    ReinitialisationService,
+    HabilitationsService,
+    SessionGuard,
+    AccesGuard,
+    PeopleService,
+    ImportEmployesService,
+    HierarchieService,
+    OrgUnitsService,
+    AbsencesService,
+    InvitationsService,
+    AttestationService,
+    EmployeeDocumentsService,
+    DocumentRequestsService,
+    ProfileChangesService,
+    NotificationsService,
+    JobsService,
+    ApplyService,
+    ReferenceTextsService,
+    StockageVideoLocal,
+    AcademyService,
+    AcademyEvaluationService,
+    AcademySuiviService,
+    ObjectifsService,
+    PassageDeMinuit,
+  ],
+})
+export class AppModule {}
