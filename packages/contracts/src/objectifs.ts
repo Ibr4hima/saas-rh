@@ -492,3 +492,35 @@ export type EvaluerObjectifInput = z.infer<typeof evaluerObjectifSchema>;
 export const anneeQuerySchema = z.object({
   annee: z.coerce.number().int().min(2000).max(2100).optional(),
 });
+
+// ---------- Dates d'évaluation ----------
+
+/**
+ * Le jour où les notes de A à D se donnent, pour un semestre : par défaut le
+ * 30 juin pour le 1er, le 31 décembre pour le 2nd.
+ */
+export interface DateEvaluation {
+  semestre: Semestre;
+  /** Date ISO (AAAA-MM-JJ). */
+  date: string;
+  /** Qui dirige la DCH peut encore la déplacer : elle n'est pas passée. */
+  modifiable: boolean;
+}
+
+/** Les deux dates d'évaluation d'une année. */
+export interface DatesEvaluation {
+  annee: number;
+  dates: DateEvaluation[];
+}
+
+/** L'année des dates d'évaluation, dans l'adresse. */
+export const anneeParamsSchema = z.object({
+  annee: z.coerce.number().int().min(2000).max(2100),
+});
+
+/** Les deux dates d'une année, enregistrées ensemble : l'ordre se juge sur la paire. */
+export const datesEvaluationSchema = z.object({
+  semestre1: z.iso.date(),
+  semestre2: z.iso.date(),
+});
+export type DatesEvaluationInput = z.infer<typeof datesEvaluationSchema>;

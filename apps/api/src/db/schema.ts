@@ -853,6 +853,21 @@ export const objectifsFiches = pgTable('objectifs_fiches', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Les dates d'évaluation qu'on a déplacées (0103) : une par année et par
+ * semestre. Sans ligne, le 30 juin pour le 1er semestre, le 31 décembre pour
+ * le 2nd.
+ */
+export const objectiveReviewDates = pgTable('objective_review_dates', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  year: integer('year').notNull(),
+  semester: smallint('semester').notNull(),
+  reviewDate: date('review_date').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** Les courriels qui partent : mis en file avec le geste, envoyés après (0083). */
 export const outboundEmails = pgTable('outbound_emails', {
   id: uuid('id').primaryKey(),

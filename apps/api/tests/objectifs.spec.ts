@@ -1276,3 +1276,108 @@ describe('statut d’une formation à suivre', () => {
     expect(statutDeFormation(suivi(0, 'en_cours', 0))).toBe('non_atteint');
   });
 });
+
+describe('les dates d’évaluation', () => {
+  const dch = () => ({ ...session('mariama'), dirigeLaDCH: true }) as SessionUser;
+  // Qui a l'habilitation « pilotage » sans diriger la DCH : lit, ne déplace rien.
+  const pilote = () => ({ ...session('awa'), capacites: ['pilotage'] }) as SessionUser;
+  const le = (jour: string) => () => new Date(`${jour}T09:00:00Z`);
+  const fixer = (annee: number, semestre1: string, semestre2: string, qui = dch()) =>
+    objectifs.fixerDatesEvaluation(qui, annee, { semestre1, semestre2 });
+  const code = (annee: number, semestre1: string, semestre2: string, qui = dch()) =>
+    codeOf(() => fixer(annee, semestre1, semestre2, qui));
+
+  afterAll(() => {
+    objectifs.horloge = () => maintenant;
+  });
+
+  it('par défaut, le 30 juin pour le 1er semestre, le 31 décembre pour le 2nd', async () => {
+    objectifs.horloge = le('2026-09-28');
+    expect(await objectifs.datesEvaluation(dch())).toEqual({
+      annee: 2026,
+      dates: [
+        // Le 30 juin est passé : cette évaluation a eu lieu.
+        { semestre: 1, date: '2026-06-30', modifiable: false },
+        { semestre: 2, date: '2026-12-31', modifiable: true },
+      ],
+    });
+    expect((await objectifs.datesEvaluation(pilote())).dates.map((d) => d.modifiable)).toEqual([
+      false,
+      false,
+    ]);
+    expect((await objectifs.datesEvaluation(dch(), 2027)).dates).toEqual([
+      { semestre: 1, date: '2027-06-30', modifiable: true },
+      { semestre: 2, date: '2027-12-31', modifiable: true },
+    ]);
+  });
+
+  it('qui dirige la DCH déplace une date à venir, et le geste est tracé', async () => {
+    objectifs.horloge = le('2026-09-28');
+    // La date passée revient telle quelle : seule celle du 2nd semestre bouge.
+    const vue = await fixer(2026, '2026-06-30', '2026-12-15');
+    expect(vue.dates[1]).toEqual({ semestre: 2, date: '2026-12-15', modifiable: true });
+    expect((await objectifs.datesEvaluation(pilote())).dates[1]!.date).toBe('2026-12-15');
+    // Les mêmes dates encore : rien ne change, pas même le journal.
+    await fixer(2026, '2026-06-30', '2026-12-15');
+    const { rows } = await raw(
+      `SELECT action FROM audit_log WHERE tenant_id = $1 AND table_name = 'objective_review_dates'`,
+      [tenantId],
+    );
+    expect(rows.map((r) => r.action)).toEqual(['INSERT']);
+    // Une autre année ne bouge pas.
+    expect((await objectifs.datesEvaluation(dch(), 2027)).dates[1]!.date).toBe('2027-12-31');
+  });
+
+  it('personne d’autre ne les déplace', async () => {
+    objectifs.horloge = le('2026-09-28');
+    for (const qui of [
+      pilote(),
+      session('dg'),
+      { ...session('fatou'), role: 'admin' } as SessionUser,
+    ]) {
+      expect(await code(2026, '2026-06-30', '2026-12-20', qui)).toBe('objectifs.dates_reservees');
+    }
+  });
+
+  it('une évaluation passée reste où elle est ; une date ne se fixe pas dans le passé', async () => {
+    objectifs.horloge = le('2026-09-28');
+    expect(await code(2026, '2026-07-15', '2026-12-15')).toBe('objectifs.evaluation_passee');
+    expect(await code(2026, '2026-06-30', '2026-09-27')).toBe('objectifs.date_passee');
+    // Aujourd'hui même, oui.
+    expect((await fixer(2026, '2026-06-30', '2026-09-28')).dates[1]!.date).toBe('2026-09-28');
+    await fixer(2026, '2026-06-30', '2026-12-15');
+  });
+
+  it('le 1er semestre s’évalue avant le 2nd, dans l’année, cette année ou la suivante', async () => {
+    objectifs.horloge = le('2026-09-28');
+    expect(await code(2027, '2027-12-31', '2027-12-31')).toBe('objectifs.dates_dans_l_ordre');
+    expect(await code(2027, '2027-09-01', '2027-06-30')).toBe('objectifs.dates_dans_l_ordre');
+    expect(await code(2027, '2027-06-30', '2028-01-15')).toBe('objectifs.date_hors_annee');
+    expect(await code(2025, '2025-06-30', '2025-12-31')).toBe('objectifs.date_annee');
+    expect(await code(2028, '2028-06-30', '2028-12-31')).toBe('objectifs.date_annee');
+    // Les deux bougent ensemble : le 1er peut passer au-delà de l'ancienne
+    // date du 2nd, puisque l'ordre se juge sur les nouvelles.
+    await fixer(2027, '2027-06-30', '2027-07-31');
+    expect((await fixer(2027, '2027-08-14', '2027-12-20')).dates).toEqual([
+      { semestre: 1, date: '2027-08-14', modifiable: true },
+      { semestre: 2, date: '2027-12-20', modifiable: true },
+    ]);
+  });
+
+  it('les deux évaluations passées, la page montre l’année suivante', async () => {
+    // Le 2nd semestre 2026 s'évalue le 15 décembre : le 20, place à 2027.
+    objectifs.horloge = le('2026-12-20');
+    expect(await objectifs.datesEvaluation(dch())).toEqual({
+      annee: 2027,
+      dates: [
+        { semestre: 1, date: '2027-08-14', modifiable: true },
+        { semestre: 2, date: '2027-12-20', modifiable: true },
+      ],
+    });
+    // L'année passée se lit encore, sans se modifier.
+    expect((await objectifs.datesEvaluation(dch(), 2026)).dates.map((d) => d.modifiable)).toEqual([
+      false,
+      false,
+    ]);
+  });
+});

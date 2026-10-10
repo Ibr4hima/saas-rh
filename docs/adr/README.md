@@ -58,3 +58,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0050](0050-sans-evaluation-sans-echeance.md)         | Sans évaluation, un certificat sans limite de validité                                  | acceptée                                    |
 | [0051](0051-fiche-objectifs-crayon.md)                | La fiche d'objectifs s'ouvre au crayon et s'enregistre d'un clic                        | acceptée                                    |
 | [0052](0052-une-annee-a-la-fois.md)                   | Objectifs d'un direct : une année à la fois, la suivante fixée à l'avance               | acceptée                                    |
+| [0053](0053-dates-d-evaluation.md)                    | Deux dates d'évaluation par an, fixées par qui dirige la DCH                            | acceptée                                    |

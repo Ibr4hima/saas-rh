@@ -15,12 +15,15 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  anneeParamsSchema,
   anneeQuerySchema,
   statutObjectifSchema,
   type StatutObjectifInput,
   commentairesAgentSchema,
   type CommentairesAgentInput,
   creerObjectifSchema,
+  datesEvaluationSchema,
+  type DatesEvaluationInput,
   enregistrerFicheObjectifsSchema,
   type EnregistrerFicheObjectifsInput,
   evaluationN1Schema,
@@ -33,7 +36,7 @@ import {
   type ModifierObjectifInput,
 } from '@teranga/contracts';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { AccesGuard, FermeAuxInactifs } from '../auth/acces.guard';
+import { AccesGuard, FermeAuxInactifs, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { ObjectifsService } from './objectifs.service';
 
@@ -165,6 +168,26 @@ export class ObjectifsController {
     @Query(new ZodValidationPipe(anneeQuerySchema)) q: { annee?: number },
   ) {
     return this.objectifs.objectifsAPIX(req.sessionUser, q.annee);
+  }
+
+  /** Les dates d'évaluation de l'année : la page « Évaluation des objectifs » de la DCH. */
+  @Get('evaluations/dates')
+  @Peut('pilotage')
+  datesEvaluation(
+    @Req() req: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(anneeQuerySchema)) q: { annee?: number },
+  ) {
+    return this.objectifs.datesEvaluation(req.sessionUser, q.annee);
+  }
+
+  @Put('evaluations/dates/:annee')
+  @Peut('pilotage')
+  fixerDatesEvaluation(
+    @Req() req: AuthenticatedRequest,
+    @Param(new ZodValidationPipe(anneeParamsSchema)) p: { annee: number },
+    @Body(new ZodValidationPipe(datesEvaluationSchema)) body: DatesEvaluationInput,
+  ) {
+    return this.objectifs.fixerDatesEvaluation(req.sessionUser, p.annee, body);
   }
 
   @Post()

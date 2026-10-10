@@ -3,6 +3,8 @@ import { sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
   type CreerObjectifInput,
+  type DatesEvaluation,
+  type DatesEvaluationInput,
   type EvaluerObjectifInput,
   type FicheSuivi,
   type FormationProposable,
@@ -24,6 +26,7 @@ import {
   type ModifierObjectifInput,
   type ObjectifsAPIX,
   type ObjectifView,
+  type Semestre,
   type SessionUser,
   type SuiviEquipe,
   type TeamCourseProgress,
@@ -110,6 +113,10 @@ const iso = (d: string | Date | null): string | null =>
   d === null ? null : d instanceof Date ? d.toISOString() : new Date(d).toISOString();
 const jour = (d: string | Date | null): string | null =>
   d === null ? null : typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10);
+
+/** La date d'évaluation d'un semestre que personne n'a déplacée : la fin du semestre. */
+const dateEvaluationParDefaut = (annee: number, semestre: Semestre): string =>
+  semestre === 1 ? `${annee}-06-30` : `${annee}-12-31`;
 
 /**
  * Une fiche vient du navigateur : on n'y garde que des liens qu'on peut
@@ -847,6 +854,121 @@ export class ObjectifsService {
         })),
       };
     });
+  }
+
+  // Les dates d'évaluation : les notes de A à D se donnent ces jours-là.
+
+  /**
+   * Les deux dates d'évaluation d'une année. Sans année, celle de la
+   * prochaine évaluation : l'année en cours tant qu'une de ses dates reste à
+   * venir, la suivante ensuite.
+   */
+  async datesEvaluation(user: SessionUser, annee?: number): Promise<DatesEvaluation> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      let an = annee ?? this.anneeCourante();
+      let dates = await this.lireDatesEvaluation(tx, an);
+      if (annee === undefined && dates.every((d) => d < this.aujourdhui())) {
+        an += 1;
+        dates = await this.lireDatesEvaluation(tx, an);
+      }
+      return this.vueDesDates(user, an, dates);
+    });
+  }
+
+  /**
+   * Fixe les deux dates d'évaluation d'une année, cette année ou la suivante.
+   * Seule la personne qui dirige la DCH le fait. Une date ne bouge plus une
+   * fois l'évaluation passée, et ne se déplace jamais vers le passé ; le 1er
+   * semestre s'évalue avant le 2nd.
+   */
+  async fixerDatesEvaluation(
+    user: SessionUser,
+    annee: number,
+    input: DatesEvaluationInput,
+  ): Promise<DatesEvaluation> {
+    if (!user.dirigeLaDCH) {
+      problem(
+        403,
+        'objectifs.dates_reservees',
+        'Seule la personne qui dirige la DCH fixe les dates d’évaluation',
+      );
+    }
+    const courante = this.anneeCourante();
+    if (annee < courante || annee > courante + 1) {
+      problem(
+        422,
+        'objectifs.date_annee',
+        'Les dates d’évaluation se fixent pour l’année en cours ou la suivante',
+      );
+    }
+    const voulues = [input.semestre1, input.semestre2];
+    if (voulues.some((d) => !d.startsWith(`${annee}-`))) {
+      problem(422, 'objectifs.date_hors_annee', `Les deux dates tombent en ${annee}`);
+    }
+    if (input.semestre1 >= input.semestre2) {
+      problem(
+        422,
+        'objectifs.dates_dans_l_ordre',
+        'L’évaluation du 1er semestre vient avant celle du 2nd',
+      );
+    }
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext('dates-evaluation:' || current_setting('app.tenant_id') || ':' || ${String(annee)}))`,
+      );
+      const actuelles = await this.lireDatesEvaluation(tx, annee);
+      const aujourdhui = this.aujourdhui();
+      for (const s of [1, 2] as const) {
+        const [actuelle, voulue] = [actuelles[s - 1]!, voulues[s - 1]!];
+        if (voulue === actuelle) continue;
+        if (actuelle < aujourdhui) {
+          problem(
+            409,
+            'objectifs.evaluation_passee',
+            `L’évaluation du ${s === 1 ? '1er' : '2nd'} semestre a déjà eu lieu`,
+          );
+        }
+        if (voulue < aujourdhui) {
+          problem(
+            422,
+            'objectifs.date_passee',
+            'Une date d’évaluation ne se fixe pas dans le passé',
+          );
+        }
+        await tx.execute(sql`
+          INSERT INTO objective_review_dates (id, tenant_id, year, semester, review_date)
+          VALUES (${uuidv7()}, ${user.tenantId}, ${annee}, ${s}, ${voulue})
+          ON CONFLICT (tenant_id, year, semester)
+          DO UPDATE SET review_date = EXCLUDED.review_date, updated_at = now()`);
+      }
+      return this.vueDesDates(user, annee, voulues);
+    });
+  }
+
+  /** Les deux dates d'une année, celle par défaut là où personne n'en a fixé. */
+  private async lireDatesEvaluation(tx: Tx, annee: number): Promise<[string, string]> {
+    const { rows } = await tx.execute<{ semester: number; review_date: string }>(sql`
+      SELECT semester, review_date::text AS review_date
+        FROM objective_review_dates
+       WHERE year = ${annee}`);
+    const fixee = (s: Semestre) => rows.find((r) => Number(r.semester) === s)?.review_date;
+    return [
+      fixee(1) ?? dateEvaluationParDefaut(annee, 1),
+      fixee(2) ?? dateEvaluationParDefaut(annee, 2),
+    ];
+  }
+
+  private vueDesDates(user: SessionUser, annee: number, dates: string[]): DatesEvaluation {
+    const aujourdhui = this.aujourdhui();
+    const ouverte = Boolean(user.dirigeLaDCH) && annee <= this.anneeCourante() + 1;
+    return {
+      annee,
+      dates: dates.map((date, i) => ({
+        semestre: (i + 1) as Semestre,
+        date,
+        modifiable: ouverte && date >= aujourdhui,
+      })),
+    };
   }
 
   // ———————————————————————————— écritures
