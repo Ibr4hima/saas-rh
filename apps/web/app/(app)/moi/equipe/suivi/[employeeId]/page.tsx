@@ -6,7 +6,15 @@
 import '@blocknote/mantine/style.css';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { use, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import {
+  use,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   objectifsDeLaFiche,
@@ -27,7 +35,6 @@ import {
   ChoixSemestre,
   cleDe,
   FicheSemestre,
-  parAnnee,
   SeparateurAnnee,
 } from '../../../../../../components/fiches-semestres';
 import { Page } from '../../../../../../components/gabarit';
@@ -45,30 +52,42 @@ const EditeurFicheObjectifs = dynamic(
 type Vue = 'objectifs' | 'evaluation';
 
 /**
- * La fiche d'un direct : la tête de son dossier, puis ses objectifs, année
- * par année — et dans l'année, semestre par semestre. Le n+1 les rédige comme
- * une page Notion, le crayon puis « Enregistrer ». L'agent s'auto-évalue :
- * chaque case prend la couleur de son statut, et le n+1 le voit à mesure.
- * « Évaluation », en tête, montre ce que l'agent en dit, objectif par
- * objectif, et ce que le n+1 en dit à son tour.
+ * La fiche d'un direct : la tête de son dossier, puis ses objectifs, une
+ * année à la fois (choisie dans la liste), semestre par semestre. Le n+1 les
+ * rédige comme une page Notion, le crayon puis « Enregistrer ». L'agent
+ * s'auto-évalue : chaque case prend la couleur de son statut, et le n+1 le
+ * voit à mesure. « Évaluation », en tête, montre ce que l'agent en dit,
+ * objectif par objectif, et ce que le n+1 en dit à son tour.
  */
 export default function FicheSuiviPage({ params }: { params: Promise<{ employeeId: string }> }) {
   const { employeeId } = use(params);
   const [vue, setVue] = useState<Vue>('objectifs');
+  // L'année choisie dans la liste ; sans choix, celle que la page propose.
+  const [choisie, setChoisie] = useState<number | null>(null);
 
-  // « ?vue=evaluation » : on arrive d'une notification — des commentaires à évaluer.
+  // « ?vue=evaluation » : on arrive d'une notification, des commentaires à
+  // évaluer ; « ?annee= » dit de quelle année.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('vue') === 'evaluation') {
-      setVue('evaluation');
-    }
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('vue') === 'evaluation') setVue('evaluation');
+    const a = Number(q.get('annee'));
+    if (Number.isInteger(a) && a >= 2000 && a <= 2100) setChoisie(a);
   }, []);
+  // L'adresse suit la vue et l'année : recharger la page n'en change rien.
+  const adresse = (v: Vue, a: number | null) => {
+    const q = new URLSearchParams();
+    if (v === 'evaluation') q.set('vue', 'evaluation');
+    if (a !== null) q.set('annee', String(a));
+    const s = q.toString();
+    window.history.replaceState(null, '', s ? `?${s}` : window.location.pathname);
+  };
   const changerDeVue = (v: Vue) => {
     setVue(v);
-    window.history.replaceState(
-      null,
-      '',
-      v === 'evaluation' ? '?vue=evaluation' : window.location.pathname,
-    );
+    adresse(v, choisie);
+  };
+  const choisirAnnee = (a: number) => {
+    setChoisie(a);
+    adresse(vue, a);
   };
 
   const fiche = useQuery({
@@ -108,6 +127,26 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
 
   const { membre: m } = fiche.data;
   const nom = `${m.givenName} ${m.familyName}`;
+  // La liste des années : la suivante (ses objectifs se fixent à l'avance),
+  // l'année en cours, puis les années passées qui ont des fiches. Sans choix,
+  // l'évaluation s'ouvre sur l'année d'une auto-évaluation qui attend.
+  const enCours = fiche.data.annee;
+  const enAttente = [
+    ...new Set(
+      fiche.data.fiches
+        .filter((f) => f.evaluation.envoyesLe && !f.evaluation.valideeLe)
+        .map((f) => f.annee),
+    ),
+  ].sort((a, b) => b - a);
+  const annee = choisie ?? (vue === 'evaluation' ? (enAttente[0] ?? enCours) : enCours);
+  const annees = [
+    ...new Set([
+      ...(m.parti ? [] : [enCours + 1]),
+      enCours,
+      annee,
+      ...fiche.data.fiches.map((f) => f.annee),
+    ]),
+  ].sort((a, b) => b - a);
 
   return (
     <Page>
@@ -199,6 +238,11 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
         prenom={m.givenName}
         parti={m.parti}
         vue={vue}
+        annee={annee}
+        enCours={enCours}
+        annees={annees}
+        enAttente={enAttente}
+        onAnnee={choisirAnnee}
         fiches={fiche.data.fiches}
         formations={fiche.data.formations}
         catalogue={catalogue.data ?? []}
@@ -224,15 +268,21 @@ const brouillons = new Map<string, Carte>();
 const cleDuBrouillon = (employeeId: string, c: Carte) => `${employeeId}:${cleDe(c)}`;
 
 /**
- * Les objectifs du direct, par année. L'année en cours porte le geste du
- * n+1 — « Fixer des objectifs », pour le 1er ou le 2nd semestre ; les années
- * passées gardent leurs fiches, toujours modifiables.
+ * Les objectifs du direct pour l'année choisie. L'année en cours et la
+ * suivante portent le geste du n+1, « Fixer des objectifs », pour le 1er ou
+ * le 2nd semestre ; les années passées gardent leurs fiches, toujours
+ * modifiables.
  */
 function FichesDuMembre({
   employeeId,
   prenom,
   parti,
   vue,
+  annee,
+  enCours,
+  annees,
+  enAttente,
+  onAnnee,
   fiches,
   formations,
   catalogue,
@@ -242,11 +292,18 @@ function FichesDuMembre({
   /** Parti : ses objectifs ne se fixent plus, son évaluation se termine. */
   parti: boolean;
   vue: Vue;
+  /** L'année à l'écran. */
+  annee: number;
+  enCours: number;
+  /** Les années de la liste, la plus récente d'abord. */
+  annees: number[];
+  /** Les années où une auto-évaluation attend le n+1. */
+  enAttente: number[];
+  onAnnee: (annee: number) => void;
   fiches: FicheSuivi['fiches'];
   formations: FormationDeLaFiche[];
   catalogue: FormationProposable[];
 }) {
-  const annee = new Date().getFullYear();
   const router = useRouter();
   // Les semestres ouverts depuis le menu, pas encore enregistrés : ils
   // rejoignent `fiches` au premier enregistrement. Un brouillon laissé sur
@@ -284,11 +341,19 @@ function FichesDuMembre({
     return () => document.removeEventListener('click', auClic, true);
   }, []);
 
-  const cartes: Carte[] = [
+  // Les fiches de l'année, le 2nd semestre avant le 1er.
+  const delAnnee = <T extends Carte>(liste: T[]) =>
+    liste.filter((c) => c.annee === annee).sort((a, b) => b.semestre - a.semestre);
+  const cartes = delAnnee([
     ...fiches,
     ...ouvertes.filter((o) => !fiches.some((f) => cleDe(f) === cleDe(o))),
-  ];
-  const fixes = cartes.filter((c) => c.annee === annee).map((c) => c.semestre);
+  ]);
+  const fixes = cartes.map((c) => c.semestre);
+  const separateur = (geste?: ReactNode) => (
+    <SeparateurAnnee annee={annee} choix={{ annees, enAttente, onChoisir: onAnnee }}>
+      {geste}
+    </SeparateurAnnee>
+  );
 
   const choisir = (semestre: Semestre) => {
     const cible: Carte = { annee, semestre, contenu: [] };
@@ -306,10 +371,10 @@ function FichesDuMembre({
 
   // L'évaluation : les fiches enregistrées seulement, avec ce qu'en dit l'agent.
   if (vue === 'evaluation') {
-    return parAnnee(fiches, annee).map((groupe) => (
-      <section key={groupe.annee} className="flex flex-col gap-7">
-        <SeparateurAnnee annee={groupe.annee} />
-        {groupe.fiches.map((f) => (
+    return (
+      <section className="flex flex-col gap-7">
+        {separateur()}
+        {delAnnee(fiches).map((f) => (
           <FicheSemestre
             key={cleDe(f)}
             annee={f.annee}
@@ -320,40 +385,37 @@ function FichesDuMembre({
           </FicheSemestre>
         ))}
       </section>
-    ));
+    );
   }
 
   return (
     <>
-      {parAnnee(cartes, annee).map((groupe) => (
-        <section key={groupe.annee} className="flex flex-col gap-7">
-          <SeparateurAnnee annee={groupe.annee}>
-            {groupe.annee === annee && !parti ? (
-              <ChoixSemestre fixes={fixes} onChoisir={choisir} />
-            ) : null}
-          </SeparateurAnnee>
-          {groupe.fiches.map((c) => {
-            const enregistree = fiches.find((f) => cleDe(f) === cleDe(c));
-            return (
-              <ZoneFiche
-                key={cleDe(c)}
-                employeeId={employeeId}
-                carte={c}
-                majLe={enregistree?.majLe ?? null}
-                statuts={enregistree?.statuts ?? {}}
-                // L'agent a envoyé son auto-évaluation : ses objectifs ne changent plus.
-                verrouillee={parti || Boolean(enregistree?.evaluation.envoyesLe)}
-                // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
-                formations={enregistree?.formations ?? formations}
-                catalogue={catalogue}
-                signal={focus.cle === cleDe(c) ? focus.n : 0}
-                abandon={abandon}
-                onRetirer={() => setOuvertes((o) => o.filter((x) => cleDe(x) !== cleDe(c)))}
-              />
-            );
-          })}
-        </section>
-      ))}
+      <section className="flex flex-col gap-7">
+        {/* Les objectifs se fixent pour l'année en cours, ou à l'avance pour la suivante. */}
+        {separateur(
+          !parti && annee >= enCours ? <ChoixSemestre fixes={fixes} onChoisir={choisir} /> : null,
+        )}
+        {cartes.map((c) => {
+          const enregistree = fiches.find((f) => cleDe(f) === cleDe(c));
+          return (
+            <ZoneFiche
+              key={cleDe(c)}
+              employeeId={employeeId}
+              carte={c}
+              majLe={enregistree?.majLe ?? null}
+              statuts={enregistree?.statuts ?? {}}
+              // L'agent a envoyé son auto-évaluation : ses objectifs ne changent plus.
+              verrouillee={parti || Boolean(enregistree?.evaluation.envoyesLe)}
+              // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
+              formations={enregistree?.formations ?? formations}
+              catalogue={catalogue}
+              signal={focus.cle === cleDe(c) ? focus.n : 0}
+              abandon={abandon}
+              onRetirer={() => setOuvertes((o) => o.filter((x) => cleDe(x) !== cleDe(c)))}
+            />
+          );
+        })}
+      </section>
       <Modal
         open={sortie !== null}
         onClose={() => setSortie(null)}

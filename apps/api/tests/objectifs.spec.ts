@@ -538,6 +538,31 @@ describe('la fiche d’objectifs', () => {
     ]);
   });
 
+  it('le n+1 fixe à l’avance les objectifs de l’année suivante', async () => {
+    const suivante = (await objectifs.fiche(session('awa'), agents.moussa)).annee + 1;
+    try {
+      await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+        annee: suivante,
+        semestre: 1,
+        contenu: [bloc('checkListItem', 'Préparer le budget de l’année')],
+      });
+      expect(
+        (await objectifs.fiche(session('awa'), agents.moussa)).fiches.map((f) => [
+          f.annee,
+          f.semestre,
+        ]),
+      ).toContainEqual([suivante, 1]);
+      expect((await notifications('moussa')).map((n) => n.title)).toContain(
+        `Awa Diop a fixé vos objectifs du 1er semestre ${suivante}`,
+      );
+    } finally {
+      await raw(`DELETE FROM objectifs_fiches WHERE employee_id = $1 AND annee = $2`, [
+        agents.moussa,
+        suivante,
+      ]);
+    }
+  });
+
   it('une séance d’écriture laisse une trace au journal, pas une par enregistrement', async () => {
     const ecrire = (texte: string) =>
       objectifs.enregistrerFiche(session('awa'), agents.moussa, {
@@ -705,9 +730,11 @@ describe('le semestre : l’agent s’auto-évalue, le n+1 évalue', () => {
       },
     });
     expect((await vueN1()).evaluation.envoyesLe).not.toBeNull();
-    expect((await notifications('awa')).map((n) => n.title)).toContain(
-      'Moussa Ndiaye a envoyé son auto-évaluation du 1er semestre 2024',
-    );
+    // L'avis mène à l'évaluation, sur l'année de la fiche.
+    expect(await notifications('awa')).toContainEqual({
+      title: 'Moussa Ndiaye a envoyé son auto-évaluation du 1er semestre 2024',
+      link: `/moi/equipe/suivi/${agents.moussa}?vue=evaluation&annee=2024`,
+    });
     expect(
       (await objectifs.suiviEquipe(session('awa'))).membres.find((m) => m.givenName === 'Moussa')!
         .aEvaluer,

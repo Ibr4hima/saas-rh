@@ -38,16 +38,150 @@ export function parAnnee<T extends Periode>(
 }
 
 /** « ANNÉE 2026 ——————— » et, au bout du filet, le geste de l'année s'il y en a un. */
-export function SeparateurAnnee({ annee, children }: { annee: number; children?: ReactNode }) {
+export function SeparateurAnnee({
+  annee,
+  children,
+  choix,
+}: {
+  annee: number;
+  children?: ReactNode;
+  /** Les années où aller : le titre se déroule. */
+  choix?: { annees: number[]; enAttente?: number[]; onChoisir: (annee: number) => void };
+}) {
   return (
     <div className="flex min-h-[30px] items-center gap-4">
-      <h2 className="shrink-0 text-[11px] font-extrabold tracking-[0.14em] text-primary uppercase">
-        Année {annee}
-      </h2>
+      {choix ? (
+        <ChoixAnnee annee={annee} {...choix} />
+      ) : (
+        <h2 className="shrink-0 text-[11px] font-extrabold tracking-[0.14em] text-primary uppercase">
+          Année {annee}
+        </h2>
+      )}
       <span aria-hidden className="h-px min-w-6 flex-1 bg-line" />
       {children}
     </div>
   );
+}
+
+/**
+ * « ANNÉE 2026 », qui se déroule : l'année suivante, l'année en cours, puis
+ * les années passées qui ont des fiches. Une pastille orange marque celles où
+ * une évaluation attend.
+ */
+function ChoixAnnee({
+  annee,
+  annees,
+  enAttente = [],
+  onChoisir,
+}: {
+  annee: number;
+  annees: number[];
+  enAttente?: number[];
+  onChoisir: (annee: number) => void;
+}) {
+  const { ouvert, setOuvert, racine, menu } = useDeroulant();
+
+  // Le texte reste où était le titre : le fond du bouton déborde à gauche.
+  return (
+    <div ref={racine} className="relative -ml-3 shrink-0 max-sm:-ml-2">
+      <h2>
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={ouvert}
+          onClick={() => setOuvert((v) => !v)}
+          className={cn(
+            'flex h-[30px] items-center gap-0.5 rounded-full pr-1.5 pl-3 text-[11px] max-sm:pl-2 font-extrabold tracking-[0.14em] text-primary uppercase transition-colors duration-150 outline-none hover:bg-primary-soft focus-visible:ring-2 focus-visible:ring-primary/35',
+            ouvert && 'bg-primary-soft',
+          )}
+        >
+          Année {annee}
+          <Icon
+            name="chevron_right"
+            size={16}
+            className={cn('transition-transform duration-150', ouvert ? '-rotate-90' : 'rotate-90')}
+          />
+        </button>
+      </h2>
+      {ouvert ? (
+        <div
+          ref={menu}
+          role="menu"
+          aria-label="Année"
+          className="tg-menu absolute top-full left-0 z-30 mt-1.5 min-w-36 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg"
+        >
+          {annees.map((a) => (
+            <button
+              key={a}
+              type="button"
+              role="menuitemradio"
+              aria-checked={a === annee}
+              onClick={() => {
+                setOuvert(false);
+                if (a !== annee) onChoisir(a);
+              }}
+              className={cn(
+                'flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[12.5px] font-semibold tabular-nums transition-colors duration-150 outline-none hover:bg-hover focus-visible:bg-hover',
+                a === annee
+                  ? 'text-primary'
+                  : 'text-ink hover:text-ink-strong focus-visible:text-ink-strong',
+              )}
+            >
+              <span className="flex-1">{a}</span>
+              {enAttente.includes(a) ? (
+                <>
+                  <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+                  <span className="sr-only">évaluation en attente</span>
+                </>
+              ) : null}
+              {a === annee ? <Icon name="check" size={16} /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Un menu déroulant. Ouvert, il prend le focus, sur l'entrée cochée s'il y en
+ * a une ; les flèches passent d'une entrée à l'autre ; Échap et un clic
+ * ailleurs le referment.
+ */
+function useDeroulant() {
+  const [ouvert, setOuvert] = useState(false);
+  const racine = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!ouvert) return;
+    const entrees = () => [...(menu.current?.querySelectorAll('button') ?? [])];
+    (entrees().find((b) => b.getAttribute('aria-checked') === 'true') ?? entrees()[0])?.focus();
+    const auClic = (e: PointerEvent) => {
+      if (!racine.current?.contains(e.target as Node)) setOuvert(false);
+    };
+    const auClavier = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOuvert(false);
+        racine.current?.querySelector('button')?.focus();
+        return;
+      }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      const liste = entrees();
+      const i = liste.indexOf(document.activeElement as HTMLButtonElement);
+      const pas = e.key === 'ArrowDown' ? 1 : -1;
+      liste[(i + pas + liste.length) % liste.length]?.focus();
+    };
+    document.addEventListener('pointerdown', auClic);
+    document.addEventListener('keydown', auClavier);
+    return () => {
+      document.removeEventListener('pointerdown', auClic);
+      document.removeEventListener('keydown', auClavier);
+    };
+  }, [ouvert]);
+
+  return { ouvert, setOuvert, racine, menu };
 }
 
 /**
@@ -128,39 +262,7 @@ export function ChoixSemestre({
   fixes: Semestre[];
   onChoisir: (semestre: Semestre) => void;
 }) {
-  const [ouvert, setOuvert] = useState(false);
-  const racine = useRef<HTMLDivElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-
-  // Ouvert, le menu prend le focus ; les flèches passent d'un semestre à
-  // l'autre ; Échap et un clic ailleurs le referment.
-  useEffect(() => {
-    if (!ouvert) return;
-    const entrees = () => [...(menu.current?.querySelectorAll('button') ?? [])];
-    entrees()[0]?.focus();
-    const auClic = (e: PointerEvent) => {
-      if (!racine.current?.contains(e.target as Node)) setOuvert(false);
-    };
-    const auClavier = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setOuvert(false);
-        racine.current?.querySelector('button')?.focus();
-        return;
-      }
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-      e.preventDefault();
-      const liste = entrees();
-      const i = liste.indexOf(document.activeElement as HTMLButtonElement);
-      const pas = e.key === 'ArrowDown' ? 1 : -1;
-      liste[(i + pas + liste.length) % liste.length]?.focus();
-    };
-    document.addEventListener('pointerdown', auClic);
-    document.addEventListener('keydown', auClavier);
-    return () => {
-      document.removeEventListener('pointerdown', auClic);
-      document.removeEventListener('keydown', auClavier);
-    };
-  }, [ouvert]);
+  const { ouvert, setOuvert, racine, menu } = useDeroulant();
 
   return (
     <div ref={racine} className="relative shrink-0">
