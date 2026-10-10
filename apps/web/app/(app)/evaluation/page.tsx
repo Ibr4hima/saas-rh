@@ -1,13 +1,13 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { JOURS_PAR_MOIS, MOIS_DE_L_ANNEE, type DatesEvaluation } from '@teranga/contracts';
-import { Button, Field, Select, Skeleton } from '@teranga/ui';
+import { Button, Select, Skeleton } from '@teranga/ui';
 import { EnTete, Repere } from '../../../components/fiche';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
-import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
+import { Modal } from '../../../components/modal';
 import { api, ApiError } from '../../../lib/api';
 import { formatDate } from '../../../lib/hooks';
 import { aujourdhui } from '../../../lib/temps';
@@ -117,6 +117,7 @@ function FenetreDates({ vue, onClose }: { vue: DatesEvaluation; onClose: () => v
       open
       onClose={onClose}
       title="Dates d’évaluation"
+      subtitle="Chaque année"
       maxWidth="max-w-xl"
       footer={
         <>
@@ -144,39 +145,58 @@ function FenetreDates({ vue, onClose }: { vue: DatesEvaluation; onClose: () => v
           {erreur}
         </p>
       ) : null}
-      <ModalSection title="Chaque année">
-        <ModalGrid>
-          {jours.map(([mois, jour], i) => (
-            <Field key={i} label={`Semestre ${i + 1}`} htmlFor={`jour-s${i + 1}`}>
-              <div className="grid grid-cols-[4.75rem_minmax(0,1fr)] gap-2">
-                <Select
-                  id={`jour-s${i + 1}`}
-                  aria-label={`Jour du semestre ${i + 1}`}
-                  value={String(jour)}
-                  onChange={(e) => changer(i, mois, Number(e.target.value))}
-                >
-                  {Array.from({ length: JOURS_PAR_MOIS[mois - 1]! }, (_, k) => k + 1).map((j) => (
-                    <option key={j} value={j}>
-                      {j === 1 ? '1er' : j}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  aria-label={`Mois du semestre ${i + 1}`}
-                  value={String(mois)}
-                  onChange={(e) => changer(i, Number(e.target.value), jour)}
-                >
-                  {MOIS_DE_L_ANNEE.map((nom, k) => (
-                    <option key={nom} value={k + 1}>
-                      {nom}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </Field>
-          ))}
-        </ModalGrid>
-      </ModalSection>
+      <div className="grid gap-8 pt-2 sm:grid-cols-2 sm:gap-5">
+        {jours.map(([mois, jour], i) => (
+          <BlocSemestre key={i} semestre={i + 1}>
+            <Select
+              aria-label={`Jour du semestre ${i + 1}`}
+              value={String(jour)}
+              onChange={(e) => changer(i, mois, Number(e.target.value))}
+            >
+              {Array.from({ length: JOURS_PAR_MOIS[mois - 1]! }, (_, k) => k + 1).map((j) => (
+                <option key={j} value={j}>
+                  {j === 1 ? '1er' : j}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label={`Mois du semestre ${i + 1}`}
+              value={String(mois)}
+              onChange={(e) => changer(i, Number(e.target.value), jour)}
+            >
+              {MOIS_DE_L_ANNEE.map((nom, k) => (
+                <option key={nom} value={k + 1}>
+                  {nom.charAt(0).toUpperCase() + nom.slice(1)}
+                </option>
+              ))}
+            </Select>
+          </BlocSemestre>
+        ))}
+      </div>
     </Modal>
+  );
+}
+
+/**
+ * Un semestre de la fenêtre : sa carte, et son titre sur une pastille bleue
+ * posée à cheval sur le bord haut, comme les fiches d'objectifs. Dedans, le
+ * jour et le mois.
+ */
+function BlocSemestre({ semestre, children }: { semestre: number; children: ReactNode }) {
+  const id = `bloc-semestre-${semestre}`;
+  return (
+    <div
+      role="group"
+      aria-labelledby={id}
+      className="relative rounded-[16px] border border-card-line bg-surface px-4 pt-9 pb-5 shadow-xs sm:px-5"
+    >
+      <h3
+        id={id}
+        className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary py-[7px] pr-[14.5px] pl-4 text-[11px] leading-4 font-extrabold tracking-[0.14em] whitespace-nowrap text-primary-ink uppercase shadow-[0_4px_12px_-4px_rgb(0_79_145/0.5)]"
+      >
+        Semestre {semestre}
+      </h3>
+      <div className="grid grid-cols-[4.75rem_minmax(0,1fr)] gap-2">{children}</div>
+    </div>
   );
 }
