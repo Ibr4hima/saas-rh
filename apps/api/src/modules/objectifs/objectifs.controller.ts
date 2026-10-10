@@ -15,7 +15,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
-  anneeParamsSchema,
   anneeQuerySchema,
   statutObjectifSchema,
   type StatutObjectifInput,
@@ -170,24 +169,20 @@ export class ObjectifsController {
     return this.objectifs.objectifsAPIX(req.sessionUser, q.annee);
   }
 
-  /** Les dates d'évaluation de l'année : la page « Évaluation des objectifs » de la DCH. */
+  /** Les dates d'évaluation : la page « Évaluation des objectifs » de la DCH. */
   @Get('evaluations/dates')
   @Peut('pilotage')
-  datesEvaluation(
-    @Req() req: AuthenticatedRequest,
-    @Query(new ZodValidationPipe(anneeQuerySchema)) q: { annee?: number },
-  ) {
-    return this.objectifs.datesEvaluation(req.sessionUser, q.annee);
+  datesEvaluation(@Req() req: AuthenticatedRequest) {
+    return this.objectifs.datesEvaluation(req.sessionUser);
   }
 
-  @Put('evaluations/dates/:annee')
+  @Put('evaluations/dates')
   @Peut('pilotage')
   fixerDatesEvaluation(
     @Req() req: AuthenticatedRequest,
-    @Param(new ZodValidationPipe(anneeParamsSchema)) p: { annee: number },
     @Body(new ZodValidationPipe(datesEvaluationSchema)) body: DatesEvaluationInput,
   ) {
-    return this.objectifs.fixerDatesEvaluation(req.sessionUser, p.annee, body);
+    return this.objectifs.fixerDatesEvaluation(req.sessionUser, body);
   }
 
   @Post()

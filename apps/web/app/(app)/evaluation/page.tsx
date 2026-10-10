@@ -2,8 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { DatesEvaluation } from '@teranga/contracts';
-import { Button, Field, Input, Skeleton } from '@teranga/ui';
+import { JOURS_PAR_MOIS, MOIS_DE_L_ANNEE, type DatesEvaluation } from '@teranga/contracts';
+import { Button, Field, Select, Skeleton } from '@teranga/ui';
 import { EnTete, Repere } from '../../../components/fiche';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
@@ -13,12 +13,21 @@ import { formatDate } from '../../../lib/hooks';
 import { aujourdhui } from '../../../lib/temps';
 
 /*
-   Évaluation des objectifs : les deux dates de l'année où les notes de A à D
+   Évaluation des objectifs : les deux jours de l'année où les notes de A à D
    se donnent, dans la carte de tête de « Poser une demande ». Qui dirige la
-   DCH les déplace au crayon, tant qu'elles ne sont pas passées.
+   DCH en fixe le jour et le mois, au crayon : ils reviennent chaque année.
 */
 
 const CLE = ['objectifs', 'evaluations', 'dates'];
+
+/** « 06-30 » : le jour et le mois, en nombres. */
+const enNombres = (jour: string) => jour.split('-').map(Number) as [number, number];
+
+/** « 30 juin », « 1er janvier ». */
+function jourEtMois(jour: string): string {
+  const [m, j] = enNombres(jour);
+  return `${j === 1 ? '1er' : j} ${MOIS_DE_L_ANNEE[m - 1]}`;
+}
 
 export default function EvaluationPage() {
   const [ouverte, setOuverte] = useState(false);
@@ -36,7 +45,7 @@ export default function EvaluationPage() {
         sousTitre={prochaine ? `Prochaine évaluation le ${formatDate(prochaine.date)}` : undefined}
         colonnes={2}
         action={
-          vue?.dates.some((d) => d.modifiable) ? (
+          vue?.modifiables ? (
             <button
               type="button"
               onClick={() => setOuverte(true)}
@@ -54,7 +63,7 @@ export default function EvaluationPage() {
               <Repere
                 key={d.semestre}
                 label={`Semestre ${d.semestre}`}
-                valeur={formatDate(d.date)}
+                valeur={jourEtMois(d.jour)}
               />
             ))
           ) : dates.isLoading ? (
@@ -74,18 +83,19 @@ export default function EvaluationPage() {
   );
 }
 
-/** Les deux dates, enregistrées ensemble ; celle d'une évaluation passée ne bouge plus. */
+/** Le jour et le mois de chaque semestre, enregistrés ensemble. */
 function FenetreDates({ vue, onClose }: { vue: DatesEvaluation; onClose: () => void }) {
   const qc = useQueryClient();
-  const [valeurs, setValeurs] = useState(() => vue.dates.map((d) => d.date));
+  const [jours, setJours] = useState(() => vue.dates.map((d) => enNombres(d.jour)));
   const [erreur, setErreur] = useState<string | null>(null);
-  const premier = aujourdhui() > `${vue.annee}-01-01` ? aujourdhui() : `${vue.annee}-01-01`;
+  const enTexte = ([m, j]: [number, number]) =>
+    `${String(m).padStart(2, '0')}-${String(j).padStart(2, '0')}`;
 
   const enregistrer = useMutation({
     mutationFn: () =>
-      api<DatesEvaluation>(`/objectifs/evaluations/dates/${vue.annee}`, {
+      api<DatesEvaluation>('/objectifs/evaluations/dates', {
         method: 'PUT',
-        body: { semestre1: valeurs[0], semestre2: valeurs[1] },
+        body: { semestre1: enTexte(jours[0]!), semestre2: enTexte(jours[1]!) },
       }),
     onSuccess: async (nouvelle) => {
       qc.setQueryData(CLE, nouvelle);
@@ -95,21 +105,26 @@ function FenetreDates({ vue, onClose }: { vue: DatesEvaluation; onClose: () => v
     onError: (err) =>
       setErreur(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
   });
-  const inchangees = vue.dates.every((d, i) => d.date === valeurs[i]);
+  const inchanges = vue.dates.every((d, i) => d.jour === enTexte(jours[i]!));
+  // Un mois plus court ramène le jour à son dernier : le 31 passe au 30 en juin.
+  const changer = (i: number, mois: number, jour: number) =>
+    setJours((js) =>
+      js.map((x, k) => (k === i ? [mois, Math.min(jour, JOURS_PAR_MOIS[mois - 1]!)] : x)),
+    );
 
   return (
     <Modal
       open
       onClose={onClose}
-      title={`Évaluations ${vue.annee}`}
-      maxWidth="max-w-lg"
+      title="Dates d’évaluation"
+      maxWidth="max-w-xl"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
             Annuler
           </Button>
           <Button
-            disabled={inchangees || valeurs.some((v) => !v)}
+            disabled={inchanges}
             loading={enregistrer.isPending}
             onClick={() => {
               setErreur(null);
@@ -129,23 +144,35 @@ function FenetreDates({ vue, onClose }: { vue: DatesEvaluation; onClose: () => v
           {erreur}
         </p>
       ) : null}
-      <ModalSection title="Dates d’évaluation">
+      <ModalSection title="Chaque année">
         <ModalGrid>
-          {vue.dates.map((d, i) => (
-            <Field
-              key={d.semestre}
-              label={`Semestre ${d.semestre}`}
-              htmlFor={`date-s${d.semestre}`}
-            >
-              <Input
-                id={`date-s${d.semestre}`}
-                type="date"
-                disabled={!d.modifiable}
-                min={d.modifiable ? premier : undefined}
-                max={`${vue.annee}-12-31`}
-                value={valeurs[i] ?? ''}
-                onChange={(e) => setValeurs((v) => v.map((x, j) => (j === i ? e.target.value : x)))}
-              />
+          {jours.map(([mois, jour], i) => (
+            <Field key={i} label={`Semestre ${i + 1}`} htmlFor={`jour-s${i + 1}`}>
+              <div className="grid grid-cols-[4.75rem_minmax(0,1fr)] gap-2">
+                <Select
+                  id={`jour-s${i + 1}`}
+                  aria-label={`Jour du semestre ${i + 1}`}
+                  value={String(jour)}
+                  onChange={(e) => changer(i, mois, Number(e.target.value))}
+                >
+                  {Array.from({ length: JOURS_PAR_MOIS[mois - 1]! }, (_, k) => k + 1).map((j) => (
+                    <option key={j} value={j}>
+                      {j === 1 ? '1er' : j}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  aria-label={`Mois du semestre ${i + 1}`}
+                  value={String(mois)}
+                  onChange={(e) => changer(i, Number(e.target.value), jour)}
+                >
+                  {MOIS_DE_L_ANNEE.map((nom, k) => (
+                    <option key={nom} value={k + 1}>
+                      {nom}
+                    </option>
+                  ))}
+                </Select>
+              </div>
             </Field>
           ))}
         </ModalGrid>

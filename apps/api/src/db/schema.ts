@@ -854,16 +854,17 @@ export const objectifsFiches = pgTable('objectifs_fiches', {
 });
 
 /**
- * Les dates d'évaluation qu'on a déplacées (0103) : une par année et par
- * semestre. Sans ligne, le 30 juin pour le 1er semestre, le 31 décembre pour
- * le 2nd.
+ * Les jours d'évaluation (0104) : un jour et un mois par semestre, qui
+ * reviennent chaque année ; une ligne par organisation. Sans ligne, le 30 juin
+ * et le 31 décembre. Remplace objective_review_dates (0103), plus lue.
  */
-export const objectiveReviewDates = pgTable('objective_review_dates', {
+export const objectiveReviewSchedule = pgTable('objective_review_schedule', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
-  year: integer('year').notNull(),
-  semester: smallint('semester').notNull(),
-  reviewDate: date('review_date').notNull(),
+  s1Month: smallint('s1_month').notNull(),
+  s1Day: smallint('s1_day').notNull(),
+  s2Month: smallint('s2_month').notNull(),
+  s2Day: smallint('s2_day').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

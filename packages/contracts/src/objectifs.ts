@@ -496,31 +496,44 @@ export const anneeQuerySchema = z.object({
 // ---------- Dates d'évaluation ----------
 
 /**
- * Le jour où les notes de A à D se donnent, pour un semestre : par défaut le
- * 30 juin pour le 1er, le 31 décembre pour le 2nd.
+ * Les jours de chaque mois d'une année ordinaire : une date d'évaluation
+ * revient chaque année, le 29 février n'en est donc pas une.
+ */
+export const JOURS_PAR_MOIS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
+
+/** « 06-30 » : un jour et un mois, sans l'année. */
+export const jourDeLAnneeSchema = z
+  .string()
+  .regex(/^\d{2}-\d{2}$/, 'Un jour et un mois')
+  .refine((v) => {
+    const [mois = 0, jour = 0] = v.split('-').map(Number);
+    return mois >= 1 && mois <= 12 && jour >= 1 && jour <= JOURS_PAR_MOIS[mois - 1]!;
+  }, 'Ce jour ne revient pas chaque année');
+
+/**
+ * Le jour où les notes de A à D se donnent, pour un semestre : un jour et un
+ * mois qui reviennent chaque année. Par défaut le 30 juin pour le 1er, le
+ * 31 décembre pour le 2nd.
  */
 export interface DateEvaluation {
   semestre: Semestre;
-  /** Date ISO (AAAA-MM-JJ). */
+  /** Le jour et le mois, « MM-JJ ». */
+  jour: string;
+  /** Ce jour-là dans l'année affichée : date ISO (AAAA-MM-JJ). */
   date: string;
-  /** Qui dirige la DCH peut encore la déplacer : elle n'est pas passée. */
-  modifiable: boolean;
 }
 
-/** Les deux dates d'évaluation d'une année. */
+/** Les deux dates d'évaluation, dans l'année de la prochaine. */
 export interface DatesEvaluation {
   annee: number;
   dates: DateEvaluation[];
+  /** Qui dirige la DCH les change. */
+  modifiables: boolean;
 }
 
-/** L'année des dates d'évaluation, dans l'adresse. */
-export const anneeParamsSchema = z.object({
-  annee: z.coerce.number().int().min(2000).max(2100),
-});
-
-/** Les deux dates d'une année, enregistrées ensemble : l'ordre se juge sur la paire. */
+/** Les deux jours, enregistrés ensemble : l'ordre se juge sur la paire. */
 export const datesEvaluationSchema = z.object({
-  semestre1: z.iso.date(),
-  semestre2: z.iso.date(),
+  semestre1: jourDeLAnneeSchema,
+  semestre2: jourDeLAnneeSchema,
 });
 export type DatesEvaluationInput = z.infer<typeof datesEvaluationSchema>;
