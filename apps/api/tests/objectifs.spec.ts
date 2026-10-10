@@ -450,7 +450,7 @@ describe('la fiche d’objectifs', () => {
     children: [],
   });
 
-  it('le n+1 la rédige par semestre ; l’agent la lit dans « Mes objectifs », prévenu une fois', async () => {
+  it('le n+1 la rédige par semestre ; l’agent la lit dans « Mes objectifs », prévenu à chaque enregistrement', async () => {
     expect((await objectifs.mesObjectifs(session('moussa'))).fiches).toEqual([]);
     expect((await objectifs.fiche(session('awa'), agents.moussa)).fiches).toEqual([]);
 
@@ -472,9 +472,10 @@ describe('la fiche d’objectifs', () => {
       semestre: 2,
       contenu: [...contenu, bloc('paragraph', 'Et la synthèse annuelle.')],
     });
+    const clore = [bloc('checkListItem', 'Clore les comptes', { checked: true })];
     await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
       semestre: 1,
-      contenu: [bloc('checkListItem', 'Clore les comptes', { checked: true })],
+      contenu: clore,
     });
     // Une fiche ouverte puis vidée ne se montre pas.
     await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
@@ -495,26 +496,44 @@ describe('la fiche d’objectifs', () => {
       content: [{ text: 'Pour le ' }, { type: 'echeance', props: { date: '2026-10-31' } }],
     });
     expect((await objectifs.fiche(session('awa'), agents.moussa)).fiches).toHaveLength(2);
-    // Deux enregistrements le même jour : une notification par fiche, pas plus.
+    // Chaque enregistrement qui change une fiche prévient l'agent, et le
+    // dernier avis d'une fiche prend la place des précédents.
     const fichesNotifiees = async () =>
       (await notifications('moussa')).filter((n) => n.title.includes('vos objectifs du'));
     expect(await fichesNotifiees()).toEqual([
-      { title: 'Awa Diop a fixé vos objectifs du 2nd semestre 2026', link: '/moi/objectifs' },
+      { title: 'Awa Diop a mis à jour vos objectifs du 2nd semestre 2026', link: '/moi/objectifs' },
       { title: 'Awa Diop a fixé vos objectifs du 1er semestre 2026', link: '/moi/objectifs' },
     ]);
-    // Mise à jour un autre jour : la nouvelle prend la place de l'ancienne.
-    await raw(
-      `UPDATE notifications SET dedupe_key = regexp_replace(dedupe_key, ':[0-9-]+$', ':2026-01-01')
+    const { rows: avis } = await raw(
+      `SELECT count(*)::int AS n FROM notifications
         WHERE recipient_user_id = $1 AND dedupe_key LIKE 'objectifs:fiche:%'`,
       [comptes.moussa],
     );
+    expect(avis[0]).toEqual({ n: 3 });
+
+    // La fiche renvoyée telle quelle : rien ne s'écrit, personne n'est prévenu.
+    const majLe = (await objectifs.fiche(session('awa'), agents.moussa)).fiches.find(
+      (f) => f.annee === 2026 && f.semestre === 1,
+    )!.majLe;
+    const meme = await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
+      annee: 2026,
+      semestre: 1,
+      contenu: clore,
+    });
+    expect(meme.majLe).toBe(majLe);
+    expect(await fichesNotifiees()).toEqual([
+      { title: 'Awa Diop a mis à jour vos objectifs du 2nd semestre 2026', link: '/moi/objectifs' },
+      { title: 'Awa Diop a fixé vos objectifs du 1er semestre 2026', link: '/moi/objectifs' },
+    ]);
+
+    // Changée : « mis à jour » prend la place de « fixé ».
     await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
       annee: 2026,
       semestre: 1,
-      contenu: [bloc('checkListItem', 'Clore les comptes', { checked: true })],
+      contenu: [...clore, bloc('checkListItem', 'Publier le rapport annuel')],
     });
     expect(await fichesNotifiees()).toEqual([
-      { title: 'Awa Diop a fixé vos objectifs du 2nd semestre 2026', link: '/moi/objectifs' },
+      { title: 'Awa Diop a mis à jour vos objectifs du 2nd semestre 2026', link: '/moi/objectifs' },
       { title: 'Awa Diop a mis à jour vos objectifs du 1er semestre 2026', link: '/moi/objectifs' },
     ]);
   });

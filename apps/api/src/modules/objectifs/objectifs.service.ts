@@ -442,9 +442,10 @@ export class ObjectifsService {
   }
 
   /**
-   * Le n+1 enregistre la fiche d'objectifs de son direct pour un semestre —
-   * à chaque pause de la saisie. L'agent en est prévenu une fois par jour et
-   * par fiche, pas à chaque enregistrement.
+   * Le n+1 enregistre la fiche d'objectifs de son direct pour un semestre,
+   * d'un clic sur « Enregistrer » (ADR-0051). Chaque enregistrement qui la
+   * change prévient l'agent ; la dernière notification remplace les
+   * précédentes. Une fiche renvoyée telle quelle ne s'écrit pas.
    */
   async enregistrerFiche(
     user: SessionUser,
@@ -463,6 +464,15 @@ export class ObjectifsService {
       if (!membre) {
         problem(404, 'objectifs.hors_equipe', 'Cet agent ne fait pas partie de votre équipe');
       }
+      const { rows: avant } = await tx.execute<{ identique: boolean; updated_at: string | Date }>(
+        sql`
+        SELECT contenu = ${json}::jsonb AS identique, updated_at
+          FROM objectifs_fiches
+         WHERE tenant_id = ${user.tenantId} AND employee_id = ${employeeId}
+           AND annee = ${an} AND semestre = ${input.semestre}
+           FOR UPDATE`,
+      );
+      if (avant[0]?.identique) return { majLe: iso(avant[0].updated_at)! };
       const { rows } = await tx.execute<{ updated_at: string | Date }>(sql`
         INSERT INTO objectifs_fiches
                (id, tenant_id, employee_id, annee, semestre, contenu, auteur_employee_id)
@@ -493,7 +503,7 @@ export class ObjectifsService {
               SELECT p.given_name || ' ' || p.family_name AS nom
                 FROM employees e JOIN persons p ON p.id = e.person_id WHERE e.id = ${moi}`)
           ).rows;
-          // Une par jour au plus, et seule la dernière reste dans la boîte.
+          // Une par enregistrement, et seule la dernière reste dans la boîte.
           const sujet = `objectifs:fiche:${employeeId}:${an}:${input.semestre}:`;
           const { rows: deja } = await tx.execute(sql`
             SELECT 1 FROM notifications
@@ -503,7 +513,7 @@ export class ObjectifsService {
             sujet: 'objectifs',
             title: `${auteur?.nom ?? 'Votre n+1'} a ${deja.length > 0 ? 'mis à jour' : 'fixé'} vos objectifs ${duSemestre(input.semestre, an)}`,
             link: '/moi/objectifs',
-            dedupeKey: `${sujet}${this.aujourdhui()}`,
+            dedupeKey: `${sujet}${iso(rows[0].updated_at)}`,
             remplace: sujet,
           });
         }

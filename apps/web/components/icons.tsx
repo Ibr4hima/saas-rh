@@ -96,6 +96,7 @@ export const ICON_NAMES = [
   'remove',
   'replay',
   'rule',
+  'save',
   'schedule',
   'school',
   'search',

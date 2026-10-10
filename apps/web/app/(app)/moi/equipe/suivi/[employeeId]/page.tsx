@@ -5,9 +5,12 @@
 // (cases au-dessus du texte, cadre de focus du navigateur autour de la fiche).
 import '@blocknote/mantine/style.css';
 import dynamic from 'next/dynamic';
-import { use, useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { use, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  objectifsDeLaFiche,
+  titreDuSemestre,
   type FicheObjectifs,
   type FicheSuivi,
   type FormationDeLaFiche,
@@ -15,7 +18,7 @@ import {
   type Semestre,
   type StatutObjectif,
 } from '@teranga/contracts';
-import { Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
+import { Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../../../lib/api';
 import { RetourAcademy } from '../../../../../../components/academy-carte';
 import { EvaluationSemestre } from '../../../../../../components/evaluation-objectifs';
@@ -28,6 +31,7 @@ import {
   SeparateurAnnee,
 } from '../../../../../../components/fiches-semestres';
 import { Page } from '../../../../../../components/gabarit';
+import { Modal } from '../../../../../../components/modal';
 import { Telephone } from '../../../../../../components/telephone';
 import { Icon } from '../../../../../../components/icons';
 import { CLE_OBJECTIFS } from '../../../../../../components/objectifs';
@@ -43,7 +47,7 @@ type Vue = 'objectifs' | 'evaluation';
 /**
  * La fiche d'un direct : la tête de son dossier, puis ses objectifs, année
  * par année — et dans l'année, semestre par semestre. Le n+1 les rédige comme
- * une page Notion ; ils s'enregistrent d'eux-mêmes. L'agent s'auto-évalue —
+ * une page Notion, le crayon puis « Enregistrer ». L'agent s'auto-évalue :
  * chaque case prend la couleur de son statut, et le n+1 le voit à mesure.
  * « Évaluation », en tête, montre ce que l'agent en dit, objectif par
  * objectif, et ce que le n+1 en dit à son tour.
@@ -211,6 +215,15 @@ interface Carte {
 }
 
 /**
+ * Ce qu'on a écrit dans une fiche sans l'enregistrer, par agent et par
+ * semestre. La page qui s'en va le garde ; elle le rend, la fiche ouverte,
+ * quand on y revient (la vue Évaluation, une notification, le retour du
+ * navigateur).
+ */
+const brouillons = new Map<string, Carte>();
+const cleDuBrouillon = (employeeId: string, c: Carte) => `${employeeId}:${cleDe(c)}`;
+
+/**
  * Les objectifs du direct, par année. L'année en cours porte le geste du
  * n+1 — « Fixer des objectifs », pour le 1er ou le 2nd semestre ; les années
  * passées gardent leurs fiches, toujours modifiables.
@@ -234,10 +247,42 @@ function FichesDuMembre({
   catalogue: FormationProposable[];
 }) {
   const annee = new Date().getFullYear();
+  const router = useRouter();
   // Les semestres ouverts depuis le menu, pas encore enregistrés : ils
-  // rejoignent `fiches` à la première frappe.
-  const [ouvertes, setOuvertes] = useState<Carte[]>([]);
+  // rejoignent `fiches` au premier enregistrement. Un brouillon laissé sur
+  // l'un d'eux le rouvre.
+  const [ouvertes, setOuvertes] = useState<Carte[]>(() =>
+    [...brouillons]
+      .filter(([cle]) => cle.startsWith(`${employeeId}:`))
+      .map(([, c]) => ({ ...c, contenu: [] })),
+  );
   const [focus, setFocus] = useState({ cle: '', n: 0 });
+  // Un lien de l'application, une fiche modifiée sans être enregistrée : on
+  // demande avant de partir. Partir ainsi abandonne les brouillons.
+  const [sortie, setSortie] = useState<{ vers: string; fiches: string[] } | null>(null);
+  const abandon = useRef(false);
+
+  useEffect(() => {
+    const auClic = (e: MouseEvent) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const lien = e.target instanceof Element ? e.target.closest('a[href]') : null;
+      if (!(lien instanceof HTMLAnchorElement) || lien.target === '_blank') return;
+      const vers = new URL(lien.href);
+      if (vers.origin !== window.location.origin || vers.pathname === window.location.pathname) {
+        return;
+      }
+      const fiches = [...document.querySelectorAll('[data-fiche-modifiee]')].map(
+        (el) => el.getAttribute('data-fiche-modifiee') ?? '',
+      );
+      if (!fiches.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setSortie({ vers: `${vers.pathname}${vers.search}${vers.hash}`, fiches });
+    };
+    // À la capture : avant que le lien ne lance la navigation.
+    document.addEventListener('click', auClic, true);
+    return () => document.removeEventListener('click', auClic, true);
+  }, []);
 
   const cartes: Carte[] = [
     ...fiches,
@@ -278,38 +323,73 @@ function FichesDuMembre({
     ));
   }
 
-  return parAnnee(cartes, annee).map((groupe) => (
-    <section key={groupe.annee} className="flex flex-col gap-7">
-      <SeparateurAnnee annee={groupe.annee}>
-        {groupe.annee === annee && !parti ? (
-          <ChoixSemestre fixes={fixes} onChoisir={choisir} />
-        ) : null}
-      </SeparateurAnnee>
-      {groupe.fiches.map((c) => {
-        const enregistree = fiches.find((f) => cleDe(f) === cleDe(c));
-        return (
-          <FicheSemestre
-            key={cleDe(c)}
-            id={`fiche-${cleDe(c)}`}
-            annee={c.annee}
-            semestre={c.semestre}
-          >
-            <ZoneFiche
-              employeeId={employeeId}
-              carte={c}
-              statuts={enregistree?.statuts ?? {}}
-              // L'agent a envoyé son auto-évaluation : ses objectifs ne changent plus.
-              verrouillee={parti || Boolean(enregistree?.evaluation.envoyesLe)}
-              // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
-              formations={enregistree?.formations ?? formations}
-              catalogue={catalogue}
-              signal={focus.cle === cleDe(c) ? focus.n : 0}
-            />
-          </FicheSemestre>
-        );
-      })}
-    </section>
-  ));
+  return (
+    <>
+      {parAnnee(cartes, annee).map((groupe) => (
+        <section key={groupe.annee} className="flex flex-col gap-7">
+          <SeparateurAnnee annee={groupe.annee}>
+            {groupe.annee === annee && !parti ? (
+              <ChoixSemestre fixes={fixes} onChoisir={choisir} />
+            ) : null}
+          </SeparateurAnnee>
+          {groupe.fiches.map((c) => {
+            const enregistree = fiches.find((f) => cleDe(f) === cleDe(c));
+            return (
+              <ZoneFiche
+                key={cleDe(c)}
+                employeeId={employeeId}
+                carte={c}
+                majLe={enregistree?.majLe ?? null}
+                statuts={enregistree?.statuts ?? {}}
+                // L'agent a envoyé son auto-évaluation : ses objectifs ne changent plus.
+                verrouillee={parti || Boolean(enregistree?.evaluation.envoyesLe)}
+                // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
+                formations={enregistree?.formations ?? formations}
+                catalogue={catalogue}
+                signal={focus.cle === cleDe(c) ? focus.n : 0}
+                abandon={abandon}
+                onRetirer={() => setOuvertes((o) => o.filter((x) => cleDe(x) !== cleDe(c)))}
+              />
+            );
+          })}
+        </section>
+      ))}
+      <Modal
+        open={sortie !== null}
+        onClose={() => setSortie(null)}
+        title="Quitter sans enregistrer ?"
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setSortie(null)}>
+              Rester
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (!sortie) return;
+                abandon.current = true;
+                setSortie(null);
+                router.push(sortie.vers);
+              }}
+            >
+              Quitter
+            </Button>
+          </>
+        }
+      >
+        <Card>
+          <CardContent className="flex flex-col gap-1.5 py-4">
+            {sortie?.fiches.map((titre) => (
+              <p key={titre} className="text-[13.5px] font-semibold text-ink-strong">
+                {titre}
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      </Modal>
+    </>
+  );
 }
 
 /** Une fiche tout juste ouverte : ni statut, ni commentaire. */
@@ -322,138 +402,256 @@ const SANS_EVALUATION: FicheObjectifs['evaluation'] = {
   evaluateur: null,
 };
 
+/** Une fiche où rien n'est écrit : ni objectif, ni formation, ni commentaire. */
+const vide = (blocs: Record<string, unknown>[]) =>
+  objectifsDeLaFiche(blocs).length === 0 && blocs.every((b) => b.type === 'checkListItem');
+
+/** Le bouton rond posé sur le bord haut de la fiche : le crayon, puis l'enregistrement. */
+const ROND =
+  'grid size-[30px] shrink-0 place-items-center rounded-full border outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary/35';
+
 /**
- * La zone de rédaction d'un semestre. Chaque pause de la saisie enregistre —
- * pas de bouton : on ne perd pas une fiche parce qu'on a oublié de la sauver.
- * Les enregistrements partent l'un après l'autre, dans l'ordre de la frappe.
+ * La fiche d'un semestre. Elle se lit d'abord ; le crayon l'ouvre, et
+ * « Enregistrer » la referme et prévient l'agent (ADR-0051) : rien ne s'y
+ * change par mégarde. Ce qui n'est pas enregistré ne se perd pas en
+ * silence : le navigateur demande avant de fermer la page, et la page le
+ * garde le temps d'y revenir.
  */
 function ZoneFiche({
   employeeId,
   carte,
+  majLe,
   statuts,
   verrouillee,
   formations,
   catalogue,
   signal,
+  abandon,
+  onRetirer,
 }: {
   employeeId: string;
   carte: Carte;
-  /** L'auto-évaluation de l'agent — la fiche la suit, sans que le n+1 puisse cocher. */
+  /** Le dernier enregistrement ; aucun pour un semestre tout juste ouvert. */
+  majLe: string | null;
+  /** L'auto-évaluation de l'agent : la fiche la suit, sans que le n+1 puisse cocher. */
   statuts: Record<string, StatutObjectif>;
   /** L'agent a rendu compte : la fiche se lit, elle ne s'écrit plus. */
   verrouillee: boolean;
   formations: FormationDeLaFiche[];
   catalogue: FormationProposable[];
+  /** « Fixer des objectifs » sur ce semestre : la fiche s'ouvre, le curseur en fin d'objectifs. */
   signal: number;
+  /** On quitte la page sans enregistrer : les brouillons partent avec elle. */
+  abandon: RefObject<boolean>;
+  /** Un semestre neuf refermé sans rien d'écrit quitte l'écran. */
+  onRetirer: () => void;
 }) {
   const queryClient = useQueryClient();
   const { annee, semestre } = carte;
-  const [echec, setEchec] = useState(false);
-  const enAttente = useRef<Record<string, unknown>[] | null>(null);
-  const minuterie = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const file = useRef<Promise<void>>(Promise.resolve());
-
-  const enregistrer = useCallback(() => {
-    file.current = file.current.then(async () => {
-      const blocs = enAttente.current;
-      if (!blocs) return;
-      enAttente.current = null;
-      try {
-        const r = await api<{ majLe: string }>(`/objectifs/equipe/${employeeId}/fiche`, {
-          method: 'PUT',
-          body: { annee, semestre, contenu: blocs },
-        });
-        setEchec(false);
-        // Revenir sur la page montre la fiche telle qu'on l'a laissée.
-        queryClient.setQueryData<FicheSuivi>([...CLE_OBJECTIFS, 'equipe', employeeId], (avant) => {
-          if (!avant) return avant;
-          const autres = avant.fiches.filter((f) => f.annee !== annee || f.semestre !== semestre);
-          const ancienne = avant.fiches.find((f) => f.annee === annee && f.semestre === semestre);
-          return {
-            ...avant,
-            fiches: [
-              ...autres,
-              {
-                annee,
-                semestre,
-                contenu: blocs,
-                majLe: r.majLe,
-                auteur: ancienne?.auteur ?? null,
-                statuts: ancienne?.statuts ?? {},
-                statutsCaducs: ancienne?.statutsCaducs ?? [],
-                formations: ancienne?.formations ?? null,
-                evaluation: ancienne?.evaluation ?? SANS_EVALUATION,
-              },
-            ],
-          };
-        });
-      } catch {
-        enAttente.current = enAttente.current ?? blocs;
-        setEchec(true);
-      }
-    });
-    return file.current;
-  }, [employeeId, annee, semestre, queryClient]);
-
-  const onChange = useCallback(
-    (blocs: Record<string, unknown>[]) => {
-      enAttente.current = blocs;
-      clearTimeout(minuterie.current);
-      minuterie.current = setTimeout(() => void enregistrer(), 700);
-    },
-    [enregistrer],
+  const cle = cleDuBrouillon(employeeId, carte);
+  const racine = useRef<HTMLDivElement>(null);
+  // Ouverte : le contenu dont l'éditeur repart. Un semestre tout juste
+  // ouvert s'écrit d'emblée ; un brouillon laissé rouvre sa fiche.
+  const [depart, setDepart] = useState<Record<string, unknown>[] | null>(
+    () => brouillons.get(cle)?.contenu ?? (majLe === null ? carte.contenu : null),
   );
+  // Ce qu'on y a changé ; rien tant qu'on n'a pas écrit.
+  const brouillon = useRef<Record<string, unknown>[] | null>(brouillons.get(cle)?.contenu ?? null);
+  const [modifiee, setModifiee] = useState(() => brouillons.has(cle));
+  const [curseur, setCurseur] = useState(() => (brouillons.has(cle) ? 0 : signal));
+  const [signalVu, setSignalVu] = useState(signal);
+  const [envoi, setEnvoi] = useState(false);
+  const [echec, setEchec] = useState(false);
+  const enCours = useRef(false);
 
-  // Quitter la page n'abandonne pas la dernière phrase. Ctrl+S (⌘S)
-  // enregistre sur-le-champ, au lieu d'ouvrir « Enregistrer la page » du
-  // navigateur — le réflexe de qui vient d'un traitement de texte.
+  if (signal !== signalVu) {
+    setSignalVu(signal);
+    if (!verrouillee) {
+      setDepart((d) => d ?? carte.contenu);
+      setCurseur((c) => c + 1);
+    }
+  }
+
+  // Verrouillée (l'agent a rendu compte, ou a quitté l'APIX), elle se lit
+  // seulement : ce qui n'était pas enregistré n'a plus où aller.
+  const ouverte = depart !== null && !verrouillee;
+  const aEnregistrer = ouverte && modifiee;
+
+  const ouvrir = () => {
+    setDepart(carte.contenu);
+    setCurseur((c) => c + 1);
+  };
+
+  const onChange = useCallback((blocs: Record<string, unknown>[]) => {
+    brouillon.current = blocs;
+    setModifiee(true);
+  }, []);
+
+  const refermer = useCallback(() => {
+    brouillon.current = null;
+    setModifiee(false);
+    setEchec(false);
+    setDepart(null);
+  }, []);
+
+  const enregistrer = useCallback(async () => {
+    if (enCours.current) return;
+    const blocs = brouillon.current;
+    // Rien de changé : la fiche se referme, sans écrire ni prévenir. Un
+    // semestre neuf où rien n'est écrit ne se crée pas.
+    if (!blocs || (majLe === null && vide(blocs))) {
+      refermer();
+      if (majLe === null) onRetirer();
+      return;
+    }
+    enCours.current = true;
+    setEnvoi(true);
+    const cleFiche = [...CLE_OBJECTIFS, 'equipe', employeeId];
+    try {
+      const r = await api<{ majLe: string }>(`/objectifs/equipe/${employeeId}/fiche`, {
+        method: 'PUT',
+        body: { annee, semestre, contenu: blocs },
+      });
+      // Une lecture partie avant l'enregistrement ne ramène pas l'ancienne fiche.
+      await queryClient.cancelQueries({ queryKey: cleFiche });
+      queryClient.setQueryData<FicheSuivi>(cleFiche, (avant) => {
+        if (!avant) return avant;
+        const autres = avant.fiches.filter((f) => f.annee !== annee || f.semestre !== semestre);
+        const ancienne = avant.fiches.find((f) => f.annee === annee && f.semestre === semestre);
+        return {
+          ...avant,
+          fiches: [
+            ...autres,
+            {
+              annee,
+              semestre,
+              contenu: blocs,
+              majLe: r.majLe,
+              auteur: ancienne?.auteur ?? null,
+              statuts: ancienne?.statuts ?? {},
+              statutsCaducs: ancienne?.statutsCaducs ?? [],
+              formations: ancienne?.formations ?? null,
+              evaluation: ancienne?.evaluation ?? SANS_EVALUATION,
+            },
+          ],
+        };
+      });
+      refermer();
+    } catch {
+      setEchec(true);
+    } finally {
+      enCours.current = false;
+      setEnvoi(false);
+    }
+  }, [employeeId, annee, semestre, majLe, queryClient, refermer, onRetirer]);
+
+  // Ctrl+S (⌘S) enregistre la fiche où l'on écrit, au lieu d'ouvrir
+  // « Enregistrer la page » du navigateur ; sans curseur dans aucune
+  // fiche, toutes celles qui sont ouvertes.
   useEffect(() => {
-    const avantDePartir = (e: BeforeUnloadEvent) => {
-      if (enAttente.current) e.preventDefault();
+    if (!ouverte) return;
+    const auClavier = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return;
+      e.preventDefault();
+      const ici = document.activeElement?.closest('[data-fiche-ouverte]');
+      if (!ici || ici === racine.current) void enregistrer();
     };
-    const sauver = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        clearTimeout(minuterie.current);
-        void enregistrer();
+    window.addEventListener('keydown', auClavier);
+    return () => window.removeEventListener('keydown', auClavier);
+  }, [ouverte, enregistrer]);
+
+  // Fermer ou recharger la page, une fiche modifiée : le navigateur demande.
+  useEffect(() => {
+    if (!aEnregistrer) return;
+    const avantDePartir = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', avantDePartir);
+    return () => window.removeEventListener('beforeunload', avantDePartir);
+  }, [aEnregistrer]);
+
+  // Le brouillon repris ; la page qui s'en va le garde à son tour.
+  useEffect(() => {
+    brouillons.delete(cle);
+    return () => {
+      if (brouillon.current && !abandon.current) {
+        brouillons.set(cle, { annee, semestre, contenu: brouillon.current });
       }
     };
-    window.addEventListener('beforeunload', avantDePartir);
-    window.addEventListener('keydown', sauver);
-    return () => {
-      window.removeEventListener('beforeunload', avantDePartir);
-      window.removeEventListener('keydown', sauver);
-      clearTimeout(minuterie.current);
-      if (enAttente.current) void enregistrer();
-    };
-  }, [enregistrer]);
+  }, [cle, annee, semestre, abandon]);
+
+  useEffect(() => {
+    if (verrouillee) brouillon.current = null;
+  }, [verrouillee]);
 
   return (
-    <>
-      {/* L'enregistrement ne se montre pas : il se fait. Seul un échec se
-          dit — une fiche ne se perd pas en silence. */}
-      {echec ? (
-        <p
-          role="alert"
-          className="flex items-center justify-end gap-1.5 px-5 pt-3 text-[11.5px] font-semibold text-danger"
-        >
-          <Icon name="error" size={14} />
-          Non enregistré
-          <button type="button" onClick={() => void enregistrer()} className="underline">
-            Réessayer
-          </button>
-        </p>
-      ) : null}
-      <EditeurFicheObjectifs
-        className={cn('pt-4', verrouillee ? 'pb-4' : 'pb-1')}
-        contenu={carte.contenu}
-        modifiable={!verrouillee}
-        formations={formations}
-        catalogue={catalogue}
-        onChange={onChange}
-        focusSignal={signal}
-        statuts={statuts}
-      />
-    </>
+    <div
+      ref={racine}
+      data-fiche-ouverte={ouverte || undefined}
+      data-fiche-modifiee={aEnregistrer ? titreDuSemestre(semestre, annee) : undefined}
+    >
+      <FicheSemestre
+        id={`fiche-${cleDe(carte)}`}
+        annee={annee}
+        semestre={semestre}
+        enEdition={ouverte}
+        // Un seul bouton, qui change de rôle : le focus du clavier y reste
+        // quand la fiche se referme. Jamais désactivé (il perdrait le focus) :
+        // un second clic pendant l'envoi ne fait rien.
+        action={
+          verrouillee ? null : (
+            <button
+              type="button"
+              onClick={ouverte ? () => void enregistrer() : ouvrir}
+              aria-busy={envoi || undefined}
+              aria-label={ouverte ? 'Enregistrer les objectifs' : 'Modifier les objectifs'}
+              title={ouverte ? 'Enregistrer' : 'Modifier'}
+              className={cn(
+                ROND,
+                ouverte
+                  ? 'border-primary bg-primary text-primary-ink shadow-[0_4px_12px_-4px_rgb(0_79_145/0.5)] hover:bg-primary-hover'
+                  : 'border-card-line bg-surface text-ink-muted shadow-xs hover:border-primary/45 hover:text-primary',
+                envoi && 'opacity-70',
+              )}
+            >
+              <Icon name={ouverte ? 'save' : 'edit'} size={ouverte ? 17 : 16} />
+            </button>
+          )
+        }
+      >
+        {/* L'enregistrement réussi referme la fiche ; seul un échec se dit. */}
+        {echec ? (
+          <p
+            role="alert"
+            className="flex items-center justify-end gap-1.5 px-5 pt-3 text-[11.5px] font-semibold text-danger"
+          >
+            <Icon name="error" size={14} />
+            Non enregistré
+          </p>
+        ) : null}
+        {depart !== null && !verrouillee ? (
+          <EditeurFicheObjectifs
+            key="redaction"
+            className="pt-4 pb-1"
+            contenu={depart}
+            modifiable
+            formations={formations}
+            catalogue={catalogue}
+            onChange={onChange}
+            focusSignal={curseur}
+            statuts={statuts}
+          />
+        ) : (
+          // Relue après chaque enregistrement : la fiche telle qu'elle est.
+          <EditeurFicheObjectifs
+            key={`lecture-${majLe}`}
+            className="pt-4 pb-4"
+            contenu={carte.contenu}
+            modifiable={false}
+            formations={formations}
+            catalogue={catalogue}
+            statuts={statuts}
+          />
+        )}
+      </FicheSemestre>
+    </div>
   );
 }
