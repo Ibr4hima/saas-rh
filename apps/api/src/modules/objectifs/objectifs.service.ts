@@ -559,12 +559,16 @@ export class ObjectifsService {
       const aEvaluer = fiches.filter(
         (f) => f.evaluation.envoyesLe && !f.evaluation.valideeLe,
       ).length;
+      // Ce que l'agent anime ne se donne pas à suivre (ADR-0057).
+      const { rows: animees } = await tx.execute<{ id: string }>(sql`
+        SELECT id FROM academy_courses WHERE formateur_employee_id = ${membre.id}`);
       return {
         annee: an,
         membre: this.membre(membre, objectifs, aEvaluer),
         objectifs,
         fiches,
         formations: formationsDe(progression.get(membre.id)),
+        formationsAnimees: animees.map((c) => c.id),
         joursEvaluation: jours,
       };
     });

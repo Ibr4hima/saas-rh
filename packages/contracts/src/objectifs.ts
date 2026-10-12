@@ -445,6 +445,8 @@ export interface FicheSuivi {
   fiches: FicheObjectifs[];
   /** Les formations qu'il a commencées, pour les blocs « Formation ». */
   formations: FormationDeLaFiche[];
+  /** Les formations que l'agent anime : elles ne se donnent pas à suivre (ADR-0057). */
+  formationsAnimees: string[];
   /** Les jours d'évaluation de l'APIX : ils rangent chaque objectif par son échéance. */
   joursEvaluation: JoursEvaluation;
 }
@@ -624,8 +626,8 @@ export function joursAvantLEvaluation(echeance: string, jours: JoursEvaluation):
 
 /**
  * Une échéance à 30 jours ou moins de l'évaluation où elle compte se
- * confirme : le n+1 la garde, ou reporte l'objectif à l'évaluation suivante
- * (ADR-0056).
+ * confirme à l'enregistrement : le n+1 la garde, ou reporte l'objectif à
+ * l'évaluation suivante (ADR-0056, ADR-0057).
  */
 export const ECHEANCE_A_CONFIRMER_JOURS = 30;
 
@@ -639,42 +641,6 @@ export function jourEtMoisEnLettres(jour: string): string {
 export function dateEnLettres(date: string, avecAnnee = true): string {
   const jour = jourEtMoisEnLettres(date.slice(5, 10));
   return avecAnnee ? `${jour} ${date.slice(0, 4)}` : jour;
-}
-
-/** Le lendemain d'un « MM-JJ », dans une année ordinaire ; rien après le 31 décembre. */
-function lendemain(jour: string): string | null {
-  const [mois = 1, j = 1] = jour.split('-').map(Number);
-  if (j < JOURS_PAR_MOIS[mois - 1]!)
-    return `${String(mois).padStart(2, '0')}-${String(j + 1).padStart(2, '0')}`;
-  if (mois === 12) return null;
-  return `${String(mois + 1).padStart(2, '0')}-01`;
-}
-
-/** « entre le 1er juillet et le 31 décembre », ou « le 31 décembre » pour un seul jour. */
-function intervalle(du: string, au: string): string {
-  return du === au
-    ? `le ${jourEtMoisEnLettres(du)}`
-    : `entre le ${jourEtMoisEnLettres(du)} et le ${jourEtMoisEnLettres(au)}`;
-}
-
-/**
- * La règle en phrases, avec les jours que la DCH a fixés : ce qu'on lit en
- * fixant une échéance.
- */
-export function reglesDesEcheances(jours: JoursEvaluation): string[] {
-  const [s1, s2] = jours;
-  const regles = [
-    `Une échéance ${intervalle('01-01', s1)} compte pour l’évaluation du ${jourEtMoisEnLettres(s1)} (S1) ;`,
-    `une échéance ${intervalle(lendemain(s1) ?? s1, s2)} compte pour celle du ${jourEtMoisEnLettres(s2)} (S2).`,
-  ];
-  const apres = lendemain(s2);
-  if (apres) {
-    regles[1] = regles[1]!.replace(/\.$/, ' ;');
-    regles.push(
-      `une échéance ${intervalle(apres, '12-31')} compte pour l’évaluation du ${jourEtMoisEnLettres(s1)} de l’année suivante (S1).`,
-    );
-  }
-  return regles;
 }
 
 /** Une fiche : l'évaluation où ses objectifs comptent. */

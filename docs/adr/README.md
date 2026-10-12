@@ -32,7 +32,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0024](0024-inactivite-et-revue-des-droits.md)        | Déconnexion après trois jours d'inactivité, revue des droits d'accès                    | acceptée                                    |
 | [0025](0025-gestion-des-acces-deleguee.md)            | La gestion des accès se délègue                                                         | acceptée                                    |
 | [0026](0026-fiche-objectifs-en-trois-parties.md)      | La fiche d'objectifs en trois parties : cases, formations à suivre, commentaires        | acceptée, en partie remplacée : 0027, 0055  |
-| [0027](0027-formations-a-suivre-en-badges.md)         | Les formations à suivre en badges, atteintes au certificat                              | acceptée                                    |
+| [0027](0027-formations-a-suivre-en-badges.md)         | Les formations à suivre en badges, atteintes au certificat                              | acceptée, précisée par 0057                 |
 | [0028](0028-notifications-reglees-par-sujet.md)       | Les notifications réglées par sujet : plateforme, courriel, WhatsApp                    | acceptée                                    |
 | [0029](0029-refus-de-candidature-par-courriel.md)     | Le refus d'une candidature part par courriel, sans recopier l'adresse                   | acceptée, non retenues à part par 0030      |
 | [0030](0030-candidatures-non-retenues-a-part.md)      | Les candidatures non retenues ont leur page                                             | acceptée                                    |
@@ -60,5 +60,6 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0052](0052-une-annee-a-la-fois.md)                   | Objectifs d'un direct : une année à la fois, la suivante fixée à l'avance               | acceptée                                    |
 | [0053](0053-dates-d-evaluation.md)                    | Deux dates d'évaluation par an, fixées par qui dirige la DCH                            | acceptée, dates sans année depuis 0054      |
 | [0054](0054-jours-d-evaluation-chaque-annee.md)       | Dates d'évaluation : un jour et un mois, chaque année                                   | acceptée, précisée par 0055                 |
-| [0055](0055-objectifs-a-echeance.md)                  | Objectifs à échéance, rangés dans l'évaluation où ils comptent                          | acceptée, fenêtre remplacée par 0056        |
-| [0056](0056-fixer-des-objectifs-par-semestre.md)      | Fixer des objectifs par semestre, chacun avec son échéance                              | acceptée                                    |
+| [0055](0055-objectifs-a-echeance.md)                  | Objectifs à échéance, rangés dans l'évaluation où ils comptent                          | acceptée, en partie remplacée : 0056, 0057  |
+| [0056](0056-fixer-des-objectifs-par-semestre.md)      | Fixer des objectifs par semestre, chacun avec son échéance                              | acceptée, en partie remplacée : 0057        |
+| [0057](0057-echeance-confirmee-a-l-enregistrement.md) | L'échéance proche se confirme à l'enregistrement ; les formations n'en ont pas          | acceptée                                    |

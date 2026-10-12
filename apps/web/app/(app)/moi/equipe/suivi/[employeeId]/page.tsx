@@ -251,7 +251,10 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
         onAnnee={choisirAnnee}
         fiches={fiche.data.fiches}
         formations={fiche.data.formations}
-        catalogue={catalogue.data ?? []}
+        // Ce que l'agent anime ne se donne pas à suivre (ADR-0057).
+        catalogue={(catalogue.data ?? []).filter(
+          (c) => !fiche.data.formationsAnimees.includes(c.id),
+        )}
         jours={fiche.data.joursEvaluation}
       />
     </Page>
@@ -516,11 +519,13 @@ const ROND =
  * change par mégarde. Un semestre choisi dans « Fixer des objectifs »
  * s'ouvre d'emblée ; refermé sans rien d'écrit, il disparaît sans rien
  * créer. Pas d'objectif sans échéance : l'enregistrement le refuse, et
- * montre lesquels. Un objectif reporté part dans la fiche de l'évaluation
- * suivante, et la fiche le dit. Les objectifs arrivés entre-temps (reportés
- * depuis une autre fiche) s'ajoutent à l'enregistrement, sans se perdre. Ce
- * qui n'est pas enregistré ne se perd pas en silence : le navigateur demande
- * avant de fermer la page, et la page le garde le temps d'y revenir.
+ * montre lesquels. Une échéance fixée à 30 jours ou moins de son évaluation
+ * se confirme à l'enregistrement, ou l'objectif se reporte (ADR-0057). Un
+ * objectif reporté part dans la fiche de l'évaluation suivante, et la fiche
+ * le dit. Les objectifs arrivés entre-temps (reportés depuis une autre
+ * fiche) s'ajoutent à l'enregistrement, sans se perdre. Ce qui n'est pas
+ * enregistré ne se perd pas en silence : le navigateur demande avant de
+ * fermer la page, et la page le garde le temps d'y revenir.
  */
 function ZoneFiche({
   employeeId,
@@ -576,6 +581,9 @@ function ZoneFiche({
   const signalVu = useRef(signal);
   // Chaque refus pour une échéance manquante : l'éditeur montre lesquelles.
   const [manques, setManques] = useState(0);
+  // Chaque enregistrement demandé : l'éditeur fait d'abord confirmer les
+  // échéances trop près de leur évaluation, puis rend la main.
+  const [verification, setVerification] = useState(0);
   const [envoi, setEnvoi] = useState(false);
   const [echec, setEchec] = useState<string | null>(null);
   // Des objectifs reportés : vers quelle fiche, et combien.
@@ -617,7 +625,7 @@ function ZoneFiche({
     setDepart(null);
   }, []);
 
-  const enregistrer = useCallback(async () => {
+  const enregistrer = useCallback(() => {
     if (enCours.current) return;
     const blocs = brouillon.current;
     // Rien de changé : la fiche se referme, sans écrire ni prévenir. Un
@@ -633,6 +641,13 @@ function ZoneFiche({
       setManques((n) => n + 1);
       return;
     }
+    setVerification((n) => n + 1);
+  }, [fiche, refermer, onRetirer]);
+
+  /** Les échéances confirmées : la fiche part. */
+  const envoyer = useCallback(async () => {
+    const blocs = brouillon.current;
+    if (enCours.current || !blocs) return;
     // Arrivés entre-temps (reportés depuis une autre fiche), ces objectifs
     // n'étaient pas dans l'éditeur : ils restent dans la fiche.
     const vus = new Set(connus.current);
@@ -698,7 +713,7 @@ function ZoneFiche({
       // Une fenêtre ouverte (une échéance à confirmer) se termine d'abord.
       if (document.querySelector('[aria-modal="true"]')) return;
       const ici = document.activeElement?.closest('[data-fiche-ouverte]');
-      if (!ici || ici === racine.current) void enregistrer();
+      if (!ici || ici === racine.current) enregistrer();
     };
     window.addEventListener('keydown', auClavier);
     return () => window.removeEventListener('keydown', auClavier);
@@ -749,7 +764,7 @@ function ZoneFiche({
           verrouillee ? null : (
             <button
               type="button"
-              onClick={ouverte ? () => void enregistrer() : ouvrir}
+              onClick={ouverte ? enregistrer : ouvrir}
               aria-busy={envoi || undefined}
               aria-label={ouverte ? 'Enregistrer les objectifs' : 'Modifier les objectifs'}
               title={ouverte ? 'Enregistrer' : 'Modifier'}
@@ -805,6 +820,9 @@ function ZoneFiche({
             onChange={onChange}
             focusSignal={curseur}
             manques={manques}
+            enregistre={contenu}
+            verification={verification}
+            onVerifiee={() => void envoyer()}
             statuts={statuts}
             annee={annee}
             semestre={semestre}

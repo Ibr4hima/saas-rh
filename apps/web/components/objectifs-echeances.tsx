@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
 import {
   dateDEvaluation,
   dateEnLettres,
@@ -8,7 +8,6 @@ import {
   joursAvantLEvaluation,
   periodeDeLEcheance,
   periodeSuivante,
-  reglesDesEcheances,
   type JoursEvaluation,
 } from '@teranga/contracts';
 import { Button, Card, CardContent, cn, Field, Input } from '@teranga/ui';
@@ -17,11 +16,11 @@ import { Icon } from './icons';
 import { Modal } from './modal';
 
 /*
-   Les objectifs ponctuels, chacun avec son échéance (ADR-0055, ADR-0056).
-   Le n+1 fixe les objectifs d'un semestre, et l'échéance de chacun dans la
-   période de ce semestre. Trop près de l'évaluation, l'échéance se
-   confirme, ou l'objectif se reporte à l'évaluation suivante. La règle se
-   lit là où l'on fixe une échéance, avec les jours que la DCH a choisis.
+   Les objectifs ponctuels, chacun avec son échéance (ADR-0055, ADR-0056,
+   ADR-0057). Le n+1 fixe les objectifs d'un semestre, et l'échéance de
+   chacun dans la période de ce semestre. À l'enregistrement, une échéance
+   trop près de l'évaluation se confirme, ou l'objectif se reporte à
+   l'évaluation suivante.
 */
 
 /** Le dernier jour où une échéance se fixe : la dernière évaluation de l'année suivante. */
@@ -67,10 +66,12 @@ export function Echeance({
 
 /**
  * L'échéance, à choisir : la même puce, et dessous le calendrier du
- * navigateur, qui s'ouvre d'un clic. Une date prise au calendrier vaut
- * aussitôt ; tapée au clavier, elle vaut quand on quitte la puce, ou sur
- * Entrée : un jour à moitié tapé ne déclenche rien. Sans échéance, la puce
- * attend la sienne ; `manque` la signale, une fois l'enregistrement refusé.
+ * navigateur, qui s'ouvre d'un clic. Une date complète, dans ses bornes,
+ * vaut aussitôt ; rien ne s'ouvre pour autant, même quand le calendrier la
+ * change en passant d'un mois à l'autre. Une date à moitié tapée, ou hors des
+ * bornes, s'efface quand on quitte la puce. `onQuitter` suit la puce qu'on
+ * quitte, ou Entrée. Sans échéance, la puce attend la sienne ; `manque` la
+ * signale, une fois l'enregistrement refusé.
  */
 export function ChoixEcheance({
   id,
@@ -79,6 +80,7 @@ export function ChoixEcheance({
   min,
   max,
   onChoix,
+  onQuitter,
   label,
   manque = false,
   reportee,
@@ -90,20 +92,15 @@ export function ChoixEcheance({
   min: string;
   max: string;
   onChoix: (date: string) => void;
+  onQuitter?: () => void;
   label: string;
   manque?: boolean;
   /** L'échéance compte pour un autre semestre : « S2 ». */
   reportee?: string;
 }) {
+  // Ce qu'on tape et qui ne vaut pas encore : un jour incomplet, ou hors des bornes.
   const [saisie, setSaisie] = useState<string | null>(null);
-  // Le calendrier ouvert d'un clic : la date qu'on y prend vaut tout de suite.
-  const auCalendrier = useRef(false);
   const montree = saisie ?? date;
-
-  const choisir = (v: string) => {
-    setSaisie(null);
-    if (v !== date) onChoix(v);
-  };
 
   return (
     <span
@@ -133,7 +130,6 @@ export function ChoixEcheance({
         max={max}
         required
         onClick={(e) => {
-          auCalendrier.current = true;
           try {
             e.currentTarget.showPicker();
           } catch {
@@ -141,25 +137,22 @@ export function ChoixEcheance({
           }
         }}
         onKeyDown={(e) => {
-          auCalendrier.current = false;
-          if (e.key === 'Enter' && saisie && dansLesBornes(saisie, min, max)) {
-            e.preventDefault();
-            choisir(saisie);
-          }
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          onQuitter?.();
         }}
         onChange={(e) => {
           const v = e.target.value;
-          if (auCalendrier.current && dansLesBornes(v, min, max)) {
-            auCalendrier.current = false;
-            choisir(v);
+          if (!dansLesBornes(v, min, max)) {
+            setSaisie(v);
             return;
           }
-          setSaisie(v || null);
+          setSaisie(null);
+          if (v !== date) onChoix(v);
         }}
         onBlur={() => {
-          auCalendrier.current = false;
-          if (saisie && dansLesBornes(saisie, min, max)) choisir(saisie);
-          else setSaisie(null);
+          setSaisie(null);
+          onQuitter?.();
         }}
         className="absolute inset-0 size-full cursor-pointer opacity-0"
       />
@@ -168,38 +161,10 @@ export function ChoixEcheance({
 }
 
 /**
- * La règle, en avertissement, là où l'on fixe une échéance : les jours
- * d'évaluation sont ceux que la DCH a fixés, et changent avec eux.
- */
-export function ReglesDesEcheances({
-  jours,
-  className,
-}: {
-  jours: JoursEvaluation;
-  className?: string;
-}) {
-  return (
-    <div
-      role="note"
-      className={cn(
-        'flex gap-3 rounded-[12px] bg-primary-soft/60 px-4 py-3 text-[12.5px] leading-relaxed text-ink',
-        className,
-      )}
-    >
-      <Icon name="info_i" size={18} className="mt-px shrink-0 text-primary" />
-      <ul className="flex list-disc flex-col gap-0.5 pl-4 marker:text-primary/60">
-        {reglesDesEcheances(jours).map((r) => (
-          <li key={r}>{r}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/**
- * Une échéance à 30 jours ou moins de l'évaluation où elle compte : le n+1
- * la confirme, ou reporte l'objectif à l'évaluation suivante, avec une
- * nouvelle échéance prise dans la période de celle-ci.
+ * Une échéance à 30 jours ou moins de l'évaluation où elle compte, à
+ * l'enregistrement : le n+1 la confirme, ou reporte l'objectif à
+ * l'évaluation suivante, avec une nouvelle échéance prise dans la période de
+ * celle-ci. Fermer la fenêtre arrête l'enregistrement.
  */
 export function ConfirmerEcheance({
   objectif,

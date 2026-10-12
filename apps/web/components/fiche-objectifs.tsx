@@ -19,6 +19,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -47,7 +48,6 @@ import {
   ConfirmerEcheance,
   Echeance,
   horizonDesEcheances,
-  ReglesDesEcheances,
 } from './objectifs-echeances';
 import { usePreferences } from './preferences';
 
@@ -57,12 +57,12 @@ import { usePreferences } from './preferences';
 
    1. Les OBJECTIFS : une liste, chacun avec son échéance, de la plus proche
       à la plus lointaine. Du texte simple, sur une ligne. L'échéance se
-      choisit dans la période du semestre ; trop près de l'évaluation, elle
-      se confirme, ou l'objectif se reporte à l'évaluation suivante, où il
-      part à l'enregistrement (ADR-0055, ADR-0056).
-   2. Les FORMATIONS À SUIVRE : le catalogue de l'APIX Academy. Celles que
-      l'agent a terminées ne se cochent pas ; cocher une autre la lui
-      demande, et elle s'évalue comme un objectif.
+      choisit dans la période du semestre. À l'enregistrement, une échéance
+      trop près de l'évaluation se confirme, ou l'objectif se reporte à
+      l'évaluation suivante, où il part (ADR-0055 à ADR-0057).
+   2. Les FORMATIONS À SUIVRE : le catalogue de l'APIX Academy, sans ce que
+      l'agent a obtenu ni ce que l'agent anime. Cocher une formation la
+      demande, sans échéance : elle s'évalue avec les objectifs du semestre.
    3. Les COMMENTAIRES : un texte libre sur les objectifs fixés (gras,
       italique, souligné, listes, citations), sans case à cocher.
 
@@ -326,6 +326,9 @@ function Intertitre({ children }: { children: ReactNode }) {
   );
 }
 
+/** Rien d'enregistré : une fiche qu'on vient d'ouvrir. */
+const AUCUN_BLOC: Record<string, unknown>[] = [];
+
 export function EditeurFicheObjectifs({
   contenu,
   modifiable,
@@ -339,6 +342,9 @@ export function EditeurFicheObjectifs({
   semestre,
   jours,
   manques = 0,
+  enregistre = AUCUN_BLOC,
+  verification = 0,
+  onVerifiee,
 }: {
   contenu: Record<string, unknown>[];
   modifiable: boolean;
@@ -352,6 +358,15 @@ export function EditeurFicheObjectifs({
    * les a refusés), et y porte le curseur.
    */
   manques?: number;
+  /** La fiche telle qu'elle est enregistrée : ses échéances ont été confirmées en leur temps. */
+  enregistre?: Record<string, unknown>[];
+  /**
+   * Chaque changement (un enregistrement demandé) fait confirmer les
+   * échéances trop près de leur évaluation ; `onVerifiee` suit, quand
+   * toutes l'ont été.
+   */
+  verification?: number;
+  onVerifiee?: () => void;
   /** La marge autour de la fiche. */
   className?: string;
   /**
@@ -371,6 +386,11 @@ export function EditeurFicheObjectifs({
   const [depart] = useState(() => partager(contenu as Bloc[], implicite));
   const parties = useRef(depart);
   const [choisies, setChoisies] = useState(depart.formations);
+  const enregistrees = useMemo(
+    () =>
+      new Map(partager(enregistre as Bloc[], implicite).objectifs.map((o) => [o.id, o.echeance])),
+    [enregistre, implicite],
+  );
 
   const publier = useCallback(() => {
     const { objectifs, formations: aSuivre, commentaires } = parties.current;
@@ -394,6 +414,9 @@ export function EditeurFicheObjectifs({
           statuts={statuts}
           focusSignal={focusSignal}
           manques={manques}
+          enregistrees={enregistrees}
+          verification={verification}
+          onVerifiee={() => onVerifiee?.()}
           onChange={(objectifs) => {
             parties.current = { ...parties.current, objectifs };
             publier();
@@ -471,13 +494,13 @@ function ListeObjectifs({
 
 /**
  * Les objectifs, à rédiger : chacun son texte et son échéance, choisie dans
- * la période du semestre. À 30 jours ou moins de l'évaluation, l'échéance se
- * confirme, ou l'objectif se reporte à l'évaluation suivante, avec une
- * échéance prise dans sa période. Les objectifs se rangent par échéance à
- * mesure qu'elles se fixent. Entrée ouvre un nouvel objectif ; Retour
- * arrière sur un objectif vide le retire ; les flèches passent de l'un à
- * l'autre. Une fiche dont l'évaluation est passée garde ses échéances : le
- * texte seul s'y corrige, et rien ne s'y ajoute.
+ * la période du semestre. Les objectifs se rangent par échéance quand on
+ * quitte la puce. À l'enregistrement, une échéance fixée à 30 jours ou moins
+ * de son évaluation se confirme, ou l'objectif se reporte à l'évaluation
+ * suivante, avec une échéance prise dans sa période. Entrée ouvre un nouvel
+ * objectif ; Retour arrière sur un objectif vide le retire ; les flèches
+ * passent de l'un à l'autre. Une fiche dont l'évaluation est passée garde
+ * ses échéances : le texte seul s'y corrige, et rien ne s'y ajoute.
  */
 function EditeurObjectifs({
   initial,
@@ -487,6 +510,9 @@ function EditeurObjectifs({
   statuts,
   focusSignal,
   manques,
+  enregistrees,
+  verification,
+  onVerifiee,
   onChange,
 }: {
   initial: Objectif[];
@@ -496,11 +522,17 @@ function EditeurObjectifs({
   statuts?: Record<string, StatutObjectif>;
   focusSignal: number;
   manques: number;
+  /** L'échéance enregistrée de chaque objectif, par son id. */
+  enregistrees: Map<string, string | null>;
+  verification: number;
+  onVerifiee: () => void;
   onChange: (objectifs: Objectif[]) => void;
 }) {
   const [lignes, setLignes] = useState(initial);
-  // L'échéance choisie trop près de son évaluation, qui attend d'être confirmée.
+  // À l'enregistrement, l'échéance trop près de son évaluation qui attend
+  // d'être confirmée ; et celles déjà confirmées, le temps de la rédaction.
   const [aConfirmer, setAConfirmer] = useState<{ id: string; echeance: string } | null>(null);
+  const confirmees = useRef(new Set<string>());
   // L'enregistrement a refusé des objectifs sans échéance : leurs puces le disent.
   const [signaler, setSignaler] = useState(false);
   const uid = useId();
@@ -549,20 +581,51 @@ function EditeurObjectifs({
   const changer = (id: string, quoi: Partial<Objectif>) =>
     publier(lignes.map((l) => (l.id === id ? { ...l, ...quoi } : l)));
 
-  /** L'échéance fixée, l'objectif prend sa place dans la liste ; le focus le suit. */
-  const fixerEcheance = (id: string, echeance: string) => {
-    if (document.activeElement?.id === idEcheance(id)) aViser.current = { id, ou: 'echeance' };
-    publier(parEcheance(lignes.map((l) => (l.id === id ? { ...l, echeance } : l))));
+  /**
+   * Les objectifs par échéance, quand on quitte une puce : rien ne bouge
+   * pendant qu'on choisit. Le curseur reste sur la puce qui l'avait.
+   */
+  const ranger = () => {
+    const rangees = parEcheance(lignes);
+    if (rangees.every((l, i) => l === lignes[i])) return;
+    const ici = lignes.find((l) => document.activeElement?.id === idEcheance(l.id));
+    if (ici) aViser.current = { id: ici.id, ou: 'echeance' };
+    publier(rangees);
   };
 
-  /** Une échéance choisie : à 30 jours ou moins de son évaluation, elle se confirme d'abord. */
-  const proposer = (id: string, echeance: string) => {
-    if (joursAvantLEvaluation(echeance, jours) <= ECHEANCE_A_CONFIRMER_JOURS) {
-      setAConfirmer({ id, echeance });
-    } else {
-      fixerEcheance(id, echeance);
+  /**
+   * Une échéance à confirmer : fixée depuis le dernier enregistrement, à 30
+   * jours ou moins de son évaluation, et pas encore confirmée.
+   */
+  const aVerifier = (l: Objectif) =>
+    Boolean(l.texte.trim()) &&
+    l.echeance !== null &&
+    l.echeance !== enregistrees.get(l.id) &&
+    !confirmees.current.has(`${l.id}:${l.echeance}`) &&
+    joursAvantLEvaluation(l.echeance, jours) <= ECHEANCE_A_CONFIRMER_JOURS;
+
+  /**
+   * La prochaine échéance à confirmer (celle de `dAbord` en premier) ; quand
+   * il n'en reste aucune, l'enregistrement part.
+   */
+  const verifier = (liste: Objectif[], dAbord?: string) => {
+    const suivante =
+      liste.find((l) => l.id === dAbord && aVerifier(l)) ?? liste.find((l) => aVerifier(l));
+    if (suivante?.echeance) {
+      setAConfirmer({ id: suivante.id, echeance: suivante.echeance });
+      return;
     }
+    setAConfirmer(null);
+    onVerifiee();
   };
+
+  // L'enregistrement demandé : les échéances se confirment d'abord.
+  useEffect(() => {
+    if (verification === 0) return;
+    verifier(lignes);
+    // Seul le signal compte : la liste qu'on rédige ne relance rien.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verification]);
 
   /** Un objectif de plus, en bas de la liste : son échéance reste à choisir. */
   const ajouter = () => {
@@ -625,7 +688,6 @@ function EditeurObjectifs({
 
   return (
     <div className="flex flex-col px-5">
-      {figee ? null : <ReglesDesEcheances jours={jours} className="mb-2" />}
       <ul className="flex flex-col">
         {lignes.map((l, i) => {
           // Reporté : l'échéance compte pour une autre évaluation, où
@@ -666,7 +728,8 @@ function EditeurObjectifs({
                   }
                   manque={signaler && Boolean(l.texte.trim())}
                   reportee={reporte ? `S${reporte.semestre}` : undefined}
-                  onChoix={(echeance) => proposer(l.id, echeance)}
+                  onChoix={(echeance) => changer(l.id, { echeance })}
+                  onQuitter={ranger}
                 />
               )}
               <button
@@ -690,19 +753,23 @@ function EditeurObjectifs({
       )}
       {aConfirmer ? (
         <ConfirmerEcheance
-          // Un report trop près de son évaluation se confirme à son tour.
           key={`${aConfirmer.id}:${aConfirmer.echeance}`}
           objectif={lignes.find((l) => l.id === aConfirmer.id)?.texte ?? ''}
           echeance={aConfirmer.echeance}
           jours={jours}
           onConfirmer={() => {
-            setAConfirmer(null);
-            fixerEcheance(aConfirmer.id, aConfirmer.echeance);
+            confirmees.current.add(`${aConfirmer.id}:${aConfirmer.echeance}`);
+            verifier(lignes);
           }}
           onReporter={(echeance) => {
-            setAConfirmer(null);
-            proposer(aConfirmer.id, echeance);
+            const suivantes = parEcheance(
+              lignes.map((l) => (l.id === aConfirmer.id ? { ...l, echeance } : l)),
+            );
+            publier(suivantes);
+            // La nouvelle échéance, trop près de son évaluation, se confirme à son tour.
+            verifier(suivantes, aConfirmer.id);
           }}
+          // Fermée, la fenêtre arrête l'enregistrement : la fiche reste ouverte.
           onClose={() => setAConfirmer(null)}
         />
       ) : null}
@@ -731,6 +798,29 @@ function TexteModifiable({
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   }, [valeur]);
+  // La ligne rétrécit (la puce voisine prend sa date, l'écran tourne) : le
+  // texte passe à la ligne, la hauteur suit. Elle change à l'image suivante,
+  // hors de l'observation.
+  useEffect(() => {
+    const el = champ.current;
+    if (!el) return;
+    let largeur = el.clientWidth;
+    let image = 0;
+    const observation = new ResizeObserver(() => {
+      if (el.clientWidth === largeur) return;
+      largeur = el.clientWidth;
+      cancelAnimationFrame(image);
+      image = requestAnimationFrame(() => {
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+      });
+    });
+    observation.observe(el);
+    return () => {
+      observation.disconnect();
+      cancelAnimationFrame(image);
+    };
+  }, []);
   return (
     <textarea
       ref={champ}
@@ -765,9 +855,10 @@ const BADGE =
   'inline-flex max-w-full items-center gap-1.5 rounded-[15px] border px-3 py-[5px] text-left text-[12px] font-semibold transition-colors duration-150';
 
 /**
- * Les formations à suivre, en badges. Le n+1 voit celles que l'agent n'a pas
- * encore obtenues, commencées ou non, et choisit d'un clic ; l'agent lit
- * celles qui lui sont demandées, chacune mène à sa page.
+ * Les formations à suivre, en badges, sans échéance : elles s'évaluent avec
+ * les objectifs du semestre. Le n+1 voit celles que l'agent n'a pas encore
+ * obtenues, commencées ou non, et choisit d'un clic ; l'agent lit celles qui
+ * sont demandées, chacune mène à sa page.
  */
 function FormationsASuivre({
   choisies,
@@ -811,8 +902,9 @@ function FormationsASuivre({
     );
   }
 
-  // Le catalogue, et ce qui en a été retiré depuis qu'on l'a demandé ; sans
-  // ce que l'agent a déjà obtenu.
+  // Le catalogue (la page en ôte ce que l'agent anime), et ce qui en est
+  // sorti depuis qu'on l'a demandé, pour pouvoir le retirer ; sans ce que
+  // l'agent a déjà obtenu.
   const lignes = [
     ...catalogue.map((c) => ({ courseId: c.id, titre: c.title })),
     ...choisies

@@ -26,7 +26,6 @@ import {
   objectifsDeLaFiche,
   periodeDeLEcheance,
   periodeSuivante,
-  reglesDesEcheances,
   statutDeFormation,
 } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
@@ -391,6 +390,26 @@ describe('une formation à suivre', () => {
     )!;
     expect(apres.formation?.statut).toBe('terminee');
     expect(apres.atteint).toBe(true);
+  });
+
+  it('ne se donne pas à suivre à l’agent qui l’anime', async () => {
+    const courseId = randomUUID();
+    await raw(
+      `INSERT INTO academy_courses (id, tenant_id, title, category, published_at, created_by_user_id,
+         formateur_employee_id, formateur_nom)
+       VALUES ($1,$2,'Conduire une réunion','bureautique', now(), $3, $4, 'Moussa Ndiaye')`,
+      [courseId, tenantId, comptes.dg, agents.moussa],
+    );
+    try {
+      expect((await objectifs.fiche(session('awa'), agents.moussa)).formationsAnimees).toEqual([
+        courseId,
+      ]);
+      expect((await objectifs.fiche(session('ousmane'), agents.fatou)).formationsAnimees).toEqual(
+        [],
+      );
+    } finally {
+      await raw(`DELETE FROM academy_courses WHERE id = $1`, [courseId]);
+    }
   });
 });
 
@@ -1470,16 +1489,7 @@ describe('les objectifs à échéance', () => {
     objectifs.horloge = () => maintenant;
   });
 
-  it('la règle se lit avec les jours que la DCH a fixés', () => {
-    expect(reglesDesEcheances(['06-30', '12-31'])).toEqual([
-      'Une échéance entre le 1er janvier et le 30 juin compte pour l’évaluation du 30 juin (S1) ;',
-      'une échéance entre le 1er juillet et le 31 décembre compte pour celle du 31 décembre (S2).',
-    ]);
-    expect(reglesDesEcheances(['07-15', '12-15'])).toEqual([
-      'Une échéance entre le 1er janvier et le 15 juillet compte pour l’évaluation du 15 juillet (S1) ;',
-      'une échéance entre le 16 juillet et le 15 décembre compte pour celle du 15 décembre (S2) ;',
-      'une échéance entre le 16 décembre et le 31 décembre compte pour l’évaluation du 15 juillet de l’année suivante (S1).',
-    ]);
+  it('une échéance compte pour l’évaluation de sa période, avec les jours que la DCH a fixés', () => {
     // Le jour de l'évaluation compte encore pour elle.
     expect(periodeDeLEcheance('2026-06-30', ['06-30', '12-31'])).toEqual({
       annee: 2026,
