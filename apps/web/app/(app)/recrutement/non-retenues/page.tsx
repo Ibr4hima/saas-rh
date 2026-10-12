@@ -23,7 +23,6 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/hooks';
-import { compte } from '../../../../lib/mots';
 import { correspond } from '../../../../lib/recherche';
 import { FenetreCandidat } from '../../../../components/fenetre-candidat';
 import { Icon } from '../../../../components/icons';
@@ -247,7 +246,7 @@ function SupprimerModal({
     <Modal
       open
       onClose={onClose}
-      title={`Supprimer définitivement ${compte(candidatures.length, 'candidature')}\u00a0?`}
+      title={'Supprimer définitivement\u00a0?'}
       titreEntier
       maxWidth="max-w-lg"
       footer={
@@ -282,9 +281,9 @@ function SupprimerModal({
             <li key={a.id} className="text-[12.5px]">
               <span className="font-bold text-ink-strong">
                 {a.givenName} {a.familyName}
-              </span>{' '}
+              </span>
               <span className="text-ink-muted">
-                {a.jobTitle} ·{' '}
+                {' · '}
                 <span className="font-mono text-[11.5px] whitespace-nowrap">{a.jobReference}</span>
               </span>
             </li>
