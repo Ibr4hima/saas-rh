@@ -328,8 +328,9 @@ function Ligne({ icon, children }: { icon: IconName; children: React.ReactNode }
 }
 
 /**
- * Rejeter, c'est répondre au candidat : un courriel de refus part avec le
- * geste, et la candidature ne se rouvre plus. La fenêtre le dit avant.
+ * Rejeter, c'est répondre : un courriel de refus part avec le geste, un seul
+ * par candidature. Reconsidérée après son départ, puis rejetée de nouveau, la
+ * candidature n'en vaut pas un second. La fenêtre le dit avant.
  */
 function ConfirmerRejet({
   jobId,
@@ -392,10 +393,20 @@ function ConfirmerRejet({
     >
       <Card>
         <CardContent className="py-4 text-[13.5px] leading-relaxed text-ink">
-          Un courriel de refus sera envoyé à{' '}
-          <span className="font-semibold text-ink-strong">{premierPrenom(a.givenName)}</span> à
-          l’adresse <span className="font-semibold text-ink-strong">{a.email}</span>. Confirmez-vous
-          votre décision ?
+          {a.refusalSent ? (
+            <>
+              <span className="font-semibold text-ink-strong">{premierPrenom(a.givenName)}</span> a
+              déjà reçu un courriel de refus : aucun autre ne partira. Confirmez-vous votre
+              décision&nbsp;?
+            </>
+          ) : (
+            <>
+              Un courriel de refus sera envoyé à{' '}
+              <span className="font-semibold text-ink-strong">{premierPrenom(a.givenName)}</span> à
+              l’adresse <span className="font-semibold text-ink-strong">{a.email}</span>.
+              Confirmez-vous votre décision ?
+            </>
+          )}
         </CardContent>
       </Card>
     </Modal>

@@ -408,13 +408,14 @@ describe('une candidature supprimée', () => {
         VALUES (${id}, ${tenantId}, ${offreId}, 'Ndeye', 'Candidate', 'ndeye.candidate@exemple.sn')`),
     );
     await service.updateStage(rh, id, 'interview');
-    await service.deleteApplication(rh, id);
+    await service.updateStage(rh, id, 'rejected');
+    expect(await service.deleteApplications(rh, { ids: [id] })).toEqual({ deleted: 1 });
     const { rows } = await raw(
       `SELECT action, old_data IS NULL AND new_data IS NULL AS vide
          FROM audit_log WHERE row_id = $1 ORDER BY occurred_at, action`,
       [id],
     );
-    expect(rows.map((r) => r.action).sort()).toEqual(['DELETE', 'INSERT', 'UPDATE']);
+    expect(rows.map((r) => r.action).sort()).toEqual(['DELETE', 'INSERT', 'UPDATE', 'UPDATE']);
     expect(rows.every((r) => r.vide)).toBe(true);
   });
 });
@@ -509,12 +510,9 @@ describe('une candidature déposée', () => {
 describe('une candidature rejetée', () => {
   const enc = new EncryptionService();
 
-  /** Une offre publiée, et la candidature d'Amadou Way Samb, chiffrée comme au dépôt. */
-  async function candidature(rh2: JobsService) {
-    const { id: offreId } = await rh2.create(rh, offre('Économiste'));
-    await rh2.update(rh, offreId, { status: 'published' });
-    const { rows } = await raw(`SELECT public_slug FROM job_postings WHERE id = $1`, [offreId]);
-    await new ApplyService(db, enc).apply(rows[0].public_slug as string, {
+  /** Le dossier d'Amadou Way Samb, déposé à cette offre. */
+  const postuler = (slug: string, expediteur?: ExpediteurCourriels) =>
+    new ApplyService(db, enc, expediteur).apply(slug, {
       givenName: 'Amadou Way',
       familyName: 'Samb',
       email: 'amadou.samb@exemple.sn',
@@ -527,9 +525,34 @@ describe('une candidature rejetée', () => {
         },
       ],
     });
+
+  /** Une offre publiée, et la candidature d'Amadou Way Samb, chiffrée comme au dépôt. */
+  async function candidature(rh2: JobsService, expediteur?: ExpediteurCourriels) {
+    const { id: offreId } = await rh2.create(rh, offre('Économiste'));
+    await rh2.update(rh, offreId, { status: 'published' });
+    const { rows } = await raw(`SELECT public_slug FROM job_postings WHERE id = $1`, [offreId]);
+    await postuler(rows[0].public_slug as string, expediteur);
     const [dossier] = await rh2.applications(rh, offreId);
     return dossier!.id;
   }
+  /** L'offre d'une candidature, et le lien où l'on y postule. */
+  const offreDe = async (applicationId: string) => {
+    const { rows } = await raw(
+      `SELECT p.id, p.public_slug FROM applications a
+         JOIN job_postings p ON p.id = a.job_posting_id WHERE a.id = $1`,
+      [applicationId],
+    );
+    return { offreId: rows[0].id as string, slug: rows[0].public_slug as string };
+  };
+  const expediteurDeTest = (transport: TransportDeTest) =>
+    new ExpediteurCourriels(
+      db,
+      enc,
+      transport,
+      'Capital Humain <rh@apix.test>',
+      'http://localhost:3002',
+      async () => null,
+    );
   const courriels = async (applicationId: string) =>
     (
       await raw(
@@ -628,7 +651,7 @@ describe('une candidature rejetée', () => {
     expect(traces.at(-1)).toEqual({ action: 'list', job_posting_id: offreId });
   });
 
-  it('les non retenues s’ouvrent à qui a les dossiers de candidature, et à personne d’autre', () => {
+  it('les non retenues se lisent, se reconsidèrent et s’effacent par qui a les dossiers de candidature, et personne d’autre', () => {
     const garde = new AccesGuard(new Reflector());
     const ouvre = (handler: object, sessionUser: object) => {
       try {
@@ -641,8 +664,9 @@ describe('une candidature rejetée', () => {
         return false;
       }
     };
-    const { rejetees, nombreDeRejetees } = RecruitmentController.prototype;
-    for (const route of [rejetees, nombreDeRejetees]) {
+    const { rejetees, nombreDeRejetees, reconsider, deleteApplications } =
+      RecruitmentController.prototype;
+    for (const route of [rejetees, nombreDeRejetees, reconsider, deleteApplications]) {
       // Déléguée « Dossiers de candidature » : oui.
       expect(ouvre(route, { role: 'employee', capacites: ['recrutement.candidatures'] })).toBe(
         true,
@@ -654,7 +678,7 @@ describe('une candidature rejetée', () => {
     }
   });
 
-  it('supprimée avant le départ, rien ne part', async () => {
+  it('supprimée avant le départ, rien ne part, et son refus s’efface avec elle', async () => {
     const transport = new TransportDeTest();
     const expediteur = new ExpediteurCourriels(
       db,
@@ -668,10 +692,139 @@ describe('une candidature rejetée', () => {
     try {
       const id = await candidature(jobs);
       await jobs.updateStage(rh, id, 'rejected');
-      await jobs.deleteApplication(rh, id);
+      await jobs.deleteApplications(rh, { ids: [id] });
       await expediteur.envoyerCeQuiAttend();
       expect(transport.envoyes).toHaveLength(0);
-      expect(await courriels(id)).toEqual([expect.objectContaining({ status: 'cancelled' })]);
+      expect(await courriels(id)).toEqual([]);
+    } finally {
+      await expediteur.onModuleDestroy();
+    }
+  });
+
+  it('reconsidérée, elle retrouve son offre à l’étape où elle était, et son refus en attente ne part pas', async () => {
+    const transport = new TransportDeTest();
+    const expediteur = expediteurDeTest(transport);
+    const jobs = new JobsService(db, enc, expediteur);
+    try {
+      const id = await candidature(jobs);
+      const { offreId } = await offreDe(id);
+      await jobs.updateStage(rh, id, 'interview');
+      await jobs.updateStage(rh, id, 'rejected');
+      expect(await jobs.reconsider(rh, { ids: [id] })).toEqual({ reconsidered: 1 });
+
+      expect(await jobs.applications(rh, offreId)).toEqual([
+        expect.objectContaining({ id, stage: 'interview', refusalSent: false }),
+      ]);
+      expect(await jobs.rejetees(rh)).toEqual([]);
+      expect(await jobs.nombreDeRejetees(rh)).toEqual({ count: 0 });
+      await expediteur.envoyerCeQuiAttend();
+      expect(transport.envoyes).toHaveLength(0);
+      expect(await courriels(id)).toEqual([
+        expect.objectContaining({ kind: 'candidature_refusee', status: 'cancelled' }),
+      ]);
+
+      // Rejetée de nouveau : rien n'était parti, le refus part.
+      await jobs.updateStage(rh, id, 'rejected');
+      await expediteur.envoyerCeQuiAttend();
+      expect(transport.envoyes).toHaveLength(1);
+
+      // Reconsidérée puis rejetée encore : le refus est parti, aucun second.
+      await jobs.reconsider(rh, { ids: [id] });
+      expect(await jobs.applications(rh, offreId)).toEqual([
+        expect.objectContaining({ id, stage: 'interview', refusalSent: true }),
+      ]);
+      await jobs.updateStage(rh, id, 'rejected');
+      await expediteur.envoyerCeQuiAttend();
+      expect(transport.envoyes).toHaveLength(1);
+      expect((await courriels(id)).map((c) => c.status).sort()).toEqual(['cancelled', 'sent']);
+    } finally {
+      await expediteur.onModuleDestroy();
+    }
+  });
+
+  it('reconsidérer et supprimer ne touchent qu’aux non retenues de l’organisation', async () => {
+    const jobs = new JobsService(db, enc);
+    const enLice = await candidature(jobs);
+    const rejetee = await candidature(jobs);
+    await jobs.updateStage(rh, rejetee, 'rejected');
+    // Rejetée sans trace de l'étape d'avant : elle reviendra « reçue ».
+    const sansTrace = randomUUID();
+    const { offreId } = await offreDe(rejetee);
+    await db.withTenant({ tenantId, userId: rhUserId }, (tx) =>
+      tx.execute(sql`
+        INSERT INTO applications (id, tenant_id, job_posting_id, given_name, family_name, email, stage)
+        VALUES (${sansTrace}, ${tenantId}, ${offreId}, 'Ndeye', 'Candidate', 'ndeye.candidate@exemple.sn', 'rejected')`),
+    );
+
+    // Une autre organisation ne les voit pas : rien ne bouge.
+    expect(await jobs.reconsider(rhAilleurs, { ids: [rejetee] })).toEqual({ reconsidered: 0 });
+    expect(await jobs.deleteApplications(rhAilleurs, { ids: [rejetee] })).toEqual({ deleted: 0 });
+    // Celle encore en lice ne s'efface pas ; un identifiant inconnu ne fait pas échouer le lot.
+    expect(await jobs.deleteApplications(rh, { ids: [enLice, randomUUID()] })).toEqual({
+      deleted: 0,
+    });
+    expect(await jobs.reconsider(rh, { ids: [enLice, rejetee, sansTrace, randomUUID()] })).toEqual({
+      reconsidered: 2,
+    });
+    const { rows } = await raw(`SELECT id, stage FROM applications WHERE tenant_id = $1`, [
+      tenantId,
+    ]);
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.stage]))).toEqual({
+      [enLice]: 'received',
+      [rejetee]: 'received',
+      [sansTrace]: 'received',
+    });
+  });
+
+  it('supprimée définitivement, il ne reste rien de la personne, et son adresse peut postuler de nouveau', async () => {
+    const transport = new TransportDeTest();
+    const expediteur = expediteurDeTest(transport);
+    const jobs = new JobsService(db, enc, expediteur);
+    try {
+      // Déposée : l'accusé de réception part. Consultée : sa lecture se trace.
+      const id = await candidature(jobs, expediteur);
+      const { offreId, slug } = await offreDe(id);
+      await expediteur.envoyerCeQuiAttend();
+      const [dossier] = await jobs.applications(rh, offreId);
+      const pieces = dossier!.documents.map((d) => d.id);
+      await jobs.document(rh, pieces[0]!);
+      // Rejetée : le refus attend son départ.
+      await jobs.updateStage(rh, id, 'rejected');
+
+      expect(await jobs.deleteApplications(rh, { ids: [id] })).toEqual({ deleted: 1 });
+
+      expect((await raw(`SELECT 1 FROM applications WHERE id = $1`, [id])).rows).toEqual([]);
+      expect(
+        (await raw(`SELECT 1 FROM application_documents WHERE application_id = $1`, [id])).rows,
+      ).toEqual([]);
+      // L'accusé parti comme le refus en attente : plus aucune ligne.
+      expect(await courriels(id)).toEqual([]);
+      await expediteur.envoyerCeQuiAttend();
+      expect(transport.envoyes.map((c) => c.subject)).toEqual([
+        'Nous avons bien reçu votre candidature au poste d’Économiste',
+      ]);
+      // Le journal garde la trace des gestes, plus leur contenu.
+      const { rows: journal } = await raw(
+        `SELECT old_data, new_data FROM audit_log WHERE row_id = ANY($1::uuid[])`,
+        [[id, ...pieces]],
+      );
+      expect(journal.length).toBeGreaterThan(0);
+      expect(journal.every((l) => l.old_data === null && l.new_data === null)).toBe(true);
+      // Celui des consultations ne porte que des identifiants.
+      const { rows: lectures } = await raw(
+        `SELECT * FROM application_access_log WHERE application_id = $1`,
+        [id],
+      );
+      expect(lectures).toHaveLength(1);
+      expect(JSON.stringify(lectures)).not.toMatch(/amadou|samb|exemple\.sn|cv\.pdf/i);
+      expect(await jobs.rejetees(rh)).toEqual([]);
+      expect(await jobs.nombreDeRejetees(rh)).toEqual({ count: 0 });
+
+      // L'adresse est libre : la même personne postule de nouveau à l'offre.
+      await postuler(slug);
+      expect(await jobs.applications(rh, offreId)).toEqual([
+        expect.objectContaining({ givenName: 'Amadou Way', stage: 'received' }),
+      ]);
     } finally {
       await expediteur.onModuleDestroy();
     }

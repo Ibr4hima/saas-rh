@@ -7,9 +7,12 @@ import type {
   ApplicationStage,
   ApplicationView,
   CreateJobPostingInput,
+  DeleteApplicationsResult,
   DeleteJobPostingsInput,
   DeleteJobPostingsResult,
   JobPostingView,
+  ReconsiderApplicationsResult,
+  RejectedApplicationsInput,
   RejectedApplicationView,
   SessionUser,
   UpdateJobPostingInput,
@@ -216,12 +219,11 @@ export class JobsService {
         .from(t.applications)
         .where(and(eq(t.applications.jobPostingId, jobId), ne(t.applications.stage, 'rejected')))
         .orderBy(desc(t.applications.createdAt));
-      const byApp = await this.piecesDe(
-        tx,
-        apps.map((a) => a.id),
-      );
+      const ids = apps.map((a) => a.id);
+      const byApp = await this.piecesDe(tx, ids);
+      const refus = await this.refusEnvoyes(tx, ids);
       await this.tracer(tx, user, { action: 'list', jobPostingId: jobId });
-      return apps.map((a) => this.vueCandidature(a, byApp));
+      return apps.map((a) => this.vueCandidature(a, byApp, refus));
     });
   }
 
@@ -238,15 +240,14 @@ export class JobsService {
         .innerJoin(t.jobPostings, eq(t.jobPostings.id, t.applications.jobPostingId))
         .where(eq(t.applications.stage, 'rejected'))
         .orderBy(desc(t.applications.updatedAt));
-      const byApp = await this.piecesDe(
-        tx,
-        lignes.map((l) => l.candidature.id),
-      );
+      const ids = lignes.map((l) => l.candidature.id);
+      const byApp = await this.piecesDe(tx, ids);
+      const refus = await this.refusEnvoyes(tx, ids);
       for (const jobPostingId of new Set(lignes.map((l) => l.offre.id))) {
         await this.tracer(tx, user, { action: 'list', jobPostingId });
       }
       return lignes.map(({ candidature, offre }) => ({
-        ...this.vueCandidature(candidature, byApp),
+        ...this.vueCandidature(candidature, byApp, refus),
         jobTitle: offre.title,
         jobReference: offre.reference,
         jobCreatedAt: offre.createdAt.toISOString(),
@@ -269,6 +270,7 @@ export class JobsService {
   private vueCandidature(
     a: typeof t.applications.$inferSelect,
     byApp: Map<string, ApplicationView['documents']>,
+    refus: Set<string>,
   ): ApplicationView {
     return {
       id: a.id,
@@ -277,7 +279,24 @@ export class JobsService {
       stage: a.stage as ApplicationStage,
       createdAt: a.createdAt.toISOString(),
       documents: byApp.get(a.id) ?? [],
+      refusalSent: refus.has(a.id),
     };
+  }
+
+  /** Celles dont le courriel de refus est déjà parti. */
+  private async refusEnvoyes(tx: Tx, applicationIds: string[]): Promise<Set<string>> {
+    if (applicationIds.length === 0) return new Set();
+    const partis = await tx
+      .selectDistinct({ id: t.outboundEmails.subjectId })
+      .from(t.outboundEmails)
+      .where(
+        and(
+          eq(t.outboundEmails.kind, 'candidature_refusee'),
+          eq(t.outboundEmails.status, 'sent'),
+          inArray(t.outboundEmails.subjectId, applicationIds),
+        ),
+      );
+    return new Set(partis.flatMap((p) => (p.id ? [p.id] : [])));
   }
 
   /** Les pièces de ces candidatures, sans leur contenu. */
@@ -315,9 +334,10 @@ export class JobsService {
   }
 
   /**
-   * L'étape d'une candidature. Rejetée, elle vaut au candidat un courriel de
-   * refus, mis en file avec le geste ; elle ne se rouvre plus : le candidat a
-   * reçu la réponse.
+   * L'étape d'une candidature. Rejetée, elle vaut un courriel de refus, mis
+   * en file avec le geste : un seul, même rejetée de nouveau après avoir été
+   * reconsidérée. Une candidature rejetée ne change plus d'étape par
+   * ce chemin : elle se reconsidère (`reconsider`), ce qui retient son refus.
    */
   async updateStage(user: SessionUser, applicationId: string, stage: string): Promise<void> {
     const enFile = await this.db.withTenant(ctxOf(user), async (tx) => {
@@ -334,7 +354,7 @@ export class JobsService {
         problem(
           409,
           'recruitment.candidature_rejetee',
-          'Cette candidature a été rejetée : le candidat en a reçu la réponse.',
+          'Cette candidature a été rejetée : reconsidérez-la depuis les candidatures non retenues.',
         );
       }
       await tx
@@ -342,6 +362,19 @@ export class JobsService {
         .set({ stage, updatedAt: new Date() })
         .where(eq(t.applications.id, applicationId));
       if (stage !== 'rejected' || !this.expediteur) return false;
+      // Une seule réponse : le refus déjà parti, ou en partance, suffit.
+      const [dejaRepondu] = await tx
+        .select({ id: t.outboundEmails.id })
+        .from(t.outboundEmails)
+        .where(
+          and(
+            eq(t.outboundEmails.subjectId, applicationId),
+            eq(t.outboundEmails.kind, 'candidature_refusee'),
+            inArray(t.outboundEmails.status, ['pending', 'sent']),
+          ),
+        )
+        .limit(1);
+      if (dejaRepondu) return false;
 
       const [offre] = await tx
         .select({ titre: t.jobPostings.title, reference: t.jobPostings.reference })
@@ -368,11 +401,6 @@ export class JobsService {
     if (enFile) this.expediteur?.bientot();
   }
 
-  /**
-   * Suppression d'une candidature par la RH — la voie de remédiation quand un
-   * tiers a « squatté » l'email d'un candidat via le formulaire public : la
-   * supprimer libère l'email (index unique) pour une vraie candidature.
-   */
   /**
    * Supprime une ou plusieurs offres, en une transaction.
    *
@@ -436,21 +464,89 @@ export class JobsService {
     });
   }
 
-  async deleteApplication(user: SessionUser, applicationId: string): Promise<void> {
-    await this.db.withTenant(ctxOf(user), async (tx) => {
-      await tx
+  /** Les candidatures de ce lot encore non retenues, verrouillées le temps du geste. */
+  private async nonRetenuesDuLot(tx: Tx, ids: string[]): Promise<string[]> {
+    const lignes = await tx
+      .select({ id: t.applications.id })
+      .from(t.applications)
+      .where(and(inArray(t.applications.id, ids), eq(t.applications.stage, 'rejected')))
+      .orderBy(t.applications.id)
+      .for('update');
+    return lignes.map((l) => l.id);
+  }
+
+  /**
+   * Reconsidérer des candidatures non retenues : chacune retrouve les
+   * dossiers de son offre, à l'étape où elle était avant le rejet. Le journal
+   * la garde (0079) ; à défaut, « reçue ». Le refus qui n'est pas encore
+   * parti ne part plus ; déjà parti, un nouveau rejet n'en renverra pas un
+   * second (`updateStage`).
+   *
+   * Une candidature qui n'est plus non retenue (reconsidérée par quelqu'un
+   * d'autre entre-temps) est laissée telle quelle.
+   */
+  async reconsider(
+    user: SessionUser,
+    input: RejectedApplicationsInput,
+  ): Promise<ReconsiderApplicationsResult> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const ids = await this.nonRetenuesDuLot(tx, input.ids);
+      if (ids.length === 0) return { reconsidered: 0 };
+      // Un seul paramètre, découpé côté base : un tableau passé tel quel se
+      // développerait en tuple, que Postgres refuse de couler en uuid[].
+      const lot = sql`string_to_array(${ids.join(',')}, ',')::uuid[]`;
+      await tx.execute(sql`
+        UPDATE applications a
+           SET stage = COALESCE((
+                 SELECT l.old_data ->> 'stage' FROM audit_log l
+                  WHERE l.table_name = 'applications' AND l.row_id = a.id
+                    AND l.action = 'UPDATE' AND l.new_data ->> 'stage' = 'rejected'
+                    AND l.old_data ->> 'stage' IN ('received', 'screening', 'interview', 'offer', 'hired')
+                  ORDER BY l.occurred_at DESC
+                  LIMIT 1), 'received'),
+               updated_at = now()
+         WHERE a.id = ANY(${lot})`);
+      await tx.execute(sql`
+        UPDATE outbound_emails
+           SET status = 'cancelled', body_encrypted = NULL
+         WHERE kind = 'candidature_refusee' AND status = 'pending'
+           AND subject_id = ANY(${lot})`);
+      return { reconsidered: ids.length };
+    });
+  }
+
+  /**
+   * Supprimer définitivement des candidatures non retenues : le dossier, ses
+   * pièces et les courriels qui en parlaient (accusé de réception, refus)
+   * s'effacent ; l'adresse se libère (index unique) pour une nouvelle
+   * candidature. Le journal garde la trace des gestes, plus leur contenu. Le
+   * journal des consultations demeure : il ne porte que des identifiants,
+   * rien de la personne (0079).
+   *
+   * Une candidature encore en lice ne s'efface pas par ce chemin : elle se
+   * rejette d'abord. Reconsidérée entre-temps, elle est laissée.
+   */
+  async deleteApplications(
+    user: SessionUser,
+    input: RejectedApplicationsInput,
+  ): Promise<DeleteApplicationsResult> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const ids = await this.nonRetenuesDuLot(tx, input.ids);
+      if (ids.length === 0) return { deleted: 0 };
+      const pieces = await tx
         .delete(t.applicationDocuments)
-        .where(eq(t.applicationDocuments.applicationId, applicationId));
-      const deleted = await tx
-        .delete(t.applications)
-        .where(eq(t.applications.id, applicationId))
-        .returning({ id: t.applications.id });
-      if (deleted.length === 0) {
-        problem(404, 'recruitment.application_not_found', 'Candidature introuvable');
-      }
-      // Le journal avait gardé la candidature à chaque étape (nom, email,
-      // téléphone, message) : il garde la trace des gestes, plus leur contenu.
-      await tx.execute(sql`SELECT erase_audit_payload(ARRAY[${applicationId}]::uuid[])`);
+        .where(inArray(t.applicationDocuments.applicationId, ids))
+        .returning({ id: t.applicationDocuments.id });
+      await tx.delete(t.applications).where(inArray(t.applications.id, ids));
+      await tx.delete(t.outboundEmails).where(inArray(t.outboundEmails.subjectId, ids));
+      // En dernier : chaque suppression vient d'écrire au journal une copie
+      // de la ligne effacée. C'est ce contenu-là qu'on retire, en laissant la
+      // trace de l'opération.
+      const traces = [...ids, ...pieces.map((p) => p.id)];
+      await tx.execute(
+        sql`SELECT erase_audit_payload(string_to_array(${traces.join(',')}, ',')::uuid[])`,
+      );
+      return { deleted: ids.length };
     });
   }
 

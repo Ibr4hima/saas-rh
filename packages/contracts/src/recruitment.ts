@@ -172,6 +172,25 @@ export const updateApplicationSchema = z.object({
 });
 export type UpdateApplicationInput = z.infer<typeof updateApplicationSchema>;
 
+/**
+ * Des candidatures non retenues, une ou plusieurs : les reconsidérer, ou les
+ * supprimer définitivement. Toujours par lot, même pour une seule.
+ */
+export const rejectedApplicationsSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(50),
+});
+export type RejectedApplicationsInput = z.infer<typeof rejectedApplicationsSchema>;
+
+/** Combien ont retrouvé leur offre ; une candidature qui n'était plus non retenue est laissée. */
+export interface ReconsiderApplicationsResult {
+  reconsidered: number;
+}
+
+/** Combien ont été effacées ; une candidature reconsidérée entre-temps est laissée. */
+export interface DeleteApplicationsResult {
+  deleted: number;
+}
+
 export interface ApplicationView {
   id: string;
   jobPostingId: string;
@@ -183,6 +202,8 @@ export interface ApplicationView {
   stage: ApplicationStage;
   createdAt: string;
   documents: ApplicationDocumentMeta[];
+  /** Le courriel de refus est déjà parti : un nouveau rejet n'en renvoie pas. */
+  refusalSent: boolean;
 }
 
 /** Une candidature rejetée, avec l'offre à laquelle elle répondait. */

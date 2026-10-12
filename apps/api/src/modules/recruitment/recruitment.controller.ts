@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpCode,
   Inject,
@@ -18,11 +17,13 @@ import {
   applySchema,
   createJobPostingSchema,
   deleteJobPostingsSchema,
+  rejectedApplicationsSchema,
   updateApplicationSchema,
   updateJobPostingSchema,
   type ApplyInput,
   type CreateJobPostingInput,
   type DeleteJobPostingsInput,
+  type RejectedApplicationsInput,
   type UpdateApplicationInput,
   type UpdateJobPostingInput,
 } from '@teranga/contracts';
@@ -122,14 +123,29 @@ export class RecruitmentController {
     await this.jobs.updateStage(req.sessionUser, id, body.stage);
   }
 
-  @Delete('applications/:id')
+  /**
+   * Reconsidérer des candidatures non retenues : elles retrouvent leur offre.
+   * Comme la suppression, toujours par lot, même pour une seule.
+   */
+  @Post('applications/reconsider')
   @Peut('recrutement.candidatures')
-  @HttpCode(204)
-  async deleteApplication(
+  @HttpCode(200)
+  reconsider(
     @Req() req: AuthenticatedRequest,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(rejectedApplicationsSchema)) body: RejectedApplicationsInput,
   ) {
-    await this.jobs.deleteApplication(req.sessionUser, id);
+    return this.jobs.reconsider(req.sessionUser, body);
+  }
+
+  /** Supprimer définitivement des candidatures non retenues. */
+  @Post('applications/delete')
+  @Peut('recrutement.candidatures')
+  @HttpCode(200)
+  deleteApplications(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(rejectedApplicationsSchema)) body: RejectedApplicationsInput,
+  ) {
+    return this.jobs.deleteApplications(req.sessionUser, body);
   }
 
   @Get('application-documents/:id')

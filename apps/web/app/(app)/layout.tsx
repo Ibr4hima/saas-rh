@@ -437,8 +437,8 @@ function gere(user: SessionUser, aTraiter: ATraiter | undefined): boolean {
 function navigationGestion(
   user: SessionUser,
   aTraiter: ATraiter | undefined,
-  /** Les candidatures non retenues : leur page n'a d'entrée qu'à partir d'une. */
-  nonRetenues: number,
+  /** L'entrée « Candidatures non retenues » : à partir d'une, ou tant qu'on est sur leur page. */
+  avecNonRetenues: boolean,
 ): NavItem[] {
   const files = filesDe(user, aTraiter);
   const demandes: NavItem[] =
@@ -520,7 +520,7 @@ function navigationGestion(
         const voit: Record<string, boolean> = {
           '/recrutement': peut(user, 'recrutement.offres'),
           '/recrutement/candidatures': peut(user, 'recrutement.candidatures'),
-          '/recrutement/non-retenues': peut(user, 'recrutement.candidatures') && nonRetenues > 0,
+          '/recrutement/non-retenues': peut(user, 'recrutement.candidatures') && avecNonRetenues,
         };
         const children = (i.children ?? []).filter((c) => voit[c.href]);
         if (children.length > 0) items.push({ ...i, children });
@@ -1148,7 +1148,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
     queryFn: () => api<{ count: number }>('/applications/rejected/count', { arrierePlan: true }),
     enabled: peut(me.data, 'recrutement.candidatures'),
   });
-  const nbNonRetenues = nonRetenues.data?.count ?? 0;
+  // La page vidée sous les yeux (tout reconsidéré ou supprimé) garde son
+  // entrée jusqu'à ce qu'on la quitte : le menu ne désigne pas une autre page.
+  const avecNonRetenues =
+    (nonRetenues.data?.count ?? 0) > 0 || pathname.startsWith('/recrutement/non-retenues');
   const aTraiter = validations.data?.aTraiter;
   const gestion = Boolean(me.data && gere(me.data, aTraiter));
 
@@ -1175,8 +1178,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
     return restreint ? restreindre(nav) : nav;
   }, [aUneEquipe, estDG, restreint]);
   const navGestion = useMemo(
-    () => (me.data && gestion ? navigationGestion(me.data, aTraiter, nbNonRetenues) : []),
-    [me.data, gestion, aTraiter, nbNonRetenues],
+    () => (me.data && gestion ? navigationGestion(me.data, aTraiter, avecNonRetenues) : []),
+    [me.data, gestion, aTraiter, avecNonRetenues],
   );
   const items = espace === 'gestion' ? navGestion : navAgent;
   const accueilGestion = me.data ? accueilDeLaGestion(me.data, navGestion) : '/moi';
