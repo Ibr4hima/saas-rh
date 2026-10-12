@@ -422,7 +422,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
             />
           </Field>
           <Field
-            label="Responsable hiérarchique (n+1)"
+            label="Manager"
             htmlFor="managerEmployeeId"
             hint={
               estDG
@@ -433,7 +433,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
                     ? 'Le responsable d’une unité relève de l’unité au-dessus de la sienne.'
                     : direction
                       ? `Les agents de ${direction}, et le directeur général.`
-                      : 'Affectez d’abord l’agent à une direction : le n+1 se choisit ensuite.'
+                      : 'Affectez d’abord l’agent à une direction.'
             }
           >
             <Select id="managerEmployeeId" {...form.register('managerEmployeeId')}>

@@ -76,9 +76,10 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
     directionChoisie ? (directionChoisie.shortName ?? directionChoisie.name) : null,
   );
   const marital = maritalLabels(gender || undefined);
-  // D'abord l'affectation, ensuite la hiérarchie. L'affectation ne part
-  // qu'avec un poste : sans direction ET poste, pas de n+1.
-  const peutChoisirLeN1 = Boolean(directionChoisie) && positionTitle.trim().length > 0;
+  // D'abord la direction, ensuite le manager, choisi parmi ses agents : le
+  // poste n'y entre pas. Il devient obligatoire avec la direction, sans quoi
+  // l'affectation, et la direction avec elle, ne s'enregistrerait pas.
+  const peutChoisirLeN1 = Boolean(directionChoisie);
   // Le directeur coiffe sa direction : pourvue, il est le n+1 d'office.
   const directeur = n1DOffice(unites, uniteId || null);
 
@@ -100,6 +101,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
     employeeNumber.trim() &&
     contractStart &&
     (!needsDuration || months > 0) &&
+    (!directionChoisie || positionTitle.trim()) &&
     (!idType || idNumber.trim()) &&
     !idDatesInvalid;
 
@@ -392,7 +394,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               onLocalChange={setWorkPhoneLocal}
             />
           </Field>
-          <Field label="Poste" htmlFor="positionTitle">
+          <Field label="Poste" htmlFor="positionTitle" required={Boolean(directionChoisie)}>
             <Input
               id="positionTitle"
               value={positionTitle}
@@ -417,12 +419,12 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             vide="—"
           />
           <Field
-            label="Responsable hiérarchique (n+1)"
+            label="Manager"
             htmlFor="managerId"
             hint={
-              peutChoisirLeN1 && directionChoisie
+              directionChoisie
                 ? `Les agents de ${directionChoisie.shortName ?? directionChoisie.name}, et le directeur général.`
-                : 'Renseignez d’abord le poste et la direction : le n+1 se choisit ensuite.'
+                : 'Renseignez d’abord la direction.'
             }
           >
             <Select
