@@ -1,10 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, like, not, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, like, not, or, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   AdvanceDocumentRequestInput,
   BatchAdvanceDocumentRequestInput,
   BatchAdvanceResult,
+  CapaciteDemande,
   CreateDocumentRequestInput,
   CreateDocumentRequestResult,
   DeposerFichierInput,
@@ -42,9 +43,9 @@ import { colonnesDuBulletin, periodeDu } from './bulletin';
 import { agentDuCompte, detenteursDe, directionDuPersonnel } from '../acces/dch';
 import {
   capaciteDesDocuments,
+  capacitesVues,
   reconcilierUneDemande,
   uneDemandeALaFois,
-  voitToutLaFile,
   vueDuTraitement,
   exigerDeTraiter,
 } from '../acces/demandes';
@@ -110,25 +111,32 @@ function labelList(types: string[]): string {
  * Traite-t-on CE document pour la DCH ? La personne qui dirige la DCH, qui
  * détient l'habilitation de ce type, ou à qui la demande est confiée. Un
  * bulletin de salaire ne s'ouvre pas à qui traite seulement les attestations.
- * `detenteurs` garde les détenteurs déjà lus : une liste n'interroge la base
- * qu'une fois par habilitation.
  */
 async function traiteCeDocument(
   tx: Tx,
   moi: string | null,
   directeur: string | null,
   row: { docTypes: string[]; confieeAEmployeeId: string | null },
-  detenteurs = new Map<string, string[]>(),
 ): Promise<boolean> {
   if (!moi) return false;
   if (row.confieeAEmployeeId === moi || directeur === moi) return true;
-  const capacite = capaciteDesDocuments(row.docTypes);
-  let qui = detenteurs.get(capacite);
-  if (!qui) {
-    qui = await detenteursDe(tx, capacite);
-    detenteurs.set(capacite, qui);
-  }
-  return qui.includes(moi);
+  return (await detenteursDe(tx, capaciteDesDocuments(row.docTypes))).includes(moi);
+}
+
+/**
+ * Traite-t-on ce type de document pour la DCH, aujourd'hui ? Qui la dirige,
+ * ou le membre à qui ce type est délégué (`vues`, cf. `capacitesVues`). La
+ * délégation d'un autre type n'y suffit pas, et l'administrateur lit la file
+ * sans la traiter (ADR-0060).
+ */
+function traiteLeType(
+  vues: 'toutes' | Set<CapaciteDemande>,
+  moi: string | null,
+  directeur: string | null,
+  capacite: CapaciteDemande,
+): boolean {
+  if (!moi) return false;
+  return vues === 'toutes' ? directeur === moi : vues.has(capacite);
 }
 
 @Injectable()
@@ -291,12 +299,14 @@ export class DocumentRequestsService {
   }
 
   /**
-   * La file de la DCH (tout le tenant) ou l'historique personnel.
-   * `employeeId` restreint à un dossier — la fiche s'en sert.
+   * La file de la DCH, ou l'historique personnel (`scope=mine`).
+   * `employeeId` restreint à un dossier.
    *
-   * Voit toute la file qui la traite (le directeur, les membres habilités)
-   * ou consulte les dossiers ; un membre à qui une demande est confiée voit
-   * celle-là ; chacun voit les siennes.
+   * La file entière : qui dirige la DCH, et l'administrateur, qui la lit
+   * sans la traiter. Un membre y voit les documents qui lui sont délégués,
+   * et une demande qui lui est confiée, tant qu'elle est ouverte : rien
+   * d'autre, pas même ses propres demandes d'un autre type. Chacun suit les
+   * siennes dans son espace (ADR-0060).
    */
   async list(
     user: SessionUser,
@@ -308,7 +318,9 @@ export class DocumentRequestsService {
       // est aussi agent).
       const moi = await agentDuCompte(tx, user.userId);
       const selfOnly = filters.scope === 'mine';
-      const toute = !selfOnly && (await this.traiteLesDocuments(tx, user));
+      const vues: 'toutes' | Set<CapaciteDemande> = selfOnly
+        ? new Set()
+        : await capacitesVues(tx, user, 'documents');
       // Son dossier, actif ou non : un agent qui n'est plus en activité
       // suit encore les documents qu'il a demandés, et les annule.
       const soi = await this.selfEmployee(tx, user);
@@ -317,13 +329,21 @@ export class DocumentRequestsService {
       if (selfOnly) {
         if (!soi) return [];
         conditions.push(eq(t.documentRequests.employeeId, soi.employeeId));
-      } else if (!toute) {
+      } else if (vues !== 'toutes') {
         if (!moi) return [];
+        // Un document par demande (cf. create) : son type dit qui la voit.
+        const types = [...vues].map((c) => c.slice('demandes.documents.'.length));
         conditions.push(
-          // Confiée : tant qu'elle est ouverte seulement (cf. les congés).
-          sql`(${t.documentRequests.employeeId} = ${moi}
-               OR (${t.documentRequests.confieeAEmployeeId} = ${moi}
-                   AND ${inArray(t.documentRequests.status, OPEN_STATUSES)}))`,
+          or(
+            types.length > 0
+              ? inArray(sql`(${t.documentRequests.docTypes})[1]`, types)
+              : sql`false`,
+            // Confiée : tant qu'elle est ouverte seulement (cf. les congés).
+            and(
+              eq(t.documentRequests.confieeAEmployeeId, moi),
+              inArray(t.documentRequests.status, OPEN_STATUSES),
+            ),
+          )!,
         );
       }
       if (!selfOnly && filters.employeeId) {
@@ -357,14 +377,13 @@ export class DocumentRequestsService {
       );
 
       const dch = await directionDuPersonnel(tx);
-      const traiteLesDocuments = !selfOnly && (await this.traiteLesDocuments(tx, user));
+      const directeur = dch?.directeurEmployeeId ?? null;
       const nonVues = selfOnly ? await this.traiteesNonVues(tx, user.userId) : new Set<string>();
       const fichiers = await this.fichiersDe(
         tx,
         rows.map((r) => r.request.id),
       );
-      const detenteurs = new Map<string, string[]>();
-      const vues: DocumentRequestView[] = [];
+      const lignes: DocumentRequestView[] = [];
       for (const r of rows) {
         const ouverte = ['received', 'processing'].includes(r.request.status);
         const d = { employeeId: r.request.employeeId, confieeA: r.request.confieeAEmployeeId };
@@ -372,26 +391,18 @@ export class DocumentRequestsService {
           !selfOnly && ouverte
             ? await vueDuTraitement(tx, capaciteDesDocuments(r.request.docTypes), d, moi, dch)
             : null;
-        // Prête : on corrige le point de retrait, qui traite les documents
-        // pour la DCH ; qui l'a traitée seulement s'il les traite encore.
+        // Prête : son point de retrait se corrige, et ses documents remis se
+        // gèrent, par qui traite ce type de document pour la DCH aujourd'hui.
+        // Ouverte : par qui la traite. Les mêmes règles que le serveur,
+        // jamais sur la sienne.
         const peutAvancer =
           r.request.status === 'ready'
-            ? traiteLesDocuments && r.request.employeeId !== moi
+            ? !selfOnly &&
+              r.request.employeeId !== moi &&
+              traiteLeType(vues, moi, directeur, capaciteDesDocuments(r.request.docTypes))
             : Boolean(tr?.peutTraiter);
-        // Les documents remis : ouverte, qui la traite ; prête, qui traite
-        // ce type de document pour la DCH (les mêmes règles que le serveur).
-        const gereLesFichiers =
-          r.request.status === 'ready'
-            ? peutAvancer &&
-              (await traiteCeDocument(
-                tx,
-                moi,
-                dch?.directeurEmployeeId ?? null,
-                r.request,
-                detenteurs,
-              ))
-            : peutAvancer;
-        vues.push({
+        const gereLesFichiers = peutAvancer;
+        lignes.push({
           id: r.request.id,
           employeeId: r.request.employeeId,
           employeeName: `${r.givenName} ${r.familyName}`,
@@ -435,7 +446,7 @@ export class DocumentRequestsService {
           traitement: tr?.vue ?? null,
         });
       }
-      return vues;
+      return lignes;
     });
   }
 
@@ -475,11 +486,6 @@ export class DocumentRequestsService {
     );
   }
 
-  /** Traite les demandes de documents : le directeur du Capital Humain, les membres habilités. */
-  private traiteLesDocuments(tx: Tx, user: SessionUser): Promise<boolean> {
-    return voitToutLaFile(tx, user, 'documents');
-  }
-
   /**
    * Peut-il faire avancer cette demande ? Ouverte, qui la traite pour la
    * DCH ; prête (correction du point de retrait), qui l'a traitée ou la DCH.
@@ -492,10 +498,13 @@ export class DocumentRequestsService {
   ): Promise<string | null> {
     if (row.status === 'ready') {
       // Qui l'a traitée ne garde pas la main en quittant la DCH : la
-      // correction revient à qui traite les documents aujourd'hui.
+      // correction revient à qui traite CE type de document aujourd'hui.
       const moi = await agentDuCompte(tx, user.userId);
-      if (row.employeeId !== moi && (await this.traiteLesDocuments(tx, user))) return null;
-      return 'Réservé à qui traite les documents pour la DCH';
+      const directeur = (await directionDuPersonnel(tx))?.directeurEmployeeId ?? null;
+      const vues = await capacitesVues(tx, user, 'documents');
+      const capacite = capaciteDesDocuments(row.docTypes);
+      if (row.employeeId !== moi && traiteLeType(vues, moi, directeur, capacite)) return null;
+      return 'Réservé à qui traite ce document pour la DCH';
     }
     try {
       await exigerDeTraiter(tx, user, capaciteDesDocuments(row.docTypes), {
@@ -1058,7 +1067,9 @@ export class DocumentRequestsService {
       // bulletin de salaire ne se touche pas au titre des attestations.
       const moi = await agentDuCompte(tx, user.userId);
       const directeur = (await directionDuPersonnel(tx))?.directeurEmployeeId ?? null;
-      if (row.employeeId === moi || !(await traiteCeDocument(tx, moi, directeur, row))) {
+      const vues = await capacitesVues(tx, user, 'documents');
+      const capacite = capaciteDesDocuments(row.docTypes);
+      if (row.employeeId === moi || !traiteLeType(vues, moi, directeur, capacite)) {
         problem(403, 'documents.forbidden_scope', 'Réservé à qui traite ce document pour la DCH');
       }
     } else {

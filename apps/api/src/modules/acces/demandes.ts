@@ -296,7 +296,8 @@ export async function aTraiterPar(tx: Tx, moi: string | null): Promise<Record<Ty
 
 /**
  * Ce que l'écran montre du traitement d'une demande en attente, et si
- * l'appelant peut la traiter.
+ * l'appelant peut la traiter. « À confier » ne se dit qu'à qui l'a faite,
+ * qui dirige la DCH : un autre membre n'a rien à en confier (ADR-0060).
  */
 export async function vueDuTraitement(
   tx: Tx,
@@ -315,7 +316,7 @@ export async function vueDuTraitement(
       traitants: nomsDe(t.traitants),
       confiee,
       peutConfier: Boolean(moi && dch?.directeurEmployeeId === moi),
-      aConfier: t.aConfier,
+      aConfier: t.aConfier && moi === d.employeeId,
       pourMoi: Boolean(
         moi &&
         (t.traitants.some((v) => v.employeeId === moi) ||
@@ -327,15 +328,16 @@ export async function vueDuTraitement(
 }
 
 /**
- * Qui voit toute la file d'un type : le directeur, les membres habilités à
- * le traiter (pour les documents : à l'un d'eux), et l'administrateur, qui
- * la lit sans la traiter. Rien d'autre n'y donne accès, pas même la
- * consultation des dossiers du personnel.
+ * Qui voit toute la file d'un type qui se délègue d'un bloc (congés,
+ * informations) : qui dirige la DCH, les membres habilités à le traiter, et
+ * l'administrateur, qui la lit sans la traiter. Rien d'autre n'y donne
+ * accès, pas même la consultation des dossiers du personnel. Les documents
+ * et les pièces se délèguent type par type : `capacitesVues` (ADR-0060).
  */
 export async function voitToutLaFile(
   tx: Tx,
   user: SessionUser,
-  type: TypeDemande,
+  type: 'conges' | 'informations',
 ): Promise<boolean> {
   if (user.role === 'admin') return true;
   const moi = await agentDuCompte(tx, user.userId);

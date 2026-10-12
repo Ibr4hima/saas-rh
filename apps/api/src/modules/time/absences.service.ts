@@ -226,6 +226,15 @@ export const absencesDesTrenteJours = () => [
            AND ${t.absenceRequests.endTime} <= LOCALTIME)`,
 ];
 
+/** Une absence qu'on lit sans y toucher. */
+const SANS_GESTE: AbsenceRequestView['gestes'] = {
+  annuler: false,
+  demanderReprise: false,
+  confirmerReprise: false,
+  rappeler: false,
+  joindreJustificatif: false,
+};
+
 /**
  * Une demande se décompte selon le paramétrage de l'année où elle commence :
  * celui que son type avait alors, s'il a changé depuis. Le badge d'une
@@ -1421,9 +1430,9 @@ export class AbsencesService {
       // Qui traite les congés pour la DCH, et le tableau de bord, voient toute
       // l'agence ; les autres, leurs absences et celles de leurs agents
       // directs : le n+1 organise son équipe avec.
+      const self = await this.selfEmployeeId(tx, user);
       const scope = [];
       if (!peut(user, 'pilotage') && !(await this.voitTout(tx, user))) {
-        const self = await this.selfEmployeeId(tx, user);
         if (!self) return [];
         scope.push(
           sql`(${t.absenceRequests.employeeId} = ${self} OR ${t.employees.managerEmployeeId} = ${self})`,
@@ -1447,7 +1456,11 @@ export class AbsencesService {
         .innerJoin(t.absenceTypes, eq(t.absenceTypes.id, t.absenceRequests.absenceTypeId))
         .where(and(...absencesDesTrenteJours(), ...scope))
         .orderBy(asc(t.absenceRequests.startDate));
-      return this.toViews(tx, user, rows);
+      // Le calendrier est celui de la DCH : son propre congé s'y lit, sans
+      // geste. L'agent l'annule depuis son espace personnel (ADR-0060).
+      return (await this.toViews(tx, user, rows)).map((v) =>
+        v.employeeId === self ? { ...v, gestes: SANS_GESTE } : v,
+      );
     });
   }
 

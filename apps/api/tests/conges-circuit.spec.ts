@@ -1151,6 +1151,24 @@ describe('un congé validé qui change', () => {
     expect(await notif('Moussa', `conge:${id}:verdict`)).toBeNull();
   });
 
+  it('le calendrier de la DCH montre son propre congé sans geste : il s’annule depuis son espace', async () => {
+    await habiliter(awa);
+    const id = await congeValide(awa, 10, 14);
+    const auCalendrier = async (qui: Agent) =>
+      (await absences.upcoming(qui.session)).find((r) => r.id === id);
+    // Awa traite les congés : le sien s'y lit, comme les autres, sans rien à en faire.
+    expect((await auCalendrier(awa))?.gestes).toEqual({
+      annuler: false,
+      demanderReprise: false,
+      confirmerReprise: false,
+      rappeler: false,
+      joindreJustificatif: false,
+    });
+    // Dans son espace, Awa l'annule ; au calendrier, qui dirige la DCH le peut aussi.
+    expect((await vue(id, awa.session)).gestes.annuler).toBe(true);
+    expect((await auCalendrier(mariama))?.gestes.annuler).toBe(true);
+  });
+
   it('un congé commencé ne s’annule plus : il s’écourte', async () => {
     const id = await congeValide(moussa, -2, 6);
     const v = await vue(id, moussa.session);

@@ -228,7 +228,7 @@ export default function InformationsATraiterPage() {
                         </div>
                       ) : (
                         <p className="text-right text-[11.5px] font-semibold text-accent-text">
-                          Votre propre demande, à déléguer
+                          Déléguer à un membre de la DCH
                         </p>
                       )}
                     </Td>

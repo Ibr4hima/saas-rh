@@ -177,7 +177,10 @@ export default function DocumentRequestsPage() {
   // page affichée.
   const fileVue = usePagination(aTraiter, `${tri.colonne}|${tri.sens}`);
   const historique = usePagination(traitees);
-  const sel = useSelection(fileVue.tranche);
+  // Ne se coche que ce qu'on traite : jamais sa propre demande, qui
+  // s'annule depuis l'espace personnel (ADR-0060).
+  const cochables = useMemo(() => fileVue.tranche.filter((r) => r.canAdvance), [fileVue.tranche]);
+  const sel = useSelection(cochables);
   const selectionnees = sel.choisis;
 
   if (requests.isError) {
@@ -241,7 +244,7 @@ export default function DocumentRequestsPage() {
           <Table pleine>
             <THead>
               <tr>
-                {traite ? <ThCases sel={sel} /> : <ThGouttiere />}
+                {traite && cochables.length > 0 ? <ThCases sel={sel} /> : <ThGouttiere />}
                 <ThTri
                   label="Requête"
                   colonne="requete"
@@ -282,7 +285,7 @@ export default function DocumentRequestsPage() {
                 const h = hoursSince(r.createdAt);
                 return (
                   <Tr key={r.id} className={cn(sel.coche(r.id) && LIGNE_COCHEE)}>
-                    {traite ? (
+                    {traite && r.canAdvance ? (
                       <TdCase sel={sel} id={r.id} quoi={`la demande de ${r.employeeName}`} />
                     ) : (
                       <TdGouttiere />
@@ -291,7 +294,7 @@ export default function DocumentRequestsPage() {
                       {docLabels(r)}
                       {r.traitement?.aConfier ? (
                         <span className="block text-[11px] font-semibold text-accent-text">
-                          Votre propre demande, à déléguer à un membre de la DCH
+                          Déléguer à un membre de la DCH
                         </span>
                       ) : null}
                       {r.note ? (

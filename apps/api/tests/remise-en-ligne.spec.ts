@@ -346,8 +346,9 @@ describe('côté DCH', () => {
     expect(await codeOf(() => service.deposer(khady, attestation, fichier(PDF)))).toBe(
       'AUCUNE ERREUR',
     );
-    // L'écran le sait d'avance : il ne propose que ce que le serveur accepte.
-    expect((await vue(khady, bulletin)).canHandleFiles).toBe(false);
+    // L'écran le sait d'avance : il ne propose que ce que le serveur accepte,
+    // et le bulletin n'est même pas dans la file de Khady (ADR-0060).
+    expect((await service.list(khady, {})).some((d) => d.id === bulletin)).toBe(false);
     expect((await vue(khady, attestation)).canHandleFiles).toBe(true);
     expect((await vue(rh, bulletin)).canHandleFiles).toBe(true);
     expect((await vue(moussa, bulletin, 'mine')).canHandleFiles).toBe(false);

@@ -549,11 +549,14 @@ describe('les demandes de documents', () => {
     expect(vue).toMatchObject({ docTypes: ['autre'], status: 'ready' });
   });
 
-  it('chacun voit les siennes ; la file entière, qui la traite (l’administrateur la lit)', async () => {
+  it('chacun suit les siennes dans son espace ; la file, qui la traite (l’administrateur la lit)', async () => {
     const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
       .ids as [string];
     await habiliter(awa, 'demandes.documents.attestation_travail');
-    expect((await documents.list(moussa.session, {})).map((r) => r.id)).toEqual([id]);
+    expect((await documents.list(moussa.session, { scope: 'mine' })).map((r) => r.id)).toEqual([
+      id,
+    ]);
+    expect(await documents.list(moussa.session, {})).toEqual([]);
     expect(await documents.list(khady.session, {})).toEqual([]);
     const [vueAwa] = await documents.list(awa.session, {});
     expect(vueAwa).toMatchObject({
@@ -564,6 +567,61 @@ describe('les demandes de documents', () => {
     expect(vueAdmin).toMatchObject({ canAdvance: false });
     const [vueDirecteur] = await documents.list(mariama.session, {});
     expect(vueDirecteur).toMatchObject({ canAdvance: true, traitement: { peutConfier: true } });
+  });
+
+  it('un membre ne voit que les documents qui lui sont délégués, ni la demande à confier de qui dirige la DCH', async () => {
+    await habiliter(awa, 'demandes.documents.certificat_travail');
+    const demande = async (qui: Agent, doc: 'attestation_travail' | 'certificat_travail') =>
+      ((await documents.create(qui.session, { docTypes: [doc] })).ids as [string])[0];
+    const deMariama = await demande(mariama, 'attestation_travail');
+    const certificat = await demande(moussa, 'certificat_travail');
+    const attestation = await demande(moussa, 'attestation_travail');
+    const sonAttestation = await demande(awa, 'attestation_travail');
+    const sonCertificat = await demande(awa, 'certificat_travail');
+    const file = async (qui: SessionUser) =>
+      new Map((await documents.list(qui, {})).map((r) => [r.id, r]));
+
+    // Awa traite les certificats : les attestations, même la sienne, ne sont
+    // pas dans sa file ; son propre certificat y est, sans geste.
+    const deAwa = await file(awa.session);
+    expect([...deAwa.keys()].sort()).toEqual([certificat, sonCertificat].sort());
+    expect(deAwa.get(certificat)?.canAdvance).toBe(true);
+    expect(deAwa.get(sonCertificat)?.canAdvance).toBe(false);
+    expect((await documents.list(awa.session, { scope: 'mine' })).map((r) => r.id).sort()).toEqual(
+      [sonAttestation, sonCertificat].sort(),
+    );
+
+    // « À confier » ne se dit qu'à Mariama, qui dirige la DCH et l'a
+    // demandée ; personne ne la traite d'ici.
+    const vueDeMariama = (await file(mariama.session)).get(deMariama);
+    expect(vueDeMariama).toMatchObject({ canAdvance: false, traitement: { aConfier: true } });
+    expect((await file(admin)).get(deMariama)).toMatchObject({
+      canAdvance: false,
+      traitement: { aConfier: false },
+    });
+    expect((await file(mariama.session)).get(attestation)?.canAdvance).toBe(true);
+
+    // Prête, une attestation se corrige par qui traite les attestations :
+    // pas au titre des certificats, ni par l'administrateur, qui lit.
+    await documents.advance(mariama.session, attestation, { status: 'processing' });
+    await documents.advance(mariama.session, attestation, {
+      status: 'ready',
+      pickupContact: 'Mariama Test',
+    });
+    for (const qui of [awa.session, admin]) {
+      expect(
+        await codeOf(() =>
+          documents.advance(qui, attestation, { status: 'ready', pickupContact: 'Accueil' }),
+        ),
+      ).toBe('demandes.pas_traitant');
+    }
+    expect((await file(admin)).get(attestation)?.canAdvance).toBe(false);
+    await habiliter(khady, 'demandes.documents.attestation_travail');
+    expect((await file(khady.session)).get(attestation)?.canAdvance).toBe(true);
+    await documents.advance(khady.session, attestation, {
+      status: 'ready',
+      pickupContact: 'Accueil',
+    });
   });
 
   it('la demande du directeur lui-même : à lui de la confier, jamais de la traiter', async () => {

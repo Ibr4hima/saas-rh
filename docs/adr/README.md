@@ -65,3 +65,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0057](0057-echeance-confirmee-a-l-enregistrement.md) | L'échéance proche se confirme à l'enregistrement ; les formations n'en ont pas          | acceptée, précisée par 0058                 |
 | [0058](0058-formations-encadrees.md)                  | Formations encadrées par l'agent ; la fenêtre de confirmation comme la fiche            | acceptée, en partie remplacée : 0059        |
 | [0059](0059-report-au-s1.md)                          | Le champ du report dit « au S1 de 2027 »                                                | acceptée                                    |
+| [0060](0060-files-de-la-dch.md)                       | Files de la DCH : sa demande sans geste, chacun ce qui lui est délégué                  | acceptée                                    |

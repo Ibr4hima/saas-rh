@@ -352,7 +352,11 @@ export interface TraitementView {
   confiee: { employeeId: string; nom: string } | null;
   /** L'appelant dirige la DCH : il peut la confier, ou la reprendre. */
   peutConfier: boolean;
-  /** La demande du directeur lui-même, que nul n'est habilité à traiter : à lui de la confier. */
+  /**
+   * La propre demande de l'appelant, qui dirige la DCH, que nul n'est
+   * habilité à traiter : c'est à l'appelant de la confier. Faux pour tout
+   * autre appelant.
+   */
   aConfier: boolean;
   /** Elle attend l'appelant : il la traite — ou, directeur, il doit la confier. */
   pourMoi: boolean;
