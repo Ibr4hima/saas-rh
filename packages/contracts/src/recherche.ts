@@ -1,7 +1,9 @@
 /* ────────────────────────────────────────────────────────────────
    Une recherche, une règle : ni la casse ni les accents ne comptent,
    et chaque mot tapé doit se retrouver, dans n'importe quel ordre.
-   C'est celle de la liste du personnel, côté serveur.
+   C'est celle de la liste du personnel, côté serveur. Partagée : un écran
+   qui filtre ce qu'il a chargé et une API qui filtre pour lui (les
+   candidatures non retenues, ADR-0068) trouvent les mêmes lignes.
    ──────────────────────────────────────────────────────────────── */
 
 /** « Sécurité » et « securite » se comparent comme « securite ». */

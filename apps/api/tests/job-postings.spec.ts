@@ -509,6 +509,8 @@ describe('une candidature déposée', () => {
 
 describe('une candidature rejetée', () => {
   const enc = new EncryptionService();
+  /** La première page, comme l'écran la demande. */
+  const PAGE = { offset: 0, limit: 15 };
 
   /** Le dossier d'Amadou Way Samb, déposé à cette offre. */
   const postuler = (slug: string, expediteur?: ExpediteurCourriels) =>
@@ -623,12 +625,16 @@ describe('une candidature rejetée', () => {
       await raw(`SELECT job_posting_id FROM applications WHERE id = $1`, [id])
     ).rows;
     expect(await jobs.nombreDeRejetees(rh)).toEqual({ count: 0 });
-    expect(await jobs.rejetees(rh)).toEqual([]);
+    expect(await jobs.rejetees(rh, PAGE)).toEqual({ items: [], total: 0 });
 
     await jobs.updateStage(rh, id, 'rejected');
     expect(await jobs.applications(rh, offreId)).toEqual([]);
     expect(await jobs.nombreDeRejetees(rh)).toEqual({ count: 1 });
-    const [rejetee] = await jobs.rejetees(rh);
+    const {
+      items: [rejetee],
+      total,
+    } = await jobs.rejetees(rh, PAGE);
+    expect(total).toBe(1);
     expect(rejetee).toMatchObject({
       id,
       givenName: 'Amadou Way',
@@ -641,7 +647,7 @@ describe('une candidature rejetée', () => {
     });
     // Une autre organisation n'en voit rien.
     expect(await jobs.nombreDeRejetees(rhAilleurs)).toEqual({ count: 0 });
-    expect(await jobs.rejetees(rhAilleurs)).toEqual([]);
+    expect(await jobs.rejetees(rhAilleurs, PAGE)).toEqual({ items: [], total: 0 });
     // Lue, la liste se trace comme celle de l'offre.
     const { rows: traces } = await raw(
       `SELECT action, job_posting_id FROM application_access_log
@@ -649,6 +655,65 @@ describe('une candidature rejetée', () => {
       [tenantId, offreId],
     );
     expect(traces.at(-1)).toEqual({ action: 'list', job_posting_id: offreId });
+  });
+
+  it('se lisent une page à la fois, et la recherche trouve les noms chiffrés', async () => {
+    const jobs = new JobsService(db, enc);
+    const { id: offreId } = await jobs.create(rh, offre('Juriste'));
+    await jobs.update(rh, offreId, { status: 'published' });
+    const { rows } = await raw(`SELECT public_slug FROM job_postings WHERE id = $1`, [offreId]);
+    const noms = [
+      ['Awa', 'Ndiaye'],
+      ['Mamadou', 'Diop'],
+      ['Fatou', 'Ndiaye'],
+      ['Aïssatou', 'Fall'],
+    ];
+    for (const [i, [givenName, familyName]] of noms.entries()) {
+      await new ApplyService(db, enc).apply(rows[0].public_slug as string, {
+        givenName: givenName!,
+        familyName: familyName!,
+        email: `candidat.${i}@exemple.sn`,
+        documents: [
+          {
+            label: 'cv',
+            filename: 'CV.pdf',
+            contentType: 'application/pdf',
+            contentBase64: Buffer.from('%PDF-1.4 cv').toString('base64'),
+          },
+        ],
+      });
+    }
+    for (const dossier of await jobs.applications(rh, offreId)) {
+      await jobs.updateStage(rh, dossier.id, 'rejected');
+    }
+    // Les noms ne sont lisibles qu'une fois déchiffrés.
+    const { rows: stockes } = await raw(
+      `SELECT given_name FROM applications WHERE job_posting_id = $1`,
+      [offreId],
+    );
+    expect(JSON.stringify(stockes)).not.toMatch(/Awa|Mamadou|Fatou|Fall/);
+
+    // Sans recherche, la base pagine : deux par page, aucune ligne deux fois.
+    const premiere = await jobs.rejetees(rh, { offset: 0, limit: 2 });
+    const seconde = await jobs.rejetees(rh, { offset: 2, limit: 2 });
+    expect(premiere.total).toBe(4);
+    expect(seconde.total).toBe(4);
+    const vus = [...premiere.items, ...seconde.items].map((a) => a.id);
+    expect(new Set(vus).size).toBe(4);
+    expect((await jobs.rejetees(rh, { offset: 4, limit: 2 })).items).toEqual([]);
+
+    // La recherche, comme à l'écran : casse, accents et ordre des mots indifférents.
+    const ndiaye = await jobs.rejetees(rh, { q: 'NDIAYE', offset: 0, limit: 15 });
+    expect(ndiaye.total).toBe(2);
+    expect(ndiaye.items.map((a) => a.givenName).sort()).toEqual(['Awa', 'Fatou']);
+    expect((await jobs.rejetees(rh, { q: 'diop mamadou', ...PAGE })).items).toEqual([
+      expect.objectContaining({ givenName: 'Mamadou', familyName: 'Diop' }),
+    ]);
+    expect((await jobs.rejetees(rh, { q: 'aissatou', ...PAGE })).total).toBe(1);
+    // L'intitulé de l'offre se cherche aussi, et la page suit la recherche.
+    const juristes = await jobs.rejetees(rh, { q: 'juriste', offset: 3, limit: 2 });
+    expect(juristes).toMatchObject({ total: 4, items: [expect.anything()] });
+    expect((await jobs.rejetees(rh, { q: 'personne', ...PAGE })).total).toBe(0);
   });
 
   it('les non retenues se lisent, se reconsidèrent et s’effacent par qui a les dossiers de candidature, et personne d’autre', () => {
@@ -715,7 +780,7 @@ describe('une candidature rejetée', () => {
       expect(await jobs.applications(rh, offreId)).toEqual([
         expect.objectContaining({ id, stage: 'interview', refusalSent: false }),
       ]);
-      expect(await jobs.rejetees(rh)).toEqual([]);
+      expect(await jobs.rejetees(rh, PAGE)).toEqual({ items: [], total: 0 });
       expect(await jobs.nombreDeRejetees(rh)).toEqual({ count: 0 });
       await expediteur.envoyerCeQuiAttend();
       expect(transport.envoyes).toHaveLength(0);
@@ -817,7 +882,7 @@ describe('une candidature rejetée', () => {
       );
       expect(lectures).toHaveLength(1);
       expect(JSON.stringify(lectures)).not.toMatch(/amadou|samb|exemple\.sn|cv\.pdf/i);
-      expect(await jobs.rejetees(rh)).toEqual([]);
+      expect(await jobs.rejetees(rh, PAGE)).toEqual({ items: [], total: 0 });
       expect(await jobs.nombreDeRejetees(rh)).toEqual({ count: 0 });
 
       // L'adresse est libre : la même personne postule de nouveau à l'offre.

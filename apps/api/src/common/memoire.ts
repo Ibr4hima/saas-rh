@@ -22,6 +22,11 @@ export function avecMemoire<T>(calcul: () => Promise<T>): Promise<T> {
   return portee.run(new Map(), calcul);
 }
 
+/** Est-on dans une portée ? Pour lire tout d'un coup ce qui y servira plusieurs fois. */
+export function enPortee(): boolean {
+  return portee.getStore() !== undefined;
+}
+
 export function memoriser<T>(cle: string, lire: () => Promise<T>): Promise<T> {
   const memoire = portee.getStore();
   if (!memoire) return lire();

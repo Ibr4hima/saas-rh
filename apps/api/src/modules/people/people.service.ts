@@ -207,6 +207,16 @@ export class PeopleService {
        */
       const socle = sql`
         WITH RECURSIVE ${directionsDesUnites},
+        -- L'affectation qui fait foi, en cours, sinon la prochaine : un agent
+        -- qui n'a pas encore pris son poste est déjà de sa direction, comme
+        -- partout ailleurs dans la chaîne. Lue en un seul passage pour toute
+        -- la liste, et non agent par agent (ADR-0068).
+        affectation_retenue AS (
+          SELECT DISTINCT ON (av.employee_id) av.employee_id, av.position_title, av.org_unit_id
+            FROM assignments av
+           WHERE av.validity @> CURRENT_DATE OR lower(av.validity) > CURRENT_DATE
+           ORDER BY av.employee_id, lower(av.validity)
+        ),
         socle AS (
           SELECT
             e.id,
@@ -251,14 +261,7 @@ export class PeopleService {
                                         AS team_size
           FROM employees e
           JOIN persons p ON p.id = e.person_id
-          -- L'affectation qui fait foi — en cours, sinon la prochaine : un
-          -- agent qui n'a pas encore pris son poste est déjà de sa direction,
-          -- comme partout ailleurs dans la chaîne.
-          LEFT JOIN assignments a
-            ON a.id = (SELECT av.id FROM assignments av
-                        WHERE av.employee_id = e.id
-                          AND (av.validity @> CURRENT_DATE OR lower(av.validity) > CURRENT_DATE)
-                        ORDER BY lower(av.validity) LIMIT 1)
+          LEFT JOIN affectation_retenue a ON a.employee_id = e.id
           LEFT JOIN org_units o ON o.id = a.org_unit_id
           LEFT JOIN direction_des_unites dd ON dd.unite_id = a.org_unit_id
           WHERE ${recherche}
@@ -327,21 +330,30 @@ export class PeopleService {
       // choisir un poste viderait la liste des managers, et l'on ne pourrait
       // plus revenir en arrière sans tout défaire.
       const cadre = query.status ? sql` AND status = ${query.status}` : sql``;
+      // Les trois listes lisent une seule fois les trois colonnes qui les
+      // font : la vue entière, lue trois fois, calculait pour chaque agent
+      // ses contrats, son équipe et son n+1 (ADR-0068). Le nom d'un manager
+      // se lit une fois par manager, pas une fois par agent.
       const facettes = await tx.execute<{
         kind: string;
         value: string;
         label: string;
       }>(sql`
-        ${socle}
+        ${socle},
+        retenus AS (
+          SELECT position_title, unite, manager_employee_id FROM vue WHERE TRUE ${cadre}
+        )
         SELECT 'position' AS kind, position_title AS value, position_title AS label
-          FROM vue WHERE position_title IS NOT NULL ${cadre}
+          FROM retenus WHERE position_title IS NOT NULL
         UNION
         SELECT 'unit', unite, unite
-          FROM vue WHERE unite IS NOT NULL ${cadre}
+          FROM retenus WHERE unite IS NOT NULL
         UNION
-        SELECT 'manager', manager_employee_id::text,
-               manager_name || ' (' || manager_number || ')'
-          FROM vue WHERE manager_employee_id IS NOT NULL ${cadre}
+        SELECT 'manager', m.id::text,
+               mp.given_name || ' ' || mp.family_name || ' (' || m.employee_number || ')'
+          FROM (SELECT DISTINCT manager_employee_id FROM retenus) r
+          JOIN employees m ON m.id = r.manager_employee_id
+          JOIN persons mp ON mp.id = m.person_id
         ORDER BY 3
       `);
 

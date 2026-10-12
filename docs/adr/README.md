@@ -72,4 +72,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0064](0064-secretariat-general.md)                   | Le Secrétariat général : son titre, et sa place sous le DG                              | acceptée                                    |
 | [0065](0065-vider-les-notifications.md)               | Vider la boîte et les archives des notifications                                        | acceptée                                    |
 | [0066](0066-suivi-des-contrats-titre-seul.md)         | Suivi des contrats : le titre seul en tête de la carte                                  | acceptée                                    |
-| [0067](0067-performance-et-robustesse.md)             | Performance à l'échelle et robustesse : index, veille, délais                           | acceptée                                    |
+| [0067](0067-performance-et-robustesse.md)             | Performance à l'échelle et robustesse : index, veille, délais                           | acceptée, précisée par 0068                 |
+| [0068](0068-dernieres-routes-lentes.md)               | Les dernières routes lentes : personnel, circuit, candidatures                          | acceptée                                    |

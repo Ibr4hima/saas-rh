@@ -62,6 +62,28 @@ export function dechiffrerCandidature(
   };
 }
 
+/** Le prénom et le nom seuls : de quoi chercher une candidature, rien de plus. */
+export function nomsDuCandidat(
+  enc: EncryptionService,
+  ligne: {
+    tenantId: string;
+    id: string;
+    givenName: string;
+    familyName: string;
+    cleVersion: number | null;
+  },
+): { givenName: string; familyName: string } {
+  if (ligne.cleVersion === null) {
+    return { givenName: ligne.givenName, familyName: ligne.familyName };
+  }
+  const champ = (colonne: string, v: string) =>
+    enc.dechiffrerTexte(v, place(ligne.tenantId, 'applications', ligne.id, colonne));
+  return {
+    givenName: champ('given_name', ligne.givenName),
+    familyName: champ('family_name', ligne.familyName),
+  };
+}
+
 /** L'adresse seule, pour le courriel qui part au candidat. */
 export function adresseDuCandidat(
   enc: EncryptionService,

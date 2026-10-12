@@ -1,10 +1,11 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   DeleteApplicationsResult,
   ReconsiderApplicationsResult,
+  RejectedApplicationsPage,
   RejectedApplicationView,
 } from '@teranga/contracts';
 import {
@@ -23,13 +24,12 @@ import {
 } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/hooks';
-import { correspond } from '../../../../lib/recherche';
 import { FenetreCandidat } from '../../../../components/fenetre-candidat';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
 import { Modal, ModalSection } from '../../../../components/modal';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
-import { Pagination, usePagination } from '../../../../components/pagination';
+import { LIGNES_PAR_PAGE, Pagination } from '../../../../components/pagination';
 import {
   BarreSelection,
   LIGNE_COCHEE,
@@ -54,26 +54,47 @@ const A_RELIRE = [['candidatures-non-retenues'], ['jobs'], ['job-applications']]
 export default function CandidaturesNonRetenuesPage() {
   const queryClient = useQueryClient();
   const [q, setQ] = useState('');
+  const [recherche, setRecherche] = useState('');
+  const [page, setPage] = useState(1);
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [suppression, setSuppression] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
+  // La recherche part au serveur (ADR-0068) : un quart de seconde après la
+  // dernière touche, et elle repart de la première page.
+  useEffect(() => {
+    const id = setTimeout(() => setRecherche(q.trim()), 250);
+    return () => clearTimeout(id);
+  }, [q]);
+  useEffect(() => setPage(1), [recherche]);
+
+  // Une page à la fois : le serveur déchiffre les noms pour chercher et ne
+  // renvoie que les quinze dossiers affichés.
   const nonRetenues = useQuery({
-    queryKey: ['candidatures-non-retenues'],
-    queryFn: () => api<RejectedApplicationView[]>('/applications/rejected'),
+    queryKey: ['candidatures-non-retenues', 'liste', recherche, page],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        limit: String(LIGNES_PAR_PAGE),
+        offset: String((page - 1) * LIGNES_PAR_PAGE),
+      });
+      if (recherche) params.set('q', recherche);
+      return api<RejectedApplicationsPage>(`/applications/rejected?${params.toString()}`);
+    },
+    // La page affichée reste à l'écran pendant que la suivante arrive.
+    placeholderData: keepPreviousData,
   });
 
-  const lignes = useMemo(
-    () =>
-      (nonRetenues.data ?? []).filter((a) =>
-        correspond(q, `${a.givenName} ${a.familyName}`, a.jobTitle, a.jobReference),
-      ),
-    [nonRetenues.data, q],
-  );
-  const { tranche, barre } = usePagination(lignes, q);
+  const tranche = useMemo(() => nonRetenues.data?.items ?? [], [nonRetenues.data]);
+  const pages = Math.max(1, Math.ceil((nonRetenues.data?.total ?? 0) / LIGNES_PAR_PAGE));
+  // Une page qui n'existe plus (la dernière vidée par un geste) : on retombe
+  // sur la dernière page réelle.
+  useEffect(() => {
+    if (page > pages) setPage(pages);
+  }, [page, pages]);
+  const barre = { page: Math.min(page, pages), pages, onPage: setPage, remonter: true };
   // Comme pour les offres : la sélection porte sur la page affichée.
   const sel = useSelection(tranche);
-  const dossier = (nonRetenues.data ?? []).find((a) => a.id === ouvert) ?? null;
+  const dossier = tranche.find((a) => a.id === ouvert) ?? null;
 
   const relire = () =>
     Promise.all(A_RELIRE.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
@@ -144,19 +165,15 @@ export default function CandidaturesNonRetenuesPage() {
           <CorpsDefilant>
             <SqueletteTableau />
           </CorpsDefilant>
-        ) : lignes.length === 0 ? (
+        ) : tranche.length === 0 ? (
           <CorpsDefilant className="grid place-items-center">
             <EmptyState
               icon={<Icon name="inbox" size={22} />}
               title={
-                (nonRetenues.data ?? []).length === 0
-                  ? 'Aucune candidature non retenue'
-                  : 'Aucune candidature ne correspond'
+                recherche ? 'Aucune candidature ne correspond' : 'Aucune candidature non retenue'
               }
               description={
-                (nonRetenues.data ?? []).length === 0
-                  ? undefined
-                  : 'Changez de recherche pour voir les autres candidatures.'
+                recherche ? 'Changez de recherche pour voir les autres candidatures.' : undefined
               }
             />
           </CorpsDefilant>

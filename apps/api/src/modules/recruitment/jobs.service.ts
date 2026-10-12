@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import { CONTRATS_A_DUREE, premierPrenom } from '@teranga/contracts';
+import { CONTRATS_A_DUREE, correspond, premierPrenom } from '@teranga/contracts';
 import type {
   ApplicationStage,
   ApplicationView,
@@ -13,7 +13,8 @@ import type {
   JobPostingView,
   ReconsiderApplicationsResult,
   RejectedApplicationsInput,
-  RejectedApplicationView,
+  RejectedApplicationsPage,
+  RejectedApplicationsQuery,
   SessionUser,
   UpdateJobPostingInput,
 } from '@teranga/contracts';
@@ -23,7 +24,12 @@ import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { ExpediteurCourriels } from '../courriels/expediteur';
 import { ENTETE } from '../documents/entete';
-import { contenuDeLaPiece, dechiffrerCandidature, nomDeLaPiece } from './chiffrement';
+import {
+  contenuDeLaPiece,
+  dechiffrerCandidature,
+  nomDeLaPiece,
+  nomsDuCandidat,
+} from './chiffrement';
 
 /**
  * La durée suit le contrat : exigée pour un CDD ou un stage, effacée pour les
@@ -229,18 +235,74 @@ export class JobsService {
 
   /**
    * Les candidatures rejetées, toutes offres confondues, la plus récente
-   * d'abord. Leur lecture se trace comme celle d'une offre : une ligne par
-   * offre dont on a vu les dossiers.
+   * d'abord, une page à la fois (ADR-0068).
+   *
+   * Sans recherche, la base pagine seule. Avec, il faut les noms : chiffrés
+   * au repos, ils se déchiffrent ici, eux seuls et hors de toute
+   * transaction, puis seule la page se lit en entier. Avant, chaque appel
+   * déchiffrait et renvoyait tous les dossiers (4,5 Mo pour 6 000), et
+   * vingt appels simultanés prenaient toutes les connexions.
+   *
+   * La lecture se trace comme celle d'une offre : une ligne par offre dont
+   * la page montre des dossiers.
    */
-  async rejetees(user: SessionUser): Promise<RejectedApplicationView[]> {
-    return this.db.withTenant(ctxOf(user), async (tx) => {
+  async rejetees(
+    user: SessionUser,
+    query: RejectedApplicationsQuery,
+  ): Promise<RejectedApplicationsPage> {
+    const ordre = [desc(t.applications.updatedAt), desc(t.applications.id)];
+    const rejetee = eq(t.applications.stage, 'rejected');
+    const recherche = query.q?.trim() ?? '';
+    let total: number;
+    let ids: string[];
+    if (!recherche) {
+      ({ total, ids } = await this.db.withTenant(ctxOf(user), async (tx) => {
+        const [compte] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(t.applications)
+          .where(rejetee);
+        const page = await tx
+          .select({ id: t.applications.id })
+          .from(t.applications)
+          .where(rejetee)
+          .orderBy(...ordre)
+          .limit(query.limit)
+          .offset(query.offset);
+        return { total: compte?.n ?? 0, ids: page.map((p) => p.id) };
+      }));
+    } else {
+      const lignes = await this.db.withTenant(ctxOf(user), (tx) =>
+        tx
+          .select({
+            id: t.applications.id,
+            tenantId: t.applications.tenantId,
+            givenName: t.applications.givenName,
+            familyName: t.applications.familyName,
+            cleVersion: t.applications.cleVersion,
+            jobTitle: t.jobPostings.title,
+            jobReference: t.jobPostings.reference,
+          })
+          .from(t.applications)
+          .innerJoin(t.jobPostings, eq(t.jobPostings.id, t.applications.jobPostingId))
+          .where(rejetee)
+          .orderBy(...ordre),
+      );
+      const trouvees = lignes.filter((l) => {
+        const { givenName, familyName } = nomsDuCandidat(this.enc, l);
+        return correspond(recherche, `${givenName} ${familyName}`, l.jobTitle, l.jobReference);
+      });
+      total = trouvees.length;
+      ids = trouvees.slice(query.offset, query.offset + query.limit).map((l) => l.id);
+    }
+    if (ids.length === 0) return { items: [], total };
+
+    const items = await this.db.withTenant(ctxOf(user), async (tx) => {
       const lignes = await tx
         .select({ candidature: t.applications, offre: t.jobPostings })
         .from(t.applications)
         .innerJoin(t.jobPostings, eq(t.jobPostings.id, t.applications.jobPostingId))
-        .where(eq(t.applications.stage, 'rejected'))
-        .orderBy(desc(t.applications.updatedAt));
-      const ids = lignes.map((l) => l.candidature.id);
+        .where(and(inArray(t.applications.id, ids), rejetee))
+        .orderBy(...ordre);
       const byApp = await this.piecesDe(tx, ids);
       const refus = await this.refusEnvoyes(tx, ids);
       for (const jobPostingId of new Set(lignes.map((l) => l.offre.id))) {
@@ -254,6 +316,7 @@ export class JobsService {
         rejectedAt: candidature.updatedAt.toISOString(),
       }));
     });
+    return { items, total };
   }
 
   /** Combien de candidatures rejetées : la page n'a d'entrée au menu qu'à partir d'une. */

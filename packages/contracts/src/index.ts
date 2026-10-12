@@ -16,6 +16,7 @@ export * from './import-employes';
 export * from './absences';
 export * from './portal';
 export * from './recruitment';
+export * from './recherche';
 export * from './documents';
 export * from './document-requests';
 export * from './nationalities';

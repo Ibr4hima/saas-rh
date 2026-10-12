@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -17,6 +18,7 @@ import {
   applySchema,
   createJobPostingSchema,
   deleteJobPostingsSchema,
+  rejectedApplicationsQuerySchema,
   rejectedApplicationsSchema,
   updateApplicationSchema,
   updateJobPostingSchema,
@@ -24,6 +26,7 @@ import {
   type CreateJobPostingInput,
   type DeleteJobPostingsInput,
   type RejectedApplicationsInput,
+  type RejectedApplicationsQuery,
   type UpdateApplicationInput,
   type UpdateJobPostingInput,
 } from '@teranga/contracts';
@@ -98,11 +101,15 @@ export class RecruitmentController {
     return this.jobs.applications(req.sessionUser, id);
   }
 
-  /** Les candidatures rejetées, toutes offres confondues. */
+  /** Les candidatures rejetées, toutes offres confondues, une page à la fois. */
   @Get('applications/rejected')
   @Peut('recrutement.candidatures')
-  rejetees(@Req() req: AuthenticatedRequest) {
-    return this.jobs.rejetees(req.sessionUser);
+  rejetees(
+    @Req() req: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(rejectedApplicationsQuerySchema))
+    query: RejectedApplicationsQuery,
+  ) {
+    return this.jobs.rejetees(req.sessionUser, query);
   }
 
   /** Leur nombre, pour l'entrée du menu : sans rien déchiffrer ni tracer. */

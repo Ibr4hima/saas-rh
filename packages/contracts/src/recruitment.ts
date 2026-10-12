@@ -216,6 +216,26 @@ export interface RejectedApplicationView extends ApplicationView {
   rejectedAt: string;
 }
 
+/**
+ * Les candidatures non retenues, une page à la fois (ADR-0068). La recherche
+ * porte sur le nom du candidat, l'intitulé et la référence de l'offre, avec
+ * la règle de l'écran (cf. `correspond`) : les noms sont chiffrés au repos,
+ * c'est l'API qui les déchiffre pour chercher, et seule la page affichée
+ * repart vers l'écran.
+ */
+export const rejectedApplicationsQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(15),
+});
+export type RejectedApplicationsQuery = z.infer<typeof rejectedApplicationsQuerySchema>;
+
+export interface RejectedApplicationsPage {
+  items: RejectedApplicationView[];
+  /** Combien répondent à la recherche, en tout : le nombre de pages. */
+  total: number;
+}
+
 export interface ApplicationDocumentMeta {
   id: string;
   label: string;

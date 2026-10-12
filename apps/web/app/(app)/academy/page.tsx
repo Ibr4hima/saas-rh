@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { AcademyCategory, CourseSummary } from '@teranga/contracts';
-import { ACADEMY_CATEGORIES, peut } from '@teranga/contracts';
+import { ACADEMY_CATEGORIES, correspond, peut } from '@teranga/contracts';
 import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
 import { CarteFormation } from '../../../components/academy-carte';
 import { DefilementHorizontal } from '../../../components/defilement-horizontal';
@@ -18,7 +18,6 @@ import { FAMILLES } from '../../../lib/academy';
 import { api } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
 import { compte } from '../../../lib/mots';
-import { correspond } from '../../../lib/recherche';
 
 /* ————————————————————————————————————————————————————————————————
    APIX Academy — le catalogue.

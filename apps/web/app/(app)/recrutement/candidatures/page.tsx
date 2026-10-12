@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import type { JobPostingView } from '@teranga/contracts';
+import { correspond, type JobPostingView } from '@teranga/contracts';
 import {
   CardHeader,
   CardTitle,
@@ -21,7 +21,6 @@ import { api } from '../../../../lib/api';
 import { BandeauDeleguer } from '../../../../components/deleguer-membres';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
-import { correspond } from '../../../../lib/recherche';
 import { CONTRACT_LABELS } from '../../../../lib/recruitment';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
 import { Pagination, usePagination } from '../../../../components/pagination';

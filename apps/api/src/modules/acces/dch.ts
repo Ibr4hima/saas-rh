@@ -5,7 +5,7 @@ import {
   type Capacite,
   type CapaciteDemande,
 } from '@teranga/contracts';
-import { memoriser } from '../../common/memoire';
+import { enPortee, memoriser } from '../../common/memoire';
 import { problem } from '../../common/problem';
 import { contratEchu } from '../people/en-activite';
 import type { Tx } from '../../db/tenant-db';
@@ -200,20 +200,53 @@ export function detenteursDe(tx: Tx, capacite: Capacite): Promise<string[]> {
 }
 
 /**
- * Qui relève de lui, à tout niveau de la chaîne des N+1 : ceux-là ne
- * traitent pas ses demandes.
+ * Qui relève de l'agent, à tout niveau de la chaîne des N+1 : ces
+ * personnes-là ne traitent pas ses demandes.
+ *
+ * Dans une portée (cf. `avecMemoire`), la chaîne entière se lit une fois et
+ * chaque agent s'y parcourt en mémoire : une file de cent demandes faisait
+ * cent lectures récursives (ADR-0068). Hors portée, pour un seul agent, la
+ * lecture récursive ne parcourt que la branche qui en relève.
  */
 export function subordonnesDe(tx: Tx, employeeId: string): Promise<Set<string>> {
+  if (!enPortee()) return lireLesSubordonnes(tx, employeeId);
   return memoriser(`sous:${employeeId}`, async () => {
-    const { rows } = await tx.execute<{ id: string }>(sql`
-      WITH RECURSIVE sous AS (
-        SELECT e.id FROM employees e WHERE e.manager_employee_id = ${employeeId}
-        UNION
-        SELECT e.id FROM employees e JOIN sous s ON e.manager_employee_id = s.id
-      )
-      SELECT id FROM sous`);
-    return new Set(rows.map((r) => r.id));
+    const equipes = await memoriser('equipes', () => lireLesEquipes(tx));
+    const sous = new Set<string>();
+    const aVoir = [employeeId];
+    while (aVoir.length > 0) {
+      for (const id of equipes.get(aVoir.pop()!) ?? []) {
+        if (sous.has(id)) continue;
+        sous.add(id);
+        aVoir.push(id);
+      }
+    }
+    return sous;
   });
+}
+
+async function lireLesSubordonnes(tx: Tx, employeeId: string): Promise<Set<string>> {
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    WITH RECURSIVE sous AS (
+      SELECT e.id FROM employees e WHERE e.manager_employee_id = ${employeeId}
+      UNION
+      SELECT e.id FROM employees e JOIN sous s ON e.manager_employee_id = s.id
+    )
+    SELECT id FROM sous`);
+  return new Set(rows.map((r) => r.id));
+}
+
+/** Les agents directs de chacun : toute la chaîne des N+1, en une lecture. */
+async function lireLesEquipes(tx: Tx): Promise<Map<string, string[]>> {
+  const { rows } = await tx.execute<{ id: string; manager_employee_id: string }>(sql`
+    SELECT id, manager_employee_id FROM employees WHERE manager_employee_id IS NOT NULL`);
+  const equipes = new Map<string, string[]>();
+  for (const r of rows) {
+    const equipe = equipes.get(r.manager_employee_id);
+    if (equipe) equipe.push(r.id);
+    else equipes.set(r.manager_employee_id, [r.id]);
+  }
+  return equipes;
 }
 
 /** Qui traite une demande pour la DCH, maintenant. */
