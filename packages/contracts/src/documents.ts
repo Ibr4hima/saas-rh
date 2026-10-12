@@ -215,6 +215,15 @@ export const notificationScopeQuerySchema = z.object({
 /** Tout lire, tout ranger : dans la boîte d'un espace, ou dans toute la boîte. */
 export const notificationEspaceQuerySchema = z.object({ espace: notificationEspaceSchema });
 
+/**
+ * Vider une vue : la boîte ou les archives, d'un espace ou de toute la boîte.
+ * La vue se dit toujours : effacer ne se rattrape pas, rien ne s'y devine.
+ */
+export const notificationViderQuerySchema = z.object({
+  scope: z.enum(['inbox', 'archive']),
+  espace: notificationEspaceSchema,
+});
+
 /** Ranger ou ressortir : toujours une LISTE, même pour une seule ligne. */
 export const notificationIdsSchema = z.object({
   ids: z.array(z.uuid()).min(1).max(60),

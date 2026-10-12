@@ -261,4 +261,17 @@ describe('une boîte par espace', () => {
     expect((await service.list(user, 'inbox', 'agent')).archivedCount).toBe(1);
     expect(ids(await service.list(user, 'inbox', 'agent'))).toEqual([n.agent, n.ferie].sort());
   });
+
+  it('« vider la boîte » n’efface que la boîte de l’espace', async () => {
+    await viderLaBoite();
+    const n = await poserLaBoite();
+    await service.vider(user, 'inbox', 'gestion');
+    const { rows } = await ownerPool.query<{ id: string }>(
+      `SELECT id FROM notifications WHERE tenant_id = $1 AND effacee_le IS NOT NULL`,
+      [tenantId],
+    );
+    expect(rows.map((r) => r.id).sort()).toEqual([n.gestion, n.habilitation, n.commun].sort());
+    expect(ids(await service.list(user, 'inbox', 'gestion'))).toEqual([]);
+    expect(ids(await service.list(user, 'inbox', 'agent'))).toEqual([n.agent, n.ferie].sort());
+  });
 });

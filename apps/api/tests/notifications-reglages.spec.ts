@@ -507,6 +507,21 @@ describe('ce qui part sur WhatsApp', () => {
     expect(rows).toEqual([{ status: 'cancelled', n: 3 }]);
   });
 
+  it('effacée avant l’envoi, sa boîte vidée : le message ne part pas', async () => {
+    await reglages.changerSujets(awa, {
+      sujets: [{ sujet: 'conges', plateforme: true, courriel: false, whatsapp: true }],
+    });
+    await notifie(comptes.awa, { dedupeKey: 'effacee' });
+    await boite.vider(awa, 'inbox');
+    await expediteurWhatsApp.envoyerCeQuiAttend();
+    expect(whatsapp.envoyes).toHaveLength(0);
+    const { rows } = await raw(
+      `SELECT status FROM outbound_whatsapp WHERE tenant_id = $1 AND kind = 'notification'`,
+      [tenantId],
+    );
+    expect(rows).toEqual([{ status: 'cancelled' }]);
+  });
+
   it('avec les heures calmes, le message attend le prochain créneau ouvré', async () => {
     await reglages.changerReglages(awa, { heuresCalmes: true });
     await reglages.changerSujets(awa, {

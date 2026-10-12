@@ -106,7 +106,7 @@ async function annulerCeQuiNaPlusLieu(tx: Tx): Promise<void> {
                    ON m.user_id = n.recipient_user_id AND m.tenant_id = n.tenant_id
                 WHERE n.id = o.subject_id
                   AND n.read_at IS NULL AND n.archived_at IS NULL AND n.remplacee_le IS NULL
-                  AND m.acces_coupe_le IS NULL)
+                  AND n.effacee_le IS NULL AND m.acces_coupe_le IS NULL)
              WHEN 'candidature_refusee' THEN NOT EXISTS (
                SELECT 1 FROM applications a
                 WHERE a.id = o.subject_id AND a.stage = 'rejected')

@@ -442,6 +442,17 @@ describe('notifications par courriel', () => {
     ]);
   });
 
+  it('effacée avant l’envoi, sa boîte vidée : elle ne part pas', async () => {
+    const awa = await agentAvecCompte('Awa');
+    await notifie(awa.userId, 'Effacée avant', { dedupeKey: 'c:1' });
+    await raw(`UPDATE notifications SET effacee_le = now() WHERE title = 'Effacée avant'`);
+
+    await expediteur.envoyerCeQuiAttend();
+
+    expect(transport.envoyes).toHaveLength(0);
+    expect((await courriels()).map((c) => c.status)).toEqual(['cancelled']);
+  });
+
   it('accès coupé : rien ne part', async () => {
     const awa = await agentAvecCompte('Awa');
     await notifie(awa.userId, 'Avant la coupure');

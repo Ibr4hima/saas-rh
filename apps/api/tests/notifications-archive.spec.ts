@@ -234,3 +234,57 @@ describe('la boîte se lit par pages', () => {
     expect(archives.items.length).toBe(Math.min(30, archives.total));
   });
 });
+
+describe('vider la boîte, vider les archives', () => {
+  async function effacee(id: string): Promise<boolean> {
+    const { rows } = await ownerPool.query<{ effacee_le: Date | null }>(
+      `SELECT effacee_le FROM notifications WHERE id = $1`,
+      [id],
+    );
+    return rows[0]!.effacee_le !== null;
+  }
+
+  it('vider la boîte efface ce qu’elle montre, lu ou non, et laisse les archives', async () => {
+    await service.archiveAll(user);
+    await service.vider(user, 'archive');
+    const lue = await poser('Boîte lue', { lue: true });
+    const nonLue = await poser('Boîte non lue');
+    const rangee = await poser('Archive gardée', { lue: true });
+    await service.archive(user, [rangee]);
+
+    await service.vider(user, 'inbox');
+
+    expect(await effacee(lue)).toBe(true);
+    expect(await effacee(nonLue)).toBe(true);
+    expect(await effacee(rangee)).toBe(false);
+    const boite = await service.list(user, 'inbox');
+    expect(boite.items).toHaveLength(0);
+    expect(boite.total).toBe(0);
+    expect(boite.unreadCount).toBe(0);
+    expect(boite.archivedCount).toBe(1);
+    expect((await service.list(user, 'archive')).items.map((i) => i.id)).toEqual([rangee]);
+  });
+
+  it('vider les archives les efface, la boîte reste telle quelle', async () => {
+    const reste = await poser('Reste dans la boîte');
+    const r1 = await poser('Rangée 1', { lue: true });
+    const r2 = await poser('Rangée 2');
+    await service.archive(user, [r1, r2]);
+
+    await service.vider(user, 'archive');
+
+    const archives = await service.list(user, 'archive');
+    expect(archives.items).toHaveLength(0);
+    expect(archives.archivedCount).toBe(0);
+    expect((await service.list(user, 'inbox')).items.map((i) => i.id)).toContain(reste);
+    // Effacée, elle ne se ressort plus des archives, ni ne se range.
+    await expect(service.unarchive(user, [r1])).rejects.toThrow();
+    await expect(service.archive(user, [r2])).rejects.toThrow();
+  });
+
+  it('ne touche pas aux notifications des autres', async () => {
+    const autre = await poser("Pour quelqu'un d'autre, à garder", { pour: autreUserId });
+    await service.vider(user, 'inbox');
+    expect(await effacee(autre)).toBe(false);
+  });
+});

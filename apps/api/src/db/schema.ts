@@ -483,6 +483,8 @@ export const notifications = pgTable('notifications', {
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   /** Remplacée par une plus récente sur le même sujet : hors de la boîte. Voir 0054. */
   remplaceeLe: timestamp('remplacee_le', { withTimezone: true }),
+  /** Effacée par qui l'a reçue (boîte ou archives vidées) : nulle part. Voir 0106. */
+  effaceeLe: timestamp('effacee_le', { withTimezone: true }),
   /** Le sujet que la personne règle (catalogue des contrats). Voir 0093. */
   sujet: text('sujet'),
   /** Faux : voulue par courriel ou WhatsApp seulement, elle ne se montre pas. */

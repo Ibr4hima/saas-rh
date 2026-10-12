@@ -248,3 +248,19 @@ describe('garde-fou d’idempotence (SQL généré)', () => {
     expect(rows[0]!.dedupe_key).not.toContain(rows[0]!.id);
   });
 });
+
+describe('vider la boîte n’y ramène pas le rappel', () => {
+  it('effacé, le rappel ne revient pas au sondage suivant : sa clé reste prise', async () => {
+    await withTenant((db) =>
+      db.execute(sql`DELETE FROM notifications WHERE tenant_id = ${tenantId}`),
+    );
+    const avant = await service.list(user);
+    expect(avant.items.filter((i) => i.type === 'holiday_reminder')).toHaveLength(1);
+
+    await service.vider(user, 'inbox');
+    await service.list(user);
+
+    expect((await service.list(user)).items).toHaveLength(0);
+    expect(await rappels()).toHaveLength(1);
+  });
+});

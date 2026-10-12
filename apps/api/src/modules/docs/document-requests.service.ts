@@ -466,6 +466,7 @@ export class DocumentRequestsService {
           isNull(t.notifications.readAt),
           isNull(t.notifications.archivedAt),
           isNull(t.notifications.remplaceeLe),
+          isNull(t.notifications.effaceeLe),
           inArray(t.notifications.type, ['document_request_ready', 'document_request_rejected']),
           like(t.notifications.dedupeKey, 'document:%:suivi:%'),
         ),

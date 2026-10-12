@@ -66,13 +66,15 @@ export function holidayAlreadySentSql(userId: string) {
 
 /**
  * Les trois prédicats qui reviennent partout, nommés une fois pour toutes.
- * Une notification remplacée par une plus récente n'est plus à personne ;
- * celle qu'on ne veut que par courriel ou WhatsApp ne se montre pas ici.
+ * Une notification remplacée par une plus récente n'est plus à personne, ni
+ * celle que la personne a effacée ; celle qu'on ne veut que par courriel ou
+ * WhatsApp ne se montre pas ici.
  */
 const mien = (userId: string) =>
   and(
     eq(t.notifications.recipientUserId, userId),
     isNull(t.notifications.remplaceeLe),
+    isNull(t.notifications.effaceeLe),
     eq(t.notifications.dansLaPlateforme, true),
   )!;
 const dansLaBoite = () => isNull(t.notifications.archivedAt);
@@ -271,6 +273,27 @@ export class NotificationsService {
         .update(t.notifications)
         .set({ archivedAt: new Date() })
         .where(and(mien(user.userId), deLEspace(espace), dansLaBoite())),
+    );
+  }
+
+  /**
+   * Vider une vue d'un geste : la boîte, ou les archives, de l'espace où
+   * l'on est. Effacer, pour la personne, c'est pour de bon : lues comme non
+   * lues, les notifications ne se montrent plus nulle part, et leur
+   * courriel ou leur message WhatsApp, s'il attend encore, ne part pas.
+   *
+   * Les lignes restent pourtant dans la table, marquées effacées : leur clé
+   * reste prise, sans quoi un rappel généré (férié, échéance de contrat,
+   * pièce qui expire) reviendrait à la prochaine ouverture du panneau.
+   */
+  async vider(user: SessionUser, scope: NotificationScope, espace?: Espace): Promise<void> {
+    await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      tx
+        .update(t.notifications)
+        .set({ effaceeLe: new Date() })
+        .where(
+          and(mien(user.userId), deLEspace(espace), scope === 'archive' ? range() : dansLaBoite()),
+        ),
     );
   }
 

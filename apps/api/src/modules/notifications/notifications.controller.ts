@@ -25,6 +25,7 @@ import {
   notificationIdsSchema,
   type NotificationScope,
   notificationScopeQuerySchema,
+  notificationViderQuerySchema,
   numeroWhatsAppSchema,
 } from '@teranga/contracts';
 import { z } from 'zod';
@@ -143,6 +144,17 @@ export class NotificationsController {
     @Query(new ZodValidationPipe(notificationEspaceQuerySchema)) query: { espace?: Espace },
   ) {
     await this.notifications.archiveAll(req.sessionUser, query.espace);
+  }
+
+  /** Vider la boîte ou les archives : effacer, pour de bon, toute la vue. */
+  @Post('notifications/clear')
+  @HttpCode(204)
+  async clear(
+    @Req() req: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(notificationViderQuerySchema))
+    query: { scope: NotificationScope; espace?: Espace },
+  ) {
+    await this.notifications.vider(req.sessionUser, query.scope, query.espace);
   }
 
   /** Les contrats sous l'œil de la RH jusqu'à leur expiration. */

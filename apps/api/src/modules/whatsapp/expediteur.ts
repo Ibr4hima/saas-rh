@@ -113,7 +113,7 @@ async function annulerCeQuiNaPlusLieu(tx: Tx): Promise<void> {
                   AND p.sujet = n.sujet
                 WHERE n.id = o.subject_id
                   AND n.read_at IS NULL AND n.archived_at IS NULL AND n.remplacee_le IS NULL
-                  AND m.acces_coupe_le IS NULL
+                  AND n.effacee_le IS NULL AND m.acces_coupe_le IS NULL
                   AND r.whatsapp_verifie_le IS NOT NULL
                   AND coalesce(p.whatsapp, false)
                   AND NOT (r.pause_conges AND ${enCongeAujourdhui(sql`n.recipient_user_id`)}))

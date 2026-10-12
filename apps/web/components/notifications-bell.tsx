@@ -102,6 +102,13 @@ export function NotificationsBell({ espace }: { espace?: Espace }) {
       api(`/notifications/archive-all${filtre ? `?${filtre}` : ''}`, { method: 'POST' }),
     onSuccess: rafraichir,
   });
+  // Le bouton tourne jusqu'à la liste relue : sans cela il redevenait
+  // cliquable un instant au-dessus des lignes qu'on vient d'effacer.
+  const vider = useMutation({
+    mutationFn: (scope: NotificationScope) =>
+      api(`/notifications/clear?scope=${scope}${filtre ? `&${filtre}` : ''}`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -183,6 +190,8 @@ export function NotificationsBell({ espace }: { espace?: Espace }) {
           onRessortir={(ids) => ressortir.mutate(ids)}
           onToutArchiver={() => toutArchiver.mutate()}
           archivageEnCours={ranger.isPending || toutArchiver.isPending}
+          onVider={() => vider.mutate(vue)}
+          viderEnCours={vider.isPending}
           onOuvrir={ouvrir}
           onFermer={fermer}
           onRegler={() => {
@@ -238,6 +247,8 @@ function PanneauNotifications({
   onRessortir,
   onToutArchiver,
   archivageEnCours,
+  onVider,
+  viderEnCours,
   onOuvrir,
   onFermer,
   onRegler,
@@ -259,6 +270,9 @@ function PanneauNotifications({
   onRessortir: (ids: string[]) => void;
   onToutArchiver: () => void;
   archivageEnCours: boolean;
+  /** Effacer toute la vue affichée : la boîte, ou les archives. */
+  onVider: () => void;
+  viderEnCours: boolean;
   onOuvrir: (n: NotificationView) => void;
   onFermer: () => void;
   /** Ses réglages : où chaque sujet le trouve. */
@@ -351,10 +365,15 @@ function PanneauNotifications({
           </div>
           {/* Deux vues, jamais plus : ce qui reste à voir, ce qu'on a archivé. */}
           <div className="mt-2 flex items-center gap-1 rounded-full bg-bg p-0.5">
-            <Onglet actif={!archive} onClick={() => onVue('inbox')} compte={unread}>
+            <Onglet actif={!archive} onClick={() => onVue('inbox')} compte={unread} ton="alerte">
               Boîte
             </Onglet>
-            <Onglet actif={archive} onClick={() => onVue('archive')} compte={archivees}>
+            <Onglet
+              actif={archive}
+              onClick={() => onVue('archive')}
+              compte={archivees}
+              ton="neutre"
+            >
               Archives
             </Onglet>
           </div>
@@ -440,22 +459,98 @@ function PanneauNotifications({
             </ul>
           )}
         </div>
+        {!chargement && items.length > 0 ? (
+          // Une clé par vue : changer d'onglet referme une confirmation ouverte.
+          <PiedVider key={vue} archive={archive} enCours={viderEnCours} onVider={onVider} />
+        ) : null}
       </div>
     </>,
     document.body,
   );
 }
 
-/** Onglet : le compte fait partie de l'étiquette, pas d'un badge posé à côté. */
+/**
+ * Vider la vue d'un geste, au pied du panneau : la boîte, ou les archives,
+ * de l'espace où l'on est.
+ *
+ * Effacer ne se rattrape pas : le premier clic demande confirmation sur
+ * place, dans le pied même. Une fenêtre de plus, posée sur un panneau déjà
+ * ouvert, ferait trois étages pour un seul geste. Les deux états ont la même
+ * hauteur : confirmer ne fait pas sauter le panneau.
+ */
+function PiedVider({
+  archive,
+  enCours,
+  onVider,
+}: {
+  archive: boolean;
+  enCours: boolean;
+  onVider: () => void;
+}) {
+  const [confirmer, setConfirmer] = useState(false);
+  const declencheur = useRef<HTMLButtonElement>(null);
+  const libelle = archive ? 'Vider les archives' : 'Vider la boîte';
+  const annuler = () => {
+    setConfirmer(false);
+    // Le focus revient au bouton qui a demandé la confirmation.
+    requestAnimationFrame(() => declencheur.current?.focus());
+  };
+
+  return (
+    <footer className="flex h-12 shrink-0 items-center border-t border-line-soft px-3">
+      {confirmer ? (
+        <div
+          role="group"
+          aria-label={libelle}
+          className="flex w-full items-center justify-between gap-3 pl-1"
+        >
+          <p className="text-[12px] font-bold text-ink-strong">Effacer définitivement&nbsp;?</p>
+          <div className="flex items-center gap-1.5">
+            {/* Le bouton qu'on vient de presser disparaît : le focus va à
+                « Annuler », le choix sans conséquence. */}
+            <Button autoFocus size="sm" variant="ghost" disabled={enCours} onClick={annuler}>
+              Annuler
+            </Button>
+            <Button size="sm" variant="danger" loading={enCours} onClick={onVider}>
+              Vider
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <button
+          ref={declencheur}
+          type="button"
+          onClick={() => setConfirmer(true)}
+          className={cn(
+            'mx-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[11.5px] font-bold text-ink-muted transition-colors',
+            'hover:bg-danger-soft hover:text-danger',
+            'focus-visible:ring-2 focus-visible:ring-danger/35 focus-visible:outline-none',
+          )}
+        >
+          <Icon name="delete" size={16} />
+          {libelle}
+        </button>
+      )}
+    </footer>
+  );
+}
+
+/**
+ * Onglet : le compte fait partie de l'étiquette, pas d'un badge posé à côté.
+ * Les non-lues de la boîte se comptent en rouge, comme la pastille de la
+ * cloche ; les archives en gris : rien n'y attend.
+ */
 function Onglet({
   actif,
   onClick,
   compte,
+  ton,
   children,
 }: {
   actif: boolean;
   onClick: () => void;
   compte: number;
+  ton: 'alerte' | 'neutre';
   children: React.ReactNode;
 }) {
   return (
@@ -471,7 +566,12 @@ function Onglet({
       {children}
       {compte > 0 ? (
         <span
-          className="rounded-full bg-alert-soft px-1.5 py-px text-[10px] leading-none font-extrabold text-alert-text"
+          className={cn(
+            'rounded-full px-1.5 py-px text-[10px] leading-none font-extrabold',
+            ton === 'alerte'
+              ? 'bg-alert-soft text-alert-text'
+              : 'bg-ink-muted/[0.12] text-ink-muted',
+          )}
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {compte > 99 ? '99+' : compte}

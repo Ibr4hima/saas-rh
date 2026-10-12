@@ -70,3 +70,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0062](0062-candidature-reconsideree-ou-effacee.md)   | Une candidature non retenue se reconsidère, ou s'efface définitivement                  | acceptée                                    |
 | [0063](0063-suivi-des-contrats-sur-un-an.md)          | Suivi des contrats : la durée restante, sur un an                                       | acceptée                                    |
 | [0064](0064-secretariat-general.md)                   | Le Secrétariat général : son titre, et sa place sous le DG                              | acceptée                                    |
+| [0065](0065-vider-les-notifications.md)               | Vider la boîte et les archives des notifications                                        | acceptée                                    |
