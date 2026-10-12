@@ -159,15 +159,6 @@ function contexteDesAnciennetes(d: DashboardView): string | undefined {
   return `de ${duree(courte)} à ${duree(longue)}`;
 }
 
-/** Le total d'une carte, à droite de son titre : « 3 agents ». */
-function TotalCarte({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="shrink-0 text-[11.5px] text-ink-muted" style={TABULAIRE}>
-      {children}
-    </span>
-  );
-}
-
 /* ──── Indicateurs ──── */
 
 function StatTile({
@@ -719,9 +710,8 @@ export function TableauDeBord({ suiviDesContrats }: { suiviDesContrats: boolean 
 
       {seesContracts ? (
         <Card>
-          <CardHeader className="flex items-center justify-between gap-3">
+          <CardHeader>
             <CardTitle>Suivi des contrats</CardTitle>
-            <TotalCarte>Fin d'ici un an</TotalCarte>
           </CardHeader>
           {stats.isLoading ? (
             <SqueletteTableau lignes={3} />
