@@ -63,4 +63,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0055](0055-objectifs-a-echeance.md)                  | Objectifs à échéance, rangés dans l'évaluation où ils comptent                          | acceptée, en partie remplacée : 0056, 0057  |
 | [0056](0056-fixer-des-objectifs-par-semestre.md)      | Fixer des objectifs par semestre, chacun avec son échéance                              | acceptée, en partie remplacée : 0057, 0058  |
 | [0057](0057-echeance-confirmee-a-l-enregistrement.md) | L'échéance proche se confirme à l'enregistrement ; les formations n'en ont pas          | acceptée, précisée par 0058                 |
-| [0058](0058-formations-encadrees.md)                  | Formations encadrées par l'agent ; la fenêtre de confirmation comme la fiche            | acceptée                                    |
+| [0058](0058-formations-encadrees.md)                  | Formations encadrées par l'agent ; la fenêtre de confirmation comme la fiche            | acceptée, en partie remplacée : 0059        |
+| [0059](0059-report-au-s1.md)                          | Le champ du report dit « au S1 de 2027 »                                                | acceptée                                    |

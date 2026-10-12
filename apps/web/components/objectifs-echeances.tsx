@@ -280,7 +280,7 @@ export function ConfirmerEcheance({
         <CardContent className="py-4 text-[13.5px] leading-relaxed text-ink">
           {report ? (
             <Field
-              label={`Nouvelle échéance, au semestre ${suivante.semestre} de ${suivante.annee}`}
+              label={`Nouvelle échéance, au S${suivante.semestre} de ${suivante.annee}`}
               htmlFor={champ}
               hint={`Entre le ${dateEnLettres(min)} et le ${dateEnLettres(max)}`}
             >
