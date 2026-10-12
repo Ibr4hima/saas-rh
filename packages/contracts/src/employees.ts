@@ -183,10 +183,24 @@ export function orgUnitLabel(unit: { name: string; shortName?: string | null }):
 }
 
 /**
+ * Le Secrétariat général, reconnu à son nom, accents et casse mis à part
+ * (« Secrétariat général », « Sécrétariat Général ») : qui le dirige
+ * s'intitule secrétaire général ou générale.
+ */
+export function estSecretariatGeneral(nom: string): boolean {
+  const simple = nom
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim();
+  return /^secretariat[\s-]+generale?\b/.test(simple);
+}
+
+/**
  * Le poste de qui dirige une unité, tel que ses affectations l'écrivent :
- * « Directeur de la DGT », « Directrice générale », « Chef du service
- * Comptabilité ». Sans genre connu, l'intitulé ne le devine pas :
- * « Responsable de la DGT ».
+ * « Directeur de la DGT », « Directrice générale », « Secrétaire générale »,
+ * « Chef du service Comptabilité ». Sans genre connu, l'intitulé ne le
+ * devine pas : « Responsable de la DGT », « Responsable du SG ».
  */
 export function posteDeResponsable(
   unite: { name: string; unitType: OrgUnitType; shortName?: string | null; sommet: boolean },
@@ -197,6 +211,12 @@ export function posteDeResponsable(
   let poste: string;
   if (unite.sommet && (f || m)) {
     poste = f ? 'Directrice générale' : 'Directeur général';
+  } else if (!unite.sommet && estSecretariatGeneral(unite.name)) {
+    poste = f
+      ? 'Secrétaire générale'
+      : m
+        ? 'Secrétaire général'
+        : `Responsable du ${unite.shortName || unite.name}`;
   } else if (unite.unitType === 'direction') {
     const titre = f ? 'Directrice' : m ? 'Directeur' : 'Responsable';
     poste = `${titre} de la ${unite.shortName || unite.name}`;

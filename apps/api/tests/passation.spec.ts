@@ -219,6 +219,32 @@ describe('l’intitulé du poste de responsable', () => {
       posteDeResponsable({ name: 'Service Paie', unitType: 'service', sommet: false }, null),
     ).toBe('Responsable du service Paie');
   });
+
+  it('le Secrétariat général : Secrétaire général ou générale, quelle que soit son écriture', () => {
+    const sg = { unitType: 'direction' as const, shortName: 'SG', sommet: false };
+    expect(posteDeResponsable({ ...sg, name: 'Sécrétariat Général' }, 'female')).toBe(
+      'Secrétaire générale',
+    );
+    expect(posteDeResponsable({ ...sg, name: 'Secrétariat général' }, 'male')).toBe(
+      'Secrétaire général',
+    );
+    expect(posteDeResponsable({ ...sg, name: 'SECRETARIAT GENERAL' }, null)).toBe(
+      'Responsable du SG',
+    );
+    // Ni une direction au nom voisin, ni le secrétariat d'un service.
+    expect(
+      posteDeResponsable(
+        { ...sg, name: 'Direction des Services Généraux', shortName: 'DSG' },
+        'male',
+      ),
+    ).toBe('Directeur de la DSG');
+    expect(
+      posteDeResponsable(
+        { name: 'Service Secrétariat', unitType: 'service', sommet: false },
+        'female',
+      ),
+    ).toBe('Cheffe du service Secrétariat');
+  });
 });
 
 describe('désigner depuis l’organigramme', () => {
@@ -228,6 +254,16 @@ describe('désigner depuis l’organigramme', () => {
     await organigramme.update(user, uDGT, { managerEmployeeId: x, depuis: '2024-03-01' });
     expect(await affectations(x)).toEqual([
       { poste: 'Directeur de la DGT', unite: uDGT, responsable: true, du: '2024-03-01', au: null },
+    ]);
+  });
+
+  it('le Secrétariat général : Secrétaire générale', async () => {
+    await leDG();
+    const uSG = await unite('Sécrétariat Général', 'direction', uDG, 'SG');
+    const x = await agent('X', uSG, { genre: 'female', depuis: '2024-03-01' });
+    await organigramme.update(user, uSG, { managerEmployeeId: x, depuis: '2024-03-01' });
+    expect(await affectations(x)).toEqual([
+      { poste: 'Secrétaire générale', unite: uSG, responsable: true, du: '2024-03-01', au: null },
     ]);
   });
 
@@ -458,6 +494,20 @@ describe('une nouvelle affectation à la tête de l’unité', () => {
     });
     expect(await responsableDe(uCompta)).toBe(x);
     expect(await n1(x)).toBe(directeur);
+  });
+
+  it('le Secrétariat général : Secrétaire général, qui relève du DG', async () => {
+    const dg = await leDG();
+    const uSG = await unite('Secrétariat général', 'direction', uDG, 'SG');
+    const x = await agent('X', uDSI, { genre: 'male' });
+    await tete(x, { orgUnitId: uSG, startDate: '2025-05-01' });
+    expect((await affectations(x))[1]).toMatchObject({
+      poste: 'Secrétaire général',
+      unite: uSG,
+      responsable: true,
+    });
+    expect(await responsableDe(uSG)).toBe(x);
+    expect(await n1(x)).toBe(dg);
   });
 
   it('au plus tard aujourd’hui', async () => {

@@ -677,7 +677,7 @@ export class OrgUnitsService {
         422,
         'org.aucun_directeur_general',
         'Désignez d’abord le directeur général',
-        'Un directeur relève du directeur général : la Direction Générale a son responsable avant les directions.',
+        'Qui dirige une direction relève du directeur général : la Direction Générale a son responsable avant les directions.',
       );
     }
 

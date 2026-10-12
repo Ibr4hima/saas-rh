@@ -2,7 +2,12 @@
 
 import type * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { civilite, orgUnitLabel, type OrgUnitView } from '@teranga/contracts';
+import {
+  civilite,
+  estSecretariatGeneral,
+  orgUnitLabel,
+  type OrgUnitView,
+} from '@teranga/contracts';
 import { cn } from '@teranga/ui';
 import { Icon } from './icons';
 
@@ -448,6 +453,32 @@ function Branche({
   const replie = replies.has(unite.id);
   const descendants = compterDescendants(parEnfant, unite.id);
 
+  // Le Secrétariat général se tient à l'aplomb de l'unité qui le coiffe, dans
+  // le prolongement du trait qui descend. Les autres se partagent de part et
+  // d'autre, l'alphabet gardé de gauche à droite ; deux côtés de même largeur
+  // le centrent au pixel près, même quand l'un pèse plus que l'autre.
+  const sg = enfants.length > 1 ? enfants.find((e) => estSecretariatGeneral(e.name)) : undefined;
+  const autres = sg ? enfants.filter((e) => e !== sg) : enfants;
+  const coupe = sg ? partage(autres, parEnfant, largeurs) : autres.length;
+  const ordre = sg ? [...autres.slice(0, coupe), sg, ...autres.slice(coupe)] : enfants;
+  const colonne = (e: OrgUnitView) => {
+    const i = ordre.indexOf(e);
+    return (
+      <div key={e.id} className="relative flex flex-col items-center px-3 pt-7">
+        <Connecteur premier={i === 0} dernier={i === ordre.length - 1} />
+        <Branche
+          unite={e}
+          parEnfant={parEnfant}
+          largeurs={largeurs}
+          selectionId={selectionId}
+          replies={replies}
+          onBasculer={onBasculer}
+          actions={actions}
+        />
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col items-center">
       <Bloc
@@ -465,26 +496,64 @@ function Branche({
         <>
           {/* Descente du bloc vers la barre des enfants. */}
           <span aria-hidden className="h-7 w-px bg-line" />
-          <div className="flex items-start">
-            {enfants.map((e, i) => (
-              <div key={e.id} className="relative flex flex-col items-center px-3 pt-7">
-                <Connecteur premier={i === 0} dernier={i === enfants.length - 1} />
-                <Branche
-                  unite={e}
-                  parEnfant={parEnfant}
-                  largeurs={largeurs}
-                  selectionId={selectionId}
-                  replies={replies}
-                  onBasculer={onBasculer}
-                  actions={actions}
-                />
+          {sg ? (
+            <div className="grid grid-cols-[1fr_auto_1fr] items-start">
+              <div className="flex items-start justify-end">
+                {autres.slice(0, coupe).map(colonne)}
               </div>
-            ))}
-          </div>
+              {colonne(sg)}
+              <div className="flex items-start">{autres.slice(coupe).map(colonne)}</div>
+            </div>
+          ) : (
+            <div className="flex items-start">{enfants.map(colonne)}</div>
+          )}
         </>
       ) : null}
     </div>
   );
+}
+
+/**
+ * La largeur qu'une branche prend dans sa rangée : son bloc, ou ses enfants
+ * côte à côte s'ils débordent, avec la gouttière de sa colonne (`px-3`).
+ * Tout déplié : replier une branche ne doit pas faire changer de côté les
+ * directions voisines du Secrétariat général.
+ */
+function largeurBranche(
+  u: OrgUnitView,
+  parEnfant: Map<string | null, OrgUnitView[]>,
+  largeurs: Map<string, number>,
+): number {
+  const dessous = (parEnfant.get(u.id) ?? []).reduce(
+    (somme, e) => somme + largeurBranche(e, parEnfant, largeurs),
+    0,
+  );
+  return 24 + Math.max(largeurs.get(u.id) ?? LARGEUR_BLOC, dessous);
+}
+
+/**
+ * Où couper la fratrie du Secrétariat général : là où ses deux côtés pèsent
+ * le plus pareil, pour que le centrage laisse le moins de vide possible.
+ */
+function partage(
+  autres: OrgUnitView[],
+  parEnfant: Map<string | null, OrgUnitView[]>,
+  largeurs: Map<string, number>,
+): number {
+  const poids = autres.map((e) => largeurBranche(e, parEnfant, largeurs));
+  const total = poids.reduce((a, b) => a + b, 0);
+  let coupe = 0;
+  let ecart = Infinity;
+  let gauche = 0;
+  for (let i = 0; i <= poids.length; i += 1) {
+    const d = Math.abs(total - 2 * gauche);
+    if (d < ecart) {
+      ecart = d;
+      coupe = i;
+    }
+    gauche += poids[i] ?? 0;
+  }
+  return coupe;
 }
 
 /**

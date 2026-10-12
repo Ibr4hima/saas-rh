@@ -62,8 +62,8 @@ export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: 
     explication: 'Le directeur général siège à la Direction Générale : réaffectez-le.',
   },
   directeur_mal_rattache: {
-    court: 'Directeur mal rattaché',
-    explication: 'Un directeur relève du directeur général, de personne d’autre.',
+    court: 'n+1 autre que le DG',
+    explication: 'Qui dirige une direction relève du directeur général, de personne d’autre.',
   },
   chef_mal_rattache: {
     court: 'Chef mal rattaché',

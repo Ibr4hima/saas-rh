@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ObjectifsAPIX, ObjectifView } from '@teranga/contracts';
+import { estSecretariatGeneral, type ObjectifsAPIX, type ObjectifView } from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
 import { api } from '../../../../lib/api';
 import { Page } from '../../../../components/gabarit';
@@ -20,16 +20,24 @@ import { FenetreSuppression } from '../../../../components/reglages-absences';
 
 /**
  * Qui dirige une direction, titre et civilité en toutes lettres :
- * « Directrice : Madame Aminata Dione ». Sans genre sur la fiche, ni l'un ni
- * l'autre ne se devinent : « Responsable : Aminata Dione », comme les
- * intitulés de poste.
+ * « Directrice : Madame Aminata Dione ». Le Secrétariat général dit « SG » :
+ * « SG : Monsieur Abdoulaye Diallo ». Sans genre sur la fiche, ni titre ni
+ * civilité ne le devinent : « Responsable : Aminata Dione », « SG : Aminata
+ * Dione », comme les intitulés de poste.
  */
-function quiDirige(responsable: ObjectifsAPIX['directions'][number]['responsable']): string {
-  if (!responsable) return 'Directeur : Non désigné';
-  const { nom, genre } = responsable;
-  if (genre === 'female') return `Directrice : Madame ${nom}`;
-  if (genre === 'male') return `Directeur : Monsieur ${nom}`;
-  return `Responsable : ${nom}`;
+function quiDirige({ nom, responsable }: ObjectifsAPIX['directions'][number]): string {
+  const sg = estSecretariatGeneral(nom);
+  if (!responsable) return `${sg ? 'SG' : 'Directeur'} : Non désigné`;
+  const { genre } = responsable;
+  const titre = sg
+    ? 'SG'
+    : genre === 'female'
+      ? 'Directrice'
+      : genre === 'male'
+        ? 'Directeur'
+        : 'Responsable';
+  const civilite = genre === 'female' ? 'Madame ' : genre === 'male' ? 'Monsieur ' : '';
+  return `${titre} : ${civilite}${responsable.nom}`;
 }
 
 /**
@@ -104,7 +112,7 @@ export default function ObjectifsAPIXPage() {
               <div className="min-w-0">
                 <CardTitle>{d.nom}</CardTitle>
                 <p className="mt-1 text-[12px] text-ink-muted">
-                  {quiDirige(d.responsable)}
+                  {quiDirige(d)}
                   {d.objectifs.length
                     ? ` · ${atteints}/${d.objectifs.length} atteint${atteints > 1 ? 's' : ''}`
                     : ''}

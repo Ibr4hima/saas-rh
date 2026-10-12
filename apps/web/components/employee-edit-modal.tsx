@@ -428,7 +428,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               estDG
                 ? 'Le directeur général ne relève de personne.'
                 : estDirecteur
-                  ? 'Un directeur relève du directeur général.'
+                  ? 'Qui dirige une direction relève du directeur général.'
                   : impose
                     ? 'Le responsable d’une unité relève de l’unité au-dessus de la sienne.'
                     : direction

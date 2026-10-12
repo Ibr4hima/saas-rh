@@ -38,7 +38,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0030](0030-candidatures-non-retenues-a-part.md)      | Les candidatures non retenues ont leur page                                             | acceptée                                    |
 | [0031](0031-accuse-de-reception.md)                   | L'accusé de réception d'une candidature, et des courriels sans réponse                  | acceptée                                    |
 | [0032](0032-absence-ponctuelle-a-l-heure.md)          | L'absence ponctuelle, à l'heure ou à la journée, plafonnée par demande                  | acceptée                                    |
-| [0033](0033-fonction-de-responsable.md)               | La fonction de responsable s'écrit dans les affectations                                | acceptée, précisée par 0038                 |
+| [0033](0033-fonction-de-responsable.md)               | La fonction de responsable s'écrit dans les affectations                                | acceptée, précisée par 0038 et 0064         |
 | [0034](0034-n-plus-un-des-chefs-d-unite.md)           | Le chef d'un département ou d'un service relève de l'unité au-dessus                    | acceptée, relève précisée par 0035          |
 | [0035](0035-releve-d-un-chef-et-stagiaires.md)        | Relève d'un chef : l'équipe passe au nouveau ; aucun stagiaire n'est n+1                | acceptée, directeurs précisés par 0037      |
 | [0036](0036-responsable-choisi-dans-la-direction.md)  | Le responsable d'un département ou d'un service se choisit dans la direction            | acceptée                                    |
@@ -69,3 +69,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0061](0061-offre-ouverte-apres-la-date-limite.md)    | Une offre reste ouverte après sa date limite ; seule la RH la ferme                     | acceptée                                    |
 | [0062](0062-candidature-reconsideree-ou-effacee.md)   | Une candidature non retenue se reconsidère, ou s'efface définitivement                  | acceptée                                    |
 | [0063](0063-suivi-des-contrats-sur-un-an.md)          | Suivi des contrats : la durée restante, sur un an                                       | acceptée                                    |
+| [0064](0064-secretariat-general.md)                   | Le Secrétariat général : son titre, et sa place sous le DG                              | acceptée                                    |

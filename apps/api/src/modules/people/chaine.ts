@@ -233,14 +233,14 @@ export async function validerRattachement(
         422,
         'people.aucun_directeur_general',
         'Aucun directeur général n’est désigné',
-        'Un directeur relève du directeur général : désignez d’abord le responsable de l’unité racine dans l’organigramme.',
+        'Qui dirige une direction relève du directeur général : désignez d’abord le responsable de l’unité racine dans l’organigramme.',
       );
     }
     if (managerId !== dg) {
       problem(
         422,
         'people.directeur_hors_dg',
-        'Un directeur relève du directeur général',
+        'Qui dirige une direction relève du directeur général',
         'Cet agent dirige une direction : son responsable hiérarchique ne peut être que le directeur général.',
       );
     }
