@@ -194,8 +194,46 @@ describe('qui fixe quoi', () => {
     expect(vue.directions.map((d) => d.nom).sort()).toEqual(
       ['Direction Financière', 'Direction du Capital Humain'].sort(),
     );
-    expect(vue.directions.find((d) => d.id === unites.dch)!.directeur).toBe('Mariama Cissé');
+    expect(vue.directions.find((d) => d.id === unites.dch)!.responsable).toEqual({
+      nom: 'Mariama Cissé',
+      genre: null,
+    });
     expect(vue.directions.find((d) => d.id === unites.dch)!.objectifs).toHaveLength(1);
+  });
+
+  it('qui dirige chaque direction : son nom et le genre de sa fiche, ou personne', async () => {
+    const genre = (qui: Nom, g: 'female' | 'male' | null) =>
+      raw(
+        `UPDATE persons p SET gender = $1 FROM employees e WHERE e.person_id = p.id AND e.id = $2`,
+        [g, agents[qui]],
+      );
+    const tetes = async () =>
+      Object.fromEntries(
+        (await objectifs.objectifsAPIX(session('dg'))).directions.map((d) => [
+          d.nom,
+          d.responsable,
+        ]),
+      );
+    try {
+      await genre('mariama', 'female');
+      await genre('ousmane', 'male');
+      expect(await tetes()).toEqual({
+        'Direction du Capital Humain': { nom: 'Mariama Cissé', genre: 'female' },
+        'Direction Financière': { nom: 'Ousmane Fall', genre: 'male' },
+      });
+      // Sans genre sur la fiche, rien ne le devine.
+      await genre('ousmane', null);
+      expect((await tetes())['Direction Financière']).toEqual({ nom: 'Ousmane Fall', genre: null });
+      await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [unites.dfc]);
+      expect((await tetes())['Direction Financière']).toBeNull();
+    } finally {
+      await raw(`UPDATE org_units SET manager_employee_id = $1 WHERE id = $2`, [
+        agents.ousmane,
+        unites.dfc,
+      ]);
+      await genre('mariama', null);
+      await genre('ousmane', null);
+    }
   });
 
   it('personne d’autre : ni un directeur, ni pour la Direction Générale', async () => {

@@ -19,6 +19,20 @@ import {
 import { FenetreSuppression } from '../../../../components/reglages-absences';
 
 /**
+ * Qui dirige une direction, titre et civilité en toutes lettres :
+ * « Directrice : Madame Aminata Dione ». Sans genre sur la fiche, ni l'un ni
+ * l'autre ne se devinent : « Responsable : Aminata Dione », comme les
+ * intitulés de poste.
+ */
+function quiDirige(responsable: ObjectifsAPIX['directions'][number]['responsable']): string {
+  if (!responsable) return 'Directeur : Non désigné';
+  const { nom, genre } = responsable;
+  if (genre === 'female') return `Directrice : Madame ${nom}`;
+  if (genre === 'male') return `Directeur : Monsieur ${nom}`;
+  return `Responsable : ${nom}`;
+}
+
+/**
  * Objectifs de l'APIX — l'écran du directeur général : les orientations de
  * l'agence, diffusées à tous les agents ou aux directeurs seulement, et les
  * objectifs de chaque direction.
@@ -90,7 +104,7 @@ export default function ObjectifsAPIXPage() {
               <div className="min-w-0">
                 <CardTitle>{d.nom}</CardTitle>
                 <p className="mt-1 text-[12px] text-ink-muted">
-                  {d.directeur ?? 'Sans directeur'}
+                  {quiDirige(d.responsable)}
                   {d.objectifs.length
                     ? ` · ${atteints}/${d.objectifs.length} atteint${atteints > 1 ? 's' : ''}`
                     : ''}

@@ -463,7 +463,11 @@ export interface ObjectifsAPIX {
   directions: {
     id: string;
     nom: string;
-    directeur: string | null;
+    /**
+     * Qui la dirige, avec son genre pour le titre et la civilité
+     * (« Directrice : Madame … ») ; null quand personne n'est désigné.
+     */
+    responsable: { nom: string; genre: 'female' | 'male' | null } | null;
     objectifs: ObjectifView[];
   }[];
 }

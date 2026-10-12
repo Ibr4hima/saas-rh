@@ -1164,10 +1164,12 @@ export class ObjectifsService {
       const { rows: directions } = await tx.execute<{
         id: string;
         name: string;
-        directeur: string | null;
+        responsable: string | null;
+        genre: string | null;
       }>(sql`
         SELECT o.id, o.name,
-               CASE WHEN p.id IS NULL THEN NULL ELSE p.given_name || ' ' || p.family_name END AS directeur
+               CASE WHEN p.id IS NULL THEN NULL ELSE p.given_name || ' ' || p.family_name END AS responsable,
+               p.gender AS genre
           FROM org_units o
           LEFT JOIN employees e ON e.id = o.manager_employee_id AND e.status = 'active'
           LEFT JOIN persons p ON p.id = e.person_id
@@ -1181,7 +1183,14 @@ export class ObjectifsService {
         directions: directions.map((d) => ({
           id: d.id,
           nom: d.name,
-          directeur: d.directeur,
+          // Le genre tel que la fiche le dit : rien ne le devine d'un prénom.
+          responsable:
+            d.responsable === null
+              ? null
+              : {
+                  nom: d.responsable,
+                  genre: d.genre === 'female' || d.genre === 'male' ? d.genre : null,
+                },
           objectifs: objectifs.filter((o) => o.direction_id === d.id).map((o) => this.vue(o)),
         })),
       };
