@@ -9,6 +9,8 @@
  * les emporter en partant.
  */
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { Client, Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -310,7 +312,7 @@ describe('statut et date limite', () => {
     expect((await service.detail(rh, id)).publishedAt).not.toBeNull();
   });
 
-  it('ne publie pas une offre dont la date limite est passée', async () => {
+  it('une date limite se fixe à venir ; passée, elle n’empêche ni de publier ni de modifier', async () => {
     expect(
       await code(async () =>
         service.create(rh, { ...offre('Comptable'), deadline: await jour(-1) }),
@@ -318,21 +320,81 @@ describe('statut et date limite', () => {
     ).toBe('recruitment.date_limite_passee');
     const { id } = await service.create(rh, { ...offre('Comptable'), deadline: await jour(3) });
     await raw(`UPDATE job_postings SET deadline = CURRENT_DATE - 1 WHERE id = $1`, [id]);
-    expect(await code(() => service.update(rh, id, { status: 'published' }))).toBe(
+    expect(await code(() => service.update(rh, id, { status: 'published' }))).toBe('ok');
+    // La fenêtre de modification renvoie la date telle qu'elle est.
+    const passee = await jour(-1);
+    expect(
+      await code(() => service.update(rh, id, { title: 'Comptable confirmé', deadline: passee })),
+    ).toBe('ok');
+    // Une NOUVELLE date, elle, se fixe à venir.
+    expect(await code(async () => service.update(rh, id, { deadline: await jour(-2) }))).toBe(
       'recruitment.date_limite_passee',
     );
+    expect(await service.detail(rh, id)).toMatchObject({
+      title: 'Comptable confirmé',
+      status: 'published',
+      deadline: passee,
+    });
   });
 
-  it('se ferme le lendemain de sa date limite, et ne se rouvre qu’avec une date reportée', async () => {
-    const { id } = await service.create(rh, { ...offre('Auditeur'), deadline: await jour(5) });
-    await service.update(rh, id, { status: 'published' });
-    await raw(`UPDATE job_postings SET deadline = CURRENT_DATE - 1 WHERE id = $1`, [id]);
-    expect((await service.list(rh)).find((o) => o.id === id)?.status).toBe('closed');
-    expect(await code(() => service.update(rh, id, { status: 'published' }))).toBe(
-      'recruitment.date_limite_passee',
+  it('reste ouverte après sa date limite ; archivée, elle se ferme à tout moment, et se rouvre', async () => {
+    const candidat = new ApplyService(db, new EncryptionService());
+    const dossier = (email: string) => ({
+      givenName: 'Amadou Way',
+      familyName: 'Samb',
+      email,
+      documents: [
+        {
+          label: 'cv',
+          filename: 'CV.pdf',
+          contentType: 'application/pdf',
+          contentBase64: Buffer.from('%PDF-1.4 cv').toString('base64'),
+        },
+      ],
+    });
+
+    // Sa date limite passée, l'offre publiée reçoit encore des dossiers.
+    const auditeur = await service.create(rh, { ...offre('Auditeur'), deadline: await jour(5) });
+    await service.update(rh, auditeur.id, { status: 'published' });
+    await raw(`UPDATE job_postings SET deadline = CURRENT_DATE - 1 WHERE id = $1`, [auditeur.id]);
+    expect((await service.list(rh)).find((o) => o.id === auditeur.id)?.status).toBe('published');
+    expect(await candidat.info(auditeur.publicSlug)).toMatchObject({ valid: true });
+    await candidat.apply(auditeur.publicSlug, dossier('amadou.samb@exemple.sn'));
+    expect(await service.applications(rh, auditeur.id)).toHaveLength(1);
+
+    // Archivée avant sa date limite : son lien ne mène plus à rien.
+    const juriste = await service.create(rh, { ...offre('Juriste'), deadline: await jour(30) });
+    await service.update(rh, juriste.id, { status: 'published' });
+    await service.update(rh, juriste.id, { status: 'closed' });
+    expect(await candidat.info(juriste.publicSlug)).toEqual({ valid: false, reason: 'not_found' });
+    expect(
+      await code(() => candidat.apply(juriste.publicSlug, dossier('awa.ndiaye@exemple.sn'))),
+    ).toBe('recruitment.job_unavailable');
+
+    // Rouverte, même sa date passée, elle reprend les dossiers.
+    await raw(`UPDATE job_postings SET deadline = CURRENT_DATE - 1 WHERE id = $1`, [juriste.id]);
+    expect(await code(() => service.update(rh, juriste.id, { status: 'published' }))).toBe('ok');
+    expect(await candidat.info(juriste.publicSlug)).toMatchObject({ valid: true });
+  });
+
+  it('les offres closes par le système à leur date limite se rouvrent, pas celles archivées par la RH (0105)', async () => {
+    const fermee = await service.create(rh, { ...offre('Statisticien'), deadline: await jour(5) });
+    const archivee = await service.create(rh, { ...offre('Traducteur'), deadline: await jour(5) });
+    for (const o of [fermee, archivee]) await service.update(rh, o.id, { status: 'published' });
+    await raw(`UPDATE job_postings SET deadline = CURRENT_DATE - 1 WHERE tenant_id = $1`, [
+      tenantId,
+    ]);
+    // Comme le faisait le système le lendemain de la date limite : sans auteur.
+    await raw(`UPDATE job_postings SET status = 'closed' WHERE id = $1`, [fermee.id]);
+    await service.update(rh, archivee.id, { status: 'closed' });
+
+    const migration = readFileSync(
+      join(__dirname, '../src/db/sql/0105_offres_ouvertes_apres_la_date_limite.sql'),
+      'utf8',
     );
-    await service.update(rh, id, { deadline: await jour(30), status: 'published' });
-    expect((await service.detail(rh, id)).status).toBe('published');
+    await raw(migration);
+    expect((await service.detail(rh, fermee.id)).status).toBe('published');
+    expect((await service.detail(rh, archivee.id)).status).toBe('closed');
   });
 });
 

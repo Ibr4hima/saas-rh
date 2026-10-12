@@ -66,3 +66,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0058](0058-formations-encadrees.md)                  | Formations encadrées par l'agent ; la fenêtre de confirmation comme la fiche            | acceptée, en partie remplacée : 0059        |
 | [0059](0059-report-au-s1.md)                          | Le champ du report dit « au S1 de 2027 »                                                | acceptée                                    |
 | [0060](0060-files-de-la-dch.md)                       | Files de la DCH : sa demande sans geste, chacun ce qui lui est délégué                  | acceptée                                    |
+| [0061](0061-offre-ouverte-apres-la-date-limite.md)    | Une offre reste ouverte après sa date limite ; seule la RH la ferme                     | acceptée                                    |

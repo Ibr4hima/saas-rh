@@ -207,7 +207,7 @@ export interface ApplicationDocumentMeta {
 
 /** Ce que voit un candidat qui suit le lien : l'offre, rien d'autre. */
 export type PublicJobInfo =
-  | { valid: false; reason: 'not_found' | 'closed' }
+  | { valid: false; reason: 'not_found' }
   | {
       valid: true;
       organizationName: string;

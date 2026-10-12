@@ -18,7 +18,6 @@ import { EncryptionService } from '../../common/encryption.service';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
-import { parLeSysteme } from '../../db/systeme';
 import { ExpediteurCourriels } from '../courriels/expediteur';
 import { ENTETE } from '../documents/entete';
 import { contenuDeLaPiece, dechiffrerCandidature, nomDeLaPiece } from './chiffrement';
@@ -45,18 +44,10 @@ function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
 }
 
 /**
- * Une offre se ferme d'elle-même le lendemain de sa date limite : son statut
- * dit alors ce que lit le candidat. Relu à chaque lecture de la liste.
+ * Une date limite se fixe à venir : annoncer un jour déjà passé n'aurait pas
+ * de sens. Passée ensuite, elle ne ferme rien : l'offre reste ouverte, et
+ * seule la RH l'archive (ADR-0061).
  */
-async function cloreLesOffresEchues(tx: Tx): Promise<void> {
-  await parLeSysteme(tx, () =>
-    tx.execute(sql`
-      UPDATE job_postings SET status = 'closed', updated_at = now()
-       WHERE status = 'published' AND deadline < CURRENT_DATE`),
-  );
-}
-
-/** Une date limite déjà passée ne se publie pas : l'offre serait close à l'instant. */
 async function refuserUneDateLimitePassee(tx: Tx, limite: string | null): Promise<void> {
   if (!limite) return;
   const { rows } = await tx.execute<{ passee: boolean }>(
@@ -130,7 +121,6 @@ export class JobsService {
 
   async list(user: SessionUser): Promise<JobPostingView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      await cloreLesOffresEchues(tx);
       const rows = await tx
         .select({
           posting: t.jobPostings,
@@ -151,7 +141,6 @@ export class JobsService {
 
   async detail(user: SessionUser, id: string): Promise<JobPostingView> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
-      await cloreLesOffresEchues(tx);
       const row = await this.requirePosting(tx, id);
       const [unit] = row.orgUnitId
         ? await tx
@@ -175,15 +164,12 @@ export class JobsService {
 
   async update(user: SessionUser, id: string, input: UpdateJobPostingInput): Promise<void> {
     await this.db.withTenant(ctxOf(user), async (tx) => {
-      await cloreLesOffresEchues(tx);
       const actuelle = await this.requirePosting(tx, id);
       if (input.orgUnitId) await this.requireOrgUnit(tx, input.orgUnitId);
-      // Ce que l'offre sera une fois modifiée : publiée, sa date limite doit
-      // être à venir. Une date reportée ne la rouvre pas d'elle-même.
-      const statut = input.status ?? actuelle.status;
-      const limite = input.deadline !== undefined ? input.deadline : actuelle.deadline;
-      if (statut === 'published' || input.deadline !== undefined) {
-        await refuserUneDateLimitePassee(tx, limite);
+      // Seule une NOUVELLE date limite se vérifie : celle qui est déjà passée
+      // n'empêche ni de modifier l'offre, ni de la publier, ni de la rouvrir.
+      if (input.deadline !== undefined && input.deadline !== actuelle.deadline) {
+        await refuserUneDateLimitePassee(tx, input.deadline);
       }
 
       const changes: Partial<typeof t.jobPostings.$inferInsert> = {};

@@ -31,10 +31,6 @@ function nomSur(nom: string): string {
   return `${base}.pdf`;
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 @Injectable()
 export class ApplyService {
   constructor(
@@ -67,8 +63,9 @@ export class ApplyService {
         .from(t.jobPostings)
         .innerJoin(t.tenants, eq(t.tenants.id, t.jobPostings.tenantId))
         .limit(1);
+      // Sa date limite passée, l'offre publiée reçoit encore des dossiers : seule
+      // la RH la ferme, en l'archivant (ADR-0061).
       if (!row) return { valid: false, reason: 'not_found' };
-      if (row.deadline && row.deadline < todayIso()) return { valid: false, reason: 'closed' };
       return {
         valid: true,
         organizationName: row.organizationName,
@@ -123,12 +120,13 @@ export class ApplyService {
             tenantId: t.jobPostings.tenantId,
             title: t.jobPostings.title,
             reference: t.jobPostings.reference,
-            deadline: t.jobPostings.deadline,
             requiredDocuments: t.jobPostings.requiredDocuments,
           })
           .from(t.jobPostings)
           .limit(1);
-        if (!posting || (posting.deadline && posting.deadline < todayIso())) {
+        // Archivée, l'offre n'est plus lisible par son lien : seule la RH la
+        // ferme, à tout moment, date limite passée ou non (ADR-0061).
+        if (!posting) {
           problem(410, 'recruitment.job_unavailable', "Cette offre n'accepte plus de candidatures");
         }
 

@@ -30,7 +30,6 @@ import { useThemeClair } from '../../../components/preferences';
 import { anciennete, useHorlogeMinute } from '../../../lib/temps';
 
 const INVALID_MESSAGES: Record<string, string> = {
-  closed: "La date limite de candidature est passée : cette offre n'accepte plus de dossiers.",
   not_found: "Cette offre n'existe pas ou n'est plus publiée.",
 };
 
@@ -474,6 +473,9 @@ export default function ApplyPage() {
     givenName.trim() && familyName.trim() && emailValide && manquants.length === 0,
   );
   const restants = offre.deadline ? joursRestants(offre.deadline) : null;
+  // Sa date limite passée, l'offre reste ouverte (ADR-0061) : la date ne
+  // s'affiche plus, elle dirait au candidat qu'il arrive trop tard.
+  const datePassee = restants !== null && restants < 0;
   // Un décompte n'informe que s'il est court : « 50 jours » à côté d'une date
   // ne dit rien de plus que la date, et occupe la place où l'urgence se lira.
   const compteRebours = restants !== null && restants <= 14;
@@ -520,22 +522,24 @@ export default function ApplyPage() {
                 {libelleContrat(offre.contractType, offre.dureeMois)}
               </Etiquette>
               {offre.location ? <Etiquette icon="place">{offre.location}</Etiquette> : null}
-              <Etiquette icon="event">
-                {offre.deadline ? (
-                  <>
-                    Jusqu’au {jourFr(offre.deadline)}
-                    {compteRebours ? (
-                      <span className={urgence ? 'text-accent-text' : 'text-ink-muted'}>
-                        {restants === 0
-                          ? ' · dernier jour'
-                          : ` · plus que ${restants} jour${restants! > 1 ? 's' : ''}`}
-                      </span>
-                    ) : null}
-                  </>
-                ) : (
-                  'Sans date limite'
-                )}
-              </Etiquette>
+              {datePassee ? null : (
+                <Etiquette icon="event">
+                  {offre.deadline ? (
+                    <>
+                      Jusqu’au {jourFr(offre.deadline)}
+                      {compteRebours ? (
+                        <span className={urgence ? 'text-accent-text' : 'text-ink-muted'}>
+                          {restants === 0
+                            ? ' · dernier jour'
+                            : ` · plus que ${restants} jour${restants! > 1 ? 's' : ''}`}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    'Sans date limite'
+                  )}
+                </Etiquette>
+              )}
               <Etiquette icon="schedule">
                 {age === 'à l’instant' ? 'Publiée à l’instant' : `Publiée il y a ${age}`}
               </Etiquette>
