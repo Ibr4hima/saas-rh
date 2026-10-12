@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import {
   dateDEvaluation,
   dateEnLettres,
@@ -64,6 +64,42 @@ export function Echeance({
   );
 }
 
+/** La puce d'une échéance, comme dans une fiche ouverte : bordée, l'icône, la date. */
+const PUCE =
+  'inline-flex shrink-0 items-center gap-1 rounded-full border bg-surface py-[3px] pr-2.5 pl-2 text-[11.5px] font-semibold whitespace-nowrap';
+
+/** « S2 » : l'échéance compte pour un autre semestre que celui de sa fiche. */
+function Report({ semestre }: { semestre: string }) {
+  return (
+    <span className="ml-0.5 rounded-full bg-primary-soft px-1.5 text-[10px] leading-4 font-extrabold text-primary">
+      {semestre}
+    </span>
+  );
+}
+
+/** L'échéance dans sa puce, sans calendrier : telle que la fiche ouverte la montre. */
+export function PuceEcheance({
+  date,
+  annee,
+  reportee,
+  className,
+}: {
+  date: string;
+  annee: number;
+  /** L'échéance compte pour un autre semestre : « S2 ». */
+  reportee?: string;
+  className?: string;
+}) {
+  return (
+    <span className={cn(PUCE, 'border-line text-ink', className)}>
+      <Icon name="event" size={14} className="opacity-75" />
+      <span className="sr-only">Échéance :</span>
+      {enLettres(date, annee)}
+      {reportee ? <Report semestre={reportee} /> : null}
+    </span>
+  );
+}
+
 /**
  * L'échéance, à choisir : la même puce, et dessous le calendrier du
  * navigateur, qui s'ouvre d'un clic. Une date complète, dans ses bornes,
@@ -105,7 +141,8 @@ export function ChoixEcheance({
   return (
     <span
       className={cn(
-        'relative inline-flex shrink-0 items-center gap-1 rounded-full border bg-surface py-[3px] pr-2.5 pl-2 text-[11.5px] font-semibold whitespace-nowrap transition-colors duration-150 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 hover:border-primary/45 hover:text-primary',
+        PUCE,
+        'relative transition-colors duration-150 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 hover:border-primary/45 hover:text-primary',
         montree
           ? 'border-line text-ink'
           : manque
@@ -115,11 +152,7 @@ export function ChoixEcheance({
     >
       <Icon name="event" size={14} className="opacity-75" />
       {montree ? enLettres(montree, annee) : 'Échéance'}
-      {reportee && montree ? (
-        <span className="ml-0.5 rounded-full bg-primary-soft px-1.5 text-[10px] leading-4 font-extrabold text-primary">
-          {reportee}
-        </span>
-      ) : null}
+      {reportee && montree ? <Report semestre={reportee} /> : null}
       <input
         id={id}
         type="date"
@@ -174,8 +207,8 @@ export function ConfirmerEcheance({
   onReporter,
   onClose,
 }: {
-  /** Le texte de l'objectif. */
-  objectif: string;
+  /** L'objectif tel que la fiche le montre : sa case, son texte, sa puce d'échéance. */
+  objectif: ReactNode;
   echeance: string;
   jours: JoursEvaluation;
   onConfirmer: () => void;
@@ -207,7 +240,9 @@ export function ConfirmerEcheance({
       open
       onClose={onClose}
       title={report ? 'Reporter l’objectif' : 'Confirmer cette échéance ?'}
-      maxWidth="max-w-md"
+      // Large, comme les fenêtres de saisie : l'objectif tient sur sa ligne,
+      // comme dans la fiche.
+      maxWidth="max-w-3xl"
       footer={
         report ? (
           <>
@@ -237,11 +272,12 @@ export function ConfirmerEcheance({
         )
       }
     >
+      {/* L'objectif, comme dans la fiche, puis l'avertissement : deux cartes. */}
       <Card>
-        <CardContent className="flex flex-col gap-3 py-4 text-[13.5px] leading-relaxed text-ink">
-          {objectif ? (
-            <p className="font-semibold break-words text-ink-strong">{objectif}</p>
-          ) : null}
+        <CardContent className="py-4">{objectif}</CardContent>
+      </Card>
+      <Card>
+        <CardContent className="py-4 text-[13.5px] leading-relaxed text-ink">
           {report ? (
             <Field
               label={`Nouvelle échéance, au semestre ${suivante.semestre} de ${suivante.annee}`}
@@ -255,19 +291,16 @@ export function ConfirmerEcheance({
                 max={max}
                 value={nouvelle}
                 onChange={(e) => setNouvelle(e.target.value)}
-                className="tabular-nums"
+                className="tabular-nums sm:max-w-60"
               />
             </Field>
           ) : (
-            <>
-              <Echeance date={echeance} className="text-[12.5px]" />
-              <p>
-                L’évaluation du semestre {periode.semestre} de {periode.annee} se tiendra {quand}.{' '}
-                {reportable
-                  ? 'Voulez-vous confirmer cette échéance ou reporter l’objectif à la prochaine évaluation ?'
-                  : 'Voulez-vous confirmer cette échéance ?'}
-              </p>
-            </>
+            <p>
+              L’évaluation du S{periode.semestre} de {periode.annee} se tiendra {quand}.{' '}
+              {reportable
+                ? 'Voulez-vous confirmer cette échéance ou reporter l’objectif à la prochaine évaluation ?'
+                : 'Voulez-vous confirmer cette échéance ?'}
+            </p>
           )}
         </CardContent>
       </Card>

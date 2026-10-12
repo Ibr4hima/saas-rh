@@ -30,6 +30,7 @@ import {
   formationsDeLaFiche,
   objectifsDeLaFiche,
   periodeDeLEcheance,
+  peut,
   statutsDesFormations,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
@@ -46,6 +47,7 @@ import { AcademySuiviService } from '../academy/academy-suivi.service';
 import { employeActif } from '../academy/academy-evaluation.service';
 import { notifier } from '../notifications/notifier';
 import { retirerLesAppels } from '../acces/appels';
+import { capacitesDe } from '../acces/dch';
 import { prefixeEvaluation, reconcilierLesEvaluations } from './evaluation-attendue';
 import {
   DG,
@@ -142,6 +144,36 @@ function assainir(valeur: unknown): unknown {
 function ficheRemplie(contenu: unknown): boolean {
   const texte = JSON.stringify(contenu);
   return /"text":"\s*[^"\s]/.test(texte) || /"type":"(echeance|formation)"/.test(texte);
+}
+
+/**
+ * Les formations que l'agent encadre : celles que l'agent anime, et celles
+ * dont l'évaluation est fermée à l'agent, qui gère le catalogue de l'Academy
+ * ou en a vu les réponses (academy-evaluation.service.ts, `fermeture`). Elles
+ * ne se donnent pas à suivre (ADR-0057, ADR-0058).
+ */
+async function formationsEncadrees(tx: Tx, employeeId: string): Promise<string[]> {
+  const { rows: comptes } = await tx.execute<{ user_id: string; role: string | null }>(sql`
+    SELECT p.user_id, m.role
+      FROM employees e
+      JOIN persons p ON p.id = e.person_id AND p.user_id IS NOT NULL
+      LEFT JOIN user_tenant_memberships m ON m.user_id = p.user_id AND m.tenant_id = e.tenant_id
+     WHERE e.id = ${employeeId}
+     LIMIT 1`);
+  const compte = comptes[0];
+  const role = compte?.role ?? 'employee';
+  const gereLeCatalogue = compte
+    ? peut({ role, capacites: (await capacitesDe(tx, compte.user_id, role)).capacites }, 'academy')
+    : false;
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    SELECT c.id FROM academy_courses c
+     WHERE c.formateur_employee_id = ${employeeId}
+        OR (EXISTS (SELECT 1 FROM academy_questions q WHERE q.course_id = c.id)
+            AND (${gereLeCatalogue}::boolean
+                 OR EXISTS (SELECT 1 FROM academy_reponses_vues v
+                             WHERE v.course_id = c.id AND v.employee_id = ${employeeId})))
+     ORDER BY c.id`);
+  return rows.map((r) => r.id);
 }
 
 /** Où en est l'agent des formations commencées — ce que les blocs « Formation » affichent. */
@@ -559,16 +591,13 @@ export class ObjectifsService {
       const aEvaluer = fiches.filter(
         (f) => f.evaluation.envoyesLe && !f.evaluation.valideeLe,
       ).length;
-      // Ce que l'agent anime ne se donne pas à suivre (ADR-0057).
-      const { rows: animees } = await tx.execute<{ id: string }>(sql`
-        SELECT id FROM academy_courses WHERE formateur_employee_id = ${membre.id}`);
       return {
         annee: an,
         membre: this.membre(membre, objectifs, aEvaluer),
         objectifs,
         fiches,
         formations: formationsDe(progression.get(membre.id)),
-        formationsAnimees: animees.map((c) => c.id),
+        formationsEncadrees: await formationsEncadrees(tx, membre.id),
         joursEvaluation: jours,
       };
     });

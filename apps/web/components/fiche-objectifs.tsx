@@ -48,6 +48,7 @@ import {
   ConfirmerEcheance,
   Echeance,
   horizonDesEcheances,
+  PuceEcheance,
 } from './objectifs-echeances';
 import { usePreferences } from './preferences';
 
@@ -61,8 +62,9 @@ import { usePreferences } from './preferences';
       trop près de l'évaluation se confirme, ou l'objectif se reporte à
       l'évaluation suivante, où il part (ADR-0055 à ADR-0057).
    2. Les FORMATIONS À SUIVRE : le catalogue de l'APIX Academy, sans ce que
-      l'agent a obtenu ni ce que l'agent anime. Cocher une formation la
-      demande, sans échéance : elle s'évalue avec les objectifs du semestre.
+      l'agent a obtenu ni ce que l'agent encadre (anime, ou gère sans pouvoir
+      en passer l'évaluation). Cocher une formation la demande, sans
+      échéance : elle s'évalue avec les objectifs du semestre.
    3. Les COMMENTAIRES : un texte libre sur les objectifs fixés (gras,
       italique, souligné, listes, citations), sans case à cocher.
 
@@ -754,7 +756,16 @@ function EditeurObjectifs({
       {aConfirmer ? (
         <ConfirmerEcheance
           key={`${aConfirmer.id}:${aConfirmer.echeance}`}
-          objectif={lignes.find((l) => l.id === aConfirmer.id)?.texte ?? ''}
+          objectif={
+            <ObjectifAConfirmer
+              texte={lignes.find((l) => l.id === aConfirmer.id)?.texte ?? ''}
+              statut={statuts?.[aConfirmer.id]}
+              echeance={aConfirmer.echeance}
+              annee={annee}
+              semestre={semestre}
+              jours={jours}
+            />
+          }
           echeance={aConfirmer.echeance}
           jours={jours}
           onConfirmer={() => {
@@ -773,6 +784,45 @@ function EditeurObjectifs({
           onClose={() => setAConfirmer(null)}
         />
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * L'objectif dans la fenêtre qui en confirme l'échéance, comme dans la
+ * fiche : sa case, son texte, sa puce d'échéance (« S1 » quand elle compte
+ * pour une autre évaluation).
+ */
+function ObjectifAConfirmer({
+  texte,
+  statut,
+  echeance,
+  annee,
+  semestre,
+  jours,
+}: {
+  texte: string;
+  statut?: StatutObjectif;
+  echeance: string;
+  annee: number;
+  semestre: Semestre;
+  jours: JoursEvaluation;
+}) {
+  const p = periodeDeLEcheance(echeance, jours);
+  const ailleurs = p.annee !== annee || p.semestre !== semestre;
+  return (
+    <div className="flex items-start gap-[11px]">
+      <span className="pt-[2px]">
+        <Case statut={statut} />
+      </span>
+      <p className="min-w-0 flex-1 py-[3px] text-[12.5px] leading-[1.5] break-words text-ink">
+        {texte}
+      </p>
+      <PuceEcheance
+        date={echeance}
+        annee={annee}
+        reportee={ailleurs ? `S${p.semestre}` : undefined}
+      />
     </div>
   );
 }
@@ -902,7 +952,7 @@ function FormationsASuivre({
     );
   }
 
-  // Le catalogue (la page en ôte ce que l'agent anime), et ce qui en est
+  // Le catalogue (la page en ôte ce que l'agent encadre), et ce qui en est
   // sorti depuis qu'on l'a demandé, pour pouvoir le retirer ; sans ce que
   // l'agent a déjà obtenu.
   const lignes = [

@@ -251,9 +251,9 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
         onAnnee={choisirAnnee}
         fiches={fiche.data.fiches}
         formations={fiche.data.formations}
-        // Ce que l'agent anime ne se donne pas à suivre (ADR-0057).
+        // Ce que l'agent encadre ne se donne pas à suivre (ADR-0057, ADR-0058).
         catalogue={(catalogue.data ?? []).filter(
-          (c) => !fiche.data.formationsAnimees.includes(c.id),
+          (c) => !fiche.data.formationsEncadrees.includes(c.id),
         )}
         jours={fiche.data.joursEvaluation}
       />

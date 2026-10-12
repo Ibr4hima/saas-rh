@@ -392,23 +392,53 @@ describe('une formation à suivre', () => {
     expect(apres.atteint).toBe(true);
   });
 
-  it('ne se donne pas à suivre à l’agent qui l’anime', async () => {
-    const courseId = randomUUID();
-    await raw(
-      `INSERT INTO academy_courses (id, tenant_id, title, category, published_at, created_by_user_id,
-         formateur_employee_id, formateur_nom)
-       VALUES ($1,$2,'Conduire une réunion','bureautique', now(), $3, $4, 'Moussa Ndiaye')`,
-      [courseId, tenantId, comptes.dg, agents.moussa],
-    );
-    try {
-      expect((await objectifs.fiche(session('awa'), agents.moussa)).formationsAnimees).toEqual([
-        courseId,
-      ]);
-      expect((await objectifs.fiche(session('ousmane'), agents.fatou)).formationsAnimees).toEqual(
-        [],
+  it('ne se donne pas à suivre à l’agent qui l’encadre : l’anime, gère le catalogue, en a vu les réponses', async () => {
+    const [animee, evaluee, libre] = [randomUUID(), randomUUID(), randomUUID()];
+    const formation = (id: string, titre: string, formateur: Nom | null) =>
+      raw(
+        `INSERT INTO academy_courses (id, tenant_id, title, category, published_at, created_by_user_id,
+           formateur_employee_id, formateur_nom)
+         VALUES ($1,$2,$3,'bureautique', now(), $4, $5, $6)`,
+        [
+          id,
+          tenantId,
+          titre,
+          comptes.dg,
+          formateur ? agents[formateur] : null,
+          formateur ? 'Moussa Ndiaye' : null,
+        ],
       );
+    await formation(animee, 'Conduire une réunion', 'moussa');
+    await formation(evaluee, 'Excel expert', null);
+    await formation(libre, 'Word pour tous', null);
+    // Seule « Excel expert » s'évalue.
+    await raw(
+      `INSERT INTO academy_questions (id, tenant_id, course_id, position, prompt, kind, options)
+       VALUES ($1,$2,$3,0,'Vrai ou faux ?','unique',
+         '[{"id":"a","text":"Vrai","correct":true},{"id":"b","text":"Faux","correct":false}]')`,
+      [randomUUID(), tenantId, evaluee],
+    );
+    const encadrees = async (n1: Nom, qui: Nom) =>
+      (await objectifs.fiche(session(n1), agents[qui])).formationsEncadrees.sort();
+    try {
+      // Moussa anime « Conduire une réunion ».
+      expect(await encadrees('awa', 'moussa')).toEqual([animee]);
+      // Moussa a vu les réponses d'« Excel expert » : l'évaluation est fermée à Moussa.
+      await raw(
+        `INSERT INTO academy_reponses_vues (tenant_id, employee_id, course_id) VALUES ($1,$2,$3)`,
+        [tenantId, agents.moussa, evaluee],
+      );
+      expect(await encadrees('awa', 'moussa')).toEqual([animee, evaluee].sort());
+      // Qui dirige la DCH gère le catalogue : les évaluations sont fermées à
+      // Mariama ; une formation sans évaluation se suit jusqu'au bout.
+      expect(await encadrees('dg', 'mariama')).toEqual([]);
+      await raw(`UPDATE org_units SET direction_du_personnel = true WHERE id = $1`, [unites.dch]);
+      expect(await encadrees('dg', 'mariama')).toEqual([evaluee]);
+      // Fatou n'encadre rien.
+      expect(await encadrees('ousmane', 'fatou')).toEqual([]);
     } finally {
-      await raw(`DELETE FROM academy_courses WHERE id = $1`, [courseId]);
+      await raw(`UPDATE org_units SET direction_du_personnel = false WHERE id = $1`, [unites.dch]);
+      await raw(`DELETE FROM academy_courses WHERE id = ANY($1)`, [[animee, evaluee, libre]]);
     }
   });
 });
