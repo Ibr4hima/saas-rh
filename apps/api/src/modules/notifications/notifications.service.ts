@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, isNull, like, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
   ContractType,
@@ -9,16 +9,14 @@ import type {
   NotificationsPage,
   SessionUser,
 } from '@teranga/contracts';
-import { NOTIFICATIONS_DE_GESTION, NOTIFICATIONS_PERSONNELLES, peut } from '@teranga/contracts';
+import { NOTIFICATIONS_DE_GESTION, NOTIFICATIONS_PERSONNELLES } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayReminderDate } from '../time/workdays';
-import { reconcilierSiLeTempsEstVenu } from '../time/visas';
 import { notifier, notifierChacun, type NotificationDraft } from './notifier';
 import { CONTRAT, frDate, PIECE, rappel } from './phrases';
 import { alerterLaDCH } from '../acces/dch';
-import { inactiverSiLeTempsEstVenu } from '../people/activite';
 import { dernierContrat } from '../people/en-activite';
 import { parLeSysteme } from '../../db/systeme';
 
@@ -132,7 +130,12 @@ export class NotificationsService {
     await notifier(tx, tenantId, userId, draft);
   }
 
-  /** Boîte de réception : génère d'abord les échéances (idempotent). */
+  /**
+   * Boîte de réception : les rappels de la personne qui relève d'abord
+   * (fériés, titres qui expirent ; idempotents). Ce qui vaut pour toute
+   * l'organisation (échéances de contrat, fins de contrat, circuit des
+   * congés) passe par la veille, en tâche de fond (ADR-0067).
+   */
   async list(
     user: SessionUser,
     scope: NotificationScope = 'inbox',
@@ -144,27 +147,16 @@ export class NotificationsService {
     // Génération dans sa PROPRE transaction, et jamais bloquante : une écriture
     // qui échoue (contrainte, verrou) ne doit pas priver l'utilisateur de sa
     // boîte de réception. Dans une transaction commune, l'échec d'un INSERT
-    // avorte tout le reste — la lecture comprise.
+    // avorte tout le reste, la lecture comprise.
     try {
       // Au nom du système : rien de tout cela n'est le geste de qui relève.
       await this.db.withTenant(ctx, (tx) =>
         parLeSysteme(tx, async () => {
-          // Les échéances de contrat ne concernent que qui gère les dossiers.
-          if (peut(user, 'personnel.gerer') || peut(user, 'pilotage')) {
-            await this.generateContractDeadlines(tx, user.tenantId);
-          }
-          // Les contrats arrivés à terme passent dans les inactifs, au plus une
-          // fois par minute, quelle que soit la session qui relève.
-          await inactiverSiLeTempsEstVenu(tx, user.tenantId);
           // Les fériés concernent tout le monde : le rappel est créé pour
           // l'utilisateur qui consulte (une ligne, idempotente par férié).
           await this.generateHolidayReminders(tx, user.tenantId, user.userId);
           // L'expiration de ses titres d'identité : à leur titulaire seul.
           await this.generateExpiryReminders(tx, user.tenantId, user.userId);
-          // Le circuit des congés se relit (au plus une fois par minute) : un
-          // congé qui commence, un accès fermé ne déclenchent aucune écriture,
-          // et c'est ici qu'on les voit passer.
-          await reconcilierSiLeTempsEstVenu(tx, user.tenantId);
         }),
       );
     } catch (err) {
@@ -351,8 +343,8 @@ export class NotificationsService {
    */
   async marquerLusParCle(user: SessionUser, prefixes: string[]): Promise<void> {
     if (prefixes.length === 0) return;
-    // Le préfixe est pris à la lettre : ni « % » ni « _ » n'y sont des jokers.
-    const aLaLettre = (p: string) => p.replace(/[\\%_]/g, (c) => `\\${c}`);
+    // Le préfixe est pris à la lettre : `^@` (commence par) n'a pas de joker,
+    // et sous la RLS il descend dans l'index des clés (cf. migration 0107).
     await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
       tx
         .update(t.notifications)
@@ -361,7 +353,7 @@ export class NotificationsService {
           and(
             eq(t.notifications.recipientUserId, user.userId),
             isNull(t.notifications.readAt),
-            or(...prefixes.map((p) => like(t.notifications.dedupeKey, `${aLaLettre(p)}%`))),
+            or(...prefixes.map((p) => sql`${t.notifications.dedupeKey} ^@ ${p}`)),
           ),
         ),
     );
@@ -522,7 +514,11 @@ export class NotificationsService {
    * rappel prend la place du précédent. Elle mène à son dossier, où l'on
    * renouvelle ou l'on clôt.
    */
-  private async generateContractDeadlines(tx: Tx, tenantId: string): Promise<void> {
+  /**
+   * Les alertes d'échéance de contrat, pour toute l'organisation : à qui gère
+   * le personnel. Idempotentes ; la veille les tient à jour (ADR-0067).
+   */
+  async genererLesEcheances(tx: Tx, tenantId: string): Promise<void> {
     const rows = await this.selectExpiring(tx);
     for (const { daysLeft, ...r } of rows) {
       const etape = daysLeft <= 7 ? ':j7' : daysLeft <= 15 ? ':j15' : '';

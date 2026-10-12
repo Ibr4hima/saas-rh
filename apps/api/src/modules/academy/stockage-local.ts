@@ -4,7 +4,7 @@ import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { VideoUploadTarget } from '@teranga/contracts';
 import { MAX_VIDEO_LOCALE_BYTES } from '@teranga/contracts';
 import { loadEnv } from '../../config/env';
@@ -42,7 +42,10 @@ export class StockageVideoLocal {
   readonly racine: string;
   private readonly cle: Buffer;
 
-  constructor(racine?: string) {
+  // `@Optional()` : compilé par tsc, le paramètre porte son type (String)
+  // dans les métadonnées, et Nest chercherait à l'injecter. Seuls les tests
+  // le donnent ; l'application lit le répertoire dans l'environnement.
+  constructor(@Optional() racine?: string) {
     const env = loadEnv();
     this.racine =
       racine ?? env.ACADEMY_MEDIA_DIR ?? resolve(__dirname, '../../../var/academy-media');

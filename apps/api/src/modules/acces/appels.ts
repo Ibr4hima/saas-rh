@@ -38,9 +38,11 @@ export async function tenirLesAppels(
   const cle = etape ? `${prefixe}:appel:${etape}` : null;
   const cleRappel = cle ? cle.replace(':appel:', ':rappel:') : null;
   const qui = `{${destinataires.join(',')}}`;
+  // `^@` (commence par) plutôt que LIKE : sous la RLS, seul un opérateur
+  // « leakproof » descend dans l'index des clés (cf. migration 0107).
   await tx.execute(sql`
     DELETE FROM notifications
-     WHERE (dedupe_key LIKE ${`${prefixe}:appel:%`} OR dedupe_key LIKE ${`${prefixe}:rappel:%`})
+     WHERE (dedupe_key ^@ ${`${prefixe}:appel:`} OR dedupe_key ^@ ${`${prefixe}:rappel:`})
        AND (${cle}::text IS NULL
             OR dedupe_key NOT IN (${cle}, ${cleRappel})
             OR NOT (recipient_user_id = ANY (${qui}::uuid[])))`);
@@ -54,7 +56,7 @@ export async function tenirLesAppels(
 export async function retirerLesAppels(tx: Tx, prefixe: string): Promise<void> {
   await tx.execute(sql`
     DELETE FROM notifications
-     WHERE dedupe_key LIKE ${`${prefixe}:appel:%`} OR dedupe_key LIKE ${`${prefixe}:rappel:%`}`);
+     WHERE dedupe_key ^@ ${`${prefixe}:appel:`} OR dedupe_key ^@ ${`${prefixe}:rappel:`}`);
 }
 
 /**

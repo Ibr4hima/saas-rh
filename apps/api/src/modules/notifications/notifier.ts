@@ -1,4 +1,4 @@
-import { and, eq, isNull, like, ne, sql } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { SujetNotification } from '@teranga/contracts';
 import * as t from '../../db/schema';
@@ -80,7 +80,7 @@ export async function notifier(
       and(
         eq(t.notifications.tenantId, tenantId),
         eq(t.notifications.recipientUserId, userId),
-        like(t.notifications.dedupeKey, `${draft.remplace.replace(/[\\%_]/g, '\\$&')}%`),
+        sql`${t.notifications.dedupeKey} ^@ ${draft.remplace}`,
         ne(t.notifications.id, id),
         isNull(t.notifications.remplaceeLe),
       ),

@@ -7,6 +7,7 @@ import { ABSENCE, absence, accord, de, duAu, frDate, leLa, sonSa } from '../noti
 import type { Heures, Nom } from '../notifications/phrases';
 import {
   administrateursEnFonction,
+  detenteursDe,
   directionDuPersonnel,
   nomsDe,
   traitementDe,
@@ -20,6 +21,7 @@ import { DG } from '../people/chaine';
 import { DELAI_N1_JOURS_OUVRES } from './workdays';
 import { reconcilierLesEvaluations } from '../objectifs/evaluation-attendue';
 import { parLeSysteme } from '../../db/systeme';
+import { avecMemoire } from '../../common/memoire';
 
 /* ————————————————————————————————————————————————————————————————
    Le circuit d'une demande d'absence : le N+1, puis la DCH.
@@ -654,13 +656,18 @@ export async function reconcilierLeCircuit(tx: Tx, tenantId: string): Promise<vo
   await expirerLesDemandes(tx);
   await verifierLesHabilitations(tx, tenantId);
   await libererLesConfiees(tx);
-  const enAttente = await demandesEnAttente(tx);
-  for (const id of enAttente) await reconcilierDemande(tx, id);
-  for (const id of await reprisesEnAttente(tx)) await reconcilierReprise(tx, id);
-  await reconcilierLesEvaluations(tx);
-  await reconcilierLesDemandes(tx, tenantId);
-  await verifierLaVacance(tx, tenantId, enAttente);
-  await relancer(tx, tenantId);
+  // Habilitations et demandes confiées tenues, plus rien de ce que le circuit
+  // relit ne change jusqu'à la fin : la DCH, les détenteurs, chaque N+1 et
+  // ses absences se lisent une fois pour toutes les demandes (ADR-0067).
+  await avecMemoire(async () => {
+    const enAttente = await demandesEnAttente(tx);
+    for (const id of enAttente) await reconcilierDemande(tx, id);
+    for (const id of await reprisesEnAttente(tx)) await reconcilierReprise(tx, id);
+    await reconcilierLesEvaluations(tx);
+    await reconcilierLesDemandes(tx, tenantId);
+    await verifierLaVacance(tx, tenantId, enAttente);
+    await relancer(tx, tenantId);
+  });
 }
 
 /**
@@ -695,30 +702,17 @@ async function verifierLaVacance(tx: Tx, tenantId: string, enAttente: string[]):
 }
 
 /**
- * Le circuit se relit au plus une fois par minute et par organisation, à la
- * lecture des notifications : un congé qui commence à minuit, un délégué
- * dont l'accès est fermé ne déclenchent aucune écriture — c'est ici qu'on
- * les voit passer.
- */
-const derniereReconciliation = new Map<string, number>();
-export async function reconcilierSiLeTempsEstVenu(tx: Tx, tenantId: string): Promise<void> {
-  const maintenant = Date.now();
-  if (maintenant - (derniereReconciliation.get(tenantId) ?? 0) < 60_000) return;
-  derniereReconciliation.set(tenantId, maintenant);
-  await reconcilierLeCircuit(tx, tenantId);
-}
-
-/**
  * Ce qui attend un agent, demande par demande, comme le circuit le dit : à
  * viser comme N+1, à traiter pour la DCH (retours anticipés compris). Un N+1
  * en congé, un membre parti ne comptent pas ; le directeur du Capital Humain
  * compte aussi ce qu'il a délégué, il peut le traiter. Le menu et le tableau
  * de bord comptent ainsi la file que l'écran « Congés à traiter » montre.
  */
-export async function compterLesVisas(
-  tx: Tx,
-  moi: string,
-): Promise<{ aViser: number; conges: number }> {
+export function compterLesVisas(tx: Tx, moi: string): Promise<{ aViser: number; conges: number }> {
+  return avecMemoire(() => compterLesVisasDe(tx, moi));
+}
+
+async function compterLesVisasDe(tx: Tx, moi: string): Promise<{ aViser: number; conges: number }> {
   let aViser = 0;
   let conges = 0;
   const compter = (att: Attendu | null) => {
@@ -734,25 +728,66 @@ export async function compterLesVisas(
       conges += 1;
     }
   };
-  for (const id of await demandesEnAttente(tx)) {
+  // Qui ne traite pas les congés pour la DCH n'est attendu que comme N+1 :
+  // seules les demandes de ses agents directs peuvent l'attendre, les autres
+  // ne sont pas relues (ADR-0067).
+  const pourLaDCH = await traiteLesCongesPourLaDCH(tx, moi);
+  for (const id of pourLaDCH ? await demandesEnAttente(tx) : await demandesDesDirects(tx, moi)) {
     const demande = await lireCircuit(tx, id);
     compter(demande ? await attendu(tx, demande) : null);
   }
-  for (const id of await reprisesEnAttente(tx)) {
+  for (const id of pourLaDCH
+    ? await reprisesEnAttente(tx)
+    : await demandesDesDirects(tx, moi, 'reprises')) {
     const demande = await lireCircuit(tx, id);
     if (demande) compter(await attenduPourLaReprise(tx, demande));
   }
   return { aViser, conges };
 }
 
+/**
+ * La personne peut-elle être attendue au titre de la DCH ? Oui si elle la
+ * dirige, détient l'habilitation des congés ou s'est vu confier une demande :
+ * les seuls traitants possibles d'une demande arrivée à la DCH (cf.
+ * `traitementDe`).
+ */
+async function traiteLesCongesPourLaDCH(tx: Tx, moi: string): Promise<boolean> {
+  if ((await directionDuPersonnel(tx))?.directeurEmployeeId === moi) return true;
+  if ((await detenteursDe(tx, 'demandes.conges')).includes(moi)) return true;
+  const { rows } = await tx.execute<{ oui: boolean }>(sql`
+    SELECT EXISTS (SELECT 1 FROM absence_requests
+                    WHERE confiee_a_employee_id = ${moi} AND status = 'pending') AS oui`);
+  return Boolean(rows[0]?.oui);
+}
+
+/** Les demandes en attente (ou les retours à confirmer) des agents directs d'un N+1. */
+async function demandesDesDirects(
+  tx: Tx,
+  n1: string,
+  quoi: 'demandes' | 'reprises' = 'demandes',
+): Promise<string[]> {
+  const { rows } = await tx.execute<{ id: string }>(sql`
+    SELECT r.id FROM absence_requests r JOIN employees e ON e.id = r.employee_id
+     WHERE e.manager_employee_id = ${n1}
+       AND ${
+         quoi === 'reprises'
+           ? sql`r.status = 'approved' AND r.reprise_demandee IS NOT NULL`
+           : sql`r.status = 'pending'`
+       }
+     ORDER BY r.created_at`);
+  return rows.map((r) => r.id);
+}
+
 /** Les demandes qui attendent la DCH, pour toute l'agence. */
-export async function compterEnAttenteDCH(tx: Tx): Promise<number> {
-  let n = 0;
-  for (const id of await demandesEnAttente(tx)) {
-    const demande = await lireCircuit(tx, id);
-    if (demande && (await attendu(tx, demande))?.etape === 'dch') n += 1;
-  }
-  return n;
+export function compterEnAttenteDCH(tx: Tx): Promise<number> {
+  return avecMemoire(async () => {
+    let n = 0;
+    for (const id of await demandesEnAttente(tx)) {
+      const demande = await lireCircuit(tx, id);
+      if (demande && (await attendu(tx, demande))?.etape === 'dch') n += 1;
+    }
+    return n;
+  });
 }
 
 /**

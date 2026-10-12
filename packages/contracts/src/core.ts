@@ -188,7 +188,8 @@ export interface CursorPage<T> {
 // ---------- Santé ----------
 
 export const healthSchema = z.object({
-  status: z.literal('ok'),
+  /** `degraded` : l'API tourne, la base ne répond pas (réponse 503). */
+  status: z.enum(['ok', 'degraded']),
   db: z.enum(['ok', 'down']),
   version: z.string(),
 });

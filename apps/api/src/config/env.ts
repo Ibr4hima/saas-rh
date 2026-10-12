@@ -22,6 +22,11 @@ export const envSchema = z
     DATABASE_URL: z.string().min(1),
     /** Rôle applicatif non-owner : tout le runtime (soumis à la RLS, ADR-0002). */
     APP_DATABASE_URL: z.string().min(1),
+    /**
+     * Connexions ouvertes par instance de l'API (ADR-0067). Le total de
+     * toutes les instances reste sous le plafond de la base.
+     */
+    DB_POOL_MAX: z.coerce.number().int().min(2).max(100).default(10),
     /** Sans activité pendant ce délai, la session se ferme : trois jours. */
     SESSION_INACTIVITE_HEURES: z.coerce.number().int().min(1).default(72),
     /** Même active, une session ne dure pas plus : trente jours, puis on se reconnecte. */

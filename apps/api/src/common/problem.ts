@@ -42,6 +42,41 @@ function bodyParserStatus(err: unknown): number | null {
 }
 
 /**
+ * La base est momentanément indisponible ou saturée (ADR-0067) : requête
+ * arrêtée par son délai, verrou attendu trop longtemps, base qui redémarre,
+ * connexion perdue, aucune connexion libre dans le pool. Ce n'est pas une
+ * faute du code : on répond 503, réessayable, plutôt que 500.
+ */
+const CODES_PASSAGERS = new Set([
+  '57014', // requête annulée (délai dépassé)
+  '55P03', // verrou non obtenu à temps
+  '57P01', // base arrêtée par l'administrateur
+  '57P02', // base en arrêt d'urgence
+  '57P03', // base pas encore prête
+  '53300', // trop de connexions
+  '08000', // connexion
+  '08003', // connexion inexistante
+  '08006', // connexion perdue
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+]);
+
+export function indisponibilitePassagere(exception: unknown): boolean {
+  const e = exception as { code?: unknown; message?: unknown; cause?: unknown } | null;
+  if (!e || typeof e !== 'object') return false;
+  if (typeof e.code === 'string' && CODES_PASSAGERS.has(e.code)) return true;
+  if (
+    typeof e.message === 'string' &&
+    /timeout exceeded when trying to connect|Connection terminated/.test(e.message)
+  ) {
+    return true;
+  }
+  // Drizzle enveloppe l'erreur du pilote : la cause dit ce qui s'est passé.
+  return e.cause !== undefined && e.cause !== exception && indisponibilitePassagere(e.cause);
+}
+
+/**
  * Une erreur de base de données porte la requête ET ses valeurs : Drizzle
  * les écrit dans son message (« params: … »), soit, sur un dépôt de
  * candidature, le nom, l'adresse et le CV entier. Le journal n'en garde que
@@ -92,6 +127,12 @@ export class ProblemFilter implements ExceptionFilter {
       status = exception.getStatus();
       title = TITRES_HTTP[status] ?? 'Requête impossible';
       code = `http_${status}`;
+    } else if (indisponibilitePassagere(exception)) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      title = 'Service momentanément indisponible';
+      code = 'service.indisponible';
+      detail = 'Réessayez dans un instant.';
+      res.setHeader('Retry-After', '5');
     } else if (bodyParserStatus(exception) !== null) {
       // Erreurs du body-parser express (corps trop gros, JSON malformé…) :
       // elles portent un statusCode 4xx et ne sont pas des erreurs internes.

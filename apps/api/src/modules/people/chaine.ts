@@ -87,6 +87,28 @@ export const directionDeLUnite = (uniteId: SQL, colonne: 'id' | 'name' | 'short_
   )
   SELECT ${sql.raw(colonne)} FROM remontee WHERE unit_type = 'direction' ORDER BY prof LIMIT 1)`;
 
+/**
+ * La direction de CHAQUE unité, en une passe : les CTE `remontee_des_unites`
+ * et `direction_des_unites(unite_id, id, name, short_name)`, à placer dans un
+ * `WITH RECURSIVE`. La règle de `directionDeLUnite` (la plus proche direction
+ * en remontant, l'unité comprise), calculée une fois pour toutes les unités
+ * au lieu d'une fois par ligne lue : la liste du personnel la demandait 9 000
+ * fois à 3 000 agents (ADR-0067).
+ */
+export const directionsDesUnites = sql`remontee_des_unites AS (
+    SELECT id AS depart, id, parent_id, unit_type, name, short_name, 0 AS prof
+      FROM org_units
+    UNION ALL
+    SELECT r.depart, u.id, u.parent_id, u.unit_type, u.name, u.short_name, r.prof + 1
+      FROM org_units u JOIN remontee_des_unites r ON u.id = r.parent_id
+     WHERE r.prof < 64
+  ),
+  direction_des_unites AS (
+    SELECT DISTINCT ON (depart) depart AS unite_id, id, name, short_name
+      FROM remontee_des_unites WHERE unit_type = 'direction'
+     ORDER BY depart, prof
+  )`;
+
 /** Le périmètre d'une unité, en CTE `perimetre(id)` — sans ses sous-directions. */
 export const perimetre = (uniteId: string | SQL) => sql`WITH RECURSIVE perimetre AS (
     SELECT id FROM org_units WHERE id = ${uniteId} AND deleted_at IS NULL

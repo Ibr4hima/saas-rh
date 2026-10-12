@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Logger, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Req, UseGuards } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { peut, type DashboardView } from '@teranga/contracts';
 import * as t from '../../db/schema';
@@ -6,7 +6,6 @@ import { TenantDb } from '../../db/tenant-db';
 import { AccesGuard, OuvertAuDG, Peut } from '../auth/acces.guard';
 import { AbsencesService } from '../time/absences.service';
 import { expirerLesDemandes } from '../time/visas';
-import { inactiverLesContratsEchus } from '../people/activite';
 import { suiviDesContrats } from '../people/suivi-contrats';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 
@@ -15,8 +14,6 @@ import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 @Peut('pilotage')
 @OuvertAuDG()
 export class DashboardController {
-  private readonly logger = new Logger(DashboardController.name);
-
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(AbsencesService) private readonly absences: AbsencesService,
@@ -34,18 +31,8 @@ export class DashboardController {
     const ctx = { tenantId: user.tenantId, userId: user.userId };
 
     // Chaque chiffre compte ce que montre l'écran qu'il ouvre. Les contrats
-    // échus passent d'abord dans les inactifs, comme avant la liste du
-    // personnel ; dans leur transaction, et sans priver l'accueil s'ils
-    // échouent.
-    try {
-      await this.db.withTenant(ctx, (tx) => inactiverLesContratsEchus(tx, user.tenantId));
-    } catch (err) {
-      this.logger.error(
-        `Fin des contrats échus impossible (tenant ${user.tenantId}) : l'accueil est servi sans elle.`,
-        err instanceof Error ? err.stack : String(err),
-      );
-    }
-
+    // échus sont déjà rangés dans les inactifs, à minuit puis par la veille
+    // (ADR-0067), comme pour la liste du personnel.
     return this.db.withTenant(ctx, async (tx) => {
       const count = async (query: Promise<Array<{ n: number }>>) => (await query)[0]?.n ?? 0;
       const n = sql<number>`count(*)::int`;

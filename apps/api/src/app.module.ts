@@ -19,6 +19,7 @@ import { TenantDb } from './db/tenant-db';
 import { loadEnv } from './config/env';
 import { ExpediteurCourriels } from './modules/courriels/expediteur';
 import { PassageDeMinuit } from './modules/people/passage-de-minuit';
+import { Veille } from './modules/veille/veille';
 import { transportDepuisEnv } from './modules/courriels/transports';
 import { ExpediteurWhatsApp } from './modules/whatsapp/expediteur';
 import { transportWhatsAppDepuisEnv } from './modules/whatsapp/transports';
@@ -127,6 +128,7 @@ import { AbsencesService } from './modules/time/absences.service';
     AcademySuiviService,
     ObjectifsService,
     PassageDeMinuit,
+    Veille,
   ],
 })
 export class AppModule {}

@@ -1,10 +1,12 @@
 import 'reflect-metadata';
+import type { Server } from 'node:http';
+import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { porteDesCorps } from './common/corps';
 import { Limiteur } from './common/limiteur';
-import { ProblemFilter } from './common/problem';
+import { pourLeJournal, ProblemFilter } from './common/problem';
 import { controleDOrigine, entetesDeSecurite, originesAutorisees } from './common/securite';
 import { loadEnv } from './config/env';
 import { SESSION_COOKIE } from './modules/auth/auth.constants';
@@ -48,10 +50,45 @@ async function bootstrap(): Promise<void> {
     }),
   );
   app.useGlobalFilters(new ProblemFilter());
-  app.enableShutdownHooks();
 
   await app.listen(env.PORT);
   console.log(`API Teranga RH démarrée sur http://localhost:${env.PORT}/v1/health`);
+  arreterProprement(app);
 }
+
+/** Le temps laissé aux requêtes en cours quand l'arrêt est demandé. */
+const GRACE_MS = 25_000;
+
+/**
+ * L'arrêt (déploiement, redémarrage) sans couper personne (ADR-0067) : le
+ * serveur ne prend plus de nouvelle requête, celles en cours finissent
+ * (vingt-cinq secondes au plus), puis les tâches de fond s'arrêtent et les
+ * connexions à la base se ferment. Avant, la base se fermait d'abord et les
+ * requêtes encore en vol échouaient.
+ */
+function arreterProprement(app: INestApplication): void {
+  const serveur = app.getHttpServer() as Server;
+  let enCours = false;
+  const arreter = async (signal: string): Promise<void> => {
+    if (enCours) return;
+    enCours = true;
+    console.log(`Arrêt demandé (${signal}) : les requêtes en cours finissent.`);
+    await new Promise<void>((fin) => {
+      serveur.close(() => fin());
+      setTimeout(fin, GRACE_MS).unref();
+    });
+    await app.close();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => void arreter('SIGTERM'));
+  process.on('SIGINT', () => void arreter('SIGINT'));
+}
+
+// Une promesse rejetée que personne n'attend (une tâche de fond, un minuteur)
+// est consignée : elle n'arrête pas le processus, et avec lui toutes les
+// requêtes en cours.
+process.on('unhandledRejection', (raison) => {
+  console.error('Promesse rejetée sans gestionnaire :', pourLeJournal(raison));
+});
 
 void bootstrap();

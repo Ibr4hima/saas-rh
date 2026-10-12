@@ -5,6 +5,7 @@ import {
   type Capacite,
   type CapaciteDemande,
 } from '@teranga/contracts';
+import { memoriser } from '../../common/memoire';
 import { problem } from '../../common/problem';
 import { contratEchu } from '../people/en-activite';
 import type { Tx } from '../../db/tenant-db';
@@ -59,9 +60,13 @@ const finDAbsence = (employeeId: SQL) => sql`(
      AND CURRENT_DATE BETWEEN ab.start_date AND ab.end_date)`;
 const estAbsent = (employeeId: SQL) => sql`(${finDAbsence(employeeId)} IS NOT NULL)`;
 
-/** Un agent, s'il peut viser — sinon null. */
-export async function viseur(tx: Tx, employeeId: string | null): Promise<Viseur | null> {
-  if (!employeeId) return null;
+/** Un agent qui peut viser, ou null. Mémorisé dans une portée (cf. `memoriser`). */
+export function viseur(tx: Tx, employeeId: string | null): Promise<Viseur | null> {
+  if (!employeeId) return Promise.resolve(null);
+  return memoriser(`viseur:${employeeId}`, () => lireViseur(tx, employeeId));
+}
+
+async function lireViseur(tx: Tx, employeeId: string): Promise<Viseur | null> {
   const { rows } = await tx.execute<{
     employee_id: string;
     user_id: string;
@@ -101,7 +106,11 @@ export interface DirectionDuPersonnel {
 }
 
 /** La direction du personnel (la DCH), ou null si aucune n'est désignée. */
-export async function directionDuPersonnel(tx: Tx): Promise<DirectionDuPersonnel | null> {
+export function directionDuPersonnel(tx: Tx): Promise<DirectionDuPersonnel | null> {
+  return memoriser('dch', () => lireLaDirectionDuPersonnel(tx));
+}
+
+async function lireLaDirectionDuPersonnel(tx: Tx): Promise<DirectionDuPersonnel | null> {
   const { rows } = await tx.execute<{
     id: string;
     name: string;
@@ -125,7 +134,15 @@ export async function directionDuPersonnel(tx: Tx): Promise<DirectionDuPersonnel
  * la direction du personnel. `parti` quand il ne l'est plus — sorti de la
  * DCH, de l'agence, ou sans accès.
  */
-export async function membreDCH(
+export function membreDCH(
+  tx: Tx,
+  dch: DirectionDuPersonnel,
+  employeeId: string,
+): Promise<Viseur | 'parti'> {
+  return memoriser(`membre:${dch.uniteId}:${employeeId}`, () => lireLeMembre(tx, dch, employeeId));
+}
+
+async function lireLeMembre(
   tx: Tx,
   dch: DirectionDuPersonnel,
   employeeId: string,
@@ -172,27 +189,31 @@ export async function estDeLaDCH(
 }
 
 /** Les membres à qui une habilitation est confiée, en cours — du plus ancien au plus récent. */
-export async function detenteursDe(tx: Tx, capacite: Capacite): Promise<string[]> {
-  const { rows } = await tx.execute<{ employee_id: string }>(sql`
-    SELECT employee_id FROM habilitations
-     WHERE capacite = ${capacite} AND fin_at IS NULL
-     ORDER BY created_at, employee_id`);
-  return rows.map((r) => r.employee_id);
+export function detenteursDe(tx: Tx, capacite: Capacite): Promise<string[]> {
+  return memoriser(`detenteurs:${capacite}`, async () => {
+    const { rows } = await tx.execute<{ employee_id: string }>(sql`
+      SELECT employee_id FROM habilitations
+       WHERE capacite = ${capacite} AND fin_at IS NULL
+       ORDER BY created_at, employee_id`);
+    return rows.map((r) => r.employee_id);
+  });
 }
 
 /**
  * Qui relève de lui, à tout niveau de la chaîne des N+1 : ceux-là ne
  * traitent pas ses demandes.
  */
-export async function subordonnesDe(tx: Tx, employeeId: string): Promise<Set<string>> {
-  const { rows } = await tx.execute<{ id: string }>(sql`
-    WITH RECURSIVE sous AS (
-      SELECT e.id FROM employees e WHERE e.manager_employee_id = ${employeeId}
-      UNION
-      SELECT e.id FROM employees e JOIN sous s ON e.manager_employee_id = s.id
-    )
-    SELECT id FROM sous`);
-  return new Set(rows.map((r) => r.id));
+export function subordonnesDe(tx: Tx, employeeId: string): Promise<Set<string>> {
+  return memoriser(`sous:${employeeId}`, async () => {
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      WITH RECURSIVE sous AS (
+        SELECT e.id FROM employees e WHERE e.manager_employee_id = ${employeeId}
+        UNION
+        SELECT e.id FROM employees e JOIN sous s ON e.manager_employee_id = s.id
+      )
+      SELECT id FROM sous`);
+    return new Set(rows.map((r) => r.id));
+  });
 }
 
 /** Qui traite une demande pour la DCH, maintenant. */

@@ -26,7 +26,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0018](0018-contrat-a-venir.md)                       | Contrat à venir : hors contrat entre deux contrats, place appliquée le jour venu        | acceptée                                    |
 | [0019](0019-retour-tete-d-unite-et-contrat-annule.md) | Retour à la tête de son unité, contrat à venir annulable                                | acceptée, retour d’office remplacé par 0020 |
 | [0020](0020-reprise-des-responsabilites-au-choix.md)  | Au retour, la RH décide ce que l'agent reprend                                          | acceptée                                    |
-| [0021](0021-passage-de-minuit.md)                     | Le passage de minuit                                                                    | acceptée                                    |
+| [0021](0021-passage-de-minuit.md)                     | Le passage de minuit                                                                    | acceptée, précisée par 0067                 |
 | [0022](0022-mot-de-passe-oublie.md)                   | Mot de passe oublié : un lien par courriel, valable une heure, qui sert une fois        | acceptée                                    |
 | [0023](0023-defense-en-profondeur.md)                 | Défense en profondeur : pièces chiffrées, origines, en-têtes                            | acceptée                                    |
 | [0024](0024-inactivite-et-revue-des-droits.md)        | Déconnexion après trois jours d'inactivité, revue des droits d'accès                    | acceptée                                    |
@@ -72,3 +72,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0064](0064-secretariat-general.md)                   | Le Secrétariat général : son titre, et sa place sous le DG                              | acceptée                                    |
 | [0065](0065-vider-les-notifications.md)               | Vider la boîte et les archives des notifications                                        | acceptée                                    |
 | [0066](0066-suivi-des-contrats-titre-seul.md)         | Suivi des contrats : le titre seul en tête de la carte                                  | acceptée                                    |
+| [0067](0067-performance-et-robustesse.md)             | Performance à l'échelle et robustesse : index, veille, délais                           | acceptée                                    |

@@ -528,7 +528,7 @@ export class EmployeeDocumentsService {
    * voit celle-là.
    */
   async file(user: SessionUser): Promise<PieceATraiterView[]> {
-    return this.db.withTenant(ctxOf(user), async (tx) => {
+    return this.db.lire(ctxOf(user), async (tx) => {
       const moi = await agentDuCompte(tx, user.userId);
       const familles = await this.famillesVues(tx, user);
       if (familles !== 'toutes' && familles.size === 0 && !moi) return [];

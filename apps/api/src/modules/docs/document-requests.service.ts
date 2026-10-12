@@ -247,7 +247,7 @@ export class DocumentRequestsService {
   private async effacerLesDemandes(tx: Tx, ids: string[]): Promise<void> {
     if (ids.length === 0) return;
     for (const id of ids) {
-      await tx.execute(sql`DELETE FROM notifications WHERE dedupe_key LIKE ${`document:${id}:%`}`);
+      await tx.execute(sql`DELETE FROM notifications WHERE dedupe_key ^@ ${`document:${id}:`}`);
     }
     await this.effacerLesFichiers(tx, ids);
     await tx.delete(t.documentRequests).where(inArray(t.documentRequests.id, ids));
@@ -312,7 +312,7 @@ export class DocumentRequestsService {
     user: SessionUser,
     filters: { employeeId?: string; status?: DocumentRequestStatus; scope?: 'mine' },
   ): Promise<DocumentRequestView[]> {
-    return this.db.withTenant(ctxOf(user), async (tx) => {
+    return this.db.lire(ctxOf(user), async (tx) => {
       // « scope=mine » est honoré QUELLES QUE SOIENT ses habilitations :
       // l'espace personnel d'un membre de la DCH doit rester personnel (il
       // est aussi agent).

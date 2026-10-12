@@ -149,7 +149,7 @@ export class ProfileChangesService {
     user: SessionUser,
     filters: { employeeId?: string; status?: ProfileChangeStatus; scope?: 'mine' },
   ): Promise<ProfileChangeRequestView[]> {
-    return this.db.withTenant(ctxOf(user), async (tx) => {
+    return this.db.lire(ctxOf(user), async (tx) => {
       const moi = await agentDuCompte(tx, user.userId);
       const selfOnly = filters.scope === 'mine';
       // La file : qui la traite pour la DCH. Les signalements d'UN agent, sur

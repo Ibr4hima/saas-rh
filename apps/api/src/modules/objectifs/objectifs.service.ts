@@ -848,7 +848,7 @@ export class ObjectifsService {
       const sujet = `objectifs:fiche:${employeeId}:${f.annee}:${f.semestre}:`;
       const { rows: deja } = await tx.execute(sql`
         SELECT 1 FROM notifications
-         WHERE recipient_user_id = ${compte} AND dedupe_key LIKE ${`${sujet}%`} LIMIT 1`);
+         WHERE recipient_user_id = ${compte} AND dedupe_key ^@ ${sujet} LIMIT 1`);
       await notifier(tx, user.tenantId, compte, {
         type: 'objectif',
         sujet: 'objectifs',

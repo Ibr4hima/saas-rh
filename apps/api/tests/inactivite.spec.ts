@@ -45,6 +45,7 @@ import { HabilitationsService } from '../src/modules/acces/habilitations.service
 import { AuthService } from '../src/modules/auth/auth.service';
 import { DocumentRequestsService } from '../src/modules/docs/document-requests.service';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
+import { Veille } from '../src/modules/veille/veille';
 import { ObjectifsController } from '../src/modules/objectifs/objectifs.controller';
 import { inactiverLesContratsEchus } from '../src/modules/people/activite';
 import { delaiJusquAMinuit, PassageDeMinuit } from '../src/modules/people/passage-de-minuit';
@@ -888,7 +889,8 @@ describe('désactiver, réactiver', () => {
 
 describe('un CDD renouvelé ne prend pas fin', () => {
   it('ni alerte de fin pour lui, ni reste de celles déjà parties', async () => {
-    const notifications = new NotificationsService(db);
+    // Les alertes d'échéance naissent au passage de la veille (ADR-0067).
+    const veille = new Veille(db, new NotificationsService(db));
     await raw(`UPDATE contracts SET end_date = CURRENT_DATE + 10 WHERE employee_id = $1`, [
       fatou.employeeId,
     ]);
@@ -900,7 +902,7 @@ describe('un CDD renouvelé ne prend pas fin', () => {
           [tenantId],
         )
       ).rows.length;
-    await notifications.list(admin);
+    await veille.veiller([tenantId]);
     expect(await alertes()).toBe(1);
 
     // Renouvelée au lendemain de sa fin : l'ancien contrat garde sa date.
@@ -911,7 +913,7 @@ describe('un CDD renouvelé ne prend pas fin', () => {
       endDate: await jour(376),
     });
     expect(await alertes()).toBe(0);
-    await notifications.list(admin);
+    await veille.veiller([tenantId]);
     expect(await alertes()).toBe(0);
   });
 });

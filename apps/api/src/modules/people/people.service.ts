@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
@@ -39,6 +39,7 @@ import {
   directionDeEmploye,
   directionDeLUnite,
   directionDeUnite,
+  directionsDesUnites,
   equipeDe,
   fusionnerAuJournal,
   planifierReprise,
@@ -158,8 +159,6 @@ function decodeCursor(raw: string): Cursor {
 
 @Injectable()
 export class PeopleService {
-  private readonly logger = new Logger(PeopleService.name);
-
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(EncryptionService) private readonly crypto: EncryptionService,
@@ -181,17 +180,9 @@ export class PeopleService {
    * listes déroulantes — s'appuie dessus.
    */
   async list(user: SessionUser, query: ListEmployeesQuery): Promise<EmployeeListPage> {
-    // Les contrats arrivés à terme passent d'abord dans les inactifs : la
-    // liste se lit juste. Dans sa propre transaction, et sans bloquer : un
-    // échec ici ne doit pas priver la DCH de la liste.
-    try {
-      await this.db.withTenant(ctxOf(user), (tx) => inactiverLesContratsEchus(tx, user.tenantId));
-    } catch (err) {
-      this.logger.error(
-        `Fin des contrats échus impossible (tenant ${user.tenantId}) : la liste est servie sans elle.`,
-        err instanceof Error ? err.stack : String(err),
-      );
-    }
+    // Les contrats arrivés à terme sont déjà rangés dans les inactifs : à
+    // minuit, puis chaque minute par la veille (ADR-0067). La liste ne fait
+    // que lire.
     return this.db.withTenant(ctxOf(user), async (tx) => {
       // Chaque mot cherché doit se trouver dans le prénom, le nom ou le
       // matricule, dans n'importe quel ordre : « Awa Diop » comme « Diop Awa ».
@@ -215,7 +206,8 @@ export class PeopleService {
        * les effectifs des onglets ET pour les listes déroulantes.
        */
       const socle = sql`
-        WITH socle AS (
+        WITH RECURSIVE ${directionsDesUnites},
+        socle AS (
           SELECT
             e.id,
             e.employee_number,
@@ -230,8 +222,8 @@ export class PeopleService {
             NOT ${dossierFige}          AS effacable,
             a.position_title,
             o.name                      AS org_unit_name,
-            ${directionDeLUnite(sql`a.org_unit_id`, 'short_name')} AS direction_short_name,
-            ${directionDeLUnite(sql`a.org_unit_id`, 'name')}       AS direction_name,
+            dd.short_name               AS direction_short_name,
+            dd.name                     AS direction_name,
             (SELECT c.start_date::text FROM contracts c
               WHERE c.employee_id = e.id ORDER BY c.start_date DESC LIMIT 1)
                                         AS contract_start_date,
@@ -268,6 +260,7 @@ export class PeopleService {
                           AND (av.validity @> CURRENT_DATE OR lower(av.validity) > CURRENT_DATE)
                         ORDER BY lower(av.validity) LIMIT 1)
           LEFT JOIN org_units o ON o.id = a.org_unit_id
+          LEFT JOIN direction_des_unites dd ON dd.unite_id = a.org_unit_id
           WHERE ${recherche}
         ),
         -- L'unité TELLE QU'ELLE S'AFFICHE : la colonne montre l'abrégé de la
@@ -978,7 +971,7 @@ export class PeopleService {
         // Renouvelé, le précédent ne « prend plus fin » : ses alertes s'en vont.
         if (precedent) {
           await tx.execute(sql`
-            DELETE FROM notifications WHERE dedupe_key LIKE ${`contract_deadline:${precedent.id}%`}`);
+            DELETE FROM notifications WHERE dedupe_key ^@ ${`contract_deadline:${precedent.id}`}`);
         }
         // Où il travaille sous ce contrat.
         const [derniere] = await tx
@@ -1188,7 +1181,7 @@ export class PeopleService {
       // Les alertes d'échéance parlaient de l'ancienne date de fin.
       await tx.execute(sql`
         DELETE FROM notifications
-         WHERE dedupe_key LIKE ${`contract_deadline:${contratId}%`}
+         WHERE dedupe_key ^@ ${`contract_deadline:${contratId}`}
             OR dedupe_key = ${`contrat_termine:${contratId}`}`);
 
       // Passé dans les inactifs par cette fin erronée, et le contrat court
@@ -1255,7 +1248,7 @@ export class PeopleService {
           .where(eq(t.contracts.id, precedent.id));
       }
       await tx.execute(sql`
-        DELETE FROM notifications WHERE dedupe_key LIKE ${`contract_deadline:${contratId}%`}`);
+        DELETE FROM notifications WHERE dedupe_key ^@ ${`contract_deadline:${contratId}`}`);
       await tx.delete(t.contracts).where(eq(t.contracts.id, contratId));
       // Un membre de la DCH qui n'y revient plus perd les délégations qui
       // l'attendaient.

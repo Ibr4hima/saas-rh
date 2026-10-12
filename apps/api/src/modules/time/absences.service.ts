@@ -47,6 +47,7 @@ import {
   type AbsenceFrequency,
 } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
+import { avecMemoire } from '../../common/memoire';
 import { chiffrerPiece, contenuDeLaPiece, nomDeLaPiece } from '../../common/pieces-chiffrees';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
@@ -885,24 +886,29 @@ export class AbsencesService {
   async compteurs(user: SessionUser): Promise<CompteursValidations> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       await expirerLesDemandes(tx);
-      const moi = await this.selfEmployeeId(tx, user);
-      const rien = { documents: 0, informations: 0, pieces: 0, conges: 0 };
-      if (!moi) return { equipe: 0, aViser: 0, aTraiter: rien };
-      const { rows } = await tx.execute<{ equipe: number }>(sql`
-        SELECT count(*)::int AS equipe FROM employees e
-         WHERE e.manager_employee_id = ${moi}
-           AND (e.status = 'active'
-                -- Parti en laissant une auto-évaluation à évaluer : il reste
-                -- de l'équipe le temps que son n+1 la termine.
-                OR EXISTS (SELECT 1 FROM objectifs_fiches f
-                            WHERE f.employee_id = e.id
-                              AND f.commentaires_envoyes_le IS NOT NULL
-                              AND f.evaluation_validee_le IS NULL))
-           AND e.id IS DISTINCT FROM ${DG}`);
-      const equipe = rows[0]?.equipe ?? 0;
-      const { aViser, conges } = await compterLesVisas(tx, moi);
-      return { equipe, aViser, aTraiter: { conges, ...(await aTraiterPar(tx, moi)) } };
+      // Une lecture : la DCH, les détenteurs, chaque N+1 se lisent une fois.
+      return avecMemoire(() => this.compteursDe(tx, user));
     });
+  }
+
+  private async compteursDe(tx: Tx, user: SessionUser): Promise<CompteursValidations> {
+    const moi = await this.selfEmployeeId(tx, user);
+    const rien = { documents: 0, informations: 0, pieces: 0, conges: 0 };
+    if (!moi) return { equipe: 0, aViser: 0, aTraiter: rien };
+    const { rows } = await tx.execute<{ equipe: number }>(sql`
+      SELECT count(*)::int AS equipe FROM employees e
+       WHERE e.manager_employee_id = ${moi}
+         AND (e.status = 'active'
+              -- Un départ qui laisse une auto-évaluation à évaluer : l'agent reste
+              -- de l'équipe le temps que son n+1 la termine.
+              OR EXISTS (SELECT 1 FROM objectifs_fiches f
+                          WHERE f.employee_id = e.id
+                            AND f.commentaires_envoyes_le IS NOT NULL
+                            AND f.evaluation_validee_le IS NULL))
+         AND e.id IS DISTINCT FROM ${DG}`);
+    const equipe = rows[0]?.equipe ?? 0;
+    const { aViser, conges } = await compterLesVisas(tx, moi);
+    return { equipe, aViser, aTraiter: { conges, ...(await aTraiterPar(tx, moi)) } };
   }
 
   /**
@@ -1421,7 +1427,7 @@ export class AbsencesService {
         ...(await lire(sql`NOT ${ouverte}`).limit(query.limit)),
       ].sort((a, b) => b.request.createdAt.getTime() - a.request.createdAt.getTime());
 
-      return this.toViews(tx, user, rows);
+      return avecMemoire(() => this.toViews(tx, user, rows));
     });
   }
 
@@ -1458,7 +1464,7 @@ export class AbsencesService {
         .orderBy(asc(t.absenceRequests.startDate));
       // Le calendrier est celui de la DCH : son propre congé s'y lit, sans
       // geste. L'agent l'annule depuis son espace personnel (ADR-0060).
-      return (await this.toViews(tx, user, rows)).map((v) =>
+      return (await avecMemoire(() => this.toViews(tx, user, rows))).map((v) =>
         v.employeeId === self ? { ...v, gestes: SANS_GESTE } : v,
       );
     });

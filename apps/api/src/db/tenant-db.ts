@@ -5,10 +5,11 @@
  * DANS la transaction, donc il ne peut jamais fuir entre requêtes via le
  * pooling de connexions.
  */
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
+import { avecMemoire } from '../common/memoire';
 import { loadEnv } from '../config/env';
 import * as schema from './schema';
 
@@ -21,7 +22,25 @@ export type Db = NodePgDatabase<typeof schema>;
  * Dakar est à UTC+0, sans heure d'été.
  */
 export const FUSEAU_HORAIRE = 'Africa/Dakar';
-export const OPTIONS_CONNEXION = `-c TimeZone=${FUSEAU_HORAIRE}`;
+/**
+ * Sans compilation JIT : elle sert les longues requêtes d'analyse, pas des
+ * lectures de quelques millisecondes. Sur la liste du personnel à 3 000
+ * agents, elle coûtait 3,4 s de compilation pour 1,7 s d'exécution
+ * (ADR-0067).
+ */
+export const OPTIONS_CONNEXION = `-c TimeZone=${FUSEAU_HORAIRE} -c jit=off`;
+
+/**
+ * Les bornes des connexions de l'application (ADR-0067) : une requête qui
+ * dure plus d'une minute est arrêtée, un verrou attendu plus de vingt
+ * secondes aussi, une transaction ouverte puis oubliée une minute se ferme.
+ * Une requête bloquée ne retient plus une connexion du pool indéfiniment.
+ * Les migrations gardent leurs propres réglages : un index sur une grande
+ * table peut demander plus.
+ */
+export const OPTIONS_APPLICATION =
+  `${OPTIONS_CONNEXION} -c statement_timeout=60000 -c lock_timeout=20000` +
+  ` -c idle_in_transaction_session_timeout=60000`;
 export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export interface TenantContext {
@@ -31,6 +50,7 @@ export interface TenantContext {
 
 @Injectable()
 export class TenantDb implements OnModuleDestroy {
+  private readonly logger = new Logger('Base');
   readonly pool: Pool;
   /**
    * Accès SANS contexte tenant : sous RLS, les tables tenantées ne renvoient
@@ -42,9 +62,16 @@ export class TenantDb implements OnModuleDestroy {
     const env = loadEnv();
     this.pool = new Pool({
       connectionString: env.APP_DATABASE_URL,
-      max: 10,
-      options: OPTIONS_CONNEXION,
+      max: env.DB_POOL_MAX,
+      // Toutes les connexions prises : une requête en attend une dix secondes
+      // au plus, puis répond 503 au lieu de pendre.
+      connectionTimeoutMillis: 10_000,
+      options: OPTIONS_APPLICATION,
     });
+    // Une connexion au repos qui tombe (base redémarrée, réseau coupé) le dit
+    // ici : le pool l'écarte et en ouvre une autre à la demande suivante.
+    // Sans cet écouteur, l'erreur arrêterait le processus entier.
+    this.pool.on('error', (err) => this.logger.warn(`Connexion perdue : ${err.message}`));
     this.global = drizzle(this.pool, { schema });
   }
 
@@ -57,6 +84,15 @@ export class TenantDb implements OnModuleDestroy {
       );
       return fn(tx);
     });
+  }
+
+  /**
+   * Une lecture : `withTenant`, avec une mémoire le temps de la transaction
+   * (cf. `avecMemoire`). Pour les files qui relisent le circuit demande par
+   * demande sans rien en écrire (ADR-0067).
+   */
+  lire<T>(ctx: TenantContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return this.withTenant(ctx, (tx) => avecMemoire(() => fn(tx)));
   }
 
   /**

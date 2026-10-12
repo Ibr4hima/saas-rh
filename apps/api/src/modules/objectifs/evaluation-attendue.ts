@@ -16,15 +16,17 @@ export const prefixeEvaluation = (employeeId: string, annee: number, semestre: n
 export async function reconcilierLesEvaluations(tx: Tx, employeeId?: string): Promise<void> {
   // Une fiche qui n'attend plus d'évaluation (validée, ou rouverte) ne garde
   // pas d'appel.
+  // Le préfixe par `^@` (leakproof) borne la lecture dans l'index des clés ;
+  // l'expression régulière ne trie plus que les clés des objectifs.
   await tx.execute(sql`
     DELETE FROM notifications n
-     WHERE n.dedupe_key ~ '^objectifs:[0-9a-f-]{36}:[0-9]{4}:[12]:(appel|rappel):'
-       ${employeeId ? sql`AND n.dedupe_key LIKE ${`objectifs:${employeeId}:%`}` : sql``}
+     WHERE n.dedupe_key ^@ ${employeeId ? `objectifs:${employeeId}:` : 'objectifs:'}
+       AND n.dedupe_key ~ '^objectifs:[0-9a-f-]{36}:[0-9]{4}:[12]:(appel|rappel):'
        AND NOT EXISTS (
          SELECT 1 FROM objectifs_fiches f
           WHERE f.commentaires_envoyes_le IS NOT NULL AND f.evaluation_validee_le IS NULL
-            AND n.dedupe_key LIKE 'objectifs:' || f.employee_id || ':' || f.annee || ':'
-                                  || f.semestre || ':%')`);
+            AND n.dedupe_key ^@ ('objectifs:' || f.employee_id || ':' || f.annee || ':'
+                                 || f.semestre || ':'))`);
   const { rows } = await tx.execute<{
     tenant_id: string;
     employee_id: string;

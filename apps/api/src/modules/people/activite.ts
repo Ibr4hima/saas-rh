@@ -523,16 +523,3 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
   await reconcilierLeCircuit(tx, tenantId);
   return rows.length;
 }
-
-const derniereFois = new Map<string, number>();
-
-/**
- * Au plus une fois par minute et par organisation : c'est la relève des
- * notifications, faite par chaque session ouverte, qui la déclenche.
- */
-export async function inactiverSiLeTempsEstVenu(tx: Tx, tenantId: string): Promise<void> {
-  const maintenant = Date.now();
-  if (maintenant - (derniereFois.get(tenantId) ?? 0) < 60_000) return;
-  derniereFois.set(tenantId, maintenant);
-  await inactiverLesContratsEchus(tx, tenantId);
-}

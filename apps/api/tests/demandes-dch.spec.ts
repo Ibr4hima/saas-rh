@@ -31,6 +31,7 @@ import { aTraiterPar, confierLaDemande } from '../src/modules/acces/demandes';
 import { DocumentRequestsService } from '../src/modules/docs/document-requests.service';
 import { EmployeeDocumentsService } from '../src/modules/docs/employee-documents.service';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
+import { Veille } from '../src/modules/veille/veille';
 import { frDate } from '../src/modules/notifications/phrases';
 import { ProfileChangesService } from '../src/modules/profile/profile-changes.service';
 import { reconcilierLeCircuit } from '../src/modules/time/visas';
@@ -1408,8 +1409,8 @@ describe('les échéances de contrat', () => {
        VALUES ($1,$2,$3,'cdd', CURRENT_DATE - 200, CURRENT_DATE + $4::int)`,
       [randomUUID(), tenantId, qui.employeeId, jours],
     );
-  /** L'alerte naît quand un gestionnaire relève ses notifications. */
-  const relever = () => new NotificationsService(db).list(admin);
+  /** L'alerte naît au passage de la veille, en tâche de fond (ADR-0067). */
+  const veiller = () => new Veille(db, new NotificationsService(db)).veiller([tenantId]);
   const recommencer = () =>
     raw(`DELETE FROM notifications WHERE tenant_id = $1 AND type = 'contract_deadline'`, [
       tenantId,
@@ -1425,7 +1426,7 @@ describe('les échéances de contrat', () => {
     await cdd(awa, 15);
     try {
       // Rien de confié : qui dirige la DCH.
-      await relever();
+      await veiller();
       expect(await alertes()).toEqual(['Awa→Mariama', 'Moussa→Mariama']);
 
       // Elles mènent au dossier de l'agent, où l'on renouvelle ou l'on clôt.
@@ -1443,13 +1444,13 @@ describe('les échéances de contrat', () => {
       await recommencer();
       await habiliter(awa, 'personnel.gerer');
       await habiliter(khady, 'personnel.gerer');
-      await relever();
+      await veiller();
       expect(await alertes()).toEqual(['Awa→Khady', 'Moussa→Awa', 'Moussa→Khady']);
 
       // Awa seule à gérer le personnel : son propre contrat revient au directeur.
       await recommencer();
       await habiliter(khady, 'personnel.gerer', false);
-      await relever();
+      await veiller();
       expect(await alertes()).toEqual(['Awa→Mariama', 'Moussa→Awa']);
 
       // Awa, la seule déléguée, en congé : le directeur, faute de délégué présent.
@@ -1464,7 +1465,7 @@ describe('les échéances de contrat', () => {
          VALUES ($1,$2,$3,$4, CURRENT_DATE - 1, CURRENT_DATE + 3, 3, 'approved')`,
         [randomUUID(), tenantId, awa.employeeId, typeConge],
       );
-      await relever();
+      await veiller();
       expect(await alertes()).toEqual(['Awa→Mariama', 'Moussa→Mariama']);
     } finally {
       await habiliter(awa, 'personnel.gerer', false);
@@ -1487,19 +1488,19 @@ describe('les échéances de contrat', () => {
         .filter((n) => n.type === 'contract_deadline')
         .map((n) => n.title);
     try {
-      await relever();
-      await relever();
+      await veiller();
+      await veiller();
       expect(await boite()).toEqual([
         `Le CDD de Moussa Test prend fin le ${frDate(await dans(25))}`,
       ]);
       await fin(12);
-      await relever();
+      await veiller();
       expect(await boite()).toEqual([
         `Rappel : le CDD de Moussa Test prend fin le ${frDate(await dans(12))}`,
       ]);
       await fin(5);
-      await relever();
-      await relever();
+      await veiller();
+      await veiller();
       expect(await boite()).toEqual([
         `Rappel : le CDD de Moussa Test prend fin le ${frDate(await dans(5))}`,
       ]);
