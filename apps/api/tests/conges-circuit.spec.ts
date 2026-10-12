@@ -1577,6 +1577,34 @@ describe('le tableau de bord compte ce que ses listes montrent', () => {
     }
   });
 
+  it('le suivi des contrats : ce qui finit d’ici un an et la date manquante, rien au-delà', async () => {
+    const contrats: [Agent, string, string | null][] = [
+      [moussa, 'CURRENT_DATE - 30', 'CURRENT_DATE + 365'],
+      [awa, 'CURRENT_DATE - 30', 'CURRENT_DATE + 366'],
+      [khady, 'CURRENT_DATE - 30', 'CURRENT_DATE + 30'],
+      [ousmane, 'CURRENT_DATE - 30', null],
+    ];
+    const ids = contrats.map(() => randomUUID());
+    try {
+      for (const [i, [qui, debut, fin]] of contrats.entries()) {
+        await raw(
+          `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+           VALUES ($1, $2, $3, 'cdd', ${debut}, ${fin ?? 'NULL'})`,
+          [ids[i], tenantId, qui.employeeId],
+        );
+      }
+      const suivi = Object.fromEntries(
+        (await chiffres(admin)).contractFollowUp.map((c) => [c.employeeId, c.daysLeft]),
+      );
+      expect(suivi[moussa.employeeId]).toBe(365);
+      expect(suivi[khady.employeeId]).toBe(30);
+      expect(suivi[ousmane.employeeId]).toBeNull();
+      expect(awa.employeeId in suivi).toBe(false);
+    } finally {
+      await raw(`DELETE FROM contracts WHERE id = ANY($1::uuid[])`, [ids]);
+    }
+  });
+
   it('le calendrier des absences : en cours et à venir, sur trente jours', async () => {
     const enCours = await enConge(moussa);
     const validee = async (debut: number) => {

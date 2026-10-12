@@ -721,7 +721,7 @@ export function TableauDeBord({ suiviDesContrats }: { suiviDesContrats: boolean 
         <Card>
           <CardHeader className="flex items-center justify-between gap-3">
             <CardTitle>Suivi des contrats</CardTitle>
-            <TotalCarte>CDD et stages en cours</TotalCarte>
+            <TotalCarte>Fin d'ici un an</TotalCarte>
           </CardHeader>
           {stats.isLoading ? (
             <SqueletteTableau lignes={3} />
@@ -729,25 +729,21 @@ export function TableauDeBord({ suiviDesContrats }: { suiviDesContrats: boolean 
             <EmptyState
               className="py-7"
               icon={<Icon name="description" size={22} />}
-              title="Aucun contrat à durée limitée"
+              title="Aucun contrat ne finit d'ici un an"
               description={
-                <>
-                  Aucun CDD ou stage en cours.
-                  {/* Le lien ne s'offre qu'à qui ouvre la liste du personnel. */}
-                  {peut(me.data, 'personnel.consulter') ? (
-                    <>
-                      {' '}
-                      Vous pouvez consulter la liste du personnel inactif{' '}
-                      <Link
-                        href="/employees?onglet=inactifs"
-                        className="font-semibold text-primary underline-offset-2 hover:underline"
-                      >
-                        ici
-                      </Link>
-                      .
-                    </>
-                  ) : null}
-                </>
+                // Le lien ne s'offre qu'à qui ouvre la liste du personnel.
+                peut(me.data, 'personnel.consulter') ? (
+                  <>
+                    Vous pouvez consulter la liste du personnel inactif{' '}
+                    <Link
+                      href="/employees?onglet=inactifs"
+                      className="font-semibold text-primary underline-offset-2 hover:underline"
+                    >
+                      ici
+                    </Link>
+                    .
+                  </>
+                ) : undefined
               }
             />
           ) : (
@@ -760,7 +756,7 @@ export function TableauDeBord({ suiviDesContrats }: { suiviDesContrats: boolean 
                     <Th>Poste</Th>
                     <Th>Contrat</Th>
                     <Th>Date fin</Th>
-                    <Th className="text-right whitespace-nowrap">Jours restants</Th>
+                    <Th className="text-right whitespace-nowrap">Durée restante</Th>
                   </tr>
                 </THead>
                 <TBody>

@@ -68,3 +68,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0060](0060-files-de-la-dch.md)                       | Files de la DCH : sa demande sans geste, chacun ce qui lui est délégué                  | acceptée                                    |
 | [0061](0061-offre-ouverte-apres-la-date-limite.md)    | Une offre reste ouverte après sa date limite ; seule la RH la ferme                     | acceptée                                    |
 | [0062](0062-candidature-reconsideree-ou-effacee.md)   | Une candidature non retenue se reconsidère, ou s'efface définitivement                  | acceptée                                    |
+| [0063](0063-suivi-des-contrats-sur-un-an.md)          | Suivi des contrats : la durée restante, sur un an                                       | acceptée                                    |

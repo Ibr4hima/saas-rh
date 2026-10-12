@@ -175,7 +175,8 @@ export class DashboardController {
           (SELECT day::text AS day, label FROM holidays
              WHERE day >= CURRENT_DATE ORDER BY day ASC LIMIT 3)
           ORDER BY day`),
-          // Tous les contrats suivis : le tableau de bord en est la seule liste.
+          // Les contrats suivis, ceux qui finissent d'ici un an : le tableau
+          // de bord en est la seule liste.
           seesContracts ? suiviDesContrats(tx) : Promise.resolve([]),
         ]);
 

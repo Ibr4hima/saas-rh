@@ -8,7 +8,9 @@ import type { Tx } from '../../db/tenant-db';
  * Le contrat retenu est le PLUS RÉCENT de l'employé (DISTINCT ON) : un CDD
  * renouvelé en CDI quitte le suivi de lui-même. Les échéances dépassées
  * remontent en tête — un CDD échu sur un dossier resté actif est l'anomalie
- * la plus coûteuse de la liste. Le tableau de bord les montre tous.
+ * la plus coûteuse de la liste. Seuls ceux qui finissent d'ici un an
+ * (365 jours) y figurent, avec les échus et ceux sans date de fin : plus
+ * loin, ils encombraient le tableau sans rien appeler.
  */
 const requeteSuiviDesContrats = sql`
   WITH dernier AS (
@@ -28,6 +30,7 @@ const requeteSuiviDesContrats = sql`
   JOIN employees e ON e.id = d.employee_id AND e.status = 'active'
   JOIN persons p ON p.id = e.person_id
   WHERE d.contract_type IN ('cdd', 'stage')
+    AND (d.end_date IS NULL OR d.end_date <= CURRENT_DATE + 365)
   ORDER BY days_left ASC NULLS LAST, p.family_name, p.given_name`;
 
 export async function suiviDesContrats(tx: Tx): Promise<DashboardContractFollowUp[]> {
