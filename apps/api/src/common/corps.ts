@@ -44,6 +44,45 @@ type Analyseur = 'json' | 'pdf' | 'binaire' | 'flux';
 /** Ailleurs : un JSON d'un mégaoctet au plus. */
 const LIMITE_AILLEURS = MO;
 
+/**
+ * Un corps arrive en entier en cinq minutes au plus : le délai que Node
+ * tenait pour toutes les routes, et qui coupait l'envoi d'une vidéo lourde.
+ * Il se tient désormais ici. La vidéo d'une leçon a le sien : une minute
+ * sans un octet, quatre heures en tout (cf. `DELAIS_D_ENVOI`), ADR-0069.
+ */
+export const DELAI_DU_CORPS_MS = 5 * 60 * 1000;
+
+/**
+ * Un corps qui n'est pas arrivé en entier à temps : 408, et la connexion se
+ * ferme. Écouter la fin du corps ne le met pas en lecture : il reste à qui
+ * le lit, à son rythme.
+ */
+export function bornerLeCorps(req: Request, res: Response, delaiMs = DELAI_DU_CORPS_MS): void {
+  if (req.complete) return;
+  const minuterie = setTimeout(() => {
+    if (req.complete) return;
+    if (!res.headersSent) {
+      res
+        .status(408)
+        .setHeader('Connection', 'close')
+        .type('application/problem+json')
+        .send(
+          JSON.stringify({
+            type: 'about:blank',
+            title: 'Envoi trop lent',
+            status: 408,
+            code: 'request.timeout',
+          }),
+        );
+    }
+    res.once('finish', () => req.destroy());
+  }, delaiMs);
+  minuterie.unref();
+  const lever = () => clearTimeout(minuterie);
+  req.once('end', lever);
+  res.once('close', lever);
+}
+
 interface Route {
   methode: 'POST' | 'PUT';
   chemin: RegExp;
@@ -173,6 +212,11 @@ export function porteDesCorps(portier: Portier): RequestHandler {
     // passerait à côté de ses limites et atteindrait la même route.
     const chemin = req.path.toLowerCase().replace(/\/+$/, '');
     const route = routes.find((r) => r.methode === req.method && r.chemin.test(chemin));
+    // La vidéo d'une leçon tient ses propres délais. Refusée avant d'être
+    // lue, sa connexion se ferme : le reste du fichier n'arrive pas pour
+    // rien, Node le lirait sinon jusqu'au bout pour la réutiliser.
+    if (route?.analyseur === 'flux') res.setHeader('Connection', 'close');
+    else bornerLeCorps(req, res);
     if (!route) {
       // Annoncé trop gros, il ne se vide même pas : la réponse part tout de suite.
       if (Number(req.headers['content-length'] ?? 0) > LIMITE_AILLEURS) {

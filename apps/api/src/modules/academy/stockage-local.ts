@@ -34,7 +34,26 @@ const VALIDITE_LECTURE_S = 4 * 60 * 60;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/**
+ * Le temps que l'envoi d'une vidéo peut prendre (ADR-0069). Pas de délai
+ * total court : 1,3 Go à 4 Mo/s, c'est cinq minutes et demie, et Node
+ * coupait à cinq. Mais un envoi qui ne reçoit plus rien pendant une minute
+ * est abandonné, et aucun ne dure plus de quatre heures : 2 Go y passent
+ * à 150 Ko/s.
+ */
+export interface DelaisDEnvoi {
+  inactiviteMs: number;
+  totalMs: number;
+}
+export const DELAIS_D_ENVOI: DelaisDEnvoi = {
+  inactiviteMs: 60_000,
+  totalMs: 4 * 60 * 60 * 1000,
+};
+
 export class VideoTropLourde extends Error {}
+
+/** L'envoi s'est arrêté en route : plus rien n'arrivait, ou il durait trop. */
+export class EnvoiAbandonne extends Error {}
 
 @Injectable()
 export class StockageVideoLocal {
@@ -81,17 +100,29 @@ export class StockageVideoLocal {
   /**
    * Reçoit le fichier EN FLUX, jusqu'au disque : il n'est jamais entier en
    * mémoire. Un fichier plus lourd que permis est coupé au premier octet de
-   * trop, pas après l'avoir reçu en entier.
+   * trop, pas après l'avoir reçu en entier. Un envoi lent va à son terme ;
+   * un envoi arrêté s'abandonne (cf. `DELAIS_D_ENVOI`).
    *
    * @returns Le chemin d'un fichier TEMPORAIRE : l'appelant le vérifie, puis
    *   l'installe ou le jette.
    */
-  async recevoir(tenantId: string, uid: string, flux: Readable): Promise<string> {
+  async recevoir(
+    tenantId: string,
+    uid: string,
+    flux: Readable,
+    delais: DelaisDEnvoi = DELAIS_D_ENVOI,
+  ): Promise<string> {
     await mkdir(this.repertoire(tenantId), { recursive: true });
     const temporaire = `${this.chemin(tenantId, uid)}.part`;
+    const garde = new AbortController();
+    const abandonner = (raison: string) => () => garde.abort(new EnvoiAbandonne(raison));
+    let attente = setTimeout(abandonner('Plus rien n’arrive'), delais.inactiviteMs);
+    const plafond = setTimeout(abandonner('Envoi trop long'), delais.totalMs);
     let recu = 0;
     const compteur = new Transform({
       transform(morceau: Buffer, _enc, suite) {
+        clearTimeout(attente);
+        attente = setTimeout(abandonner('Plus rien n’arrive'), delais.inactiviteMs);
         recu += morceau.length;
         if (recu > MAX_VIDEO_LOCALE_BYTES) {
           suite(new VideoTropLourde('Fichier trop lourd'));
@@ -101,10 +132,13 @@ export class StockageVideoLocal {
       },
     });
     try {
-      await pipeline(flux, compteur, createWriteStream(temporaire));
+      await pipeline(flux, compteur, createWriteStream(temporaire), { signal: garde.signal });
     } catch (err) {
       await rm(temporaire, { force: true });
-      throw err;
+      throw garde.signal.aborted ? garde.signal.reason : err;
+    } finally {
+      clearTimeout(attente);
+      clearTimeout(plafond);
     }
     return temporaire;
   }

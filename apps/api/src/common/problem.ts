@@ -109,6 +109,12 @@ export function pourLeJournal(exception: unknown): unknown {
 export class ProblemFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const res = host.switchToHttp().getResponse<Response>();
+    // La réponse est déjà partie : un corps coupé après son 408 (cf.
+    // `bornerLeCorps`), dont la lecture échoue ensuite. Rien à y ajouter.
+    if (res.headersSent) {
+      if (!res.writableEnded) res.end();
+      return;
+    }
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let title = 'Erreur interne';

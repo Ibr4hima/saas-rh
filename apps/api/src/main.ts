@@ -52,6 +52,11 @@ async function bootstrap(): Promise<void> {
   app.useGlobalFilters(new ProblemFilter());
 
   await app.listen(env.PORT);
+  // Node coupe à cinq minutes toute requête dont le corps n'est pas arrivé en
+  // entier : la vidéo d'une leçon, 1,3 Go à 4 Mo/s, n'arrivait jamais. Ce
+  // délai se tient désormais route par route, dans la porte des corps ; les
+  // en-têtes gardent le leur, une minute (ADR-0069).
+  (app.getHttpServer() as Server).requestTimeout = 0;
   console.log(`API Teranga RH démarrée sur http://localhost:${env.PORT}/v1/health`);
   arreterProprement(app);
 }
