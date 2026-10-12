@@ -37,17 +37,16 @@ export function directionDe<U extends OrgUnit>(
   return chemin(unites, uniteId)[0] ?? null;
 }
 
-/** Une unité dans une liste : l'acronyme d'abord, il se lit même tronqué. */
-export function libelleDUnite(u: OrgUnit): string {
-  return u.shortName ? `${u.shortName} · ${u.name}` : u.name;
-}
-
-/** Dans l'ordre où on les cherche : la Direction Générale, puis par libellé. */
+/**
+ * Dans l'ordre où on les cherche : la Direction Générale, puis par nom. Les
+ * listes de choix écrivent le nom seul, sans l'acronyme : l'ordre suit ce
+ * qu'on lit.
+ */
 export function parLibelle<U extends OrgUnit>(unites: U[]): U[] {
   return [...unites].sort(
     (a, b) =>
       Number(Boolean(a.parentId)) - Number(Boolean(b.parentId)) ||
-      libelleDUnite(a).localeCompare(libelleDUnite(b), 'fr'),
+      a.name.localeCompare(b.name, 'fr'),
   );
 }
 
@@ -99,7 +98,7 @@ export function ChoixUnite({
           {!direction || !requis ? <option value="">{vide}</option> : null}
           {directions.map((u) => (
             <option key={u.id} value={u.id}>
-              {libelleDUnite(u)}
+              {u.name}
             </option>
           ))}
         </Select>

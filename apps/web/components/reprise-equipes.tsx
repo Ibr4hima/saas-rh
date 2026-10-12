@@ -2,7 +2,7 @@
 
 import type { EmployeeListItem } from '@teranga/contracts';
 import { Field, Select } from '@teranga/ui';
-import { useResponsablesPossibles } from '../lib/responsables';
+import { libelleResponsable, useResponsablesPossibles } from '../lib/responsables';
 
 /* ————————————————————————————————————————————————————————————————
    Qui part avec une équipe la confie.
@@ -89,8 +89,7 @@ function LigneReprise({
         <option value="">Qui reprend son équipe ?</option>
         {possibles.map((m) => (
           <option key={m.id} value={m.id}>
-            {m.nom}
-            {m.poste ? ` · ${m.poste}` : ''}
+            {libelleResponsable(m)}
           </option>
         ))}
       </Select>

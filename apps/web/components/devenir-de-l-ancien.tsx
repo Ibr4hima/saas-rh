@@ -10,7 +10,7 @@ import {
 } from '@teranga/contracts';
 import { cn, Field, Input, Select } from '@teranga/ui';
 import { de } from '../lib/mots';
-import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
+import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { ChoixUnite, directionDe } from './choix-unite';
 
 /*
@@ -221,7 +221,7 @@ export function DevenirDeLAncien({
             />
           </Field>
           {lu.changeDeDirection ? (
-            <Field label="Nouveau n+1" htmlFor={`${idPrefix}-n1`} required>
+            <Field label="Nouveau manager" htmlFor={`${idPrefix}-n1`} required>
               <Select
                 id={`${idPrefix}-n1`}
                 value={lu.n1}
@@ -230,8 +230,7 @@ export function DevenirDeLAncien({
                 {lu.n1 ? null : <option value="">Choisir</option>}
                 {n1Possibles.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.nom}
-                    {m.poste ? ` · ${m.poste}` : ''}
+                    {libelleResponsable(m)}
                   </option>
                 ))}
               </Select>

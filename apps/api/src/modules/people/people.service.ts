@@ -613,7 +613,11 @@ export class PeopleService {
 
       const [managerRow] = employee.managerEmployeeId
         ? await tx
-            .select({ givenName: t.persons.givenName, familyName: t.persons.familyName })
+            .select({
+              givenName: t.persons.givenName,
+              familyName: t.persons.familyName,
+              employeeNumber: t.employees.employeeNumber,
+            })
             .from(t.employees)
             .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
             .where(eq(t.employees.id, employee.managerEmployeeId))
@@ -656,6 +660,7 @@ export class PeopleService {
         workPhone: employee.workPhone,
         managerId: employee.managerEmployeeId,
         managerName: managerRow ? `${managerRow.givenName} ${managerRow.familyName}` : null,
+        managerNumber: managerRow?.employeeNumber ?? null,
         team,
         customFields: (employee.customFields ?? {}) as Record<string, unknown>,
         person: {

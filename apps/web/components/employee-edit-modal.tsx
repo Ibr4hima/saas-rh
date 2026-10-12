@@ -16,7 +16,12 @@ import { api, ApiError } from '../lib/api';
 import { composePhone, COUNTRIES, splitPhone } from '../lib/countries';
 import { useMe } from '../lib/hooks';
 import { maritalLabels, maxBirthDate } from '../lib/person';
-import { n1DOffice, superieurImpose, useResponsablesPossibles } from '../lib/responsables';
+import {
+  libelleResponsable,
+  n1DOffice,
+  superieurImpose,
+  useResponsablesPossibles,
+} from '../lib/responsables';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
 import { composeWorkEmail, localWorkEmail, WorkEmailInput } from './work-email-input';
@@ -222,7 +227,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
   const dOffice = n1DOffice(unites.data ?? [], affectation?.orgUnitId, employee.id);
   const actuel =
     employee.managerId && employee.managerName
-      ? { id: employee.managerId, nom: employee.managerName, poste: null }
+      ? { id: employee.managerId, nom: employee.managerName, matricule: employee.managerNumber }
       : null;
   const choix = impose ? [impose] : possibles;
   const managers = peutChoisir
@@ -442,8 +447,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               )}
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.nom}
-                  {m.poste ? ` · ${m.poste}` : ''}
+                  {libelleResponsable(m)}
                 </option>
               ))}
             </Select>

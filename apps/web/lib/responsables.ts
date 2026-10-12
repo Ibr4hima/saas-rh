@@ -22,7 +22,15 @@ import { api } from './api';
 export interface OptionResponsable {
   id: string;
   nom: string;
-  poste: string | null;
+  matricule: string | null;
+}
+
+/**
+ * Un manager dans une liste de choix : son nom, puis son matricule. Le
+ * matricule distingue deux homonymes, là où le poste ne dit rien de sûr.
+ */
+export function libelleResponsable(m: OptionResponsable): string {
+  return m.matricule ? `${m.nom} · ${m.matricule}` : m.nom;
 }
 
 /**
@@ -65,7 +73,7 @@ export function useResponsablesPossibles(
   const sommet = (unites.data ?? []).find((u) => u.sommet);
   const dg =
     sommet?.managerEmployeeId && sommet.managerName && sommet.managerEmployeeId !== exclure
-      ? { id: sommet.managerEmployeeId, nom: sommet.managerName, poste: sommet.managerPosition }
+      ? { id: sommet.managerEmployeeId, nom: sommet.managerName, matricule: sommet.managerNumber }
       : null;
   if (directeur) {
     return { options: dg ? [dg] : [], chargement: unites.isPending };
@@ -80,7 +88,7 @@ export function useResponsablesPossibles(
     .map((m) => ({
       id: m.id,
       nom: `${m.givenName} ${m.familyName}`,
-      poste: m.positionTitle,
+      matricule: m.employeeNumber,
     }));
   const dgPossible = !direction || direction.sommet || !direction.managerEmployeeId;
   if (dg && dgPossible && !options.some((o) => o.id === dg.id)) options.push(dg);
@@ -143,7 +151,7 @@ export function superieurImpose(
   while (u && !vus.has(u.id)) {
     vus.add(u.id);
     if (u.managerEmployeeId && u.managerEmployeeId !== agentId && u.managerName) {
-      return { id: u.managerEmployeeId, nom: u.managerName, poste: u.managerPosition };
+      return { id: u.managerEmployeeId, nom: u.managerName, matricule: u.managerNumber };
     }
     if (u.unitType === 'direction') break;
     const parent: string | null = u.parentId;
@@ -151,6 +159,6 @@ export function superieurImpose(
   }
   const sommet = unites.find((x) => x.sommet);
   return sommet?.managerEmployeeId && sommet.managerName && sommet.managerEmployeeId !== agentId
-    ? { id: sommet.managerEmployeeId, nom: sommet.managerName, poste: sommet.managerPosition }
+    ? { id: sommet.managerEmployeeId, nom: sommet.managerName, matricule: sommet.managerNumber }
     : null;
 }

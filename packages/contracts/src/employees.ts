@@ -915,6 +915,8 @@ export interface EmployeeDetail {
   workPhone: string | null;
   managerId: string | null;
   managerName: string | null;
+  /** Le matricule du manager : il le distingue d'un homonyme dans une liste. */
+  managerNumber: string | null;
   /** Ses agents directs, actifs — ceux qu'il faudra confier s'il part. */
   team: { id: string; name: string }[];
   /**

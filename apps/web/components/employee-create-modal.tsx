@@ -7,7 +7,7 @@ import { Button, Checkbox, cn, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../lib/countries';
 import { contractEnd, maritalLabels, maxBirthDate } from '../lib/person';
-import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
+import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { formatDate } from '../lib/hooks';
 import { ChoixUnite, directionDe } from './choix-unite';
 import { Modal, ModalGrid, ModalSection } from './modal';
@@ -438,8 +438,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               ) : null}
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.nom}
-                  {m.poste ? ` · ${m.poste}` : ''}
+                  {libelleResponsable(m)}
                 </option>
               ))}
             </Select>

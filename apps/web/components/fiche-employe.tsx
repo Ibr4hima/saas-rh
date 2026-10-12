@@ -50,14 +50,14 @@ import { formatDate, useMe } from '../lib/hooks';
 import { aujourdhui } from '../lib/temps';
 import type { ConsequencesHierarchie, OrgUnit, OrgUnitView } from '@teranga/contracts';
 import { aDesConsequences, ListeConsequences } from './consequences-hierarchie';
-import { ChoixUnite, directionDe, libelleDUnite, parLibelle } from './choix-unite';
+import { ChoixUnite, directionDe, parLibelle } from './choix-unite';
 import {
   DEVENIR_INITIAL,
   DevenirDeLAncien,
   lireLeDevenir,
   type Devenir,
 } from './devenir-de-l-ancien';
-import { n1DOffice, useResponsablesPossibles } from '../lib/responsables';
+import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { LoadFailure } from './load-failure';
 import { Page } from './gabarit';
 import { FenetreSignalement, useMesSignalements } from './signalement';
@@ -1058,7 +1058,7 @@ function AssignmentsCard({
             <ModalGrid>
               {changeDeDirection && directionVisee && !aLaTete ? (
                 <Field
-                  label="Nouveau n+1"
+                  label="Nouveau manager"
                   htmlFor="asg-n1"
                   hint={`Dans ${libelle(directionVisee)}.`}
                 >
@@ -1067,11 +1067,10 @@ function AssignmentsCard({
                     value={nouveauN1}
                     onChange={(ev) => setNouveauN1(ev.target.value)}
                   >
-                    <option value="">Garder le n+1 actuel</option>
+                    <option value="">Garder le manager actuel</option>
                     {n1Possibles.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.nom}
-                        {m.poste ? ` · ${m.poste}` : ''}
+                        {libelleResponsable(m)}
                       </option>
                     ))}
                   </Select>
@@ -1092,8 +1091,7 @@ function AssignmentsCard({
                     <option value="">Choisir</option>
                     {repreneursPossibles.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.nom}
-                        {m.poste ? ` · ${m.poste}` : ''}
+                        {libelleResponsable(m)}
                       </option>
                     ))}
                   </Select>
@@ -2195,7 +2193,7 @@ function NouveauContrat({
                 </option>
                 {directions.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {libelleDUnite(d)}
+                    {d.name}
                   </option>
                 ))}
               </Select>

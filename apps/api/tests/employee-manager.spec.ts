@@ -133,6 +133,8 @@ describe('désignation', () => {
     const detail = await people.detail(user, bruno);
     expect(detail.managerId).toBe(alice);
     expect(detail.managerName).toBe('ALICE Test');
+    // Le matricule, que les listes de choix écrivent après le nom.
+    expect(detail.managerNumber).toBe('ALICE');
   });
 
   it('accepte l’absence de manager — elle se signale, elle ne se refuse pas', async () => {
@@ -142,7 +144,9 @@ describe('désignation', () => {
     // signale (`hierarchie-regle.spec.ts`), et l'évaluation qui s'en abstient.
     await setManager(bruno, alice);
     await setManager(bruno, null);
-    expect((await people.detail(user, bruno)).managerId).toBeNull();
+    const detail = await people.detail(user, bruno);
+    expect(detail.managerId).toBeNull();
+    expect(detail.managerNumber).toBeNull();
   });
 
   it('refuse un employé au dossier archivé', async () => {
