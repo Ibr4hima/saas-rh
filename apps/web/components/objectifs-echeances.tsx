@@ -1,34 +1,41 @@
 'use client';
 
-import { useId, useRef, useState, type KeyboardEvent } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useId, useRef, useState } from 'react';
 import {
   dateDEvaluation,
   dateEnLettres,
-  OBJECTIF_TEXTE_MAX,
+  echeancesDuSemestre,
+  joursAvantLEvaluation,
+  periodeDeLEcheance,
+  periodeSuivante,
   reglesDesEcheances,
   type JoursEvaluation,
-  type ObjectifsFixes,
-  type PeriodeObjectifs,
 } from '@teranga/contracts';
-import { Button, cn, Input } from '@teranga/ui';
-import { api, ApiError } from '../lib/api';
+import { Button, Card, CardContent, cn, Field, Input } from '@teranga/ui';
 import { aujourdhui } from '../lib/temps';
 import { Icon } from './icons';
-import { Modal, ModalSection } from './modal';
-import { CLE_OBJECTIFS } from './objectifs';
+import { Modal } from './modal';
 
 /*
-   Les objectifs ponctuels, chacun avec son échéance (ADR-0055). Le n+1 ne
-   choisit pas le semestre : un objectif compte pour la première évaluation
-   qui tombe le jour de son échéance ou après. La règle se lit là où l'on
-   fixe une échéance, avec les jours que la DCH a choisis.
+   Les objectifs ponctuels, chacun avec son échéance (ADR-0055, ADR-0056).
+   Le n+1 fixe les objectifs d'un semestre, et l'échéance de chacun dans la
+   période de ce semestre. Trop près de l'évaluation, l'échéance se
+   confirme, ou l'objectif se reporte à l'évaluation suivante. La règle se
+   lit là où l'on fixe une échéance, avec les jours que la DCH a choisis.
 */
 
 /** Le dernier jour où une échéance se fixe : la dernière évaluation de l'année suivante. */
 export function horizonDesEcheances(jours: JoursEvaluation): string {
   return dateDEvaluation(Number(aujourdhui().slice(0, 4)) + 1, 2, jours);
 }
+
+/** « 20 mars », avec l'année quand ce n'est pas celle de la fiche (toujours, sans fiche). */
+const enLettres = (date: string, annee?: number) =>
+  dateEnLettres(date, annee === undefined || Number(date.slice(0, 4)) !== annee);
+
+/** Une date ISO complète, dans ses bornes. */
+const dansLesBornes = (date: string, min: string, max: string) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= min && date <= max;
 
 /**
  * L'échéance d'un objectif : « 20 mars », avec l'année quand ce n'est pas
@@ -40,7 +47,8 @@ export function Echeance({
   className,
 }: {
   date: string;
-  annee: number;
+  /** L'année de la fiche ; sans elle, l'année se lit toujours. */
+  annee?: number;
   className?: string;
 }) {
   return (
@@ -52,51 +60,106 @@ export function Echeance({
     >
       <Icon name="event" size={14} className="opacity-75" />
       <span className="sr-only">Échéance :</span>
-      {dateEnLettres(date, Number(date.slice(0, 4)) !== annee)}
+      {enLettres(date, annee)}
     </span>
   );
 }
 
 /**
- * L'échéance, à changer : la même puce, et dessous le calendrier du
- * navigateur, qui s'ouvre d'un clic. Au clavier, le champ de date reçoit le
- * focus, et la puce se lit à mesure qu'on tape.
+ * L'échéance, à choisir : la même puce, et dessous le calendrier du
+ * navigateur, qui s'ouvre d'un clic. Une date prise au calendrier vaut
+ * aussitôt ; tapée au clavier, elle vaut quand on quitte la puce, ou sur
+ * Entrée : un jour à moitié tapé ne déclenche rien. Sans échéance, la puce
+ * attend la sienne ; `manque` la signale, une fois l'enregistrement refusé.
  */
 export function ChoixEcheance({
+  id,
   date,
   annee,
   min,
   max,
-  onChange,
+  onChoix,
   label,
+  manque = false,
+  reportee,
 }: {
-  date: string;
+  id?: string;
+  /** `null` : pas encore choisie. */
+  date: string | null;
   annee: number;
   min: string;
   max: string;
-  onChange: (date: string) => void;
+  onChoix: (date: string) => void;
   label: string;
+  manque?: boolean;
+  /** L'échéance compte pour un autre semestre : « S2 ». */
+  reportee?: string;
 }) {
+  const [saisie, setSaisie] = useState<string | null>(null);
+  // Le calendrier ouvert d'un clic : la date qu'on y prend vaut tout de suite.
+  const auCalendrier = useRef(false);
+  const montree = saisie ?? date;
+
+  const choisir = (v: string) => {
+    setSaisie(null);
+    if (v !== date) onChoix(v);
+  };
+
   return (
-    <span className="relative inline-flex shrink-0 items-center gap-1 rounded-full border border-line bg-surface py-[3px] pr-2.5 pl-2 text-[11.5px] font-semibold whitespace-nowrap text-ink transition-colors duration-150 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 hover:border-primary/45 hover:text-primary">
+    <span
+      className={cn(
+        'relative inline-flex shrink-0 items-center gap-1 rounded-full border bg-surface py-[3px] pr-2.5 pl-2 text-[11.5px] font-semibold whitespace-nowrap transition-colors duration-150 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 hover:border-primary/45 hover:text-primary',
+        montree
+          ? 'border-line text-ink'
+          : manque
+            ? 'border-dashed border-danger text-danger'
+            : 'border-dashed border-line text-ink-muted',
+      )}
+    >
       <Icon name="event" size={14} className="opacity-75" />
-      {dateEnLettres(date, Number(date.slice(0, 4)) !== annee)}
+      {montree ? enLettres(montree, annee) : 'Échéance'}
+      {reportee && montree ? (
+        <span className="ml-0.5 rounded-full bg-primary-soft px-1.5 text-[10px] leading-4 font-extrabold text-primary">
+          {reportee}
+        </span>
+      ) : null}
       <input
+        id={id}
         type="date"
         aria-label={label}
-        value={date}
+        aria-invalid={manque && !date ? true : undefined}
+        value={montree ?? ''}
         min={min}
         max={max}
         required
         onClick={(e) => {
+          auCalendrier.current = true;
           try {
             e.currentTarget.showPicker();
           } catch {
             // Un navigateur sans calendrier à ouvrir : la saisie au clavier reste.
           }
         }}
+        onKeyDown={(e) => {
+          auCalendrier.current = false;
+          if (e.key === 'Enter' && saisie && dansLesBornes(saisie, min, max)) {
+            e.preventDefault();
+            choisir(saisie);
+          }
+        }}
         onChange={(e) => {
-          if (e.target.value) onChange(e.target.value);
+          const v = e.target.value;
+          if (auCalendrier.current && dansLesBornes(v, min, max)) {
+            auCalendrier.current = false;
+            choisir(v);
+            return;
+          }
+          setSaisie(v || null);
+        }}
+        onBlur={() => {
+          auCalendrier.current = false;
+          if (saisie && dansLesBornes(saisie, min, max)) choisir(saisie);
+          else setSaisie(null);
         }}
         className="absolute inset-0 size-full cursor-pointer opacity-0"
       />
@@ -133,173 +196,116 @@ export function ReglesDesEcheances({
   );
 }
 
-/** Une ligne de la fenêtre : un objectif et son échéance. */
-interface Ligne {
-  cle: number;
-  texte: string;
-  echeance: string;
-}
-
 /**
- * « Fixer des objectifs » : une ligne par objectif, chacun avec son
- * échéance. Pas de semestre à choisir : le serveur range chaque objectif
- * dans l'évaluation où son échéance le fait compter, et dit lesquelles ont
- * reçu quelque chose.
+ * Une échéance à 30 jours ou moins de l'évaluation où elle compte : le n+1
+ * la confirme, ou reporte l'objectif à l'évaluation suivante, avec une
+ * nouvelle échéance prise dans la période de celle-ci.
  */
-export function FenetreFixerObjectifs({
-  employeeId,
+export function ConfirmerEcheance({
+  objectif,
+  echeance,
   jours,
-  onFixes,
+  onConfirmer,
+  onReporter,
   onClose,
 }: {
-  employeeId: string;
+  /** Le texte de l'objectif. */
+  objectif: string;
+  echeance: string;
   jours: JoursEvaluation;
-  /** Les fiches qui ont reçu les objectifs : la page peut aller les montrer. */
-  onFixes: (periodes: PeriodeObjectifs[]) => void;
+  onConfirmer: () => void;
+  onReporter: (echeance: string) => void;
   onClose: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const suivante = useRef(1);
-  const [lignes, setLignes] = useState<Ligne[]>([{ cle: 0, texte: '', echeance: '' }]);
-  const [erreur, setErreur] = useState<string | null>(null);
-  const [envoi, setEnvoi] = useState(false);
-  const uid = useId();
-  const idDe = (cle: number) => `${uid}-objectif-${cle}`;
-  const viser = (cle: number) =>
-    requestAnimationFrame(() => document.getElementById(idDe(cle))?.focus());
-  const min = aujourdhui();
-  const max = horizonDesEcheances(jours);
+  const [report, setReport] = useState(false);
+  const [nouvelle, setNouvelle] = useState('');
+  const champ = useId();
+  const periode = periodeDeLEcheance(echeance, jours);
+  const ecart = joursAvantLEvaluation(echeance, jours);
+  // La prochaine évaluation : ses échéances, à partir d'aujourd'hui et
+  // jusqu'à la dernière qui se fixe.
+  const suivante = periodeSuivante(periode);
+  const { du, au } = echeancesDuSemestre(suivante.annee, suivante.semestre, jours);
+  const jour = aujourdhui();
+  const horizon = horizonDesEcheances(jours);
+  const min = du > jour ? du : jour;
+  const max = au < horizon ? au : horizon;
+  const reportable = min <= max;
 
-  const changer = (cle: number, quoi: Partial<Ligne>) =>
-    setLignes((ls) => ls.map((l) => (l.cle === cle ? { ...l, ...quoi } : l)));
-
-  /** Une ligne de plus sous `apres`, avec la même échéance : on fixe souvent par lots. */
-  const ajouter = (apres?: Ligne) => {
-    const cle = suivante.current++;
-    setLignes((ls) => {
-      const i = apres ? ls.findIndex((l) => l.cle === apres.cle) : ls.length - 1;
-      const echeance = (apres ?? ls[ls.length - 1])?.echeance ?? '';
-      return [...ls.slice(0, i + 1), { cle, texte: '', echeance }, ...ls.slice(i + 1)];
-    });
-    viser(cle);
-  };
-
-  const retirer = (l: Ligne) => {
-    const i = lignes.findIndex((x) => x.cle === l.cle);
-    const voisine = lignes[i - 1] ?? lignes[i + 1];
-    setLignes((ls) => ls.filter((x) => x.cle !== l.cle));
-    if (voisine) viser(voisine.cle);
-  };
-
-  const auClavier = (e: KeyboardEvent<HTMLInputElement>, l: Ligne) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (l.texte.trim()) ajouter(l);
-      return;
-    }
-    // Une ligne vide s'efface au retour arrière, la précédente reprend la main.
-    if (e.key === 'Backspace' && !l.texte && lignes.length > 1) {
-      e.preventDefault();
-      retirer(l);
-    }
-  };
-
-  const remplies = lignes.filter((l) => l.texte.trim());
-  const sansEcheance = remplies.some((l) => !l.echeance);
-
-  const fixer = async () => {
-    if (remplies.length === 0 || sansEcheance || envoi) return;
-    setErreur(null);
-    setEnvoi(true);
-    try {
-      const r = await api<ObjectifsFixes>(`/objectifs/equipe/${employeeId}/objectifs`, {
-        method: 'POST',
-        body: { objectifs: remplies.map((l) => ({ texte: l.texte.trim(), echeance: l.echeance })) },
-      });
-      await queryClient.invalidateQueries({ queryKey: [...CLE_OBJECTIFS, 'equipe', employeeId] });
-      onFixes(r.periodes);
-      onClose();
-    } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Objectifs non fixés, réessayez.');
-    } finally {
-      setEnvoi(false);
-    }
-  };
+  const quand =
+    ecart === 0
+      ? 'le jour même de l’échéance de cet objectif'
+      : `${ecart} jour${ecart > 1 ? 's' : ''} après l’échéance de cet objectif`;
 
   return (
     <Modal
       open
       onClose={onClose}
-      title="Fixer des objectifs"
-      maxWidth="max-w-2xl"
+      title={report ? 'Reporter l’objectif' : 'Confirmer cette échéance ?'}
+      maxWidth="max-w-md"
       footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button
-            loading={envoi}
-            disabled={remplies.length === 0 || sansEcheance}
-            onClick={() => void fixer()}
-          >
-            Fixer
-          </Button>
-        </>
+        report ? (
+          <>
+            <Button variant="secondary" onClick={() => setReport(false)}>
+              Retour
+            </Button>
+            <Button
+              disabled={!dansLesBornes(nouvelle, min, max)}
+              onClick={() => onReporter(nouvelle)}
+            >
+              Reporter
+            </Button>
+          </>
+        ) : (
+          <>
+            {reportable ? (
+              <Button variant="secondary" onClick={() => setReport(true)}>
+                Reporter à la prochaine évaluation
+              </Button>
+            ) : (
+              <Button variant="secondary" onClick={onClose}>
+                Annuler
+              </Button>
+            )}
+            <Button onClick={onConfirmer}>Confirmer</Button>
+          </>
+        )
       }
     >
-      <ReglesDesEcheances jours={jours} />
-      {erreur ? (
-        <p
-          role="alert"
-          className="rounded-[9px] bg-danger-soft px-3 py-2 text-[12.5px] text-danger"
-        >
-          {erreur}
-        </p>
-      ) : null}
-      <ModalSection title="Objectifs">
-        <ol className="flex flex-col gap-3 max-sm:gap-4">
-          {lignes.map((l, i) => (
-            <li
-              key={l.cle}
-              className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_11rem_auto]"
+      <Card>
+        <CardContent className="flex flex-col gap-3 py-4 text-[13.5px] leading-relaxed text-ink">
+          {objectif ? (
+            <p className="font-semibold break-words text-ink-strong">{objectif}</p>
+          ) : null}
+          {report ? (
+            <Field
+              label={`Nouvelle échéance, au semestre ${suivante.semestre} de ${suivante.annee}`}
+              htmlFor={champ}
+              hint={`Entre le ${dateEnLettres(min)} et le ${dateEnLettres(max)}`}
             >
               <Input
-                id={idDe(l.cle)}
-                aria-label={`Objectif ${i + 1}`}
-                placeholder="Objectif"
-                maxLength={OBJECTIF_TEXTE_MAX}
-                value={l.texte}
-                onChange={(e) => changer(l.cle, { texte: e.target.value })}
-                onKeyDown={(e) => auClavier(e, l)}
-                className="max-sm:col-span-2"
-              />
-              <Input
+                id={champ}
                 type="date"
-                aria-label={`Échéance de l’objectif ${i + 1}`}
                 min={min}
                 max={max}
-                value={l.echeance}
-                onChange={(e) => changer(l.cle, { echeance: e.target.value })}
+                value={nouvelle}
+                onChange={(e) => setNouvelle(e.target.value)}
                 className="tabular-nums"
               />
-              <button
-                type="button"
-                aria-label={`Retirer l’objectif ${i + 1}`}
-                title="Retirer"
-                disabled={lignes.length === 1}
-                onClick={() => retirer(l)}
-                className="grid size-10 place-items-center rounded-full text-ink-muted transition-colors duration-150 outline-none hover:bg-hover hover:text-danger focus-visible:ring-2 focus-visible:ring-primary/35 disabled:pointer-events-none disabled:opacity-30"
-              >
-                <Icon name="close" size={18} />
-              </button>
-            </li>
-          ))}
-        </ol>
-        <Button variant="ghost" size="sm" className="mt-3 -ml-2" onClick={() => ajouter()}>
-          <Icon name="add" size={16} />
-          Ajouter un objectif
-        </Button>
-      </ModalSection>
+            </Field>
+          ) : (
+            <>
+              <Echeance date={echeance} className="text-[12.5px]" />
+              <p>
+                L’évaluation du semestre {periode.semestre} de {periode.annee} se tiendra {quand}.{' '}
+                {reportable
+                  ? 'Voulez-vous confirmer cette échéance ou reporter l’objectif à la prochaine évaluation ?'
+                  : 'Voulez-vous confirmer cette échéance ?'}
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </Modal>
   );
 }

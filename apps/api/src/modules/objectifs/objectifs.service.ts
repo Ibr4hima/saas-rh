@@ -20,10 +20,8 @@ import {
   type EvaluationN1Input,
   type EvaluationValidee,
   type FicheEnregistree,
-  type FixerObjectifsInput,
   type JoursEvaluation,
   type NoteGlobale,
-  type ObjectifsFixes,
   type PeriodeObjectifs,
   JOURS_D_EVALUATION_PAR_DEFAUT,
   dateDEvaluation,
@@ -259,10 +257,10 @@ function ranger(contenu: Bloc[], implicite: string): Bloc[] {
 }
 
 /**
- * Une fiche, le temps d'un geste qui peut en toucher plusieurs : fixer des
- * objectifs, enregistrer une fiche dont une échéance change de période,
- * déplacer les dates d'évaluation. Le geste se fait en mémoire, puis les
- * fiches touchées s'écrivent.
+ * Une fiche, le temps d'un geste qui peut en toucher plusieurs : enregistrer
+ * une fiche dont une échéance change de période, déplacer les dates
+ * d'évaluation. Le geste se fait en mémoire, puis les fiches touchées
+ * s'écrivent.
  */
 interface FicheDuGeste extends PeriodeObjectifs {
   /** `null` : la fiche n'existe pas encore. */
@@ -573,58 +571,14 @@ export class ObjectifsService {
   }
 
   /**
-   * Le n+1 fixe des objectifs à son direct, chacun avec son échéance, sans
-   * choisir le semestre : un objectif compte pour la première évaluation qui
-   * tombe le jour de son échéance ou après (ADR-0055). Chaque fiche qui en
-   * reçoit les range par échéance, et l'agent en est prévenu.
-   */
-  async fixerObjectifs(
-    user: SessionUser,
-    employeeId: string,
-    input: FixerObjectifsInput,
-  ): Promise<ObjectifsFixes> {
-    return this.db.withTenant(this.ctx(user), async (tx) => {
-      const moi = await this.exigerAgent(tx, user);
-      if (!(await this.directs(tx, moi)).some((m) => m.id === employeeId)) {
-        problem(404, 'objectifs.hors_equipe', 'Cet agent ne fait pas partie de votre équipe');
-      }
-      const jours = await this.joursEvaluation(tx);
-      const fiches = await this.fichesDuGeste(tx, employeeId);
-      for (const o of input.objectifs) {
-        this.exigerEcheancePossible(o.echeance, jours);
-        const cible = this.ficheQuiRecoit(
-          fiches,
-          periodeDeLEcheance(o.echeance, jours),
-          moi,
-          jours,
-        );
-        cible.contenu = [
-          ...cible.contenu,
-          {
-            id: uuidv7(),
-            type: 'checkListItem',
-            props: { echeance: o.echeance },
-            // Un objectif tient sur une ligne.
-            content: [{ type: 'text', text: o.texte.replace(/\s+/g, ' '), styles: {} }],
-            children: [],
-          },
-        ];
-        cible.touchee = true;
-      }
-      const ecrites = await this.ecrireLesFiches(tx, user, employeeId, fiches, jours, moi);
-      await this.prevenirDesFiches(tx, user, employeeId, moi, ecrites);
-      return { periodes: [...ecrites.keys()].map(({ annee, semestre }) => ({ annee, semestre })) };
-    });
-  }
-
-  /**
    * Le n+1 enregistre la fiche d'objectifs de son direct pour un semestre,
    * d'un clic sur « Enregistrer » (ADR-0051). Les objectifs s'y rangent par
-   * échéance ; celui dont l'échéance change de période part dans la fiche de
-   * sa nouvelle évaluation, avec son statut et ce qui s'en est dit
-   * (ADR-0055). Chaque enregistrement qui change une fiche prévient l'agent ;
-   * la dernière notification remplace les précédentes. Une fiche renvoyée
-   * telle quelle ne s'écrit pas.
+   * échéance ; celui dont l'échéance tombe dans une autre période (un
+   * objectif reporté à l'évaluation suivante) part dans la fiche de cette
+   * évaluation, avec son statut et ce qui s'en est dit (ADR-0055, ADR-0056).
+   * Chaque enregistrement qui change une fiche prévient l'agent ; la dernière
+   * notification remplace les précédentes. Une fiche renvoyée telle quelle ne
+   * s'écrit pas, une fiche neuve restée vide ne se crée pas.
    */
   async enregistrerFiche(
     user: SessionUser,
@@ -704,7 +658,7 @@ export class ObjectifsService {
       const ecrites = await this.ecrireLesFiches(tx, user, employeeId, fiches, jours, moi);
       await this.prevenirDesFiches(tx, user, employeeId, moi, ecrites);
       return {
-        majLe: ecrites.get(ici) ?? iso(ici.updated_at)!,
+        majLe: ecrites.get(ici) ?? iso(ici.updated_at),
         periodes: [...ecrites.keys()].map(({ annee, semestre }) => ({ annee, semestre })),
       };
     });
@@ -780,9 +734,10 @@ export class ObjectifsService {
 
   /**
    * Écrit les fiches que le geste a touchées, chacune rangée par échéance.
-   * Une fiche que rien n'a changé ne s'écrit pas. `auteur` : qui signe la
-   * mise à jour (`null` : la fiche garde le sien). Rend les fiches écrites,
-   * avec l'heure de leur écriture, dans l'ordre du temps.
+   * Une fiche que rien n'a changé ne s'écrit pas ; une fiche neuve où rien
+   * n'est resté (ses objectifs reportés ailleurs) ne se crée pas. `auteur` :
+   * qui signe la mise à jour (`null` : la fiche garde le sien). Rend les
+   * fiches écrites, avec l'heure de leur écriture, dans l'ordre du temps.
    */
   private async ecrireLesFiches(
     tx: Tx,
@@ -809,6 +764,7 @@ export class ObjectifsService {
       const empreintes = JSON.stringify(f.statuts_empreintes);
       const agent = JSON.stringify(f.commentaires_agent);
       const n1 = JSON.stringify(f.commentaires_n1);
+      if (f.id === null && !ficheRemplie(f.contenu)) continue;
       if (f.id === null) {
         const { rows } = await tx.execute<{ updated_at: string | Date }>(sql`
           INSERT INTO objectifs_fiches

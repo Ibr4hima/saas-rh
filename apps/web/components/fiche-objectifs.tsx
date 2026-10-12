@@ -26,8 +26,12 @@ import {
 } from 'react';
 import {
   dateDEvaluation,
+  ECHEANCE_A_CONFIRMER_JOURS,
   echeanceDuBloc,
+  echeancesDuSemestre,
+  joursAvantLEvaluation,
   OBJECTIF_TEXTE_MAX,
+  periodeDeLEcheance,
   type FormationDeLaFiche,
   type FormationProposable,
   type JoursEvaluation,
@@ -40,6 +44,7 @@ import { Case } from './evaluation-objectifs';
 import { Icon, type IconName } from './icons';
 import {
   ChoixEcheance,
+  ConfirmerEcheance,
   Echeance,
   horizonDesEcheances,
   ReglesDesEcheances,
@@ -51,9 +56,10 @@ import { usePreferences } from './preferences';
    à écrire : la page le pose (« Objectifs du 1er semestre de 2026 »).
 
    1. Les OBJECTIFS : une liste, chacun avec son échéance, de la plus proche
-      à la plus lointaine. Du texte simple, sur une ligne. L'échéance décide
-      de l'évaluation où l'objectif compte (ADR-0055) : changée pour une
-      autre période, l'objectif y part à l'enregistrement.
+      à la plus lointaine. Du texte simple, sur une ligne. L'échéance se
+      choisit dans la période du semestre ; trop près de l'évaluation, elle
+      se confirme, ou l'objectif se reporte à l'évaluation suivante, où il
+      part à l'enregistrement (ADR-0055, ADR-0056).
    2. Les FORMATIONS À SUIVRE : le catalogue de l'APIX Academy. Celles que
       l'agent a terminées ne se cochent pas ; cocher une autre la lui
       demande, et elle s'évalue comme un objectif.
@@ -106,7 +112,8 @@ const aDuTexte = (blocs: unknown) => /"text":"\s*[^"\s]/.test(JSON.stringify(blo
 interface Objectif {
   id: string;
   texte: string;
-  echeance: string;
+  /** `null` : pas encore choisie. Un objectif ne s'enregistre pas sans elle. */
+  echeance: string | null;
 }
 
 /** Un objectif : une case, son texte seul ; sans échéance à elle, celle de sa fiche. */
@@ -123,10 +130,19 @@ function enCase(o: Objectif): Bloc {
   return {
     id: o.id,
     type: 'checkListItem',
-    props: { echeance: o.echeance },
+    props: o.echeance ? { echeance: o.echeance } : {},
     content: [{ type: 'text', text: o.texte.replace(/\s+/g, ' ').trim(), styles: {} }],
     children: [],
   };
+}
+
+/**
+ * Les objectifs par échéance, de la plus proche à la plus lointaine ; à
+ * échéance égale, dans leur ordre. Ceux qui attendent la leur restent en bas.
+ */
+function parEcheance(objectifs: Objectif[]): Objectif[] {
+  const cle = (o: Objectif) => o.echeance ?? '9999-12-31';
+  return [...objectifs].sort((a, b) => (cle(a) < cle(b) ? -1 : cle(a) > cle(b) ? 1 : 0));
 }
 
 /** Les blocs que le commentaire connaît : tout, sauf la case à cocher. */
@@ -322,6 +338,7 @@ export function EditeurFicheObjectifs({
   annee,
   semestre,
   jours,
+  manques = 0,
 }: {
   contenu: Record<string, unknown>[];
   modifiable: boolean;
@@ -330,6 +347,11 @@ export function EditeurFicheObjectifs({
   onChange?: (blocs: Record<string, unknown>[]) => void;
   /** Chaque changement ramène le curseur sur le dernier objectif (le crayon). */
   focusSignal?: number;
+  /**
+   * Chaque changement signale les objectifs sans échéance (l'enregistrement
+   * les a refusés), et y porte le curseur.
+   */
+  manques?: number;
   /** La marge autour de la fiche. */
   className?: string;
   /**
@@ -367,10 +389,11 @@ export function EditeurFicheObjectifs({
         <EditeurObjectifs
           initial={depart.objectifs}
           annee={annee}
-          implicite={implicite}
+          semestre={semestre}
           jours={jours}
           statuts={statuts}
           focusSignal={focusSignal}
+          manques={manques}
           onChange={(objectifs) => {
             parties.current = { ...parties.current, objectifs };
             publier();
@@ -438,7 +461,7 @@ function ListeObjectifs({
             >
               {o.texte}
             </p>
-            <Echeance date={o.echeance} annee={annee} />
+            {o.echeance ? <Echeance date={o.echeance} annee={annee} /> : null}
           </li>
         );
       })}
@@ -447,46 +470,76 @@ function ListeObjectifs({
 }
 
 /**
- * Les objectifs, à rédiger : chacun son texte et son échéance. Entrée ouvre
- * un objectif dessous, à la même échéance ; Retour arrière sur un objectif
- * vide le retire ; les flèches passent de l'un à l'autre. Une fiche dont
- * l'évaluation est passée garde ses échéances : le texte seul s'y corrige, et
- * rien ne s'y ajoute.
+ * Les objectifs, à rédiger : chacun son texte et son échéance, choisie dans
+ * la période du semestre. À 30 jours ou moins de l'évaluation, l'échéance se
+ * confirme, ou l'objectif se reporte à l'évaluation suivante, avec une
+ * échéance prise dans sa période. Les objectifs se rangent par échéance à
+ * mesure qu'elles se fixent. Entrée ouvre un nouvel objectif ; Retour
+ * arrière sur un objectif vide le retire ; les flèches passent de l'un à
+ * l'autre. Une fiche dont l'évaluation est passée garde ses échéances : le
+ * texte seul s'y corrige, et rien ne s'y ajoute.
  */
 function EditeurObjectifs({
   initial,
   annee,
-  implicite,
+  semestre,
   jours,
   statuts,
   focusSignal,
+  manques,
   onChange,
 }: {
   initial: Objectif[];
   annee: number;
-  /** La date d'évaluation de la fiche. */
-  implicite: string;
+  semestre: Semestre;
   jours: JoursEvaluation;
   statuts?: Record<string, StatutObjectif>;
   focusSignal: number;
+  manques: number;
   onChange: (objectifs: Objectif[]) => void;
 }) {
   const [lignes, setLignes] = useState(initial);
+  // L'échéance choisie trop près de son évaluation, qui attend d'être confirmée.
+  const [aConfirmer, setAConfirmer] = useState<{ id: string; echeance: string } | null>(null);
+  // L'enregistrement a refusé des objectifs sans échéance : leurs puces le disent.
+  const [signaler, setSignaler] = useState(false);
   const uid = useId();
   const idDe = (id: string) => `${uid}-${id}`;
+  const idEcheance = (id: string) => `${uid}-${id}-echeance`;
   const jour = aujourdhui();
-  const figee = implicite < jour;
-  const max = horizonDesEcheances(jours);
+  const { du, au } = echeancesDuSemestre(annee, semestre, jours);
+  const figee = au < jour;
+  const horizon = horizonDesEcheances(jours);
+  // Une échéance se choisit dans la période du semestre, à partir d'aujourd'hui.
+  const debut = du > jour ? du : jour;
+
+  // Où va le curseur : un objectif (au début ou à la fin de son texte), ou
+  // une échéance. Il s'y pose une fois la liste affichée : une ligne qu'on
+  // vient d'ajouter n'existe qu'après le rendu.
+  const aViser = useRef<{ id: string; ou: 'debut' | 'fin' | 'echeance' } | null>(null);
+
+  const poserLeCurseur = () => {
+    const cible = aViser.current;
+    if (!cible) return;
+    const champ = document.getElementById(
+      cible.ou === 'echeance' ? idEcheance(cible.id) : idDe(cible.id),
+    );
+    if (!(champ instanceof HTMLTextAreaElement || champ instanceof HTMLInputElement)) return;
+    aViser.current = null;
+    champ.focus();
+    if (champ instanceof HTMLTextAreaElement) {
+      const position = cible.ou === 'fin' ? champ.value.length : 0;
+      champ.setSelectionRange(position, position);
+    }
+  };
+
+  useEffect(poserLeCurseur);
 
   /** Le curseur dans un objectif, au début ou à la fin de son texte. */
-  const viser = (id: string, ou: 'debut' | 'fin' = 'fin') =>
-    requestAnimationFrame(() => {
-      const champ = document.getElementById(idDe(id));
-      if (!(champ instanceof HTMLTextAreaElement)) return;
-      champ.focus();
-      const position = ou === 'fin' ? champ.value.length : 0;
-      champ.setSelectionRange(position, position);
-    });
+  const viser = (id: string, ou: 'debut' | 'fin' = 'fin') => {
+    aViser.current = { id, ou };
+    poserLeCurseur();
+  };
 
   const publier = (suivantes: Objectif[]) => {
     setLignes(suivantes);
@@ -496,15 +549,25 @@ function EditeurObjectifs({
   const changer = (id: string, quoi: Partial<Objectif>) =>
     publier(lignes.map((l) => (l.id === id ? { ...l, ...quoi } : l)));
 
-  /** Un objectif sous `apres`, à la même échéance tant qu'elle n'est pas passée. */
-  const ajouter = (apres?: Objectif) => {
-    const neuf: Objectif = {
-      id: crypto.randomUUID(),
-      texte: '',
-      echeance: apres && apres.echeance >= jour ? apres.echeance : implicite,
-    };
-    const i = apres ? lignes.findIndex((l) => l.id === apres.id) : lignes.length - 1;
-    publier([...lignes.slice(0, i + 1), neuf, ...lignes.slice(i + 1)]);
+  /** L'échéance fixée, l'objectif prend sa place dans la liste ; le focus le suit. */
+  const fixerEcheance = (id: string, echeance: string) => {
+    if (document.activeElement?.id === idEcheance(id)) aViser.current = { id, ou: 'echeance' };
+    publier(parEcheance(lignes.map((l) => (l.id === id ? { ...l, echeance } : l))));
+  };
+
+  /** Une échéance choisie : à 30 jours ou moins de son évaluation, elle se confirme d'abord. */
+  const proposer = (id: string, echeance: string) => {
+    if (joursAvantLEvaluation(echeance, jours) <= ECHEANCE_A_CONFIRMER_JOURS) {
+      setAConfirmer({ id, echeance });
+    } else {
+      fixerEcheance(id, echeance);
+    }
+  };
+
+  /** Un objectif de plus, en bas de la liste : son échéance reste à choisir. */
+  const ajouter = () => {
+    const neuf: Objectif = { id: crypto.randomUUID(), texte: '', echeance: null };
+    publier([...lignes, neuf]);
     viser(neuf.id);
   };
 
@@ -525,13 +588,23 @@ function EditeurObjectifs({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusSignal]);
 
+  // L'enregistrement refusé : les puces sans échéance se signalent, et le
+  // curseur va à la première.
+  useEffect(() => {
+    if (manques === 0) return;
+    setSignaler(true);
+    const premiere = lignes.find((l) => l.texte.trim() && !l.echeance);
+    if (premiere) document.getElementById(idEcheance(premiere.id))?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manques]);
+
   const auClavier = (e: KeyboardEvent<HTMLTextAreaElement>, l: Objectif) => {
     const champ = e.currentTarget;
     const i = lignes.findIndex((x) => x.id === l.id);
     if (e.key === 'Enter') {
       // Un objectif tient sur une ligne : Entrée en ouvre un autre.
       e.preventDefault();
-      if (!e.shiftKey && !figee && l.texte.trim()) ajouter(l);
+      if (!e.shiftKey && !figee && l.texte.trim()) ajouter();
       return;
     }
     if (e.key === 'Backspace' && !l.texte) {
@@ -554,53 +627,85 @@ function EditeurObjectifs({
     <div className="flex flex-col px-5">
       {figee ? null : <ReglesDesEcheances jours={jours} className="mb-2" />}
       <ul className="flex flex-col">
-        {lignes.map((l, i) => (
-          <li key={l.id} className="flex items-start gap-[11px] py-1">
-            <span className="pt-[2px]">
-              <Case statut={statuts?.[l.id]} />
-            </span>
-            <TexteModifiable
-              id={idDe(l.id)}
-              valeur={l.texte}
-              label={`Objectif ${i + 1}`}
-              onChange={(texte) => changer(l.id, { texte })}
-              onKeyDown={(e) => auClavier(e, l)}
-            />
-            {figee ? (
-              <Echeance date={l.echeance} annee={annee} className="pt-[3px]" />
-            ) : (
-              <ChoixEcheance
-                date={l.echeance}
-                annee={annee}
-                min={jour}
-                max={max}
-                label={`Échéance de l’objectif ${i + 1}`}
-                onChange={(echeance) => changer(l.id, { echeance })}
+        {lignes.map((l, i) => {
+          // Reporté : l'échéance compte pour une autre évaluation, où
+          // l'objectif part à l'enregistrement.
+          const ailleurs = l.echeance ? periodeDeLEcheance(l.echeance, jours) : null;
+          const reporte =
+            ailleurs && (ailleurs.annee !== annee || ailleurs.semestre !== semestre)
+              ? ailleurs
+              : null;
+          const fin = reporte ? dateDEvaluation(reporte.annee, reporte.semestre, jours) : au;
+          return (
+            <li key={l.id} className="flex items-start gap-[11px] py-1">
+              <span className="pt-[2px]">
+                <Case statut={statuts?.[l.id]} />
+              </span>
+              <TexteModifiable
+                id={idDe(l.id)}
+                valeur={l.texte}
+                label={`Objectif ${i + 1}`}
+                onChange={(texte) => changer(l.id, { texte })}
+                onKeyDown={(e) => auClavier(e, l)}
               />
-            )}
-            <button
-              type="button"
-              aria-label={`Retirer l’objectif ${i + 1}`}
-              title="Retirer"
-              onClick={() => retirer(l)}
-              className="grid size-6 shrink-0 place-items-center rounded-full text-ink-muted/70 transition-colors duration-150 outline-none hover:bg-hover hover:text-danger focus-visible:ring-2 focus-visible:ring-primary/35"
-            >
-              <Icon name="close" size={16} />
-            </button>
-          </li>
-        ))}
+              {figee ? (
+                l.echeance ? (
+                  <Echeance date={l.echeance} annee={annee} className="pt-[3px]" />
+                ) : null
+              ) : (
+                <ChoixEcheance
+                  id={idEcheance(l.id)}
+                  date={l.echeance}
+                  annee={annee}
+                  min={debut}
+                  max={fin < horizon ? fin : horizon}
+                  label={
+                    reporte
+                      ? `Échéance de l’objectif ${i + 1}, reporté au semestre ${reporte.semestre} de ${reporte.annee}`
+                      : `Échéance de l’objectif ${i + 1}`
+                  }
+                  manque={signaler && Boolean(l.texte.trim())}
+                  reportee={reporte ? `S${reporte.semestre}` : undefined}
+                  onChoix={(echeance) => proposer(l.id, echeance)}
+                />
+              )}
+              <button
+                type="button"
+                aria-label={`Retirer l’objectif ${i + 1}`}
+                title="Retirer"
+                onClick={() => retirer(l)}
+                className="grid size-6 shrink-0 place-items-center rounded-full text-ink-muted/70 transition-colors duration-150 outline-none hover:bg-hover hover:text-danger focus-visible:ring-2 focus-visible:ring-primary/35"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </li>
+          );
+        })}
       </ul>
       {figee ? null : (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-1 -ml-2 self-start"
-          onClick={() => ajouter(lignes.at(-1))}
-        >
+        <Button variant="ghost" size="sm" className="mt-1 -ml-2 self-start" onClick={ajouter}>
           <Icon name="add" size={16} />
           Ajouter un objectif
         </Button>
       )}
+      {aConfirmer ? (
+        <ConfirmerEcheance
+          // Un report trop près de son évaluation se confirme à son tour.
+          key={`${aConfirmer.id}:${aConfirmer.echeance}`}
+          objectif={lignes.find((l) => l.id === aConfirmer.id)?.texte ?? ''}
+          echeance={aConfirmer.echeance}
+          jours={jours}
+          onConfirmer={() => {
+            setAConfirmer(null);
+            fixerEcheance(aConfirmer.id, aConfirmer.echeance);
+          }}
+          onReporter={(echeance) => {
+            setAConfirmer(null);
+            proposer(aConfirmer.id, echeance);
+          }}
+          onClose={() => setAConfirmer(null)}
+        />
+      ) : null}
     </div>
   );
 }

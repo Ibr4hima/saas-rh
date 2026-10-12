@@ -587,6 +587,48 @@ export function periodeDeLEcheance(echeance: string, jours: JoursEvaluation): Pe
   return { annee: annee + 1, semestre: 1 };
 }
 
+/** L'évaluation d'après : le 2nd semestre après le 1er, le 1er de l'année suivante après le 2nd. */
+export function periodeSuivante(p: PeriodeObjectifs): PeriodeObjectifs {
+  return p.semestre === 1 ? { annee: p.annee, semestre: 2 } : { annee: p.annee + 1, semestre: 1 };
+}
+
+/** Le lendemain d'une date ISO. */
+function lendemainDe(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Les échéances qui comptent pour l'évaluation d'un semestre : du lendemain
+ * de l'évaluation précédente au jour de la sienne.
+ */
+export function echeancesDuSemestre(
+  annee: number,
+  semestre: Semestre,
+  jours: JoursEvaluation,
+): { du: string; au: string } {
+  const precedente =
+    semestre === 1 ? dateDEvaluation(annee - 1, 2, jours) : dateDEvaluation(annee, 1, jours);
+  return { du: lendemainDe(precedente), au: dateDEvaluation(annee, semestre, jours) };
+}
+
+/** Les jours entre une échéance et l'évaluation où elle compte : 0 le jour même. */
+export function joursAvantLEvaluation(echeance: string, jours: JoursEvaluation): number {
+  const { annee, semestre } = periodeDeLEcheance(echeance, jours);
+  const evaluation = dateDEvaluation(annee, semestre, jours);
+  return Math.round(
+    (Date.parse(`${evaluation}T00:00:00Z`) - Date.parse(`${echeance}T00:00:00Z`)) / 86_400_000,
+  );
+}
+
+/**
+ * Une échéance à 30 jours ou moins de l'évaluation où elle compte se
+ * confirme : le n+1 la garde, ou reporte l'objectif à l'évaluation suivante
+ * (ADR-0056).
+ */
+export const ECHEANCE_A_CONFIRMER_JOURS = 30;
+
 /** « 30 juin », « 1er janvier » : un jour et un mois, « MM-JJ », en lettres. */
 export function jourEtMoisEnLettres(jour: string): string {
   const [mois = 1, j = 1] = jour.split('-').map(Number);
@@ -644,30 +686,13 @@ export interface PeriodeObjectifs {
 /**
  * Ce que l'enregistrement d'une fiche a changé : la fiche elle-même, et
  * celles où sont partis les objectifs dont l'échéance a changé de période.
+ * `majLe` vaut `null` quand la fiche n'existe pas : neuve, elle n'a rien
+ * gardé (ses objectifs sont tous partis ailleurs).
  */
 export interface FicheEnregistree {
-  majLe: string;
-  periodes: PeriodeObjectifs[];
-}
-
-/** Les fiches où les objectifs fixés sont allés, chacun selon son échéance. */
-export interface ObjectifsFixes {
+  majLe: string | null;
   periodes: PeriodeObjectifs[];
 }
 
 /** Un objectif ponctuel tient sur une ligne. */
 export const OBJECTIF_TEXTE_MAX = 500;
-
-/** « Fixer des objectifs » : chacun avec son échéance, qui décide de son semestre. */
-export const fixerObjectifsSchema = z.object({
-  objectifs: z
-    .array(
-      z.object({
-        texte: z.string().trim().min(1, 'Écrivez l’objectif').max(OBJECTIF_TEXTE_MAX),
-        echeance: z.iso.date(),
-      }),
-    )
-    .min(1)
-    .max(50),
-});
-export type FixerObjectifsInput = z.infer<typeof fixerObjectifsSchema>;
