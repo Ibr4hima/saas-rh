@@ -381,7 +381,12 @@ function FichesDuMembre({
             annee={fiche.annee}
             titre={`Évaluation des objectifs de l’année ${fiche.annee}`}
           >
-            <EvaluationAnnuelle employeeId={employeeId} prenom={prenom} fiche={fiche} />
+            <EvaluationAnnuelle
+              employeeId={employeeId}
+              prenom={prenom}
+              fiche={fiche}
+              reportable={!parti}
+            />
           </FicheAnnuelle>
         ) : null}
       </section>

@@ -640,9 +640,9 @@ for (const o of [
 }
 // Les objectifs d'un agent : la fiche que son n+1 rédige pour chaque
 // année (ADR-0075), à la manière d'une page Notion : des cases à cocher,
-// des échéances, du gras pour ce qui compte. C'est l'agent qui s'auto-évalue :
-// chaque objectif atteint, partiellement ou non (la case en prend la
-// couleur), commenté, puis envoyé à son n+1.
+// des échéances, du gras pour ce qui compte. En cours d'année, l'agent coche
+// ce qui est terminé ; à l'évaluation vient l'auto-évaluation, puis son n+1
+// marque chaque objectif et note (ADR-0076).
 const texte = (t, styles = {}) => ({ type: 'text', text: t, styles });
 const echeance = (date) => ({ type: 'echeance', props: { date } });
 const bloc = (type, contenu, props = {}, id = randomUUID()) => ({
@@ -718,11 +718,11 @@ await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
   ],
 });
 
-// Ce que les agents en font. Moussa : l'année passée est bouclée,
-// auto-évaluée, envoyée, évaluée B par Awa ; l'année en cours avance : un
-// objectif atteint, un autre en partie, un commentaire au brouillon. Awa : son
-// auto-évaluation est envoyée à Mariama, qui a une évaluation à faire.
-console.log('→ Objectifs : Moussa s’auto-évalue ; Awa attend l’évaluation de Mariama');
+// Ce que les agents en font (ADR-0076). Moussa : l'année passée est bouclée,
+// auto-évaluée, envoyée, évaluée B par Awa, qui en reporte la fiche pays à
+// cette année ; cette année, un objectif coché. Awa : son auto-évaluation de
+// l'année passée est envoyée à Mariama, qui a une évaluation à faire.
+console.log('→ Objectifs : Moussa coche ses objectifs ; Awa attend l’évaluation de Mariama');
 const pour = (annee) => `/objectifs/moi/fiches/${annee}`;
 const passe = pour(precedente);
 const courant = pour(anneeObjectifs);
@@ -740,11 +740,18 @@ await enTantQue(moussa.id, 'PUT', `${passe}/commentaires`, {
 });
 await enTantQue(moussa.id, 'POST', `${passe}/commentaires/envoi`);
 await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiches/${precedente}/evaluation`, {
-    commentaires: {
-      [passeObj[0]]: 'Rapport de qualité, livré à temps.',
-      [passeObj[2]]: 'À reprendre dès que la mission sera reprogrammée.',
-    },
-    note: 'B',
+  commentaires: {
+    [passeObj[0]]: 'Rapport de qualité, livré à temps.',
+    [passeObj[1]]: 'Un stagiaire sur deux encore accompagné en fin d’année.',
+    [passeObj[2]]: 'À reprendre dès que la mission sera reprogrammée.',
+  },
+  atteintes: {
+    [passeObj[0]]: 'atteint',
+    [passeObj[1]]: 'partiel',
+    [passeObj[2]]: 'non_atteint',
+  },
+  reportes: [passeObj[2]],
+  note: 'B',
 });
 await enTantQue(
   awa.id,
@@ -752,20 +759,30 @@ await enTantQue(
   `/objectifs/equipe/${moussa.id}/fiches/${precedente}/evaluation/validation`,
 );
 await statuer(moussa.id, courant, moussaObj[2], 'atteint');
-await statuer(moussa.id, courant, moussaObj[0], 'partiel');
-await enTantQue(moussa.id, 'PUT', `${courant}/commentaires`, {
-  commentaires: { [moussaObj[2]]: 'Base à jour au 30 septembre : 214 projets agréés.' },
-});
 
-await statuer(awa.id, courant, awaObj[0], 'partiel');
-await statuer(awa.id, courant, awaObj[1], 'atteint');
-await enTantQue(awa.id, 'PUT', `${courant}/commentaires`, {
+const awaPasse = [randomUUID(), randomUUID()];
+await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
+  annee: precedente,
+  contenu: [
+    bloc(
+      'checkListItem',
+      [texte('Mettre en place le suivi trimestriel des intentions d’investissement')],
+      {},
+      awaPasse[0],
+    ),
+    bloc('checkListItem', [texte('Encadrer l’équipe sur la note de conjoncture')], {}, awaPasse[1]),
+  ],
+});
+await statuer(awa.id, passe, awaPasse[0], 'partiel');
+await statuer(awa.id, passe, awaPasse[1], 'atteint');
+await enTantQue(awa.id, 'PUT', `${passe}/commentaires`, {
   commentaires: {
-    [awaObj[0]]: 'Première version remise ; la partie fiscale reste à consolider.',
-    [awaObj[1]]: 'Deux séances de relecture, note publiée à la date prévue.',
+    [awaPasse[0]]: 'Première version remise ; la partie fiscale reste à consolider.',
+    [awaPasse[1]]: 'Deux séances de relecture, note publiée à la date prévue.',
   },
 });
-await enTantQue(awa.id, 'POST', `${courant}/commentaires/envoi`);
+await enTantQue(awa.id, 'POST', `${passe}/commentaires/envoi`);
+await statuer(awa.id, courant, awaObj[1], 'atteint');
 
 // Les années d'avant, bouclées : évaluées par Awa, A puis C, pour que le
 // dossier de Moussa ait un historique à parcourir.
@@ -804,7 +821,12 @@ for (const [annee, note, objectifs] of anterieurs) {
   });
   await enTantQue(moussa.id, 'POST', `${fiche}/commentaires/envoi`);
   const evaluation = `/objectifs/equipe/${moussa.id}/fiches/${annee}/evaluation`;
-  await enTantQue(awa.id, 'PUT', evaluation, { commentaires: {}, note });
+  await enTantQue(awa.id, 'PUT', evaluation, {
+    commentaires: {},
+    atteintes: Object.fromEntries(ids.map((id, i) => [id, statuts[i]])),
+    reportes: [],
+    note,
+  });
   await enTantQue(awa.id, 'POST', `${evaluation}/validation`);
 }
 

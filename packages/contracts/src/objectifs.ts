@@ -172,15 +172,39 @@ export interface EvaluationFiche {
   envoyesLe: string | null;
   /** Par objectif : ce qu'en dit le n+1. */
   commentairesN1: Record<string, string>;
+  /**
+   * Par case à cocher : son atteinte selon le n+1 (ADR-0076). Celle d'une
+   * formation est le statut que lui donne l'APIX Academy.
+   */
+  atteintesN1: Record<string, StatutObjectif>;
+  /** Les objectifs que le n+1 reporte à l'année suivante. */
+  reportes: string[];
   note: NoteGlobale | null;
   /** `null` : encore au brouillon. */
   valideeLe: string | null;
   evaluateur: string | null;
 }
 
+/** Un objectif de l'année évaluée : ce qu'en disent l'agent et le n+1. */
+export interface ObjectifEvalue {
+  id: string;
+  texte: string;
+  formation: boolean;
+  /** L'auto-évaluation de l'agent ; pour une formation, le statut de l'APIX Academy. */
+  agent: StatutObjectif | null;
+  /**
+   * L'atteinte retenue par le n+1 ; pour une formation, le statut de l'APIX
+   * Academy. `null` : évaluation validée avant que le n+1 ne la donne (0112).
+   */
+  n1: StatutObjectif | null;
+  /** Reporté à l'année suivante. */
+  reporte: boolean;
+}
+
 /**
  * Une évaluation validée, telle que le dossier de l'agent la garde : l'année,
- * qui l'a évalué, et la note.
+ * qui l'a évalué, la note, et chaque objectif avec son atteinte : la note
+ * ne se lit jamais seule (ADR-0076).
  */
 export interface EvaluationValidee {
   annee: number;
@@ -188,6 +212,16 @@ export interface EvaluationValidee {
   manager: string | null;
   note: NoteGlobale;
   valideeLe: string;
+  objectifs: ObjectifEvalue[];
+}
+
+/** Combien d'objectifs sont atteints, partiellement atteints, non atteints. */
+export function bilanDesAtteintes(
+  atteintes: readonly (StatutObjectif | null | undefined)[],
+): Record<StatutObjectif, number> {
+  const bilan: Record<StatutObjectif, number> = { atteint: 0, partiel: 0, non_atteint: 0 };
+  for (const a of atteintes) if (a) bilan[a] += 1;
+  return bilan;
 }
 
 const commentaires = z
@@ -209,6 +243,13 @@ export type CommentairesAgentInput = z.infer<typeof commentairesAgentSchema>;
 export const evaluationN1Schema = z.object({
   commentaires,
   note: z.enum(NOTES_GLOBALES).nullable(),
+  // Un écran ouvert avant l'atteinte par objectif (ADR-0076) n'envoie ni
+  // l'une ni les autres.
+  atteintes: z
+    .record(z.string().min(1).max(100), z.enum(STATUTS_OBJECTIF))
+    .refine((c) => Object.keys(c).length <= 300, 'Trop d’objectifs')
+    .default({}),
+  reportes: z.array(z.string().min(1).max(100)).max(300).default([]),
 });
 export type EvaluationN1Input = z.infer<typeof evaluationN1Schema>;
 
@@ -564,6 +605,19 @@ export function dateDEvaluation(annee: number, jour: string): string {
  */
 export function echeancesDeLAnnee(annee: number, jour: string): { du: string; au: string } {
   return { du: `${annee}-01-01`, au: dateDEvaluation(annee, jour) };
+}
+
+/** L'auto-évaluation s'ouvre deux semaines avant le jour de l'évaluation (ADR-0076). */
+export const JOURS_D_AUTO_EVALUATION = 14;
+
+/**
+ * Le jour où s'ouvre l'auto-évaluation d'une année : le 1er décembre pour
+ * une évaluation au 15. Avant, l'agent coche les objectifs terminés.
+ */
+export function ouvertureDeLAutoEvaluation(annee: number, jour: string): string {
+  const [mois = 12, j = 15] = jour.split('-').map(Number);
+  const debut = Date.UTC(annee, mois - 1, j) - JOURS_D_AUTO_EVALUATION * 86_400_000;
+  return new Date(debut).toISOString().slice(0, 10);
 }
 
 /** « 30 juin », « 1er janvier » : un jour et un mois, « MM-JJ », en lettres. */

@@ -155,3 +155,15 @@ export function rappel(titre: string): string {
 
 /** « de l’année 2026 » : les objectifs, l'auto-évaluation, l'évaluation d'une année. */
 export const deLAnnee = (annee: number) => `de l’année ${annee}`;
+
+/**
+ * Le début d'un texte cité dans un titre : coupé au dernier mot qui tient,
+ * suivi de points de suspension.
+ */
+export function extrait(texte: string, max = 60): string {
+  const net = texte.replace(/\s+/g, ' ').trim();
+  if (net.length <= max) return net;
+  const coupe = net.slice(0, max);
+  const espace = coupe.lastIndexOf(' ');
+  return `${(espace > max / 2 ? coupe.slice(0, espace) : coupe).trimEnd()}…`;
+}

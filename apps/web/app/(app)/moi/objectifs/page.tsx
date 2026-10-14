@@ -13,7 +13,7 @@ import type {
   ObjectifView,
   StatutObjectif,
 } from '@teranga/contracts';
-import { objectifsDeLaFiche } from '@teranga/contracts';
+import { dateEnLettres, objectifsDeLaFiche, ouvertureDeLAutoEvaluation } from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
 import {
@@ -24,6 +24,7 @@ import { FicheAnnuelle, parAnnee, SeparateurAnnee } from '../../../../components
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { CLE_OBJECTIFS, LigneObjectif } from '../../../../components/objectifs';
+import { aujourdhui } from '../../../../lib/temps';
 
 // L'éditeur, en lecture : les fiches telles que le n+1 les a rédigées.
 const EditeurFicheObjectifs = dynamic(
@@ -105,8 +106,9 @@ export default function MesObjectifsPage() {
 }
 
 /**
- * L'année, vue par l'agent. La fiche que son n+1 a rédigée, ses cases à la
- * couleur de son auto-évaluation ; en bas à droite, « Auto-évaluation » : sous
+ * L'année, vue par l'agent. La fiche que son n+1 a rédigée : en cours
+ * d'année, l'agent y coche ce qui est terminé (ADR-0076). Deux semaines avant
+ * le jour de l'évaluation, « Auto-évaluation » s'ouvre en bas à droite : sous
  * chaque objectif, atteint, partiellement ou non, ce qui est fait, ce qui
  * manque, à enregistrer, puis à envoyer.
  */
@@ -169,15 +171,24 @@ function CarteAnnee({
   };
 
   // Une fiche sans case à cocher n'a rien à auto-évaluer.
-  const aEvaluer =
-    Boolean(fiche.evaluation.envoyesLe) || objectifsDeLaFiche(fiche.contenu).length > 0;
-  const bascule = aEvaluer ? (
+  const envoyee = Boolean(fiche.evaluation.envoyesLe);
+  const aEvaluer = envoyee || objectifsDeLaFiche(fiche.contenu).length > 0;
+  const ouverture = ouvertureDeLAutoEvaluation(fiche.annee, jourEvaluation);
+  const ouverte = envoyee || aujourdhui() >= ouverture;
+  const bascule = !aEvaluer ? null : ouverte ? (
     <BoutonAutoEvaluation
       fiche={{ ...fiche, statuts }}
       actif={autoEvaluation}
       onClick={() => setAutoEvaluation((v) => !v)}
     />
-  ) : null;
+  ) : (
+    <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-ink-muted">
+      <Icon name="schedule" size={15} />
+      {/* L'année, quand ce n'est pas celle d'aujourd'hui : une fiche de l'an prochain. */}
+      Auto-évaluation dès le{' '}
+      {dateEnLettres(ouverture, ouverture.slice(0, 4) !== aujourdhui().slice(0, 4))}
+    </span>
+  );
 
   return (
     <FicheAnnuelle
@@ -189,7 +200,7 @@ function CarteAnnee({
         </>
       }
     >
-      {autoEvaluation && aEvaluer ? (
+      {autoEvaluation && aEvaluer && ouverte ? (
         <AutoEvaluationAgent
           fiche={fiche}
           statuts={statuts}
@@ -210,6 +221,12 @@ function CarteAnnee({
             // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
             formations={fiche.formations ?? formations}
             statuts={statuts}
+            // Envoyée, l'auto-évaluation fige les cases.
+            onCocher={
+              envoyee
+                ? undefined
+                : (id) => void statuer(id, statuts[id] === 'atteint' ? null : 'atteint')
+            }
           />
           <div className="flex flex-wrap items-center justify-end gap-3 px-5 pb-4">
             {erreur ? (

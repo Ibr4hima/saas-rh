@@ -3,9 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
+  dateEnLettres,
   JOURS_PAR_MOIS,
   jourEtMoisEnLettres,
   MOIS_DE_L_ANNEE,
+  ouvertureDeLAutoEvaluation,
   type DateEvaluation,
 } from '@teranga/contracts';
 import { Button, Select, Skeleton } from '@teranga/ui';
@@ -20,7 +22,8 @@ import { formatDate } from '../../../lib/hooks';
    Évaluation des objectifs : le jour de l'année où les notes de A à D se
    donnent, une fois par an (ADR-0075), dans la carte de tête de « Poser une
    demande ». Qui dirige la DCH en fixe le jour et le mois, au crayon : ils
-   reviennent chaque année.
+   reviennent chaque année. L'auto-évaluation s'ouvre deux semaines avant
+   (ADR-0076).
 */
 
 const CLE = ['objectifs', 'evaluations', 'date'];
@@ -57,7 +60,14 @@ export default function EvaluationPage() {
         }
         reperes={
           vue ? (
-            <Repere label="Date d’évaluation" valeur={jourEtMoisEnLettres(vue.jour)} />
+            <>
+              <Repere label="Date d’évaluation" valeur={jourEtMoisEnLettres(vue.jour)} />
+              {/* Deux semaines avant (ADR-0076). */}
+              <Repere
+                label="Auto-évaluation"
+                valeur={`Dès le ${dateEnLettres(ouvertureDeLAutoEvaluation(vue.annee, vue.jour), false)}`}
+              />
+            </>
           ) : date.isLoading ? (
             <div>
               <Skeleton className="h-2.5 w-16" />

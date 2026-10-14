@@ -321,6 +321,7 @@ export function EditeurFicheObjectifs({
   focusSignal = 0,
   className,
   statuts,
+  onCocher,
   annee,
   jourEvaluation,
 }: {
@@ -334,11 +335,16 @@ export function EditeurFicheObjectifs({
   /** La marge autour de la fiche. */
   className?: string;
   /**
-   * Où l'agent dit en être de chaque objectif : c'est son auto-évaluation qui
-   * colore les cases, bleu (atteint), jaune (partiellement), rouge (non
-   * atteint). La fiche suit à mesure ; ses cases ne se cliquent pas.
+   * Où l'agent dit en être de chaque objectif : c'est sa coche, puis son
+   * auto-évaluation, qui colorent les cases, bleu (atteint), jaune
+   * (partiellement), rouge (non atteint). La fiche suit à mesure.
    */
   statuts?: Record<string, StatutObjectif>;
+  /**
+   * L'agent coche un objectif terminé, ou le décoche, d'un clic sur sa case
+   * (ADR-0076). Sans cette fonction, les cases ne se cliquent pas.
+   */
+  onCocher?: (id: string) => void;
   annee: number;
   /** Le jour de l'évaluation, « MM-JJ » : il borne les échéances de l'année. */
   jourEvaluation: string;
@@ -375,7 +381,12 @@ export function EditeurFicheObjectifs({
           }}
         />
       ) : depart.objectifs.length ? (
-        <ListeObjectifs objectifs={depart.objectifs} annee={annee} statuts={statuts} />
+        <ListeObjectifs
+          objectifs={depart.objectifs}
+          annee={annee}
+          statuts={statuts}
+          onCocher={onCocher}
+        />
       ) : null}
       <FormationsASuivre
         choisies={choisies}
@@ -410,16 +421,19 @@ export function EditeurFicheObjectifs({
 /**
  * Les objectifs, en lecture : la case à la couleur de l'auto-évaluation, le
  * texte, l'échéance. Un objectif atteint s'efface d'un ton, barré et gris :
- * ce qui reste à faire ressort seul.
+ * ce qui reste à faire ressort seul. L'agent coche ou décoche sa case d'un
+ * clic, quand la page le permet.
  */
 function ListeObjectifs({
   objectifs,
   annee,
   statuts,
+  onCocher,
 }: {
   objectifs: Objectif[];
   annee: number;
   statuts?: Record<string, StatutObjectif>;
+  onCocher?: (id: string) => void;
 }) {
   return (
     <ul className="flex flex-col px-5">
@@ -427,7 +441,20 @@ function ListeObjectifs({
         const statut = statuts?.[o.id];
         return (
           <li key={o.id} className="flex items-start gap-[11px] py-1">
-            <Case statut={statut} />
+            {onCocher ? (
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={statut === 'atteint'}
+                aria-label={`Terminé : ${o.texte}`}
+                onClick={() => onCocher(o.id)}
+                className="-m-1 rounded-[7px] p-1 transition-colors duration-150 outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-primary/35"
+              >
+                <Case statut={statut} />
+              </button>
+            ) : (
+              <Case statut={statut} />
+            )}
             <p
               className={cn(
                 'min-w-0 flex-1 text-[12.5px] leading-[1.5] break-words text-ink',

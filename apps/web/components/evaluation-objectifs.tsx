@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  bilanDesAtteintes,
   LIBELLES_NOTE,
   LIBELLES_STATUT,
   NOTES_GLOBALES,
@@ -56,8 +57,10 @@ import { Echeance } from './objectifs-echeances';
    veut et envoie à son n+1 quand chaque objectif a son statut et son
    commentaire. Une formation de l'APIX Academy est un objectif comme les
    autres, mais son statut vient de l'Academy, figé à l'envoi ; la commenter
-   est libre. Le n+1 lit, commente à son tour sous chaque objectif, donne
-   l'appréciation globale et valide.
+   est libre. Le n+1 lit, marque à son tour chaque objectif, reporte au
+   besoin à l'année suivante ce qui n'est pas atteint, commente, donne
+   l'appréciation globale et valide. La note se lit toujours avec l'atteinte
+   de chaque objectif (ADR-0076).
    ———————————————————————————————————————————————————————————————— */
 
 // ———————————————————————————— l'objectif, lu
@@ -188,20 +191,22 @@ function PastilleStatut({ statut }: { statut: StatutObjectif }) {
   );
 }
 
-/** Atteint, Partiellement, Non atteint : le choix de l'agent, sous l'objectif. */
+/** Atteint, Partiellement, Non atteint : le choix de l'agent, ou celui du n+1, sous l'objectif. */
 function ChoixStatut({
   objectif,
   valeur,
   onChange,
+  intitule = 'Statut',
 }: {
   objectif: string;
   valeur?: StatutObjectif;
   onChange: (s: StatutObjectif | null) => void;
+  intitule?: string;
 }) {
   return (
     <div
       role="radiogroup"
-      aria-label={`Statut : ${objectif}`}
+      aria-label={`${intitule} : ${objectif}`}
       className="flex flex-wrap items-center gap-1.5 max-sm:gap-1"
     >
       {STATUTS_OBJECTIF.map((s) => {
@@ -237,17 +242,22 @@ function ChoixStatut({
 
 // ———————————————————————————— l'objectif, commenté
 
-/** Ce qu'une personne a écrit d'un objectif : son nom, son texte — et le statut qu'elle a donné. */
+/**
+ * Ce qu'une personne a dit d'un objectif : son nom, le statut choisi, son
+ * texte ; et, pour le n+1, l'année où l'objectif est reporté.
+ */
 function Propos({
   qui,
   texte,
   ton = 'neutre',
   statut,
+  reporteA,
 }: {
   qui: string;
-  texte: string;
+  texte?: string;
   ton?: 'neutre' | 'n1';
   statut?: StatutObjectif;
+  reporteA?: number;
 }) {
   return (
     <div
@@ -256,17 +266,71 @@ function Propos({
         ton === 'n1' ? 'bg-primary-soft/70' : 'bg-line-soft/70',
       )}
     >
-      <p
+      <div
         className={cn(
           'flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10.5px] font-bold tracking-[0.06em] uppercase',
           ton === 'n1' ? 'text-primary' : 'text-ink-muted',
         )}
       >
         {qui}
-        {statut ? <PastilleStatut statut={statut} /> : null}
-      </p>
-      <p className="mt-0.5 text-[12.5px] leading-relaxed whitespace-pre-line text-ink">{texte}</p>
+        {statut || reporteA ? (
+          <span className="flex flex-wrap items-center gap-1">
+            {statut ? <PastilleStatut statut={statut} /> : null}
+            {reporteA ? <Reporte annee={reporteA} /> : null}
+          </span>
+        ) : null}
+      </div>
+      {texte?.trim() ? (
+        <p className="mt-0.5 text-[12.5px] leading-relaxed whitespace-pre-line text-ink">{texte}</p>
+      ) : null}
     </div>
+  );
+}
+
+/** Un objectif reporté à l'année suivante. */
+function Reporte({ annee }: { annee: number }) {
+  return (
+    <Badge tone="gris" size="sm" className="normal-case">
+      <Icon name="arrow_forward" size={11} weight={600} />
+      Reporté à {annee}
+    </Badge>
+  );
+}
+
+/** « 3 atteints », « 1 partiellement atteint », « 2 non atteints ». */
+const COMPTE: Record<StatutObjectif, (n: number) => string> = {
+  atteint: (n) => `${n} atteint${n > 1 ? 's' : ''}`,
+  partiel: (n) => `${n} partiellement atteint${n > 1 ? 's' : ''}`,
+  non_atteint: (n) => `${n} non atteint${n > 1 ? 's' : ''}`,
+};
+
+/**
+ * L'atteinte des objectifs, en nombres, à la couleur de chaque statut : la
+ * note se lit avec elle.
+ */
+export function BilanAtteinte({
+  atteintes,
+  className,
+}: {
+  atteintes: readonly (StatutObjectif | null | undefined)[];
+  className?: string;
+}) {
+  const bilan = bilanDesAtteintes(atteintes);
+  return (
+    <ul aria-label="Atteinte des objectifs" className={cn('flex flex-wrap gap-1.5', className)}>
+      {STATUTS_OBJECTIF.filter((s) => bilan[s] > 0).map((s) => (
+        <li
+          key={s}
+          className={cn(
+            'inline-flex items-center gap-1 rounded-full border py-[3px] pr-2.5 pl-2 text-[11.5px] font-semibold whitespace-nowrap',
+            DESSIN_STATUT[s].leger,
+          )}
+        >
+          <Icon name={DESSIN_STATUT[s].signe} size={13} weight={600} />
+          {COMPTE[s](bilan[s])}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -659,21 +723,35 @@ export function AutoEvaluationAgent({
     if (ok) setConfirmer(false);
   };
 
+  // Validée, l'atteinte que retient le n+1 colore les cases ; celle d'une
+  // formation vient de l'Academy.
+  const atteinteN1 = (o: ObjectifDeLaFiche) => (o.formation ? statuts[o.id] : ev.atteintesN1[o.id]);
+
   return (
     <div className="flex flex-col gap-5 px-5 pt-3 pb-4">
       <ol className="flex flex-col divide-y divide-line-soft">
         {objectifs.map((o) => (
-          <LigneObjectif key={o.id} objectif={o} statut={statuts[o.id]} annee={fiche.annee}>
+          <LigneObjectif
+            key={o.id}
+            objectif={o}
+            statut={(ev.valideeLe ? atteinteN1(o) : undefined) ?? statuts[o.id]}
+            annee={fiche.annee}
+          >
             {envoyes ? (
               <>
                 {ev.commentairesAgent[o.id] ? (
                   <Propos qui="Vous" texte={ev.commentairesAgent[o.id]!} statut={statuts[o.id]} />
                 ) : null}
-                {ev.valideeLe && ev.commentairesN1[o.id]?.trim() ? (
+                {ev.valideeLe &&
+                (ev.atteintesN1[o.id] ||
+                  ev.commentairesN1[o.id]?.trim() ||
+                  ev.reportes.includes(o.id)) ? (
                   <Propos
                     qui={ev.evaluateur ?? 'Votre N+1'}
-                    texte={ev.commentairesN1[o.id]!}
+                    texte={ev.commentairesN1[o.id]}
                     ton="n1"
+                    statut={atteinteN1(o)}
+                    reporteA={ev.reportes.includes(o.id) ? fiche.annee + 1 : undefined}
                   />
                 ) : null}
               </>
@@ -713,7 +791,12 @@ export function AutoEvaluationAgent({
       {ev.valideeLe && ev.note ? (
         <div className="flex flex-col gap-2.5 border-t border-line-soft pt-4">
           <Intitule>Appréciation de votre N+1</Intitule>
-          <NoteDonnee note={ev.note} />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <NoteDonnee note={ev.note} />
+            {objectifs.every((o) => atteinteN1(o)) ? (
+              <BilanAtteinte atteintes={objectifs.map(atteinteN1)} />
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -771,27 +854,35 @@ export function AutoEvaluationAgent({
 // ———————————————————————————— côté n+1
 
 /**
- * L'évaluation de l'année, vue par le n+1 : chaque objectif, à la couleur du
- * statut que l'agent lui donne, ce qu'en dit l'agent, et dessous son propre
- * commentaire ; puis l'appréciation globale.
+ * L'évaluation de l'année, vue par le n+1 : chaque objectif, ce qu'en dit
+ * l'agent, puis son atteinte aux yeux du n+1 (ADR-0076), le report à
+ * l'année suivante de ce qui n'est pas atteint, son commentaire ; enfin
+ * l'appréciation globale, qui se lit avec l'atteinte de chaque objectif.
  */
 export function EvaluationAnnuelle({
   employeeId,
   prenom,
   fiche,
+  reportable = true,
 }: {
   employeeId: string;
   prenom: string;
   fiche: FicheObjectifs;
+  /** Un agent parti n'a pas d'année suivante où reporter. */
+  reportable?: boolean;
 }) {
   const queryClient = useQueryClient();
   const ev = fiche.evaluation;
   const objectifs = useMemo(() => objectifsDeLaFiche(fiche.contenu), [fiche.contenu]);
   const brouillon = useBrouillon<{
     commentaires: Record<string, string>;
+    atteintes: Record<string, StatutObjectif>;
+    reportes: string[];
     note: NoteGlobale | null;
   }>({
     commentaires: ev.commentairesN1,
+    atteintes: ev.atteintesN1,
+    reportes: ev.reportes,
     note: ev.note,
   });
   const action = useAction();
@@ -800,6 +891,35 @@ export function EvaluationAnnuelle({
   const cle = [...CLE_OBJECTIFS, 'equipe', employeeId];
   const envoyes = Boolean(ev.envoyesLe);
   const validee = Boolean(ev.valideeLe);
+  const suivante = fiche.annee + 1;
+  // L'atteinte d'une case est celle que le n+1 lui donne ; d'une formation,
+  // celle de l'Academy.
+  const atteintes = validee ? ev.atteintesN1 : brouillon.valeur.atteintes;
+  const reportes = validee ? ev.reportes : brouillon.valeur.reportes;
+  const atteinte = (o: ObjectifDeLaFiche) => (o.formation ? fiche.statuts[o.id] : atteintes[o.id]);
+  const aMarquer = objectifs.filter((o) => !o.formation && !atteintes[o.id]).length;
+
+  const marquer = (id: string, s: StatutObjectif | null) => {
+    const suite = { ...brouillon.valeur.atteintes };
+    if (s) suite[id] = s;
+    else delete suite[id];
+    // Atteint, ou sans atteinte : l'objectif ne se reporte plus.
+    const garde = s && s !== 'atteint';
+    brouillon.changer({
+      ...brouillon.valeur,
+      atteintes: suite,
+      reportes: garde
+        ? brouillon.valeur.reportes
+        : brouillon.valeur.reportes.filter((r) => r !== id),
+    });
+  };
+  const reporter = (id: string, oui: boolean) =>
+    brouillon.changer({
+      ...brouillon.valeur,
+      reportes: oui
+        ? [...brouillon.valeur.reportes.filter((r) => r !== id), id]
+        : brouillon.valeur.reportes.filter((r) => r !== id),
+    });
 
   const enregistrer = () =>
     action.lancer('enregistrer', async () => {
@@ -826,33 +946,76 @@ export function EvaluationAnnuelle({
   return (
     <div className="flex flex-col gap-5 px-5 pt-3 pb-4">
       <ol className="flex flex-col divide-y divide-line-soft">
-        {objectifs.map((o) => (
-          <LigneObjectif key={o.id} objectif={o} statut={fiche.statuts[o.id]} annee={fiche.annee}>
-            {envoyes && ev.commentairesAgent[o.id] ? (
-              <Propos
-                qui={prenom}
-                texte={ev.commentairesAgent[o.id]!}
-                statut={fiche.statuts[o.id]}
-              />
-            ) : null}
-            {envoyes && !validee && !o.formation ? (
-              <ZoneCommentaire
-                aria-label={`Votre commentaire : ${o.texte}`}
-                placeholder="Votre commentaire"
-                value={brouillon.valeur.commentaires[o.id] ?? ''}
-                onChange={(e) =>
-                  brouillon.changer({
-                    ...brouillon.valeur,
-                    commentaires: { ...brouillon.valeur.commentaires, [o.id]: e.target.value },
-                  })
-                }
-              />
-            ) : null}
-            {validee && ev.commentairesN1[o.id]?.trim() ? (
-              <Propos qui="Vous" texte={ev.commentairesN1[o.id]!} ton="n1" />
-            ) : null}
-          </LigneObjectif>
-        ))}
+        {objectifs.map((o) => {
+          const a = atteinte(o);
+          return (
+            <LigneObjectif
+              key={o.id}
+              objectif={o}
+              statut={(validee ? a : undefined) ?? fiche.statuts[o.id]}
+              annee={fiche.annee}
+            >
+              {envoyes && ev.commentairesAgent[o.id] ? (
+                <Propos
+                  qui={prenom}
+                  texte={ev.commentairesAgent[o.id]!}
+                  statut={fiche.statuts[o.id]}
+                />
+              ) : null}
+              {envoyes && !validee ? (
+                <>
+                  {o.formation ? null : (
+                    <ChoixStatut
+                      objectif={o.texte}
+                      intitule="Atteinte"
+                      valeur={atteintes[o.id]}
+                      onChange={(s) => marquer(o.id, s)}
+                    />
+                  )}
+                  {reportable && a && a !== 'atteint' ? (
+                    <label className="inline-flex cursor-pointer items-center gap-2 self-start text-[12px] font-semibold text-ink">
+                      <input
+                        type="checkbox"
+                        checked={reportes.includes(o.id)}
+                        onChange={(e) => reporter(o.id, e.target.checked)}
+                        className="size-4 accent-primary"
+                      />
+                      Reporter à {suivante}
+                    </label>
+                  ) : null}
+                  {o.formation ? null : (
+                    <ZoneCommentaire
+                      aria-label={`Votre commentaire : ${o.texte}`}
+                      placeholder="Votre commentaire"
+                      value={brouillon.valeur.commentaires[o.id] ?? ''}
+                      onChange={(e) =>
+                        brouillon.changer({
+                          ...brouillon.valeur,
+                          commentaires: {
+                            ...brouillon.valeur.commentaires,
+                            [o.id]: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  )}
+                </>
+              ) : null}
+              {validee &&
+              (ev.atteintesN1[o.id] ||
+                ev.commentairesN1[o.id]?.trim() ||
+                reportes.includes(o.id)) ? (
+                <Propos
+                  qui="Vous"
+                  texte={ev.commentairesN1[o.id]}
+                  ton="n1"
+                  statut={a}
+                  reporteA={reportes.includes(o.id) ? suivante : undefined}
+                />
+              ) : null}
+            </LigneObjectif>
+          );
+        })}
       </ol>
 
       {!envoyes ? (
@@ -865,15 +1028,21 @@ export function EvaluationAnnuelle({
           <Intitule>Votre appréciation</Intitule>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <NoteDonnee note={ev.note!} />
-            <span className="text-[11.5px] text-ink-muted">
-              Validée le {dateLongue(ev.valideeLe!)}
-            </span>
+            {objectifs.every((o) => atteinte(o)) ? (
+              <BilanAtteinte atteintes={objectifs.map(atteinte)} />
+            ) : null}
           </div>
+          <span className="text-[11.5px] text-ink-muted">
+            Validée le {dateLongue(ev.valideeLe!)}
+          </span>
         </div>
       ) : (
         <>
           <div className="flex flex-col gap-2.5 border-t border-line-soft pt-4">
-            <Intitule>Appréciation globale</Intitule>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Intitule>Appréciation globale</Intitule>
+              <BilanAtteinte atteintes={objectifs.map(atteinte)} />
+            </div>
             <ChoixNote
               valeur={brouillon.valeur.note}
               onChange={(note) => brouillon.changer({ ...brouillon.valeur, note })}
@@ -891,7 +1060,11 @@ export function EvaluationAnnuelle({
               enCours={action.enCours === 'enregistrer'}
               onClick={() => void enregistrer()}
             />
-            <Button size="sm" disabled={!brouillon.valeur.note} onClick={() => setConfirmer(true)}>
+            <Button
+              size="sm"
+              disabled={!brouillon.valeur.note || aMarquer > 0}
+              onClick={() => setConfirmer(true)}
+            >
               <Icon name="task_alt" size={15} />
               Valider l’évaluation
             </Button>
@@ -923,7 +1096,9 @@ export function EvaluationAnnuelle({
 /**
  * La section « Évaluation » du dossier, année par année : l'année en cours
  * d'abord, les précédentes d'une flèche. L'évaluation de l'année, dès que le
- * n+1 la valide, avec qui l'a évaluée, la note et son appréciation.
+ * n+1 la valide, avec qui l'a évaluée, la note et son appréciation ; et
+ * dessous chaque objectif et son atteinte, pour que la note ne se lise
+ * jamais seule (ADR-0076).
  */
 export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
   const evaluations = useQuery({
@@ -980,35 +1155,81 @@ export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
           </p>
         </CardContent>
       ) : (
-        <Table>
-          <THead>
-            <tr>
-              {/* Sur un petit écran, l'année se lit dans l'en-tête : sa colonne
-                  laisse la place à l'appréciation. */}
-              <Th className="max-sm:hidden">Année</Th>
-              <Th>Manager</Th>
-              <Th>Note</Th>
-              <Th>Appréciation</Th>
-            </tr>
-          </THead>
-          <TBody>
-            {liste.map((e) => (
-              <Tr key={e.annee}>
-                <Td className="font-medium text-ink-strong tabular-nums max-sm:hidden">
-                  {e.annee}
-                </Td>
-                <Td>{e.manager}</Td>
-                <Td>
-                  <LettreNote note={e.note} />
-                </Td>
-                <Td className={cn('font-semibold', COULEUR_NOTE[e.note].texte)}>
-                  {LIBELLES_NOTE[e.note]}
-                </Td>
-              </Tr>
-            ))}
-          </TBody>
-        </Table>
+        <>
+          <Table>
+            <THead>
+              <tr>
+                {/* Sur un petit écran, l'année se lit dans l'en-tête : sa colonne
+                    laisse la place à l'appréciation. */}
+                <Th className="max-sm:hidden">Année</Th>
+                <Th>Manager</Th>
+                <Th>Note</Th>
+                <Th>Appréciation</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {liste.map((e) => (
+                <Tr key={e.annee}>
+                  <Td className="font-medium text-ink-strong tabular-nums max-sm:hidden">
+                    {e.annee}
+                  </Td>
+                  <Td>{e.manager}</Td>
+                  <Td>
+                    <LettreNote note={e.note} />
+                  </Td>
+                  <Td className={cn('font-semibold', COULEUR_NOTE[e.note].texte)}>
+                    {LIBELLES_NOTE[e.note]}
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+          {liste.map((e) =>
+            e.objectifs.length ? <ObjectifsEvalues key={e.annee} evaluation={e} /> : null,
+          )}
+        </>
       )}
     </Card>
+  );
+}
+
+/**
+ * Les objectifs de l'année évaluée : la case à la couleur de l'atteinte que
+ * le n+1 a retenue, son libellé, ce que l'agent en avait dit, et ce qui est
+ * reporté à l'année suivante.
+ */
+function ObjectifsEvalues({ evaluation: e }: { evaluation: EvaluationValidee }) {
+  const complete = e.objectifs.every((o) => o.n1);
+  return (
+    <div className="flex flex-col gap-3 border-t border-line-soft px-5 pt-4 pb-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Intitule>Objectifs</Intitule>
+        {complete ? <BilanAtteinte atteintes={e.objectifs.map((o) => o.n1)} /> : null}
+      </div>
+      <ul className="flex flex-col gap-2.5">
+        {e.objectifs.map((o) => (
+          <li key={o.id} className="flex items-start gap-[11px]">
+            <Case statut={o.n1 ?? undefined} />
+            {/* Sur un écran étroit, les badges passent sous le texte. */}
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[12.5px] leading-[1.5] break-words text-ink-strong">{o.texte}</p>
+                {!o.formation && o.agent ? (
+                  <p className="text-[11px] text-ink-muted">
+                    Auto-évaluation : {LIBELLES_STATUT[o.agent]}
+                  </p>
+                ) : null}
+              </div>
+              {o.n1 || o.reporte ? (
+                <span className="flex shrink-0 flex-wrap gap-1 sm:justify-end">
+                  {o.n1 ? <PastilleStatut statut={o.n1} /> : null}
+                  {o.reporte ? <Reporte annee={e.annee + 1} /> : null}
+                </span>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

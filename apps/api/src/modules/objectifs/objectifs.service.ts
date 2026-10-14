@@ -21,13 +21,14 @@ import {
   type EvaluationValidee,
   type FicheEnregistree,
   type NoteGlobale,
-  JOUR_D_EVALUATION_PAR_DEFAUT,
+  type ObjectifDeLaFiche,
   dateDEvaluation,
   dateEnLettres,
   echeanceDuBloc,
   echeancesDeLAnnee,
   formationsDeLaFiche,
   objectifsDeLaFiche,
+  ouvertureDeLAutoEvaluation,
   statutsDesFormations,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
@@ -38,12 +39,16 @@ import {
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { TenantDb, type Tx } from '../../db/tenant-db';
-import { deLAnnee } from '../notifications/phrases';
+import { deLAnnee, extrait } from '../notifications/phrases';
 import { AcademySuiviService } from '../academy/academy-suivi.service';
 import { employeActif } from '../academy/academy-evaluation.service';
 import { notifier } from '../notifications/notifier';
 import { retirerLesAppels } from '../acces/appels';
-import { prefixeEvaluation, reconcilierLesEvaluations } from './evaluation-attendue';
+import {
+  lireLeJourDEvaluation,
+  prefixeEvaluation,
+  reconcilierLesEvaluations,
+} from './evaluation-attendue';
 import {
   DG,
   SOMMET,
@@ -180,6 +185,10 @@ type LigneFiche = {
   commentaires_agent: Record<string, string>;
   commentaires_envoyes_le: string | Date | null;
   commentaires_n1: Record<string, string>;
+  /** Par case à cocher : l'atteinte selon le n+1 (0112). */
+  atteintes_n1: Record<string, StatutObjectif>;
+  /** Les objectifs que le n+1 reporte à l'année suivante (0112). */
+  reports_n1: string[];
   evaluation_note: NoteGlobale | null;
   evaluation_validee_le: string | Date | null;
   evaluateur: string | null;
@@ -191,6 +200,7 @@ const SELECTION_FICHE = sql`
          CASE WHEN pa.id IS NULL THEN NULL ELSE pa.given_name || ' ' || pa.family_name END AS auteur,
          f.statuts, f.statuts_empreintes, f.formations_figees,
          f.commentaires_agent, f.commentaires_envoyes_le, f.commentaires_n1,
+         f.atteintes_n1, f.reports_n1,
          f.evaluation_note, f.evaluation_validee_le,
          CASE WHEN pv.id IS NULL THEN NULL ELSE pv.given_name || ' ' || pv.family_name END AS evaluateur,
          f.evaluateur_employee_id
@@ -251,6 +261,23 @@ function ranger(contenu: Bloc[]): Bloc[] {
   // Le tri de JavaScript est stable : l'ordre d'arrivée départage.
   cases.sort((a, b) => (cle(a) < cle(b) ? -1 : cle(a) > cle(b) ? 1 : 0));
   return [...cases, ...contenu.filter((b) => b.type !== 'checkListItem')];
+}
+
+/** Le bloc d'un objectif, où qu'il soit dans la fiche. */
+function blocDe(contenu: unknown, id: string): Bloc | null {
+  if (!Array.isArray(contenu)) return null;
+  for (const b of contenu as Bloc[]) {
+    if (b.id === id) return b;
+    const dedans = blocDe(b.children, id);
+    if (dedans) return dedans;
+  }
+  return null;
+}
+
+/** Un objectif que le n+1 rouvre en lui donnant une autre échéance. */
+interface Rouvert {
+  texte: string;
+  echeance: string | null;
 }
 
 /** La fiche de l'année, le temps d'un enregistrement. */
@@ -355,6 +382,8 @@ function vueFiche(
       commentairesAgent: vue === 'agent' || envoyes ? l.commentaires_agent : {},
       envoyesLe: iso(l.commentaires_envoyes_le),
       commentairesN1: voitN1 ? l.commentaires_n1 : {},
+      atteintesN1: voitN1 ? l.atteintes_n1 : {},
+      reportes: voitN1 ? l.reports_n1 : [],
       note: voitN1 ? l.evaluation_note : null,
       valideeLe: iso(l.evaluation_validee_le),
       evaluateur: voitN1 ? l.evaluateur : null,
@@ -369,6 +398,29 @@ function garderLesObjectifs(
 ): Record<string, string> {
   const ids = new Set(objectifsDeLaFiche(f.contenu).map((o) => o.id));
   return Object.fromEntries(Object.entries(commentaires).filter(([id]) => ids.has(id)));
+}
+
+/**
+ * L'atteinte de chaque objectif aux yeux du n+1 (ADR-0076) : celle que le
+ * n+1 donne à une case ; pour une formation, le statut que l'APIX Academy lui
+ * donnait à l'envoi de l'auto-évaluation. `null` : pas encore donnée.
+ */
+function atteintesRetenues(f: LigneFiche): Map<string, StatutObjectif | null> {
+  const objectifs = objectifsDeLaFiche(f.contenu);
+  const formations = statutsDesFormations(objectifs, f.formations_figees ?? []);
+  return new Map(
+    objectifs.map((o) => [o.id, (o.formation ? formations[o.id] : f.atteintes_n1[o.id]) ?? null]),
+  );
+}
+
+/** Ce que le n+1 reporte à l'année suivante : un objectif qui n'est pas entièrement atteint. */
+function objectifsAReporter(f: LigneFiche): ObjectifDeLaFiche[] {
+  const atteintes = atteintesRetenues(f);
+  const reportes = new Set(f.reports_n1);
+  return objectifsDeLaFiche(f.contenu).filter((o) => {
+    const atteinte = atteintes.get(o.id);
+    return reportes.has(o.id) && atteinte !== null && atteinte !== 'atteint';
+  });
 }
 
 function exigerNonEnvoyee(f: LigneFiche): void {
@@ -578,6 +630,7 @@ export class ObjectifsService {
       }
 
       const gardes: Bloc[] = [];
+      const rouverts: Rouvert[] = [];
       for (const brut of contenu) {
         if (brut.type !== 'checkListItem') {
           gardes.push(brut);
@@ -601,6 +654,14 @@ export class ObjectifsService {
           );
         }
         if (voulue !== null) this.exigerEcheancePossible(voulue, an, jourEvaluation);
+        // Une nouvelle échéance pour un objectif auquel l'agent a répondu : le
+        // n+1 le rouvre (ADR-0076). La coche s'en va, l'agent en est prévenu.
+        const id = String(b.id);
+        if (ancien && f.statuts[id]) {
+          delete f.statuts[id];
+          delete f.statuts_empreintes[id];
+          rouverts.push({ texte: objectifsDeLaFiche([b])[0]?.texte ?? '', echeance: voulue });
+        }
         gardes.push(caseAGarder(b, voulue));
       }
       const precedent = f.contenu;
@@ -610,7 +671,7 @@ export class ObjectifsService {
 
       const ecrite = await this.ecrireLaFiche(tx, user, employeeId, an, f, moi);
       if (ecrite && objectifsDeLaFiche(f.contenu).length > 0) {
-        await this.prevenirDeLaFiche(tx, user, employeeId, moi, an, ecrite);
+        await this.prevenirDeLaFiche(tx, user, employeeId, moi, an, ecrite, rouverts);
       }
       return { majLe: ecrite ?? iso(f.updated_at) };
     });
@@ -720,6 +781,7 @@ export class ObjectifsService {
    * La fiche écrite prévient l'agent, dès qu'elle porte un objectif : un
    * commentaire posé seul n'annonce rien. Une notification par
    * enregistrement, et seule la dernière d'une fiche reste dans la boîte.
+   * Un objectif rouvert se dit, avec sa nouvelle échéance.
    */
   private async prevenirDeLaFiche(
     tx: Tx,
@@ -728,6 +790,7 @@ export class ObjectifsService {
     moi: string,
     annee: number,
     majLe: string,
+    rouverts: Rouvert[] = [],
   ): Promise<void> {
     const compte = await this.compteDe(tx, employeeId);
     if (!compte) return;
@@ -738,10 +801,19 @@ export class ObjectifsService {
     const { rows: deja } = await tx.execute(sql`
       SELECT 1 FROM notifications
        WHERE recipient_user_id = ${compte} AND dedupe_key ^@ ${sujet} LIMIT 1`);
+    const [seul] = rouverts;
+    const titre =
+      rouverts.length > 1
+        ? `${auteur} a rouvert ${rouverts.length} de vos objectifs ${deLAnnee(annee)}`
+        : seul
+          ? `${auteur} a rouvert « ${extrait(seul.texte)} »${
+              seul.echeance ? `, à terminer pour le ${dateEnLettres(seul.echeance)}` : ''
+            }`
+          : `${auteur} a ${deja.length > 0 ? 'mis à jour' : 'fixé'} vos objectifs ${deLAnnee(annee)}`;
     await notifier(tx, user.tenantId, compte, {
       type: 'objectif',
       sujet: 'objectifs',
-      title: `${auteur} a ${deja.length > 0 ? 'mis à jour' : 'fixé'} vos objectifs ${deLAnnee(annee)}`,
+      title: titre,
       link: '/moi/objectifs',
       dedupeKey: `${sujet}${majLe}`,
       remplace: sujet,
@@ -794,8 +866,10 @@ export class ObjectifsService {
   // ———————————————————————————— ce que l'agent en fait
 
   /**
-   * L'agent dit où en est un objectif — atteint, partiellement, non atteint —
-   * ou revient sur son choix (`null`). Son n+1 le voit à mesure. Son
+   * L'agent dit où en est un objectif, ou revient sur son choix (`null`). Son
+   * n+1 le voit à mesure. En cours d'année, l'agent coche seulement ce qui
+   * est terminé, et son n+1 en est prévenu ; l'auto-évaluation ouverte,
+   * l'agent dit atteint, partiellement ou non atteint (ADR-0076). Son
    * auto-évaluation envoyée, plus rien ne bouge.
    */
   async statuer(
@@ -818,6 +892,15 @@ export class ObjectifsService {
           'Le statut d’une formation vient de l’APIX Academy',
         );
       }
+      const ouverture = ouvertureDeLAutoEvaluation(annee, await this.jourEvaluation(tx));
+      const enCoursDAnnee = this.aujourdhui() < ouverture;
+      if (enCoursDAnnee && input.statut !== null && input.statut !== 'atteint') {
+        problem(
+          422,
+          'objectifs.auto_evaluation_a_venir',
+          `L’auto-évaluation s’ouvre le ${dateEnLettres(ouverture)} : d’ici là, cochez les objectifs terminés`,
+        );
+      }
       // L'agent répond au texte qu'il a sous les yeux : réécrit entre-temps
       // par son n+1, l'objectif se relit avant d'être évalué.
       if (input.empreinte !== undefined && input.empreinte !== objectif.empreinte) {
@@ -828,6 +911,7 @@ export class ObjectifsService {
           'Relisez-le, puis dites où vous en êtes.',
         );
       }
+      const avant = statutsEnVigueur(f).statuts[input.id] ?? null;
       const { rows } = await tx.execute<LigneFiche>(sql`
         UPDATE objectifs_fiches
            SET ${
@@ -840,6 +924,9 @@ export class ObjectifsService {
            }
          WHERE id = ${f.id}
         RETURNING contenu, statuts, statuts_empreintes, formations_figees`);
+      if (enCoursDAnnee) {
+        await this.prevenirDeLaCoche(tx, user, moi, annee, objectif, avant, input.statut);
+      }
       const formations = formationsDe((await this.progression(tx, [moi])).get(moi));
       return {
         statuts: {
@@ -847,6 +934,43 @@ export class ObjectifsService {
           ...statutsDeSesFormations(rows[0]!, formations),
         },
       };
+    });
+  }
+
+  /**
+   * En cours d'année, l'agent coche un objectif terminé : son n+1 en est
+   * prévenu, pour y regarder (ADR-0076). Décochée, la case retire l'avis.
+   */
+  private async prevenirDeLaCoche(
+    tx: Tx,
+    user: SessionUser,
+    moi: string,
+    annee: number,
+    objectif: ObjectifDeLaFiche,
+    avant: StatutObjectif | null,
+    apres: StatutObjectif | null,
+  ): Promise<void> {
+    const cle = `objectifs:coche:${moi}:${annee}:${objectif.id}`;
+    if (apres !== 'atteint') {
+      await tx.execute(sql`DELETE FROM notifications WHERE dedupe_key = ${cle}`);
+      return;
+    }
+    if (avant === 'atteint') return;
+    const { rows } = await tx.execute<{ compte: string }>(sql`
+      SELECT pn.user_id AS compte
+        FROM employees e
+        JOIN employees n ON n.id = e.manager_employee_id
+        JOIN persons pn ON pn.id = n.person_id
+       WHERE e.id = ${moi} AND e.id IS DISTINCT FROM ${DG}
+         AND n.status = 'active' AND pn.user_id IS NOT NULL AND pn.deleted_at IS NULL`);
+    const compte = rows[0]?.compte;
+    if (!compte) return;
+    await notifier(tx, user.tenantId, compte, {
+      type: 'objectif',
+      sujet: 'equipe.objectifs',
+      title: `${await this.nomDe(tx, moi)} a terminé « ${extrait(objectif.texte)} »`,
+      link: `/moi/equipe/suivi/${moi}?annee=${annee}`,
+      dedupeKey: cle,
     });
   }
 
@@ -878,6 +1002,17 @@ export class ObjectifsService {
       const moi = await this.exigerAgent(tx, user);
       const f = await this.uneFiche(tx, moi, annee);
       exigerNonEnvoyee(f);
+      // Elle s'envoie à l'évaluation : deux semaines avant le jour fixé par la
+      // DCH (ADR-0076). Avant, la fiche vit encore : le n+1 y ajoute des
+      // objectifs, l'agent coche ce qui est terminé.
+      const ouverture = ouvertureDeLAutoEvaluation(annee, await this.jourEvaluation(tx));
+      if (this.aujourdhui() < ouverture) {
+        problem(
+          422,
+          'objectifs.auto_evaluation_a_venir',
+          `Votre auto-évaluation s’ouvre le ${dateEnLettres(ouverture)}`,
+        );
+      }
       const objectifs = objectifsDeLaFiche(f.contenu);
       // Les cases à cocher et les formations sont des objectifs : une fiche en
       // titres, en puces ou en tableau n'a rien à évaluer, et se verrouillerait
@@ -928,8 +1063,9 @@ export class ObjectifsService {
   // ———————————————————————————— ce que le n+1 en dit
 
   /**
-   * Le n+1 commente à son tour, sous chaque objectif, et donne la note — au
-   * brouillon, une fois l'auto-évaluation de l'agent reçue.
+   * Le n+1 évalue à son tour, au brouillon, une fois l'auto-évaluation de
+   * l'agent reçue : l'atteinte de chaque case (ADR-0076), son commentaire
+   * sous chaque objectif, ceux à reporter à l'année suivante, et la note.
    */
   async enregistrerEvaluation(
     user: SessionUser,
@@ -942,16 +1078,30 @@ export class ObjectifsService {
       await this.exigerSonN1(tx, moi, employeeId, true);
       const f = await this.uneFiche(tx, employeeId, annee);
       exigerEvaluable(f);
+      // L'atteinte se donne aux cases : celle d'une formation vient de l'Academy.
+      const objectifs = objectifsDeLaFiche(f.contenu);
+      const cases = new Set(objectifs.filter((o) => !o.formation).map((o) => o.id));
+      const ids = new Set(objectifs.map((o) => o.id));
+      const atteintes = Object.fromEntries(
+        Object.entries(input.atteintes).filter(([id]) => cases.has(id)),
+      );
+      const reportes = [...new Set(input.reportes)].filter((id) => ids.has(id));
       await tx.execute(sql`
         UPDATE objectifs_fiches
            SET commentaires_n1 = ${JSON.stringify(garderLesObjectifs(f, input.commentaires))}::jsonb,
+               atteintes_n1 = ${JSON.stringify(atteintes)}::jsonb,
+               reports_n1 = ${JSON.stringify(reportes)}::jsonb,
                evaluation_note = ${input.note},
                evaluateur_employee_id = ${moi}
          WHERE id = ${f.id}`);
     });
   }
 
-  /** Le n+1 valide l'évaluation : la note est donnée ; l'agent en est prévenu et la lit. */
+  /**
+   * Le n+1 valide l'évaluation : chaque objectif a son atteinte, la note est
+   * donnée. Ce qui est reporté passe dans la fiche de l'année suivante ;
+   * l'agent en est prévenu et lit le tout.
+   */
   async validerEvaluation(user: SessionUser, employeeId: string, annee: number): Promise<void> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
@@ -962,22 +1112,84 @@ export class ObjectifsService {
       if (!f.evaluation_note || f.evaluateur_employee_id !== moi) {
         problem(422, 'objectifs.evaluation_sans_note', 'Donnez l’appréciation globale');
       }
+      // La note se lit avec l'atteinte de chaque objectif (ADR-0076).
+      const restants = [...atteintesRetenues(f).values()].filter((a) => a === null).length;
+      if (restants > 0) {
+        problem(
+          422,
+          'objectifs.atteintes_incompletes',
+          restants > 1
+            ? `Marquez chaque objectif : ${restants} restent à marquer`
+            : 'Marquez chaque objectif : un reste à marquer',
+        );
+      }
+      // Un agent parti n'a pas d'année suivante où reporter.
+      const { rows: actif } = await tx.execute<{ actif: boolean }>(
+        sql`SELECT status = 'active' AS actif FROM employees WHERE id = ${employeeId}`,
+      );
+      const reportes = actif[0]?.actif ? objectifsAReporter(f) : [];
+      if (reportes.length > 0) {
+        await this.reporter(tx, user, employeeId, annee + 1, f, reportes, moi);
+      }
       await tx.execute(sql`
         UPDATE objectifs_fiches
-           SET evaluation_validee_le = now(), evaluateur_employee_id = ${moi}
+           SET evaluation_validee_le = now(), evaluateur_employee_id = ${moi},
+               reports_n1 = ${JSON.stringify(reportes.map((o) => o.id))}::jsonb
          WHERE id = ${f.id}`);
       await retirerLesAppels(tx, prefixeEvaluation(employeeId, annee));
       const compte = await this.compteDe(tx, employeeId);
       if (compte) {
+        const report =
+          reportes.length > 0 ? ` et en a reporté ${reportes.length} à ${annee + 1}` : '';
         await notifier(tx, user.tenantId, compte, {
           type: 'objectif',
           sujet: 'objectifs',
-          title: `${await this.nomDe(tx, moi)} a évalué vos objectifs ${deLAnnee(annee)}`,
+          title: `${await this.nomDe(tx, moi)} a évalué vos objectifs ${deLAnnee(annee)}${report}`,
           link: '/moi/objectifs',
           dedupeKey: `objectifs:evaluation:${employeeId}:${annee}`,
         });
       }
     });
+  }
+
+  /**
+   * Les objectifs reportés passent dans la fiche de l'année suivante, tels
+   * quels et sans échéance : le n+1 leur en donne une s'il le faut. Une
+   * formation déjà dans la fiche n'y revient pas, ni un objectif au même
+   * texte.
+   */
+  private async reporter(
+    tx: Tx,
+    user: SessionUser,
+    employeeId: string,
+    annee: number,
+    source: LigneFiche,
+    objectifs: ObjectifDeLaFiche[],
+    auteur: string,
+  ): Promise<void> {
+    const f = await this.ficheDuGeste(tx, employeeId, annee);
+    if (f.envoyee) {
+      problem(
+        409,
+        'objectifs.report_impossible',
+        `L’auto-évaluation ${deLAnnee(annee)} est déjà envoyée : rien ne peut plus y être reporté`,
+      );
+    }
+    const deja = objectifsDeLaFiche(f.contenu);
+    const copies: Bloc[] = [];
+    for (const o of objectifs) {
+      const bloc = blocDe(source.contenu, o.id);
+      if (!bloc) continue;
+      const present = o.formation
+        ? deja.some((d) => d.formation === o.formation)
+        : deja.some((d) => !d.formation && d.empreinte === o.empreinte);
+      if (present) continue;
+      const copie: Bloc = { ...bloc, id: uuidv7(), children: [] };
+      copies.push(o.formation ? copie : caseAGarder(copie, null));
+    }
+    if (copies.length === 0) return;
+    f.contenu = [...f.contenu, ...copies];
+    await this.ecrireLaFiche(tx, user, employeeId, annee, f, auteur);
   }
 
   /**
@@ -991,25 +1203,32 @@ export class ObjectifsService {
       if (!user.dirigeLaDCH && (await employeActif(tx, user.userId)) !== employeeId) {
         problem(403, 'objectifs.dossier_interdit', 'Ces évaluations ne sont pas les vôtres');
       }
-      const { rows } = await tx.execute<{
-        annee: number;
-        manager: string | null;
-        note: NoteGlobale;
-        validee_le: string | Date;
-      }>(sql`
-        SELECT f.annee, f.evaluation_note AS note, f.evaluation_validee_le AS validee_le,
-               CASE WHEN p.id IS NULL THEN NULL ELSE p.given_name || ' ' || p.family_name END AS manager
-          FROM objectifs_fiches f
-          LEFT JOIN employees e ON e.id = f.evaluateur_employee_id
-          LEFT JOIN persons p ON p.id = e.person_id
+      const { rows } = await tx.execute<LigneFiche>(sql`
+        ${SELECTION_FICHE}
          WHERE f.employee_id = ${employeeId} AND f.evaluation_validee_le IS NOT NULL
          ORDER BY f.annee DESC`);
-      return rows.map((r) => ({
-        annee: Number(r.annee),
-        manager: r.manager,
-        note: r.note,
-        valideeLe: iso(r.validee_le)!,
-      }));
+      // La note se lit avec chaque objectif et son atteinte (ADR-0076).
+      return rows.map((l) => {
+        const objectifs = objectifsDeLaFiche(l.contenu);
+        const { statuts } = statutsEnVigueur(l);
+        const formations = statutsDesFormations(objectifs, l.formations_figees ?? []);
+        const atteintes = atteintesRetenues(l);
+        const reportes = new Set(l.reports_n1);
+        return {
+          annee: Number(l.annee),
+          manager: l.evaluateur,
+          note: l.evaluation_note!,
+          valideeLe: iso(l.evaluation_validee_le)!,
+          objectifs: objectifs.map((o) => ({
+            id: o.id,
+            texte: o.texte,
+            formation: Boolean(o.formation),
+            agent: (o.formation ? formations[o.id] : statuts[o.id]) ?? null,
+            n1: atteintes.get(o.id) ?? null,
+            reporte: reportes.has(o.id),
+          })),
+        };
+      });
     });
   }
 
@@ -1113,12 +1332,7 @@ export class ObjectifsService {
 
   /** Le jour de l'évaluation, « MM-JJ » : le 15 décembre tant que personne n'en a fixé un autre. */
   private async jourEvaluation(tx: Tx): Promise<string> {
-    const { rows } = await tx.execute<{ review_month: number; review_day: number }>(
-      sql`SELECT review_month, review_day FROM objective_review_schedule`,
-    );
-    const r = rows[0];
-    if (!r) return JOUR_D_EVALUATION_PAR_DEFAUT;
-    return `${String(r.review_month).padStart(2, '0')}-${String(r.review_day).padStart(2, '0')}`;
+    return lireLeJourDEvaluation(tx);
   }
 
   private vueDeLaDate(user: SessionUser, jour: string): DateEvaluation {

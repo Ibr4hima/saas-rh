@@ -7,8 +7,9 @@
  *     et les commentaires des auto-évaluations, les évaluations et les notes ;
  *     et les fiches par semestre gardées à part depuis 0111 ;
  *   - les objectifs individuels de l'ancien modèle, fixés un à un ;
- *   - les notifications qui en parlaient : objectifs fixés ou mis à jour,
- *     évaluations validées, auto-évaluations à évaluer et leurs relances.
+ *   - les notifications qui en parlaient : objectifs fixés, mis à jour ou
+ *     cochés, auto-évaluations ouvertes ou à évaluer et leurs relances,
+ *     évaluations validées.
  *     Un courriel encore en attente pour l'une d'elles ne part plus.
  *
  * Restent : les orientations de l'APIX et les objectifs des directions, les
@@ -71,6 +72,8 @@ const bd = new pg.Pool({ connectionString: url, max: 1 });
 const NOTIFICATIONS_DES_OBJECTIFS = `
   dedupe_key LIKE 'objectifs:fiche:%'
   OR dedupe_key LIKE 'objectifs:evaluation:%'
+  OR dedupe_key LIKE 'objectifs:coche:%'
+  OR dedupe_key LIKE 'objectifs:ouverture:%'
   OR dedupe_key LIKE 'objectif:%'
   OR dedupe_key ~ '^objectifs:[0-9a-f-]{36}:[0-9]{4}:(appel|rappel):'`;
 

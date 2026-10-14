@@ -120,7 +120,7 @@ export const SUJETS = {
   },
   'equipe.objectifs': {
     groupe: 'equipe',
-    libelle: 'Auto-évaluations de mon équipe',
+    libelle: 'Objectifs et auto-évaluations de mon équipe',
     icone: 'rate_review',
     pour: (p) => p.aUneEquipe,
   },

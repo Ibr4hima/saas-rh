@@ -857,6 +857,10 @@ export const objectifsFiches = pgTable('objectifs_fiches', {
   evaluationNote: text('evaluation_note'),
   evaluationValideeLe: timestamp('evaluation_validee_le', { withTimezone: true }),
   evaluateurEmployeeId: uuid('evaluateur_employee_id'),
+  // 0112 : l'atteinte de chaque objectif selon le n+1, et les objectifs
+  // reportés à l'année suivante.
+  atteintesN1: jsonb('atteintes_n1').notNull().default({}),
+  reportsN1: jsonb('reports_n1').notNull().default([]),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

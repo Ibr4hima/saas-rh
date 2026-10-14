@@ -1,8 +1,72 @@
 import { sql } from 'drizzle-orm';
+import {
+  JOUR_D_EVALUATION_PAR_DEFAUT,
+  dateDEvaluation,
+  ouvertureDeLAutoEvaluation,
+} from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 import { retirerLesAppels, tenirLesAppels } from '../acces/appels';
+import { notifierChacun } from '../notifications/notifier';
 import { deLAnnee } from '../notifications/phrases';
 import { DG } from '../people/chaine';
+
+/** Le jour de l'évaluation de l'organisation, « MM-JJ » : le 15 décembre sans réglage. */
+export async function lireLeJourDEvaluation(tx: Tx): Promise<string> {
+  const { rows } = await tx.execute<{ review_month: number; review_day: number }>(
+    sql`SELECT review_month, review_day FROM objective_review_schedule`,
+  );
+  const r = rows[0];
+  if (!r) return JOUR_D_EVALUATION_PAR_DEFAUT;
+  return `${String(r.review_month).padStart(2, '0')}-${String(r.review_day).padStart(2, '0')}`;
+}
+
+/** Une case à cocher qui dit quelque chose, ou une formation, à quelque profondeur que ce soit. */
+const CONTIENT_UN_OBJECTIF =
+  'strict $.** ? ((@.type == "checkListItem" && exists(@.content[*] ? (@.type == "text" && @.text like_regex "[^[:space:]]"))) || @.type == "formation")';
+
+/**
+ * L'auto-évaluation de l'année s'ouvre (ADR-0076) : chaque agent qui a des
+ * objectifs pour l'année, un N+1 à qui l'envoyer et rien d'envoyé encore en
+ * est prévenu, une fois. De l'ouverture au jour de l'évaluation seulement :
+ * une année passée ne se rappelle pas. Idempotente.
+ */
+export async function prevenirDeLOuverture(
+  tx: Tx,
+  tenantId: string,
+  aujourdhui?: string,
+): Promise<void> {
+  const jour = await lireLeJourDEvaluation(tx);
+  const { rows: horloge } = await tx.execute<{ jour: string }>(
+    sql`SELECT COALESCE(${aujourdhui ?? null}::date, current_date)::text AS jour`,
+  );
+  const date = horloge[0]!.jour;
+  const annee = Number(date.slice(0, 4));
+  if (date < ouvertureDeLAutoEvaluation(annee, jour) || date > dateDEvaluation(annee, jour)) {
+    return;
+  }
+  // Une fiche qui a un objectif : une case qui dit quelque chose, ou une formation.
+  const { rows } = await tx.execute<{ employee_id: string; user_id: string }>(sql`
+    SELECT f.employee_id, p.user_id
+      FROM objectifs_fiches f
+      JOIN employees e ON e.id = f.employee_id
+      JOIN persons p ON p.id = e.person_id
+     WHERE f.annee = ${annee} AND f.commentaires_envoyes_le IS NULL
+       AND e.status = 'active' AND p.user_id IS NOT NULL AND p.deleted_at IS NULL
+       AND e.manager_employee_id IS NOT NULL AND e.id IS DISTINCT FROM ${DG}
+       AND jsonb_path_exists(f.contenu, ${CONTIENT_UN_OBJECTIF}::jsonpath)`);
+  await notifierChacun(
+    tx,
+    tenantId,
+    rows.map((r) => ({
+      userId: r.user_id,
+      type: 'objectif',
+      sujet: 'objectifs' as const,
+      title: `Votre auto-évaluation ${deLAnnee(annee)} est ouverte`,
+      link: '/moi/objectifs',
+      dedupeKey: `objectifs:ouverture:${r.employee_id}:${annee}`,
+    })),
+  );
+}
 
 /** Les appels à évaluer une fiche : un par auto-évaluation envoyée, une par année. */
 export const prefixeEvaluation = (employeeId: string, annee: number) =>
