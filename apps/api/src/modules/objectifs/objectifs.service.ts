@@ -3,8 +3,8 @@ import { sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
   type CreerObjectifInput,
-  type DatesEvaluation,
-  type DatesEvaluationInput,
+  type DateEvaluation,
+  type DateEvaluationInput,
   type EvaluerObjectifInput,
   type FicheSuivi,
   type FormationProposable,
@@ -20,28 +20,25 @@ import {
   type EvaluationN1Input,
   type EvaluationValidee,
   type FicheEnregistree,
-  type JoursEvaluation,
   type NoteGlobale,
-  type PeriodeObjectifs,
-  JOURS_D_EVALUATION_PAR_DEFAUT,
+  JOUR_D_EVALUATION_PAR_DEFAUT,
   dateDEvaluation,
   dateEnLettres,
   echeanceDuBloc,
+  echeancesDeLAnnee,
   formationsDeLaFiche,
   objectifsDeLaFiche,
-  periodeDeLEcheance,
   statutsDesFormations,
   type ModifierObjectifInput,
   type ObjectifsAPIX,
   type ObjectifView,
-  type Semestre,
   type SessionUser,
   type SuiviEquipe,
   type TeamCourseProgress,
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { TenantDb, type Tx } from '../../db/tenant-db';
-import { duSemestre } from '../notifications/phrases';
+import { deLAnnee } from '../notifications/phrases';
 import { AcademySuiviService } from '../academy/academy-suivi.service';
 import { employeActif } from '../academy/academy-evaluation.service';
 import { notifier } from '../notifications/notifier';
@@ -170,11 +167,10 @@ function formationsDe(progression: TeamCourseProgress[] | undefined): FormationD
     }));
 }
 
-/** Une fiche d'objectifs, telle que la base la garde. */
+/** Une fiche d'objectifs, telle que la base la garde : une par agent et par année. */
 type LigneFiche = {
   id: string;
   annee: number;
-  semestre: number;
   contenu: Record<string, unknown>[];
   updated_at: string | Date;
   auteur: string | null;
@@ -191,7 +187,7 @@ type LigneFiche = {
 };
 
 const SELECTION_FICHE = sql`
-  SELECT f.id, f.annee, f.semestre, f.contenu, f.updated_at,
+  SELECT f.id, f.annee, f.contenu, f.updated_at,
          CASE WHEN pa.id IS NULL THEN NULL ELSE pa.given_name || ' ' || pa.family_name END AS auteur,
          f.statuts, f.statuts_empreintes, f.formations_figees,
          f.commentaires_agent, f.commentaires_envoyes_le, f.commentaires_n1,
@@ -234,9 +230,9 @@ type Bloc = Record<string, unknown>;
 const caseVide = (b: Bloc) => b.type === 'checkListItem' && objectifsDeLaFiche([b]).length === 0;
 
 /**
- * La case telle qu'elle se garde : avec son échéance, ou sans échéance à elle
- * (`null` : celle de sa fiche). Sans coche : c'est le statut donné par
- * l'agent qui la pose, à la lecture.
+ * La case telle qu'elle se garde : avec son échéance, ou sans (elle vaut pour
+ * l'année). Sans coche : c'est le statut donné par l'agent qui la pose, à la
+ * lecture.
  */
 function caseAGarder(b: Bloc, echeance: string | null): Bloc {
   const { echeance: _echeance, checked: _coche, ...props } = (b.props ?? {}) as Bloc;
@@ -244,39 +240,21 @@ function caseAGarder(b: Bloc, echeance: string | null): Bloc {
 }
 
 /**
- * À la lecture, chaque case porte son échéance. Une case fixée avant les
- * échéances n'en a pas à elle : elle prend la date d'évaluation de sa fiche.
+ * Les objectifs d'une fiche, de la plus proche échéance à la plus lointaine,
+ * ceux sans échéance à la fin ; à échéance égale, dans l'ordre où ils ont été
+ * fixés. Les formations et le commentaire suivent, dans leur ordre. Les cases
+ * vides s'en vont.
  */
-function avecLesEcheances(blocs: unknown, implicite: string): Bloc[] {
-  if (!Array.isArray(blocs)) return [];
-  return (blocs as Bloc[]).map((b) => {
-    const enfants = avecLesEcheances(b.children, implicite);
-    if (b.type !== 'checkListItem' || echeanceDuBloc(b)) return { ...b, children: enfants };
-    const props = { ...((b.props ?? {}) as Bloc), echeance: implicite };
-    return { ...b, props, children: enfants };
-  });
-}
-
-/**
- * Les objectifs d'une fiche, de la plus proche échéance à la plus lointaine ;
- * à échéance égale, dans l'ordre où ils ont été fixés. Les formations et le
- * commentaire suivent, dans leur ordre. Les cases vides s'en vont.
- */
-function ranger(contenu: Bloc[], implicite: string): Bloc[] {
-  const cle = (b: Bloc) => echeanceDuBloc(b) ?? implicite;
+function ranger(contenu: Bloc[]): Bloc[] {
+  const cle = (b: Bloc) => echeanceDuBloc(b) ?? '9999-12-31';
   const cases = contenu.filter((b) => b.type === 'checkListItem' && !caseVide(b));
   // Le tri de JavaScript est stable : l'ordre d'arrivée départage.
   cases.sort((a, b) => (cle(a) < cle(b) ? -1 : cle(a) > cle(b) ? 1 : 0));
   return [...cases, ...contenu.filter((b) => b.type !== 'checkListItem')];
 }
 
-/**
- * Une fiche, le temps d'un geste qui peut en toucher plusieurs : enregistrer
- * une fiche dont une échéance change de période, déplacer les dates
- * d'évaluation. Le geste se fait en mémoire, puis les fiches touchées
- * s'écrivent.
- */
-interface FicheDuGeste extends PeriodeObjectifs {
+/** La fiche de l'année, le temps d'un enregistrement. */
+interface FicheDuGeste extends Record<string, unknown> {
   /** `null` : la fiche n'existe pas encore. */
   id: string | null;
   contenu: Bloc[];
@@ -286,44 +264,10 @@ interface FicheDuGeste extends PeriodeObjectifs {
   commentaires_n1: Record<string, string>;
   /** L'agent a envoyé son auto-évaluation : la fiche ne change plus. */
   envoyee: boolean;
-  auteur_employee_id: string | null;
   updated_at: string | Date | null;
-  touchee: boolean;
-}
-
-/** La fiche d'une période, telle quelle, ou neuve si elle n'existe pas encore. */
-function laFiche(fiches: FicheDuGeste[], p: PeriodeObjectifs, auteur: string | null): FicheDuGeste {
-  const deja = fiches.find((f) => f.annee === p.annee && f.semestre === p.semestre);
-  if (deja) return deja;
-  const neuve: FicheDuGeste = {
-    id: null,
-    annee: p.annee,
-    semestre: p.semestre,
-    contenu: [],
-    statuts: {},
-    statuts_empreintes: {},
-    commentaires_agent: {},
-    commentaires_n1: {},
-    envoyee: false,
-    auteur_employee_id: auteur,
-    updated_at: null,
-    touchee: false,
-  };
-  fiches.push(neuve);
-  return neuve;
 }
 
 const PROPOS = ['statuts', 'statuts_empreintes', 'commentaires_agent', 'commentaires_n1'] as const;
-
-/** Un objectif change de fiche : son statut et ce qui s'en est dit le suivent. */
-function transfererLesPropos(id: string, de: FicheDuGeste, vers: FicheDuGeste): void {
-  for (const cle of PROPOS) {
-    const valeur = de[cle][id];
-    if (valeur === undefined) continue;
-    (vers[cle] as Record<string, string>)[id] = valeur;
-    delete de[cle][id];
-  }
-}
 
 /** Ce qui se disait d'un objectif retiré de la fiche s'en va avec lui. */
 function oublierLesAbsents(f: FicheDuGeste): void {
@@ -333,8 +277,23 @@ function oublierLesAbsents(f: FicheDuGeste): void {
   }
 }
 
-const memePeriode = (a: PeriodeObjectifs, b: PeriodeObjectifs) =>
-  a.annee === b.annee && a.semestre === b.semestre;
+/**
+ * Une échéance écrite au fil du texte d'un objectif, d'un temps où l'éditeur
+ * en avait, devient du texte à la rédaction (« pour le 31 oct. 2026 ») : la
+ * phrase qu'on lit est la même, la réponse de l'agent vaut toujours. Son
+ * empreinte suit le nouveau contenu ; un statut déjà à revoir le reste.
+ */
+function suivreLesEmpreintes(avant: Bloc[], f: FicheDuGeste): void {
+  const lus = new Map(objectifsDeLaFiche(avant).map((o) => [o.id, o]));
+  for (const o of objectifsDeLaFiche(f.contenu)) {
+    const empreinte = f.statuts_empreintes[o.id];
+    const ancien = lus.get(o.id);
+    if (empreinte === undefined || empreinte === o.empreinte || !ancien) continue;
+    if (ancien.empreinte === empreinte && ancien.texte === o.texte) {
+      f.statuts_empreintes[o.id] = o.empreinte;
+    }
+  }
+}
 
 /**
  * Les statuts qui valent encore : ceux d'un objectif toujours dans la fiche,
@@ -372,26 +331,21 @@ function statutsDeSesFormations(
 /**
  * Ce que l'agent et le n+1 en lisent. Le brouillon du n+1 n'est qu'à son
  * auteur : un nouveau n+1 évalue sur une page blanche, il ne valide pas les
- * propos de l'ancien. Les objectifs se lisent par échéance, chacun avec la
- * sienne.
+ * propos de l'ancien. Les objectifs se lisent par échéance.
  */
 function vueFiche(
   l: LigneFiche,
   vue: 'agent' | 'n1',
   formations: FormationDeLaFiche[],
-  jours: JoursEvaluation,
   lecteur?: string,
 ): FicheObjectifs {
   const envoyes = l.commentaires_envoyes_le !== null;
   const validee = l.evaluation_validee_le !== null;
   const voitN1 = validee || (vue === 'n1' && l.evaluateur_employee_id === lecteur);
   const { statuts, caducs } = statutsEnVigueur(l);
-  const semestre: Semestre = l.semestre === 1 ? 1 : 2;
-  const implicite = dateDEvaluation(l.annee, semestre, jours);
   return {
     annee: l.annee,
-    semestre,
-    contenu: ranger(avecLesEcheances(avecLesStatuts(l.contenu, statuts), implicite), implicite),
+    contenu: ranger(avecLesStatuts(l.contenu, statuts)),
     majLe: iso(l.updated_at)!,
     auteur: l.auteur,
     statuts: { ...statuts, ...statutsDeSesFormations(l, formations) },
@@ -408,7 +362,7 @@ function vueFiche(
   };
 }
 
-/** Des commentaires, réduits aux objectifs de la fiche — un objectif retiré emporte le sien. */
+/** Des commentaires, réduits aux objectifs de la fiche : un objectif retiré emporte le sien. */
 function garderLesObjectifs(
   f: LigneFiche,
   commentaires: Record<string, string>,
@@ -493,17 +447,16 @@ export class ObjectifsService {
         sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${moi}`,
       );
       const progression = await this.progression(tx, [moi]);
-      const jours = await this.joursEvaluation(tx);
       return {
         annee: an,
-        fiches: await this.lireFiches(tx, moi, 'agent', formationsDe(progression.get(moi)), jours),
+        fiches: await this.lireFiches(tx, moi, 'agent', formationsDe(progression.get(moi))),
         formations: formationsDe(progression.get(moi)),
         apix: apix.map((o) => this.vue(o)),
         direction: direction
           ? { ...direction, objectifs: deLaDirection.map((o) => this.vue(o)) }
           : null,
         individuels: individuels.map((o) => this.vue(o, progression.get(moi))),
-        joursEvaluation: jours,
+        jourEvaluation: await this.jourEvaluation(tx),
       };
     });
   }
@@ -561,13 +514,11 @@ export class ObjectifsService {
           sql`o.niveau = 'individuel' AND o.annee = ${an} AND o.employee_id = ${membre.id}`,
         )
       ).map((o) => this.vue(o, progression.get(membre.id)));
-      const jours = await this.joursEvaluation(tx);
       const fiches = await this.lireFiches(
         tx,
         membre.id,
         'n1',
         formationsDe(progression.get(membre.id)),
-        jours,
         moi,
       );
       const aEvaluer = fiches.filter(
@@ -580,18 +531,17 @@ export class ObjectifsService {
         fiches,
         formations: formationsDe(progression.get(membre.id)),
         formationsEncadrees: await formationsEncadrees(tx, membre.id),
-        joursEvaluation: jours,
+        jourEvaluation: await this.jourEvaluation(tx),
       };
     });
   }
 
   /**
-   * Le n+1 enregistre la fiche d'objectifs de son direct pour un semestre,
-   * d'un clic sur « Enregistrer » (ADR-0051). Les objectifs s'y rangent par
-   * échéance ; celui dont l'échéance tombe dans une autre période (un
-   * objectif reporté à l'évaluation suivante) part dans la fiche de cette
-   * évaluation, avec son statut et ce qui s'en est dit (ADR-0055, ADR-0056).
-   * Chaque enregistrement qui change une fiche prévient l'agent ; la dernière
+   * Le n+1 enregistre la fiche d'objectifs de son direct pour une année, d'un
+   * clic sur « Enregistrer » (ADR-0051, ADR-0075). Les objectifs s'y rangent
+   * par échéance ; une échéance est facultative, et se fixe dans l'année. Un
+   * objectif retiré emporte son statut et ce qui s'en est dit. Chaque
+   * enregistrement qui change la fiche prévient l'agent ; la dernière
    * notification remplace les précédentes. Une fiche renvoyée telle quelle ne
    * s'écrit pas, une fiche neuve restée vide ne se crée pas.
    */
@@ -611,25 +561,23 @@ export class ObjectifsService {
       if (!membre) {
         problem(404, 'objectifs.hors_equipe', 'Cet agent ne fait pas partie de votre équipe');
       }
-      const jours = await this.joursEvaluation(tx);
-      const fiches = await this.fichesDuGeste(tx, employeeId);
-      const ici = laFiche(fiches, { annee: an, semestre: input.semestre }, moi);
+      const jourEvaluation = await this.jourEvaluation(tx);
+      const f = await this.ficheDuGeste(tx, employeeId, an);
       // L'agent a rendu compte de ces objectifs : ils ne changent plus.
-      if (ici.envoyee) {
+      if (f.envoyee) {
         problem(
           409,
           'objectifs.fiche_verrouillee',
           'L’agent a envoyé son auto-évaluation : ces objectifs ne changent plus',
         );
       }
-      const implicite = dateDEvaluation(an, input.semestre, jours);
+      const evaluation = dateDEvaluation(an, jourEvaluation);
       const avant = new Map<string, Bloc>();
-      for (const b of ici.contenu) {
+      for (const b of f.contenu) {
         if (b.type === 'checkListItem' && typeof b.id === 'string') avant.set(b.id, b);
       }
 
       const gardes: Bloc[] = [];
-      const partants: { bloc: Bloc; vers: PeriodeObjectifs }[] = [];
       for (const brut of contenu) {
         if (brut.type !== 'checkListItem') {
           gardes.push(brut);
@@ -639,97 +587,71 @@ export class ObjectifsService {
         const b = typeof brut.id === 'string' && brut.id ? brut : { ...brut, id: uuidv7() };
         const ancien = avant.get(String(b.id));
         const voulue = echeanceDuBloc(b);
-        // L'échéance ne change pas : celle que la case avait, ou aucune à elle
-        // (celle de la fiche, que la lecture lui prête).
-        if (voulue === null || (ancien && voulue === (echeanceDuBloc(ancien) ?? implicite))) {
-          gardes.push(caseAGarder(b, ancien ? echeanceDuBloc(ancien) : null));
+        if (ancien && voulue === echeanceDuBloc(ancien)) {
+          gardes.push(caseAGarder(b, voulue));
           continue;
         }
-        // Une évaluation passée garde ses objectifs : on ne repousse pas une
-        // échéance pour en sortir un.
-        if (ancien && implicite < this.aujourdhui()) {
+        // Une évaluation passée garde ses objectifs tels qu'ils étaient : on
+        // n'en déplace plus les échéances.
+        if (ancien && evaluation < this.aujourdhui()) {
           problem(
             409,
             'objectifs.evaluation_passee',
-            `L’évaluation du ${dateEnLettres(implicite)} est passée : les échéances de ses objectifs ne changent plus`,
+            `L’évaluation du ${dateEnLettres(evaluation)} est passée : les échéances de ses objectifs ne changent plus`,
           );
         }
-        this.exigerEcheancePossible(voulue, jours);
-        const vers = periodeDeLEcheance(voulue, jours);
-        if (memePeriode(vers, ici)) gardes.push(caseAGarder(b, voulue));
-        else partants.push({ bloc: caseAGarder(b, voulue), vers });
+        if (voulue !== null) this.exigerEcheancePossible(voulue, an, jourEvaluation);
+        gardes.push(caseAGarder(b, voulue));
       }
+      const precedent = f.contenu;
+      f.contenu = gardes;
+      oublierLesAbsents(f);
+      suivreLesEmpreintes(precedent, f);
 
-      for (const { bloc, vers } of partants) {
-        const cible = this.ficheQuiRecoit(fiches, vers, moi, jours);
-        cible.contenu = [...cible.contenu, bloc];
-        transfererLesPropos(String(bloc.id), ici, cible);
-        cible.touchee = true;
+      const ecrite = await this.ecrireLaFiche(tx, user, employeeId, an, f, moi);
+      if (ecrite && objectifsDeLaFiche(f.contenu).length > 0) {
+        await this.prevenirDeLaFiche(tx, user, employeeId, moi, an, ecrite);
       }
-      ici.contenu = gardes;
-      oublierLesAbsents(ici);
-      ici.touchee = true;
-
-      const ecrites = await this.ecrireLesFiches(tx, user, employeeId, fiches, jours, moi);
-      await this.prevenirDesFiches(tx, user, employeeId, moi, ecrites);
-      return {
-        majLe: ecrites.get(ici) ?? iso(ici.updated_at),
-        periodes: [...ecrites.keys()].map(({ annee, semestre }) => ({ annee, semestre })),
-      };
+      return { majLe: ecrite ?? iso(f.updated_at) };
     });
   }
 
   /**
-   * Les fiches de l'agent, verrouillées le temps du geste. Un geste à la fois
-   * par agent : deux enregistrements simultanés ne créent pas deux fiches du
-   * même semestre.
+   * La fiche de l'année, verrouillée le temps du geste, ou neuve. Un geste à
+   * la fois par agent : deux enregistrements simultanés ne créent pas deux
+   * fiches de la même année.
    */
-  private async fichesDuGeste(tx: Tx, employeeId: string): Promise<FicheDuGeste[]> {
+  private async ficheDuGeste(tx: Tx, employeeId: string, annee: number): Promise<FicheDuGeste> {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtext(${`objectifs:fiches:${employeeId}`}))`,
     );
-    const { rows } = await tx.execute<Omit<FicheDuGeste, 'touchee'>>(sql`
-      SELECT id, annee, semestre, contenu, statuts, statuts_empreintes,
-             commentaires_agent, commentaires_n1,
-             commentaires_envoyes_le IS NOT NULL AS envoyee, auteur_employee_id, updated_at
+    const { rows } = await tx.execute<FicheDuGeste>(sql`
+      SELECT id, contenu, statuts, statuts_empreintes, commentaires_agent, commentaires_n1,
+             commentaires_envoyes_le IS NOT NULL AS envoyee, updated_at
         FROM objectifs_fiches
-       WHERE employee_id = ${employeeId}
-       ORDER BY annee, semestre
+       WHERE employee_id = ${employeeId} AND annee = ${annee}
          FOR UPDATE`);
-    return rows.map((r) => ({
-      ...r,
-      semestre: r.semestre === 1 ? 1 : 2,
-      contenu: Array.isArray(r.contenu) ? r.contenu : [],
-      touchee: false,
-    }));
-  }
-
-  /**
-   * La fiche où va un objectif fixé ou déplacé. Envoyée, elle ne reçoit plus
-   * rien : l'échéance se choisit après sa date d'évaluation.
-   */
-  private ficheQuiRecoit(
-    fiches: FicheDuGeste[],
-    vers: PeriodeObjectifs,
-    auteur: string,
-    jours: JoursEvaluation,
-  ): FicheDuGeste {
-    const cible = laFiche(fiches, vers, auteur);
-    if (cible.envoyee) {
-      problem(
-        409,
-        'objectifs.fiche_verrouillee',
-        `L’agent a envoyé son auto-évaluation ${duSemestre(vers.semestre, vers.annee)} : choisissez une échéance après le ${dateEnLettres(dateDEvaluation(vers.annee, vers.semestre, jours))}`,
-      );
+    const f = rows[0];
+    if (!f) {
+      return {
+        id: null,
+        contenu: [],
+        statuts: {},
+        statuts_empreintes: {},
+        commentaires_agent: {},
+        commentaires_n1: {},
+        envoyee: false,
+        updated_at: null,
+      };
     }
-    return cible;
+    return { ...f, contenu: Array.isArray(f.contenu) ? f.contenu : [] };
   }
 
   /**
-   * Une échéance se fixe à partir d'aujourd'hui, jusqu'à la dernière
-   * évaluation de l'année suivante : la page du n+1 ne va pas au-delà.
+   * Une échéance nouvelle ou changée tombe dans l'année de sa fiche, à partir
+   * d'aujourd'hui, au plus tard le jour de l'évaluation.
    */
-  private exigerEcheancePossible(echeance: string, jours: JoursEvaluation): void {
+  private exigerEcheancePossible(echeance: string, annee: number, jourEvaluation: string): void {
     if (echeance < this.aujourdhui()) {
       problem(
         422,
@@ -737,149 +659,127 @@ export class ObjectifsService {
         `L’échéance du ${dateEnLettres(echeance)} est déjà passée`,
       );
     }
-    const horizon = dateDEvaluation(this.anneeCourante() + 1, 2, jours);
-    if (echeance > horizon) {
+    const { du, au } = echeancesDeLAnnee(annee, jourEvaluation);
+    if (echeance < du || echeance > au) {
       problem(
         422,
-        'objectifs.echeance_trop_lointaine',
-        `Une échéance se fixe au plus tard le ${dateEnLettres(horizon)}`,
+        'objectifs.echeance_hors_de_l_annee',
+        `Une échéance des objectifs de ${annee} se fixe entre le ${dateEnLettres(du, false)} et le ${dateEnLettres(au)}`,
       );
     }
   }
 
   /**
-   * Écrit les fiches que le geste a touchées, chacune rangée par échéance.
-   * Une fiche que rien n'a changé ne s'écrit pas ; une fiche neuve où rien
-   * n'est resté (ses objectifs reportés ailleurs) ne se crée pas. `auteur` :
-   * qui signe la mise à jour (`null` : la fiche garde le sien). Rend les
-   * fiches écrites, avec l'heure de leur écriture, dans l'ordre du temps.
+   * Écrit la fiche, rangée par échéance, si elle a changé ; une fiche neuve
+   * où rien n'est écrit ne se crée pas. `auteur` signe la mise à jour. Rend
+   * l'heure de l'écriture, ou `null` quand rien ne s'est écrit.
    */
-  private async ecrireLesFiches(
+  private async ecrireLaFiche(
     tx: Tx,
     user: SessionUser,
     employeeId: string,
-    fiches: FicheDuGeste[],
-    jours: JoursEvaluation,
-    auteur: string | null,
-  ): Promise<Map<FicheDuGeste, string>> {
-    const ecrites = new Map<FicheDuGeste, string>();
-    const parPeriode = [...fiches].sort((a, b) => a.annee - b.annee || a.semestre - b.semestre);
-    for (const f of parPeriode) {
-      if (!f.touchee) continue;
-      f.contenu = ranger(f.contenu, dateDEvaluation(f.annee, f.semestre, jours));
-      const contenu = JSON.stringify(f.contenu);
-      if (contenu.length > FICHE_OBJECTIFS_MAX) {
-        problem(
-          400,
-          'objectifs.fiche_trop_longue',
-          'La fiche est trop longue pour être enregistrée',
-        );
-      }
-      const statuts = JSON.stringify(f.statuts);
-      const empreintes = JSON.stringify(f.statuts_empreintes);
-      const agent = JSON.stringify(f.commentaires_agent);
-      const n1 = JSON.stringify(f.commentaires_n1);
-      if (f.id === null && !ficheRemplie(f.contenu)) continue;
-      if (f.id === null) {
-        const { rows } = await tx.execute<{ updated_at: string | Date }>(sql`
-          INSERT INTO objectifs_fiches
-                 (id, tenant_id, employee_id, annee, semestre, contenu, statuts,
-                  statuts_empreintes, commentaires_agent, commentaires_n1, auteur_employee_id)
-          VALUES (${uuidv7()}, ${user.tenantId}, ${employeeId}, ${f.annee}, ${f.semestre},
-                  ${contenu}::jsonb, ${statuts}::jsonb, ${empreintes}::jsonb, ${agent}::jsonb,
-                  ${n1}::jsonb, ${auteur ?? f.auteur_employee_id})
-          RETURNING updated_at`);
-        ecrites.set(f, iso(rows[0]!.updated_at)!);
-        continue;
-      }
-      const { rows } = await tx.execute<{ updated_at: string | Date }>(sql`
-        UPDATE objectifs_fiches
-           SET contenu = ${contenu}::jsonb, statuts = ${statuts}::jsonb,
-               statuts_empreintes = ${empreintes}::jsonb,
-               commentaires_agent = ${agent}::jsonb, commentaires_n1 = ${n1}::jsonb,
-               auteur_employee_id = ${auteur ? sql`${auteur}` : sql`auteur_employee_id`},
-               updated_at = now()
-         WHERE id = ${f.id}
-           AND (contenu, statuts, statuts_empreintes, commentaires_agent, commentaires_n1)
-               IS DISTINCT FROM (${contenu}::jsonb, ${statuts}::jsonb, ${empreintes}::jsonb,
-                                 ${agent}::jsonb, ${n1}::jsonb)
-        RETURNING updated_at`);
-      if (rows[0]) ecrites.set(f, iso(rows[0].updated_at)!);
+    annee: number,
+    f: FicheDuGeste,
+    auteur: string,
+  ): Promise<string | null> {
+    f.contenu = ranger(f.contenu);
+    const contenu = JSON.stringify(f.contenu);
+    if (contenu.length > FICHE_OBJECTIFS_MAX) {
+      problem(400, 'objectifs.fiche_trop_longue', 'La fiche est trop longue pour être enregistrée');
     }
-    return ecrites;
+    const statuts = JSON.stringify(f.statuts);
+    const empreintes = JSON.stringify(f.statuts_empreintes);
+    const agent = JSON.stringify(f.commentaires_agent);
+    const n1 = JSON.stringify(f.commentaires_n1);
+    if (f.id === null) {
+      if (!ficheRemplie(f.contenu)) return null;
+      const { rows } = await tx.execute<{ updated_at: string | Date }>(sql`
+        INSERT INTO objectifs_fiches
+               (id, tenant_id, employee_id, annee, contenu, statuts, statuts_empreintes,
+                commentaires_agent, commentaires_n1, auteur_employee_id)
+        VALUES (${uuidv7()}, ${user.tenantId}, ${employeeId}, ${annee}, ${contenu}::jsonb,
+                ${statuts}::jsonb, ${empreintes}::jsonb, ${agent}::jsonb, ${n1}::jsonb, ${auteur})
+        RETURNING updated_at`);
+      return iso(rows[0]!.updated_at);
+    }
+    const { rows } = await tx.execute<{ updated_at: string | Date }>(sql`
+      UPDATE objectifs_fiches
+         SET contenu = ${contenu}::jsonb, statuts = ${statuts}::jsonb,
+             statuts_empreintes = ${empreintes}::jsonb,
+             commentaires_agent = ${agent}::jsonb, commentaires_n1 = ${n1}::jsonb,
+             auteur_employee_id = ${auteur}, updated_at = now()
+       WHERE id = ${f.id}
+         AND (contenu, statuts, statuts_empreintes, commentaires_agent, commentaires_n1)
+             IS DISTINCT FROM (${contenu}::jsonb, ${statuts}::jsonb, ${empreintes}::jsonb,
+                               ${agent}::jsonb, ${n1}::jsonb)
+      RETURNING updated_at`);
+    return rows[0] ? iso(rows[0].updated_at) : null;
   }
 
   /**
-   * Chaque fiche écrite qui porte un objectif prévient l'agent : un
+   * La fiche écrite prévient l'agent, dès qu'elle porte un objectif : un
    * commentaire posé seul n'annonce rien. Une notification par
    * enregistrement, et seule la dernière d'une fiche reste dans la boîte.
    */
-  private async prevenirDesFiches(
+  private async prevenirDeLaFiche(
     tx: Tx,
     user: SessionUser,
     employeeId: string,
     moi: string,
-    ecrites: Map<FicheDuGeste, string>,
+    annee: number,
+    majLe: string,
   ): Promise<void> {
-    const aPrevenir = [...ecrites].filter(([f]) => objectifsDeLaFiche(f.contenu).length > 0);
-    if (aPrevenir.length === 0) return;
     const compte = await this.compteDe(tx, employeeId);
     if (!compte) return;
     const auteur = (await this.nomDe(tx, moi)) || 'Votre n+1';
-    for (const [f, majLe] of aPrevenir) {
-      const sujet = `objectifs:fiche:${employeeId}:${f.annee}:${f.semestre}:`;
-      const { rows: deja } = await tx.execute(sql`
-        SELECT 1 FROM notifications
-         WHERE recipient_user_id = ${compte} AND dedupe_key ^@ ${sujet} LIMIT 1`);
-      await notifier(tx, user.tenantId, compte, {
-        type: 'objectif',
-        sujet: 'objectifs',
-        title: `${auteur} a ${deja.length > 0 ? 'mis à jour' : 'fixé'} vos objectifs ${duSemestre(f.semestre, f.annee)}`,
-        link: '/moi/objectifs',
-        dedupeKey: `${sujet}${majLe}`,
-        remplace: sujet,
-      });
-    }
+    // Les avis des fiches par semestre de la même année (avant 0111) ont ce
+    // préfixe : la fiche de l'année les remplace.
+    const sujet = `objectifs:fiche:${employeeId}:${annee}:`;
+    const { rows: deja } = await tx.execute(sql`
+      SELECT 1 FROM notifications
+       WHERE recipient_user_id = ${compte} AND dedupe_key ^@ ${sujet} LIMIT 1`);
+    await notifier(tx, user.tenantId, compte, {
+      type: 'objectif',
+      sujet: 'objectifs',
+      title: `${auteur} a ${deja.length > 0 ? 'mis à jour' : 'fixé'} vos objectifs ${deLAnnee(annee)}`,
+      link: '/moi/objectifs',
+      dedupeKey: `${sujet}${majLe}`,
+      remplace: sujet,
+    });
   }
 
   /**
-   * Les fiches d'un agent, les plus récentes d'abord — sans les fiches vides.
-   * Les cases de la fiche disent où l'agent en est. Chacun ne voit de
-   * l'autre que ce qui est envoyé : le n+1, les commentaires de l'agent une
-   * fois son auto-évaluation envoyée ; l'agent, ceux du n+1 et la note une
-   * fois validés.
+   * Les fiches d'un agent, une par année, les plus récentes d'abord ; sans
+   * les fiches vides. Les cases de la fiche disent où l'agent en est. Chacun
+   * ne voit de l'autre que ce qui est envoyé : le n+1, les commentaires de
+   * l'agent une fois son auto-évaluation envoyée ; l'agent, ceux du n+1 et la
+   * note une fois validés.
    */
   private async lireFiches(
     tx: Tx,
     employeeId: string,
     vue: 'agent' | 'n1',
     formations: FormationDeLaFiche[],
-    jours: JoursEvaluation,
     lecteur?: string,
   ): Promise<FicheObjectifs[]> {
     const { rows } = await tx.execute<LigneFiche>(sql`
       ${SELECTION_FICHE}
        WHERE f.employee_id = ${employeeId}
-       ORDER BY f.annee DESC, f.semestre DESC`);
+       ORDER BY f.annee DESC`);
     return rows
       .filter((l) => ficheRemplie(l.contenu))
-      .map((l) => vueFiche(l, vue, formations, jours, lecteur));
+      .map((l) => vueFiche(l, vue, formations, lecteur));
   }
 
-  /** Une fiche, verrouillée le temps du geste — 404 si elle n'existe pas. */
-  private async uneFiche(
-    tx: Tx,
-    employeeId: string,
-    annee: number,
-    semestre: number,
-  ): Promise<LigneFiche> {
+  /** La fiche d'une année, verrouillée le temps du geste : 404 si elle n'existe pas. */
+  private async uneFiche(tx: Tx, employeeId: string, annee: number): Promise<LigneFiche> {
     const { rows } = await tx.execute<LigneFiche>(sql`
       ${SELECTION_FICHE}
-       WHERE f.employee_id = ${employeeId} AND f.annee = ${annee} AND f.semestre = ${semestre}
+       WHERE f.employee_id = ${employeeId} AND f.annee = ${annee}
        FOR UPDATE OF f`);
     const ligne = rows[0];
     if (!ligne || !ficheRemplie(ligne.contenu)) {
-      problem(404, 'objectifs.fiche_introuvable', 'Aucun objectif n’a été fixé pour ce semestre');
+      problem(404, 'objectifs.fiche_introuvable', 'Aucun objectif n’a été fixé pour cette année');
     }
     return ligne;
   }
@@ -901,12 +801,11 @@ export class ObjectifsService {
   async statuer(
     user: SessionUser,
     annee: number,
-    semestre: number,
     input: StatutObjectifInput,
   ): Promise<{ statuts: Record<string, StatutObjectif> }> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
-      const f = await this.uneFiche(tx, moi, annee, semestre);
+      const f = await this.uneFiche(tx, moi, annee);
       exigerNonEnvoyee(f);
       const objectif = objectifsDeLaFiche(f.contenu).find((o) => o.id === input.id);
       if (!objectif) {
@@ -955,12 +854,11 @@ export class ObjectifsService {
   async enregistrerCommentaires(
     user: SessionUser,
     annee: number,
-    semestre: number,
     input: CommentairesAgentInput,
   ): Promise<void> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
-      const f = await this.uneFiche(tx, moi, annee, semestre);
+      const f = await this.uneFiche(tx, moi, annee);
       exigerNonEnvoyee(f);
       await tx.execute(sql`
         UPDATE objectifs_fiches
@@ -975,10 +873,10 @@ export class ObjectifsService {
    * statut que l'Academy lui donne ce jour-là. Les objectifs, les statuts et
    * les commentaires ne changent plus ; le n+1 en est prévenu.
    */
-  async envoyerCommentaires(user: SessionUser, annee: number, semestre: number): Promise<void> {
+  async envoyerCommentaires(user: SessionUser, annee: number): Promise<void> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
-      const f = await this.uneFiche(tx, moi, annee, semestre);
+      const f = await this.uneFiche(tx, moi, annee);
       exigerNonEnvoyee(f);
       const objectifs = objectifsDeLaFiche(f.contenu);
       // Les cases à cocher et les formations sont des objectifs : une fiche en
@@ -1037,13 +935,12 @@ export class ObjectifsService {
     user: SessionUser,
     employeeId: string,
     annee: number,
-    semestre: number,
     input: EvaluationN1Input,
   ): Promise<void> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
       await this.exigerSonN1(tx, moi, employeeId, true);
-      const f = await this.uneFiche(tx, employeeId, annee, semestre);
+      const f = await this.uneFiche(tx, employeeId, annee);
       exigerEvaluable(f);
       await tx.execute(sql`
         UPDATE objectifs_fiches
@@ -1055,16 +952,11 @@ export class ObjectifsService {
   }
 
   /** Le n+1 valide l'évaluation : la note est donnée ; l'agent en est prévenu et la lit. */
-  async validerEvaluation(
-    user: SessionUser,
-    employeeId: string,
-    annee: number,
-    semestre: number,
-  ): Promise<void> {
+  async validerEvaluation(user: SessionUser, employeeId: string, annee: number): Promise<void> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
       await this.exigerSonN1(tx, moi, employeeId, true);
-      const f = await this.uneFiche(tx, employeeId, annee, semestre);
+      const f = await this.uneFiche(tx, employeeId, annee);
       exigerEvaluable(f);
       // La note d'un autre (l'ancien n+1) ne se valide pas : la sienne seule.
       if (!f.evaluation_note || f.evaluateur_employee_id !== moi) {
@@ -1074,15 +966,15 @@ export class ObjectifsService {
         UPDATE objectifs_fiches
            SET evaluation_validee_le = now(), evaluateur_employee_id = ${moi}
          WHERE id = ${f.id}`);
-      await retirerLesAppels(tx, prefixeEvaluation(employeeId, annee, semestre));
+      await retirerLesAppels(tx, prefixeEvaluation(employeeId, annee));
       const compte = await this.compteDe(tx, employeeId);
       if (compte) {
         await notifier(tx, user.tenantId, compte, {
           type: 'objectif',
           sujet: 'objectifs',
-          title: `${await this.nomDe(tx, moi)} a évalué vos objectifs ${duSemestre(semestre, annee)}`,
+          title: `${await this.nomDe(tx, moi)} a évalué vos objectifs ${deLAnnee(annee)}`,
           link: '/moi/objectifs',
-          dedupeKey: `objectifs:evaluation:${employeeId}:${annee}:${semestre}`,
+          dedupeKey: `objectifs:evaluation:${employeeId}:${annee}`,
         });
       }
     });
@@ -1101,21 +993,19 @@ export class ObjectifsService {
       }
       const { rows } = await tx.execute<{
         annee: number;
-        semestre: number;
         manager: string | null;
         note: NoteGlobale;
         validee_le: string | Date;
       }>(sql`
-        SELECT f.annee, f.semestre, f.evaluation_note AS note, f.evaluation_validee_le AS validee_le,
+        SELECT f.annee, f.evaluation_note AS note, f.evaluation_validee_le AS validee_le,
                CASE WHEN p.id IS NULL THEN NULL ELSE p.given_name || ' ' || p.family_name END AS manager
           FROM objectifs_fiches f
           LEFT JOIN employees e ON e.id = f.evaluateur_employee_id
           LEFT JOIN persons p ON p.id = e.person_id
          WHERE f.employee_id = ${employeeId} AND f.evaluation_validee_le IS NOT NULL
-         ORDER BY f.annee DESC, f.semestre DESC`);
+         ORDER BY f.annee DESC`);
       return rows.map((r) => ({
         annee: Number(r.annee),
-        semestre: r.semestre === 1 ? 1 : 2,
         manager: r.manager,
         note: r.note,
         valideeLe: iso(r.validee_le)!,
@@ -1179,126 +1069,66 @@ export class ObjectifsService {
     });
   }
 
-  // Les dates d'évaluation : les notes de A à D se donnent ces jours-là.
+  // La date d'évaluation : les notes de A à D se donnent ce jour-là.
 
   /**
-   * Les deux dates d'évaluation, un jour et un mois qui reviennent chaque
-   * année, posés sur l'année de la prochaine : l'année en cours tant qu'une
-   * de ses dates reste à venir, la suivante ensuite.
+   * Le jour de l'évaluation annuelle, un jour et un mois qui reviennent
+   * chaque année, posé sur l'année de la prochaine : l'année en cours tant
+   * que son évaluation reste à venir, la suivante ensuite.
    */
-  async datesEvaluation(user: SessionUser): Promise<DatesEvaluation> {
+  async dateEvaluation(user: SessionUser): Promise<DateEvaluation> {
     return this.db.withTenant(this.ctx(user), async (tx) =>
-      this.vueDesDates(user, await this.joursEvaluation(tx)),
+      this.vueDeLaDate(user, await this.jourEvaluation(tx)),
     );
   }
 
   /**
-   * Fixe les deux jours d'évaluation, sans année : ils valent cette année
-   * comme les suivantes. Ce qui est passé reste passé. Seule la personne qui
-   * dirige la DCH les fixe ; le 1er semestre s'évalue avant le 2nd.
+   * Fixe le jour de l'évaluation, sans année : il vaut cette année comme les
+   * suivantes. Ce qui est passé reste passé, et aucun objectif ne bouge.
+   * Seule la personne qui dirige la DCH le fixe.
    */
-  async fixerDatesEvaluation(
+  async fixerDateEvaluation(
     user: SessionUser,
-    input: DatesEvaluationInput,
-  ): Promise<DatesEvaluation> {
+    input: DateEvaluationInput,
+  ): Promise<DateEvaluation> {
     if (!user.dirigeLaDCH) {
       problem(
         403,
         'objectifs.dates_reservees',
-        'Seule la personne qui dirige la DCH fixe les dates d’évaluation',
-      );
-    }
-    if (input.semestre1 >= input.semestre2) {
-      problem(
-        422,
-        'objectifs.dates_dans_l_ordre',
-        'L’évaluation du 1er semestre vient avant celle du 2nd',
+        'Seule la personne qui dirige la DCH fixe la date d’évaluation',
       );
     }
     return this.db.withTenant(this.ctx(user), async (tx) => {
-      const voulus = [input.semestre1, input.semestre2] as const;
-      const actuels = await this.joursEvaluation(tx);
-      if (voulus.every((j, i) => j === actuels[i])) return this.vueDesDates(user, actuels);
-      const [m1, j1] = input.semestre1.split('-').map(Number);
-      const [m2, j2] = input.semestre2.split('-').map(Number);
+      if (input.jour === (await this.jourEvaluation(tx))) return this.vueDeLaDate(user, input.jour);
+      const [mois, jour] = input.jour.split('-').map(Number);
       await tx.execute(sql`
-        INSERT INTO objective_review_schedule (id, tenant_id, s1_month, s1_day, s2_month, s2_day)
-        VALUES (${uuidv7()}, ${user.tenantId}, ${m1}, ${j1}, ${m2}, ${j2})
+        INSERT INTO objective_review_schedule (id, tenant_id, review_month, review_day)
+        VALUES (${uuidv7()}, ${user.tenantId}, ${mois}, ${jour})
         ON CONFLICT (tenant_id) DO UPDATE
-           SET s1_month = EXCLUDED.s1_month, s1_day = EXCLUDED.s1_day,
-               s2_month = EXCLUDED.s2_month, s2_day = EXCLUDED.s2_day,
+           SET review_month = EXCLUDED.review_month, review_day = EXCLUDED.review_day,
                updated_at = now()`);
-      await this.suivreLesNouvellesDates(tx, user, voulus);
-      return this.vueDesDates(user, voulus);
+      return this.vueDeLaDate(user, input.jour);
     });
   }
 
-  /**
-   * Les dates d'évaluation ont changé : chaque objectif encore à venir compte
-   * désormais pour la première évaluation qui tombe le jour de son échéance
-   * ou après, et passe dans sa fiche avec son statut et ce qui s'en est dit.
-   * Ce qui est passé reste où il est ; une fiche envoyée ne perd ni ne reçoit
-   * rien. Personne n'est prévenu : aucun objectif ne change.
-   */
-  private async suivreLesNouvellesDates(
-    tx: Tx,
-    user: SessionUser,
-    jours: JoursEvaluation,
-  ): Promise<void> {
-    const aujourdhui = this.aujourdhui();
-    const { rows } = await tx.execute<{ employee_id: string }>(sql`
-      SELECT DISTINCT employee_id FROM objectifs_fiches
-       WHERE commentaires_envoyes_le IS NULL
-         AND jsonb_path_exists(contenu, '$[*] ? (@.type == "checkListItem").props.echeance')`);
-    for (const { employee_id: employeeId } of rows) {
-      const fiches = await this.fichesDuGeste(tx, employeeId);
-      for (const de of [...fiches]) {
-        if (de.envoyee) continue;
-        for (const b of [...de.contenu]) {
-          const echeance = b.type === 'checkListItem' ? echeanceDuBloc(b) : null;
-          if (!echeance || echeance < aujourdhui) continue;
-          const vers = periodeDeLEcheance(echeance, jours);
-          if (memePeriode(vers, de)) continue;
-          const cible = laFiche(fiches, vers, de.auteur_employee_id);
-          if (cible.envoyee) continue;
-          de.contenu = de.contenu.filter((x) => x !== b);
-          cible.contenu = [...cible.contenu, b];
-          transfererLesPropos(String(b.id), de, cible);
-          de.touchee = true;
-          cible.touchee = true;
-        }
-      }
-      await this.ecrireLesFiches(tx, user, employeeId, fiches, jours, null);
-    }
-  }
-
-  /** Les jours d'évaluation, « MM-JJ » : ceux par défaut tant que personne n'en a fixé. */
-  private async joursEvaluation(tx: Tx): Promise<JoursEvaluation> {
-    const { rows } = await tx.execute<{
-      s1_month: number;
-      s1_day: number;
-      s2_month: number;
-      s2_day: number;
-    }>(sql`SELECT s1_month, s1_day, s2_month, s2_day FROM objective_review_schedule`);
+  /** Le jour de l'évaluation, « MM-JJ » : le 15 décembre tant que personne n'en a fixé un autre. */
+  private async jourEvaluation(tx: Tx): Promise<string> {
+    const { rows } = await tx.execute<{ review_month: number; review_day: number }>(
+      sql`SELECT review_month, review_day FROM objective_review_schedule`,
+    );
     const r = rows[0];
-    if (!r) return JOURS_D_EVALUATION_PAR_DEFAUT;
-    const mmjj = (mois: number, j: number) =>
-      `${String(mois).padStart(2, '0')}-${String(j).padStart(2, '0')}`;
-    return [mmjj(r.s1_month, r.s1_day), mmjj(r.s2_month, r.s2_day)];
+    if (!r) return JOUR_D_EVALUATION_PAR_DEFAUT;
+    return `${String(r.review_month).padStart(2, '0')}-${String(r.review_day).padStart(2, '0')}`;
   }
 
-  private vueDesDates(user: SessionUser, jours: JoursEvaluation): DatesEvaluation {
-    const aujourdhui = this.aujourdhui();
+  private vueDeLaDate(user: SessionUser, jour: string): DateEvaluation {
     let annee = this.anneeCourante();
-    if (jours.every((j) => `${annee}-${j}` < aujourdhui)) annee += 1;
+    if (dateDEvaluation(annee, jour) < this.aujourdhui()) annee += 1;
     return {
       annee,
-      dates: jours.map((jour, i) => ({
-        semestre: (i + 1) as Semestre,
-        jour,
-        date: `${annee}-${jour}`,
-      })),
-      modifiables: Boolean(user.dirigeLaDCH),
+      jour,
+      date: dateDEvaluation(annee, jour),
+      modifiable: Boolean(user.dirigeLaDCH),
     };
   }
 

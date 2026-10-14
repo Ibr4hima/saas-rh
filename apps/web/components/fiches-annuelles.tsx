@@ -1,40 +1,31 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { titreDuSemestre, type Semestre } from '@teranga/contracts';
-import { Button, Card, cn } from '@teranga/ui';
+import { titreDeLAnnee } from '@teranga/contracts';
+import { Card, cn } from '@teranga/ui';
 import { Icon } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
    Les fiches d'objectifs, rangées dans le temps : une année, un filet, puis
-   ses semestres — le plus récent d'abord. Les pièces communes à la fiche
-   d'un direct (le n+1 rédige) et à « Mes objectifs » (l'agent lit).
+   sa fiche, une par année (ADR-0075), la plus récente d'abord. Les pièces
+   communes à la fiche d'un direct (le n+1 rédige) et à « Mes objectifs »
+   (l'agent lit).
    ———————————————————————————————————————————————————————————————— */
 
-interface Periode {
-  annee: number;
-  semestre: Semestre;
-}
-
-export const cleDe = (p: Periode) => `${p.annee}-${p.semestre}`;
-
 /**
- * Les fiches, par année — la plus récente d'abord, et dans l'année le 2nd
- * semestre avant le 1er. `toujours` : une année qui a sa place même sans
- * fiche (l'année en cours, où le n+1 fixe les objectifs).
+ * Les années, la plus récente d'abord, chacune avec sa fiche. `toujours` :
+ * une année qui a sa place même sans fiche (l'année en cours, où se lisent
+ * aussi les objectifs de la direction et de l'APIX).
  */
-export function parAnnee<T extends Periode>(
+export function parAnnee<T extends { annee: number }>(
   fiches: T[],
   toujours?: number,
-): { annee: number; fiches: T[] }[] {
+): { annee: number; fiche: T | null }[] {
   const annees = new Set(fiches.map((f) => f.annee));
   if (toujours !== undefined) annees.add(toujours);
   return [...annees]
     .sort((a, b) => b - a)
-    .map((annee) => ({
-      annee,
-      fiches: fiches.filter((f) => f.annee === annee).sort((a, b) => b.semestre - a.semestre),
-    }));
+    .map((annee) => ({ annee, fiche: fiches.find((f) => f.annee === annee) ?? null }));
 }
 
 /** « ANNÉE 2026 ——————— » et, au bout du filet, le geste de l'année s'il y en a un. */
@@ -144,9 +135,9 @@ function ChoixAnnee({
 }
 
 /**
- * Un menu déroulant. Ouvert, il prend le focus, sur l'entrée cochée s'il y en
- * a une ; les flèches passent d'une entrée à l'autre ; Échap et un clic
- * ailleurs le referment.
+ * Un menu déroulant. Ouvert, il prend le focus, sur l'entrée cochée ; les
+ * flèches passent d'une entrée à l'autre ; Échap et un clic ailleurs le
+ * referment.
  */
 function useDeroulant() {
   const [ouvert, setOuvert] = useState(false);
@@ -187,26 +178,25 @@ function useDeroulant() {
 }
 
 /**
- * Une fiche de semestre : sa carte, et son titre sur une pastille bleue posée
- * à cheval sur le bord haut, au centre — comme la légende d'un encadré, en
- * petites capitales, la voix de l'année. Le titre appartient à SA carte :
- * entre deux fiches, on ne se demande plus à laquelle il se rapporte.
+ * La fiche d'une année : sa carte, et son titre sur une pastille bleue posée
+ * à cheval sur le bord haut, au centre, comme la légende d'un encadré, en
+ * petites capitales, la voix de l'année. Le titre appartient à SA carte.
  * `note` : qui l'a rédigée, et quand.
  */
-export function FicheSemestre({
+export function FicheAnnuelle({
   annee,
-  semestre,
   note,
   id,
   children,
   titre,
   action,
   enEdition = false,
-}: Periode & {
+}: {
+  annee: number;
   note?: ReactNode;
   id?: string;
   children: ReactNode;
-  /** À la place de « Objectifs du 1er semestre de 2026 » — l'évaluation, par exemple. */
+  /** À la place de « Objectifs de l’année 2026 » : l'évaluation, par exemple. */
   titre?: string;
   /** Un bouton rond sur le bord haut, à droite, à la hauteur du titre. */
   action?: ReactNode;
@@ -215,7 +205,7 @@ export function FicheSemestre({
 }) {
   // Trois rangées : le titre occupe les deux premières, qui se partagent sa
   // hauteur ; le fond de la carte part de la deuxième. Le bord haut passe donc
-  // toujours au milieu du titre — sur une ligne comme sur deux (petit écran).
+  // toujours au milieu du titre, sur une ligne comme sur deux (petit écran).
   // Avec un bouton, deux marges égales encadrent le titre : il reste au centre.
   return (
     <div id={id} className="grid scroll-mt-24">
@@ -240,7 +230,7 @@ export function FicheSemestre({
             action && 'col-start-2',
           )}
         >
-          {titre ?? titreDuSemestre(semestre, annee)}
+          {titre ?? titreDeLAnnee(annee)}
         </h3>
         {action ? <div className="col-start-3 flex justify-end pr-3">{action}</div> : null}
       </div>
@@ -248,80 +238,6 @@ export function FicheSemestre({
         {note ? <p className="px-5 pt-3 text-center text-[11px] text-ink-muted">{note}</p> : null}
         {children}
       </div>
-    </div>
-  );
-}
-
-/**
- * « Fixer des objectifs » : deux semestres au choix. Une coche marque ceux
- * qui ont déjà leur fiche : les choisir y ramène, sans en créer une seconde.
- * Un semestre dont l'évaluation est passée ne reçoit plus d'objectif : sans
- * fiche, il ne se choisit pas.
- */
-export function ChoixSemestre({
-  fixes,
-  passes,
-  onChoisir,
-}: {
-  /** Les semestres de l'année qui ont déjà une fiche. */
-  fixes: Semestre[];
-  /** Les semestres de l'année dont l'évaluation est passée. */
-  passes: Semestre[];
-  onChoisir: (semestre: Semestre) => void;
-}) {
-  const { ouvert, setOuvert, racine, menu } = useDeroulant();
-
-  return (
-    <div ref={racine} className="relative shrink-0">
-      <Button
-        variant="secondary"
-        size="sm"
-        aria-haspopup="menu"
-        aria-expanded={ouvert}
-        onClick={() => setOuvert((v) => !v)}
-        className={cn(ouvert && 'border-primary/40 bg-hover')}
-      >
-        <Icon name="flag" size={15} />
-        Fixer des objectifs
-        <Icon
-          name="chevron_right"
-          size={16}
-          className={cn(
-            '-mr-1 text-ink-muted transition-transform duration-150',
-            ouvert ? '-rotate-90' : 'rotate-90',
-          )}
-        />
-      </Button>
-      {ouvert ? (
-        <div
-          ref={menu}
-          role="menu"
-          aria-label="Semestre"
-          className="tg-menu absolute top-full right-0 z-30 mt-1.5 w-full min-w-40 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg"
-        >
-          {([1, 2] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              role="menuitem"
-              disabled={passes.includes(s) && !fixes.includes(s)}
-              onClick={() => {
-                setOuvert(false);
-                onChoisir(s);
-              }}
-              className="flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[12.5px] font-medium text-ink transition-colors duration-150 outline-none hover:bg-hover hover:text-ink-strong focus-visible:bg-hover focus-visible:text-ink-strong disabled:pointer-events-none disabled:text-ink-muted/60"
-            >
-              <span className="flex-1">Semestre {s}</span>
-              {fixes.includes(s) ? (
-                <>
-                  <Icon name="check" size={16} className="text-primary" />
-                  <span className="sr-only">déjà fixés</span>
-                </>
-              ) : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -56,15 +56,15 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0048](0048-nouvellement-traitees-en-evidence.md)     | Arrivé par l'avis, les demandes nouvellement traitées en évidence                       | acceptée                                    |
 | [0049](0049-evaluation-sans-minuterie.md)             | Academy : l'évaluation sans limite de temps, un certificat sans évaluation              | acceptée, minuterie rétablie par 0073       |
 | [0050](0050-sans-evaluation-sans-echeance.md)         | Sans évaluation, un certificat sans limite de validité                                  | acceptée                                    |
-| [0051](0051-fiche-objectifs-crayon.md)                | La fiche d'objectifs s'ouvre au crayon et s'enregistre d'un clic                        | acceptée, « Fixer » rétabli par 0056        |
-| [0052](0052-une-annee-a-la-fois.md)                   | Objectifs d'un direct : une année à la fois, la suivante fixée à l'avance               | acceptée                                    |
-| [0053](0053-dates-d-evaluation.md)                    | Deux dates d'évaluation par an, fixées par qui dirige la DCH                            | acceptée, dates sans année depuis 0054      |
-| [0054](0054-jours-d-evaluation-chaque-annee.md)       | Dates d'évaluation : un jour et un mois, chaque année                                   | acceptée, précisée par 0055                 |
-| [0055](0055-objectifs-a-echeance.md)                  | Objectifs à échéance, rangés dans l'évaluation où ils comptent                          | acceptée, en partie remplacée : 0056, 0057  |
-| [0056](0056-fixer-des-objectifs-par-semestre.md)      | Fixer des objectifs par semestre, chacun avec son échéance                              | acceptée, en partie remplacée : 0057, 0058  |
-| [0057](0057-echeance-confirmee-a-l-enregistrement.md) | L'échéance proche se confirme à l'enregistrement ; les formations n'en ont pas          | acceptée, précisée par 0058                 |
-| [0058](0058-formations-encadrees.md)                  | Formations encadrées par l'agent ; la fenêtre de confirmation comme la fiche            | acceptée, en partie remplacée : 0059, 0070  |
-| [0059](0059-report-au-s1.md)                          | Le champ du report dit « au S1 de 2027 »                                                | acceptée                                    |
+| [0051](0051-fiche-objectifs-crayon.md)                | La fiche d'objectifs s'ouvre au crayon et s'enregistre d'un clic                        | acceptée, « Fixer » précisé par 0075        |
+| [0052](0052-une-annee-a-la-fois.md)                   | Objectifs d'un direct : une année à la fois, la suivante fixée à l'avance               | acceptée, précisée par 0075                 |
+| [0053](0053-dates-d-evaluation.md)                    | Deux dates d'évaluation par an, fixées par qui dirige la DCH                            | remplacée par ADR-0075                      |
+| [0054](0054-jours-d-evaluation-chaque-annee.md)       | Dates d'évaluation : un jour et un mois, chaque année                                   | acceptée, une seule date depuis 0075        |
+| [0055](0055-objectifs-a-echeance.md)                  | Objectifs à échéance, rangés dans l'évaluation où ils comptent                          | remplacée par ADR-0075                      |
+| [0056](0056-fixer-des-objectifs-par-semestre.md)      | Fixer des objectifs par semestre, chacun avec son échéance                              | remplacée par ADR-0075                      |
+| [0057](0057-echeance-confirmee-a-l-enregistrement.md) | L'échéance proche se confirme à l'enregistrement ; les formations n'en ont pas          | acceptée, en partie remplacée : 0075        |
+| [0058](0058-formations-encadrees.md)                  | Formations encadrées par l'agent ; la fenêtre de confirmation comme la fiche            | en partie remplacée : 0059, 0070, 0075      |
+| [0059](0059-report-au-s1.md)                          | Le champ du report dit « au S1 de 2027 »                                                | remplacée par ADR-0075                      |
 | [0060](0060-files-de-la-dch.md)                       | Files de la DCH : sa demande sans geste, chacun ce qui lui est délégué                  | acceptée                                    |
 | [0061](0061-offre-ouverte-apres-la-date-limite.md)    | Une offre reste ouverte après sa date limite ; seule la RH la ferme                     | acceptée                                    |
 | [0062](0062-candidature-reconsideree-ou-effacee.md)   | Une candidature non retenue se reconsidère, ou s'efface définitivement                  | acceptée                                    |
@@ -80,3 +80,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0072](0072-lecons-de-quinze-minutes.md)              | Academy : des leçons de quinze minutes au plus                                          | acceptée                                    |
 | [0073](0073-evaluation-minutee.md)                    | Academy : l'évaluation minutée, sa durée réglée par la gestion                          | acceptée                                    |
 | [0074](0074-notifications-sans-whatsapp.md)           | Notifications : la plateforme et le courriel, sans WhatsApp                             | acceptée                                    |
+| [0075](0075-objectifs-annuels.md)                     | Objectifs : une fiche et une évaluation par an, la date au 15 décembre                  | acceptée                                    |

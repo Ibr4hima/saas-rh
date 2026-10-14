@@ -1,12 +1,12 @@
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../../db/tenant-db';
 import { retirerLesAppels, tenirLesAppels } from '../acces/appels';
-import { duSemestre } from '../notifications/phrases';
+import { deLAnnee } from '../notifications/phrases';
 import { DG } from '../people/chaine';
 
-/** Les appels à évaluer une fiche : un par auto-évaluation envoyée. */
-export const prefixeEvaluation = (employeeId: string, annee: number, semestre: number) =>
-  `objectifs:${employeeId}:${annee}:${semestre}`;
+/** Les appels à évaluer une fiche : un par auto-évaluation envoyée, une par année. */
+export const prefixeEvaluation = (employeeId: string, annee: number) =>
+  `objectifs:${employeeId}:${annee}`;
 
 /**
  * Une auto-évaluation envoyée attend le N+1 d'aujourd'hui. Son appel le
@@ -21,21 +21,19 @@ export async function reconcilierLesEvaluations(tx: Tx, employeeId?: string): Pr
   await tx.execute(sql`
     DELETE FROM notifications n
      WHERE n.dedupe_key ^@ ${employeeId ? `objectifs:${employeeId}:` : 'objectifs:'}
-       AND n.dedupe_key ~ '^objectifs:[0-9a-f-]{36}:[0-9]{4}:[12]:(appel|rappel):'
+       AND n.dedupe_key ~ '^objectifs:[0-9a-f-]{36}:[0-9]{4}:(appel|rappel):'
        AND NOT EXISTS (
          SELECT 1 FROM objectifs_fiches f
           WHERE f.commentaires_envoyes_le IS NOT NULL AND f.evaluation_validee_le IS NULL
-            AND n.dedupe_key ^@ ('objectifs:' || f.employee_id || ':' || f.annee || ':'
-                                 || f.semestre || ':'))`);
+            AND n.dedupe_key ^@ ('objectifs:' || f.employee_id || ':' || f.annee || ':'))`);
   const { rows } = await tx.execute<{
     tenant_id: string;
     employee_id: string;
     annee: number;
-    semestre: number;
     nom: string;
     n1: string | null;
   }>(sql`
-    SELECT f.tenant_id, f.employee_id, f.annee, f.semestre,
+    SELECT f.tenant_id, f.employee_id, f.annee,
            p.given_name || ' ' || p.family_name AS nom,
            (SELECT pn.user_id FROM employees n JOIN persons pn ON pn.id = n.person_id
              WHERE n.id = e.manager_employee_id AND n.status = 'active'
@@ -46,7 +44,7 @@ export async function reconcilierLesEvaluations(tx: Tx, employeeId?: string): Pr
      WHERE f.commentaires_envoyes_le IS NOT NULL AND f.evaluation_validee_le IS NULL
        ${employeeId ? sql`AND f.employee_id = ${employeeId}` : sql``}`);
   for (const r of rows) {
-    const prefixe = prefixeEvaluation(r.employee_id, r.annee, r.semestre);
+    const prefixe = prefixeEvaluation(r.employee_id, r.annee);
     if (!r.n1) {
       await retirerLesAppels(tx, prefixe);
       continue;
@@ -54,7 +52,7 @@ export async function reconcilierLesEvaluations(tx: Tx, employeeId?: string): Pr
     await tenirLesAppels(tx, r.tenant_id, prefixe, 'n1', [r.n1], {
       type: 'objectif',
       sujet: 'equipe.objectifs',
-      title: `${r.nom} a envoyé son auto-évaluation ${duSemestre(r.semestre, r.annee)}`,
+      title: `${r.nom} a envoyé son auto-évaluation ${deLAnnee(r.annee)}`,
       // L'année de la fiche : la page du direct n'en montre qu'une à la fois.
       link: `/moi/equipe/suivi/${r.employee_id}?vue=evaluation&annee=${r.annee}`,
     });

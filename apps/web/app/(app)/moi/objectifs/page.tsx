@@ -20,7 +20,7 @@ import {
   AutoEvaluationAgent,
   BoutonAutoEvaluation,
 } from '../../../../components/evaluation-objectifs';
-import { FicheSemestre, parAnnee, SeparateurAnnee } from '../../../../components/fiches-semestres';
+import { FicheAnnuelle, parAnnee, SeparateurAnnee } from '../../../../components/fiches-annuelles';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { CLE_OBJECTIFS, LigneObjectif } from '../../../../components/objectifs';
@@ -32,9 +32,9 @@ const EditeurFicheObjectifs = dynamic(
 );
 
 /**
- * Mes objectifs, année par année : les fiches que le n+1 rédige pour chaque
- * semestre — le plus récent d'abord —, puis, pour l'année en cours, les
- * objectifs de la direction et les orientations de l'APIX qui sont diffusées.
+ * Mes objectifs, année par année, la plus récente d'abord : la fiche que le
+ * n+1 rédige pour l'année, puis, pour l'année en cours, les objectifs de la
+ * direction et les orientations de l'APIX qui sont diffusées.
  */
 export default function MesObjectifsPage() {
   const mes = useQuery({
@@ -51,7 +51,7 @@ export default function MesObjectifsPage() {
     );
   }
 
-  const { apix, direction, individuels, annee, fiches, formations, joursEvaluation } = mes.data;
+  const { apix, direction, individuels, annee, fiches, formations, jourEvaluation } = mes.data;
   // Les objectifs posés un à un, avant les fiches, restent lisibles tant
   // qu'aucune fiche ne les remplace.
   const anciens = fiches.length === 0 ? individuels : [];
@@ -78,14 +78,13 @@ export default function MesObjectifsPage() {
       {groupes.map((groupe) => (
         <Fragment key={groupe.annee}>
           <SeparateurAnnee annee={groupe.annee} />
-          {groupe.fiches.map((f) => (
-            <CarteSemestre
-              key={`${f.annee}-${f.semestre}`}
-              fiche={f}
+          {groupe.fiche ? (
+            <CarteAnnee
+              fiche={groupe.fiche}
               formations={formations}
-              jours={joursEvaluation}
+              jourEvaluation={jourEvaluation}
             />
-          ))}
+          ) : null}
           {groupe.annee === annee ? (
             <>
               {anciens.length ? (
@@ -106,19 +105,19 @@ export default function MesObjectifsPage() {
 }
 
 /**
- * Un semestre, vu par l'agent. La fiche que son n+1 a rédigée, ses cases à la
+ * L'année, vue par l'agent. La fiche que son n+1 a rédigée, ses cases à la
  * couleur de son auto-évaluation ; en bas à droite, « Auto-évaluation » : sous
- * chaque objectif, atteint, partiellement ou non, ce qu'il a fait, ce qui
- * manque — à enregistrer, puis à envoyer.
+ * chaque objectif, atteint, partiellement ou non, ce qui est fait, ce qui
+ * manque, à enregistrer, puis à envoyer.
  */
-function CarteSemestre({
+function CarteAnnee({
   fiche,
   formations,
-  jours,
+  jourEvaluation,
 }: {
   fiche: FicheObjectifs;
   formations: MesObjectifs['formations'];
-  jours: MesObjectifs['joursEvaluation'];
+  jourEvaluation: string;
 }) {
   const queryClient = useQueryClient();
   const [autoEvaluation, setAutoEvaluation] = useState(false);
@@ -141,7 +140,7 @@ function CarteSemestre({
       // le n+1, l'objectif est refusé, et la fiche se recharge.
       const empreinte = objectifsDeLaFiche(fiche.contenu).find((o) => o.id === id)?.empreinte;
       const r = await api<{ statuts: Record<string, StatutObjectif> }>(
-        `/objectifs/moi/fiches/${fiche.annee}/${fiche.semestre}/statuts`,
+        `/objectifs/moi/fiches/${fiche.annee}/statuts`,
         { method: 'PUT', body: { id, statut, empreinte } },
       );
       queryClient.setQueryData<MesObjectifs>([...CLE_OBJECTIFS, 'moi'], (d) =>
@@ -149,7 +148,7 @@ function CarteSemestre({
           ? {
               ...d,
               fiches: d.fiches.map((x) =>
-                x.annee === fiche.annee && x.semestre === fiche.semestre
+                x.annee === fiche.annee
                   ? {
                       ...x,
                       statuts: r.statuts,
@@ -181,9 +180,8 @@ function CarteSemestre({
   ) : null;
 
   return (
-    <FicheSemestre
+    <FicheAnnuelle
       annee={fiche.annee}
-      semestre={fiche.semestre}
       note={
         <>
           {fiche.auteur ? `${fiche.auteur} · ` : ''}mis à jour le{' '}
@@ -202,14 +200,13 @@ function CarteSemestre({
       ) : (
         <>
           <EditeurFicheObjectifs
-            // Le n+1 a changé la fiche, ou la DCH ses dates : elle se relit.
-            key={`${fiche.majLe}-${jours.join()}`}
+            // Le n+1 a changé la fiche, ou la DCH la date : elle se relit.
+            key={`${fiche.majLe}-${jourEvaluation}`}
             className="pt-3 pb-1"
             contenu={fiche.contenu}
             modifiable={false}
             annee={fiche.annee}
-            semestre={fiche.semestre}
-            jours={jours}
+            jourEvaluation={jourEvaluation}
             // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
             formations={fiche.formations ?? formations}
             statuts={statuts}
@@ -224,7 +221,7 @@ function CarteSemestre({
           </div>
         </>
       )}
-    </FicheSemestre>
+    </FicheAnnuelle>
   );
 }
 

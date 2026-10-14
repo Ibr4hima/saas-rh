@@ -629,7 +629,7 @@ export function AutoEvaluationAgent({
   const brouillon = useBrouillon<Record<string, string>>(ev.commentairesAgent);
   const action = useAction();
   const [confirmer, setConfirmer] = useState(false);
-  const base = `/objectifs/moi/fiches/${fiche.annee}/${fiche.semestre}/commentaires`;
+  const base = `/objectifs/moi/fiches/${fiche.annee}/commentaires`;
   const cle = [...CLE_OBJECTIFS, 'moi'];
 
   // Une formation a le statut que lui donne l'Academy, sans commentaire :
@@ -771,11 +771,11 @@ export function AutoEvaluationAgent({
 // ———————————————————————————— côté n+1
 
 /**
- * L'évaluation d'un semestre, vue par le n+1 : chaque objectif, à la couleur
- * du statut que l'agent lui donne, ce qu'en dit l'agent, et dessous son propre
+ * L'évaluation de l'année, vue par le n+1 : chaque objectif, à la couleur du
+ * statut que l'agent lui donne, ce qu'en dit l'agent, et dessous son propre
  * commentaire ; puis l'appréciation globale.
  */
-export function EvaluationSemestre({
+export function EvaluationAnnuelle({
   employeeId,
   prenom,
   fiche,
@@ -796,7 +796,7 @@ export function EvaluationSemestre({
   });
   const action = useAction();
   const [confirmer, setConfirmer] = useState(false);
-  const base = `/objectifs/equipe/${employeeId}/fiches/${fiche.annee}/${fiche.semestre}/evaluation`;
+  const base = `/objectifs/equipe/${employeeId}/fiches/${fiche.annee}/evaluation`;
   const cle = [...CLE_OBJECTIFS, 'equipe', employeeId];
   const envoyes = Boolean(ev.envoyesLe);
   const validee = Boolean(ev.valideeLe);
@@ -921,9 +921,9 @@ export function EvaluationSemestre({
 // ———————————————————————————— dans le dossier de l'agent
 
 /**
- * La section « Évaluation » du dossier, année par année — l'année en cours
- * d'abord, les précédentes d'une flèche : une ligne par semestre évalué, dès
- * que le n+1 valide, avec qui l'a évalué, la note et son appréciation.
+ * La section « Évaluation » du dossier, année par année : l'année en cours
+ * d'abord, les précédentes d'une flèche. L'évaluation de l'année, dès que le
+ * n+1 la valide, avec qui l'a évaluée, la note et son appréciation.
  */
 export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
   const evaluations = useQuery({
@@ -986,7 +986,6 @@ export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
               {/* Sur un petit écran, l'année se lit dans l'en-tête : sa colonne
                   laisse la place à l'appréciation. */}
               <Th className="max-sm:hidden">Année</Th>
-              <Th>Période</Th>
               <Th>Manager</Th>
               <Th>Note</Th>
               <Th>Appréciation</Th>
@@ -994,11 +993,10 @@ export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
           </THead>
           <TBody>
             {liste.map((e) => (
-              <Tr key={`${e.annee}-${e.semestre}`}>
+              <Tr key={e.annee}>
                 <Td className="font-medium text-ink-strong tabular-nums max-sm:hidden">
                   {e.annee}
                 </Td>
-                <Td className="whitespace-nowrap">Semestre {e.semestre}</Td>
                 <Td>{e.manager}</Td>
                 <Td>
                   <LettreNote note={e.note} />

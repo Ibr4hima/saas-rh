@@ -835,15 +835,17 @@ export const objectifs = pgTable('objectifs', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// ---------- Fiches d'objectifs (0043, par semestre depuis 0044) ----------
+// ---------- Fiches d'objectifs (0043, une par année depuis 0111) ----------
 
 export const objectifsFiches = pgTable('objectifs_fiches', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
   employeeId: uuid('employee_id').notNull(),
   annee: integer('annee').notNull(),
-  // 0044 : 1 ou 2 — une fiche par semestre.
-  semestre: smallint('semestre').notNull(),
+  // 0044 à 0110 : une fiche par semestre (1 ou 2). Plus lu depuis 0111 : une
+  // fiche par année ; les fiches par semestre restent, telles quelles, dans
+  // objectifs_fiches_semestres, que l'application ne lit pas.
+  semestre: smallint('semestre'),
   contenu: jsonb('contenu').notNull().default([]),
   auteurEmployeeId: uuid('auteur_employee_id'),
   // 0045 : ce que l'agent commente, ce que le n+1 en dit ; 0046 : où l'agent
@@ -860,17 +862,20 @@ export const objectifsFiches = pgTable('objectifs_fiches', {
 });
 
 /**
- * Les jours d'évaluation (0104) : un jour et un mois par semestre, qui
- * reviennent chaque année ; une ligne par organisation. Sans ligne, le 30 juin
- * et le 31 décembre. Remplace objective_review_dates (0103), plus lue.
+ * Le jour de l'évaluation annuelle (0111) : un jour et un mois qui reviennent
+ * chaque année ; une ligne par organisation. Sans ligne, le 15 décembre. Les
+ * jours des deux semestres (0104) ne se lisent plus ; objective_review_dates
+ * (0103) non plus.
  */
 export const objectiveReviewSchedule = pgTable('objective_review_schedule', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
-  s1Month: smallint('s1_month').notNull(),
-  s1Day: smallint('s1_day').notNull(),
-  s2Month: smallint('s2_month').notNull(),
-  s2Day: smallint('s2_day').notNull(),
+  reviewMonth: smallint('review_month').notNull().default(12),
+  reviewDay: smallint('review_day').notNull().default(15),
+  s1Month: smallint('s1_month'),
+  s1Day: smallint('s1_day'),
+  s2Month: smallint('s2_month'),
+  s2Day: smallint('s2_day'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

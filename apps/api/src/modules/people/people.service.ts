@@ -2309,14 +2309,16 @@ export class PeopleService {
     );
     // Ce que la suppression du dossier emporterait en cascade sans le dire :
     // ses certificats (nom et matricule figés), ses habilitations, ses
-    // objectifs et ses fiches d'objectifs (évaluations comprises), ses départs
-    // et retours. Effacés ici, leurs identifiants rejoignent la récolte, et
-    // le journal oublie aussi leur contenu.
+    // objectifs et ses fiches d'objectifs (évaluations comprises, et les
+    // fiches par semestre gardées à part depuis 0111), ses départs et
+    // retours. Effacés ici, leurs identifiants rejoignent la récolte, et le
+    // journal oublie aussi leur contenu.
     for (const table of [
       sql`academy_certificates`,
       sql`habilitations`,
       sql`objectifs`,
       sql`objectifs_fiches`,
+      sql`objectifs_fiches_semestres`,
       sql`periodes_inactivite`,
     ]) {
       const { rows } = await tx.execute<{ id: string }>(

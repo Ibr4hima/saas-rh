@@ -639,10 +639,10 @@ for (const o of [
   await enTantQue(dgAgent.id, 'POST', '/objectifs', o);
 }
 // Les objectifs d'un agent : la fiche que son n+1 rédige pour chaque
-// semestre, à la manière d'une page Notion — des cases à cocher, des
-// échéances, du gras pour ce qui compte. C'est l'agent qui s'auto-évalue :
-// chaque objectif atteint, partiellement ou non — la case en prend la
-// couleur —, commenté, puis envoyé à son n+1.
+// année (ADR-0075), à la manière d'une page Notion : des cases à cocher,
+// des échéances, du gras pour ce qui compte. C'est l'agent qui s'auto-évalue :
+// chaque objectif atteint, partiellement ou non (la case en prend la
+// couleur), commenté, puis envoyé à son n+1.
 const texte = (t, styles = {}) => ({ type: 'text', text: t, styles });
 const echeance = (date) => ({ type: 'echeance', props: { date } });
 const bloc = (type, contenu, props = {}, id = randomUUID()) => ({
@@ -652,15 +652,10 @@ const bloc = (type, contenu, props = {}, id = randomUUID()) => ({
   content: contenu,
   children: [],
 });
-const semestreCourant = new Date().getMonth() < 6 ? 1 : 2;
-const precedent =
-  semestreCourant === 2
-    ? { annee: anneeObjectifs, semestre: 1 }
-    : { annee: anneeObjectifs - 1, semestre: 2 };
+const precedente = anneeObjectifs - 1;
 const awaObj = [randomUUID(), randomUUID()];
 await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
   annee: anneeObjectifs,
-  semestre: semestreCourant,
   contenu: [
     bloc(
       'checkListItem',
@@ -677,7 +672,6 @@ await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
 const moussaObj = [randomUUID(), randomUUID(), randomUUID()];
 await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
   annee: anneeObjectifs,
-  semestre: semestreCourant,
   contenu: [
     bloc(
       'checkListItem',
@@ -706,7 +700,7 @@ await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
 });
 const passeObj = [randomUUID(), randomUUID(), randomUUID()];
 await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
-  ...precedent,
+  annee: precedente,
   contenu: [
     bloc(
       'checkListItem',
@@ -724,14 +718,14 @@ await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
   ],
 });
 
-// Ce que les agents en font. Moussa : le semestre passé est bouclé —
-// auto-évalué, envoyé, évalué B par Awa ; le semestre en cours avance — un
+// Ce que les agents en font. Moussa : l'année passée est bouclée,
+// auto-évaluée, envoyée, évaluée B par Awa ; l'année en cours avance : un
 // objectif atteint, un autre en partie, un commentaire au brouillon. Awa : son
 // auto-évaluation est envoyée à Mariama, qui a une évaluation à faire.
 console.log('→ Objectifs : Moussa s’auto-évalue ; Awa attend l’évaluation de Mariama');
-const pour = ({ annee, semestre }) => `/objectifs/moi/fiches/${annee}/${semestre}`;
-const passe = pour(precedent);
-const courant = pour({ annee: anneeObjectifs, semestre: semestreCourant });
+const pour = (annee) => `/objectifs/moi/fiches/${annee}`;
+const passe = pour(precedente);
+const courant = pour(anneeObjectifs);
 const statuer = (qui, fiche, id, statut) =>
   enTantQue(qui, 'PUT', `${fiche}/statuts`, { id, statut });
 await statuer(moussa.id, passe, passeObj[0], 'atteint');
@@ -745,22 +739,17 @@ await enTantQue(moussa.id, 'PUT', `${passe}/commentaires`, {
   },
 });
 await enTantQue(moussa.id, 'POST', `${passe}/commentaires/envoi`);
-await enTantQue(
-  awa.id,
-  'PUT',
-  `/objectifs/equipe/${moussa.id}/fiches/${precedent.annee}/${precedent.semestre}/evaluation`,
-  {
+await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiches/${precedente}/evaluation`, {
     commentaires: {
       [passeObj[0]]: 'Rapport de qualité, livré à temps.',
       [passeObj[2]]: 'À reprendre dès que la mission sera reprogrammée.',
     },
     note: 'B',
-  },
-);
+});
 await enTantQue(
   awa.id,
   'POST',
-  `/objectifs/equipe/${moussa.id}/fiches/${precedent.annee}/${precedent.semestre}/evaluation/validation`,
+  `/objectifs/equipe/${moussa.id}/fiches/${precedente}/evaluation/validation`,
 );
 await statuer(moussa.id, courant, moussaObj[2], 'atteint');
 await statuer(moussa.id, courant, moussaObj[0], 'partiel');
@@ -778,30 +767,27 @@ await enTantQue(awa.id, 'PUT', `${courant}/commentaires`, {
 });
 await enTantQue(awa.id, 'POST', `${courant}/commentaires/envoi`);
 
-// L'année d'avant, bouclée : deux semestres évalués par Awa — A, puis C —,
-// pour que le dossier de Moussa ait un historique à parcourir.
+// Les années d'avant, bouclées : évaluées par Awa, A puis C, pour que le
+// dossier de Moussa ait un historique à parcourir.
 const anterieurs = [
   [
-    1,
+    anneeObjectifs - 2,
     'A',
     ['Publier le guide de l’investisseur', 'Animer deux ateliers avec les chambres consulaires'],
   ],
   [
-    2,
+    anneeObjectifs - 3,
     'C',
     ['Refondre le tableau de bord des projets agréés', 'Former l’équipe à la nouvelle base'],
   ],
 ];
-for (const [semestre, note, objectifs] of anterieurs) {
-  const annee = anneeObjectifs - 1;
-  if (annee === precedent.annee && semestre === precedent.semestre) continue;
+for (const [annee, note, objectifs] of anterieurs) {
   const ids = objectifs.map(() => randomUUID());
   await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiche`, {
     annee,
-    semestre,
     contenu: objectifs.map((t, i) => bloc('checkListItem', [texte(t)], {}, ids[i])),
   });
-  const fiche = pour({ annee, semestre });
+  const fiche = pour(annee);
   const statuts = note === 'A' ? ['atteint', 'atteint'] : ['partiel', 'non_atteint'];
   for (const [i, id] of ids.entries()) await statuer(moussa.id, fiche, id, statuts[i]);
   await enTantQue(moussa.id, 'PUT', `${fiche}/commentaires`, {
@@ -817,7 +803,7 @@ for (const [semestre, note, objectifs] of anterieurs) {
     ),
   });
   await enTantQue(moussa.id, 'POST', `${fiche}/commentaires/envoi`);
-  const evaluation = `/objectifs/equipe/${moussa.id}/fiches/${annee}/${semestre}/evaluation`;
+  const evaluation = `/objectifs/equipe/${moussa.id}/fiches/${annee}/evaluation`;
   await enTantQue(awa.id, 'PUT', evaluation, { commentaires: {}, note });
   await enTantQue(awa.id, 'POST', `${evaluation}/validation`);
 }

@@ -584,7 +584,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
             )}
           </Card>
 
-          {/* Les semestres évalués par le n+1, dès la validation : l'agent et
+          {/* Les années évaluées par le n+1, dès la validation : l'agent et
               le directeur du Capital Humain, eux seuls. */}
           {(soi || me.data?.dirigeLaDCH) && !finDAcces ? (
             <CarteEvaluationsAgent employeeId={e.id} />

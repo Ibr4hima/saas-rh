@@ -153,6 +153,5 @@ export function rappel(titre: string): string {
   return `Rappel : ${debut ? titre[0]!.toLowerCase() + titre.slice(1) : titre}`;
 }
 
-/** « du 1er semestre 2026 », « du 2nd semestre 2026 ». */
-export const duSemestre = (semestre: number, annee: number) =>
-  `du ${semestre === 1 ? '1er' : '2nd'} semestre ${annee}`;
+/** « de l’année 2026 » : les objectifs, l'auto-évaluation, l'évaluation d'une année. */
+export const deLAnnee = (annee: number) => `de l’année ${annee}`;

@@ -396,8 +396,15 @@ describe('suppression définitive', () => {
       [randomUUID(), tenantId, awa.employeeId],
     );
     await raw(
-      `INSERT INTO objectifs_fiches (id, tenant_id, employee_id, annee, semestre, evaluation_note)
-       VALUES ($1,$2,$3,2026,1,'A')`,
+      `INSERT INTO objectifs_fiches (id, tenant_id, employee_id, annee, evaluation_note)
+       VALUES ($1,$2,$3,2026,'A')`,
+      [randomUUID(), tenantId, awa.employeeId],
+    );
+    // Et une fiche d'avant 0111, gardée à part, telle quelle.
+    await raw(
+      `INSERT INTO objectifs_fiches_semestres (id, tenant_id, employee_id, annee, semestre,
+                                               evaluation_note)
+       VALUES ($1,$2,$3,2025,1,'B')`,
       [randomUUID(), tenantId, awa.employeeId],
     );
     // Une pièce retirée bien avant l'effacement : elle n'est plus là pour
@@ -416,7 +423,8 @@ describe('suppression définitive', () => {
     const notes = await raw(
       `SELECT count(*)::int AS n FROM audit_log
         WHERE tenant_id = $1 AND table_name IN
-              ('academy_certificates', 'habilitations', 'objectifs', 'objectifs_fiches')
+              ('academy_certificates', 'habilitations', 'objectifs', 'objectifs_fiches',
+               'objectifs_fiches_semestres')
           AND (old_data IS NOT NULL OR new_data IS NOT NULL)`,
       [tenantId],
     );

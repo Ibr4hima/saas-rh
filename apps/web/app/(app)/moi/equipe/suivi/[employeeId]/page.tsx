@@ -18,31 +18,21 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   dateDEvaluation,
-  echeanceDuBloc,
-  periodeDeLEcheance,
-  titreDuSemestre,
+  titreDeLAnnee,
   type FicheEnregistree,
   type FicheObjectifs,
   type FicheSuivi,
   type FormationDeLaFiche,
   type FormationProposable,
-  type JoursEvaluation,
-  type PeriodeObjectifs,
-  type Semestre,
   type StatutObjectif,
 } from '@teranga/contracts';
 import { Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../../../../../../lib/api';
 import { aujourdhui } from '../../../../../../lib/temps';
 import { RetourAcademy } from '../../../../../../components/academy-carte';
-import { EvaluationSemestre } from '../../../../../../components/evaluation-objectifs';
+import { EvaluationAnnuelle } from '../../../../../../components/evaluation-objectifs';
 import { EnTete, Repere } from '../../../../../../components/fiche';
-import {
-  ChoixSemestre,
-  cleDe,
-  FicheSemestre,
-  SeparateurAnnee,
-} from '../../../../../../components/fiches-semestres';
+import { FicheAnnuelle, SeparateurAnnee } from '../../../../../../components/fiches-annuelles';
 import { Page } from '../../../../../../components/gabarit';
 import { Modal } from '../../../../../../components/modal';
 import { Telephone } from '../../../../../../components/telephone';
@@ -59,7 +49,7 @@ type Vue = 'objectifs' | 'evaluation';
 
 /**
  * La fiche d'un direct : la tête de son dossier, puis ses objectifs, une
- * année à la fois (choisie dans la liste), semestre par semestre. Le n+1 les
+ * année à la fois (choisie dans la liste), une fiche par année. Le n+1 la
  * rédige comme une page Notion, le crayon puis « Enregistrer ». L'agent
  * s'auto-évalue : chaque case prend la couleur de son statut, et le n+1 le
  * voit à mesure. « Évaluation », en tête, montre ce que l'agent en dit,
@@ -255,48 +245,32 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
         catalogue={(catalogue.data ?? []).filter(
           (c) => !fiche.data.formationsEncadrees.includes(c.id),
         )}
-        jours={fiche.data.joursEvaluation}
+        jourEvaluation={fiche.data.jourEvaluation}
       />
     </Page>
   );
 }
 
-/** Une fiche à l'écran : enregistrée, ou tout juste ouverte par le n+1. */
-interface Carte {
+/** Ce qu'on écrit dans une fiche sans l'enregistrer. */
+interface Brouillon {
   annee: number;
-  semestre: Semestre;
-}
-
-/** Ce qu'on écrit dans une fiche, et les objectifs qu'elle avait quand on l'a ouverte. */
-interface Brouillon extends Carte {
   contenu: Record<string, unknown>[];
-  connus: string[];
 }
 
 /**
  * Ce qu'on a écrit dans une fiche sans l'enregistrer, par agent et par
- * semestre. La page qui s'en va le garde ; elle le rend, la fiche ouverte,
+ * année. La page qui s'en va le garde ; elle le rend, la fiche ouverte,
  * quand on y revient (la vue Évaluation, une notification, le retour du
  * navigateur).
  */
 const brouillons = new Map<string, Brouillon>();
-const cleDuBrouillon = (employeeId: string, c: Carte) => `${employeeId}:${cleDe(c)}`;
-
-/** Les objectifs d'un contenu, par leur id. */
-const idsDesObjectifs = (blocs: Record<string, unknown>[]) =>
-  blocs
-    .filter((b) => b.type === 'checkListItem' && typeof b.id === 'string')
-    .map((b) => String(b.id));
-
-/** « au 2nd semestre de 2026 ». */
-const auSemestre = (p: PeriodeObjectifs) =>
-  `au ${p.semestre === 1 ? '1er' : '2nd'} semestre de ${p.annee}`;
+const cleDuBrouillon = (employeeId: string, annee: number) => `${employeeId}:${annee}`;
 
 /**
  * Les objectifs du direct pour l'année choisie. L'année en cours et la
- * suivante portent le geste du n+1, « Fixer des objectifs », pour le 1er ou
- * le 2nd semestre : chaque objectif y prend son échéance (ADR-0056). Les
- * années passées gardent leurs fiches.
+ * suivante portent le geste du n+1, « Fixer des objectifs », tant que leur
+ * évaluation est à venir : la fiche de l'année s'ouvre, à la rédaction
+ * (ADR-0075). Les années passées gardent leurs fiches.
  */
 function FichesDuMembre({
   employeeId,
@@ -311,7 +285,7 @@ function FichesDuMembre({
   fiches,
   formations,
   catalogue,
-  jours,
+  jourEvaluation,
 }: {
   employeeId: string;
   prenom: string;
@@ -329,21 +303,17 @@ function FichesDuMembre({
   fiches: FicheSuivi['fiches'];
   formations: FormationDeLaFiche[];
   catalogue: FormationProposable[];
-  jours: JoursEvaluation;
+  jourEvaluation: string;
 }) {
   const router = useRouter();
-  // Les semestres ouverts depuis le menu, pas encore enregistrés : ils
-  // rejoignent `fiches` au premier enregistrement. Un brouillon laissé sur
-  // l'un d'eux le rouvre.
-  const [ouvertes, setOuvertes] = useState<Carte[]>(() =>
-    [...brouillons]
-      .filter(([cle]) => cle.startsWith(`${employeeId}:`))
-      .map(([, b]) => ({ annee: b.annee, semestre: b.semestre })),
+  // Les années ouvertes par « Fixer des objectifs », pas encore enregistrées :
+  // elles rejoignent `fiches` au premier enregistrement. Un brouillon laissé
+  // sur l'une d'elles la rouvre.
+  const [ouvertes, setOuvertes] = useState<number[]>(() =>
+    [...brouillons].filter(([cle]) => cle.startsWith(`${employeeId}:`)).map(([, b]) => b.annee),
   );
-  // « Fixer des objectifs » sur un semestre : sa fiche s'ouvre et vient à l'écran.
-  const [focus, setFocus] = useState({ cle: '', n: 0 });
-  // La fiche à montrer : celle où des objectifs reportés sont partis.
-  const [aMontrer, setAMontrer] = useState<string | null>(null);
+  // « Fixer des objectifs » : la fiche de l'année s'ouvre et vient à l'écran.
+  const [focus, setFocus] = useState({ annee: 0, n: 0 });
   // Un lien de l'application, une fiche modifiée sans être enregistrée : on
   // demande avant de partir. Partir ainsi abandonne les brouillons.
   const [sortie, setSortie] = useState<{ vers: string; fiches: string[] } | null>(null);
@@ -371,66 +341,49 @@ function FichesDuMembre({
     return () => document.removeEventListener('click', auClic, true);
   }, []);
 
-  // Les fiches de l'année, le 2nd semestre avant le 1er.
-  const delAnnee = <T extends Carte>(liste: T[]) =>
-    liste.filter((c) => c.annee === annee).sort((a, b) => b.semestre - a.semestre);
-  const cartes = delAnnee<Carte>([
-    ...fiches,
-    ...ouvertes.filter((o) => !fiches.some((f) => cleDe(f) === cleDe(o))),
-  ]);
-  const fixes = cartes.map((c) => c.semestre);
-  // Une évaluation passée ne reçoit plus d'objectif.
-  const jour = aujourdhui();
-  const passes = ([1, 2] as const).filter((s) => dateDEvaluation(annee, s, jours) < jour);
+  const fiche = fiches.find((f) => f.annee === annee) ?? null;
+  // La fiche de l'année, enregistrée ou tout juste ouverte.
+  const aLEcran = fiche !== null || ouvertes.includes(annee);
+  // Les objectifs se fixent pour l'année en cours, ou à l'avance pour la
+  // suivante, tant que l'évaluation de l'année est à venir et que l'agent n'a
+  // pas rendu compte.
+  const fixable =
+    !parti &&
+    annee >= enCours &&
+    dateDEvaluation(annee, jourEvaluation) >= aujourdhui() &&
+    !fiche?.evaluation.envoyesLe;
   const separateur = (geste?: ReactNode) => (
     <SeparateurAnnee annee={annee} choix={{ annees, enAttente, onChoisir: onAnnee }}>
       {geste}
     </SeparateurAnnee>
   );
 
-  const choisir = (semestre: Semestre) => {
-    const cible: Carte = { annee, semestre };
-    if (!fixes.includes(semestre)) setOuvertes((o) => [...o, cible]);
-    setFocus((f) => ({ cle: cleDe(cible), n: f.n + 1 }));
+  const fixer = () => {
+    if (!aLEcran) setOuvertes((o) => [...o, annee]);
+    setFocus((f) => ({ annee, n: f.n + 1 }));
   };
 
-  /** Des objectifs reportés : la page montre la fiche qui les a reçus. */
-  const montrer = (p: PeriodeObjectifs) => {
-    if (p.annee !== annee) onAnnee(p.annee);
-    setAMontrer(cleDe(p));
-  };
-
-  // La fiche choisie vient à l'écran : neuve ou déjà rédigée.
+  // La fiche vient à l'écran : neuve ou déjà rédigée.
   useEffect(() => {
     if (focus.n === 0) return;
     document
-      .getElementById(`fiche-${focus.cle}`)
+      .getElementById(`fiche-${focus.annee}`)
       ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [focus]);
 
-  useEffect(() => {
-    if (!aMontrer) return;
-    const carte = document.getElementById(`fiche-${aMontrer}`);
-    if (!carte) return;
-    carte.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    setAMontrer(null);
-  }, [aMontrer, cartes.length, annee]);
-
-  // L'évaluation : les fiches enregistrées seulement, avec ce qu'en dit l'agent.
+  // L'évaluation : la fiche enregistrée seulement, avec ce qu'en dit l'agent.
   if (vue === 'evaluation') {
     return (
       <section className="flex flex-col gap-7">
         {separateur()}
-        {delAnnee(fiches).map((f) => (
-          <FicheSemestre
-            key={cleDe(f)}
-            annee={f.annee}
-            semestre={f.semestre}
-            titre={`Évaluation des objectifs du ${f.semestre === 1 ? '1er' : '2nd'} semestre de ${f.annee}`}
+        {fiche ? (
+          <FicheAnnuelle
+            annee={fiche.annee}
+            titre={`Évaluation des objectifs de l’année ${fiche.annee}`}
           >
-            <EvaluationSemestre employeeId={employeeId} prenom={prenom} fiche={f} />
-          </FicheSemestre>
-        ))}
+            <EvaluationAnnuelle employeeId={employeeId} prenom={prenom} fiche={fiche} />
+          </FicheAnnuelle>
+        ) : null}
       </section>
     );
   }
@@ -438,34 +391,31 @@ function FichesDuMembre({
   return (
     <>
       <section className="flex flex-col gap-7">
-        {/* Les objectifs se fixent pour l'année en cours, ou à l'avance pour la suivante. */}
         {separateur(
-          !parti && annee >= enCours ? (
-            <ChoixSemestre fixes={fixes} passes={passes} onChoisir={choisir} />
+          fixable ? (
+            <Button variant="secondary" size="sm" onClick={fixer}>
+              <Icon name="flag" size={15} />
+              Fixer des objectifs
+            </Button>
           ) : null,
         )}
-        {cartes.map((c) => {
-          const fiche = fiches.find((f) => cleDe(f) === cleDe(c)) ?? null;
-          return (
-            <ZoneFiche
-              key={cleDe(c)}
-              employeeId={employeeId}
-              annee={c.annee}
-              semestre={c.semestre}
-              fiche={fiche}
-              // L'agent a envoyé son auto-évaluation : ses objectifs ne changent plus.
-              verrouillee={parti || Boolean(fiche?.evaluation.envoyesLe)}
-              // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
-              formations={fiche?.formations ?? formations}
-              catalogue={catalogue}
-              jours={jours}
-              signal={focus.cle === cleDe(c) ? focus.n : 0}
-              abandon={abandon}
-              onRetirer={() => setOuvertes((o) => o.filter((x) => cleDe(x) !== cleDe(c)))}
-              onVoir={montrer}
-            />
-          );
-        })}
+        {aLEcran ? (
+          <ZoneFiche
+            key={annee}
+            employeeId={employeeId}
+            annee={annee}
+            fiche={fiche}
+            // L'agent a envoyé son auto-évaluation : ses objectifs ne changent plus.
+            verrouillee={parti || Boolean(fiche?.evaluation.envoyesLe)}
+            // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
+            formations={fiche?.formations ?? formations}
+            catalogue={catalogue}
+            jourEvaluation={jourEvaluation}
+            signal={focus.annee === annee ? focus.n : 0}
+            abandon={abandon}
+            onRetirer={() => setOuvertes((o) => o.filter((x) => x !== annee))}
+          />
+        ) : null}
       </section>
       <Modal
         open={sortie !== null}
@@ -514,80 +464,59 @@ const ROND =
   'grid size-[30px] shrink-0 place-items-center rounded-full border outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary/35';
 
 /**
- * La fiche d'un semestre. Elle se lit d'abord ; le crayon l'ouvre, et
+ * La fiche d'une année. Elle se lit d'abord ; le crayon l'ouvre, et
  * « Enregistrer » la referme et prévient l'agent (ADR-0051) : rien ne s'y
- * change par mégarde. Un semestre choisi dans « Fixer des objectifs »
- * s'ouvre d'emblée ; refermé sans rien d'écrit, il disparaît sans rien
- * créer. Pas d'objectif sans échéance : l'enregistrement le refuse, et
- * montre lesquels. Une échéance fixée à 30 jours ou moins de son évaluation
- * se confirme à l'enregistrement, ou l'objectif se reporte (ADR-0057). Un
- * objectif reporté part dans la fiche de l'évaluation suivante, et la fiche
- * le dit. Les objectifs arrivés entre-temps (reportés depuis une autre
- * fiche) s'ajoutent à l'enregistrement, sans se perdre. Ce qui n'est pas
- * enregistré ne se perd pas en silence : le navigateur demande avant de
- * fermer la page, et la page le garde le temps d'y revenir.
+ * change par mégarde. Ouverte par « Fixer des objectifs », elle s'écrit
+ * d'emblée ; neuve et refermée sans rien d'écrit, elle disparaît sans rien
+ * créer. Ce qui n'est pas enregistré ne se perd pas en silence : le
+ * navigateur demande avant de fermer la page, et la page le garde le temps
+ * d'y revenir.
  */
 function ZoneFiche({
   employeeId,
   annee,
-  semestre,
   fiche,
   verrouillee,
   formations,
   catalogue,
-  jours,
+  jourEvaluation,
   signal,
   abandon,
   onRetirer,
-  onVoir,
 }: {
   employeeId: string;
   annee: number;
-  semestre: Semestre;
-  /** `null` : le semestre vient d'être ouvert, rien n'est encore enregistré. */
+  /** `null` : l'année vient d'être ouverte, rien n'est encore enregistré. */
   fiche: FicheObjectifs | null;
   /** L'agent a rendu compte : la fiche se lit, elle ne s'écrit plus. */
   verrouillee: boolean;
   formations: FormationDeLaFiche[];
   catalogue: FormationProposable[];
-  jours: JoursEvaluation;
-  /** « Fixer des objectifs » sur ce semestre : la fiche s'ouvre, le curseur en fin d'objectifs. */
+  jourEvaluation: string;
+  /** « Fixer des objectifs » : la fiche s'ouvre, le curseur en fin d'objectifs. */
   signal: number;
   /** On quitte la page sans enregistrer : les brouillons partent avec elle. */
   abandon: RefObject<boolean>;
-  /** Un semestre neuf refermé sans rien d'écrit quitte l'écran. */
+  /** Une fiche neuve refermée sans rien d'écrit quitte l'écran. */
   onRetirer: () => void;
-  /** Aller à la fiche où des objectifs sont partis. */
-  onVoir: (p: PeriodeObjectifs) => void;
 }) {
   const queryClient = useQueryClient();
-  const cle = cleDuBrouillon(employeeId, { annee, semestre });
+  const cle = cleDuBrouillon(employeeId, annee);
   const contenu = fiche?.contenu ?? SANS_CONTENU;
   const statuts = fiche?.statuts ?? SANS_STATUT;
   const majLe = fiche?.majLe ?? null;
-  const racine = useRef<HTMLDivElement>(null);
-  // Ouverte : le contenu dont l'éditeur repart. Un semestre tout juste
-  // ouvert s'écrit d'emblée ; un brouillon laissé rouvre sa fiche.
+  // Ouverte : le contenu dont l'éditeur repart. Une fiche tout juste ouverte
+  // s'écrit d'emblée ; un brouillon laissé la rouvre.
   const [depart, setDepart] = useState<Record<string, unknown>[] | null>(
     () => brouillons.get(cle)?.contenu ?? (fiche === null ? SANS_CONTENU : null),
   );
-  // Les objectifs de la fiche à l'ouverture : un autre, à l'enregistrement,
-  // est arrivé entre-temps.
-  const connus = useRef<string[]>(brouillons.get(cle)?.connus ?? []);
   // Ce qu'on y a changé ; rien tant qu'on n'a pas écrit.
   const brouillon = useRef<Record<string, unknown>[] | null>(brouillons.get(cle)?.contenu ?? null);
   const [modifiee, setModifiee] = useState(() => brouillons.has(cle));
   const [curseur, setCurseur] = useState(() => (brouillons.has(cle) ? 0 : signal));
   const signalVu = useRef(signal);
-  // Chaque refus pour une échéance manquante : l'éditeur montre lesquelles.
-  const [manques, setManques] = useState(0);
-  // Chaque enregistrement demandé : l'éditeur fait d'abord confirmer les
-  // échéances trop près de leur évaluation, puis rend la main.
-  const [verification, setVerification] = useState(0);
   const [envoi, setEnvoi] = useState(false);
   const [echec, setEchec] = useState<string | null>(null);
-  // Des objectifs reportés : vers quelle fiche, et combien.
-  const [partis, setPartis] = useState<{ periode: PeriodeObjectifs; nombre: number } | null>(null);
   const enCours = useRef(false);
 
   // Verrouillée (l'agent a rendu compte, ou a quitté l'APIX), elle se lit
@@ -596,14 +525,12 @@ function ZoneFiche({
   const aEnregistrer = ouverte && modifiee;
 
   const ouvrir = useCallback(() => {
-    connus.current = idsDesObjectifs(contenu);
     setDepart(contenu);
-    setPartis(null);
     setCurseur((c) => c + 1);
   }, [contenu]);
 
-  // « Fixer des objectifs » sur ce semestre : la fiche s'ouvre, le curseur
-  // au bout de ses objectifs.
+  // « Fixer des objectifs » : la fiche s'ouvre, le curseur au bout de ses
+  // objectifs.
   useEffect(() => {
     if (signal === signalVu.current) return;
     signalVu.current = signal;
@@ -625,95 +552,45 @@ function ZoneFiche({
     setDepart(null);
   }, []);
 
-  const enregistrer = useCallback(() => {
+  const enregistrer = useCallback(async () => {
     if (enCours.current) return;
     const blocs = brouillon.current;
-    // Rien de changé : la fiche se referme, sans écrire ni prévenir. Un
-    // semestre neuf où rien n'est écrit ne se crée pas.
+    // Rien de changé : la fiche se referme, sans écrire ni prévenir. Une
+    // fiche neuve où rien n'est écrit ne se crée pas.
     if (!blocs || (fiche === null && blocs.length === 0)) {
       refermer();
       if (fiche === null) onRetirer();
       return;
     }
-    // Pas d'objectif sans échéance.
-    if (blocs.some((b) => b.type === 'checkListItem' && !echeanceDuBloc(b))) {
-      setEchec('Chaque objectif doit avoir son échéance');
-      setManques((n) => n + 1);
-      return;
-    }
-    setVerification((n) => n + 1);
-  }, [fiche, refermer, onRetirer]);
-
-  /** Les échéances confirmées : la fiche part. */
-  const envoyer = useCallback(async () => {
-    const blocs = brouillon.current;
-    if (enCours.current || !blocs) return;
-    // Arrivés entre-temps (reportés depuis une autre fiche), ces objectifs
-    // n'étaient pas dans l'éditeur : ils restent dans la fiche.
-    const vus = new Set(connus.current);
-    const arrives = contenu.filter(
-      (b) => b.type === 'checkListItem' && typeof b.id === 'string' && !vus.has(b.id),
-    );
     enCours.current = true;
     setEnvoi(true);
-    const cleFiche = [...CLE_OBJECTIFS, 'equipe', employeeId];
     try {
       await api<FicheEnregistree>(`/objectifs/equipe/${employeeId}/fiche`, {
         method: 'PUT',
-        body: { annee, semestre, contenu: [...blocs, ...arrives] },
+        body: { annee, contenu: blocs },
       });
-      // La fiche se relit telle que le serveur l'a rangée, avec celles où des
-      // objectifs sont partis.
-      await queryClient.invalidateQueries({ queryKey: cleFiche });
-      // Les objectifs reportés : leur échéance compte pour une autre évaluation.
-      const ailleurs = blocs
-        .map((b) => (b.type === 'checkListItem' ? echeanceDuBloc(b) : null))
-        .filter((e): e is string => e !== null)
-        .map((e) => periodeDeLEcheance(e, jours))
-        .filter((p) => p.annee !== annee || p.semestre !== semestre);
+      // La fiche se relit telle que le serveur l'a rangée.
+      await queryClient.invalidateQueries({ queryKey: [...CLE_OBJECTIFS, 'equipe', employeeId] });
       refermer();
       if (fiche === null) onRetirer();
-      const gardee = queryClient
-        .getQueryData<FicheSuivi>(cleFiche)
-        ?.fiches.some((f) => f.annee === annee && f.semestre === semestre);
-      if (!gardee) {
-        // La fiche n'a rien gardé et quitte l'écran : on va voir où ses
-        // objectifs sont partis.
-        if (ailleurs[0]) onVoir(ailleurs[0]);
-        return;
-      }
-      setPartis(ailleurs[0] ? { periode: ailleurs[0], nombre: ailleurs.length } : null);
     } catch (err) {
       setEchec(err instanceof ApiError ? err.message : 'Non enregistré');
     } finally {
       enCours.current = false;
       setEnvoi(false);
     }
-  }, [
-    employeeId,
-    annee,
-    semestre,
-    fiche,
-    contenu,
-    jours,
-    queryClient,
-    refermer,
-    onRetirer,
-    onVoir,
-  ]);
+  }, [employeeId, annee, fiche, queryClient, refermer, onRetirer]);
 
-  // Ctrl+S (⌘S) enregistre la fiche où l'on écrit, au lieu d'ouvrir
-  // « Enregistrer la page » du navigateur ; sans curseur dans aucune
-  // fiche, toutes celles qui sont ouvertes.
+  // Ctrl+S (⌘S) enregistre la fiche, au lieu d'ouvrir « Enregistrer la page »
+  // du navigateur.
   useEffect(() => {
     if (!ouverte) return;
     const auClavier = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return;
       e.preventDefault();
-      // Une fenêtre ouverte (une échéance à confirmer) se termine d'abord.
+      // Une fenêtre ouverte se termine d'abord.
       if (document.querySelector('[aria-modal="true"]')) return;
-      const ici = document.activeElement?.closest('[data-fiche-ouverte]');
-      if (!ici || ici === racine.current) enregistrer();
+      void enregistrer();
     };
     window.addEventListener('keydown', auClavier);
     return () => window.removeEventListener('keydown', auClavier);
@@ -732,30 +609,20 @@ function ZoneFiche({
     brouillons.delete(cle);
     return () => {
       if (brouillon.current && !abandon.current) {
-        brouillons.set(cle, {
-          annee,
-          semestre,
-          contenu: brouillon.current,
-          connus: connus.current,
-        });
+        brouillons.set(cle, { annee, contenu: brouillon.current });
       }
     };
-  }, [cle, annee, semestre, abandon]);
+  }, [cle, annee, abandon]);
 
   useEffect(() => {
     if (verrouillee) brouillon.current = null;
   }, [verrouillee]);
 
   return (
-    <div
-      ref={racine}
-      data-fiche-ouverte={ouverte || undefined}
-      data-fiche-modifiee={aEnregistrer ? titreDuSemestre(semestre, annee) : undefined}
-    >
-      <FicheSemestre
-        id={`fiche-${cleDe({ annee, semestre })}`}
+    <div data-fiche-modifiee={aEnregistrer ? titreDeLAnnee(annee) : undefined}>
+      <FicheAnnuelle
+        id={`fiche-${annee}`}
         annee={annee}
-        semestre={semestre}
         enEdition={ouverte}
         // Un seul bouton, qui change de rôle : le focus du clavier y reste
         // quand la fiche se referme. Jamais désactivé (il perdrait le focus) :
@@ -764,7 +631,7 @@ function ZoneFiche({
           verrouillee ? null : (
             <button
               type="button"
-              onClick={ouverte ? enregistrer : ouvrir}
+              onClick={ouverte ? () => void enregistrer() : ouvrir}
               aria-busy={envoi || undefined}
               aria-label={ouverte ? 'Enregistrer les objectifs' : 'Modifier les objectifs'}
               title={ouverte ? 'Enregistrer' : 'Modifier'}
@@ -791,24 +658,6 @@ function ZoneFiche({
             {echec}
           </p>
         ) : null}
-        {partis ? (
-          <p
-            role="status"
-            className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-5 pt-3 text-[11.5px] font-semibold text-primary"
-          >
-            <Icon name="event" size={14} className="shrink-0" />
-            {partis.nombre > 1
-              ? `${partis.nombre} objectifs reportés ${auSemestre(partis.periode)}`
-              : `1 objectif reporté ${auSemestre(partis.periode)}`}
-            <button
-              type="button"
-              onClick={() => onVoir(partis.periode)}
-              className="rounded-full px-1.5 underline underline-offset-2 outline-none hover:text-primary-hover focus-visible:ring-2 focus-visible:ring-primary/35"
-            >
-              Voir
-            </button>
-          </p>
-        ) : null}
         {depart !== null && !verrouillee ? (
           <EditeurFicheObjectifs
             key="redaction"
@@ -819,19 +668,14 @@ function ZoneFiche({
             catalogue={catalogue}
             onChange={onChange}
             focusSignal={curseur}
-            manques={manques}
-            enregistre={contenu}
-            verification={verification}
-            onVerifiee={() => void envoyer()}
             statuts={statuts}
             annee={annee}
-            semestre={semestre}
-            jours={jours}
+            jourEvaluation={jourEvaluation}
           />
         ) : (
           // Relue après chaque enregistrement : la fiche telle qu'elle est.
           <EditeurFicheObjectifs
-            key={`lecture-${majLe}-${jours.join()}`}
+            key={`lecture-${majLe}-${jourEvaluation}`}
             className="pt-4 pb-4"
             contenu={contenu}
             modifiable={false}
@@ -839,11 +683,10 @@ function ZoneFiche({
             catalogue={catalogue}
             statuts={statuts}
             annee={annee}
-            semestre={semestre}
-            jours={jours}
+            jourEvaluation={jourEvaluation}
           />
         )}
-      </FicheSemestre>
+      </FicheAnnuelle>
     </div>
   );
 }

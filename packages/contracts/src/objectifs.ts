@@ -78,13 +78,13 @@ export interface MesObjectifs {
   apix: ObjectifView[];
   direction: { id: string; nom: string; objectifs: ObjectifView[] } | null;
   individuels: ObjectifView[];
-  /** Ses fiches, rédigées par son n+1 — les plus récentes d'abord ; une
-      fiche vide n'y figure pas. */
+  /** Ses fiches, une par année, rédigées par son n+1, les plus récentes
+      d'abord ; une fiche vide n'y figure pas. */
   fiches: FicheObjectifs[];
   /** Les formations qu'il a commencées, pour les blocs « Formation ». */
   formations: FormationDeLaFiche[];
-  /** Les jours d'évaluation de l'APIX : ils rangent chaque objectif par son échéance. */
-  joursEvaluation: JoursEvaluation;
+  /** Le jour de l'évaluation annuelle, « MM-JJ » : il borne les échéances de chaque année. */
+  jourEvaluation: string;
 }
 
 // ---------- Fiche d'objectifs (éditeur de blocs) ----------
@@ -100,22 +100,19 @@ export interface FormationDeLaFiche {
   validees: number;
 }
 
-/** Le semestre d'une fiche : le 1er (janvier-juin), le 2nd (juillet-décembre). */
-export type Semestre = 1 | 2;
-
-/** « Objectifs du 1er semestre de 2026 ». */
-export function titreDuSemestre(semestre: Semestre, annee: number): string {
-  return `Objectifs du ${semestre === 1 ? '1er' : '2nd'} semestre de ${annee}`;
+/** « Objectifs de l’année 2026 ». */
+export function titreDeLAnnee(annee: number): string {
+  return `Objectifs de l’année ${annee}`;
 }
 
 /**
- * La fiche d'objectifs d'un agent pour un semestre : les blocs de l'éditeur,
- * tels qu'enregistrés (cases à cocher, échéances, formations…) — une case
- * est cochée quand l'agent dit l'objectif atteint —, et son évaluation.
+ * La fiche d'objectifs d'un agent pour une année : les blocs de l'éditeur,
+ * tels qu'enregistrés (cases à cocher, échéances, formations…), une case
+ * cochée quand l'agent dit l'objectif atteint ; et son évaluation, une par
+ * an (ADR-0075).
  */
 export interface FicheObjectifs {
   annee: number;
-  semestre: Semestre;
   contenu: Record<string, unknown>[];
   /** Dernière mise à jour, et par qui. */
   majLe: string;
@@ -149,7 +146,7 @@ export const LIBELLES_STATUT: Record<StatutObjectif, string> = {
   non_atteint: 'Non atteint',
 };
 
-// ---------- Commentaires et évaluation du semestre ----------
+// ---------- Commentaires et évaluation de l'année ----------
 
 /** L'appréciation globale du n+1. */
 export const NOTES_GLOBALES = ['A', 'B', 'C', 'D'] as const;
@@ -163,7 +160,7 @@ export const LIBELLES_NOTE: Record<NoteGlobale, string> = {
 };
 
 /**
- * Ce que l'agent et son n+1 disent des objectifs d'un semestre. Chacun ne
+ * Ce que l'agent et son n+1 disent des objectifs de l'année. Chacun ne
  * voit de l'autre que ce qui est envoyé : le n+1, les commentaires de l'agent
  * une fois son auto-évaluation envoyée ; l'agent, ceux du n+1 et la note une
  * fois validés. Les statuts, eux, se voient à mesure.
@@ -182,12 +179,11 @@ export interface EvaluationFiche {
 }
 
 /**
- * Une évaluation validée, telle que le dossier de l'agent la garde : le
- * semestre, qui l'a évalué, et la note.
+ * Une évaluation validée, telle que le dossier de l'agent la garde : l'année,
+ * qui l'a évalué, et la note.
  */
 export interface EvaluationValidee {
   annee: number;
-  semestre: Semestre;
   /** Le n+1 qui l'a validée — `null` s'il n'a plus de dossier. */
   manager: string | null;
   note: NoteGlobale;
@@ -216,13 +212,9 @@ export const evaluationN1Schema = z.object({
 });
 export type EvaluationN1Input = z.infer<typeof evaluationN1Schema>;
 
-/** L'année et le semestre d'une fiche, dans l'adresse. */
-export const periodeParamsSchema = z.object({
+/** L'année d'une fiche, dans l'adresse. */
+export const anneeParamsSchema = z.object({
   annee: z.coerce.number().int().min(2000).max(2100),
-  semestre: z.coerce
-    .number()
-    .int()
-    .refine((s): s is Semestre => s === 1 || s === 2, 'Semestre 1 ou 2'),
 });
 
 /**
@@ -239,10 +231,7 @@ export interface ObjectifDeLaFiche {
   empreinte: string;
   /** Le contenu du bloc, tel que l'éditeur l'enregistre (texte stylé, échéances…). */
   contenu: Record<string, unknown>[];
-  /**
-   * L'échéance de l'objectif, date ISO. Une case d'avant les échéances n'en
-   * a pas : elle vaut la date d'évaluation de sa fiche.
-   */
+  /** L'échéance de l'objectif, date ISO ; facultative : sans elle, il vaut pour l'année. */
   echeance: string | null;
   /**
    * Un bloc « Formation » : la formation qu'il donne à suivre. Son statut ne
@@ -403,7 +392,6 @@ export const FICHE_OBJECTIFS_MAX = 300_000;
 
 export const enregistrerFicheObjectifsSchema = z.object({
   annee: z.number().int().min(2000).max(2100).optional(),
-  semestre: z.union([z.literal(1), z.literal(2)]),
   contenu: z.array(z.record(z.string(), z.unknown())).max(2000),
 });
 export type EnregistrerFicheObjectifsInput = z.infer<typeof enregistrerFicheObjectifsSchema>;
@@ -441,7 +429,7 @@ export interface FicheSuivi {
   annee: number;
   membre: MembreSuivi;
   objectifs: ObjectifView[];
-  /** Toutes ses fiches, les plus récentes d'abord ; une fiche vide n'y figure pas. */
+  /** Toutes ses fiches, une par année, les plus récentes d'abord ; une fiche vide n'y figure pas. */
   fiches: FicheObjectifs[];
   /** Les formations qu'il a commencées, pour les blocs « Formation ». */
   formations: FormationDeLaFiche[];
@@ -450,8 +438,8 @@ export interface FicheSuivi {
    * se donnent pas à suivre (ADR-0057, ADR-0070).
    */
   formationsEncadrees: string[];
-  /** Les jours d'évaluation de l'APIX : ils rangent chaque objectif par son échéance. */
-  joursEvaluation: JoursEvaluation;
+  /** Le jour de l'évaluation annuelle, « MM-JJ » : il borne les échéances de chaque année. */
+  jourEvaluation: string;
 }
 
 /** « Objectifs de l'APIX » : ce que le directeur général fixe. */
@@ -527,15 +515,15 @@ export const anneeQuerySchema = z.object({
   annee: z.coerce.number().int().min(2000).max(2100).optional(),
 });
 
-// ---------- Dates d'évaluation ----------
+// ---------- Date d'évaluation ----------
 
 /**
- * Les jours de chaque mois d'une année ordinaire : une date d'évaluation
+ * Les jours de chaque mois d'une année ordinaire : la date d'évaluation
  * revient chaque année, le 29 février n'en est donc pas une.
  */
 export const JOURS_PAR_MOIS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
 
-/** « 06-30 » : un jour et un mois, sans l'année. */
+/** « 12-15 » : un jour et un mois, sans l'année. */
 export const jourDeLAnneeSchema = z
   .string()
   .regex(/^\d{2}-\d{2}$/, 'Un jour et un mois')
@@ -545,98 +533,38 @@ export const jourDeLAnneeSchema = z
   }, 'Ce jour ne revient pas chaque année');
 
 /**
- * Le jour où les notes de A à D se donnent, pour un semestre : un jour et un
- * mois qui reviennent chaque année. Par défaut le 30 juin pour le 1er, le
- * 31 décembre pour le 2nd.
+ * Le jour où les notes de A à D se donnent : un jour et un mois qui
+ * reviennent chaque année (ADR-0075), posés sur l'année de la prochaine
+ * évaluation.
  */
 export interface DateEvaluation {
-  semestre: Semestre;
+  annee: number;
   /** Le jour et le mois, « MM-JJ ». */
   jour: string;
   /** Ce jour-là dans l'année affichée : date ISO (AAAA-MM-JJ). */
   date: string;
+  /** Qui dirige la DCH la change. */
+  modifiable: boolean;
 }
 
-/** Les deux dates d'évaluation, dans l'année de la prochaine. */
-export interface DatesEvaluation {
-  annee: number;
-  dates: DateEvaluation[];
-  /** Qui dirige la DCH les change. */
-  modifiables: boolean;
-}
+export const dateEvaluationSchema = z.object({ jour: jourDeLAnneeSchema });
+export type DateEvaluationInput = z.infer<typeof dateEvaluationSchema>;
 
-/** Les deux jours, enregistrés ensemble : l'ordre se juge sur la paire. */
-export const datesEvaluationSchema = z.object({
-  semestre1: jourDeLAnneeSchema,
-  semestre2: jourDeLAnneeSchema,
-});
-export type DatesEvaluationInput = z.infer<typeof datesEvaluationSchema>;
+/** Tant que la DCH n'en a pas fixé d'autre : le 15 décembre. */
+export const JOUR_D_EVALUATION_PAR_DEFAUT = '12-15';
 
-/** Les jours d'évaluation de l'année, « MM-JJ » : celui du 1er semestre, puis celui du 2nd. */
-export type JoursEvaluation = readonly [string, string];
-
-/** Tant que la DCH n'en a pas fixé d'autres : la fin de chaque semestre. */
-export const JOURS_D_EVALUATION_PAR_DEFAUT: JoursEvaluation = ['06-30', '12-31'];
-
-/** La date d'évaluation d'un semestre, une année donnée. */
-export function dateDEvaluation(annee: number, semestre: Semestre, jours: JoursEvaluation): string {
-  return `${annee}-${jours[semestre - 1]}`;
+/** La date de l'évaluation d'une année. */
+export function dateDEvaluation(annee: number, jour: string): string {
+  return `${annee}-${jour}`;
 }
 
 /**
- * L'évaluation où compte un objectif : la première qui tombe le jour de son
- * échéance ou après. Une échéance après la dernière de l'année compte pour
- * le 1er semestre de la suivante.
+ * Les échéances possibles des objectifs d'une année : de son 1er janvier au
+ * jour de son évaluation.
  */
-export function periodeDeLEcheance(echeance: string, jours: JoursEvaluation): PeriodeObjectifs {
-  const annee = Number(echeance.slice(0, 4));
-  const jour = echeance.slice(5, 10);
-  if (jour <= jours[0]) return { annee, semestre: 1 };
-  if (jour <= jours[1]) return { annee, semestre: 2 };
-  return { annee: annee + 1, semestre: 1 };
+export function echeancesDeLAnnee(annee: number, jour: string): { du: string; au: string } {
+  return { du: `${annee}-01-01`, au: dateDEvaluation(annee, jour) };
 }
-
-/** L'évaluation d'après : le 2nd semestre après le 1er, le 1er de l'année suivante après le 2nd. */
-export function periodeSuivante(p: PeriodeObjectifs): PeriodeObjectifs {
-  return p.semestre === 1 ? { annee: p.annee, semestre: 2 } : { annee: p.annee + 1, semestre: 1 };
-}
-
-/** Le lendemain d'une date ISO. */
-function lendemainDe(date: string): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
-/**
- * Les échéances qui comptent pour l'évaluation d'un semestre : du lendemain
- * de l'évaluation précédente au jour de la sienne.
- */
-export function echeancesDuSemestre(
-  annee: number,
-  semestre: Semestre,
-  jours: JoursEvaluation,
-): { du: string; au: string } {
-  const precedente =
-    semestre === 1 ? dateDEvaluation(annee - 1, 2, jours) : dateDEvaluation(annee, 1, jours);
-  return { du: lendemainDe(precedente), au: dateDEvaluation(annee, semestre, jours) };
-}
-
-/** Les jours entre une échéance et l'évaluation où elle compte : 0 le jour même. */
-export function joursAvantLEvaluation(echeance: string, jours: JoursEvaluation): number {
-  const { annee, semestre } = periodeDeLEcheance(echeance, jours);
-  const evaluation = dateDEvaluation(annee, semestre, jours);
-  return Math.round(
-    (Date.parse(`${evaluation}T00:00:00Z`) - Date.parse(`${echeance}T00:00:00Z`)) / 86_400_000,
-  );
-}
-
-/**
- * Une échéance à 30 jours ou moins de l'évaluation où elle compte se
- * confirme à l'enregistrement : le n+1 la garde, ou reporte l'objectif à
- * l'évaluation suivante (ADR-0056, ADR-0057).
- */
-export const ECHEANCE_A_CONFIRMER_JOURS = 30;
 
 /** « 30 juin », « 1er janvier » : un jour et un mois, « MM-JJ », en lettres. */
 export function jourEtMoisEnLettres(jour: string): string {
@@ -650,21 +578,12 @@ export function dateEnLettres(date: string, avecAnnee = true): string {
   return avecAnnee ? `${jour} ${date.slice(0, 4)}` : jour;
 }
 
-/** Une fiche : l'évaluation où ses objectifs comptent. */
-export interface PeriodeObjectifs {
-  annee: number;
-  semestre: Semestre;
-}
-
 /**
- * Ce que l'enregistrement d'une fiche a changé : la fiche elle-même, et
- * celles où sont partis les objectifs dont l'échéance a changé de période.
- * `majLe` vaut `null` quand la fiche n'existe pas : neuve, elle n'a rien
- * gardé (ses objectifs sont tous partis ailleurs).
+ * Ce que l'enregistrement d'une fiche a changé. `majLe` vaut `null` quand la
+ * fiche n'existe pas : neuve, rien n'y a été écrit.
  */
 export interface FicheEnregistree {
   majLe: string | null;
-  periodes: PeriodeObjectifs[];
 }
 
 /** Un objectif ponctuel tient sur une ligne. */

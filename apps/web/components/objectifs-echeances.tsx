@@ -1,32 +1,15 @@
 'use client';
 
-import { useId, useState, type ReactNode } from 'react';
-import {
-  dateDEvaluation,
-  dateEnLettres,
-  echeancesDuSemestre,
-  joursAvantLEvaluation,
-  periodeDeLEcheance,
-  periodeSuivante,
-  type JoursEvaluation,
-} from '@teranga/contracts';
-import { Button, Card, CardContent, cn, Field, Input } from '@teranga/ui';
-import { aujourdhui } from '../lib/temps';
+import { useState } from 'react';
+import { dateEnLettres } from '@teranga/contracts';
+import { cn } from '@teranga/ui';
 import { Icon } from './icons';
-import { Modal } from './modal';
 
 /*
-   Les objectifs ponctuels, chacun avec son échéance (ADR-0055, ADR-0056,
-   ADR-0057). Le n+1 fixe les objectifs d'un semestre, et l'échéance de
-   chacun dans la période de ce semestre. À l'enregistrement, une échéance
-   trop près de l'évaluation se confirme, ou l'objectif se reporte à
-   l'évaluation suivante.
+   L'échéance d'un objectif (ADR-0075) : facultative, elle se choisit dans
+   l'année de la fiche, d'aujourd'hui au jour de l'évaluation. Sans elle,
+   l'objectif vaut pour l'année.
 */
-
-/** Le dernier jour où une échéance se fixe : la dernière évaluation de l'année suivante. */
-export function horizonDesEcheances(jours: JoursEvaluation): string {
-  return dateDEvaluation(Number(aujourdhui().slice(0, 4)) + 1, 2, jours);
-}
 
 /** « 20 mars », avec l'année quand ce n'est pas celle de la fiche (toujours, sans fiche). */
 const enLettres = (date: string, annee?: number) =>
@@ -68,46 +51,12 @@ export function Echeance({
 const PUCE =
   'inline-flex shrink-0 items-center gap-1 rounded-full border bg-surface py-[3px] pr-2.5 pl-2 text-[11.5px] font-semibold whitespace-nowrap';
 
-/** « S2 » : l'échéance compte pour un autre semestre que celui de sa fiche. */
-function Report({ semestre }: { semestre: string }) {
-  return (
-    <span className="ml-0.5 rounded-full bg-primary-soft px-1.5 text-[10px] leading-4 font-extrabold text-primary">
-      {semestre}
-    </span>
-  );
-}
-
-/** L'échéance dans sa puce, sans calendrier : telle que la fiche ouverte la montre. */
-export function PuceEcheance({
-  date,
-  annee,
-  reportee,
-  className,
-}: {
-  date: string;
-  annee: number;
-  /** L'échéance compte pour un autre semestre : « S2 ». */
-  reportee?: string;
-  className?: string;
-}) {
-  return (
-    <span className={cn(PUCE, 'border-line text-ink', className)}>
-      <Icon name="event" size={14} className="opacity-75" />
-      <span className="sr-only">Échéance :</span>
-      {enLettres(date, annee)}
-      {reportee ? <Report semestre={reportee} /> : null}
-    </span>
-  );
-}
-
 /**
- * L'échéance, à choisir : la même puce, et dessous le calendrier du
- * navigateur, qui s'ouvre d'un clic. Une date complète, dans ses bornes,
- * vaut aussitôt ; rien ne s'ouvre pour autant, même quand le calendrier la
- * change en passant d'un mois à l'autre. Une date à moitié tapée, ou hors des
- * bornes, s'efface quand on quitte la puce. `onQuitter` suit la puce qu'on
- * quitte, ou Entrée. Sans échéance, la puce attend la sienne ; `manque` la
- * signale, une fois l'enregistrement refusé.
+ * L'échéance, à choisir : la puce, et dessous le calendrier du navigateur,
+ * qui s'ouvre d'un clic. Une date complète, dans ses bornes, vaut aussitôt.
+ * Une date à moitié tapée, ou hors des bornes, s'efface quand on quitte la
+ * puce. Le calendrier l'efface aussi (« Effacer ») : l'objectif n'a plus
+ * d'échéance. `onQuitter` suit la puce qu'on quitte, ou Entrée.
  */
 export function ChoixEcheance({
   id,
@@ -118,21 +67,17 @@ export function ChoixEcheance({
   onChoix,
   onQuitter,
   label,
-  manque = false,
-  reportee,
 }: {
   id?: string;
-  /** `null` : pas encore choisie. */
+  /** `null` : pas d'échéance. */
   date: string | null;
   annee: number;
   min: string;
   max: string;
-  onChoix: (date: string) => void;
+  /** `null` : l'échéance est retirée. */
+  onChoix: (date: string | null) => void;
   onQuitter?: () => void;
   label: string;
-  manque?: boolean;
-  /** L'échéance compte pour un autre semestre : « S2 ». */
-  reportee?: string;
 }) {
   // Ce qu'on tape et qui ne vaut pas encore : un jour incomplet, ou hors des bornes.
   const [saisie, setSaisie] = useState<string | null>(null);
@@ -143,25 +88,18 @@ export function ChoixEcheance({
       className={cn(
         PUCE,
         'relative transition-colors duration-150 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 hover:border-primary/45 hover:text-primary',
-        montree
-          ? 'border-line text-ink'
-          : manque
-            ? 'border-dashed border-danger text-danger'
-            : 'border-dashed border-line text-ink-muted',
+        montree ? 'border-line text-ink' : 'border-dashed border-line text-ink-muted',
       )}
     >
       <Icon name="event" size={14} className="opacity-75" />
       {montree ? enLettres(montree, annee) : 'Échéance'}
-      {reportee && montree ? <Report semestre={reportee} /> : null}
       <input
         id={id}
         type="date"
         aria-label={label}
-        aria-invalid={manque && !date ? true : undefined}
         value={montree ?? ''}
         min={min}
         max={max}
-        required
         onClick={(e) => {
           try {
             e.currentTarget.showPicker();
@@ -176,6 +114,14 @@ export function ChoixEcheance({
         }}
         onChange={(e) => {
           const v = e.target.value;
+          // Vidée tout entière (« Effacer », ou chaque partie effacée) : plus
+          // d'échéance. Une date à moitié tapée est vide elle aussi, mais le
+          // navigateur la dit incomplète : elle attend la suite.
+          if (v === '' && !e.target.validity.badInput) {
+            setSaisie(null);
+            if (date !== null) onChoix(null);
+            return;
+          }
           if (!dansLesBornes(v, min, max)) {
             setSaisie(v);
             return;
@@ -190,120 +136,5 @@ export function ChoixEcheance({
         className="absolute inset-0 size-full cursor-pointer opacity-0"
       />
     </span>
-  );
-}
-
-/**
- * Une échéance à 30 jours ou moins de l'évaluation où elle compte, à
- * l'enregistrement : le n+1 la confirme, ou reporte l'objectif à
- * l'évaluation suivante, avec une nouvelle échéance prise dans la période de
- * celle-ci. Fermer la fenêtre arrête l'enregistrement.
- */
-export function ConfirmerEcheance({
-  objectif,
-  echeance,
-  jours,
-  onConfirmer,
-  onReporter,
-  onClose,
-}: {
-  /** L'objectif tel que la fiche le montre : sa case, son texte, sa puce d'échéance. */
-  objectif: ReactNode;
-  echeance: string;
-  jours: JoursEvaluation;
-  onConfirmer: () => void;
-  onReporter: (echeance: string) => void;
-  onClose: () => void;
-}) {
-  const [report, setReport] = useState(false);
-  const [nouvelle, setNouvelle] = useState('');
-  const champ = useId();
-  const periode = periodeDeLEcheance(echeance, jours);
-  const ecart = joursAvantLEvaluation(echeance, jours);
-  // La prochaine évaluation : ses échéances, à partir d'aujourd'hui et
-  // jusqu'à la dernière qui se fixe.
-  const suivante = periodeSuivante(periode);
-  const { du, au } = echeancesDuSemestre(suivante.annee, suivante.semestre, jours);
-  const jour = aujourdhui();
-  const horizon = horizonDesEcheances(jours);
-  const min = du > jour ? du : jour;
-  const max = au < horizon ? au : horizon;
-  const reportable = min <= max;
-
-  const quand =
-    ecart === 0
-      ? 'le jour même de l’échéance de cet objectif'
-      : `${ecart} jour${ecart > 1 ? 's' : ''} après l’échéance de cet objectif`;
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={report ? 'Reporter l’objectif' : 'Confirmer cette échéance ?'}
-      // Large, comme les fenêtres de saisie : l'objectif tient sur sa ligne,
-      // comme dans la fiche.
-      maxWidth="max-w-3xl"
-      footer={
-        report ? (
-          <>
-            <Button variant="secondary" onClick={() => setReport(false)}>
-              Retour
-            </Button>
-            <Button
-              disabled={!dansLesBornes(nouvelle, min, max)}
-              onClick={() => onReporter(nouvelle)}
-            >
-              Reporter
-            </Button>
-          </>
-        ) : (
-          <>
-            {reportable ? (
-              <Button variant="secondary" onClick={() => setReport(true)}>
-                Reporter à la prochaine évaluation
-              </Button>
-            ) : (
-              <Button variant="secondary" onClick={onClose}>
-                Annuler
-              </Button>
-            )}
-            <Button onClick={onConfirmer}>Confirmer</Button>
-          </>
-        )
-      }
-    >
-      {/* L'objectif, comme dans la fiche, puis l'avertissement : deux cartes. */}
-      <Card>
-        <CardContent className="py-4">{objectif}</CardContent>
-      </Card>
-      <Card>
-        <CardContent className="py-4 text-[13.5px] leading-relaxed text-ink">
-          {report ? (
-            <Field
-              label={`Nouvelle échéance, au S${suivante.semestre} de ${suivante.annee}`}
-              htmlFor={champ}
-              hint={`Entre le ${dateEnLettres(min)} et le ${dateEnLettres(max)}`}
-            >
-              <Input
-                id={champ}
-                type="date"
-                min={min}
-                max={max}
-                value={nouvelle}
-                onChange={(e) => setNouvelle(e.target.value)}
-                className="tabular-nums sm:max-w-60"
-              />
-            </Field>
-          ) : (
-            <p>
-              L’évaluation du S{periode.semestre} de {periode.annee} se tiendra {quand}.{' '}
-              {reportable
-                ? 'Voulez-vous confirmer cette échéance ou reporter l’objectif à la prochaine évaluation ?'
-                : 'Voulez-vous confirmer cette échéance ?'}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    </Modal>
   );
 }
