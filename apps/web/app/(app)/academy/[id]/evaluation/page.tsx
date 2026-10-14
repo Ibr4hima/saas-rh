@@ -31,15 +31,17 @@ import { compte } from '../../../../../lib/mots';
    L'évaluation finale.
 
    Trois temps. L'ACCUEIL dit les règles avant qu'on s'engage : combien de
-   questions, quel seuil, combien de tentatives. La COPIE pose une question
-   à la fois, avec le plan des questions pour y revenir. Le RÉSULTAT dit le
-   score, question par question juste ou non, jamais la bonne réponse, que
-   la tentative suivante ne doit pas connaître d'avance.
+   questions, combien de minutes, quel seuil, combien de tentatives. La
+   COPIE pose une question à la fois, avec la minuterie toujours en vue et
+   le plan des questions pour y revenir. Le RÉSULTAT dit le score, question
+   par question juste ou non, jamais la bonne réponse, que la tentative
+   suivante ne doit pas connaître d'avance.
 
-   Tout ce qui compte se décide au serveur : les questions tirées et la
-   correction. Le temps, lui, n'est pas compté (ADR-0049) : les réponses
-   cochées restent dans ce navigateur, onglet fermé compris, et la copie
-   ouverte se reprend telle quelle.
+   Tout ce qui compte se décide au serveur : les questions tirées, l'heure
+   limite, la correction. La minuterie de l'écran décompte le temps que le
+   serveur dit rester, quelle que soit l'heure de l'appareil (ADR-0073) ; à
+   zéro, la copie part d'elle-même. Les réponses cochées restent dans ce
+   navigateur : une copie reprise dans le temps les retrouve.
    ———————————————————————————————————————————————————————————————— */
 
 const cle = (attemptId: string) => `academy-copie-${attemptId}`;
@@ -115,6 +117,14 @@ export default function EvaluationPage() {
     }
   }, [etat, copie, resultat, demarrer]);
 
+  // Quitter la page en pleine copie laisse filer le temps : on prévient.
+  useEffect(() => {
+    if (!copie) return;
+    const retenir = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', retenir);
+    return () => window.removeEventListener('beforeunload', retenir);
+  }, [copie]);
+
   // Qui anime la formation n'a pas d'évaluation à passer (ADR-0070) : retour
   // à la formation.
   const router = useRouter();
@@ -167,6 +177,9 @@ export default function EvaluationPage() {
           onRendre={() => {
             if (sansReponse(copie, reponses) > 0) setConfirmer(true);
             else rendre.mutate(reponses);
+          }}
+          onTempsEcoule={() => {
+            if (!rendre.isPending) rendre.mutate(reponses);
           }}
           envoi={rendre.isPending}
           erreur={erreur}
@@ -230,7 +243,7 @@ function Accueil({
   const ev = f.evaluation!;
   const ouvrable = f.mode === 'suivi' && (ev.etat === 'ouverte' || ev.etat === 'en_cours');
   const regles: Array<[IconName, string]> = [
-    ...reglesEpreuve(ev.questionCount, ev.seuil),
+    ...reglesEpreuve(ev.questionCount, ev.minutes, ev.seuil),
     [
       'replay',
       ev.tentativesParJour
@@ -277,7 +290,7 @@ function Accueil({
                   : ev.etat === 'reussie'
                     ? 'Vous avez déjà réussi cette évaluation.'
                     : ev.etat === 'en_cours'
-                      ? 'Votre copie est ouverte.'
+                      ? 'Votre copie est ouverte : le temps court encore.'
                       : tentativesDuJour(ev)}
           </p>
           <Button disabled={!ouvrable} loading={commence} onClick={onCommencer}>
@@ -332,7 +345,9 @@ function Resultat({
           {r.passed ? 'Évaluation réussie' : 'Évaluation non réussie'}
         </h1>
         <p className="max-w-md text-[12.5px] leading-relaxed text-ink-muted">
-          {`${compte(r.correctCount, 'bonne réponse', 'bonnes réponses')} sur ${r.total}. Il en fallait ${exigees}.`}
+          {r.expired
+            ? 'Le temps était écoulé quand la copie est arrivée : elle compte pour zéro.'
+            : `${compte(r.correctCount, 'bonne réponse', 'bonnes réponses')} sur ${r.total}. Il en fallait ${exigees}.`}
           {!r.passed
             ? ev.etat === 'attente'
               ? ` Vos tentatives du jour sont passées : la prochaine s’ouvre ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`
@@ -365,22 +380,24 @@ function Resultat({
         ) : null}
       </div>
 
-      <ol className="flex flex-col border-t border-line-soft px-6 py-4">
-        {r.questions.map((q, i) => (
-          <li key={q.id} className="flex items-start gap-3 py-2 text-[12.5px] leading-snug">
-            <Icon
-              name={q.correct ? 'check_circle' : 'error'}
-              size={17}
-              fill={q.correct}
-              className={cn('mt-px shrink-0', q.correct ? 'text-success' : 'text-danger')}
-            />
-            <span className="text-ink">
-              <span className="mr-1.5 font-semibold text-ink-muted">{i + 1}.</span>
-              {q.prompt}
-            </span>
-          </li>
-        ))}
-      </ol>
+      {!r.expired ? (
+        <ol className="flex flex-col border-t border-line-soft px-6 py-4">
+          {r.questions.map((q, i) => (
+            <li key={q.id} className="flex items-start gap-3 py-2 text-[12.5px] leading-snug">
+              <Icon
+                name={q.correct ? 'check_circle' : 'error'}
+                size={17}
+                fill={q.correct}
+                className={cn('mt-px shrink-0', q.correct ? 'text-success' : 'text-danger')}
+              />
+              <span className="text-ink">
+                <span className="mr-1.5 font-semibold text-ink-muted">{i + 1}.</span>
+                {q.prompt}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
 
       <div className="flex flex-wrap justify-center gap-2 border-t border-line-soft px-6 py-4">
         <Link href={`/academy/${f.id}`}>

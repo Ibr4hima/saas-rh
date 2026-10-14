@@ -27,6 +27,9 @@ import type { OptionQuestion, QuestionPosee } from '../../db/schema';
    · Le RYTHME, quand une limite est fixée : tant de tentatives par
      vingt-quatre heures glissantes — on repasse après avoir revu les leçons,
      pas en rafale jusqu'à tomber juste. Pour le moment, l'APIX n'en fixe pas.
+
+   · Le TEMPS. L'heure limite se fixe au début de la copie ; arrivée après,
+     marge passée, la copie compte pour zéro (ADR-0073).
    ———————————————————————————————————————————————————————————————— */
 
 /** Un entier au hasard dans [0, n). */
@@ -100,6 +103,29 @@ export function corriger(
   const exigees = Math.ceil(SEUIL_REUSSITE * total - 1e-9);
   const passed = total > 0 && correctCount >= exigees;
   return { score, correctCount, total, parQuestion, passed };
+}
+
+/** La copie arrive par le réseau : trente secondes de marge après l'heure limite. */
+export const GRACE_SOUMISSION_S = 30;
+
+/** L'heure limite d'une copie qui commence maintenant, pour une épreuve de `minutes` minutes. */
+export function heureLimite(maintenant: Date, minutes: number): Date {
+  return new Date(maintenant.getTime() + minutes * 60_000);
+}
+
+/**
+ * Le temps de la copie est-il écoulé, marge comprise ? Une copie ouverte
+ * avant la minuterie n'a pas d'heure limite : son temps part à la reprise.
+ */
+export function tempsEcoule(expiresAt: Date | null, maintenant: Date): boolean {
+  return (
+    expiresAt !== null && maintenant.getTime() > expiresAt.getTime() + GRACE_SOUMISSION_S * 1000
+  );
+}
+
+/** Les secondes pleines qui restent avant l'heure limite, zéro une fois passée. */
+export function secondesRestantes(expiresAt: Date, maintenant: Date): number {
+  return Math.max(0, Math.floor((expiresAt.getTime() - maintenant.getTime()) / 1000));
 }
 
 /**

@@ -5,7 +5,7 @@ import * as t from '../../db/schema';
 import type { Tx } from '../../db/tenant-db';
 import { taillesDesBanques } from './academy-evaluation.service';
 import { statutSuivi } from './suivi';
-import { statutCertificat } from './evaluation';
+import { GRACE_SOUMISSION_S, statutCertificat } from './evaluation';
 
 /*
    APIX Academy : où en sont des agents sur les formations du catalogue.
@@ -69,6 +69,10 @@ export class AcademySuiviService {
        WHERE p.employee_id IN ${employeeIds}
        GROUP BY p.employee_id, l.course_id`);
 
+    // Une copie restée ouverte après son heure limite, marge passée, compte
+    // comme rendue et manquée, à son heure limite : la page de l'agent la lit
+    // déjà ainsi (ADR-0073).
+    const horsDelai = new Date(maintenant.getTime() - GRACE_SOUMISSION_S * 1000).toISOString();
     const { rows: copies } = await tx.execute<{
       employee_id: string;
       course_id: string;
@@ -78,8 +82,10 @@ export class AcademySuiviService {
     }>(sql`
       SELECT employee_id, course_id,
              bool_or(passed IS TRUE) AS reussie,
-             bool_or(submitted_at IS NOT NULL) AS rendue,
-             max(submitted_at) AS derniere
+             bool_or(submitted_at IS NOT NULL OR expires_at < ${horsDelai}::timestamptz) AS rendue,
+             max(coalesce(submitted_at,
+                          CASE WHEN expires_at < ${horsDelai}::timestamptz THEN expires_at END))
+               AS derniere
         FROM academy_quiz_attempts
        WHERE employee_id IN ${employeeIds}
        GROUP BY employee_id, course_id`);

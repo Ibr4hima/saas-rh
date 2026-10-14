@@ -28,8 +28,8 @@ import { compte } from '../../../../../../lib/mots';
    L'essai de l'évaluation, pour la RH.
 
    La RH passe l'épreuve EXACTEMENT comme un agent la passera, avec le même
-   tirage, la même copie et la même correction, pour relire ses questions
-   dans ces conditions-là. Rien n'est enregistré : ni tentative, ni
+   tirage, la même minuterie, la même copie et la même correction, pour
+   relire ses questions dans ces conditions-là. Rien n'est enregistré : ni tentative, ni
    certificat. À la fin, et c'est la seule différence, elle voit les bonnes
    réponses ; et si l'essai est réussi, le certificat qu'un agent recevrait,
    barré « SPÉCIMEN ».
@@ -112,6 +112,9 @@ export default function EssaiPage() {
           onRendre={() => {
             if (sansReponse(copie, reponses) > 0) setConfirmer(true);
             else rendre.mutate(reponses);
+          }}
+          onTempsEcoule={() => {
+            if (!rendre.isPending) rendre.mutate(reponses);
           }}
           envoi={rendre.isPending}
           erreur={erreur}
@@ -198,7 +201,8 @@ function Accueil({
             {f.title}
           </h1>
           <p className="mt-1 text-[12.5px] font-semibold text-ink-muted">
-            {compte(n, 'question')} · {Math.round(SEUIL_REUSSITE * 100)} % pour réussir
+            {compte(n, 'question')} · {f.quiz.durationMinutes} min ·{' '}
+            {Math.round(SEUIL_REUSSITE * 100)} % pour réussir
           </p>
         </div>
         <p className="flex gap-3 rounded-[12px] bg-primary-soft/60 px-4 py-3 text-[12.5px] leading-relaxed text-ink">
@@ -209,7 +213,7 @@ function Accueil({
           </span>
         </p>
         <ul className="flex flex-col gap-3">
-          {reglesEpreuve(n, SEUIL_REUSSITE).map(([icone, texte]) => (
+          {reglesEpreuve(n, f.quiz.durationMinutes, SEUIL_REUSSITE).map(([icone, texte]) => (
             <li key={texte} className="flex gap-3 text-[13px] leading-relaxed text-ink">
               <Icon name={icone} size={18} className="mt-0.5 shrink-0 text-primary" />
               {texte}

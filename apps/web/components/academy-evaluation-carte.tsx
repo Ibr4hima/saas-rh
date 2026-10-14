@@ -37,7 +37,7 @@ export function tentativesDuJour(ev: EvaluationView): string | null {
 }
 
 export function reglesEvaluation(ev: EvaluationView): string {
-  return `${compte(ev.questionCount, 'question')} · ${Math.round(ev.seuil * 100)} % pour réussir`;
+  return `${compte(ev.questionCount, 'question')} · ${ev.minutes} min · ${Math.round(ev.seuil * 100)} % pour réussir`;
 }
 
 type IconeCarte = 'lock' | 'quiz' | 'timer' | 'edit' | 'workspace_premium';
@@ -75,7 +75,7 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
         : `La réussir délivre un certificat.${ev.tentativesParJour ? ` ${ev.tentativesParJour} tentatives par jour.` : ''}`;
   } else if (ev.etat === 'en_cours') {
     icone = 'edit';
-    texte = 'Votre copie est ouverte : reprenez-la quand vous voulez.';
+    texte = 'Votre copie est ouverte : le temps court encore.';
   } else if (ev.etat === 'attente') {
     icone = 'timer';
     ton = 'bg-accent-soft text-accent-text';

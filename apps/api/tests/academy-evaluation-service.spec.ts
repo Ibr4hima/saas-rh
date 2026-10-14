@@ -233,10 +233,10 @@ describe('le verrou des leçons', () => {
     expect(ev).toMatchObject({
       etat: 'ouverte',
       questionCount: 5,
+      minutes: 20,
       tentativesParJour: null,
       tentativesRestantes: null,
     });
-    expect(ev).not.toHaveProperty('minutes');
   });
 
   it('un compte sans dossier d’agent ne compose pas', async () => {
@@ -245,16 +245,31 @@ describe('le verrou des leçons', () => {
 });
 
 describe('la copie', () => {
-  it('pose 5 questions sans jamais envoyer les bonnes réponses, ni heure limite', async () => {
+  it('pose 5 questions sans jamais envoyer les bonnes réponses, avec son heure limite', async () => {
     await validerLecons();
     const copie = await evaluation.demarrer(agent, courseId);
     expect(copie.questions).toHaveLength(5);
     expect(JSON.stringify(copie)).not.toContain('"correct"');
-    expect(copie).not.toHaveProperty('expiresAt');
-    const { rows } = await raw(`SELECT expires_at FROM academy_quiz_attempts WHERE id = $1`, [
-      copie.id,
-    ]);
-    expect(rows[0].expires_at).toBeNull();
+    // La durée de la formation, vingt minutes par défaut, part du début de la copie.
+    expect(Date.parse(copie.expiresAt) - Date.parse(copie.startedAt)).toBe(20 * 60_000);
+    expect(copie.secondsLeft).toBe(20 * 60);
+  });
+
+  it('la durée se règle dans l’atelier et vaut pour les copies suivantes (ADR-0073)', async () => {
+    await evaluation.reglerEvaluation(rh, courseId, {
+      questionCount: 5,
+      durationMinutes: 8,
+      certificateValidityMonths: null,
+    });
+    expect((await academy.gestionDetail(rh, courseId)).quiz).toMatchObject({
+      questionCount: 5,
+      durationMinutes: 8,
+    });
+    await validerLecons();
+    expect((await academy.detail(agent, courseId)).evaluation).toMatchObject({ minutes: 8 });
+    const copie = await evaluation.demarrer(agent, courseId);
+    expect(Date.parse(copie.expiresAt) - Date.parse(copie.startedAt)).toBe(8 * 60_000);
+    expect(copie.secondsLeft).toBe(8 * 60);
   });
 
   it('un rechargement reprend la même copie : il ne coûte pas une tentative', async () => {
@@ -264,6 +279,8 @@ describe('la copie', () => {
     horloge += 60_000;
     const b = await evaluation.demarrer(agent, courseId);
     expect(b.id).toBe(a.id);
+    // Le temps qui reste se compte au serveur : l'heure de l'appareil n'y est pour rien.
+    expect(b).toMatchObject({ expiresAt: a.expiresAt, secondsLeft: 19 * 60 });
     expect((await academy.detail(agent, courseId)).evaluation).toMatchObject({
       etat: 'en_cours',
       tentativesRestantes: 2,
@@ -277,8 +294,7 @@ describe('la copie', () => {
     const r = await evaluation.soumettre(agent, copie.id, {
       answers: await bonnesReponses(copie.id),
     });
-    expect(r).toMatchObject({ passed: true, score: 1, correctCount: 5, total: 5 });
-    expect(r).not.toHaveProperty('expired');
+    expect(r).toMatchObject({ passed: true, score: 1, correctCount: 5, total: 5, expired: false });
     expect(r.certificat?.number).toMatch(/^APX-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
     expect(r.evaluation.etat).toBe('reussie');
     expect((await academy.catalogue(agent)).find((c) => c.id === courseId)?.certified).toBe(true);
@@ -318,25 +334,63 @@ describe('la copie', () => {
     );
   });
 
-  it('n’a pas de limite de temps : rendue le lendemain, elle est corrigée', async () => {
+  it('dans les trente secondes de marge après l’heure limite, la copie est corrigée', async () => {
     await validerLecons();
     const a = await evaluation.demarrer(agent, courseId);
-    horloge += 26 * HEURE;
+    horloge += 20 * 60_000 + 25_000;
     const r = await evaluation.soumettre(agent, a.id, { answers: await bonnesReponses(a.id) });
-    expect(r).toMatchObject({ passed: true, score: 1 });
+    expect(r).toMatchObject({ expired: false, passed: true, score: 1 });
   });
 
-  it('une copie laissée ouverte se reprend, même des jours plus tard', async () => {
+  it('rendue après l’heure limite, marge passée, elle compte pour zéro', async () => {
     await validerLecons();
     const a = await evaluation.demarrer(agent, courseId);
+    horloge += 20 * 60_000 + 31_000;
+    const r = await evaluation.soumettre(agent, a.id, { answers: await bonnesReponses(a.id) });
+    expect(r).toMatchObject({ expired: true, passed: false, score: 0, certificat: null });
+  });
+
+  it('une copie ouverte se reprend tant que le temps court ; écoulé, c’est un échec qui compte', async () => {
+    limiter(3);
+    await validerLecons();
+    const a = await evaluation.demarrer(agent, courseId);
+    horloge += 10 * 60_000;
+    expect(await evaluation.demarrer(agent, courseId)).toMatchObject({
+      id: a.id,
+      secondsLeft: 10 * 60,
+    });
+    horloge += 11 * 60_000;
+    // Le temps est passé : la vue compte la copie pour un échec, sans la réécrire.
+    expect((await academy.detail(agent, courseId)).evaluation).toMatchObject({
+      etat: 'ouverte',
+      derniere: { score: 0, passed: false, submittedAt: a.expiresAt },
+      tentativesRestantes: 2,
+    });
+    // La tentative suivante la clôt à zéro, à son heure limite, et repart avec son temps.
+    const b = await evaluation.demarrer(agent, courseId);
+    expect(b.id).not.toBe(a.id);
+    expect(Date.parse(b.expiresAt)).toBe(horloge + 20 * 60_000);
+    expect(b.secondsLeft).toBe(20 * 60);
+    const { rows } = await raw(
+      `SELECT score, passed, submitted_at FROM academy_quiz_attempts WHERE id = $1`,
+      [a.id],
+    );
+    expect(rows[0]).toMatchObject({ passed: false });
+    expect(Number(rows[0].score)).toBe(0);
+    expect(new Date(rows[0].submitted_at).toISOString()).toBe(a.expiresAt);
+    expect((await academy.detail(agent, courseId)).evaluation?.tentativesRestantes).toBe(1);
+  });
+
+  it('une copie ouverte avant la minuterie reçoit son heure limite à la reprise', async () => {
+    await validerLecons();
+    const a = await evaluation.demarrer(agent, courseId);
+    await raw(`UPDATE academy_quiz_attempts SET expires_at = NULL WHERE id = $1`, [a.id]);
     horloge += 3 * 24 * HEURE;
     expect((await academy.detail(agent, courseId)).evaluation?.etat).toBe('en_cours');
-    expect((await evaluation.demarrer(agent, courseId)).id).toBe(a.id);
-    const { rows } = await raw(
-      `SELECT count(*)::int AS n FROM academy_quiz_attempts WHERE employee_id = $1`,
-      [agentEmployeeId],
-    );
-    expect(rows[0].n).toBe(1);
+    const reprise = await evaluation.demarrer(agent, courseId);
+    expect(reprise.id).toBe(a.id);
+    expect(Date.parse(reprise.expiresAt)).toBe(horloge + 20 * 60_000);
+    expect(reprise.secondsLeft).toBe(20 * 60);
   });
 
   it('se corrige contre ce qui a été posé, même si la RH change la banque entre-temps', async () => {
@@ -383,7 +437,8 @@ describe('l’essai de la RH', () => {
     const copie = await evaluation.essayer(rh, courseId);
     expect(copie.questions).toHaveLength(5);
     expect(JSON.stringify(copie)).not.toContain('"correct"');
-    expect(copie).not.toHaveProperty('expiresAt');
+    expect(Date.parse(copie.expiresAt) - Date.parse(copie.startedAt)).toBe(20 * 60_000);
+    expect(copie.secondsLeft).toBe(20 * 60);
     expect(await compter('academy_quiz_attempts')).toBe(0);
   });
 
@@ -521,6 +576,7 @@ describe('le certificat', () => {
   it('expire au bout de la validité fixée — et l’évaluation se rouvre', async () => {
     await evaluation.reglerEvaluation(rh, courseId, {
       questionCount: 5,
+      durationMinutes: 10,
       certificateValidityMonths: 12,
     });
     const numero = await reussir();
@@ -533,6 +589,7 @@ describe('le certificat', () => {
   it('ouvre la relecture libre des leçons, le temps de sa validité (ADR-0071)', async () => {
     await evaluation.reglerEvaluation(rh, courseId, {
       questionCount: 5,
+      durationMinutes: 10,
       certificateValidityMonths: 12,
     });
     // Toutes les leçons validées, l'évaluation pas encore réussie : la même règle.
@@ -605,6 +662,7 @@ describe('le certificat', () => {
   it('se renouvelle dans les soixante jours qui précèdent son expiration', async () => {
     await evaluation.reglerEvaluation(rh, courseId, {
       questionCount: 5,
+      durationMinutes: 10,
       certificateValidityMonths: 12,
     });
     const numero = await reussir();
@@ -979,6 +1037,7 @@ describe('une formation sans évaluation (ADR-0049)', () => {
   it('sans évaluation, le certificat n’a pas de limite de validité (ADR-0050)', async () => {
     await evaluation.reglerEvaluation(rh, courseId, {
       questionCount: 5,
+      durationMinutes: 10,
       certificateValidityMonths: 12,
     });
     await sansQuestions();
@@ -991,6 +1050,7 @@ describe('une formation sans évaluation (ADR-0049)', () => {
   it('le certificat expiré d’une évaluation retirée laisse place à celui des leçons', async () => {
     await evaluation.reglerEvaluation(rh, courseId, {
       questionCount: 5,
+      durationMinutes: 10,
       certificateValidityMonths: 12,
     });
     await validerLecons();

@@ -652,6 +652,8 @@ export const academyCourses = pgTable('academy_courses', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   quizQuestionCount: integer('quiz_question_count').notNull().default(10),
+  /** La durée de l'évaluation, en minutes, réglée par qui gère le catalogue (ADR-0073). */
+  quizDurationMinutes: integer('quiz_duration_minutes').notNull().default(20),
   certificateValidityMonths: integer('certificate_validity_months'),
   /** Le formateur : un agent de l'APIX (son dossier), ou une personne extérieure (son nom). */
   formateurEmployeeId: uuid('formateur_employee_id'),

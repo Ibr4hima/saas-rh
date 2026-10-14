@@ -8,10 +8,13 @@ import {
   corriger,
   expiration,
   fenetreTentatives,
+  heureLimite,
   melanger,
   normaliserNumero,
   numeroCertificat,
+  secondesRestantes,
   statutCertificat,
+  tempsEcoule,
   tirerQuestions,
   type Hasard,
 } from '../src/modules/academy/evaluation';
@@ -140,6 +143,31 @@ describe('le rythme des tentatives', () => {
 
   it('les tentatives de plus de vingt-quatre heures ne comptent plus', () => {
     expect(fenetreTentatives([il_y_a(30), il_y_a(26), il_y_a(25)], T, 3).restantes).toBe(3);
+  });
+});
+
+describe('le temps de la copie (ADR-0073)', () => {
+  const debut = new Date('2026-09-25T10:00:00Z');
+  const limite = heureLimite(debut, 8);
+  const apres = (s: number) => new Date(limite.getTime() + s * 1000);
+
+  it('l’heure limite tombe la durée réglée après le début', () => {
+    expect(limite.toISOString()).toBe('2026-09-25T10:08:00.000Z');
+  });
+
+  it('trente secondes de marge pour le trajet de la copie, pas une de plus', () => {
+    expect(tempsEcoule(limite, apres(30))).toBe(false);
+    expect(tempsEcoule(limite, apres(31))).toBe(true);
+  });
+
+  it('une copie sans heure limite, ouverte avant la minuterie, n’est jamais hors délai', () => {
+    expect(tempsEcoule(null, apres(3600))).toBe(false);
+  });
+
+  it('les secondes qui restent, arrondies vers le bas, jamais négatives', () => {
+    expect(secondesRestantes(limite, debut)).toBe(480);
+    expect(secondesRestantes(limite, new Date(debut.getTime() + 1500))).toBe(478);
+    expect(secondesRestantes(limite, apres(10))).toBe(0);
   });
 });
 

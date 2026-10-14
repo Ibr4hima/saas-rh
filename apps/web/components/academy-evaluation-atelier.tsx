@@ -29,7 +29,8 @@ import { FenetreSuppression } from './reglages-absences';
    Une BANQUE de questions plutôt qu'un questionnaire figé : chaque tentative
    en tire un nombre choisi, au hasard, dans un ordre et avec des choix
    mélangés. Plus la banque est large au regard des questions posées, moins
-   une tentative ressemble à la précédente.
+   une tentative ressemble à la précédente. Qui gère le catalogue en règle
+   aussi la durée, selon le nombre de questions (ADR-0073).
 
    Sans question, la formation délivre son certificat à qui en valide toutes
    les leçons, sans limite de validité (ADR-0049, ADR-0050) : il n'y a alors
@@ -37,6 +38,13 @@ import { FenetreSuppression } from './reglages-absences';
    ———————————————————————————————————————————————————————————————— */
 
 const NOMBRES = [5, 10, 15, 20, 30];
+const DUREES = [5, 8, 10, 15, 20, 30, 45, 60];
+
+type Reglage = {
+  questionCount: number;
+  durationMinutes: number;
+  certificateValidityMonths: number | null;
+};
 
 export function SectionEvaluation({ formation: f }: { formation: CourseAdminView }) {
   const qc = useQueryClient();
@@ -60,13 +68,15 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
     onSuccess: () => rafraichir(),
     onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Action impossible.'),
   });
-  const regler = (questionCount: number, certificateValidityMonths: number | null) => {
+  const regler = (changement: Partial<Reglage>) => {
     setErreur(null);
-    action.mutate({
-      chemin: `/academy/courses/${f.id}/evaluation`,
-      methode: 'PUT',
-      corps: { questionCount, certificateValidityMonths },
-    });
+    const corps: Reglage = {
+      questionCount: quiz.questionCount,
+      durationMinutes: quiz.durationMinutes,
+      certificateValidityMonths: quiz.certificateValidityMonths,
+      ...changement,
+    };
+    action.mutate({ chemin: `/academy/courses/${f.id}/evaluation`, methode: 'PUT', corps });
   };
 
   return (
@@ -96,7 +106,7 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
       {banque > 0 || erreur ? (
         <div className="flex flex-col gap-4 px-5 py-4">
           {banque > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <Field
                 label="Questions par tentative"
                 htmlFor="nombre"
@@ -105,13 +115,28 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
                 <Select
                   id="nombre"
                   value={String(quiz.questionCount)}
-                  onChange={(e) => regler(Number(e.target.value), quiz.certificateValidityMonths)}
+                  onChange={(e) => regler({ questionCount: Number(e.target.value) })}
                 >
                   {[...new Set([...NOMBRES, quiz.questionCount])]
                     .sort((a, b) => a - b)
                     .map((n) => (
                       <option key={n} value={n}>
                         {n} questions
+                      </option>
+                    ))}
+                </Select>
+              </Field>
+              <Field label="Durée de l’évaluation" htmlFor="duree">
+                <Select
+                  id="duree"
+                  value={String(quiz.durationMinutes)}
+                  onChange={(e) => regler({ durationMinutes: Number(e.target.value) })}
+                >
+                  {[...new Set([...DUREES, quiz.durationMinutes])]
+                    .sort((a, b) => a - b)
+                    .map((m) => (
+                      <option key={m} value={m}>
+                        {compte(m, 'minute')}
                       </option>
                     ))}
                 </Select>
@@ -129,10 +154,10 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
                       : String(quiz.certificateValidityMonths)
                   }
                   onChange={(e) =>
-                    regler(
-                      quiz.questionCount,
-                      e.target.value === '' ? null : Number(e.target.value),
-                    )
+                    regler({
+                      certificateValidityMonths:
+                        e.target.value === '' ? null : Number(e.target.value),
+                    })
                   }
                 >
                   {VALIDITES_CERTIFICAT.map((m) => (

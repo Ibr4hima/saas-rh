@@ -32,10 +32,13 @@ import {
   expiration,
   fenetreTentatives,
   hasardSur,
+  heureLimite,
   normaliserNumero,
   numeroCertificat,
   renouvelable,
+  secondesRestantes,
   statutCertificat,
+  tempsEcoule,
   tirerQuestions,
   type Hasard,
 } from './evaluation';
@@ -44,10 +47,11 @@ import {
    APIX Academy — l'évaluation finale et le certificat.
 
    La RH tient une BANQUE de questions par formation. L'agent qui a validé
-   toutes les leçons compose, sans limite de temps : le serveur tire ses
-   questions, garde les bonnes réponses pour lui et corrige la copie rendue.
-   À 80 % ou plus, il émet un certificat numéroté, et c'est tout : aucune
-   étape de l'écran ne peut décider d'une réussite.
+   toutes les leçons compose contre la montre : le serveur tire ses
+   questions, fixe l'heure limite selon la durée réglée par qui gère le
+   catalogue (ADR-0073), garde les bonnes réponses pour lui et corrige la
+   copie rendue. À 80 % ou plus, il émet un certificat numéroté, et c'est
+   tout : aucune étape de l'écran ne peut décider d'une réussite.
 
    Une formation sans banque délivre son certificat à la dernière leçon
    validée : il atteste la formation suivie en entier, sans score
@@ -60,6 +64,11 @@ import {
 type LigneFormation = typeof t.academyCourses.$inferSelect;
 type LigneCertificat = typeof t.academyCertificates.$inferSelect;
 type LigneTentative = typeof t.academyQuizAttempts.$inferSelect;
+
+/** L'heure limite d'une copie de cette formation qui commence maintenant. */
+function limiteDe(f: LigneFormation, maintenant: Date): Date {
+  return heureLimite(maintenant, f.quizDurationMinutes);
+}
 
 /** Le dossier d'agent ACTIF relié à un compte, s'il y en a un. */
 export async function employeActif(tx: Tx, userId: string): Promise<string | null> {
@@ -192,6 +201,7 @@ export async function vueEvaluation(
   const questionCount = Math.min(f.quizQuestionCount, taille);
   const base = {
     questionCount,
+    minutes: f.quizDurationMinutes,
     seuil: SEUIL_REUSSITE,
     tentativesParJour: parJour,
   };
@@ -231,13 +241,15 @@ export async function vueEvaluation(
       ),
     )
     .orderBy(desc(t.academyQuizAttempts.startedAt));
-  const ouverte = tentatives.find((a) => !a.submittedAt);
-  const rendue = tentatives.find((a) => a.submittedAt);
-  const derniere = rendue?.submittedAt
+  // Une copie ouverte dont le temps est écoulé compte comme un échec, sans
+  // être réécrite ici : elle le sera à la tentative suivante.
+  const ouverte = tentatives.find((a) => !a.submittedAt && !tempsEcoule(a.expiresAt, maintenant));
+  const rendue = tentatives.find((a) => a.submittedAt || tempsEcoule(a.expiresAt, maintenant));
+  const derniere = rendue
     ? {
-        score: rendue.score ?? 0,
-        passed: rendue.passed ?? false,
-        submittedAt: rendue.submittedAt.toISOString(),
+        score: rendue.submittedAt ? (rendue.score ?? 0) : 0,
+        passed: rendue.submittedAt ? (rendue.passed ?? false) : false,
+        submittedAt: (rendue.submittedAt ?? rendue.expiresAt!).toISOString(),
       }
     : null;
   const { restantes, prochaine } = fenetreTentatives(
@@ -284,6 +296,7 @@ export async function quizAdmin(tx: Tx, f: LigneFormation): Promise<QuizAdminVie
     .orderBy(asc(t.academyQuestions.position));
   return {
     questionCount: f.quizQuestionCount,
+    durationMinutes: f.quizDurationMinutes,
     certificateValidityMonths: f.certificateValidityMonths,
     questions: questions.map((q) => ({
       id: q.id,
@@ -517,6 +530,7 @@ export class AcademyEvaluationService {
         .update(t.academyCourses)
         .set({
           quizQuestionCount: input.questionCount,
+          quizDurationMinutes: input.durationMinutes,
           certificateValidityMonths: input.certificateValidityMonths,
           updatedAt: new Date(),
         })
@@ -626,10 +640,10 @@ export class AcademyEvaluationService {
   // ———————————————————————————— l'essai (RH)
 
   /**
-   * Une copie d'ESSAI pour la RH : tirée et mélangée comme celle d'un agent,
-   * mais rien n'est enregistré, ni tentative ni certificat. La RH relit
-   * ainsi ses questions dans les conditions de l'épreuve, que la formation
-   * soit publiée ou non.
+   * Une copie d'ESSAI pour la RH : tirée, mélangée et minutée comme celle
+   * d'un agent, mais rien n'est enregistré, ni tentative ni certificat. La
+   * RH relit ainsi ses questions dans les conditions de l'épreuve, que la
+   * formation soit publiée ou non.
    */
   async essayer(user: SessionUser, courseId: string): Promise<AttemptView> {
     this.exigerGestion(user);
@@ -643,11 +657,14 @@ export class AcademyEvaluationService {
         problem(409, 'academy.no_evaluation', 'Ajoutez d’abord des questions');
       }
       const posees = tirerQuestions(banque, f.quizQuestionCount, this.hasard);
+      const maintenant = this.horloge();
       return {
         id: uuidv7(),
         courseId: f.id,
         courseTitle: f.title,
-        startedAt: this.horloge().toISOString(),
+        startedAt: maintenant.toISOString(),
+        expiresAt: limiteDe(f, maintenant).toISOString(),
+        secondsLeft: f.quizDurationMinutes * 60,
         questions: posees.map(({ correct: _c, ...q }) => q),
       };
     });
@@ -765,22 +782,25 @@ export class AcademyEvaluationService {
   // ———————————————————————————— la copie (agent)
 
   private vueTentative(
-    a: Pick<LigneTentative, 'id' | 'startedAt' | 'questions'>,
+    a: Pick<LigneTentative, 'id' | 'startedAt' | 'questions'> & { expiresAt: Date },
     f: LigneFormation,
+    maintenant: Date,
   ): AttemptView {
     return {
       id: a.id,
       courseId: f.id,
       courseTitle: f.title,
       startedAt: a.startedAt.toISOString(),
+      expiresAt: a.expiresAt.toISOString(),
+      secondsLeft: secondesRestantes(a.expiresAt, maintenant),
       // Les bonnes réponses restent au serveur.
       questions: a.questions.map(({ correct: _c, ...q }) => q),
     };
   }
 
   /**
-   * Commencer l'évaluation, ou reprendre la copie ouverte : un rechargement
-   * de page ne coûte pas une tentative.
+   * Commencer l'évaluation, ou reprendre la copie ouverte si le temps court
+   * encore : un rechargement de page ne coûte pas une tentative.
    */
   async demarrer(user: SessionUser, courseId: string): Promise<AttemptView> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
@@ -837,7 +857,25 @@ export class AcademyEvaluationService {
           ),
         )
         .for('update');
-      if (ouverte) return this.vueTentative(ouverte, f);
+      if (ouverte) {
+        if (ouverte.expiresAt === null) {
+          // Ouverte avant la minuterie (ADR-0073) : son temps part de la reprise.
+          const expiresAt = limiteDe(f, maintenant);
+          await tx
+            .update(t.academyQuizAttempts)
+            .set({ expiresAt })
+            .where(eq(t.academyQuizAttempts.id, ouverte.id));
+          return this.vueTentative({ ...ouverte, expiresAt }, f, maintenant);
+        }
+        if (!tempsEcoule(ouverte.expiresAt, maintenant)) {
+          return this.vueTentative({ ...ouverte, expiresAt: ouverte.expiresAt }, f, maintenant);
+        }
+        // Temps écoulé sans copie rendue : c'est un échec, et il compte.
+        await tx
+          .update(t.academyQuizAttempts)
+          .set({ submittedAt: ouverte.expiresAt, score: 0, passed: false })
+          .where(eq(t.academyQuizAttempts.id, ouverte.id));
+      }
 
       const debuts = await tx
         .select({ startedAt: t.academyQuizAttempts.startedAt })
@@ -870,6 +908,7 @@ export class AcademyEvaluationService {
         courseId,
         questions: posees,
         startedAt: maintenant,
+        expiresAt: limiteDe(f, maintenant),
       };
       // Deux clics sur « Commencer » partent ensemble : l'index d'unicité ne
       // laisse passer qu'une copie ouverte, et la seconde demande reçoit la
@@ -891,9 +930,14 @@ export class AcademyEvaluationService {
             ),
           )
           .limit(1);
-        if (deja) return this.vueTentative(deja, f);
+        if (deja)
+          return this.vueTentative(
+            { ...deja, expiresAt: deja.expiresAt ?? limiteDe(f, maintenant) },
+            f,
+            maintenant,
+          );
       }
-      return this.vueTentative(tentative, f);
+      return this.vueTentative(tentative, f, maintenant);
     });
   }
 
@@ -926,10 +970,13 @@ export class AcademyEvaluationService {
       if (a.submittedAt) problem(409, 'academy.attempt_closed', 'Cette copie a déjà été rendue');
 
       const maintenant = this.horloge();
-      const c = corriger(a.questions, input.answers);
+      // Arrivée après l'heure limite, marge passée : la copie compte pour zéro.
+      const expiree = tempsEcoule(a.expiresAt, maintenant);
+      const reponses = expiree ? null : input.answers;
+      const c = corriger(a.questions, reponses);
       await tx
         .update(t.academyQuizAttempts)
-        .set({ submittedAt: maintenant, answers: input.answers, score: c.score, passed: c.passed })
+        .set({ submittedAt: maintenant, answers: reponses, score: c.score, passed: c.passed })
         .where(eq(t.academyQuizAttempts.id, a.id));
 
       const f = await this.formation(tx, a.courseId);
@@ -968,6 +1015,7 @@ export class AcademyEvaluationService {
           prompt: libelles.get(q.id) ?? '',
           correct: q.correct,
         })),
+        expired: expiree,
         certificat,
         evaluation: evaluation!,
       };

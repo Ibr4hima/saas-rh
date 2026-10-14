@@ -339,6 +339,8 @@ export const TENTATIVES_PAR_JOUR: number | null = null;
 export const FENETRE_TENTATIVES_H = 24;
 
 export const QUESTIONS_PAR_TENTATIVE_MAX = 50;
+/** La plus longue évaluation qu'on puisse régler, en minutes (ADR-0073). */
+export const DUREE_EVALUATION_MAX_MIN = 180;
 export const OPTIONS_MIN = 2;
 export const OPTIONS_MAX = 6;
 
@@ -382,6 +384,8 @@ export type QuestionInput = z.infer<typeof questionSchema>;
 
 export const quizSettingsSchema = z.object({
   questionCount: z.number().int().min(1).max(QUESTIONS_PAR_TENTATIVE_MAX),
+  /** Le temps de l'épreuve, en minutes : obligatoire (ADR-0073). */
+  durationMinutes: z.number().int().min(1).max(DUREE_EVALUATION_MAX_MIN),
   certificateValidityMonths: z.number().int().min(1).max(120).nullable(),
 });
 export type QuizSettingsInput = z.infer<typeof quizSettingsSchema>;
@@ -417,6 +421,8 @@ export interface QuestionAdminView {
 export interface QuizAdminView {
   /** Questions tirées à chaque tentative (réglage de la RH). */
   questionCount: number;
+  /** Le temps de l'épreuve, en minutes (réglage de la RH, ADR-0073). */
+  durationMinutes: number;
   /**
    * La validité du certificat de l'évaluation, en mois (`null` : sans
    * limite). Sans évaluation, le certificat n'en a pas (ADR-0050).
@@ -461,13 +467,15 @@ export const FENETRE_RENOUVELLEMENT_JOURS = 60;
  * L'évaluation d'une formation, vue par l'agent.
  *
  * `verrouillee` : des leçons restent à valider. `ouverte` : il peut composer.
- * `en_cours` : une copie est ouverte, sans limite de temps. `attente` :
+ * `en_cours` : une copie est ouverte et le temps court encore. `attente` :
  * quand une limite est fixée, ses tentatives du jour sont passées. `reussie` : il tient un
  * certificat valide. `fermee` : elle ne le concerne pas — voir `fermeture`.
  */
 export interface EvaluationView {
   /** Questions posées à chaque tentative : le réglage, borné par la banque. */
   questionCount: number;
+  /** Le temps de l'épreuve, en minutes, décompté dès le début de la copie (ADR-0073). */
+  minutes: number;
   seuil: number;
   etat: 'verrouillee' | 'ouverte' | 'en_cours' | 'attente' | 'reussie' | 'fermee';
   /**
@@ -494,6 +502,13 @@ export interface AttemptView {
   courseId: string;
   courseTitle: string;
   startedAt: string;
+  /** L'heure limite, fixée par le serveur au début de la copie. */
+  expiresAt: string;
+  /**
+   * Les secondes qui restent quand le serveur répond. La minuterie de l'écran
+   * part de là : l'heure de l'appareil peut être fausse, pas celle du serveur.
+   */
+  secondsLeft: number;
   questions: Array<{
     id: string;
     prompt: string;
@@ -509,6 +524,8 @@ export interface AttemptResult {
   total: number;
   /** Pour chaque question : juste ou non. Jamais la bonne réponse. */
   questions: Array<{ id: string; prompt: string; correct: boolean }>;
+  /** La copie est arrivée après la fin du temps : elle compte pour zéro. */
+  expired: boolean;
   certificat: CertificateSummary | null;
   evaluation: EvaluationView;
 }

@@ -217,6 +217,30 @@ describe('où en est un agent', () => {
     expect(JSON.stringify(excelVu)).not.toContain('0.4');
   });
 
+  it('une copie restée ouverte après l’heure limite, marge passée, compte comme ratée (ADR-0073)', async () => {
+    for (const l of lecons) await progres(agents.moussa, l, true);
+    const id = randomUUID();
+    const limiteA = async (s: number) =>
+      raw(
+        `UPDATE academy_quiz_attempts
+            SET expires_at = $2, started_at = $2::timestamptz - interval '20 minutes'
+          WHERE id = $1`,
+        [id, new Date(maintenant.getTime() - s * 1000)],
+      );
+    await raw(
+      `INSERT INTO academy_quiz_attempts (id, tenant_id, employee_id, course_id, questions, started_at, expires_at)
+       VALUES ($1,$2,$3,$4,'[]', $5::timestamptz - interval '10 minutes', $5::timestamptz + interval '10 minutes')`,
+      [id, tenantId, agents.moussa, excel, maintenant],
+    );
+    // Le temps court, ou la copie est encore dans sa marge : l'évaluation attend.
+    expect((await ficheDeMoussa()).get('Excel')!.status).toBe('evaluation_a_passer');
+    await limiteA(30);
+    expect((await ficheDeMoussa()).get('Excel')!.status).toBe('evaluation_a_passer');
+    // Marge passée, sans copie rendue : c'est un échec.
+    await limiteA(31);
+    expect((await ficheDeMoussa()).get('Excel')!.status).toBe('non_reussie');
+  });
+
   it('réussie : certifiée, avec le score et la date du certificat', async () => {
     for (const l of lecons) await progres(agents.moussa, l, true);
     await copie(agents.moussa, excel, false, 0.6);

@@ -54,7 +54,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0046](0046-formateur-obligatoire.md)                 | Le formateur d'une formation est obligatoire                                            | acceptée, précisée par 0070                 |
 | [0047](0047-sessions-et-signalement.md)               | Plus de « Se déconnecter partout » ; un signalement part sans précision                 | acceptée                                    |
 | [0048](0048-nouvellement-traitees-en-evidence.md)     | Arrivé par l'avis, les demandes nouvellement traitées en évidence                       | acceptée                                    |
-| [0049](0049-evaluation-sans-minuterie.md)             | Academy : l'évaluation sans limite de temps, un certificat sans évaluation              | acceptée, précisée par 0050 et 0070         |
+| [0049](0049-evaluation-sans-minuterie.md)             | Academy : l'évaluation sans limite de temps, un certificat sans évaluation              | acceptée, minuterie rétablie par 0073       |
 | [0050](0050-sans-evaluation-sans-echeance.md)         | Sans évaluation, un certificat sans limite de validité                                  | acceptée                                    |
 | [0051](0051-fiche-objectifs-crayon.md)                | La fiche d'objectifs s'ouvre au crayon et s'enregistre d'un clic                        | acceptée, « Fixer » rétabli par 0056        |
 | [0052](0052-une-annee-a-la-fois.md)                   | Objectifs d'un direct : une année à la fois, la suivante fixée à l'avance               | acceptée                                    |
@@ -78,3 +78,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0070](0070-evaluation-ouverte-a-la-gestion.md)       | Academy : l'évaluation ouverte à qui gère le catalogue                                  | acceptée, précisée par 0071                 |
 | [0071](0071-meme-regle-a-chaque-lecture.md)           | Academy : la même règle à chaque lecture, libre au certificat                           | acceptée                                    |
 | [0072](0072-lecons-de-quinze-minutes.md)              | Academy : des leçons de quinze minutes au plus                                          | acceptée                                    |
+| [0073](0073-evaluation-minutee.md)                    | Academy : l'évaluation minutée, sa durée réglée par la gestion                          | acceptée                                    |
