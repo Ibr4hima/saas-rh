@@ -1097,8 +1097,8 @@ export function EvaluationAnnuelle({
  * La section « Évaluation » du dossier, année par année : l'année en cours
  * d'abord, les précédentes d'une flèche. L'évaluation de l'année, dès que le
  * n+1 la valide, avec qui l'a évaluée, la note et son appréciation ; et
- * dessous chaque objectif et son atteinte, pour que la note ne se lise
- * jamais seule (ADR-0076).
+ * dessous les résultats obtenus, pour que la note ne se lise jamais seule
+ * (ADR-0077).
  */
 export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
   const evaluations = useQuery({
@@ -1185,7 +1185,7 @@ export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
             </TBody>
           </Table>
           {liste.map((e) =>
-            e.objectifs.length ? <ObjectifsEvalues key={e.annee} evaluation={e} /> : null,
+            e.objectifs.length ? <ResultatsObtenus key={e.annee} evaluation={e} /> : null,
           )}
         </>
       )}
@@ -1194,39 +1194,20 @@ export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
 }
 
 /**
- * Les objectifs de l'année évaluée : la case à la couleur de l'atteinte que
- * le n+1 a retenue, son libellé, ce que l'agent en avait dit, et ce qui est
- * reporté à l'année suivante.
+ * Les résultats de l'année évaluée (ADR-0077) : chaque objectif, sa case à la
+ * couleur et au signe du résultat obtenu.
  */
-function ObjectifsEvalues({ evaluation: e }: { evaluation: EvaluationValidee }) {
-  const complete = e.objectifs.every((o) => o.n1);
+function ResultatsObtenus({ evaluation: e }: { evaluation: EvaluationValidee }) {
   return (
     <div className="flex flex-col gap-3 border-t border-line-soft px-5 pt-4 pb-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Intitule>Objectifs</Intitule>
-        {complete ? <BilanAtteinte atteintes={e.objectifs.map((o) => o.n1)} /> : null}
-      </div>
+      <Intitule>Résultats obtenus</Intitule>
       <ul className="flex flex-col gap-2.5">
         {e.objectifs.map((o) => (
           <li key={o.id} className="flex items-start gap-[11px]">
-            <Case statut={o.n1 ?? undefined} />
-            {/* Sur un écran étroit, les badges passent sous le texte. */}
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-[12.5px] leading-[1.5] break-words text-ink-strong">{o.texte}</p>
-                {!o.formation && o.agent ? (
-                  <p className="text-[11px] text-ink-muted">
-                    Auto-évaluation : {LIBELLES_STATUT[o.agent]}
-                  </p>
-                ) : null}
-              </div>
-              {o.n1 || o.reporte ? (
-                <span className="flex shrink-0 flex-wrap gap-1 sm:justify-end">
-                  {o.n1 ? <PastilleStatut statut={o.n1} /> : null}
-                  {o.reporte ? <Reporte annee={e.annee + 1} /> : null}
-                </span>
-              ) : null}
-            </div>
+            <Case statut={o.atteinte ?? undefined} />
+            <p className="min-w-0 flex-1 text-[12.5px] leading-[1.5] break-words text-ink-strong">
+              {o.texte}
+            </p>
           </li>
         ))}
       </ul>

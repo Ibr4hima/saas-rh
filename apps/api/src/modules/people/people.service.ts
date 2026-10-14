@@ -2309,16 +2309,14 @@ export class PeopleService {
     );
     // Ce que la suppression du dossier emporterait en cascade sans le dire :
     // ses certificats (nom et matricule figés), ses habilitations, ses
-    // objectifs et ses fiches d'objectifs (évaluations comprises, et les
-    // fiches par semestre gardées à part depuis 0111), ses départs et
-    // retours. Effacés ici, leurs identifiants rejoignent la récolte, et le
+    // objectifs et ses fiches d'objectifs (évaluations comprises), ses départs
+    // et retours. Effacés ici, leurs identifiants rejoignent la récolte, et le
     // journal oublie aussi leur contenu.
     for (const table of [
       sql`academy_certificates`,
       sql`habilitations`,
       sql`objectifs`,
       sql`objectifs_fiches`,
-      sql`objectifs_fiches_semestres`,
       sql`periodes_inactivite`,
     ]) {
       const { rows } = await tx.execute<{ id: string }>(
@@ -2405,9 +2403,7 @@ export class PeopleService {
           .where(eq(t.notifications.recipientUserId, userId))
           .returning({ id: t.notifications.id }),
       );
-      // Ses réglages de notifications ; et ce qui peut rester de WhatsApp,
-      // retiré des notifications (ADR-0074) : un numéro, des messages. Tout
-      // cela le désigne.
+      // Ses réglages de notifications : ils désignent la personne.
       recolter(
         await tx
           .delete(t.notificationPreferences)
@@ -2420,8 +2416,6 @@ export class PeopleService {
           .where(eq(t.notificationReglages.userId, userId))
           .returning({ id: t.notificationReglages.id }),
       );
-      await tx.delete(t.whatsappVerifications).where(eq(t.whatsappVerifications.userId, userId));
-      await tx.delete(t.outboundWhatsapp).where(eq(t.outboundWhatsapp.userId, userId));
       // Une session porte l'adresse IP et le navigateur : la révoquer laisserait
       // ces traces-là. Ici on efface, on ne range pas.
       await tx
@@ -2472,10 +2466,6 @@ export class PeopleService {
       DELETE FROM outbound_emails
        WHERE subject_id = ANY(string_to_array(${traces.join(',')}, ',')::uuid[])
           OR lower(recipient) = lower(${adresse ?? ''})`);
-    // De même les anciens messages WhatsApp qui doublaient une notification effacée.
-    await tx.execute(sql`
-      DELETE FROM outbound_whatsapp
-       WHERE subject_id = ANY(string_to_array(${traces.join(',')}, ',')::uuid[])`);
 
     // Ce que le journal garde de lignes retirées AVANT l'effacement : une pièce
     // annulée, remplacée par une plus récente ou retirée du dossier. Elles ne

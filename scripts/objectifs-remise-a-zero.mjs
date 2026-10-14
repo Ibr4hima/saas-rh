@@ -5,7 +5,6 @@
  * Efface, dans chaque organisation de la base locale :
  *   - les fiches d'objectifs : les objectifs fixés par les n+1, les statuts
  *     et les commentaires des auto-évaluations, les évaluations et les notes ;
- *     et les fiches par semestre gardées à part depuis 0111 ;
  *   - les objectifs individuels de l'ancien modèle, fixés un à un ;
  *   - les notifications qui en parlaient : objectifs fixés, mis à jour ou
  *     cochés, auto-évaluations ouvertes ou à évaluer et leurs relances,
@@ -90,9 +89,6 @@ try {
       const fiches = await client.query(`DELETE FROM objectifs_fiches WHERE tenant_id = $1`, [
         o.id,
       ]);
-      // Les fiches par semestre d'avant 0111, gardées à part : elles partent
-      // aussi, tant que la table existe.
-      await client.query(`DELETE FROM objectifs_fiches_semestres WHERE tenant_id = $1`, [o.id]);
       const individuels = await client.query(
         `DELETE FROM objectifs WHERE tenant_id = $1 AND niveau = 'individuel'`,
         [o.id],

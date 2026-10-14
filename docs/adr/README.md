@@ -81,4 +81,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0073](0073-evaluation-minutee.md)                    | Academy : l'évaluation minutée, sa durée réglée par la gestion                          | acceptée                                    |
 | [0074](0074-notifications-sans-whatsapp.md)           | Notifications : la plateforme et le courriel, sans WhatsApp                             | acceptée                                    |
 | [0075](0075-objectifs-annuels.md)                     | Objectifs : une fiche et une évaluation par an, la date au 15 décembre                  | acceptée, précisée par 0076                 |
-| [0076](0076-evaluation-annuelle.md)                   | Évaluation annuelle : la coche de l'agent, l'atteinte de chaque objectif par le n+1     | acceptée                                    |
+| [0076](0076-evaluation-annuelle.md)                   | Évaluation annuelle : la coche de l'agent, l'atteinte de chaque objectif par le n+1     | acceptée, précisée par 0077                 |
+| [0077](0077-resultats-obtenus.md)                     | Le dossier montre les résultats obtenus : la case de chaque objectif, rien d'autre      | acceptée                                    |

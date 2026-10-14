@@ -513,43 +513,6 @@ export const notificationReglages = pgTable('notification_reglages', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/*
- * Ce qui reste de WhatsApp, retiré des notifications (ADR-0074) : plus rien
- * n'écrit dans ces deux tables, ni dans les colonnes WhatsApp des réglages.
- * L'effacement d'une personne y retire encore ses lignes, jusqu'à ce qu'une
- * livraison suivante les supprime (ADR-0010).
- */
-
-/** Un numéro en cours de vérification, et son code. */
-export const whatsappVerifications = pgTable('whatsapp_verifications', {
-  id: uuid('id').primaryKey(),
-  tenantId: uuid('tenant_id').notNull(),
-  userId: uuid('user_id').notNull(),
-  numeroChiffre: text('numero_chiffre').notNull(),
-  numeroMasque: text('numero_masque').notNull(),
-  codeHash: text('code_hash').notNull(),
-  codeChiffre: text('code_chiffre'),
-  essais: integer('essais').notNull().default(0),
-  expireLe: timestamp('expire_le', { withTimezone: true }).notNull(),
-  utiliseeLe: timestamp('utilisee_le', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-/** Les messages WhatsApp qui partaient (l'ancienne file d'envoi). */
-export const outboundWhatsapp = pgTable('outbound_whatsapp', {
-  id: uuid('id').primaryKey(),
-  tenantId: uuid('tenant_id').notNull(),
-  kind: text('kind').notNull(),
-  subjectId: uuid('subject_id').notNull(),
-  userId: uuid('user_id').notNull(),
-  status: text('status').notNull().default('pending'),
-  attempts: integer('attempts').notNull().default(0),
-  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
-  lastError: text('last_error'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  sentAt: timestamp('sent_at', { withTimezone: true }),
-});
-
 export const documentRequests = pgTable('document_requests', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
@@ -842,10 +805,6 @@ export const objectifsFiches = pgTable('objectifs_fiches', {
   tenantId: uuid('tenant_id').notNull(),
   employeeId: uuid('employee_id').notNull(),
   annee: integer('annee').notNull(),
-  // 0044 à 0110 : une fiche par semestre (1 ou 2). Plus lu depuis 0111 : une
-  // fiche par année ; les fiches par semestre restent, telles quelles, dans
-  // objectifs_fiches_semestres, que l'application ne lit pas.
-  semestre: smallint('semestre'),
   contenu: jsonb('contenu').notNull().default([]),
   auteurEmployeeId: uuid('auteur_employee_id'),
   // 0045 : ce que l'agent commente, ce que le n+1 en dit ; 0046 : où l'agent
@@ -867,19 +826,13 @@ export const objectifsFiches = pgTable('objectifs_fiches', {
 
 /**
  * Le jour de l'évaluation annuelle (0111) : un jour et un mois qui reviennent
- * chaque année ; une ligne par organisation. Sans ligne, le 15 décembre. Les
- * jours des deux semestres (0104) ne se lisent plus ; objective_review_dates
- * (0103) non plus.
+ * chaque année ; une ligne par organisation. Sans ligne, le 15 décembre.
  */
 export const objectiveReviewSchedule = pgTable('objective_review_schedule', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
   reviewMonth: smallint('review_month').notNull().default(12),
   reviewDay: smallint('review_day').notNull().default(15),
-  s1Month: smallint('s1_month'),
-  s1Day: smallint('s1_day'),
-  s2Month: smallint('s2_month'),
-  s2Day: smallint('s2_day'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

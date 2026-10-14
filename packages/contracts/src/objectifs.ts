@@ -185,20 +185,16 @@ export interface EvaluationFiche {
   evaluateur: string | null;
 }
 
-/** Un objectif de l'année évaluée : ce qu'en disent l'agent et le n+1. */
+/** Un objectif de l'année évaluée, et le résultat obtenu (ADR-0077). */
 export interface ObjectifEvalue {
   id: string;
   texte: string;
-  formation: boolean;
-  /** L'auto-évaluation de l'agent ; pour une formation, le statut de l'APIX Academy. */
-  agent: StatutObjectif | null;
   /**
    * L'atteinte retenue par le n+1 ; pour une formation, le statut de l'APIX
-   * Academy. `null` : évaluation validée avant que le n+1 ne la donne (0112).
+   * Academy. Une évaluation validée avant 0112 n'en a pas : l'auto-évaluation
+   * de l'agent, seul résultat noté alors. `null` : rien n'a été dit.
    */
-  n1: StatutObjectif | null;
-  /** Reporté à l'année suivante. */
-  reporte: boolean;
+  atteinte: StatutObjectif | null;
 }
 
 /**

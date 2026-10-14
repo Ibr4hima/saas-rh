@@ -1207,25 +1207,20 @@ export class ObjectifsService {
         ${SELECTION_FICHE}
          WHERE f.employee_id = ${employeeId} AND f.evaluation_validee_le IS NOT NULL
          ORDER BY f.annee DESC`);
-      // La note se lit avec chaque objectif et son atteinte (ADR-0076).
+      // La note se lit avec le résultat de chaque objectif (ADR-0077) : ce
+      // que le n+1 a retenu ; avant 0112, ce que l'agent avait dit.
       return rows.map((l) => {
-        const objectifs = objectifsDeLaFiche(l.contenu);
         const { statuts } = statutsEnVigueur(l);
-        const formations = statutsDesFormations(objectifs, l.formations_figees ?? []);
         const atteintes = atteintesRetenues(l);
-        const reportes = new Set(l.reports_n1);
         return {
           annee: Number(l.annee),
           manager: l.evaluateur,
           note: l.evaluation_note!,
           valideeLe: iso(l.evaluation_validee_le)!,
-          objectifs: objectifs.map((o) => ({
+          objectifs: objectifsDeLaFiche(l.contenu).map((o) => ({
             id: o.id,
             texte: o.texte,
-            formation: Boolean(o.formation),
-            agent: (o.formation ? formations[o.id] : statuts[o.id]) ?? null,
-            n1: atteintes.get(o.id) ?? null,
-            reporte: reportes.has(o.id),
+            atteinte: atteintes.get(o.id) ?? statuts[o.id] ?? null,
           })),
         };
       });

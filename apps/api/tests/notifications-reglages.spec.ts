@@ -254,10 +254,10 @@ describe('les canaux d’un sujet', () => {
     expect(recu.sujets).toEqual([{ sujet: 'conges', plateforme: true, courriel: false }]);
     await reglages.changerSujets(awa, recu);
     const { rows } = await raw(
-      `SELECT plateforme, courriel, whatsapp FROM notification_preferences WHERE user_id = $1`,
+      `SELECT plateforme, courriel FROM notification_preferences WHERE user_id = $1`,
       [comptes.awa],
     );
-    expect(rows).toEqual([{ plateforme: true, courriel: false, whatsapp: false }]);
+    expect(rows).toEqual([{ plateforme: true, courriel: false }]);
     // Les heures calmes ne servaient qu'à WhatsApp : elles ne se règlent plus.
     expect(changerReglagesSchema.safeParse({ heuresCalmes: false }).success).toBe(false);
   });

@@ -899,7 +899,7 @@ describe('l’année : l’agent s’auto-évalue, le n+1 évalue', () => {
     // Validée, l'évaluation de l'année entre au dossier de l'agent : l'agent
     // la lit, qui dirige la DCH aussi ; ni qui consulte les dossiers, ni le
     // compte d'administration, ni une autre personne de l'équipe.
-    // La note n'y est jamais seule : chaque objectif, et son atteinte.
+    // La note n'y est jamais seule : chaque objectif, et le résultat obtenu.
     const attendu = [
       {
         annee: 2024,
@@ -907,22 +907,8 @@ describe('l’année : l’agent s’auto-évalue, le n+1 évalue', () => {
         note: 'B',
         valideeLe: expect.any(String),
         objectifs: [
-          {
-            id: 'o1',
-            texte: 'Livrer la note',
-            formation: false,
-            agent: 'atteint',
-            n1: 'atteint',
-            reporte: false,
-          },
-          {
-            id: 'o2',
-            texte: 'Former deux stagiaires',
-            formation: false,
-            agent: 'non_atteint',
-            n1: 'partiel',
-            reporte: false,
-          },
+          { id: 'o1', texte: 'Livrer la note', atteinte: 'atteint' },
+          { id: 'o2', texte: 'Former deux stagiaires', atteinte: 'partiel' },
         ],
       },
     ];
@@ -938,6 +924,15 @@ describe('l’année : l’agent s’auto-évalue, le n+1 évalue', () => {
         'objectifs.dossier_interdit',
       );
     }
+    // Validée avant 0112, une évaluation n'a pas d'atteinte du n+1 : le
+    // résultat est ce que l'agent avait dit, seul noté alors (ADR-0077).
+    await raw(
+      `UPDATE objectifs_fiches SET atteintes_n1 = '{}' WHERE employee_id = $1 AND annee = 2024`,
+      [agents.moussa],
+    );
+    expect(
+      (await objectifs.evaluationsDe(dch, agents.moussa))[0]!.objectifs.map((o) => o.atteinte),
+    ).toEqual(['atteint', 'non_atteint']);
   });
 
   it('pas de note, pas de validation', async () => {
@@ -1963,22 +1958,16 @@ describe('les objectifs de l’année, avec ou sans échéance', () => {
       // Reportés, tels quels et sans échéance, dans la fiche 2027.
       expect(await lignes(2027)).toEqual(['sans échéance Bilan', 'sans échéance Excel avancé']);
 
-      // Au dossier, la note avec chaque objectif et son atteinte.
+      // Au dossier, la note avec le résultat de chaque objectif.
       const [dossier] = await objectifs.evaluationsDe(dch(), agents.fatou);
       expect(dossier).toMatchObject({
         annee: 2026,
         manager: 'Ousmane Fall',
         note: 'C',
         objectifs: [
-          { texte: 'Rapport', formation: false, agent: 'atteint', n1: 'atteint', reporte: false },
-          { texte: 'Bilan', formation: false, agent: 'non_atteint', n1: 'partiel', reporte: true },
-          {
-            texte: 'Excel avancé',
-            formation: true,
-            agent: 'non_atteint',
-            n1: 'non_atteint',
-            reporte: true,
-          },
+          { texte: 'Rapport', atteinte: 'atteint' },
+          { texte: 'Bilan', atteinte: 'partiel' },
+          { texte: 'Excel avancé', atteinte: 'non_atteint' },
         ],
       });
     } finally {
