@@ -47,6 +47,7 @@ import {
   formationsCertifiees,
   quizAdmin,
   taillesDesBanques,
+  toutesLeconsValidees,
   vueEvaluation,
 } from './academy-evaluation.service';
 import { dureeMp4 } from './mp4';
@@ -178,6 +179,23 @@ export class AcademyService {
    */
   private modeDe(f: LigneFormation, employeeId: string | null): ModeLecture {
     return employeeId !== null && fermeture(f, employeeId) === null ? 'suivi' : 'apercu';
+  }
+
+  /**
+   * La lecture libre : avancer, quitter l'onglet, changer la vitesse, l'image
+   * dans l'image. En aperçu, tout est libre. Un agent n'y a droit qu'une fois
+   * la formation terminée et son certificat en cours de validité ; jusque-là,
+   * chaque lecture suit la même règle, leçon validée ou non (ADR-0071).
+   */
+  private async lectureLibre(
+    tx: Tx,
+    f: LigneFormation,
+    employeeId: string | null,
+    mode: ModeLecture,
+  ): Promise<boolean> {
+    if (mode === 'apercu') return true;
+    if (!employeeId || !(await toutesLeconsValidees(tx, f.id, employeeId))) return false;
+    return (await certificatEnCours(tx, employeeId, f.id, this.horloge())) !== null;
   }
 
   private async formation(tx: Tx, id: string): Promise<LigneFormation> {
@@ -982,7 +1000,7 @@ export class AcademyService {
         413,
         'academy.video_too_large',
         'Le fichier dépasse 2 Go',
-        'Exportez la vidéo en 1080p ou 720p : douze minutes y tiennent largement.',
+        'Exportez la vidéo en 1080p ou 720p : quinze minutes y tiennent largement.',
       );
     }
     const { uid, cible } = this.stockage.preparerEnvoi(lessonId);
@@ -1084,7 +1102,7 @@ export class AcademyService {
     }
     if (duree > DUREE_MAX_LECON_S + MARGE_DUREE_S) {
       await rm(temporaire, { force: true });
-      const texte = `La vidéo dure ${formatDuree(duree)} : une leçon fait 12 minutes au plus.`;
+      const texte = `La vidéo dure ${formatDuree(duree)} : une leçon fait ${DUREE_MAX_LECON_S / 60} minutes au plus.`;
       await refuser(texte);
       problem(422, 'academy.video_too_long', texte, 'Découpez-la en plusieurs leçons.');
     }
@@ -1298,6 +1316,7 @@ export class AcademyService {
 
       const intervalles = etape.progres?.watched ?? [];
       const validee = Boolean(etape.progres?.completedAt);
+      const libre = await this.lectureLibre(tx, f, employeeId, mode);
       const duree = lecon.durationSeconds;
       // Reprendre là où l'on s'était arrêté — sauf tout à la fin : une leçon
       // terminée se revoit depuis le début.
@@ -1315,6 +1334,7 @@ export class AcademyService {
         plusLoin: plusLoin(intervalles),
         reprise,
         validee,
+        libre,
         vu: partVue(intervalles, duree),
         precedente: rang > 0 ? etapes[rang - 1]!.lecon.id : null,
         suivante: rang < etapes.length - 1 ? etapes[rang + 1]!.lecon.id : null,
@@ -1412,11 +1432,14 @@ export class AcademyService {
         .where(eq(t.academyViewers.employeeId, employeeId));
 
       // La dernière leçon d'une formation sans évaluation délivre son
-      // certificat (ADR-0049).
+      // certificat (ADR-0049) ; la formation terminée, certificat en main, se
+      // relit dès lors librement (ADR-0071).
       const vientDeValider = !dejaValidee && completedAt !== null;
+      let devientLibre = false;
       if (vientDeValider) {
         const f = await this.formation(tx, lecon.courseId);
         await certifierSansEvaluation(tx, user, employeeId, f, maintenant);
+        devientLibre = await this.lectureLibre(tx, f, employeeId, 'suivi');
       }
 
       return {
@@ -1425,6 +1448,7 @@ export class AcademyService {
         vu: partVue(r.intervalles, duree),
         validee: completedAt !== null,
         vientDeValider,
+        devientLibre,
         refus: r.refus,
       };
     });

@@ -19,8 +19,8 @@ import { Icon } from './icons';
 
    Il ne décide de rien. C'est le serveur qui crédite (cf. `visionnage.ts` de
    l'API) — un lecteur trafiqué ne gagne pas une seconde. Ce qu'il fait en
-   plus relève du confort de l'agent HONNÊTE, pour qu'il ne triche pas par
-   facilité, en PREMIÈRE LECTURE, tant que la leçon n'est pas validée :
+   plus relève du confort de l'agent HONNÊTE, pour que l'agent ne triche pas
+   par facilité, à CHAQUE LECTURE, la première comme les suivantes :
 
    · la barre ne laisse pas avancer au-delà du point le
      plus loin atteint — reculer reste libre ;
@@ -28,10 +28,12 @@ import { Icon } from './icons';
    · la vitesse reste à ×1, sans image dans l'image ;
    · une lecture ouverte ailleurs (autre onglet, autre leçon) l'arrête.
 
-   Une fois la leçon validée, tout se libère : on avance, on quitte l'onglet
-   sans que la vidéo s'arrête, on révise comme on veut. En aperçu (la RH qui
-   relit, ou qui anime la formation), tout est libre aussi, et rien n'est
-   compté ni retenu.
+   Une leçon déjà validée se relit de même : le point le plus loin est celui
+   de la lecture en cours. Tout ne se libère qu'une fois la formation
+   terminée et son certificat obtenu : on avance, on quitte l'onglet sans
+   que la vidéo s'arrête, on révise comme on veut (ADR-0071). En aperçu (la
+   RH qui relit, ou qui anime la formation), tout est libre aussi, et rien
+   n'est compté ni retenu.
    ———————————————————————————————————————————————————————————————— */
 
 /** La couleur des passages VUS : le bleu de la marque sur fond sombre. */
@@ -93,6 +95,8 @@ export function LecteurVideo({
   const [intervalles, setIntervalles] = React.useState<Intervalle[]>(lecture.intervalles);
   const [plusLoinServeur, setPlusLoinServeur] = React.useState(lecture.plusLoin);
   const [validee, setValidee] = React.useState(lecture.validee);
+  // Libre en aperçu, ou la formation terminée et son certificat en main.
+  const [libre, setLibre] = React.useState(lecture.libre);
   const [temps, setTemps] = React.useState(lecture.reprise);
   const [enLecture, setEnLecture] = React.useState(false);
   const [attente, setAttente] = React.useState(false);
@@ -112,16 +116,23 @@ export function LecteurVideo({
   // Ce que le lecteur tient pour lui entre deux rendus.
   const segDebut = React.useRef<number | null>(null);
   const dernierTemps = React.useRef(lecture.reprise);
-  const plusLoinLocal = React.useRef(lecture.plusLoin);
+  // Une leçon déjà validée se relit sans dépasser ce que CETTE lecture a
+  // montré : son point le plus loin part de la reprise.
+  const relecture = React.useRef(lecture.validee);
+  const plusLoinLocal = React.useRef(lecture.validee ? lecture.reprise : lecture.plusLoin);
   const echec = React.useRef<{ de: number; a: number } | null>(null);
   const ailleursRef = React.useRef(false);
-  const libreRef = React.useRef(!suivi || lecture.validee);
-  libreRef.current = !suivi || validee;
+  const libreRef = React.useRef(lecture.libre);
+  libreRef.current = libre;
   const minuterieAvis = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const minuterieCommandes = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const permis = () =>
-    libreRef.current ? duree : Math.max(plusLoinServeur, plusLoinLocal.current);
+    libreRef.current
+      ? duree
+      : relecture.current
+        ? plusLoinLocal.current
+        : Math.max(plusLoinServeur, plusLoinLocal.current);
 
   const direAvis = React.useCallback((texte: string) => {
     setAvis(texte);
@@ -148,6 +159,7 @@ export function LecteurVideo({
           setIntervalles(r.intervalles);
           setPlusLoinServeur(r.plusLoin);
           setValidee(r.validee);
+          if (r.devientLibre) setLibre(true);
           if (r.refus === 'saut' && video.current) {
             video.current.currentTime = r.plusLoin;
             direAvis('Reprise au dernier passage vu.');
@@ -156,8 +168,8 @@ export function LecteurVideo({
         })
         .catch((err: unknown) => {
           if (err instanceof ApiError && err.problem.code === 'academy.playing_elsewhere') {
-            // Une autre lecture rend compte à sa place. En première lecture,
-            // celle-ci s'arrête ; leçon validée, elle continue sans rien dire.
+            // Une autre lecture rend compte à sa place : celle-ci s'arrête, ou
+            // continue sans rien dire si elle est libre.
             ailleursRef.current = true;
             if (!libreRef.current) {
               setAilleurs(true);
@@ -191,8 +203,8 @@ export function LecteurVideo({
     return () => clearInterval(id);
   }, [enLecture, suivi, envoyer]);
 
-  // En première lecture, l'onglet quitté met la vidéo en pause (la pause ferme
-  // le passage). Leçon validée, elle continue.
+  // L'onglet quitté met la vidéo en pause (la pause ferme le passage), sauf
+  // en lecture libre.
   React.useEffect(() => {
     const surVisibilite = () => {
       if (libreRef.current) return;
@@ -220,7 +232,14 @@ export function LecteurVideo({
     const v = video.current;
     if (!v || ailleurs) return;
     if (v.paused || v.ended) {
-      if (v.ended) v.currentTime = 0;
+      if (v.ended) {
+        // Revoir une leçon validée : une nouvelle lecture, qui repart de zéro.
+        if (validee) {
+          relecture.current = true;
+          plusLoinLocal.current = 0;
+        }
+        v.currentTime = 0;
+      }
       setFini(false);
       void v.play().catch(() => undefined);
     } else {
@@ -314,8 +333,11 @@ export function LecteurVideo({
     ecrireSon({ volume, muet });
   }, [muet, volume]);
 
-  const libre = validee || !suivi;
-  const limite = libre ? duree : Math.max(plusLoinServeur, plusLoinLocal.current, temps);
+  const limite = libre
+    ? duree
+    : relecture.current
+      ? Math.max(plusLoinLocal.current, temps)
+      : Math.max(plusLoinServeur, plusLoinLocal.current, temps);
   const montrerCommandes = commandes || !enLecture || fini;
 
   return (
@@ -542,7 +564,9 @@ export function LecteurVideo({
         <BarreTemps
           duree={duree}
           temps={temps}
-          intervalles={suivi ? intervalles : []}
+          // En relecture, la barre dit ce que permet la lecture en cours : les
+          // passages vus d'avant la couvriraient toute.
+          intervalles={suivi && (libre || !relecture.current) ? intervalles : []}
           limite={limite}
           libre={libre}
           onAller={allerA}
@@ -624,9 +648,9 @@ function BoutonLecteur({
 /**
  * La barre du temps. Trois couches, de bas en haut : la piste ; les passages
  * VUS, en bleu ; la position, en blanc. Au-delà de ce qu'on a le droit
- * d'atteindre en première lecture, la piste est hachurée : on voit où l'on
- * ne peut pas aller, avant d'essayer. Fine au repos, elle s'épaissit sous le
- * pointeur, montre son curseur et le temps visé dans une bulle blanche.
+ * d'atteindre, la piste est hachurée : on voit où l'on ne peut pas aller,
+ * avant d'essayer. Fine au repos, elle s'épaissit sous le pointeur, montre
+ * son curseur et le temps visé dans une bulle blanche.
  */
 function BarreTemps({
   duree,

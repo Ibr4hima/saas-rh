@@ -4,7 +4,7 @@
  * Le verrou du visionnage est éprouvé seul dans `academy-visionnage.spec.ts` ;
  * ici on vérifie qu'il est BRANCHÉ : que la réserve est bien celle de l'agent,
  * qu'une seule lecture tient à la fois, que l'ordre des leçons est tenu par le
- * serveur et pas seulement par l'écran, que les douze minutes sont relues
+ * serveur et pas seulement par l'écran, que les quinze minutes sont relues
  * dans le fichier — et qu'un brouillon n'existe pour aucun agent.
  */
 import { randomUUID } from 'node:crypto';
@@ -95,18 +95,25 @@ async function formationPubliee() {
 }
 
 /** Regarde honnêtement une leçon de bout en bout, battement après battement. */
-async function regarder(lessonId: string, duree: number) {
+/** Toute la leçon, battement après battement : ce que le serveur répond à chacun. */
+async function battements(lessonId: string, duree: number) {
   const lecture = await academy.demarrer(agent, lessonId);
-  let dernier = null;
+  const reponses = [];
   for (let x = 0; x < duree; x += 10) {
     horloge += 10_000;
-    dernier = await academy.battement(agent, lessonId, {
-      sessionId: lecture.sessionId!,
-      de: x,
-      a: Math.min(x + 10, duree),
-    });
+    reponses.push(
+      await academy.battement(agent, lessonId, {
+        sessionId: lecture.sessionId!,
+        de: x,
+        a: Math.min(x + 10, duree),
+      }),
+    );
   }
-  return dernier!;
+  return reponses;
+}
+
+async function regarder(lessonId: string, duree: number) {
+  return (await battements(lessonId, duree)).at(-1)!;
 }
 
 beforeAll(async () => {
@@ -193,7 +200,7 @@ describe('la construction du catalogue', () => {
     expect((await academy.gestionListe(rh))[0]?.published).toBe(true);
   });
 
-  it('relit la durée DANS le fichier, et refuse au-delà de douze minutes', async () => {
+  it('relit la durée DANS le fichier, et refuse au-delà de quinze minutes (ADR-0072)', async () => {
     const { id } = await academy.creerFormation(rh, {
       title: 'Macroéconomie',
       summary: null,
@@ -202,13 +209,16 @@ describe('la construction du catalogue', () => {
     const { id: moduleId } = await academy.creerModule(rh, id, 'Agrégats');
     const { id: lecon } = await academy.creerLecon(rh, moduleId, 'Le PIB');
 
-    expect(await codeOf(() => deposerVideo(lecon, 13 * 60))).toBe('academy.video_too_long');
+    expect(await codeOf(() => deposerVideo(lecon, 16 * 60))).toBe('academy.video_too_long');
     const [l] = (await academy.gestionDetail(rh, id)).modules[0]!.lessons;
     expect(l!.videoStatus).toBe('erreur');
-    expect(l!.videoError).toContain('13 min 00 s');
+    expect(l!.videoError).toBe('La vidéo dure 16 min 00 s : une leçon fait 15 minutes au plus.');
+    expect(await codeOf(() => deposerVideo(lecon, 902))).toBe('academy.video_too_long');
 
-    // Douze minutes pile, à l'encodage près : accepté.
-    expect((await deposerVideo(lecon, 720.04)).durationSeconds).toBeCloseTo(720.04);
+    // Treize minutes, autrefois refusées, puis quinze minutes pile, à
+    // l'encodage près : acceptées, jusqu'en base.
+    expect((await deposerVideo(lecon, 13 * 60)).durationSeconds).toBeCloseTo(780);
+    expect((await deposerVideo(lecon, 900.04)).durationSeconds).toBeCloseTo(900.04);
   });
 
   it('refuse ce qui n’est pas une vidéo MP4', async () => {
@@ -328,7 +338,11 @@ describe('ce que voit un agent', () => {
     expect(detail).toMatchObject({ mode: 'apercu', fermeture: 'formateur' });
     expect(detail.modules[0]!.lessons.map((l) => l.etat)).toEqual(['a_suivre', 'a_suivre']);
     // La leçon 2 s'ouvre sans la 1, sans session : rien ne se compte.
-    expect(await academy.demarrer(agent, l2)).toMatchObject({ mode: 'apercu', sessionId: null });
+    expect(await academy.demarrer(agent, l2)).toMatchObject({
+      mode: 'apercu',
+      sessionId: null,
+      libre: true,
+    });
     expect(
       await codeOf(() => academy.battement(agent, l2, { sessionId: randomUUID(), de: 0, a: 10 })),
     ).toBe('academy.playing_elsewhere');
@@ -378,6 +392,39 @@ describe('ce que voit un agent', () => {
       certified: true,
       certificat: expect.objectContaining({ score: null, status: 'valide' }),
     });
+  });
+
+  it('une leçon validée se relit sous la même règle ; libre seulement formation terminée, certificat en main (ADR-0071)', async () => {
+    const { courseId, moduleId, l1, l2 } = await formationPubliee();
+    expect(await academy.demarrer(agent, l1)).toMatchObject({ validee: false, libre: false });
+    // Le battement qui valide une leçon dit si la lecture se libère.
+    const validation = async (lecon: string) =>
+      (await battements(lecon, 120)).find((r) => r.vientDeValider);
+    expect(await validation(l1)).toMatchObject({ devientLibre: false });
+    // Validée, la leçon se relit comme la première fois : la formation n'est
+    // pas terminée.
+    expect(await academy.demarrer(agent, l1)).toMatchObject({ validee: true, libre: false });
+
+    // La dernière leçon termine la formation et délivre le certificat : la
+    // lecture se libère, dès ce battement.
+    expect(await validation(l2)).toMatchObject({ devientLibre: true });
+    expect(await academy.demarrer(agent, l1)).toMatchObject({ validee: true, libre: true });
+    expect(await academy.demarrer(agent, l2)).toMatchObject({ libre: true });
+
+    // Une leçon ajoutée : la formation n'est plus terminée, la règle revient
+    // jusqu'à ce qu'elle soit vue.
+    const { id: l3 } = await academy.creerLecon(rh, moduleId, 'Les graphiques');
+    await deposerVideo(l3, 120);
+    expect(await academy.demarrer(agent, l1)).toMatchObject({ libre: false });
+    expect(await validation(l3)).toMatchObject({ devientLibre: true });
+    expect(await academy.demarrer(agent, l1)).toMatchObject({ libre: true });
+
+    // Le certificat révoqué : la règle revient aussi.
+    await raw(
+      `UPDATE academy_certificates SET revoked_at = now(), revocation_motif = 'Essai' WHERE course_id = $1`,
+      [courseId],
+    );
+    expect(await academy.demarrer(agent, l1)).toMatchObject({ libre: false });
   });
 });
 

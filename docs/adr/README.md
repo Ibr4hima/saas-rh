@@ -74,5 +74,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0066](0066-suivi-des-contrats-titre-seul.md)         | Suivi des contrats : le titre seul en tête de la carte                                  | acceptée                                    |
 | [0067](0067-performance-et-robustesse.md)             | Performance à l'échelle et robustesse : index, veille, délais                           | acceptée, précisée par 0068                 |
 | [0068](0068-dernieres-routes-lentes.md)               | Les dernières routes lentes : personnel, circuit, candidatures                          | acceptée                                    |
-| [0069](0069-envois-lourds-delai-par-route.md)         | Les envois lourds : un délai par route, la vidéo en flux jusqu'au bout                  | acceptée                                    |
-| [0070](0070-evaluation-ouverte-a-la-gestion.md)       | Academy : l'évaluation ouverte à qui gère le catalogue                                  | acceptée                                    |
+| [0069](0069-envois-lourds-delai-par-route.md)         | Les envois lourds : un délai par route, la vidéo en flux jusqu'au bout                  | acceptée, précisée par 0072                 |
+| [0070](0070-evaluation-ouverte-a-la-gestion.md)       | Academy : l'évaluation ouverte à qui gère le catalogue                                  | acceptée, précisée par 0071                 |
+| [0071](0071-meme-regle-a-chaque-lecture.md)           | Academy : la même règle à chaque lecture, libre au certificat                           | acceptée                                    |
+| [0072](0072-lecons-de-quinze-minutes.md)              | Academy : des leçons de quinze minutes au plus                                          | acceptée                                    |

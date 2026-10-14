@@ -416,12 +416,6 @@ export class AcademyController {
     return this.evaluation.mesCertificats(req.sessionUser);
   }
 
-  @Get('formations-animees')
-  @OuvertAuxInactifs()
-  mesFormationsAnimees(@Req() req: AuthenticatedRequest) {
-    return this.evaluation.mesFormationsAnimees(req.sessionUser);
-  }
-
   @Get('employees/:id/certificats')
   certificatsDe(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.evaluation.certificatsDe(req.sessionUser, id);

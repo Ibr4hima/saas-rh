@@ -4,7 +4,7 @@ import { z } from 'zod';
  * APIX Academy : des formations en ligne, suivies et vérifiées.
  *
  * Une formation se range en modules, un module en leçons ; une leçon est une
- * vidéo de douze minutes au plus. Les agents la suivent DANS L'ORDRE, et une
+ * vidéo de quinze minutes au plus. Les agents la suivent DANS L'ORDRE, et une
  * leçon ne compte pour « vue » qu'à partir de 90 % de passages réellement
  * regardés — pas de position atteinte : un passage sauté ne compte pas.
  *
@@ -13,13 +13,13 @@ import { z } from 'zod';
  * promettre à l'un ce que l'autre refuse.
  */
 
-/** Douze minutes : la durée maximale d'une leçon, décidée avec l'APIX. */
-export const DUREE_MAX_LECON_S = 12 * 60;
+/** Quinze minutes : la durée maximale d'une leçon, décidée avec l'APIX (ADR-0072). */
+export const DUREE_MAX_LECON_S = 15 * 60;
 
 /**
- * Une seconde de marge sur les douze minutes : un enregistrement arrêté pile
- * à 12:00 dure 720,04 s une fois encodé, et le refuser pour quatre centièmes
- * ferait recommencer la RH pour rien.
+ * Une seconde de marge sur les quinze minutes : un enregistrement arrêté pile
+ * à 15:00 dure quelques centièmes de plus une fois encodé, et le refuser pour
+ * si peu ferait recommencer la RH pour rien.
  */
 export const MARGE_DUREE_S = 1;
 
@@ -273,11 +273,21 @@ export interface LessonPlayback {
   durationSeconds: number;
   /** Passages déjà crédités. */
   intervalles: Intervalle[];
-  /** Jusqu'où l'on peut aller en première lecture. */
+  /**
+   * Le plus loin crédité : jusqu'où va une première lecture. Une leçon déjà
+   * validée se relit sans dépasser ce que montre la lecture en cours.
+   */
   plusLoin: number;
   /** Là où reprendre. */
   reprise: number;
   validee: boolean;
+  /**
+   * Lecture libre : avancer, quitter l'onglet, changer la vitesse, l'image
+   * dans l'image. En aperçu, et pour l'agent qui a terminé la formation et
+   * tient son certificat. Sinon, chaque lecture suit la même règle, leçon
+   * validée ou non (ADR-0071).
+   */
+  libre: boolean;
   vu: number;
   precedente: string | null;
   suivante: string | null;
@@ -290,6 +300,8 @@ export interface BeatResult {
   validee: boolean;
   /** Vrai au battement qui fait passer la leçon au-dessus du seuil. */
   vientDeValider: boolean;
+  /** Vrai quand cette validation termine la formation, certificat en main : la lecture se libère. */
+  devientLibre: boolean;
   /** Le passage commençait au-delà de ce qui a été vu : rien n'est crédité. */
   refus: 'saut' | null;
 }

@@ -172,7 +172,7 @@ export default function AtelierFormationPage() {
     const duree = await lireDuree(fichier);
     if (duree !== null && duree > DUREE_MAX_LECON_S + MARGE_DUREE_S) {
       poser({
-        erreur: `La vidéo dure ${minutesSecondes(duree)} : une leçon fait 12 minutes au plus. Découpez-la en plusieurs leçons.`,
+        erreur: `La vidéo dure ${minutesSecondes(duree)} : une leçon fait ${DUREE_MAX_LECON_S / 60} minutes au plus. Découpez-la en plusieurs leçons.`,
       });
       return;
     }

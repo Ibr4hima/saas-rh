@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { CourseAdminSummary } from '@teranga/contracts';
+import { DUREE_MAX_LECON_S } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -110,7 +111,7 @@ export default function GererCataloguePage() {
           <EmptyState
             icon={<Icon name="school" size={22} />}
             title="Aucune formation pour l’instant"
-            description="Une formation se range en modules, un module en leçons de 12 minutes au plus. Commencez par lui donner un titre."
+            description={`Une formation se range en modules, un module en leçons de ${DUREE_MAX_LECON_S / 60} minutes au plus. Commencez par lui donner un titre.`}
             action={
               <Link href="/academy/gerer?nouvelle=1">
                 <Button>

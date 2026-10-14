@@ -1029,13 +1029,6 @@ export class AcademyEvaluationService {
     });
   }
 
-  async mesFormationsAnimees(user: SessionUser): Promise<FormationAnimee[]> {
-    const employeeId = await this.db.withTenant(this.ctx(user), (tx) =>
-      sonDossier(tx, user.userId),
-    );
-    return employeeId ? this.formationsAnimees(user, employeeId) : [];
-  }
-
   async mesCertificats(user: SessionUser): Promise<CertificateSummary[]> {
     const employeeId = await this.db.withTenant(this.ctx(user), async (tx) => {
       // D'abord ceux que des formations sans évaluation doivent encore à l'agent.

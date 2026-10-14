@@ -530,6 +530,24 @@ describe('le certificat', () => {
     expect((await academy.detail(agent, courseId)).evaluation?.etat).toBe('ouverte');
   });
 
+  it('ouvre la relecture libre des leçons, le temps de sa validité (ADR-0071)', async () => {
+    await evaluation.reglerEvaluation(rh, courseId, {
+      questionCount: 5,
+      certificateValidityMonths: 12,
+    });
+    // Toutes les leçons validées, l'évaluation pas encore réussie : la même règle.
+    await validerLecons();
+    expect(await academy.demarrer(agent, lecons[0]!)).toMatchObject({
+      validee: true,
+      libre: false,
+    });
+    await reussir();
+    expect(await academy.demarrer(agent, lecons[0]!)).toMatchObject({ validee: true, libre: true });
+    // Expiré, le certificat ne libère plus rien.
+    horloge = Date.UTC(2027, 9, 1);
+    expect(await academy.demarrer(agent, lecons[0]!)).toMatchObject({ libre: false });
+  });
+
   it('se révoque avec un motif : la vérification le dit, le titulaire l’apprend', async () => {
     const numero = await reussir();
     const [c] = await evaluation.certificatsDe(rh, agentEmployeeId);

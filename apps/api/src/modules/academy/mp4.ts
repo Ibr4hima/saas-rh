@@ -3,8 +3,8 @@ import { open, type FileHandle } from 'node:fs/promises';
 /* ————————————————————————————————————————————————————————————————
    La durée d'un fichier MP4, lue dans le fichier lui-même.
 
-   Le navigateur de la RH la connaît déjà — c'est lui qui refuse une vidéo de
-   treize minutes avant de l'envoyer. Mais ce qu'il dit, il peut le mentir, et
+   Le navigateur de la RH la connaît déjà : c'est lui qui refuse une vidéo de
+   seize minutes avant de l'envoyer. Mais ce qu'il dit, il peut le mentir, et
    c'est sur cette durée que se calcule le seuil des 90 % : le serveur la
    relit donc de son côté.
 
@@ -16,7 +16,7 @@ import { open, type FileHandle } from 'node:fs/promises';
    production.
    ———————————————————————————————————————————————————————————————— */
 
-/** Le `moov` d'une vidéo de douze minutes fait quelques centaines de Ko ; au-delà, on refuse. */
+/** Le `moov` d'une vidéo de quinze minutes fait quelques centaines de Ko ; au-delà, on refuse. */
 const MOOV_MAX = 64 * 1024 * 1024;
 
 interface Boite {
