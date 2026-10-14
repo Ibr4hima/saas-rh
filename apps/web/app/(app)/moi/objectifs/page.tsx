@@ -5,7 +5,7 @@
 // (cases au-dessus du texte, cadre de focus du navigateur autour de la fiche).
 import '@blocknote/mantine/style.css';
 import dynamic from 'next/dynamic';
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   FicheObjectifs,
@@ -20,7 +20,7 @@ import {
   AutoEvaluationAgent,
   BoutonAutoEvaluation,
 } from '../../../../components/evaluation-objectifs';
-import { FicheAnnuelle, parAnnee, SeparateurAnnee } from '../../../../components/fiches-annuelles';
+import { FicheAnnuelle, SeparateurAnnee } from '../../../../components/fiches-annuelles';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { CLE_OBJECTIFS, LigneObjectif } from '../../../../components/objectifs';
@@ -33,11 +33,24 @@ const EditeurFicheObjectifs = dynamic(
 );
 
 /**
- * Mes objectifs, année par année, la plus récente d'abord : la fiche que le
- * n+1 rédige pour l'année, puis, pour l'année en cours, les objectifs de la
- * direction et les orientations de l'APIX qui sont diffusées.
+ * Mes objectifs, une année à la fois (ADR-0078), comme la fiche d'un direct :
+ * « ANNÉE 2026 » se déroule sur l'année en cours et celles qui ont une fiche.
+ * Pour l'année choisie, la fiche que le n+1 rédige ; pour l'année en cours,
+ * les objectifs de la direction et les orientations de l'APIX qui sont
+ * diffusées. L'adresse garde l'année (`?annee=2027`) : un avis y mène,
+ * recharger la page n'en change rien.
  */
 export default function MesObjectifsPage() {
+  // L'année choisie dans la liste ; sans choix, l'année en cours.
+  const [choisie, setChoisie] = useState<number | null>(null);
+  useEffect(() => {
+    const a = Number(new URLSearchParams(window.location.search).get('annee'));
+    if (Number.isInteger(a) && a >= 2000 && a <= 2100) setChoisie(a);
+  }, []);
+  const choisirAnnee = (a: number) => {
+    setChoisie(a);
+    window.history.replaceState(null, '', `?annee=${a}`);
+  };
   const mes = useQuery({
     queryKey: [...CLE_OBJECTIFS, 'moi'],
     queryFn: () => api<MesObjectifs>('/objectifs/moi'),
@@ -52,17 +65,55 @@ export default function MesObjectifsPage() {
     );
   }
 
-  const { apix, direction, individuels, annee, fiches, formations, jourEvaluation } = mes.data;
+  const {
+    apix,
+    direction,
+    individuels,
+    annee: enCours,
+    fiches,
+    formations,
+    jourEvaluation,
+  } = mes.data;
+  const annee = choisie ?? enCours;
+  // La liste des années : l'année en cours, et celles qui ont une fiche
+  // (l'année suivante quand le n+1 l'a préparée, ou qu'un objectif y est
+  // reporté ; les années passées), la plus récente d'abord.
+  const annees = [...new Set([enCours, annee, ...fiches.map((f) => f.annee)])].sort(
+    (a, b) => b - a,
+  );
+  const fiche = fiches.find((f) => f.annee === annee) ?? null;
   // Les objectifs posés un à un, avant les fiches, restent lisibles tant
   // qu'aucune fiche ne les remplace.
   const anciens = fiches.length === 0 ? individuels : [];
-  const autourDeLAnnee =
-    anciens.length > 0 || Boolean(direction?.objectifs.length) || apix.length > 0;
-  const groupes = parAnnee(fiches, autourDeLAnnee ? annee : undefined);
+  const autour =
+    annee === enCours &&
+    (anciens.length > 0 || Boolean(direction?.objectifs.length) || apix.length > 0);
 
-  if (groupes.length === 0) {
-    return (
-      <Page>
+  return (
+    <Page>
+      <SeparateurAnnee annee={annee} choix={{ annees, onChoisir: choisirAnnee }} />
+      {fiche ? (
+        <CarteAnnee
+          key={fiche.annee}
+          fiche={fiche}
+          formations={formations}
+          jourEvaluation={jourEvaluation}
+        />
+      ) : null}
+      {autour ? (
+        <>
+          {anciens.length ? (
+            <Section titre="Mes objectifs" objectifs={anciens} auteur lienFormation />
+          ) : null}
+          {direction?.objectifs.length ? (
+            <Section titre={direction.nom} objectifs={direction.objectifs} />
+          ) : null}
+          {apix.length ? (
+            <Section titre="Orientations de l’APIX" objectifs={apix} compteur={false} />
+          ) : null}
+        </>
+      ) : null}
+      {!fiche && !autour ? (
         <Card>
           <EmptyState
             className="py-14"
@@ -70,37 +121,7 @@ export default function MesObjectifsPage() {
             title={`Aucun objectif pour ${annee}`}
           />
         </Card>
-      </Page>
-    );
-  }
-
-  return (
-    <Page>
-      {groupes.map((groupe) => (
-        <Fragment key={groupe.annee}>
-          <SeparateurAnnee annee={groupe.annee} />
-          {groupe.fiche ? (
-            <CarteAnnee
-              fiche={groupe.fiche}
-              formations={formations}
-              jourEvaluation={jourEvaluation}
-            />
-          ) : null}
-          {groupe.annee === annee ? (
-            <>
-              {anciens.length ? (
-                <Section titre="Mes objectifs" objectifs={anciens} auteur lienFormation />
-              ) : null}
-              {direction?.objectifs.length ? (
-                <Section titre={direction.nom} objectifs={direction.objectifs} />
-              ) : null}
-              {apix.length ? (
-                <Section titre="Orientations de l’APIX" objectifs={apix} compteur={false} />
-              ) : null}
-            </>
-          ) : null}
-        </Fragment>
-      ))}
+      ) : null}
     </Page>
   );
 }
@@ -109,8 +130,7 @@ export default function MesObjectifsPage() {
  * L'année, vue par l'agent. La fiche que son n+1 a rédigée : en cours
  * d'année, l'agent y coche ce qui est terminé (ADR-0076). Deux semaines avant
  * le jour de l'évaluation, « Auto-évaluation » s'ouvre en bas à droite : sous
- * chaque objectif, atteint, partiellement ou non, ce qui est fait, ce qui
- * manque, à enregistrer, puis à envoyer.
+ * chaque objectif, atteint, partiellement ou non (ADR-0079), puis l'envoi.
  */
 function CarteAnnee({
   fiche,

@@ -57,7 +57,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0049](0049-evaluation-sans-minuterie.md)             | Academy : l'évaluation sans limite de temps, un certificat sans évaluation              | acceptée, minuterie rétablie par 0073       |
 | [0050](0050-sans-evaluation-sans-echeance.md)         | Sans évaluation, un certificat sans limite de validité                                  | acceptée                                    |
 | [0051](0051-fiche-objectifs-crayon.md)                | La fiche d'objectifs s'ouvre au crayon et s'enregistre d'un clic                        | acceptée, « Fixer » précisé par 0075        |
-| [0052](0052-une-annee-a-la-fois.md)                   | Objectifs d'un direct : une année à la fois, la suivante fixée à l'avance               | acceptée, précisée par 0075                 |
+| [0052](0052-une-annee-a-la-fois.md)                   | Objectifs d'un direct : une année à la fois, la suivante fixée à l'avance               | acceptée, précisée par 0075 et 0078         |
 | [0053](0053-dates-d-evaluation.md)                    | Deux dates d'évaluation par an, fixées par qui dirige la DCH                            | remplacée par ADR-0075                      |
 | [0054](0054-jours-d-evaluation-chaque-annee.md)       | Dates d'évaluation : un jour et un mois, chaque année                                   | acceptée, une seule date depuis 0075        |
 | [0055](0055-objectifs-a-echeance.md)                  | Objectifs à échéance, rangés dans l'évaluation où ils comptent                          | remplacée par ADR-0075                      |
@@ -81,5 +81,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0073](0073-evaluation-minutee.md)                    | Academy : l'évaluation minutée, sa durée réglée par la gestion                          | acceptée                                    |
 | [0074](0074-notifications-sans-whatsapp.md)           | Notifications : la plateforme et le courriel, sans WhatsApp                             | acceptée                                    |
 | [0075](0075-objectifs-annuels.md)                     | Objectifs : une fiche et une évaluation par an, la date au 15 décembre                  | acceptée, précisée par 0076                 |
-| [0076](0076-evaluation-annuelle.md)                   | Évaluation annuelle : la coche de l'agent, l'atteinte de chaque objectif par le n+1     | acceptée, précisée par 0077                 |
+| [0076](0076-evaluation-annuelle.md)                   | Évaluation annuelle : la coche de l'agent, l'atteinte de chaque objectif par le n+1     | acceptée, précisée par 0077 et 0079         |
 | [0077](0077-resultats-obtenus.md)                     | Le dossier montre les résultats obtenus : la case de chaque objectif, rien d'autre      | acceptée                                    |
+| [0078](0078-mes-objectifs-une-annee-a-la-fois.md)     | Mes objectifs : une année à la fois, comme chez le n+1                                  | acceptée                                    |
+| [0079](0079-auto-evaluation-sans-commentaire.md)      | Auto-évaluation : un statut par objectif, sans commentaire                              | acceptée                                    |

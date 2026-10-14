@@ -731,13 +731,6 @@ const statuer = (qui, fiche, id, statut) =>
 await statuer(moussa.id, passe, passeObj[0], 'atteint');
 await statuer(moussa.id, passe, passeObj[1], 'atteint');
 await statuer(moussa.id, passe, passeObj[2], 'non_atteint');
-await enTantQue(moussa.id, 'PUT', `${passe}/commentaires`, {
-  commentaires: {
-    [passeObj[0]]: 'Rapport remis au comité de direction le 28 juin, validé sans réserve.',
-    [passeObj[1]]: 'Les deux stagiaires saisissent seuls les nouveaux dossiers depuis mai.',
-    [passeObj[2]]: 'Mission reportée par la direction : la fiche pays reste à écrire.',
-  },
-});
 await enTantQue(moussa.id, 'POST', `${passe}/commentaires/envoi`);
 await enTantQue(awa.id, 'PUT', `/objectifs/equipe/${moussa.id}/fiches/${precedente}/evaluation`, {
   commentaires: {
@@ -775,12 +768,6 @@ await enTantQue(directriceRh.id, 'PUT', `/objectifs/equipe/${awa.id}/fiche`, {
 });
 await statuer(awa.id, passe, awaPasse[0], 'partiel');
 await statuer(awa.id, passe, awaPasse[1], 'atteint');
-await enTantQue(awa.id, 'PUT', `${passe}/commentaires`, {
-  commentaires: {
-    [awaPasse[0]]: 'Première version remise ; la partie fiscale reste à consolider.',
-    [awaPasse[1]]: 'Deux séances de relecture, note publiée à la date prévue.',
-  },
-});
 await enTantQue(awa.id, 'POST', `${passe}/commentaires/envoi`);
 await statuer(awa.id, courant, awaObj[1], 'atteint');
 
@@ -807,18 +794,6 @@ for (const [annee, note, objectifs] of anterieurs) {
   const fiche = pour(annee);
   const statuts = note === 'A' ? ['atteint', 'atteint'] : ['partiel', 'non_atteint'];
   for (const [i, id] of ids.entries()) await statuer(moussa.id, fiche, id, statuts[i]);
-  await enTantQue(moussa.id, 'PUT', `${fiche}/commentaires`, {
-    commentaires: Object.fromEntries(
-      ids.map((id, i) => [
-        id,
-        statuts[i] === 'atteint'
-          ? 'Fait dans les délais.'
-          : statuts[i] === 'partiel'
-            ? 'Maquette livrée ; la mise en production attend la nouvelle base.'
-            : 'Reporté : la base n’a été livrée qu’en décembre.',
-      ]),
-    ),
-  });
   await enTantQue(moussa.id, 'POST', `${fiche}/commentaires/envoi`);
   const evaluation = `/objectifs/equipe/${moussa.id}/fiches/${annee}/evaluation`;
   await enTantQue(awa.id, 'PUT', evaluation, {

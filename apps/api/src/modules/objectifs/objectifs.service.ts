@@ -16,7 +16,6 @@ import {
   type FormationDeLaFiche,
   type StatutObjectifInput,
   type StatutObjectif,
-  type CommentairesAgentInput,
   type EvaluationN1Input,
   type EvaluationValidee,
   type FicheEnregistree,
@@ -814,7 +813,8 @@ export class ObjectifsService {
       type: 'objectif',
       sujet: 'objectifs',
       title: titre,
-      link: '/moi/objectifs',
+      // L'année de la fiche : « Mes objectifs » en montre une à la fois (ADR-0078).
+      link: `/moi/objectifs?annee=${annee}`,
       dedupeKey: `${sujet}${majLe}`,
       remplace: sujet,
     });
@@ -974,28 +974,11 @@ export class ObjectifsService {
     });
   }
 
-  /** L'agent enregistre ses commentaires, au brouillon : son n+1 ne les voit pas encore. */
-  async enregistrerCommentaires(
-    user: SessionUser,
-    annee: number,
-    input: CommentairesAgentInput,
-  ): Promise<void> {
-    return this.db.withTenant(this.ctx(user), async (tx) => {
-      const moi = await this.exigerAgent(tx, user);
-      const f = await this.uneFiche(tx, moi, annee);
-      exigerNonEnvoyee(f);
-      await tx.execute(sql`
-        UPDATE objectifs_fiches
-           SET commentaires_agent = ${JSON.stringify(garderLesObjectifs(f, input.commentaires))}::jsonb
-         WHERE id = ${f.id}`);
-    });
-  }
-
   /**
    * L'agent envoie son auto-évaluation à son n+1 : chaque case avec son
-   * statut et son commentaire, atteinte ou non ; chaque formation avec le
-   * statut que l'Academy lui donne ce jour-là. Les objectifs, les statuts et
-   * les commentaires ne changent plus ; le n+1 en est prévenu.
+   * statut, atteinte ou non, sans commentaire (ADR-0079) ; chaque formation
+   * avec le statut que l'Academy lui donne ce jour-là. Les objectifs et les
+   * statuts ne changent plus ; le n+1 en est prévenu.
    */
   async envoyerCommentaires(user: SessionUser, annee: number): Promise<void> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
@@ -1021,18 +1004,16 @@ export class ObjectifsService {
         problem(422, 'objectifs.sans_objectif', 'Cette fiche n’a encore aucun objectif à évaluer');
       }
       // Un statut donné à un texte que le n+1 a réécrit depuis ne compte pas.
-      // Une formation a le sien, celui de l'Academy ; la commenter est libre.
+      // Une formation a le sien, celui de l'Academy.
       const { statuts } = statutsEnVigueur(f);
-      const restants = objectifs.filter(
-        (o) => !o.formation && (!statuts[o.id] || !f.commentaires_agent[o.id]?.trim()),
-      ).length;
+      const restants = objectifs.filter((o) => !o.formation && !statuts[o.id]).length;
       if (restants > 0) {
         problem(
           422,
           'objectifs.auto_evaluation_incomplete',
           restants > 1
-            ? `${restants} objectifs attendent encore leur statut ou votre commentaire`
-            : 'Un objectif attend encore son statut ou votre commentaire',
+            ? `${restants} objectifs attendent encore leur statut`
+            : 'Un objectif attend encore son statut',
         );
       }
       // Les formations de la fiche se figent avec elle : relue plus tard,
@@ -1052,9 +1033,12 @@ export class ObjectifsService {
           'Votre auto-évaluation s’envoie à votre N+1 : vous n’en avez pas pour l’instant',
         );
       }
+      // Un commentaire écrit au brouillon avant l'ADR-0079 ne part pas : l'agent
+      // ne le voit plus, et l'auto-évaluation n'en porte plus.
       await tx.execute(sql`
         UPDATE objectifs_fiches
-           SET commentaires_envoyes_le = now(), formations_figees = ${JSON.stringify(figees)}::jsonb
+           SET commentaires_envoyes_le = now(), formations_figees = ${JSON.stringify(figees)}::jsonb,
+               commentaires_agent = '{}'::jsonb
          WHERE id = ${f.id}`);
       await reconcilierLesEvaluations(tx, moi);
     });
@@ -1145,7 +1129,7 @@ export class ObjectifsService {
           type: 'objectif',
           sujet: 'objectifs',
           title: `${await this.nomDe(tx, moi)} a évalué vos objectifs ${deLAnnee(annee)}${report}`,
-          link: '/moi/objectifs',
+          link: `/moi/objectifs?annee=${annee}`,
           dedupeKey: `objectifs:evaluation:${employeeId}:${annee}`,
         });
       }

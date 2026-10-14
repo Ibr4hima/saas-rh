@@ -62,7 +62,7 @@ export async function prevenirDeLOuverture(
       type: 'objectif',
       sujet: 'objectifs' as const,
       title: `Votre auto-évaluation ${deLAnnee(annee)} est ouverte`,
-      link: '/moi/objectifs',
+      link: `/moi/objectifs?annee=${annee}`,
       dedupeKey: `objectifs:ouverture:${r.employee_id}:${annee}`,
     })),
   );

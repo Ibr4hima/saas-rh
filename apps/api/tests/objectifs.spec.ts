@@ -577,7 +577,10 @@ describe('la fiche d’objectifs', () => {
       (await notifications('moussa')).filter((n) => n.title.includes('vos objectifs de l’année'));
     await objectifs.enregistrerFiche(session('awa'), agents.moussa, { contenu });
     expect(await fichesNotifiees()).toEqual([
-      { title: 'Awa Diop a fixé vos objectifs de l’année 2026', link: '/moi/objectifs' },
+      {
+        title: 'Awa Diop a fixé vos objectifs de l’année 2026',
+        link: '/moi/objectifs?annee=2026',
+      },
     ]);
     await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
       contenu: [...contenu, bloc('paragraph', 'Et la synthèse annuelle.')],
@@ -602,7 +605,10 @@ describe('la fiche d’objectifs', () => {
     // Chaque enregistrement qui change la fiche prévient l'agent, et le
     // dernier avis prend la place des précédents.
     expect(await fichesNotifiees()).toEqual([
-      { title: 'Awa Diop a mis à jour vos objectifs de l’année 2026', link: '/moi/objectifs' },
+      {
+        title: 'Awa Diop a mis à jour vos objectifs de l’année 2026',
+        link: '/moi/objectifs?annee=2026',
+      },
     ]);
     const { rows: avis } = await raw(
       `SELECT count(*)::int AS n FROM notifications
@@ -631,7 +637,10 @@ describe('la fiche d’objectifs', () => {
       contenu: [...lue.contenu, bloc('checkListItem', 'Publier le rapport annuel')],
     });
     expect(await fichesNotifiees()).toEqual([
-      { title: 'Awa Diop a mis à jour vos objectifs de l’année 2026', link: '/moi/objectifs' },
+      {
+        title: 'Awa Diop a mis à jour vos objectifs de l’année 2026',
+        link: '/moi/objectifs?annee=2026',
+      },
     ]);
     expect(
       objectifsDeLaFiche((await objectifs.mesObjectifs(session('moussa'))).fiches[0]!.contenu).map(
@@ -745,7 +754,7 @@ describe('l’année : l’agent s’auto-évalue, le n+1 évalue', () => {
   const vueAgent = async () => de((await objectifs.mesObjectifs(session('moussa'))).fiches, 2024);
   const vueN1 = async () => de((await objectifs.fiche(session('awa'), agents.moussa)).fiches, 2024);
 
-  it('l’agent dit où il en est, commente, envoie ; le n+1 voit, commente, note et valide', async () => {
+  it('l’agent donne un statut à chaque objectif, envoie ; le n+1 voit, commente, note et valide', async () => {
     // Ce que le n+1 aurait coché ne compte pas : c'est l'agent qui dit où il en est.
     await objectifs.enregistrerFiche(session('awa'), agents.moussa, {
       annee: 2024,
@@ -775,25 +784,12 @@ describe('l’année : l’agent s’auto-évalue, le n+1 évalue', () => {
       ),
     ).toBe('objectifs.objectif_inconnu');
 
-    // Ses commentaires restent à lui tant qu'il ne les envoie pas.
-    await objectifs.enregistrerCommentaires(session('moussa'), 2024, {
-      commentaires: { o1: 'Note livrée le 12 mars.', o2: '', zz: 'hors fiche' },
-    });
-    expect((await vueAgent()).evaluation.commentairesAgent).toEqual({
-      o1: 'Note livrée le 12 mars.',
-      o2: '',
-    });
-    expect((await vueN1()).evaluation.commentairesAgent).toEqual({});
-
-    // Chaque objectif a son statut et son commentaire, atteint ou non.
+    // Chaque objectif a son statut, atteint ou non ; sans commentaire (ADR-0079).
     expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2024))).toBe(
       'objectifs.auto_evaluation_incomplete',
     );
-    await objectifs.enregistrerCommentaires(session('moussa'), 2024, {
-      commentaires: { o1: 'Note livrée le 12 mars.', o2: 'Reporté : recrutement gelé.' },
-    });
-    expect(await codeOf(() => objectifs.envoyerCommentaires(session('moussa'), 2024))).toBe(
-      'objectifs.auto_evaluation_incomplete',
+    expect(await titreOf(() => objectifs.envoyerCommentaires(session('moussa'), 2024))).toBe(
+      'Un objectif attend encore son statut',
     );
     await objectifs.statuer(session('moussa'), 2024, { id: 'o2', statut: 'non_atteint' });
     expect(
@@ -806,15 +802,17 @@ describe('l’année : l’agent s’auto-évalue, le n+1 évalue', () => {
         }),
       ),
     ).toBe('objectifs.auto_evaluation_attendue');
+    // Un commentaire resté au brouillon avant l'ADR-0079 ne part pas avec elle.
+    await raw(
+      `UPDATE objectifs_fiches SET commentaires_agent = '{"o1": "Brouillon d’avant."}'
+        WHERE employee_id = $1 AND annee = 2024`,
+      [agents.moussa],
+    );
     await objectifs.envoyerCommentaires(session('moussa'), 2024);
 
     // Envoyée : le n+1 la lit ; plus rien ne bouge, ni statuts ni objectifs.
-    expect(await vueN1()).toMatchObject({
-      statuts: { o1: 'atteint', o2: 'non_atteint' },
-      evaluation: {
-        commentairesAgent: { o1: 'Note livrée le 12 mars.', o2: 'Reporté : recrutement gelé.' },
-      },
-    });
+    expect(await vueN1()).toMatchObject({ statuts: { o1: 'atteint', o2: 'non_atteint' } });
+    expect((await vueN1()).evaluation.commentairesAgent).toEqual({});
     expect((await vueN1()).evaluation.envoyesLe).not.toBeNull();
     // L'avis mène à l'évaluation, sur l'année de la fiche.
     expect(await notifications('awa')).toContainEqual({
@@ -941,9 +939,6 @@ describe('l’année : l’agent s’auto-évalue, le n+1 évalue', () => {
       contenu: [caseACocher('p1', 'Clore les comptes')],
     });
     await objectifs.statuer(session('moussa'), 2022, { id: 'p1', statut: 'atteint' });
-    await objectifs.enregistrerCommentaires(session('moussa'), 2022, {
-      commentaires: { p1: 'Comptes clos le 15 décembre.' },
-    });
     await objectifs.envoyerCommentaires(session('moussa'), 2022);
     expect(
       await codeOf(() => objectifs.validerEvaluation(session('awa'), agents.moussa, 2022)),
@@ -975,9 +970,6 @@ describe('l’année : l’agent s’auto-évalue, le n+1 évalue', () => {
       empreinte: lue,
     });
     await objectifs.statuer(session('moussa'), 2025, { id: 'r2', statut: 'partiel' });
-    await objectifs.enregistrerCommentaires(session('moussa'), 2025, {
-      commentaires: { r1: 'Livrée.', r2: 'Un sur deux.' },
-    });
 
     // Le n+1 réécrit l'objectif : le statut ne répond plus au texte.
     await ecrire('Livrer la note et le rapport annuel');
@@ -1118,9 +1110,6 @@ describe('l’année : l’agent s’auto-évalue, le n+1 évalue', () => {
       (await objectifs.statuer(session('moussa'), 2025, { id: 'w1', statut: 'partiel' })).statuts,
     ).toEqual({ w1: 'partiel', f1: 'atteint' });
     await objectifs.statuer(session('moussa'), 2025, { id: 'w1', statut: 'atteint' });
-    await objectifs.enregistrerCommentaires(session('moussa'), 2025, {
-      commentaires: { w1: 'Terminée.' },
-    });
     await objectifs.envoyerCommentaires(session('moussa'), 2025);
     const figee = { courseId, statut: 'terminee', lecons: 2, validees: 2 };
     expect((await fiche()).formations).toEqual([figee]);
@@ -1304,9 +1293,6 @@ describe('le n+1 change pendant l’évaluation', () => {
       contenu: [caseACocher('o1', 'Livrer la note')],
     });
     await objectifs.statuer(session('moussa'), annee, { id: 'o1', statut: 'atteint' });
-    await objectifs.enregistrerCommentaires(session('moussa'), annee, {
-      commentaires: { o1: 'Livrée.' },
-    });
   };
   const nouveauN1 = async (qui: Nom | null) => {
     await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [
@@ -1347,7 +1333,7 @@ describe('le n+1 change pendant l’évaluation', () => {
       );
       // Le brouillon d'Awa n'est pas le sien : il ne le lit pas, ne le valide pas.
       expect((await vueDe('ousmane')).evaluation).toMatchObject({
-        commentairesAgent: { o1: 'Livrée.' },
+        commentairesAgent: {},
         commentairesN1: {},
         atteintesN1: {},
         note: null,
@@ -1714,17 +1700,13 @@ describe('les objectifs de l’année, avec ou sans échéance', () => {
       statut: 'atteint',
       empreinte: a.empreinte,
     });
-    await objectifs.enregistrerCommentaires(session('fatou'), 2026, {
-      commentaires: { [a.id]: 'Plan rédigé.' },
-    });
 
     // Le n+1 y voit des manques : une nouvelle échéance rouvre l'objectif.
-    // La coche s'en va, ce que l'agent en a écrit reste ; l'agent est prévenu.
+    // La coche s'en va ; l'agent est prévenu.
     await enregistrer(2026, await avecEcheance(2026, 'Rapport A', '2026-09-15'));
     expect(await lignes(2026)).toEqual(['2026-06-30 Bilan', '2026-09-15 Rapport A']);
     const mes = async () => (await objectifs.mesObjectifs(session('fatou'))).fiches[0]!;
     expect((await mes()).statuts).toEqual({});
-    expect((await mes()).evaluation.commentairesAgent[a.id]).toBe('Plan rédigé.');
     expect(await avis()).toEqual([
       'Ousmane Fall a rouvert « Rapport A », à terminer pour le 15 septembre 2026',
     ]);
@@ -1740,16 +1722,15 @@ describe('les objectifs de l’année, avec ou sans échéance', () => {
         enregistrer(2026, await avecEcheance(2026, 'Rapport A', '2026-01-15')),
       ),
     ).toBe('objectifs.echeance_passee');
-    // Retiré de la fiche, il emporte son statut et son commentaire.
+    // Retiré de la fiche, il emporte son statut.
     await objectifs.statuer(session('fatou'), 2026, { id: a.id, statut: 'atteint' });
     const sansA = (await ficheDe(2026))!.contenu.filter((b) => b.id !== a.id);
     await enregistrer(2026, sansA);
     const { rows } = await raw(
-      `SELECT statuts, commentaires_agent FROM objectifs_fiches
-        WHERE employee_id = $1 AND annee = 2026`,
+      `SELECT statuts FROM objectifs_fiches WHERE employee_id = $1 AND annee = 2026`,
       [agents.fatou],
     );
-    expect(rows[0]).toEqual({ statuts: {}, commentaires_agent: {} });
+    expect(rows[0]).toEqual({ statuts: {} });
   });
 
   it('une case sans échéance n’en reçoit pas à la lecture ; une date qui n’existe pas n’en est pas une', async () => {
@@ -1842,9 +1823,6 @@ describe('les objectifs de l’année, avec ou sans échéance', () => {
     await fixer(2026, ['Revue des comptes', '2026-02-10']);
     const revue = await objectif(2026, 'Revue des comptes');
     await objectifs.statuer(session('fatou'), 2026, { id: revue.id, statut: 'atteint' });
-    await objectifs.enregistrerCommentaires(session('fatou'), 2026, {
-      commentaires: { [revue.id]: 'Faite.' },
-    });
     // L'auto-évaluation s'envoie une fois ouverte : deux semaines avant le 15 décembre.
     objectifs.horloge = le('2026-12-02');
     await objectifs.envoyerCommentaires(session('fatou'), 2026);
@@ -1878,9 +1856,6 @@ describe('les objectifs de l’année, avec ou sans échéance', () => {
     // L'auto-évaluation s'ouvre le 1er décembre pour une évaluation au 15.
     expect(ouvertureDeLAutoEvaluation(2026, '12-15')).toBe('2026-12-01');
     expect(ouvertureDeLAutoEvaluation(2027, '01-10')).toBe('2026-12-27');
-    await objectifs.enregistrerCommentaires(session('fatou'), 2026, {
-      commentaires: { [r.id]: 'Envoyé le 18 mars.' },
-    });
     expect(await titreOf(() => objectifs.envoyerCommentaires(session('fatou'), 2026))).toBe(
       'Votre auto-évaluation s’ouvre le 1er décembre 2026',
     );
@@ -1892,9 +1867,6 @@ describe('les objectifs de l’année, avec ou sans échéance', () => {
     objectifs.horloge = le('2026-12-01');
     const b = await objectif(2026, 'Bilan');
     await objectifs.statuer(session('fatou'), 2026, { id: b.id, statut: 'partiel' });
-    await objectifs.enregistrerCommentaires(session('fatou'), 2026, {
-      commentaires: { [r.id]: 'Envoyé le 18 mars.', [b.id]: 'Chiffres de novembre manquants.' },
-    });
     expect(await coches()).toHaveLength(1);
     await objectifs.envoyerCommentaires(session('fatou'), 2026);
     // L'année suivante ne s'auto-évalue pas avant son heure.
@@ -1922,9 +1894,6 @@ describe('les objectifs de l’année, avec ou sans échéance', () => {
       await objectifs.statuer(session('fatou'), 2026, { id: rapport.id, statut: 'atteint' });
       objectifs.horloge = le('2026-12-02');
       await objectifs.statuer(session('fatou'), 2026, { id: bilan.id, statut: 'non_atteint' });
-      await objectifs.enregistrerCommentaires(session('fatou'), 2026, {
-        commentaires: { [rapport.id]: 'Livré.', [bilan.id]: 'Pas commencé.' },
-      });
       await objectifs.envoyerCommentaires(session('fatou'), 2026);
 
       // Chaque case a son atteinte aux yeux du n+1 ; une formation, celle de l'Academy.
@@ -1988,7 +1957,10 @@ describe('les objectifs de l’année, avec ou sans échéance', () => {
     await veille('2026-12-01');
     await veille('2026-12-05');
     expect(await ouverte()).toEqual([
-      { title: 'Votre auto-évaluation de l’année 2026 est ouverte', link: '/moi/objectifs' },
+      {
+        title: 'Votre auto-évaluation de l’année 2026 est ouverte',
+        link: '/moi/objectifs?annee=2026',
+      },
     ]);
   });
 

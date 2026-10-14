@@ -19,8 +19,6 @@ import {
   anneeQuerySchema,
   statutObjectifSchema,
   type StatutObjectifInput,
-  commentairesAgentSchema,
-  type CommentairesAgentInput,
   creerObjectifSchema,
   dateEvaluationSchema,
   type DateEvaluationInput,
@@ -107,16 +105,6 @@ export class ObjectifsController {
     @Body(new ZodValidationPipe(statutObjectifSchema)) body: StatutObjectifInput,
   ) {
     return this.objectifs.statuer(req.sessionUser, p.annee, body);
-  }
-
-  @Put('moi/fiches/:annee/commentaires')
-  @HttpCode(204)
-  async enregistrerCommentaires(
-    @Req() req: AuthenticatedRequest,
-    @Param(new ZodValidationPipe(anneeParamsSchema)) p: Annee,
-    @Body(new ZodValidationPipe(commentairesAgentSchema)) body: CommentairesAgentInput,
-  ) {
-    await this.objectifs.enregistrerCommentaires(req.sessionUser, p.annee, body);
   }
 
   @Post('moi/fiches/:annee/commentaires/envoi')

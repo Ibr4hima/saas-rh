@@ -6,27 +6,10 @@ import { Card, cn } from '@teranga/ui';
 import { Icon } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
-   Les fiches d'objectifs, rangées dans le temps : une année, un filet, puis
-   sa fiche, une par année (ADR-0075), la plus récente d'abord. Les pièces
-   communes à la fiche d'un direct (le n+1 rédige) et à « Mes objectifs »
-   (l'agent lit).
+   Les fiches d'objectifs, une année à la fois (ADR-0052, ADR-0078) : l'année,
+   un filet, puis sa fiche, une par année (ADR-0075). Les pièces communes à
+   la fiche d'un direct (le n+1 rédige) et à « Mes objectifs » (l'agent lit).
    ———————————————————————————————————————————————————————————————— */
-
-/**
- * Les années, la plus récente d'abord, chacune avec sa fiche. `toujours` :
- * une année qui a sa place même sans fiche (l'année en cours, où se lisent
- * aussi les objectifs de la direction et de l'APIX).
- */
-export function parAnnee<T extends { annee: number }>(
-  fiches: T[],
-  toujours?: number,
-): { annee: number; fiche: T | null }[] {
-  const annees = new Set(fiches.map((f) => f.annee));
-  if (toujours !== undefined) annees.add(toujours);
-  return [...annees]
-    .sort((a, b) => b - a)
-    .map((annee) => ({ annee, fiche: fiches.find((f) => f.annee === annee) ?? null }));
-}
 
 /** « ANNÉE 2026 ——————— » et, au bout du filet, le geste de l'année s'il y en a un. */
 export function SeparateurAnnee({

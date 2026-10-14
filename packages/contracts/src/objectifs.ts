@@ -233,9 +233,6 @@ export const statutObjectifSchema = z.object({
 });
 export type StatutObjectifInput = z.infer<typeof statutObjectifSchema>;
 
-export const commentairesAgentSchema = z.object({ commentaires });
-export type CommentairesAgentInput = z.infer<typeof commentairesAgentSchema>;
-
 export const evaluationN1Schema = z.object({
   commentaires,
   note: z.enum(NOTES_GLOBALES).nullable(),

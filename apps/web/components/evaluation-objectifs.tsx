@@ -51,13 +51,12 @@ import { Echeance } from './objectifs-echeances';
 /* ————————————————————————————————————————————————————————————————
    Ce que l'agent fait de ses objectifs, et ce que son n+1 en dit.
 
-   L'agent s'auto-évalue : sous chaque objectif, il dit où il en est —
-   atteint, partiellement, non atteint ; la case en prend la couleur — et ce
-   qu'il a fait, ce qui manque et pourquoi. Il enregistre autant de fois qu'il
-   veut et envoie à son n+1 quand chaque objectif a son statut et son
-   commentaire. Une formation de l'APIX Academy est un objectif comme les
-   autres, mais son statut vient de l'Academy, figé à l'envoi ; la commenter
-   est libre. Le n+1 lit, marque à son tour chaque objectif, reporte au
+   L'agent s'auto-évalue : sous chaque objectif, un statut, atteint,
+   partiellement ou non atteint, dont la case prend la couleur ; sans
+   commentaire (ADR-0079). L'auto-évaluation part au n+1 quand chaque
+   objectif a son statut. Une formation de l'APIX Academy est un objectif
+   comme les autres, mais son statut vient de l'Academy, figé à l'envoi.
+   Le n+1 lit, marque à son tour chaque objectif, reporte au
    besoin à l'année suivante ce qui n'est pas atteint, commente, donne
    l'appréciation globale et valide. La note se lit toujours avec l'atteinte
    de chaque objectif (ADR-0076).
@@ -611,15 +610,6 @@ function BoutonEnregistrer({
 
 // ———————————————————————————— le bouton « Auto-évaluation »
 
-/** Les objectifs que l'agent a entièrement auto-évalués : un statut et un commentaire. */
-function evalues(
-  objectifs: ObjectifDeLaFiche[],
-  statuts: Record<string, StatutObjectif>,
-  commentaires: Record<string, string>,
-): number {
-  return objectifs.filter((o) => statuts[o.id] && commentaires[o.id]?.trim()).length;
-}
-
 /**
  * En bas à droite de la fiche : le passage à l'auto-évaluation — et, d'un
  * coup d'œil, où elle en est.
@@ -636,7 +626,7 @@ export function BoutonAutoEvaluation({
   const ev = fiche.evaluation;
   // Ce que l'agent évalue lui-même : les cases. Une formation a son statut.
   const cases = objectifsDeLaFiche(fiche.contenu).filter((o) => !o.formation);
-  const faits = evalues(cases, fiche.statuts, ev.commentairesAgent);
+  const faits = cases.filter((o) => fiche.statuts[o.id]).length;
   const etat = ev.valideeLe
     ? `Évaluation · ${ev.note}`
     : ev.envoyesLe
@@ -667,9 +657,9 @@ export function BoutonAutoEvaluation({
 // ———————————————————————————— côté agent
 
 /**
- * L'auto-évaluation de l'agent, sous chacun de ses objectifs — son statut,
- * qui se voit aussitôt, et son commentaire, à enregistrer puis à envoyer ; et,
- * une fois l'évaluation validée, ce qu'en dit son n+1.
+ * L'auto-évaluation de l'agent, sous chacun de ses objectifs : son statut,
+ * qui se voit aussitôt, sans commentaire (ADR-0079), puis l'envoi ; et, une
+ * fois l'évaluation validée, ce qu'en dit son n+1.
  */
 export function AutoEvaluationAgent({
   fiche,
@@ -690,34 +680,18 @@ export function AutoEvaluationAgent({
   const ev = fiche.evaluation;
   const envoyes = Boolean(ev.envoyesLe);
   const objectifs = useMemo(() => objectifsDeLaFiche(fiche.contenu), [fiche.contenu]);
-  const brouillon = useBrouillon<Record<string, string>>(ev.commentairesAgent);
   const action = useAction();
   const [confirmer, setConfirmer] = useState(false);
-  const base = `/objectifs/moi/fiches/${fiche.annee}/commentaires`;
   const cle = [...CLE_OBJECTIFS, 'moi'];
 
-  // Une formation a le statut que lui donne l'Academy, sans commentaire :
-  // chaque autre objectif attend son statut et son commentaire.
-  const incomplet = objectifs.some(
-    (o) => !o.formation && (!statuts[o.id] || !brouillon.valeur[o.id]?.trim()),
-  );
+  // Une formation a le statut que lui donne l'Academy : chaque autre
+  // objectif attend le sien.
+  const incomplet = objectifs.some((o) => !o.formation && !statuts[o.id]);
   const erreur = action.erreur ?? erreurStatut;
-
-  const enregistrer = () =>
-    action.lancer('enregistrer', async () => {
-      await api(base, { method: 'PUT', body: { commentaires: brouillon.valeur } });
-      brouillon.setModifie(false);
-      brouillon.setEnregistre(true);
-      await queryClient.invalidateQueries({ queryKey: cle });
-    });
 
   const envoyer = async () => {
     const ok = await action.lancer('envoyer', async () => {
-      if (brouillon.modifie) {
-        await api(base, { method: 'PUT', body: { commentaires: brouillon.valeur } });
-        brouillon.setModifie(false);
-      }
-      await api(`${base}/envoi`, { method: 'POST' });
+      await api(`/objectifs/moi/fiches/${fiche.annee}/commentaires/envoi`, { method: 'POST' });
       await queryClient.invalidateQueries({ queryKey: cle });
     });
     if (ok) setConfirmer(false);
@@ -739,8 +713,10 @@ export function AutoEvaluationAgent({
           >
             {envoyes ? (
               <>
-                {ev.commentairesAgent[o.id] ? (
-                  <Propos qui="Vous" texte={ev.commentairesAgent[o.id]!} statut={statuts[o.id]} />
+                {/* Ce que l'agent en a dit : le statut ; le commentaire d'une
+                    auto-évaluation d'avant l'ADR-0079, s'il y en a un. */}
+                {(!o.formation && statuts[o.id]) || ev.commentairesAgent[o.id]?.trim() ? (
+                  <Propos qui="Vous" texte={ev.commentairesAgent[o.id]} statut={statuts[o.id]} />
                 ) : null}
                 {ev.valideeLe &&
                 (ev.atteintesN1[o.id] ||
@@ -765,22 +741,13 @@ export function AutoEvaluationAgent({
                   </Badge>
                 ) : null}
                 {/* Une formation : sa case dit le statut que lui donne
-                    l'Academy, rien à choisir ni à commenter. */}
+                    l'Academy, rien à choisir. */}
                 {o.formation ? null : (
-                  <>
-                    <ChoixStatut
-                      objectif={o.texte}
-                      valeur={statuts[o.id]}
-                      onChange={(statut) => onStatuer(o.id, statut)}
-                    />
-                    <ZoneCommentaire
-                      aria-label={`Commentaire : ${o.texte}`}
-                      value={brouillon.valeur[o.id] ?? ''}
-                      onChange={(e) =>
-                        brouillon.changer({ ...brouillon.valeur, [o.id]: e.target.value })
-                      }
-                    />
-                  </>
+                  <ChoixStatut
+                    objectif={o.texte}
+                    valeur={statuts[o.id]}
+                    onChange={(statut) => onStatuer(o.id, statut)}
+                  />
                 )}
               </>
             )}
@@ -813,21 +780,13 @@ export function AutoEvaluationAgent({
           </p>
         ) : null}
         {envoyes ? null : (
-          <>
-            <BoutonEnregistrer
-              modifie={brouillon.modifie}
-              enregistre={brouillon.enregistre}
-              enCours={action.enCours === 'enregistrer'}
-              onClick={() => void enregistrer()}
-            />
-            <Button
-              size="sm"
-              disabled={incomplet || objectifs.length === 0}
-              onClick={() => setConfirmer(true)}
-            >
-              Envoyer à mon N+1
-            </Button>
-          </>
+          <Button
+            size="sm"
+            disabled={incomplet || objectifs.length === 0}
+            onClick={() => setConfirmer(true)}
+          >
+            Envoyer à mon N+1
+          </Button>
         )}
         {bascule}
       </div>
@@ -955,10 +914,11 @@ export function EvaluationAnnuelle({
               statut={(validee ? a : undefined) ?? fiche.statuts[o.id]}
               annee={fiche.annee}
             >
-              {envoyes && ev.commentairesAgent[o.id] ? (
+              {envoyes &&
+              ((!o.formation && fiche.statuts[o.id]) || ev.commentairesAgent[o.id]?.trim()) ? (
                 <Propos
                   qui={prenom}
-                  texte={ev.commentairesAgent[o.id]!}
+                  texte={ev.commentairesAgent[o.id]}
                   statut={fiche.statuts[o.id]}
                 />
               ) : null}
