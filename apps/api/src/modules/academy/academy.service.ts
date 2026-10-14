@@ -48,7 +48,6 @@ import {
   quizAdmin,
   taillesDesBanques,
   vueEvaluation,
-  retenirLesReponsesVues,
 } from './academy-evaluation.service';
 import { dureeMp4 } from './mp4';
 import { StockageVideoLocal, VideoTropLourde } from './stockage-local';
@@ -169,6 +168,16 @@ export class AcademyService {
   /** Le dossier d'agent ACTIF relié au compte, s'il y en a un. */
   private employeDe(tx: Tx, user: SessionUser): Promise<string | null> {
     return employeActif(tx, user.userId);
+  }
+
+  /**
+   * Comment une formation se lit. Un agent la suit, et sa lecture compte.
+   * Sans dossier d'agent (la RH qui relit), ou pour qui l'anime, elle se lit
+   * en aperçu : toutes les leçons ouvertes, la vidéo libre, rien de compté
+   * (ADR-0070). Qui anime une formation suit les autres comme tout agent.
+   */
+  private modeDe(f: LigneFormation, employeeId: string | null): ModeLecture {
+    return employeeId !== null && fermeture(f, employeeId) === null ? 'suivi' : 'apercu';
   }
 
   private async formation(tx: Tx, id: string): Promise<LigneFormation> {
@@ -416,7 +425,6 @@ export class AcademyService {
         employeeId,
         lecons.map((l) => l.id),
       );
-      const mode: ModeLecture = employeeId ? 'suivi' : 'apercu';
       const banques = await taillesDesBanques(
         tx,
         formations.map((f) => f.id),
@@ -427,7 +435,17 @@ export class AcademyService {
       const signets = await this.signetsDe(tx, user.userId);
       return (
         formations
-          .map((f) => this.detailDe(f, modules, lecons, progres, mode, false))
+          .map((f) => {
+            const mode = this.modeDe(f, employeeId);
+            return this.detailDe(
+              f,
+              modules,
+              lecons,
+              mode === 'suivi' ? progres : new Map(),
+              mode,
+              false,
+            );
+          })
           // Une formation publiée dont aucune vidéo n'est prête n'a rien à
           // offrir : elle ne s'affiche pas.
           .filter((d) => d.lessonCount > 0)
@@ -456,12 +474,13 @@ export class AcademyService {
       const f = await this.formationVisible(tx, courseId, user);
       const { modules, lecons } = await this.structure(tx, [f.id]);
       const employeeId = f.publishedAt ? await this.employeDe(tx, user) : null;
+      const mode = this.modeDe(f, employeeId);
       const progres = await this.progresDe(
         tx,
-        employeeId,
+        mode === 'suivi' ? employeeId : null,
         lecons.map((l) => l.id),
       );
-      const d = this.detailDe(f, modules, lecons, progres, employeeId ? 'suivi' : 'apercu', false);
+      const d = this.detailDe(f, modules, lecons, progres, mode, false);
       const toutesValidees = d.lessonCount > 0 && d.completedLessons === d.lessonCount;
       const maintenant = this.horloge();
       const evaluation = await vueEvaluation(
@@ -469,7 +488,6 @@ export class AcademyService {
         f,
         employeeId,
         toutesValidees,
-        this.gere(user),
         maintenant,
         this.limiteTentatives,
       );
@@ -483,7 +501,7 @@ export class AcademyService {
         ...d,
         evaluation,
         certificat,
-        fermeture: evaluation || certificat ? null : fermeture(f, employeeId, this.gere(user)),
+        fermeture: fermeture(f, employeeId),
         hasEvaluation: evaluation !== null,
         certified: evaluation ? evaluation.etat === 'reussie' : certificat !== null,
         bookmarked: (await this.signetsDe(tx, user.userId)).has(f.id),
@@ -588,10 +606,8 @@ export class AcademyService {
     this.exigerGestion(user);
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const f = await this.formation(tx, courseId);
-      // L'atelier montre la banque de questions : qui l'ouvre la connaît.
       const { modules, lecons } = await this.structure(tx, [f.id]);
       const quiz = await quizAdmin(tx, f);
-      if (quiz.questions.length > 0) await retenirLesReponsesVues(tx, user, f.id);
       return {
         ...this.detailDe(f, modules, lecons, new Map(), 'apercu', true),
         hasEvaluation: quiz.questions.length > 0,
@@ -1207,11 +1223,11 @@ export class AcademyService {
     const lecon = await this.lecon(tx, lessonId);
     const f = await this.formationVisible(tx, lecon.courseId, user);
     const employeeId = f.publishedAt ? await this.employeDe(tx, user) : null;
-    const mode: ModeLecture = employeeId ? 'suivi' : 'apercu';
+    const mode = this.modeDe(f, employeeId);
     const { modules, lecons } = await this.structure(tx, [f.id]);
     const progres = await this.progresDe(
       tx,
-      employeeId,
+      mode === 'suivi' ? employeeId : null,
       lecons.map((l) => l.id),
     );
     const etapes = this.etapes(modules, lecons, progres, mode);

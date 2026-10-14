@@ -44,7 +44,7 @@ type Ligne = {
   sensible?: boolean;
 } & ({ capacites: readonly Capacite[] } | { types: readonly TypeDelegable[] });
 
-const SECTIONS: { titre: string; lignes: Ligne[]; avertissement?: string }[] = [
+const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
   {
     titre: 'Personnel',
     lignes: [
@@ -168,9 +168,6 @@ const SECTIONS: { titre: string; lignes: Ligne[]; avertissement?: string }[] = [
         capacites: ['academy'],
       },
     ],
-    // Qui gère le catalogue en connaît les questions (academy-evaluation.service.ts, `fermeture`).
-    avertissement:
-      'La personne déléguée pourra toujours suivre les formations, mais plus passer leurs évaluations : elle n’en obtiendra pas les certificats.',
   },
 ];
 
@@ -352,11 +349,6 @@ export default function DelegationsPage() {
             <CardHeader>
               <CardTitle>{section.titre}</CardTitle>
             </CardHeader>
-            {section.avertissement ? (
-              <p className="mx-5 mb-1 rounded-[10px] bg-[#E0802F]/[0.06] px-3 py-2 text-[12px] leading-snug text-accent-text">
-                {section.avertissement}
-              </p>
-            ) : null}
             <ul className="flex flex-col divide-y divide-line-soft px-5 pb-1">
               {section.lignes.map((l) => (
                 <li key={l.cle} className="py-4">

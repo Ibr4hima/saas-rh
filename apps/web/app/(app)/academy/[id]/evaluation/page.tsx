@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AttemptResult, AttemptView, CourseDetail } from '@teranga/contracts';
 import { Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
@@ -115,6 +115,14 @@ export default function EvaluationPage() {
     }
   }, [etat, copie, resultat, demarrer]);
 
+  // Qui anime la formation n'a pas d'évaluation à passer (ADR-0070) : retour
+  // à la formation.
+  const router = useRouter();
+  const renvoyer = formation.data?.fermeture === 'formateur' && !copie && !resultat;
+  useEffect(() => {
+    if (renvoyer) router.replace(`/academy/${id}`);
+  }, [renvoyer, router, id]);
+
   const repondre = useCallback(
     (questionId: string, optionId: string, multiple: boolean) => {
       if (!copie) return;
@@ -127,7 +135,7 @@ export default function EvaluationPage() {
     [copie],
   );
 
-  if (formation.isPending) {
+  if (formation.isPending || renvoyer) {
     return (
       <Page>
         <Skeleton className="h-5 w-48 rounded-full" />
@@ -262,21 +270,15 @@ function Accueil({
           <p className="flex-1 text-[12.5px] text-ink-muted">
             {f.mode !== 'suivi'
               ? 'L’évaluation se passe depuis un compte d’agent.'
-              : ev.etat === 'fermee'
-                ? ev.fermeture === 'formateur'
-                  ? 'Vous êtes le formateur de cette formation : l’évaluation ne vous concerne pas.'
-                  : ev.fermeture === 'reponses'
-                    ? 'Vous en avez vu les réponses en gérant le catalogue : cette évaluation vous est fermée.'
-                    : 'Vous gérez le catalogue et en connaissez les questions : les évaluations vous sont fermées.'
-                : ev.etat === 'verrouillee'
-                  ? 'Validez d’abord toutes les leçons de la formation.'
-                  : ev.etat === 'attente'
-                    ? `Vos tentatives du jour sont passées. La prochaine s’ouvre ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`
-                    : ev.etat === 'reussie'
-                      ? 'Vous avez déjà réussi cette évaluation.'
-                      : ev.etat === 'en_cours'
-                        ? 'Votre copie est ouverte.'
-                        : tentativesDuJour(ev)}
+              : ev.etat === 'verrouillee'
+                ? 'Validez d’abord toutes les leçons de la formation.'
+                : ev.etat === 'attente'
+                  ? `Vos tentatives du jour sont passées. La prochaine s’ouvre ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`
+                  : ev.etat === 'reussie'
+                    ? 'Vous avez déjà réussi cette évaluation.'
+                    : ev.etat === 'en_cours'
+                      ? 'Votre copie est ouverte.'
+                      : tentativesDuJour(ev)}
           </p>
           <Button disabled={!ouvrable} loading={commence} onClick={onCommencer}>
             <Icon name="play_arrow" size={17} fill />

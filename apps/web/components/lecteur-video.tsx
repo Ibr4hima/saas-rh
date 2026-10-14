@@ -30,7 +30,8 @@ import { Icon } from './icons';
 
    Une fois la leçon validée, tout se libère : on avance, on quitte l'onglet
    sans que la vidéo s'arrête, on révise comme on veut. En aperçu (la RH qui
-   relit), tout est libre aussi, et rien n'est compté ni retenu.
+   relit, ou qui anime la formation), tout est libre aussi, et rien n'est
+   compté ni retenu.
    ———————————————————————————————————————————————————————————————— */
 
 /** La couleur des passages VUS : le bleu de la marque sur fond sombre. */

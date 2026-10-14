@@ -446,10 +446,8 @@ export interface FicheSuivi {
   /** Les formations qu'il a commencées, pour les blocs « Formation ». */
   formations: FormationDeLaFiche[];
   /**
-   * Les formations que l'agent encadre : celles que l'agent anime, et celles
-   * dont l'évaluation est fermée à l'agent, qui gère le catalogue de
-   * l'Academy ou en a vu les réponses. Elles ne se donnent pas à suivre
-   * (ADR-0057, ADR-0058).
+   * Les formations que l'agent encadre : celles que l'agent anime. Elles ne
+   * se donnent pas à suivre (ADR-0057, ADR-0070).
    */
   formationsEncadrees: string[];
   /** Les jours d'évaluation de l'APIX : ils rangent chaque objectif par son échéance. */

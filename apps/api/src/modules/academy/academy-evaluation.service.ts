@@ -93,60 +93,15 @@ async function sonDossier(tx: Tx, userId: string): Promise<string | null> {
 }
 
 /**
- * Pourquoi l'évaluation est fermée à cet agent — s'il y a lieu.
+ * Pourquoi l'évaluation est fermée à cet agent, s'il y a lieu.
  *
- * Le formateur a fait la formation : il en suit les leçons, il n'en passe
- * pas l'évaluation. Qui gère le catalogue (la DCH, ses délégués,
- * l'administrateur) en voit les questions : les évaluations lui sont
- * fermées. Tous les autres la passent et obtiennent leur certificat.
+ * Qui anime la formation en suit les leçons, mais n'en passe pas
+ * l'évaluation : le dossier de l'agent la range parmi les formations
+ * dispensées (ADR-0046). Tous les autres la passent et obtiennent leur
+ * certificat, qui gère le catalogue compris (ADR-0070).
  */
-export function fermeture(
-  f: LigneFormation,
-  employeeId: string | null,
-  gereLeCatalogue: boolean,
-  aVuLesReponses = false,
-): 'formateur' | 'gestion' | 'reponses' | null {
-  if (!employeeId) return null;
-  if (gereLeCatalogue) return 'gestion';
-  if (f.formateurEmployeeId === employeeId) return 'formateur';
-  return aVuLesReponses ? 'reponses' : null;
-}
-
-/**
- * Qui ouvre les bonnes réponses d'une formation s'en souvient : la banque à
- * l'atelier, une question écrite, un essai corrigé. Retenu une fois pour
- * toutes, son évaluation lui reste fermée, même sa délégation retirée.
- */
-export async function retenirLesReponsesVues(
-  tx: Tx,
-  user: SessionUser,
-  courseId: string,
-): Promise<void> {
-  const employeeId = await sonDossier(tx, user.userId);
-  if (!employeeId) return;
-  await tx
-    .insert(t.academyReponsesVues)
-    .values({ tenantId: user.tenantId, employeeId, courseId })
-    .onConflictDoNothing();
-}
-
-export async function aVuLesReponses(
-  tx: Tx,
-  employeeId: string | null,
-  courseId: string,
-): Promise<boolean> {
-  if (!employeeId) return false;
-  const [vue] = await tx
-    .select({ courseId: t.academyReponsesVues.courseId })
-    .from(t.academyReponsesVues)
-    .where(
-      and(
-        eq(t.academyReponsesVues.employeeId, employeeId),
-        eq(t.academyReponsesVues.courseId, courseId),
-      ),
-    )
-    .limit(1);
-  return Boolean(vue);
+export function fermeture(f: LigneFormation, employeeId: string | null): 'formateur' | null {
+  return employeeId !== null && f.formateurEmployeeId === employeeId ? 'formateur' : null;
 }
 
 /** Combien de questions compte la banque de chaque formation. */
@@ -229,7 +184,6 @@ export async function vueEvaluation(
   f: LigneFormation,
   employeeId: string | null,
   toutesValidees: boolean,
-  gereLeCatalogue: boolean,
   maintenant: Date,
   parJour: number | null = TENTATIVES_PAR_JOUR,
 ): Promise<EvaluationView | null> {
@@ -253,12 +207,7 @@ export async function vueEvaluation(
       renouvellement: false,
     };
   }
-  const raison = fermeture(
-    f,
-    employeeId,
-    gereLeCatalogue,
-    await aVuLesReponses(tx, employeeId, f.id),
-  );
+  const raison = fermeture(f, employeeId);
 
   const certificats = await tx
     .select()
@@ -426,8 +375,7 @@ export async function emettreCertificat(
 
 /**
  * Une formation sans évaluation délivre son certificat à qui en a validé
- * toutes les leçons, sauf à qui l'anime et à qui gère le catalogue
- * (`fermeture`) ; sans questions, il n'y a pas de réponses à avoir vues.
+ * toutes les leçons, sauf à qui l'anime (`fermeture`).
  *
  * Un certificat en cours suffit, et un certificat révoqué ne revient pas de
  * lui-même. Seul un certificat expiré, celui d'une évaluation que la
@@ -444,7 +392,7 @@ export async function certifierSansEvaluation(
 ): Promise<LigneCertificat | null> {
   if (f.publishedAt === null) return null;
   if (((await taillesDesBanques(tx, [f.id])).get(f.id) ?? 0) > 0) return null;
-  if (fermeture(f, employeeId, peut(user, 'academy'))) return null;
+  if (fermeture(f, employeeId)) return null;
   if (!(await toutesLeconsValidees(tx, f.id, employeeId))) return null;
   // Deux lectures parties ensemble ne délivrent pas deux certificats.
   await tx.execute(
@@ -600,7 +548,6 @@ export class AcademyEvaluationService {
         options: this.options(input),
       });
       await this.toucher(tx, courseId);
-      await retenirLesReponsesVues(tx, user, courseId);
     });
     return { id };
   }
@@ -633,7 +580,6 @@ export class AcademyEvaluationService {
         })
         .where(eq(t.academyQuestions.id, id));
       await this.toucher(tx, q.courseId);
-      await retenirLesReponsesVues(tx, user, q.courseId);
     });
   }
 
@@ -720,8 +666,6 @@ export class AcademyEvaluationService {
     this.exigerGestion(user);
     return this.db.withTenant(this.ctx(user), async (tx) => {
       await this.formation(tx, courseId);
-      // La correction rend les bonnes réponses.
-      await retenirLesReponsesVues(tx, user, courseId);
       const rows = await tx
         .select()
         .from(t.academyQuestions)
@@ -853,34 +797,12 @@ export class AcademyEvaluationService {
       if (banque.length === 0) {
         problem(409, 'academy.no_evaluation', 'Cette formation n’a pas d’évaluation');
       }
-      const raison = fermeture(
-        f,
-        employeeId,
-        this.gere(user),
-        await aVuLesReponses(tx, employeeId, f.id),
-      );
-      if (raison === 'formateur') {
+      if (fermeture(f, employeeId) === 'formateur') {
         problem(
           403,
           'academy.formateur',
-          'Vous êtes le formateur de cette formation : l’évaluation ne vous concerne pas',
+          'Vous animez cette formation : l’évaluation ne vous concerne pas',
           'Vous pouvez en suivre les leçons librement.',
-        );
-      }
-      if (raison === 'gestion') {
-        problem(
-          403,
-          'academy.gestion',
-          'Vous gérez le catalogue : les évaluations vous sont fermées',
-          'Vous en connaissez les questions.',
-        );
-      }
-      if (raison === 'reponses') {
-        problem(
-          403,
-          'academy.reponses_vues',
-          'Vous avez vu les réponses de cette évaluation : elle vous est fermée',
-          'Vous les avez ouvertes en gérant le catalogue.',
         );
       }
       if (!(await toutesLeconsValidees(tx, courseId, employeeId))) {
@@ -1013,13 +935,7 @@ export class AcademyEvaluationService {
       const f = await this.formation(tx, a.courseId);
       let certificat: CertificateSummary | null = null;
       // Désigné formateur pendant sa copie : elle compte, sans certificat.
-      const fermee = fermeture(
-        f,
-        employeeId,
-        this.gere(user),
-        await aVuLesReponses(tx, employeeId, f.id),
-      );
-      if (c.passed && fermee === null) {
+      if (c.passed && fermeture(f, employeeId) === null) {
         certificat = resumeCertificat(
           await emettreCertificat(
             tx,
@@ -1038,7 +954,6 @@ export class AcademyEvaluationService {
         f,
         employeeId,
         true,
-        this.gere(user),
         maintenant,
         this.limiteTentatives,
       );

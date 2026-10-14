@@ -29,7 +29,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0021](0021-passage-de-minuit.md)                     | Le passage de minuit                                                                    | acceptée, précisée par 0067                 |
 | [0022](0022-mot-de-passe-oublie.md)                   | Mot de passe oublié : un lien par courriel, valable une heure, qui sert une fois        | acceptée                                    |
 | [0023](0023-defense-en-profondeur.md)                 | Défense en profondeur : pièces chiffrées, origines, en-têtes                            | acceptée                                    |
-| [0024](0024-inactivite-et-revue-des-droits.md)        | Déconnexion après trois jours d'inactivité, revue des droits d'accès                    | acceptée                                    |
+| [0024](0024-inactivite-et-revue-des-droits.md)        | Déconnexion après trois jours d'inactivité, revue des droits d'accès                    | acceptée, règle des réponses levée par 0070 |
 | [0025](0025-gestion-des-acces-deleguee.md)            | La gestion des accès se délègue                                                         | acceptée                                    |
 | [0026](0026-fiche-objectifs-en-trois-parties.md)      | La fiche d'objectifs en trois parties : cases, formations à suivre, commentaires        | acceptée, en partie remplacée : 0027, 0055  |
 | [0027](0027-formations-a-suivre-en-badges.md)         | Les formations à suivre en badges, atteintes au certificat                              | acceptée, précisée par 0057, 0058           |
@@ -51,10 +51,10 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0043](0043-suivi-en-cours-puis-traitees.md)          | Suivi des demandes de documents : en cours, puis traitées                               | acceptée, précisée par 0048                 |
 | [0044](0044-demander-un-document-en-fenetre.md)       | Demander un document : un bloc, une fenêtre, sans précision                             | acceptée, précisée par 0045                 |
 | [0045](0045-autre-document-retire.md)                 | « Autre document » ne se demande plus                                                   | acceptée                                    |
-| [0046](0046-formateur-obligatoire.md)                 | Le formateur d'une formation est obligatoire                                            | acceptée                                    |
+| [0046](0046-formateur-obligatoire.md)                 | Le formateur d'une formation est obligatoire                                            | acceptée, précisée par 0070                 |
 | [0047](0047-sessions-et-signalement.md)               | Plus de « Se déconnecter partout » ; un signalement part sans précision                 | acceptée                                    |
 | [0048](0048-nouvellement-traitees-en-evidence.md)     | Arrivé par l'avis, les demandes nouvellement traitées en évidence                       | acceptée                                    |
-| [0049](0049-evaluation-sans-minuterie.md)             | Academy : l'évaluation sans limite de temps, un certificat sans évaluation              | acceptée, précisée par 0050                 |
+| [0049](0049-evaluation-sans-minuterie.md)             | Academy : l'évaluation sans limite de temps, un certificat sans évaluation              | acceptée, précisée par 0050 et 0070         |
 | [0050](0050-sans-evaluation-sans-echeance.md)         | Sans évaluation, un certificat sans limite de validité                                  | acceptée                                    |
 | [0051](0051-fiche-objectifs-crayon.md)                | La fiche d'objectifs s'ouvre au crayon et s'enregistre d'un clic                        | acceptée, « Fixer » rétabli par 0056        |
 | [0052](0052-une-annee-a-la-fois.md)                   | Objectifs d'un direct : une année à la fois, la suivante fixée à l'avance               | acceptée                                    |
@@ -63,7 +63,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0055](0055-objectifs-a-echeance.md)                  | Objectifs à échéance, rangés dans l'évaluation où ils comptent                          | acceptée, en partie remplacée : 0056, 0057  |
 | [0056](0056-fixer-des-objectifs-par-semestre.md)      | Fixer des objectifs par semestre, chacun avec son échéance                              | acceptée, en partie remplacée : 0057, 0058  |
 | [0057](0057-echeance-confirmee-a-l-enregistrement.md) | L'échéance proche se confirme à l'enregistrement ; les formations n'en ont pas          | acceptée, précisée par 0058                 |
-| [0058](0058-formations-encadrees.md)                  | Formations encadrées par l'agent ; la fenêtre de confirmation comme la fiche            | acceptée, en partie remplacée : 0059        |
+| [0058](0058-formations-encadrees.md)                  | Formations encadrées par l'agent ; la fenêtre de confirmation comme la fiche            | acceptée, en partie remplacée : 0059, 0070  |
 | [0059](0059-report-au-s1.md)                          | Le champ du report dit « au S1 de 2027 »                                                | acceptée                                    |
 | [0060](0060-files-de-la-dch.md)                       | Files de la DCH : sa demande sans geste, chacun ce qui lui est délégué                  | acceptée                                    |
 | [0061](0061-offre-ouverte-apres-la-date-limite.md)    | Une offre reste ouverte après sa date limite ; seule la RH la ferme                     | acceptée                                    |
@@ -75,3 +75,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0067](0067-performance-et-robustesse.md)             | Performance à l'échelle et robustesse : index, veille, délais                           | acceptée, précisée par 0068                 |
 | [0068](0068-dernieres-routes-lentes.md)               | Les dernières routes lentes : personnel, circuit, candidatures                          | acceptée                                    |
 | [0069](0069-envois-lourds-delai-par-route.md)         | Les envois lourds : un délai par route, la vidéo en flux jusqu'au bout                  | acceptée                                    |
+| [0070](0070-evaluation-ouverte-a-la-gestion.md)       | Academy : l'évaluation ouverte à qui gère le catalogue                                  | acceptée                                    |

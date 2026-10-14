@@ -102,8 +102,8 @@ export const estCapaciteDemande = (c: string): c is CapaciteDemande =>
  * supprime ; les agents les lisent dans leur espace.
  *
  * Le catalogue de l'APIX Academy, lui, se gère aussi à la DCH, et se
- * délègue : qui le gère en connaît les questions, ses évaluations lui sont
- * fermées (academy-evaluation.service.ts, `fermeture`).
+ * délègue. Qui le gère en suit les formations et en passe les évaluations
+ * comme tout le monde (ADR-0070).
  */
 export const CAPACITES_ADMINISTRATEUR = ['textes'] as const satisfies readonly Capacite[];
 

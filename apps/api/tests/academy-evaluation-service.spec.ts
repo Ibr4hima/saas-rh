@@ -652,7 +652,7 @@ describe('le certificat', () => {
   });
 });
 
-describe('le formateur, et qui gère le catalogue', () => {
+describe('qui anime la formation, et qui gère le catalogue', () => {
   async function composer(qui: SessionUser, employeeId: string, justes = Infinity) {
     await validerLecons(employeeId);
     const copie = await evaluation.demarrer(qui, courseId);
@@ -673,7 +673,8 @@ describe('le formateur, et qui gère le catalogue', () => {
     await designer(agentEmployeeId);
     const vue = await academy.detail(agent, courseId);
     expect(vue.formateur).toEqual({ employeeId: agentEmployeeId, nom: 'Awa Diop' });
-    expect(vue.mode).toBe('suivi');
+    // Les leçons se lisent librement, en aperçu (ADR-0070).
+    expect(vue).toMatchObject({ mode: 'apercu', fermeture: 'formateur' });
     await validerLecons();
     expect((await academy.detail(agent, courseId)).evaluation).toMatchObject({
       etat: 'fermee',
@@ -706,60 +707,56 @@ describe('le formateur, et qui gère le catalogue', () => {
     expect(await evaluation.mesCertificats(agent)).toEqual([]);
   });
 
-  it('un compte qui gère le catalogue, s’il est aussi agent, ne passe pas d’évaluation', async () => {
-    // L'administrateur n'est d'ordinaire pas agent ; s'il l'était, il
-    // connaîtrait les réponses.
-    const adminAgent = { ...autre, role: 'admin' } as SessionUser;
-    await validerLecons(autreEmployeeId);
-    expect((await academy.detail(adminAgent, courseId)).evaluation).toMatchObject({
-      etat: 'fermee',
-      fermeture: 'gestion',
-    });
-    expect(await codeOf(() => evaluation.demarrer(adminAgent, courseId))).toBe('academy.gestion');
-    // Un membre de la DCH à qui l'Academy est déléguée : de même.
+  it('qui gère le catalogue passe l’évaluation et obtient son certificat (ADR-0070)', async () => {
+    // Un membre de la DCH à qui l'Academy est déléguée ouvre la banque à
+    // l'atelier, écrit une question et fait corriger un essai.
     const delegue = { ...autre, capacites: ['academy'] } as SessionUser;
-    expect(await codeOf(() => evaluation.demarrer(delegue, courseId))).toBe('academy.gestion');
-    // Sans avoir ouvert la banque, sa délégation retirée, il la passe.
-    expect(await codeOf(() => evaluation.demarrer(autre, courseId))).toBe('AUCUNE ERREUR');
-  });
-
-  it('qui a vu les réponses ne passe pas l’évaluation, même sa délégation retirée (audit)', async () => {
-    await validerLecons(autreEmployeeId);
-    const delegue = { ...autre, capacites: ['academy'] } as SessionUser;
-    expect((await academy.gestionDetail(delegue, courseId)).id).toBe(courseId);
-    // La délégation retirée : il redevient un agent, qui connaît les réponses.
-    expect((await academy.detail(autre, courseId)).evaluation).toMatchObject({
-      etat: 'fermee',
-      fermeture: 'reponses',
-    });
-    expect(await codeOf(() => evaluation.demarrer(autre, courseId))).toBe('academy.reponses_vues');
-    // Les autres agents, eux, la passent.
-    expect((await academy.detail(agent, courseId)).evaluation?.fermeture).toBeNull();
-  });
-
-  it('un essai corrigé, une question écrite : les réponses sont vues aussi (audit)', async () => {
-    const vues = async () =>
-      (
-        await raw(`SELECT employee_id FROM academy_reponses_vues WHERE course_id = $1`, [courseId])
-      ).rows.map((r) => r.employee_id as string);
-    const delegue = { ...autre, capacites: ['academy'] } as SessionUser;
+    expect((await academy.gestionDetail(delegue, courseId)).quiz.questions).toHaveLength(8);
+    await evaluation.creerQuestion(delegue, courseId, question(8));
     const essai = await evaluation.essayer(delegue, courseId);
-    expect(await vues()).toEqual([]);
     await evaluation.corrigerEssai(delegue, courseId, {
       questionIds: essai.questions.map((q) => q.id),
       answers: {},
     });
-    expect(await vues()).toEqual([autreEmployeeId]);
-    await raw(`DELETE FROM academy_reponses_vues WHERE course_id = $1`, [courseId]);
-    await evaluation.creerQuestion(delegue, courseId, {
-      prompt: 'Quel raccourci duplique une diapositive ?',
-      kind: 'unique',
-      options: [
-        { text: 'Ctrl + D', correct: true },
-        { text: 'Ctrl + P', correct: false },
-      ],
+    // L'évaluation reste ouverte, et la réussir délivre le certificat.
+    await validerLecons(autreEmployeeId);
+    expect((await academy.detail(delegue, courseId)).evaluation).toMatchObject({
+      etat: 'ouverte',
+      fermeture: null,
     });
-    expect(await vues()).toEqual([autreEmployeeId]);
+    const r = await composer(delegue, autreEmployeeId);
+    expect(r).toMatchObject({ passed: true, evaluation: { etat: 'reussie', fermeture: null } });
+    expect(r.certificat).not.toBeNull();
+    // La délégation retirée, le certificat reste à l'agent.
+    expect(await evaluation.mesCertificats(autre)).toHaveLength(1);
+  });
+
+  it('un compte administrateur relié à un dossier d’agent la passe de même', async () => {
+    const adminAgent = { ...autre, role: 'admin' } as SessionUser;
+    await validerLecons(autreEmployeeId);
+    expect((await academy.detail(adminAgent, courseId)).evaluation?.fermeture).toBeNull();
+    expect((await composer(adminAgent, autreEmployeeId)).certificat).not.toBeNull();
+  });
+
+  it('des réponses vues avant l’ADR-0070 ne ferment plus rien', async () => {
+    await raw(
+      `INSERT INTO academy_reponses_vues (tenant_id, employee_id, course_id) VALUES ($1,$2,$3)`,
+      [tenantId, autreEmployeeId, courseId],
+    );
+    await validerLecons(autreEmployeeId);
+    expect((await academy.detail(autre, courseId)).evaluation?.fermeture).toBeNull();
+    expect((await composer(autre, autreEmployeeId)).certificat).not.toBeNull();
+  });
+
+  it('l’évaluation reste fermée à qui anime la formation, même en gérant le catalogue', async () => {
+    await designer(autreEmployeeId);
+    const delegue = { ...autre, capacites: ['academy'] } as SessionUser;
+    await validerLecons(autreEmployeeId);
+    expect((await academy.detail(delegue, courseId)).evaluation).toMatchObject({
+      etat: 'fermee',
+      fermeture: 'formateur',
+    });
+    expect(await codeOf(() => evaluation.demarrer(delegue, courseId))).toBe('academy.formateur');
   });
 
   it('sans l’habilitation « APIX Academy », on ne gère pas le catalogue', async () => {
@@ -914,7 +911,7 @@ describe('une formation sans évaluation (ADR-0049)', () => {
     expect(await certificats()).toEqual([]);
   });
 
-  it('qui anime la formation ou gère le catalogue n’en reçoit pas', async () => {
+  it('qui anime la formation n’en reçoit pas ; qui gère le catalogue, si (ADR-0070)', async () => {
     await sansQuestions();
     await academy.modifierFormation(rh, courseId, {
       title: 'PowerPoint',
@@ -931,13 +928,12 @@ describe('une formation sans évaluation (ADR-0049)', () => {
 
     const delegue = { ...autre, capacites: ['academy'] } as SessionUser;
     await validerLecons(autreEmployeeId);
+    // Les leçons validées hors de la page : « Mes certificats » le délivre.
+    expect(await evaluation.mesCertificats(delegue)).toMatchObject([{ courseId, score: null }]);
     expect(await academy.detail(delegue, courseId)).toMatchObject({
-      certificat: null,
-      fermeture: 'gestion',
+      certified: true,
+      fermeture: null,
     });
-    expect(await evaluation.mesCertificats(delegue)).toEqual([]);
-    // Sans la délégation, la formation suivie en entier délivre son certificat.
-    expect((await academy.detail(autre, courseId)).certificat).not.toBeNull();
   });
 
   it('révoqué, le certificat ne revient pas de lui-même', async () => {

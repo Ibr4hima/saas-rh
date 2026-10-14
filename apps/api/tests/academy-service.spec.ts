@@ -312,6 +312,36 @@ describe('ce que voit un agent', () => {
     expect((await academy.demarrer(agent, l2)).mode).toBe('suivi');
   });
 
+  it('qui anime la formation la lit librement, et celle-là seulement (ADR-0070)', async () => {
+    const { courseId, l2 } = await formationPubliee();
+    const autre = await formationPubliee();
+    const { rows } = await raw(
+      `SELECT e.id FROM employees e JOIN persons p ON p.id = e.person_id WHERE p.user_id = $1`,
+      [agentUserId],
+    );
+    await raw(
+      `UPDATE academy_courses SET formateur_employee_id = $1, formateur_nom = 'Awa Diop' WHERE id = $2`,
+      [rows[0].id, courseId],
+    );
+    // En aperçu : toutes les leçons ouvertes, ni évaluation ni certificat.
+    const detail = await academy.detail(agent, courseId);
+    expect(detail).toMatchObject({ mode: 'apercu', fermeture: 'formateur' });
+    expect(detail.modules[0]!.lessons.map((l) => l.etat)).toEqual(['a_suivre', 'a_suivre']);
+    // La leçon 2 s'ouvre sans la 1, sans session : rien ne se compte.
+    expect(await academy.demarrer(agent, l2)).toMatchObject({ mode: 'apercu', sessionId: null });
+    expect(
+      await codeOf(() => academy.battement(agent, l2, { sessionId: randomUUID(), de: 0, a: 10 })),
+    ).toBe('academy.playing_elsewhere');
+    const { rows: vus } = await raw(
+      `SELECT count(*)::int AS n FROM academy_lesson_progress WHERE lesson_id = $1`,
+      [l2],
+    );
+    expect(vus[0].n).toBe(0);
+    // Les autres formations se suivent dans l'ordre, comme pour tout agent.
+    expect((await academy.detail(agent, autre.courseId)).mode).toBe('suivi');
+    expect(await codeOf(() => academy.demarrer(agent, autre.l2))).toBe('academy.lesson_locked');
+  });
+
   it('annonce la validation une fois, au battement qui franchit le seuil', async () => {
     const { l1 } = await formationPubliee();
     const lecture = await academy.demarrer(agent, l1);

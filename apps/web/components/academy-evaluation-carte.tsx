@@ -17,8 +17,8 @@ import { Icon } from './icons';
    prochaine s'ouvre — ou le certificat obtenu. L'orange n'y paraît que pour
    l'ATTENTE : les tentatives du jour épuisées.
 
-   Le formateur d'une formation en suit les leçons, pas l'évaluation : la
-   carte le lui dit d'emblée, plutôt que de le laisser buter sur un refus.
+   Qui anime la formation n'en passe pas l'évaluation et n'en reçoit pas le
+   certificat : la carte ne s'affiche pas (ADR-0070).
 
    Le bouton « Passer l'évaluation » n'y figure pas : il est déjà l'action
    principale de la page, en haut à droite, et deux boutons identiques à
@@ -40,11 +40,12 @@ export function reglesEvaluation(ev: EvaluationView): string {
   return `${compte(ev.questionCount, 'question')} · ${Math.round(ev.seuil * 100)} % pour réussir`;
 }
 
-type IconeCarte = 'lock' | 'quiz' | 'timer' | 'edit' | 'workspace_premium' | 'school';
+type IconeCarte = 'lock' | 'quiz' | 'timer' | 'edit' | 'workspace_premium';
 
 export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
   const ev = formation.evaluation;
   const [apercu, setApercu] = useState(false);
+  if (formation.fermeture === 'formateur') return null;
   if (!ev) return <CarteCertificat formation={formation} />;
   const suivi = formation.mode === 'suivi';
   let icone: IconeCarte = 'quiz';
@@ -63,15 +64,6 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
     ton = 'bg-line-soft/70 text-ink-muted';
     const restantes = formation.lessonCount - formation.completedLessons;
     texte = `Elle s’ouvre quand toutes les leçons sont validées. Encore ${compte(restantes, 'leçon')}.`;
-  } else if (ev.etat === 'fermee') {
-    icone = ev.fermeture === 'formateur' ? 'school' : 'lock';
-    ton = 'bg-line-soft/70 text-ink-muted';
-    texte =
-      ev.fermeture === 'formateur'
-        ? 'Vous êtes le formateur de cette formation : l’évaluation ne vous concerne pas. Les leçons restent ouvertes, et votre dossier indique que vous l’avez animée.'
-        : ev.fermeture === 'reponses'
-          ? 'Vous en avez vu les réponses en gérant le catalogue : cette évaluation vous est fermée.'
-          : 'Vous gérez le catalogue et en connaissez les questions : les évaluations vous sont fermées.';
   } else if (ev.etat === 'ouverte' && ev.renouvellement && ev.certificat?.expiresAt) {
     icone = 'workspace_premium';
     titre = 'Renouveler le certificat';
@@ -132,7 +124,7 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
 function CarteCertificat({ formation: f }: { formation: CourseDetail }) {
   const [apercu, setApercu] = useState(false);
   const restantes = f.lessonCount - f.completedLessons;
-  let icone: IconeCarte = 'workspace_premium';
+  const icone: IconeCarte = 'workspace_premium';
   let ton = 'bg-primary-soft text-primary';
   let titre = 'Certificat';
   let texte: string;
@@ -151,13 +143,6 @@ function CarteCertificat({ formation: f }: { formation: CourseDetail }) {
         Voir le certificat
       </Button>
     );
-  } else if (f.fermeture) {
-    icone = f.fermeture === 'formateur' ? 'school' : 'lock';
-    ton = 'bg-line-soft/70 text-ink-muted';
-    texte =
-      f.fermeture === 'formateur'
-        ? 'Vous animez cette formation : elle ne vous délivre pas de certificat. Les leçons restent ouvertes, et votre dossier le mentionne.'
-        : 'Vous gérez le catalogue : ses formations ne vous délivrent pas de certificat.';
   } else if (restantes > 0) {
     texte = `Délivré quand toutes les leçons sont validées. Encore ${compte(restantes, 'leçon')}.`;
   } else {

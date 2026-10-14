@@ -173,9 +173,10 @@ export type Intervalle = [number, number];
 export type EtatLecon = 'verrouillee' | 'a_suivre' | 'en_cours' | 'validee';
 
 /**
- * `suivi` : un agent sur une formation publiée — tout est compté, rien ne se
- * saute. `apercu` : la RH qui relit, ou un compte sans dossier d'agent —
- * lecture libre, rien n'est enregistré.
+ * `suivi` : un agent sur une formation publiée. Tout est compté, rien ne se
+ * saute. `apercu` : la RH qui relit, un compte sans dossier d'agent, ou qui
+ * anime la formation, pour celle-là seulement (ADR-0070). Lecture libre, rien
+ * n'est enregistré.
  */
 export type ModeLecture = 'suivi' | 'apercu';
 
@@ -239,9 +240,8 @@ export interface CourseDetail extends CourseSummary {
    */
   certificat: CertificateSummary | null;
   /**
-   * Sans évaluation : pourquoi la formation ne délivre pas de certificat à
-   * l'agent, qui l'anime ou gère le catalogue. Avec une évaluation, la
-   * raison est dans `evaluation.fermeture`, et ce champ reste `null`.
+   * `formateur` : l'agent connecté anime la formation. Elle se lit en aperçu,
+   * et la page n'en montre ni l'évaluation ni le certificat (ADR-0070).
    */
   fermeture: EvaluationView['fermeture'];
 }
@@ -459,12 +459,11 @@ export interface EvaluationView {
   seuil: number;
   etat: 'verrouillee' | 'ouverte' | 'en_cours' | 'attente' | 'reussie' | 'fermee';
   /**
-   * Pourquoi elle est fermée à l'agent connecté : `formateur` — il a fait la
-   * formation, il en suit les leçons mais ne la passe pas ; `gestion` — son
-   * compte gère le catalogue, il en connaît les questions ; `reponses` : il
-   * en a vu les bonnes réponses quand il gérait le catalogue.
+   * Pourquoi elle est fermée à l'agent connecté : `formateur`, l'agent anime
+   * la formation, en suit les leçons mais ne la passe pas (ADR-0046). Qui
+   * gère le catalogue la passe comme tout le monde (ADR-0070).
    */
-  fermeture: 'formateur' | 'gestion' | 'reponses' | null;
+  fermeture: 'formateur' | null;
   /** La limite par vingt-quatre heures ; `null` : sans limite. */
   tentativesParJour: number | null;
   /** Ce qu'il en reste dans la fenêtre ; `null` : sans limite. */
@@ -558,8 +557,8 @@ export interface PublicCertificateView {
  * - `non_reussie` : leçons terminées, évaluation tentée sans succès — pour
  *   l'instant ; les tentatives restent ouvertes.
  * - `terminee` : leçons terminées, la formation n'a pas d'évaluation, et pas
- *   de certificat en cours (qui l'anime ou gère le catalogue n'en reçoit
- *   pas ; le sien a pu expirer, ou être révoqué).
+ *   de certificat en cours (qui l'anime n'en reçoit pas ; le sien a pu
+ *   expirer, ou être révoqué).
  * - `certifiee` : certificat en cours de validité.
  */
 export const STATUTS_SUIVI = [

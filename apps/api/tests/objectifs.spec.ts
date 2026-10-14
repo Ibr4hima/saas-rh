@@ -430,7 +430,7 @@ describe('une formation à suivre', () => {
     expect(apres.atteint).toBe(true);
   });
 
-  it('ne se donne pas à suivre à l’agent qui l’encadre : l’anime, gère le catalogue, en a vu les réponses', async () => {
+  it('ne se donne pas à suivre à l’agent qui l’anime ; à qui gère le catalogue, si (ADR-0070)', async () => {
     const [animee, evaluee, libre] = [randomUUID(), randomUUID(), randomUUID()];
     const formation = (id: string, titre: string, formateur: Nom | null) =>
       raw(
@@ -461,17 +461,16 @@ describe('une formation à suivre', () => {
     try {
       // Moussa anime « Conduire une réunion ».
       expect(await encadrees('awa', 'moussa')).toEqual([animee]);
-      // Moussa a vu les réponses d'« Excel expert » : l'évaluation est fermée à Moussa.
+      // Des réponses d'« Excel expert » vues avant l'ADR-0070 ne comptent plus.
       await raw(
         `INSERT INTO academy_reponses_vues (tenant_id, employee_id, course_id) VALUES ($1,$2,$3)`,
         [tenantId, agents.moussa, evaluee],
       );
-      expect(await encadrees('awa', 'moussa')).toEqual([animee, evaluee].sort());
-      // Qui dirige la DCH gère le catalogue : les évaluations sont fermées à
-      // Mariama ; une formation sans évaluation se suit jusqu'au bout.
-      expect(await encadrees('dg', 'mariama')).toEqual([]);
+      expect(await encadrees('awa', 'moussa')).toEqual([animee]);
+      // Qui dirige la DCH gère le catalogue, et suit toutes les formations,
+      // évaluées ou non.
       await raw(`UPDATE org_units SET direction_du_personnel = true WHERE id = $1`, [unites.dch]);
-      expect(await encadrees('dg', 'mariama')).toEqual([evaluee]);
+      expect(await encadrees('dg', 'mariama')).toEqual([]);
       // Fatou n'encadre rien.
       expect(await encadrees('ousmane', 'fatou')).toEqual([]);
     } finally {
