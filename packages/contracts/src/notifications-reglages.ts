@@ -15,22 +15,15 @@ import type { SessionUser } from './core';
    responsable. Le catalogue est ici, une fois, pour l'API qui envoie et
    pour l'écran qui règle.
 
-   Trois canaux : la plateforme, le courriel, WhatsApp. Sans réglage, la
-   plateforme et le courriel (ce qui se faisait jusqu'ici), pas WhatsApp :
-   il demande un numéro vérifié, et c'est chacun qui choisit ce qui y va.
+   Deux canaux : la plateforme et le courriel, cochés tous deux sans
+   réglage (ADR-0074). */
 
-   Sur WhatsApp, un message s'affiche sur l'écran verrouillé d'un
-   téléphone : les sujets qui peuvent porter un motif (un congé maladie, le
-   refus d'une pièce, la révocation d'un certificat) y partent en mots
-   neutres, le détail reste derrière le lien. */
-
-export const CANAUX = ['plateforme', 'courriel', 'whatsapp'] as const;
+export const CANAUX = ['plateforme', 'courriel'] as const;
 export type Canal = (typeof CANAUX)[number];
 
 export const LIBELLES_CANAL: Record<Canal, string> = {
   plateforme: 'Plateforme',
   courriel: 'Courriel',
-  whatsapp: 'WhatsApp',
 };
 
 /** Où le sujet se range à l'écran : ce qui me concerne, mon équipe, ce que je traite. */
@@ -56,8 +49,6 @@ interface DefinitionDeSujet {
   libelle: string;
   /** L'icône du sujet, celle de la page où il mène. */
   icone: string;
-  /** Sur WhatsApp, ces mots à la place du titre : le sujet peut porter un motif. */
-  discret?: string;
   pour: (p: ProfilDeNotification) => boolean;
 }
 
@@ -71,7 +62,6 @@ export const SUJETS = {
     groupe: 'moi',
     libelle: 'Mes congés et absences',
     icone: 'event_available',
-    discret: 'Votre demande de congé a du nouveau',
     pour: agent,
   },
   documents: {
@@ -84,7 +74,6 @@ export const SUJETS = {
     groupe: 'moi',
     libelle: 'Mes pièces déposées',
     icone: 'upload_file',
-    discret: 'Une pièce de votre dossier a été vérifiée',
     pour: agent,
   },
   'pieces.expiration': {
@@ -115,7 +104,6 @@ export const SUJETS = {
     groupe: 'moi',
     libelle: 'Mes formations et certificats',
     icone: 'school',
-    discret: 'Du nouveau sur vos formations',
     pour: agent,
   },
   feries: {
@@ -140,7 +128,6 @@ export const SUJETS = {
     groupe: 'gestion',
     libelle: 'Demandes de congé à traiter',
     icone: 'free_cancellation',
-    discret: 'Une demande de congé attend votre traitement',
     pour: (p) => peut(p, 'demandes.conges'),
   },
   'dch.documents': {
@@ -191,18 +178,10 @@ export function sujetsDe(p: ProfilDeNotification): SujetNotification[] {
   return CLES_SUJETS.filter((c) => (SUJETS[c] as DefinitionDeSujet).pour(p));
 }
 
-/** Ce que WhatsApp montre : le titre, ou des mots neutres pour un sujet qui peut porter un motif. */
-export function texteWhatsApp(sujet: string | null, titre: string): string {
-  const d =
-    sujet && sujet in SUJETS ? (SUJETS[sujet as SujetNotification] as DefinitionDeSujet) : null;
-  return d?.discret ?? titre;
-}
-
 /** Sans réglage : la plateforme et le courriel. */
 export const CANAUX_PAR_DEFAUT: Record<Canal, boolean> = {
   plateforme: true,
   courriel: true,
-  whatsapp: false,
 };
 
 // ---------- Ce que l'écran lit et écrit ----------
@@ -214,22 +193,10 @@ export interface ReglageDeSujet {
   icone: string;
   plateforme: boolean;
   courriel: boolean;
-  whatsapp: boolean;
 }
 
 export interface ReglagesNotifications {
   sujets: ReglageDeSujet[];
-  whatsapp: {
-    /** Un fournisseur WhatsApp est branché : sinon, le canal ne s'offre pas. */
-    disponible: boolean;
-    /** Le numéro vérifié, masqué (« +221 77 ••• •• 67 »). */
-    numero: string | null;
-    /** Le mobile du dossier, à proposer : il reste à le vérifier. */
-    numeroDuDossier: string | null;
-    /** Un code est parti et attend d'être saisi, pour ce numéro (masqué). */
-    codeEnvoyeA: string | null;
-  };
-  heuresCalmes: boolean;
   /** Proposée à qui prend des congés : l'agent. */
   pauseConges: boolean | null;
 }
@@ -241,7 +208,6 @@ export const changerSujetsSchema = z.object({
         sujet: sujetSchema,
         plateforme: z.boolean(),
         courriel: z.boolean(),
-        whatsapp: z.boolean(),
       }),
     )
     .min(1)
@@ -249,12 +215,7 @@ export const changerSujetsSchema = z.object({
 });
 export type ChangerSujetsInput = z.infer<typeof changerSujetsSchema>;
 
-export const changerReglagesSchema = z
-  .object({
-    heuresCalmes: z.boolean().optional(),
-    pauseConges: z.boolean().optional(),
-  })
-  .refine((v) => v.heuresCalmes !== undefined || v.pauseConges !== undefined, {
-    message: 'Rien à changer',
-  });
+export const changerReglagesSchema = z.object({
+  pauseConges: z.boolean(),
+});
 export type ChangerReglagesInput = z.infer<typeof changerReglagesSchema>;

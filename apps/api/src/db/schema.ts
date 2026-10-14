@@ -487,7 +487,7 @@ export const notifications = pgTable('notifications', {
   effaceeLe: timestamp('effacee_le', { withTimezone: true }),
   /** Le sujet que la personne règle (catalogue des contrats). Voir 0093. */
   sujet: text('sujet'),
-  /** Faux : voulue par courriel ou WhatsApp seulement, elle ne se montre pas. */
+  /** Faux : voulue par courriel seulement, elle ne se montre pas. */
   dansLaPlateforme: boolean('dans_la_plateforme').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -500,23 +500,25 @@ export const notificationPreferences = pgTable('notification_preferences', {
   sujet: text('sujet').notNull(),
   plateforme: boolean('plateforme').notNull(),
   courriel: boolean('courriel').notNull(),
-  whatsapp: boolean('whatsapp').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** Ce qui vaut pour tous ses sujets : le numéro WhatsApp, les heures calmes, la pause en congé. */
+/** Ce qui vaut pour tous ses sujets : la pause pendant ses congés. */
 export const notificationReglages = pgTable('notification_reglages', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
   userId: uuid('user_id').notNull(),
-  whatsappNumeroChiffre: text('whatsapp_numero_chiffre'),
-  whatsappNumeroMasque: text('whatsapp_numero_masque'),
-  whatsappVerifieLe: timestamp('whatsapp_verifie_le', { withTimezone: true }),
-  heuresCalmes: boolean('heures_calmes').notNull().default(true),
   pauseConges: boolean('pause_conges').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/*
+ * Ce qui reste de WhatsApp, retiré des notifications (ADR-0074) : plus rien
+ * n'écrit dans ces deux tables, ni dans les colonnes WhatsApp des réglages.
+ * L'effacement d'une personne y retire encore ses lignes, jusqu'à ce qu'une
+ * livraison suivante les supprime (ADR-0010).
+ */
 
 /** Un numéro en cours de vérification, et son code. */
 export const whatsappVerifications = pgTable('whatsapp_verifications', {
@@ -533,7 +535,7 @@ export const whatsappVerifications = pgTable('whatsapp_verifications', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** Les messages WhatsApp qui partent (file d'envoi). */
+/** Les messages WhatsApp qui partaient (l'ancienne file d'envoi). */
 export const outboundWhatsapp = pgTable('outbound_whatsapp', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),

@@ -2403,8 +2403,9 @@ export class PeopleService {
           .where(eq(t.notifications.recipientUserId, userId))
           .returning({ id: t.notifications.id }),
       );
-      // Ses réglages de notifications, son numéro WhatsApp, ses messages
-      // WhatsApp partis ou en attente : ils le désignent.
+      // Ses réglages de notifications ; et ce qui peut rester de WhatsApp,
+      // retiré des notifications (ADR-0074) : un numéro, des messages. Tout
+      // cela le désigne.
       recolter(
         await tx
           .delete(t.notificationPreferences)
@@ -2469,7 +2470,7 @@ export class PeopleService {
       DELETE FROM outbound_emails
        WHERE subject_id = ANY(string_to_array(${traces.join(',')}, ',')::uuid[])
           OR lower(recipient) = lower(${adresse ?? ''})`);
-    // De même les messages WhatsApp qui doublaient une notification effacée.
+    // De même les anciens messages WhatsApp qui doublaient une notification effacée.
     await tx.execute(sql`
       DELETE FROM outbound_whatsapp
        WHERE subject_id = ANY(string_to_array(${traces.join(',')}, ',')::uuid[])`);

@@ -192,7 +192,7 @@ Cette section fige la vision exprimée par le fondateur, avec le mapping vers le
 
 ### 6.8 Compléments actés (issus de la revue, confirmés par la vision)
 
-Portail employé mobile comme moitié de la valeur ; **attestations générées en self-service** (attestation de travail/salaire — la feature « wow » à faible coût) ; reprise de données Excel ; RBAC visible dans le produit (qui voit quoi) ; audit log ; tableaux de bord dirigeant ; notifications multicanal (email + **WhatsApp**, la norme locale).
+Portail employé mobile comme moitié de la valeur ; **attestations générées en self-service** (attestation de travail/salaire : la feature « wow » à faible coût) ; reprise de données Excel ; RBAC visible dans le produit (qui voit quoi) ; audit log ; tableaux de bord dirigeant ; notifications dans la plateforme et par email (WhatsApp écarté, cf. ADR-0074).
 
 ### 6.9 Paie : scénario Trésor public
 

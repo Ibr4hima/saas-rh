@@ -65,8 +65,8 @@ export function holidayAlreadySentSql(userId: string) {
 /**
  * Les trois prédicats qui reviennent partout, nommés une fois pour toutes.
  * Une notification remplacée par une plus récente n'est plus à personne, ni
- * celle que la personne a effacée ; celle qu'on ne veut que par courriel ou
- * WhatsApp ne se montre pas ici.
+ * celle que la personne a effacée ; celle qu'on ne veut que par courriel ne
+ * se montre pas ici.
  */
 const mien = (userId: string) =>
   and(
@@ -272,7 +272,7 @@ export class NotificationsService {
    * Vider une vue d'un geste : la boîte, ou les archives, de l'espace où
    * l'on est. Effacer, pour la personne, c'est pour de bon : lues comme non
    * lues, les notifications ne se montrent plus nulle part, et leur
-   * courriel ou leur message WhatsApp, s'il attend encore, ne part pas.
+   * courriel, s'il attend encore, ne part pas.
    *
    * Les lignes restent pourtant dans la table, marquées effacées : leur clé
    * reste prise, sans quoi un rappel généré (férié, échéance de contrat,

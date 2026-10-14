@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpCode,
   Inject,
@@ -18,7 +17,6 @@ import {
   changerReglagesSchema,
   type ChangerSujetsInput,
   changerSujetsSchema,
-  codeWhatsAppSchema,
   type Espace,
   notificationEspaceQuerySchema,
   type NotificationIdsInput,
@@ -26,9 +24,7 @@ import {
   type NotificationScope,
   notificationScopeQuerySchema,
   notificationViderQuerySchema,
-  numeroWhatsAppSchema,
 } from '@teranga/contracts';
-import { z } from 'zod';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { AccesGuard, Peut } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
@@ -43,7 +39,7 @@ export class NotificationsController {
     @Inject(NotificationsReglagesService) private readonly reglages: NotificationsReglagesService,
   ) {}
 
-  // Ses réglages : où chaque sujet le trouve, son numéro WhatsApp.
+  // Ses réglages : où chaque sujet le trouve, sa pause pendant ses congés.
 
   @Get('notifications/reglages')
   lireReglages(@Req() req: AuthenticatedRequest) {
@@ -64,28 +60,6 @@ export class NotificationsController {
     @Body(new ZodValidationPipe(changerReglagesSchema)) body: ChangerReglagesInput,
   ) {
     return this.reglages.changerReglages(req.sessionUser, body);
-  }
-
-  @Post('notifications/reglages/whatsapp/code')
-  demanderCode(
-    @Req() req: AuthenticatedRequest,
-    @Body(new ZodValidationPipe(z.object({ numero: numeroWhatsAppSchema })))
-    body: { numero: string },
-  ) {
-    return this.reglages.demanderCode(req.sessionUser, body.numero);
-  }
-
-  @Post('notifications/reglages/whatsapp/verification')
-  verifierCode(
-    @Req() req: AuthenticatedRequest,
-    @Body(new ZodValidationPipe(codeWhatsAppSchema)) body: { code: string },
-  ) {
-    return this.reglages.verifierCode(req.sessionUser, body.code);
-  }
-
-  @Delete('notifications/reglages/whatsapp')
-  retirerNumero(@Req() req: AuthenticatedRequest) {
-    return this.reglages.retirerNumero(req.sessionUser);
   }
 
   // La boîte

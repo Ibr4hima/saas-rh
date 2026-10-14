@@ -25,4 +25,3 @@ export * from './reference-texts';
 export * from './academy';
 export * from './objectifs';
 export * from './notifications-reglages';
-export * from './whatsapp';

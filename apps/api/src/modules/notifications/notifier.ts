@@ -4,7 +4,6 @@ import type { SujetNotification } from '@teranga/contracts';
 import * as t from '../../db/schema';
 import type { Tx } from '../../db/tenant-db';
 import { doublerParCourriel } from '../courriels/expediteur';
-import { doublerParWhatsApp } from '../whatsapp/expediteur';
 import { canauxDe, type CanauxDuDestinataire } from './canaux';
 
 /* L'envoi d'une notification, dans la transaction appelante. À part du
@@ -14,7 +13,7 @@ import { canauxDe, type CanauxDuDestinataire } from './canaux';
 
    C'est le seul endroit où une notification naît (un test y veille). Elle
    suit les réglages de son destinataire pour son SUJET : dans la plateforme
-   ou non, par courriel ou non, sur WhatsApp ou non (cf. canaux.ts). Elle
+   ou non, par courriel ou non (cf. canaux.ts). Elle
    naît même quand il ne la veut nulle part : ses clés (doublon, remplacement,
    appels et rappels) tiennent ainsi comme avant. */
 
@@ -87,7 +86,7 @@ export async function notifier(
     );
 }
 
-/** Les doubles d'une notification nouvelle : courriel, WhatsApp, selon chacun. */
+/** Le double d'une notification nouvelle : son courriel, pour qui le veut. */
 async function doubler(
   tx: Tx,
   tenantId: string,
@@ -99,16 +98,6 @@ async function doubler(
     tx,
     tenantId,
     creees.filter((n) => canauxDu(n.recipientUserId)?.courriel ?? true),
-  );
-  await doublerParWhatsApp(
-    tx,
-    tenantId,
-    creees.flatMap((n) => {
-      const c = canauxDu(n.recipientUserId);
-      return c?.whatsapp
-        ? [{ notificationId: n.id, userId: n.recipientUserId, heuresCalmes: c.heuresCalmes }]
-        : [];
-    }),
   );
 }
 
