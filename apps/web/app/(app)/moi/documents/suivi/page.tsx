@@ -3,11 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import type { DocumentRequestView } from '@teranga/contracts';
+import type { DocumentRequestView, ProfileChangeRequestView } from '@teranga/contracts';
 import {
   DOC_REQUEST_STATUS_TONES,
   documentDemande,
   OPEN_DOCUMENT_REQUEST_STATUSES,
+  PROFILE_CHANGE_STATUS_LABELS,
+  PROFILE_CHANGE_STATUS_TONES,
   statutDeLaDemande,
 } from '@teranga/contracts';
 import {
@@ -32,7 +34,9 @@ import { FenetreDocument } from '../../../../../components/fenetre-document';
 import { Icon } from '../../../../../components/icons';
 import { CartePleine, CorpsDefilant, Page } from '../../../../../components/gabarit';
 import { Pagination, usePagination } from '../../../../../components/pagination';
+import { useMesSignalements } from '../../../../../components/signalement';
 import { SqueletteTableau } from '../../../../../components/tableau';
+import { valeurSignalee } from '../../../../../components/telephone';
 import { EnTetePliable, Pastille } from '../../../../../components/traitement-dch';
 
 /** « Attestation de travail », « Bulletin de salaire · 3 derniers mois ». */
@@ -43,8 +47,27 @@ const documentsDe = (r: DocumentRequestView) =>
 const aUnEtat = (r: DocumentRequestView) =>
   r.status === 'ready' && (r.fichiers.length > 0 || Boolean(r.pickupContact));
 
+/** Une demande suivie : des documents, ou une mise à jour d'informations (ADR-0081). */
+type Demande =
+  | { genre: 'document'; id: string; createdAt: string; d: DocumentRequestView }
+  | { genre: 'informations'; id: string; createdAt: string; d: ProfileChangeRequestView };
+
+const enAttente = (x: Demande) =>
+  x.genre === 'document'
+    ? OPEN_DOCUMENT_REQUEST_STATUSES.includes(x.d.status)
+    : x.d.status === 'pending';
+
+/** « Avant → après » : un côté vide se dit, comme sur la fiche. */
+const lisible = (champ: string, valeur: string | null | undefined) =>
+  valeurSignalee(champ, valeur) ?? 'non renseigné';
+
 /**
- * Suivi de mes demandes de documents : où en est chacune, jusqu'à sa remise.
+ * Suivi de mes demandes : où en est chacune, jusqu'à sa remise.
+ *
+ * Les demandes de documents, et les mises à jour d'informations signalées
+ * depuis la fiche (ADR-0081). En cours, une mise à jour s'annule ; refusée,
+ * elle dit son motif, pour corriger. Validée, la fiche porte le changement ;
+ * annulée, elle n'y figure plus.
  *
  * Deux cartes, comme la file de la DCH : les demandes en cours, qui
  * s'annulent encore, puis les demandes traitées (prêtes, remises, refusées),
@@ -79,6 +102,7 @@ export default function SuiviDemandesDocumentsPage() {
     queryKey: ['document-requests', 'me'],
     queryFn: () => api<DocumentRequestView[]>('/document-requests?scope=mine'),
   });
+  const signalements = useMesSignalements();
   // Vues, elles restent en évidence à l'écran, mais leurs avis passent pour
   // lus : la cloche ne les compte plus.
   const vues = useMutation({
@@ -92,41 +116,69 @@ export default function SuiviDemandesDocumentsPage() {
     if (!cible) return;
     setArrivee({ cible, depuis: Date.now() });
     void queryClient.invalidateQueries({ queryKey: ['document-requests', 'me'] });
+    void queryClient.invalidateQueries({ queryKey: ['profile-changes', 'me'] });
     // L'adresse redevient celle du suivi : la recharger ne rejoue pas l'arrivée.
     router.replace('/moi/documents/suivi', { scroll: false });
   }, [cible, queryClient, router]);
-  // Tant que le document n'est pas prêt, la demande s'annule d'un clic.
+  // Tant que le document n'est pas prêt, ou la mise à jour décidée, la
+  // demande s'annule d'un clic.
   const annuler = useMutation({
-    mutationFn: (id: string) => api(`/document-requests/${id}/cancel`, { method: 'POST' }),
-    onSuccess: () => {
+    mutationFn: (x: Demande) =>
+      api(
+        x.genre === 'document'
+          ? `/document-requests/${x.id}/cancel`
+          : `/profile-changes/${x.id}/cancel`,
+        { method: 'POST' },
+      ),
+    onSuccess: (_, x) => {
       setErreur(null);
-      void queryClient.invalidateQueries({ queryKey: ['document-requests'] });
+      void queryClient.invalidateQueries({
+        queryKey: [x.genre === 'document' ? 'document-requests' : 'profile-changes'],
+      });
     },
     onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Annulation impossible.'),
   });
   // Dans chaque carte, la plus récente en tête : on revient ici pour ce qui
   // vient d'arriver.
   const { enCours, traitees } = useMemo(() => {
-    const demandes = [...(docRequests.data ?? [])].sort((a, b) =>
-      b.createdAt.localeCompare(a.createdAt),
-    );
+    const demandes: Demande[] = [
+      ...(docRequests.data ?? []).map((d) => ({
+        genre: 'document' as const,
+        id: d.id,
+        createdAt: d.createdAt,
+        d,
+      })),
+      ...(signalements.data ?? [])
+        .filter((d) => d.status !== 'cancelled')
+        .map((d) => ({ genre: 'informations' as const, id: d.id, createdAt: d.createdAt, d })),
+    ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return {
-      enCours: demandes.filter((r) => OPEN_DOCUMENT_REQUEST_STATUSES.includes(r.status)),
-      traitees: demandes.filter((r) => !OPEN_DOCUMENT_REQUEST_STATUSES.includes(r.status)),
+      enCours: demandes.filter(enAttente),
+      traitees: demandes.filter((x) => !enAttente(x)),
     };
-  }, [docRequests.data]);
-  const { dataUpdatedAt, isFetching } = docRequests;
-  // La liste relue : les nouvellement traitées sont celle de l'avis, et
-  // celles dont l'avis attend encore d'être lu.
+  }, [docRequests.data, signalements.data]);
+  // Les deux listes relues depuis l'arrivée, ou en échec depuis : on n'attend
+  // plus l'une pour l'autre.
+  const enLecture = docRequests.isFetching || signalements.isFetching;
+  const luesA = Math.min(
+    Math.max(docRequests.dataUpdatedAt, docRequests.errorUpdatedAt),
+    Math.max(signalements.dataUpdatedAt, signalements.errorUpdatedAt),
+  );
+  // Les listes relues : les nouvellement traitées sont celle de l'avis, et
+  // les demandes de documents dont l'avis attend encore d'être lu. Celui
+  // d'une mise à jour l'est au clic.
   useEffect(() => {
-    if (!arrivee || isFetching || dataUpdatedAt < arrivee.depuis) return;
-    const ids = traitees.filter((r) => r.nouvelle || r.id === arrivee.cible).map((r) => r.id);
+    if (!arrivee || enLecture || luesA < arrivee.depuis) return;
+    const neuves = traitees.filter(
+      (x) => x.id === arrivee.cible || (x.genre === 'document' && x.d.nouvelle),
+    );
     setArrivee(null);
-    setEnEvidence(ids);
+    setEnEvidence(neuves.map((x) => x.id));
     setSuite(false);
     setTraiteesOuvertes(true);
-    if (ids.length > 0) marquerVues(ids);
-  }, [arrivee, isFetching, dataUpdatedAt, traitees, marquerVues]);
+    const documents = neuves.filter((x) => x.genre === 'document').map((x) => x.id);
+    if (documents.length > 0) marquerVues(documents);
+  }, [arrivee, enLecture, luesA, traitees, marquerVues]);
 
   // La carte vient sous les yeux si elle n'y est pas déjà.
   useEffect(() => {
@@ -150,7 +202,8 @@ export default function SuiviDemandesDocumentsPage() {
   }, [traitees, enEvidence, suite]);
   const fileVue = usePagination(enCours);
   const historique = usePagination(lignesTraitees, `${enEvidence.join()}:${suite}`);
-  const aConsulter = traitees.find((r) => r.id === consultee) ?? null;
+  const consultable = traitees.find((x) => x.id === consultee);
+  const aConsulter = consultable?.genre === 'document' ? consultable.d : null;
 
   return (
     <Page>
@@ -169,7 +222,7 @@ export default function SuiviDemandesDocumentsPage() {
           <CardTitle className="min-w-0 flex-1">Demandes en cours</CardTitle>
           {enCours.length > 0 ? <Pastille n={enCours.length} /> : null}
         </CardHeader>
-        {docRequests.isLoading ? (
+        {docRequests.isLoading || signalements.isLoading ? (
           <CorpsDefilant>
             <SqueletteTableau lignes={3} />
           </CorpsDefilant>
@@ -182,17 +235,17 @@ export default function SuiviDemandesDocumentsPage() {
           </CorpsDefilant>
         ) : (
           <TableauDesDemandes derniere={<span className="sr-only">Actions</span>}>
-            {fileVue.tranche.map((r) => (
+            {fileVue.tranche.map((x) => (
               <Ligne
-                key={r.id}
-                demande={r}
+                key={x.id}
+                demande={x}
                 geste={
-                  r.canCancel ? (
+                  x.d.canCancel ? (
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => annuler.mutate(r.id)}
-                      loading={annuler.isPending && annuler.variables === r.id}
+                      onClick={() => annuler.mutate(x)}
+                      loading={annuler.isPending && annuler.variables?.id === x.id}
                     >
                       Annuler
                     </Button>
@@ -212,7 +265,7 @@ export default function SuiviDemandesDocumentsPage() {
           ouvert={traiteesOuvertes}
           onBasculer={() => setTraiteesOuvertes((o) => !o)}
         />
-        {!traiteesOuvertes ? null : docRequests.isLoading ? (
+        {!traiteesOuvertes ? null : docRequests.isLoading || signalements.isLoading ? (
           <CorpsDefilant>
             <SqueletteTableau lignes={3} />
           </CorpsDefilant>
@@ -225,14 +278,14 @@ export default function SuiviDemandesDocumentsPage() {
           </CorpsDefilant>
         ) : (
           <TableauDesDemandes derniere="État traitement">
-            {historique.tranche.map((r) => (
+            {historique.tranche.map((x) => (
               <Ligne
-                key={r.id}
-                demande={r}
-                nouvelle={enEvidence.includes(r.id)}
+                key={x.id}
+                demande={x}
+                nouvelle={enEvidence.includes(x.id)}
                 etat={
-                  aUnEtat(r) ? (
-                    <EtatTraitement demande={r} onConsulter={() => setConsultee(r.id)} />
+                  x.genre === 'document' && aUnEtat(x.d) ? (
+                    <EtatTraitement demande={x.d} onConsulter={() => setConsultee(x.id)} />
                   ) : null
                 }
               />
@@ -275,7 +328,7 @@ function TableauDesDemandes({
       {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
       <THead className="hidden sm:table-header-group">
         <tr>
-          <Th className="sm:w-[35%]">Document</Th>
+          <Th className="sm:w-[35%]">Demande</Th>
           <Th className="sm:w-[17%]">Demandée le</Th>
           <Th className="sm:w-[18%]">Statut</Th>
           <Th className="sm:w-[30%]">{derniere}</Th>
@@ -288,20 +341,23 @@ function TableauDesDemandes({
 
 /**
  * Une demande, sur une ligne. Sur téléphone, la date, le statut, le geste
- * et l'état du traitement se rangent sous le document : quatre colonnes n'y
+ * et l'état du traitement se rangent sous la demande : quatre colonnes n'y
  * tiennent pas.
+ *
+ * Une mise à jour d'informations dit ce qui change, avant et après ;
+ * refusée, son motif suit, comme celui d'une demande de documents.
  *
  * Nouvellement traitée, la ligne se teinte du bleu de la marque, un filet
  * la borde à gauche et « Nouveau » suit le document : à l'arrivée, elle
  * s'éclaire un instant, puis se pose (ADR-0048).
  */
 function Ligne({
-  demande: r,
+  demande: x,
   geste,
   etat,
   nouvelle,
 }: {
-  demande: DocumentRequestView;
+  demande: Demande;
   /** En cours : « Annuler ». */
   geste?: React.ReactNode;
   /** Traitée : où trouver le document. */
@@ -309,9 +365,17 @@ function Ligne({
   /** Nouvellement traitée : en évidence. */
   nouvelle?: boolean;
 }) {
-  const documents = documentsDe(r);
-  const demandee = formatDate(r.createdAt.slice(0, 10));
-  const statut = <Badge tone={DOC_REQUEST_STATUS_TONES[r.status]}>{statutDeLaDemande(r)}</Badge>;
+  const titre = x.genre === 'document' ? documentsDe(x.d) : 'Mise à jour d’infos';
+  const demandee = formatDate(x.createdAt.slice(0, 10));
+  const statut =
+    x.genre === 'document' ? (
+      <Badge tone={DOC_REQUEST_STATUS_TONES[x.d.status]}>{statutDeLaDemande(x.d)}</Badge>
+    ) : (
+      <Badge tone={PROFILE_CHANGE_STATUS_TONES[x.d.status]}>
+        {PROFILE_CHANGE_STATUS_LABELS[x.d.status]}
+      </Badge>
+    );
+  const r = x.d;
   return (
     <Tr className={cn(nouvelle && 'tg-nouvelle bg-primary-soft/60 hover:bg-primary-soft')}>
       <Td
@@ -321,8 +385,8 @@ function Ligne({
         )}
       >
         <div className="flex min-w-0 items-center gap-2">
-          <p className="min-w-0 truncate font-semibold text-ink-strong" title={documents}>
-            {documents}
+          <p className="min-w-0 truncate font-semibold text-ink-strong" title={titre}>
+            {titre}
           </p>
           {nouvelle ? (
             <span className="shrink-0 rounded-full bg-primary px-[7px] text-[9.5px] leading-[17px] font-extrabold tracking-[0.06em] text-primary-ink uppercase">
@@ -330,6 +394,14 @@ function Ligne({
             </span>
           ) : null}
         </div>
+        {x.genre === 'informations'
+          ? x.d.fields.map((f) => (
+              <p key={f.field} className="mt-0.5 text-[11.5px] text-ink-muted">
+                {f.label} : {lisible(f.field, f.previous)} <span aria-hidden>→</span>{' '}
+                <span className="font-semibold text-ink">{lisible(f.field, f.next)}</span>
+              </p>
+            ))
+          : null}
         {r.note ? (
           <p className="mt-0.5 truncate text-[11.5px] text-ink-muted italic" title={r.note}>
             « {r.note} »
@@ -347,7 +419,7 @@ function Ligne({
         </div>
         {etat ? <div className="mt-2.5 text-[12.5px] sm:hidden">{etat}</div> : null}
       </Td>
-      <Td className="hidden tabular-nums sm:table-cell" title={timeAgo(r.createdAt)}>
+      <Td className="hidden tabular-nums sm:table-cell" title={timeAgo(x.createdAt)}>
         {demandee}
       </Td>
       <Td className="hidden sm:table-cell">{statut}</Td>

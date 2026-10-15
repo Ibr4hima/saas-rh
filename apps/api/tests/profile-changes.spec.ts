@@ -294,6 +294,32 @@ describe('décision de la RH', () => {
     expect(rows).toHaveLength(1);
     expect((rows[0] as { type: string }).type).toBe('profile_change_approve');
   });
+
+  it('refusée, l’avis mène au suivi des demandes, sur elle (ADR-0081)', async () => {
+    await service.create(agent, { changes: { addressLine: 'Sacré-Cœur 3' } });
+    const [vue] = await service.list(rh, {});
+    if (!vue) throw new Error('demande absente');
+    await service.decide(rh, vue.id, { decision: 'reject', message: 'Précisez la villa.' });
+    const { rows } = await raw(
+      `SELECT type, title, link FROM notifications
+        WHERE recipient_user_id = $1 AND type LIKE 'profile_change_%'`,
+      [agentUserId],
+    );
+    expect(rows).toEqual([
+      {
+        type: 'profile_change_reject',
+        title: 'Votre demande de mise à jour est refusée',
+        link: `/moi/documents/suivi?traitee=${vue.id}`,
+      },
+    ]);
+    // Le motif se lit dans le suivi de l'agent.
+    const [suivi] = await service.list(agent, { scope: 'mine' });
+    expect(suivi).toMatchObject({
+      id: vue.id,
+      status: 'rejected',
+      hrMessage: 'Précisez la villa.',
+    });
+  });
 });
 
 describe('le certificat de mariage (ADR-0080)', () => {

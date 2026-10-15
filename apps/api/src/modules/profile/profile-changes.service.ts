@@ -437,7 +437,9 @@ export class ProfileChangesService {
           input.decision === 'approve'
             ? 'Vos informations sont mises à jour'
             : 'Votre demande de mise à jour est refusée',
-        link: '/moi',
+        // Validée, la fiche porte le changement. Refusée, le suivi des
+        // demandes l'ouvre en évidence, avec son motif (ADR-0081).
+        link: input.decision === 'approve' ? '/moi' : `/moi/documents/suivi?traitee=${requestId}`,
       });
     });
   }
