@@ -63,6 +63,7 @@ import {
   retrouverSaPlace,
   type CeQuIlALaisse,
 } from './activite';
+import { debutDeLAnciennete, joursHorsDeLAnciennete, premierJourDuStage } from './anciennete';
 import { debutDuStage, exigerEnActivite, finDeContratPassee } from './en-activite';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 import { exigerUniteVivante, muter } from './mutation';
@@ -630,14 +631,22 @@ export class PeopleService {
         : [];
       const team = await equipeDe(tx, employee.id);
       const responsabilites = await this.responsabilites(tx, employee.id, employee.status, team);
-      const { rows: interruptions } = await tx.execute<{
-        dernierJour: string;
-        repriseLe: string;
+      // L'ancienneté, ou le début du stage (ADR-0083) : aujourd'hui, ou au
+      // dernier jour d'un dossier inactif.
+      const jour =
+        employee.status === 'active' || !employee.finActivite
+          ? sql`CURRENT_DATE`
+          : sql`${employee.finActivite}::date`;
+      const { rows: temps } = await tx.execute<{
+        depuis: string | null;
+        hors: number;
+        stage: string | null;
       }>(sql`
-        SELECT dernier_jour::text AS "dernierJour", reprise_le::text AS "repriseLe"
-          FROM periodes_inactivite
-         WHERE employee_id = ${employee.id} AND reprise_le IS NOT NULL
-         ORDER BY dernier_jour`);
+        WITH a AS MATERIALIZED (SELECT ${debutDeLAnciennete(employee.id, jour)} AS debut)
+        SELECT a.debut::text AS depuis,
+               ${joursHorsDeLAnciennete(employee.id, sql`a.debut`, jour)} AS hors,
+               ${premierJourDuStage(employee.id, jour)}::text AS stage
+          FROM a`);
       const repriseParDefaut =
         employee.status === 'archived' && employee.finActivite
           ? ((
@@ -657,7 +666,8 @@ export class PeopleService {
         archivedAt: employee.archivedAt?.toISOString() ?? null,
         inactiviteMotif: (employee.inactiviteMotif as MotifInactivite | null) ?? null,
         finActivite: employee.finActivite ?? null,
-        interruptions,
+        anciennete: temps[0]?.depuis ? { depuis: temps[0].depuis, joursHors: temps[0].hors } : null,
+        debutDuStage: temps[0]?.stage ?? null,
         repriseParDefaut,
         responsabilites,
         hiredOn: employee.hiredOn,

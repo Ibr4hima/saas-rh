@@ -1448,46 +1448,65 @@ describe('le tableau de bord compte ce que ses listes montrent', () => {
     }
   });
 
-  it('l’ancienneté moyenne : comme la fiche, hors départs, sans les stagiaires', async () => {
-    const { rows: avant } = await raw(
-      `SELECT id, hired_on::text AS embauche FROM employees WHERE tenant_id = $1`,
-      [tenantId],
-    );
-    const embauche = (qui: Agent, jours: number) =>
-      raw(`UPDATE employees SET hired_on = CURRENT_DATE - $2::int WHERE id = $1`, [
-        qui.employeeId,
-        jours,
-      ]);
-    const stage = randomUUID();
-    const depart = randomUUID();
-    try {
-      // Tous les actifs : quatre ans, jour pour jour.
-      await raw(
-        `UPDATE employees SET hired_on = CURRENT_DATE - 1461 WHERE tenant_id = $1 AND status = 'active'`,
-        [tenantId],
-      );
-      // Embauché il y a dix ans, parti deux ans : huit ans d'ancienneté.
-      await embauche(moussa, 3653);
-      await raw(
-        `INSERT INTO periodes_inactivite (id, tenant_id, employee_id, dernier_jour, reprise_le)
-         VALUES ($1, $2, $3, CURRENT_DATE - 2000, CURRENT_DATE - 2000 + 732)`,
-        [depart, tenantId, moussa.employeeId],
-      );
-      // En stage aujourd'hui : il ne compte pas, si ancien soit-il.
-      await embauche(ousmane, 10000);
+  it('l’ancienneté moyenne : comme la fiche, celle du contrat en cours, des CDI et des CDD seuls (ADR-0083)', async () => {
+    const contrats: string[] = [];
+    const ecarts: string[] = [];
+    /** Un contrat, du premier au dernier jour, comptés depuis aujourd'hui. */
+    const contrat = async (qui: Agent, type: string, debut: number, fin: number | null) => {
+      const id = randomUUID();
+      contrats.push(id);
       await raw(
         `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
-         VALUES ($1, $2, $3, 'stage', CURRENT_DATE - 30, CURRENT_DATE + 30)`,
-        [stage, tenantId, ousmane.employeeId],
+         VALUES ($1, $2, $3, $4, CURRENT_DATE + $5::int, CURRENT_DATE + $6::int)`,
+        [id, tenantId, qui.employeeId, type, debut, fin],
       );
-      // Pas encore arrivé : il ne compte pas non plus.
-      await embauche(fatou, -10);
+    };
+    /** Un départ, puis un retour. */
+    const ecart = async (qui: Agent, dernier: number, reprise: number) => {
+      const id = randomUUID();
+      ecarts.push(id);
+      await raw(
+        `INSERT INTO periodes_inactivite (id, tenant_id, employee_id, dernier_jour, reprise_le)
+         VALUES ($1, $2, $3, CURRENT_DATE + $4::int, CURRENT_DATE + $5::int)`,
+        [id, tenantId, qui.employeeId, dernier, reprise],
+      );
+    };
+    const aPart = [moussa, ousmane, awa, khady, binta, fatou, sansCompte];
+    try {
+      // Les autres actifs : un CDI depuis quatre ans, jour pour jour.
+      const { rows: cdi } = await raw(
+        `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date)
+         SELECT gen_random_uuid(), tenant_id, id, 'cdi', CURRENT_DATE - 1461
+           FROM employees
+          WHERE tenant_id = $1 AND status = 'active' AND NOT (id = ANY($2::uuid[]))
+         RETURNING id`,
+        [tenantId, aPart.map((a) => a.employeeId)],
+      );
+      contrats.push(...cdi.map((r: { id: string }) => r.id));
+      // Dix ans de CDI, puis deux ans dehors : l'ancienneté repart du
+      // retour, il y a quatre ans.
+      await contrat(moussa, 'cdi', -3653, null);
+      await ecart(moussa, -2192, -1461);
+      // Deux CDD, le second vingt jours après la fin du premier : ils se
+      // cumulent, sans les vingt jours. Huit ans.
+      await contrat(ousmane, 'cdd', -2942, -1001);
+      await contrat(ousmane, 'cdd', -980, 3000);
+      await ecart(ousmane, -1001, -980);
+      // Un stage, puis un CDD : l'ancienneté part du CDD. Quatre ans.
+      await contrat(awa, 'stage', -1700, -1462);
+      await contrat(awa, 'cdd', -1461, 3000);
+      // En stage aujourd'hui, ou consultant : pas d'ancienneté.
+      await contrat(khady, 'stage', -3000, 3000);
+      await contrat(binta, 'consultant', -3000, null);
+      // Un CDI qui n'a pas commencé ; l'agent sans compte, sans contrat.
+      await contrat(fatou, 'cdi', 10, null);
 
       const { rows } = await raw(
         `SELECT count(*)::int AS n FROM employees WHERE tenant_id = $1 AND status = 'active'`,
         [tenantId],
       );
-      const comptes = rows[0].n - 2;
+      // Ni Khady, ni Binta, ni Fatou, ni l'agent sans contrat.
+      const comptes = rows[0].n - 4;
       // (comptes - 1) fois quatre ans, et huit ans.
       const moyenne = Math.round((40 * (comptes + 1)) / comptes) / 10;
       for (const qui of [admin, awa.session]) {
@@ -1498,11 +1517,8 @@ describe('le tableau de bord compte ce que ses listes montrent', () => {
         });
       }
     } finally {
-      await raw(`DELETE FROM contracts WHERE id = $1`, [stage]);
-      await raw(`DELETE FROM periodes_inactivite WHERE id = $1`, [depart]);
-      for (const r of avant) {
-        await raw(`UPDATE employees SET hired_on = $2::date WHERE id = $1`, [r.id, r.embauche]);
-      }
+      await raw(`DELETE FROM contracts WHERE id = ANY($1::uuid[])`, [contrats]);
+      await raw(`DELETE FROM periodes_inactivite WHERE id = ANY($1::uuid[])`, [ecarts]);
     }
   });
 

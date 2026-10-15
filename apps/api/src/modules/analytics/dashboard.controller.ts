@@ -7,6 +7,7 @@ import { AccesGuard, OuvertAuDG, Peut } from '../auth/acces.guard';
 import { AbsencesService } from '../time/absences.service';
 import { expirerLesDemandes } from '../time/visas';
 import { suiviDesContrats } from '../people/suivi-contrats';
+import { debutDeLAnciennete, joursHorsDeLAnciennete } from '../people/anciennete';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 
 @Controller()
@@ -63,30 +64,28 @@ export class DashboardController {
             FROM (SELECT date_part('year', age(CURRENT_DATE, p.birth_date)) AS ans
                     FROM employees e JOIN persons p ON p.id = e.person_id
                    WHERE e.status = 'active' AND p.birth_date IS NOT NULL) a`),
-          // L'ancienneté, comme la fiche la compte : depuis l'embauche, moins
-          // les jours passés hors de l'APIX entre un départ et un retour. Un
-          // stage n'est pas un emploi : qui est en stage aujourd'hui n'y entre
-          // pas, ni qui n'a pas encore commencé. La moyenne se prend sur les
-          // jours ; la plus courte et la plus longue en mois du calendrier.
+          // L'ancienneté, comme la fiche la compte (ADR-0083) : celle du
+          // contrat en cours. N'y entrent que les agents en CDI ou en CDD
+          // aujourd'hui : ni un stage, ni un autre contrat, ni un contrat qui
+          // n'a pas encore commencé. La moyenne se prend sur les jours ; la
+          // plus courte et la plus longue en mois du calendrier. Chaque début
+          // se calcule une fois (MATERIALIZED) : recopié à chaque usage, il
+          // coûtait dix fois plus.
           tx.execute<{ moyenne: string | null; courte: number | null; longue: number | null }>(sql`
-          WITH presents AS (
-            SELECT e.hired_on,
-                   COALESCE((SELECT sum(GREATEST(0, LEAST(pi.reprise_le, CURRENT_DATE)
-                                                    - pi.dernier_jour - 1))
-                               FROM periodes_inactivite pi
-                              WHERE pi.employee_id = e.id AND pi.reprise_le IS NOT NULL), 0)::int
-                     AS hors
+          WITH debuts AS MATERIALIZED (
+            SELECT e.id, ${debutDeLAnciennete(sql`e.id`, sql`CURRENT_DATE`)} AS debut
               FROM employees e
-             WHERE e.status = 'active' AND e.hired_on <= CURRENT_DATE
-               AND (SELECT c.contract_type FROM contracts c
-                     WHERE c.employee_id = e.id AND c.start_date <= CURRENT_DATE
-                       AND (c.end_date IS NULL OR c.end_date >= CURRENT_DATE)
-                     ORDER BY c.start_date DESC, c.created_at DESC LIMIT 1)
-                   IS DISTINCT FROM 'stage'
+             WHERE e.status = 'active'
+          ),
+          presents AS MATERIALIZED (
+            SELECT d.debut,
+                   ${joursHorsDeLAnciennete(sql`d.id`, sql`d.debut`, sql`CURRENT_DATE`)} AS hors
+              FROM debuts d
+             WHERE d.debut IS NOT NULL
           ),
           durees AS (
-            SELECT GREATEST(0, CURRENT_DATE - hired_on - hors) AS jours,
-                   age(CURRENT_DATE - hors, hired_on) AS duree
+            SELECT GREATEST(0, CURRENT_DATE - debut - hors) AS jours,
+                   age(CURRENT_DATE - hors, debut) AS duree
               FROM presents
           )
           SELECT round((avg(jours) / 365.25)::numeric, 1)::text AS moyenne,

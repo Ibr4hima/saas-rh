@@ -61,9 +61,10 @@ export interface DashboardView {
   agesKnown: number;
   /**
    * L'ancienneté moyenne de l'effectif actif, en années, à une décimale.
-   * Elle se compte comme sur la fiche : depuis la date d'embauche, hors des
-   * intervalles entre un départ et un retour. Les agents en stage aujourd'hui
-   * n'y entrent pas, ni ceux dont le contrat n'a pas commencé. null : personne.
+   * Elle se compte comme sur la fiche (ADR-0083) : celle du contrat en
+   * cours. Seuls les agents en CDI ou en CDD aujourd'hui y entrent : un stage
+   * ne donne pas d'ancienneté, un contrat qui n'a pas commencé non plus.
+   * null : personne.
    */
   averageSeniority: number | null;
   /** La plus courte et la plus longue, en mois révolus. */

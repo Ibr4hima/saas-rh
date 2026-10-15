@@ -95,15 +95,14 @@ function lastDay(exclusiveEnd: string): string {
 }
 
 /**
- * Ancienneté en clair : « 3 ans et 2 mois », pas une date à soustraire. Les
- * intervalles entre un départ et un retour n'en font pas partie. Les mois
- * sont ceux du calendrier, comme sur le tableau de bord : quatre ans jour
- * pour jour font « 4 ans ».
+ * Ancienneté en clair : « 3 ans et 2 mois », pas une date à soustraire. Elle
+ * part du début que l'API retient (ADR-0083), sans les jours des écarts de
+ * moins d'un mois. Les mois sont ceux du calendrier, comme sur le tableau de
+ * bord : quatre ans jour pour jour font « 4 ans ».
  */
 function seniority(
-  hiredOn: string,
+  anciennete: NonNullable<EmployeeDetail['anciennete']>,
   jusquAu: string | null,
-  interruptions: EmployeeDetail['interruptions'],
 ): string {
   const JOUR = 1000 * 60 * 60 * 24;
   const t = (iso: string) => new Date(`${iso}T12:00:00Z`).getTime();
@@ -112,13 +111,9 @@ function seniority(
   const fin = jusquAu
     ? t(jusquAu) + JOUR
     : Date.UTC(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate(), 12);
-  const absent = interruptions.reduce(
-    (total, i) => total + Math.max(0, t(i.repriseLe) - t(i.dernierJour) - JOUR),
-    0,
-  );
   // La fin reculée des jours passés hors de l'APIX, puis les mois révolus.
-  const debut = new Date(t(hiredOn));
-  const arrivee = new Date(fin - absent);
+  const debut = new Date(t(anciennete.depuis));
+  const arrivee = new Date(fin - anciennete.joursHors * JOUR);
   const months = Math.max(
     0,
     (arrivee.getUTCFullYear() - debut.getUTCFullYear()) * 12 +
@@ -374,11 +369,16 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                   e.workEmail ? <Courriel adresse={e.workEmail} /> : null
                 }
               />
-              <Repere label="Ancienneté" valeur={seniority(e.hiredOn, null, e.interruptions)}>
-                {e.interruptions.length > 0
-                  ? `Retour le ${formatDate(e.interruptions[e.interruptions.length - 1]!.repriseLe)}`
-                  : `Depuis le ${formatDate(e.hiredOn)}`}
-              </Repere>
+              {e.debutDuStage ? (
+                <Repere label="Début du stage" valeur={formatDate(e.debutDuStage)} />
+              ) : (
+                <Repere
+                  label="Ancienneté"
+                  valeur={e.anciennete ? seniority(e.anciennete, null) : null}
+                >
+                  {e.anciennete ? `Depuis le ${formatDate(e.anciennete.depuis)}` : null}
+                </Repere>
+              )}
             </>
           ) : (
             // Inactif : quand son contrat a pris fin et pourquoi, puis ce
@@ -388,12 +388,17 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                 label="Fin contrat"
                 valeur={e.finActivite ? formatDate(e.finActivite) : null}
               />
-              <Repere
-                label="Ancienneté"
-                valeur={seniority(e.hiredOn, e.finActivite, e.interruptions)}
-              >
-                Arrivée le {formatDate(e.hiredOn)}
-              </Repere>
+              {/* En stage à son dernier jour : le début du stage, sans ancienneté. */}
+              {e.debutDuStage ? (
+                <Repere label="Début du stage" valeur={formatDate(e.debutDuStage)} />
+              ) : (
+                <Repere
+                  label="Ancienneté"
+                  valeur={e.anciennete ? seniority(e.anciennete, e.finActivite) : null}
+                >
+                  {e.anciennete ? `Depuis le ${formatDate(e.anciennete.depuis)}` : null}
+                </Repere>
+              )}
               {/* Parti, on ne le joint plus à l'APIX : son adresse personnelle. */}
               <Repere
                 label="Email personnel"

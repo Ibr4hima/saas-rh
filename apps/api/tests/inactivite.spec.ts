@@ -1383,10 +1383,13 @@ describe('un départ daté, un retour daté', () => {
       [moussa.employeeId, uDFC],
     );
     expect(rows[0].n).toBe(1);
-    expect((await people.detail(admin, moussa.employeeId)).interruptions).toEqual([]);
+    expect((await people.detail(admin, moussa.employeeId)).anciennete).toEqual({
+      depuis: await jour(-900),
+      joursHors: 0,
+    });
   });
 
-  it('une réintégration garde le départ, reprend au jour du retour, et l’intervalle ne compte pas', async () => {
+  it('une réintégration garde le départ, reprend au jour du retour, et l’ancienneté repart de ce jour (ADR-0083)', async () => {
     await people.archive(admin, {
       ids: [moussa.employeeId],
       archived: true,
@@ -1413,10 +1416,9 @@ describe('un départ daté, un retour daté', () => {
     expect(await periodes(moussa)).toEqual([
       { dernier: await jour(-100), motif: 'demission', reprise: await jour(0) },
     ]);
+    // Cent jours dehors : plus d'un mois, l'ancienneté repart du retour.
     const fiche = await people.detail(admin, moussa.employeeId);
-    expect(fiche.interruptions).toEqual([
-      { dernierJour: await jour(-100), repriseLe: await jour(0) },
-    ]);
+    expect(fiche.anciennete).toEqual({ depuis: await jour(0), joursHors: 0 });
     expect(fiche.finActivite).toBeNull();
   });
 
@@ -1481,6 +1483,139 @@ describe('un départ daté, un retour daté', () => {
     expect(await periodes(fatou)).toEqual([
       { dernier: await jour(-1), motif: 'fin_de_contrat', reprise: null },
     ]);
+  });
+});
+
+describe('l’ancienneté, celle du contrat en cours (ADR-0083)', () => {
+  /** Ses contrats, à la place des siens : type, premier et dernier jour depuis aujourd'hui. */
+  const contrats = async (a: Agent, liste: [string, number, number | null][]) => {
+    await raw(`DELETE FROM contracts WHERE employee_id = $1`, [a.employeeId]);
+    for (const [type, debut, fin] of liste) {
+      await raw(
+        `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+         VALUES ($1, $2, $3, $4, CURRENT_DATE + $5::int, CURRENT_DATE + $6::int)`,
+        [randomUUID(), tenantId, a.employeeId, type, debut, fin],
+      );
+    }
+  };
+  /** Un départ suivi d'un retour, comme la fin d'un CDD et son renouvellement l'inscrivent. */
+  const ecart = (a: Agent, dernier: number, reprise: number) =>
+    raw(
+      `INSERT INTO periodes_inactivite (id, tenant_id, employee_id, dernier_jour, reprise_le, motif)
+       VALUES ($1, $2, $3, CURRENT_DATE + $4::int, CURRENT_DATE + $5::int, 'fin_de_contrat')`,
+      [randomUUID(), tenantId, a.employeeId, dernier, reprise],
+    );
+  const fiche = async (a: Agent) => {
+    const f = await people.detail(admin, a.employeeId);
+    return { anciennete: f.anciennete, debutDuStage: f.debutDuStage };
+  };
+  const ancienneDe = async (debut: number, joursHors = 0) => ({
+    anciennete: { depuis: await jour(debut), joursHors },
+    debutDuStage: null,
+  });
+
+  it('un retour sous un nouveau CDI, plus d’un mois après le départ : l’ancienneté repart de ce contrat', async () => {
+    await people.archive(admin, {
+      ids: [moussa.employeeId],
+      archived: true,
+      motif: 'demission',
+      le: await jour(-400),
+    });
+    await people.newContract(admin, moussa.employeeId, {
+      affectation: await placeDe(moussa),
+      contractType: 'cdi',
+      startDate: await jour(-10),
+    });
+    // Le nouveau contrat arrête l'ancien la veille : seul le départ dit l'écart.
+    const { rows } = await raw(
+      `SELECT end_date::text AS fin FROM contracts WHERE employee_id = $1 ORDER BY start_date`,
+      [moussa.employeeId],
+    );
+    expect(rows).toEqual([{ fin: await jour(-11) }, { fin: null }]);
+    expect(await fiche(moussa)).toEqual(await ancienneDe(-10));
+  });
+
+  it('un retour moins d’un mois après le départ : l’ancienneté continue, sans les jours passés dehors', async () => {
+    await people.archive(admin, {
+      ids: [moussa.employeeId],
+      archived: true,
+      motif: 'demission',
+      le: await jour(-20),
+    });
+    await people.newContract(admin, moussa.employeeId, {
+      affectation: await placeDe(moussa),
+      contractType: 'cdi',
+      startDate: await jour(-5),
+    });
+    expect(await fiche(moussa)).toEqual(await ancienneDe(-900, 14));
+  });
+
+  it('un CDD renouvelé dans le mois : les contrats se cumulent ; un mois ou plus après : l’ancienneté repart à zéro', async () => {
+    // Renouvelé sans écart, puis vingt jours après sa fin.
+    await contrats(moussa, [
+      ['cdd', -800, -601],
+      ['cdd', -600, -401],
+      ['cdd', -380, 300],
+    ]);
+    await ecart(moussa, -401, -380);
+    expect(await fiche(moussa)).toEqual(await ancienneDe(-800, 20));
+
+    // Le mois se compte au calendrier : un mois d'écart, jour pour jour, remet à zéro.
+    const { rows } = await raw(
+      `SELECT ((CURRENT_DATE - 400 + 1 + interval '1 month')::date - CURRENT_DATE) AS n`,
+    );
+    const unMoisApres = rows[0].n as number;
+    await raw(`DELETE FROM periodes_inactivite WHERE employee_id = $1`, [moussa.employeeId]);
+    await contrats(moussa, [
+      ['cdd', -800, -400],
+      ['cdd', unMoisApres - 1, 300],
+    ]);
+    // Sans départ inscrit, les jours entre les deux contrats ne comptent pas non plus.
+    expect(await fiche(moussa)).toEqual(await ancienneDe(-800, unMoisApres + 398));
+    await contrats(moussa, [
+      ['cdd', -800, -400],
+      ['cdd', unMoisApres, 300],
+    ]);
+    expect(await fiche(moussa)).toEqual(await ancienneDe(unMoisApres));
+  });
+
+  it('un stage ne donne pas d’ancienneté : la fiche dit le début du stage, prolongations comprises', async () => {
+    await contrats(moussa, [
+      ['stage', -300, -171],
+      ['stage', -150, 30],
+    ]);
+    expect(await fiche(moussa)).toEqual({ anciennete: null, debutDuStage: await jour(-300) });
+    // Repris plus d'un mois après : un autre stage.
+    await contrats(moussa, [
+      ['stage', -300, -200],
+      ['stage', -150, 30],
+    ]);
+    expect(await fiche(moussa)).toEqual({ anciennete: null, debutDuStage: await jour(-150) });
+  });
+
+  it('après un stage, l’ancienneté part du premier CDD ou CDI', async () => {
+    await contrats(moussa, [
+      ['stage', -500, -201],
+      ['cdd', -200, 200],
+      ['cdi', 201, null],
+    ]);
+    expect(await fiche(moussa)).toEqual(await ancienneDe(-200));
+  });
+
+  it('ni un autre contrat, ni aucun contrat ne donnent d’ancienneté', async () => {
+    await contrats(moussa, [['consultant', -500, null]]);
+    expect(await fiche(moussa)).toEqual({ anciennete: null, debutDuStage: null });
+    await contrats(moussa, []);
+    expect(await fiche(moussa)).toEqual({ anciennete: null, debutDuStage: null });
+  });
+
+  it('un dossier inactif : l’ancienneté s’arrête au dernier jour ; en stage ce jour-là, le début du stage', async () => {
+    await inactiver();
+    expect(await fiche(fatou)).toEqual(await ancienneDe(-365));
+    await raw(`UPDATE contracts SET contract_type = 'stage' WHERE employee_id = $1`, [
+      fatou.employeeId,
+    ]);
+    expect(await fiche(fatou)).toEqual({ anciennete: null, debutDuStage: await jour(-365) });
   });
 });
 

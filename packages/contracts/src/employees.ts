@@ -904,10 +904,15 @@ export interface EmployeeDetail {
   /** Inactif : son dernier jour d'activité — fin de contrat ou jour du départ. */
   finActivite: string | null;
   /**
-   * Ses départs suivis d'un retour : le dernier jour, puis le premier jour de
-   * la reprise. L'ancienneté se compte hors de ces intervalles.
+   * L'ancienneté (ADR-0083), aujourd'hui, ou au dernier jour d'un dossier
+   * inactif : celle du contrat en cours, CDI ou CDD. Elle court depuis le
+   * premier contrat de la suite que ce contrat prolonge ; un écart de moins
+   * d'un mois ne l'interrompt pas, mais ses jours n'y comptent pas. null :
+   * pas d'ancienneté (un stage, un autre contrat, ou aucun).
    */
-  interruptions: { dernierJour: string; repriseLe: string }[];
+  anciennete: { depuis: string; joursHors: number } | null;
+  /** En stage ce jour-là : le premier jour du stage, prolongations comprises. */
+  debutDuStage: string | null;
   /** Inactif : le jour où reprendrait son activité, réactivé sans autre date. */
   repriseParDefaut: string | null;
   hiredOn: string;
