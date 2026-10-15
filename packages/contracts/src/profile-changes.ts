@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { TraitementView } from './acces';
+import { EMPLOYEE_DOCUMENT_TYPES, MAX_EMPLOYEE_DOCUMENT_BYTES } from './documents';
 import { maritalStatusSchema } from './employees';
 
 /**
@@ -14,6 +15,11 @@ import { maritalStatusSchema } from './employees';
  * naissance, nationalité), les pièces d'identité et tout ce qui touche au
  * contrat restent la main de la RH : ils s'appuient sur un document, pas sur
  * une déclaration.
+ *
+ * Le mariage fait exception : passer à « Marié(e) » se signale avec le
+ * certificat que délivre la mairie. Qui vérifie les mises à jour
+ * d'informations s'y fie ; validé, il rejoint les pièces du dossier
+ * (ADR-0080).
  */
 
 export const PROFILE_CHANGE_FIELDS = [
@@ -83,6 +89,21 @@ export const profileChangeValuesSchema = z
   .partial();
 export type ProfileChangeValues = z.infer<typeof profileChangeValuesSchema>;
 
+/** Passer à « Marié(e) » : le certificat de mariage est exigé (ADR-0080). */
+export const exigeLeCertificatDeMariage = (changes: { maritalStatus?: string | null }): boolean =>
+  changes.maritalStatus === 'married';
+
+/** Le certificat de mariage, en PDF, comme les pièces du dossier. */
+export const certificatDeMariageSchema = z.object({
+  filename: z.string().trim().min(1).max(200),
+  contentType: z.enum(EMPLOYEE_DOCUMENT_TYPES),
+  contentBase64: z
+    .string()
+    .min(1)
+    .max(Math.ceil((MAX_EMPLOYEE_DOCUMENT_BYTES * 4) / 3) + 4),
+});
+export type CertificatDeMariageInput = z.infer<typeof certificatDeMariageSchema>;
+
 export const createProfileChangeRequestSchema = z.object({
   changes: profileChangeValuesSchema.refine((v) => Object.keys(v).length > 0, {
     message: 'Indiquez au moins une information à corriger',
@@ -93,6 +114,8 @@ export const createProfileChangeRequestSchema = z.object({
     .max(500)
     .transform((v) => (v === '' ? undefined : v))
     .optional(),
+  /** Exigé avec un passage à « Marié(e) », refusé sans lui : le serveur en juge. */
+  certificat: certificatDeMariageSchema.optional(),
 });
 export type CreateProfileChangeRequestInput = z.infer<typeof createProfileChangeRequestSchema>;
 
@@ -157,6 +180,12 @@ export interface ProfileChangeRequestView {
     /** En attente, et le dossier a changé depuis la demande sur ce champ. */
     modifieDepuis: boolean;
   }[];
+  /**
+   * Le certificat de mariage joint, tant que la demande attend : pour qui
+   * l'a envoyée et qui la traite (sinon null). Décidée, la demande ne le
+   * garde pas : validé, il est au dossier.
+   */
+  certificat: { filename: string; sizeBytes: number } | null;
   /** true si l'utilisateur courant peut trancher cette demande. */
   canDecide: boolean;
   /** true si c'est la sienne, encore en attente : il peut l'annuler. */

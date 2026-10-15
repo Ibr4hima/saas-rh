@@ -551,6 +551,24 @@ export const documentRequestFiles = pgTable('document_request_files', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Le certificat de mariage joint à une demande de mise à jour, le temps de
+ * sa décision : validée, il rejoint les pièces du dossier (0114).
+ */
+export const profileChangeDocuments = pgTable('profile_change_documents', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  requestId: uuid('request_id').notNull(),
+  category: text('category').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  data: bytea('data').notNull(),
+  cleVersion: smallint('cle_version').notNull(),
+  uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- Textes de référence (0023) ----------
 
 export const referenceTexts = pgTable('reference_texts', {

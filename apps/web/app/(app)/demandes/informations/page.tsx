@@ -21,7 +21,10 @@ import {
   Tr,
 } from '@teranga/ui';
 import { BoutonDecision } from '../../../../components/bouton-decision';
+import { PrevisualiserCertificat } from '../../../../components/certificat-de-mariage';
 import { DeleguerMembres } from '../../../../components/deleguer-membres';
+import { type ViewableDoc } from '../../../../components/doc-viewer';
+import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
@@ -51,7 +54,7 @@ import { formatDate, useMe } from '../../../../lib/hooks';
    ———————————————————————————————————————————————————————————————— */
 
 const lisible = (champ: string, valeur: string | null | undefined) =>
-  valeurSignalee(champ, valeur) ?? '—';
+  valeurSignalee(champ, valeur) ?? 'non renseigné';
 
 export default function InformationsATraiterPage() {
   const queryClient = useQueryClient();
@@ -68,6 +71,7 @@ export default function InformationsATraiterPage() {
   // correction de la RH. Cela se confirme en voyant ce qui sera remplacé.
   const [aRemplacer, setARemplacer] = useState<ProfileChangeRequestView | null>(null);
   const [motif, setMotif] = useState('');
+  const [apercu, setApercu] = useState<ViewableDoc | null>(null);
 
   const rafraichir = async () => {
     await queryClient.invalidateQueries({ queryKey: ['profile-changes'] });
@@ -175,6 +179,7 @@ export default function InformationsATraiterPage() {
                   <Th>Employé</Th>
                   <Th>Changement</Th>
                   <Th>Signalé le</Th>
+                  <Th>Justificatif</Th>
                   <Th className="text-right">{traite ? 'Décision' : 'Traitée par'}</Th>
                 </tr>
               </THead>
@@ -189,6 +194,9 @@ export default function InformationsATraiterPage() {
                     </Td>
                     <Td className="whitespace-nowrap tabular-nums">
                       {formatDate(r.createdAt.slice(0, 10))}
+                    </Td>
+                    <Td>
+                      <PrevisualiserCertificat demande={r} onOuvrir={setApercu} />
                     </Td>
                     <Td>
                       {!traite ? (
@@ -310,12 +318,14 @@ export default function InformationsATraiterPage() {
               id="motif-refus-info"
               value={motif}
               maxLength={500}
-              placeholder="Ex. : merci de passer présenter votre acte de mariage."
+              placeholder="Ex. : le certificat de mariage joint est illisible."
               onChange={(e) => setMotif(e.target.value)}
             />
           </Field>
         </Modal>
       ) : null}
+
+      <FenetreDocument doc={apercu} onClose={() => setApercu(null)} />
     </Page>
   );
 }

@@ -7,8 +7,13 @@ import type {
   ProfileChangeField,
   ProfileChangeRequestView,
 } from '@teranga/contracts';
-import { PROFILE_CHANGE_FIELDS, PROFILE_CHANGE_LABELS } from '@teranga/contracts';
-import { Button, Field, Input, Select } from '@teranga/ui';
+import {
+  exigeLeCertificatDeMariage,
+  MAX_EMPLOYEE_DOCUMENT_BYTES,
+  PROFILE_CHANGE_FIELDS,
+  PROFILE_CHANGE_LABELS,
+} from '@teranga/contracts';
+import { Button, cn, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { composePhone, splitPhone } from '../lib/countries';
 import { maritalLabels } from '../lib/person';
@@ -25,9 +30,16 @@ import { formatTelephone } from './telephone';
    email personnel, téléphone, adresse) ; le reste s'appuie sur une pièce
    officielle ou sur le contrat. Le signalement part à la Direction du
    Capital Humain, qui le valide.
+
+   Passer à « Marié(e) » se signale avec le certificat de mariage que
+   délivre la mairie : qui vérifie les mises à jour d'informations s'y fie,
+   et le verse au dossier en validant (ADR-0080).
    ———————————————————————————————————————————————————————————————— */
 
 type Draft = Partial<Record<ProfileChangeField, string>>;
+
+/** Le certificat de mariage choisi, lu en base64 pour l'envoi. */
+type Certificat = { filename: string; contentBase64: string; sizeBytes: number };
 
 const CLE_SIGNALEMENTS = ['profile-changes', 'me'] as const;
 
@@ -60,6 +72,8 @@ export function FenetreSignalement({
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>({});
   const [error, setError] = useState<string | null>(null);
+  const [certificat, setCertificat] = useState<Certificat | null>(null);
+  const [erreurCertificat, setErreurCertificat] = useState<string | null>(null);
   const signalements = useMesSignalements();
   const enAttente = (signalements.data ?? []).find((r) => r.status === 'pending');
   // Tant que la liste n'est pas là, pas de formulaire : il pourrait céder la
@@ -68,19 +82,6 @@ export function FenetreSignalement({
 
   const p = employe.person;
   const marital = maritalLabels(p.gender);
-
-  const submit = useMutation({
-    mutationFn: () =>
-      api('/profile-changes', {
-        method: 'POST',
-        body: { changes: draft },
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['profile-changes'] });
-      onClose();
-    },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Envoi impossible.'),
-  });
 
   /** Valeur actuelle d'un champ demandable, telle qu'elle est au dossier. */
   const current = (f: ProfileChangeField): string =>
@@ -107,6 +108,53 @@ export function FenetreSignalement({
   const modifies = PROFILE_CHANGE_FIELDS.filter(
     (f) => draft[f] !== undefined && draft[f] !== current(f),
   );
+  // Passer à « Marié(e) » : le certificat de mariage part avec le signalement.
+  const avecCertificat = modifies.includes('maritalStatus') && exigeLeCertificatDeMariage(draft);
+
+  const choisirCertificat = (file: File | null) => {
+    setErreurCertificat(null);
+    setCertificat(null); // une sélection invalide ne garde jamais l'ancien fichier
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      setErreurCertificat('Le certificat doit être un PDF.');
+      return;
+    }
+    if (file.size === 0 || file.size > MAX_EMPLOYEE_DOCUMENT_BYTES) {
+      setErreurCertificat('Le PDF doit faire entre 1 octet et 5 Mo.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = String(reader.result).split(',')[1] ?? '';
+      setCertificat({ filename: file.name, contentBase64: base64, sizeBytes: file.size });
+    };
+    reader.onerror = () => setErreurCertificat('Impossible de lire ce fichier, réessayez.');
+    reader.readAsDataURL(file);
+  };
+
+  const submit = useMutation({
+    mutationFn: () =>
+      api('/profile-changes', {
+        method: 'POST',
+        body: {
+          changes: draft,
+          ...(avecCertificat && certificat
+            ? {
+                certificat: {
+                  filename: certificat.filename,
+                  contentType: 'application/pdf',
+                  contentBase64: certificat.contentBase64,
+                },
+              }
+            : {}),
+        },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['profile-changes'] });
+      onClose();
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Envoi impossible.'),
+  });
 
   return (
     <Modal
@@ -133,7 +181,7 @@ export function FenetreSignalement({
               Annuler
             </Button>
             <Button
-              disabled={modifies.length === 0}
+              disabled={modifies.length === 0 || (avecCertificat && !certificat)}
               loading={submit.isPending}
               onClick={() => {
                 setError(null);
@@ -165,7 +213,15 @@ export function FenetreSignalement({
                 <Select
                   id="maritalStatus"
                   value={valueOf('maritalStatus')}
-                  onChange={(e) => set('maritalStatus', e.target.value)}
+                  onChange={(e) => {
+                    set('maritalStatus', e.target.value);
+                    // Le certificat ne vaut que pour « Marié(e) » : il ne reste
+                    // pas en attente d'un autre choix.
+                    if (e.target.value !== 'married') {
+                      setCertificat(null);
+                      setErreurCertificat(null);
+                    }
+                  }}
                 >
                   <option value="">—</option>
                   {Object.entries(marital).map(([k, label]) => (
@@ -184,6 +240,42 @@ export function FenetreSignalement({
                 />
               </Field>
             </div>
+            {avecCertificat ? (
+              <Field
+                label="Certificat de mariage"
+                htmlFor="certificatMariage"
+                hint={certificat ? undefined : 'PDF, 5 Mo au plus'}
+                error={erreurCertificat ?? undefined}
+              >
+                <label
+                  htmlFor="certificatMariage"
+                  className={cn(
+                    'flex h-10 cursor-pointer items-center gap-2 rounded-full border px-4 text-[13px] transition-colors duration-150',
+                    certificat
+                      ? 'border-success/40 text-ink-strong'
+                      : 'border-line text-ink-muted hover:border-primary/40 hover:text-primary',
+                  )}
+                >
+                  <Icon
+                    name={certificat ? 'check_circle' : 'upload_file'}
+                    size={17}
+                    className={cn('shrink-0', certificat ? 'text-success' : undefined)}
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    {certificat
+                      ? `${certificat.filename} · ${Math.round(certificat.sizeBytes / 1024)} Ko`
+                      : 'Choisir un fichier'}
+                  </span>
+                </label>
+                <input
+                  id="certificatMariage"
+                  type="file"
+                  accept="application/pdf"
+                  className="sr-only"
+                  onChange={(e) => choisirCertificat(e.target.files?.[0] ?? null)}
+                />
+              </Field>
+            ) : null}
             <ChampTelephone
               id="phone"
               stocke={valueOf('phone')}

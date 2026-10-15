@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { RequestableDoc } from './document-requests';
-import type { DocumentCategory } from './documents';
+import type { PieceAVerifier } from './documents';
 
 /**
  * Qui peut quoi — décidé avec l'APIX.
@@ -59,7 +59,7 @@ export const CAPACITES_PIECES = [
   'demandes.pieces.attestation_stage',
   'demandes.pieces.cv',
   'demandes.pieces.autre',
-] as const satisfies readonly `demandes.pieces.${DocumentCategory}`[];
+] as const satisfies readonly `demandes.pieces.${PieceAVerifier}`[];
 
 /** Traiter un type de demande : les demandes vont directement aux membres choisis. */
 export const CAPACITES_DEMANDES = [
@@ -132,7 +132,7 @@ export const capaciteDuDocument = (doc: RequestableDoc): CapaciteDemande =>
   `demandes.documents.${doc}`;
 
 /** Qui vérifie ce document officiel-là : une habilitation par type. */
-export const capaciteDeLaPiece = (categorie: DocumentCategory): CapaciteDemande =>
+export const capaciteDeLaPiece = (categorie: PieceAVerifier): CapaciteDemande =>
   `demandes.pieces.${categorie}`;
 
 export interface InfoCapacite {

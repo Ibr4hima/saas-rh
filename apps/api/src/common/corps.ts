@@ -128,6 +128,15 @@ export const ROUTES_A_FICHIER: Route[] = [
     limite: enBase64(MAX_EMPLOYEE_DOCUMENT_BYTES) + MARGE_JSON,
     acces: { session: true },
   },
+  // Signaler un changement : le passage à « Marié(e) » porte le certificat
+  // de mariage, un PDF comme les pièces du dossier (ADR-0080).
+  {
+    methode: 'POST',
+    chemin: /^\/v1\/profile-changes$/,
+    analyseur: 'json',
+    limite: enBase64(MAX_EMPLOYEE_DOCUMENT_BYTES) + MARGE_JSON,
+    acces: { session: true },
+  },
   {
     methode: 'POST',
     chemin: new RegExp(`^/v1/document-requests/${UUID}/fichiers$`),

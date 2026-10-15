@@ -6,7 +6,10 @@ import type { ProfileChangeRequestView } from '@teranga/contracts';
 import { PROFILE_CHANGE_STATUS_LABELS, PROFILE_CHANGE_STATUS_TONES } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
+import { PrevisualiserCertificat } from './certificat-de-mariage';
+import { type ViewableDoc } from './doc-viewer';
 import { timeAgo } from './document-request-list';
+import { FenetreDocument } from './fenetre-document';
 import { valeurSignalee } from './telephone';
 
 /** « Avant → après » : un côté vide se dit, comme l'agent le lit. */
@@ -26,6 +29,7 @@ export function ProfileChangeCard({ employeeId }: { employeeId: string }) {
   const [rejectOpen, setRejectOpen] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [apercu, setApercu] = useState<ViewableDoc | null>(null);
 
   const requests = useQuery({
     queryKey: ['profile-changes', employeeId],
@@ -106,6 +110,12 @@ export function ProfileChangeCard({ employeeId }: { employeeId: string }) {
               </ul>
 
               {r.note ? <p className="text-xs text-ink-muted italic">« {r.note} »</p> : null}
+              {r.certificat ? (
+                <p className="text-sm">
+                  <span className="text-ink-muted">Justificatif : </span>
+                  <PrevisualiserCertificat demande={r} onOuvrir={setApercu} />
+                </p>
+              ) : null}
               {r.status === 'rejected' && r.hrMessage ? (
                 <p className="text-xs text-danger">Motif : {r.hrMessage}</p>
               ) : null}
@@ -145,7 +155,7 @@ export function ProfileChangeCard({ employeeId }: { employeeId: string }) {
                     </label>
                     <Input
                       id={`why-${r.id}`}
-                      placeholder="Ex : merci de passer présenter votre acte de mariage."
+                      placeholder="Ex : le certificat de mariage joint est illisible."
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
                       className="h-9"
@@ -171,6 +181,8 @@ export function ProfileChangeCard({ employeeId }: { employeeId: string }) {
           <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
         ) : null}
       </CardContent>
+      {/* Fixe, plein écran : la carte ne le contraint pas. */}
+      <FenetreDocument doc={apercu} onClose={() => setApercu(null)} />
     </Card>
   );
 }

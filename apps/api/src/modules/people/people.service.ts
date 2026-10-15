@@ -2289,6 +2289,22 @@ export class PeopleService {
         .where(eq(t.documentRequests.employeeId, id))
         .returning({ id: t.documentRequests.id }),
     );
+    // Le certificat de mariage joint à une demande en attente part avec elle :
+    // relevé d'abord, pour que le journal l'oublie aussi.
+    recolter(
+      await tx
+        .delete(t.profileChangeDocuments)
+        .where(
+          inArray(
+            t.profileChangeDocuments.requestId,
+            tx
+              .select({ id: t.profileChangeRequests.id })
+              .from(t.profileChangeRequests)
+              .where(eq(t.profileChangeRequests.employeeId, id)),
+          ),
+        )
+        .returning({ id: t.profileChangeDocuments.id }),
+    );
     recolter(
       await tx
         .delete(t.profileChangeRequests)

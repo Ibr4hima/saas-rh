@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -18,7 +19,9 @@ import {
   type CreateProfileChangeRequestInput,
   type DecideProfileChangeRequestInput,
 } from '@teranga/contracts';
+import type { Response } from 'express';
 import { z } from 'zod';
+import { contentDisposition } from '../../common/telechargement';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
@@ -53,6 +56,27 @@ export class ProfileChangesController {
     @Query(new ZodValidationPipe(listQuerySchema)) query: z.infer<typeof listQuerySchema>,
   ) {
     return this.requests.list(req.sessionUser, query);
+  }
+
+  /**
+   * Le certificat de mariage joint à une demande en attente (ADR-0080).
+   * Aperçu dans la page par défaut ; ?download=1 force le téléchargement.
+   */
+  @Get('profile-changes/:id/certificat')
+  async certificat(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('download') download: string | undefined,
+    @Res() res: Response,
+  ) {
+    const piece = await this.requests.certificat(req.sessionUser, id);
+    res.setHeader('Content-Type', piece.contentType);
+    res.setHeader(
+      'Content-Disposition',
+      contentDisposition(download ? 'attachment' : 'inline', piece.filename),
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(piece.data);
   }
 
   /** L'agent retire sa demande, tant qu'elle attend. */

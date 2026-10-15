@@ -13,8 +13,18 @@ export const documentCategorySchema = z.enum([
   'attestation_stage',
   'cv',
 ]);
-/** Un type de document — `autre` ne se lit plus que sur les dépôts anciens. */
-export type DocumentCategory = z.infer<typeof documentCategorySchema> | 'autre';
+/**
+ * Ce que vérifie la file des pièces : les types qu'un agent dépose, et
+ * `autre`, qui ne se lit plus que sur les dépôts anciens.
+ */
+export type PieceAVerifier = z.infer<typeof documentCategorySchema> | 'autre';
+
+/**
+ * Un type de document du dossier. Le certificat de mariage n'y entre que par
+ * un passage à « Marié(e) » validé (ADR-0080) : il ne se dépose pas seul, et
+ * ne passe pas par la file des pièces.
+ */
+export type DocumentCategory = PieceAVerifier | 'certificat_mariage';
 
 export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
   cni: 'Carte Nationale d’Identité',
@@ -25,6 +35,7 @@ export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
   attestation_stage: 'Attestation de stage',
   cv: 'Curriculum Vitæ',
   autre: 'Autre document',
+  certificat_mariage: 'Certificat de mariage',
 };
 
 /**

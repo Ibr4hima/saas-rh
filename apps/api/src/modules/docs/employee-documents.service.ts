@@ -6,6 +6,7 @@ import type {
   DocumentCategory,
   EmployeeDocumentView,
   PieceATraiterView,
+  PieceAVerifier,
   ReplaceEmployeeDocumentInput,
   ReviewEmployeeDocumentInput,
   TitreSaisi,
@@ -338,7 +339,7 @@ export class EmployeeDocumentsService {
           'Elles vont aux membres de la DCH qui vérifient les pièces, ou à qui dirige la DCH.',
         );
       }
-      await exigerDeTraiter(tx, user, capaciteDeLaPiece(doc.category as DocumentCategory), {
+      await exigerDeTraiter(tx, user, capaciteDeLaPiece(doc.category as PieceAVerifier), {
         employeeId: doc.employeeId,
         confieeA: doc.confieeAEmployeeId,
       });
@@ -648,7 +649,7 @@ export class EmployeeDocumentsService {
     const tr = enAttenteDCH
       ? await vueDuTraitement(
           tx,
-          capaciteDeLaPiece(doc.category as DocumentCategory),
+          capaciteDeLaPiece(doc.category as PieceAVerifier),
           { employeeId: doc.employeeId, confieeA: doc.confieeAEmployeeId },
           moi,
           dch,

@@ -3,8 +3,9 @@ import { EncryptionService, VERSION_CANDIDATURES } from './encryption.service';
 /* ────────────────────────────────────────────────────────────────
    Les pièces des dossiers, chiffrées au repos : les pièces des agents
    (CNI, passeport, diplômes, CV), les justificatifs d'absence (un
-   certificat médical) et les documents que la DCH remet en ligne (un
-   bulletin de salaire).
+   certificat médical), les documents que la DCH remet en ligne (un
+   bulletin de salaire) et le certificat de mariage joint à une demande de
+   mise à jour.
 
    La clé des dossiers est la leur, dérivée de la clé maîtresse. Chaque
    fichier et chaque nom de fichier l'est pour SA place : l'organisation, la
@@ -16,7 +17,11 @@ import { EncryptionService, VERSION_CANDIDATURES } from './encryption.service';
    telle quelle, le temps que le migrateur la chiffre.
    ──────────────────────────────────────────────────────────────── */
 
-export type TableDePieces = 'employee_documents' | 'absence_documents' | 'document_request_files';
+export type TableDePieces =
+  | 'employee_documents'
+  | 'absence_documents'
+  | 'document_request_files'
+  | 'profile_change_documents';
 
 export const VERSION_PIECES = VERSION_CANDIDATURES;
 

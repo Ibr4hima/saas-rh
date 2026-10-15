@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, not, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, not, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
+  CertificatDeMariageInput,
   CreateProfileChangeRequestInput,
   DecideProfileChangeRequestInput,
   ProfileChangeField,
@@ -11,11 +12,16 @@ import type {
   SessionUser,
 } from '@teranga/contracts';
 import {
+  DOCUMENT_CATEGORY_LABELS,
+  exigeLeCertificatDeMariage,
+  MAX_EMPLOYEE_DOCUMENT_BYTES,
   peut,
   PROFILE_CHANGE_ALL_LABELS,
   profileChangeValuesSchema,
   maritalLabelsFor,
 } from '@teranga/contracts';
+import { EncryptionService } from '../../common/encryption.service';
+import { chiffrerPiece, contenuDeLaPiece, nomDeLaPiece } from '../../common/pieces-chiffrees';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
@@ -64,11 +70,47 @@ function ctxOf(user: SessionUser) {
   return { tenantId: user.tenantId, userId: user.userId };
 }
 
+/** Le certificat envoyé : un PDF, de 5 Mo au plus. Sa signature le prouve, pas son type annoncé. */
+function lireLeCertificat(certificat: CertificatDeMariageInput): Buffer {
+  const data = Buffer.from(certificat.contentBase64, 'base64');
+  if (data.length === 0 || data.length > MAX_EMPLOYEE_DOCUMENT_BYTES) {
+    problem(422, 'documents.too_large', 'Le fichier doit faire 5 Mo maximum');
+  }
+  if (data.subarray(0, 5).toString() !== '%PDF-') {
+    problem(
+      422,
+      'documents.bad_format',
+      'Le contenu ne correspond pas au format annoncé',
+      'Seul le PDF est accepté.',
+    );
+  }
+  return data;
+}
+
+/**
+ * Qui lit le certificat joint à une demande : qui l'a envoyée ; qui traite la
+ * file des mises à jour d'informations, ou le membre à qui la demande est
+ * confiée, tant qu'elle attend ; qui voit les données sensibles des dossiers.
+ */
+function certificatLisible(
+  user: SessionUser,
+  d: { employeeId: string; confieeA: string | null; status: string },
+  o: { soi: string | null; moi: string | null; fileEntiere: boolean },
+): boolean {
+  return (
+    d.employeeId === o.soi ||
+    o.fileEntiere ||
+    (o.moi !== null && d.confieeA === o.moi && d.status === 'pending') ||
+    peut(user, 'personnel.sensible')
+  );
+}
+
 @Injectable()
 export class ProfileChangesService {
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(EncryptionService) private readonly crypto: EncryptionService,
   ) {}
 
   /** L'employé propose des corrections sur SON dossier, jamais sur un autre. */
@@ -98,6 +140,20 @@ export class ProfileChangesService {
           'Les valeurs saisies sont déjà celles de votre dossier.',
         );
       }
+      // Passer à « Marié(e) » s'établit sur pièce : le certificat de mariage
+      // que délivre la mairie (ADR-0080). Il ne part qu'avec ce changement-là.
+      const avecCertificat = exigeLeCertificatDeMariage(changes);
+      if (avecCertificat && !input.certificat) {
+        problem(422, 'profile.certificat_requis', 'Joignez le certificat de mariage');
+      }
+      if (!avecCertificat && input.certificat) {
+        problem(
+          422,
+          'profile.certificat_sans_mariage',
+          'Le certificat de mariage accompagne un passage à « Marié(e) »',
+        );
+      }
+      const certificat = input.certificat ? lireLeCertificat(input.certificat) : null;
 
       await uneDemandeALaFois(tx, self.employeeId);
       const [pending] = await tx
@@ -129,6 +185,24 @@ export class ProfileChangesService {
         requestedByUserId: user.userId,
         status: 'pending',
       });
+      if (certificat && input.certificat) {
+        const pieceId = uuidv7();
+        await tx.insert(t.profileChangeDocuments).values({
+          id: pieceId,
+          tenantId: user.tenantId,
+          requestId: id,
+          category: 'certificat_mariage',
+          contentType: input.certificat.contentType,
+          sizeBytes: certificat.length,
+          ...chiffrerPiece(
+            this.crypto,
+            'profile_change_documents',
+            { tenantId: user.tenantId, id: pieceId },
+            { filename: input.certificat.filename, data: certificat },
+          ),
+          uploadedByUserId: user.userId,
+        });
+      }
 
       // À qui la traite pour la DCH — et à eux seuls.
       await reconcilierUneDemande(tx, 'informations', id);
@@ -205,9 +279,20 @@ export class ProfileChangesService {
       );
 
       const dch = await directionDuPersonnel(tx);
+      // Le certificat de mariage des demandes en attente, pour qui peut le lire.
+      const certificats = await this.certificatsDe(
+        tx,
+        rows.filter((r) => r.request.status === 'pending').map((r) => r.request.id),
+      );
+      const lecteur = {
+        soi: self?.employeeId ?? null,
+        moi,
+        fileEntiere: certificats.size > 0 && (await voitToutLaFile(tx, user, 'informations')),
+      };
       const vues: ProfileChangeRequestView[] = [];
       for (const r of rows) {
         const d = { employeeId: r.request.employeeId, confieeA: r.request.confieeAEmployeeId };
+        const certificat = certificats.get(r.request.id);
         const tr =
           !selfOnly && r.request.status === 'pending'
             ? await vueDuTraitement(tx, 'demandes.informations', d, moi, dch)
@@ -230,6 +315,10 @@ export class ProfileChangesService {
             // Le dossier d'aujourd'hui ne compte que pour une demande en attente.
             r.request.status === 'pending' ? (r.person as Record<string, unknown>) : null,
           ),
+          certificat:
+            certificat && certificatLisible(user, { ...d, status: r.request.status }, lecteur)
+              ? certificat
+              : null,
           canDecide: Boolean(tr?.peutTraiter),
           canCancel: r.request.status === 'pending' && r.request.employeeId === self?.employeeId,
           traitement: tr?.vue ?? null,
@@ -326,6 +415,7 @@ export class ProfileChangesService {
           await tx.update(t.persons).set(patch).where(eq(t.persons.id, target.personId));
         }
       }
+      await this.verserOuRetirerLeCertificat(tx, user, row, input.decision === 'approve');
 
       await tx
         .update(t.profileChangeRequests)
@@ -372,8 +462,126 @@ export class ProfileChangesService {
         .update(t.profileChangeRequests)
         .set({ status: 'cancelled', handledAt: new Date(), updatedAt: new Date() })
         .where(eq(t.profileChangeRequests.id, requestId));
+      await this.verserOuRetirerLeCertificat(tx, user, row, false);
       await reconcilierUneDemande(tx, 'informations', requestId);
     });
+  }
+
+  /**
+   * Le certificat joint à une demande, à lire avant de décider (ADR-0080) :
+   * qui l'a envoyée, qui traite la file ou la demande confiée, qui voit les
+   * données sensibles des dossiers. Décidée, la demande ne le garde plus.
+   */
+  async certificat(
+    user: SessionUser,
+    requestId: string,
+  ): Promise<{ filename: string; contentType: string; data: Buffer }> {
+    return this.db.lire(ctxOf(user), async (tx) => {
+      const [row] = await tx
+        .select({
+          employeeId: t.profileChangeRequests.employeeId,
+          confieeA: t.profileChangeRequests.confieeAEmployeeId,
+          status: t.profileChangeRequests.status,
+        })
+        .from(t.profileChangeRequests)
+        .where(eq(t.profileChangeRequests.id, requestId))
+        .limit(1);
+      if (!row) problem(404, 'profile.request_not_found', 'Demande introuvable');
+      const self = await this.selfPerson(tx, user, true);
+      const moi = await agentDuCompte(tx, user.userId);
+      const fileEntiere = await voitToutLaFile(tx, user, 'informations');
+      if (!certificatLisible(user, row, { soi: self?.employeeId ?? null, moi, fileEntiere })) {
+        problem(403, 'profile.forbidden_scope', 'Accès réservé à qui traite cette demande');
+      }
+      const [piece] = await tx
+        .select()
+        .from(t.profileChangeDocuments)
+        .where(eq(t.profileChangeDocuments.requestId, requestId))
+        .limit(1);
+      if (!piece)
+        problem(404, 'profile.certificat_introuvable', 'Aucun certificat joint à cette demande');
+      return {
+        filename: nomDeLaPiece(this.crypto, 'profile_change_documents', piece),
+        contentType: piece.contentType,
+        data: contenuDeLaPiece(this.crypto, 'profile_change_documents', piece),
+      };
+    });
+  }
+
+  /** Le nom et la taille des certificats joints à ces demandes, sans leur contenu. */
+  private async certificatsDe(
+    tx: Tx,
+    requestIds: string[],
+  ): Promise<Map<string, { filename: string; sizeBytes: number }>> {
+    if (requestIds.length === 0) return new Map();
+    const pieces = await tx
+      .select({
+        id: t.profileChangeDocuments.id,
+        tenantId: t.profileChangeDocuments.tenantId,
+        requestId: t.profileChangeDocuments.requestId,
+        filename: t.profileChangeDocuments.filename,
+        cleVersion: t.profileChangeDocuments.cleVersion,
+        sizeBytes: t.profileChangeDocuments.sizeBytes,
+      })
+      .from(t.profileChangeDocuments)
+      .where(inArray(t.profileChangeDocuments.requestId, requestIds));
+    return new Map(
+      pieces.map((p) => [
+        p.requestId,
+        {
+          filename: nomDeLaPiece(this.crypto, 'profile_change_documents', p),
+          sizeBytes: p.sizeBytes,
+        },
+      ]),
+    );
+  }
+
+  /**
+   * La demande est décidée : validée, son certificat de mariage rejoint les
+   * pièces du dossier, vérifié par qui l'a validée, au nom de qui l'a
+   * envoyé ; refusée ou annulée, il ne reste nulle part. Le journal garde
+   * le dépôt et le retrait, sans le contenu (ADR-0080).
+   */
+  private async verserOuRetirerLeCertificat(
+    tx: Tx,
+    user: SessionUser,
+    demande: { id: string; employeeId: string },
+    verser: boolean,
+  ): Promise<void> {
+    const [piece] = await tx
+      .select()
+      .from(t.profileChangeDocuments)
+      .where(eq(t.profileChangeDocuments.requestId, demande.id))
+      .limit(1);
+    if (!piece) return;
+    if (verser) {
+      const id = uuidv7();
+      await tx.insert(t.employeeDocuments).values({
+        id,
+        tenantId: piece.tenantId,
+        employeeId: demande.employeeId,
+        category: 'certificat_mariage',
+        label: DOCUMENT_CATEGORY_LABELS.certificat_mariage,
+        contentType: piece.contentType,
+        sizeBytes: piece.sizeBytes,
+        // Chiffré à nouveau pour SA nouvelle place : la ligne, la table.
+        ...chiffrerPiece(
+          this.crypto,
+          'employee_documents',
+          { tenantId: piece.tenantId, id },
+          {
+            filename: nomDeLaPiece(this.crypto, 'profile_change_documents', piece),
+            data: contenuDeLaPiece(this.crypto, 'profile_change_documents', piece),
+          },
+        ),
+        status: 'approved',
+        uploadedByUserId: piece.uploadedByUserId,
+        uploadedBySide: 'employee',
+        reviewedByUserId: user.userId,
+        reviewedAt: new Date(),
+      });
+    }
+    await tx.delete(t.profileChangeDocuments).where(eq(t.profileChangeDocuments.id, piece.id));
   }
 
   /** Traduit le jsonb en lignes lisibles « avant → après ». */

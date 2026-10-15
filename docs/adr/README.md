@@ -19,7 +19,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0011](0011-signature-electronique-deux-etages.md)    | Signature électronique à deux étages (avancée maison V1, qualifiée V2)                  | acceptée                                    |
 | [0012](0012-arbitrages-direction-capital-humain.md)   | Arbitrages de la Direction du Capital Humain (APIX)                                     | acceptée, précisée par 0040, 0042           |
 | [0013](0013-coherence-organigramme.md)                | Règles de cohérence de l'organigramme                                                   | acceptée, précisée par 0034 et 0036         |
-| [0014](0014-corrections-informations-personnelles.md) | Corrections des informations personnelles par l'employé                                 | acceptée                                    |
+| [0014](0014-corrections-informations-personnelles.md) | Corrections des informations personnelles par l'employé                                 | acceptée, précisée par 0080                 |
 | [0015](0015-courriels-sortants.md)                    | Courriels sortants : file dédiée, Mailpit en développement, Microsoft 365 en production | acceptée                                    |
 | [0016](0016-compte-d-un-agent-parti.md)               | Compte d’un agent parti : mot de passe effacé après trente jours, retour par invitation | acceptée                                    |
 | [0017](0017-invitations-au-portail.md)                | Invitations au portail : d’office au retour, groupées, suivies sur une page             | acceptée, page déléguable depuis 0025       |
@@ -85,3 +85,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0077](0077-resultats-obtenus.md)                     | Le dossier montre les résultats obtenus : la case de chaque objectif, rien d'autre      | acceptée                                    |
 | [0078](0078-mes-objectifs-une-annee-a-la-fois.md)     | Mes objectifs : une année à la fois, comme chez le n+1                                  | acceptée                                    |
 | [0079](0079-auto-evaluation-sans-commentaire.md)      | Auto-évaluation : un statut par objectif, sans commentaire                              | acceptée                                    |
+| [0080](0080-certificat-de-mariage.md)                 | Le certificat de mariage accompagne le passage à « Marié(e) »                           | acceptée                                    |

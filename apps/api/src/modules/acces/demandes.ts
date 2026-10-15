@@ -3,6 +3,7 @@ import {
   capaciteDeLaPiece,
   capaciteDuDocument,
   type DocumentCategory,
+  type PieceAVerifier,
   capacitesDuType,
   type CapaciteDemande,
   type RequestableDoc,
@@ -121,7 +122,7 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
     enAttente: sql.raw(`r.status = 'pending'`),
     detail: sql.raw(`jsonb_build_object('label', r.label, 'categorie', r.category)`),
     // Un type de document officiel, une délégation (cf. CAPACITES_PIECES).
-    capacite: (d) => capaciteDeLaPiece((d as { categorie: DocumentCategory }).categorie),
+    capacite: (d) => capaciteDeLaPiece((d as { categorie: PieceAVerifier }).categorie),
     titre: (nom, d) => {
       const piece = PIECE[(d as { categorie: DocumentCategory }).categorie] ?? PIECE.autre;
       return `${nom} a déposé ${piece.article} ${piece.nom}`;

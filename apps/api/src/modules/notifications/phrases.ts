@@ -71,6 +71,7 @@ export const PIECE: Record<DocumentCategory, Nom> = {
   attestation_stage: nom('attestation de stage', true),
   cv: nom('CV', false, 'son'),
   autre: nom('document', false),
+  certificat_mariage: nom('certificat de mariage', false),
 };
 
 /** Les documents qu'on demande à la DCH. */

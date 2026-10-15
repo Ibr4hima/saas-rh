@@ -8,8 +8,8 @@ import {
   DOCUMENT_CATEGORY_LABELS,
   REQUESTABLE_DOC_LABELS,
   type Capacite,
-  type DocumentCategory,
   type MembreHabilite,
+  type PieceAVerifier,
   type RequestableDoc,
 } from '@teranga/contracts';
 import { Button, cn } from '@teranga/ui';
@@ -50,7 +50,7 @@ export const DOCUMENTS_DELEGABLES = [
 ] as const satisfies readonly RequestableDoc[];
 
 /** Les documents officiels qu'un agent dépose, par familles. */
-const FAMILLES_DE_PIECES: readonly { libelle: string; types: readonly DocumentCategory[] }[] = [
+const FAMILLES_DE_PIECES: readonly { libelle: string; types: readonly PieceAVerifier[] }[] = [
   { libelle: 'CNI et passeport', types: ['cni', 'passeport'] },
   { libelle: 'Diplômes et certifications', types: ['diplome', 'certification'] },
   {
