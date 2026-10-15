@@ -66,8 +66,8 @@ const lisible = (champ: string, valeur: string | null | undefined) =>
  *
  * Les demandes de documents, et les mises à jour d'informations signalées
  * depuis la fiche (ADR-0081). En cours, une mise à jour s'annule ; refusée,
- * elle dit son motif, pour corriger. Validée, la fiche porte le changement ;
- * annulée, elle n'y figure plus.
+ * elle dit son motif, pour corriger. Validée, elle n'y figure pas : la fiche
+ * porte le changement (ADR-0082). Annulée non plus.
  *
  * Deux cartes, comme la file de la DCH : les demandes en cours, qui
  * s'annulent encore, puis les demandes traitées (prêtes, remises, refusées),
@@ -148,8 +148,9 @@ export default function SuiviDemandesDocumentsPage() {
         createdAt: d.createdAt,
         d,
       })),
+      // D'une mise à jour, le suivi ne garde que l'attente et le refus.
       ...(signalements.data ?? [])
-        .filter((d) => d.status !== 'cancelled')
+        .filter((d) => d.status === 'pending' || d.status === 'rejected')
         .map((d) => ({ genre: 'informations' as const, id: d.id, createdAt: d.createdAt, d })),
     ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return {

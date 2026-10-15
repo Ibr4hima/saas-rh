@@ -86,4 +86,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0078](0078-mes-objectifs-une-annee-a-la-fois.md)     | Mes objectifs : une année à la fois, comme chez le n+1                                  | acceptée                                    |
 | [0079](0079-auto-evaluation-sans-commentaire.md)      | Auto-évaluation : un statut par objectif, sans commentaire                              | acceptée                                    |
 | [0080](0080-certificat-de-mariage.md)                 | Le certificat de mariage accompagne le passage à « Marié(e) »                           | acceptée                                    |
-| [0081](0081-suivi-des-mises-a-jour.md)                | Le suivi des demandes porte aussi les mises à jour d'informations                       | acceptée                                    |
+| [0081](0081-suivi-des-mises-a-jour.md)                | Le suivi des demandes porte aussi les mises à jour d'informations                       | acceptée, précisée par 0082                 |
+| [0082](0082-mise-a-jour-validee-hors-du-suivi.md)     | Validée, une mise à jour d'informations ne figure pas au suivi                          | acceptée                                    |
