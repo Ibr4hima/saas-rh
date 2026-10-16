@@ -10,9 +10,9 @@ import { Icon, type IconName } from './icons';
  * La scène des écrans qui précèdent le compte : connexion, création,
  * activation d'une invitation.
  *
- * Elle est reprise de la plateforme de gestion des investissements — le dôme
- * de marque, la carte posée dans sa dissolution, la signature en bas. Deux
- * produits de la même maison doivent s'ouvrir de la même façon.
+ * La carte au milieu, la signature en bas : en thème clair sur une couleur
+ * unique, en thème sombre dans le dôme de marque de la plateforme de gestion
+ * des investissements (cf. globals.css).
  *
  * Elle vit ici et non dans chaque page : trois écrans qui recopient le même
  * décor finissent par en avoir trois versions, et c'est le premier écran du
@@ -36,15 +36,15 @@ export function EcranMarque({
 
       <div className="flex flex-1 flex-col items-center justify-center px-5 py-10">
         <div className="login-monte flex flex-col items-center">
-          {/* Le logo se pose en blanc pur : sur le bleu du dôme, ses encres
-              d'origine — foncées — disparaîtraient. */}
+          {/* Le logo garde ses encres sur l'aplat clair ; sur le dôme de nuit
+              il passe en blanc pur, ses encres foncées y disparaîtraient. */}
           <BrandMark variant="connexion" />
           <div className="mt-4 flex items-center gap-3.5">
-            <span className="hidden h-px w-11 bg-linear-to-r from-transparent to-white/40 sm:block" />
-            <p className="text-center text-[10.5px] font-bold tracking-[0.16em] text-white/[0.78] uppercase">
+            <span className="hidden h-px w-11 bg-linear-to-r from-transparent to-[color:var(--login-filet)] sm:block" />
+            <p className="text-center text-[10.5px] font-bold tracking-[0.16em] text-[color:var(--login-signature)] uppercase">
               Système de Gestion des Ressources Humaines
             </p>
-            <span className="hidden h-px w-11 bg-linear-to-r from-white/40 to-transparent sm:block" />
+            <span className="hidden h-px w-11 bg-linear-to-r from-[color:var(--login-filet)] to-transparent sm:block" />
           </div>
         </div>
 
@@ -52,16 +52,17 @@ export function EcranMarque({
           className="login-monte relative mt-7 w-full max-w-[26rem]"
           style={{ '--retard': '0.08s' } as React.CSSProperties}
         >
-          {/* Halo doux : il détache la carte du dôme sans lui poser d'ombre
-              dure, qui trancherait sur un fond dégradé. */}
+          {/* Halo doux, sur le dôme de nuit seulement : il détache la carte
+              sans lui poser d'ombre dure, qui trancherait sur un fond
+              dégradé. */}
           <div
             aria-hidden
-            className="pointer-events-none absolute -top-8 left-1/2 h-64 w-[min(34rem,92vw)] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(closest-side,rgb(255_255_255/0.13),transparent)]"
+            className="pointer-events-none absolute -top-8 left-1/2 h-64 w-[min(34rem,92vw)] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(closest-side,var(--login-halo),transparent)]"
           />
 
           {/* Le rayon est celui des cartes de l'application : ces écrans n'ont
               pas de raison d'avoir leur propre rondeur. */}
-          <div className="relative overflow-hidden rounded-[14px] border border-card-line bg-surface shadow-[0_30px_70px_rgb(0_0_0/0.28),0_4px_14px_rgb(0_0_0/0.10)]">
+          <div className="relative overflow-hidden rounded-[14px] border border-card-line bg-surface [box-shadow:var(--login-ombre)]">
             <div className="px-7 pt-8 pb-6 sm:px-8">
               <h1 className="text-center text-2xl font-extrabold tracking-[-0.02em] text-ink-strong">
                 {titre}

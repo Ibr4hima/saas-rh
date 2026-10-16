@@ -577,7 +577,7 @@ describe('le gabarit', () => {
     expect(invitation('compte').html).not.toContain('Choisir mon mot de passe');
   });
 
-  it('porte l’habit de l’écran de connexion : Google Sans du site, le nom à défaut de logo', () => {
+  it('porte l’habit de l’écran de connexion en thème clair : une couleur unique, Google Sans du site, le nom à défaut de logo', () => {
     const c = composer(
       {
         nom: 'notification',
@@ -589,6 +589,8 @@ describe('le gabarit', () => {
       rendu,
     );
     expect(c.subject).toBe('Hawa Ba demande son contrat de travail');
+    expect(c.html).toContain('<body style="margin:0;padding:0;background-color:#f3f6fa">');
+    expect(c.html).not.toContain('gradient(180deg');
     expect(c.html).toContain("url('https://rh.apix.sn/fonts/google-sans-latin.woff2')");
     expect(c.html).toContain('>Direction du Capital Humain</td>');
     expect(c.html).toContain(

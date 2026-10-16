@@ -1,11 +1,11 @@
 /* ────────────────────────────────────────────────────────────────
    Le logo des courriels.
 
-   Le site le sert, en blanc (apps/web/app/courriel/logo.png) : celui de
-   l'écran de connexion. Le courriel le charge de là, rien ne voyage en pièce
-   jointe. L'expéditeur s'assure qu'il existe et lit ses dimensions (Outlook
-   les veut écrites dans la balise) ; sans lui, le courriel porte le nom de
-   l'organisation.
+   Le site le sert, dans ses encres (apps/web/app/courriel/logo.png) : celui
+   de l'écran de connexion en thème clair. Le courriel le charge de là, rien
+   ne voyage en pièce jointe. L'expéditeur s'assure qu'il existe et lit ses
+   dimensions (Outlook les veut écrites dans la balise) ; sans lui, le
+   courriel porte le nom de l'organisation.
    ──────────────────────────────────────────────────────────────── */
 
 export interface LogoCourriel {

@@ -9,13 +9,13 @@ import type { LogoCourriel } from './logo';
    une boîte des années. Le lien mène au portail, où le reste se lit derrière
    un mot de passe.
 
-   L'habit est celui de l'écran de connexion : le dôme bleu, le logo en blanc,
-   « Direction du Capital Humain » entre deux traits, la carte
-   blanche aux coins de 14 px, le bouton en pilule, Google Sans. Les
-   messageries n'en rendent pas toutes autant : la mise en page tient dans des
-   tableaux et des styles en ligne, et chaque effet a son repli. Outlook sur
-   Windows garde un dôme uni, des angles droits et Segoe UI ; son bouton reste
-   arrondi (VML).
+   L'habit est celui de l'écran de connexion en thème clair : une couleur
+   unique, le logo dans ses encres, « Direction du Capital Humain » entre
+   deux traits, la carte blanche aux coins de 14 px, le bouton en pilule,
+   Google Sans. Les messageries n'en rendent pas toutes autant : la mise en
+   page tient dans des tableaux et des styles en ligne, et chaque effet a son
+   repli. Outlook sur Windows garde des angles droits et Segoe UI ; son
+   bouton reste arrondi (VML).
    ──────────────────────────────────────────────────────────────── */
 
 export interface ContenuCourriel {
@@ -258,7 +258,7 @@ function corps(g: Gabarit, rendu: Rendu): ContenuCourriel {
   };
 }
 
-/** La page : le dôme, le logo, la carte, la signature. Tout ce qui vient de dehors est échappé. */
+/** La page : le logo, la carte, la signature. Tout ce qui vient de dehors est échappé. */
 function page(
   rendu: Rendu,
   o: {
@@ -287,11 +287,11 @@ function page(
     `font-family:${POLICE};font-size:${taille}px;line-height:1.55;color:${couleur};${extra}`;
 
   const logo = rendu.logo
-    ? `<img src="${echapper(rendu.logo.src)}" width="${rendu.logo.largeur}" height="${rendu.logo.hauteur}" alt="${echapper(o.organisation)}" style="display:block;margin:0 auto;width:${rendu.logo.largeur}px;height:${rendu.logo.hauteur}px;border:0;outline:none;${texte(20, '#ffffff', 'font-weight:700;letter-spacing:0.16em')}">`
-    : `<div style="${texte(24, '#ffffff', 'font-weight:700;letter-spacing:0.16em;line-height:44px')}">${echapper(o.organisation.toUpperCase())}</div>`;
+    ? `<img src="${echapper(rendu.logo.src)}" width="${rendu.logo.largeur}" height="${rendu.logo.hauteur}" alt="${echapper(o.organisation)}" style="display:block;margin:0 auto;width:${rendu.logo.largeur}px;height:${rendu.logo.hauteur}px;border:0;outline:none;${texte(20, BLEU, 'font-weight:700;letter-spacing:0.16em')}">`
+    : `<div style="${texte(24, BLEU, 'font-weight:700;letter-spacing:0.16em;line-height:44px')}">${echapper(o.organisation.toUpperCase())}</div>`;
 
   const trait = (sens: 'gauche' | 'droite') =>
-    `<td class="trait" width="44" valign="middle" style="width:44px;${sens === 'gauche' ? 'padding-right:14px' : 'padding-left:14px'}"><div style="height:1px;line-height:1px;font-size:0;background-color:#5b80aa;background-image:linear-gradient(90deg,${sens === 'gauche' ? 'rgba(255,255,255,0),rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.4),rgba(255,255,255,0)'})">&nbsp;</div></td>`;
+    `<td class="trait" width="44" valign="middle" style="width:44px;${sens === 'gauche' ? 'padding-right:14px' : 'padding-left:14px'}"><div style="height:1px;line-height:1px;font-size:0;background-color:#aac4db;background-image:linear-gradient(90deg,${sens === 'gauche' ? 'rgba(0,79,145,0),rgba(0,79,145,0.3)' : 'rgba(0,79,145,0.3),rgba(0,79,145,0)'})">&nbsp;</div></td>`;
 
   const bouton = !o.bouton
     ? ''
@@ -332,7 +332,7 @@ img{border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic}
 a{text-decoration:none}
 @media (max-width:520px){
 .cadre{padding:16px 10px 24px !important}
-.dome{padding:34px 14px 22px !important}
+.tete{padding:0 14px !important}
 .trait{display:none !important}
 .carte-corps{padding:28px 22px 24px !important}
 .carte-pied{padding:14px 22px !important}
@@ -341,17 +341,17 @@ a{text-decoration:none}
 </style>
 <!--[if mso]><style>body,table,td,a,p,div,h1{font-family:'Segoe UI',Arial,sans-serif !important}</style><![endif]-->
 </head>
-<body style="margin:0;padding:0;background-color:#eef3f9">
+<body style="margin:0;padding:0;background-color:#f3f6fa">
 <div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all">${echapper(o.apercu)}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eef3f9" style="background-color:#eef3f9">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f3f6fa" style="background-color:#f3f6fa">
 <tr><td align="center" class="cadre" style="padding:32px 16px 28px">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px">
-<tr><td class="dome" align="center" bgcolor="#00427c" style="background-color:#00427c;background-image:radial-gradient(70% 32% at 50% 30%,rgba(255,255,255,0.12),rgba(255,255,255,0) 70%),linear-gradient(180deg,#00335f 0%,#00335f 16%,#00427c 30%,#004f91 44%,#2670b6 60%,#8fb6dd 78%,#e3ecf6 100%);border-radius:16px;padding:42px 28px 30px">
+<tr><td class="tete" align="center" style="padding:0 28px">
 ${logo}
 <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:16px auto 0">
-<tr>${trait('gauche')}<td align="center" style="${texte(10.5, '#c9d4e3', 'font-weight:700;letter-spacing:0.16em;text-transform:uppercase;line-height:16px')}">Direction du Capital Humain</td>${trait('droite')}</tr>
+<tr>${trait('gauche')}<td align="center" style="${texte(10.5, BLEU, 'font-weight:700;letter-spacing:0.16em;text-transform:uppercase;line-height:16px')}">Direction du Capital Humain</td>${trait('droite')}</tr>
 </table>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="max-width:440px;margin:28px auto 0;background-color:#ffffff;border:1px solid #e3e5ea;border-radius:14px;box-shadow:0 18px 40px rgba(0,35,80,0.22),0 2px 6px rgba(0,0,0,0.06)">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="max-width:440px;margin:28px auto 0;background-color:#ffffff;border:1px solid #e3e5ea;border-radius:14px;box-shadow:0 1px 2px rgba(0,40,90,0.05),0 18px 48px -18px rgba(0,40,90,0.24)">
 <tr><td class="carte-corps" align="center" style="padding:34px 32px ${o.bouton ? '26px' : '30px'};border-radius:${o.bouton ? '14px 14px 0 0' : '14px'}">
 ${o.salutation ? `<p style="margin:0 0 8px;${texte(14, ENCRE_DOUCE)}">${echapper(o.salutation)}</p>` : ''}
 <h1 class="titre" style="margin:0;${texte(o.salutation ? 22 : 24, ENCRE, 'font-weight:700;letter-spacing:-0.02em;line-height:1.28')}">${echapper(o.titre)}</h1>

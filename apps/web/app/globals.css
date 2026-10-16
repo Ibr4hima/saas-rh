@@ -348,40 +348,36 @@ body {
 }
 
 /* ── Écran de connexion ───────────────────────────────────────────────────
-   Le dôme de marque de la plateforme APIX : un bleu profond qui descend du
-   haut de l'écran et se DISSOUT dans le fond de la page. Il n'y a aucune
-   ligne de séparation — c'est cette dissolution, et rien d'autre, qui pose
-   la carte au milieu.
+   Les écrans d'avant la connexion : connexion, création d'un compte,
+   activation, mot de passe oublié ou à refaire.
 
-   Deux écarts assumés avec la plateforme, tous deux au bénéfice du produit :
+   Thème clair : une couleur unique, sans dôme ni décor, le blanc à peine
+   bleui du volet de l'offre. La carte blanche s'y pose seule ; le logo y
+   garde ses encres, la signature prend le bleu de la charte.
 
-   1. Pas de halo orange en bas. L'orange de la charte signale CE QUI ATTEND
-      un geste (cf. tokens.css). Décoratif sur le premier écran, il
-      apprendrait à l'œil à ne plus le chercher là où il compte.
-   2. Le dôme ne suit pas le thème — c'est la couleur de l'employeur — mais
-      le sol, la carte et le pied de page, eux, passent par les tokens : en
-      thème sombre l'écran de connexion reste le même écran que le reste de
-      l'application, au lieu d'une page blanche isolée. */
+   Thème sombre : le dôme de marque de la plateforme APIX, un bleu profond
+   qui descend du haut de l'écran et se DISSOUT dans le fond de
+   l'application. Il n'y a aucune ligne de séparation : c'est cette
+   dissolution, et rien d'autre, qui pose la carte au milieu. Le logo et la
+   signature s'y posent en blanc. Pas de halo orange en bas, écart assumé
+   avec la plateforme : l'orange de la charte signale CE QUI ATTEND un geste
+   (cf. tokens.css). Décoratif sur le premier écran, il apprendrait à l'œil
+   à ne plus le chercher là où il compte.
+
+   Ce qui change d'un thème à l'autre tient dans les variables de la scène,
+   que lisent le décor, le logo, la signature, le halo et l'ombre de la
+   carte. */
 .login-dome {
   position: relative;
   isolation: isolate;
-  /* Thème clair : le bleu ne tombe pas net sur un blanc. Il descend plus
-     longtemps, en s'éclaircissant, et se perd dans un sol à peine bleui :
-     l'écart entre le haut et le bas se franchit par paliers, comme en
-     sombre où le bleu se fond dans la nuit du fond. */
-  background:
-    radial-gradient(
-      140% 130% at 50% -30%,
-      #00335f 0%,
-      #00335f 32%,
-      #00427c 47%,
-      #004f91 58%,
-      rgb(38 112 182 / 0.8) 68%,
-      rgb(108 160 213 / 0.48) 80%,
-      rgb(176 205 235 / 0.2) 91%,
-      rgb(214 229 244 / 0) 100%
-    ),
-    linear-gradient(180deg, #e3ecf6 0%, #eef3f9 55%, #f4f7fb 100%);
+  background: #f3f6fa;
+  --login-decor: none;
+  --login-logo: none;
+  --login-encre: var(--tg-primary);
+  --login-signature: var(--tg-primary);
+  --login-filet: rgb(0 79 145 / 0.3);
+  --login-halo: transparent;
+  --login-ombre: 0 1px 2px rgb(0 40 90 / 0.05), 0 18px 48px -18px rgb(0 40 90 / 0.24);
 }
 
 /* Thème sombre : le bleu se dissout dans le fond de l'application. */
@@ -396,6 +392,13 @@ body {
       rgb(26 106 176 / 0) 82%
     ),
     var(--tg-bg);
+  --login-decor: block;
+  --login-logo: brightness(0) invert(1);
+  --login-encre: var(--tg-hero-ink);
+  --login-signature: rgb(255 255 255 / 0.78);
+  --login-filet: rgb(255 255 255 / 0.4);
+  --login-halo: rgb(255 255 255 / 0.13);
+  --login-ombre: 0 30px 70px rgb(0 0 0 / 0.28), 0 4px 14px rgb(0 0 0 / 0.1);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) .login-dome {
@@ -409,15 +412,30 @@ body {
         rgb(26 106 176 / 0) 82%
       ),
       var(--tg-bg);
+    --login-decor: block;
+    --login-logo: brightness(0) invert(1);
+    --login-encre: var(--tg-hero-ink);
+    --login-signature: rgb(255 255 255 / 0.78);
+    --login-filet: rgb(255 255 255 / 0.4);
+    --login-halo: rgb(255 255 255 / 0.13);
+    --login-ombre: 0 30px 70px rgb(0 0 0 / 0.28), 0 4px 14px rgb(0 0 0 / 0.1);
   }
 }
 
-/* Les couches décoratives vivent dans leur propre calque, sous le contenu et
-   hors d'atteinte du curseur. Il les rognait aussi, du temps où le voile
-   dérivait de 24 px et débordait d'autant à droite ; le voile ne bouge plus,
-   mais un décor qui ne peut pas déborder de son calque reste la bonne
-   garantie pour celui qui y ajoutera une couche. */
+/* Le logo de ces écrans : ses encres sur l'aplat clair, le blanc pur sur le
+   dôme de nuit. */
+.login-logo {
+  filter: var(--login-logo);
+}
+
+/* Les couches décoratives du dôme, en thème sombre seulement. Elles vivent
+   dans leur propre calque, sous le contenu et hors d'atteinte du curseur. Il
+   les rognait aussi, du temps où le voile dérivait de 24 px et débordait
+   d'autant à droite ; le voile ne bouge plus, mais un décor qui ne peut pas
+   déborder de son calque reste la bonne garantie pour qui y ajoutera une
+   couche. */
 .login-decor {
+  display: var(--login-decor);
   position: absolute;
   inset: 0;
   z-index: -1;

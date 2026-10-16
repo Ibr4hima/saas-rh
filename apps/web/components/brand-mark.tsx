@@ -69,10 +69,10 @@ export function BrandMark({
           // Sur le bandeau, le logo se pose en blanc pur : la plaque n'a plus
           // lieu d'être, et ses encres foncées disparaîtraient dans le bleu.
           variant === 'hero' && 'hero-logo h-8 w-auto max-w-32 shrink-0 bg-transparent',
-          // Écran de connexion : le logo se pose sur le dôme de marque, en
-          // blanc pur et à sa pleine mesure — c'est la signature de la maison,
-          // pas la vignette d'une barre de navigation.
-          variant === 'connexion' && 'hero-logo h-11 w-auto max-w-[190px] bg-transparent',
+          // Écran de connexion : le logo à sa pleine mesure, c'est la
+          // signature de la maison, pas la vignette d'une barre de navigation.
+          // Ses encres sur l'aplat clair, le blanc pur sur le dôme de nuit.
+          variant === 'connexion' && 'login-logo h-11 w-auto max-w-[190px] bg-transparent',
           variant === 'compact' && 'h-8 w-auto max-w-28 shrink-0 rounded-md px-0.5',
           // Page publique : le logo est la première chose que voit le
           // candidat, il a droit à sa pleine mesure.
@@ -94,7 +94,8 @@ export function BrandMark({
           'h-14 w-full rounded-lg bg-primary text-lg tracking-[0.12em] text-primary-ink',
         // Sur le bandeau, pas d'aplat : l'encre blanche suffit.
         variant === 'hero' && 'h-8 shrink-0 px-1 text-base tracking-[0.14em] text-hero-ink',
-        variant === 'connexion' && 'h-11 px-1 text-xl tracking-[0.16em] text-hero-ink',
+        variant === 'connexion' &&
+          'h-11 px-1 text-xl tracking-[0.16em] text-[color:var(--login-encre)]',
         variant === 'compact' && 'size-8 rounded-md bg-primary text-xs text-primary-ink',
         variant === 'candidature' &&
           'size-14 rounded-[18px] bg-primary text-[22px] text-primary-ink',
