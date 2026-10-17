@@ -2,9 +2,7 @@
  * Une demande de document annulée s'efface ; une demande identique à une
  * ancienne la remplace (ADR-0042).
  *
- * Identique : le même document, les mêmes mois de bulletin. « Les N derniers
- * mois » se comptent du mois de la demande : ils ne sont les mêmes que
- * demandés le même mois. Une demande en cours ne s'efface jamais.
+ * Identique : le même document. Une demande en cours ne s'efface jamais.
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -184,72 +182,16 @@ describe('une demande identique', () => {
   });
 
   it('refusée, elle s’efface aussi', async () => {
-    const refusee = await demander({ docTypes: ['contrat_travail'] });
+    const refusee = await demander({ docTypes: ['contrat_cdi'] });
     await service.advance(rh, refusee, { status: 'rejected', message: 'Déjà remis' });
-    const nouvelle = await demander({ docTypes: ['contrat_travail'] });
+    const nouvelle = await demander({ docTypes: ['contrat_cdi'] });
     expect(await restantes(refusee, nouvelle)).toEqual([nouvelle]);
   });
 
   it('un autre document ne remplace rien', async () => {
     const attestation = await demander({ docTypes: ['attestation_travail'] });
     await prete(attestation);
-    const contrat = await demander({ docTypes: ['contrat_travail'] });
+    const contrat = await demander({ docTypes: ['contrat_cdi'] });
     expect(await restantes(attestation, contrat)).toEqual([attestation, contrat]);
-  });
-
-  it('d’autres mois de bulletin ne remplacent rien ; les mêmes, oui', async () => {
-    const juilletSeptembre = await demander({
-      docTypes: ['bulletin_salaire'],
-      bulletin: { type: 'periode', du: '2026-07', au: '2026-09' },
-    });
-    await prete(juilletSeptembre);
-    const juillet = await demander({
-      docTypes: ['bulletin_salaire'],
-      bulletin: { type: 'mois', mois: '2026-07' },
-    });
-    await prete(juillet);
-    expect(await restantes(juilletSeptembre, juillet)).toEqual([juilletSeptembre, juillet]);
-
-    const encore = await demander({
-      docTypes: ['bulletin_salaire'],
-      bulletin: { type: 'periode', du: '2026-07', au: '2026-09' },
-    });
-    expect(await restantes(juilletSeptembre, juillet, encore)).toEqual([juillet, encore]);
-  });
-
-  it('« les N derniers mois » : le même nombre, demandé le même mois', async () => {
-    const ilYaDeuxMois = await demander({
-      docTypes: ['bulletin_salaire'],
-      bulletin: { type: 'derniers', nombre: 3 },
-    });
-    await prete(ilYaDeuxMois);
-    // Demandée il y a deux mois : ses trois derniers mois ne sont pas ceux d'aujourd'hui.
-    await raw(
-      `UPDATE document_requests SET created_at = created_at - interval '2 months' WHERE id = $1`,
-      [ilYaDeuxMois],
-    );
-    const ceMois = await demander({
-      docTypes: ['bulletin_salaire'],
-      bulletin: { type: 'derniers', nombre: 3 },
-    });
-    await prete(ceMois);
-    expect(await restantes(ilYaDeuxMois, ceMois)).toEqual([ilYaDeuxMois, ceMois]);
-
-    const six = await demander({
-      docTypes: ['bulletin_salaire'],
-      bulletin: { type: 'derniers', nombre: 6 },
-    });
-    await prete(six);
-    expect(await restantes(ceMois, six)).toEqual([ceMois, six]);
-
-    const memeMois = await demander({
-      docTypes: ['bulletin_salaire'],
-      bulletin: { type: 'derniers', nombre: 3 },
-    });
-    expect(await restantes(ilYaDeuxMois, ceMois, six, memeMois)).toEqual([
-      ilYaDeuxMois,
-      six,
-      memeMois,
-    ]);
   });
 });

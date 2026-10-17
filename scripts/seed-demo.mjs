@@ -310,12 +310,14 @@ console.log('→ Délégations : Mariama confie à Awa une partie des documents,
 // Tout le monde est agent ; ce qu'on fait de plus vient de l'organigramme.
 // Mariama dirige la DCH : tout lui revient. Elle confie à Awa, membre de sa
 // direction, les attestations de travail et de stage, les contrats et les certificats,
-// et la consultation des dossiers. Les bulletins et attestations de salaire
-// — sensibles —, les congés, les informations, les pièces restent chez elle.
+// et la consultation des dossiers. Le reste, dont les attestations de revenu et
+// les domiciliations bancaires, sensibles, demeure à la direction de la DCH.
 for (const capacite of [
   'demandes.documents.attestation_travail',
   'demandes.documents.attestation_stage',
-  'demandes.documents.contrat_travail',
+  'demandes.documents.contrat_cdd',
+  'demandes.documents.contrat_cdi',
+  'demandes.documents.contrat_stage',
   'demandes.documents.certificat_travail',
   'personnel.consulter',
 ]) {
@@ -556,11 +558,11 @@ await parMariama('PATCH', `/applications/${byEmail('ousmane.diallo@yahoo.fr').id
 });
 
 console.log('→ Demandes de documents (circuit DCH : demandée → traitée → prête)');
-const requestDocs = async (employeeId, docTypes, note, bulletin) => {
+const requestDocs = async (employeeId, docTypes, note) => {
   const res = await fetch(`${BASE}/document-requests`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', cookie: employeeCookies[employeeId] },
-    body: JSON.stringify({ docTypes, note, bulletin }),
+    body: JSON.stringify({ docTypes, note }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`demande documents → ${res.status} : ${data.title}`);
@@ -570,12 +572,12 @@ const requestDocs = async (employeeId, docTypes, note, bulletin) => {
 // mais pas la sienne : sa demande va à Mariama, qui dirige la DCH.
 await requestDocs(awa.id, ['attestation_travail'], 'Pour ouvrir un compte bancaire.');
 // Moussa : deux documents, donc deux demandes. L'attestation de travail
-// va à Awa, qui la prend en charge ; l'attestation de salaire reste chez
+// va à Awa, qui la prend en charge ; l'attestation de revenu reste à
 // Mariama.
 const [attestationMoussa] = (
   await requestDocs(
     moussa.id,
-    ['attestation_travail', 'attestation_salaire'],
+    ['attestation_travail', 'attestation_revenu'],
     'Dossier de visa Schengen.',
   )
 ).ids;
@@ -583,7 +585,7 @@ await enTantQue(awa.id, 'POST', `/document-requests/${attestationMoussa}/advance
   status: 'processing',
 });
 // Fatou : prête, l'employée est prévenue du lieu de retrait.
-const [dr3] = (await requestDocs(fatou.id, ['contrat_travail'], 'Copie pour mes archives.')).ids;
+const [dr3] = (await requestDocs(fatou.id, ['contrat_cdd'], 'Copie pour mes archives.')).ids;
 await enTantQue(awa.id, 'POST', `/document-requests/${dr3}/advance`, {
   status: 'processing',
 });
@@ -592,12 +594,8 @@ await enTantQue(awa.id, 'POST', `/document-requests/${dr3}/advance`, {
   pickupContact: 'Awa Diop',
   message: 'bureau 204, du lundi au vendredi 9h–16h',
 });
-// Fatou : ses trois derniers bulletins de salaire, pour un prêt. Le
-// bulletin se demande avec ses mois.
-await requestDocs(fatou.id, ['bulletin_salaire'], 'Dossier de prêt immobilier.', {
-  type: 'derniers',
-  nombre: 3,
-});
+// Fatou : une domiciliation bancaire, pour un prêt.
+await requestDocs(fatou.id, ['domiciliation_bancaire'], 'Dossier de prêt immobilier.');
 
 console.log(
   '→ Objectifs : le DG fixe ceux de l’APIX et des directions ; les n+1, ceux de leurs agents',

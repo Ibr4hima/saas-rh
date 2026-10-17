@@ -43,14 +43,14 @@ let db: TenantDb;
 let service: DocumentRequestsService;
 let khadyEmployeeId: string;
 
-const PDF = Buffer.from('%PDF-1.7 bulletin de septembre');
+const PDF = Buffer.from('%PDF-1.7 attestation de septembre');
 const PNG = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   Buffer.from('scan'),
 ]);
 const fichier = (
   contenu: Buffer,
-  filename = 'bulletin-septembre.pdf',
+  filename = 'attestation-septembre.pdf',
   contentType: DeposerFichierInput['contentType'] = 'application/pdf',
 ): DeposerFichierInput => ({ filename, contentType, contentBase64: contenu.toString('base64') });
 
@@ -86,16 +86,8 @@ async function vue(user: SessionUser, id: string, scope?: 'mine') {
 
 const demander = async (
   user: SessionUser,
-  docType: 'attestation_travail' | 'bulletin_salaire' = 'attestation_travail',
-) =>
-  (
-    await service.create(
-      user,
-      docType === 'bulletin_salaire'
-        ? { docTypes: [docType], bulletin: { type: 'derniers', nombre: 3 } }
-        : { docTypes: [docType] },
-    )
-  ).ids[0] as string;
+  docType: 'attestation_travail' | 'domiciliation_bancaire' = 'attestation_travail',
+) => (await service.create(user, { docTypes: [docType] })).ids[0] as string;
 
 beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
@@ -229,9 +221,9 @@ describe('déposer', () => {
     expect(await codeOf(() => service.deposer(awa, id, fichier(PDF)))).toBe(
       'demandes.pas_traitant',
     );
-    // Sa propre demande de bulletin, Khady ne la traite pas : elle revient à
-    // la direction de la DCH.
-    const sienne = await demander(khady, 'bulletin_salaire');
+    // Sa propre demande de domiciliation, Khady ne la traite pas : la demande
+    // revient à la direction de la DCH.
+    const sienne = await demander(khady, 'domiciliation_bancaire');
     expect(await codeOf(() => service.deposer(khady, sienne, fichier(PDF)))).toBe(
       'demandes.pas_traitant',
     );
@@ -275,7 +267,7 @@ describe('ce que voit l’agent', () => {
 
     await service.batchAdvance(rh, { ids: [id], status: 'ready' });
     expect((await vue(awa, id, 'mine')).fichiers.map((x) => x.filename)).toEqual([
-      'bulletin-septembre.pdf',
+      'attestation-septembre.pdf',
     ]);
     const telecharge = await service.fichier(awa, id, f.id);
     expect(telecharge.data.equals(PDF)).toBe(true);
@@ -297,13 +289,12 @@ describe('ce que voit l’agent', () => {
     expect((await vue(moussa, autre, 'mine')).pickupContact).toBe('Ibrahima Ba');
   });
 
-  it('nomme les bulletins déposés, l’original à retirer s’il est dit', async () => {
-    const id = await demander(awa, 'bulletin_salaire');
-    await service.deposer(rh, id, fichier(PDF, 'juillet.pdf'));
-    await service.deposer(rh, id, fichier(PDF, 'aout.pdf'));
+  it('nomme le document déposé, l’original à retirer s’il est dit', async () => {
+    const id = await demander(awa, 'domiciliation_bancaire');
+    await service.deposer(rh, id, fichier(PDF, 'domiciliation.pdf'));
     await service.batchAdvance(rh, { ids: [id], status: 'ready', pickupContact: 'Ibrahima Ba' });
     expect(await titresDe(awaUserId)).toEqual([
-      'Vos 3 derniers bulletins de salaire sont déposés dans votre espace, l’original à retirer auprès d’Ibrahima Ba',
+      'Votre domiciliation bancaire est déposée dans votre espace, l’original à retirer auprès d’Ibrahima Ba',
     ]);
   });
 
@@ -319,39 +310,39 @@ describe('côté DCH', () => {
   it('ouvre le document à qui traite ce type, pas aux autres', async () => {
     const attestation = await demander(awa);
     const a = await service.deposer(khady, attestation, fichier(PDF));
-    const bulletin = await demander(moussa, 'bulletin_salaire');
-    const b = await service.deposer(rh, bulletin, fichier(PDF));
+    const domiciliation = await demander(moussa, 'domiciliation_bancaire');
+    const b = await service.deposer(rh, domiciliation, fichier(PDF));
     expect(await codeOf(() => service.fichier(khady, attestation, a.id))).toBe('AUCUNE ERREUR');
-    // Khady traite les attestations : un bulletin de salaire ne s'ouvre pas à elle.
-    expect(await codeOf(() => service.fichier(khady, bulletin, b.id))).toBe(
+    // Khady traite les attestations : une domiciliation bancaire reste fermée.
+    expect(await codeOf(() => service.fichier(khady, domiciliation, b.id))).toBe(
       'documents.forbidden_scope',
     );
-    expect(await codeOf(() => service.fichier(rh, bulletin, b.id))).toBe('AUCUNE ERREUR');
+    expect(await codeOf(() => service.fichier(rh, domiciliation, b.id))).toBe('AUCUNE ERREUR');
   });
 
   it('prête, ses documents restent à qui traite ce type de document', async () => {
-    const bulletin = await demander(moussa, 'bulletin_salaire');
-    const b = await service.deposer(rh, bulletin, fichier(PDF, 'juillet.pdf'));
+    const domiciliation = await demander(moussa, 'domiciliation_bancaire');
+    const b = await service.deposer(rh, domiciliation, fichier(PDF, 'domiciliation.pdf'));
     const attestation = await demander(awa);
     await service.deposer(khady, attestation, fichier(PDF));
-    await service.batchAdvance(rh, { ids: [bulletin, attestation], status: 'ready' });
+    await service.batchAdvance(rh, { ids: [domiciliation, attestation], status: 'ready' });
 
-    // Khady corrige les attestations remises, pas les bulletins de salaire.
-    expect(await codeOf(() => service.deposer(khady, bulletin, fichier(PDF)))).toBe(
+    // Khady corrige les attestations remises, pas les domiciliations bancaires.
+    expect(await codeOf(() => service.deposer(khady, domiciliation, fichier(PDF)))).toBe(
       'documents.forbidden_scope',
     );
-    expect(await codeOf(() => service.retirerFichier(khady, bulletin, b.id))).toBe(
+    expect(await codeOf(() => service.retirerFichier(khady, domiciliation, b.id))).toBe(
       'documents.forbidden_scope',
     );
     expect(await codeOf(() => service.deposer(khady, attestation, fichier(PDF)))).toBe(
       'AUCUNE ERREUR',
     );
     // L'écran le sait d'avance : il ne propose que ce que le serveur accepte,
-    // et le bulletin n'est même pas dans la file de Khady (ADR-0060).
-    expect((await service.list(khady, {})).some((d) => d.id === bulletin)).toBe(false);
+    // et la domiciliation n'est même pas dans la file de Khady (ADR-0060).
+    expect((await service.list(khady, {})).some((d) => d.id === domiciliation)).toBe(false);
     expect((await vue(khady, attestation)).canHandleFiles).toBe(true);
-    expect((await vue(rh, bulletin)).canHandleFiles).toBe(true);
-    expect((await vue(moussa, bulletin, 'mine')).canHandleFiles).toBe(false);
+    expect((await vue(rh, domiciliation)).canHandleFiles).toBe(true);
+    expect((await vue(moussa, domiciliation, 'mine')).canHandleFiles).toBe(false);
   });
 
   it('retire un mauvais fichier, mais garde le dernier d’une demande prête', async () => {
@@ -389,9 +380,9 @@ describe('côté DCH', () => {
     expect(await codeOf(() => service.renommerFichier(awa, id, f.id, 'x'))).toBe(
       'documents.forbidden_scope',
     );
-    const bulletin = await demander(moussa, 'bulletin_salaire');
-    const b = await service.deposer(rh, bulletin, fichier(PDF));
-    expect(await codeOf(() => service.renommerFichier(khady, bulletin, b.id, 'x'))).toBe(
+    const domiciliation = await demander(moussa, 'domiciliation_bancaire');
+    const b = await service.deposer(rh, domiciliation, fichier(PDF));
+    expect(await codeOf(() => service.renommerFichier(khady, domiciliation, b.id, 'x'))).toBe(
       'demandes.pas_traitant',
     );
   });

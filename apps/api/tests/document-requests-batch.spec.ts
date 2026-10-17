@@ -174,7 +174,7 @@ afterAll(async () => {
 describe('validation en lot', () => {
   it('fait passer plusieurs demandes de « reçue » à « prête » en une fois', async () => {
     const [a] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
-    const [b] = (await service.create(moussa, { docTypes: ['contrat_travail'] })).ids as [string];
+    const [b] = (await service.create(moussa, { docTypes: ['contrat_cdi'] })).ids as [string];
 
     const res = await service.batchAdvance(rh, {
       ids: [a, b],
@@ -252,7 +252,7 @@ describe('le suivi, côté employé', () => {
 describe('lot qui n’est plus à jour', () => {
   it('écarte la demande déjà traitée et laisse partir les autres', async () => {
     const [a] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
-    const [b] = (await service.create(moussa, { docTypes: ['contrat_travail'] })).ids as [string];
+    const [b] = (await service.create(moussa, { docTypes: ['contrat_cdi'] })).ids as [string];
     // Un collègue clôt la première pendant que l'écran est ouvert.
     await service.advance(rh, a, { status: 'processing' });
     await service.advance(rh, a, { status: 'ready' });
@@ -285,7 +285,7 @@ describe('lot qui n’est plus à jour', () => {
 
 describe('refus en lot', () => {
   it('exige un motif', async () => {
-    const [id] = (await service.create(awa, { docTypes: ['bulletin_salaire'] })).ids as [string];
+    const [id] = (await service.create(awa, { docTypes: ['attestation_revenu'] })).ids as [string];
     expect(await codeOf(() => service.batchAdvance(rh, { ids: [id], status: 'rejected' }))).toBe(
       'documents.reject_reason_required',
     );
@@ -294,15 +294,19 @@ describe('refus en lot', () => {
   });
 
   it('enregistre le motif et le transmet à chaque employé', async () => {
-    const [a] = (await service.create(awa, { docTypes: ['bulletin_salaire'] })).ids as [string];
-    const [b] = (await service.create(moussa, { docTypes: ['bulletin_salaire'] })).ids as [string];
+    const [a] = (await service.create(awa, { docTypes: ['attestation_revenu'] })).ids as [string];
+    const [b] = (await service.create(moussa, { docTypes: ['attestation_revenu'] })).ids as [
+      string,
+    ];
     const res = await service.batchAdvance(rh, {
       ids: [a, b],
       status: 'rejected',
-      message: 'Le bulletin est délivré par le service paie.',
+      message: 'L’attestation de revenu est délivrée par le service paie.',
     });
     expect(res.advanced).toBe(2);
-    expect((await enBase(a)).hr_message).toBe('Le bulletin est délivré par le service paie.');
+    expect((await enBase(a)).hr_message).toBe(
+      'L’attestation de revenu est délivrée par le service paie.',
+    );
     expect(await avisDe(awaUserId)).toEqual(['document_request_rejected']);
     expect(await avisDe(moussaUserId)).toEqual(['document_request_rejected']);
   });
@@ -319,7 +323,7 @@ describe('durée de traitement', () => {
   it('date la clôture d’une demande refusée', async () => {
     // Le refus n'a pas de colonne d'horodatage : c'est `updated_at` qui fait
     // foi, et rien ne suit un refus, donc il ne dérive pas.
-    const [id] = (await service.create(awa, { docTypes: ['bulletin_salaire'] })).ids as [string];
+    const [id] = (await service.create(awa, { docTypes: ['attestation_revenu'] })).ids as [string];
     await service.batchAdvance(rh, { ids: [id], status: 'rejected', message: 'Hors périmètre.' });
     const [vue] = await service.list(rh, {});
     expect(vue?.status).toBe('rejected');
@@ -360,9 +364,7 @@ describe('le suivi, les demandes nouvellement traitées (ADR-0048)', () => {
     const [prete] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [
       string,
     ];
-    const [refusee] = (await service.create(awa, { docTypes: ['contrat_travail'] })).ids as [
-      string,
-    ];
+    const [refusee] = (await service.create(awa, { docTypes: ['contrat_cdi'] })).ids as [string];
     await service.advance(rh, prete, { status: 'processing' });
     expect((await avisEnVigueur(awaUserId, prete))?.link).toBe('/moi/documents/suivi');
     await service.advance(rh, prete, { status: 'ready', pickupContact: 'Mme Fatou Sall' });
@@ -379,9 +381,7 @@ describe('le suivi, les demandes nouvellement traitées (ADR-0048)', () => {
     const [prete] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [
       string,
     ];
-    const [refusee] = (await service.create(awa, { docTypes: ['contrat_travail'] })).ids as [
-      string,
-    ];
+    const [refusee] = (await service.create(awa, { docTypes: ['contrat_cdi'] })).ids as [string];
     const [enCours] = (await service.create(awa, { docTypes: ['certificat_travail'] })).ids as [
       string,
     ];
@@ -396,7 +396,7 @@ describe('le suivi, les demandes nouvellement traitées (ADR-0048)', () => {
 
   it('vue sur le suivi, elle ne l’est plus : son avis passe pour lu, ceux des autres non', async () => {
     const [a] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
-    const [b] = (await service.create(awa, { docTypes: ['contrat_travail'] })).ids as [string];
+    const [b] = (await service.create(awa, { docTypes: ['contrat_cdi'] })).ids as [string];
     const [m] = (await service.create(moussa, { docTypes: ['attestation_travail'] })).ids as [
       string,
     ];

@@ -565,7 +565,7 @@ interface Piece {
 /**
  * Enregistre sur le poste de la RH les pièces que l'application produit.
  *
- * Une pièce que l'application ne produit pas (contrat, bulletin) n'a rien à
+ * Une pièce que l'application ne produit pas (contrat, décision) n'a rien à
  * télécharger : elle est préparée à la main, hors de l'outil.
  *
  * Rend le nombre de fichiers réellement enregistrés : un échec ne doit pas
@@ -671,8 +671,8 @@ function TraiterModal({
 
   const pieces = useMemo(() => piecesOf(requests), [requests]);
   const piece = pieces[courante];
-  // Seules les pièces que l'application produit se vérifient ici : un bulletin
-  // de salaire vient de la paie, il n'y a rien à relire à l'écran.
+  // Seules les pièces que l'application produit se vérifient ici : un contrat
+  // se prépare hors de l'outil, il n'y a rien à relire à l'écran.
   const aVerifier = pieces.filter((p) => p.generable);
   const restantes = aVerifier.filter((p) => !vues.includes(p.key)).length;
 

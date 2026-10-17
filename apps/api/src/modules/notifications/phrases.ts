@@ -74,14 +74,27 @@ export const PIECE: Record<DocumentCategory, Nom> = {
   certificat_mariage: nom('certificat de mariage', false),
 };
 
-/** Les documents qu'on demande à la DCH. */
+/** Les documents qu'on demande à la DCH, et ceux des demandes anciennes. */
 export const DOCUMENT: Record<RequestableDoc, Nom> = {
+  contrat_cdd: nom('contrat de travail à durée déterminée', false, 'son'),
+  contrat_cdi: nom('contrat de travail à durée indéterminée', false, 'son'),
+  contrat_stage: nom('contrat de stage', false, 'son'),
+  attestation_conge: nom('attestation de congé', true),
   attestation_travail: nom('attestation de travail', true),
+  attestation_reprise_service: nom('attestation de reprise de service', true),
+  attestation_reprise_disponibilite: nom('attestation de reprise après disponibilité', true),
+  attestation_depart_retraite: nom('attestation de départ à la retraite', true),
   attestation_stage: nom('attestation de stage', true),
+  attestation_cessation: nom('attestation de cessation de paiement et d’activités', true),
+  attestation_revenu: nom('attestation de revenu', true),
+  domiciliation_bancaire: nom('domiciliation bancaire', true),
+  decision_disponibilite: nom('décision de mise en disponibilité', true),
+  decision_renouvellement_disponibilite: nom('décision de renouvellement de disponibilité', true),
+  declaration_mouvement: nom('déclaration de mouvement du travailleur', true),
+  certificat_travail: nom('certificat de travail', false),
   contrat_travail: nom('contrat de travail', false, 'son'),
   bulletin_salaire: nom('bulletin de salaire', false),
   attestation_salaire: nom('attestation de salaire', true),
-  certificat_travail: nom('certificat de travail', false),
   autre: nom('document', false),
 };
 

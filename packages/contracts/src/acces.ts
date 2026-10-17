@@ -24,24 +24,37 @@ import type { PieceAVerifier } from './documents';
  * directeur les trouve, et les modifie s'il le veut. Un membre qui quitte la
  * DCH perd les siennes, et le directeur en est prévenu.
  *
- * Les documents se confient TYPE PAR TYPE — les attestations de travail à
- * l'un, les bulletins de salaire à l'autre : chaque document demandé est
- * une demande à part, qui va à qui traite ce type-là. Les attestations de
- * travail et de stage se délèguent ensemble (0055).
+ * Les documents se confient TYPE PAR TYPE, les attestations de travail à
+ * l'un, les contrats à l'autre : chaque document demandé est une demande à
+ * part, qui va à qui traite ce type-là. Les attestations de travail et de
+ * stage se délèguent ensemble (0055).
  */
 
 /**
  * Traiter un type de document : chaque document demandé va à qui le traite.
- * `autre` ne se lit plus que sur des demandes anciennes : leur traitement
- * reste à qui dirige la DCH.
+ * Les documents retirés ne se lisent plus que sur des demandes anciennes :
+ * leur traitement reste à qui dirige la DCH (ADR-0045, ADR-0084).
  */
 export const CAPACITES_DOCUMENTS = [
+  'demandes.documents.contrat_cdd',
+  'demandes.documents.contrat_cdi',
+  'demandes.documents.contrat_stage',
+  'demandes.documents.attestation_conge',
   'demandes.documents.attestation_travail',
+  'demandes.documents.attestation_reprise_service',
+  'demandes.documents.attestation_reprise_disponibilite',
+  'demandes.documents.attestation_depart_retraite',
   'demandes.documents.attestation_stage',
+  'demandes.documents.attestation_cessation',
+  'demandes.documents.attestation_revenu',
+  'demandes.documents.domiciliation_bancaire',
+  'demandes.documents.decision_disponibilite',
+  'demandes.documents.decision_renouvellement_disponibilite',
+  'demandes.documents.declaration_mouvement',
+  'demandes.documents.certificat_travail',
   'demandes.documents.contrat_travail',
   'demandes.documents.bulletin_salaire',
   'demandes.documents.attestation_salaire',
-  'demandes.documents.certificat_travail',
   'demandes.documents.autre',
 ] as const satisfies readonly `demandes.documents.${RequestableDoc}`[];
 
@@ -156,9 +169,44 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
     description: 'Les traiter une fois visées par le N+1 : elles lui arrivent directement.',
     groupe: 'Demandes',
   },
+  'demandes.documents.contrat_cdd': {
+    libelle: 'Contrats de travail à durée déterminée',
+    description: 'Retrouver le contrat au dossier, en remettre une copie.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.contrat_cdi': {
+    libelle: 'Contrats de travail à durée indéterminée',
+    description: 'Retrouver le contrat au dossier, en remettre une copie.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.contrat_stage': {
+    libelle: 'Contrats de stage',
+    description: 'Retrouver le contrat au dossier, en remettre une copie.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.attestation_conge': {
+    libelle: 'Attestations de congé',
+    description: 'Les établir, les faire signer, les remettre.',
+    groupe: 'Documents',
+  },
   'demandes.documents.attestation_travail': {
     libelle: 'Attestations de travail',
     description: 'L’application les génère : les relire, les faire signer, annoncer leur retrait.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.attestation_reprise_service': {
+    libelle: 'Attestations de reprise de service',
+    description: 'Les établir, les faire signer, les remettre.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.attestation_reprise_disponibilite': {
+    libelle: 'Attestations de reprise après disponibilité',
+    description: 'Les établir, les faire signer, les remettre.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.attestation_depart_retraite': {
+    libelle: 'Attestations de départ à la retraite',
+    description: 'Les établir, les faire signer, les remettre.',
     groupe: 'Documents',
   },
   'demandes.documents.attestation_stage': {
@@ -166,27 +214,59 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
     description: 'Les établir, les faire signer, annoncer leur retrait.',
     groupe: 'Documents',
   },
-  'demandes.documents.contrat_travail': {
-    libelle: 'Copies de contrat de travail',
-    description: 'Retrouver le contrat au dossier, en remettre une copie.',
+  'demandes.documents.attestation_cessation': {
+    libelle: 'Attestations de cessation de paiement et d’activités',
+    description: 'Les établir, les faire signer, les remettre.',
     groupe: 'Documents',
   },
-  'demandes.documents.bulletin_salaire': {
-    libelle: 'Bulletins de salaire',
-    description: 'Les obtenir du système de paie, les remettre.',
-    groupe: 'Documents',
-    sensible: true,
-  },
-  'demandes.documents.attestation_salaire': {
-    libelle: 'Attestations de salaire',
+  'demandes.documents.attestation_revenu': {
+    libelle: 'Attestations de revenu',
     description: 'Les établir à partir des éléments de paie, les faire signer.',
     groupe: 'Documents',
     sensible: true,
+  },
+  'demandes.documents.domiciliation_bancaire': {
+    libelle: 'Domiciliations bancaires',
+    description: 'Les établir, les faire signer, les remettre.',
+    groupe: 'Documents',
+    sensible: true,
+  },
+  'demandes.documents.decision_disponibilite': {
+    libelle: 'Décisions de mise en disponibilité',
+    description: 'Les établir, les faire signer, les remettre.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.decision_renouvellement_disponibilite': {
+    libelle: 'Décisions de renouvellement de disponibilité',
+    description: 'Les établir, les faire signer, les remettre.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.declaration_mouvement': {
+    libelle: 'Déclarations de mouvement du travailleur',
+    description: 'Les établir, les faire signer, les remettre.',
+    groupe: 'Documents',
   },
   'demandes.documents.certificat_travail': {
     libelle: 'Certificats de travail',
     description: 'Les établir, les faire signer, les remettre.',
     groupe: 'Documents',
+  },
+  'demandes.documents.contrat_travail': {
+    libelle: 'Copies de contrat de travail',
+    description: 'Les demandes anciennes, d’avant la liste de la DCH.',
+    groupe: 'Documents',
+  },
+  'demandes.documents.bulletin_salaire': {
+    libelle: 'Bulletins de salaire',
+    description: 'Les demandes anciennes, d’avant la liste de la DCH.',
+    groupe: 'Documents',
+    sensible: true,
+  },
+  'demandes.documents.attestation_salaire': {
+    libelle: 'Attestations de salaire',
+    description: 'Les demandes anciennes, d’avant la liste de la DCH.',
+    groupe: 'Documents',
+    sensible: true,
   },
   'demandes.documents.autre': {
     libelle: 'Autres documents',

@@ -22,8 +22,6 @@ import {
   documentsEnCours,
   FICHIERS_REMIS_MAX,
   MAX_FICHIER_REMIS_BYTES,
-  moisDeDuAu,
-  moisEnLettres,
   OPEN_DOCUMENT_REQUEST_STATUSES,
   REQUESTABLE_DOC_LABELS,
 } from '@teranga/contracts';
@@ -39,7 +37,7 @@ import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
 import { accord, bulletins, de, deBulletins, DOCUMENT } from '../notifications/phrases';
-import { colonnesDuBulletin, periodeDu } from './bulletin';
+import { periodeDu } from './bulletin';
 import { agentDuCompte, detenteursDe, directionDuPersonnel } from '../acces/dch';
 import {
   capaciteDesDocuments,
@@ -109,8 +107,9 @@ function labelList(types: string[]): string {
 
 /**
  * Traite-t-on CE document pour la DCH ? La personne qui dirige la DCH, qui
- * détient l'habilitation de ce type, ou à qui la demande est confiée. Un
- * bulletin de salaire ne s'ouvre pas à qui traite seulement les attestations.
+ * détient l'habilitation de ce type, ou à qui la demande est confiée. Une
+ * domiciliation bancaire ne s'ouvre pas à qui traite seulement les
+ * attestations.
  */
 async function traiteCeDocument(
   tx: Tx,
@@ -151,9 +150,8 @@ export class DocumentRequestsService {
    * L'agent demande ses documents depuis son espace (jamais la DCH pour lui).
    *
    * Chaque document devient une demande à part : il va à qui traite CE type
-   * de document — les attestations de travail à l'un, les bulletins de
-   * salaire à l'autre. Un document déjà demandé, et encore en cours, ne se
-   * redemande pas.
+   * de document, les attestations de travail à l'un, les contrats à l'autre.
+   * Un document déjà demandé, et encore en cours, ne se redemande pas.
    */
   async create(
     user: SessionUser,
@@ -194,16 +192,12 @@ export class DocumentRequestsService {
         );
       }
 
-      if (input.bulletin) await this.exigerDesMoisPossibles(tx, self.employeeId, input.bulletin);
-
       for (const [i, docType] of docTypes.entries()) {
         await tx.insert(t.documentRequests).values({
           id: ids[i]!,
           tenantId: user.tenantId,
           employeeId: self.employeeId,
           docTypes: [docType],
-          // Les mois vont au bulletin, et à lui seul.
-          ...(docType === 'bulletin_salaire' ? colonnesDuBulletin(input.bulletin) : {}),
           note: input.note ?? null,
           requestedByUserId: user.userId,
         });
@@ -217,10 +211,8 @@ export class DocumentRequestsService {
   }
 
   /**
-   * Les demandes closes identiques à `nouvelle` s'effacent (ADR-0042) :
-   * le même document, les mêmes mois de bulletin. « Les N derniers mois » se
-   * comptent du mois de la demande : ils ne sont les mêmes que demandés le
-   * même mois. Une demande en cours ne s'efface jamais.
+   * Les demandes closes identiques à `nouvelle` s'effacent (ADR-0042) : le
+   * même document. Une demande en cours ne s'efface jamais.
    */
   private async effacerLesDemandesIdentiques(tx: Tx, nouvelle: string): Promise<void> {
     const { rows } = await tx.execute<{ id: string }>(sql`
@@ -231,12 +223,7 @@ export class DocumentRequestsService {
          AND a.id <> n.id
          AND a.status NOT IN ('received', 'processing')
          AND (SELECT array_agg(x ORDER BY x) FROM unnest(a.doc_types) x)
-           = (SELECT array_agg(x ORDER BY x) FROM unnest(n.doc_types) x)
-         AND a.payslip_from IS NOT DISTINCT FROM n.payslip_from
-         AND a.payslip_to IS NOT DISTINCT FROM n.payslip_to
-         AND a.payslip_last_months IS NOT DISTINCT FROM n.payslip_last_months
-         AND (n.payslip_last_months IS NULL
-              OR date_trunc('month', a.created_at) = date_trunc('month', n.created_at))`);
+           = (SELECT array_agg(x ORDER BY x) FROM unnest(n.doc_types) x)`);
     await this.effacerLesDemandes(
       tx,
       rows.map((r) => r.id),
@@ -251,51 +238,6 @@ export class DocumentRequestsService {
     }
     await this.effacerLesFichiers(tx, ids);
     await tx.delete(t.documentRequests).where(inArray(t.documentRequests.id, ids));
-  }
-
-  /**
-   * Les mois d'un bulletin existent : ni à venir, ni d'avant l'arrivée de
-   * l'agent à l'APIX. Le mois en cours se demande (la paie tombe en fin de
-   * mois) ; la DCH dit, en refusant, s'il n'est pas encore établi.
-   */
-  private async exigerDesMoisPossibles(
-    tx: Tx,
-    employeeId: string,
-    p: PeriodeDuBulletin,
-  ): Promise<void> {
-    const {
-      rows: [m],
-    } = await tx.execute<{ courant: string; arrivee: string }>(sql`
-      SELECT to_char(CURRENT_DATE, 'YYYY-MM') AS courant, to_char(hired_on, 'YYYY-MM') AS arrivee
-        FROM employees WHERE id = ${employeeId}`);
-    if (!m) return;
-    const [premier, dernier] =
-      p.type === 'mois' ? [p.mois, p.mois] : p.type === 'periode' ? [p.du, p.au] : [null, null];
-    if (dernier && dernier > m.courant) {
-      problem(
-        422,
-        'documents.bulletin_a_venir',
-        'Ce bulletin n’existe pas encore',
-        `Le bulletin ${de(moisEnLettres(dernier))} n’est pas encore établi.`,
-      );
-    }
-    if (premier && premier < m.arrivee) {
-      problem(
-        422,
-        'documents.bulletin_avant_arrivee',
-        'Aucun bulletin avant votre arrivée',
-        `Votre arrivée à l’APIX date ${de(moisEnLettres(m.arrivee))} : aucun bulletin avant ce mois.`,
-      );
-    }
-    const depuisLArrivee = moisDeDuAu(m.arrivee, m.courant);
-    if (p.type === 'derniers' && p.nombre > depuisLArrivee) {
-      problem(
-        422,
-        'documents.bulletins_trop_nombreux',
-        'Pas autant de bulletins',
-        `Vous êtes à l’APIX depuis ${moisEnLettres(m.arrivee)} : ${depuisLArrivee} bulletins au plus.`,
-      );
-    }
   }
 
   /**

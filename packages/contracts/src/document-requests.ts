@@ -12,25 +12,61 @@ import type { TraitementView } from './acces';
  * en base, sans pouvoir être posé à nouveau.
  */
 
-/** Ce qu'un agent demande, dans l'ordre de la liste (ADR-0045). */
+/** Ce qu'un agent demande : la liste de la DCH, dans son ordre (ADR-0084). */
 export const requestableDocSchema = z.enum([
+  'contrat_cdd',
+  'contrat_cdi',
+  'contrat_stage',
+  'attestation_conge',
   'attestation_travail',
+  'attestation_reprise_service',
+  'attestation_reprise_disponibilite',
+  'attestation_depart_retraite',
   'attestation_stage',
+  'attestation_cessation',
+  'attestation_revenu',
+  'domiciliation_bancaire',
+  'decision_disponibilite',
+  'decision_renouvellement_disponibilite',
+  'declaration_mouvement',
+  'certificat_travail',
+]);
+
+/**
+ * Ce qui ne se demande plus (ADR-0045, ADR-0084) : ces documents ne se
+ * lisent que sur les demandes anciennes, qui se traitent comme avant.
+ */
+export const DOCUMENTS_RETIRES = [
   'contrat_travail',
   'bulletin_salaire',
   'attestation_salaire',
-  'certificat_travail',
-]);
-/** Un document demandé : `autre` ne se lit plus que sur les demandes anciennes. */
-export type RequestableDoc = z.infer<typeof requestableDocSchema> | 'autre';
+  'autre',
+] as const;
+
+/** Un document demandé : un de la liste, ou un document retiré sur une demande ancienne. */
+export type RequestableDoc =
+  z.infer<typeof requestableDocSchema> | (typeof DOCUMENTS_RETIRES)[number];
 
 export const REQUESTABLE_DOC_LABELS: Record<RequestableDoc, string> = {
+  contrat_cdd: 'Contrat de travail à durée déterminée',
+  contrat_cdi: 'Contrat de travail à durée indéterminée',
+  contrat_stage: 'Contrat de stage',
+  attestation_conge: 'Attestation de congé',
   attestation_travail: 'Attestation de travail',
+  attestation_reprise_service: 'Attestation de reprise de service',
+  attestation_reprise_disponibilite: 'Attestation de reprise après disponibilité',
+  attestation_depart_retraite: 'Attestation de départ à la retraite',
   attestation_stage: 'Attestation de stage',
+  attestation_cessation: 'Attestation de cessation de paiement et d’activités',
+  attestation_revenu: 'Attestation de revenu',
+  domiciliation_bancaire: 'Domiciliation bancaire',
+  decision_disponibilite: 'Décision de mise en disponibilité',
+  decision_renouvellement_disponibilite: 'Décision de renouvellement de disponibilité',
+  declaration_mouvement: 'Déclaration de mouvement du travailleur',
+  certificat_travail: 'Certificat de travail',
   contrat_travail: 'Contrat de travail',
   bulletin_salaire: 'Bulletin de salaire',
   attestation_salaire: 'Attestation de salaire',
-  certificat_travail: 'Certificat de travail',
   autre: 'Autre document',
 };
 
@@ -117,16 +153,10 @@ export const documentsEnCours = (
   );
 
 /*
-   Le bulletin de salaire se demande pour une période (ADR-0039) : un mois,
-   les N derniers mois, ou de tel mois à tel mois. La DCH sait ainsi quels
-   bulletins sortir, sans les chercher dans une précision libre.
+   Le bulletin de salaire se demandait pour une période (ADR-0039) : un mois,
+   les N derniers mois, ou de tel mois à tel mois. Il ne se demande plus
+   (ADR-0084) ; une demande ancienne se lit toujours avec ses mois.
 */
-
-/** « 2026-09 » : un mois de paie. */
-export const moisDePaieSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Mois invalide');
-
-/** Au plus douze bulletins par demande, quelle que soit la façon de les demander. */
-export const BULLETINS_PAR_DEMANDE_MAX = 12;
 
 export const MOIS_DE_L_ANNEE = [
   'janvier',
@@ -143,31 +173,11 @@ export const MOIS_DE_L_ANNEE = [
   'décembre',
 ] as const;
 
-/** Le nombre de mois de `du` à `au`, l'un et l'autre compris. */
-export function moisDeDuAu(du: string, au: string): number {
-  const [a1, m1] = du.split('-').map(Number) as [number, number];
-  const [a2, m2] = au.split('-').map(Number) as [number, number];
-  return (a2 - a1) * 12 + (m2 - m1) + 1;
-}
-
-export const periodeDuBulletinSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('mois'), mois: moisDePaieSchema }),
-  z.object({
-    type: z.literal('derniers'),
-    nombre: z.number().int().min(2).max(BULLETINS_PAR_DEMANDE_MAX),
-  }),
-  z
-    .object({ type: z.literal('periode'), du: moisDePaieSchema, au: moisDePaieSchema })
-    .refine((p) => p.au > p.du, {
-      message: 'Le dernier mois vient après le premier',
-      path: ['au'],
-    })
-    .refine((p) => moisDeDuAu(p.du, p.au) <= BULLETINS_PAR_DEMANDE_MAX, {
-      message: `Au plus ${BULLETINS_PAR_DEMANDE_MAX} mois par demande`,
-      path: ['au'],
-    }),
-]);
-export type PeriodeDuBulletin = z.infer<typeof periodeDuBulletinSchema>;
+/** Les mois d'un bulletin demandé : « 2026-09 », les N derniers, ou de « 2026-07 » à « 2026-09 ». */
+export type PeriodeDuBulletin =
+  | { type: 'mois'; mois: string }
+  | { type: 'derniers'; nombre: number }
+  | { type: 'periode'; du: string; au: string };
 
 /** « septembre 2026 ». */
 export function moisEnLettres(mois: string): string {
@@ -195,28 +205,17 @@ export function documentDemande(doc: RequestableDoc, bulletin: PeriodeDuBulletin
     : libelle;
 }
 
-export const createDocumentRequestSchema = z
-  .object({
-    /** Un ou plusieurs documents : chacun devient une demande, qui va à qui le traite. */
-    docTypes: z.array(requestableDocSchema).min(1).max(6),
-    /** Les mois du bulletin de salaire : requis avec lui, et seulement avec lui. */
-    bulletin: periodeDuBulletinSchema.optional(),
-    /** Le motif (banque, visa…) : facultatif mais utile à la RH. */
-    note: z
-      .string()
-      .trim()
-      .max(500)
-      .transform((v) => (v === '' ? undefined : v))
-      .optional(),
-  })
-  .refine((d) => !d.docTypes.includes('bulletin_salaire') || d.bulletin, {
-    message: 'Précisez les mois du bulletin de salaire',
-    path: ['bulletin'],
-  })
-  .refine((d) => d.docTypes.includes('bulletin_salaire') || !d.bulletin, {
-    message: 'Des mois ne se précisent que pour un bulletin de salaire',
-    path: ['bulletin'],
-  });
+export const createDocumentRequestSchema = z.object({
+  /** Un ou plusieurs documents : chacun devient une demande, qui va à qui le traite. */
+  docTypes: z.array(requestableDocSchema).min(1).max(requestableDocSchema.options.length),
+  /** Le motif (banque, visa…) : facultatif mais utile à la RH. */
+  note: z
+    .string()
+    .trim()
+    .max(500)
+    .transform((v) => (v === '' ? undefined : v))
+    .optional(),
+});
 export type CreateDocumentRequestInput = z.infer<typeof createDocumentRequestSchema>;
 
 /** Une demande par document demandé. */
@@ -316,7 +315,7 @@ export interface DocumentRequestView {
   /** Statut du dossier : conditionne la génération d'attestation. */
   employeeStatus: string;
   docTypes: RequestableDoc[];
-  /** Les mois demandés, pour un bulletin de salaire ; `null` sinon (ou demandé avant). */
+  /** Les mois d'un bulletin de salaire demandé avant l'ADR-0084 ; `null` sinon. */
   bulletin: PeriodeDuBulletin | null;
   note: string | null;
   status: DocumentRequestStatus;

@@ -12,10 +12,12 @@
  * la DSID, où travaille Moussa ; l'administrateur.
  */
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Capacite, SessionUser } from '@teranga/contracts';
-import { createDocumentRequestSchema, peut } from '@teranga/contracts';
+import { createDocumentRequestSchema, peut, requestableDocSchema } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -271,7 +273,7 @@ describe('les demandes de documents', () => {
   });
 
   it('déjà en préparation : qui la préparait est prévenu ; prête, elle ne s’annule plus', async () => {
-    const [id] = (await documents.create(moussa.session, { docTypes: ['bulletin_salaire'] }))
+    const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_revenu'] }))
       .ids as [string];
     await documents.advance(mariama.session, id, { status: 'processing' });
     await documents.cancel(moussa.session, id);
@@ -279,12 +281,12 @@ describe('les demandes de documents', () => {
       `SELECT title FROM notifications WHERE recipient_user_id = $1 AND dedupe_key = $2`,
       [mariama.session.userId, `document:${id}:annulee`],
     );
-    expect(rows).toEqual([{ title: 'Moussa Test annule sa demande de bulletin de salaire' }]);
+    expect(rows).toEqual([{ title: 'Moussa Test annule sa demande d’attestation de revenu' }]);
     expect(await codeOf(() => documents.advance(mariama.session, id, { status: 'ready' }))).toBe(
       'documents.request_not_found',
     );
 
-    const [prete] = (await documents.create(moussa.session, { docTypes: ['bulletin_salaire'] }))
+    const [prete] = (await documents.create(moussa.session, { docTypes: ['attestation_revenu'] }))
       .ids as [string];
     await documents.advance(mariama.session, prete, { status: 'processing' });
     await documents.advance(mariama.session, prete, { status: 'ready' });
@@ -337,21 +339,21 @@ describe('les demandes de documents', () => {
 
   it('les documents se confient type par type : chaque document demandé va à qui le traite', async () => {
     await habiliter(awa, 'demandes.documents.attestation_travail');
-    await habiliter(khady, 'demandes.documents.bulletin_salaire');
+    await habiliter(khady, 'demandes.documents.domiciliation_bancaire');
     const ids = (
       await documents.create(moussa.session, {
-        docTypes: ['attestation_travail', 'bulletin_salaire', 'certificat_travail'],
+        docTypes: ['attestation_travail', 'domiciliation_bancaire', 'certificat_travail'],
         note: 'Dossier de visa',
       })
     ).ids;
     expect(ids).toHaveLength(3);
-    const [attestation, bulletin, certificat] = ids as [string, string, string];
+    const [attestation, domiciliation, certificat] = ids as [string, string, string];
     expect(await appels('document', attestation)).toEqual(['dch:Awa']);
-    expect(await appels('document', bulletin)).toEqual(['dch:Khady']);
+    expect(await appels('document', domiciliation)).toEqual(['dch:Khady']);
     // Personne n'est habilité aux certificats : ils restent au directeur.
     expect(await appels('document', certificat)).toEqual(['dch:Mariama']);
     expect(
-      await codeOf(() => documents.advance(awa.session, bulletin, { status: 'processing' })),
+      await codeOf(() => documents.advance(awa.session, domiciliation, { status: 'processing' })),
     ).toBe('demandes.pas_traitant');
     await documents.advance(awa.session, attestation, { status: 'processing' });
     const { rows } = await raw(
@@ -360,8 +362,8 @@ describe('les demandes de documents', () => {
     );
     expect(rows).toEqual([
       { doc_types: ['attestation_travail'], note: 'Dossier de visa' },
-      { doc_types: ['bulletin_salaire'], note: 'Dossier de visa' },
       { doc_types: ['certificat_travail'], note: 'Dossier de visa' },
+      { doc_types: ['domiciliation_bancaire'], note: 'Dossier de visa' },
     ]);
   });
 
@@ -459,9 +461,9 @@ describe('les demandes de documents', () => {
 
   it('l’attestation se génère pour une demande d’attestation ouverte, et le droit s’éteint avec elle', async () => {
     const generer = () => codeOf(() => attestations.forEmployee(awa.session, moussa.employeeId));
-    // Traiter son bulletin ne donne pas son attestation.
-    await habiliter(awa, 'demandes.documents.bulletin_salaire');
-    await documents.create(moussa.session, { docTypes: ['bulletin_salaire'] });
+    // Traiter sa domiciliation bancaire ne donne pas son attestation.
+    await habiliter(awa, 'demandes.documents.domiciliation_bancaire');
+    await documents.create(moussa.session, { docTypes: ['domiciliation_bancaire'] });
     expect(await generer()).toBe('auth.forbidden');
 
     await habiliter(awa, 'demandes.documents.attestation_travail');
@@ -516,7 +518,9 @@ describe('les demandes de documents', () => {
     await documents.create(moussa.session, { docTypes: ['attestation_travail'] });
     expect(
       await codeOf(() =>
-        documents.create(moussa.session, { docTypes: ['bulletin_salaire', 'attestation_travail'] }),
+        documents.create(moussa.session, {
+          docTypes: ['domiciliation_bancaire', 'attestation_travail'],
+        }),
       ),
     ).toBe('documents.deja_en_cours');
     // Rien n'est parti : le refus vaut pour tout l'envoi.
@@ -528,26 +532,77 @@ describe('les demandes de documents', () => {
     // Quatre documents d'un coup : aucun plafond ne s'y oppose.
     const r = await documents.create(moussa.session, {
       docTypes: [
-        'bulletin_salaire',
-        'attestation_salaire',
+        'domiciliation_bancaire',
+        'attestation_revenu',
         'certificat_travail',
-        'contrat_travail',
+        'contrat_cdi',
       ],
     });
     expect(r.ids).toHaveLength(4);
   });
 
-  it('« Autre document » ne se demande plus ; une demande d’avant se traite encore', async () => {
-    expect(createDocumentRequestSchema.safeParse({ docTypes: ['autre'] }).success).toBe(false);
-    // Une demande faite avant l'ADR-0045 : qui dirige la DCH l'a dans sa file, et la traite.
-    const [id] = (await documents.create(moussa.session, { docTypes: ['autre'] as never })).ids as [
-      string,
-    ];
-    expect(await appels('document', id)).toEqual(['dch:Mariama']);
-    await documents.advance(mariama.session, id, { status: 'processing' });
-    await documents.advance(mariama.session, id, { status: 'ready' });
-    const [vue] = await documents.list(moussa.session, { scope: 'mine' });
-    expect(vue).toMatchObject({ docTypes: ['autre'], status: 'ready' });
+  it('les documents retirés ne se demandent plus ; une demande d’avant se traite encore', async () => {
+    for (const doc of ['autre', 'contrat_travail', 'bulletin_salaire', 'attestation_salaire']) {
+      expect(createDocumentRequestSchema.safeParse({ docTypes: [doc] }).success).toBe(false);
+    }
+    // Les seize documents de la DCH partent d'un coup.
+    expect(
+      createDocumentRequestSchema.safeParse({ docTypes: requestableDocSchema.options }).success,
+    ).toBe(true);
+    // Des demandes faites avant (ADR-0045, ADR-0084) : qui dirige la DCH les a
+    // dans sa file, et les traite.
+    for (const doc of ['autre', 'attestation_salaire'] as const) {
+      const [id] = (await documents.create(moussa.session, { docTypes: [doc] as never })).ids as [
+        string,
+      ];
+      expect(await appels('document', id)).toEqual(['dch:Mariama']);
+      await documents.advance(mariama.session, id, { status: 'processing' });
+      await documents.advance(mariama.session, id, { status: 'ready' });
+    }
+    const vues = await documents.list(moussa.session, { scope: 'mine' });
+    expect(vues.map((v) => [v.docTypes, v.status]).sort()).toEqual([
+      [['attestation_salaire'], 'ready'],
+      [['autre'], 'ready'],
+    ]);
+  });
+
+  it('qui traitait les contrats de travail traite les nouveaux ; les délégations retirées se closent (0115)', async () => {
+    await habiliter(awa, 'demandes.documents.contrat_travail');
+    await habiliter(khady, 'demandes.documents.bulletin_salaire');
+    // Une demande de bulletin d'avant, que Khady traitait.
+    const [bulletin] = (
+      await documents.create(moussa.session, { docTypes: ['bulletin_salaire'] as never })
+    ).ids as [string];
+    expect(await appels('document', bulletin)).toEqual(['dch:Khady']);
+
+    await raw(readFileSync(join(__dirname, '../src/db/sql/0115_documents_de_la_dch.sql'), 'utf8'));
+    await reconcilier();
+
+    const delegations = async (qui: Agent) =>
+      (
+        await raw(
+          `SELECT capacite FROM habilitations
+            WHERE tenant_id = $1 AND employee_id = $2 AND fin_at IS NULL ORDER BY capacite`,
+          [tenantId, qui.employeeId],
+        )
+      ).rows.map((r) => r.capacite);
+    expect(await delegations(awa)).toEqual([
+      'demandes.documents.contrat_cdd',
+      'demandes.documents.contrat_cdi',
+      'demandes.documents.contrat_stage',
+    ]);
+    expect(await delegations(khady)).toEqual([]);
+    const { rows: closes } = await raw(
+      `SELECT capacite, fin_motif FROM habilitations
+        WHERE tenant_id = $1 AND fin_at IS NOT NULL ORDER BY capacite`,
+      [tenantId],
+    );
+    expect(closes).toEqual([
+      { capacite: 'demandes.documents.bulletin_salaire', fin_motif: 'retiree' },
+      { capacite: 'demandes.documents.contrat_travail', fin_motif: 'retiree' },
+    ]);
+    // La demande de bulletin revient à qui dirige la DCH.
+    expect(await appels('document', bulletin)).toEqual(['dch:Mariama']);
   });
 
   it('chacun suit les siennes dans son espace ; la file, qui la traite (l’administrateur la lit)', async () => {
@@ -1294,7 +1349,7 @@ describe('les files ne se coupent pas', () => {
     // Cent dix demandes de chaque sorte, traitées et plus récentes.
     await raw(
       `INSERT INTO document_requests (id, tenant_id, employee_id, doc_types, status, requested_by_user_id)
-       SELECT gen_random_uuid(), $1, $2, ARRAY['bulletin_salaire'], 'ready', $3 FROM generate_series(1, 110)`,
+       SELECT gen_random_uuid(), $1, $2, ARRAY['certificat_travail'], 'ready', $3 FROM generate_series(1, 110)`,
       [tenantId, awa.employeeId, awa.session.userId],
     );
     await raw(
