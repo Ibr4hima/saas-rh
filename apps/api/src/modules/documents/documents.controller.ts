@@ -80,6 +80,22 @@ export class DocumentsController {
     this.send(res, filename, pdf);
   }
 
+  /**
+   * Un document sans agent, le contrat de stage (ADR-0094) : la personne
+   * n'est pas encore dans l'application, sa fiche part dans le corps.
+   */
+  @Post('documents/generer/:type')
+  @HttpCode(200)
+  async genereSansAgent(
+    @Req() req: AuthenticatedRequest,
+    @Param('type') type: string,
+    @Body() corps: unknown,
+    @Res() res: Response,
+  ) {
+    const { filename, pdf } = await this.generation.pdfSansAgent(req.sessionUser, type, corps);
+    this.send(res, filename, pdf);
+  }
+
   private send(res: Response, filename: string, pdf: Buffer, inline = false) {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(

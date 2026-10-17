@@ -41,10 +41,11 @@ export interface Modele {
   pdf(tx: Tx, employeeId: string, saisies: SaisiesDuDocument): Promise<DocumentPdf>;
 }
 
-/** Un passage d'un paragraphe : du texte, en gras ou non. */
+/** Un passage d'un paragraphe : du texte, en gras ou non, souligné ou non. */
 export interface Passage {
   texte: string;
   gras?: boolean;
+  souligne?: boolean;
 }
 
 const ENCRE = '#111111';
@@ -137,6 +138,54 @@ export function nouvelleFeuille({
       doc.y = y + bloc.hauteur;
     },
 
+    /** L'en-tête d'un contrat : le bloc de la République seul, sans numéro ni date. */
+    blocRepublique() {
+      const bloc = dessinerBlocRepublique(doc, MARGE, HAUT);
+      doc.y = HAUT + bloc.hauteur;
+    },
+
+    /** Le titre d'un contrat : centré, en gras, souligné. */
+    titreSouligne(texte: string, { avant = 40 }: { avant?: number } = {}) {
+      doc.y += avant;
+      doc
+        .font(coupe('bold'))
+        .fontSize(12)
+        .fillColor(ENCRE)
+        .text(texte, MARGE, doc.y, { width: L, align: 'center', underline: true });
+    },
+
+    /** La suite sur une nouvelle page. */
+    sautDePage() {
+      doc.addPage();
+      doc.y = doc.page.margins.top;
+    },
+
+    /**
+     * Les signatures, en deux colonnes : de chaque côté, en gras, qui signe
+     * en haut et sa qualité en bas, l'espace entre les deux pour la signature.
+     */
+    signatures(
+      gauche: readonly [string, string],
+      droite: readonly [string, string],
+      { avant = 30, espace = 70 }: { avant?: number; espace?: number } = {},
+    ) {
+      doc.y += avant;
+      const colonne = L / 2;
+      place(espace + 40);
+      const y = doc.y;
+      doc.font(coupe('bold')).fontSize(11).fillColor(ENCRE);
+      [gauche, droite].forEach(([haut, basDeColonne], i) => {
+        const x = MARGE + i * colonne;
+        doc.text(haut, x, y, { width: colonne, align: 'center', lineBreak: false });
+        doc.text(basDeColonne, x, y + espace, {
+          width: colonne,
+          align: 'center',
+          lineBreak: false,
+        });
+      });
+      doc.y = y + espace + doc.currentLineHeight(true);
+    },
+
     /** Le timbre : qui émet l'acte, sous l'en-tête, à gauche. */
     timbre(
       texte: string,
@@ -188,6 +237,9 @@ export function nouvelleFeuille({
      * mots (un mot peut changer de graisse en son milieu, « BATHILY, »), des
      * lignes remplies au plus juste, et l'espace qui reste réparti entre les
      * mots, sauf sur la dernière ligne. L'espace insécable lie deux mots.
+     *
+     * `retrait` décale le paragraphe vers la droite ; `puce` se pose dans ce
+     * retrait, devant la première ligne : un élément de liste.
      */
     paragraphe(
       passages: readonly Passage[],
@@ -195,16 +247,25 @@ export function nouvelleFeuille({
         avant = 0,
         taille = 11,
         interligne = 3.5,
-      }: { avant?: number; taille?: number; interligne?: number } = {},
+        retrait = 0,
+        puce,
+      }: {
+        avant?: number;
+        taille?: number;
+        interligne?: number;
+        retrait?: number;
+        puce?: string;
+      } = {},
     ) {
       doc.y += avant;
+      const largeurUtile = L - retrait;
       const mesurer = (texte: string, gras: boolean) =>
         doc
           .font(coupe(gras ? 'bold' : 'normal'))
           .fontSize(taille)
           .widthOfString(texte);
 
-      type Morceau = { texte: string; gras: boolean; largeur: number };
+      type Morceau = { texte: string; gras: boolean; souligne: boolean; largeur: number };
       const mots: { morceaux: Morceau[]; largeur: number }[] = [];
       let enCours: Morceau[] = [];
       const clore = () => {
@@ -214,9 +275,11 @@ export function nouvelleFeuille({
       };
       for (const p of passages) {
         const gras = Boolean(p.gras);
+        const souligne = Boolean(p.souligne);
         for (const bout of p.texte.split(/( )/)) {
           if (bout === ' ') clore();
-          else if (bout) enCours.push({ texte: bout, gras, largeur: mesurer(bout, gras) });
+          else if (bout)
+            enCours.push({ texte: bout, gras, souligne, largeur: mesurer(bout, gras) });
         }
       }
       clore();
@@ -227,7 +290,7 @@ export function nouvelleFeuille({
       let largeur = 0;
       for (const mot of mots) {
         const ajout = ligne.length > 0 ? espace + mot.largeur : mot.largeur;
-        if (ligne.length > 0 && largeur + ajout > L) {
+        if (ligne.length > 0 && largeur + ajout > largeurUtile) {
           lignes.push(ligne);
           ligne = [mot];
           largeur = mot.largeur;
@@ -248,8 +311,15 @@ export function nouvelleFeuille({
         }
         const pleine = l.reduce((s, m) => s + m.largeur, 0);
         const derniere = i === lignes.length - 1;
-        const ecart = !derniere && l.length > 1 ? (L - pleine) / (l.length - 1) : espace;
-        let x = MARGE;
+        const ecart = !derniere && l.length > 1 ? (largeurUtile - pleine) / (l.length - 1) : espace;
+        if (puce && i === 0) {
+          doc
+            .font(coupe('normal'))
+            .fontSize(taille)
+            .fillColor(ENCRE)
+            .text(puce, MARGE + retrait / 2 - doc.widthOfString(puce), y, { lineBreak: false });
+        }
+        let x = MARGE + retrait;
         for (const mot of l) {
           for (const m of mot.morceaux) {
             doc
@@ -257,6 +327,16 @@ export function nouvelleFeuille({
               .fontSize(taille)
               .fillColor(ENCRE)
               .text(m.texte, x, y, { lineBreak: false });
+            if (m.souligne) {
+              // Le trait sous la ligne de base, à l'épaisseur du corps.
+              const sous = y + taille * 1.02;
+              doc
+                .moveTo(x, sous)
+                .lineTo(x + m.largeur, sous)
+                .lineWidth(taille * 0.06)
+                .strokeColor(ENCRE)
+                .stroke();
+            }
             x += m.largeur;
           }
           x += ecart;
@@ -279,13 +359,15 @@ export function nouvelleFeuille({
         const marge = doc.page.margins.bottom;
         doc.page.margins.bottom = 0;
         const bas = doc.page.height - BAS_DU_PIED;
-        dessinerPiedApix(doc, { droite: MARGE + L, bas, logo });
+        const { milieu } = dessinerPiedApix(doc, { droite: MARGE + L, bas, logo });
+        // Le numéro seul, sur la marge de gauche, à la hauteur du logo : le
+        // champ PAGE des modèles Word. Ses chiffres se centrent sur le milieu.
         if (pages.count > 1) {
           doc
             .font(coupe('normal'))
-            .fontSize(7.5)
-            .fillColor(GRIS)
-            .text(`Page ${i + 1} sur ${pages.count}`, MARGE, bas - 9, { lineBreak: false });
+            .fontSize(11)
+            .fillColor(ENCRE)
+            .text(String(i + 1), MARGE, milieu - 6, { lineBreak: false });
         }
         doc.page.margins.bottom = marge;
       }

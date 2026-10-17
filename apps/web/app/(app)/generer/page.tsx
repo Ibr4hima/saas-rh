@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type {
   DocumentDeLaListe,
   DocumentGenere,
@@ -12,20 +12,28 @@ import type {
 } from '@teranga/contracts';
 import {
   CATEGORIE_MAX,
-  enChiffres,
   estGenere,
+  ficheStagiaireSchema,
   nomDuDocumentGenere,
   REQUESTABLE_DOC_LABELS,
   requestableDocSchema,
   saisiesDe,
+  sansAgent,
 } from '@teranga/contracts';
 import { Badge, Button, Card, CardTitle, cn, EmptyState } from '@teranga/ui';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import { PdfEnLargeur } from '../../../components/pdf-viewer';
 import { ActionDuBandeau } from '../../../components/actions-bandeau';
+import {
+  FicheDuStagiaire,
+  STAGIAIRE_VIDE,
+  versLaFiche,
+  type SaisieDuStagiaire,
+} from '../../../components/fiche-stagiaire';
 import { api, ApiError } from '../../../lib/api';
 import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
+import { useMontantEnChiffres } from '../../../lib/montant';
 
 /*
    « Générer des documents » (ADR-0085), en trois temps qui se découvrent
@@ -36,7 +44,8 @@ import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
    porte pas le fait saisir avant : le salaire de l'attestation de revenu
    (ADR-0087), la catégorie du poste du certificat de travail (ADR-0091),
    les dates de l'attestation de congé (ADR-0092), le jour du départ à la
-   retraite (ADR-0093).
+   retraite (ADR-0093). Le contrat de stage se fait sans agent : la personne
+   n'est pas encore dans l'application, la DCH la renseigne (ADR-0094).
 
    L'aperçu EST le PDF, peint par pdf.js : un modèle de l'APIX se vérifie sur
    ce qui sortira, pas sur une imitation à l'écran.
@@ -107,17 +116,25 @@ const remplie = (v: Valeurs, s: Saisie) => {
   return valeur !== null && valeur !== '';
 };
 
+/** Une valeur, une fois la frappe posée : l'aperçu ne suit pas chaque touche. */
+function useRetenue<T>(valeur: T): T {
+  const [retenue, setRetenue] = useState(valeur);
+  useEffect(() => {
+    const t = setTimeout(() => setRetenue(valeur), 450);
+    return () => clearTimeout(t);
+  }, [valeur]);
+  return retenue;
+}
+
 export default function GenererDesDocumentsPage() {
   const [choisi, setChoisi] = useState<DocumentGenere | null>(null);
   const [agent, setAgent] = useState<EmployeeListItem | null>(null);
   const [saisies, setSaisies] = useState<Saisies | null>(null);
-  // L'aperçu suit les saisies une fois la frappe posée, pas à chaque touche.
-  const [retenues, setRetenues] = useState<Saisies | null>(null);
-  useEffect(() => {
-    const t = setTimeout(() => setRetenues(saisies), 450);
-    return () => clearTimeout(t);
-  }, [saisies]);
+  const retenues = useRetenue(saisies);
+  const [stagiaire, setStagiaire] = useState<SaisieDuStagiaire>(STAGIAIRE_VIDE);
+  const stagiaireRetenu = useRetenue(stagiaire);
 
+  const sansLAgent = choisi !== null && sansAgent(choisi);
   const demandees = choisi ? saisiesDe(choisi) : [];
   const pourLAgent = (s: Saisies | null): Valeurs => (s && s.agentId === agent?.id ? s : VIDES);
   const courantes = pourLAgent(saisies);
@@ -125,18 +142,20 @@ export default function GenererDesDocumentsPage() {
   const saisir = (valeur: Partial<Valeurs>) => {
     if (agent) setSaisies({ ...courantes, ...valeur, agentId: agent.id });
   };
+  const fiche = ficheStagiaireSchema.safeParse(versLaFiche(stagiaireRetenu));
 
   return (
     <Page>
       <Etape titre="Sélectionner le document à générer">
         <ChoixDuDocument choisi={choisi} onChoisir={setChoisi} />
       </Etape>
-      {choisi ? (
+      {sansLAgent ? <FicheDuStagiaire valeur={stagiaire} onChange={setStagiaire} /> : null}
+      {choisi && !sansLAgent ? (
         <Etape titre="Sélectionner l’agent">
           <ChoixDeLAgent agent={agent} onChoisir={setAgent} />
         </Etape>
       ) : null}
-      {agent
+      {agent && !sansLAgent
         ? demandees.map((s, i) => (
             <Etape key={s} titre={TITRES[s]}>
               {s === 'salaire' ? (
@@ -167,10 +186,33 @@ export default function GenererDesDocumentsPage() {
             </Etape>
           ))
         : null}
-      {choisi && agent && demandees.every((s) => remplie(posees, s)) ? (
+      {choisi && sansLAgent && fiche.success ? (
         <Apercu
           choisi={choisi}
-          agent={agent}
+          cible={{
+            cle: 'stagiaire',
+            chemin: `/documents/generer/${choisi}`,
+            fichier: nomDuDocumentGenere(
+              choisi,
+              `${fiche.data.nom.toUpperCase()}-${fiche.data.prenom}`,
+            ),
+            titre: `${REQUESTABLE_DOC_LABELS[choisi]} : ${fiche.data.prenom} ${fiche.data.nom}`,
+          }}
+          saisies={fiche.data}
+          enCours={
+            JSON.stringify(versLaFiche(stagiaire)) !== JSON.stringify(versLaFiche(stagiaireRetenu))
+          }
+        />
+      ) : null}
+      {choisi && !sansLAgent && agent && demandees.every((s) => remplie(posees, s)) ? (
+        <Apercu
+          choisi={choisi}
+          cible={{
+            cle: agent.id,
+            chemin: `/employees/${agent.id}/generer/${choisi}`,
+            fichier: nomDuDocumentGenere(choisi, agent.employeeNumber),
+            titre: `${REQUESTABLE_DOC_LABELS[choisi]} : ${nomDe(agent)}`,
+          }}
           saisies={Object.fromEntries(demandees.map((s) => [s, valeurDe(posees, s)]))}
           enCours={demandees.some((s) => valeurDe(courantes, s) !== valeurDe(posees, s))}
         />
@@ -550,9 +592,9 @@ function ChoixDeLAgent({
 }
 
 /**
- * Le salaire net mensuel, en francs CFA et en chiffres : les milliers se
- * séparent à la frappe, et le curseur garde sa place parmi les chiffres. La
- * première saisie s'ouvre prête à écrire, dès le choix de l'agent.
+ * Le salaire net mensuel, en francs CFA et en chiffres, les milliers séparés
+ * à la frappe. La première saisie s'ouvre prête à écrire, dès le choix de
+ * l'agent.
  */
 function ChampDuSalaire({
   premier,
@@ -563,45 +605,15 @@ function ChampDuSalaire({
   salaire: number | null;
   onSaisir: (salaire: number | null) => void;
 }) {
-  const champ = useRef<HTMLInputElement>(null);
-  const curseur = useRef<number | null>(null);
-  const [texte, setTexte] = useState(salaire ? enChiffres(salaire) : '');
-
-  // Après le regroupement, le curseur revient derrière autant de chiffres
-  // qu'avant : une espace ajoutée ne le fait pas sauter.
-  useLayoutEffect(() => {
-    const chiffres = curseur.current;
-    if (chiffres === null || !champ.current) return;
-    curseur.current = null;
-    let i = 0;
-    for (let vus = 0; i < texte.length && vus < chiffres; i++) {
-      if (/\d/.test(texte[i]!)) vus++;
-    }
-    champ.current.setSelectionRange(i, i);
-  }, [texte]);
-
+  const montant = useMontantEnChiffres(salaire, onSaisir);
   return (
     <div className="relative">
       <input
-        ref={champ}
+        {...montant}
         autoFocus={premier}
-        inputMode="numeric"
         autoComplete="off"
         aria-label="Salaire net mensuel, en francs CFA"
         placeholder="Montant en chiffres"
-        // « 999 999 999 » : neuf chiffres et leurs deux espaces.
-        maxLength={11}
-        value={texte}
-        onChange={(e) => {
-          const brut = e.target.value;
-          const avant = brut
-            .slice(0, e.target.selectionStart ?? brut.length)
-            .replace(/\D/g, '').length;
-          const chiffres = brut.replace(/\D/g, '').replace(/^0+/, '').slice(0, 9);
-          curseur.current = Math.min(avant, chiffres.length);
-          setTexte(chiffres ? enChiffres(Number(chiffres)) : '');
-          onSaisir(chiffres ? Number(chiffres) : null);
-        }}
         className={cn(
           CHAMP,
           'border-line pr-14 pl-3 font-medium text-ink-strong tabular-nums placeholder:font-normal placeholder:text-ink-muted hover:border-ink-muted/40 focus:border-primary',
@@ -677,6 +689,18 @@ function ChampDeDate({
   );
 }
 
+/** Pour qui le document se génère : un agent, ou la personne que la DCH renseigne. */
+interface Cible {
+  /** L'agent, ou « stagiaire » : à chaque personne son aperçu. */
+  cle: string;
+  /** La route de l'API qui rend le PDF. */
+  chemin: string;
+  /** Le nom du fichier enregistré. */
+  fichier: string;
+  /** Le titre de l'aperçu. */
+  titre: string;
+}
+
 /**
  * Le document, tel qu'il sortira : en largeur, comme le procès-verbal
  * d'apix-e-voting, sans rien au-dessus. « Télécharger » se pose dans le
@@ -686,25 +710,24 @@ function ChampDeDate({
  */
 function Apercu({
   choisi,
-  agent,
+  cible,
   saisies,
   enCours,
 }: {
   choisi: DocumentGenere;
-  agent: EmployeeListItem;
+  cible: Cible;
   saisies: Record<string, unknown>;
   enCours: boolean;
 }) {
   const pdf = useQuery({
-    queryKey: ['document-genere', choisi, agent.id, saisies],
+    queryKey: ['document-genere', choisi, cible.cle, saisies],
     // En POST : ce qui est saisi, un salaire par exemple, reste hors de l'adresse.
-    queryFn: ({ signal }) =>
-      lireFichier(`/employees/${agent.id}/generer/${choisi}`, { signal, corps: saisies }),
+    queryFn: ({ signal }) => lireFichier(cible.chemin, { signal, corps: saisies }),
     retry: false,
-    // Une autre saisie pour le même document et le même agent : l'ancien PDF
-    // reste à l'écran le temps du nouveau, la page ne clignote pas.
+    // Une autre saisie pour le même document et la même personne : l'ancien
+    // PDF reste à l'écran le temps du nouveau, la page ne clignote pas.
     placeholderData: (precedent, requete) =>
-      requete?.queryKey[1] === choisi && requete.queryKey[2] === agent.id ? precedent : undefined,
+      requete?.queryKey[1] === choisi && requete.queryKey[2] === cible.cle ? precedent : undefined,
   });
   const aJour = !enCours && !pdf.isPlaceholderData;
 
@@ -731,18 +754,12 @@ function Apercu({
           icon="download"
           label="Télécharger"
           onClick={() =>
-            enregistrerFichier(
-              new Blob([contenu], { type: 'application/pdf' }),
-              nomDuDocumentGenere(choisi, agent.employeeNumber),
-            )
+            enregistrerFichier(new Blob([contenu], { type: 'application/pdf' }), cible.fichier)
           }
         />
       ) : null}
       <div className={cn('transition-opacity duration-200', !aJour && 'opacity-55')}>
-        <PdfEnLargeur
-          data={contenu}
-          titre={`${REQUESTABLE_DOC_LABELS[choisi]} : ${nomDe(agent)}`}
-        />
+        <PdfEnLargeur data={contenu} titre={cible.titre} />
       </div>
     </>
   );

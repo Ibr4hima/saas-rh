@@ -13,7 +13,7 @@ export function Input({
   className,
   autoComplete = 'off',
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement>) {
+}: React.InputHTMLAttributes<HTMLInputElement> & { ref?: React.Ref<HTMLInputElement> }) {
   return (
     <input
       // Pas de propositions du navigateur sous les champs : son historique

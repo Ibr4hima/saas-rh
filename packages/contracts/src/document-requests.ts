@@ -79,6 +79,7 @@ export type DocumentDeLaListe = z.infer<typeof requestableDocSchema>;
  * est configuré (ADR-0085). Les autres, la DCH les prépare hors de l'outil.
  */
 export const GENERATED_DOCS = [
+  'contrat_stage',
   'attestation_conge',
   'attestation_depart_retraite',
   'attestation_travail',
@@ -141,10 +142,78 @@ export type SaisiesDuDocument = z.infer<typeof saisiesDuDocumentSchema>;
 /**
  * Le nom du fichier d'un document généré : « attestation-travail-M0012.pdf ».
  * Un nom se répète, un matricule non. L'API le donne au PDF, le site à ce
- * qu'il enregistre : les deux tiennent la même règle d'ici.
+ * qu'il enregistre : les deux tiennent la même règle d'ici. Sans agent, le
+ * nom de la personne tient lieu de matricule, ses accents ôtés.
  */
 export function nomDuDocumentGenere(doc: DocumentGenere, matricule: string): string {
-  return `${doc.replace(/_/g, '-')}-${matricule.replace(/[^A-Za-z0-9-]/g, '_')}.pdf`;
+  const sans = matricule.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return `${doc.replace(/_/g, '-')}-${sans.replace(/[^A-Za-z0-9-]/g, '_')}.pdf`;
+}
+
+/**
+ * Ceux qui se génèrent sans agent : la personne n'est pas encore dans
+ * l'application, la DCH la renseigne (ADR-0094).
+ */
+export const DOCS_SANS_AGENT = ['contrat_stage'] as const satisfies readonly DocumentGenere[];
+export type DocumentSansAgent = (typeof DOCS_SANS_AGENT)[number];
+
+export const sansAgent = (doc: string): doc is DocumentSansAgent =>
+  (DOCS_SANS_AGENT as readonly string[]).includes(doc);
+
+/** Un stage dure au plus deux ans. */
+export const DUREE_DE_STAGE_MAX = 24;
+
+/**
+ * Ce que la DCH renseigne pour un contrat de stage (ADR-0094) : la personne,
+ * qui n'est pas encore dans l'application, et le stage. L'adresse, la
+ * formation suivie et le poste peuvent rester à remplir à la main.
+ */
+export const ficheStagiaireSchema = z
+  .object({
+    civilite: z.enum(['madame', 'monsieur']),
+    prenom: z.string().trim().min(1).max(80),
+    nom: z.string().trim().min(1).max(80),
+    naissanceLe: z.iso.date(),
+    naissanceA: z.string().trim().min(1).max(120),
+    /** Le numéro de la carte nationale d'identité : treize chiffres. */
+    cni: z.string().regex(/^\d{13}$/, 'Treize chiffres attendus'),
+    /** Le prénom du père. */
+    pere: z.string().trim().min(1).max(80),
+    /** Le prénom et le nom de la mère. */
+    mere: z.string().trim().min(1).max(120),
+    adresse: z.string().trim().max(200).optional(),
+    /** Ce que la personne prépare : « Licence en Science de l'Information Documentaire ». */
+    formation: z.string().trim().max(200).optional(),
+    /** Le poste du stage : « Assistante Archiviste ». */
+    poste: z.string().trim().max(120).optional(),
+    /** La durée du stage, en mois. */
+    duree: z.number().int().min(1).max(DUREE_DE_STAGE_MAX),
+    debut: z.iso.date(),
+    /** La catégorie de la grille salariale de l'APIX. */
+    categorie: z.string().trim().min(1).max(CATEGORIE_MAX),
+    /** L'allocation mensuelle, en francs CFA, toutes taxes comprises. */
+    allocation: z.number().int().min(1).max(SALAIRE_MAX),
+  })
+  .strict();
+export type FicheStagiaire = z.infer<typeof ficheStagiaireSchema>;
+
+/**
+ * Le dernier jour d'un stage de `mois` mois qui commence le `debut` : la
+ * veille du même quantième, `mois` mois plus tard (du 19 août au 18
+ * novembre) ; si ce quantième n'existe pas, le dernier jour du mois (du 31
+ * janvier au 28 février).
+ */
+export function finDuStage(debut: string, mois: number): string {
+  const [a, m, j] = debut.split('-').map(Number) as [number, number, number];
+  const cible = new Date(Date.UTC(a, m - 1 + mois, 1));
+  const joursDuMois = new Date(
+    Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  const fin =
+    j > joursDuMois
+      ? new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth(), joursDuMois))
+      : new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth(), j - 1));
+  return fin.toISOString().slice(0, 10);
 }
 
 /** `delivered` : statut historique, conservé en lecture (voir en-tête). */

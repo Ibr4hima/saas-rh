@@ -254,11 +254,12 @@ export function dessinerBlocRepublique(
 /**
  * Le pied de page de l'APIX : le logo, une barre verticale bleue, puis les
  * mentions de la société. Calé sur la marge de droite, son bas sur `bas`.
+ * Rend la hauteur du milieu de la barre, où le logo se centre.
  */
 export function dessinerPiedApix(
   doc: Doc,
   { droite, bas, logo }: { droite: number; bas: number; logo: string | null },
-): void {
+): { milieu: number } {
   const TAILLE = 6;
   const PAS = 7.6;
   // La barre dépasse les mentions d'autant en haut et en bas.
@@ -286,4 +287,5 @@ export function dessinerPiedApix(
       height: HAUTEUR_LOGO,
     });
   }
+  return { milieu: haut + hauteurBarre / 2 };
 }

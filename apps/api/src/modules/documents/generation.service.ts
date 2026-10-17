@@ -1,6 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { DocumentGenere, SaisiesDuDocument, SessionUser } from '@teranga/contracts';
-import { estGenere, REQUESTABLE_DOC_LABELS, requestableDocSchema } from '@teranga/contracts';
+import type {
+  DocumentGenere,
+  DocumentSansAgent,
+  SaisiesDuDocument,
+  SessionUser,
+} from '@teranga/contracts';
+import {
+  estGenere,
+  REQUESTABLE_DOC_LABELS,
+  requestableDocSchema,
+  sansAgent,
+} from '@teranga/contracts';
 import { pasSurSoi } from '../acces/dch';
 import { problem } from '../../common/problem';
 import { TenantDb } from '../../db/tenant-db';
@@ -10,6 +20,7 @@ import { attestationDeRetraite } from './attestation-retraite';
 import { attestationDeRevenu } from './attestation-revenu';
 import { attestationDeStage } from './attestation-stage';
 import { certificatDeTravail } from './certificat-travail';
+import { contratDeStage, type ModeleSansAgent } from './contrat-stage';
 import { AttestationService } from './attestation.service';
 import type { DocumentPdf, Modele } from './feuille';
 
@@ -21,6 +32,10 @@ import type { DocumentPdf, Modele } from './feuille';
  * Les membres de la DCH ne génèrent que pour une demande dont le traitement
  * leur revient, depuis la file des documents. Le compte d'administration,
  * technique, ne produit pas d'actes.
+ *
+ * Un document sans agent (le contrat de stage, ADR-0094) se génère d'une
+ * fiche que la DCH renseigne : la personne n'est pas encore dans
+ * l'application.
  */
 @Injectable()
 export class GenerationService {
@@ -29,7 +44,10 @@ export class GenerationService {
    * `GENERATED_DOCS` : un document déclaré générable sans modèle, ou un
    * modèle hors de la liste, ne compile pas.
    */
-  private readonly modeles: Record<DocumentGenere, Modele>;
+  private readonly modeles: Record<Exclude<DocumentGenere, DocumentSansAgent>, Modele>;
+  private readonly sansAgent: Record<DocumentSansAgent, ModeleSansAgent> = {
+    contrat_stage: contratDeStage,
+  };
 
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
@@ -52,6 +70,31 @@ export class GenerationService {
     employeeId: string,
     saisies: SaisiesDuDocument = {},
   ): Promise<DocumentPdf> {
+    const doc = this.documentConfigure(user, type);
+    if (sansAgent(doc)) {
+      problem(422, 'documents.sans_agent', `${REQUESTABLE_DOC_LABELS[doc]} : sans agent`);
+    }
+    const modele = this.modeles[doc];
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await pasSurSoi(tx, user.userId, [employeeId], 'générer un document pour');
+      return modele.pdf(tx, employeeId, saisies);
+    });
+  }
+
+  /** Un document sans agent, d'après la fiche que la DCH renseigne. */
+  async pdfSansAgent(user: SessionUser, type: string, corps: unknown): Promise<DocumentPdf> {
+    const doc = this.documentConfigure(user, type);
+    if (!sansAgent(doc)) {
+      problem(422, 'documents.avec_agent', `${REQUESTABLE_DOC_LABELS[doc]} : un agent à choisir`);
+    }
+    const modele = this.sansAgent[doc];
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      modele.pdf(tx, corps),
+    );
+  }
+
+  /** Le document demandé, s'il est de la liste et que son modèle est configuré ; sinon, le refus. */
+  private documentConfigure(user: SessionUser, type: string): DocumentGenere {
     if (!user.dirigeLaDCH) problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
     const doc = requestableDocSchema.safeParse(type);
     // Un document retiré de la liste ne se génère pas plus qu'il ne se demande.
@@ -63,10 +106,6 @@ export class GenerationService {
         `${REQUESTABLE_DOC_LABELS[doc.data]} : modèle à configurer`,
       );
     }
-    const modele = this.modeles[doc.data];
-    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
-      await pasSurSoi(tx, user.userId, [employeeId], 'générer un document pour');
-      return modele.pdf(tx, employeeId, saisies);
-    });
+    return doc.data;
   }
 }
