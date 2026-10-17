@@ -1,0 +1,316 @@
+'use client';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { heureEnLettres, type AbsenceRequestView, type MyEmployeeView } from '@teranga/contracts';
+import {
+  Button,
+  Card,
+  cn,
+  EmptyState,
+  Skeleton,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+  Tr,
+} from '@teranga/ui';
+import {
+  FenetreAnnulation,
+  FenetreReprise,
+  MentionConge,
+} from '../../../../../components/conge-valide';
+import { type ViewableDoc } from '../../../../../components/doc-viewer';
+import { FenetreDocument } from '../../../../../components/fenetre-document';
+import { Icon } from '../../../../../components/icons';
+import { JoindreJustificatif } from '../../../../../components/joindre-justificatif';
+import { Pagination, usePagination } from '../../../../../components/pagination';
+import { StatutAbsence } from '../../../../../components/statut-absence';
+import { Page } from '../../../../../components/gabarit';
+import { api, ApiError, apiUrl } from '../../../../../lib/api';
+import { dureeAbsence, periodeAbsence, resumeVisas } from '../../../../../lib/absences';
+import { formatDate } from '../../../../../lib/hooks';
+
+/* ————————————————————————————————————————————————————————————————
+   L'historique des absences et congés : un tableau, une ligne par demande
+   (type, début, fin, durée, statut), quinze par page, la plus récente en
+   tête. Le détail du circuit (qui a visé, pourquoi un refus) se lit au
+   survol du statut.
+   ———————————————————————————————————————————————————————————————— */
+
+export default function HistoriqueCongesPage() {
+  const queryClient = useQueryClient();
+  const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  // Un congé validé : l'annuler (pas commencé) ou l'écourter (en cours).
+  const [aAnnuler, setAAnnuler] = useState<AbsenceRequestView | null>(null);
+  const [aEcourter, setAEcourter] = useState<AbsenceRequestView | null>(null);
+
+  const myEmployee = useQuery({
+    queryKey: ['me-employee'],
+    queryFn: () => api<MyEmployeeView>('/me/employee'),
+    retry: false,
+  });
+  const employeeId = myEmployee.data?.employeeId;
+
+  const requests = useQuery({
+    queryKey: ['my-requests', employeeId],
+    queryFn: () =>
+      api<AbsenceRequestView[]>(`/absence-requests?employeeId=${employeeId}&limit=100`),
+    enabled: Boolean(employeeId),
+  });
+
+  const rafraichir = () => {
+    setErreur(null);
+    setAAnnuler(null);
+    setAEcourter(null);
+    void queryClient.invalidateQueries({ queryKey: ['my-requests'] });
+    void queryClient.invalidateQueries({ queryKey: ['balances'] });
+  };
+  // Une demande en attente s'annule d'un clic ; un retour pas encore
+  // confirmé se retire de même.
+  const cancel = useMutation({
+    mutationFn: (id: string) => api(`/absence-requests/${id}/cancel`, { method: 'POST' }),
+    onSuccess: rafraichir,
+    onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Annulation impossible.'),
+  });
+  const retirerReprise = useMutation({
+    mutationFn: (id: string) => api(`/absence-requests/${id}/reprise`, { method: 'DELETE' }),
+    onSuccess: rafraichir,
+    onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Action impossible.'),
+  });
+
+  const chargement = myEmployee.isLoading || requests.isLoading;
+  // La plus récente en tête : on revient à l'historique pour ce qui vient
+  // ou ce qui vient de se passer.
+  const demandes = (requests.data ?? [])
+    .filter((r) => r.employeeId === employeeId)
+    .sort((a, b) => b.startDate.localeCompare(a.startDate));
+  const { tranche, barre } = usePagination(demandes);
+  // La colonne des gestes n'existe que si une demande en a un : vide, elle
+  // laissait un blanc à droite et serrait les dates.
+  const avecGestes = demandes.some(
+    (r) => Boolean(r.repriseDemandee) || r.gestes.annuler || r.gestes.demanderReprise,
+  );
+  const largeurs = avecGestes ? LARGEURS_AVEC_GESTES : LARGEURS;
+
+  return (
+    <Page>
+      {erreur ? (
+        <p
+          role="alert"
+          className="flex items-start gap-2 rounded-[12px] bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger ring-1 ring-current/15 ring-inset"
+        >
+          <Icon name="error" size={15} className="mt-px shrink-0" />
+          {erreur}
+        </p>
+      ) : null}
+
+      {chargement ? (
+        <Skeleton className="h-48 w-full rounded-[16px]" />
+      ) : demandes.length === 0 ? (
+        <Card>
+          <EmptyState
+            className="py-12"
+            icon={<Icon name="free_cancellation" size={22} />}
+            title="Aucune demande pour le moment"
+          />
+        </Card>
+      ) : (
+        <>
+          {/* Sans titre au-dessus, l'en-tête du tableau touche les coins
+              arrondis de la carte : elle le rogne. */}
+          <Card className="overflow-hidden">
+            {/* Des colonnes de largeur fixe : d'une page à l'autre, les dates
+                et les statuts tombent au même endroit. */}
+            <Table className="sm:table-fixed">
+              {/* Sur téléphone, une seule colonne : l'en-tête n'y apprend rien. */}
+              <THead className="hidden sm:table-header-group">
+                <tr>
+                  <Th className={largeurs.type}>Type</Th>
+                  <Th className={largeurs.debut}>Date début</Th>
+                  <Th className={largeurs.fin}>Date fin</Th>
+                  <Th className={cn('text-right', largeurs.duree)}>Durée</Th>
+                  <Th className={largeurs.justificatif}>Justificatif</Th>
+                  <Th className={largeurs.statut}>Statut</Th>
+                  {avecGestes ? (
+                    <Th className="sm:w-[10%]">
+                      <span className="sr-only">Actions</span>
+                    </Th>
+                  ) : null}
+                </tr>
+              </THead>
+              <TBody>
+                {tranche.map((r) => (
+                  <Ligne
+                    key={r.id}
+                    demande={r}
+                    avecGestes={avecGestes}
+                    onJustificatif={() =>
+                      setViewedDoc({
+                        url: apiUrl(`/absence-requests/${r.id}/document`),
+                        filename: r.documentName!,
+                        contentType: 'application/pdf',
+                        titre: 'Justificatif',
+                      })
+                    }
+                    onAnnuler={() =>
+                      r.status === 'pending' ? cancel.mutate(r.id) : setAAnnuler(r)
+                    }
+                    onEcourter={() => setAEcourter(r)}
+                    onRetirerReprise={() => retirerReprise.mutate(r.id)}
+                    onJoint={rafraichir}
+                    onErreur={setErreur}
+                    enCours={
+                      (cancel.isPending && cancel.variables === r.id) ||
+                      (retirerReprise.isPending && retirerReprise.variables === r.id)
+                    }
+                  />
+                ))}
+              </TBody>
+            </Table>
+          </Card>
+          <Pagination {...barre} />
+        </>
+      )}
+
+      <FenetreDocument doc={viewedDoc} onClose={() => setViewedDoc(null)} />
+      {aAnnuler ? (
+        <FenetreAnnulation
+          demande={aAnnuler}
+          sienne
+          onClose={() => setAAnnuler(null)}
+          onFait={rafraichir}
+        />
+      ) : null}
+      {aEcourter ? (
+        <FenetreReprise
+          demande={aEcourter}
+          onClose={() => setAEcourter(null)}
+          onFait={rafraichir}
+        />
+      ) : null}
+    </Page>
+  );
+}
+
+/**
+ * Les largeurs des colonnes, fixes d'une page à l'autre : avec la colonne
+ * des gestes, ou sans elle quand aucune demande n'en a.
+ */
+const LARGEURS = {
+  type: 'sm:w-[19%]',
+  debut: 'sm:w-[16%]',
+  fin: 'sm:w-[22%]',
+  duree: 'sm:w-[11%]',
+  justificatif: 'sm:w-[16%]',
+  statut: 'sm:w-[16%]',
+};
+const LARGEURS_AVEC_GESTES = {
+  type: 'sm:w-[17%]',
+  debut: 'sm:w-[15%]',
+  fin: 'sm:w-[20%]',
+  duree: 'sm:w-[10%]',
+  justificatif: 'sm:w-[14%]',
+  statut: 'sm:w-[14%]',
+};
+
+/**
+ * Une demande, sur une ligne. Sur téléphone, la période, la durée, le statut,
+ * le justificatif et les gestes se rangent sous le type : six colonnes n'y
+ * tiennent pas.
+ */
+function Ligne({
+  demande: r,
+  avecGestes,
+  onJustificatif,
+  onAnnuler,
+  onEcourter,
+  onRetirerReprise,
+  onJoint,
+  onErreur,
+  enCours,
+}: {
+  demande: AbsenceRequestView;
+  avecGestes: boolean;
+  onJustificatif: () => void;
+  onAnnuler: () => void;
+  onEcourter: () => void;
+  onRetirerReprise: () => void;
+  onJoint: () => void;
+  onErreur: (texte: string) => void;
+  enCours: boolean;
+}) {
+  const periode = periodeAbsence(r);
+  const statut = <StatutAbsence statut={r.status} etape={r.etapeAttendue} titre={resumeVisas(r)} />;
+  const justificatif = r.documentName ? (
+    <button
+      type="button"
+      onClick={onJustificatif}
+      title={r.documentName}
+      className="inline-flex items-center rounded-full border border-line px-2.5 py-[3px] text-[11px] font-semibold text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+    >
+      Prévisualiser
+    </button>
+  ) : r.justificatifAttendu ? (
+    <JoindreJustificatif demande={r} onFait={onJoint} onErreur={onErreur} />
+  ) : null;
+  // Un geste par ligne au plus : annuler (en attente, ou validé à venir),
+  // écourter (en cours), ou retirer un retour qui attend sa confirmation.
+  const geste = r.repriseDemandee ? (
+    <Button size="sm" variant="ghost" onClick={onRetirerReprise} loading={enCours}>
+      Retirer
+    </Button>
+  ) : r.gestes.annuler ? (
+    <Button size="sm" variant="ghost" onClick={onAnnuler} loading={enCours}>
+      Annuler
+    </Button>
+  ) : r.gestes.demanderReprise ? (
+    <Button size="sm" variant="ghost" onClick={onEcourter}>
+      Écourter
+    </Button>
+  ) : null;
+  return (
+    <Tr>
+      <Td>
+        <p className="truncate font-semibold text-ink-strong" title={r.reason ?? undefined}>
+          {r.absenceTypeName}
+        </p>
+        <p className="mt-0.5 text-[11.5px] text-ink-muted tabular-nums sm:hidden">
+          {periode} · {dureeAbsence(r)}
+        </p>
+        <div className="sm:hidden">
+          <MentionConge demande={r} />
+        </div>
+        <div className="mt-2.5 flex items-center gap-3 sm:hidden">
+          {statut}
+          {justificatif}
+          <span className="ml-auto">{geste}</span>
+        </div>
+      </Td>
+      <Td className="hidden whitespace-nowrap tabular-nums sm:table-cell">
+        {formatDate(r.startDate)}
+        <Heure heure={r.startTime} />
+      </Td>
+      <Td className="hidden tabular-nums sm:table-cell">
+        <span className="whitespace-nowrap">{formatDate(r.endDate)}</span>
+        <Heure heure={r.endTime} />
+        <MentionConge demande={r} />
+      </Td>
+      <Td className="hidden text-right whitespace-nowrap tabular-nums sm:table-cell">
+        {dureeAbsence(r)}
+      </Td>
+      <Td className="hidden sm:table-cell">{justificatif}</Td>
+      <Td className="hidden sm:table-cell">{statut}</Td>
+      {avecGestes ? <Td className="hidden text-right sm:table-cell">{geste}</Td> : null}
+    </Tr>
+  );
+}
+
+/** L'heure d'une absence à l'heure, sous son jour. */
+function Heure({ heure }: { heure: string | null }) {
+  return heure ? (
+    <span className="block text-[11.5px] text-ink-muted">{heureEnLettres(heure)}</span>
+  ) : null;
+}
