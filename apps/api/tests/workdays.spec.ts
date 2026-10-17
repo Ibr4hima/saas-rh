@@ -4,6 +4,7 @@ import {
   holidayReminderDate,
   joursOuvresEcoules,
   joursParAnnee,
+  premierJourOuvreApres,
 } from '../src/modules/time/workdays';
 
 const noHolidays = new Set<string>();
@@ -124,5 +125,27 @@ describe('joursParAnnee', () => {
       { annee: 2027, jours: 5 },
       { annee: 2028, jours: 2 },
     ]);
+  });
+});
+
+describe('premierJourOuvreApres : la reprise de service', () => {
+  const feries = new Set(['2027-01-01', '2026-08-17']);
+
+  it('le lendemain, un jour de semaine', () => {
+    expect(premierJourOuvreApres('2026-09-29', feries)).toBe('2026-09-30');
+  });
+
+  it('après un vendredi, le lundi', () => {
+    expect(premierJourOuvreApres('2026-09-25', feries)).toBe('2026-09-28');
+  });
+
+  it('un lundi férié repousse au mardi', () => {
+    // Vendredi 14 août 2026 ; lundi 17, férié.
+    expect(premierJourOuvreApres('2026-08-14', feries)).toBe('2026-08-18');
+  });
+
+  it('au passage de l’année, le 1er janvier ne compte pas', () => {
+    // Jeudi 31 décembre 2026 ; vendredi 1er janvier 2027, férié ; puis le week-end.
+    expect(premierJourOuvreApres('2026-12-31', feries)).toBe('2027-01-04');
   });
 });

@@ -15,6 +15,7 @@ import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
 import { AttestationService } from '../src/modules/documents/attestation.service';
 import { GenerationService } from '../src/modules/documents/generation.service';
+import { AbsencesService } from '../src/modules/time/absences.service';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -54,7 +55,7 @@ beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 2 });
   db = new TenantDb();
-  service = new GenerationService(db, new AttestationService(db));
+  service = new GenerationService(db, new AttestationService(db), new AbsencesService(db));
 
   await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1, 'APIX', $2)`, [
     tenantId,
@@ -91,6 +92,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await raw('DELETE FROM employees WHERE tenant_id = $1', [tenantId]);
   await raw('DELETE FROM persons WHERE tenant_id = $1', [tenantId]);
+  // L'attestation de congé sème les fériés de la période, comme une demande de congé.
+  await raw('DELETE FROM holidays WHERE tenant_id = $1', [tenantId]);
+  await raw('DELETE FROM holiday_seeds WHERE tenant_id = $1', [tenantId]);
   await raw('DELETE FROM tenants WHERE id = $1', [tenantId]);
   await raw('DELETE FROM users WHERE id = ANY($1)', [Object.values(ids)]);
   await db?.pool.end();
@@ -168,6 +172,23 @@ describe('quoi', () => {
         service.pdf(dch, 'certificat_travail', employes.actif, { categorie: '7B' }),
       ),
     ).toBe('documents.en_activite');
+  });
+
+  it('l’attestation de congé, avec les dates saisies ; sans elles, ou à rebours, refusée', async () => {
+    const { filename } = await service.pdf(dch, 'attestation_conge', employes.actif, {
+      debut: '2026-08-03',
+      fin: '2026-08-28',
+    });
+    expect(filename).toBe('attestation-conge-GEN-002.pdf');
+    for (const saisies of [
+      {},
+      { debut: '2026-08-03' },
+      { debut: '2026-08-28', fin: '2026-08-03' },
+    ]) {
+      expect(
+        await codeOf(() => service.pdf(dch, 'attestation_conge', employes.actif, saisies)),
+      ).toBe('documents.dates');
+    }
   });
 
   it('le modèle garde ses règles : l’attestation de travail, pas pour un dossier inactif', async () => {

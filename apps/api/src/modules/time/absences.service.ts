@@ -770,12 +770,7 @@ export class AbsencesService {
    * Les fériés de la période existent avant qu'on la compte : sans quoi le
    * 1er janvier d'une année que personne n'a encore ouverte serait décompté.
    */
-  private async semerLaPeriode(
-    tx: Tx,
-    tenantId: string,
-    debut: string,
-    fin: string,
-  ): Promise<void> {
+  async semerLaPeriode(tx: Tx, tenantId: string, debut: string, fin: string): Promise<void> {
     for (let year = Number(debut.slice(0, 4)); year <= Number(fin.slice(0, 4)); year += 1) {
       await this.semerAnnee(tx, tenantId, year);
     }

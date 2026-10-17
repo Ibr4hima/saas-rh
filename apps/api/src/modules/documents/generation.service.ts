@@ -4,6 +4,8 @@ import { estGenere, REQUESTABLE_DOC_LABELS, requestableDocSchema } from '@terang
 import { pasSurSoi } from '../acces/dch';
 import { problem } from '../../common/problem';
 import { TenantDb } from '../../db/tenant-db';
+import { AbsencesService } from '../time/absences.service';
+import { attestationDeConge } from './attestation-conge';
 import { attestationDeRevenu } from './attestation-revenu';
 import { attestationDeStage } from './attestation-stage';
 import { certificatDeTravail } from './certificat-travail';
@@ -31,8 +33,10 @@ export class GenerationService {
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(AttestationService) attestations: AttestationService,
+    @Inject(AbsencesService) absences: AbsencesService,
   ) {
     this.modeles = {
+      attestation_conge: attestationDeConge(absences),
       attestation_travail: { pdf: (tx, employeeId) => attestations.pdfPour(tx, employeeId) },
       attestation_revenu: attestationDeRevenu,
       attestation_stage: attestationDeStage,

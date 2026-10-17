@@ -35,6 +35,13 @@ export function frDate(iso: string | Date): string {
   return d.getDate() === 1 ? texte.replace(/^1 /, '1er ') : texte;
 }
 
+/** « mercredi 30 septembre 2026 », « jeudi 1er octobre 2026 » : la date complète, son jour devant. */
+export function frDateAvecJour(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  const jour = new Intl.DateTimeFormat('fr-FR', { weekday: 'long' }).format(d);
+  return `${jour} ${frDate(d)}`;
+}
+
 /** Une personne qu'un document nomme : son nom, et le genre que son dossier porte. */
 export interface Personne {
   /** « Moussa NDIAYE » : le prénom, puis le nom en capitales. */

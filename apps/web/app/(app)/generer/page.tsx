@@ -34,7 +34,8 @@ import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
    ouvre « Demander un document » : un bloc, son intitulé, et à sa droite le
    choix, en liste déroulante. Un document qui demande ce que le dossier ne
    porte pas le fait saisir avant : le salaire de l'attestation de revenu
-   (ADR-0087), la catégorie du poste du certificat de travail (ADR-0091).
+   (ADR-0087), la catégorie du poste du certificat de travail (ADR-0091),
+   les dates de l'attestation de congé (ADR-0092).
 
    L'aperçu EST le PDF, peint par pdf.js : un modèle de l'APIX se vérifie sur
    ce qui sortira, pas sur une imitation à l'écran.
@@ -65,22 +66,31 @@ const CHAMP =
 const MENU =
   'tg-menu absolute top-full right-0 left-0 z-30 mt-1.5 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg';
 
-/** Ce que la DCH saisit pour un document. */
-type Valeurs = { salaire: number | null; categorie: string };
+/** Ce que la DCH saisit pour un document ; une date, au format AAAA-MM-JJ. */
+type Valeurs = { salaire: number | null; categorie: string; debut: string; fin: string };
 /** Les valeurs saisies, et l'agent pour qui : elles ne passent pas d'un agent à l'autre. */
 type Saisies = Valeurs & { agentId: string };
-const VIDES: Valeurs = { salaire: null, categorie: '' };
+const VIDES: Valeurs = { salaire: null, categorie: '', debut: '', fin: '' };
 
 /** L'intitulé du bloc de chaque saisie. */
 const TITRES: Record<Saisie, string> = {
   salaire: 'Saisir le salaire net mensuel',
   categorie: 'Saisir la catégorie du poste',
+  debut: 'Saisir la date de début du congé',
+  fin: 'Saisir la date de fin du congé',
 };
 
-const remplie = (v: Valeurs, s: Saisie) =>
-  s === 'salaire' ? v.salaire !== null : v.categorie.trim() !== '';
+/** Ce qui part à l'API : la catégorie en capitales, comme le document l'imprime. */
 const valeurDe = (v: Valeurs, s: Saisie) =>
-  s === 'salaire' ? v.salaire : v.categorie.trim().toLocaleUpperCase('fr-FR');
+  s === 'salaire'
+    ? v.salaire
+    : s === 'categorie'
+      ? v.categorie.trim().toLocaleUpperCase('fr-FR')
+      : v[s];
+const remplie = (v: Valeurs, s: Saisie) => {
+  const valeur = valeurDe(v, s);
+  return valeur !== null && valeur !== '';
+};
 
 export default function GenererDesDocumentsPage() {
   const [choisi, setChoisi] = useState<DocumentGenere | null>(null);
@@ -121,12 +131,22 @@ export default function GenererDesDocumentsPage() {
                   salaire={courantes.salaire}
                   onSaisir={(salaire) => saisir({ salaire })}
                 />
-              ) : (
+              ) : s === 'categorie' ? (
                 <ChampDeLaCategorie
                   key={agent.id}
                   premier={i === 0}
                   categorie={courantes.categorie}
                   onSaisir={(categorie) => saisir({ categorie })}
+                />
+              ) : (
+                <ChampDeDate
+                  key={agent.id}
+                  premier={i === 0}
+                  libelle={s === 'debut' ? 'Premier jour du congé' : 'Dernier jour du congé'}
+                  date={courantes[s]}
+                  // La fin ne se choisit pas avant le début.
+                  min={s === 'fin' ? courantes.debut || undefined : undefined}
+                  onSaisir={(date) => saisir({ [s]: date })}
                 />
               )}
             </Etape>
@@ -607,6 +627,36 @@ function ChampDeLaCategorie({
       className={cn(
         CHAMP,
         'border-line px-3 font-medium text-ink-strong uppercase placeholder:font-normal placeholder:text-ink-muted placeholder:normal-case hover:border-ink-muted/40 focus:border-primary',
+      )}
+    />
+  );
+}
+
+/** Une date du congé, au calendrier du navigateur. */
+function ChampDeDate({
+  premier,
+  libelle,
+  date,
+  min,
+  onSaisir,
+}: {
+  premier: boolean;
+  libelle: string;
+  date: string;
+  min?: string;
+  onSaisir: (date: string) => void;
+}) {
+  return (
+    <input
+      type="date"
+      autoFocus={premier}
+      aria-label={libelle}
+      value={date}
+      min={min}
+      onChange={(e) => onSaisir(e.target.value)}
+      className={cn(
+        CHAMP,
+        'border-line px-3 font-medium text-ink-strong tabular-nums hover:border-ink-muted/40 focus:border-primary',
       )}
     />
   );

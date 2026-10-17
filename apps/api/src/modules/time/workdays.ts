@@ -110,6 +110,21 @@ export function joursOuvresEcoules(
   return countWorkdays(debut, fin, holidays).workingDays;
 }
 
+/**
+ * Le premier jour ouvré après un jour : la reprise de service au lendemain
+ * d'un congé. Un congé qui finit un vendredi reprend le lundi, et le mardi si
+ * le lundi est férié. Null si l'on cherche au-delà d'un mois (garde-fou
+ * contre un calendrier incohérent).
+ */
+export function premierJourOuvreApres(iso: string, holidays: ReadonlySet<string>): string | null {
+  let day = shiftDays(iso, 1);
+  for (let essai = 0; essai < 31; essai += 1) {
+    if (!isWeekend(day) && !holidays.has(day)) return day;
+    day = shiftDays(day, 1);
+  }
+  return null;
+}
+
 /** Au-delà de ce délai, qui est attendu reçoit un rappel. */
 export const DELAI_RELANCE_JOURS_OUVRES = 2;
 

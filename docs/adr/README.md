@@ -96,4 +96,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0088](0088-apix-sa-et-montant-en-gras.md)            | Les attestations : « APIX-SA » partout, le montant en gras                              | acceptée                                    |
 | [0089](0089-attestation-de-stage.md)                  | L'attestation de stage : le dernier stage commencé, dossier en activité ou non          | acceptée                                    |
 | [0090](0090-arial-police-des-documents.md)            | Arial, police principale des documents de la DCH, prise là où la machine l'a            | acceptée                                    |
-| [0091](0091-certificat-de-travail.md)                 | Le certificat de travail : l'emploi d'un dossier inactif, la catégorie saisie           | acceptée                                    |
+| [0091](0091-certificat-de-travail.md)                 | Le certificat de travail : l'emploi d'un dossier inactif, la catégorie saisie           | acceptée, précisée par 0092                 |
+| [0092](0092-attestation-de-conge.md)                  | L'attestation de congé : les dates saisies, la reprise au premier jour ouvré            | acceptée                                    |
