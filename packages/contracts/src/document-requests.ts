@@ -82,6 +82,7 @@ export const GENERATED_DOCS = [
   'attestation_travail',
   'attestation_revenu',
   'attestation_stage',
+  'certificat_travail',
 ] as const satisfies readonly DocumentDeLaListe[];
 
 /** Un document dont le modèle est configuré. */
@@ -90,16 +91,25 @@ export type DocumentGenere = (typeof GENERATED_DOCS)[number];
 export const estGenere = (doc: string): doc is DocumentGenere =>
   (GENERATED_DOCS as readonly string[]).includes(doc);
 
-/**
- * Ceux qui demandent un salaire, que la DCH saisit avant de générer : le
- * dossier ne le porte pas, la paie le connaît (ADR-0087).
- */
-export const DOCS_AVEC_SALAIRE = [
-  'attestation_revenu',
-] as const satisfies readonly DocumentGenere[];
+/** Ce que la DCH saisit avant de générer un document : le dossier ne le porte pas. */
+export type Saisie = 'salaire' | 'categorie';
 
-export const demandeUnSalaire = (doc: string): boolean =>
-  (DOCS_AVEC_SALAIRE as readonly string[]).includes(doc);
+/**
+ * Les saisies des documents qui en demandent, dans l'ordre où la page les
+ * pose : le salaire net mensuel de l'attestation de revenu (ADR-0087), que la
+ * paie connaît ; la catégorie du poste du certificat de travail (ADR-0091),
+ * que la convention collective fixe.
+ */
+const SAISIES_DES_DOCUMENTS: Partial<Record<DocumentGenere, readonly Saisie[]>> = {
+  attestation_revenu: ['salaire'],
+  certificat_travail: ['categorie'],
+};
+
+export const saisiesDe = (doc: string): readonly Saisie[] =>
+  (estGenere(doc) && SAISIES_DES_DOCUMENTS[doc]) || [];
+
+/** Une catégorie de la convention collective : « 7B », « M2 ». */
+export const CATEGORIE_MAX = 40;
 
 /**
  * Ce que la DCH saisit pour générer un document. Il part dans le corps d'un
@@ -110,6 +120,8 @@ export const saisiesDuDocumentSchema = z
   .object({
     /** Le salaire net mensuel, en francs CFA. */
     salaire: z.number().int().min(1).max(SALAIRE_MAX).optional(),
+    /** La catégorie du poste dans la convention collective. */
+    categorie: z.string().trim().min(1).max(CATEGORIE_MAX).optional(),
   })
   .strict();
 export type SaisiesDuDocument = z.infer<typeof saisiesDuDocumentSchema>;

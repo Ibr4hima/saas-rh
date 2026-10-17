@@ -8,14 +8,16 @@ import type {
   EmployeeListItem,
   EmployeeListPage,
   MyEmployeeView,
+  Saisie,
 } from '@teranga/contracts';
 import {
-  demandeUnSalaire,
+  CATEGORIE_MAX,
   enChiffres,
   estGenere,
   nomDuDocumentGenere,
   REQUESTABLE_DOC_LABELS,
   requestableDocSchema,
+  saisiesDe,
 } from '@teranga/contracts';
 import { Badge, Button, Card, CardTitle, cn, EmptyState } from '@teranga/ui';
 import { Page } from '../../../components/gabarit';
@@ -31,8 +33,8 @@ import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
    largeur, à télécharger depuis le bandeau. Les deux choix se font comme on
    ouvre « Demander un document » : un bloc, son intitulé, et à sa droite le
    choix, en liste déroulante. Un document qui demande ce que le dossier ne
-   porte pas, le salaire de l'attestation de revenu, le fait saisir avant
-   (ADR-0087).
+   porte pas le fait saisir avant : le salaire de l'attestation de revenu
+   (ADR-0087), la catégorie du poste du certificat de travail (ADR-0091).
 
    L'aperçu EST le PDF, peint par pdf.js : un modèle de l'APIX se vérifie sur
    ce qui sortira, pas sur une imitation à l'écran.
@@ -63,24 +65,41 @@ const CHAMP =
 const MENU =
   'tg-menu absolute top-full right-0 left-0 z-30 mt-1.5 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg';
 
-/** Un salaire saisi, et l'agent pour qui : il ne passe pas d'un agent à l'autre. */
-type Saisie = { agentId: string; salaire: number | null };
+/** Ce que la DCH saisit pour un document. */
+type Valeurs = { salaire: number | null; categorie: string };
+/** Les valeurs saisies, et l'agent pour qui : elles ne passent pas d'un agent à l'autre. */
+type Saisies = Valeurs & { agentId: string };
+const VIDES: Valeurs = { salaire: null, categorie: '' };
+
+/** L'intitulé du bloc de chaque saisie. */
+const TITRES: Record<Saisie, string> = {
+  salaire: 'Saisir le salaire net mensuel',
+  categorie: 'Saisir la catégorie du poste',
+};
+
+const remplie = (v: Valeurs, s: Saisie) =>
+  s === 'salaire' ? v.salaire !== null : v.categorie.trim() !== '';
+const valeurDe = (v: Valeurs, s: Saisie) =>
+  s === 'salaire' ? v.salaire : v.categorie.trim().toLocaleUpperCase('fr-FR');
 
 export default function GenererDesDocumentsPage() {
   const [choisi, setChoisi] = useState<DocumentGenere | null>(null);
   const [agent, setAgent] = useState<EmployeeListItem | null>(null);
-  const [saisie, setSaisie] = useState<Saisie | null>(null);
-  // L'aperçu suit la saisie une fois la frappe posée, pas à chaque chiffre.
-  const [retenue, setRetenue] = useState<Saisie | null>(null);
+  const [saisies, setSaisies] = useState<Saisies | null>(null);
+  // L'aperçu suit les saisies une fois la frappe posée, pas à chaque touche.
+  const [retenues, setRetenues] = useState<Saisies | null>(null);
   useEffect(() => {
-    const t = setTimeout(() => setRetenue(saisie), 450);
+    const t = setTimeout(() => setRetenues(saisies), 450);
     return () => clearTimeout(t);
-  }, [saisie]);
+  }, [saisies]);
 
-  const pourLAgent = (s: Saisie | null) => (s && s.agentId === agent?.id ? s.salaire : null);
-  const salaire = pourLAgent(saisie);
-  const salaireRetenu = pourLAgent(retenue);
-  const avecSalaire = choisi !== null && demandeUnSalaire(choisi);
+  const demandees = choisi ? saisiesDe(choisi) : [];
+  const pourLAgent = (s: Saisies | null): Valeurs => (s && s.agentId === agent?.id ? s : VIDES);
+  const courantes = pourLAgent(saisies);
+  const posees = pourLAgent(retenues);
+  const saisir = (valeur: Partial<Valeurs>) => {
+    if (agent) setSaisies({ ...courantes, ...valeur, agentId: agent.id });
+  };
 
   return (
     <Page>
@@ -92,21 +111,33 @@ export default function GenererDesDocumentsPage() {
           <ChoixDeLAgent agent={agent} onChoisir={setAgent} />
         </Etape>
       ) : null}
-      {agent && avecSalaire ? (
-        <Etape titre="Saisir le salaire net mensuel">
-          <ChampDuSalaire
-            key={agent.id}
-            salaire={salaire}
-            onSaisir={(s) => setSaisie({ agentId: agent.id, salaire: s })}
-          />
-        </Etape>
-      ) : null}
-      {choisi && agent && (!avecSalaire || salaireRetenu !== null) ? (
+      {agent
+        ? demandees.map((s, i) => (
+            <Etape key={s} titre={TITRES[s]}>
+              {s === 'salaire' ? (
+                <ChampDuSalaire
+                  key={agent.id}
+                  premier={i === 0}
+                  salaire={courantes.salaire}
+                  onSaisir={(salaire) => saisir({ salaire })}
+                />
+              ) : (
+                <ChampDeLaCategorie
+                  key={agent.id}
+                  premier={i === 0}
+                  categorie={courantes.categorie}
+                  onSaisir={(categorie) => saisir({ categorie })}
+                />
+              )}
+            </Etape>
+          ))
+        : null}
+      {choisi && agent && demandees.every((s) => remplie(posees, s)) ? (
         <Apercu
           choisi={choisi}
           agent={agent}
-          salaire={avecSalaire ? salaireRetenu : null}
-          enCours={avecSalaire && salaire !== salaireRetenu}
+          saisies={Object.fromEntries(demandees.map((s) => [s, valeurDe(posees, s)]))}
+          enCours={demandees.some((s) => valeurDe(courantes, s) !== valeurDe(posees, s))}
         />
       ) : null}
     </Page>
@@ -485,13 +516,15 @@ function ChoixDeLAgent({
 
 /**
  * Le salaire net mensuel, en francs CFA et en chiffres : les milliers se
- * séparent à la frappe, et le curseur garde sa place parmi les chiffres. Le
- * champ s'ouvre prêt à écrire, dès le choix de l'agent.
+ * séparent à la frappe, et le curseur garde sa place parmi les chiffres. La
+ * première saisie s'ouvre prête à écrire, dès le choix de l'agent.
  */
 function ChampDuSalaire({
+  premier,
   salaire,
   onSaisir,
 }: {
+  premier: boolean;
   salaire: number | null;
   onSaisir: (salaire: number | null) => void;
 }) {
@@ -516,7 +549,7 @@ function ChampDuSalaire({
     <div className="relative">
       <input
         ref={champ}
-        autoFocus
+        autoFocus={premier}
         inputMode="numeric"
         autoComplete="off"
         aria-label="Salaire net mensuel, en francs CFA"
@@ -550,33 +583,60 @@ function ChampDuSalaire({
 }
 
 /**
+ * La catégorie du poste dans la convention collective : « 7B ». Ses lettres
+ * s'affichent en capitales à la frappe, comme le document les imprime.
+ */
+function ChampDeLaCategorie({
+  premier,
+  categorie,
+  onSaisir,
+}: {
+  premier: boolean;
+  categorie: string;
+  onSaisir: (categorie: string) => void;
+}) {
+  return (
+    <input
+      autoFocus={premier}
+      autoComplete="off"
+      aria-label="Catégorie du poste"
+      placeholder="Catégorie"
+      maxLength={CATEGORIE_MAX}
+      value={categorie}
+      onChange={(e) => onSaisir(e.target.value)}
+      className={cn(
+        CHAMP,
+        'border-line px-3 font-medium text-ink-strong uppercase placeholder:font-normal placeholder:text-ink-muted placeholder:normal-case hover:border-ink-muted/40 focus:border-primary',
+      )}
+    />
+  );
+}
+
+/**
  * Le document, tel qu'il sortira : en largeur, comme le procès-verbal
  * d'apix-e-voting, sans rien au-dessus. « Télécharger » se pose dans le
- * bandeau de tête dès que le PDF est prêt, et s'en retire tant qu'un salaire
+ * bandeau de tête dès que le PDF est prêt, et s'en retire tant qu'une saisie
  * en cours de frappe ne s'y lit pas encore : on n'enregistre pas l'ancien
- * montant.
+ * document.
  */
 function Apercu({
   choisi,
   agent,
-  salaire,
+  saisies,
   enCours,
 }: {
   choisi: DocumentGenere;
   agent: EmployeeListItem;
-  salaire: number | null;
+  saisies: Record<string, unknown>;
   enCours: boolean;
 }) {
   const pdf = useQuery({
-    queryKey: ['document-genere', choisi, agent.id, salaire],
-    // En POST : le salaire reste hors de l'adresse.
+    queryKey: ['document-genere', choisi, agent.id, saisies],
+    // En POST : ce qui est saisi, un salaire par exemple, reste hors de l'adresse.
     queryFn: ({ signal }) =>
-      lireFichier(`/employees/${agent.id}/generer/${choisi}`, {
-        signal,
-        corps: salaire === null ? {} : { salaire },
-      }),
+      lireFichier(`/employees/${agent.id}/generer/${choisi}`, { signal, corps: saisies }),
     retry: false,
-    // Un autre salaire pour le même document et le même agent : l'ancien PDF
+    // Une autre saisie pour le même document et le même agent : l'ancien PDF
     // reste à l'écran le temps du nouveau, la page ne clignote pas.
     placeholderData: (precedent, requete) =>
       requete?.queryKey[1] === choisi && requete.queryKey[2] === agent.id ? precedent : undefined,

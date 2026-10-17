@@ -92,7 +92,8 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0084](0084-documents-de-la-dch.md)                   | La liste des documents à demander est celle de la DCH                                   | acceptée, précisée par 0085                 |
 | [0085](0085-generer-des-documents.md)                 | Générer des documents : qui dirige la DCH, à sa guise, sur les modèles de l'APIX        | acceptée, précisée par 0086                 |
 | [0086](0086-modeles-de-l-apix.md)                     | Les documents de la DCH sur les modèles de l'APIX : sections composées, Google Sans     | acceptée, précisée par 0087, 0089, 0090     |
-| [0087](0087-attestation-de-revenu.md)                 | L'attestation de revenu : le salaire saisi, le montant en chiffres et en lettres        | acceptée, précisée par 0088                 |
+| [0087](0087-attestation-de-revenu.md)                 | L'attestation de revenu : le salaire saisi, le montant en chiffres et en lettres        | acceptée, précisée par 0088, 0091           |
 | [0088](0088-apix-sa-et-montant-en-gras.md)            | Les attestations : « APIX-SA » partout, le montant en gras                              | acceptée                                    |
 | [0089](0089-attestation-de-stage.md)                  | L'attestation de stage : le dernier stage commencé, dossier en activité ou non          | acceptée                                    |
 | [0090](0090-arial-police-des-documents.md)            | Arial, police principale des documents de la DCH, prise là où la machine l'a            | acceptée                                    |
+| [0091](0091-certificat-de-travail.md)                 | Le certificat de travail : l'emploi d'un dossier inactif, la catégorie saisie           | acceptée                                    |

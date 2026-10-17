@@ -6,6 +6,7 @@ import { problem } from '../../common/problem';
 import { TenantDb } from '../../db/tenant-db';
 import { attestationDeRevenu } from './attestation-revenu';
 import { attestationDeStage } from './attestation-stage';
+import { certificatDeTravail } from './certificat-travail';
 import { AttestationService } from './attestation.service';
 import type { DocumentPdf, Modele } from './feuille';
 
@@ -35,6 +36,7 @@ export class GenerationService {
       attestation_travail: { pdf: (tx, employeeId) => attestations.pdfPour(tx, employeeId) },
       attestation_revenu: attestationDeRevenu,
       attestation_stage: attestationDeStage,
+      certificat_travail: certificatDeTravail,
     };
   }
 

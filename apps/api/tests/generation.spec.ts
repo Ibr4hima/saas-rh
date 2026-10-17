@@ -121,12 +121,12 @@ describe('qui génère', () => {
 
 describe('quoi', () => {
   it('un document de la liste dont le modèle reste à configurer est refusé, en le disant', async () => {
-    const err = await service.pdf(dch, 'certificat_travail', employes.actif).catch((e) => e);
+    const err = await service.pdf(dch, 'domiciliation_bancaire', employes.actif).catch((e) => e);
     expect(err).toBeInstanceOf(ProblemException);
     expect((err as ProblemException).problem).toMatchObject({
       status: 422,
       code: 'documents.modele_a_configurer',
-      title: 'Certificat de travail : modèle à configurer',
+      title: 'Domiciliation bancaire : modèle à configurer',
     });
   });
 
@@ -153,6 +153,21 @@ describe('quoi', () => {
     expect(await codeOf(() => service.pdf(dch, 'attestation_stage', employes.actif))).toBe(
       'documents.sans_stage',
     );
+  });
+
+  it('le certificat de travail, avec la catégorie saisie, pour un dossier inactif seulement', async () => {
+    const { filename } = await service.pdf(dch, 'certificat_travail', employes.archive, {
+      categorie: '7B',
+    });
+    expect(filename).toBe('certificat-travail-GEN-003.pdf');
+    expect(await codeOf(() => service.pdf(dch, 'certificat_travail', employes.archive))).toBe(
+      'documents.categorie',
+    );
+    expect(
+      await codeOf(() =>
+        service.pdf(dch, 'certificat_travail', employes.actif, { categorie: '7B' }),
+      ),
+    ).toBe('documents.en_activite');
   });
 
   it('le modèle garde ses règles : l’attestation de travail, pas pour un dossier inactif', async () => {

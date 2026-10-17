@@ -305,10 +305,10 @@ export interface TextesDUneAttestation {
 }
 
 /**
- * Une attestation sur le modèle de l'APIX (ADR-0086) : l'en-tête, le timbre
- * en Comic Sans MS, comme sur le modèle, le titre encadré, puis les
- * paragraphes. L'espace sous le texte reste libre pour la signature et le
- * cachet.
+ * Une attestation sur le modèle de l'APIX (ADR-0086), ou un certificat, qui
+ * suit la même : l'en-tête, le timbre en Comic Sans MS, comme sur le modèle,
+ * le titre encadré, puis les paragraphes. L'espace sous le texte reste libre
+ * pour la signature et le cachet.
  *
  * @param titre Le titre du PDF, celui que la visionneuse affiche.
  */

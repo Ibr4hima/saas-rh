@@ -8,9 +8,9 @@ import type { Tx } from '../../db/tenant-db';
 import type { Personne } from './redaction';
 
 /*
- * Ce que les attestations de la DCH lisent au dossier (ADR-0086) : l'agent,
- * sa date d'entrée, son poste et son contrat, ou son stage ; et qui signe,
- * d'après l'organigramme.
+ * Ce que les actes de la DCH lisent au dossier (ADR-0086) : l'agent, sa date
+ * d'entrée, son poste et son contrat, son stage ou son emploi passé ; et qui
+ * signe, d'après l'organigramme.
  */
 
 export interface DossierDeLAgent {
@@ -179,6 +179,89 @@ export async function stageDeLAgent(tx: Tx, employeeId: string): Promise<StageDe
     debut: row.debut,
     fin: row.fin,
     poste: postes[0]?.position_title ?? row.poste_prevu,
+  };
+}
+
+export interface EmploiDeLAgent {
+  agent: Personne;
+  employeeNumber: string;
+  /** Le premier jour de l'emploi : le début de l'ancienneté à son dernier jour (ADR-0083), à défaut l'embauche. */
+  debut: string;
+  /** Le dernier jour d'activité ; null : le dossier ne le porte pas. */
+  fin: string | null;
+  /** Le dernier poste occupé. */
+  poste: string | null;
+}
+
+/**
+ * L'emploi d'un agent dont le dossier est inactif (ADR-0091) : le certificat
+ * de travail se délivre au départ. Un dossier en activité relève de
+ * l'attestation de travail ; un stage, de l'attestation de stage.
+ */
+export async function emploiDeLAgent(tx: Tx, employeeId: string): Promise<EmploiDeLAgent> {
+  const { rows } = await tx.execute<{
+    employee_number: string;
+    status: string;
+    hired_on: string;
+    given_name: string;
+    family_name: string;
+    gender: string | null;
+    fin: string | null;
+  }>(sql`
+    SELECT e.employee_number, e.status, e.hired_on::text AS hired_on,
+           p.given_name, p.family_name, p.gender,
+           COALESCE(e.fin_activite,
+                    (SELECT max(pi.dernier_jour) FROM periodes_inactivite pi
+                      WHERE pi.employee_id = e.id AND pi.reprise_le IS NULL),
+                    (e.archived_at AT TIME ZONE 'UTC')::date - 1)::text AS fin
+      FROM employees e JOIN persons p ON p.id = e.person_id
+     WHERE e.id = ${employeeId}`);
+  const row = rows[0];
+  if (!row) {
+    problem(404, 'people.employee_not_found', 'Employé introuvable');
+  }
+  if (row.status === 'active') {
+    problem(
+      422,
+      'documents.en_activite',
+      'Certificat réservé aux dossiers inactifs',
+      'Pour un agent en activité, c’est l’attestation de travail qui convient.',
+    );
+  }
+
+  // Les dates se lisent au dernier jour ; sans lui, aujourd'hui.
+  const jour = row.fin ? sql`${row.fin}::date` : sql`CURRENT_DATE`;
+  const { rows: au } = await tx.execute<{ contrat: string | null; debut: string | null }>(sql`
+    SELECT (SELECT c.contract_type FROM contracts c
+             WHERE c.employee_id = ${employeeId} AND c.start_date <= ${jour}
+             ORDER BY c.start_date DESC, c.created_at DESC LIMIT 1) AS contrat,
+           ${debutDeLAnciennete(employeeId, jour)}::text AS debut`);
+  if (au[0]?.contrat === 'stage') {
+    problem(
+      422,
+      'documents.stage',
+      'Certificat de travail réservé aux contrats de travail',
+      'Pour un stage, c’est l’attestation de stage qui convient.',
+    );
+  }
+  const debut = au[0]?.debut ?? row.hired_on;
+
+  // Le poste du dernier jour : celui de la dernière affectation de l'emploi.
+  const { rows: postes } = await tx.execute<{ position_title: string }>(sql`
+    SELECT a.position_title FROM assignments a
+     WHERE a.employee_id = ${employeeId}
+       AND a.validity && daterange(${debut}::date, (${row.fin}::date + 1))
+     ORDER BY lower(a.validity) DESC LIMIT 1`);
+
+  return {
+    agent: {
+      nom: `${row.given_name} ${row.family_name.toUpperCase()}`,
+      genre: row.gender,
+    },
+    employeeNumber: row.employee_number,
+    debut,
+    fin: row.fin,
+    poste: postes[0]?.position_title ?? null,
   };
 }
 
