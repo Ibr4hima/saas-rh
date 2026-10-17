@@ -25,7 +25,8 @@ import {
  * Le contrat de stage d'adaptation, sur le modèle officiel de l'APIX
  * (ADR-0094) : trois pages, les parties, huit articles et les signatures. La
  * personne n'est pas encore dans l'application : la DCH la renseigne, avec
- * le stage. Qui représente l'APIX dirige la DCH.
+ * le stage. Qui représente l'APIX dirige la DCH. Les coquilles du modèle
+ * sont corrigées (ADR-0095).
  */
 
 /** Un bloc du contrat, dans l'ordre où la feuille le pose. */
@@ -58,6 +59,9 @@ const puce = (t: string): BlocDuContrat => ({ type: 'puce', passages: [{ texte: 
 /** « trois (03) mois » : la durée en lettres, puis en chiffres sur deux positions. */
 const enMois = (mois: number) => `${enLettres(mois)} (${String(mois).padStart(2, '0')}) mois`;
 
+/** « n° 97-17 » : le numéro ne se sépare pas de son signe. */
+const no = (numero: string) => insecable(`n° ${numero}`);
+
 /**
  * Le contrat, bloc par bloc, aux mots du modèle de l'APIX. La personne porte
  * le genre de sa civilité ; ce qui reste à renseigner se laisse en
@@ -79,8 +83,8 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
       passages: [
         {
           texte:
-            `${sigle}, au capital de 4.950.000.000 FCFA, sise au 52-54, rue Mohamed V Immeuble Alwar, ` +
-            `BP 430 Dakar - Sénégal, représentée par ${
+            `${sigle}, au capital de 4.950.000.000 FCFA, sise au 52-54, rue ${insecable('Mohamed V')}, ` +
+            `Immeuble Alwar, ${insecable('BP 430')} Dakar – Sénégal, représentée par ${
               d.signataire ? insecable(`${signataire.civilite} ${d.signataire.nom}`) : A_REMPLIR
             }, ${signataire.le.toLowerCase()} ${qualite}`,
         },
@@ -91,14 +95,14 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
     texte(`Prénom et nom : ${insecable(nom)}`, 22),
     texte(`Sexe : ${genre === 'female' ? 'Féminin' : 'Masculin'}`),
     texte(`Date et lieu de naissance : ${insecable(frDate(s.naissanceLe))} à ${s.naissanceA}`),
-    texte(`CNI n° ${s.cni}`),
+    texte(`CNI ${no(s.cni)}`),
     texte(`Filiation : ${genre === 'female' ? 'Fille' : 'Fils'} de ${s.pere} et de ${s.mere}`),
     texte(`Adresse : ${s.adresse || A_REMPLIR}`),
     {
       type: 'paragraphe',
       avant: 12,
       passages: [
-        { texte: `Ci-après, dénommé${stagiaire.e} « ` },
+        { texte: `Ci-après dénommé${stagiaire.e} « ` },
         { texte: 'le Stagiaire', gras: true },
         { texte: ' »' },
       ],
@@ -122,16 +126,21 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
       'Les parties conviennent de se référer aux textes suivants régissant le contrat de stage :',
       8,
     ),
-    puce('La Loi n°97-17 du 1/12/1997 instituant le Code du travail'),
     puce(
-      `La Loi n°2007-13 modifiée autorisant la création d’une société anonyme dénommée ${sigle}`,
+      `La Loi ${no('97-17')} du ${insecable('1er décembre 1997')} instituant le Code du travail`,
     ),
     puce(
-      'La Loi n°2015-04 du 12 février 2015 complétant et abrogeant certaines dispositions de la loi ' +
-        'n° 97-17 du 1er décembre 1997 portant Code du travail ;',
+      `La Loi ${no('2007-13')} modifiée autorisant la création d’une société anonyme dénommée ${sigle}`,
     ),
-    puce('Le Décret n°2015-777 du 2 juin 2015 fixant les règles applicables au contrat de stage'),
-    article(3, 'ENGAGEMENTS DU MAITRE DE STAGE ET DU STAGIAIRE'),
+    puce(
+      `La Loi ${no('2015-04')} du ${insecable('12 février 2015')} complétant et abrogeant certaines ` +
+        `dispositions de la loi ${no('97-17')} du ${insecable('1er décembre 1997')} portant Code du travail`,
+    ),
+    puce(
+      `Le Décret ${no('2015-777')} du ${insecable('2 juin 2015')} fixant les règles applicables au ` +
+        'contrat de stage',
+    ),
+    article(3, 'ENGAGEMENTS DU MAÎTRE DE STAGE ET DU STAGIAIRE'),
     texte(
       'En vue de l’acquisition d’une expérience et d’aptitudes professionnelles, pour faciliter ' +
         `l’accès à un emploi et l’insertion en milieu professionnel, ${sigle} s’engage à assurer au ` +
@@ -144,7 +153,7 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
         `scrupuleusement au règlement intérieur d’${sigle}.`,
       8,
     ),
-    article(4, 'DUREE DU CONTRAT'),
+    article(4, 'DURÉE DU CONTRAT'),
     texte(
       `Le présent contrat est conclu pour une durée de ${enMois(s.duree)}. Il prend effet le ` +
         `${insecable(frDate(s.debut))} et se termine le ${insecable(frDate(finDuStage(s.debut, s.duree)))}.`,
@@ -157,8 +166,8 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
       passages: [
         {
           texte:
-            'Le stagiaire bénéficiera en application de l’article 6 du Décret n°2015-777 fixant les ' +
-            'règles d’applications au contrat de stage, d’une allocation mensuelle de ',
+            `Le Stagiaire bénéficiera, en application de l’article 6 du Décret ${no('2015-777')} ` +
+            'fixant les règles applicables au contrat de stage, d’une allocation mensuelle de ',
         },
         {
           texte: `${enLettres(s.allocation)} (${enChiffres(s.allocation)}) ${insecable('FCFA TTC')}`,
@@ -176,11 +185,11 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
 
     article(6, 'SUSPENSION DU CONTRAT DE STAGE'),
     texte(
-      'Le présent article, pour son application, renvoie aux dispositions de l’article 08 du Décret ' +
-        'n°2015-777 du 2 juin 2015, fixant les règles applicables au contrat de stage.',
+      'Le présent article, pour son application, renvoie aux dispositions de l’article 8 du Décret ' +
+        `${no('2015-777')} du ${insecable('2 juin 2015')} fixant les règles applicables au contrat de stage.`,
       8,
     ),
-    article(7, 'FIN ET RESILIATION DU CONTRAT DE STAGE'),
+    article(7, 'FIN ET RÉSILIATION DU CONTRAT DE STAGE'),
     texte('Aux termes de l’article 13 :', 8),
     puce('Le contrat de stage prend fin à l’échéance initialement prévue par les parties.'),
     puce(
@@ -190,7 +199,7 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
     puce(
       'Une attestation sera délivrée au Stagiaire par le maître de stage à la fin du programme.',
     ),
-    article(8, 'REGLEMENT DES LITIGES'),
+    article(8, 'RÈGLEMENT DES LITIGES'),
     texte(
       'Tout différend relatif à la validité, à l’interprétation ou à l’exécution du présent contrat ' +
         'sera soumis à un règlement à l’amiable devant les services compétents en matière de droit ' +
@@ -201,7 +210,7 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
       `Fait en quatre (04) exemplaires à ${ENTETE.ville}, le ${insecable(frDate(aujourdhui))}.`,
       30,
     ),
-    texte('(Signature précédée de la mention manuscrite « Lu et Approuvé »)', 18),
+    texte('(Signature précédée de la mention manuscrite « Lu et approuvé »)', 18),
     {
       type: 'signatures',
       gauche: ['Pour le Stagiaire', nom],

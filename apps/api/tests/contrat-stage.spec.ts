@@ -150,8 +150,8 @@ describe('la fin du stage', () => {
 describe('les parties', () => {
   it('l’APIX, représentée par qui dirige la DCH, au genre de son dossier', () => {
     expect(blocQuiCommencePar(contrat(), 'APIX-SA, au capital')).toBe(
-      'APIX-SA, au capital de 4.950.000.000 FCFA, sise au 52-54, rue Mohamed V Immeuble Alwar, ' +
-        'BP 430 Dakar - Sénégal, représentée par Madame Mariama CISSÉ, la Directrice du Capital Humain',
+      'APIX-SA, au capital de 4.950.000.000 FCFA, sise au 52-54, rue Mohamed V, Immeuble Alwar, ' +
+        'BP 430 Dakar – Sénégal, représentée par Madame Mariama CISSÉ, la Directrice du Capital Humain',
     );
     expect(blocQuiCommencePar(contrat({}, null), 'APIX-SA, au capital')).toMatch(
       /représentée par …+, le Directeur du Capital Humain$/,
@@ -167,7 +167,7 @@ describe('les parties', () => {
       'CNI n° 2751200201234',
       'Filiation : Fille de Mamadou et de Fatou Diop',
       'Adresse : Parcelles Assainies, Unité 15 - Dakar',
-      'Ci-après, dénommée « le Stagiaire »',
+      'Ci-après dénommée « le Stagiaire »',
     ]) {
       expect(textes).toContain(ligne);
     }
@@ -179,7 +179,7 @@ describe('les parties', () => {
       'Prénom et nom : Monsieur Ibrahima SY',
       'Sexe : Masculin',
       'Filiation : Fils de Mamadou et de Fatou Diop',
-      'Ci-après, dénommé « le Stagiaire »',
+      'Ci-après dénommé « le Stagiaire »',
     ]) {
       expect(textes).toContain(ligne);
     }
@@ -213,10 +213,12 @@ describe('les articles', () => {
 
   it('l’allocation en lettres puis en chiffres, en gras ; la catégorie en capitales', () => {
     const blocs = contrat();
-    expect(blocQuiCommencePar(blocs, 'Le stagiaire bénéficiera')).toMatch(
-      /d’une allocation mensuelle de quatre-vingt-neuf mille quatre cent soixante-quatorze \(89 474\) FCFA TTC\.$/,
+    expect(blocQuiCommencePar(blocs, 'Le Stagiaire bénéficiera')).toBe(
+      'Le Stagiaire bénéficiera, en application de l’article 6 du Décret n° 2015-777 fixant les ' +
+        'règles applicables au contrat de stage, d’une allocation mensuelle de quatre-vingt-neuf ' +
+        'mille quatre cent soixante-quatorze (89 474) FCFA TTC.',
     );
-    const allocation = blocs.find((b) => enClair(b).startsWith('Le stagiaire bénéficiera'));
+    const allocation = blocs.find((b) => enClair(b).startsWith('Le Stagiaire bénéficiera'));
     expect(
       allocation && 'passages' in allocation
         ? allocation.passages.filter((p) => p.gras).map((p) => p.texte.replace(/ /g, ' '))
@@ -225,6 +227,37 @@ describe('les articles', () => {
     expect(tousLesTextes(blocs)).toContain(
       'Cette allocation est indexée, suivant la grille salariale d’APIX-SA, à la catégorie C6.',
     );
+  });
+
+  it('les coquilles du modèle corrigées : accents des titres, textes cités, mention manuscrite', () => {
+    const blocs = contrat();
+    expect(
+      blocs.filter((b) => b.type === 'article').map((b) => b.type === 'article' && b.titre),
+    ).toEqual([
+      'OBJET',
+      'TEXTES APPLICABLES',
+      'ENGAGEMENTS DU MAÎTRE DE STAGE ET DU STAGIAIRE',
+      'DURÉE DU CONTRAT',
+      'ALLOCATION DE STAGE',
+      'SUSPENSION DU CONTRAT DE STAGE',
+      'FIN ET RÉSILIATION DU CONTRAT DE STAGE',
+      'RÈGLEMENT DES LITIGES',
+    ]);
+    const textes = tousLesTextes(blocs);
+    for (const ligne of [
+      'La Loi n° 97-17 du 1er décembre 1997 instituant le Code du travail',
+      'La Loi n° 2007-13 modifiée autorisant la création d’une société anonyme dénommée APIX-SA',
+      'La Loi n° 2015-04 du 12 février 2015 complétant et abrogeant certaines dispositions de la ' +
+        'loi n° 97-17 du 1er décembre 1997 portant Code du travail',
+      'Le Décret n° 2015-777 du 2 juin 2015 fixant les règles applicables au contrat de stage',
+      'Le présent article, pour son application, renvoie aux dispositions de l’article 8 du Décret ' +
+        'n° 2015-777 du 2 juin 2015 fixant les règles applicables au contrat de stage.',
+      '(Signature précédée de la mention manuscrite « Lu et approuvé »)',
+    ]) {
+      expect(textes).toContain(ligne);
+    }
+    expect(textes.join(' ')).not.toMatch(/d’applications|article 08|n°\d|1\/12\/1997/);
+    expect(textes.filter((t) => t.endsWith(';'))).toEqual([]);
   });
 
   it('huit articles, sur trois pages', () => {
