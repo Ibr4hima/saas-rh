@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import type { SaisiesDuDocument } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 import {
   cheminLogo,
@@ -31,9 +32,13 @@ export interface DocumentPdf {
   pdf: Buffer;
 }
 
-/** Un modèle configuré : ce qu'il imprime pour un agent. */
+/**
+ * Un modèle configuré : ce qu'il imprime pour un agent, avec ce que la DCH a
+ * saisi et que le dossier ne porte pas (ADR-0087). Chaque modèle exige ce
+ * qu'il demande.
+ */
 export interface Modele {
-  pdf(tx: Tx, employeeId: string): Promise<DocumentPdf>;
+  pdf(tx: Tx, employeeId: string, saisies: SaisiesDuDocument): Promise<DocumentPdf>;
 }
 
 /** Un passage d'un paragraphe : du texte, en gras ou non. */
@@ -288,4 +293,33 @@ export function nouvelleFeuille({
       return fini;
     },
   };
+}
+
+/** Ce qu'une attestation de l'APIX imprime, bloc par bloc. */
+export interface TextesDUneAttestation {
+  reference: string;
+  lieuEtDate: string;
+  timbre: string;
+  titre: string;
+  paragraphes: Passage[][];
+}
+
+/**
+ * Une attestation sur le modèle de l'APIX (ADR-0086) : l'en-tête, le timbre
+ * en Comic Sans MS, comme sur le modèle, le titre encadré, puis les
+ * paragraphes. L'espace sous le texte reste libre pour la signature et le
+ * cachet.
+ *
+ * @param titre Le titre du PDF, celui que la visionneuse affiche.
+ */
+export function pdfDUneAttestation(
+  textes: TextesDUneAttestation,
+  { titre, logo }: { titre: string; logo?: string | null },
+): Promise<Buffer> {
+  const feuille = nouvelleFeuille({ titre, logo });
+  feuille.entete({ reference: textes.reference, lieuEtDate: textes.lieuEtDate });
+  feuille.timbre(textes.timbre, { police: 'comic' });
+  feuille.titreEncadre(textes.titre);
+  textes.paragraphes.forEach((p, i) => feuille.paragraphe(p, { avant: i === 0 ? 40 : 14 }));
+  return feuille.terminer();
 }

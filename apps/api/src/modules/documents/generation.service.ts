@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { DocumentGenere, SessionUser } from '@teranga/contracts';
+import type { DocumentGenere, SaisiesDuDocument, SessionUser } from '@teranga/contracts';
 import { estGenere, REQUESTABLE_DOC_LABELS, requestableDocSchema } from '@teranga/contracts';
 import { pasSurSoi } from '../acces/dch';
 import { problem } from '../../common/problem';
 import { TenantDb } from '../../db/tenant-db';
+import { attestationDeRevenu } from './attestation-revenu';
 import { AttestationService } from './attestation.service';
 import type { DocumentPdf, Modele } from './feuille';
 
@@ -31,10 +32,16 @@ export class GenerationService {
   ) {
     this.modeles = {
       attestation_travail: { pdf: (tx, employeeId) => attestations.pdfPour(tx, employeeId) },
+      attestation_revenu: attestationDeRevenu,
     };
   }
 
-  async pdf(user: SessionUser, type: string, employeeId: string): Promise<DocumentPdf> {
+  async pdf(
+    user: SessionUser,
+    type: string,
+    employeeId: string,
+    saisies: SaisiesDuDocument = {},
+  ): Promise<DocumentPdf> {
     if (!user.dirigeLaDCH) problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
     const doc = requestableDocSchema.safeParse(type);
     // Un document retiré de la liste ne se génère pas plus qu'il ne se demande.
@@ -49,7 +56,7 @@ export class GenerationService {
     const modele = this.modeles[doc.data];
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await pasSurSoi(tx, user.userId, [employeeId], 'générer un document pour');
-      return modele.pdf(tx, employeeId);
+      return modele.pdf(tx, employeeId, saisies);
     });
   }
 }

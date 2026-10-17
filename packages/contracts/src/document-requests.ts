@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { TraitementView } from './acces';
+import { SALAIRE_MAX } from './montants';
 
 /**
  * Demandes de documents administratifs (ADR-0012).
@@ -79,6 +80,7 @@ export type DocumentDeLaListe = z.infer<typeof requestableDocSchema>;
  */
 export const GENERATED_DOCS = [
   'attestation_travail',
+  'attestation_revenu',
 ] as const satisfies readonly DocumentDeLaListe[];
 
 /** Un document dont le modèle est configuré. */
@@ -86,6 +88,30 @@ export type DocumentGenere = (typeof GENERATED_DOCS)[number];
 
 export const estGenere = (doc: string): doc is DocumentGenere =>
   (GENERATED_DOCS as readonly string[]).includes(doc);
+
+/**
+ * Ceux qui demandent un salaire, que la DCH saisit avant de générer : le
+ * dossier ne le porte pas, la paie le connaît (ADR-0087).
+ */
+export const DOCS_AVEC_SALAIRE = [
+  'attestation_revenu',
+] as const satisfies readonly DocumentGenere[];
+
+export const demandeUnSalaire = (doc: string): boolean =>
+  (DOCS_AVEC_SALAIRE as readonly string[]).includes(doc);
+
+/**
+ * Ce que la DCH saisit pour générer un document. Il part dans le corps d'un
+ * POST, jamais dans l'adresse : les journaux des serveurs gardent les
+ * adresses, et un salaire n'a rien à y faire.
+ */
+export const saisiesDuDocumentSchema = z
+  .object({
+    /** Le salaire net mensuel, en francs CFA. */
+    salaire: z.number().int().min(1).max(SALAIRE_MAX).optional(),
+  })
+  .strict();
+export type SaisiesDuDocument = z.infer<typeof saisiesDuDocumentSchema>;
 
 /**
  * Le nom du fichier d'un document généré : « attestation-travail-M0012.pdf ».

@@ -19,6 +19,7 @@ export * from './recruitment';
 export * from './recherche';
 export * from './documents';
 export * from './document-requests';
+export * from './montants';
 export * from './nationalities';
 export * from './profile-changes';
 export * from './reference-texts';

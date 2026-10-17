@@ -1,6 +1,6 @@
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
-import { frDate } from '../documents/attestation.service';
+import { frDate } from '../documents/redaction';
 import { cheminLogo, ENTETE, enregistrerPolices, police } from '../documents/entete';
 
 /* ————————————————————————————————————————————————————————————————

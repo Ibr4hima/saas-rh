@@ -136,6 +136,19 @@ describe('quoi', () => {
     }
   });
 
+  it('l’attestation de revenu, avec le salaire saisi ; sans lui, refusée en le disant', async () => {
+    const { filename } = await service.pdf(dch, 'attestation_revenu', employes.actif, {
+      salaire: 250_000,
+    });
+    expect(filename).toBe('attestation-revenu-GEN-002.pdf');
+    const err = await service.pdf(dch, 'attestation_revenu', employes.actif).catch((e) => e);
+    expect((err as ProblemException).problem).toMatchObject({
+      status: 400,
+      code: 'documents.salaire',
+      title: 'Salaire net mensuel à saisir',
+    });
+  });
+
   it('le modèle garde ses règles : l’attestation de travail, pas pour un dossier inactif', async () => {
     expect(await codeOf(() => service.pdf(dch, 'attestation_travail', employes.archive))).toBe(
       'documents.not_active',

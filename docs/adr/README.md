@@ -91,4 +91,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0083](0083-anciennete-du-contrat-en-cours.md)        | L'ancienneté est celle du contrat en cours ; le stage n'en donne pas                    | acceptée                                    |
 | [0084](0084-documents-de-la-dch.md)                   | La liste des documents à demander est celle de la DCH                                   | acceptée, précisée par 0085                 |
 | [0085](0085-generer-des-documents.md)                 | Générer des documents : qui dirige la DCH, à sa guise, sur les modèles de l'APIX        | acceptée, précisée par 0086                 |
-| [0086](0086-modeles-de-l-apix.md)                     | Les documents de la DCH sur les modèles de l'APIX : sections composées, Google Sans     | acceptée                                    |
+| [0086](0086-modeles-de-l-apix.md)                     | Les documents de la DCH sur les modèles de l'APIX : sections composées, Google Sans     | acceptée, précisée par 0087                 |
+| [0087](0087-attestation-de-revenu.md)                 | L'attestation de revenu : le salaire saisi, le montant en chiffres et en lettres        | acceptée                                    |

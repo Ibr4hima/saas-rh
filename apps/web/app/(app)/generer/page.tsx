@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type {
   DocumentDeLaListe,
   DocumentGenere,
@@ -10,6 +10,8 @@ import type {
   MyEmployeeView,
 } from '@teranga/contracts';
 import {
+  demandeUnSalaire,
+  enChiffres,
   estGenere,
   nomDuDocumentGenere,
   REQUESTABLE_DOC_LABELS,
@@ -28,7 +30,9 @@ import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
    l'un après l'autre : le document, l'agent, puis le document lui-même, en
    largeur, à télécharger depuis le bandeau. Les deux choix se font comme on
    ouvre « Demander un document » : un bloc, son intitulé, et à sa droite le
-   choix, en liste déroulante.
+   choix, en liste déroulante. Un document qui demande ce que le dossier ne
+   porte pas, le salaire de l'attestation de revenu, le fait saisir avant
+   (ADR-0087).
 
    L'aperçu EST le PDF, peint par pdf.js : un modèle de l'APIX se vérifie sur
    ce qui sortira, pas sur une imitation à l'écran.
@@ -59,9 +63,24 @@ const CHAMP =
 const MENU =
   'tg-menu absolute top-full right-0 left-0 z-30 mt-1.5 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg';
 
+/** Un salaire saisi, et l'agent pour qui : il ne passe pas d'un agent à l'autre. */
+type Saisie = { agentId: string; salaire: number | null };
+
 export default function GenererDesDocumentsPage() {
   const [choisi, setChoisi] = useState<DocumentGenere | null>(null);
   const [agent, setAgent] = useState<EmployeeListItem | null>(null);
+  const [saisie, setSaisie] = useState<Saisie | null>(null);
+  // L'aperçu suit la saisie une fois la frappe posée, pas à chaque chiffre.
+  const [retenue, setRetenue] = useState<Saisie | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => setRetenue(saisie), 450);
+    return () => clearTimeout(t);
+  }, [saisie]);
+
+  const pourLAgent = (s: Saisie | null) => (s && s.agentId === agent?.id ? s.salaire : null);
+  const salaire = pourLAgent(saisie);
+  const salaireRetenu = pourLAgent(retenue);
+  const avecSalaire = choisi !== null && demandeUnSalaire(choisi);
 
   return (
     <Page>
@@ -73,7 +92,23 @@ export default function GenererDesDocumentsPage() {
           <ChoixDeLAgent agent={agent} onChoisir={setAgent} />
         </Etape>
       ) : null}
-      {choisi && agent ? <Apercu choisi={choisi} agent={agent} /> : null}
+      {agent && avecSalaire ? (
+        <Etape titre="Saisir le salaire net mensuel">
+          <ChampDuSalaire
+            key={agent.id}
+            salaire={salaire}
+            onSaisir={(s) => setSaisie({ agentId: agent.id, salaire: s })}
+          />
+        </Etape>
+      ) : null}
+      {choisi && agent && (!avecSalaire || salaireRetenu !== null) ? (
+        <Apercu
+          choisi={choisi}
+          agent={agent}
+          salaire={avecSalaire ? salaireRetenu : null}
+          enCours={avecSalaire && salaire !== salaireRetenu}
+        />
+      ) : null}
     </Page>
   );
 }
@@ -449,16 +484,104 @@ function ChoixDeLAgent({
 }
 
 /**
+ * Le salaire net mensuel, en francs CFA et en chiffres : les milliers se
+ * séparent à la frappe, et le curseur garde sa place parmi les chiffres. Le
+ * champ s'ouvre prêt à écrire, dès le choix de l'agent.
+ */
+function ChampDuSalaire({
+  salaire,
+  onSaisir,
+}: {
+  salaire: number | null;
+  onSaisir: (salaire: number | null) => void;
+}) {
+  const champ = useRef<HTMLInputElement>(null);
+  const curseur = useRef<number | null>(null);
+  const [texte, setTexte] = useState(salaire ? enChiffres(salaire) : '');
+
+  // Après le regroupement, le curseur revient derrière autant de chiffres
+  // qu'avant : une espace ajoutée ne le fait pas sauter.
+  useLayoutEffect(() => {
+    const chiffres = curseur.current;
+    if (chiffres === null || !champ.current) return;
+    curseur.current = null;
+    let i = 0;
+    for (let vus = 0; i < texte.length && vus < chiffres; i++) {
+      if (/\d/.test(texte[i]!)) vus++;
+    }
+    champ.current.setSelectionRange(i, i);
+  }, [texte]);
+
+  return (
+    <div className="relative">
+      <input
+        ref={champ}
+        autoFocus
+        inputMode="numeric"
+        autoComplete="off"
+        aria-label="Salaire net mensuel, en francs CFA"
+        placeholder="Montant en chiffres"
+        // « 999 999 999 » : neuf chiffres et leurs deux espaces.
+        maxLength={11}
+        value={texte}
+        onChange={(e) => {
+          const brut = e.target.value;
+          const avant = brut
+            .slice(0, e.target.selectionStart ?? brut.length)
+            .replace(/\D/g, '').length;
+          const chiffres = brut.replace(/\D/g, '').replace(/^0+/, '').slice(0, 9);
+          curseur.current = Math.min(avant, chiffres.length);
+          setTexte(chiffres ? enChiffres(Number(chiffres)) : '');
+          onSaisir(chiffres ? Number(chiffres) : null);
+        }}
+        className={cn(
+          CHAMP,
+          'border-line pr-14 pl-3 font-medium text-ink-strong tabular-nums placeholder:font-normal placeholder:text-ink-muted hover:border-ink-muted/40 focus:border-primary',
+        )}
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-[11.5px] font-semibold text-ink-muted"
+      >
+        FCFA
+      </span>
+    </div>
+  );
+}
+
+/**
  * Le document, tel qu'il sortira : en largeur, comme le procès-verbal
  * d'apix-e-voting, sans rien au-dessus. « Télécharger » se pose dans le
- * bandeau de tête dès que le PDF est prêt.
+ * bandeau de tête dès que le PDF est prêt, et s'en retire tant qu'un salaire
+ * en cours de frappe ne s'y lit pas encore : on n'enregistre pas l'ancien
+ * montant.
  */
-function Apercu({ choisi, agent }: { choisi: DocumentGenere; agent: EmployeeListItem }) {
+function Apercu({
+  choisi,
+  agent,
+  salaire,
+  enCours,
+}: {
+  choisi: DocumentGenere;
+  agent: EmployeeListItem;
+  salaire: number | null;
+  enCours: boolean;
+}) {
   const pdf = useQuery({
-    queryKey: ['document-genere', choisi, agent.id],
-    queryFn: ({ signal }) => lireFichier(`/employees/${agent.id}/generer/${choisi}`, signal),
+    queryKey: ['document-genere', choisi, agent.id, salaire],
+    // En POST : le salaire reste hors de l'adresse.
+    queryFn: ({ signal }) =>
+      lireFichier(`/employees/${agent.id}/generer/${choisi}`, {
+        signal,
+        corps: salaire === null ? {} : { salaire },
+      }),
     retry: false,
+    // Un autre salaire pour le même document et le même agent : l'ancien PDF
+    // reste à l'écran le temps du nouveau, la page ne clignote pas.
+    placeholderData: (precedent, requete) =>
+      requete?.queryKey[1] === choisi && requete.queryKey[2] === agent.id ? precedent : undefined,
   });
+  const aJour = !enCours && !pdf.isPlaceholderData;
 
   if (pdf.isError) {
     return (
@@ -478,17 +601,24 @@ function Apercu({ choisi, agent }: { choisi: DocumentGenere; agent: EmployeeList
   }
   return (
     <>
-      <ActionDuBandeau
-        icon="download"
-        label="Télécharger"
-        onClick={() =>
-          enregistrerFichier(
-            new Blob([contenu], { type: 'application/pdf' }),
-            nomDuDocumentGenere(choisi, agent.employeeNumber),
-          )
-        }
-      />
-      <PdfEnLargeur data={contenu} titre={`${REQUESTABLE_DOC_LABELS[choisi]} : ${nomDe(agent)}`} />
+      {aJour ? (
+        <ActionDuBandeau
+          icon="download"
+          label="Télécharger"
+          onClick={() =>
+            enregistrerFichier(
+              new Blob([contenu], { type: 'application/pdf' }),
+              nomDuDocumentGenere(choisi, agent.employeeNumber),
+            )
+          }
+        />
+      ) : null}
+      <div className={cn('transition-opacity duration-200', !aJour && 'opacity-55')}>
+        <PdfEnLargeur
+          data={contenu}
+          titre={`${REQUESTABLE_DOC_LABELS[choisi]} : ${nomDe(agent)}`}
+        />
+      </div>
     </>
   );
 }

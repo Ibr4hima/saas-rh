@@ -47,10 +47,24 @@ export function enregistrerFichier(contenu: Blob, nom: string): void {
 /**
  * Les octets d'un fichier servi par l'API, lus avec la session. Un refus
  * remonte tel que l'API l'a dit (un dossier inactif, un modèle à
- * configurer), comme pour `api()`.
+ * configurer), comme pour `api()`. Avec un corps, en POST : ce qu'on saisit
+ * pour un document, un salaire, reste hors de l'adresse.
  */
-export async function lireFichier(chemin: string, signal?: AbortSignal): Promise<ArrayBuffer> {
-  const res = await fetch(apiUrl(chemin), { credentials: 'include', signal });
+export async function lireFichier(
+  chemin: string,
+  { signal, corps }: { signal?: AbortSignal; corps?: unknown } = {},
+): Promise<ArrayBuffer> {
+  const res = await fetch(apiUrl(chemin), {
+    credentials: 'include',
+    signal,
+    ...(corps === undefined
+      ? {}
+      : {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(corps),
+        }),
+  });
   if (!res.ok) throw await erreurDe(res);
   return res.arrayBuffer();
 }

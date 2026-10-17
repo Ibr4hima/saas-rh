@@ -19,12 +19,11 @@ import { TenantDb } from '../src/db/tenant-db';
 import {
   AttestationService,
   CONTRACT_LABELS,
-  elide,
-  frDate,
   textesDeLAttestation,
   type AttestationData,
-  type TextesDeLAttestation,
 } from '../src/modules/documents/attestation.service';
+import type { TextesDUneAttestation } from '../src/modules/documents/feuille';
+import { elide, frDate } from '../src/modules/documents/redaction';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -41,14 +40,14 @@ async function raw(q: string, params: unknown[] = []) {
 }
 
 /** Un paragraphe en clair : ses passages mis bout à bout, l'espace insécable rendue ordinaire. */
-const enClair = (textes: TextesDeLAttestation, i: number) =>
+const enClair = (textes: TextesDUneAttestation, i: number) =>
   (textes.paragraphes[i] ?? [])
     .map((p) => p.texte)
     .join('')
     .replace(/ /g, ' ');
 
 /** Ce qui est en gras dans un paragraphe. */
-const enGras = (textes: TextesDeLAttestation, i: number) =>
+const enGras = (textes: TextesDUneAttestation, i: number) =>
   (textes.paragraphes[i] ?? []).filter((p) => p.gras).map((p) => p.texte.replace(/ /g, ' '));
 
 const textesDe = (employeeId: string) =>

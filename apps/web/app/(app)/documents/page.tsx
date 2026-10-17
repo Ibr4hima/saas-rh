@@ -12,7 +12,6 @@ import type {
 import {
   capaciteDuDocument,
   documentDemande,
-  estGenere,
   peut,
   REQUESTABLE_DOC_LABELS,
 } from '@teranga/contracts';
@@ -563,6 +562,13 @@ interface Piece {
 }
 
 /**
+ * Ce que la file produit elle-même : l'attestation de travail. L'attestation
+ * de revenu demande un salaire, que seule « Générer des documents » fait
+ * saisir (ADR-0087) : dans la file, elle se prépare comme les autres.
+ */
+const seGenereDansLaFile = (doc: string) => doc === 'attestation_travail';
+
+/**
  * Enregistre sur le poste de la RH les pièces que l'application produit.
  *
  * Une pièce que l'application ne produit pas (contrat, décision) n'a rien à
@@ -594,7 +600,7 @@ function piecesOf(requests: DocumentRequestView[]): Piece[] {
       employeeStatus: r.employeeStatus,
       doc: d,
       bulletin: r.bulletin,
-      generable: estGenere(d) && r.employeeStatus === 'active',
+      generable: seGenereDansLaFile(d) && r.employeeStatus === 'active',
     })),
   );
 }
@@ -982,7 +988,7 @@ function TraiterModal({
 function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }) {
   const pdf = useQuery({
     queryKey: ['attestation-pdf', piece.employeeId],
-    queryFn: ({ signal }) => lireFichier(`/employees/${piece.employeeId}/attestation`, signal),
+    queryFn: ({ signal }) => lireFichier(`/employees/${piece.employeeId}/attestation`, { signal }),
     enabled: piece.generable,
     retry: false,
   });
@@ -1024,7 +1030,7 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
     // Deux raisons de ne rien avoir à montrer, et elles n'appellent pas le
     // même geste : soit l'application ne produit pas ce document, soit elle
     // le produit mais refuse pour ce dossier-là.
-    const dossierInactif = estGenere(piece.doc);
+    const dossierInactif = seGenereDansLaFile(piece.doc);
     return (
       <>
         {entete}
