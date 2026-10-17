@@ -191,6 +191,16 @@ describe('quoi', () => {
     }
   });
 
+  it('l’attestation de départ à la retraite, avec la date saisie ; sans elle, refusée', async () => {
+    const { filename } = await service.pdf(dch, 'attestation_depart_retraite', employes.actif, {
+      depart: '2027-03-31',
+    });
+    expect(filename).toBe('attestation-depart-retraite-GEN-002.pdf');
+    expect(
+      await codeOf(() => service.pdf(dch, 'attestation_depart_retraite', employes.actif)),
+    ).toBe('documents.depart');
+  });
+
   it('le modèle garde ses règles : l’attestation de travail, pas pour un dossier inactif', async () => {
     expect(await codeOf(() => service.pdf(dch, 'attestation_travail', employes.archive))).toBe(
       'documents.not_active',

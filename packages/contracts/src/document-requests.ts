@@ -80,6 +80,7 @@ export type DocumentDeLaListe = z.infer<typeof requestableDocSchema>;
  */
 export const GENERATED_DOCS = [
   'attestation_conge',
+  'attestation_depart_retraite',
   'attestation_travail',
   'attestation_revenu',
   'attestation_stage',
@@ -93,17 +94,19 @@ export const estGenere = (doc: string): doc is DocumentGenere =>
   (GENERATED_DOCS as readonly string[]).includes(doc);
 
 /** Ce que la DCH saisit avant de générer un document : le dossier ne le porte pas. */
-export type Saisie = 'salaire' | 'categorie' | 'debut' | 'fin';
+export type Saisie = 'salaire' | 'categorie' | 'debut' | 'fin' | 'depart';
 
 /**
  * Les saisies des documents qui en demandent, dans l'ordre où la page les
  * pose : le salaire net mensuel de l'attestation de revenu (ADR-0087), que la
  * paie connaît ; la catégorie du poste du certificat de travail (ADR-0091),
  * que la convention collective fixe ; le premier et le dernier jour du congé
- * de l'attestation de congé (ADR-0092).
+ * de l'attestation de congé (ADR-0092) ; le jour du départ à la retraite
+ * (ADR-0093).
  */
 const SAISIES_DES_DOCUMENTS: Partial<Record<DocumentGenere, readonly Saisie[]>> = {
   attestation_conge: ['debut', 'fin'],
+  attestation_depart_retraite: ['depart'],
   attestation_revenu: ['salaire'],
   certificat_travail: ['categorie'],
 };
@@ -129,6 +132,8 @@ export const saisiesDuDocumentSchema = z
     debut: z.iso.date().optional(),
     /** Son dernier jour, inclus. */
     fin: z.iso.date().optional(),
+    /** Le jour du départ à la retraite. */
+    depart: z.iso.date().optional(),
   })
   .strict();
 export type SaisiesDuDocument = z.infer<typeof saisiesDuDocumentSchema>;

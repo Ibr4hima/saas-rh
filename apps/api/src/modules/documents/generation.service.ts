@@ -6,6 +6,7 @@ import { problem } from '../../common/problem';
 import { TenantDb } from '../../db/tenant-db';
 import { AbsencesService } from '../time/absences.service';
 import { attestationDeConge } from './attestation-conge';
+import { attestationDeRetraite } from './attestation-retraite';
 import { attestationDeRevenu } from './attestation-revenu';
 import { attestationDeStage } from './attestation-stage';
 import { certificatDeTravail } from './certificat-travail';
@@ -37,6 +38,7 @@ export class GenerationService {
   ) {
     this.modeles = {
       attestation_conge: attestationDeConge(absences),
+      attestation_depart_retraite: attestationDeRetraite,
       attestation_travail: { pdf: (tx, employeeId) => attestations.pdfPour(tx, employeeId) },
       attestation_revenu: attestationDeRevenu,
       attestation_stage: attestationDeStage,

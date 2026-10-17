@@ -35,7 +35,8 @@ import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
    choix, en liste déroulante. Un document qui demande ce que le dossier ne
    porte pas le fait saisir avant : le salaire de l'attestation de revenu
    (ADR-0087), la catégorie du poste du certificat de travail (ADR-0091),
-   les dates de l'attestation de congé (ADR-0092).
+   les dates de l'attestation de congé (ADR-0092), le jour du départ à la
+   retraite (ADR-0093).
 
    L'aperçu EST le PDF, peint par pdf.js : un modèle de l'APIX se vérifie sur
    ce qui sortira, pas sur une imitation à l'écran.
@@ -67,10 +68,16 @@ const MENU =
   'tg-menu absolute top-full right-0 left-0 z-30 mt-1.5 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg';
 
 /** Ce que la DCH saisit pour un document ; une date, au format AAAA-MM-JJ. */
-type Valeurs = { salaire: number | null; categorie: string; debut: string; fin: string };
+type Valeurs = {
+  salaire: number | null;
+  categorie: string;
+  debut: string;
+  fin: string;
+  depart: string;
+};
 /** Les valeurs saisies, et l'agent pour qui : elles ne passent pas d'un agent à l'autre. */
 type Saisies = Valeurs & { agentId: string };
-const VIDES: Valeurs = { salaire: null, categorie: '', debut: '', fin: '' };
+const VIDES: Valeurs = { salaire: null, categorie: '', debut: '', fin: '', depart: '' };
 
 /** L'intitulé du bloc de chaque saisie. */
 const TITRES: Record<Saisie, string> = {
@@ -78,7 +85,15 @@ const TITRES: Record<Saisie, string> = {
   categorie: 'Saisir la catégorie du poste',
   debut: 'Saisir la date de début du congé',
   fin: 'Saisir la date de fin du congé',
+  depart: 'Saisir la date de départ à la retraite',
 };
+
+/** Le nom de chaque champ de date, pour qui le lit à voix haute. */
+const LIBELLES_DES_DATES = {
+  debut: 'Premier jour du congé',
+  fin: 'Dernier jour du congé',
+  depart: 'Date de départ à la retraite',
+} as const;
 
 /** Ce qui part à l'API : la catégorie en capitales, comme le document l'imprime. */
 const valeurDe = (v: Valeurs, s: Saisie) =>
@@ -142,7 +157,7 @@ export default function GenererDesDocumentsPage() {
                 <ChampDeDate
                   key={agent.id}
                   premier={i === 0}
-                  libelle={s === 'debut' ? 'Premier jour du congé' : 'Dernier jour du congé'}
+                  libelle={LIBELLES_DES_DATES[s]}
                   date={courantes[s]}
                   // La fin ne se choisit pas avant le début.
                   min={s === 'fin' ? courantes.debut || undefined : undefined}
@@ -632,7 +647,7 @@ function ChampDeLaCategorie({
   );
 }
 
-/** Une date du congé, au calendrier du navigateur. */
+/** Une date saisie, au calendrier du navigateur : celles du congé, le départ à la retraite. */
 function ChampDeDate({
   premier,
   libelle,
