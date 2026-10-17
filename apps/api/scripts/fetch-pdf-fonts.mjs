@@ -12,11 +12,13 @@
  * Les fichiers produits sont VERSIONNÉS : une attestation doit sortir avec la
  * bonne typographie sur un dépôt fraîchement cloné, sans manipulation.
  *
- * Google Sans est la police des documents, comme dans apix-e-voting. Comic
- * Sans MS, que certains modèles de l'APIX emploient, ne se redistribue pas :
- * sa licence (Microsoft) interdit de la versionner. Comic Relief en est
- * l'équivalent libre, sous licence OFL, dessinée aux MÊMES chasses : un mot y
- * occupe la même largeur, une ligne se coupe au même endroit.
+ * Arial est la police des documents de la DCH (ADR-0090) ; Comic Sans MS,
+ * certains modèles de l'APIX l'emploient. Ni l'une ni l'autre ne se
+ * redistribue : leur licence (Monotype, Microsoft) interdit de les
+ * versionner. Arimo et Comic Relief en sont les équivalents libres, sous
+ * licence OFL, dessinés aux MÊMES chasses : un mot y occupe la même largeur,
+ * une ligne se coupe au même endroit. Google Sans reste celle du certificat
+ * d'APIX Academy, comme du site.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -35,9 +37,20 @@ const UA = 'Mozilla/4.0';
 
 /**
  * Les familles, coupe par coupe, et leur licence : l'OFL veut qu'elle voyage
- * avec la police. Google Sans, et Comic Relief pour Comic Sans MS.
+ * avec la police. Arimo pour Arial, Comic Relief pour Comic Sans MS, et
+ * Google Sans.
  */
 const FAMILLES = [
+  {
+    css: 'Arimo:ital,wght@0,400;0,700;1,400;1,700',
+    licence: { source: 'ofl/arimo/OFL.txt', nom: 'arimo-OFL.txt' },
+    coupes: [
+      { nom: 'arimo-regular.ttf', style: 'normal', poids: '400' },
+      { nom: 'arimo-bold.ttf', style: 'normal', poids: '700' },
+      { nom: 'arimo-italic.ttf', style: 'italic', poids: '400' },
+      { nom: 'arimo-bold-italic.ttf', style: 'italic', poids: '700' },
+    ],
+  },
   {
     css: 'Google+Sans:ital,wght@0,400;0,700;1,400',
     licence: { source: 'ofl/googlesans/OFL.txt', nom: 'google-sans-OFL.txt' },
@@ -184,9 +197,9 @@ writeFileSync(
     '    pnpm --filter @teranga/api fonts:fetch\n\n' +
     'pdfkit ne lit ni le woff2 ni le SVG : le web et les PDF ont chacun leur\n' +
     'copie de Google Sans, dans le format que leur moteur sait ouvrir.\n\n' +
-    'Comic Relief tient la place de Comic Sans MS, que sa licence interdit de\n' +
-    'versionner : mêmes chasses, licence OFL (fichiers `*-OFL.txt`). Les\n' +
-    "fichiers d'origine se déposent à la racine de `assets/` (cf.\n" +
-    '`assets/README.md`).\n',
+    "Arimo et Comic Relief tiennent la place d'Arial et de Comic Sans MS, que\n" +
+    'leur licence interdit de versionner : mêmes chasses, licence OFL (fichiers\n' +
+    "`*-OFL.txt`). Les polices d'origine se déposent à la racine de `assets/`\n" +
+    '(cf. `assets/README.md`).\n',
 );
 console.log(`✓ ${coupes} coupes, ${(total / 1024).toFixed(0)} Ko, dans ${OUT}`);

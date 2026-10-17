@@ -60,12 +60,12 @@ const RESERVE_DU_PIED = 110;
  * Ouvre une feuille.
  *
  * @param titre Le titre du PDF, celui que la visionneuse affiche.
- * @param famille La police de la feuille : Google Sans, comme apix-e-voting.
+ * @param famille La police de la feuille : Arial, celle des documents de la DCH (ADR-0090).
  * @param logo Le logo du pied de page ; par défaut, celui que l'exploitant a déposé.
  */
 export function nouvelleFeuille({
   titre,
-  famille = 'google-sans',
+  famille = 'arial',
   logo = cheminLogo(),
 }: {
   titre: string;

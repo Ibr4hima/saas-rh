@@ -1,7 +1,8 @@
 /**
- * Les polices des documents (ADR-0086) : Google Sans, comme apix-e-voting,
- * et Comic Sans MS pour ce que les modèles de l'APIX écrivent avec elle. Sa
- * licence interdisant de la versionner, Comic Relief tient sa place.
+ * Les polices des documents (ADR-0090) : Arial, et Comic Sans MS pour ce que
+ * les modèles de l'APIX écrivent avec elle. Leur licence interdisant de les
+ * versionner, Arimo et Comic Relief tiennent leur place, aux mêmes chasses.
+ * Google Sans reste celle du certificat d'APIX Academy.
  */
 import PDFDocument from 'pdfkit';
 import { describe, expect, it } from 'vitest';
@@ -11,13 +12,14 @@ import {
 } from '../src/modules/documents/attestation.service';
 import { enregistrerPolices, police } from '../src/modules/documents/entete';
 
-describe('Google Sans', () => {
-  it('est la police par défaut, en romain, gras et italique', () => {
+describe('Arial', () => {
+  it('est la police par défaut, dans ses quatre coupes', () => {
     const doc = new PDFDocument();
     enregistrerPolices(doc);
-    expect(police(doc, 'normal')).toBe('google-sans-normal');
-    expect(police(doc, 'bold')).toBe('google-sans-bold');
-    expect(police(doc, 'italic')).toBe('google-sans-italic');
+    expect(police(doc, 'normal')).toBe('arial-normal');
+    expect(police(doc, 'bold')).toBe('arial-bold');
+    expect(police(doc, 'italic')).toBe('arial-italic');
+    expect(police(doc, 'bold-italic')).toBe('arial-bold-italic');
   });
 
   it('écrit l’attestation de travail, en-tête et pied de page compris ; Comic Sans MS, son timbre', async () => {
@@ -40,11 +42,21 @@ describe('Google Sans', () => {
         p.replace(/^.*\+/, ''),
       ),
     );
-    expect([...polices].filter((p) => !/^(GoogleSans|ComicRelief|ComicSansMS)/.test(p))).toEqual(
+    // Arimo dans le dépôt ; Arial là où l'exploitant l'a déposée.
+    expect([...polices].filter((p) => !/^(Arimo|Arial|ComicRelief|ComicSansMS)/.test(p))).toEqual(
       [],
     );
-    expect([...polices].some((p) => p.startsWith('GoogleSans-Bold'))).toBe(true);
+    expect([...polices].some((p) => /^(Arimo|Arial)-Bold/.test(p))).toBe(true);
     expect([...polices].some((p) => /^Comic(Relief|SansMS)-Bold/.test(p))).toBe(true);
+  });
+});
+
+describe('Google Sans', () => {
+  it('reste la police du certificat d’APIX Academy', () => {
+    const doc = new PDFDocument();
+    enregistrerPolices(doc);
+    expect(police(doc, 'normal', 'google-sans')).toBe('google-sans-normal');
+    expect(police(doc, 'bold', 'google-sans')).toBe('google-sans-bold');
   });
 });
 
@@ -63,7 +75,7 @@ describe('à défaut', () => {
     const doc = new PDFDocument();
     enregistrerPolices(doc);
     // Google Sans n'a pas de gras italique dans le dépôt.
-    expect(police(doc, 'bold-italic')).toBe('google-sans-bold');
+    expect(police(doc, 'bold-italic', 'google-sans')).toBe('google-sans-bold');
   });
 
   it('sans fichiers, Helvetica', () => {

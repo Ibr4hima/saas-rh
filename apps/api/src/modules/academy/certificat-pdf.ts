@@ -24,6 +24,8 @@ const BLEU = '#004f91';
 const ENCRE = '#14172a';
 const GRIS = '#5a5f75';
 const FILET = '#c9d6e6';
+/** Google Sans, la police du site : les documents de la DCH, eux, sont en Arial (ADR-0090). */
+const FAMILLE = 'google-sans';
 
 export interface DonneesCertificat {
   numero: string;
@@ -119,7 +121,7 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
     doc.image(logo, gauche, milieuEnTete - 24, { fit: [190, 48], valign: 'center' });
   } else {
     doc
-      .font(police(doc, 'bold'))
+      .font(police(doc, 'bold', FAMILLE))
       .fontSize(22)
       .fillColor(BLEU)
       .text('APIX', gauche, milieuEnTete - 14);
@@ -136,7 +138,7 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
     espacement = 0,
   ) => {
     doc
-      .font(police(doc, coupe))
+      .font(police(doc, coupe, FAMILLE))
       .fontSize(taille)
       .fillColor(couleur)
       .text(texte, gauche, y, { width: largeur, align: 'center', characterSpacing: espacement });
@@ -165,7 +167,7 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
   // Un titre long (jusqu'à 160 caractères) tiendrait sur trois lignes et
   // pousserait le score contre le pied : il passe alors en plus petit.
   const intitule = `« ${d.formation} »`;
-  doc.font(police(doc, 'bold')).fontSize(18);
+  doc.font(police(doc, 'bold', FAMILLE)).fontSize(18);
   const lignes = Math.round(
     doc.heightOfString(intitule, { width: largeur }) / doc.currentLineHeight(true),
   );
@@ -195,7 +197,7 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
   const droite = L - gauche;
 
   doc
-    .font(police(doc, 'normal'))
+    .font(police(doc, 'normal', FAMILLE))
     .fontSize(10.5)
     .fillColor(ENCRE)
     .text(`Délivré le ${frDate(d.emisLe)}`, gauche, ligne1, { lineBreak: false });
@@ -213,16 +215,16 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
     const largeurTexte = doc.widthOfString(texte, { characterSpacing: espacement });
     doc.text(texte, droite - largeurTexte, y, { lineBreak: false, characterSpacing: espacement });
   };
-  doc.font(police(doc, 'bold')).fontSize(10.5);
+  doc.font(police(doc, 'bold', FAMILLE)).fontSize(10.5);
   const largeurNumero = doc.widthOfString(d.numero, { characterSpacing: 0.6 });
   doc
-    .font(police(doc, 'normal'))
+    .font(police(doc, 'normal', FAMILLE))
     .fontSize(10.5)
     .fillColor(GRIS)
     .text('REF : ', droite - largeurNumero - doc.widthOfString('REF : '), ligne1, {
       lineBreak: false,
     });
-  doc.font(police(doc, 'bold')).fillColor(ENCRE);
+  doc.font(police(doc, 'bold', FAMILLE)).fillColor(ENCRE);
   aDroite(d.numero, ligne1, 0.6);
   doc.fontSize(9.5).fillColor(BLEU);
   aDroite('APIX ACADEMY', ligne2, 2);
@@ -231,7 +233,7 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
   if (d.specimen) {
     const colonne = 300;
     doc
-      .font(police(doc, 'normal'))
+      .font(police(doc, 'normal', FAMILLE))
       .fontSize(8.5)
       .fillColor(GRIS)
       .text(
@@ -249,7 +251,7 @@ export function genererCertificatPdf(d: DonneesCertificat): Promise<Buffer> {
     doc.rotate(-18, { origin: [L / 2, H / 2] });
     doc
       .fillOpacity(0.09)
-      .font(police(doc, 'bold'))
+      .font(police(doc, 'bold', FAMILLE))
       .fontSize(118)
       .fillColor(BLEU)
       .text('SPÉCIMEN', 0, H / 2 - 66, { width: L, align: 'center', characterSpacing: 10 });

@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, win32 } from 'node:path';
 import type PDFDocument from 'pdfkit';
 
 /**
@@ -80,35 +80,79 @@ export function cheminLogo(): string | null {
 
 export type Coupe = 'normal' | 'bold' | 'italic' | 'bold-italic';
 
-/** Les familles des documents : Google Sans, la police principale, et Comic Sans MS. */
-export type Famille = 'google-sans' | 'comic';
+/**
+ * Les familles des documents : Arial, la police principale (ADR-0090), Comic
+ * Sans MS pour ce que les modèles de l'APIX écrivent avec elle, et Google
+ * Sans, celle du certificat d'APIX Academy.
+ */
+export type Famille = 'arial' | 'comic' | 'google-sans';
+
+/**
+ * Où les systèmes rangent Arial et Comic Sans MS, quand ils les ont : Windows
+ * et macOS de série, Debian et Ubuntu avec le paquet officiel des polices de
+ * Microsoft (`ttf-mscorefonts-installer`). `windows` : le nom du fichier sous
+ * Windows, que reprend le paquet ; `macos` : celui de macOS.
+ */
+const surLeSysteme = (windows: string, macos?: string) => [
+  `C:\\Windows\\Fonts\\${windows}`,
+  `/usr/share/fonts/truetype/msttcorefonts/${windows}`,
+  ...(macos ? [`/System/Library/Fonts/Supplemental/${macos}`] : []),
+];
 
 /**
  * Où trouver chaque coupe, par ordre de préférence, depuis `assets/`.
  *
- * Comic Sans MS ne se versionne pas : sa licence l'interdit. L'exploitant qui
- * en a la licence dépose les fichiers à la racine des ressources, sous leur
- * nom Windows, et ils passent devant ; sinon Comic Relief, libre et versionnée
- * dans `fonts/`, prend la place, aux mêmes chasses.
+ * Arial et Comic Sans MS ne se versionnent pas : leur licence l'interdit
+ * (ADR-0090). Le générateur prend celles que l'exploitant dépose à la racine
+ * des ressources, sous leur nom Windows, puis celles du serveur. Sans elles,
+ * leurs équivalents libres, versionnés dans `fonts/`, prennent la place, aux
+ * mêmes chasses : la mise en page ne bouge pas d'un caractère.
  */
 const FICHIERS: Record<Famille, Partial<Record<Coupe, readonly string[]>>> = {
+  arial: {
+    normal: ['arial.ttf', ...surLeSysteme('arial.ttf', 'Arial.ttf'), 'fonts/arimo-regular.ttf'],
+    bold: ['arialbd.ttf', ...surLeSysteme('arialbd.ttf', 'Arial Bold.ttf'), 'fonts/arimo-bold.ttf'],
+    italic: [
+      'ariali.ttf',
+      ...surLeSysteme('ariali.ttf', 'Arial Italic.ttf'),
+      'fonts/arimo-italic.ttf',
+    ],
+    'bold-italic': [
+      'arialbi.ttf',
+      ...surLeSysteme('arialbi.ttf', 'Arial Bold Italic.ttf'),
+      'fonts/arimo-bold-italic.ttf',
+    ],
+  },
+  comic: {
+    normal: [
+      'comic.ttf',
+      ...surLeSysteme('comic.ttf', 'Comic Sans MS.ttf'),
+      'fonts/comic-relief-regular.ttf',
+    ],
+    bold: [
+      'comicbd.ttf',
+      ...surLeSysteme('comicbd.ttf', 'Comic Sans MS Bold.ttf'),
+      'fonts/comic-relief-bold.ttf',
+    ],
+    // Comic Relief n'a pas d'italique : sans les fichiers d'origine, le romain.
+    italic: ['comici.ttf', ...surLeSysteme('comici.ttf')],
+    'bold-italic': ['comicz.ttf', ...surLeSysteme('comicz.ttf')],
+  },
   'google-sans': {
     normal: ['fonts/google-sans-regular.ttf'],
     bold: ['fonts/google-sans-bold.ttf'],
     italic: ['fonts/google-sans-italic.ttf'],
   },
-  comic: {
-    normal: ['comic.ttf', 'fonts/comic-relief-regular.ttf'],
-    bold: ['comicbd.ttf', 'fonts/comic-relief-bold.ttf'],
-    // Comic Relief n'a pas d'italique : sans les fichiers d'origine, le romain.
-    italic: ['comici.ttf'],
-    'bold-italic': ['comicz.ttf'],
-  },
 };
 
-/** Un fichier des ressources, quelle que soit la casse de son nom : COMIC.TTF vaut comic.ttf. */
+/**
+ * Un fichier des ressources, ou du serveur si son chemin est absolu, quelle
+ * que soit la casse de son nom : COMIC.TTF vaut comic.ttf.
+ */
 function ressource(chemin: string): string | null {
-  const complet = join(RACINE, 'assets', chemin);
+  // Le chemin d'un autre système, C:\Windows sous Linux : rien à chercher.
+  if (win32.isAbsolute(chemin) && !isAbsolute(chemin)) return null;
+  const complet = isAbsolute(chemin) ? chemin : join(RACINE, 'assets', chemin);
   if (existsSync(complet)) return complet;
   const dossier = dirname(complet);
   const nom = basename(complet).toLowerCase();
@@ -118,7 +162,7 @@ function ressource(chemin: string): string | null {
   return trouve ? join(dossier, trouve) : null;
 }
 
-/** Les polices des documents, enregistrées sous `famille-coupe` : « google-sans-bold ». */
+/** Les polices des documents, enregistrées sous `famille-coupe` : « arial-bold ». */
 export function enregistrerPolices(doc: Doc): void {
   for (const [famille, coupes] of Object.entries(FICHIERS)) {
     for (const [coupe, candidats] of Object.entries(coupes)) {
@@ -143,7 +187,7 @@ const HELVETICA: Record<Coupe, string> = {
  * être enregistrée ; une italique absente cède la place au romain de la même
  * famille ; à défaut de tout, Helvetica.
  */
-export function police(doc: Doc, coupe: Coupe, famille: Famille = 'google-sans'): string {
+export function police(doc: Doc, coupe: Coupe, famille: Famille = 'arial'): string {
   const essais: Coupe[] =
     coupe === 'italic' ? ['italic', 'normal'] : coupe === 'bold-italic' ? [coupe, 'bold'] : [coupe];
   for (const c of essais) {
