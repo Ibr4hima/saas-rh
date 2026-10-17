@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import type PDFDocument from 'pdfkit';
 
 /**
@@ -68,34 +68,94 @@ export function cheminLogo(): string | null {
   return candidats.find((c) => existsSync(c)) ?? null;
 }
 
-/** Les trois coupes de Google Sans, enregistrées sous des noms courts. */
+export type Coupe = 'normal' | 'bold' | 'italic' | 'bold-italic';
+
+/**
+ * Les familles des documents. Arial est la police des documents de la DCH
+ * (décision APIX), Comic Sans MS celle de certains de ses modèles ; Google
+ * Sans reste aux certificats de l'Academy.
+ */
+export type Famille = 'arial' | 'comic' | 'google-sans';
+
+/**
+ * Où trouver chaque coupe, par ordre de préférence, depuis `assets/`.
+ *
+ * Arial et Comic Sans MS ne se versionnent pas : leur licence l'interdit.
+ * L'exploitant qui en a la licence les dépose à la racine des ressources,
+ * sous leur nom Windows, et elles passent devant. Sinon leurs équivalents
+ * libres, versionnés dans `fonts/`, prennent la place, aux mêmes chasses : la
+ * mise en page ne bouge pas d'un caractère.
+ */
+const FICHIERS: Record<Famille, Partial<Record<Coupe, readonly string[]>>> = {
+  arial: {
+    normal: ['arial.ttf', 'fonts/arimo-regular.ttf'],
+    bold: ['arialbd.ttf', 'fonts/arimo-bold.ttf'],
+    italic: ['ariali.ttf', 'fonts/arimo-italic.ttf'],
+    'bold-italic': ['arialbi.ttf', 'fonts/arimo-bold-italic.ttf'],
+  },
+  comic: {
+    normal: ['comic.ttf', 'fonts/comic-relief-regular.ttf'],
+    bold: ['comicbd.ttf', 'fonts/comic-relief-bold.ttf'],
+    // Comic Relief n'a pas d'italique : sans les fichiers d'origine, le romain.
+    italic: ['comici.ttf'],
+    'bold-italic': ['comicz.ttf'],
+  },
+  'google-sans': {
+    normal: ['fonts/google-sans-regular.ttf'],
+    bold: ['fonts/google-sans-bold.ttf'],
+    italic: ['fonts/google-sans-italic.ttf'],
+  },
+};
+
+/** Un fichier des ressources, quelle que soit la casse de son nom : ARIAL.TTF vaut arial.ttf. */
+function ressource(chemin: string): string | null {
+  const complet = join(RACINE, 'assets', chemin);
+  if (existsSync(complet)) return complet;
+  const dossier = dirname(complet);
+  const nom = basename(complet).toLowerCase();
+  const trouve = existsSync(dossier)
+    ? readdirSync(dossier).find((f) => f.toLowerCase() === nom)
+    : undefined;
+  return trouve ? join(dossier, trouve) : null;
+}
+
+/** Les polices des documents, enregistrées sous `famille-coupe` : « arial-bold ». */
 export function enregistrerPolices(doc: Doc): void {
-  const dir = join(RACINE, 'assets', 'fonts');
-  const coupes: Array<[string, string]> = [
-    ['gs', 'google-sans-regular.ttf'],
-    ['gs-bold', 'google-sans-bold.ttf'],
-    ['gs-italic', 'google-sans-italic.ttf'],
-  ];
-  for (const [nom, fichier] of coupes) {
-    const chemin = join(dir, fichier);
-    // Sans les polices, on retombe sur Helvetica plutôt que d'échouer : c'est
-    // laid, ce n'est pas faux. `pnpm --filter @teranga/api fonts:fetch` remet
-    // les fichiers en place.
-    if (existsSync(chemin)) doc.registerFont(nom, readFileSync(chemin));
+  for (const [famille, coupes] of Object.entries(FICHIERS)) {
+    for (const [coupe, candidats] of Object.entries(coupes)) {
+      const chemin = candidats.map(ressource).find((c) => c !== null);
+      // Sans les polices, on retombe sur Helvetica plutôt que d'échouer : c'est
+      // laid, ce n'est pas faux. `pnpm --filter @teranga/api fonts:fetch` remet
+      // les fichiers en place.
+      if (chemin) doc.registerFont(`${famille}-${coupe}`, readFileSync(chemin));
+    }
   }
 }
 
-/** Vrai si Google Sans a pu être enregistrée — sinon on nomme Helvetica. */
-export function police(doc: Doc, coupe: 'normal' | 'bold' | 'italic'): string {
-  const nom = coupe === 'bold' ? 'gs-bold' : coupe === 'italic' ? 'gs-italic' : 'gs';
-  const secours =
-    coupe === 'bold' ? 'Helvetica-Bold' : coupe === 'italic' ? 'Helvetica-Oblique' : 'Helvetica';
-  try {
-    doc.font(nom);
-    return nom;
-  } catch {
-    return secours;
+const HELVETICA: Record<Coupe, string> = {
+  normal: 'Helvetica',
+  bold: 'Helvetica-Bold',
+  italic: 'Helvetica-Oblique',
+  'bold-italic': 'Helvetica-BoldOblique',
+};
+
+/**
+ * Le nom à donner à pdfkit pour une coupe : celle de la famille, si elle a pu
+ * être enregistrée ; une italique absente cède la place au romain de la même
+ * famille ; à défaut de tout, Helvetica, qui a les chasses d'Arial.
+ */
+export function police(doc: Doc, coupe: Coupe, famille: Famille = 'google-sans'): string {
+  const essais: Coupe[] =
+    coupe === 'italic' ? ['italic', 'normal'] : coupe === 'bold-italic' ? [coupe, 'bold'] : [coupe];
+  for (const c of essais) {
+    try {
+      doc.font(`${famille}-${c}`);
+      return `${famille}-${c}`;
+    } catch {
+      // Pas enregistrée : la suivante.
+    }
   }
+  return HELVETICA[coupe];
 }
 
 /**
@@ -162,13 +222,12 @@ function largeurPour(doc: Doc, chemin: string, hauteur: number): number {
  * la remplace aussitôt.
  */
 function dessinerEnteteComposee(doc: Doc, marge: number, colonneGauche: number): void {
-  const ligne = (
-    texte: string,
-    coupe: 'normal' | 'bold' | 'italic',
-    taille: number,
-    ecart = 1.6,
-  ) => {
-    doc.font(police(doc, coupe)).fontSize(taille).fillColor('#111111');
+  const ligne = (texte: string, coupe: Coupe, taille: number, ecart = 1.6) => {
+    // En Arial, comme le corps des documents de la DCH.
+    doc
+      .font(police(doc, coupe, 'arial'))
+      .fontSize(taille)
+      .fillColor('#111111');
     doc.text(texte, marge, doc.y, { width: colonneGauche, align: 'center', lineGap: 0 });
     doc.y += ecart;
   };

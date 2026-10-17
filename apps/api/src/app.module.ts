@@ -33,6 +33,7 @@ import { NotificationsController } from './modules/notifications/notifications.c
 import { NotificationsService } from './modules/notifications/notifications.service';
 import { AttestationService } from './modules/documents/attestation.service';
 import { DocumentsController } from './modules/documents/documents.controller';
+import { GenerationService } from './modules/documents/generation.service';
 import { AuthService } from './modules/auth/auth.service';
 import { ReinitialisationService } from './modules/auth/reinitialisation.service';
 import { AccesGuard } from './modules/auth/acces.guard';
@@ -107,6 +108,7 @@ import { AbsencesService } from './modules/time/absences.service';
     AbsencesService,
     InvitationsService,
     AttestationService,
+    GenerationService,
     EmployeeDocumentsService,
     DocumentRequestsService,
     ProfileChangesService,

@@ -193,6 +193,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/demandes/informations': 'Mise à jour d’infos',
   '/demandes/pieces': 'Vérification des documents',
   '/moi/delegations': 'Déléguer des tâches',
+  '/generer': 'Générer des documents',
   '/acces': 'Gestion des accès',
   '/calendrier': 'Calendrier · Jours fériés',
   '/recrutement': "Offres d'emploi",
@@ -509,6 +510,16 @@ function navigationGestion(
         // Traiter ; les réglages des congés ensuite, à qui les gère
         // seulement : traiter les congés n'y donne pas accès.
         items.push(...demandes);
+        // Générer, à sa guise, les documents de la liste (ADR-0085).
+        if (user.dirigeLaDCH) {
+          items.push({
+            href: '/generer',
+            label: 'Générer des documents',
+            short: 'Générer',
+            icon: 'description',
+            groupe: 'quotidien',
+          });
+        }
         if (peut(user, 'conges.parametres')) items.push(i);
         break;
       case '/absences/feries':
@@ -1214,6 +1225,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       );
     }
     if (commence('/moi/delegations')) return u.dirigeLaDCH || u.role === 'admin';
+    if (commence('/generer')) return u.dirigeLaDCH;
     // Les objectifs : chacun les siens, le DG ceux de l'APIX, qui encadre son équipe.
     if (commence('/moi/objectifs-apix') || commence('/moi/tableau-de-bord')) return u.estDG;
     if (commence('/moi/objectifs')) return u.estAgent && !u.estDG;

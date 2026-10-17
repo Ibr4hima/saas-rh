@@ -1,7 +1,7 @@
 # Ressources des documents générés
 
-Servies au moteur PDF, jamais au web. Deux fichiers à déposer ici — aucun n'est
-versionné : ils appartiennent à l'organisation, pas au logiciel.
+Servies au moteur PDF, jamais au web. Ce qui se dépose ici n'est pas versionné :
+cela appartient à l'organisation, pas au logiciel.
 
 ## `entete-republique.png`
 
@@ -25,9 +25,30 @@ dessine sans lui.
 
 Format : PNG ou JPEG, pour la même raison.
 
+## Arial et Comic Sans MS : `arial*.ttf`, `comic*.ttf`
+
+Les documents de la DCH sont en Arial, certains de ses modèles en Comic Sans
+MS. Leur licence (Monotype, Microsoft) interdit de les versionner : le dépôt
+porte à leur place Arimo et Comic Relief (`fonts/`), libres et dessinées aux
+mêmes chasses. Un document sort donc avec la même mise en page, au caractère
+près ; seul le dessin de quelques lettres diffère.
+
+Si l'organisation en a la licence, elle dépose ici les fichiers d'origine, sous
+leur nom Windows (la casse ne compte pas), et le générateur les prend à la
+place :
+
+| Police        | Romain      | Gras          | Italique     | Gras italique |
+| ------------- | ----------- | ------------- | ------------ | ------------- |
+| Arial         | `arial.ttf` | `arialbd.ttf` | `ariali.ttf` | `arialbi.ttf` |
+| Comic Sans MS | `comic.ttf` | `comicbd.ttf` | `comici.ttf` | `comicz.ttf`  |
+
+Comic Relief n'a pas d'italique : sans `comici.ttf`, l'italique en Comic Sans
+MS s'imprime en romain.
+
 ## `fonts/`
 
-Google Sans en TTF, **générée** par `pnpm --filter @teranga/api fonts:fetch` et
-versionnée : un dépôt fraîchement cloné sort des documents à la bonne
-typographie sans manipulation. pdfkit ne lit ni woff2 ni SVG, d'où cette copie
-distincte de celle du site.
+Google Sans, Arimo et Comic Relief en TTF, chacune avec sa licence OFL,
+**générées** par `pnpm --filter @teranga/api fonts:fetch` et versionnées : un
+dépôt fraîchement cloné sort des documents à la bonne typographie sans
+manipulation. pdfkit ne lit ni woff2 ni SVG, d'où cette copie distincte de
+celle du site.

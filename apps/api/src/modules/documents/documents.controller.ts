@@ -14,12 +14,16 @@ import type { AttestationApercu } from '@teranga/contracts';
 import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AttestationService } from './attestation.service';
+import { GenerationService } from './generation.service';
 import { contentDisposition } from '../../common/telechargement';
 
 @Controller()
 @UseGuards(SessionGuard, AccesGuard)
 export class DocumentsController {
-  constructor(@Inject(AttestationService) private readonly attestations: AttestationService) {}
+  constructor(
+    @Inject(AttestationService) private readonly attestations: AttestationService,
+    @Inject(GenerationService) private readonly generation: GenerationService,
+  ) {}
 
   /** L'attestation d'un agent, depuis la file des documents (qui traite sa demande). */
   @Get('employees/:id/attestation')
@@ -43,6 +47,23 @@ export class DocumentsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<AttestationApercu> {
     return this.attestations.apercu(req.sessionUser, id);
+  }
+
+  /**
+   * Un document de la liste, généré pour un agent depuis « Générer des
+   * documents » (ADR-0085). La page le lit pour son aperçu ; « inline »
+   * l'ouvre dans la visionneuse du navigateur, pour l'imprimer.
+   */
+  @Get('employees/:id/generer/:type')
+  async genere(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('type') type: string,
+    @Query('disposition') disposition: string | undefined,
+    @Res() res: Response,
+  ) {
+    const { filename, pdf } = await this.generation.pdf(req.sessionUser, type, id);
+    this.send(res, filename, pdf, disposition === 'inline');
   }
 
   private send(res: Response, filename: string, pdf: Buffer, inline = false) {

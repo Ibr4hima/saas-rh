@@ -13,7 +13,7 @@ import type {
 import {
   capaciteDuDocument,
   documentDemande,
-  GENERATED_DOCS,
+  estGenere,
   peut,
   REQUESTABLE_DOC_LABELS,
 } from '@teranga/contracts';
@@ -594,7 +594,7 @@ function piecesOf(requests: DocumentRequestView[]): Piece[] {
       employeeStatus: r.employeeStatus,
       doc: d,
       bulletin: r.bulletin,
-      generable: (GENERATED_DOCS as string[]).includes(d) && r.employeeStatus === 'active',
+      generable: estGenere(d) && r.employeeStatus === 'active',
     })),
   );
 }
@@ -1024,7 +1024,7 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
     // Deux raisons de ne rien avoir à montrer, et elles n'appellent pas le
     // même geste : soit l'application ne produit pas ce document, soit elle
     // le produit mais refuse pour ce dossier-là.
-    const dossierInactif = (GENERATED_DOCS as string[]).includes(piece.doc);
+    const dossierInactif = estGenere(piece.doc);
     return (
       <>
         {entete}

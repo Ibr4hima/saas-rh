@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Récupère Google Sans en TTF pour les documents PDF.
+ * Récupère en TTF les polices des documents PDF, chacune avec sa licence.
  *
  * Pourquoi un second script alors que le web a déjà le sien : les deux
  * consommateurs ne lisent pas le même format. Le navigateur veut du woff2 ;
@@ -11,6 +11,13 @@
  *
  * Les fichiers produits sont VERSIONNÉS : une attestation doit sortir avec la
  * bonne typographie sur un dépôt fraîchement cloné, sans manipulation.
+ *
+ * Arial, la police des documents de la DCH, et Comic Sans MS, celle de
+ * certains de ses modèles, ne se redistribuent pas : leur licence (Monotype,
+ * Microsoft) interdit de les versionner. Arimo et Comic Relief en sont les
+ * équivalents libres, sous licence OFL, dessinés aux MÊMES chasses : un mot y
+ * occupe la même largeur, une ligne se coupe au même endroit, une page au
+ * même paragraphe.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -27,10 +34,40 @@ const OUT = join(here, '..', 'assets', 'fonts');
  */
 const UA = 'Mozilla/4.0';
 
-const COUPES = [
-  { nom: 'google-sans-regular.ttf', style: 'normal', poids: '400' },
-  { nom: 'google-sans-bold.ttf', style: 'normal', poids: '700' },
-  { nom: 'google-sans-italic.ttf', style: 'italic', poids: '400' },
+/**
+ * Les familles, coupe par coupe, et leur licence : l'OFL veut qu'elle voyage
+ * avec la police. Google Sans pour les certificats de l'Academy, Arimo pour
+ * Arial, Comic Relief pour Comic Sans MS.
+ */
+const FAMILLES = [
+  {
+    css: 'Google+Sans:ital,wght@0,400;0,700;1,400',
+    licence: { source: 'ofl/googlesans/OFL.txt', nom: 'google-sans-OFL.txt' },
+    coupes: [
+      { nom: 'google-sans-regular.ttf', style: 'normal', poids: '400' },
+      { nom: 'google-sans-bold.ttf', style: 'normal', poids: '700' },
+      { nom: 'google-sans-italic.ttf', style: 'italic', poids: '400' },
+    ],
+  },
+  {
+    css: 'Arimo:ital,wght@0,400;0,700;1,400;1,700',
+    licence: { source: 'ofl/arimo/OFL.txt', nom: 'arimo-OFL.txt' },
+    coupes: [
+      { nom: 'arimo-regular.ttf', style: 'normal', poids: '400' },
+      { nom: 'arimo-bold.ttf', style: 'normal', poids: '700' },
+      { nom: 'arimo-italic.ttf', style: 'italic', poids: '400' },
+      { nom: 'arimo-bold-italic.ttf', style: 'italic', poids: '700' },
+    ],
+  },
+  {
+    // Comic Relief n'a pas d'italique.
+    css: 'Comic+Relief:wght@400;700',
+    licence: { source: 'ofl/comicrelief/OFL.txt', nom: 'comic-relief-OFL.txt' },
+    coupes: [
+      { nom: 'comic-relief-regular.ttf', style: 'normal', poids: '400' },
+      { nom: 'comic-relief-bold.ttf', style: 'normal', poids: '700' },
+    ],
+  },
 ];
 
 /**
@@ -95,21 +132,20 @@ function curl(url, sortie) {
   return execFileSync('curl', args, { encoding: sortie ? 'buffer' : 'utf8' });
 }
 
-const css = curl(
-  'https://fonts.googleapis.com/css2?family=Google+Sans:ital,wght@0,400;0,700;1,400&display=swap',
-);
+/** Les coupes qu'une famille propose : style, graisse, adresse du TTF. */
+function blocsDe(famille) {
+  const css = curl(`https://fonts.googleapis.com/css2?family=${famille}&display=swap`);
+  // Chaque bloc porte son style et sa graisse : on les apparie plutôt que de se
+  // fier à l'ordre, que rien ne garantit.
+  return [...css.matchAll(/@font-face \{([\s\S]*?)\}/g)].map(([, corps]) => ({
+    style: /font-style:\s*(\w+)/.exec(corps)?.[1],
+    poids: /font-weight:\s*(\d+)/.exec(corps)?.[1],
+    url: /url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/.exec(corps)?.[1],
+  }));
+}
 
-// Chaque bloc porte son style et sa graisse : on les apparie plutôt que de se
-// fier à l'ordre, que rien ne garantit.
-const blocs = [...css.matchAll(/@font-face \{([\s\S]*?)\}/g)].map(([, corps]) => ({
-  style: /font-style:\s*(\w+)/.exec(corps)?.[1],
-  poids: /font-weight:\s*(\d+)/.exec(corps)?.[1],
-  url: /url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/.exec(corps)?.[1],
-}));
-
-mkdirSync(OUT, { recursive: true });
-let total = 0;
-for (const coupe of COUPES) {
+/** Une coupe, téléchargée, vérifiée et réduite : rend sa taille en octets. */
+function recuperer(coupe, blocs) {
   const bloc = blocs.find((b) => b.style === coupe.style && b.poids === coupe.poids);
   if (!bloc?.url) throw new Error(`Coupe absente de la réponse : ${coupe.style} ${coupe.poids}`);
   if (!bloc.url.endsWith('.ttf')) {
@@ -127,8 +163,30 @@ for (const coupe of COUPES) {
     throw new Error(`${coupe.nom} n'est pas une police TrueType — NON remplacée.`);
   }
   const reduit = reduireAuLatin(chemin);
-  total += reduit;
   console.log(`  ${coupe.nom} (${(reduit / 1024).toFixed(0)} Ko)`);
+  return reduit;
+}
+
+/** La licence d'une famille, telle que Google Fonts la publie avec elle. */
+function recupererLaLicence({ source, nom }) {
+  const chemin = join(OUT, nom);
+  curl(`https://raw.githubusercontent.com/google/fonts/main/${source}`, chemin);
+  if (!readFileSync(chemin, 'utf8').includes('SIL OPEN FONT LICENSE')) {
+    throw new Error(`${nom} n'est pas la licence OFL attendue.`);
+  }
+  console.log(`  ${nom}`);
+}
+
+mkdirSync(OUT, { recursive: true });
+let total = 0;
+let coupes = 0;
+for (const famille of FAMILLES) {
+  const blocs = blocsDe(famille.css);
+  for (const coupe of famille.coupes) {
+    total += recuperer(coupe, blocs);
+    coupes += 1;
+  }
+  recupererLaLicence(famille.licence);
 }
 
 writeFileSync(
@@ -137,6 +195,10 @@ writeFileSync(
     'Fichiers GÉNÉRÉS par `scripts/fetch-pdf-fonts.mjs` — ne pas modifier à la main.\n\n' +
     '    pnpm --filter @teranga/api fonts:fetch\n\n' +
     'pdfkit ne lit ni le woff2 ni le SVG : le web et les PDF ont chacun leur\n' +
-    'copie de Google Sans, dans le format que leur moteur sait ouvrir.\n',
+    'copie de Google Sans, dans le format que leur moteur sait ouvrir.\n\n' +
+    "Arimo et Comic Relief tiennent la place d'Arial et de Comic Sans MS, que\n" +
+    'leur licence interdit de versionner : mêmes chasses, licence OFL (fichiers\n' +
+    "`*-OFL.txt`). Les polices d'origine se déposent à la racine de `assets/`\n" +
+    '(cf. `assets/README.md`).\n',
 );
-console.log(`✓ ${COUPES.length} coupes, ${(total / 1024).toFixed(0)} Ko — ${OUT}`);
+console.log(`✓ ${coupes} coupes, ${(total / 1024).toFixed(0)} Ko, dans ${OUT}`);

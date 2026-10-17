@@ -1,4 +1,4 @@
-import { apiUrl } from './api';
+import { apiUrl, erreurDe } from './api';
 
 /** Le contenu d'un fichier choisi, en base64, pour l'envoyer dans un JSON. */
 export function lireEnBase64(fichier: File): Promise<string> {
@@ -23,20 +23,36 @@ export async function enregistrer(chemin: string, nom: string): Promise<boolean>
   try {
     const res = await fetch(apiUrl(chemin), { credentials: 'include' });
     if (!res.ok) return false;
-    const url = URL.createObjectURL(await res.blob());
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = nom;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    // Le navigateur lit l'adresse après le clic : la révoquer tout de suite
-    // annulerait l'enregistrement qu'on vient de demander.
-    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    enregistrerFichier(await res.blob(), nom);
     return true;
   } catch {
     return false;
   }
+}
+
+/** Enregistre sur le poste un fichier déjà en main, depuis une adresse `blob:` locale. */
+export function enregistrerFichier(contenu: Blob, nom: string): void {
+  const url = URL.createObjectURL(contenu);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nom;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Le navigateur lit l'adresse après le clic : la révoquer tout de suite
+  // annulerait l'enregistrement qu'on vient de demander.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+/**
+ * Les octets d'un fichier servi par l'API, lus avec la session. Un refus
+ * remonte tel que l'API l'a dit (un dossier inactif, un modèle à
+ * configurer), comme pour `api()`.
+ */
+export async function lireFichier(chemin: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  const res = await fetch(apiUrl(chemin), { credentials: 'include', signal });
+  if (!res.ok) throw await erreurDe(res);
+  return res.arrayBuffer();
 }
 
 /** « 1,2 Mo », « 340 Ko ». */

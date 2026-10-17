@@ -17,7 +17,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0009](0009-auth-maison.md)                           | Auth maison : Argon2id, sessions opaques, MFA TOTP pour rôles sensibles                 | acceptée                                    |
 | [0010](0010-conventions-schema.md)                    | Conventions de schéma : UUIDv7 applicatif, timestamptz UTC, snake_case                  | acceptée                                    |
 | [0011](0011-signature-electronique-deux-etages.md)    | Signature électronique à deux étages (avancée maison V1, qualifiée V2)                  | acceptée                                    |
-| [0012](0012-arbitrages-direction-capital-humain.md)   | Arbitrages de la Direction du Capital Humain (APIX)                                     | acceptée, précisée par 0040, 0042           |
+| [0012](0012-arbitrages-direction-capital-humain.md)   | Arbitrages de la Direction du Capital Humain (APIX)                                     | acceptée, précisée par 0040, 0042, 0085     |
 | [0013](0013-coherence-organigramme.md)                | Règles de cohérence de l'organigramme                                                   | acceptée, précisée par 0034 et 0036         |
 | [0014](0014-corrections-informations-personnelles.md) | Corrections des informations personnelles par l'employé                                 | acceptée, précisée par 0080                 |
 | [0015](0015-courriels-sortants.md)                    | Courriels sortants : file dédiée, Mailpit en développement, Microsoft 365 en production | acceptée                                    |
@@ -89,4 +89,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0081](0081-suivi-des-mises-a-jour.md)                | Le suivi des demandes porte aussi les mises à jour d'informations                       | acceptée, précisée par 0082                 |
 | [0082](0082-mise-a-jour-validee-hors-du-suivi.md)     | Validée, une mise à jour d'informations ne figure pas au suivi                          | acceptée                                    |
 | [0083](0083-anciennete-du-contrat-en-cours.md)        | L'ancienneté est celle du contrat en cours ; le stage n'en donne pas                    | acceptée                                    |
-| [0084](0084-documents-de-la-dch.md)                   | La liste des documents à demander est celle de la DCH                                   | acceptée                                    |
+| [0084](0084-documents-de-la-dch.md)                   | La liste des documents à demander est celle de la DCH                                   | acceptée, précisée par 0085                 |
+| [0085](0085-generer-des-documents.md)                 | Générer des documents : qui dirige la DCH, à sa guise, sur les modèles de l'APIX        | acceptée                                    |

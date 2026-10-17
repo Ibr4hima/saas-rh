@@ -1,14 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
-import PDFDocument from 'pdfkit';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { AttestationApercu, SessionUser } from '@teranga/contracts';
-import { capaciteDuDocument } from '@teranga/contracts';
+import { capaciteDuDocument, nomDuDocumentGenere } from '@teranga/contracts';
 import { agentDuCompte, directionDuPersonnel, pasSurSoi } from '../acces/dch';
 import { vueDuTraitement } from '../acces/demandes';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
-import { dessinerEntete, ENTETE, enregistrerPolices, police } from './entete';
+import { ENTETE } from './entete';
+import { nouvelleFeuille, type DocumentPdf } from './feuille';
 
 /**
  * Chaque libellé porte SON article.
@@ -114,6 +114,16 @@ export function textesDeLAttestation(d: AttestationData, aujourdhui: Date): Atte
   };
 }
 
+/** L'attestation en PDF, sur la feuille de la DCH. */
+export function pdfDeLAttestation(textes: AttestationApercu): Promise<Buffer> {
+  const feuille = nouvelleFeuille({ titre: 'Attestation de travail' });
+  feuille.entete();
+  feuille.intitule(textes.titre);
+  feuille.paragraphes(textes.paragraphes);
+  feuille.cloture(textes);
+  return feuille.terminer();
+}
+
 @Injectable()
 export class AttestationService {
   constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
@@ -126,19 +136,24 @@ export class AttestationService {
    * attestations se délèguent à part. L'administrateur garde la main pour
    * contrôler le modèle.
    */
-  async forEmployee(
-    user: SessionUser,
-    employeeId: string,
-  ): Promise<{ filename: string; pdf: Buffer }> {
+  async forEmployee(user: SessionUser, employeeId: string): Promise<DocumentPdf> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await this.exigerLeDroit(tx, user, employeeId);
-      const d = await this.donnees(tx, employeeId);
-      const safeNumber = d.employeeNumber.replace(/[^A-Za-z0-9-]/g, '_');
-      return {
-        filename: `attestation-travail-${safeNumber}.pdf`,
-        pdf: await this.render(textesDeLAttestation(d, new Date())),
-      };
+      return this.pdfPour(tx, employeeId);
     });
+  }
+
+  /**
+   * Le PDF, sans contrôle des droits : à l'appelant de les avoir vérifiés.
+   * La file des documents et « Générer des documents » (ADR-0085) ont chacune
+   * les siens.
+   */
+  async pdfPour(tx: Tx, employeeId: string): Promise<DocumentPdf> {
+    const d = await this.donnees(tx, employeeId);
+    return {
+      filename: nomDuDocumentGenere('attestation_travail', d.employeeNumber),
+      pdf: await pdfDeLAttestation(textesDeLAttestation(d, new Date())),
+    };
   }
 
   /**
@@ -212,8 +227,8 @@ export class AttestationService {
       problem(
         422,
         'documents.not_active',
-        'Attestation réservée aux employés en activité',
-        'Pour un employé sorti, il faudra un certificat de travail (à venir).',
+        'Attestation réservée aux agents en activité',
+        'Un dossier inactif relève du certificat de travail.',
       );
     }
 
@@ -250,66 +265,5 @@ export class AttestationService {
       stage: contract?.contractType === 'stage',
       feminine,
     };
-  }
-
-  private render(textes: AttestationApercu): Promise<Buffer> {
-    const MARGE = 56;
-    const doc = new PDFDocument({
-      size: 'A4',
-      margins: { top: MARGE, bottom: 90, left: MARGE, right: MARGE },
-      info: { Title: 'Attestation de travail', Author: ENTETE.raisonSociale },
-    });
-    enregistrerPolices(doc);
-    const chunks: Buffer[] = [];
-    doc.on('data', (c: Buffer) => chunks.push(c));
-    const done = new Promise<Buffer>((resolve) => {
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-    });
-
-    const largeur = doc.page.width - MARGE * 2;
-
-    dessinerEntete(doc, MARGE);
-
-    // ── Titre ──
-    doc.moveDown(3);
-    const ECART = 1.8;
-    doc.font(police(doc, 'bold')).fontSize(15).fillColor('#111111');
-    // Le trait est tracé à la main plutôt que par `underline`, qui compte
-    // l'espacement ajouté APRÈS la dernière lettre et débordait d'autant.
-    const largeurTitre = doc.widthOfString(textes.titre, { characterSpacing: ECART }) - ECART;
-    const yTitre = doc.y;
-    doc.text(textes.titre, MARGE, yTitre, {
-      width: largeur,
-      align: 'center',
-      characterSpacing: ECART,
-    });
-    const xTitre = (doc.page.width - largeurTitre) / 2;
-    doc
-      .moveTo(xTitre, yTitre + doc.currentLineHeight() + 1)
-      .lineTo(xTitre + largeurTitre, yTitre + doc.currentLineHeight() + 1)
-      .lineWidth(0.9)
-      .strokeColor('#111111')
-      .stroke();
-
-    // ── Corps ──
-    doc.moveDown(2.6);
-    doc.font(police(doc, 'normal')).fontSize(11).fillColor('#111111');
-    textes.paragraphes.forEach((p, i) => {
-      if (i > 0) doc.moveDown(1);
-      doc.text(p, MARGE, doc.y, { width: largeur, align: 'justify', lineGap: 5 });
-    });
-
-    // ── Lieu, date et signature ──
-    doc.moveDown(3);
-    doc.text(textes.lieuEtDate, MARGE, doc.y, { width: largeur, align: 'right' });
-    doc.moveDown(2);
-    textes.signature.forEach((ligne, i) => {
-      doc
-        .font(police(doc, i === 0 ? 'bold' : 'normal'))
-        .text(ligne, MARGE, doc.y, { width: largeur, align: 'right' });
-    });
-
-    doc.end();
-    return done;
   }
 }

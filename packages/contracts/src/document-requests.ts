@@ -70,8 +70,31 @@ export const REQUESTABLE_DOC_LABELS: Record<RequestableDoc, string> = {
   autre: 'Autre document',
 };
 
-/** Ce que l'application sait générer elle-même (le reste vient du système de paie). */
-export const GENERATED_DOCS: RequestableDoc[] = ['attestation_travail'];
+/** Un document de la liste de la DCH, celui qu'un agent demande aujourd'hui. */
+export type DocumentDeLaListe = z.infer<typeof requestableDocSchema>;
+
+/**
+ * Ce que l'application sait générer elle-même : les documents dont le modèle
+ * est configuré (ADR-0085). Les autres, la DCH les prépare hors de l'outil.
+ */
+export const GENERATED_DOCS = [
+  'attestation_travail',
+] as const satisfies readonly DocumentDeLaListe[];
+
+/** Un document dont le modèle est configuré. */
+export type DocumentGenere = (typeof GENERATED_DOCS)[number];
+
+export const estGenere = (doc: string): doc is DocumentGenere =>
+  (GENERATED_DOCS as readonly string[]).includes(doc);
+
+/**
+ * Le nom du fichier d'un document généré : « attestation-travail-M0012.pdf ».
+ * Un nom se répète, un matricule non. L'API le donne au PDF, le site à ce
+ * qu'il enregistre : les deux tiennent la même règle d'ici.
+ */
+export function nomDuDocumentGenere(doc: DocumentGenere, matricule: string): string {
+  return `${doc.replace(/_/g, '-')}-${matricule.replace(/[^A-Za-z0-9-]/g, '_')}.pdf`;
+}
 
 /** Ce que l'attestation de travail imprimera, mot pour mot : l'aperçu le montre tel quel. */
 export interface AttestationApercu {

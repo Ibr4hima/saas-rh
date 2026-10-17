@@ -48,15 +48,7 @@ export async function api<T>(
         : undefined,
   });
 
-  if (!res.ok) {
-    let problem: Problem;
-    try {
-      problem = (await res.json()) as Problem;
-    } catch {
-      problem = { type: 'about:blank', title: `Erreur ${res.status}`, status: res.status };
-    }
-    throw new ApiError(problem);
-  }
+  if (!res.ok) throw await erreurDe(res);
   // Un corps VIDE est une réponse valable, et pas seulement en 204 : une route
   // qui ne rend rien — un enregistrement, une suppression — répond 200 sans
   // contenu, et `res.json()` lève alors une erreur de syntaxe que l'appelant
@@ -64,6 +56,15 @@ export async function api<T>(
   // après un enregistrement réussi.
   const corps = await res.text();
   return (corps ? JSON.parse(corps) : undefined) as T;
+}
+
+/** L'erreur d'une réponse refusée, telle que l'API l'a dite ; à défaut, son statut. */
+export async function erreurDe(res: Response): Promise<ApiError> {
+  try {
+    return new ApiError((await res.json()) as Problem);
+  } catch {
+    return new ApiError({ type: 'about:blank', title: `Erreur ${res.status}`, status: res.status });
+  }
 }
 
 export function isUnauthorized(err: unknown): boolean {
