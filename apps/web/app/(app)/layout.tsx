@@ -32,6 +32,7 @@ import {
   useMenuReplie,
   type Bulle,
 } from '../../components/colonne-repliable';
+import { ANCRE_ACTIONS } from '../../components/actions-bandeau';
 import { ANCRE_ONGLETS } from '../../components/onglets-bandeau';
 import { RechercheAcademy } from '../../components/recherche-academy';
 import { api } from '../../lib/api';
@@ -1362,6 +1363,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
               <RechercheAcademy />
             </Suspense>
           ) : null}
+          {/* Les gestes que la page y pose, par un portail : « Télécharger »
+              le document qu'elle montre (cf. components/actions-bandeau.tsx). */}
+          <div id={ANCRE_ACTIONS} className="flex shrink-0 items-center gap-2 empty:hidden" />
           {action ? <HeaderAction action={action} /> : null}
           {academy ? (
             // Les raccourcis de l'apprenant — l'administrateur, qui n'y vient

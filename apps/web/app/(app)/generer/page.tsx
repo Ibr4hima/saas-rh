@@ -18,19 +18,20 @@ import {
 import { Badge, Button, Card, CardTitle, cn, EmptyState } from '@teranga/ui';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
-import { PdfViewer } from '../../../components/pdf-viewer';
-import { api, ApiError, apiUrl } from '../../../lib/api';
+import { PdfEnLargeur } from '../../../components/pdf-viewer';
+import { ActionDuBandeau } from '../../../components/actions-bandeau';
+import { api, ApiError } from '../../../lib/api';
 import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
 
 /*
    « Générer des documents » (ADR-0085), en trois temps qui se découvrent
-   l'un après l'autre : le document, l'agent, puis le document lui-même, à
-   ouvrir pour l'imprimer ou à enregistrer. Les deux choix se font comme on
+   l'un après l'autre : le document, l'agent, puis le document lui-même, en
+   largeur, à télécharger depuis le bandeau. Les deux choix se font comme on
    ouvre « Demander un document » : un bloc, son intitulé, et à sa droite le
    choix, en liste déroulante.
 
-   L'aperçu EST le PDF, lu par le lecteur du produit : un modèle de l'APIX se
-   vérifie sur ce qui sortira, pas sur une imitation à l'écran.
+   L'aperçu EST le PDF, peint par pdf.js : un modèle de l'APIX se vérifie sur
+   ce qui sortira, pas sur une imitation à l'écran.
 */
 
 /**
@@ -447,74 +448,48 @@ function ChoixDeLAgent({
   );
 }
 
-/** Le document, tel qu'il sortira : l'ouvrir pour l'imprimer, ou l'enregistrer. */
+/**
+ * Le document, tel qu'il sortira : en largeur, comme le procès-verbal
+ * d'apix-e-voting, sans rien au-dessus. « Télécharger » se pose dans le
+ * bandeau de tête dès que le PDF est prêt.
+ */
 function Apercu({ choisi, agent }: { choisi: DocumentGenere; agent: EmployeeListItem }) {
-  const chemin = `/employees/${agent.id}/generer/${choisi}`;
   const pdf = useQuery({
     queryKey: ['document-genere', choisi, agent.id],
-    queryFn: ({ signal }) => lireFichier(chemin, signal),
+    queryFn: ({ signal }) => lireFichier(`/employees/${agent.id}/generer/${choisi}`, signal),
     retry: false,
   });
-  const poste = [agent.positionTitle, agent.directionShortName ?? agent.orgUnitName].filter(
-    Boolean,
-  );
 
+  if (pdf.isError) {
+    return (
+      <Card>
+        <Refus erreur={pdf.error} onReessayer={() => void pdf.refetch()} />
+      </Card>
+    );
+  }
+  const contenu = pdf.data;
+  if (!contenu) {
+    // Une feuille blanche, le temps que le PDF arrive : rien ne saute à son arrivée.
+    return (
+      <div className="grid aspect-[595/842] place-items-center rounded-[16px] bg-white shadow-xs ring-1 ring-card-line">
+        <span className="size-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+      </div>
+    );
+  }
   return (
-    <Card className="flex flex-col overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line-soft px-5 py-3.5">
-        <div className="min-w-0">
-          <p className="truncate text-[13.5px] leading-tight font-bold text-ink-strong">
-            {REQUESTABLE_DOC_LABELS[choisi]}
-          </p>
-          <p className="mt-1 flex min-w-0 items-center gap-2 text-[11.5px] leading-tight text-ink-muted">
-            <span className="truncate">
-              {nomDe(agent)} · <span className="font-mono">{agent.employeeNumber}</span>
-              {poste.length > 0 ? ` · ${poste.join(' · ')}` : null}
-            </span>
-            {agent.status !== 'active' ? <Badge className="shrink-0">Dossier inactif</Badge> : null}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!pdf.data}
-            onClick={() =>
-              window.open(apiUrl(`${chemin}?disposition=inline`), '_blank', 'noopener')
-            }
-          >
-            <Icon name="picture_as_pdf" size={15} />
-            Ouvrir le PDF
-          </Button>
-          <Button
-            size="sm"
-            disabled={!pdf.data}
-            onClick={() => {
-              if (!pdf.data) return;
-              enregistrerFichier(
-                new Blob([pdf.data], { type: 'application/pdf' }),
-                nomDuDocumentGenere(choisi, agent.employeeNumber),
-              );
-            }}
-          >
-            <Icon name="download" size={15} />
-            Télécharger
-          </Button>
-        </div>
-      </div>
-
-      <div className="h-[72vh] min-h-[26rem] xl:h-[min(80vh,62rem)]">
-        {pdf.isError ? (
-          <Refus erreur={pdf.error} onReessayer={() => void pdf.refetch()} />
-        ) : pdf.data ? (
-          <PdfViewer data={pdf.data} zoomPlafond={1.25} />
-        ) : (
-          <div className="grid h-full place-items-center bg-bg">
-            <span className="size-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-          </div>
-        )}
-      </div>
-    </Card>
+    <>
+      <ActionDuBandeau
+        icon="download"
+        label="Télécharger"
+        onClick={() =>
+          enregistrerFichier(
+            new Blob([contenu], { type: 'application/pdf' }),
+            nomDuDocumentGenere(choisi, agent.employeeNumber),
+          )
+        }
+      />
+      <PdfEnLargeur data={contenu} titre={`${REQUESTABLE_DOC_LABELS[choisi]} : ${nomDe(agent)}`} />
+    </>
   );
 }
 

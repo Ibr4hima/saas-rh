@@ -22,6 +22,25 @@ function finesseDe(largeur: number, hauteur: number): number {
   return f;
 }
 
+/**
+ * Ouvre un PDF en mémoire avec pdf.js, servi par nous : rend la tâche de
+ * chargement, la seule qui sache interrompre le worker et les requêtes en vol.
+ */
+async function ouvrir(data: ArrayBuffer) {
+  const pdfjs = await import('pdfjs-dist');
+  // Le worker est servi par nous : webpack l'émet dans nos assets à la
+  // compilation, il n'est jamais chargé depuis un CDN.
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/build/pdf.worker.min.mjs',
+    import.meta.url,
+  ).toString();
+  // pdf.js prend la propriété du tampon : on lui en donne une copie,
+  // sinon rouvrir le même document une seconde fois trouve un tampon
+  // « détaché » et échoue.
+  // Un PDF vient parfois du public (un CV) : rien de lui ne s'exécute.
+  return pdfjs.getDocument({ data: data.slice(0), isEvalSupported: false, enableXfa: false });
+}
+
 /** La taille d'une page à l'écran, en pixels ENTIERS — voir `peindre`. */
 function tailleAffichee(p: { width: number; height: number }, zoom: number) {
   return { width: Math.round(p.width * zoom), height: Math.round(p.height * zoom) };
@@ -93,23 +112,7 @@ export function PdfViewer({
 
     (async () => {
       try {
-        const pdfjs = await import('pdfjs-dist');
-        // Le worker est servi par nous : webpack l'émet dans nos assets à la
-        // compilation, il n'est jamais chargé depuis un CDN.
-        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-          'pdfjs-dist/build/pdf.worker.min.mjs',
-          import.meta.url,
-        ).toString();
-
-        // pdf.js prend la propriété du tampon : on lui en donne une copie,
-        // sinon rouvrir le même document une seconde fois trouve un tampon
-        // « détaché » et échoue.
-        // Un PDF vient parfois du public (un CV) : rien de lui ne s'exécute.
-        const chargement = pdfjs.getDocument({
-          data: data.slice(0),
-          isEvalSupported: false,
-          enableXfa: false,
-        });
+        const chargement = await ouvrir(data);
         tache = chargement;
         const pdf = await chargement.promise;
         if (annule) return;
@@ -406,5 +409,120 @@ function Commande({
     >
       <Icon name={icon} size={16} />
     </button>
+  );
+}
+
+/**
+ * Le PDF à la largeur de son conteneur, page après page, sans barre ni zoom :
+ * le document se lit comme une page de l'application, à la manière du
+ * procès-verbal d'apix-e-voting. Chaque page est une feuille blanche aux coins
+ * d'une carte ; la page défile avec l'écran, pas dans un cadre.
+ */
+export function PdfEnLargeur({ data, titre }: { data: ArrayBuffer; titre: string }) {
+  const [pages, setPages] = useState<{ width: number; height: number }[]>([]);
+  const [echouee, setEchouee] = useState(false);
+  const [largeur, setLargeur] = useState(0);
+  const conteneur = useRef<HTMLDivElement>(null);
+  const toiles = useRef<(HTMLCanvasElement | null)[]>([]);
+  const doc = useRef<PDFDocumentProxy | null>(null);
+
+  useEffect(() => {
+    let annule = false;
+    let tache: { destroy: () => Promise<void> } | null = null;
+    (async () => {
+      try {
+        const chargement = await ouvrir(data);
+        tache = chargement;
+        const pdf = await chargement.promise;
+        if (annule) return;
+        doc.current = pdf;
+        const tailles: { width: number; height: number }[] = [];
+        for (let i = 1; i <= pdf.numPages; i += 1) {
+          const vue = (await pdf.getPage(i)).getViewport({ scale: 1 });
+          tailles.push({ width: vue.width, height: vue.height });
+        }
+        if (!annule) setPages(tailles);
+      } catch {
+        if (!annule) setEchouee(true);
+      }
+    })();
+    return () => {
+      annule = true;
+      doc.current = null;
+      void tache?.destroy();
+    };
+  }, [data]);
+
+  // La largeur suit celle de l'écran : les pages se repeignent à la nouvelle.
+  useLayoutEffect(() => {
+    const el = conteneur.current;
+    if (!el) return;
+    const obs = new ResizeObserver(([e]) => {
+      if (e) setLargeur(e.contentRect.width);
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const pdf = doc.current;
+    if (!pdf || largeur === 0 || pages.length === 0) return;
+    let annule = false;
+    const taches: RenderTask[] = [];
+    (async () => {
+      for (let i = 0; i < pages.length && !annule; i += 1) {
+        const toile = toiles.current[i];
+        if (!toile) continue;
+        const page = await pdf.getPage(i + 1);
+        const base = page.getViewport({ scale: 1 });
+        const hauteur = (largeur * base.height) / base.width;
+        const finesse = finesseDe(largeur, hauteur);
+        toile.width = Math.round(largeur * finesse);
+        toile.height = Math.round(hauteur * finesse);
+        const ctx = toile.getContext('2d');
+        if (!ctx || annule) continue;
+        const tache = page.render({
+          canvasContext: ctx,
+          viewport: page.getViewport({ scale: toile.width / base.width }),
+        });
+        taches.push(tache);
+        await tache.promise.catch(() => undefined);
+      }
+    })();
+    return () => {
+      annule = true;
+      for (const t of taches) t.cancel();
+    };
+  }, [pages, largeur]);
+
+  if (echouee) {
+    return (
+      <div className="rounded-[16px] bg-surface px-6 py-16 text-center shadow-xs ring-1 ring-card-line">
+        <p className="text-[13px] text-danger">Impossible d&apos;afficher ce document.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={conteneur} role="img" aria-label={titre} className="flex flex-col gap-4">
+      {/* Avant que pdf.js ne connaisse les pages, une feuille A4 blanche tient
+          la place : rien ne saute quand le document arrive. */}
+      {(pages.length > 0 ? pages : [{ width: 595.28, height: 841.89 }]).map((p, i) => (
+        <div
+          key={i}
+          style={{ aspectRatio: `${p.width} / ${p.height}` }}
+          className="overflow-hidden rounded-[16px] bg-white shadow-xs ring-1 ring-card-line"
+        >
+          {pages.length > 0 ? (
+            <canvas
+              ref={(el) => {
+                toiles.current[i] = el;
+              }}
+              className="block h-full w-full"
+            />
+          ) : null}
+        </div>
+      ))}
+    </div>
   );
 }
