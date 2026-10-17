@@ -96,14 +96,6 @@ export function nomDuDocumentGenere(doc: DocumentGenere, matricule: string): str
   return `${doc.replace(/_/g, '-')}-${matricule.replace(/[^A-Za-z0-9-]/g, '_')}.pdf`;
 }
 
-/** Ce que l'attestation de travail imprimera, mot pour mot : l'aperçu le montre tel quel. */
-export interface AttestationApercu {
-  titre: string;
-  paragraphes: string[];
-  lieuEtDate: string;
-  signature: string[];
-}
-
 /** `delivered` : statut historique, conservé en lecture (voir en-tête). */
 export const documentRequestStatusSchema = z.enum([
   'received',

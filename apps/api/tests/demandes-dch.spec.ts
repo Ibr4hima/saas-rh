@@ -470,18 +470,12 @@ describe('les demandes de documents', () => {
     const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
       .ids as [string];
     expect(await generer()).toBe('AUCUNE ERREUR');
-    expect((await attestations.apercu(awa.session, moussa.employeeId)).paragraphes[0]).toMatch(
-      /^L’Agence .* atteste que M\.\/Mme Moussa TEST/,
-    );
 
     // Prête : la demande est close, le droit avec elle.
     await documents.advance(awa.session, id, { status: 'processing' });
     expect(await generer()).toBe('AUCUNE ERREUR');
     await documents.advance(awa.session, id, { status: 'ready', pickupContact: 'Awa Diop' });
     expect(await generer()).toBe('auth.forbidden');
-    expect(await codeOf(() => attestations.apercu(awa.session, moussa.employeeId))).toBe(
-      'auth.forbidden',
-    );
 
     // Une nouvelle demande, puis la délégation retirée : plus rien.
     await documents.create(moussa.session, { docTypes: ['attestation_travail'] });

@@ -1,58 +1,50 @@
 /**
- * Les polices des documents : Arial pour ceux de la DCH, Comic Sans MS pour
- * certains de ses modèles (ADR-0085). Leurs équivalents libres, versionnés à
- * leur place, doivent en avoir les chasses : sans elles, une ligne ne se
- * couperait plus au même mot que sur le modèle de l'APIX.
+ * Les polices des documents (ADR-0086) : Google Sans, comme apix-e-voting,
+ * et Comic Sans MS pour ce que les modèles de l'APIX écrivent avec elle. Sa
+ * licence interdisant de la versionner, Comic Relief tient sa place.
  */
 import PDFDocument from 'pdfkit';
 import { describe, expect, it } from 'vitest';
-import { pdfDeLAttestation } from '../src/modules/documents/attestation.service';
-import { enregistrerPolices, police, type Coupe } from '../src/modules/documents/entete';
+import {
+  pdfDeLAttestation,
+  textesDeLAttestation,
+} from '../src/modules/documents/attestation.service';
+import { enregistrerPolices, police } from '../src/modules/documents/entete';
 
-const PHRASE =
-  'L’Agence pour la Promotion des Investissements et des Grands Travaux (APIX S.A), ' +
-  'Dakar : décision n° 2026-014 du 1er février 2026, Économie et Thiès, ' +
-  '« 250 000 FCFA ».';
-
-/** La largeur de la phrase, caractère par caractère : les chasses seules, sans crénage. */
-function chasse(doc: InstanceType<typeof PDFDocument>, fonte: string): number {
-  return [...PHRASE].reduce((s, c) => s + doc.font(fonte).fontSize(11).widthOfString(c), 0);
-}
-
-const HELVETICA: Record<Coupe, string> = {
-  normal: 'Helvetica',
-  bold: 'Helvetica-Bold',
-  italic: 'Helvetica-Oblique',
-  'bold-italic': 'Helvetica-BoldOblique',
-};
-
-describe('Arial', () => {
-  it('a ses quatre coupes', () => {
+describe('Google Sans', () => {
+  it('est la police par défaut, en romain, gras et italique', () => {
     const doc = new PDFDocument();
     enregistrerPolices(doc);
-    for (const coupe of Object.keys(HELVETICA) as Coupe[]) {
-      expect(police(doc, coupe, 'arial')).toBe(`arial-${coupe}`);
-    }
+    expect(police(doc, 'normal')).toBe('google-sans-normal');
+    expect(police(doc, 'bold')).toBe('google-sans-bold');
+    expect(police(doc, 'italic')).toBe('google-sans-italic');
   });
 
-  it('a les chasses d’Arial, qui sont celles d’Helvetica', () => {
-    const doc = new PDFDocument();
-    enregistrerPolices(doc);
-    for (const [coupe, helvetica] of Object.entries(HELVETICA) as [Coupe, string][]) {
-      expect(chasse(doc, police(doc, coupe, 'arial'))).toBeCloseTo(chasse(doc, helvetica), 0);
-    }
-  });
-
-  it('est la seule police de l’attestation de travail, en-tête compris', async () => {
-    const pdf = await pdfDeLAttestation({
-      titre: 'ATTESTATION DE TRAVAIL',
-      paragraphes: ['L’Agence atteste.'],
-      lieuEtDate: 'Fait à Dakar, le 17 octobre 2026',
-      signature: ['Pour APIX S.A,', 'La Direction du Capital Humain'],
-    });
-    const polices = pdf.toString('latin1').match(/\/BaseFont \/[A-Z]{6}\+[\w-]+/g) ?? [];
-    expect(polices.length).toBeGreaterThan(0);
-    for (const p of polices) expect(p).toMatch(/\+(Arimo|Arial)/);
+  it('écrit l’attestation de travail, en-tête et pied de page compris ; Comic Sans MS, son timbre', async () => {
+    const pdf = await pdfDeLAttestation(
+      textesDeLAttestation(
+        {
+          agent: { nom: 'Moussa NDIAYE', genre: 'male' },
+          employeeNumber: 'EMP-002',
+          depuis: '2023-06-01',
+          poste: 'Analyste',
+          contrat: 'cdi',
+          signataire: null,
+        },
+        new Date(),
+      ),
+      { logo: null },
+    );
+    const polices = new Set(
+      (pdf.toString('latin1').match(/\/BaseFont \/[A-Z]{6}\+[\w-]+/g) ?? []).map((p) =>
+        p.replace(/^.*\+/, ''),
+      ),
+    );
+    expect([...polices].filter((p) => !/^(GoogleSans|ComicRelief|ComicSansMS)/.test(p))).toEqual(
+      [],
+    );
+    expect([...polices].some((p) => p.startsWith('GoogleSans-Bold'))).toBe(true);
+    expect([...polices].some((p) => /^Comic(Relief|SansMS)-Bold/.test(p))).toBe(true);
   });
 });
 
@@ -71,10 +63,10 @@ describe('à défaut', () => {
     const doc = new PDFDocument();
     enregistrerPolices(doc);
     // Google Sans n'a pas de gras italique dans le dépôt.
-    expect(police(doc, 'bold-italic', 'google-sans')).toBe('google-sans-bold');
+    expect(police(doc, 'bold-italic')).toBe('google-sans-bold');
   });
 
-  it('sans fichiers, Helvetica, qui a les chasses d’Arial', () => {
-    expect(police(new PDFDocument(), 'bold', 'arial')).toBe('Helvetica-Bold');
+  it('sans fichiers, Helvetica', () => {
+    expect(police(new PDFDocument(), 'bold')).toBe('Helvetica-Bold');
   });
 });

@@ -4,7 +4,6 @@ import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/
 import Link from 'next/link';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type {
-  AttestationApercu,
   BatchAdvanceResult,
   DocumentRequestView,
   PeriodeDuBulletin,
@@ -34,12 +33,13 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../lib/api';
-import { enregistrer } from '../../../lib/fichiers';
+import { enregistrer, lireFichier } from '../../../lib/fichiers';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { de } from '../../../lib/mots';
 import { DocumentsDeposes } from '../../../components/documents-deposes';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
+import { PdfViewer } from '../../../components/pdf-viewer';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import { Pagination, usePagination } from '../../../components/pagination';
@@ -973,23 +973,23 @@ function TraiterModal({
 }
 
 /**
- * Aperçu d'une pièce : le texte que le PDF imprimera, mot pour mot.
+ * Aperçu d'une pièce : le PDF lui-même, celui qui sera remis (ADR-0086).
  *
- * Une A4 encastrée, réduite à la taille d'une fenêtre, ne se lit pas. Le
- * serveur rend donc les textes de l'attestation, ceux-là mêmes qu'il met dans
- * le PDF, et l'écran les compose comme la feuille. Le PDF reste à un clic.
+ * L'écran recomposait les textes de l'attestation ; le modèle de l'APIX a un
+ * en-tête, un cadre et un pied de page qu'une recomposition imiterait mal.
+ * Le lecteur du produit montre donc le PDF, et l'ouvre en grand à un clic.
  */
 function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }) {
-  const detail = useQuery({
-    queryKey: ['attestation-apercu', piece.employeeId],
-    queryFn: () => api<AttestationApercu>(`/employees/${piece.employeeId}/attestation/apercu`),
+  const pdf = useQuery({
+    queryKey: ['attestation-pdf', piece.employeeId],
+    queryFn: ({ signal }) => lireFichier(`/employees/${piece.employeeId}/attestation`, signal),
     enabled: piece.generable,
     retry: false,
   });
 
-  // Vue dès qu'elle est affichée — ou dès qu'on sait qu'elle ne peut pas
+  // Vue dès qu'elle est affichée, ou dès qu'on sait qu'elle ne peut pas
   // l'être : bloquer sur un document impossible à produire enfermerait la RH.
-  const affichee = detail.isSuccess || detail.isError || !piece.generable;
+  const affichee = pdf.isSuccess || pdf.isError || !piece.generable;
   useEffect(() => {
     if (affichee) onVue(piece.key);
   }, [affichee, onVue, piece.key]);
@@ -1004,7 +1004,7 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
           {piece.employeeName}
         </p>
       </div>
-      {detail.isSuccess ? (
+      {pdf.isSuccess ? (
         <a
           href={apiUrl(`/employees/${piece.employeeId}/attestation?disposition=inline`)}
           target="_blank"
@@ -1034,7 +1034,7 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
           title={dossierInactif ? 'Dossier non actif' : 'Préparé hors application'}
           description={
             dossierInactif
-              ? "L'attestation de travail est réservée aux employés en activité : pour ce dossier, elle est à établir à la main."
+              ? "L'attestation de travail est réservée aux agents en activité : pour ce dossier, elle est à établir à la main."
               : 'Veuillez vérifier l’exactitude des informations demandées dans le service de paie avant de valider.'
           }
         />
@@ -1042,7 +1042,7 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
     );
   }
 
-  if (detail.isLoading) {
+  if (pdf.isLoading) {
     return (
       <>
         {entete}
@@ -1053,54 +1053,36 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
     );
   }
 
-  if (detail.isError || !detail.data) {
+  if (pdf.isError || !pdf.data) {
+    // Un refus se dit dans les mots de l'API (un stage, par exemple) et ne se
+    // retente pas ; une panne, si.
+    const probleme = pdf.error instanceof ApiError ? pdf.error.problem : null;
+    const refus = probleme !== null && probleme.status >= 400 && probleme.status < 500;
     return (
       <>
         {entete}
         <EmptyState
           className="flex-1"
           icon={<Icon name="error" size={22} />}
-          title="Dossier illisible"
-          description={
-            detail.error instanceof ApiError
-              ? (detail.error.problem.detail ?? detail.error.problem.title)
-              : 'Réessayez dans un instant.'
-          }
+          title={probleme?.title ?? 'Dossier illisible'}
+          description={probleme?.detail ?? (refus ? undefined : 'Réessayez dans un instant.')}
           action={
-            <Button size="sm" variant="secondary" onClick={() => void detail.refetch()}>
-              Réessayer
-            </Button>
+            refus ? undefined : (
+              <Button size="sm" variant="secondary" onClick={() => void pdf.refetch()}>
+                Réessayer
+              </Button>
+            )
           }
         />
       </>
     );
   }
 
-  const a = detail.data;
   return (
     <>
       {entete}
-      <div className="flex-1 overflow-y-auto bg-surface-raised/60 px-3 py-4 sm:px-6 sm:py-6">
-        <article className="mx-auto max-w-[38rem] rounded-[6px] bg-surface px-5 py-8 text-[13px] leading-[1.8] text-ink-strong shadow-xs ring-1 ring-line-soft sm:px-12 sm:py-12">
-          <h3 className="text-center">
-            <span className="border-b border-current pb-0.5 text-[14.5px] font-bold tracking-[0.12em]">
-              {a.titre}
-            </span>
-          </h3>
-          <div className="mt-9 flex flex-col gap-4 text-justify">
-            {a.paragraphes.map((p) => (
-              <p key={p}>{p}</p>
-            ))}
-          </div>
-          <p className="mt-10 text-right">{a.lieuEtDate}</p>
-          <div className="mt-6 text-right">
-            {a.signature.map((ligne, i) => (
-              <p key={ligne} className={i === 0 ? 'font-bold' : undefined}>
-                {ligne}
-              </p>
-            ))}
-          </div>
-        </article>
+      <div className="h-[62vh] min-h-[22rem]">
+        <PdfViewer data={pdf.data} zoomPlafond={1.25} />
       </div>
     </>
   );

@@ -1,51 +1,47 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, sql } from 'drizzle-orm';
-import type { AttestationApercu, SessionUser } from '@teranga/contracts';
+import type { SessionUser } from '@teranga/contracts';
 import { capaciteDuDocument, nomDuDocumentGenere } from '@teranga/contracts';
 import { agentDuCompte, directionDuPersonnel, pasSurSoi } from '../acces/dch';
 import { vueDuTraitement } from '../acces/demandes';
+import { debutDeLAnciennete } from '../people/anciennete';
+import { DG } from '../people/chaine';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { ENTETE } from './entete';
-import { nouvelleFeuille, type DocumentPdf } from './feuille';
+import { nouvelleFeuille, type DocumentPdf, type Passage } from './feuille';
+
+/*
+ * L'attestation de travail, sur le modèle officiel de l'APIX (ADR-0086) :
+ * l'en-tête de la République, le numéro à porter à la main et la date, le
+ * timbre, le titre encadré, puis trois paragraphes. Qui atteste dirige le
+ * sommet de l'organigramme, la direction générale. L'espace sous le texte
+ * reste libre pour la signature et le cachet.
+ */
 
 /**
- * Chaque libellé porte SON article.
+ * Le contrat cité : chaque libellé porte SON article.
  *
  * « dans le cadre d'un convention de stage » : le générateur écrivait cela,
  * parce qu'il collait « d'un » devant un libellé dont il ignorait le genre.
- * L'article appartient au libellé, il ne se devine pas.
+ * L'article appartient au libellé, il ne se devine pas. Le stage n'y est
+ * pas : il relève de l'attestation de stage.
  */
 export const CONTRACT_LABELS: Record<string, string> = {
-  cdi: 'd’un contrat à durée indéterminée (CDI)',
-  cdd: 'd’un contrat à durée déterminée (CDD)',
-  stage: 'd’une convention de stage',
+  cdi: 'd’un contrat à durée indéterminée',
+  cdd: 'd’un contrat à durée déterminée',
   consultant: 'd’un contrat de consultance',
   detachement: 'd’un détachement',
 };
 
 /**
- * « le poste de Analyste » : l'élision ne se saute pas devant une voyelle.
+ * « la fonction de Analyste » : l'élision ne se saute pas devant une voyelle.
  * Le h muet français est indécidable sans dictionnaire ; on élide devant les
  * voyelles seules, ce qui couvre les intitulés de poste réels.
  */
 export function elide(prefixe: string, mot: string): string {
   return /^[aeiouyàâäéèêëîïôöùûü]/i.test(mot.trim()) ? `${prefixe}’${mot}` : `${prefixe}e ${mot}`;
-}
-
-export interface AttestationData {
-  civility: string;
-  fullName: string;
-  birthLine: string;
-  employeeNumber: string;
-  hiredOn: string;
-  positionTitle: string | null;
-  orgUnitName: string | null;
-  contractLabel: string | null;
-  /** Un stagiaire n'est pas « employé » : il est accueilli en stage. */
-  stage: boolean;
-  feminine: boolean;
 }
 
 export function frDate(iso: string | Date): string {
@@ -60,67 +56,113 @@ export function frDate(iso: string | Date): string {
   return d.getDate() === 1 ? texte.replace(/^1 /, '1er ') : texte;
 }
 
-/**
- * L'article d'une unité, d'après le mot qui l'ouvre.
- *
- * « au sein de la Service Comptabilité » : le générateur posait un féminin sur
- * tout, parce qu'il avait vu passer des directions. Les noms d'unités d'une
- * administration s'ouvrent par une poignée de mots ; on les connaît. Ce qu'on
- * ne reconnaît pas passe entre parenthèses, forme qui ne peut pas être fautive.
- */
-const UNITE_FEMININE = /^(direction|cellule|division|agence|unité|section|coordination|brigade)\b/i;
-const UNITE_MASCULINE = /^(service|bureau|département|pôle|secrétariat|centre|cabinet|comité)\b/i;
-
-export function rattachement(unite: string): string {
-  if (UNITE_FEMININE.test(unite)) return `, à la ${unite}`;
-  if (UNITE_MASCULINE.test(unite)) return `, au ${unite}`;
-  return ` (${unite})`;
+/** Une personne que l'attestation nomme : son nom, et le genre que son dossier porte. */
+export interface Personne {
+  /** « Moussa NDIAYE » : le prénom, puis le nom en capitales. */
+  nom: string;
+  genre: string | null;
 }
 
+export interface AttestationData {
+  agent: Personne;
+  employeeNumber: string;
+  /** Le premier jour de l'ancienneté (ADR-0083) ; à défaut, celui de l'embauche. */
+  depuis: string;
+  poste: string | null;
+  /** Le type du contrat en cours ; null : aucun. */
+  contrat: string | null;
+  /** Qui atteste : qui dirige le sommet de l'organigramme ; null : personne n'y est désigné. */
+  signataire: Personne | null;
+}
+
+/** Ce que l'attestation imprime, bloc par bloc. */
+export interface TextesDeLAttestation {
+  reference: string;
+  lieuEtDate: string;
+  timbre: string;
+  titre: string;
+  paragraphes: Passage[][];
+}
+
+const INSECABLE = ' ';
+/** Le blanc à remplir à la main quand l'organigramme ne désigne personne. */
+const A_REMPLIR = '……………………………';
+
 /**
- * Les textes de l'attestation, tels que le PDF les imprime. L'aperçu de la
- * file des documents affiche les mêmes : une seule rédaction, deux rendus.
+ * Les mots qui s'accordent avec une personne, d'après le genre que son
+ * dossier porte. Sans genre connu, les deux formes, comme sur un formulaire.
  */
-export function textesDeLAttestation(d: AttestationData, aujourdhui: Date): AttestationApercu {
-  const e = d.feminine ? 'e' : '';
-  // « Nous soussignés, APIX, attestons » : la formule était doublement
-  // fautive. « Nous soussignés » désigne des PERSONNES qui signent, pas une
-  // société ; et le pluriel s'accordait avec un sujet singulier. Une
-  // personne morale atteste en son nom propre.
-  const phrase: string[] = [
-    `L’${ENTETE.agence} (${ENTETE.raisonSociale}) atteste que ${d.civility} ${d.fullName}${d.birthLine}, ` +
-      `matricule ${d.employeeNumber}, ` +
-      (d.stage ? `est accueilli${e} en stage en son sein` : `est employé${e} en son sein`) +
-      ` depuis le ${frDate(d.hiredOn)}`,
-  ];
-  if (d.positionTitle) {
-    phrase.push(
-      ` et y occupe ${elide('le poste d', d.positionTitle)}` +
-        (d.orgUnitName ? rattachement(d.orgUnitName) : ''),
-    );
+function accords(genre: string | null) {
+  if (genre === 'female') {
+    return { civilite: 'Madame', e: 'e', pronom: 'Elle', direction: 'Directrice Générale' };
   }
-  if (d.contractLabel) phrase.push(`, dans le cadre ${d.contractLabel}`);
-  phrase.push('.');
+  if (genre === 'male') {
+    return { civilite: 'Monsieur', e: '', pronom: 'Il', direction: 'Directeur Général' };
+  }
   return {
+    civilite: 'Monsieur/Madame',
+    e: '(e)',
+    pronom: 'Il/Elle',
+    direction: 'Directeur Général',
+  };
+}
+
+/** Un texte que la justification ne coupe ni n'étire : une civilité et son nom, une date. */
+const insecable = (texte: string) => texte.replace(/ /g, INSECABLE);
+
+/**
+ * Les textes de l'attestation, aux mots du modèle de l'APIX. Les noms et la
+ * date d'entrée sont en gras, comme sur le modèle, chacun d'un seul tenant.
+ */
+export function textesDeLAttestation(d: AttestationData, aujourdhui: Date): TextesDeLAttestation {
+  const agent = accords(d.agent.genre);
+  const signataire = accords(d.signataire?.genre ?? null);
+  const contrat = d.contrat ? CONTRACT_LABELS[d.contrat] : undefined;
+  const fonction = d.poste
+    ? `${agent.pronom} occupe actuellement ${elide('la fonction d', d.poste)}` +
+      (contrat ? `, au titre ${contrat}.` : '.')
+    : contrat
+      ? `${agent.pronom} est en fonction au titre ${contrat}.`
+      : null;
+  return {
+    reference: ENTETE.referenceDCH,
+    lieuEtDate: `${ENTETE.ville}, le ${frDate(aujourdhui)}`,
+    timbre: 'Le Directeur Général Adjoint',
     titre: 'ATTESTATION DE TRAVAIL',
     paragraphes: [
-      phrase.join(''),
-      'La présente attestation lui est délivrée pour servir et valoir ce que de droit.',
+      [
+        { texte: `Je soussigné${signataire.e}, ` },
+        d.signataire
+          ? { texte: insecable(`${signataire.civilite} ${d.signataire.nom}`), gras: true }
+          : { texte: A_REMPLIR },
+        { texte: `, ${signataire.direction}, atteste par la présente que ` },
+        { texte: insecable(`${agent.civilite} ${d.agent.nom}`), gras: true },
+        { texte: ` est employé${agent.e} à ${ENTETE.sigle} depuis le ` },
+        { texte: insecable(frDate(d.depuis)), gras: true },
+        { texte: '.' },
+      ],
+      ...(fonction ? [[{ texte: fonction }]] : []),
+      [
+        {
+          texte:
+            'En foi de quoi, la présente attestation est établie pour servir et valoir ce que de droit.',
+        },
+      ],
     ],
-    // « Fait le … » seul ne suffit pas : un acte administratif porte le lieu
-    // de son émission.
-    lieuEtDate: `Fait à ${ENTETE.ville}, le ${frDate(aujourdhui)}`,
-    signature: [`Pour ${ENTETE.raisonSociale},`, `La ${ENTETE.service}`],
   };
 }
 
 /** L'attestation en PDF, sur la feuille de la DCH. */
-export function pdfDeLAttestation(textes: AttestationApercu): Promise<Buffer> {
-  const feuille = nouvelleFeuille({ titre: 'Attestation de travail' });
-  feuille.entete();
-  feuille.intitule(textes.titre);
-  feuille.paragraphes(textes.paragraphes);
-  feuille.cloture(textes);
+export function pdfDeLAttestation(
+  textes: TextesDeLAttestation,
+  { logo }: { logo?: string | null } = {},
+): Promise<Buffer> {
+  const feuille = nouvelleFeuille({ titre: 'Attestation de travail', logo });
+  feuille.entete({ reference: textes.reference, lieuEtDate: textes.lieuEtDate });
+  // Le timbre est en Comic Sans MS sur le modèle de l'APIX.
+  feuille.timbre(textes.timbre, { police: 'comic' });
+  feuille.titreEncadre(textes.titre);
+  textes.paragraphes.forEach((p, i) => feuille.paragraphe(p, { avant: i === 0 ? 40 : 14 }));
   return feuille.terminer();
 }
 
@@ -156,15 +198,9 @@ export class AttestationService {
     };
   }
 
-  /**
-   * Ce que le PDF imprimera, mot pour mot : l'aperçu de la file des documents
-   * le montre tel quel, au lieu de recomposer les champs de son côté.
-   */
-  async apercu(user: SessionUser, employeeId: string): Promise<AttestationApercu> {
-    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
-      await this.exigerLeDroit(tx, user, employeeId);
-      return textesDeLAttestation(await this.donnees(tx, employeeId), new Date());
-    });
+  /** Ce que le PDF imprimerait aujourd'hui pour ce dossier, sans contrôle des droits. */
+  async textesPour(tx: Tx, employeeId: string): Promise<TextesDeLAttestation> {
+    return textesDeLAttestation(await this.donnees(tx, employeeId), new Date());
   }
 
   private async exigerLeDroit(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
@@ -200,10 +236,7 @@ export class AttestationService {
         givenName: t.persons.givenName,
         familyName: t.persons.familyName,
         gender: t.persons.gender,
-        birthDate: t.persons.birthDate,
-        birthPlace: t.persons.birthPlace,
         positionTitle: t.assignments.positionTitle,
-        orgUnitName: t.orgUnits.name,
       })
       .from(t.employees)
       .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
@@ -215,7 +248,6 @@ export class AttestationService {
           sql`${t.assignments.validity} @> CURRENT_DATE`,
         ),
       )
-      .leftJoin(t.orgUnits, eq(t.orgUnits.id, t.assignments.orgUnitId))
       .where(eq(t.employees.id, employeeId))
       .limit(1);
     if (!row) {
@@ -242,28 +274,45 @@ export class AttestationService {
       )
       .orderBy(desc(t.contracts.startDate))
       .limit(1);
+    if (contract?.contractType === 'stage') {
+      problem(
+        422,
+        'documents.stage',
+        'Attestation de travail réservée aux contrats de travail',
+        'Pour un stage, c’est l’attestation de stage qui convient.',
+      );
+    }
 
-    const feminine = row.gender === 'female';
-    // birthPlace contient désormais le pays de naissance : parenthèses plutôt
-    // qu'une préposition (« au/en/aux » varie selon le pays).
-    const birthLine =
-      row.birthDate && row.birthPlace
-        ? `, né${feminine ? 'e' : ''} le ${frDate(row.birthDate)} (${row.birthPlace})`
-        : row.birthDate
-          ? `, né${feminine ? 'e' : ''} le ${frDate(row.birthDate)}`
-          : '';
+    // La date d'entrée : le début de l'ancienneté, qui ne compte ni le stage ni
+    // une suite de contrats interrompue (ADR-0083) ; à défaut, l'embauche.
+    const { rows: anciennete } = await tx.execute<{ depuis: string | null }>(
+      sql`SELECT ${debutDeLAnciennete(employeeId, sql`CURRENT_DATE`)}::text AS depuis`,
+    );
+    const { rows: dg } = await tx.execute<{
+      given_name: string;
+      family_name: string;
+      gender: string | null;
+    }>(sql`
+      SELECT p.given_name, p.family_name, p.gender
+        FROM employees e JOIN persons p ON p.id = e.person_id
+       WHERE e.id = ${DG}`);
+    const signataire = dg[0];
 
     return {
-      civility: row.gender === 'male' ? 'M.' : feminine ? 'Mme' : 'M./Mme',
-      fullName: `${row.givenName} ${row.familyName.toUpperCase()}`,
-      birthLine,
+      agent: {
+        nom: `${row.givenName} ${row.familyName.toUpperCase()}`,
+        genre: row.gender ?? null,
+      },
       employeeNumber: row.employeeNumber,
-      hiredOn: row.hiredOn,
-      positionTitle: row.positionTitle ?? null,
-      orgUnitName: row.orgUnitName ?? null,
-      contractLabel: contract ? (CONTRACT_LABELS[contract.contractType] ?? null) : null,
-      stage: contract?.contractType === 'stage',
-      feminine,
+      depuis: anciennete[0]?.depuis ?? row.hiredOn,
+      poste: row.positionTitle ?? null,
+      contrat: contract?.contractType ?? null,
+      signataire: signataire
+        ? {
+            nom: `${signataire.given_name} ${signataire.family_name.toUpperCase()}`,
+            genre: signataire.gender,
+          }
+        : null,
     };
   }
 }
