@@ -49,6 +49,7 @@ export function PdfViewer({
   data,
   titre,
   onError,
+  zoomPlafond = 2,
 }: {
   /** Le PDF déjà en mémoire — c'est l'appelant qui l'a récupéré avec la session. */
   data: ArrayBuffer;
@@ -59,6 +60,12 @@ export function PdfViewer({
    */
   titre?: string;
   onError?: () => void;
+  /**
+   * Le zoom de départ suit la largeur du lecteur, sans dépasser ce plafond :
+   * dans un lecteur très large, une A4 ajustée à la largeur ne laissait voir
+   * que son en-tête.
+   */
+  zoomPlafond?: number;
 }) {
   const [pages, setPages] = useState<{ width: number; height: number }[]>([]);
   const [page, setPage] = useState(1);
@@ -144,9 +151,9 @@ export function PdfViewer({
     if (!prete || !zone.current) return;
     const dispo = zone.current.clientWidth - 32;
     if (dispo > 0 && largeurBase.current > 0) {
-      setZoom(Math.min(2, Math.max(0.4, dispo / largeurBase.current)));
+      setZoom(Math.min(zoomPlafond, Math.max(0.4, dispo / largeurBase.current)));
     }
-  }, [prete]);
+  }, [prete, zoomPlafond]);
 
   // ---- Peinture d'une page ----------------------------------------------
   const peindre = useCallback(async (index: number, echelle: number) => {
