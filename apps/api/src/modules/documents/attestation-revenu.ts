@@ -7,11 +7,11 @@ import { pdfDUneAttestation, type Modele, type TextesDUneAttestation } from './f
 import {
   A_REMPLIR,
   accords,
-  auGenre,
   elide,
   frDate,
   insecable,
   nommee,
+  qualiteDCH,
   type Personne,
 } from './redaction';
 
@@ -29,9 +29,6 @@ export interface RevenuData extends DossierDeLAgent {
   salaire: number;
 }
 
-/** Le numéro du modèle : l'attestation de revenu passe par la direction générale. */
-const REFERENCE = '/PR/SG/APIX/DG/DCH';
-
 /**
  * Les textes de l'attestation, aux mots du modèle de l'APIX. Les noms, la
  * date d'entrée et le montant sont en gras (ADR-0088).
@@ -42,16 +39,12 @@ export function textesDeLAttestationDeRevenu(
 ): TextesDUneAttestation {
   const agent = accords(d.agent.genre);
   const signataire = accords(d.signataire?.genre ?? null);
-  const qualite = auGenre(
-    d.signataire?.genre ?? null,
-    'Directeur du Capital Humain',
-    'Directrice du Capital Humain',
-  );
+  const qualite = qualiteDCH(d.signataire?.genre ?? null);
   // « 250 000 (deux cent cinquante mille) francs CFA » : les chiffres et
   // l'unité ne se coupent pas, les lettres passent à la ligne au besoin.
   const montant = `${enChiffres(d.salaire)} (${enLettres(d.salaire)}) ${insecable('francs CFA')}`;
   return {
-    reference: REFERENCE,
+    reference: ENTETE.referenceDG,
     lieuEtDate: `${ENTETE.ville}, le ${frDate(aujourdhui)}`,
     timbre: `${signataire.le} ${qualite}`,
     titre: 'ATTESTATION DE REVENU',

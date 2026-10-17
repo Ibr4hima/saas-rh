@@ -41,6 +41,11 @@ export const ENTETE = {
   sigle: 'APIX-SA',
   /** La fin du numéro d'un acte de la DCH : « N° … /PR/SG/APIX/DCH ». */
   referenceDCH: '/PR/SG/APIX/DCH',
+  /**
+   * Celle d'un acte qui passe par la direction générale : les attestations
+   * de revenu et de stage.
+   */
+  referenceDG: '/PR/SG/APIX/DG/DCH',
   /** Lieu d'émission : « Dakar, le … ». */
   ville: 'Dakar',
 } as const;

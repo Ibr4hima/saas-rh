@@ -81,6 +81,7 @@ export type DocumentDeLaListe = z.infer<typeof requestableDocSchema>;
 export const GENERATED_DOCS = [
   'attestation_travail',
   'attestation_revenu',
+  'attestation_stage',
 ] as const satisfies readonly DocumentDeLaListe[];
 
 /** Un document dont le modèle est configuré. */

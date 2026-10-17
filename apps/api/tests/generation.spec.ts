@@ -149,6 +149,12 @@ describe('quoi', () => {
     });
   });
 
+  it('l’attestation de stage cite un stage du dossier ; sans stage, refusée', async () => {
+    expect(await codeOf(() => service.pdf(dch, 'attestation_stage', employes.actif))).toBe(
+      'documents.sans_stage',
+    );
+  });
+
   it('le modèle garde ses règles : l’attestation de travail, pas pour un dossier inactif', async () => {
     expect(await codeOf(() => service.pdf(dch, 'attestation_travail', employes.archive))).toBe(
       'documents.not_active',

@@ -60,6 +60,10 @@ export function accords(genre: string | null) {
 export const auGenre = (genre: string | null, masculin: string, feminin: string) =>
   genre === 'female' ? feminin : masculin;
 
+/** La qualité de qui dirige la DCH, au genre de son dossier. */
+export const qualiteDCH = (genre: string | null) =>
+  auGenre(genre, 'Directeur du Capital Humain', 'Directrice du Capital Humain');
+
 /** Une personne nommée, en gras, d'un seul tenant : « Madame Fatou SALL ». */
 export const nommee = (p: Personne): Passage => ({
   texte: insecable(`${accords(p.genre).civilite} ${p.nom}`),

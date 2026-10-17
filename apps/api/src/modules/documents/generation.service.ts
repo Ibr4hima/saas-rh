@@ -5,6 +5,7 @@ import { pasSurSoi } from '../acces/dch';
 import { problem } from '../../common/problem';
 import { TenantDb } from '../../db/tenant-db';
 import { attestationDeRevenu } from './attestation-revenu';
+import { attestationDeStage } from './attestation-stage';
 import { AttestationService } from './attestation.service';
 import type { DocumentPdf, Modele } from './feuille';
 
@@ -33,6 +34,7 @@ export class GenerationService {
     this.modeles = {
       attestation_travail: { pdf: (tx, employeeId) => attestations.pdfPour(tx, employeeId) },
       attestation_revenu: attestationDeRevenu,
+      attestation_stage: attestationDeStage,
     };
   }
 

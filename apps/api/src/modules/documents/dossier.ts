@@ -1,6 +1,6 @@
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { directionDuPersonnel } from '../acces/dch';
-import { debutDeLAnciennete } from '../people/anciennete';
+import { debutDeLAnciennete, premierJourDuStage } from '../people/anciennete';
 import { DG } from '../people/chaine';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
@@ -9,8 +9,8 @@ import type { Personne } from './redaction';
 
 /*
  * Ce que les attestations de la DCH lisent au dossier (ADR-0086) : l'agent,
- * sa date d'entrée, son poste et son contrat ; et qui signe, d'après
- * l'organigramme.
+ * sa date d'entrée, son poste et son contrat, ou son stage ; et qui signe,
+ * d'après l'organigramme.
  */
 
 export interface DossierDeLAgent {
@@ -104,6 +104,81 @@ export async function dossierDeLAgent(
     depuis: anciennete[0]?.depuis ?? row.hiredOn,
     poste: row.positionTitle ?? null,
     contrat: contract?.contractType ?? null,
+  };
+}
+
+export interface StageDeLAgent {
+  agent: Personne;
+  employeeNumber: string;
+  /** Le premier jour du stage : renouvelé dans le mois, c'est le même stage. */
+  debut: string;
+  /** Son dernier jour : la fin du contrat, ou le départ s'il vient avant ; null : pas encore fixé. */
+  fin: string | null;
+  /** Le poste occupé pendant le stage ; à défaut, celui que prévoyait le contrat. */
+  poste: string | null;
+}
+
+/**
+ * Le dernier stage commencé d'un agent (ADR-0089), que son dossier soit en
+ * activité ou non : l'attestation de stage se délivre le plus souvent après
+ * le stage, au départ de l'agent ou après son embauche.
+ */
+export async function stageDeLAgent(tx: Tx, employeeId: string): Promise<StageDeLAgent> {
+  const { rows } = await tx.execute<{
+    employee_number: string;
+    given_name: string;
+    family_name: string;
+    gender: string | null;
+    debut: string | null;
+    fin: string | null;
+    poste_prevu: string | null;
+  }>(sql`
+    SELECT e.employee_number, p.given_name, p.family_name, p.gender,
+           ${premierJourDuStage(employeeId, sql`st.start_date`)}::text AS debut,
+           -- Un départ ne clôt pas le contrat : le stage finit au premier
+           -- des deux.
+           LEAST(st.end_date,
+                 (SELECT min(pi.dernier_jour) FROM periodes_inactivite pi
+                   WHERE pi.employee_id = e.id AND pi.dernier_jour >= st.start_date))::text AS fin,
+           st.planned_position_title AS poste_prevu
+      FROM employees e
+      JOIN persons p ON p.id = e.person_id
+      LEFT JOIN LATERAL (
+        SELECT c.start_date, c.end_date, c.planned_position_title FROM contracts c
+         WHERE c.employee_id = e.id AND c.contract_type = 'stage'
+           AND c.start_date <= CURRENT_DATE
+         ORDER BY c.start_date DESC, c.created_at DESC LIMIT 1) st ON true
+     WHERE e.id = ${employeeId}`);
+  const row = rows[0];
+  if (!row) {
+    problem(404, 'people.employee_not_found', 'Employé introuvable');
+  }
+  if (!row.debut) {
+    problem(
+      422,
+      'documents.sans_stage',
+      'Aucun stage au dossier',
+      'L’attestation de stage cite le dernier stage commencé de l’agent.',
+    );
+  }
+
+  // Le poste du stage, pas celui d'aujourd'hui : après une embauche, le
+  // poste a changé.
+  const { rows: postes } = await tx.execute<{ position_title: string }>(sql`
+    SELECT a.position_title FROM assignments a
+     WHERE a.employee_id = ${employeeId}
+       AND a.validity && daterange(${row.debut}::date, (${row.fin}::date + 1))
+     ORDER BY lower(a.validity) DESC LIMIT 1`);
+
+  return {
+    agent: {
+      nom: `${row.given_name} ${row.family_name.toUpperCase()}`,
+      genre: row.gender,
+    },
+    employeeNumber: row.employee_number,
+    debut: row.debut,
+    fin: row.fin,
+    poste: postes[0]?.position_title ?? row.poste_prevu,
   };
 }
 
