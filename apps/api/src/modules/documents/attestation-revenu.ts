@@ -33,8 +33,8 @@ export interface RevenuData extends DossierDeLAgent {
 const REFERENCE = '/PR/SG/APIX/DG/DCH';
 
 /**
- * Les textes de l'attestation, aux mots du modèle de l'APIX. Les noms et la
- * date d'entrée sont en gras, comme sur le modèle ; le montant ne l'est pas.
+ * Les textes de l'attestation, aux mots du modèle de l'APIX. Les noms, la
+ * date d'entrée et le montant sont en gras (ADR-0088).
  */
 export function textesDeLAttestationDeRevenu(
   d: RevenuData,
@@ -49,9 +49,7 @@ export function textesDeLAttestationDeRevenu(
   );
   // « 250 000 (deux cent cinquante mille) francs CFA » : les chiffres et
   // l'unité ne se coupent pas, les lettres passent à la ligne au besoin.
-  const salaire =
-    `un salaire net mensuel de ${enChiffres(d.salaire)} (${enLettres(d.salaire)}) ` +
-    insecable('francs CFA');
+  const montant = `${enChiffres(d.salaire)} (${enLettres(d.salaire)}) ${insecable('francs CFA')}`;
   return {
     reference: REFERENCE,
     lieuEtDate: `${ENTETE.ville}, le ${frDate(aujourdhui)}`,
@@ -63,16 +61,18 @@ export function textesDeLAttestationDeRevenu(
         d.signataire ? nommee(d.signataire) : { texte: A_REMPLIR },
         { texte: `, ${qualite}, atteste par la présente que ` },
         nommee(d.agent),
-        { texte: ` est employé${agent.e} à APIX-S.A. depuis le ` },
+        { texte: ` est employé${agent.e} à ${ENTETE.sigle} depuis le ` },
         { texte: insecable(frDate(d.depuis)), gras: true },
         { texte: '.' },
       ],
       [
         {
           texte: d.poste
-            ? `${agent.pronom} occupe actuellement ${elide('la fonction d', d.poste)} et perçoit ${salaire}.`
-            : `${agent.pronom} perçoit ${salaire}.`,
+            ? `${agent.pronom} occupe actuellement ${elide('la fonction d', d.poste)} et perçoit un salaire net mensuel de `
+            : `${agent.pronom} perçoit un salaire net mensuel de `,
         },
+        { texte: montant, gras: true },
+        { texte: '.' },
       ],
       [
         {

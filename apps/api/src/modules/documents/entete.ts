@@ -37,7 +37,7 @@ export const ENTETE = {
   agenceLignes: ['Agence pour la Promotion des Investissements', 'et des Grands Travaux'],
   /** Raison sociale, telle qu'elle figure dans les métadonnées et l'Academy. */
   raisonSociale: 'APIX S.A',
-  /** La société, telle que les actes de la DCH la nomment. */
+  /** La société, telle que les actes de la DCH la nomment, dans tous les modèles (ADR-0088). */
   sigle: 'APIX-SA',
   /** La fin du numéro d'un acte de la DCH : « N° … /PR/SG/APIX/DCH ». */
   referenceDCH: '/PR/SG/APIX/DCH',

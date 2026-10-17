@@ -189,11 +189,11 @@ describe('les mots du modèle', () => {
     expect(textes.titre).toBe('ATTESTATION DE REVENU');
   });
 
-  it('les trois paragraphes ; les noms et la date en gras, le montant en chiffres puis en lettres', () => {
+  it('les trois paragraphes ; les noms, la date et le montant en gras, en chiffres puis en lettres', () => {
     const textes = textesDeLAttestationDeRevenu(dossier(), new Date());
     expect(enClair(textes, 0)).toBe(
       'Je soussigné, Monsieur Babacar GUEYE, Directeur du Capital Humain, atteste par la présente que ' +
-        'Monsieur Moussa NDIAYE est employé à APIX-S.A. depuis le 1er juin 2023.',
+        'Monsieur Moussa NDIAYE est employé à APIX-SA depuis le 1er juin 2023.',
     );
     expect(enGras(textes, 0)).toEqual([
       'Monsieur Babacar GUEYE',
@@ -204,17 +204,20 @@ describe('les mots du modèle', () => {
       'Il occupe actuellement la fonction de Chargé d’études et perçoit un salaire net mensuel ' +
         'de 250 000 (deux cent cinquante mille) francs CFA.',
     );
-    expect(enGras(textes, 1)).toEqual([]);
+    expect(enGras(textes, 1)).toEqual(['250 000 (deux cent cinquante mille) francs CFA']);
     expect(enClair(textes, 2)).toBe(
       'En foi de quoi, la présente attestation est établie pour servir et valoir ce que de droit.',
     );
   });
 
   it('les chiffres et l’unité d’un seul tenant', () => {
-    const [passage] = textesDeLAttestationDeRevenu(dossier({ salaire: 1_250_000 }), new Date())
-      .paragraphes[1]!;
-    expect(passage!.texte).toContain('de 1 250 000 (un million deux cent cinquante mille)');
-    expect(passage!.texte).toMatch(/francs CFA\.$/);
+    const montant = textesDeLAttestationDeRevenu(
+      dossier({ salaire: 1_250_000 }),
+      new Date(),
+    ).paragraphes[1]!.find((p) => p.gras);
+    expect(montant?.texte).toBe(
+      '1\u00a0250\u00a0000 (un million deux cent cinquante mille) francs\u00a0CFA',
+    );
   });
 
   it('accorde avec le genre que porte chaque dossier, timbre compris', () => {
@@ -229,7 +232,7 @@ describe('les mots du modèle', () => {
     expect(textes.timbre).toBe('La Directrice du Capital Humain');
     expect(enClair(textes, 0)).toBe(
       'Je soussignée, Madame Mariama CISSÉ, Directrice du Capital Humain, atteste par la présente que ' +
-        'Madame Fatou SALL est employée à APIX-S.A. depuis le 1er juin 2023.',
+        'Madame Fatou SALL est employée à APIX-SA depuis le 1er juin 2023.',
     );
     expect(enClair(textes, 1)).toMatch(
       /^Elle occupe actuellement la fonction de Comptable et perçoit /,
@@ -245,7 +248,7 @@ describe('les mots du modèle', () => {
     expect(enClair(textes, 0)).toMatch(
       /^Je soussigné\(e\), …+, Directeur du Capital Humain, atteste/,
     );
-    expect(enClair(textes, 0)).toContain('Monsieur/Madame Ndeye DIALLO est employé(e) à APIX-S.A.');
+    expect(enClair(textes, 0)).toContain('Monsieur/Madame Ndeye DIALLO est employé(e) à APIX-SA');
     expect(enClair(textes, 1)).toMatch(/^Il\/Elle occupe actuellement/);
   });
 
@@ -262,7 +265,7 @@ describe('ce que l’attestation lit au dossier', () => {
     expect(textes.timbre).toBe('La Directrice du Capital Humain');
     expect(enClair(textes, 0)).toBe(
       'Je soussignée, Madame Mariama CISSÉ, Directrice du Capital Humain, atteste par la présente que ' +
-        'Madame Fatou SALL est employée à APIX-S.A. depuis le 1er février 2025.',
+        'Madame Fatou SALL est employée à APIX-SA depuis le 1er février 2025.',
     );
   });
 
@@ -283,7 +286,7 @@ describe('ce que l’attestation lit au dossier', () => {
   it('la date d’entrée : le début de l’ancienneté, pas le stage d’avant ; la fonction et le salaire saisi', async () => {
     const textes = await textesDe(employes.cdi!, 487_381);
     expect(enClair(textes, 0)).toContain(
-      'Monsieur Moussa NDIAYE est employé à APIX-S.A. depuis le 1er juillet 2024.',
+      'Monsieur Moussa NDIAYE est employé à APIX-SA depuis le 1er juillet 2024.',
     );
     expect(enClair(textes, 1)).toBe(
       'Il occupe actuellement la fonction d’Analyste et perçoit un salaire net mensuel de ' +
