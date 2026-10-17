@@ -178,7 +178,7 @@ describe('les mots du modèle', () => {
     const textes = textesDeLAttestation(dossier(), new Date('2026-10-17T10:00:00'));
     expect(textes.reference).toBe('/PR/SG/APIX/DCH');
     expect(textes.lieuEtDate).toBe('Dakar, le 17 octobre 2026');
-    expect(textes.timbre).toBe('Le Directeur Général Adjoint');
+    expect(textes.timbre).toBe('Le Directeur Général');
     expect(textes.titre).toBe('ATTESTATION DE TRAVAIL');
   });
 
@@ -211,6 +211,7 @@ describe('les mots du modèle', () => {
       }),
       new Date(),
     );
+    expect(textes.timbre).toBe('La Directrice Générale');
     expect(enClair(textes, 0)).toBe(
       'Je soussignée, Madame Aïssatou FALL, Directrice Générale, atteste par la présente que ' +
         'Madame Fatou SALL est employée à APIX-SA depuis le 1er juin 2023.',

@@ -94,15 +94,22 @@ const A_REMPLIR = '……………………………';
  */
 function accords(genre: string | null) {
   if (genre === 'female') {
-    return { civilite: 'Madame', e: 'e', pronom: 'Elle', direction: 'Directrice Générale' };
+    return {
+      civilite: 'Madame',
+      e: 'e',
+      pronom: 'Elle',
+      le: 'La',
+      direction: 'Directrice Générale',
+    };
   }
   if (genre === 'male') {
-    return { civilite: 'Monsieur', e: '', pronom: 'Il', direction: 'Directeur Général' };
+    return { civilite: 'Monsieur', e: '', pronom: 'Il', le: 'Le', direction: 'Directeur Général' };
   }
   return {
     civilite: 'Monsieur/Madame',
     e: '(e)',
     pronom: 'Il/Elle',
+    le: 'Le',
     direction: 'Directeur Général',
   };
 }
@@ -127,7 +134,9 @@ export function textesDeLAttestation(d: AttestationData, aujourdhui: Date): Text
   return {
     reference: ENTETE.referenceDCH,
     lieuEtDate: `${ENTETE.ville}, le ${frDate(aujourdhui)}`,
-    timbre: 'Le Directeur Général Adjoint',
+    // Le timbre nomme qui signe : le DG, qui atteste dans le corps. Le modèle
+    // portait « Le Directeur Général Adjoint » ; l'APIX a retenu le DG.
+    timbre: `${signataire.le} ${signataire.direction}`,
     titre: 'ATTESTATION DE TRAVAIL',
     paragraphes: [
       [
