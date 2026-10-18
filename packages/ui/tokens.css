@@ -22,10 +22,11 @@
   color-scheme: light;
 
   /* --- Couleurs sémantiques (light) --- */
-  /* Le fond des pages : un gris neutre, à peine sous le blanc des cartes. Les
-     autres surfaces reprennent la plateforme APIX (--carte / --carte-douce) :
-     des gris chauds, pas bleutés. */
-  --tg-bg: #fafafa;
+  /* Le fond des pages : celui de l'écran de connexion, un blanc à peine
+     bleui, sous le blanc des cartes (ADR-0116). Les autres surfaces
+     reprennent la plateforme APIX (--carte / --carte-douce) : des gris
+     chauds. */
+  --tg-bg: #f3f6fa;
   --tg-surface: #ffffff;
   --tg-surface-raised: #fafaf9;
   /* Teinte des ÉTATS (rangée survolée, bouton discret, onglet au repos).

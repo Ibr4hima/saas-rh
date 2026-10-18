@@ -102,7 +102,7 @@ export function OngletsDeLEntete({
 
   return createPortal(
     // Posé sur le fond, le cadre prend le voile d'encre des rangées du menu :
-    // le gris de la page ne le dessinerait pas sur le gris de la page.
+    // le fond de la page ne le dessinerait pas sur le fond de la page.
     <Onglets
       onglets={onglets}
       courant={courant}

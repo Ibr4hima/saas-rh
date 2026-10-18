@@ -314,7 +314,8 @@ body {
    activation, mot de passe oublié ou à refaire.
 
    Thème clair : une couleur unique, sans dôme ni décor, le blanc à peine
-   bleui du volet de l'offre. La carte blanche s'y pose seule ; le logo y
+   bleui du volet de l'offre. C'est le fond de toute l'application, lu dans
+   le même jeton (ADR-0116). La carte blanche s'y pose seule ; le logo y
    garde ses encres, la signature prend le bleu de la charte.
 
    Thème sombre : le dôme de marque de la plateforme APIX, un bleu profond
@@ -332,7 +333,7 @@ body {
 .login-dome {
   position: relative;
   isolation: isolate;
-  background: #f3f6fa;
+  background: var(--tg-bg);
   --login-decor: none;
   --login-logo: none;
   --login-encre: var(--tg-primary);

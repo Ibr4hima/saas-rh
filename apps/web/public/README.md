@@ -15,8 +15,8 @@ cp /chemin/vers/votre-logo.svg apps/web/public/logo-apix.svg
 Le **SVG est le format à privilégier** : net à toutes les tailles, et surtout
 réellement transparent : il se pose directement sur le fond, sans plaque
 derrière lui. Un `logo-apix.png` est accepté en repli si le SVG est absent,
-mais il doit être transparent lui aussi : un fond blanc se verrait sur le gris
-de la page, et deviendrait un rectangle blanc en thème sombre. Sans aucun des
+mais il doit être transparent lui aussi : un fond blanc se verrait sur le fond
+bleuté de la page, et deviendrait un rectangle blanc en thème sombre. Sans aucun des
 deux fichiers, l'application affiche « CH » à sa place, sans erreur
 visible.
 

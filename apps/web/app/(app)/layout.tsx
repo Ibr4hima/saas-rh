@@ -1294,7 +1294,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
        Tout se pose sur le fond de la page (ADR-0115) : ni bandeau bleu, ni
        colonne blanche. Le menu, le titre, les commandes sont écrits à même
-       le gris ; seuls les blocs et les tableaux sont blancs. Le blanc
+       le fond ; seuls les blocs et les tableaux sont blancs. Le blanc
        désigne ainsi ce qu'on lit et ce qu'on remplit, et rien d'autre. */
     <div className="flex h-dvh overflow-hidden">
       {/* Le menu, à même le fond */}
