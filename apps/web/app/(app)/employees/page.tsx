@@ -39,7 +39,7 @@ import { aDesConsequences, ListeConsequences } from '../../../components/consequ
 import { FenetreImportEmployes } from '../../../components/import-employes';
 import { Icon } from '../../../components/icons';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
-import { Onglets, OngletsBandeau } from '../../../components/onglets-bandeau';
+import { Onglets, OngletsDeLEntete } from '../../../components/onglets';
 import { Pagination } from '../../../components/pagination';
 import {
   equipesAConfier,
@@ -289,14 +289,14 @@ export default function EmployeesPage() {
           écran qu'on part. Il ne s'affiche que s'il a quelque chose à dire. */}
       <BandeauHierarchie />
 
-      <OngletsBandeau courant={onglet} onChange={changerOnglet} onglets={ONGLETS} />
-      {/* Reprise du même contrôle là où le bandeau n'a plus la place de le
+      <OngletsDeLEntete courant={onglet} onChange={changerOnglet} onglets={ONGLETS} />
+      {/* Reprise du même contrôle là où l'en-tête n'a plus la place de le
           porter : sans elle, l'écran étroit perdrait l'accès aux inactifs. */}
       <Onglets
         courant={onglet}
         onChange={changerOnglet}
         onglets={ONGLETS}
-        className="mb-3 w-max md:hidden"
+        className="mb-3 w-max lg:hidden"
       />
 
       <CartePleine>

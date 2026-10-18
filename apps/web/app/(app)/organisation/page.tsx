@@ -121,8 +121,8 @@ export default function OrganisationPage() {
   };
   /** Unité en cours de création depuis le « + » d'un bloc : le parent visé. */
   const [creation, setCreation] = useState<{ parent: OrgUnitView | null } | null>(null);
-  // L'autre porte d'entrée passe par l'URL (?nouvelle) : le bouton vit dans le
-  // bandeau de tête, qui appartient à la coquille et ne connaît pas cet écran.
+  // L'autre porte d'entrée passe par l'URL (?nouvelle) : le bouton vit dans
+  // l'en-tête, qui appartient à la coquille et ne connaît pas cet écran.
   const creationRacine = parametres.get('nouvelle') !== null && canManage;
   const fermerCreation = () => {
     setCreation(null);

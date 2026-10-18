@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CAPACITES_DOCUMENTS,
   CAPACITES_PIECES,
@@ -26,15 +26,8 @@ import {
   useEspaceChoisi,
   type Espace,
 } from '../../components/espace';
-import {
-  InfoBulle,
-  SousMenuFlottant,
-  survolAvecBulle,
-  useMenuReplie,
-  type Bulle,
-} from '../../components/colonne-repliable';
-import { ANCRE_ACTIONS } from '../../components/actions-bandeau';
-import { ANCRE_ONGLETS } from '../../components/onglets-bandeau';
+import { ACTION, ANCRE_ACTIONS, COMMANDE, COMMANDE_ACTIVE } from '../../components/entete';
+import { ANCRE_ONGLETS } from '../../components/onglets';
 import { RechercheAcademy } from '../../components/recherche-academy';
 import { api } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
@@ -179,9 +172,9 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 /**
- * Titre de la page, tel qu'il s'affiche dans la barre supérieure. Il est
- * DÉDUIT de l'URL plutôt que remonté par chaque page : le titre appartient au
- * chrome de l'application, et un écran ne peut pas oublier de le déclarer.
+ * Titre de la page, tel qu'il s'affiche en tête de l'écran. Il est DÉDUIT de
+ * l'URL plutôt que remonté par chaque page : le titre appartient au chrome
+ * de l'application, et un écran ne peut pas oublier de le déclarer.
  * Les fiches (employé, offre) portent un intitulé générique — leur contenu
  * nomme déjà la personne ou le poste, le répéter en tête n'apprend rien.
  */
@@ -229,16 +222,20 @@ function greeting(): string {
   return 'Bonsoir';
 }
 
+/**
+ * Les accueils, le tableau de bord et « Mes infos personnelles », saluent :
+ * c'est là qu'on arrive. La date du jour s'écrit sous le salut.
+ */
+function salue(pathname: string): boolean {
+  return pathname === '/dashboard' || pathname === '/moi/tableau-de-bord' || pathname === '/moi';
+}
+
 function pageTitle(pathname: string, givenName: string): string {
-  // Les deux accueils — le tableau de bord, et « Mes infos personnelles » —
-  // saluent : c'est là qu'on arrive.
-  if (pathname === '/dashboard' || pathname === '/moi/tableau-de-bord' || pathname === '/moi') {
-    return `${greeting()}, ${givenName}`;
-  }
+  if (salue(pathname)) return `${greeting()}, ${givenName}`;
   const exact = PAGE_TITLES[pathname];
   if (exact) return exact;
   // Une fiche garde le titre de sa SECTION : le dossier nomme déjà la personne
-  // en gros caractères, trois centimètres plus bas. Le bandeau, lui, dit où
+  // en gros caractères, trois centimètres plus bas. L'en-tête, lui, dit où
   // l'on se trouve dans l'application — c'est le seul endroit qui le dise.
   if (pathname.startsWith('/employees/')) {
     return pathname.endsWith('/modifier') ? 'Modifier la fiche' : 'Gestion du personnel';
@@ -255,9 +252,9 @@ function pageTitle(pathname: string, givenName: string): string {
 }
 
 /**
- * L'action principale de l'écran, réduite à une icône dans la barre. Une page
- * n'en a qu'UNE : si deux boutons se disputaient la tête de page, c'est que
- * l'un des deux n'était pas principal.
+ * L'action principale de l'écran, en tête de page. Une page n'en a qu'UNE :
+ * si deux boutons se disputaient la tête de page, c'est que l'un des deux
+ * n'était pas principal.
  */
 interface ChromeAction {
   href: string;
@@ -298,19 +295,15 @@ function pageAction(pathname: string, user: SessionUser, espace: Espace): Chrome
 }
 
 /**
- * Bouton d'action du bandeau : l'unique geste de l'écran. Verre translucide
- * plutôt qu'aplat — sur un fond de marque, un second aplat de marque ne se
- * détacherait pas.
+ * L'action de l'écran, dans l'en-tête : un bouton plein, l'icône et le mot.
+ * Le bandeau bleu la réduisait à une icône ; sur le fond, elle a la place de
+ * dire ce qu'elle fait. Sur téléphone, l'icône seule.
  */
-function HeaderAction({ action }: { action: ChromeAction }) {
+function ActionDeLEcran({ action }: { action: ChromeAction }) {
   return (
-    <Link
-      href={action.href}
-      title={action.label}
-      aria-label={action.label}
-      className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
-    >
-      <Icon name={action.icon} size={20} />
+    <Link href={action.href} title={action.label} className={ACTION}>
+      <Icon name={action.icon} size={18} />
+      <span className="max-sm:sr-only">{action.label}</span>
     </Link>
   );
 }
@@ -318,9 +311,9 @@ function HeaderAction({ action }: { action: ChromeAction }) {
 /**
  * L'espace APIX Academy, côté apprenant : le catalogue, les formations, les
  * leçons, l'évaluation, « Ma liste », « Mes certificats ». On y vient pour
- * apprendre — le bandeau s'y allège : ni date, ni recherche, ni cloche, et le
- * signet de « Ma liste » à leur place. L'atelier de la DCH (/academy/gerer)
- * reste un écran de gestion, avec le bandeau de gestion.
+ * apprendre, et l'en-tête s'y allège : ni date ni cloche, mais la recherche
+ * et le signet de « Ma liste ». L'atelier de la DCH (/academy/gerer) reste
+ * un écran de gestion, avec l'en-tête de gestion.
  */
 function espaceAcademy(pathname: string): boolean {
   return (
@@ -330,10 +323,10 @@ function espaceAcademy(pathname: string): boolean {
 }
 
 /**
- * Un raccourci rond du bandeau de l'Academy : « Mes certificats », « Ma
- * liste ». Plein quand on est sur sa page — on voit où l'on est.
+ * Un raccourci rond de l'en-tête de l'Academy : « Mes certificats », « Ma
+ * liste ». Bleu quand on est sur sa page : on voit où l'on est.
  */
-function LienBandeau({
+function LienDeLEntete({
   href,
   icone,
   libelle,
@@ -350,14 +343,9 @@ function LienBandeau({
       title={libelle}
       aria-label={libelle}
       aria-current={actif ? 'page' : undefined}
-      className={cn(
-        'flex size-9 shrink-0 items-center justify-center rounded-full border text-hero-ink transition-all duration-200 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none',
-        actif
-          ? 'border-white/60 bg-white/25'
-          : 'border-white/30 bg-white/10 hover:border-white/55 hover:bg-white/20',
-      )}
+      className={cn(COMMANDE, actif && COMMANDE_ACTIVE)}
     >
-      <Icon name={icone} size={20} fill={actif} />
+      <Icon name={icone} size={19} fill={actif} />
     </Link>
   );
 }
@@ -748,7 +736,19 @@ function restreindre(items: NavItem[]): NavItem[] {
   });
 }
 
-/** Une entrée simple de la barre latérale. */
+/**
+ * Les rangées du menu, posées sur le fond (ADR-0115). Au survol, un voile
+ * d'encre ; l'entrée courante prend le blanc des blocs, cerclé de leur filet,
+ * le mot et l'icône en bleu. Ce petit bloc se repère DE LOIN, avant même
+ * qu'on lise : c'est lui qu'on suit du regard en revenant au menu après avoir
+ * travaillé à droite. Bleu, comme toute la structure du produit : l'orange de
+ * la charte est réservé à ce qui attend un geste, et une position dans un
+ * menu n'attend rien.
+ */
+const RANGEE_ACTIVE = 'bg-menu-actif font-semibold text-primary shadow-xs ring-1 ring-card-line';
+const RANGEE_REPOS = 'font-medium text-ink hover:bg-menu-survol';
+
+/** Une entrée simple du menu. */
 function RangeeNav({
   href,
   label,
@@ -756,8 +756,6 @@ function RangeeNav({
   active,
   badge,
   desactive,
-  replie = false,
-  onBulle,
 }: {
   href: string;
   label: string;
@@ -765,40 +763,36 @@ function RangeeNav({
   active: boolean;
   badge?: number;
   desactive?: boolean;
-  /** Colonne repliée : l'icône seule, le libellé dans une bulle au survol. */
-  replie?: boolean;
-  onBulle?: (b: Bulle | null) => void;
 }) {
-  const aBadge = Boolean(badge && badge > 0);
   const contenu = (
     <>
       {/* Icône pleine sur l'entrée courante : la position dans le menu se lit
-          sans dépendre de la seule couleur. */}
+          sans dépendre de la seule couleur. Au repos, l'icône se tient un ton
+          sous le mot. */}
       {icon ? (
         <span className="relative flex shrink-0">
-          <Icon name={icon} size={17} fill={active && !desactive} />
-          {/* Repliée, la colonne n'a plus la place du compteur : un point
-              dit qu'il y a quelque chose, la bulle dit combien. */}
-          {replie && aBadge ? <PointAlerte /> : null}
+          <Icon
+            name={icon}
+            size={17}
+            fill={active && !desactive}
+            className={cn(!active && !desactive && 'text-ink-muted group-hover:text-ink')}
+          />
         </span>
       ) : null}
-      <span className={replie ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{label}</span>
-      {!replie && aBadge ? (
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {badge && badge > 0 ? (
         <span className="rounded-full bg-alert-soft px-[6px] py-px text-[10px] font-extrabold text-alert-text">
           {badge}
         </span>
       ) : null}
     </>
   );
-  const survol =
-    replie && onBulle ? survolAvecBulle(aBadge ? `${label} · ${badge}` : label, onBulle) : {};
-
-  // `gap-2` comme les rubriques dépliables juste en dessous : les deux sortes
-  // de rangées s'écartaient de deux pixels, ce qui ne se voyait pas — jusqu'à
-  // qu'un libellé long, en gras sur la page courante, manque exactement ces
-  // deux pixels et se coupe.
+  // `gap-2.5` comme les rubriques dépliables juste en dessous : les deux
+  // sortes de rangées s'écartaient de deux pixels, ce qui ne se voyait pas,
+  // jusqu'à ce qu'un libellé long, en gras sur la page courante, manque
+  // exactement ces deux pixels et se coupe.
   const forme =
-    'relative flex items-center gap-2 rounded-controle-sm py-[8px] pr-2.5 pl-3.5 text-[12.5px] transition-colors duration-150';
+    'group relative flex items-center gap-2.5 rounded-controle-sm py-[7px] pr-2.5 pl-3.5 text-[13px] transition-[background-color,color,box-shadow] duration-150';
 
   // Éteinte, la rangée n'est plus un lien DU TOUT : la griser sans la
   // désarmer laisserait le clic passer, et le curseur promettrait une
@@ -807,7 +801,6 @@ function RangeeNav({
     return (
       <span
         aria-disabled
-        {...survol}
         className={cn(forme, 'cursor-not-allowed font-medium text-ink-muted/45 select-none')}
       >
         {contenu}
@@ -819,41 +812,10 @@ function RangeeNav({
     <Link
       href={href}
       aria-current={active ? 'page' : undefined}
-      {...survol}
-      className={cn(
-        forme,
-        active ? 'bg-primary/[0.07] font-bold text-primary' : 'font-medium text-ink hover:bg-hover',
-      )}
+      className={cn(forme, active ? RANGEE_ACTIVE : RANGEE_REPOS)}
     >
-      {/* Le repère de l'entrée courante. L'aplat pâle et le gras la
-          désignaient déjà ; le trait vertical la désigne DE LOIN, avant même
-          qu'on lise — c'est lui qu'on suit du regard en revenant à la colonne
-          après avoir travaillé à droite. Bleu, comme toute la structure du
-          produit : l'orange de la charte est réservé à ce qui attend un
-          geste, et une position dans un menu n'attend rien. */}
-      {active ? <RepereActif /> : null}
       {contenu}
     </Link>
-  );
-}
-
-/** Le point d'alerte posé sur l'icône, quand la colonne est repliée. */
-function PointAlerte() {
-  return (
-    <span
-      aria-hidden
-      className="absolute -top-0.5 -right-1 size-2 rounded-full bg-alert ring-2 ring-surface"
-    />
-  );
-}
-
-/** Le trait vertical de l'entrée courante — 2,5 px, arrondi, centré. */
-function RepereActif() {
-  return (
-    <span
-      aria-hidden
-      className="absolute top-1/2 left-[4px] h-[15px] w-[2.5px] -translate-y-1/2 rounded-full bg-primary"
-    />
   );
 }
 
@@ -871,17 +833,12 @@ function Rubrique({
   contientLaPageCourante,
   badge,
   estActive,
-  replie = false,
-  onBulle,
 }: {
   item: NavItem;
   contientLaPageCourante: boolean;
   /** Le compteur de la rubrique : il vit sur la rangée parente, ouverte ou non. */
   badge?: number;
   estActive: (href: string) => boolean;
-  /** Colonne repliée : l'icône ouvre les sous-pages dans un menu flottant. */
-  replie?: boolean;
-  onBulle?: (b: Bulle | null) => void;
 }) {
   // Dépliée d'emblée : le menu montre d'un regard tout ce qu'il contient. Une
   // rubrique fermée cache des destinations que rien n'annonce, et il faut
@@ -912,23 +869,6 @@ function Rubrique({
       null,
     );
 
-  if (replie) {
-    return (
-      <RubriqueRepliee
-        item={item}
-        badge={badge}
-        contientLaPage={contientLaPage}
-        liens={enfants.map((c) => ({
-          href: c.href,
-          label: c.label,
-          actif: c.href === enfantActif,
-          desactive: c.desactive,
-        }))}
-        onBulle={onBulle}
-      />
-    );
-  }
-
   return (
     <div className="flex flex-col gap-px">
       <button
@@ -936,22 +876,26 @@ function Rubrique({
         onClick={() => setOuverte((v) => !v)}
         aria-expanded={ouverte}
         className={cn(
-          'relative flex items-center gap-2 rounded-controle-sm py-[8px] pr-2.5 pl-3.5 text-left text-[12.5px] transition-colors duration-150',
+          'group relative flex items-center gap-2.5 rounded-controle-sm py-[7px] pr-2.5 pl-3.5 text-left text-[13px] transition-[background-color,color,box-shadow] duration-150',
           // Repliée sur la page courante, la rubrique porte l'état actif ;
           // dépliée, elle le laisse à la sous-page pour ne pas l'allumer deux
           // fois sur la même colonne.
           contientLaPage && !ouverte
-            ? 'bg-primary/[0.07] font-bold text-primary'
+            ? RANGEE_ACTIVE
             : contientLaPage
               ? // Dépliée, la rubrique s'allège : la sous-page porte déjà l'état
-                // actif, et deux bleus gras l'un sous l'autre alourdissent la
-                // colonne — en plus de faire déborder « Lois & Règlementations ».
-                'font-semibold text-primary hover:bg-hover'
-              : 'font-medium text-ink hover:bg-hover',
+                // actif, et deux blocs l'un sous l'autre alourdissent la
+                // colonne.
+                'font-semibold text-primary hover:bg-menu-survol'
+              : RANGEE_REPOS,
         )}
       >
-        {contientLaPage && !ouverte ? <RepereActif /> : null}
-        <Icon name={item.icon} size={17} fill={contientLaPage} />
+        <Icon
+          name={item.icon}
+          size={17}
+          fill={contientLaPage}
+          className={cn(!contientLaPage && 'text-ink-muted group-hover:text-ink')}
+        />
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
         {/* Le compteur reste sur le parent : replié, c'est le seul endroit où
             il puisse se voir ; déplié, il dit lequel des deux ensembles
@@ -972,10 +916,10 @@ function Rubrique({
       </button>
 
       {ouverte ? (
-        <div className="relative ml-[1.4rem] flex flex-col gap-px border-l border-line-soft pl-2.5">
+        <div className="relative ml-[22px] flex flex-col gap-px border-l border-line pl-2.5">
           {enfants.map((c) => {
             const active = c.href === enfantActif;
-            const forme = 'relative rounded-controle-sm px-2.5 py-[6.5px] text-[12px]';
+            const forme = 'relative rounded-controle-sm px-2.5 py-[6px] text-[12.5px]';
             // Éteinte, la sous-page n'est plus un lien DU TOUT : la griser sans
             // la désarmer laisserait le clic passer, et le curseur promettrait
             // une destination qui n'est pas prête.
@@ -1000,10 +944,10 @@ function Rubrique({
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   forme,
-                  'transition-colors duration-150',
+                  'transition-[background-color,color,box-shadow] duration-150',
                   active
-                    ? 'bg-primary/[0.07] font-bold text-primary'
-                    : 'font-medium text-ink-muted hover:bg-hover hover:text-ink',
+                    ? RANGEE_ACTIVE
+                    : 'font-medium text-ink-muted hover:bg-menu-survol hover:text-ink',
                 )}
               >
                 {c.label}
@@ -1017,75 +961,17 @@ function Rubrique({
 }
 
 /**
- * Une rubrique, colonne repliée : son icône seule. Un clic ouvre ses
- * sous-pages à côté, dans un menu flottant — la colonne n'a plus la largeur
- * de les dérouler. Tant qu'il est fermé, la bulle du survol dit son nom.
- */
-function RubriqueRepliee({
-  item,
-  badge,
-  contientLaPage,
-  liens,
-  onBulle,
-}: {
-  item: NavItem;
-  badge?: number;
-  contientLaPage: boolean;
-  liens: { href: string; label: string; actif: boolean; desactive?: boolean }[];
-  onBulle?: (b: Bulle | null) => void;
-}) {
-  const [ouvert, setOuvert] = useState(false);
-  const bouton = useRef<HTMLButtonElement>(null);
-  const fermer = useCallback(() => setOuvert(false), []);
-  const aBadge = Boolean(badge && badge > 0);
-  const survol =
-    onBulle && !ouvert
-      ? survolAvecBulle(aBadge ? `${item.label} · ${badge}` : item.label, onBulle)
-      : {};
-  return (
-    <>
-      <button
-        ref={bouton}
-        type="button"
-        onClick={() => {
-          onBulle?.(null);
-          setOuvert((v) => !v);
-        }}
-        aria-haspopup="menu"
-        aria-expanded={ouvert}
-        aria-label={item.label}
-        {...survol}
-        className={cn(
-          'relative flex w-full items-center rounded-controle-sm py-[8px] pl-3.5 text-[12.5px] transition-colors duration-150',
-          contientLaPage
-            ? 'bg-primary/[0.07] text-primary'
-            : ouvert
-              ? 'bg-hover text-ink'
-              : 'text-ink hover:bg-hover',
-        )}
-      >
-        {contientLaPage ? <RepereActif /> : null}
-        <span className="relative flex shrink-0">
-          <Icon name={item.icon} size={17} fill={contientLaPage} />
-          {aBadge ? <PointAlerte /> : null}
-        </span>
-      </button>
-      {ouvert ? (
-        <SousMenuFlottant ancre={bouton} titre={item.label} liens={liens} onFermer={fermer} />
-      ) : null}
-    </>
-  );
-}
-
-/**
- * La date du jour, dans le bandeau — et derrière elle, « Calendrier · Jours
- * fériés » : le menu n'y mène plus, c'est la date qui y conduit. Allumée
- * quand on y est, comme une entrée de menu.
+ * La date du jour, et derrière elle « Calendrier · Jours fériés » : le menu
+ * n'y mène plus, c'est la date qui y conduit. Elle ne s'écrit qu'une fois par
+ * écran : sous le salut des accueils, comme une ligne de la page ; ailleurs,
+ * parmi les commandes de l'en-tête, allumée quand on est sur le calendrier,
+ * comme une entrée de menu. Sous 1280 px, l'icône seule : la date complète y
+ * mangerait la place du titre.
  *
  * La fenêtre du planning qu'elle ouvrait (CalendrierModal, dans
  * components/calendrier.tsx) reste dans le dépôt, prête à resservir.
  */
-function DateDuJour() {
+function DateDuJour({ sousLeSalut = false }: { sousLeSalut?: boolean }) {
   const pathname = usePathname();
   const ici = pathname.startsWith('/calendrier');
   const brut = new Date().toLocaleDateString('fr-FR', {
@@ -1096,24 +982,66 @@ function DateDuJour() {
   });
   const libelle = `${brut.charAt(0).toUpperCase()}${brut.slice(1)}`;
 
-  return (
-    <>
+  if (sousLeSalut) {
+    return (
       <Link
         href="/calendrier"
         title="Calendrier · Jours fériés"
         aria-label={`${libelle}, calendrier et jours fériés`}
-        aria-current={ici ? 'page' : undefined}
+        className="mt-1 inline-flex items-center gap-1.5 rounded-controle-sm text-[13px] font-medium text-ink-muted transition-colors duration-150 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        <Icon name="calendar_month" size={15} />
+        {libelle}
+      </Link>
+    );
+  }
+  return (
+    <Link
+      href="/calendrier"
+      title="Calendrier · Jours fériés"
+      aria-label={`${libelle}, calendrier et jours fériés`}
+      aria-current={ici ? 'page' : undefined}
+      className={cn(
+        COMMANDE,
+        'xl:w-auto xl:gap-2 xl:rounded-controle xl:px-3',
+        ici ? COMMANDE_ACTIVE : 'xl:text-ink',
+      )}
+    >
+      <Icon name="calendar_month" size={18} />
+      <span className="hidden text-[12.5px] font-semibold whitespace-nowrap xl:inline">
+        {libelle}
+      </span>
+    </Link>
+  );
+}
+
+/**
+ * Le titre de l'écran, et sous le salut des accueils, la date du jour. Il se
+ * tient dans l'en-tête sur écran large ; sur téléphone, en tête de la page,
+ * où il a toute la largeur au lieu de se couper entre le logo et les
+ * commandes.
+ */
+function TitreDeLEcran({
+  titre,
+  salut,
+  className,
+}: {
+  titre: string;
+  salut: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn('min-w-0', className)}>
+      <h1
         className={cn(
-          'flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none lg:px-3.5',
-          ici ? 'border-white/60 bg-white/20' : 'border-white/30 bg-white/10',
+          'leading-tight font-extrabold tracking-[-0.02em] text-ink-strong lg:truncate',
+          salut ? 'text-[22px] lg:text-[25px]' : 'text-[20px] lg:text-[22px]',
         )}
       >
-        <Icon name="calendar_month" size={18} />
-        {/* Sous 1024 px, l'icône suffit : la date complète y mangerait la
-            place du titre de l'écran. */}
-        <span className="hidden text-xs font-semibold whitespace-nowrap lg:inline">{libelle}</span>
-      </Link>
-    </>
+        {titre}
+      </h1>
+      {salut ? <DateDuJour sousLeSalut /> : null}
+    </div>
   );
 }
 
@@ -1136,15 +1064,35 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Vrai à partir de 1024 px, là où le menu existe : la cloche s'y tient, au
+ * bout du logo ; en dessous, dans l'en-tête. Mesuré par `matchMedia` et non
+ * par une classe : deux cloches dont l'une serait masquée en CSS
+ * interrogeraient deux fois le serveur (cf. pagination.tsx).
+ */
+function useEcranLarge(): boolean {
+  const [large, setLarge] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 64rem)');
+    const maj = () => setLarge(mq.matches);
+    maj();
+    mq.addEventListener('change', maj);
+    return () => mq.removeEventListener('change', maj);
+  }, []);
+  return large;
+}
+
 function AppShell({ children }: { children: React.ReactNode }) {
   const me = useMe();
   const router = useRouter();
   const pathname = usePathname();
-  // La colonne repliée en rail d'icônes, et la bulle qui en dit les noms.
-  const [replie, basculerMenu] = useMenuReplie();
-  const [bulle, setBulle] = useState<Bulle | null>(null);
-  useEffect(() => setBulle(null), [pathname, replie]);
+  const large = useEcranLarge();
   const titleOverride = usePageTitleOverride();
+  // Le contenu a défilé sous l'en-tête : un filet l'en sépare. Au repos,
+  // l'en-tête et la page ne font qu'un seul fond.
+  const zone = useRef<HTMLElement>(null);
+  const [defile, setDefile] = useState(false);
+  useEffect(() => setDefile((zone.current?.scrollTop ?? 0) > 0), [pathname]);
 
   // Ce que l'agent a devant lui : son équipe (l'entrée n'existe que pour qui
   // encadre), ce qui attend son visa, ce qu'il traite pour la DCH (badges).
@@ -1312,10 +1260,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   // L'écran a le dernier mot quand il connaît son objet (nom d'un employé…).
   const title = titleOverride ?? pageTitle(pathname, user.givenName);
+  const salut = !titleOverride && salue(pathname);
   const action = pageAction(pathname, user, espace);
-  // Ses certificats, pour qui n'est plus en activité : une page de son
-  // espace, sans le bandeau de l'Academy, dont les raccourcis lui sont fermés.
+  // Qui n'est plus en activité garde ses certificats, une page de son
+  // espace ; les raccourcis de l'Academy, eux, se ferment.
   const academy = espaceAcademy(pathname) && !restreint;
+  // L'organigramme prend toute la largeur (cf. Page canevas) : son titre la
+  // suit, au lieu de se centrer sur la largeur des autres pages.
+  const canevas = pathname === '/organisation';
   const cheminMenu = pathname;
   const isActive = (href: string) =>
     href === '/moi' ? cheminMenu === '/moi' : cheminMenu.startsWith(href);
@@ -1324,7 +1276,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // Sur téléphone, l'onglet d'une rubrique mène à sa première sous-page : les
   // autres se choisissent en tête de page — sans quoi « Historique » ou
   // « Joindre un document » n'auraient aucun chemin. La plus précise
-  // s'allume, comme dans la barre latérale.
+  // s'allume, comme dans le menu.
   const rubrique = items.find((i) => i.children?.some((c) => isChildActive(c.href)));
   const sousPageActive = (rubrique?.children ?? [])
     .filter((c) => isChildActive(c.href))
@@ -1332,267 +1284,236 @@ function AppShell({ children }: { children: React.ReactNode }) {
       (long, c) => (long && long.length >= c.href.length ? long : c.href),
       null,
     );
+  const basculeDEspace = deuxEspaces
+    ? { vers: autre, alerte: alertes[autre], onBasculer: () => allerA(autre) }
+    : undefined;
 
   return (
-    /* Coquille d'application : la page elle-même ne défile pas. Le bandeau et
-       la barre latérale restent en place, seul le contenu bouge — comme sur la
-       plateforme APIX. */
-    <div className="flex h-dvh flex-col overflow-hidden">
-      {/* ———— Bandeau de tête, d'un bord à l'autre ———— */}
-      <header className="hero-bar z-30 flex h-[58px] shrink-0 items-center gap-3.5 px-4 lg:gap-4 lg:px-7">
-        <Link
-          href={accueil}
-          aria-label="Accueil"
-          className="relative z-10 flex shrink-0 items-center"
-        >
-          <BrandMark variant="hero" />
-        </Link>
+    /* Coquille d'application : la page elle-même ne défile pas. Le menu et
+       l'en-tête restent en place, seul le contenu bouge.
 
-        <h1 className="relative z-10 min-w-0 truncate text-[17px] leading-tight font-extrabold tracking-[-0.01em] text-hero-ink sm:text-[18px] lg:text-[19px]">
-          {title}
-        </h1>
-
-        {/* Emplacement laissé aux écrans qui ont des onglets à poser ici. La
-            coquille ne sait pas lesquels : elle réserve la place, la page y
-            écrit par un portail (cf. components/onglets-bandeau.tsx). */}
-        <div id={ANCRE_ONGLETS} className="relative z-10 hidden shrink-0 md:flex" />
-
-        <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
-          {/* La recherche du catalogue, dans le bandeau : elle lit et écrit
-              l'adresse (?q=), d'où la frontière Suspense qu'exige Next. */}
-          {academy ? (
-            <Suspense fallback={null}>
-              <RechercheAcademy />
-            </Suspense>
-          ) : null}
-          {/* Les gestes que la page y pose, par un portail : « Télécharger »
-              le document qu'elle montre (cf. components/actions-bandeau.tsx). */}
-          <div id={ANCRE_ACTIONS} className="flex shrink-0 items-center gap-2 empty:hidden" />
-          {action ? <HeaderAction action={action} /> : null}
-          {academy ? (
-            // Les raccourcis de l'apprenant — l'administrateur, qui n'y vient
-            // que pour l'aperçu de l'atelier, n'en a pas.
-            espace === 'agent' ? (
-              <>
-                <LienBandeau
-                  href="/academy/certificats"
-                  icone="workspace_premium"
-                  libelle="Mes certificats"
-                  actif={pathname === '/academy/certificats'}
-                />
-                <LienBandeau
-                  href="/academy/ma-liste"
-                  icone="bookmark"
-                  libelle="Ma liste"
-                  actif={pathname === '/academy/ma-liste'}
-                />
-              </>
-            ) : null
-          ) : (
-            <>
-              <DateDuJour />
-              <NotificationsBell espace={deuxEspaces ? espace : undefined} />
-            </>
-          )}
-          {/* Sur téléphone la colonne n'existe pas : sans ce menu, ni le
-              thème ni la sortie ne seraient atteignables. */}
-          <span className="lg:hidden">
-            <MenuCompte
-              variante="bandeau"
-              certificats={espace === 'agent'}
-              bascule={
-                deuxEspaces
-                  ? { vers: autre, alerte: alertes[autre], onBasculer: () => allerA(autre) }
-                  : undefined
-              }
-            />
-          </span>
-        </div>
-      </header>
-
-      <div className="flex min-h-0 flex-1">
-        {/* ———— Le menu, POSÉ sur la page ————
-
-            Une colonne blanche collée au bord de la fenêtre, séparée par un
-            filet, se lit comme une pièce du cadre — au même titre qu'une
-            barre de défilement. Posée en carte — coins arrondis, filet pâle,
-            ombre d'un pixel — elle se lit comme un OBJET, dans la grammaire
-            exacte des cartes de contenu à sa droite : l'application cesse
-            d'avoir deux vocabulaires selon le côté de l'écran.
-
-            Le blanc de la page passe tout autour, et c'est lui qui fait le
-            relief — pas une ombre portée, qui ferait flotter la colonne
-            au-dessus du contenu au lieu de la poser à côté. */}
-        <aside
-          className={cn(
-            'hidden shrink-0 flex-col gap-3 py-3.5 pl-3.5 transition-[width] duration-200 ease-out lg:flex',
-            replie ? 'w-[4.85rem]' : 'w-[17rem]',
-          )}
-        >
-          {/* La carte DESCEND jusqu'en bas.
-
-              Elle épousait ses rangées, pour ne pas laisser sous la dernière
-              entrée un panneau blanc de trois cents pixels. L'argument valait
-              tant que le contenu à droite s'arrêtait lui aussi à mi-hauteur :
-              deux colonnes courtes se répondaient. Le contenu occupe
-              désormais l'écran, et c'est la colonne écourtée qui devient le
-              seul trou de la page — un blanc encadré, lui, se lit comme la
-              réserve d'un tableau qui attend ses lignes, pas comme un oubli.
-
-              Elle défile à l'intérieur si la liste dépasse. */}
-          <nav className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-bloc border border-card-line bg-surface shadow-xs">
-            {/* Plier, déplier. Le bouton se tient dans l'axe des icônes : il
-                reste sous le pointeur quand la colonne se replie, et un second
-                clic la rouvre sans qu'on ait à le chercher. */}
-            <div className="flex shrink-0 items-center gap-1 px-2 pt-2.5 pb-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setBulle(null);
-                  basculerMenu();
-                }}
-                aria-label={replie ? 'Déplier le menu' : 'Replier le menu'}
-                aria-expanded={!replie}
-                title={replie ? undefined : 'Replier le menu'}
-                {...(replie ? survolAvecBulle('Déplier le menu', setBulle) : {})}
-                className="ml-[6.5px] grid size-8 shrink-0 place-items-center rounded-controle-sm text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
-              >
-                <Icon name={replie ? 'arrow_menu_open' : 'arrow_menu_close'} size={19} />
-              </button>
-              {/* L'espace où l'on est se lit sous le nom, dans le bloc du compte. */}
-              {replie ? null : (
-                <p className="min-w-0 truncate text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
-                  Menu
-                </p>
-              )}
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-              {items.map((item, i) => {
-                // Le blanc entre deux familles vaut un intitulé, et ne coûte
-                // pas de ligne. Il se calcule sur l'entrée PRÉCÉDENTE RENDUE,
-                // pas sur l'ordre d'écriture : la navigation d'un rôle paie
-                // est amputée de deux entrées, et une famille réduite à rien
-                // ne doit pas laisser un trou derrière elle.
-                const changeDeFamille = i > 0 && item.groupe !== items[i - 1]!.groupe;
-                return (
-                  <div key={item.href} className={cn(changeDeFamille && 'mt-3')}>
-                    {item.children ? (
-                      <Rubrique
-                        item={item}
-                        contientLaPageCourante={isActive(item.href)}
-                        badge={badgeCount(item.badge)}
-                        estActive={isChildActive}
-                        replie={replie}
-                        onBulle={setBulle}
-                      />
-                    ) : (
-                      <RangeeNav
-                        href={item.href}
-                        label={item.label}
-                        icon={item.icon}
-                        active={isActive(item.href)}
-                        badge={badgeCount(item.badge)}
-                        desactive={item.desactive}
-                        replie={replie}
-                        onBulle={setBulle}
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </nav>
-
-          {/* Qui je suis, dans sa propre carte : ce n'est pas une destination
-              de plus au bas de la liste, c'est l'identité de la session. */}
-          <div
-            className={cn(
-              'mt-auto flex shrink-0 items-center rounded-bloc border border-card-line bg-surface py-2.5 shadow-xs',
-              replie ? 'justify-center' : 'gap-2.5 px-3',
-            )}
+       Tout se pose sur le fond de la page (ADR-0115) : ni bandeau bleu, ni
+       colonne blanche. Le menu, le titre, les commandes sont écrits à même
+       le gris ; seuls les blocs et les tableaux sont blancs. Le blanc
+       désigne ainsi ce qu'on lit et ce qu'on remplit, et rien d'autre. */
+    <div className="flex h-dvh overflow-hidden">
+      {/* Le menu, à même le fond */}
+      <aside className="hidden w-[16.5rem] shrink-0 flex-col lg:flex">
+        {/* La marque en tête du menu, en ses couleurs, à la hauteur de
+            l'en-tête : le logo et le titre de l'écran se lisent sur la même
+            ligne. La cloche se tient au bout : comme le menu, elle suit la
+            personne d'une page à l'autre. */}
+        <div className="flex h-[76px] shrink-0 items-center gap-2 pr-3 pl-[26px]">
+          <Link
+            href={accueil}
+            aria-label="Accueil"
+            className="flex min-w-0 items-center rounded-controle-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
           >
-            {/* Repliée, la carte ne garde que le menu du compte : le thème,
-                les certificats et la sortie doivent rester à un clic. */}
-            {!replie ? (
-              <>
-                <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-primary/[0.09] text-[10.5px] font-bold text-primary">
-                  {initials}
-                </span>
-                <span className="min-w-0 flex-1">
-                  {/* Plusieurs prénoms : le premier, l'initiale du deuxième, le nom
-                      (« Mouhamadou M. Ba ») ; le nom entier au survol. */}
-                  <span
-                    title={`${user.givenName} ${user.familyName}`}
-                    className="block truncate text-[12.5px] leading-tight font-semibold text-ink-strong"
-                  >
-                    {nomCourt(user.givenName, user.familyName)}
-                  </span>
-                  <span className="block truncate text-[10.5px] leading-tight text-ink-muted">
-                    {qualite(user, espace)}
-                  </span>
-                </span>
-              </>
-            ) : null}
+            <BrandMark variant="menu" />
+          </Link>
+          {large ? (
+            <span className="ml-auto flex">
+              <NotificationsBell variante="menu" espace={deuxEspaces ? espace : undefined} />
+            </span>
+          ) : null}
+        </div>
+
+        {/* La liste défile à l'intérieur si elle dépasse : la marque et la
+            personne restent en place. */}
+        <nav aria-label="Menu" className="min-h-0 flex-1 overflow-y-auto px-3 pt-1 pb-3">
+          {items.map((item, i) => {
+            // Le blanc entre deux familles vaut un intitulé, et ne coûte
+            // pas de ligne. Il se calcule sur l'entrée PRÉCÉDENTE RENDUE,
+            // pas sur l'ordre d'écriture : la navigation d'un rôle peut
+            // être amputée de deux entrées, et une famille réduite à rien
+            // ne doit pas laisser un trou derrière elle.
+            const changeDeFamille = i > 0 && item.groupe !== items[i - 1]!.groupe;
+            return (
+              <div key={item.href} className={cn('flex flex-col', changeDeFamille && 'mt-4')}>
+                {item.children ? (
+                  <Rubrique
+                    item={item}
+                    contientLaPageCourante={isActive(item.href)}
+                    badge={badgeCount(item.badge)}
+                    estActive={isChildActive}
+                  />
+                ) : (
+                  <RangeeNav
+                    href={item.href}
+                    label={item.label}
+                    icon={item.icon}
+                    active={isActive(item.href)}
+                    badge={badgeCount(item.badge)}
+                    desactive={item.desactive}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* Qui je suis, au pied du menu, sous un filet : ce n'est pas une
+            destination de plus, c'est l'identité de la session. Tout le bloc
+            ouvre le menu du compte. */}
+        <div className="shrink-0 px-3 pb-3">
+          <div className="border-t border-line-soft pt-3">
             <MenuCompte
               variante="colonne"
               certificats={espace === 'agent'}
-              bascule={
-                deuxEspaces
-                  ? { vers: autre, alerte: alertes[autre], onBasculer: () => allerA(autre) }
-                  : undefined
-              }
+              bascule={basculeDEspace}
+              identite={{
+                initiales: initials,
+                // Plusieurs prénoms : le premier, l'initiale du deuxième, le
+                // nom (« Mouhamadou M. Ba ») ; le nom entier au survol.
+                nom: nomCourt(user.givenName, user.familyName),
+                nomComplet: `${user.givenName} ${user.familyName}`,
+                qualite: qualite(user, espace),
+              }}
             />
           </div>
-          {replie ? <InfoBulle bulle={bulle} /> : null}
-        </aside>
-
-        <div className="flex min-w-0 flex-1 flex-col">
-          {/* Le seul panneau qui défile. `data-scroll-root` le signale aux
-              fenêtres modales, qui doivent le geler comme elles gèlent la page. */}
-          <main
-            data-scroll-root
-            className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 pb-24 lg:px-7 lg:py-6 lg:pb-10"
-          >
-            {rubrique && (rubrique.children?.length ?? 0) > 1 ? (
-              <nav
-                aria-label={rubrique.label}
-                className="-mt-1 mb-4 flex gap-1.5 overflow-x-auto lg:hidden"
-              >
-                {rubrique.children!.map((c) =>
-                  // Éteinte, comme dans le menu : à sa place, grisée, sans lien.
-                  c.desactive ? (
-                    <span
-                      key={c.href}
-                      aria-disabled
-                      className="shrink-0 cursor-not-allowed rounded-controle border border-line-soft px-3 py-1.5 text-[12px] font-medium whitespace-nowrap text-ink-muted/45 select-none"
-                    >
-                      {c.label}
-                    </span>
-                  ) : (
-                    <Link
-                      key={c.href}
-                      href={c.href}
-                      aria-current={c.href === sousPageActive ? 'page' : undefined}
-                      className={cn(
-                        'shrink-0 rounded-controle border px-3 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors duration-150',
-                        c.href === sousPageActive
-                          ? 'border-primary bg-primary-soft font-semibold text-primary'
-                          : 'border-line text-ink-muted hover:bg-hover',
-                      )}
-                    >
-                      {c.label}
-                    </Link>
-                  ),
-                )}
-              </nav>
-            ) : null}
-            <EspaceProvider value={espace}>{children}</EspaceProvider>
-          </main>
         </div>
+      </aside>
+
+      {/* L'écran */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header
+          className={cn(
+            'relative z-10 flex h-14 shrink-0 items-center px-4 transition-shadow duration-200 lg:h-[76px] lg:px-7',
+            defile && 'shadow-[0_1px_0_var(--tg-line-soft),0_10px_18px_-16px_rgb(20_23_42/0.22)]',
+          )}
+        >
+          <div
+            className={cn(
+              'mx-auto flex w-full min-w-0 items-center gap-3 lg:gap-4',
+              canevas ? 'max-w-none' : 'max-w-page',
+            )}
+          >
+            {/* Sur téléphone, le menu n'existe pas : la marque se pose ici,
+                et le titre descend en tête de la page. */}
+            <Link
+              href={accueil}
+              aria-label="Accueil"
+              className="flex shrink-0 items-center rounded-controle-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary lg:hidden"
+            >
+              <BrandMark variant="barre" />
+            </Link>
+            <TitreDeLEcran titre={title} salut={salut} className="hidden lg:block" />
+
+            {/* Emplacement laissé aux écrans qui ont des onglets à poser ici.
+                La coquille ne sait pas lesquels : elle réserve la place, la
+                page y écrit par un portail (cf. components/onglets.tsx). */}
+            <div id={ANCRE_ONGLETS} className="hidden shrink-0 lg:flex" />
+
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {/* La recherche du catalogue : elle lit et écrit l'adresse
+                  (?q=), d'où la frontière Suspense qu'exige Next. */}
+              {academy ? (
+                <Suspense fallback={null}>
+                  <RechercheAcademy />
+                </Suspense>
+              ) : null}
+              {/* Les gestes que la page y pose, par un portail : « Télécharger »
+                  le document qu'elle montre (cf. components/entete.tsx). */}
+              <div id={ANCRE_ACTIONS} className="flex shrink-0 items-center gap-2 empty:hidden" />
+              {action ? <ActionDeLEcran action={action} /> : null}
+              {academy ? (
+                // Les raccourcis de qui apprend ; le compte d'administration,
+                // qui n'y vient que pour l'aperçu de l'atelier, n'en a pas.
+                espace === 'agent' ? (
+                  <>
+                    <LienDeLEntete
+                      href="/academy/certificats"
+                      icone="workspace_premium"
+                      libelle="Mes certificats"
+                      actif={pathname === '/academy/certificats'}
+                    />
+                    <LienDeLEntete
+                      href="/academy/ma-liste"
+                      icone="bookmark"
+                      libelle="Ma liste"
+                      actif={pathname === '/academy/ma-liste'}
+                    />
+                  </>
+                ) : null
+              ) : (
+                <>
+                  {salut ? null : <DateDuJour />}
+                  {/* Sur téléphone, le menu n'existe pas : la cloche revient ici. */}
+                  {large ? null : (
+                    <NotificationsBell
+                      variante="entete"
+                      espace={deuxEspaces ? espace : undefined}
+                    />
+                  )}
+                </>
+              )}
+              {/* Sur téléphone le menu n'existe pas : sans ce bouton, ni le
+                  thème ni la sortie ne seraient atteignables. */}
+              <span className="lg:hidden">
+                <MenuCompte
+                  variante="entete"
+                  certificats={espace === 'agent'}
+                  bascule={basculeDEspace}
+                />
+              </span>
+            </div>
+          </div>
+        </header>
+
+        {/* Le seul panneau qui défile. `data-scroll-root` le signale aux
+            fenêtres modales, qui doivent le geler comme elles gèlent la page. */}
+        <main
+          ref={zone}
+          data-scroll-root
+          onScroll={(e) => {
+            const d = e.currentTarget.scrollTop > 0;
+            if (d !== defile) setDefile(d);
+          }}
+          className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-24 lg:px-7 lg:pt-1 lg:pb-10"
+        >
+          <TitreDeLEcran titre={title} salut={salut} className="mb-4 lg:hidden" />
+          {rubrique && (rubrique.children?.length ?? 0) > 1 ? (
+            <nav
+              aria-label={rubrique.label}
+              className="mb-4 flex gap-1.5 overflow-x-auto lg:hidden"
+            >
+              {rubrique.children!.map((c) =>
+                // Éteinte, comme dans le menu : à sa place, grisée, sans lien.
+                c.desactive ? (
+                  <span
+                    key={c.href}
+                    aria-disabled
+                    className="shrink-0 cursor-not-allowed rounded-controle border border-line-soft px-3 py-1.5 text-[12px] font-medium whitespace-nowrap text-ink-muted/45 select-none"
+                  >
+                    {c.label}
+                  </span>
+                ) : (
+                  <Link
+                    key={c.href}
+                    href={c.href}
+                    aria-current={c.href === sousPageActive ? 'page' : undefined}
+                    className={cn(
+                      'shrink-0 rounded-controle border px-3 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors duration-150',
+                      c.href === sousPageActive
+                        ? 'border-primary bg-primary-soft font-semibold text-primary'
+                        : 'border-line bg-surface text-ink-muted hover:bg-hover',
+                    )}
+                  >
+                    {c.label}
+                  </Link>
+                ),
+              )}
+            </nav>
+          ) : null}
+          <EspaceProvider value={espace}>{children}</EspaceProvider>
+        </main>
       </div>
 
       {/* Barre d'onglets mobile */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line-soft bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden">
+      <nav
+        aria-label="Menu"
+        className="fixed inset-x-0 bottom-0 z-20 flex justify-around gap-1 overflow-x-auto border-t border-line-soft bg-surface px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden"
+      >
         {items.map((item) => {
           const active = isActive(item.href);
           // Une rubrique n'a pas de page à elle : l'onglet mène à sa première

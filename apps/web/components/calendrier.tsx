@@ -59,8 +59,8 @@ function useCalendrier() {
   const [month, setMonth] = useState(now.getMonth()); // 0-11
 
   // Une seule requête, et elle sert à quelque chose. Les deux appels aux
-  // demandes d'absence partaient à CHAQUE page — la fenêtre est montée dans
-  // le bandeau, donc toujours présente — pour alimenter un affichage qui
+  // demandes d'absence partaient à CHAQUE page (la fenêtre était montée
+  // dans l'en-tête, donc toujours présente) pour alimenter un affichage qui
   // n'existe plus.
   const holidays = useQuery({
     queryKey: ['holidays', year],
@@ -235,7 +235,7 @@ function Grille({ cal }: { cal: Cal }) {
 }
 
 /**
- * Le calendrier en fenêtre, depuis la date du bandeau.
+ * Le calendrier en fenêtre, depuis la date de l'en-tête.
  *
  * La navigation monte dans l'en-tête, à côté du titre : gardée dans le corps,
  * elle mangeait une bande de soixante pixels que le mois réclamait. Le pied a

@@ -35,7 +35,7 @@ import {
   MENU,
 } from '../../../components/liste-des-documents';
 import { PdfEnLargeur } from '../../../components/pdf-viewer';
-import { ActionDuBandeau } from '../../../components/actions-bandeau';
+import { ActionDeLEntete } from '../../../components/entete';
 import {
   CONTRAT_VIDE,
   FicheDuContratDeTravail,
@@ -74,7 +74,7 @@ import { champDuMontant } from '../../../lib/montant';
 /*
    « Générer des documents » (ADR-0085), en trois temps qui se découvrent
    l'un après l'autre : le document, l'agent, puis le document lui-même, en
-   largeur, à télécharger depuis le bandeau. Les deux choix se font comme on
+   largeur, à télécharger depuis l'en-tête. Les deux choix se font comme on
    ouvre « Demander un document » : un bloc, son intitulé, et à sa droite le
    choix, en liste déroulante. Un document qui demande ce que le dossier ne
    porte pas le fait saisir avant : le salaire de l'attestation de revenu
@@ -617,8 +617,8 @@ interface Cible {
 
 /**
  * Le document, tel qu'il sortira : en largeur, comme le procès-verbal
- * d'apix-e-voting, sans rien au-dessus. « Télécharger » se pose dans le
- * bandeau de tête dès que le PDF est prêt, et s'en retire tant qu'une saisie
+ * d'apix-e-voting, sans rien au-dessus. « Télécharger » se pose dans
+ * l'en-tête dès que le PDF est prêt, et s'en retire tant qu'une saisie
  * en cours de frappe ne s'y lit pas encore : on n'enregistre pas l'ancien
  * document.
  */
@@ -664,7 +664,7 @@ function Apercu({
   return (
     <>
       {aJour ? (
-        <ActionDuBandeau
+        <ActionDeLEntete
           icon="download"
           label="Télécharger"
           onClick={() =>

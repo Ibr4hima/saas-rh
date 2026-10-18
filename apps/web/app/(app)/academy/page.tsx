@@ -13,7 +13,7 @@ import { useEspace } from '../../../components/espace';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
-import { Onglets, type Onglet } from '../../../components/onglets-bandeau';
+import { Onglets, type Onglet } from '../../../components/onglets';
 import { FAMILLES } from '../../../lib/academy';
 import { api } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
@@ -26,13 +26,13 @@ import { compte } from '../../../lib/mots';
    commencées, en tête, pour reprendre en un clic. « Qu'est-ce que je pourrais
    apprendre ? » : le catalogue, par famille, avec une recherche.
 
-   La recherche vit dans la bande bleue (components/recherche-academy.tsx) ;
-   le mot cherché arrive ici par l'adresse, ?q=.
+   La recherche vit dans l'en-tête (components/recherche-academy.tsx) ; le
+   mot cherché arrive ici par l'adresse, ?q=.
 
    Les certificats n'y sont plus : ils ont leur page, « Mes certificats »,
    ouverte depuis le menu du compte — où qu'on se trouve dans l'application.
-   Les formations gardées ont la leur, « Ma liste », derrière le signet du
-   bandeau.
+   Les formations gardées ont la leur, « Ma liste », derrière le signet de
+   l'en-tête.
 
    Une formation terminée ne disparaît pas : on y revient pour réviser. Elle
    se reconnaît à sa pastille, elle ne s'impose plus en tête.
@@ -161,7 +161,7 @@ export default function AcademyPage() {
               />
             </DefilementHorizontal>
 
-            {/* Le champ est dans le bandeau, loin des cartes : on redit ici
+            {/* Le champ est dans l'en-tête, loin des cartes : on redit ici
                 ce qui filtre, et comment l'enlever. */}
             {recherche.trim() ? (
               <p className="flex flex-wrap items-center gap-x-2 text-[12.5px] text-ink-muted">

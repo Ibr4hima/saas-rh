@@ -12,6 +12,7 @@ import type {
 } from '@teranga/contracts';
 import { Button, cn, EmptyState } from '@teranga/ui';
 import { api } from '../lib/api';
+import { COMMANDE, COMMANDE_ACTIVE } from './entete';
 import { Icon, type IconName } from './icons';
 
 function relativeTime(iso: string): string {
@@ -47,8 +48,17 @@ function iconOf(type: string): IconName {
 /**
  * @param espace Qui a deux espaces a deux boîtes : celle de l'espace où il se
  *   trouve (`espaceDeLaNotification`). Sans espace, toute la boîte.
+ * @param variante `menu` : au bout du logo, en tête du menu ; le panneau
+ *   s'ouvre à sa droite. `entete` : dans l'en-tête du téléphone, où le menu
+ *   n'existe pas ; le panneau s'ouvre dessous.
  */
-export function NotificationsBell({ espace }: { espace?: Espace }) {
+export function NotificationsBell({
+  espace,
+  variante,
+}: {
+  espace?: Espace;
+  variante: 'menu' | 'entete';
+}) {
   const queryClient = useQueryClient();
   const filtre = espace ? `espace=${espace}` : '';
   const router = useRouter();
@@ -152,19 +162,21 @@ export function NotificationsBell({ espace }: { espace?: Espace }) {
         aria-label={`Notifications${unread > 0 ? ` (${unread} non lues)` : ''}`}
         aria-expanded={open}
         onClick={() => (open ? fermer() : setOpen(true))}
-        // Sur le bandeau : verre translucide, comme les commandes de la
-        // plateforme APIX. L'anneau blanc dit le contour sans peser.
-        className={cn(
-          'relative flex size-9 shrink-0 items-center justify-center rounded-full border text-hero-ink transition-all duration-200',
-          'focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none',
-          open
-            ? 'border-white/60 bg-white/25'
-            : 'border-white/30 bg-white/10 hover:border-white/55 hover:bg-white/20',
-        )}
+        className={
+          variante === 'menu'
+            ? // À même le fond, comme les rangées du menu : un rond sans cadre,
+              // qui prend leur voile d'encre au survol.
+              cn(
+                'relative flex size-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-menu-survol hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+                open && 'bg-primary-soft text-primary hover:bg-primary-soft hover:text-primary',
+              )
+            : // Un rond blanc de l'en-tête, comme ses voisins.
+              cn(COMMANDE, open && COMMANDE_ACTIVE)
+        }
       >
         <span className="relative flex">
           <Icon name="notifications" size={20} fill={unread > 0} />
-          {unread > 0 ? <PointNonLu /> : null}
+          {unread > 0 ? <PointNonLu surLeFond={variante === 'menu'} /> : null}
         </span>
       </button>
 
@@ -205,16 +217,20 @@ export function NotificationsBell({ espace }: { espace?: Espace }) {
 }
 
 /**
- * Un point rouge sur la cloche, sans chiffre : comme sur la carte du compte,
+ * Un point rouge sur la cloche, sans chiffre : comme sur le bloc du compte,
  * il dit « il y a du nouveau », et le panneau dit combien. Le nombre reste
- * dans l'intitulé accessible du bouton. Le liseré, à la couleur du bandeau,
- * détache le point de la cloche qu'il mord.
+ * dans l'intitulé accessible du bouton. Le liseré, à la couleur de ce qui
+ * est dessous (le fond du menu, le blanc du bouton), détache le point de la
+ * cloche qu'il mord.
  */
-function PointNonLu() {
+function PointNonLu({ surLeFond }: { surLeFond: boolean }) {
   return (
     <span
       aria-hidden
-      className="absolute -top-[2.05px] -right-[2.05px] size-[8.5px] rounded-full bg-alert ring-2 ring-[var(--tg-hero)]"
+      className={cn(
+        'absolute -top-[2.05px] -right-[2.05px] size-[8.5px] rounded-full bg-alert ring-2',
+        surLeFond ? 'ring-bg' : 'ring-surface',
+      )}
     />
   );
 }
@@ -222,12 +238,10 @@ function PointNonLu() {
 /**
  * Le panneau vit dans un PORTAIL, pas sous le bouton.
  *
- * Le bandeau porte `overflow: hidden` — ses halos débordent volontairement de
- * son cadre et doivent être rognés. Un panneau déplié depuis l'intérieur du
- * bandeau était donc coupé net sous les 58 px de la barre, quel que soit son
- * `z-index` : ce n'était pas un problème d'empilement mais de découpe. Sorti
- * dans `document.body`, il n'a plus d'ancêtre qui le rogne, et sa position est
- * calculée depuis le bouton.
+ * Déplié depuis l'en-tête, il serait rogné par le premier ancêtre qui coupe
+ * ce qui déborde, quel que soit son `z-index` : ce n'est pas un problème
+ * d'empilement mais de découpe. Sorti dans `document.body`, il n'a plus
+ * d'ancêtre qui le rogne, et sa position est calculée depuis le bouton.
  */
 function PanneauNotifications({
   ancre,
@@ -278,18 +292,37 @@ function PanneauNotifications({
   /** Ses réglages : où chaque sujet le trouve. */
   onRegler: () => void;
 }) {
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [pos, setPos] = useState<{
+    top: number;
+    right?: number;
+    left?: number;
+    /** Où commence le voile : la page seule, jamais ce d'où sort le panneau. */
+    voile: { top: number; left: number };
+  } | null>(null);
 
   const placer = useCallback(() => {
     const r = ancre.current?.getBoundingClientRect();
     if (!r) return;
-    // Sous la BARRE, pas sous le bouton : le bouton est centré dans les 58 px
-    // du bandeau, un simple décalage depuis son bas ferait mordre le panneau
-    // sur le bleu. On descend jusqu'au bord de l'en-tête, puis on respire.
-    const barre = ancre.current?.closest('header')?.getBoundingClientRect();
+    // Depuis le menu : le panneau s'ouvre à sa droite, à hauteur de la
+    // cloche, et le voile ne couvre que la page : le menu reste net.
+    const menu = ancre.current?.closest('aside')?.getBoundingClientRect();
+    if (menu) {
+      setPos({
+        top: Math.max(12, r.top),
+        left: menu.right + 8,
+        voile: { top: 0, left: menu.right },
+      });
+      return;
+    }
+    // Sous l'EN-TÊTE, pas sous le bouton : le bouton y est centré, un simple
+    // décalage depuis son bas ferait mordre le panneau sur l'en-tête. On
+    // descend jusqu'à son bord, puis on respire.
+    const entete = ancre.current?.closest('header')?.getBoundingClientRect();
+    const top = (entete?.bottom ?? r.bottom) + 8;
     setPos({
-      top: (barre?.bottom ?? r.bottom) + 8,
+      top,
       right: Math.max(12, window.innerWidth - r.right),
+      voile: { top: top - 8, left: 0 },
     });
   }, [ancre]);
 
@@ -313,13 +346,13 @@ function PanneauNotifications({
         aria-hidden
         onClick={onFermer}
         className="tg-voile fixed inset-0 z-[55]"
-        style={{ top: pos.top - 8 }}
+        style={{ top: pos.voile.top, left: pos.voile.left }}
       />
       <div
         ref={panneauRef}
         role="dialog"
         aria-label="Notifications"
-        style={{ top: pos.top, right: pos.right }}
+        style={{ top: pos.top, right: pos.right, left: pos.left }}
         className={cn(
           'fixed z-[60] w-[23rem] overflow-hidden rounded-bloc border border-card-line bg-surface shadow-lg',
           // Sur téléphone la fenêtre prend la largeur : un panneau de 368 px

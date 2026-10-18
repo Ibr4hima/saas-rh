@@ -13,8 +13,8 @@ import { cn } from '@teranga/ui';
 export const LogoContext = createContext<string | null>(null);
 
 /**
- * Marque de l'organisation, partagée par la barre latérale, l'en-tête mobile
- * et l'écran de connexion — un seul endroit pour que les trois ne divergent
+ * Marque de l'organisation, partagée par le menu, l'en-tête du téléphone et
+ * l'écran de connexion : un seul endroit, pour que les trois ne divergent
  * jamais. Le logo tient toute la largeur qu'on lui donne : c'est la signature
  * de l'employeur, pas une vignette. Cf. apps/web/public/README.md.
  */
@@ -22,7 +22,7 @@ export function BrandMark({
   variant,
   repli,
 }: {
-  variant: 'full' | 'hero' | 'compact' | 'candidature' | 'connexion' | 'entete';
+  variant: 'full' | 'menu' | 'barre' | 'compact' | 'candidature' | 'connexion' | 'entete';
   /**
    * Ce qui s'affiche à défaut de fichier de logo. « CH » convient à
    * l'application, qui est le portail ; pas à la page publique d'une offre,
@@ -66,9 +66,10 @@ export function BrandMark({
           // toute la place offerte, un logo haut reste à sa mesure.
           'bg-[var(--tg-brand-plate)] object-contain',
           variant === 'full' && 'max-h-14 w-full rounded-lg px-1 py-0.5',
-          // Sur le bandeau, le logo se pose en blanc pur : la plaque n'a plus
-          // lieu d'être, et ses encres foncées disparaîtraient dans le bleu.
-          variant === 'hero' && 'hero-logo h-8 w-auto max-w-32 shrink-0 bg-transparent',
+          // En tête du menu, et de l'en-tête du téléphone : posé à même le
+          // fond, en ses couleurs ; le blanc pur la nuit (ADR-0115).
+          variant === 'menu' && 'logo-coquille h-12 w-auto max-w-[10rem] shrink-0 bg-transparent',
+          variant === 'barre' && 'logo-coquille h-9 w-auto max-w-28 shrink-0 bg-transparent',
           // Écran de connexion : le logo à sa pleine mesure, c'est la
           // signature de la maison, pas la vignette d'une barre de navigation.
           // Ses encres sur l'aplat clair, le blanc pur sur le dôme de nuit.
@@ -92,8 +93,9 @@ export function BrandMark({
         'flex items-center justify-center font-bold',
         variant === 'full' &&
           'h-14 w-full rounded-lg bg-primary text-lg tracking-[0.12em] text-primary-ink',
-        // Sur le bandeau, pas d'aplat : l'encre blanche suffit.
-        variant === 'hero' && 'h-8 shrink-0 px-1 text-base tracking-[0.14em] text-hero-ink',
+        // Sur le fond, pas d'aplat : le bleu de la charte suffit.
+        variant === 'menu' && 'h-12 shrink-0 px-0.5 text-[17px] tracking-[0.16em] text-primary',
+        variant === 'barre' && 'h-9 shrink-0 px-0.5 text-[15px] tracking-[0.16em] text-primary',
         variant === 'connexion' &&
           'h-11 px-1 text-xl tracking-[0.16em] text-[color:var(--login-encre)]',
         variant === 'compact' && 'size-8 rounded-md bg-primary text-xs text-primary-ink',

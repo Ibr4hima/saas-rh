@@ -11,8 +11,8 @@ import { Icon } from './icons';
 
    La couverture est DESSINÉE, pas téléversée : la RH n'a pas à chercher une
    image pour chaque formation, et le catalogue ne mélange pas dix styles de
-   photos. Le bleu de la bande supérieure pour toutes, l'icône de la famille
-   en filigrane — le catalogue se lit d'une seule couleur, la famille se
+   photos. Le bleu de la charte pour toutes, l'icône de la famille en
+   filigrane : le catalogue se lit d'une seule couleur, la famille se
    reconnaît à son nom et à son dessin.
    ———————————————————————————————————————————————————————————————— */
 

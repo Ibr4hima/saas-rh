@@ -3,7 +3,7 @@
 import * as React from 'react';
 
 /**
- * Titre du bandeau, quand l'URL ne suffit pas à le dire.
+ * Titre de l'en-tête, quand l'URL ne suffit pas à le dire.
  *
  * Le layout déduit le titre du chemin — « Gestion du personnel », « Congés ».
  * Ça marche partout sauf sur les écrans qui portent UN objet : sur

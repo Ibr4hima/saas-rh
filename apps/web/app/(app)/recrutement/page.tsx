@@ -75,8 +75,9 @@ export default function OffresPage() {
   const choisies = sel.choisis;
   const seule = choisies.length === 1 ? choisies[0] : undefined;
 
-  // Le « + » du bandeau ouvre la fenêtre : une URL plutôt qu'un état local,
-  // pour que le bouton de la barre supérieure puisse y mener sans la connaître.
+  // « Nouvelle offre », dans l'en-tête, ouvre la fenêtre : une URL plutôt
+  // qu'un état local, pour que le bouton de la coquille puisse y mener sans
+  // la connaître.
   const creation = params.get('nouvelle') === '1';
   const fermerCreation = () => router.replace('/recrutement');
 

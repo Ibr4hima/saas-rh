@@ -8,6 +8,7 @@ import { cn } from '@teranga/ui';
 import { api } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import { fermerSession } from '../lib/session';
+import { COMMANDE, COMMANDE_ACTIVE } from './entete';
 import { LIBELLES_ESPACE, type Espace } from './espace';
 import { Icon, type IconName } from './icons';
 import { usePreferences } from './preferences';
@@ -19,23 +20,24 @@ import { usePreferences } from './preferences';
    déconnexion, à côté d'un nom. C'était une action isolée là où il en
    faudrait plusieurs — et le thème n'avait nulle part où vivre.
 
-   Une silhouette ouvre donc un menu : ce qui appartient à la PERSONNE plutôt
-   qu'à un écran — l'espace où elle travaille (« Mon espace » ou « Gestion
-   RH », pour qui a les deux), ses certificats APIX Academy (dans Mon espace),
-   ses notifications, le thème, et la
-   sortie. L'autre espace s'y choisit comme le thème : la rangée dit où l'on
-   va, et un point sur la silhouette dit que quelque chose y attend.
+   La personne ouvre donc un menu : tout le bloc de son nom, en bas du menu
+   (ADR-0115), ou sa silhouette dans l'en-tête du téléphone. Il porte ce qui
+   appartient à la PERSONNE plutôt qu'à un écran : l'espace où l'on
+   travaille (« Mon espace » ou « Gestion RH », pour qui a les deux), ses
+   certificats APIX Academy (dans Mon espace), ses notifications, le thème,
+   et la sortie. L'autre espace s'y choisit comme le thème : la rangée dit où
+   l'on va, et un point sur le bouton dit que quelque chose y attend.
    (La densité des tableaux y figurait ; elle a été retirée, les tableaux
-   sont confortables pour tous.) La déconnexion se range en bas,
-   derrière un filet, en rouge au survol : c'est le geste qu'on ne veut pas
-   faire par erreur en visant celui d'au-dessus.
+   sont confortables pour tous.) La déconnexion se range en bas, derrière un
+   filet, en rouge au survol : c'est le geste qu'on ne veut pas faire par
+   erreur en visant celui d'au-dessus.
 
    Il s'ouvre comme le panneau des notifications, et pour la même raison : la
    page RECULE derrière un voile flouté. Un menu posé sur un tableau de bord
    chargé se confond avec les cartes qu'il recouvre ; le flou le décolle sans
    éteindre l'écran, et l'on voit qu'on est toujours chez soi. Le panneau vit
    donc dans un portail, en position fixe — sorti du flux, il ne peut plus
-   être rogné par la colonne ni par le bandeau qui le portent.
+   être rogné par la colonne ni par l'en-tête qui le portent.
    ———————————————————————————————————————————————————————————————— */
 
 /** L'autre espace, pour qui en a deux : où la rangée mène, et ce qui y attend. */
@@ -45,15 +47,33 @@ export interface BasculeDEspace {
   onBasculer: () => void;
 }
 
+/** Qui est connecté, tel que le bas du menu le présente. */
+export interface Identite {
+  initiales: string;
+  /** Le nom court (« Mouhamadou M. Ba ») ; le nom entier au survol. */
+  nom: string;
+  nomComplet: string;
+  /** L'espace où l'on travaille ; pour le compte d'administration, sa fonction. */
+  qualite: string;
+}
+
 export function MenuCompte({
   variante,
   bascule,
   certificats,
+  identite,
 }: {
-  variante: 'colonne' | 'bandeau';
+  /**
+   * `colonne` : en bas du menu, la personne en toutes lettres, et tout son
+   * bloc ouvre le menu. `entete` : sa silhouette dans l'en-tête du
+   * téléphone, où la colonne n'existe pas.
+   */
+  variante: 'colonne' | 'entete';
   bascule?: BasculeDEspace;
   /** « Mes certificats » : dans Mon espace seulement. */
   certificats: boolean;
+  /** Le bloc du bas du menu : ses initiales, son nom, son espace. */
+  identite?: Identite;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -99,49 +119,87 @@ export function MenuCompte({
   };
 
   const nuit = theme === 'sombre';
-  const dansLeBandeau = variante === 'bandeau';
+  const dansLEntete = variante === 'entete';
+  // Ce qui attend dans l'autre espace : un point, tant que le menu est fermé.
+  const alerte = Boolean(bascule && bascule.alerte > 0 && !ouvert);
 
   return (
-    <div className="shrink-0">
-      <button
-        ref={bouton}
-        type="button"
-        onClick={() => setOuvert((v) => !v)}
-        aria-haspopup="menu"
-        aria-expanded={ouvert}
-        aria-label="Mon compte"
-        title="Mon compte"
-        className={cn(
-          'flex items-center justify-center transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2',
-          dansLeBandeau
-            ? 'size-9 rounded-full border border-white/30 bg-white/10 text-hero-ink hover:border-white/55 hover:bg-white/20 focus-visible:outline-white/60'
-            : cn(
-                'size-8 rounded-controle-sm focus-visible:outline-primary/40',
-                ouvert
-                  ? 'bg-primary/[0.09] text-primary'
-                  : 'text-ink-muted hover:bg-hover hover:text-ink',
-              ),
-        )}
-      >
-        <span className="relative flex">
-          <Icon name={soi} size={dansLeBandeau ? 19 : 18} fill={ouvert} />
-          {bascule && bascule.alerte > 0 && !ouvert ? (
+    <div className={dansLEntete ? 'shrink-0' : 'w-full'}>
+      {dansLEntete || !identite ? (
+        <button
+          ref={bouton}
+          type="button"
+          onClick={() => setOuvert((v) => !v)}
+          aria-haspopup="menu"
+          aria-expanded={ouvert}
+          aria-label="Mon compte"
+          title="Mon compte"
+          className={cn(COMMANDE, ouvert && COMMANDE_ACTIVE)}
+        >
+          <span className="relative flex">
+            <Icon name={soi} size={19} fill={ouvert} />
+            {alerte ? (
+              <span
+                aria-hidden
+                className="absolute -top-0.5 -right-1 size-2 rounded-full bg-alert ring-2 ring-surface"
+              />
+            ) : null}
+          </span>
+        </button>
+      ) : (
+        // Tout le bloc ouvre le menu : le nom est la plus grande cible du bas
+        // de la colonne, et c'est lui qu'on vise pour parler de soi.
+        <button
+          ref={bouton}
+          type="button"
+          onClick={() => setOuvert((v) => !v)}
+          aria-haspopup="menu"
+          aria-expanded={ouvert}
+          aria-label={`Mon compte · ${identite.nomComplet}`}
+          className={cn(
+            'group flex w-full items-center gap-2.5 rounded-controle py-2 pr-2.5 pl-2 text-left transition-colors duration-150',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+            ouvert ? 'bg-menu-survol' : 'hover:bg-menu-survol',
+          )}
+        >
+          <span className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/[0.09] text-[11px] font-bold text-primary">
+            {identite.initiales}
+            {alerte ? (
+              <span
+                aria-hidden
+                className="absolute -top-px -right-px size-2.5 rounded-full bg-alert ring-2 ring-bg"
+              />
+            ) : null}
+          </span>
+          <span className="min-w-0 flex-1">
             <span
-              aria-hidden
-              className={cn(
-                'absolute -top-0.5 -right-1 size-2 rounded-full bg-alert ring-2',
-                dansLeBandeau ? 'ring-[var(--tg-hero)]' : 'ring-surface',
-              )}
-            />
-          ) : null}
-        </span>
-      </button>
+              title={identite.nomComplet}
+              className="block truncate text-[12.5px] leading-tight font-semibold text-ink-strong"
+            >
+              {identite.nom}
+            </span>
+            <span className="mt-0.5 block truncate text-[11px] leading-tight text-ink-muted">
+              {identite.qualite}
+            </span>
+          </span>
+          {/* Le menu s'ouvre au-dessus du bloc : le chevron le dit, et se
+              retourne quand il est ouvert. */}
+          <Icon
+            name="chevron_right"
+            size={16}
+            className={cn(
+              'shrink-0 text-ink-muted transition-transform duration-200 group-hover:text-ink',
+              ouvert ? 'rotate-90' : '-rotate-90',
+            )}
+          />
+        </button>
+      )}
 
       {ouvert ? (
         <Panneau
           ancre={bouton}
           panneau={panneau}
-          dansLeBandeau={dansLeBandeau}
+          dansLEntete={dansLEntete}
           onFermer={() => setOuvert(false)}
         >
           {bascule ? (
@@ -201,20 +259,21 @@ export function MenuCompte({
  *
  * Il se cale sur le bouton APRÈS peinture — c'est la seule façon de connaître
  * sa position réelle — et repart du bon côté selon l'ancre : vers le bas sous
- * le bandeau, vers le haut depuis la colonne, dont la carte touche le bas de
- * l'écran. Dans le bandeau, le voile commence SOUS la barre bleue : flouter
- * l'en-tête reviendrait à flouter le bouton qu'on vient de viser.
+ * l'en-tête du téléphone, vers le haut depuis le bas du menu, à l'aplomb du
+ * bloc de la personne et au moins aussi large. Sous l'en-tête, le voile
+ * commence à son bord : flouter l'en-tête reviendrait à flouter le bouton
+ * qu'on vient de viser.
  */
 function Panneau({
   ancre,
   panneau,
-  dansLeBandeau,
+  dansLEntete,
   onFermer,
   children,
 }: {
   ancre: React.RefObject<HTMLButtonElement | null>;
   panneau: React.RefObject<HTMLDivElement | null>;
-  dansLeBandeau: boolean;
+  dansLEntete: boolean;
   onFermer: () => void;
   children: React.ReactNode;
 }) {
@@ -223,30 +282,28 @@ function Panneau({
     bottom?: number;
     right?: number;
     left?: number;
+    largeur?: number;
     voile: number;
   } | null>(null);
 
   const placer = useCallback(() => {
     const r = ancre.current?.getBoundingClientRect();
     if (!r) return;
-    const droite = Math.max(12, window.innerWidth - r.right);
-    if (dansLeBandeau) {
-      // Sous la BARRE, pas sous le bouton : centré dans les 58 px du bandeau,
-      // un décalage depuis son bas ferait mordre le panneau sur le bleu.
-      const barre = ancre.current?.closest('header')?.getBoundingClientRect();
-      const haut = (barre?.bottom ?? r.bottom) + 8;
-      setPos({ top: haut, right: droite, voile: haut - 8 });
+    if (dansLEntete) {
+      // Sous l'EN-TÊTE, pas sous le bouton : il y est centré, un décalage
+      // depuis son bas ferait mordre le panneau sur l'en-tête.
+      const entete = ancre.current?.closest('header')?.getBoundingClientRect();
+      const haut = (entete?.bottom ?? r.bottom) + 8;
+      setPos({ top: haut, right: Math.max(12, window.innerWidth - r.right), voile: haut - 8 });
       return;
     }
-    // Colonne repliée en rail : le bouton est trop près du bord gauche pour
-    // que le panneau s'aligne sur sa droite — il partirait hors de l'écran.
-    // Il s'aligne alors sur sa gauche.
-    if (r.right < 240) {
-      setPos({ bottom: window.innerHeight - r.top + 8, left: Math.max(12, r.left), voile: 0 });
-      return;
-    }
-    setPos({ bottom: window.innerHeight - r.top + 8, right: droite, voile: 0 });
-  }, [ancre, dansLeBandeau]);
+    setPos({
+      bottom: window.innerHeight - r.top + 6,
+      left: Math.max(12, r.left),
+      largeur: r.width,
+      voile: 0,
+    });
+  }, [ancre, dansLEntete]);
 
   // Avant peinture : sans cela le panneau apparaît un instant en haut à gauche.
   useLayoutEffect(placer, [placer]);
@@ -270,7 +327,13 @@ function Panneau({
       <div
         ref={panneau}
         role="menu"
-        style={{ top: pos.top, bottom: pos.bottom, right: pos.right, left: pos.left }}
+        style={{
+          top: pos.top,
+          bottom: pos.bottom,
+          right: pos.right,
+          left: pos.left,
+          minWidth: pos.largeur,
+        }}
         className="tg-menu fixed z-[60] min-w-[13.5rem] rounded-bloc border border-card-line bg-surface p-1.5 shadow-lg"
       >
         {children}

@@ -93,7 +93,7 @@ export default function GererCataloguePage() {
       {/* L'administrateur revient au catalogue ; un agent l'a dans « Mon espace ». */}
       {me.data && !me.data.estAgent ? <RetourAcademy href="/academy" label="APIX Academy" /> : null}
       <Card>
-        {/* L'action « Nouvelle formation » vit dans le bandeau, comme l'action
+        {/* L'action « Nouvelle formation » vit dans l'en-tête, comme l'action
             unique de chaque écran — la répéter ici en ferait deux. */}
         <CardHeader>
           <CardTitle>Formations</CardTitle>

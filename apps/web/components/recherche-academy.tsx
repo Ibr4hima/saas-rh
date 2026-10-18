@@ -3,20 +3,21 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@teranga/ui';
+import { COMMANDE } from './entete';
 import { Icon } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
-   La recherche de formations, dans la bande bleue de l'espace Academy.
+   La recherche de formations, dans l'en-tête de l'espace Academy.
 
    Le mot cherché vit dans l'ADRESSE — /academy?q=powerpoint — et le
    catalogue le lit là : un retour arrière le retrouve, un lien le partage.
    Sur le catalogue, chaque frappe réécrit l'adresse sur place (sans aller
    au serveur) ; ailleurs dans l'Academy, la première frappe ramène au
-   catalogue, et le champ — qui appartient au bandeau, pas à la page — garde
-   le curseur pendant le trajet.
+   catalogue, et le champ, qui appartient à l'en-tête et non à la page,
+   garde le curseur pendant le trajet.
 
-   Sur téléphone, le bandeau n'a pas la place d'un champ : une loupe le
-   déplie par-dessus le titre, une croix le replie.
+   Sur téléphone, l'en-tête n'a pas la place d'un champ : une loupe le
+   déplie par-dessus, une croix le replie.
    ———————————————————————————————————————————————————————————————— */
 
 export function RechercheAcademy() {
@@ -58,20 +59,20 @@ export function RechercheAcademy() {
         }}
         aria-label="Rechercher une formation"
         title="Rechercher une formation"
-        className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-hero-ink transition-all duration-200 hover:border-white/55 hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none md:hidden"
+        className={cn(COMMANDE, 'md:hidden')}
       >
         <Icon name="search" size={20} />
       </button>
 
-      {/* Déplié sur téléphone, le champ recouvre le bandeau : il en prend le
-          fond, sinon le titre transparaîtrait dessous. Il se cale sur
-          l'ÉCRAN — le bandeau est toujours en haut, et le groupe de boutons
+      {/* Déplié sur téléphone, le champ recouvre l'en-tête : il en prend le
+          fond, sinon le logo transparaîtrait dessous. Il se cale sur
+          l'ÉCRAN : l'en-tête est toujours en haut, et le groupe de boutons
           qui le porte est trop étroit pour servir de repère. */}
       <div
         className={cn(
           'items-center gap-2',
           deplie
-            ? 'fixed inset-x-0 top-0 z-40 flex h-[58px] bg-[var(--tg-hero)] px-3 md:static md:h-auto md:bg-transparent md:px-0'
+            ? 'fixed inset-x-0 top-0 z-40 flex h-14 bg-bg px-3 md:static md:h-auto md:bg-transparent md:px-0'
             : 'hidden md:flex',
         )}
       >
@@ -79,7 +80,7 @@ export function RechercheAcademy() {
           <Icon
             name="search"
             size={17}
-            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-hero-ink/70"
+            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-muted"
           />
           <input
             ref={champ}
@@ -98,7 +99,7 @@ export function RechercheAcademy() {
             placeholder="Rechercher une formation…"
             aria-label="Rechercher une formation"
             enterKeyHint="search"
-            className="h-9 w-full rounded-full border border-white/30 bg-white/10 pr-3 pl-9 text-[13px] font-medium text-hero-ink transition-colors duration-150 outline-none placeholder:text-hero-ink/65 hover:border-white/50 focus:border-white/70 focus:bg-white/15 [&::-webkit-search-cancel-button]:hidden"
+            className="h-9 w-full rounded-controle border border-line bg-surface pr-3 pl-9 text-[13px] font-medium text-ink shadow-bouton-borde transition-colors duration-150 outline-none placeholder:text-ink-muted/70 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary/40 [&::-webkit-search-cancel-button]:hidden"
           />
         </div>
         {deplie ? (
@@ -109,7 +110,7 @@ export function RechercheAcademy() {
               replier();
             }}
             aria-label="Fermer la recherche"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-hero-ink hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none md:hidden"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-menu-survol hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary md:hidden"
           >
             <Icon name="close" size={20} />
           </button>

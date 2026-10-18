@@ -30,11 +30,11 @@ export function pourcent(part: number): string {
 }
 
 /**
- * Le fond des couvertures : le bleu de la BANDE SUPÉRIEURE, exactement — le
- * même jeton, qui suit donc le mode sombre. Une nuance par famille donnait
- * un catalogue qui paraissait mal assorti plutôt que classé ; les familles se
- * distinguent par leur nom et leur icône, pas par la couleur. L'orange reste
- * réservé à ce qui attend une action.
+ * Le fond des couvertures : le bleu de la charte en aplat, le jeton qui
+ * portait la bande supérieure (ADR-0115) ; il suit le mode sombre. Une
+ * nuance par famille donnait un catalogue qui paraissait mal assorti plutôt
+ * que classé ; les familles se distinguent par leur nom et leur icône, pas
+ * par la couleur. L'orange reste réservé à ce qui attend une action.
  */
 export const FOND_COUVERTURE = 'var(--tg-hero)';
 

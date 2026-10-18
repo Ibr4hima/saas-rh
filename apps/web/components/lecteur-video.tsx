@@ -280,8 +280,8 @@ export function LecteurVideo({
    *   ← → cinq secondes · ↑ ↓ volume, quand le lecteur a le focus ou en plein
    *   écran (ailleurs, ces flèches font défiler la page).
    *
-   * Jamais pendant une saisie — la recherche du bandeau reçoit bien son « f » —,
-   * ni quand une fenêtre (le support PDF) est ouverte par-dessus.
+   * Jamais pendant une saisie (la recherche de l'en-tête reçoit bien son
+   * « f »), ni quand une fenêtre (le support PDF) est ouverte par-dessus.
    */
   const clavier = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;

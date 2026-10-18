@@ -27,7 +27,7 @@ import {
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
-import { Onglets } from '../../../components/onglets-bandeau';
+import { Onglets } from '../../../components/onglets';
 import { Pagination, usePagination } from '../../../components/pagination';
 import {
   BarreSelection,

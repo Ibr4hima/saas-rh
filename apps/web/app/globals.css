@@ -64,9 +64,8 @@
   --color-alert: var(--tg-alert);
   --color-alert-soft: var(--tg-alert-soft);
   --color-alert-text: var(--tg-alert-text);
-  --color-alert-hero: var(--tg-alert-hero);
-  --color-alert-hero-ink: var(--tg-alert-hero-ink);
-  --color-hero-ink: var(--tg-hero-ink);
+  --color-menu-survol: var(--tg-menu-survol);
+  --color-menu-actif: var(--tg-menu-actif);
   --color-card-line: var(--tg-card-line);
   --color-card-line-hover: var(--tg-card-line-hover);
   --color-chart: var(--tg-chart);
@@ -264,29 +263,6 @@ body {
   outline: none;
 }
 
-/* ── Bandeau de tête ──────────────────────────────────────────────────────
-   Un aplat du bleu de la charte, et rien d'autre. Il portait jusqu'ici un
-   dégradé à 155°, une trame en diagonale et deux halos ; chacune de ces
-   couches obligeait à mesurer le blanc du titre sur le point le plus clair
-   du bandeau, où il ne tenait que 4,56:1. L'aplat le monte à 8,31:1, et le
-   bandeau y gagne un bord franc — c'est le même geste que sur les barres de
-   tête des produits qu'on regarde toute la journée sans les voir. */
-.hero-bar {
-  background: var(--tg-hero);
-  position: relative;
-}
-
-/* La seule séparation avec la page : un filet clair, d'un bord à l'autre. */
-.hero-bar::after {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  height: 1px;
-  pointer-events: none;
-  background: var(--tg-hero-line);
-}
-
 /* ── Frise des jours fériés ───────────────────────────────────────────────
    La date à venir porte deux anneaux : le premier à la couleur de la carte,
    qui DÉCOUPE le rail autour d'elle (le trait s'arrête net au lieu de la
@@ -303,32 +279,10 @@ body {
   box-shadow: 0 0 0 4px var(--tg-surface);
 }
 
-/* Le point pulsant : une onde blanche qui s'ouvre et s'éteint. */
-@keyframes hero-pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgb(255 255 255 / 0.55);
-  }
-  70% {
-    box-shadow: 0 0 0 6px rgb(255 255 255 / 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgb(255 255 255 / 0);
-  }
-}
-
-.hero-dot {
-  animation: hero-pulse 1.6s ease-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hero-dot {
-    animation: none;
-  }
-}
-
-/* Le logo se pose en blanc pur sur le bandeau, quelles que soient ses encres. */
-.hero-logo {
-  filter: brightness(0) invert(1);
+/* Le logo de la coquille, posé sur le fond : ses couleurs d'origine en clair,
+   le blanc pur en sombre (cf. --tg-logo-coquille, ADR-0115). */
+.logo-coquille {
+  filter: var(--tg-logo-coquille);
 }
 
 /* ── Fond de la page d'une offre ──────────────────────────────────────────

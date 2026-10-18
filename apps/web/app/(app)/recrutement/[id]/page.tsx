@@ -57,7 +57,7 @@ export default function JobPage() {
     enabled: lit,
   });
 
-  // Le bandeau nomme l'ÉCRAN, pas l'offre : le titre de l'offre est le titre
+  // L'en-tête nomme l'ÉCRAN, pas l'offre : le titre de l'offre est le titre
   // de la carte, soixante pixels plus bas, et l'écrire deux fois de suite ne
   // dit pas deux fois plus.
   usePageTitle(lit ? 'Dossiers de candidature' : 'Offre de recrutement');
