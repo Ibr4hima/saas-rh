@@ -486,6 +486,17 @@ export type DecisionDeDisponibilite =
 export const ficheDeLaDecisionSchema = (doc: DecisionDeDisponibilite) =>
   doc === 'decision_disponibilite' ? ficheDisponibiliteSchema : ficheRenouvellementSchema;
 
+/**
+ * Ce que l'organisation sait d'avance de la fiche d'une décision : les
+ * sessions du conseil d'administration qui ont nommé la direction générale et
+ * la direction générale adjointe en place. La page les pose dans les champs
+ * encore vides ; la DCH les corrige (ADR-0123).
+ */
+export type PreremplissageDeLaDecision = Pick<
+  FicheDisponibilite,
+  'pvDirectionGeneraleLe' | 'pvDirectionGeneraleAdjointeLe'
+>;
+
 /** Le jour qui suit, au format AAAA-MM-JJ. */
 function lendemain(jour: string): string {
   const d = new Date(`${jour}T00:00:00Z`);

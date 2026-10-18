@@ -259,6 +259,24 @@ describe('la fiche', () => {
     expect(repriseApresProrogation('2026-08-30', 6)).toBe('2027-03-01');
     expect(repriseApresProrogation('2026-12-31', 1)).toBe('2027-02-01');
   });
+
+  it('les sessions du conseil d’administration en place sont proposées (ADR-0123)', async () => {
+    const enPlace = {
+      pvDirectionGeneraleLe: '2024-05-07',
+      pvDirectionGeneraleAdjointeLe: '2024-12-13',
+    };
+    expect(service.preremplissage(dch, 'decision_disponibilite')).toEqual(enPlace);
+    expect(service.preremplissage(dch, 'decision_renouvellement_disponibilite')).toEqual(enPlace);
+    // Un document sans agent qui ne sait rien d'avance : une fiche vide.
+    expect(service.preremplissage(dch, 'contrat_stage')).toEqual({});
+    // Les droits sont ceux de la génération.
+    expect(await codeOf(async () => service.preremplissage(agent, 'decision_disponibilite'))).toBe(
+      'auth.forbidden',
+    );
+    expect(await codeOf(async () => service.preremplissage(dch, 'attestation_travail'))).toBe(
+      'documents.avec_agent',
+    );
+  });
 });
 
 describe('l’en-tête et les visas', () => {

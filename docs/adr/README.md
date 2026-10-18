@@ -105,7 +105,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0097](0097-capitales-du-lieu-et-du-poste.md)         | Lieu de naissance et adresse en capitales initiales, formation et poste à l'initiale    | acceptée, précisée par 0098                 |
 | [0098](0098-contrats-de-travail.md)                   | Les contrats de travail : la fiche saisie, le modèle de l'APIX en Times New Roman       | acceptée, précisée par 0099, 0100, 0106     |
 | [0099](0099-ninea-de-l-apix.md)                       | Le NINEA de l'APIX est 28409592G3, partout                                              | acceptée                                    |
-| [0100](0100-decisions-de-disponibilite.md)            | Les décisions de disponibilité : la fiche saisie, une page sur le modèle de l'APIX      | acceptée, précisée par 0101, 0102           |
+| [0100](0100-decisions-de-disponibilite.md)            | Les décisions de disponibilité : la fiche saisie, une page sur le modèle de l'APIX      | acceptée, précisée (0101, 0102, 0123)       |
 | [0101](0101-analyse-du-renouvellement.md)             | L'analyse du renouvellement de disponibilité nomme le renouvellement                    | acceptée                                    |
 | [0102](0102-domiciliation-bancaire.md)                | La domiciliation bancaire : la fiche saisie, le RIB saisi deux fois                     | acceptée, précisée par 0103                 |
 | [0103](0103-destinataire-de-la-domiciliation.md)      | Le destinataire de la domiciliation tient sur une ligne, sans « Sénégal »               | acceptée                                    |
@@ -128,3 +128,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0120](0120-silhouette-du-compte.md)                  | Le bloc du compte porte la silhouette de la personne, pas ses initiales                 | acceptée                                    |
 | [0121](0121-preremplissage-valide.md)                 | Générer des documents : un seul bloc « Préremplissage », validé avant la génération     | acceptée                                    |
 | [0122](0122-en-tete-sans-filet.md)                    | L'en-tête sans filet au défilement                                                      | acceptée                                    |
+| [0123](0123-sessions-du-conseil-proposees.md)         | Les décisions de disponibilité proposent les sessions du conseil d'administration       | acceptée                                    |

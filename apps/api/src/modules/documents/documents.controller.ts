@@ -96,6 +96,15 @@ export class DocumentsController {
     this.send(res, filename, pdf);
   }
 
+  /**
+   * Ce que la fiche d'un document sans agent sait d'avance : les sessions du
+   * conseil d'administration d'une décision de disponibilité (ADR-0123).
+   */
+  @Get('documents/generer/:type/preremplissage')
+  preremplissage(@Req() req: AuthenticatedRequest, @Param('type') type: string) {
+    return this.generation.preremplissage(req.sessionUser, type);
+  }
+
   private send(res: Response, filename: string, pdf: Buffer, inline = false) {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(

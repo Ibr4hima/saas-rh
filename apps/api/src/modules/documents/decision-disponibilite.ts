@@ -7,12 +7,13 @@ import {
   type DecisionDeDisponibilite,
   type FicheDisponibilite,
   type FicheRenouvellement,
+  type PreremplissageDeLaDecision,
 } from '@teranga/contracts';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import type { Tx } from '../../db/tenant-db';
 import type { ModeleSansAgent } from './contrat-stage';
 import { quiDirigeLaDCH, quiDirigeLeSommet, uniteDAffectation, type Unite } from './dossier';
-import { ENTETE } from './entete';
+import { ENTETE, SESSIONS_DU_CONSEIL } from './entete';
 import { nouvelleFeuille, type Passage } from './feuille';
 import {
   accords,
@@ -32,9 +33,10 @@ import {
  * l'article 1er près : l'une met en disponibilité à compter d'un jour, l'autre
  * proroge la période fixée d'abord ; son analyse le dit (ADR-0101). La DCH
  * renseigne qui la demande, les dates de la disponibilité et celles des
- * sessions du conseil d'administration qui ont nommé la direction générale.
- * Qui décide dirige la direction générale ; qui l'exécute, la DCH. Les
- * coquilles des modèles sont corrigées (ADR-0095).
+ * sessions du conseil d'administration qui ont nommé la direction générale,
+ * que la fiche propose (ADR-0123). Qui décide dirige la direction générale ;
+ * qui l'exécute, la DCH. Les coquilles des modèles sont corrigées
+ * (ADR-0095).
  */
 
 /** Ce que la décision imprime, bloc par bloc. */
@@ -338,4 +340,9 @@ export const decisionDeDisponibilite = (doc: DecisionDeDisponibilite): ModeleSan
       pdf: await pdfDeLaDecision(textesDeLaDecision(d, new Date())),
     };
   },
+  // Les sessions du conseil d'administration en place, que la DCH corrige (ADR-0123).
+  preremplissage: (): PreremplissageDeLaDecision => ({
+    pvDirectionGeneraleLe: SESSIONS_DU_CONSEIL.directionGenerale,
+    pvDirectionGeneraleAdjointeLe: SESSIONS_DU_CONSEIL.directionGeneraleAdjointe,
+  }),
 });

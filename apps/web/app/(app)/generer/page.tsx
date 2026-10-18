@@ -51,6 +51,7 @@ import {
 import {
   DECISION_VIDE,
   FicheDeLaDecision,
+  usePreremplissageDeLaDecision,
   versLaFicheDeLaDecision,
   type SaisieDeLaDecision,
 } from '../../../components/fiche-decision-disponibilite';
@@ -203,6 +204,7 @@ export default function GenererDesDocumentsPage() {
     choisi === 'decision_disponibilite' || choisi === 'decision_renouvellement_disponibilite'
       ? choisi
       : null;
+  usePreremplissageDeLaDecision(deDisponibilite, setDisponibilite);
   // La fiche du document sans agent, telle qu'elle partira à l'API.
   const ficheSansAgent = deTravail
     ? versLaFicheDuContrat(contrat, deTravail)

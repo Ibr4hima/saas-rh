@@ -114,6 +114,19 @@ export class GenerationService {
   }
 
   /**
+   * Ce que l'organisation sait d'avance de la fiche d'un document sans agent :
+   * les sessions du conseil d'administration d'une décision de disponibilité
+   * (ADR-0123). La page le pose dans les champs encore vides.
+   */
+  preremplissage(user: SessionUser, type: string): Record<string, unknown> {
+    const doc = this.documentConfigure(user, type);
+    if (!sansAgent(doc)) {
+      problem(422, 'documents.avec_agent', `${REQUESTABLE_DOC_LABELS[doc]} : un agent à choisir`);
+    }
+    return this.sansAgent[doc].preremplissage?.() ?? {};
+  }
+
+  /**
    * Le document demandé, s'il est de la liste, que l'appelant peut le générer
    * et que son modèle est configuré ; sinon, le refus.
    */

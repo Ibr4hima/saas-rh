@@ -54,6 +54,18 @@ export const ENTETE = {
   ninea: '28409592G3',
 } as const;
 
+/**
+ * Les sessions du conseil d'administration qui ont nommé la direction
+ * générale et la direction générale adjointe en place, au format AAAA-MM-JJ.
+ * Les décisions de disponibilité les visent : leur fiche les propose, la DCH
+ * les corrige (ADR-0123). Une constante, comme `ENTETE` : elle se met à jour
+ * à chaque nomination.
+ */
+export const SESSIONS_DU_CONSEIL = {
+  directionGenerale: '2024-05-07',
+  directionGeneraleAdjointe: '2024-12-13',
+} as const;
+
 /** Les mentions du pied de page, ligne par ligne, telles que l'APIX les imprime. */
 export const MENTIONS = [
   'Société Anonyme à Participation Publique Majoritaire',

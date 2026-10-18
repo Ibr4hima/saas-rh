@@ -1,8 +1,12 @@
 'use client';
 
-import { useId } from 'react';
+import { useEffect, useId, type Dispatch, type SetStateAction } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { DecisionDeDisponibilite, OrgUnitView } from '@teranga/contracts';
+import type {
+  DecisionDeDisponibilite,
+  OrgUnitView,
+  PreremplissageDeLaDecision,
+} from '@teranga/contracts';
 import {
   DUREE_DE_PROROGATION_MAX,
   orgUnitLabel,
@@ -16,9 +20,10 @@ import { CADRE, champsDeTexte, ChampDeLaCivilite, ChampDeLaDuree, Groupe } from 
    Ce que la DCH renseigne pour une décision de disponibilité (ADR-0100) : qui
    la demande et quand, les dates de la disponibilité, celles des sessions du
    conseil d'administration qui ont nommé à la direction générale et à la
-   direction générale adjointe. Tout est obligatoire. Le renouvellement y
-   ajoute l'affectation, la période fixée d'abord et la durée de sa
-   prorogation : la date de reprise s'en déduit, et se corrige.
+   direction générale adjointe, que l'organisation propose (ADR-0123). Tout
+   est obligatoire. Le renouvellement y ajoute l'affectation, la période
+   fixée d'abord et la durée de sa prorogation : la date de reprise s'en
+   déduit, et se corrige.
 */
 
 /** La fiche telle qu'elle se tape ; une date, au format AAAA-MM-JJ. */
@@ -80,6 +85,33 @@ export function versLaFicheDeLaDecision(s: SaisieDeLaDecision, doc: DecisionDeDi
         initialementAu: s.initialementAu,
         duree: s.duree ? Number(s.duree) : undefined,
       };
+}
+
+/**
+ * Les sessions du conseil d'administration en place, que l'organisation
+ * connaît (ADR-0123) : elles se posent dans les champs encore vides, la DCH
+ * les corrige. La fiche passe d'une décision à l'autre ; une date corrigée le
+ * reste.
+ */
+export function usePreremplissageDeLaDecision(
+  doc: DecisionDeDisponibilite | null,
+  poser: Dispatch<SetStateAction<SaisieDeLaDecision>>,
+) {
+  const { data } = useQuery({
+    queryKey: ['documents', 'preremplissage', doc],
+    queryFn: () => api<PreremplissageDeLaDecision>(`/documents/generer/${doc}/preremplissage`),
+    enabled: doc !== null,
+    staleTime: Infinity,
+  });
+  useEffect(() => {
+    if (!data) return;
+    poser((s) => ({
+      ...s,
+      pvDirectionGeneraleLe: s.pvDirectionGeneraleLe || data.pvDirectionGeneraleLe,
+      pvDirectionGeneraleAdjointeLe:
+        s.pvDirectionGeneraleAdjointeLe || data.pvDirectionGeneraleAdjointeLe,
+    }));
+  }, [data, poser]);
 }
 
 /** Le lendemain d'une date saisie : la première date qu'un champ qui la suit accepte. */

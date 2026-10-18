@@ -263,6 +263,8 @@ export async function blocsDeContratPour(tx: Tx, corps: unknown): Promise<BlocDu
 /** Un modèle sans agent : la fiche de la personne tient lieu de dossier. */
 export interface ModeleSansAgent {
   pdf(tx: Tx, corps: unknown): Promise<DocumentPdf>;
+  /** Ce que l'organisation sait d'avance de la fiche, que la page pose dans ses champs vides. */
+  preremplissage?(): Record<string, unknown>;
 }
 
 /** Le modèle, tel que « Générer des documents » l'appelle (ADR-0085), droits vérifiés. */
