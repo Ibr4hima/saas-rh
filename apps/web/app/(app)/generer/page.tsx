@@ -33,7 +33,7 @@ import {
 } from '../../../components/fiche-stagiaire';
 import { api, ApiError } from '../../../lib/api';
 import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
-import { useMontantEnChiffres } from '../../../lib/montant';
+import { champDuMontant } from '../../../lib/montant';
 
 /*
    « Générer des documents » (ADR-0085), en trois temps qui se découvrent
@@ -605,7 +605,7 @@ function ChampDuSalaire({
   salaire: number | null;
   onSaisir: (salaire: number | null) => void;
 }) {
-  const montant = useMontantEnChiffres(salaire, onSaisir);
+  const montant = champDuMontant(salaire, onSaisir);
   return (
     <div className="relative">
       <input

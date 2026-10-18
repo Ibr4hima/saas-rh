@@ -1,15 +1,24 @@
 'use client';
 
 import { useId, useState, type ChangeEvent, type ReactNode } from 'react';
-import { CATEGORIE_MAX, DUREE_DE_STAGE_MAX, finDuStage } from '@teranga/contracts';
+import {
+  CATEGORIE_MAX,
+  cniGroupee,
+  DUREE_DE_STAGE_MAX,
+  finDuStage,
+  majusculesInitiales,
+} from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, cn, Field, Input, Select } from '@teranga/ui';
+import { champDeChiffres } from '../lib/chiffres';
 import { formatDate } from '../lib/hooks';
-import { useMontantEnChiffres } from '../lib/montant';
+import { champDuMontant } from '../lib/montant';
 
 /*
-   Ce que la DCH renseigne pour un contrat de stage (ADR-0094) : la personne
-   n'est pas encore dans l'application. Son état civil d'abord, puis le
-   stage ; la fin du stage se déduit du début et de la durée.
+   Ce que la DCH renseigne pour un contrat de stage (ADR-0094, ADR-0096) : la
+   personne n'est pas encore dans l'application. Son état civil d'abord, puis
+   le stage ; la fin du stage se déduit du début et de la durée. Tout est
+   obligatoire. Les prénoms et les noms prennent leurs capitales initiales à
+   la frappe ; le numéro de la CNI se groupe comme sur la carte.
 */
 
 /** La fiche telle qu'elle se tape : du texte, une durée choisie, un montant. */
@@ -20,8 +29,9 @@ export type SaisieDuStagiaire = {
   naissanceLe: string;
   naissanceA: string;
   cni: string;
-  pere: string;
-  mere: string;
+  perePrenom: string;
+  merePrenom: string;
+  mereNom: string;
   adresse: string;
   formation: string;
   poste: string;
@@ -38,8 +48,9 @@ export const STAGIAIRE_VIDE: SaisieDuStagiaire = {
   naissanceLe: '',
   naissanceA: '',
   cni: '',
-  pere: '',
-  mere: '',
+  perePrenom: '',
+  merePrenom: '',
+  mereNom: '',
   adresse: '',
   formation: '',
   poste: '',
@@ -51,10 +62,10 @@ export const STAGIAIRE_VIDE: SaisieDuStagiaire = {
 
 /**
  * La fiche telle que l'API la valide (`ficheStagiaireSchema`) : les blancs
- * ôtés, la catégorie en capitales, un champ facultatif laissé vide absent.
+ * ôtés, la catégorie en capitales ; une liste pas encore choisie, un montant
+ * pas encore saisi, absents.
  */
 export function versLaFiche(s: SaisieDuStagiaire) {
-  const facultatif = (t: string) => t.trim() || undefined;
   return {
     civilite: s.civilite || undefined,
     prenom: s.prenom.trim(),
@@ -62,11 +73,12 @@ export function versLaFiche(s: SaisieDuStagiaire) {
     naissanceLe: s.naissanceLe,
     naissanceA: s.naissanceA.trim(),
     cni: s.cni,
-    pere: s.pere.trim(),
-    mere: s.mere.trim(),
-    adresse: facultatif(s.adresse),
-    formation: facultatif(s.formation),
-    poste: facultatif(s.poste),
+    perePrenom: s.perePrenom.trim(),
+    merePrenom: s.merePrenom.trim(),
+    mereNom: s.mereNom.trim(),
+    adresse: s.adresse.trim(),
+    formation: s.formation.trim(),
+    poste: s.poste.trim(),
     debut: s.debut,
     duree: s.duree ? Number(s.duree) : undefined,
     categorie: s.categorie.trim().toLocaleUpperCase('fr-FR'),
@@ -101,20 +113,42 @@ export function FicheDuStagiaire({
   const id = useId();
   const [cniQuittee, setCniQuittee] = useState(false);
   const poser = (champ: Partial<SaisieDuStagiaire>) => onChange({ ...valeur, ...champ });
-  const allocation = useMontantEnChiffres(valeur.allocation, (montant) =>
-    poser({ allocation: montant }),
-  );
+  const cni = champDeChiffres({
+    chiffres: valeur.cni,
+    max: 13,
+    grouper: cniGroupee,
+    onSaisir: (chiffres) => poser({ cni: chiffres }),
+  });
+  const allocation = champDuMontant(valeur.allocation, (montant) => poser({ allocation: montant }));
+
+  type ChampDeTexte = Exclude<keyof SaisieDuStagiaire, 'civilite' | 'cni' | 'allocation'>;
 
   /** Ce qu'un champ de texte reçoit : son identifiant, sa valeur, sa frappe. */
-  const texte = (
-    champ: Exclude<keyof SaisieDuStagiaire, 'civilite' | 'allocation'>,
-    max?: number,
-  ) => ({
+  const texte = (champ: ChampDeTexte, max?: number) => ({
     id: `${id}-${champ}`,
     value: valeur[champ],
     maxLength: max,
     onChange: (e: ChangeEvent<HTMLInputElement>) => poser({ [champ]: e.target.value }),
     className: CADRE,
+  });
+
+  /**
+   * Un prénom ou un nom : chaque mot prend sa capitale à la frappe, sans que
+   * le curseur bouge (« dos santos » s'écrit « Dos Santos »).
+   */
+  const nomPropre = (champ: ChampDeTexte) => ({
+    ...texte(champ, 80),
+    autoCapitalize: 'words',
+    onChange: (e: ChangeEvent<HTMLInputElement>) => {
+      const saisi = e.target;
+      const corrige = majusculesInitiales(saisi.value);
+      if (corrige !== saisi.value) {
+        const { selectionStart, selectionEnd } = saisi;
+        saisi.value = corrige;
+        saisi.setSelectionRange(selectionStart, selectionEnd);
+      }
+      poser({ [champ]: corrige });
+    },
   });
 
   const fin = valeur.debut && valeur.duree ? finDuStage(valeur.debut, Number(valeur.duree)) : null;
@@ -145,21 +179,18 @@ export function FicheDuStagiaire({
           error={cniIncomplete ? 'Treize chiffres attendus' : undefined}
         >
           <Input
+            {...cni}
             id={`${id}-cni`}
-            inputMode="numeric"
-            maxLength={13}
-            value={valeur.cni}
             aria-invalid={cniIncomplete || undefined}
-            onChange={(e) => poser({ cni: e.target.value.replace(/\D/g, '').slice(0, 13) })}
             onBlur={() => setCniQuittee(true)}
             className={cn(CADRE, 'tabular-nums', cniIncomplete && 'border-danger')}
           />
         </Field>
         <Field label="Prénom" htmlFor={`${id}-prenom`} required>
-          <Input {...texte('prenom', 80)} />
+          <Input {...nomPropre('prenom')} />
         </Field>
         <Field label="Nom" htmlFor={`${id}-nom`} required>
-          <Input {...texte('nom', 80)} />
+          <Input {...nomPropre('nom')} />
         </Field>
         <Field label="Date de naissance" htmlFor={`${id}-naissanceLe`} required>
           <Input type="date" {...texte('naissanceLe')} className={cn(CADRE, 'tabular-nums')} />
@@ -167,24 +198,25 @@ export function FicheDuStagiaire({
         <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
           <Input {...texte('naissanceA', 120)} />
         </Field>
-        <Field label="Prénom du père" htmlFor={`${id}-pere`} required>
-          <Input {...texte('pere', 80)} />
+        <Field label="Prénom du père" htmlFor={`${id}-perePrenom`} required>
+          <Input {...nomPropre('perePrenom')} />
         </Field>
-        <Field label="Prénom et nom de la mère" htmlFor={`${id}-mere`} required>
-          <Input {...texte('mere', 120)} />
+        <Field label="Prénom de la mère" htmlFor={`${id}-merePrenom`} required>
+          <Input {...nomPropre('merePrenom')} />
         </Field>
-        <div className="sm:col-span-2">
-          <Field label="Adresse" htmlFor={`${id}-adresse`}>
-            <Input {...texte('adresse', 200)} />
-          </Field>
-        </div>
+        <Field label="Nom de la mère" htmlFor={`${id}-mereNom`} required>
+          <Input {...nomPropre('mereNom')} />
+        </Field>
+        <Field label="Adresse" htmlFor={`${id}-adresse`} required>
+          <Input {...texte('adresse', 200)} />
+        </Field>
       </Groupe>
 
       <Groupe titre="Renseigner le stage">
-        <Field label="Formation suivie" htmlFor={`${id}-formation`}>
+        <Field label="Formation suivie" htmlFor={`${id}-formation`} required>
           <Input {...texte('formation', 200)} />
         </Field>
-        <Field label="Poste" htmlFor={`${id}-poste`}>
+        <Field label="Poste" htmlFor={`${id}-poste`} required>
           <Input {...texte('poste', 120)} />
         </Field>
         <Field label="Date de début" htmlFor={`${id}-debut`} required>

@@ -3,15 +3,23 @@
  * (ADR-0094) : ce qu'il DIT, à partir de la fiche que la DCH renseigne.
  *
  * La personne n'est pas encore dans l'application : sa civilité, son nom, sa
- * naissance, sa CNI, sa filiation, puis le stage, sa durée, son début, sa
- * catégorie et son allocation. La fin se calcule : la veille du même
- * quantième, autant de mois plus tard.
+ * naissance, sa CNI, sa filiation, son adresse, puis le stage, sa formation,
+ * son poste, sa durée, son début, sa catégorie et son allocation. Tout est
+ * obligatoire (ADR-0096). La fin se calcule : la veille du même quantième,
+ * autant de mois plus tard. Les prénoms et les noms prennent leurs capitales
+ * initiales ; la CNI s'imprime en groupes, comme sur la carte.
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FicheStagiaire, SessionUser } from '@teranga/contracts';
-import { finDuStage, nomDuDocumentGenere } from '@teranga/contracts';
+import {
+  cniGroupee,
+  ficheStagiaireSchema,
+  finDuStage,
+  majusculesInitiales,
+  nomDuDocumentGenere,
+} from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
@@ -57,8 +65,9 @@ const fiche = (f: Partial<FicheStagiaire> = {}): FicheStagiaire => ({
   naissanceLe: '2002-03-12',
   naissanceA: 'Pikine - Dakar',
   cni: '2751200201234',
-  pere: 'Mamadou',
-  mere: 'Fatou Diop',
+  perePrenom: 'Mamadou',
+  merePrenom: 'Fatou',
+  mereNom: 'Diop',
   adresse: 'Parcelles Assainies, Unité 15 - Dakar',
   formation: 'Licence en Science de l’Information Documentaire',
   poste: 'Assistante Archiviste',
@@ -133,6 +142,55 @@ afterAll(async () => {
   await ownerPool?.end();
 });
 
+describe('la saisie', () => {
+  it('les prénoms et les noms : une capitale à chaque mot, le reste tel que saisi', () => {
+    expect(majusculesInitiales('mouhamadou moustapha lamine')).toBe('Mouhamadou Moustapha Lamine');
+    expect(majusculesInitiales('dos santos')).toBe('Dos Santos');
+    expect(majusculesInitiales('jean-pierre')).toBe('Jean-Pierre');
+    expect(majusculesInitiales('n’diaye')).toBe('N’Diaye');
+    expect(majusculesInitiales('ndèye')).toBe('Ndèye');
+    expect(majusculesInitiales('DIOP')).toBe('DIOP');
+  });
+
+  it('la CNI en groupes, comme sur la carte, même en cours de saisie', () => {
+    expect(cniGroupee('2751200201234')).toBe('2 751 2002 01234');
+    expect(cniGroupee('2751')).toBe('2 751');
+    expect(cniGroupee('2')).toBe('2');
+    expect(cniGroupee('')).toBe('');
+  });
+
+  it('la fiche validée porte les capitales, même saisie sans elles', () => {
+    const f = ficheStagiaireSchema.parse({
+      ...fiche(),
+      civilite: 'monsieur',
+      prenom: 'mouhamadou moustapha lamine',
+      nom: 'dos santos',
+      perePrenom: 'el hadji',
+      merePrenom: 'ndèye fatou',
+      mereNom: 'sow',
+    });
+    const textes = tousLesTextes(
+      blocsDuContratDeStage(
+        { stagiaire: f, signataire: { nom: 'Mariama CISSÉ', genre: 'female' } },
+        new Date(),
+      ),
+    );
+    expect(textes).toContain('Prénom et nom : Monsieur Mouhamadou Moustapha Lamine DOS SANTOS');
+    expect(textes).toContain('Filiation : Fils d’El Hadji et de Ndèye Fatou Sow');
+  });
+
+  it('la filiation s’élide devant une voyelle, pas devant un y consonne', () => {
+    const filiation = (f: Partial<FicheStagiaire>) =>
+      blocQuiCommencePar(contrat(f), 'Filiation : ');
+    expect(filiation({ perePrenom: 'Ousmane', merePrenom: 'Aminata', mereNom: 'Ba' })).toBe(
+      'Filiation : Fille d’Ousmane et d’Aminata Ba',
+    );
+    expect(filiation({ perePrenom: 'Youssou', merePrenom: 'Yvonne', mereNom: 'Diatta' })).toBe(
+      'Filiation : Fille de Youssou et d’Yvonne Diatta',
+    );
+  });
+});
+
 describe('la fin du stage', () => {
   it('la veille du même quantième, autant de mois plus tard', () => {
     expect(finDuStage('2025-08-19', 3)).toBe('2025-11-18');
@@ -164,7 +222,7 @@ describe('les parties', () => {
       'Prénom et nom : Madame Aïda BA',
       'Sexe : Féminin',
       'Date et lieu de naissance : 12 mars 2002 à Pikine - Dakar',
-      'CNI n° 2751200201234',
+      'CNI n° 2 751 2002 01234',
       'Filiation : Fille de Mamadou et de Fatou Diop',
       'Adresse : Parcelles Assainies, Unité 15 - Dakar',
       'Ci-après dénommée « le Stagiaire »',
@@ -193,14 +251,6 @@ describe('les articles', () => {
     );
     expect(blocQuiCommencePar(contrat({ poste: 'Juriste' }), 'En vue de')).toMatch(
       /une formation en qualité de Juriste\.$/,
-    );
-  });
-
-  it('sans adresse, formation ni poste, des pointillés à remplir à la main', () => {
-    const blocs = contrat({ adresse: undefined, formation: undefined, poste: undefined });
-    expect(blocQuiCommencePar(blocs, 'Adresse : ')).toMatch(/^Adresse : …+$/);
-    expect(blocQuiCommencePar(blocs, 'En vue de')).toMatch(
-      /inscrit en …+, une formation en qualité de …+\.$/,
     );
   });
 
@@ -295,14 +345,19 @@ describe('la génération', () => {
     );
   });
 
-  it('une fiche incomplète ou fausse est refusée : une CNI de treize chiffres, une durée en mois', async () => {
+  it('une fiche incomplète ou fausse est refusée : tout est obligatoire, une CNI de treize chiffres', async () => {
     for (const f of [
       { cni: '275120020123' },
       { cni: '27512002012345' },
       { cni: '275120020123A' },
+      { cni: '2 751 2002 01234' },
       { duree: 0 },
       { allocation: 0 },
       { prenom: '' },
+      { adresse: undefined },
+      { formation: ' ' },
+      { poste: undefined },
+      { mereNom: '' },
     ]) {
       expect(await codeOf(() => service.pdfSansAgent(dch, 'contrat_stage', fiche(f)))).toBe(
         'validation_failed',

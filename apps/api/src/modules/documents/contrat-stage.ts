@@ -1,4 +1,5 @@
 import {
+  cniGroupee,
   enChiffres,
   enLettres,
   ficheStagiaireSchema,
@@ -25,8 +26,8 @@ import {
  * Le contrat de stage d'adaptation, sur le modèle officiel de l'APIX
  * (ADR-0094) : trois pages, les parties, huit articles et les signatures. La
  * personne n'est pas encore dans l'application : la DCH la renseigne, avec
- * le stage. Qui représente l'APIX dirige la DCH. Les coquilles du modèle
- * sont corrigées (ADR-0095).
+ * le stage, tout est obligatoire (ADR-0096). Qui représente l'APIX dirige la
+ * DCH. Les coquilles du modèle sont corrigées (ADR-0095).
  */
 
 /** Un bloc du contrat, dans l'ordre où la feuille le pose. */
@@ -64,7 +65,7 @@ const no = (numero: string) => insecable(`n° ${numero}`);
 
 /**
  * Le contrat, bloc par bloc, aux mots du modèle de l'APIX. La personne porte
- * le genre de sa civilité ; ce qui reste à renseigner se laisse en
+ * le genre de sa civilité ; la place vacante à la tête de la DCH se laisse en
  * pointillés, à remplir à la main.
  */
 export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): BlocDuContrat[] {
@@ -95,9 +96,13 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
     texte(`Prénom et nom : ${insecable(nom)}`, 22),
     texte(`Sexe : ${genre === 'female' ? 'Féminin' : 'Masculin'}`),
     texte(`Date et lieu de naissance : ${insecable(frDate(s.naissanceLe))} à ${s.naissanceA}`),
-    texte(`CNI ${no(s.cni)}`),
-    texte(`Filiation : ${genre === 'female' ? 'Fille' : 'Fils'} de ${s.pere} et de ${s.mere}`),
-    texte(`Adresse : ${s.adresse || A_REMPLIR}`),
+    // Le numéro en groupes, comme sur la carte : « n° 1 234 0000 12345 ».
+    texte(`CNI ${no(cniGroupee(s.cni))}`),
+    texte(
+      `Filiation : ${genre === 'female' ? 'Fille' : 'Fils'} ${elide('d', s.perePrenom)} et ` +
+        elide('d', `${s.merePrenom} ${s.mereNom}`),
+    ),
+    texte(`Adresse : ${s.adresse}`),
     {
       type: 'paragraphe',
       avant: 12,
@@ -144,8 +149,7 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
     texte(
       'En vue de l’acquisition d’une expérience et d’aptitudes professionnelles, pour faciliter ' +
         `l’accès à un emploi et l’insertion en milieu professionnel, ${sigle} s’engage à assurer au ` +
-        `Stagiaire, inscrit en ${s.formation || A_REMPLIR}, une formation ` +
-        `${s.poste ? elide('en qualité d', s.poste) : `en qualité de ${A_REMPLIR}`}.`,
+        `Stagiaire, inscrit en ${s.formation}, une formation ${elide('en qualité d', s.poste)}.`,
       8,
     ),
     texte(

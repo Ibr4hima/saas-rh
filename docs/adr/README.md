@@ -99,5 +99,6 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0091](0091-certificat-de-travail.md)                 | Le certificat de travail : l'emploi d'un dossier inactif, la catégorie saisie           | acceptée, précisée par 0092                 |
 | [0092](0092-attestation-de-conge.md)                  | L'attestation de congé : les dates saisies, la reprise au premier jour ouvré            | acceptée, précisée par 0093                 |
 | [0093](0093-attestation-de-depart-a-la-retraite.md)   | L'attestation de départ à la retraite : le jour du départ saisi                         | acceptée                                    |
-| [0094](0094-contrat-de-stage.md)                      | Le contrat de stage : sans agent, la personne et le stage renseignés par la DCH         | acceptée, précisée par 0095                 |
+| [0094](0094-contrat-de-stage.md)                      | Le contrat de stage : sans agent, la personne et le stage renseignés par la DCH         | acceptée, précisée par 0095, 0096           |
 | [0095](0095-coquilles-des-modeles.md)                 | Les coquilles des modèles de l'APIX se corrigent à la reprise                           | acceptée                                    |
+| [0096](0096-fiche-du-contrat-de-stage.md)             | La fiche du contrat de stage : tout obligatoire, capitales initiales, CNI groupée       | acceptée                                    |

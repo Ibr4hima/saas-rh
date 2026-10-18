@@ -17,10 +17,13 @@ export const A_REMPLIR = '……………………………';
 /**
  * « la fonction de Analyste » : l'élision ne se saute pas devant une voyelle.
  * Le h muet français est indécidable sans dictionnaire ; on élide devant les
- * voyelles seules, ce qui couvre les intitulés de poste réels.
+ * voyelles seules, ce qui couvre les intitulés de poste réels. Le y suivi
+ * d'une voyelle est une consonne : « de Youssou », mais « d’Yves ».
  */
 export function elide(prefixe: string, mot: string): string {
-  return /^[aeiouyàâäéèêëîïôöùûü]/i.test(mot.trim()) ? `${prefixe}’${mot}` : `${prefixe}e ${mot}`;
+  return /^(?:[aeiouàâäéèêëîïôöùûü]|y(?![aeiouàâäéèêëîïôöùûü]))/i.test(mot.trim())
+    ? `${prefixe}’${mot}`
+    : `${prefixe}e ${mot}`;
 }
 
 export function frDate(iso: string | Date): string {
