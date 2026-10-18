@@ -21,6 +21,7 @@ import { attestationDeRetraite } from './attestation-retraite';
 import { attestationDeRevenu } from './attestation-revenu';
 import { attestationDeStage } from './attestation-stage';
 import { certificatDeTravail } from './certificat-travail';
+import { attestationDeCessation, attestationDeRepriseDeService } from './conge-de-maternite';
 import { contratDeStage, type ModeleSansAgent } from './contrat-stage';
 import { contratDeTravail } from './contrat-travail';
 import { decisionDeDisponibilite } from './decision-disponibilite';
@@ -67,6 +68,8 @@ export class GenerationService {
   ) {
     this.modeles = {
       attestation_conge: attestationDeConge(absences),
+      attestation_reprise_service: attestationDeRepriseDeService,
+      attestation_cessation: attestationDeCessation,
       attestation_reprise_disponibilite: attestationDeReprise,
       attestation_depart_retraite: attestationDeRetraite,
       attestation_travail: { pdf: (tx, employeeId) => attestations.pdfPour(tx, employeeId) },

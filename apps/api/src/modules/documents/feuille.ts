@@ -257,8 +257,13 @@ export function nouvelleFeuille({
     titreEncadre(texte: string, { avant = 34 }: { avant?: number } = {}) {
       doc.y += avant;
       const RETRAIT = 32;
-      const HAUTEUR = 56;
       const RENTRE = 3.4;
+      // Un titre long se donne en plusieurs lignes, séparées par « \n » comme
+      // sur le modèle ; le cadre grandit d'une ligne par ligne ajoutée.
+      const lignes = texte.split('\n');
+      doc.font(coupe('bold')).fontSize(17).fillColor(ENCRE);
+      const h = doc.currentLineHeight();
+      const HAUTEUR = 56 + (lignes.length - 1) * h;
       place(HAUTEUR);
       const x = MARGE + RETRAIT;
       const largeur = L - 2 * RETRAIT;
@@ -269,12 +274,10 @@ export function nouvelleFeuille({
         .lineWidth(0.6)
         .fillAndStroke('#e0e0e0', ENCRE);
       doc.font(coupe('bold')).fontSize(17).fillColor(ENCRE);
-      const h = doc.currentLineHeight();
-      doc.text(texte, x, y + (HAUTEUR - h) / 2, {
-        width: largeur,
-        align: 'center',
-        lineBreak: false,
-      });
+      const haut = y + (HAUTEUR - lignes.length * h) / 2;
+      lignes.forEach((ligne, i) =>
+        doc.text(ligne, x, haut + i * h, { width: largeur, align: 'center', lineBreak: false }),
+      );
       doc.y = y + HAUTEUR;
     },
 
@@ -665,13 +668,15 @@ export interface TextesDUneAttestation {
   timbre: string;
   titre: string;
   paragraphes: Passage[][];
+  /** La pièce jointe, sous le texte : « PJ : Certificat médical ». */
+  pieceJointe?: string;
 }
 
 /**
  * Une attestation sur le modèle de l'APIX (ADR-0086), ou un certificat, qui
  * suit la même : l'en-tête, le timbre en Comic Sans MS, comme sur le modèle,
- * le titre encadré, puis les paragraphes. L'espace sous le texte reste libre
- * pour la signature et le cachet.
+ * le titre encadré, puis les paragraphes et, s'il y en a une, la pièce
+ * jointe. L'espace sous le texte reste libre pour la signature et le cachet.
  *
  * @param titre Le titre du PDF, celui que la visionneuse affiche.
  */
@@ -684,5 +689,14 @@ export function pdfDUneAttestation(
   feuille.timbre(textes.timbre, { police: 'comic' });
   feuille.titreEncadre(textes.titre);
   textes.paragraphes.forEach((p, i) => feuille.paragraphe(p, { avant: i === 0 ? 40 : 14 }));
+  if (textes.pieceJointe) {
+    feuille.paragraphe(
+      [
+        { texte: 'PJ', gras: true, souligne: true },
+        { texte: `${INSECABLE}: ${textes.pieceJointe}` },
+      ],
+      { avant: 40, align: 'left' },
+    );
+  }
   return feuille.terminer();
 }

@@ -85,7 +85,9 @@ export const GENERATED_DOCS = [
   'contrat_cdi',
   'contrat_stage',
   'attestation_conge',
+  'attestation_reprise_service',
   'attestation_reprise_disponibilite',
+  'attestation_cessation',
   'attestation_depart_retraite',
   'attestation_travail',
   'attestation_revenu',
@@ -113,10 +115,14 @@ export type Saisie = 'salaire' | 'categorie' | 'debut' | 'fin' | 'depart' | 'rep
  * de l'attestation de congé (ADR-0092) ; le jour du départ à la retraite
  * (ADR-0093) ; le premier et le dernier jour de la disponibilité, puis le
  * jour de la reprise de service, de l'attestation de reprise après
- * disponibilité (ADR-0104).
+ * disponibilité (ADR-0104) ; le premier jour du congé de maternité de
+ * l'attestation de cessation de paiement, le jour de la reprise de
+ * l'attestation de reprise de service (ADR-0105).
  */
 const SAISIES_DES_DOCUMENTS: Partial<Record<DocumentGenere, readonly Saisie[]>> = {
   attestation_conge: ['debut', 'fin'],
+  attestation_cessation: ['debut'],
+  attestation_reprise_service: ['reprise'],
   attestation_reprise_disponibilite: ['debut', 'fin', 'reprise'],
   attestation_depart_retraite: ['depart'],
   attestation_revenu: ['salaire'],
@@ -140,13 +146,13 @@ export const saisiesDuDocumentSchema = z
     salaire: z.number().int().min(1).max(SALAIRE_MAX).optional(),
     /** La catégorie du poste dans la convention collective. */
     categorie: z.string().trim().min(1).max(CATEGORIE_MAX).optional(),
-    /** Le premier jour du congé, ou de la disponibilité. */
+    /** Le premier jour du congé, de maternité ou non, ou de la disponibilité. */
     debut: z.iso.date().optional(),
     /** Son dernier jour, inclus. */
     fin: z.iso.date().optional(),
     /** Le jour du départ à la retraite. */
     depart: z.iso.date().optional(),
-    /** Le jour de la reprise de service, après une disponibilité. */
+    /** Le jour de la reprise de service, après une disponibilité ou un congé de maternité. */
     reprise: z.iso.date().optional(),
   })
   .strict();

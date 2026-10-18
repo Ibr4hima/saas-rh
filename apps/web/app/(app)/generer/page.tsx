@@ -66,7 +66,8 @@ import { champDuMontant } from '../../../lib/montant';
    (ADR-0087), la catégorie du poste du certificat de travail (ADR-0091),
    les dates de l'attestation de congé (ADR-0092), le jour du départ à la
    retraite (ADR-0093), la disponibilité et la reprise de l'attestation de
-   reprise après disponibilité (ADR-0104). Les contrats, de stage et de travail, se font sans
+   reprise après disponibilité (ADR-0104), le jour du congé de maternité ou de
+   la reprise de service (ADR-0105). Les contrats, de stage et de travail, se font sans
    agent : la personne n'est pas encore dans l'application, la DCH la
    renseigne (ADR-0094, ADR-0098) ; les décisions de disponibilité et la
    domiciliation bancaire aussi, la DCH renseignant tout ce qu'elles
@@ -141,11 +142,18 @@ const LIBELLES_DES_DATES = {
 
 /**
  * Les dates qu'un document nomme autrement : le début et la fin sont ceux de
- * la disponibilité pour l'attestation de reprise après disponibilité.
+ * la disponibilité pour l'attestation de reprise après disponibilité ; le
+ * début, celui du congé de maternité pour la cessation de paiement.
  */
 const DATES_DU_DOCUMENT: Partial<
   Record<DocumentGenere, Partial<Record<'debut' | 'fin', { titre: string; libelle: string }>>>
 > = {
+  attestation_cessation: {
+    debut: {
+      titre: 'Saisir la date de début du congé de maternité',
+      libelle: 'Premier jour du congé de maternité',
+    },
+  },
   attestation_reprise_disponibilite: {
     debut: {
       titre: 'Saisir la date de début de la disponibilité',
