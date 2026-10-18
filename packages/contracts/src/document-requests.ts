@@ -87,6 +87,8 @@ export const GENERATED_DOCS = [
   'attestation_depart_retraite',
   'attestation_travail',
   'attestation_revenu',
+  'decision_disponibilite',
+  'decision_renouvellement_disponibilite',
   'attestation_stage',
   'certificat_travail',
 ] as const satisfies readonly DocumentDeLaListe[];
@@ -154,13 +156,16 @@ export function nomDuDocumentGenere(doc: DocumentGenere, matricule: string): str
 }
 
 /**
- * Ceux qui se génèrent sans agent : la personne n'est pas encore dans
- * l'application, la DCH la renseigne (ADR-0094, ADR-0098).
+ * Ceux qui se génèrent sans agent : la DCH renseigne la personne, qui n'est
+ * pas encore dans l'application ou que le document nomme seulement (ADR-0094,
+ * ADR-0098, ADR-0100).
  */
 export const DOCS_SANS_AGENT = [
   'contrat_cdd',
   'contrat_cdi',
   'contrat_stage',
+  'decision_disponibilite',
+  'decision_renouvellement_disponibilite',
 ] as const satisfies readonly DocumentGenere[];
 export type DocumentSansAgent = (typeof DOCS_SANS_AGENT)[number];
 
@@ -376,6 +381,88 @@ export const salaireBrut = (f: {
   sursalaire: number;
   primeDeTransport: number;
 }) => f.salaireDeBase + f.sursalaire + f.primeDeTransport;
+
+/**
+ * Ce que la DCH renseigne pour une décision de disponibilité (ADR-0100) : qui
+ * la demande et quand, et les sessions du conseil d'administration qui ont
+ * nommé à la direction générale et à la direction générale adjointe. Tout est
+ * obligatoire.
+ */
+const ficheDeLaDecision = z.object({
+  civilite: z.enum(['madame', 'monsieur']),
+  prenom: nomPropre(80),
+  nom: nomPropre(80),
+  poste: intitule(120),
+  /** La date de la lettre de demande. */
+  demandeLe: z.iso.date(),
+  pvDirectionGeneraleLe: z.iso.date(),
+  pvDirectionGeneraleAdjointeLe: z.iso.date(),
+  /** Le jour où le service doit reprendre : sans reprise, la démission est constatée. */
+  repriseLe: z.iso.date(),
+});
+
+/** La mise en disponibilité : son premier jour. */
+export const ficheDisponibiliteSchema = ficheDeLaDecision
+  .extend({ effetLe: z.iso.date() })
+  .strict()
+  .refine((f) => f.repriseLe > f.effetLe, {
+    message: 'La reprise suit la prise d’effet',
+    path: ['repriseLe'],
+  });
+export type FicheDisponibilite = z.infer<typeof ficheDisponibiliteSchema>;
+
+/** Une disponibilité se proroge de deux ans au plus. */
+export const DUREE_DE_PROROGATION_MAX = 24;
+
+/**
+ * Le renouvellement d'une disponibilité : l'unité d'affectation, la période
+ * fixée d'abord, et la durée de sa prorogation.
+ */
+export const ficheRenouvellementSchema = ficheDeLaDecision
+  .extend({
+    /** L'unité de l'organigramme où la personne est affectée. */
+    affectation: z.uuid(),
+    /** Le premier jour de la période initiale. */
+    initialementDu: z.iso.date(),
+    /** Son dernier jour, inclus. */
+    initialementAu: z.iso.date(),
+    /** La durée de la prorogation, en mois. */
+    duree: z.number().int().min(1).max(DUREE_DE_PROROGATION_MAX),
+  })
+  .strict()
+  .refine((f) => f.initialementAu >= f.initialementDu, {
+    message: 'La fin suit le début',
+    path: ['initialementAu'],
+  })
+  .refine((f) => f.repriseLe > f.initialementAu, {
+    message: 'La reprise suit la période initiale',
+    path: ['repriseLe'],
+  });
+export type FicheRenouvellement = z.infer<typeof ficheRenouvellementSchema>;
+
+export type DecisionDeDisponibilite =
+  'decision_disponibilite' | 'decision_renouvellement_disponibilite';
+
+/** Le schéma de la fiche d'une décision de disponibilité, selon qu'elle l'accorde ou la renouvelle. */
+export const ficheDeLaDecisionSchema = (doc: DecisionDeDisponibilite) =>
+  doc === 'decision_disponibilite' ? ficheDisponibiliteSchema : ficheRenouvellementSchema;
+
+/** Le jour qui suit, au format AAAA-MM-JJ. */
+function lendemain(jour: string): string {
+  const d = new Date(`${jour}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Le jour où le service reprend après la prorogation de `mois` mois d'une
+ * disponibilité dont la période initiale finissait le `initialementAu` : la
+ * prorogation commence le lendemain, et finit selon la règle du stage. Fixée
+ * du 2 janvier au 1er juillet, prorogée de six mois : reprise le 2 janvier.
+ */
+export function repriseApresProrogation(initialementAu: string, mois: number): string {
+  return lendemain(finDuStage(lendemain(initialementAu), mois));
+}
 
 /** `delivered` : statut historique, conservé en lecture (voir en-tête). */
 export const documentRequestStatusSchema = z.enum([

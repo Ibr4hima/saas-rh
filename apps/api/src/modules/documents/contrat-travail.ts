@@ -1,4 +1,3 @@
-import { sql } from 'drizzle-orm';
 import {
   cniGroupee,
   enChiffres,
@@ -10,11 +9,10 @@ import {
   salaireBrut,
   type FicheCdi,
 } from '@teranga/contracts';
-import { problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import type { Tx } from '../../db/tenant-db';
 import type { ModeleSansAgent } from './contrat-stage';
-import { quiDirigeLeSommet } from './dossier';
+import { quiDirigeLeSommet, uniteDAffectation, type Unite } from './dossier';
 import { ENTETE } from './entete';
 import { nouvelleFeuille, type Passage } from './feuille';
 import {
@@ -54,7 +52,7 @@ export interface ContratDeTravailData {
   doc: ContratDeTravail;
   fiche: FicheCdi & { duree?: number };
   /** L'unité d'affectation : son nom et son type dans l'organigramme. */
-  unite: { nom: string; type: string };
+  unite: Unite;
   /** Qui représente l'APIX : qui dirige la direction générale ; null : la place est vacante. */
   signataire: Personne | null;
 }
@@ -378,15 +376,6 @@ export function pdfDuContratDeTravail(
     }
   }
   return feuille.terminer();
-}
-
-/** L'unité d'affectation, dans l'organigramme de l'organisation. */
-async function uniteDAffectation(tx: Tx, id: string): Promise<ContratDeTravailData['unite']> {
-  const { rows } = await tx.execute<{ name: string; unit_type: string }>(sql`
-    SELECT name, unit_type FROM org_units WHERE id = ${id} AND deleted_at IS NULL`);
-  const unite = rows[0];
-  if (!unite) problem(422, 'documents.affectation', 'Unité d’affectation introuvable');
-  return { nom: unite.name, type: unite.unit_type };
 }
 
 /** La fiche, validée selon le contrat : la durée, pour un contrat à durée déterminée. */

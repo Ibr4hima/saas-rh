@@ -22,6 +22,7 @@ import { attestationDeStage } from './attestation-stage';
 import { certificatDeTravail } from './certificat-travail';
 import { contratDeStage, type ModeleSansAgent } from './contrat-stage';
 import { contratDeTravail } from './contrat-travail';
+import { decisionDeDisponibilite } from './decision-disponibilite';
 import { AttestationService } from './attestation.service';
 import type { DocumentPdf, Modele } from './feuille';
 
@@ -50,6 +51,10 @@ export class GenerationService {
     contrat_cdd: contratDeTravail('contrat_cdd'),
     contrat_cdi: contratDeTravail('contrat_cdi'),
     contrat_stage: contratDeStage,
+    decision_disponibilite: decisionDeDisponibilite('decision_disponibilite'),
+    decision_renouvellement_disponibilite: decisionDeDisponibilite(
+      'decision_renouvellement_disponibilite',
+    ),
   };
 
   constructor(

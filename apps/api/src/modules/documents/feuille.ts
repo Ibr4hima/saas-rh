@@ -41,21 +41,25 @@ export interface Modele {
   pdf(tx: Tx, employeeId: string, saisies: SaisiesDuDocument): Promise<DocumentPdf>;
 }
 
-/** Un passage d'un paragraphe : du texte, en gras ou non, souligné ou non. */
+/** Un passage d'un paragraphe : du texte, en gras ou non, souligné ou non, en italique ou non. */
 export interface Passage {
   texte: string;
   gras?: boolean;
   souligne?: boolean;
+  italique?: boolean;
 }
 
 const ENCRE = '#111111';
 const GRIS = '#5a5f75';
-const MARGE = 56;
+/** La marge de gauche et de droite des documents ; un modèle peut avoir la sienne. */
+const MARGE_PAR_DEFAUT = 56;
 const HAUT = 48;
 /** Le bas du pied de page, au-dessus du bord de la feuille. */
 const BAS_DU_PIED = 30;
 /** Ce que le pied de page garde pour lui en bas de chaque page : le texte s'arrête au-dessus. */
 const RESERVE_DU_PIED = 110;
+/** L'espace insécable : la justification ne coupe ni n'étire ce qu'elle joint. */
+const INSECABLE = '\u00a0';
 
 /**
  * Ouvre une feuille.
@@ -63,16 +67,20 @@ const RESERVE_DU_PIED = 110;
  * @param titre Le titre du PDF, celui que la visionneuse affiche.
  * @param famille La police de la feuille : Arial, celle des documents de la DCH (ADR-0090).
  * @param logo Le logo du pied de page ; par défaut, celui que l'exploitant a déposé.
+ * @param marge Les marges de gauche et de droite, celles du modèle ; l'en-tête et le pied s'y calent.
  */
 export function nouvelleFeuille({
   titre,
   famille = 'arial',
   logo = cheminLogo(),
+  marge = MARGE_PAR_DEFAUT,
 }: {
   titre: string;
   famille?: Famille;
   logo?: string | null;
+  marge?: number;
 }) {
+  const MARGE = marge;
   const doc = new PDFDocument({
     size: 'A4',
     margins: { top: HAUT, bottom: RESERVE_DU_PIED, left: MARGE, right: MARGE },
@@ -89,6 +97,9 @@ export function nouvelleFeuille({
 
   const L = doc.page.width - MARGE * 2;
   const coupe = (c: Coupe) => police(doc, c, famille);
+  /** La coupe d'un passage : gras, italique, les deux ou aucun. */
+  const coupeDe = (gras: boolean, italique: boolean): Coupe =>
+    gras ? (italique ? 'bold-italic' : 'bold') : italique ? 'italic' : 'normal';
   const bas = () => doc.page.height - doc.page.margins.bottom;
 
   /** Une nouvelle page si la hauteur ne tient plus dans celle-ci. */
@@ -102,6 +113,8 @@ export function nouvelleFeuille({
     MARGE,
     coupe,
     place,
+    /** Le nombre de pages déjà ouvertes. */
+    pages: () => doc.bufferedPageRange().count,
 
     /**
      * L'en-tête : le bloc de la République à gauche ; à droite, le numéro de
@@ -210,17 +223,23 @@ export function nouvelleFeuille({
       doc.y = y + espace + doc.currentLineHeight(true);
     },
 
-    /** Le timbre : qui émet l'acte, sous l'en-tête, à gauche. */
+    /** Le timbre : qui émet l'acte, sous l'en-tête, à gauche ou centré. */
     timbre(
       texte: string,
-      { avant = 44, police: f = famille }: { avant?: number; police?: Famille } = {},
+      {
+        avant = 44,
+        police: f = famille,
+        taille = 11,
+        align = 'left',
+      }: { avant?: number; police?: Famille; taille?: number; align?: 'left' | 'center' } = {},
     ) {
       doc.y += avant;
       doc
         .font(police(doc, 'bold', f))
-        .fontSize(11)
-        .fillColor(ENCRE)
-        .text(texte, MARGE, doc.y, { lineBreak: false });
+        .fontSize(taille)
+        .fillColor(ENCRE);
+      const x = align === 'center' ? MARGE + (L - doc.widthOfString(texte)) / 2 : MARGE;
+      doc.text(texte, x, doc.y, { lineBreak: false });
       doc.y += doc.currentLineHeight(true);
     },
 
@@ -266,7 +285,10 @@ export function nouvelleFeuille({
      * retrait, devant la première ligne : un élément de liste, sa puce calée
      * à droite au milieu du retrait, ou à `puceA` de la marge. `pas` fixe la
      * hauteur des lignes, au moins, comme l'interligne « au moins » de Word.
-     * `align: 'right'` cale chaque ligne à droite, sans justifier.
+     * `align: 'left'` laisse les lignes en drapeau, `'right'` les cale à
+     * droite, `'center'` les centre, sans justifier. La puce peut être une
+     * étiquette mise en forme (« ANALYSE : ») ou « ▪ », le petit carré des
+     * listes de Word, dessiné.
      */
     paragraphe(
       passages: readonly Passage[],
@@ -285,20 +307,26 @@ export function nouvelleFeuille({
         interligne?: number;
         pas?: number;
         retrait?: number;
-        puce?: string;
+        puce?: string | readonly Passage[];
         puceA?: number;
-        align?: 'justify' | 'right';
+        align?: 'justify' | 'left' | 'right' | 'center';
       } = {},
     ) {
       doc.y += avant;
       const largeurUtile = L - retrait;
-      const mesurer = (texte: string, gras: boolean) =>
+      const mesurer = (texte: string, gras: boolean, italique = false) =>
         doc
-          .font(coupe(gras ? 'bold' : 'normal'))
+          .font(coupe(coupeDe(gras, italique)))
           .fontSize(taille)
           .widthOfString(texte);
 
-      type Morceau = { texte: string; gras: boolean; souligne: boolean; largeur: number };
+      type Morceau = {
+        texte: string;
+        gras: boolean;
+        souligne: boolean;
+        italique: boolean;
+        largeur: number;
+      };
       const mots: { morceaux: Morceau[]; largeur: number }[] = [];
       let enCours: Morceau[] = [];
       const clore = () => {
@@ -309,27 +337,93 @@ export function nouvelleFeuille({
       for (const p of passages) {
         const gras = Boolean(p.gras);
         const souligne = Boolean(p.souligne);
+        const italique = Boolean(p.italique);
         for (const bout of p.texte.split(/( )/)) {
           if (bout === ' ') clore();
-          else if (bout)
-            enCours.push({ texte: bout, gras, souligne, largeur: mesurer(bout, gras) });
+          else if (bout) {
+            enCours.push({
+              texte: bout,
+              gras,
+              souligne,
+              italique,
+              largeur: mesurer(bout, gras, italique),
+            });
+          }
         }
       }
       clore();
 
       const espace = mesurer(' ', false);
-      const lignes: (typeof mots)[] = [];
-      let ligne: typeof mots = [];
+      type Mot = (typeof mots)[number];
+      const largeurDe = (morceaux: Morceau[]) => morceaux.reduce((s, m) => s + m.largeur, 0);
+      const partie = (m: Morceau, texte: string): Morceau => ({
+        ...m,
+        texte,
+        largeur: mesurer(texte, m.gras, m.italique),
+      });
+      /**
+       * Le mot insécable coupé à la dernière de ses espaces insécables qui
+       * laisse tenir sa tête dans `place` ; null s'il n'en a pas. Seules se
+       * coupent celles qui séparent deux mots : jamais devant une
+       * ponctuation, après « n° » ni entre des guillemets.
+       */
+      const couper = (mot: Mot, place: number): [Mot, Mot] | null => {
+        let coupe: [Mot, Mot] | null = null;
+        mot.morceaux.forEach((m, i) => {
+          for (
+            let k = m.texte.indexOf(INSECABLE);
+            k !== -1;
+            k = m.texte.indexOf(INSECABLE, k + 1)
+          ) {
+            const avant = k > 0 ? m.texte[k - 1] : mot.morceaux[i - 1]?.texte.at(-1);
+            const apres = k < m.texte.length - 1 ? m.texte[k + 1] : mot.morceaux[i + 1]?.texte[0];
+            if (!/[\p{L}\p{N}.]/u.test(avant ?? '') || !/[\p{L}\p{N}]/u.test(apres ?? '')) continue;
+            const tete = [...mot.morceaux.slice(0, i), partie(m, m.texte.slice(0, k))].filter(
+              (x) => x.texte,
+            );
+            const queue = [partie(m, m.texte.slice(k + 1)), ...mot.morceaux.slice(i + 1)].filter(
+              (x) => x.texte,
+            );
+            const largeurTete = largeurDe(tete);
+            if (largeurTete <= place) {
+              coupe = [
+                { morceaux: tete, largeur: largeurTete },
+                { morceaux: queue, largeur: largeurDe(queue) },
+              ];
+            }
+          }
+        });
+        return coupe;
+      };
+      const lignes: Mot[][] = [];
+      let ligne: Mot[] = [];
       let largeur = 0;
-      for (const mot of mots) {
-        const ajout = ligne.length > 0 ? espace + mot.largeur : mot.largeur;
-        if (ligne.length > 0 && largeur + ajout > largeurUtile) {
-          lignes.push(ligne);
-          ligne = [mot];
-          largeur = mot.largeur;
-        } else {
-          ligne.push(mot);
-          largeur += ajout;
+      for (let mot of mots) {
+        for (;;) {
+          const ajout = ligne.length > 0 ? espace + mot.largeur : mot.largeur;
+          if (largeur + ajout <= largeurUtile) {
+            ligne.push(mot);
+            largeur += ajout;
+            break;
+          }
+          // Un mot insécable qui laisserait la ligne creuse, un nom à trois
+          // prénoms par exemple, se coupe plutôt qu'étirer ses blancs.
+          const coupe =
+            largeur < largeurUtile * 0.6
+              ? couper(mot, largeurUtile - largeur - (ligne.length > 0 ? espace : 0))
+              : null;
+          if (coupe) {
+            lignes.push([...ligne, coupe[0]]);
+            [ligne, largeur, mot] = [[], 0, coupe[1]];
+          } else if (ligne.length === 0) {
+            // Plus large que la ligne, et rien à couper : il dépasse.
+            ligne.push(mot);
+            largeur = mot.largeur;
+            break;
+          } else {
+            lignes.push(ligne);
+            [ligne, largeur] = [[], 0];
+          }
         }
       }
       if (ligne.length > 0) lignes.push(ligne);
@@ -365,18 +459,46 @@ export function nouvelleFeuille({
           align === 'justify' && !derniere && l.length > 1
             ? (largeurUtile - pleine) / (l.length - 1)
             : espace;
-        if (puce && i === 0) {
+        if (puce === '▪' && i === 0) {
+          // Le petit carré, dessiné : aucune police ne l'a sûrement, il se
+          // centre sur la hauteur des minuscules.
+          const cote = taille * 0.34;
+          const base = y + taille * 0.9;
+          doc.rect(MARGE + (puceA ?? 0), base - taille * 0.26 - cote / 2, cote, cote).fill(ENCRE);
+        } else if (typeof puce === 'string' && i === 0) {
           doc.font(coupe('normal')).fontSize(taille).fillColor(ENCRE);
           const xPuce =
             puceA === undefined ? MARGE + retrait / 2 - doc.widthOfString(puce) : MARGE + puceA;
           doc.text(puce, xPuce, y, { lineBreak: false });
+        } else if (puce && i === 0) {
+          // Une étiquette mise en forme, devant la première ligne.
+          let xEtiquette = MARGE + (puceA ?? 0);
+          for (const e of puce as readonly Passage[]) {
+            const largeurE = mesurer(e.texte, Boolean(e.gras), Boolean(e.italique));
+            doc.fillColor(ENCRE).text(e.texte, xEtiquette, y, { lineBreak: false });
+            if (e.souligne) {
+              const sous = y + taille * 1.02;
+              doc
+                .moveTo(xEtiquette, sous)
+                .lineTo(xEtiquette + largeurE, sous)
+                .lineWidth(taille * 0.06)
+                .strokeColor(ENCRE)
+                .stroke();
+            }
+            xEtiquette += largeurE;
+          }
         }
+        const occupee = pleine + espace * (l.length - 1);
         let x =
-          align === 'right' ? MARGE + L - (pleine + espace * (l.length - 1)) : MARGE + retrait;
+          align === 'right'
+            ? MARGE + L - occupee
+            : align === 'center'
+              ? MARGE + retrait + (largeurUtile - occupee) / 2
+              : MARGE + retrait;
         for (const mot of l) {
           for (const m of mot.morceaux) {
             doc
-              .font(coupe(m.gras ? 'bold' : 'normal'))
+              .font(coupe(coupeDe(m.gras, m.italique)))
               .fontSize(taille)
               .fillColor(ENCRE)
               .text(m.texte, x, y, { lineBreak: false });
@@ -433,6 +555,46 @@ export function nouvelleFeuille({
       doc.text(libelle, MARGE + retrait, y, { lineBreak: false });
       doc.text(valeur, MARGE + colonne, y, { lineBreak: false });
       doc.y = y + Math.max(pas, doc.currentLineHeight(true));
+    },
+
+    /**
+     * Un bloc en bas de page, à gauche, à côté du pied de l'APIX : les
+     * ampliations d'une décision. Sa dernière ligne finit à `finA` au-dessus
+     * du bas du pied ; une ligne vide se donne sans passage. Si le texte de la
+     * page descend jusque-là, le bloc passe à la page suivante.
+     */
+    piedAGauche(
+      lignes: readonly (readonly Passage[])[],
+      { taille = 10, pas = 11.5, finA = 28 }: { taille?: number; pas?: number; finA?: number } = {},
+    ) {
+      const haut = doc.page.height - BAS_DU_PIED - finA - lignes.length * pas;
+      if (doc.y > haut - pas) doc.addPage();
+      // Écrire dans la marge du bas sans ouvrir de page, comme le pied.
+      const marge = doc.page.margins.bottom;
+      doc.page.margins.bottom = 0;
+      lignes.forEach((ligne, i) => {
+        const y = haut + i * pas;
+        let x = MARGE;
+        for (const p of ligne) {
+          doc
+            .font(coupe(coupeDe(Boolean(p.gras), Boolean(p.italique))))
+            .fontSize(taille)
+            .fillColor(ENCRE);
+          const largeur = doc.widthOfString(p.texte);
+          doc.text(p.texte, x, y, { lineBreak: false });
+          if (p.souligne) {
+            const sous = y + taille * 1.02;
+            doc
+              .moveTo(x, sous)
+              .lineTo(x + largeur, sous)
+              .lineWidth(taille * 0.06)
+              .strokeColor(ENCRE)
+              .stroke();
+          }
+          x += largeur;
+        }
+      });
+      doc.page.margins.bottom = marge;
     },
 
     /**

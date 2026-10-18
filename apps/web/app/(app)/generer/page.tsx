@@ -13,6 +13,7 @@ import type {
 import {
   CATEGORIE_MAX,
   estGenere,
+  ficheDeLaDecisionSchema,
   ficheDuContratSchema,
   ficheStagiaireSchema,
   nomDuDocumentGenere,
@@ -32,6 +33,12 @@ import {
   versLaFicheDuContrat,
   type SaisieDuContrat,
 } from '../../../components/fiche-contrat-travail';
+import {
+  DECISION_VIDE,
+  FicheDeLaDecision,
+  versLaFicheDeLaDecision,
+  type SaisieDeLaDecision,
+} from '../../../components/fiche-decision-disponibilite';
 import {
   FicheDuStagiaire,
   STAGIAIRE_VIDE,
@@ -53,7 +60,8 @@ import { champDuMontant } from '../../../lib/montant';
    les dates de l'attestation de congé (ADR-0092), le jour du départ à la
    retraite (ADR-0093). Les contrats, de stage et de travail, se font sans
    agent : la personne n'est pas encore dans l'application, la DCH la
-   renseigne (ADR-0094, ADR-0098).
+   renseigne (ADR-0094, ADR-0098) ; les décisions de disponibilité aussi, la
+   DCH renseignant tout ce qu'elles impriment (ADR-0100).
 
    L'aperçu EST le PDF, peint par pdf.js : un modèle de l'APIX se vérifie sur
    ce qui sortira, pas sur une imitation à l'écran.
@@ -143,6 +151,8 @@ export default function GenererDesDocumentsPage() {
   const stagiaireRetenu = useRetenue(stagiaire);
   const [contrat, setContrat] = useState<SaisieDuContrat>(CONTRAT_VIDE);
   const contratRetenu = useRetenue(contrat);
+  const [disponibilite, setDisponibilite] = useState<SaisieDeLaDecision>(DECISION_VIDE);
+  const disponibiliteRetenue = useRetenue(disponibilite);
 
   const sansLAgent = choisi !== null && sansAgent(choisi);
   const demandees = choisi ? saisiesDe(choisi) : [];
@@ -153,15 +163,23 @@ export default function GenererDesDocumentsPage() {
     if (agent) setSaisies({ ...courantes, ...valeur, agentId: agent.id });
   };
   const deTravail = choisi === 'contrat_cdd' || choisi === 'contrat_cdi' ? choisi : null;
+  const deDisponibilite =
+    choisi === 'decision_disponibilite' || choisi === 'decision_renouvellement_disponibilite'
+      ? choisi
+      : null;
   // La fiche du document sans agent, telle qu'elle part à l'API : celle qui
   // se tape, ou celle que la frappe posée a retenue.
   const ficheSansAgent = (retenue: boolean) =>
     deTravail
       ? versLaFicheDuContrat(retenue ? contratRetenu : contrat, deTravail)
-      : versLaFiche(retenue ? stagiaireRetenu : stagiaire);
+      : deDisponibilite
+        ? versLaFicheDeLaDecision(retenue ? disponibiliteRetenue : disponibilite, deDisponibilite)
+        : versLaFiche(retenue ? stagiaireRetenu : stagiaire);
   const fiche = deTravail
     ? ficheDuContratSchema(deTravail).safeParse(ficheSansAgent(true))
-    : ficheStagiaireSchema.safeParse(ficheSansAgent(true));
+    : deDisponibilite
+      ? ficheDeLaDecisionSchema(deDisponibilite).safeParse(ficheSansAgent(true))
+      : ficheStagiaireSchema.safeParse(ficheSansAgent(true));
 
   return (
     <Page>
@@ -173,6 +191,13 @@ export default function GenererDesDocumentsPage() {
       ) : null}
       {deTravail ? (
         <FicheDuContratDeTravail doc={deTravail} valeur={contrat} onChange={setContrat} />
+      ) : null}
+      {deDisponibilite ? (
+        <FicheDeLaDecision
+          doc={deDisponibilite}
+          valeur={disponibilite}
+          onChange={setDisponibilite}
+        />
       ) : null}
       {choisi && !sansLAgent ? (
         <Etape titre="Sélectionner l’agent">

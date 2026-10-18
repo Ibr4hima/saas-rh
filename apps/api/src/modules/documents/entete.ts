@@ -46,6 +46,8 @@ export const ENTETE = {
    * de revenu et de stage.
    */
   referenceDG: '/PR/SG/APIX/DG/DCH',
+  /** Celle d'une décision du directeur général : « N° … /APIX/DG/DCH ». */
+  referenceDecision: '/APIX/DG/DCH',
   /** Lieu d'émission : « Dakar, le … ». */
   ville: 'Dakar',
   /** Le NINEA, celui du pied de page et des contrats de travail (ADR-0099). */

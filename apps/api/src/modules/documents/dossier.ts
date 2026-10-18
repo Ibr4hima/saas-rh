@@ -289,3 +289,18 @@ export async function quiDirigeLaDCH(tx: Tx): Promise<Personne | null> {
   const dch = await directionDuPersonnel(tx);
   return dch?.directeurEmployeeId ? personne(tx, sql`${dch.directeurEmployeeId}`) : null;
 }
+
+/** Une unité de l'organigramme, telle qu'un document l'écrit : son nom et son type. */
+export interface Unite {
+  nom: string;
+  type: string;
+}
+
+/** L'unité d'affectation d'une fiche saisie, dans l'organigramme de l'organisation. */
+export async function uniteDAffectation(tx: Tx, id: string): Promise<Unite> {
+  const { rows } = await tx.execute<{ name: string; unit_type: string }>(sql`
+    SELECT name, unit_type FROM org_units WHERE id = ${id} AND deleted_at IS NULL`);
+  const unite = rows[0];
+  if (!unite) problem(422, 'documents.affectation', 'Unité d’affectation introuvable');
+  return { nom: unite.name, type: unite.unit_type };
+}
