@@ -304,3 +304,25 @@ export async function uniteDAffectation(tx: Tx, id: string): Promise<Unite> {
   if (!unite) problem(422, 'documents.affectation', 'Unité d’affectation introuvable');
   return { nom: unite.name, type: unite.unit_type };
 }
+
+/** L'affectation en cours d'un agent : son unité, et la tête de l'unité quand l'agent l'occupe. */
+export interface AffectationDeLAgent {
+  unite: Unite;
+  /** À la tête de l'unité : son poste la nomme déjà (« Cheffe du département Études »). */
+  responsable: boolean;
+}
+
+/** L'unité de l'affectation en cours d'un agent, dans l'organigramme ; null : aucune. */
+export async function affectationDeLAgent(
+  tx: Tx,
+  employeeId: string,
+): Promise<AffectationDeLAgent | null> {
+  const { rows } = await tx.execute<{ name: string; unit_type: string; responsable: boolean }>(sql`
+    SELECT u.name, u.unit_type, a.responsable
+      FROM assignments a
+      JOIN org_units u ON u.id = a.org_unit_id AND u.deleted_at IS NULL
+     WHERE a.employee_id = ${employeeId} AND a.validity @> CURRENT_DATE
+     LIMIT 1`);
+  const a = rows[0];
+  return a ? { unite: { nom: a.name, type: a.unit_type }, responsable: a.responsable } : null;
+}

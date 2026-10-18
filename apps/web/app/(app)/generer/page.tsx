@@ -65,7 +65,8 @@ import { champDuMontant } from '../../../lib/montant';
    porte pas le fait saisir avant : le salaire de l'attestation de revenu
    (ADR-0087), la catégorie du poste du certificat de travail (ADR-0091),
    les dates de l'attestation de congé (ADR-0092), le jour du départ à la
-   retraite (ADR-0093). Les contrats, de stage et de travail, se font sans
+   retraite (ADR-0093), la disponibilité et la reprise de l'attestation de
+   reprise après disponibilité (ADR-0104). Les contrats, de stage et de travail, se font sans
    agent : la personne n'est pas encore dans l'application, la DCH la
    renseigne (ADR-0094, ADR-0098) ; les décisions de disponibilité et la
    domiciliation bancaire aussi, la DCH renseignant tout ce qu'elles
@@ -107,10 +108,18 @@ type Valeurs = {
   debut: string;
   fin: string;
   depart: string;
+  reprise: string;
 };
 /** Les valeurs saisies, et l'agent pour qui : elles ne passent pas d'un agent à l'autre. */
 type Saisies = Valeurs & { agentId: string };
-const VIDES: Valeurs = { salaire: null, categorie: '', debut: '', fin: '', depart: '' };
+const VIDES: Valeurs = {
+  salaire: null,
+  categorie: '',
+  debut: '',
+  fin: '',
+  depart: '',
+  reprise: '',
+};
 
 /** L'intitulé du bloc de chaque saisie. */
 const TITRES: Record<Saisie, string> = {
@@ -119,6 +128,7 @@ const TITRES: Record<Saisie, string> = {
   debut: 'Saisir la date de début du congé',
   fin: 'Saisir la date de fin du congé',
   depart: 'Saisir la date de départ à la retraite',
+  reprise: 'Saisir la date de reprise de service',
 };
 
 /** Le nom de chaque champ de date, pour qui le lit à voix haute. */
@@ -126,7 +136,32 @@ const LIBELLES_DES_DATES = {
   debut: 'Premier jour du congé',
   fin: 'Dernier jour du congé',
   depart: 'Date de départ à la retraite',
+  reprise: 'Jour de la reprise de service',
 } as const;
+
+/**
+ * Les dates qu'un document nomme autrement : le début et la fin sont ceux de
+ * la disponibilité pour l'attestation de reprise après disponibilité.
+ */
+const DATES_DU_DOCUMENT: Partial<
+  Record<DocumentGenere, Partial<Record<'debut' | 'fin', { titre: string; libelle: string }>>>
+> = {
+  attestation_reprise_disponibilite: {
+    debut: {
+      titre: 'Saisir la date de début de la disponibilité',
+      libelle: 'Premier jour de la disponibilité',
+    },
+    fin: {
+      titre: 'Saisir la date de fin de la disponibilité',
+      libelle: 'Dernier jour de la disponibilité',
+    },
+  },
+};
+const titreDe = (doc: DocumentGenere, s: Saisie) =>
+  (s === 'debut' || s === 'fin' ? DATES_DU_DOCUMENT[doc]?.[s]?.titre : undefined) ?? TITRES[s];
+const libelleDe = (doc: DocumentGenere, s: keyof typeof LIBELLES_DES_DATES) =>
+  (s === 'debut' || s === 'fin' ? DATES_DU_DOCUMENT[doc]?.[s]?.libelle : undefined) ??
+  LIBELLES_DES_DATES[s];
 
 /** Ce qui part à l'API : la catégorie en capitales, comme le document l'imprime. */
 const valeurDe = (v: Valeurs, s: Saisie) =>
@@ -221,9 +256,9 @@ export default function GenererDesDocumentsPage() {
           <ChoixDeLAgent agent={agent} onChoisir={setAgent} />
         </Etape>
       ) : null}
-      {agent && !sansLAgent
+      {choisi && agent && !sansLAgent
         ? demandees.map((s, i) => (
-            <Etape key={s} titre={TITRES[s]}>
+            <Etape key={s} titre={titreDe(choisi, s)}>
               {s === 'salaire' ? (
                 <ChampDuSalaire
                   key={agent.id}
@@ -242,10 +277,10 @@ export default function GenererDesDocumentsPage() {
                 <ChampDeDate
                   key={agent.id}
                   premier={i === 0}
-                  libelle={LIBELLES_DES_DATES[s]}
+                  libelle={libelleDe(choisi, s)}
                   date={courantes[s]}
-                  // La fin ne se choisit pas avant le début.
-                  min={s === 'fin' ? courantes.debut || undefined : undefined}
+                  // La fin et la reprise ne se choisissent pas avant le début.
+                  min={s === 'fin' || s === 'reprise' ? courantes.debut || undefined : undefined}
                   onSaisir={(date) => saisir({ [s]: date })}
                 />
               )}

@@ -97,7 +97,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0089](0089-attestation-de-stage.md)                  | L'attestation de stage : le dernier stage commencé, dossier en activité ou non          | acceptée                                    |
 | [0090](0090-arial-police-des-documents.md)            | Arial, police principale des documents de la DCH, prise là où la machine l'a            | acceptée, précisée par 0098                 |
 | [0091](0091-certificat-de-travail.md)                 | Le certificat de travail : l'emploi d'un dossier inactif, la catégorie saisie           | acceptée, précisée par 0092                 |
-| [0092](0092-attestation-de-conge.md)                  | L'attestation de congé : les dates saisies, la reprise au premier jour ouvré            | acceptée, précisée par 0093                 |
+| [0092](0092-attestation-de-conge.md)                  | L'attestation de congé : les dates saisies, la reprise au premier jour ouvré            | acceptée, précisée par 0093, 0104           |
 | [0093](0093-attestation-de-depart-a-la-retraite.md)   | L'attestation de départ à la retraite : le jour du départ saisi                         | acceptée                                    |
 | [0094](0094-contrat-de-stage.md)                      | Le contrat de stage : sans agent, la personne et le stage renseignés par la DCH         | acceptée, précisée par 0095, 0096, 0098     |
 | [0095](0095-coquilles-des-modeles.md)                 | Les coquilles des modèles de l'APIX se corrigent à la reprise                           | acceptée                                    |
@@ -109,3 +109,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0101](0101-analyse-du-renouvellement.md)             | L'analyse du renouvellement de disponibilité nomme le renouvellement                    | acceptée                                    |
 | [0102](0102-domiciliation-bancaire.md)                | La domiciliation bancaire : la fiche saisie, le RIB saisi deux fois                     | acceptée, précisée par 0103                 |
 | [0103](0103-destinataire-de-la-domiciliation.md)      | Le destinataire de la domiciliation tient sur une ligne, sans « Sénégal »               | acceptée                                    |
+| [0104](0104-reprise-apres-disponibilite.md)           | L'attestation de reprise après disponibilité : les dates saisies, l'agent au dossier    | acceptée                                    |
