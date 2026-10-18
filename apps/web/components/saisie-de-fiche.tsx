@@ -14,9 +14,10 @@ import { champDuMontant } from '../lib/montant';
 
 /*
    Les pièces des fiches que la DCH renseigne pour un document sans agent
-   (ADR-0094, ADR-0098, ADR-0100) : le contrat de stage, les contrats de
-   travail, les décisions de disponibilité. Les mêmes champs s'y saisissent de
-   la même façon.
+   (ADR-0094, ADR-0098, ADR-0100, ADR-0102, ADR-0106) : le contrat de stage,
+   les contrats de travail, les décisions de disponibilité, la domiciliation
+   bancaire, la déclaration de mouvement du travailleur. Les mêmes champs s'y
+   saisissent de la même façon.
 */
 
 /** Le cadre des champs de la page, celui de ses listes déroulantes. */

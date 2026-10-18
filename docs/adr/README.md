@@ -103,7 +103,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0095](0095-coquilles-des-modeles.md)                 | Les coquilles des modèles de l'APIX se corrigent à la reprise                           | acceptée                                    |
 | [0096](0096-fiche-du-contrat-de-stage.md)             | La fiche du contrat de stage : tout obligatoire, capitales initiales, CNI groupée       | acceptée, précisée par 0097                 |
 | [0097](0097-capitales-du-lieu-et-du-poste.md)         | Lieu de naissance et adresse en capitales initiales, formation et poste à l'initiale    | acceptée, précisée par 0098                 |
-| [0098](0098-contrats-de-travail.md)                   | Les contrats de travail : la fiche saisie, le modèle de l'APIX en Times New Roman       | acceptée, précisée par 0099, 0100           |
+| [0098](0098-contrats-de-travail.md)                   | Les contrats de travail : la fiche saisie, le modèle de l'APIX en Times New Roman       | acceptée, précisée par 0099, 0100, 0106     |
 | [0099](0099-ninea-de-l-apix.md)                       | Le NINEA de l'APIX est 28409592G3, partout                                              | acceptée                                    |
 | [0100](0100-decisions-de-disponibilite.md)            | Les décisions de disponibilité : la fiche saisie, une page sur le modèle de l'APIX      | acceptée, précisée par 0101, 0102           |
 | [0101](0101-analyse-du-renouvellement.md)             | L'analyse du renouvellement de disponibilité nomme le renouvellement                    | acceptée                                    |
@@ -111,3 +111,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0103](0103-destinataire-de-la-domiciliation.md)      | Le destinataire de la domiciliation tient sur une ligne, sans « Sénégal »               | acceptée                                    |
 | [0104](0104-reprise-apres-disponibilite.md)           | L'attestation de reprise après disponibilité : les dates saisies, l'agent au dossier    | acceptée, précisée par 0105                 |
 | [0105](0105-conge-de-maternite.md)                    | Le congé de maternité : la cessation de paiement et la reprise de service               | acceptée                                    |
+| [0106](0106-declaration-de-mouvement.md)              | La déclaration de mouvement du travailleur : la fiche, le Code du travail de 2026       | acceptée                                    |

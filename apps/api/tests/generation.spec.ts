@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SessionUser } from '@teranga/contracts';
-import { CAPACITES_DELEGABLES } from '@teranga/contracts';
+import { CAPACITES_DELEGABLES, estGenere, requestableDocSchema } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
@@ -124,14 +124,8 @@ describe('qui génère', () => {
 });
 
 describe('quoi', () => {
-  it('un document de la liste dont le modèle reste à configurer est refusé, en le disant', async () => {
-    const err = await service.pdf(dch, 'declaration_mouvement', employes.actif).catch((e) => e);
-    expect(err).toBeInstanceOf(ProblemException);
-    expect((err as ProblemException).problem).toMatchObject({
-      status: 422,
-      code: 'documents.modele_a_configurer',
-      title: 'Déclaration de mouvement du travailleur : modèle à configurer',
-    });
+  it('chaque document de la liste a son modèle : aucun ne reste à configurer', () => {
+    expect(requestableDocSchema.options.filter((doc) => !estGenere(doc))).toEqual([]);
   });
 
   it('un document hors de la liste, ou retiré, est inconnu', async () => {

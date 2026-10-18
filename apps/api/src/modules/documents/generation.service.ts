@@ -24,6 +24,7 @@ import { certificatDeTravail } from './certificat-travail';
 import { attestationDeCessation, attestationDeRepriseDeService } from './conge-de-maternite';
 import { contratDeStage, type ModeleSansAgent } from './contrat-stage';
 import { contratDeTravail } from './contrat-travail';
+import { declarationDeMouvement } from './declaration-mouvement';
 import { decisionDeDisponibilite } from './decision-disponibilite';
 import { domiciliationBancaire } from './domiciliation';
 import { AttestationService } from './attestation.service';
@@ -59,6 +60,7 @@ export class GenerationService {
       'decision_renouvellement_disponibilite',
     ),
     domiciliation_bancaire: domiciliationBancaire,
+    declaration_mouvement: declarationDeMouvement,
   };
 
   constructor(

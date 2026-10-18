@@ -41,12 +41,17 @@ export interface Modele {
   pdf(tx: Tx, employeeId: string, saisies: SaisiesDuDocument): Promise<DocumentPdf>;
 }
 
-/** Un passage d'un paragraphe : du texte, en gras ou non, souligné ou non, en italique ou non. */
+/**
+ * Un passage d'un paragraphe : du texte, en gras ou non, souligné ou non, en
+ * italique ou non ; rayé ou encadré, comme une mention d'un formulaire.
+ */
 export interface Passage {
   texte: string;
   gras?: boolean;
   souligne?: boolean;
   italique?: boolean;
+  raye?: boolean;
+  encadre?: boolean;
 }
 
 const ENCRE = '#111111';
@@ -58,6 +63,8 @@ const HAUT = 48;
 const BAS_DU_PIED = 30;
 /** Ce que le pied de page garde pour lui en bas de chaque page : le texte s'arrête au-dessus. */
 const RESERVE_DU_PIED = 110;
+/** La marge du bas d'une feuille sans pied de page. */
+const BAS_SANS_PIED = 36;
 /** L'espace insécable : la justification ne coupe ni n'étire ce qu'elle joint. */
 const INSECABLE = '\u00a0';
 
@@ -68,22 +75,34 @@ const INSECABLE = '\u00a0';
  * @param famille La police de la feuille : Arial, celle des documents de la DCH (ADR-0090).
  * @param logo Le logo du pied de page ; par défaut, celui que l'exploitant a déposé.
  * @param marge Les marges de gauche et de droite, celles du modèle ; l'en-tête et le pied s'y calent.
+ * @param haut La marge du haut.
+ * @param pied Le pied de page de l'APIX, sur chaque page ; un formulaire de l'administration
+ *   s'en passe.
  */
 export function nouvelleFeuille({
   titre,
   famille = 'arial',
   logo = cheminLogo(),
   marge = MARGE_PAR_DEFAUT,
+  haut = HAUT,
+  pied = true,
 }: {
   titre: string;
   famille?: Famille;
   logo?: string | null;
   marge?: number;
+  haut?: number;
+  pied?: boolean;
 }) {
   const MARGE = marge;
   const doc = new PDFDocument({
     size: 'A4',
-    margins: { top: HAUT, bottom: RESERVE_DU_PIED, left: MARGE, right: MARGE },
+    margins: {
+      top: haut,
+      bottom: pied ? RESERVE_DU_PIED : BAS_SANS_PIED,
+      left: MARGE,
+      right: MARGE,
+    },
     bufferPages: true,
     info: { Title: titre, Author: ENTETE.raisonSociale },
   });
@@ -123,7 +142,7 @@ export function nouvelleFeuille({
      * plus longue finit sur la marge.
      */
     entete({ reference, lieuEtDate }: { reference: string; lieuEtDate: string }) {
-      const y = HAUT;
+      const y = haut;
       const bloc = dessinerBlocRepublique(doc, MARGE, y);
       const TAILLE = 10.5;
       const BLANC = 84;
@@ -153,8 +172,8 @@ export function nouvelleFeuille({
 
     /** L'en-tête d'un contrat : le bloc de la République seul, sans numéro ni date. */
     blocRepublique() {
-      const bloc = dessinerBlocRepublique(doc, MARGE, HAUT);
-      doc.y = HAUT + bloc.hauteur;
+      const bloc = dessinerBlocRepublique(doc, MARGE, haut);
+      doc.y = haut + bloc.hauteur;
     },
 
     /** Le titre d'un contrat : centré, en gras, souligné. */
@@ -211,9 +230,9 @@ export function nouvelleFeuille({
       place(espace + 40);
       const y = doc.y;
       doc.font(coupe('bold')).fontSize(taille).fillColor(ENCRE);
-      [gauche, droite].forEach(([haut, basDeColonne], i) => {
+      [gauche, droite].forEach(([hautDeColonne, basDeColonne], i) => {
         const x = MARGE + i * colonne;
-        doc.text(haut, x, y, { width: colonne, align: 'center', lineBreak: false });
+        doc.text(hautDeColonne, x, y, { width: colonne, align: 'center', lineBreak: false });
         doc.text(basDeColonne, x, y + espace, {
           width: colonne,
           align: 'center',
@@ -274,9 +293,9 @@ export function nouvelleFeuille({
         .lineWidth(0.6)
         .fillAndStroke('#e0e0e0', ENCRE);
       doc.font(coupe('bold')).fontSize(17).fillColor(ENCRE);
-      const haut = y + (HAUTEUR - lignes.length * h) / 2;
+      const premiere = y + (HAUTEUR - lignes.length * h) / 2;
       lignes.forEach((ligne, i) =>
-        doc.text(ligne, x, haut + i * h, { width: largeur, align: 'center', lineBreak: false }),
+        doc.text(ligne, x, premiere + i * h, { width: largeur, align: 'center', lineBreak: false }),
       );
       doc.y = y + HAUTEUR;
     },
@@ -332,12 +351,16 @@ export function nouvelleFeuille({
           .font(coupe(coupeDe(gras, italique)))
           .fontSize(taille)
           .widthOfString(texte);
+      // Un passage encadré prend, de chaque côté, l'air de son cadre.
+      const AIR_DU_CADRE = taille * 0.22;
 
       type Morceau = {
         texte: string;
         gras: boolean;
         souligne: boolean;
         italique: boolean;
+        raye: boolean;
+        encadre: boolean;
         largeur: number;
       };
       const mots: { morceaux: Morceau[]; largeur: number }[] = [];
@@ -351,6 +374,8 @@ export function nouvelleFeuille({
         const gras = Boolean(p.gras);
         const souligne = Boolean(p.souligne);
         const italique = Boolean(p.italique);
+        const raye = Boolean(p.raye);
+        const encadre = Boolean(p.encadre);
         for (const bout of p.texte.split(/( )/)) {
           if (bout === ' ') clore();
           else if (bout) {
@@ -359,7 +384,9 @@ export function nouvelleFeuille({
               gras,
               souligne,
               italique,
-              largeur: mesurer(bout, gras, italique),
+              raye,
+              encadre,
+              largeur: mesurer(bout, gras, italique) + (encadre ? 2 * AIR_DU_CADRE : 0),
             });
           }
         }
@@ -372,7 +399,7 @@ export function nouvelleFeuille({
       const partie = (m: Morceau, texte: string): Morceau => ({
         ...m,
         texte,
-        largeur: mesurer(texte, m.gras, m.italique),
+        largeur: mesurer(texte, m.gras, m.italique) + (m.encadre ? 2 * AIR_DU_CADRE : 0),
       });
       /**
        * Le mot insécable coupé à la dernière de ses espaces insécables qui
@@ -514,7 +541,7 @@ export function nouvelleFeuille({
               .font(coupe(coupeDe(m.gras, m.italique)))
               .fontSize(taille)
               .fillColor(ENCRE)
-              .text(m.texte, x, y, { lineBreak: false });
+              .text(m.texte, x + (m.encadre ? AIR_DU_CADRE : 0), y, { lineBreak: false });
             if (m.souligne) {
               // Le trait sous la ligne de base, à l'épaisseur du corps.
               const sous = y + taille * 1.02;
@@ -522,6 +549,24 @@ export function nouvelleFeuille({
                 .moveTo(x, sous)
                 .lineTo(x + m.largeur, sous)
                 .lineWidth(taille * 0.06)
+                .strokeColor(ENCRE)
+                .stroke();
+            }
+            if (m.raye) {
+              // Le trait à mi-hauteur des minuscules, qui déborde un peu.
+              const milieu = y + taille * 0.62;
+              doc
+                .moveTo(x - 1, milieu)
+                .lineTo(x + m.largeur + 1, milieu)
+                .lineWidth(taille * 0.07)
+                .strokeColor(ENCRE)
+                .stroke();
+            }
+            if (m.encadre) {
+              // Le cadre serre la mention, de la ligne des capitales au bas des jambages.
+              doc
+                .rect(x, y - taille * 0.08, m.largeur, taille * 1.28)
+                .lineWidth(taille * 0.07)
                 .strokeColor(ENCRE)
                 .stroke();
             }
@@ -596,8 +641,8 @@ export function nouvelleFeuille({
         etiquette?: readonly Passage[];
       } = {},
     ) {
-      const haut = doc.page.height - BAS_DU_PIED - finA - lignes.length * pas;
-      if (doc.y > haut - pas) doc.addPage();
+      const sommet = doc.page.height - BAS_DU_PIED - finA - lignes.length * pas;
+      if (doc.y > sommet - pas) doc.addPage();
       const ecrire = (passages: readonly Passage[], depuis: number, y: number) => {
         let x = depuis;
         for (const p of passages) {
@@ -623,7 +668,7 @@ export function nouvelleFeuille({
       const marge = doc.page.margins.bottom;
       doc.page.margins.bottom = 0;
       lignes.forEach((ligne, i) => {
-        const y = haut + i * pas;
+        const y = sommet + i * pas;
         if (i === 0 && etiquette) ecrire(etiquette, MARGE, y);
         ecrire(ligne, MARGE + retrait, y);
       });
@@ -632,11 +677,11 @@ export function nouvelleFeuille({
 
     /**
      * Le pied de page de l'APIX sur chaque page, numérotée quand il y en a
-     * plusieurs, puis le PDF.
+     * plusieurs, s'il y a un pied ; puis le PDF.
      */
     terminer(): Promise<Buffer> {
       const pages = doc.bufferedPageRange();
-      for (let i = 0; i < pages.count; i++) {
+      for (let i = 0; pied && i < pages.count; i++) {
         doc.switchToPage(pages.start + i);
         // Écrire dans la marge du bas sans ouvrir de page : la marge est
         // levée le temps du pied.

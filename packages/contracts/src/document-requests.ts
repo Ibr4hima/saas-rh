@@ -94,6 +94,7 @@ export const GENERATED_DOCS = [
   'decision_disponibilite',
   'decision_renouvellement_disponibilite',
   'domiciliation_bancaire',
+  'declaration_mouvement',
   'attestation_stage',
   'certificat_travail',
 ] as const satisfies readonly DocumentDeLaListe[];
@@ -172,7 +173,7 @@ export function nomDuDocumentGenere(doc: DocumentGenere, matricule: string): str
 /**
  * Ceux qui se génèrent sans agent : la DCH renseigne la personne, qui n'est
  * pas encore dans l'application ou que le document nomme seulement (ADR-0094,
- * ADR-0098, ADR-0100, ADR-0102).
+ * ADR-0098, ADR-0100, ADR-0102, ADR-0106).
  */
 export const DOCS_SANS_AGENT = [
   'contrat_cdd',
@@ -181,6 +182,7 @@ export const DOCS_SANS_AGENT = [
   'decision_disponibilite',
   'decision_renouvellement_disponibilite',
   'domiciliation_bancaire',
+  'declaration_mouvement',
 ] as const satisfies readonly DocumentGenere[];
 export type DocumentSansAgent = (typeof DOCS_SANS_AGENT)[number];
 
@@ -518,6 +520,234 @@ export function ribGroupe(rib: string): string {
     .filter(Boolean)
     .join(' ');
 }
+
+/*
+   La déclaration de mouvement du travailleur (ADR-0106) : l'embauche, le
+   départ et les changements dans la situation du travailleur se déclarent à
+   l'inspection du travail et de la sécurité sociale du ressort (article 363
+   du Code du travail), sur le formulaire de l'arrêté n° 7301 du 17 mai 1963.
+*/
+
+/** Ce qu'une déclaration de mouvement déclare, dans l'ordre du formulaire. */
+export const MOUVEMENTS_DU_TRAVAILLEUR = {
+  embauchage: 'Embauchage',
+  licenciement: 'Licenciement',
+  expiration_du_contrat: 'Expiration normale du contrat',
+  demission: 'Démission',
+  mutation: 'Mutation',
+  changement_de_categorie: 'Changement de catégorie professionnelle',
+  modification_du_contrat: 'Modification du contrat de travail',
+  changement_de_situation_de_famille: 'Changement de situation de famille',
+  changement_de_residence: 'Changement de résidence habituelle',
+  changement_d_emploi: 'Changement d’emploi',
+  deces: 'Décès',
+} as const;
+export type MouvementDuTravailleur = keyof typeof MOUVEMENTS_DU_TRAVAILLEUR;
+const CODES_DES_MOUVEMENTS = Object.keys(MOUVEMENTS_DU_TRAVAILLEUR) as [
+  MouvementDuTravailleur,
+  ...MouvementDuTravailleur[],
+];
+
+/** Les départs de l'établissement : chacun se déclare seul, avec la date du départ. */
+export const DEPARTS_DU_TRAVAILLEUR = [
+  'licenciement',
+  'expiration_du_contrat',
+  'demission',
+  'deces',
+] as const satisfies readonly MouvementDuTravailleur[];
+
+/** Les changements dans la situation du travailleur : plusieurs se déclarent ensemble. */
+export const CHANGEMENTS_DU_TRAVAILLEUR = [
+  'mutation',
+  'changement_de_categorie',
+  'changement_d_emploi',
+  'modification_du_contrat',
+  'changement_de_situation_de_famille',
+  'changement_de_residence',
+] as const satisfies readonly MouvementDuTravailleur[];
+
+export type NatureDuMouvement = 'embauche' | 'depart' | 'changement';
+
+/**
+ * Ce que déclarent les mouvements cochés : une embauche, un départ ou des
+ * changements ; null pour un mélange, qui ne se déclare pas d'un coup.
+ */
+export function natureDuMouvement(
+  mouvements: readonly MouvementDuTravailleur[],
+): NatureDuMouvement | null {
+  const parmi = (liste: readonly string[]) => mouvements.every((m) => liste.includes(m));
+  if (mouvements.length === 1 && mouvements[0] === 'embauchage') return 'embauche';
+  if (mouvements.length === 1 && parmi(DEPARTS_DU_TRAVAILLEUR)) return 'depart';
+  if (mouvements.length > 0 && parmi(CHANGEMENTS_DU_TRAVAILLEUR)) return 'changement';
+  return null;
+}
+
+export const SITUATIONS_DE_FAMILLE = ['celibataire', 'marie', 'divorce', 'veuf'] as const;
+export type SituationDeFamille = (typeof SITUATIONS_DE_FAMILLE)[number];
+
+/** Les horaires de travail hebdomadaires du formulaire, en heures. */
+export const HORAIRES_HEBDOMADAIRES = [40, 42, 44, 48] as const;
+
+/** Un homme marié déclare ses épouses, quatre au plus ; une femme mariée, son époux. */
+export const EPOUSES_MAX = 4;
+export const ENFANTS_MAX = 20;
+/** Les dispositions particulières 2 à 5 du formulaire : la première fixe le salaire. */
+export const DISPOSITIONS_MAX = 4;
+export const DISPOSITION_MAX = 300;
+
+/** Le numéro au fichier central de la main-d'œuvre : dix chiffres, une case chacun. */
+export const CHIFFRES_DE_L_IMMATRICULATION = 10;
+/** Les catégories d'enregistrement du travailleur au fichier central, sous sa grille. */
+export const CATEGORIES_D_ENREGISTREMENT = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
+
+/** Le numéro et la date d'une pièce : une déclaration, un visa, un enregistrement. */
+const numeroEtDate = z
+  .object({ numero: z.string().trim().min(1).max(30), le: z.iso.date() })
+  .strict();
+
+/** Un pays, par son code ISO 3166-1. */
+const pays = z.string().refine((code) => code in NATIONALITY_LABELS, 'Pays inconnu');
+
+/** Une valeur facultative : sans elle, le formulaire laisse des pointillés. */
+const facultatif = (max: number) => z.string().trim().min(1).max(max).optional();
+
+/**
+ * Ce que la DCH renseigne pour une déclaration de mouvement (ADR-0106) : le
+ * mouvement, la personne, son emploi, son statut militaire et les
+ * dispositions particulières de son engagement. Ce qui ne s'applique qu'à
+ * certains mouvements ou à certaines personnes se renseigne pour eux seuls ;
+ * ce qui peut ne pas être connu, les numéros à la CSS et à l'IPRES par
+ * exemple, est facultatif.
+ */
+export const ficheDeclarationMouvementSchema = z
+  .object({
+    mouvements: z.array(z.enum(CODES_DES_MOUVEMENTS)).min(1).max(CHANGEMENTS_DU_TRAVAILLEUR.length),
+    /** La date d'un départ ou d'un changement ; celle d'une embauche est l'entrée. */
+    effetLe: z.iso.date().optional(),
+    /** Le numéro au fichier central de la main-d'œuvre ; sans lui, l'immatriculation se demande. */
+    immatriculation: z
+      .string()
+      .regex(new RegExp(`^\\d{${CHIFFRES_DE_L_IMMATRICULATION}}$`), 'Dix chiffres attendus')
+      .optional(),
+    /** La catégorie d'enregistrement du travailleur, que le formulaire encadre. */
+    categorieDEnregistrement: z.enum(CATEGORIES_D_ENREGISTREMENT),
+    civilite: z.enum(['madame', 'monsieur']),
+    prenom: nomPropre(120),
+    nom: nomPropre(80),
+    naissanceLe: z.iso.date(),
+    naissanceA: lieu(120),
+    naissancePays: pays,
+    /** Le pays, par son code : le formulaire en écrit le gentilé. */
+    nationalite: pays,
+    perePrenom: nomPropre(80),
+    merePrenom: nomPropre(80),
+    mereNom: nomPropre(80),
+    adresse: lieu(200),
+    /** La carte d'identité : treize chiffres pour une CNI sénégalaise. */
+    cni: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z0-9]{5,20}$/, 'Des chiffres ou des lettres, de cinq à vingt'),
+    cniDelivreeA: lieu(120),
+    /** Qui a délivré la carte : « Directeur Général de la Sûreté Nationale ». */
+    cniDelivreePar: intitule(120),
+    css: facultatif(30),
+    ipres: facultatif(30),
+    situationDeFamille: z.enum(SITUATIONS_DE_FAMILLE),
+    /** Les épouses d'un homme marié, l'époux d'une femme mariée : prénom et nom. */
+    conjoints: z.array(nomPropre(120)).max(EPOUSES_MAX),
+    /** Les enfants à charge : prénom et nom. */
+    enfants: z.array(nomPropre(120)).max(ENFANTS_MAX),
+    entreeLe: z.iso.date(),
+    /** La déclaration faite à l'embauche, pour un départ ou un changement. */
+    declarationDEmbauche: numeroEtDate.optional(),
+    profession: intitule(120),
+    emploi: intitule(120),
+    /** La catégorie du barème salarial. */
+    categorie: z.string().trim().min(1).max(CATEGORIE_MAX),
+    /** Un contrat à durée déterminée, indéterminée, ou de chantier. */
+    contrat: z.enum(['cdd', 'cdi', 'chantier']),
+    cddDu: z.iso.date().optional(),
+    cddAu: z.iso.date().optional(),
+    /** L'ouvrage d'un contrat de chantier, tel qu'il suit « chantier de » : « l’autoroute Ila Touba ». */
+    chantier: facultatif(120),
+    contratLe: z.iso.date().optional(),
+    /** Le visa du contrat d'un travailleur étranger (article 105 du Code du travail). */
+    visa: numeroEtDate.optional(),
+    /** L'enregistrement du contrat à l'inspection du travail (article 99 du Code du travail). */
+    enregistrement: numeroEtDate.optional(),
+    /** Le nom et l'adresse du précédent employeur ; sans lui, « Néant ». */
+    precedentEmployeur: facultatif(200),
+    residence: lieu(120),
+    /** Pour un travailleur étranger. */
+    entreeAuSenegalLe: z.iso.date().optional(),
+    serviceMilitaire: z.boolean(),
+    /** L'année de la classe de recrutement. */
+    classeDeRecrutement: z
+      .string()
+      .regex(/^\d{4}$/, 'Une année sur quatre chiffres')
+      .optional(),
+    armee: z.enum(['terre', 'air', 'mer']).optional(),
+    grade: z.enum(['officier', 'sous_officier', 'troupe']).optional(),
+    horaire: z.literal(HORAIRES_HEBDOMADAIRES),
+    /** Le salaire mensuel de la catégorie, en francs CFA. */
+    salaire: z.number().int().min(1).max(SALAIRE_MAX),
+    /** Les dispositions particulières 2 à 5, dans l'ordre. */
+    dispositions: z.array(z.string().trim().min(1).max(DISPOSITION_MAX)).max(DISPOSITIONS_MAX),
+  })
+  .strict()
+  .superRefine((f, ctx) => {
+    const signaler = (path: string, message: string) =>
+      ctx.addIssue({ code: 'custom', path: [path], message });
+    /** Ce qui ne se renseigne que dans un cas : exigé dans ce cas, absent sinon. */
+    const seulementSi = (cas: boolean, champs: readonly (keyof typeof f)[], message: string) => {
+      for (const champ of champs) {
+        if (cas && f[champ] === undefined) signaler(champ, message);
+        if (!cas && f[champ] !== undefined) signaler(champ, 'Sans objet ici');
+      }
+    };
+
+    const nature = natureDuMouvement(f.mouvements);
+    if (new Set(f.mouvements).size !== f.mouvements.length) {
+      signaler('mouvements', 'Un mouvement en double');
+    } else if (nature === null) {
+      signaler('mouvements', 'Une embauche, un départ ou des changements');
+    }
+    seulementSi(nature !== 'embauche', ['effetLe'], 'Date à saisir');
+    if (f.effetLe !== undefined && f.effetLe < f.entreeLe) {
+      signaler('effetLe', 'Le mouvement suit l’entrée dans l’établissement');
+    }
+    // La présente déclaration est celle de l'embauche.
+    if (nature === 'embauche' && f.declarationDEmbauche !== undefined) {
+      signaler('declarationDEmbauche', 'Sans objet ici');
+    }
+    if (f.entreeLe <= f.naissanceLe) signaler('entreeLe', 'L’entrée suit la naissance');
+
+    if (f.nationalite === 'SN' && !/^\d{13}$/.test(f.cni))
+      signaler('cni', 'Treize chiffres attendus');
+    seulementSi(f.nationalite !== 'SN', ['entreeAuSenegalLe'], 'Date à saisir');
+    // Le contrat d'un travailleur sénégalais ne se vise pas.
+    if (f.nationalite === 'SN' && f.visa !== undefined) signaler('visa', 'Sans objet ici');
+
+    const conjoints = f.civilite === 'madame' ? 1 : EPOUSES_MAX;
+    if (f.situationDeFamille === 'marie' && f.conjoints.length === 0) {
+      signaler('conjoints', 'À renseigner');
+    } else if (f.situationDeFamille === 'marie' && f.conjoints.length > conjoints) {
+      signaler('conjoints', 'Un seul époux');
+    } else if (f.situationDeFamille !== 'marie' && f.conjoints.length > 0) {
+      signaler('conjoints', 'Sans objet ici');
+    }
+
+    seulementSi(f.contrat === 'cdd', ['cddDu', 'cddAu'], 'Date à saisir');
+    if (f.cddDu !== undefined && f.cddAu !== undefined && f.cddAu < f.cddDu) {
+      signaler('cddAu', 'La fin suit le début');
+    }
+    seulementSi(f.contrat === 'chantier', ['chantier'], 'À renseigner');
+
+    seulementSi(f.serviceMilitaire, ['classeDeRecrutement', 'armee', 'grade'], 'À renseigner');
+  });
+export type FicheDeclarationMouvement = z.infer<typeof ficheDeclarationMouvementSchema>;
 
 /** `delivered` : statut historique, conservé en lecture (voir en-tête). */
 export const documentRequestStatusSchema = z.enum([
