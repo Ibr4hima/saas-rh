@@ -1562,7 +1562,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                     <span
                       key={c.href}
                       aria-disabled
-                      className="shrink-0 cursor-not-allowed rounded-full border border-line-soft px-3 py-1.5 text-[12px] font-medium whitespace-nowrap text-ink-muted/45 select-none"
+                      className="shrink-0 cursor-not-allowed rounded-controle border border-line-soft px-3 py-1.5 text-[12px] font-medium whitespace-nowrap text-ink-muted/45 select-none"
                     >
                       {c.label}
                     </span>
@@ -1572,7 +1572,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                       href={c.href}
                       aria-current={c.href === sousPageActive ? 'page' : undefined}
                       className={cn(
-                        'shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors duration-150',
+                        'shrink-0 rounded-controle border px-3 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors duration-150',
                         c.href === sousPageActive
                           ? 'border-primary bg-primary-soft font-semibold text-primary'
                           : 'border-line text-ink-muted hover:bg-hover',

@@ -220,7 +220,7 @@ function ChoixStatut({
             // Le reprendre retire le choix : rien n'oblige à trancher tout de suite.
             onClick={() => onChange(choisi ? null : s)}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-full border py-[5px] pr-3 pl-2 text-[11.5px] font-semibold transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/35 max-sm:gap-1 max-sm:pr-2.5 max-sm:pl-1.5 max-sm:text-[11px]',
+              'inline-flex items-center gap-1.5 rounded-controle-sm border py-[5px] pr-3 pl-2 text-[11.5px] font-semibold transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/35 max-sm:gap-1 max-sm:pr-2.5 max-sm:pl-1.5 max-sm:text-[11px]',
               choisi
                 ? d.leger
                 : 'border-line bg-surface text-ink hover:border-ink-muted/50 hover:bg-hover',
@@ -640,7 +640,7 @@ export function BoutonAutoEvaluation({
       aria-pressed={actif}
       onClick={onClick}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-3 py-[6px] text-[11.5px] font-semibold transition-colors duration-150',
+        'inline-flex items-center gap-1.5 rounded-controle-sm border px-3 py-[6px] text-[11.5px] font-semibold transition-colors duration-150',
         actif
           ? 'border-primary bg-primary text-primary-ink'
           : ev.valideeLe || ev.envoyesLe

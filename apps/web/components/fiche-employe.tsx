@@ -1775,7 +1775,7 @@ function PortalCard({
                       setCopied(true);
                       setTimeout(() => setCopied(false), 2000);
                     }}
-                    className="flex shrink-0 items-center gap-1 rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-primary ring-1 ring-primary/20 ring-inset transition-colors hover:bg-primary hover:text-primary-ink focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                    className="flex shrink-0 items-center gap-1 rounded-[6px] bg-surface px-2.5 py-1 text-[11px] font-semibold text-primary ring-1 ring-primary/20 ring-inset transition-colors hover:bg-primary hover:text-primary-ink focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                   >
                     <Icon name={copied ? 'check' : 'content_copy'} size={14} />
                     {copied ? 'Copié' : 'Copier'}

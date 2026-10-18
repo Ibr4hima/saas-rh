@@ -331,7 +331,7 @@ export function Select({
         onClick={() => (ouvert ? setOuvert(false) : ouvrir())}
         onKeyDown={auClavier}
         className={cn(
-          'flex h-10 w-full items-center gap-2 rounded-full border border-line bg-surface px-4 text-left text-sm text-ink',
+          'flex h-10 w-full items-center gap-2 rounded-controle border border-line bg-surface px-3 text-left text-sm text-ink',
           'transition-colors duration-150 ease-out',
           'hover:border-primary/40 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary/40',
           'disabled:cursor-not-allowed disabled:opacity-50',
@@ -361,7 +361,7 @@ export function Select({
               id={listeId}
               role="listbox"
               aria-label={ariaLabel}
-              className="tg-menu fixed z-[70] overflow-y-auto overscroll-contain rounded-[16px] border border-line bg-surface p-1.5 shadow-lg"
+              className="tg-menu fixed z-[70] overflow-y-auto overscroll-contain rounded-[14px] border border-line bg-surface p-1.5 shadow-lg"
               style={{
                 left: position.left,
                 minWidth: position.width,
@@ -389,7 +389,7 @@ export function Select({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => choisir(i)}
                     className={cn(
-                      'flex cursor-pointer items-center gap-2 rounded-[11px] px-3 py-[7px] text-[13px] leading-snug',
+                      'flex cursor-pointer items-center gap-2 rounded-controle px-3 py-[7px] text-[13px] leading-snug',
                       c.desactive && 'cursor-not-allowed text-ink-muted/50',
                       !c.desactive && i === actif && 'bg-hover',
                       !c.desactive && choisi ? 'font-semibold text-primary' : 'text-ink',

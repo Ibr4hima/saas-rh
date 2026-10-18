@@ -334,7 +334,7 @@ export function FenetreDemandeAbsence({
               <label
                 htmlFor="justificatif"
                 className={cn(
-                  'flex h-10 cursor-pointer items-center gap-2 rounded-full border px-4 text-[13px] transition-colors duration-150',
+                  'flex h-10 cursor-pointer items-center gap-2 rounded-controle border px-3 text-[13px] transition-colors duration-150',
                   doc
                     ? 'border-success/40 text-ink-strong'
                     : 'border-line text-ink-muted hover:border-primary/40 hover:text-primary',
@@ -368,7 +368,7 @@ export function FenetreDemandeAbsence({
           <div
             role="radiogroup"
             aria-label="Durée de l’absence"
-            className="mb-4 flex gap-1 rounded-full border border-line-soft bg-bg p-1 sm:w-fit"
+            className="mb-4 flex gap-1 rounded-groupe border border-line-soft bg-bg p-1 sm:w-fit"
           >
             {[
               { heures: true, label: 'Quelques heures' },
@@ -381,7 +381,7 @@ export function FenetreDemandeAbsence({
                 aria-checked={aLHeure === o.heures}
                 onClick={() => setALHeure(o.heures)}
                 className={cn(
-                  'flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
+                  'flex-1 rounded-controle-sm px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
                   aLHeure === o.heures
                     ? 'bg-surface text-primary shadow-sm'
                     : 'text-ink-muted hover:text-ink',

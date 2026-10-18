@@ -157,7 +157,7 @@ export function FenetreControleDuTitre({
               <div
                 role="radiogroup"
                 aria-label="En faire la pièce de la fiche ?"
-                className="flex gap-1 rounded-full border border-line-soft bg-bg p-1 sm:w-fit"
+                className="flex gap-1 rounded-groupe border border-line-soft bg-bg p-1 sm:w-fit"
               >
                 {[
                   { oui: false, label: 'Non' },
@@ -170,7 +170,7 @@ export function FenetreControleDuTitre({
                     aria-checked={devientLaPiece === o.oui}
                     onClick={() => setDevientLaPiece(o.oui)}
                     className={cn(
-                      'flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
+                      'flex-1 rounded-controle-sm px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
                       devientLaPiece === o.oui
                         ? 'bg-surface text-primary shadow-sm'
                         : 'text-ink-muted hover:text-ink',

@@ -171,7 +171,7 @@ export function Pagination({
     <div ref={racine} className={cn('flex shrink-0 flex-col items-center gap-2.5', className)}>
       <nav
         aria-label="Pagination"
-        className="inline-flex items-center gap-1 rounded-full border border-card-line bg-surface p-1.5 shadow-sm"
+        className="inline-flex items-center gap-1 rounded-barre border border-card-line bg-surface p-1.5 shadow-sm"
       >
         <Fleche
           sens="precedent"
@@ -198,9 +198,9 @@ export function Pagination({
                   aria-current={c === page ? 'page' : undefined}
                   aria-label={`Page ${c}${c === page ? ' (page actuelle)' : ''}`}
                   className={cn(
-                    'grid size-8 place-items-center rounded-full text-[12.5px] font-bold tabular-nums transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+                    'grid size-8 place-items-center rounded-controle-sm text-[12.5px] font-bold tabular-nums transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
                     c === page
-                      ? 'bg-primary text-primary-ink shadow-[0_2px_8px_rgb(0_79_145/0.30)]'
+                      ? 'bg-primary text-primary-ink shadow-bouton'
                       : 'text-ink hover:bg-hover hover:text-primary',
                   )}
                 >
@@ -236,7 +236,7 @@ export function Pagination({
             }
           }}
           aria-label={`Aller à la page, sur ${pages}`}
-          className="h-8 w-14 rounded-full border border-line bg-surface text-center text-[12.5px] font-semibold text-ink-strong tabular-nums transition-colors focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none"
+          className="h-8 w-14 rounded-controle-sm border border-line bg-surface text-center text-[12.5px] font-semibold text-ink-strong tabular-nums transition-colors focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none"
         />
         <span>sur {pages}</span>
       </p>
@@ -275,7 +275,7 @@ function Fleche({
       disabled={disabled}
       aria-label={avant ? 'Page précédente' : 'Page suivante'}
       className={cn(
-        'flex h-8 items-center gap-1 rounded-full text-[12.5px] font-bold transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+        'flex h-8 items-center gap-1 rounded-controle-sm text-[12.5px] font-bold transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
         mot ? 'px-3' : 'w-8 justify-center',
         disabled
           ? 'cursor-not-allowed text-ink-muted/45'

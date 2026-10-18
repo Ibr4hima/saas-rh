@@ -331,7 +331,7 @@ export default function EmployeesPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 aria-label="Rechercher un employé"
-                className="h-8 w-56 rounded-full pl-8 text-[12.5px]"
+                className="h-8 w-56 pl-8 text-[12.5px]"
               />
             </div>
             {/* Le filtre des unités, à côté de la recherche. Les inactifs

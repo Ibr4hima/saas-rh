@@ -24,8 +24,10 @@ export interface Onglet {
  * Le contrôle lui-même, sans son emplacement.
  *
  * Il sert deux fois : dans le bandeau sur écran large, et dans la carte quand
- * le bandeau n'a plus la place. `sombre` dit lequel des deux fonds il habille
- * — sur le bleu de marque, les encres s'inversent.
+ * le bandeau n'a plus la place. `sombre` dit lequel des deux fonds il habille.
+ * Sur le bleu de marque, les encres s'inversent et les formes restent rondes,
+ * comme les pastilles de verre voisines ; dans la carte, il prend les coins
+ * des contrôles (ADR-0108).
  */
 export function Onglets({
   onglets,
@@ -48,8 +50,10 @@ export function Onglets({
       role="tablist"
       aria-label={label}
       className={cn(
-        'flex items-center gap-1 rounded-full border p-1',
-        sombre ? 'border-white/20 bg-white/10' : 'border-line-soft bg-bg',
+        'flex items-center gap-1 border p-1',
+        sombre
+          ? 'rounded-full border-white/20 bg-white/10'
+          : 'rounded-groupe border-line-soft bg-bg',
         className,
       )}
     >
@@ -63,11 +67,11 @@ export function Onglets({
             aria-selected={actif}
             onClick={() => onChange(o.cle)}
             className={cn(
-              'flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors duration-150',
+              'flex items-center gap-2 px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors duration-150',
               'focus-visible:outline-none',
               sombre
-                ? 'focus-visible:ring-2 focus-visible:ring-white/70'
-                : 'focus-visible:ring-2 focus-visible:ring-primary/40',
+                ? 'rounded-full focus-visible:ring-2 focus-visible:ring-white/70'
+                : 'rounded-controle-sm focus-visible:ring-2 focus-visible:ring-primary/40',
               actif
                 ? 'bg-surface text-primary shadow-sm'
                 : sombre
@@ -78,14 +82,14 @@ export function Onglets({
             {o.label}
             {o.compte !== undefined ? (
               <span
-                className={cn(
-                  'rounded-full px-1.5 py-px text-[10.5px] font-extrabold',
-                  actif
-                    ? 'bg-primary/[0.12] text-primary'
-                    : sombre
-                      ? 'bg-white/15 text-hero-ink'
-                      : 'bg-line-soft text-ink-muted',
-                )}
+                className={
+                  sombre
+                    ? cn(
+                        'rounded-full px-1.5 py-px text-[10.5px] font-extrabold',
+                        actif ? 'bg-primary/[0.12] text-primary' : 'bg-white/15 text-hero-ink',
+                      )
+                    : cn('text-[11px] font-semibold', actif ? 'text-primary' : 'text-ink-muted')
+                }
                 style={{ fontVariantNumeric: 'tabular-nums' }}
               >
                 {o.compte}

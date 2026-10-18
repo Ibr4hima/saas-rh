@@ -79,6 +79,13 @@
   --shadow-md: var(--tg-shadow-md);
   --shadow-lg: var(--tg-shadow-lg);
   --radius-xl: var(--tg-radius-xl);
+  --radius-controle: var(--tg-radius-controle);
+  --radius-controle-sm: var(--tg-radius-controle-sm);
+  --radius-groupe: var(--tg-radius-groupe);
+  --radius-barre: var(--tg-radius-barre);
+  --shadow-bouton: var(--tg-shadow-bouton);
+  --shadow-bouton-borde: var(--tg-shadow-bouton-borde);
+  --shadow-bouton-enfonce: var(--tg-shadow-bouton-enfonce);
   --container-page: var(--tg-page);
 }
 

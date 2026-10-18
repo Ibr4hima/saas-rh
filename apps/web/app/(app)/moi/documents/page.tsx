@@ -165,7 +165,7 @@ function FenetreDemandeDocument({
         </div>
       </ModalSection>
 
-      {/* Ce qui part, en toutes lettres : deux pastilles cochées se lisent
+      {/* Ce qui part, en toutes lettres : deux choix cochés se lisent
           d'un coup d'œil ; à quatre, relire la ligne est plus sûr que
           recompter les bordures bleues. */}
       {selected.length > 0 ? (
@@ -184,13 +184,13 @@ function FenetreDemandeDocument({
 }
 
 /**
- * Une pastille de choix.
+ * Un bouton de choix.
  *
- * L'ancienne collait un « ✓ » devant le libellé : la pastille s'allongeait au
- * clic et toute la ligne se réorganisait. La coche vit maintenant dans un
- * rond de taille fixe, présent coché comme décoché — rien ne bouge, et l'état
- * ne tient pas qu'à la couleur du bord. `aria-pressed` le dit aux lecteurs
- * d'écran, à qui la bordure bleue n'apprend rien.
+ * L'ancien collait un « ✓ » devant le libellé : le bouton s'allongeait au
+ * clic et toute la ligne se réorganisait. La coche vit maintenant dans une
+ * case de taille fixe, présente cochée comme décochée : rien ne bouge, et
+ * l'état ne tient pas qu'à la couleur du bord. `aria-pressed` le dit aux
+ * lecteurs d'écran, à qui la bordure bleue n'apprend rien.
  */
 function ChoixDocument({
   libelle,
@@ -212,7 +212,7 @@ function ChoixDocument({
       title={enCours ? 'Déjà demandé : la demande est en cours de traitement.' : undefined}
       onClick={onToggle}
       className={cn(
-        'inline-flex items-center gap-2 rounded-full border py-[7px] pr-3.5 pl-2.5 text-[12.5px] transition-colors duration-150',
+        'inline-flex items-center gap-2 rounded-controle border py-[7px] pr-3.5 pl-2.5 text-[12.5px] transition-colors duration-150',
         enCours
           ? 'cursor-default border-line-soft text-ink-muted'
           : choisi

@@ -469,7 +469,7 @@ export function FenetreEvaluation({
                 aria-checked={evaluation === e}
                 onClick={() => setEvaluation(e)}
                 className={cn(
-                  'flex items-center justify-center gap-1.5 rounded-[11px] border px-3 py-2.5 text-[12.5px] font-bold transition-colors',
+                  'flex items-center justify-center gap-1.5 rounded-controle border px-3 py-2.5 text-[12.5px] font-bold transition-colors',
                   evaluation === e
                     ? cn('border-transparent ring-1 ring-inset', TONS_EVALUATION[e])
                     : 'border-line-soft text-ink-muted hover:text-ink',
@@ -495,7 +495,7 @@ export function FenetreEvaluation({
   );
 }
 
-/** Un choix entre deux ou trois options, en pilule. */
+/** Un choix entre deux ou trois options, en segments. */
 function Choix({
   label,
   valeur,
@@ -513,7 +513,7 @@ function Choix({
       <div
         role="radiogroup"
         aria-label={label}
-        className="flex gap-1 rounded-full border border-line-soft bg-bg p-1 sm:w-fit"
+        className="flex gap-1 rounded-groupe border border-line-soft bg-bg p-1 sm:w-fit"
       >
         {options.map((o) => (
           <button
@@ -523,7 +523,7 @@ function Choix({
             aria-checked={valeur === o.id}
             onClick={() => onChange(o.id)}
             className={cn(
-              'flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
+              'flex-1 rounded-controle-sm px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
               valeur === o.id
                 ? 'bg-surface text-primary shadow-sm'
                 : 'text-ink-muted hover:text-ink',

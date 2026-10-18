@@ -49,14 +49,14 @@ export function WorkEmailInput({
   placeholder?: string;
 }) {
   return (
-    <div className="flex h-10 w-full items-center rounded-full border border-line bg-surface transition-colors duration-150 ease-out focus-within:border-primary focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-primary/40">
+    <div className="flex h-10 w-full items-center rounded-controle border border-line bg-surface transition-colors duration-150 ease-out focus-within:border-primary focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-primary/40">
       <input
         id={id}
         type="text"
         inputMode="email"
         autoComplete="off"
         spellCheck={false}
-        className="min-w-0 flex-1 bg-transparent px-4 text-sm text-ink placeholder:text-ink-muted/70 focus:outline-none"
+        className="min-w-0 flex-1 bg-transparent px-3 text-sm text-ink placeholder:text-ink-muted/70 focus:outline-none"
         placeholder={placeholder}
         value={value}
         // Coller « f.sall@apix.sn » ne doit pas produire « f.sall@apix.sn@apix.sn » :
@@ -65,7 +65,7 @@ export function WorkEmailInput({
       />
       <span
         aria-hidden
-        className="shrink-0 border-l border-line-soft px-4 text-sm text-ink-muted select-none"
+        className="shrink-0 border-l border-line-soft px-3 text-sm text-ink-muted select-none"
       >
         @{WORK_EMAIL_DOMAIN}
       </span>

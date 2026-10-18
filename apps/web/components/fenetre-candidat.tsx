@@ -24,7 +24,7 @@ function Joindre({
   return (
     <a
       href={href}
-      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2 py-[3px] text-[11.5px] font-semibold text-ink transition-colors hover:bg-primary/[0.08] hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+      className="inline-flex max-w-full items-center gap-1.5 rounded-[6px] bg-bg px-2 py-[3px] text-[11.5px] font-semibold text-ink transition-colors hover:bg-primary/[0.08] hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
     >
       <Icon name={icon} size={13} className="shrink-0 text-ink-muted" />
       <span className="truncate">{children}</span>
@@ -116,7 +116,7 @@ export function FenetreCandidat({
       maxWidth="max-w-4xl"
       enTete={
         vues.length > 1 ? (
-          <div className="flex items-center gap-0.5 rounded-full bg-bg p-0.5">
+          <div className="flex items-center gap-0.5 rounded-controle bg-bg p-0.5">
             {vues.map((v, i) => (
               <button
                 key={v.cle}
@@ -124,7 +124,7 @@ export function FenetreCandidat({
                 onClick={() => setOnglet(i)}
                 aria-pressed={i === index}
                 className={cn(
-                  'rounded-full px-3 py-1 text-[11.5px] font-bold whitespace-nowrap transition-colors',
+                  'rounded-[6px] px-3 py-1 text-[11.5px] font-bold whitespace-nowrap transition-colors',
                   i === index
                     ? 'bg-surface text-primary shadow-sm'
                     : 'text-ink-muted hover:text-ink',

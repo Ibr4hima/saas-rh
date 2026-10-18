@@ -171,7 +171,7 @@ export function SelectMultiple({
         onClick={() => (ouvert ? setOuvert(false) : ouvrir())}
         onKeyDown={auClavier}
         className={cn(
-          'flex h-10 w-full items-center gap-2 rounded-full border border-line bg-surface px-4 text-left text-sm',
+          'flex h-10 w-full items-center gap-2 rounded-controle border border-line bg-surface px-3 text-left text-sm',
           'transition-colors duration-150 ease-out',
           'hover:border-primary/40 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary/40',
           'disabled:cursor-not-allowed disabled:opacity-50',
@@ -192,7 +192,7 @@ export function SelectMultiple({
               role="listbox"
               aria-multiselectable
               aria-label={ariaLabel ?? tout}
-              className="tg-menu fixed z-[70] overflow-y-auto overscroll-contain rounded-[16px] border border-line bg-surface p-1.5 shadow-lg"
+              className="tg-menu fixed z-[70] overflow-y-auto overscroll-contain rounded-[14px] border border-line bg-surface p-1.5 shadow-lg"
               style={{
                 left: position.left,
                 minWidth: position.width,
@@ -215,7 +215,7 @@ export function SelectMultiple({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => basculer(l.rang)}
                     className={cn(
-                      'flex cursor-pointer items-center gap-2.5 rounded-[11px] px-3 py-[7px] text-[13px] leading-snug',
+                      'flex cursor-pointer items-center gap-2.5 rounded-controle px-3 py-[7px] text-[13px] leading-snug',
                       l.rang === actif && 'bg-hover',
                       l.coche ? 'font-semibold text-ink-strong' : 'text-ink',
                     )}

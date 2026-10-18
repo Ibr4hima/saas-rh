@@ -181,9 +181,9 @@ export default function LeconPage() {
                     type="button"
                     onClick={() => setSupportOuvert(true)}
                     title={`${ici.support.filename} · PDF, ${Math.max(1, Math.round(ici.support.size / 1024))} Ko`}
-                    className="group inline-flex h-10 items-center gap-2.5 rounded-full border border-line-soft bg-surface pr-4 pl-1.5 text-[12.5px] font-semibold text-ink shadow-xs transition-all duration-150 hover:border-primary/35 hover:bg-primary-soft/40 hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+                    className="group inline-flex h-10 items-center gap-2.5 rounded-controle border border-line-soft bg-surface pr-4 pl-1.5 text-[12.5px] font-semibold text-ink shadow-xs transition-all duration-150 hover:border-primary/35 hover:bg-primary-soft/40 hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
                   >
-                    <span className="grid size-7 place-items-center rounded-full bg-primary-soft text-primary transition-colors group-hover:bg-primary group-hover:text-primary-ink">
+                    <span className="grid size-7 place-items-center rounded-[6px] bg-primary-soft text-primary transition-colors group-hover:bg-primary group-hover:text-primary-ink">
                       <Icon name="description" size={16} />
                     </span>
                     Support de cours

@@ -511,7 +511,7 @@ function ListeDirections({
               aria-expanded={ouverte}
               aria-controls="directions-suite"
               onClick={() => setOuverte((o) => !o)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-surface pr-2.5 pl-4 text-[12px] font-semibold text-ink shadow-xs transition-colors duration-150 hover:border-primary/40 hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+              className="inline-flex h-8 items-center gap-1.5 rounded-controle border border-line bg-surface pr-2.5 pl-3.5 text-[12px] font-semibold text-ink shadow-bouton-borde transition-colors duration-150 hover:border-primary/40 hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
             >
               {ouverte ? 'Réduire' : 'Afficher la suite'}
               <Icon

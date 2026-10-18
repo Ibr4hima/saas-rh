@@ -2,12 +2,11 @@ import * as React from 'react';
 import { cn } from './cn';
 
 /**
- * Champ de saisie, en pilule comme les boutons et les listes.
+ * Champ de saisie, aux coins des boutons et des listes, comme dans e-Voting.
  *
- * Les champs ont longtemps porté un coin doux pour se distinguer des boutons ;
- * la distinction se fait en réalité par le remplissage — un bouton est plein
- * ou bordé de la marque, un champ est blanc bordé de gris — et deux rayons
- * différents sur une même ligne se lisaient comme un défaut d'alignement.
+ * La distinction avec un bouton se fait par le remplissage : un bouton est
+ * plein ou bordé de la marque, un champ est blanc bordé de gris. Deux rayons
+ * différents sur une même ligne se liraient comme un défaut d'alignement.
  */
 export function Input({
   className,
@@ -22,7 +21,7 @@ export function Input({
       // demandent les leurs explicitement.
       autoComplete={autoComplete}
       className={cn(
-        'h-10 w-full rounded-full border border-line bg-surface px-4 text-sm text-ink',
+        'h-10 w-full rounded-controle border border-line bg-surface px-3 text-sm text-ink',
         'placeholder:text-ink-muted/70',
         'transition-colors duration-150 ease-out',
         'focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary/40',

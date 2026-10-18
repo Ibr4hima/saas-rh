@@ -55,7 +55,7 @@ export function JoindreJustificatif({
         htmlFor={id}
         aria-disabled={joindre.isPending}
         className={cn(
-          'inline-flex cursor-pointer items-center rounded-full border px-2.5 py-[3px] text-[11px] font-semibold transition-colors focus-within:ring-2 focus-within:ring-primary',
+          'inline-flex cursor-pointer items-center rounded-[6px] border px-2.5 py-[3px] text-[11px] font-semibold transition-colors focus-within:ring-2 focus-within:ring-primary',
           r.justificatifAttendu
             ? 'border-badge-orange-line text-badge-orange-ink hover:bg-accent-soft'
             : 'border-line text-primary hover:border-primary/40 hover:bg-primary/[0.07]',

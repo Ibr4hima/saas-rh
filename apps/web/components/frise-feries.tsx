@@ -184,7 +184,7 @@ function EnTete({
         className={cn(
           // Le chevron avance d'un cheveu au survol : le bouton dit alors dans
           // quel sens il emmène, sans qu'on ait à lire son intitulé.
-          'group inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface py-[6px] text-[12.5px] font-bold text-ink shadow-xs transition-colors duration-150 hover:border-primary/40 hover:bg-primary/[0.04] hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/40',
+          'group inline-flex shrink-0 items-center gap-1.5 rounded-controle border border-line bg-surface py-[6px] text-[12.5px] font-bold text-ink shadow-bouton-borde transition-colors duration-150 hover:border-primary/40 hover:bg-primary/[0.04] hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/40',
           enAvant ? 'pr-2.5 pl-4' : 'pr-4 pl-2.5',
         )}
         style={TABULAIRE}

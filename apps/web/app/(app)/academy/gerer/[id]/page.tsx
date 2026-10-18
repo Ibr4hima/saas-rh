@@ -486,7 +486,7 @@ function AjoutRapide({
         placeholder={placeholder}
         aria-label={placeholder}
         onChange={(e) => setTitre(e.target.value)}
-        className="h-9 w-full max-w-md shrink-0 rounded-full sm:shrink sm:flex-1"
+        className="h-9 w-full max-w-md shrink-0 sm:shrink sm:flex-1"
       />
       <Button type="submit" variant="secondary" disabled={!titre.trim()} className="self-start">
         <Icon name="add" size={16} />
@@ -916,7 +916,7 @@ function FenetreRemplacement({
         <div
           role="radiogroup"
           aria-label={question}
-          className="flex flex-col gap-1 rounded-[18px] border border-line-soft bg-bg p-1 sm:w-fit sm:flex-row sm:rounded-full"
+          className="flex flex-col gap-1 rounded-groupe border border-line-soft bg-bg p-1 sm:w-fit sm:flex-row"
         >
           {[
             { oui: true, label: 'Oui, le contenu a changé' },
@@ -929,7 +929,7 @@ function FenetreRemplacement({
               aria-checked={aRevoir === o.oui}
               onClick={() => setARevoir(o.oui)}
               className={cn(
-                'rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors',
+                'rounded-controle-sm px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors',
                 aRevoir === o.oui
                   ? 'bg-surface text-primary shadow-sm'
                   : 'text-ink-muted hover:text-ink',

@@ -158,7 +158,7 @@ export function FormationModal({
           <div
             role="radiogroup"
             aria-label="Formateur"
-            className="flex gap-1 rounded-full border border-line-soft bg-bg p-1 sm:w-fit"
+            className="flex gap-1 rounded-groupe border border-line-soft bg-bg p-1 sm:w-fit"
           >
             {SORTES.map((o) => (
               <button
@@ -168,7 +168,7 @@ export function FormationModal({
                 aria-checked={sorte === o.id}
                 onClick={() => setSorte(o.id)}
                 className={cn(
-                  'flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
+                  'flex-1 rounded-controle-sm px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
                   sorte === o.id
                     ? 'bg-surface text-primary shadow-sm'
                     : 'text-ink-muted hover:text-ink',

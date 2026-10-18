@@ -152,7 +152,7 @@ export function BarreSelection<T>({
       <button
         type="button"
         onClick={sel.vider}
-        className="rounded-full px-2 py-1 text-[11.5px] font-semibold text-ink-muted transition-colors hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+        className="rounded-[6px] px-2 py-1 text-[11.5px] font-semibold text-ink-muted transition-colors hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
       >
         Désélectionner
       </button>

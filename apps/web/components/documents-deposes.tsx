@@ -227,7 +227,7 @@ export function DocumentsDeposes({
         <label
           aria-disabled={deposer.isPending}
           className={cn(
-            'inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors focus-within:ring-2 focus-within:ring-primary/40',
+            'inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-controle-sm border px-3 py-1.5 text-[12px] font-semibold transition-colors focus-within:ring-2 focus-within:ring-primary/40',
             enAttente
               ? 'border-badge-orange-line text-badge-orange-ink hover:bg-accent-soft'
               : 'border-line text-primary hover:border-primary/40 hover:bg-primary/[0.07]',

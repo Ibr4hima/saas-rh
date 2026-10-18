@@ -821,7 +821,7 @@ function TraiterModal({
           <div
             role="radiogroup"
             aria-label="Remise"
-            className="flex gap-1 rounded-full border border-line-soft bg-bg p-1 sm:w-fit"
+            className="flex gap-1 rounded-groupe border border-line-soft bg-bg p-1 sm:w-fit"
           >
             {(
               [
@@ -839,7 +839,7 @@ function TraiterModal({
                   setRemise(valeur);
                 }}
                 className={cn(
-                  'flex-1 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
+                  'flex-1 rounded-controle-sm px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
                   remise === valeur
                     ? 'bg-surface text-primary shadow-sm'
                     : 'text-ink-muted hover:text-ink',

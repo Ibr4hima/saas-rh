@@ -383,7 +383,7 @@ function FichierOfficiel({
                 : 'Aucun fichier déposé. Le texte lu reste consultable sans lui.'}
           </p>
         </div>
-        <label className="shrink-0 cursor-pointer rounded-full border border-card-line px-3 py-1.5 text-[12px] font-semibold text-ink transition-colors hover:border-primary/40 hover:text-primary">
+        <label className="shrink-0 cursor-pointer rounded-controle-sm border border-card-line px-3 py-1.5 text-[12px] font-semibold text-ink transition-colors hover:border-primary/40 hover:text-primary">
           {actuel || choisi ? 'Remplacer' : 'Choisir un PDF'}
           <input
             type="file"

@@ -460,7 +460,7 @@ function BoutonJustificatif({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-medium text-primary transition-colors hover:bg-primary-soft"
+      className="inline-flex items-center gap-1 rounded-[6px] px-2 py-1 text-[11.5px] font-medium text-primary transition-colors hover:bg-primary-soft"
     >
       <Icon name="description" size={14} />
       Justificatif

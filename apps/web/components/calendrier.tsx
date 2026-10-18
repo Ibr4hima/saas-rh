@@ -118,7 +118,7 @@ function CommandesMois({ cal }: { cal: Cal }) {
           <button
             type="button"
             onClick={cal.revenirAujourdhui}
-            className="mr-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold text-primary transition-colors hover:bg-primary/[0.07]"
+            className="mr-1.5 rounded-[6px] px-2.5 py-1 text-[11.5px] font-semibold text-primary transition-colors hover:bg-primary/[0.07]"
           >
             Aujourd&apos;hui
           </button>

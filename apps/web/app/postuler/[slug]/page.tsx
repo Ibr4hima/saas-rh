@@ -549,7 +549,7 @@ export default function ApplyPage() {
             {!sent ? (
               <a
                 href="#postuler"
-                className="mt-7 inline-flex h-11 items-center gap-2 rounded-full bg-primary px-6 text-[14px] font-bold text-primary-ink shadow-sm transition-colors hover:bg-primary-hover lg:hidden"
+                className="mt-7 inline-flex h-11 items-center gap-2 rounded-controle border border-transparent bg-primary px-6 text-[14px] font-semibold text-primary-ink shadow-bouton transition-colors hover:bg-primary-hover lg:hidden"
               >
                 Postuler
                 <Icon name="arrow_downward" size={17} />

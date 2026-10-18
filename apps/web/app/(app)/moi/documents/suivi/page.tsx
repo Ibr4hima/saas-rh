@@ -503,13 +503,13 @@ function DocumentsDisponibles({
       telechargement={doc.url}
       enTete={
         n > 1 ? (
-          <div className="flex items-center gap-0.5 rounded-full bg-bg p-0.5">
+          <div className="flex items-center gap-0.5 rounded-controle bg-bg p-0.5">
             <button
               type="button"
               aria-label="Document précédent"
               disabled={rang === 0}
               onClick={() => setRang((x) => x - 1)}
-              className="flex size-7 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:pointer-events-none disabled:opacity-35"
+              className="flex size-7 items-center justify-center rounded-[6px] text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:pointer-events-none disabled:opacity-35"
             >
               <Icon name="chevron_left" size={18} />
             </button>
@@ -521,7 +521,7 @@ function DocumentsDisponibles({
               aria-label="Document suivant"
               disabled={rang >= n - 1}
               onClick={() => setRang((x) => x + 1)}
-              className="flex size-7 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:pointer-events-none disabled:opacity-35"
+              className="flex size-7 items-center justify-center rounded-[6px] text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:pointer-events-none disabled:opacity-35"
             >
               <Icon name="chevron_right" size={18} />
             </button>

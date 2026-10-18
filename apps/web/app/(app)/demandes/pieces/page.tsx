@@ -202,7 +202,7 @@ export default function PiecesAVerifierPage() {
                         type="button"
                         onClick={() => ouvrir(p)}
                         title={`Voir « ${p.label} »`}
-                        className="inline-flex max-w-64 items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-medium text-primary transition-colors hover:bg-primary-soft"
+                        className="inline-flex max-w-64 items-center gap-1 rounded-[6px] px-2 py-1 text-[11.5px] font-medium text-primary transition-colors hover:bg-primary-soft"
                       >
                         <Icon name="description" size={14} className="shrink-0" />
                         <span className="truncate">{p.label}</span>

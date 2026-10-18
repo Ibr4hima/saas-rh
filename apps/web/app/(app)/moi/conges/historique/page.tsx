@@ -249,7 +249,7 @@ function Ligne({
       type="button"
       onClick={onJustificatif}
       title={r.documentName}
-      className="inline-flex items-center rounded-full border border-line px-2.5 py-[3px] text-[11px] font-semibold text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+      className="inline-flex items-center rounded-[6px] border border-line px-2.5 py-[3px] text-[11px] font-semibold text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
     >
       Prévisualiser
     </button>

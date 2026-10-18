@@ -196,6 +196,22 @@
   --tg-radius-lg: 12px;
   --tg-radius-xl: 16px;
   --tg-radius-full: 999px;
+  /* Les contrôles, comme dans e-Voting : des rectangles aux coins à peine
+     adoucis. Un bouton est plein ou bordé, un champ est blanc bordé de gris ;
+     une seule forme pour les deux. 7 px pour les petits (30 px de haut et
+     moins) et pour les éléments d'un groupe (onglets, pages) ; 10 px pour le
+     cadre d'un groupe d'onglets ; 12 px pour la barre de pagination. Les
+     badges, les avatars et les pastilles du bandeau restent ronds. */
+  --tg-radius-controle: 8px;
+  --tg-radius-controle-sm: 7px;
+  --tg-radius-groupe: 10px;
+  --tg-radius-barre: 12px;
+  /* L'ombre d'un bouton plein : un trait sous le bord, un reflet dessus ;
+     celle d'un bouton bordé, à peine. Quand on appuie, l'ombre passe
+     dedans. */
+  --tg-shadow-bouton: 0 1px 2px rgb(16 24 40 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --tg-shadow-bouton-borde: 0 1px 2px rgb(16 24 40 / 0.05);
+  --tg-shadow-bouton-enfonce: inset 0 1px 2px rgb(16 24 40 / 0.2);
   /* Ombres en couches, très basse opacité : la profondeur vient de la
      superposition, jamais d'une tache grise. */
   --tg-shadow-xs: 0 1px 2px rgb(20 23 42 / 0.04);

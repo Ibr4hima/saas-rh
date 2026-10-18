@@ -245,7 +245,7 @@ export default function GestionDesAccesPage() {
                 value={recherche}
                 onChange={(e) => setRecherche(e.target.value)}
                 aria-label="Rechercher un agent"
-                className="h-8 w-60 max-w-full rounded-full pl-8 text-[12.5px]"
+                className="h-8 w-60 max-w-full pl-8 text-[12.5px]"
               />
             </div>
           </div>

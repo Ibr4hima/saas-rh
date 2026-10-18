@@ -468,7 +468,7 @@ function ChoixDelegues({
         disabled={!modifiable}
         onClick={() => setOuvert((o) => !o)}
         className={cn(
-          'flex h-9 w-full items-center gap-2 rounded-[10px] border bg-surface pr-2 pl-3 text-left text-[12.5px] transition-colors duration-150',
+          'flex h-9 w-full items-center gap-2 rounded-controle border bg-surface pr-2 pl-3 text-left text-[12.5px] transition-colors duration-150',
           'focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
           'disabled:cursor-default disabled:opacity-70',
           ouvert ? 'border-primary' : 'border-line enabled:hover:border-ink-muted/40',
@@ -502,7 +502,7 @@ function ChoixDelegues({
                 <li key={m.employeeId}>
                   <label
                     className={cn(
-                      'flex cursor-pointer items-center gap-3 rounded-[10px] px-2.5 py-2 transition-colors duration-150',
+                      'flex cursor-pointer items-center gap-3 rounded-controle px-2.5 py-2 transition-colors duration-150',
                       oui ? 'bg-primary/[0.06] hover:bg-primary/[0.09]' : 'hover:bg-hover',
                     )}
                   >

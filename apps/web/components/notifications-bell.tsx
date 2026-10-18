@@ -364,7 +364,7 @@ function PanneauNotifications({
             </div>
           </div>
           {/* Deux vues, jamais plus : ce qui reste à voir, ce qu'on a archivé. */}
-          <div className="mt-2 flex items-center gap-1 rounded-full bg-bg p-0.5">
+          <div className="mt-2 flex items-center gap-1 rounded-controle bg-bg p-0.5">
             <Onglet actif={!archive} onClick={() => onVue('inbox')} compte={unread} ton="alerte">
               Boîte
             </Onglet>
@@ -522,7 +522,7 @@ function PiedVider({
           type="button"
           onClick={() => setConfirmer(true)}
           className={cn(
-            'mx-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[11.5px] font-bold text-ink-muted transition-colors',
+            'mx-auto inline-flex h-8 items-center gap-1.5 rounded-controle px-3.5 text-[11.5px] font-bold text-ink-muted transition-colors',
             'hover:bg-danger-soft hover:text-danger',
             'focus-visible:ring-2 focus-visible:ring-danger/35 focus-visible:outline-none',
           )}
@@ -559,7 +559,7 @@ function Onglet({
       onClick={onClick}
       aria-pressed={actif}
       className={cn(
-        'flex flex-1 items-center justify-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11.5px] font-bold transition-colors',
+        'flex flex-1 items-center justify-center gap-1.5 rounded-[6px] px-2.5 py-1.5 text-[11.5px] font-bold transition-colors',
         actif ? 'bg-surface text-primary shadow-sm' : 'text-ink-muted hover:text-ink',
       )}
     >

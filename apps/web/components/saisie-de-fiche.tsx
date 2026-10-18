@@ -21,7 +21,7 @@ import { champDuMontant } from '../lib/montant';
 */
 
 /** Le cadre des champs de la page, celui de ses listes déroulantes. */
-export const CADRE = 'h-9 rounded-[10px] px-3 text-[12.5px] font-medium text-ink-strong';
+export const CADRE = 'h-9 rounded-controle px-3 text-[12.5px] font-medium text-ink-strong';
 
 /** Deux colonnes dès que la largeur le permet ; une seule sur un téléphone. */
 export function Groupe({ titre, children }: { titre: string; children: ReactNode }) {

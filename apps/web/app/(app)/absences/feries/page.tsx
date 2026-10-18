@@ -118,7 +118,7 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
             aria-label="Année"
             value={String(annee)}
             onChange={(e) => setAnnee(Number(e.target.value))}
-            className="h-7 w-24 rounded-full text-[12px]"
+            className="h-7 w-24 rounded-controle-sm text-[12px]"
           >
             {[anneeCourante, anneeCourante + 1].map((y) => (
               <option key={y} value={y}>
@@ -177,7 +177,7 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
                           <button
                             type="button"
                             aria-label={`Dater ${h.label} sur ${h.year}`}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-line px-2.5 py-1 text-[12px] text-ink-muted transition-colors duration-150 hover:border-primary hover:text-primary"
+                            className="inline-flex items-center gap-1.5 rounded-controle-sm border border-dashed border-line px-2.5 py-1 text-[12px] text-ink-muted transition-colors duration-150 hover:border-primary hover:text-primary"
                             onClick={() => setEdition(h)}
                           >
                             <Icon name="calendar_month" size={15} />

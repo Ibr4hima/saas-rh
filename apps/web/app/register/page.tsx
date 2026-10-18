@@ -62,7 +62,7 @@ export default function RegisterPage() {
       >
         <Link
           href="/login"
-          className="mt-6 inline-flex h-[46px] w-full items-center justify-center rounded-full bg-primary text-[14.5px] font-bold text-primary-ink shadow-[0_4px_18px_rgb(0_79_145/0.35)] transition-[background-color,transform] duration-150 hover:-translate-y-px hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className="mt-6 inline-flex h-[46px] w-full items-center justify-center rounded-controle border border-transparent bg-primary text-[14.5px] font-semibold tracking-[0.01em] text-primary-ink shadow-bouton transition-[background-color,box-shadow] duration-150 hover:bg-primary-hover active:shadow-bouton-enfonce focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           Se connecter
         </Link>

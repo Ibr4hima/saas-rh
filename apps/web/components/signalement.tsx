@@ -250,7 +250,7 @@ export function FenetreSignalement({
                 <label
                   htmlFor="certificatMariage"
                   className={cn(
-                    'flex h-10 cursor-pointer items-center gap-2 rounded-full border px-4 text-[13px] transition-colors duration-150',
+                    'flex h-10 cursor-pointer items-center gap-2 rounded-controle border px-3 text-[13px] transition-colors duration-150',
                     certificat
                       ? 'border-success/40 text-ink-strong'
                       : 'border-line text-ink-muted hover:border-primary/40 hover:text-primary',

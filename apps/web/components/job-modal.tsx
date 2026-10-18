@@ -311,8 +311,8 @@ function Puce({
       onClick={onClick}
       className={
         coche
-          ? 'flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.07] px-3 py-1 text-[12px] font-semibold text-primary'
-          : 'flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-[12px] font-medium text-ink-muted transition-colors hover:border-primary/30 hover:text-ink'
+          ? 'flex items-center gap-1.5 rounded-controle-sm border border-primary/25 bg-primary/[0.07] px-3 py-1 text-[12px] font-semibold text-primary'
+          : 'flex items-center gap-1.5 rounded-controle-sm border border-line px-3 py-1 text-[12px] font-medium text-ink-muted transition-colors hover:border-primary/30 hover:text-ink'
       }
     >
       {coche ? <Icon name="check" size={13} /> : null}

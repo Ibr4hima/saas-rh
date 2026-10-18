@@ -65,7 +65,7 @@ function ChoixAnnee({
           aria-expanded={ouvert}
           onClick={() => setOuvert((v) => !v)}
           className={cn(
-            'flex h-[30px] items-center gap-0.5 rounded-full pr-1.5 pl-3 text-[11px] max-sm:pl-2 font-extrabold tracking-[0.14em] text-primary uppercase transition-colors duration-150 outline-none hover:bg-primary-soft focus-visible:ring-2 focus-visible:ring-primary/35',
+            'flex h-[30px] items-center gap-0.5 rounded-controle-sm pr-1.5 pl-3 text-[11px] max-sm:pl-2 font-extrabold tracking-[0.14em] text-primary uppercase transition-colors duration-150 outline-none hover:bg-primary-soft focus-visible:ring-2 focus-visible:ring-primary/35',
             ouvert && 'bg-primary-soft',
           )}
         >

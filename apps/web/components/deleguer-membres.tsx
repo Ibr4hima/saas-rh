@@ -280,7 +280,7 @@ export function DeleguerMembres({
                   <li key={m.employeeId}>
                     <label
                       className={cn(
-                        'flex cursor-pointer items-center gap-3 rounded-[10px] px-2.5 py-2.5 transition-colors duration-150',
+                        'flex cursor-pointer items-center gap-3 rounded-controle px-2.5 py-2.5 transition-colors duration-150',
                         coche ? 'bg-primary/[0.06] hover:bg-primary/[0.09]' : 'hover:bg-hover',
                       )}
                     >

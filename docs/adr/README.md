@@ -113,3 +113,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0105](0105-conge-de-maternite.md)                    | Le congé de maternité : la cessation de paiement et la reprise de service               | acceptée                                    |
 | [0106](0106-declaration-de-mouvement.md)              | La déclaration de mouvement du travailleur : la fiche, le Code du travail de 2026       | acceptée, précisée par 0107                 |
 | [0107](0107-declaration-ancien-code.md)               | La déclaration de mouvement cite le Code du travail de 1997, comme les autres documents | acceptée                                    |
+| [0108](0108-boutons-aux-coins-d-e-voting.md)          | Les boutons et les champs aux coins d'e-Voting                                          | acceptée                                    |

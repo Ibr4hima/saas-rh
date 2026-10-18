@@ -266,7 +266,7 @@ function DeleguerParType({
   );
 }
 
-/** Un membre, en pastille à cocher — celle de « Demander un document ». */
+/** Un membre, en bouton à cocher : celui de « Demander un document ». */
 export function ChoixMembre({
   nom,
   choisi,
@@ -285,9 +285,9 @@ export function ChoixMembre({
       onClick={onBasculer}
       disabled={desactive}
       className={cn(
-        // Même graisse cochée ou non : la pastille garde sa largeur, et les
+        // Même graisse cochée ou non : le bouton garde sa largeur, et les
         // membres restent alignés d'une ligne à l'autre.
-        'inline-flex items-center gap-2 rounded-full border py-[7px] pr-3.5 pl-2.5 text-[12.5px] font-medium transition-colors duration-150',
+        'inline-flex items-center gap-2 rounded-controle border py-[7px] pr-3.5 pl-2.5 text-[12.5px] font-medium transition-colors duration-150',
         'focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
         'disabled:cursor-default',
         choisi

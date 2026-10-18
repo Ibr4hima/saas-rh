@@ -69,7 +69,7 @@ export function PhoneInput({
           focus appartiennent à l'enveloppe, pas au champ qu'elle contient. */}
       <div
         className={cn(
-          'flex min-w-0 flex-1 items-center rounded-full border border-line bg-surface',
+          'flex min-w-0 flex-1 items-center rounded-controle border border-line bg-surface',
           'transition-colors duration-150 ease-out',
           'focus-within:border-primary focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-primary/40',
           disabled && 'cursor-not-allowed opacity-50',
@@ -78,7 +78,7 @@ export function PhoneInput({
         <span
           aria-hidden
           className={cn(
-            'flex shrink-0 items-center pr-2.5 pl-4 text-sm font-medium text-ink-muted tabular-nums',
+            'flex shrink-0 items-center pr-2.5 pl-3 text-sm font-medium text-ink-muted tabular-nums',
             hauteur,
           )}
         >
@@ -92,7 +92,7 @@ export function PhoneInput({
           autoComplete={autoComplete}
           disabled={disabled}
           className={cn(
-            'min-w-0 flex-1 rounded-r-full bg-transparent pr-4 pl-3 text-sm text-ink tabular-nums placeholder:text-ink-muted/70 focus:outline-none disabled:cursor-not-allowed',
+            'min-w-0 flex-1 rounded-r-controle bg-transparent pr-3 pl-3 text-sm text-ink tabular-nums placeholder:text-ink-muted/70 focus:outline-none disabled:cursor-not-allowed',
             hauteur,
           )}
           placeholder={examplePhone(country)}

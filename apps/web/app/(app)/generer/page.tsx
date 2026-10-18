@@ -106,7 +106,7 @@ const nomDe = (a: EmployeeListItem) => `${a.givenName} ${a.familyName}`;
 
 /** Le cadre des deux listes déroulantes, celui de « Déléguer des tâches ». */
 const CHAMP =
-  'h-9 w-full rounded-[10px] border bg-surface text-[12.5px] transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none';
+  'h-9 w-full rounded-controle border bg-surface text-[12.5px] transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none';
 const MENU =
   'tg-menu absolute top-full right-0 left-0 z-30 mt-1.5 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg';
 
@@ -496,7 +496,7 @@ function ChoixDuDocument({
                       onMouseEnter={() => setCourant(d)}
                       onClick={() => choisir(d)}
                       className={cn(
-                        'flex cursor-pointer items-center gap-3 rounded-[10px] px-2.5 py-2 transition-colors duration-150',
+                        'flex cursor-pointer items-center gap-3 rounded-controle px-2.5 py-2 transition-colors duration-150',
                         d === choisi ? 'bg-primary/[0.06]' : d === courant ? 'bg-hover' : undefined,
                       )}
                     >
@@ -516,7 +516,7 @@ function ChoixDuDocument({
                       role="option"
                       aria-selected={false}
                       aria-disabled
-                      className="flex items-center gap-3 rounded-[10px] px-2.5 py-2"
+                      className="flex items-center gap-3 rounded-controle px-2.5 py-2"
                     >
                       <Pastille choisie={false} eteinte />
                       <span className="min-w-0 flex-1 text-[13px] text-ink-muted/75">
@@ -689,7 +689,7 @@ function ChoixDeLAgent({
                   onMouseEnter={() => setCourant(i)}
                   onClick={() => choisir(a)}
                   className={cn(
-                    'flex cursor-pointer items-center gap-3 rounded-[10px] px-2.5 py-2 transition-colors duration-150',
+                    'flex cursor-pointer items-center gap-3 rounded-controle px-2.5 py-2 transition-colors duration-150',
                     a.id === agent?.id ? 'bg-primary/[0.06]' : i === courant ? 'bg-hover' : null,
                   )}
                 >

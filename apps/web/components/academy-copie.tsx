@@ -173,7 +173,7 @@ export function Copie({
                 aria-current={i === index ? 'step' : undefined}
                 onClick={() => onIndex(i)}
                 className={cn(
-                  'grid size-8 place-items-center rounded-full text-[12px] font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
+                  'grid size-8 place-items-center rounded-controle-sm text-[12px] font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
                   i === index
                     ? 'bg-primary text-primary-ink'
                     : faite

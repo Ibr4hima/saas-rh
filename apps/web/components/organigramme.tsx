@@ -177,7 +177,7 @@ export function Organigramme({
         </div>
       </div>
 
-      <div className="absolute right-3 bottom-3 flex items-center gap-0.5 rounded-full border border-card-line bg-surface p-1 shadow-sm">
+      <div className="absolute right-3 bottom-3 flex items-center gap-0.5 rounded-groupe border border-card-line bg-surface p-1 shadow-sm">
         <BoutonEchelle
           icone="remove"
           label="Réduire"
@@ -191,7 +191,7 @@ export function Organigramme({
           type="button"
           onClick={() => poser(ajuste(zoom, ajustement) ? ZOOM_DEFAUT : ajustement)}
           title={ajuste(zoom, ajustement) ? 'Revenir à la taille de lecture' : 'Voir tout l’arbre'}
-          className="rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums text-ink-muted transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+          className="rounded-[6px] px-2 py-0.5 text-[11px] font-bold tabular-nums text-ink-muted transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
         >
           {Math.round(zoom * 100)} %
         </button>
@@ -227,7 +227,7 @@ function BoutonEchelle({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="flex size-6 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-hover hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:pointer-events-none disabled:opacity-35"
+      className="flex size-6 items-center justify-center rounded-[6px] text-ink-muted transition-colors hover:bg-hover hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:pointer-events-none disabled:opacity-35"
     >
       <Icon name={icone} size={15} />
     </button>
