@@ -13,6 +13,7 @@ import type {
 import {
   CATEGORIE_MAX,
   estGenere,
+  ficheDuContratSchema,
   ficheStagiaireSchema,
   nomDuDocumentGenere,
   REQUESTABLE_DOC_LABELS,
@@ -25,6 +26,12 @@ import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import { PdfEnLargeur } from '../../../components/pdf-viewer';
 import { ActionDuBandeau } from '../../../components/actions-bandeau';
+import {
+  CONTRAT_VIDE,
+  FicheDuContratDeTravail,
+  versLaFicheDuContrat,
+  type SaisieDuContrat,
+} from '../../../components/fiche-contrat-travail';
 import {
   FicheDuStagiaire,
   STAGIAIRE_VIDE,
@@ -44,8 +51,9 @@ import { champDuMontant } from '../../../lib/montant';
    porte pas le fait saisir avant : le salaire de l'attestation de revenu
    (ADR-0087), la catégorie du poste du certificat de travail (ADR-0091),
    les dates de l'attestation de congé (ADR-0092), le jour du départ à la
-   retraite (ADR-0093). Le contrat de stage se fait sans agent : la personne
-   n'est pas encore dans l'application, la DCH la renseigne (ADR-0094).
+   retraite (ADR-0093). Les contrats, de stage et de travail, se font sans
+   agent : la personne n'est pas encore dans l'application, la DCH la
+   renseigne (ADR-0094, ADR-0098).
 
    L'aperçu EST le PDF, peint par pdf.js : un modèle de l'APIX se vérifie sur
    ce qui sortira, pas sur une imitation à l'écran.
@@ -133,6 +141,8 @@ export default function GenererDesDocumentsPage() {
   const retenues = useRetenue(saisies);
   const [stagiaire, setStagiaire] = useState<SaisieDuStagiaire>(STAGIAIRE_VIDE);
   const stagiaireRetenu = useRetenue(stagiaire);
+  const [contrat, setContrat] = useState<SaisieDuContrat>(CONTRAT_VIDE);
+  const contratRetenu = useRetenue(contrat);
 
   const sansLAgent = choisi !== null && sansAgent(choisi);
   const demandees = choisi ? saisiesDe(choisi) : [];
@@ -142,14 +152,28 @@ export default function GenererDesDocumentsPage() {
   const saisir = (valeur: Partial<Valeurs>) => {
     if (agent) setSaisies({ ...courantes, ...valeur, agentId: agent.id });
   };
-  const fiche = ficheStagiaireSchema.safeParse(versLaFiche(stagiaireRetenu));
+  const deTravail = choisi === 'contrat_cdd' || choisi === 'contrat_cdi' ? choisi : null;
+  // La fiche du document sans agent, telle qu'elle part à l'API : celle qui
+  // se tape, ou celle que la frappe posée a retenue.
+  const ficheSansAgent = (retenue: boolean) =>
+    deTravail
+      ? versLaFicheDuContrat(retenue ? contratRetenu : contrat, deTravail)
+      : versLaFiche(retenue ? stagiaireRetenu : stagiaire);
+  const fiche = deTravail
+    ? ficheDuContratSchema(deTravail).safeParse(ficheSansAgent(true))
+    : ficheStagiaireSchema.safeParse(ficheSansAgent(true));
 
   return (
     <Page>
       <Etape titre="Sélectionner le document à générer">
         <ChoixDuDocument choisi={choisi} onChoisir={setChoisi} />
       </Etape>
-      {sansLAgent ? <FicheDuStagiaire valeur={stagiaire} onChange={setStagiaire} /> : null}
+      {choisi === 'contrat_stage' ? (
+        <FicheDuStagiaire valeur={stagiaire} onChange={setStagiaire} />
+      ) : null}
+      {deTravail ? (
+        <FicheDuContratDeTravail doc={deTravail} valeur={contrat} onChange={setContrat} />
+      ) : null}
       {choisi && !sansLAgent ? (
         <Etape titre="Sélectionner l’agent">
           <ChoixDeLAgent agent={agent} onChoisir={setAgent} />
@@ -190,7 +214,7 @@ export default function GenererDesDocumentsPage() {
         <Apercu
           choisi={choisi}
           cible={{
-            cle: 'stagiaire',
+            cle: 'fiche',
             chemin: `/documents/generer/${choisi}`,
             fichier: nomDuDocumentGenere(
               choisi,
@@ -199,9 +223,7 @@ export default function GenererDesDocumentsPage() {
             titre: `${REQUESTABLE_DOC_LABELS[choisi]} : ${fiche.data.prenom} ${fiche.data.nom}`,
           }}
           saisies={fiche.data}
-          enCours={
-            JSON.stringify(versLaFiche(stagiaire)) !== JSON.stringify(versLaFiche(stagiaireRetenu))
-          }
+          enCours={JSON.stringify(ficheSansAgent(false)) !== JSON.stringify(ficheSansAgent(true))}
         />
       ) : null}
       {choisi && !sansLAgent && agent && demandees.every((s) => remplie(posees, s)) ? (
@@ -691,7 +713,7 @@ function ChampDeDate({
 
 /** Pour qui le document se génère : un agent, ou la personne que la DCH renseigne. */
 interface Cible {
-  /** L'agent, ou « stagiaire » : à chaque personne son aperçu. */
+  /** L'agent, ou « fiche » pour un document sans agent : à chaque personne son aperçu. */
   cle: string;
   /** La route de l'API qui rend le PDF. */
   chemin: string;

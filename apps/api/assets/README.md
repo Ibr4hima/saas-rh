@@ -18,27 +18,29 @@ deux, le pied de page se dessine sans lui.
 Format : PNG ou JPEG (pdfkit ne lit pas le SVG). Un logo détouré, sans marge
 transparente, tombe juste contre la barre.
 
-## Arial et Comic Sans MS : `arial*.ttf`, `comic*.ttf`
+## Arial, Times New Roman et Comic Sans MS : `arial*.ttf`, `times*.ttf`, `comic*.ttf`
 
-Les documents de la DCH sont en Arial (ADR-0090) ; certains modèles de l'APIX
-écrivent une ligne en Comic Sans MS (le timbre des attestations). Leur licence
-(Monotype, Microsoft) interdit de les versionner. Le générateur les prend là
-où la machine les a, dans cet ordre :
+Les documents de la DCH sont en Arial (ADR-0090), ses contrats de travail en
+Times New Roman (ADR-0098) ; certains modèles de l'APIX écrivent une ligne en
+Comic Sans MS (le timbre des attestations). Leur licence (Monotype, Microsoft)
+interdit de les versionner. Le générateur les prend là où la machine les a,
+dans cet ordre :
 
 1. ici, déposées sous leur nom Windows (la casse ne compte pas) :
 
-   | Police        | Romain      | Gras          | Italique     | Gras italique |
-   | ------------- | ----------- | ------------- | ------------ | ------------- |
-   | Arial         | `arial.ttf` | `arialbd.ttf` | `ariali.ttf` | `arialbi.ttf` |
-   | Comic Sans MS | `comic.ttf` | `comicbd.ttf` | `comici.ttf` | `comicz.ttf`  |
+   | Police          | Romain      | Gras          | Italique     | Gras italique |
+   | --------------- | ----------- | ------------- | ------------ | ------------- |
+   | Arial           | `arial.ttf` | `arialbd.ttf` | `ariali.ttf` | `arialbi.ttf` |
+   | Times New Roman | `times.ttf` | `timesbd.ttf` | `timesi.ttf` | `timesbi.ttf` |
+   | Comic Sans MS   | `comic.ttf` | `comicbd.ttf` | `comici.ttf` | `comicz.ttf`  |
 
 2. sur le système : `C:\Windows\Fonts` sous Windows,
    `/System/Library/Fonts/Supplemental` sous macOS ; sous Debian ou Ubuntu,
    après `sudo apt install ttf-mscorefonts-installer`, le paquet officiel qui
    les télécharge chez Microsoft et en fait accepter la licence.
 
-Sans elles, Arimo et Comic Relief (`fonts/`), libres et dessinées aux mêmes
-chasses, prennent leur place : un document sort avec la même mise en page, au
+Sans elles, Arimo, Tinos et Comic Relief (`fonts/`), libres et dessinées aux
+mêmes chasses, prennent leur place : un document sort avec la même mise en page, au
 caractère près ; seul le dessin de quelques lettres diffère.
 
 Comic Relief n'a pas d'italique : sans `comici.ttf`, l'italique en Comic Sans
@@ -46,8 +48,8 @@ MS s'imprime en romain.
 
 ## `fonts/`
 
-Arimo, Comic Relief et Google Sans (la police du certificat d'APIX Academy) en
-TTF, chacune avec sa licence OFL, **générées** par
+Arimo, Tinos, Comic Relief et Google Sans (la police du certificat d'APIX
+Academy) en TTF, chacune avec sa licence OFL, **générées** par
 `pnpm --filter @teranga/api fonts:fetch` et versionnées : un dépôt fraîchement
 cloné sort des documents à la bonne typographie sans manipulation. pdfkit ne
 lit ni woff2 ni SVG, d'où cette copie distincte de celle du site.

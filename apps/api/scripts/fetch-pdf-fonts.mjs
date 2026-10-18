@@ -8,17 +8,19 @@
  * fichiers pour une même police, donc, chacun là où il sert.
  *
  *   pnpm --filter @teranga/api fonts:fetch
+ *   pnpm --filter @teranga/api fonts:fetch Tinos   (une famille seule)
  *
  * Les fichiers produits sont VERSIONNÉS : une attestation doit sortir avec la
  * bonne typographie sur un dépôt fraîchement cloné, sans manipulation.
  *
- * Arial est la police des documents de la DCH (ADR-0090) ; Comic Sans MS,
- * certains modèles de l'APIX l'emploient. Ni l'une ni l'autre ne se
- * redistribue : leur licence (Monotype, Microsoft) interdit de les
- * versionner. Arimo et Comic Relief en sont les équivalents libres, sous
- * licence OFL, dessinés aux MÊMES chasses : un mot y occupe la même largeur,
- * une ligne se coupe au même endroit. Google Sans reste celle du certificat
- * d'APIX Academy, comme du site.
+ * Arial est la police des documents de la DCH (ADR-0090) ; Times New Roman,
+ * celle de ses contrats de travail (ADR-0098) ; Comic Sans MS, certains
+ * modèles de l'APIX l'emploient. Aucune ne se redistribue : leur licence
+ * (Monotype, Microsoft) interdit de les versionner. Arimo, Tinos et Comic
+ * Relief en sont les équivalents libres, sous licence OFL, dessinés aux MÊMES
+ * chasses : un mot y occupe la même largeur, une ligne se coupe au même
+ * endroit. Google Sans reste celle du certificat d'APIX Academy, comme du
+ * site.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -37,8 +39,9 @@ const UA = 'Mozilla/4.0';
 
 /**
  * Les familles, coupe par coupe, et leur licence : l'OFL veut qu'elle voyage
- * avec la police. Arimo pour Arial, Comic Relief pour Comic Sans MS, et
- * Google Sans.
+ * avec la police. Arimo pour Arial, Tinos pour Times New Roman, Comic Relief
+ * pour Comic Sans MS, et Google Sans. Une licence que Google Fonts ne publie
+ * pas avec la police se prend dans le dépôt de la famille (`url`).
  */
 const FAMILLES = [
   {
@@ -49,6 +52,19 @@ const FAMILLES = [
       { nom: 'arimo-bold.ttf', style: 'normal', poids: '700' },
       { nom: 'arimo-italic.ttf', style: 'italic', poids: '400' },
       { nom: 'arimo-bold-italic.ttf', style: 'italic', poids: '700' },
+    ],
+  },
+  {
+    css: 'Tinos:ital,wght@0,400;0,700;1,400;1,700',
+    licence: {
+      url: 'https://raw.githubusercontent.com/googlefonts/tinos/main/OFL.txt',
+      nom: 'tinos-OFL.txt',
+    },
+    coupes: [
+      { nom: 'tinos-regular.ttf', style: 'normal', poids: '400' },
+      { nom: 'tinos-bold.ttf', style: 'normal', poids: '700' },
+      { nom: 'tinos-italic.ttf', style: 'italic', poids: '400' },
+      { nom: 'tinos-bold-italic.ttf', style: 'italic', poids: '700' },
     ],
   },
   {
@@ -168,20 +184,25 @@ function recuperer(coupe, blocs) {
   return reduit;
 }
 
-/** La licence d'une famille, telle que Google Fonts la publie avec elle. */
-function recupererLaLicence({ source, nom }) {
+/** La licence d'une famille, telle que Google Fonts, ou son dépôt, la publie avec elle. */
+function recupererLaLicence({ source, url, nom }) {
   const chemin = join(OUT, nom);
-  curl(`https://raw.githubusercontent.com/google/fonts/main/${source}`, chemin);
+  curl(url ?? `https://raw.githubusercontent.com/google/fonts/main/${source}`, chemin);
   if (!readFileSync(chemin, 'utf8').includes('SIL OPEN FONT LICENSE')) {
     throw new Error(`${nom} n'est pas la licence OFL attendue.`);
   }
   console.log(`  ${nom}`);
 }
 
+/** Les familles demandées (« Tinos »), toutes sans argument. */
+const demandees = process.argv.slice(2).map((f) => f.toLowerCase());
+const nomDe = (famille) => famille.css.split(':')[0].replace(/\+/g, ' ').toLowerCase();
+
 mkdirSync(OUT, { recursive: true });
 let total = 0;
 let coupes = 0;
 for (const famille of FAMILLES) {
+  if (demandees.length > 0 && !demandees.includes(nomDe(famille))) continue;
   const blocs = blocsDe(famille.css);
   for (const coupe of famille.coupes) {
     total += recuperer(coupe, blocs);
@@ -197,9 +218,9 @@ writeFileSync(
     '    pnpm --filter @teranga/api fonts:fetch\n\n' +
     'pdfkit ne lit ni le woff2 ni le SVG : le web et les PDF ont chacun leur\n' +
     'copie de Google Sans, dans le format que leur moteur sait ouvrir.\n\n' +
-    "Arimo et Comic Relief tiennent la place d'Arial et de Comic Sans MS, que\n" +
-    'leur licence interdit de versionner : mêmes chasses, licence OFL (fichiers\n' +
-    "`*-OFL.txt`). Les polices d'origine se déposent à la racine de `assets/`\n" +
-    '(cf. `assets/README.md`).\n',
+    "Arimo, Tinos et Comic Relief tiennent la place d'Arial, de Times New Roman\n" +
+    'et de Comic Sans MS, que leur licence interdit de versionner : mêmes\n' +
+    "chasses, licence OFL (fichiers `*-OFL.txt`). Les polices d'origine se\n" +
+    'déposent à la racine de `assets/` (cf. `assets/README.md`).\n',
 );
 console.log(`✓ ${coupes} coupes, ${(total / 1024).toFixed(0)} Ko, dans ${OUT}`);

@@ -14,6 +14,9 @@ export const insecable = (texte: string) => texte.replace(/ /g, INSECABLE);
 /** Le blanc à remplir à la main quand l'organigramme ne désigne personne. */
 export const A_REMPLIR = '……………………………';
 
+/** Ce qui s'élide : une voyelle, ou un y qui n'en précède pas une (« d’Yves », « de Youssou »). */
+const VOYELLE_INITIALE = /^(?:[aeiouàâäéèêëîïôöùûü]|y(?![aeiouàâäéèêëîïôöùûü]))/i;
+
 /**
  * « la fonction de Analyste » : l'élision ne se saute pas devant une voyelle.
  * Le h muet français est indécidable sans dictionnaire ; on élide devant les
@@ -21,9 +24,26 @@ export const A_REMPLIR = '……………………………';
  * d'une voyelle est une consonne : « de Youssou », mais « d’Yves ».
  */
 export function elide(prefixe: string, mot: string): string {
-  return /^(?:[aeiouàâäéèêëîïôöùûü]|y(?![aeiouàâäéèêëîïôöùûü]))/i.test(mot.trim())
-    ? `${prefixe}’${mot}`
-    : `${prefixe}e ${mot}`;
+  return VOYELLE_INITIALE.test(mot.trim()) ? `${prefixe}’${mot}` : `${prefixe}e ${mot}`;
+}
+
+/** Les noms d'unité féminins et masculins, par leur premier mot. */
+const UNITES_AU_FEMININ = ['agence', 'cellule', 'coordination', 'direction', 'division', 'unité'];
+const UNITES_AU_MASCULIN = ['bureau', 'cabinet', 'département', 'pôle', 'secrétariat', 'service'];
+
+/**
+ * Où la personne est affectée : « à la Direction du Capital Humain », « au
+ * Service Comptabilité », « à l’Audit Interne ». L'article suit le premier mot
+ * du nom de l'unité, à défaut son type (une direction, un département, un
+ * service), et s'élide devant une voyelle.
+ */
+export function aLUnite(nom: string, type: string): string {
+  if (VOYELLE_INITIALE.test(nom.trim())) return `à l’${nom}`;
+  const premier = nom.trim().split(/\s+/)[0]!.toLocaleLowerCase('fr-FR');
+  const feminin =
+    UNITES_AU_FEMININ.includes(premier) ||
+    (!UNITES_AU_MASCULIN.includes(premier) && type === 'direction');
+  return feminin ? `à la ${nom}` : `au ${nom}`;
 }
 
 export function frDate(iso: string | Date): string {

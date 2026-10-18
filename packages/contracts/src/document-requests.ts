@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { TraitementView } from './acces';
 import { SALAIRE_MAX } from './montants';
+import { NATIONALITY_LABELS } from './nationalities';
 
 /**
  * Demandes de documents administratifs (ADR-0012).
@@ -79,6 +80,8 @@ export type DocumentDeLaListe = z.infer<typeof requestableDocSchema>;
  * est configuré (ADR-0085). Les autres, la DCH les prépare hors de l'outil.
  */
 export const GENERATED_DOCS = [
+  'contrat_cdd',
+  'contrat_cdi',
   'contrat_stage',
   'attestation_conge',
   'attestation_depart_retraite',
@@ -152,9 +155,13 @@ export function nomDuDocumentGenere(doc: DocumentGenere, matricule: string): str
 
 /**
  * Ceux qui se génèrent sans agent : la personne n'est pas encore dans
- * l'application, la DCH la renseigne (ADR-0094).
+ * l'application, la DCH la renseigne (ADR-0094, ADR-0098).
  */
-export const DOCS_SANS_AGENT = ['contrat_stage'] as const satisfies readonly DocumentGenere[];
+export const DOCS_SANS_AGENT = [
+  'contrat_cdd',
+  'contrat_cdi',
+  'contrat_stage',
+] as const satisfies readonly DocumentGenere[];
 export type DocumentSansAgent = (typeof DOCS_SANS_AGENT)[number];
 
 export const sansAgent = (doc: string): doc is DocumentSansAgent =>
@@ -174,6 +181,49 @@ export function majusculesInitiales(texte: string): string {
   return texte.replace(
     /(^|[\s'’(,-])(\p{Ll})/gu,
     (_, avant: string, lettre: string) => avant + lettre.toLocaleUpperCase('fr-FR'),
+  );
+}
+
+/** Les petits mots d'un lieu ou d'une adresse, qui gardent leur minuscule après le premier mot. */
+const PETITS_MOTS = new Set([
+  'à',
+  'au',
+  'aux',
+  'd',
+  'de',
+  'des',
+  'du',
+  'en',
+  'et',
+  'l',
+  'la',
+  'le',
+  'les',
+  'sous',
+  'sur',
+]);
+
+/** Les débuts des petits mots : « e » peut encore devenir « et », « s », « sur ». */
+const DEBUTS_DES_PETITS_MOTS = new Set(
+  [...PETITS_MOTS].flatMap((mot) => [...mot].map((_, i) => mot.slice(0, i + 1))),
+);
+
+/**
+ * Un lieu ou une adresse : une capitale à chaque mot, comme un nom, sauf aux
+ * petits mots qui suivent le premier : « patte d’oie cité impôt et domaines »
+ * donne « Patte d’Oie Cité Impôt et Domaines », « saint-louis du sénégal »
+ * « Saint-Louis du Sénégal ». En cours de frappe (`enCours`), un mot qui peut
+ * encore devenir un petit mot attend sa lettre suivante : « e » n'est pas
+ * encore « E », il sera peut-être « et ».
+ */
+export function majusculesDesLieux(texte: string, { enCours = false } = {}): string {
+  const petits = enCours ? DEBUTS_DES_PETITS_MOTS : PETITS_MOTS;
+  return texte.replace(
+    /(^|[\s'’(,-])(\p{L}+)/gu,
+    (tout: string, avant: string, mot: string, position: number) =>
+      position > 0 && petits.has(mot.toLocaleLowerCase('fr-FR'))
+        ? tout
+        : avant + mot[0]!.toLocaleUpperCase('fr-FR') + mot.slice(1),
   );
 }
 
@@ -203,8 +253,16 @@ export function cniGroupee(chiffres: string, espace = ' '): string {
   return groupes.join(espace);
 }
 
-/** Un prénom, un nom, un lieu, une adresse : chaque mot prend sa capitale. */
+/** Un prénom, un nom : chaque mot prend sa capitale. */
 const nomPropre = (max: number) => z.string().trim().min(1).max(max).transform(majusculesInitiales);
+/** Un lieu, une adresse : chaque mot prend sa capitale, sauf les petits mots. */
+const lieu = (max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(max)
+    .transform((texte) => majusculesDesLieux(texte));
 /** Une formation, un poste : la première lettre prend sa capitale. */
 const intitule = (max: number) => z.string().trim().min(1).max(max).transform(premiereMajuscule);
 
@@ -219,13 +277,13 @@ export const ficheStagiaireSchema = z
     prenom: nomPropre(80),
     nom: nomPropre(80),
     naissanceLe: z.iso.date(),
-    naissanceA: nomPropre(120),
+    naissanceA: lieu(120),
     /** Le numéro de la carte nationale d'identité : treize chiffres. */
     cni: z.string().regex(/^\d{13}$/, 'Treize chiffres attendus'),
     perePrenom: nomPropre(80),
     merePrenom: nomPropre(80),
     mereNom: nomPropre(80),
-    adresse: nomPropre(200),
+    adresse: lieu(200),
     /** Ce que la personne prépare : « Licence en Science de l'Information Documentaire ». */
     formation: intitule(200),
     /** Le poste du stage : « Assistante Archiviste ». */
@@ -259,6 +317,65 @@ export function finDuStage(debut: string, mois: number): string {
       : new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth(), j - 1));
   return fin.toISOString().slice(0, 10);
 }
+
+/** Le dernier jour d'un contrat à durée déterminée : la règle du stage (ADR-0098). */
+export const finDuContrat = finDuStage;
+
+/** Un contrat à durée déterminée dure au plus deux ans. */
+export const DUREE_DE_CDD_MAX = 24;
+
+/**
+ * Ce que la DCH renseigne pour un contrat de travail (ADR-0098) : la
+ * personne, qui n'est pas encore dans l'application, son emploi et sa
+ * rémunération. Tout est obligatoire ; le contrat à durée déterminée y
+ * ajoute sa durée.
+ */
+const ficheDuContratDeTravail = z.object({
+  civilite: z.enum(['madame', 'monsieur']),
+  prenom: nomPropre(80),
+  nom: nomPropre(80),
+  naissanceLe: z.iso.date(),
+  naissanceA: lieu(120),
+  /** Le numéro de la carte nationale d'identité : treize chiffres. */
+  cni: z.string().regex(/^\d{13}$/, 'Treize chiffres attendus'),
+  cniDelivreeLe: z.iso.date(),
+  cniDelivreeA: lieu(120),
+  /** Le pays, par son code ISO 3166-1 : le contrat en écrit le gentilé. */
+  nationalite: z.string().refine((code) => code in NATIONALITY_LABELS, 'Pays inconnu'),
+  adresse: lieu(200),
+  poste: intitule(120),
+  /** L'unité de l'organigramme où la personne est affectée. */
+  affectation: z.uuid(),
+  debut: z.iso.date(),
+  /** La catégorie du poste dans la convention collective. */
+  categorie: z.string().trim().min(1).max(CATEGORIE_MAX),
+  /** Les trois parts du salaire brut mensuel, en francs CFA. */
+  salaireDeBase: z.number().int().min(1).max(SALAIRE_MAX),
+  sursalaire: z.number().int().min(0).max(SALAIRE_MAX),
+  primeDeTransport: z.number().int().min(0).max(SALAIRE_MAX),
+  /** Un treizième mois en fin d'année, ou non. */
+  treiziemeMois: z.boolean(),
+});
+export const ficheCdiSchema = ficheDuContratDeTravail.strict();
+export const ficheCddSchema = ficheDuContratDeTravail
+  .extend({
+    /** La durée du contrat, en mois. */
+    duree: z.number().int().min(1).max(DUREE_DE_CDD_MAX),
+  })
+  .strict();
+export type FicheCdi = z.infer<typeof ficheCdiSchema>;
+export type FicheCdd = z.infer<typeof ficheCddSchema>;
+
+/** Le schéma de la fiche d'un contrat de travail, selon sa durée. */
+export const ficheDuContratSchema = (doc: 'contrat_cdd' | 'contrat_cdi') =>
+  doc === 'contrat_cdd' ? ficheCddSchema : ficheCdiSchema;
+
+/** Le salaire brut mensuel : la base, le sursalaire et la prime de transport. */
+export const salaireBrut = (f: {
+  salaireDeBase: number;
+  sursalaire: number;
+  primeDeTransport: number;
+}) => f.salaireDeBase + f.sursalaire + f.primeDeTransport;
 
 /** `delivered` : statut historique, conservé en lecture (voir en-tête). */
 export const documentRequestStatusSchema = z.enum([

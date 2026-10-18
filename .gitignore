@@ -21,7 +21,7 @@ coverage/
 apps/api/assets/entete-republique.*
 apps/api/assets/logo-apix.*
 apps/web/public/logo-apix.*
-# Arial et Comic Sans MS, déposées par l'exploitant : leur licence interdit de les versionner.
+# Arial, Times New Roman et Comic Sans MS, déposées par l'exploitant : leur licence interdit de les versionner.
 apps/api/assets/*.ttf
 apps/api/assets/*.TTF
 

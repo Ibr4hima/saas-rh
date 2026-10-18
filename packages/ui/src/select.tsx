@@ -229,16 +229,22 @@ export function Select({
     });
   }, [actif, ouvert]);
 
-  /** Saisie au vol : taper « sén » sélectionne « Sénégalaise ». */
+  /**
+   * Saisie au vol : taper « sén » sélectionne « Sénégalaise », « sen » aussi :
+   * les accents ne comptent pas, un clavier n'en a pas toujours.
+   */
   const chercher = (lettre: string) => {
     const maintenant = Date.now();
     const f = frappe.current;
     f.texte = maintenant - f.quand > 800 ? lettre : f.texte + lettre;
     f.quand = maintenant;
-    const cible = f.texte.toLocaleLowerCase('fr');
-    const i = choix.findIndex(
-      (c) => !c.desactive && c.libelle.toLocaleLowerCase('fr').startsWith(cible),
-    );
+    const sansAccents = (t: string) =>
+      t
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('fr');
+    const cible = sansAccents(f.texte);
+    const i = choix.findIndex((c) => !c.desactive && sansAccents(c.libelle).startsWith(cible));
     if (i < 0) return;
     if (ouvert) setActif(i);
     else choisir(i);

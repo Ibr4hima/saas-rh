@@ -1,7 +1,8 @@
 /**
- * Les polices des documents (ADR-0090) : Arial, et Comic Sans MS pour ce que
- * les modèles de l'APIX écrivent avec elle. Leur licence interdisant de les
- * versionner, Arimo et Comic Relief tiennent leur place, aux mêmes chasses.
+ * Les polices des documents (ADR-0090) : Arial, Times New Roman pour les
+ * contrats de travail (ADR-0098), et Comic Sans MS pour ce que les modèles de
+ * l'APIX écrivent avec elle. Leur licence interdisant de les versionner,
+ * Arimo, Tinos et Comic Relief tiennent leur place, aux mêmes chasses.
  * Google Sans reste celle du certificat d'APIX Academy.
  */
 import PDFDocument from 'pdfkit';
@@ -48,6 +49,17 @@ describe('Arial', () => {
     );
     expect([...polices].some((p) => /^(Arimo|Arial)-Bold/.test(p))).toBe(true);
     expect([...polices].some((p) => /^Comic(Relief|SansMS)-Bold/.test(p))).toBe(true);
+  });
+});
+
+describe('Times New Roman', () => {
+  it('a ses quatre coupes, celles des contrats de travail', () => {
+    const doc = new PDFDocument();
+    enregistrerPolices(doc);
+    expect(police(doc, 'normal', 'times')).toBe('times-normal');
+    expect(police(doc, 'bold', 'times')).toBe('times-bold');
+    expect(police(doc, 'italic', 'times')).toBe('times-italic');
+    expect(police(doc, 'bold-italic', 'times')).toBe('times-bold-italic');
   });
 });
 

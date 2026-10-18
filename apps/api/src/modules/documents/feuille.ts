@@ -154,6 +154,26 @@ export function nouvelleFeuille({
         .text(texte, MARGE, doc.y, { width: L, align: 'center', underline: true });
     },
 
+    /** Le titre d'un contrat de travail : centré, en gras, dans un filet fin qui le serre. */
+    titreCadre(
+      texte: string,
+      { avant = 40, taille = 12 }: { avant?: number; taille?: number } = {},
+    ) {
+      doc.y += avant;
+      doc.font(coupe('bold')).fontSize(taille).fillColor(ENCRE);
+      const largeur = doc.widthOfString(texte);
+      const hauteur = doc.currentLineHeight();
+      const x = MARGE + (L - largeur) / 2;
+      const y = doc.y;
+      doc.text(texte, x, y, { lineBreak: false });
+      doc
+        .rect(x - 2, y - 1, largeur + 4, hauteur + 2)
+        .lineWidth(0.5)
+        .strokeColor(ENCRE)
+        .stroke();
+      doc.y = y + hauteur;
+    },
+
     /** La suite sur une nouvelle page. */
     sautDePage() {
       doc.addPage();
@@ -167,13 +187,17 @@ export function nouvelleFeuille({
     signatures(
       gauche: readonly [string, string],
       droite: readonly [string, string],
-      { avant = 30, espace = 70 }: { avant?: number; espace?: number } = {},
+      {
+        avant = 30,
+        espace = 70,
+        taille = 11,
+      }: { avant?: number; espace?: number; taille?: number } = {},
     ) {
       doc.y += avant;
       const colonne = L / 2;
       place(espace + 40);
       const y = doc.y;
-      doc.font(coupe('bold')).fontSize(11).fillColor(ENCRE);
+      doc.font(coupe('bold')).fontSize(taille).fillColor(ENCRE);
       [gauche, droite].forEach(([haut, basDeColonne], i) => {
         const x = MARGE + i * colonne;
         doc.text(haut, x, y, { width: colonne, align: 'center', lineBreak: false });
@@ -239,7 +263,10 @@ export function nouvelleFeuille({
      * mots, sauf sur la dernière ligne. L'espace insécable lie deux mots.
      *
      * `retrait` décale le paragraphe vers la droite ; `puce` se pose dans ce
-     * retrait, devant la première ligne : un élément de liste.
+     * retrait, devant la première ligne : un élément de liste, sa puce calée
+     * à droite au milieu du retrait, ou à `puceA` de la marge. `pas` fixe la
+     * hauteur des lignes, au moins, comme l'interligne « au moins » de Word.
+     * `align: 'right'` cale chaque ligne à droite, sans justifier.
      */
     paragraphe(
       passages: readonly Passage[],
@@ -247,14 +274,20 @@ export function nouvelleFeuille({
         avant = 0,
         taille = 11,
         interligne = 3.5,
+        pas,
         retrait = 0,
         puce,
+        puceA,
+        align = 'justify',
       }: {
         avant?: number;
         taille?: number;
         interligne?: number;
+        pas?: number;
         retrait?: number;
         puce?: string;
+        puceA?: number;
+        align?: 'justify' | 'right';
       } = {},
     ) {
       doc.y += avant;
@@ -302,24 +335,44 @@ export function nouvelleFeuille({
       if (ligne.length > 0) lignes.push(ligne);
 
       doc.font(coupe('normal')).fontSize(taille);
-      const hauteurLigne = doc.currentLineHeight(true) + interligne;
+      const hauteurLigne =
+        pas === undefined
+          ? doc.currentLineHeight(true) + interligne
+          : Math.max(pas, doc.currentLineHeight(true));
       let y = doc.y;
+      // Ni ligne seule en bas de page, ni ligne seule en haut de la suivante,
+      // comme Word : un paragraphe qui se coupe en laisse deux de chaque côté.
+      const tiennent = Math.floor((bas() - y) / hauteurLigne);
+      const reste = lignes.length - tiennent;
+      const coupure =
+        reste <= 0
+          ? -1
+          : tiennent <= 1
+            ? 0
+            : reste > 1
+              ? tiennent
+              : tiennent >= 3
+                ? tiennent - 1
+                : 0;
       lignes.forEach((l, i) => {
-        if (y + hauteurLigne > bas()) {
+        if (i === coupure || y + hauteurLigne > bas()) {
           doc.addPage();
           y = doc.page.margins.top;
         }
         const pleine = l.reduce((s, m) => s + m.largeur, 0);
         const derniere = i === lignes.length - 1;
-        const ecart = !derniere && l.length > 1 ? (largeurUtile - pleine) / (l.length - 1) : espace;
+        const ecart =
+          align === 'justify' && !derniere && l.length > 1
+            ? (largeurUtile - pleine) / (l.length - 1)
+            : espace;
         if (puce && i === 0) {
-          doc
-            .font(coupe('normal'))
-            .fontSize(taille)
-            .fillColor(ENCRE)
-            .text(puce, MARGE + retrait / 2 - doc.widthOfString(puce), y, { lineBreak: false });
+          doc.font(coupe('normal')).fontSize(taille).fillColor(ENCRE);
+          const xPuce =
+            puceA === undefined ? MARGE + retrait / 2 - doc.widthOfString(puce) : MARGE + puceA;
+          doc.text(puce, xPuce, y, { lineBreak: false });
         }
-        let x = MARGE + retrait;
+        let x =
+          align === 'right' ? MARGE + L - (pleine + espace * (l.length - 1)) : MARGE + retrait;
         for (const mot of l) {
           for (const m of mot.morceaux) {
             doc
@@ -344,6 +397,42 @@ export function nouvelleFeuille({
         y += hauteurLigne;
       });
       doc.y = y;
+    },
+
+    /**
+     * Une ligne de liste en deux colonnes : la puce à `puceA` de la marge, le
+     * libellé à `retrait`, la valeur à `colonne`. « Salaire de base : 350 000
+     * F CFA ».
+     */
+    ligneAColonne(
+      libelle: string,
+      valeur: string,
+      {
+        avant = 0,
+        taille = 11,
+        pas = 18,
+        puce,
+        puceA = 0,
+        retrait = 0,
+        colonne,
+      }: {
+        avant?: number;
+        taille?: number;
+        pas?: number;
+        puce?: string;
+        puceA?: number;
+        retrait?: number;
+        colonne: number;
+      },
+    ) {
+      doc.y += avant;
+      place(pas);
+      const y = doc.y;
+      doc.font(coupe('normal')).fontSize(taille).fillColor(ENCRE);
+      if (puce) doc.text(puce, MARGE + puceA, y, { lineBreak: false });
+      doc.text(libelle, MARGE + retrait, y, { lineBreak: false });
+      doc.text(valeur, MARGE + colonne, y, { lineBreak: false });
+      doc.y = y + Math.max(pas, doc.currentLineHeight(true));
     },
 
     /**

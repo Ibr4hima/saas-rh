@@ -81,17 +81,19 @@ export function cheminLogo(): string | null {
 export type Coupe = 'normal' | 'bold' | 'italic' | 'bold-italic';
 
 /**
- * Les familles des documents : Arial, la police principale (ADR-0090), Comic
- * Sans MS pour ce que les modèles de l'APIX écrivent avec elle, et Google
- * Sans, celle du certificat d'APIX Academy.
+ * Les familles des documents : Arial, la police principale (ADR-0090), Times
+ * New Roman, celle des contrats de travail (ADR-0098), Comic Sans MS pour ce
+ * que les modèles de l'APIX écrivent avec elle, et Google Sans, celle du
+ * certificat d'APIX Academy.
  */
-export type Famille = 'arial' | 'comic' | 'google-sans';
+export type Famille = 'arial' | 'times' | 'comic' | 'google-sans';
 
 /**
- * Où les systèmes rangent Arial et Comic Sans MS, quand ils les ont : Windows
- * et macOS de série, Debian et Ubuntu avec le paquet officiel des polices de
- * Microsoft (`ttf-mscorefonts-installer`). `windows` : le nom du fichier sous
- * Windows, que reprend le paquet ; `macos` : celui de macOS.
+ * Où les systèmes rangent Arial, Times New Roman et Comic Sans MS, quand ils
+ * les ont : Windows et macOS de série, Debian et Ubuntu avec le paquet
+ * officiel des polices de Microsoft (`ttf-mscorefonts-installer`). `windows` :
+ * le nom du fichier sous Windows, que reprend le paquet ; `macos` : celui de
+ * macOS.
  */
 const surLeSysteme = (windows: string, macos?: string) => [
   `C:\\Windows\\Fonts\\${windows}`,
@@ -102,8 +104,8 @@ const surLeSysteme = (windows: string, macos?: string) => [
 /**
  * Où trouver chaque coupe, par ordre de préférence, depuis `assets/`.
  *
- * Arial et Comic Sans MS ne se versionnent pas : leur licence l'interdit
- * (ADR-0090). Le générateur prend celles que l'exploitant dépose à la racine
+ * Arial, Times New Roman et Comic Sans MS ne se versionnent pas : leur
+ * licence l'interdit (ADR-0090). Le générateur prend celles que l'exploitant dépose à la racine
  * des ressources, sous leur nom Windows, puis celles du serveur. Sans elles,
  * leurs équivalents libres, versionnés dans `fonts/`, prennent la place, aux
  * mêmes chasses : la mise en page ne bouge pas d'un caractère.
@@ -121,6 +123,28 @@ const FICHIERS: Record<Famille, Partial<Record<Coupe, readonly string[]>>> = {
       'arialbi.ttf',
       ...surLeSysteme('arialbi.ttf', 'Arial Bold Italic.ttf'),
       'fonts/arimo-bold-italic.ttf',
+    ],
+  },
+  times: {
+    normal: [
+      'times.ttf',
+      ...surLeSysteme('times.ttf', 'Times New Roman.ttf'),
+      'fonts/tinos-regular.ttf',
+    ],
+    bold: [
+      'timesbd.ttf',
+      ...surLeSysteme('timesbd.ttf', 'Times New Roman Bold.ttf'),
+      'fonts/tinos-bold.ttf',
+    ],
+    italic: [
+      'timesi.ttf',
+      ...surLeSysteme('timesi.ttf', 'Times New Roman Italic.ttf'),
+      'fonts/tinos-italic.ttf',
+    ],
+    'bold-italic': [
+      'timesbi.ttf',
+      ...surLeSysteme('timesbi.ttf', 'Times New Roman Bold Italic.ttf'),
+      'fonts/tinos-bold-italic.ttf',
     ],
   },
   comic: {

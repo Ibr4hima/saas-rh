@@ -21,6 +21,7 @@ import { attestationDeRevenu } from './attestation-revenu';
 import { attestationDeStage } from './attestation-stage';
 import { certificatDeTravail } from './certificat-travail';
 import { contratDeStage, type ModeleSansAgent } from './contrat-stage';
+import { contratDeTravail } from './contrat-travail';
 import { AttestationService } from './attestation.service';
 import type { DocumentPdf, Modele } from './feuille';
 
@@ -33,9 +34,9 @@ import type { DocumentPdf, Modele } from './feuille';
  * leur revient, depuis la file des documents. Le compte d'administration,
  * technique, ne produit pas d'actes.
  *
- * Un document sans agent (le contrat de stage, ADR-0094) se génère d'une
- * fiche que la DCH renseigne : la personne n'est pas encore dans
- * l'application.
+ * Un document sans agent (les contrats de travail et de stage, ADR-0094,
+ * ADR-0098) se génère d'une fiche que la DCH renseigne : la personne n'est
+ * pas encore dans l'application.
  */
 @Injectable()
 export class GenerationService {
@@ -46,6 +47,8 @@ export class GenerationService {
    */
   private readonly modeles: Record<Exclude<DocumentGenere, DocumentSansAgent>, Modele>;
   private readonly sansAgent: Record<DocumentSansAgent, ModeleSansAgent> = {
+    contrat_cdd: contratDeTravail('contrat_cdd'),
+    contrat_cdi: contratDeTravail('contrat_cdi'),
     contrat_stage: contratDeStage,
   };
 
