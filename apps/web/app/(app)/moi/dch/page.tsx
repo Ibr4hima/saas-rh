@@ -26,7 +26,6 @@ import {
   FenetreRappel,
   MentionConge,
 } from '../../../../components/conge-valide';
-import { DeleguerMembres } from '../../../../components/deleguer-membres';
 import { FenetreDemandeAbsence } from '../../../../components/fenetre-demande-absence';
 import { JoindreJustificatif } from '../../../../components/joindre-justificatif';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
@@ -37,14 +36,11 @@ import { Modal } from '../../../../components/modal';
 import { Pagination, usePagination } from '../../../../components/pagination';
 import { StatutAbsence } from '../../../../components/statut-absence';
 import {
-  BandeauDelegation,
   BandeauMessage,
   EnTetePliable,
-  listePrenoms,
   Pastille,
   quiTraite,
   texteErreur,
-  useMembresDCH,
   type Message,
 } from '../../../../components/traitement-dch';
 import { dureeAbsence, periodeAbsence, resumeVisas } from '../../../../lib/absences';
@@ -57,9 +53,9 @@ import { de } from '../../../../lib/mots';
    Capital Humain : la file à traiter et, sous elle, qui est absent.
 
    Le circuit de l'APIX : le N+1 vise d'abord ; la demande passe ensuite à
-   la DCH. Son directeur peut DÉLÉGUER : les membres qu'il coche peuvent
-   traiter les demandes — et lui aussi, toujours. Retirer une délégation,
-   c'est décocher. Cet écran sert à tous :
+   la DCH. Qui dirige la DCH peut DÉLÉGUER les demandes, depuis « Déléguer
+   des tâches » : les membres cochés les traitent, et la direction aussi,
+   toujours. Retirer une délégation, c'est décocher. Cet écran sert à tous :
 
      — au DIRECTEUR : toutes les demandes à l'étape de la DCH ;
      — aux MEMBRES habilités, ou à qui une demande est confiée : ce qui les
@@ -75,8 +71,6 @@ export default function CongesATraiterPage() {
   const queryClient = useQueryClient();
   const me = useMe();
   const estDirecteur = Boolean(me.data?.dirigeLaDCH);
-  const habilitations = useMembresDCH();
-  const membres = habilitations.data?.membres ?? [];
   const demandes = useQuery({
     queryKey: ['absence-requests', 'dch'],
     queryFn: () => api<AbsenceRequestView[]>('/absence-requests?limit=100'),
@@ -154,7 +148,6 @@ export default function CongesATraiterPage() {
         .sort((a, b) => a.startDate.localeCompare(b.startDate));
   const traitees = toutes.filter((r) => r.status !== 'pending');
   const file = usePagination(enAttente);
-  const habilites = membres.filter((m) => m.capacites.includes('demandes.conges'));
   // Le justificatif peut dire une maladie : à qui traite, ou lit les données sensibles.
   const voitJustificatifs = traite || peut(me.data, 'personnel.sensible');
 
@@ -187,36 +180,6 @@ export default function CongesATraiterPage() {
   return (
     <Page>
       {message ? <BandeauMessage message={message} /> : null}
-
-      {estDirecteur ? (
-        <BandeauDelegation
-          icone="arrow_split"
-          texte={
-            habilites.length > 0
-              ? `${listePrenoms(habilites)} ${habilites.length > 1 ? 'peuvent' : 'peut'} désormais traiter les demandes d’absence et de congé.`
-              : 'Vous pouvez déléguer cette tâche à votre équipe.'
-          }
-          action={
-            <DeleguerMembres
-              membres={membres}
-              capacite="demandes.conges"
-              titre="Déléguer les absences et congés"
-              confirmation={(retenus) =>
-                `${listePrenoms(retenus)} ${retenus.length > 1 ? 'pourront' : 'pourra'} traiter désormais les demandes d’absence et de congé, une fois visées par son manager, conformément au circuit de validation.`
-              }
-              retrait="Vous traiterez de vous-même toutes les demandes d’absence et de congé."
-              fichiers={['absence-requests']}
-              onFait={() => setMessage(null)}
-              onErreur={echec}
-            />
-          }
-        />
-      ) : peut(me.data, 'demandes.conges') ? (
-        <BandeauDelegation
-          icone="how_to_reg"
-          texte="La DCH vous a délégué le traitement des demandes d’absence et de congé."
-        />
-      ) : null}
 
       {/* ———— Demandes à traiter ———— */}
       <Card className="shrink-0">

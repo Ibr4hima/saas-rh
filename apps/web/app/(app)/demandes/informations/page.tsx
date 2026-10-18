@@ -22,7 +22,6 @@ import {
 } from '@teranga/ui';
 import { BoutonDecision } from '../../../../components/bouton-decision';
 import { PrevisualiserCertificat } from '../../../../components/certificat-de-mariage';
-import { DeleguerMembres } from '../../../../components/deleguer-membres';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Page } from '../../../../components/gabarit';
@@ -31,12 +30,9 @@ import { Modal } from '../../../../components/modal';
 import { Pagination, usePagination } from '../../../../components/pagination';
 import { valeurSignalee } from '../../../../components/telephone';
 import {
-  BandeauDelegation,
   BandeauMessage,
-  listePrenoms,
   Pastille,
   texteErreur,
-  useMembresDCH,
   type Message,
 } from '../../../../components/traitement-dch';
 import { api } from '../../../../lib/api';
@@ -48,9 +44,10 @@ import { formatDate, useMe } from '../../../../lib/hooks';
 
    Un agent signale un changement (adresse, téléphone, situation…) depuis
    son espace ; la DCH le confirme — le dossier est mis à jour aussitôt — ou
-   le refuse, avec un motif. Son directeur peut DÉLÉGUER : les membres qu'il
-   coche peuvent traiter ces demandes — et lui aussi, toujours. Ce qui est
-   traité ne s'affiche plus : le dossier de l'agent le porte.
+   le refuse, avec un motif. Qui dirige la DCH peut DÉLÉGUER ces demandes,
+   depuis « Déléguer des tâches » : les membres cochés les traitent, et la
+   direction aussi, toujours. Ce qui est traité ne s'affiche plus : le
+   dossier de l'agent le porte.
    ———————————————————————————————————————————————————————————————— */
 
 const lisible = (champ: string, valeur: string | null | undefined) =>
@@ -64,7 +61,6 @@ export default function InformationsATraiterPage() {
     queryKey: ['profile-changes', 'file'],
     queryFn: () => api<ProfileChangeRequestView[]>('/profile-changes'),
   });
-  const membres = useMembresDCH().data?.membres ?? [];
   const [message, setMessage] = useState<Message>(null);
   const [refus, setRefus] = useState<ProfileChangeRequestView | null>(null);
   // Le dossier a changé depuis la demande : la valider remplacerait une
@@ -118,42 +114,11 @@ export default function InformationsATraiterPage() {
   const aTraiter = toutes.filter(
     (r) => r.status === 'pending' && (!traite || r.canDecide || Boolean(r.traitement?.aConfier)),
   );
-  const habilites = membres.filter((m) => m.capacites.includes('demandes.informations'));
   const { tranche, barre } = usePagination(aTraiter);
 
   return (
     <Page>
       {message ? <BandeauMessage message={message} /> : null}
-
-      {estDirecteur ? (
-        <BandeauDelegation
-          icone="arrow_split"
-          texte={
-            habilites.length > 0
-              ? `${listePrenoms(habilites)} ${habilites.length > 1 ? 'peuvent' : 'peut'} désormais traiter les demandes de mise à jour d’informations.`
-              : 'Vous pouvez déléguer cette tâche à votre équipe.'
-          }
-          action={
-            <DeleguerMembres
-              membres={membres}
-              capacite="demandes.informations"
-              titre="Déléguer les mises à jour d’informations"
-              confirmation={(retenus) =>
-                `${listePrenoms(retenus)} ${retenus.length > 1 ? 'pourront' : 'pourra'} traiter désormais les demandes de mise à jour d’informations.`
-              }
-              retrait="Vous traiterez de vous-même toutes les demandes de mise à jour d’informations."
-              fichiers={['profile-changes']}
-              onFait={() => setMessage(null)}
-              onErreur={echec}
-            />
-          }
-        />
-      ) : peut(me.data, 'demandes.informations') ? (
-        <BandeauDelegation
-          icone="how_to_reg"
-          texte="La DCH vous a délégué le traitement des demandes de mise à jour d’informations."
-        />
-      ) : null}
 
       {/* ———— Demandes à traiter ———— */}
       <Card className="shrink-0">

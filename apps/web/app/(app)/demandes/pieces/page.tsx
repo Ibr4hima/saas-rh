@@ -21,8 +21,7 @@ import {
 } from '@teranga/ui';
 import { BoutonDecision } from '../../../../components/bouton-decision';
 import { FenetreControleDuTitre } from '../../../../components/controle-titre';
-import { DeleguerPieces, detient, TYPES_PIECES } from '../../../../components/deleguer-documents';
-import { PastilleSensible } from '../../../../components/deleguer-membres';
+import { TYPES_PIECES } from '../../../../components/deleguer-documents';
 import { type ViewableDoc } from '../../../../components/doc-viewer';
 import { FenetreDocument } from '../../../../components/fenetre-document';
 import { Page } from '../../../../components/gabarit';
@@ -30,12 +29,9 @@ import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { Pagination, usePagination } from '../../../../components/pagination';
 import {
-  BandeauDelegation,
   BandeauMessage,
-  listePrenoms,
   Pastille,
   texteErreur,
-  useMembresDCH,
   type Message,
 } from '../../../../components/traitement-dch';
 import { api, apiUrl } from '../../../../lib/api';
@@ -46,9 +42,9 @@ import { formatDate, useMe } from '../../../../lib/hooks';
    les agents, pour la Direction du Capital Humain.
 
    Un agent dépose un document (pièce d'identité, diplôme…) depuis son
-   espace ; il ne rejoint son dossier qu'une fois vérifié. Son directeur
-   peut DÉLÉGUER : les membres qu'il coche peuvent vérifier ces documents —
-   et lui aussi, toujours.
+   espace ; il ne rejoint son dossier qu'une fois vérifié. Qui dirige la DCH
+   peut DÉLÉGUER ces vérifications, depuis « Déléguer des tâches » : les
+   membres cochés vérifient ces documents, et la direction aussi, toujours.
    ———————————————————————————————————————————————————————————————— */
 
 export default function PiecesAVerifierPage() {
@@ -59,7 +55,6 @@ export default function PiecesAVerifierPage() {
     queryKey: ['pieces', 'file'],
     queryFn: () => api<PieceATraiterView[]>('/employee-documents/a-verifier'),
   });
-  const membres = useMembresDCH().data?.membres ?? [];
   const [message, setMessage] = useState<Message>(null);
   const [rejet, setRejet] = useState<PieceATraiterView | null>(null);
   const [motif, setMotif] = useState('');
@@ -114,11 +109,7 @@ export default function PiecesAVerifierPage() {
   // et son propre document, qu'il délègue. Qui consulte seulement voit la
   // file entière, sans geste.
   const toutes = pieces.data ?? [];
-  // Ce qui est délégué, type par type : à qui, et — au membre — à lui.
-  const delegues = membres.filter((m) =>
-    TYPES_PIECES.some((t) => t.capacites.some((c) => m.capacites.includes(c))),
-  );
-  const tousLesTypes = delegues.every((m) => TYPES_PIECES.every((t) => detient(m, t)));
+  // Les types que la DCH a délégués à l'appelant.
   const miens = TYPES_PIECES.filter((t) => t.capacites.some((c) => peut(me.data, c)));
   const traite = estDirecteur || miens.length > 0 || toutes.some((p) => p.canReview);
   const aVerifier = toutes.filter(
@@ -129,33 +120,6 @@ export default function PiecesAVerifierPage() {
   return (
     <Page>
       {message ? <BandeauMessage message={message} /> : null}
-
-      {estDirecteur ? (
-        <BandeauDelegation
-          icone="arrow_split"
-          texte={
-            <>
-              {delegues.length > 0
-                ? `${listePrenoms(delegues)} ${delegues.length > 1 ? 'peuvent' : 'peut'} désormais vérifier ${tousLesTypes ? 'les' : 'certains'} documents officiels.`
-                : 'Vous pouvez déléguer la vérification des documents à votre équipe.'}
-              <PastilleSensible />
-            </>
-          }
-          action={<DeleguerPieces membres={membres} onFait={() => setMessage(null)} />}
-        />
-      ) : miens.length > 0 ? (
-        <BandeauDelegation
-          icone="how_to_reg"
-          texte={
-            <>
-              {miens.length === TYPES_PIECES.length
-                ? 'La DCH vous a délégué la vérification des documents officiels.'
-                : `La DCH vous a délégué la vérification des documents suivants : ${miens.map((t) => t.libelle).join(', ')}.`}
-              <PastilleSensible />
-            </>
-          }
-        />
-      ) : null}
 
       {/* ———— Demandes à traiter ———— */}
       <Card className="shrink-0">

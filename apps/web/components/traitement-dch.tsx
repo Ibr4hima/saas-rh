@@ -1,23 +1,20 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import {
-  type EtatHabilitations,
-  type MembreHabilite,
-  type TraitementView,
-} from '@teranga/contracts';
+import { type EtatHabilitations, type TraitementView } from '@teranga/contracts';
 import { CardHeader, CardTitle, cn } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import { Icon, type IconName } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
-   Ce que les files de la DCH ont en commun : le bandeau de la délégation,
-   qui traite, le retour d'une action, la pastille et l'en-tête pliable.
+   Ce que les files de la DCH ont en commun : qui traite, le retour d'une
+   action, le bandeau d'information, la pastille et l'en-tête pliable.
 
-   Toutes les demandes du personnel relèvent de la DCH. Son directeur les
-   traite, et peut les DÉLÉGUER aux membres de sa direction : ils peuvent
-   alors les traiter aussi — lui, toujours.
+   Toutes les demandes du personnel relèvent de la DCH. Qui la dirige les
+   traite, et peut les DÉLÉGUER aux membres de sa direction, depuis
+   « Déléguer des tâches » : ils peuvent alors les traiter aussi, et la
+   direction toujours.
    ———————————————————————————————————————————————————————————————— */
 
 export type Message = { ton: 'ok' | 'erreur'; texte: string } | null;
@@ -42,15 +39,9 @@ export function BandeauMessage({ message }: { message: NonNullable<Message> }) {
   );
 }
 
-/** « Awa », « Awa et Khady », « Awa, Khady et Moussa ». */
-export function listePrenoms(membres: readonly MembreHabilite[]): string {
-  const p = membres.map((m) => m.prenom);
-  return p.length > 1 ? `${p.slice(0, -1).join(', ')} et ${p[p.length - 1]}` : (p[0] ?? '');
-}
-
 /**
- * En tête d'une file de la DCH, la délégation : au directeur, qui peut
- * traiter, et son bouton « Déléguer » ; au membre, ce qui lui est délégué.
+ * Un bandeau d'information en tête de page : sur « Déléguer des tâches »,
+ * qui peut modifier les délégations.
  *
  * Le même bandeau, en orange, porte ce qui attend un geste (des dossiers à
  * compléter) : deux bandeaux empilés gardent ainsi la même forme.

@@ -33,7 +33,6 @@ import {
 import { api, ApiError } from '../../../lib/api';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { aujourdhui } from '../../../lib/temps';
-import { BandeauDeleguer, CAPACITES_PERSONNEL } from '../../../components/deleguer-membres';
 import { EmployeeCreateModal } from '../../../components/employee-create-modal';
 import { BandeauHierarchie } from '../../../components/bandeau-hierarchie';
 import { aDesConsequences, ListeConsequences } from '../../../components/consequences-hierarchie';
@@ -284,20 +283,6 @@ export default function EmployeesPage() {
     <Page>
       <EmployeeCreateModal open={createOpen} onClose={() => router.replace('/employees')} />
       {importOuvert ? <FenetreImportEmployes onClose={() => setImportOuvert(false)} /> : null}
-
-      {/* Déléguer la gestion du personnel, c'est toute la page : consulter,
-          gérer, les données sensibles, effacer un dossier, les soldes. */}
-      <BandeauDeleguer
-        capacite={CAPACITES_PERSONNEL}
-        verbe="gérer"
-        objet="les dossiers du personnel"
-        delegue="la gestion du personnel"
-        retrait="Vous gérerez de vous-même les dossiers du personnel."
-        titre="Déléguer la gestion du personnel"
-        invitation="Vous pouvez déléguer la gestion du personnel à votre équipe."
-        sensible
-        fichiers={['employees']}
-      />
 
       {/* L'avertissement de la chaîne hiérarchique se tient ICI, au-dessus de
           la liste : c'est sur les fiches qu'on corrige, et c'est donc de cet

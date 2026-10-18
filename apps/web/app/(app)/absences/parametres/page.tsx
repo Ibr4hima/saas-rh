@@ -22,7 +22,6 @@ import {
   Th,
   Tr,
 } from '@teranga/ui';
-import { BandeauDeleguer } from '../../../../components/deleguer-membres';
 import { Icon } from '../../../../components/icons';
 import { Pagination, usePagination } from '../../../../components/pagination';
 import { Modal, ModalGrid, ModalSection } from '../../../../components/modal';
@@ -46,15 +45,6 @@ export default function AbsenceSettingsPage() {
 
   return (
     <Page>
-      <BandeauDeleguer
-        capacite="conges.parametres"
-        verbe="gérer"
-        objet="les paramètres des absences"
-        delegue="la gestion des paramètres des absences"
-        retrait="Vous gérerez de vous-même les paramètres des absences."
-        titre="Déléguer les paramètres des absences"
-      />
-
       {/* Le catalogue des types prend la hauteur qui reste ; le circuit, qui
           tient en deux listes, garde la sienne. */}
       <TypesCard peutGerer={peutGerer} />

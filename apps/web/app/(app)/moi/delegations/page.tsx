@@ -31,7 +31,8 @@ import { api } from '../../../../lib/api';
    Les documents se délèguent type par type. Chaque coche s'enregistre
    d'elle-même.
 
-   Chaque page porte aussi son propre « Déléguer » : ici, on voit tout.
+   C'est le seul endroit où la délégation se règle : les pages n'en portent
+   plus ni bandeau ni bouton « Déléguer » (ADR-0109).
    ———————————————————————————————————————————————————————————————— */
 
 /** Une page, et ce que la déléguer donne — ou ses types, un par un. */

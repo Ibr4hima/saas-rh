@@ -22,7 +22,6 @@ import {
 } from '@teranga/ui';
 import { FormationModal } from '../../../../components/academy-formation-modal';
 import { RetourAcademy } from '../../../../components/academy-carte';
-import { BandeauDeleguer } from '../../../../components/deleguer-membres';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { Pagination, usePagination } from '../../../../components/pagination';
@@ -93,14 +92,6 @@ export default function GererCataloguePage() {
     <Page>
       {/* L'administrateur revient au catalogue ; un agent l'a dans « Mon espace ». */}
       {me.data && !me.data.estAgent ? <RetourAcademy href="/academy" label="APIX Academy" /> : null}
-      <BandeauDeleguer
-        capacite="academy"
-        verbe="gérer"
-        objet="le catalogue de l’APIX Academy"
-        delegue="la gestion de l’APIX Academy"
-        retrait="Vous gérerez de vous-même l’APIX Academy."
-        titre="Déléguer l’APIX Academy"
-      />
       <Card>
         {/* L'action « Nouvelle formation » vit dans le bandeau, comme l'action
             unique de chaque écran — la répéter ici en ferait deux. */}

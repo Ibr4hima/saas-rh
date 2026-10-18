@@ -24,7 +24,6 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
-import { BandeauDeleguer } from '../../../components/deleguer-membres';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
@@ -159,15 +158,6 @@ export default function GestionDesAccesPage() {
 
   return (
     <Page>
-      <BandeauDeleguer
-        capacite="acces"
-        verbe="gérer"
-        objet="les accès au portail"
-        delegue="la gestion des accès"
-        retrait="Vous gérerez de vous-même les accès au portail."
-        titre="Déléguer la gestion des accès"
-        invitation="Vous pouvez déléguer la gestion des accès à votre équipe."
-      />
       <div className="mb-3 overflow-x-auto">
         <Onglets
           courant={filtre}

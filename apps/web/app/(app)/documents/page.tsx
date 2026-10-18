@@ -9,12 +9,7 @@ import type {
   PeriodeDuBulletin,
   RequestableDoc,
 } from '@teranga/contracts';
-import {
-  capaciteDuDocument,
-  documentDemande,
-  peut,
-  REQUESTABLE_DOC_LABELS,
-} from '@teranga/contracts';
+import { capaciteDuDocument, documentDemande, peut } from '@teranga/contracts';
 import {
   Button,
   CardHeader,
@@ -42,14 +37,11 @@ import { PdfViewer } from '../../../components/pdf-viewer';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import { Pagination, usePagination } from '../../../components/pagination';
-import { DeleguerDocuments, DOCUMENTS_DELEGABLES } from '../../../components/deleguer-documents';
+import { DOCUMENTS_DELEGABLES } from '../../../components/deleguer-documents';
 import {
-  BandeauDelegation,
   BandeauMessage,
   EnTetePliable,
-  listePrenoms,
   Pastille,
-  useMembresDCH,
   type Message,
 } from '../../../components/traitement-dch';
 import {
@@ -72,16 +64,6 @@ const OPEN = ['received', 'processing'];
 function docLabels(r: DocumentRequestView): string {
   return r.docTypes.map((d) => documentDemande(d, r.bulletin)).join(' · ');
 }
-
-/** « d’attestation de travail », « de bulletin de salaire ». */
-const deDocument = (doc: RequestableDoc) => {
-  const l = REQUESTABLE_DOC_LABELS[doc].toLowerCase();
-  return /^[aeiouéh]/.test(l) ? `d’${l}` : `de ${l}`;
-};
-
-/** « a », « a et b », « a, b et c ». */
-const enumerer = (mots: string[]) =>
-  mots.length > 1 ? `${mots.slice(0, -1).join(', ')} et ${mots[mots.length - 1]}` : (mots[0] ?? '');
 
 /** Heures écoulées depuis un instant — l'unité de la file d'attente RH. */
 function hoursSince(iso: string): number {
@@ -121,15 +103,8 @@ export default function DocumentRequestsPage() {
   // La demande prête dont on ouvre les documents remis : on la relit dans la
   // liste à chaque rendu, pour voir le fichier qu'on vient d'ajouter.
   const [documentsDe, setDocumentsDe] = useState<string | null>(null);
-  const membres = useMembresDCH().data?.membres ?? [];
 
-  // Le bandeau : au directeur, qui peut traiter ; au membre, ce qui lui est délégué.
-  const peutTraiterLeDoc = (m: { capacites: readonly string[] }, doc: RequestableDoc) =>
-    m.capacites.includes(capaciteDuDocument(doc));
-  const delegues = membres.filter((m) => DOCUMENTS_DELEGABLES.some((d) => peutTraiterLeDoc(m, d)));
-  const tousLesDocuments = delegues.every((m) =>
-    DOCUMENTS_DELEGABLES.every((d) => peutTraiterLeDoc(m, d)),
-  );
+  // Les documents que la DCH a délégués à l'appelant.
   const miens = DOCUMENTS_DELEGABLES.filter((d) => peut(me.data, capaciteDuDocument(d)));
 
   const items = useMemo(() => requests.data ?? [], [requests.data]);
@@ -189,27 +164,6 @@ export default function DocumentRequestsPage() {
   return (
     <Page>
       {message ? <BandeauMessage message={message} /> : null}
-
-      {estDirecteur ? (
-        <BandeauDelegation
-          icone="arrow_split"
-          texte={
-            delegues.length > 0
-              ? `${listePrenoms(delegues)} ${delegues.length > 1 ? 'peuvent' : 'peut'} désormais traiter ${tousLesDocuments ? 'les' : 'certaines'} demandes de documents.`
-              : 'Vous pouvez déléguer cette tâche à votre équipe.'
-          }
-          action={<DeleguerDocuments membres={membres} onFait={() => setMessage(null)} />}
-        />
-      ) : miens.length > 0 ? (
-        <BandeauDelegation
-          icone="how_to_reg"
-          texte={
-            miens.length === DOCUMENTS_DELEGABLES.length
-              ? 'La DCH vous a délégué le traitement des demandes de documents.'
-              : `La DCH vous a délégué le traitement des demandes ${enumerer(miens.map(deDocument))}.`
-          }
-        />
-      ) : null}
 
       <CartePleine>
         <CardHeader className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
