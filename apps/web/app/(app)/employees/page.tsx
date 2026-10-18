@@ -22,7 +22,6 @@ import {
   Field,
   Input,
   Select,
-  SelectMultiple,
   Table,
   TBody,
   Td,
@@ -77,11 +76,6 @@ const TITRES: Record<EmployeeStatus, string> = {
   archived: 'Personnel inactif',
 };
 
-interface Filtres {
-  units: string[];
-}
-const SANS_FILTRE: Filtres = { units: [] };
-
 /**
  * Le sens du PREMIER clic sur chaque colonne.
  *
@@ -113,11 +107,6 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [onglet, setOnglet] = useState<EmployeeStatus>(ongletInitial);
-  // Venu d'une barre du tableau de bord : la liste s'ouvre filtrée sur sa direction.
-  const uniteDemandee = params.get('unite');
-  const [filtres, setFiltres] = useState<Filtres>(
-    uniteDemandee ? { units: [uniteDemandee] } : SANS_FILTRE,
-  );
   const [sort, setSort] = useState<EmployeeSort>(
     ongletInitial === 'archived' ? 'contractEnd' : 'recent',
   );
@@ -140,10 +129,10 @@ export default function EmployeesPage() {
   // Toute requête NOUVELLE repart de la première page : rester à la page 4
   // après avoir tapé trois lettres montrerait le milieu d'un résultat dont on
   // n'a pas vu le début.
-  useEffect(() => setPage(1), [debounced, onglet, filtres, sort, dir]);
+  useEffect(() => setPage(1), [debounced, onglet, sort, dir]);
 
   const query = useQuery({
-    queryKey: ['employees', debounced, onglet, filtres, sort, dir, page],
+    queryKey: ['employees', debounced, onglet, sort, dir, page],
     queryFn: () => {
       const params = new URLSearchParams({
         status: onglet,
@@ -153,7 +142,6 @@ export default function EmployeesPage() {
         offset: String((page - 1) * PAR_PAGE),
       });
       if (debounced) params.set('q', debounced);
-      for (const u of filtres.units) params.append('unit', u);
       return api<EmployeeListPage>(`/employees?${params.toString()}`);
     },
     // La page précédente RESTE à l'écran pendant que la suivante arrive : sans
@@ -165,7 +153,6 @@ export default function EmployeesPage() {
   const donnees = query.data;
   const items = useMemo(() => donnees?.items ?? [], [donnees]);
   const counts = donnees?.counts ?? { active: 0, archived: 0 };
-  const unites = donnees?.facets.units ?? [];
   const nbPages = Math.max(1, Math.ceil((donnees?.total ?? 0) / PAR_PAGE));
 
   /**
@@ -256,7 +243,7 @@ export default function EmployeesPage() {
   // Qui part avec une équipe la confie : on le demande avant de désactiver.
   const aConfier = equipesAConfier(actifsChoisis);
 
-  const filtreActif = Boolean(debounced) || filtres.units.length > 0;
+  const filtreActif = Boolean(debounced);
 
   const ONGLETS = [
     { cle: 'active', label: 'Actifs', compte: counts.active },
@@ -268,10 +255,6 @@ export default function EmployeesPage() {
     router.replace(cle === 'archived' ? '/employees?onglet=inactifs' : '/employees', {
       scroll: false,
     });
-    // Le filtre porte sur des valeurs propres à l'onglet : une unité qui
-    // n'existe que chez les actifs viderait l'onglet des inactifs sans qu'on
-    // comprenne pourquoi.
-    setFiltres(SANS_FILTRE);
     // Les inactifs, du départ le plus récent au plus ancien ; les actifs, par
     // dernier dossier touché.
     setSort(cle === 'archived' ? 'contractEnd' : 'recent');
@@ -301,10 +284,14 @@ export default function EmployeesPage() {
 
       <CartePleine>
         <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-            <CardTitle>{TITRES[onglet]}</CardTitle>
-            {/* La recherche est un outil du tableau : elle se tient sur sa
-                ligne de titre, pas au-dessus de la carte. */}
+          <CardTitle>{TITRES[onglet]}</CardTitle>
+
+          {/* À DROITE de la ligne du titre, les outils du tableau : la
+              recherche, puis le geste qui remplit la liste. L'import se retire
+              quand des lignes sont cochées : la barre de sélection prend sa
+              place, et deux séries d'actions sur la même ligne feraient
+              hésiter. */}
+          <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Icon
                 name="search"
@@ -316,79 +303,57 @@ export default function EmployeesPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 aria-label="Rechercher un employé"
-                className="h-8 w-56 pl-8 text-[12.5px]"
+                className="h-8 w-44 pl-8 text-[12.5px] sm:w-56"
               />
             </div>
-            {/* Le filtre des unités, à côté de la recherche. Les inactifs
-                n'ont plus d'unité : la recherche suffit. */}
-            {onglet === 'active' ? (
-              <>
-                <SelectMultiple
-                  tout="Toutes les unités"
-                  resume={(n) => `${n} unités`}
-                  valeurs={filtres.units}
-                  options={unites.map((u) => ({ value: u, label: u }))}
-                  onChange={(units) => setFiltres((f) => ({ ...f, units }))}
-                  className="h-8 w-auto min-w-[9.5rem] pr-3 text-[12.5px]"
-                />
-                {filtres.units.length > 0 ? (
-                  <Button size="sm" variant="ghost" onClick={() => setFiltres(SANS_FILTRE)}>
-                    Tout afficher
-                  </Button>
-                ) : null}
-              </>
+
+            {/* On importe des agents en poste : l'onglet des inactifs n'en reçoit pas. */}
+            {peutImporter && onglet === 'active' && choisis.length === 0 ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8"
+                onClick={() => setImportOuvert(true)}
+                title="Importer l’effectif depuis un classeur .xlsx"
+              >
+                <Icon name="upload_file" size={15} />
+                Importer
+              </Button>
             ) : null}
+
+            <BarreSelection sel={sel} quoi="dossier">
+              {actifsChoisis.length > 0 ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={archiver.isPending}
+                  onClick={() => setPanneau('desactiver')}
+                >
+                  Désactiver le profil
+                  {actifsChoisis.length < choisis.length ? ` (${actifsChoisis.length})` : ''}
+                </Button>
+              ) : null}
+              {archivesChoisis.length > 0 ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={archiver.isPending}
+                  onClick={() => archiver.mutate({ archived: false })}
+                >
+                  Réactiver
+                  {archivesChoisis.length < choisis.length ? ` (${archivesChoisis.length})` : ''}
+                </Button>
+              ) : null}
+              {effacablesChoisis.length > 0 ? (
+                <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
+                  Supprimer
+                  {effacablesChoisis.length < choisis.length
+                    ? ` (${effacablesChoisis.length})`
+                    : ''}
+                </Button>
+              ) : null}
+            </BarreSelection>
           </div>
-
-          {/* À DROITE de la ligne du titre : c'est là qu'on cherche le
-              geste qui remplit la liste, pas au pied du tableau. Il se
-              retire quand des lignes sont cochées — la barre de sélection
-              prend alors la place, et deux séries d'actions sur la même
-              ligne feraient hésiter. */}
-          {/* On importe des agents en poste : l'onglet des inactifs n'en reçoit pas. */}
-          {peutImporter && onglet === 'active' && choisis.length === 0 ? (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="h-8"
-              onClick={() => setImportOuvert(true)}
-              title="Importer l’effectif depuis un classeur .xlsx"
-            >
-              <Icon name="upload_file" size={15} />
-              Importer
-            </Button>
-          ) : null}
-
-          <BarreSelection sel={sel} quoi="dossier">
-            {actifsChoisis.length > 0 ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                loading={archiver.isPending}
-                onClick={() => setPanneau('desactiver')}
-              >
-                Désactiver le profil
-                {actifsChoisis.length < choisis.length ? ` (${actifsChoisis.length})` : ''}
-              </Button>
-            ) : null}
-            {archivesChoisis.length > 0 ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                loading={archiver.isPending}
-                onClick={() => archiver.mutate({ archived: false })}
-              >
-                Réactiver
-                {archivesChoisis.length < choisis.length ? ` (${archivesChoisis.length})` : ''}
-              </Button>
-            ) : null}
-            {effacablesChoisis.length > 0 ? (
-              <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
-                Supprimer
-                {effacablesChoisis.length < choisis.length ? ` (${effacablesChoisis.length})` : ''}
-              </Button>
-            ) : null}
-          </BarreSelection>
         </CardHeader>
 
         {query.isLoading ? (
@@ -408,7 +373,7 @@ export default function EmployeesPage() {
               }
               description={
                 filtreActif
-                  ? 'Essayez une autre recherche ou retirez les filtres.'
+                  ? 'Essayez une autre recherche.'
                   : onglet === 'active'
                     ? 'Créez le premier dossier, ou importez d’un coup le classeur de la Direction du Capital Humain.'
                     : 'Les agents dont le contrat a pris fin, ou qui ont quitté l’APIX, se rangent ici. Un dossier se réactive d’un geste, une fois son nouveau contrat enregistré.'
