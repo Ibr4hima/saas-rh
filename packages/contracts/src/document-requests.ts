@@ -164,13 +164,26 @@ export const sansAgent = (doc: string): doc is DocumentSansAgent =>
 export const DUREE_DE_STAGE_MAX = 24;
 
 /**
- * Un prénom ou un nom, la première lettre de chaque mot en capitale, le reste
- * tel que saisi : « mouhamadou moustapha lamine » donne « Mouhamadou
- * Moustapha Lamine », « dos santos » « Dos Santos », « n'diaye » « N'Diaye ».
+ * Un prénom, un nom, un lieu ou une adresse, la première lettre de chaque mot
+ * en capitale, le reste tel que saisi : « mouhamadou moustapha lamine » donne
+ * « Mouhamadou Moustapha Lamine », « dos santos » « Dos Santos », « n'diaye »
+ * « N'Diaye ». Un mot commence après une espace, un trait d'union, une
+ * apostrophe, une virgule ou une parenthèse.
  */
 export function majusculesInitiales(texte: string): string {
   return texte.replace(
-    /(^|[\s'’-])(\p{Ll})/gu,
+    /(^|[\s'’(,-])(\p{Ll})/gu,
+    (_, avant: string, lettre: string) => avant + lettre.toLocaleUpperCase('fr-FR'),
+  );
+}
+
+/**
+ * Une formation, un poste : la première lettre seule en capitale, le reste tel
+ * que saisi. « assistante archiviste » donne « Assistante archiviste ».
+ */
+export function premiereMajuscule(texte: string): string {
+  return texte.replace(
+    /^(\s*)(\p{Ll})/u,
     (_, avant: string, lettre: string) => avant + lettre.toLocaleUpperCase('fr-FR'),
   );
 }
@@ -190,8 +203,10 @@ export function cniGroupee(chiffres: string, espace = ' '): string {
   return groupes.join(espace);
 }
 
-/** Un prénom ou un nom : saisi, il prend ses capitales initiales. */
+/** Un prénom, un nom, un lieu, une adresse : chaque mot prend sa capitale. */
 const nomPropre = (max: number) => z.string().trim().min(1).max(max).transform(majusculesInitiales);
+/** Une formation, un poste : la première lettre prend sa capitale. */
+const intitule = (max: number) => z.string().trim().min(1).max(max).transform(premiereMajuscule);
 
 /**
  * Ce que la DCH renseigne pour un contrat de stage (ADR-0094, ADR-0096) : la
@@ -204,17 +219,17 @@ export const ficheStagiaireSchema = z
     prenom: nomPropre(80),
     nom: nomPropre(80),
     naissanceLe: z.iso.date(),
-    naissanceA: z.string().trim().min(1).max(120),
+    naissanceA: nomPropre(120),
     /** Le numéro de la carte nationale d'identité : treize chiffres. */
     cni: z.string().regex(/^\d{13}$/, 'Treize chiffres attendus'),
     perePrenom: nomPropre(80),
     merePrenom: nomPropre(80),
     mereNom: nomPropre(80),
-    adresse: z.string().trim().min(1).max(200),
+    adresse: nomPropre(200),
     /** Ce que la personne prépare : « Licence en Science de l'Information Documentaire ». */
-    formation: z.string().trim().min(1).max(200),
+    formation: intitule(200),
     /** Le poste du stage : « Assistante Archiviste ». */
-    poste: z.string().trim().min(1).max(120),
+    poste: intitule(120),
     /** La durée du stage, en mois. */
     duree: z.number().int().min(1).max(DUREE_DE_STAGE_MAX),
     debut: z.iso.date(),

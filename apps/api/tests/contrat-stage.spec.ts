@@ -19,6 +19,7 @@ import {
   finDuStage,
   majusculesInitiales,
   nomDuDocumentGenere,
+  premiereMajuscule,
 } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -150,6 +151,14 @@ describe('la saisie', () => {
     expect(majusculesInitiales('n’diaye')).toBe('N’Diaye');
     expect(majusculesInitiales('ndèye')).toBe('Ndèye');
     expect(majusculesInitiales('DIOP')).toBe('DIOP');
+    expect(majusculesInitiales('unité 15,villa 12 (dakar)')).toBe('Unité 15,Villa 12 (Dakar)');
+  });
+
+  it('la formation et le poste : la première lettre seule en capitale', () => {
+    expect(premiereMajuscule('assistante archiviste')).toBe('Assistante archiviste');
+    expect(premiereMajuscule('économiste')).toBe('Économiste');
+    expect(premiereMajuscule('Juriste')).toBe('Juriste');
+    expect(premiereMajuscule('')).toBe('');
   });
 
   it('la CNI en groupes, comme sur la carte, même en cours de saisie', () => {
@@ -177,6 +186,27 @@ describe('la saisie', () => {
     );
     expect(textes).toContain('Prénom et nom : Monsieur Mouhamadou Moustapha Lamine DOS SANTOS');
     expect(textes).toContain('Filiation : Fils d’El Hadji et de Ndèye Fatou Sow');
+  });
+
+  it('le lieu et l’adresse prennent une capitale à chaque mot, la formation et le poste à la première lettre', () => {
+    const f = ficheStagiaireSchema.parse({
+      ...fiche(),
+      naissanceA: 'saint-louis',
+      adresse: 'parcelles assainies, unité 15 - dakar',
+      formation: 'licence en science de l’information documentaire',
+      poste: 'assistante archiviste',
+    });
+    const textes = tousLesTextes(
+      blocsDuContratDeStage(
+        { stagiaire: f, signataire: { nom: 'Mariama CISSÉ', genre: 'female' } },
+        new Date(),
+      ),
+    );
+    expect(textes).toContain('Date et lieu de naissance : 12 mars 2002 à Saint-Louis');
+    expect(textes).toContain('Adresse : Parcelles Assainies, Unité 15 - Dakar');
+    expect(textes.find((t) => t.startsWith('En vue de'))).toMatch(
+      /inscrit en Licence en science de l’information documentaire, une formation en qualité d’Assistante archiviste\.$/,
+    );
   });
 
   it('la filiation s’élide devant une voyelle, pas devant un y consonne', () => {

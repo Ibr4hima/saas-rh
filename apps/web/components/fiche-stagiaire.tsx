@@ -7,6 +7,7 @@ import {
   DUREE_DE_STAGE_MAX,
   finDuStage,
   majusculesInitiales,
+  premiereMajuscule,
 } from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, cn, Field, Input, Select } from '@teranga/ui';
 import { champDeChiffres } from '../lib/chiffres';
@@ -17,8 +18,10 @@ import { champDuMontant } from '../lib/montant';
    Ce que la DCH renseigne pour un contrat de stage (ADR-0094, ADR-0096) : la
    personne n'est pas encore dans l'application. Son état civil d'abord, puis
    le stage ; la fin du stage se déduit du début et de la durée. Tout est
-   obligatoire. Les prénoms et les noms prennent leurs capitales initiales à
-   la frappe ; le numéro de la CNI se groupe comme sur la carte.
+   obligatoire. À la frappe, les prénoms, les noms, le lieu de naissance et
+   l'adresse prennent une capitale à chaque mot, la formation et le poste à
+   leur première lettre (ADR-0097) ; le numéro de la CNI se groupe comme sur
+   la carte.
 */
 
 /** La fiche telle qu'elle se tape : du texte, une durée choisie, un montant. */
@@ -132,16 +135,18 @@ export function FicheDuStagiaire({
     className: CADRE,
   });
 
-  /**
-   * Un prénom ou un nom : chaque mot prend sa capitale à la frappe, sans que
-   * le curseur bouge (« dos santos » s'écrit « Dos Santos »).
-   */
-  const nomPropre = (champ: ChampDeTexte) => ({
-    ...texte(champ, 80),
-    autoCapitalize: 'words',
+  /** Un champ de texte qui pose ses capitales à la frappe, sans que le curseur bouge. */
+  const avecCapitales = (
+    champ: ChampDeTexte,
+    max: number,
+    capitales: (texte: string) => string,
+    clavier: 'words' | 'sentences',
+  ) => ({
+    ...texte(champ, max),
+    autoCapitalize: clavier,
     onChange: (e: ChangeEvent<HTMLInputElement>) => {
       const saisi = e.target;
-      const corrige = majusculesInitiales(saisi.value);
+      const corrige = capitales(saisi.value);
       if (corrige !== saisi.value) {
         const { selectionStart, selectionEnd } = saisi;
         saisi.value = corrige;
@@ -150,6 +155,12 @@ export function FicheDuStagiaire({
       poser({ [champ]: corrige });
     },
   });
+  /** Un prénom, un nom, un lieu, une adresse : « dos santos » s'écrit « Dos Santos ». */
+  const nomPropre = (champ: ChampDeTexte, max = 80) =>
+    avecCapitales(champ, max, majusculesInitiales, 'words');
+  /** Une formation, un poste : « assistante archiviste » s'écrit « Assistante archiviste ». */
+  const intitule = (champ: ChampDeTexte, max: number) =>
+    avecCapitales(champ, max, premiereMajuscule, 'sentences');
 
   const fin = valeur.debut && valeur.duree ? finDuStage(valeur.debut, Number(valeur.duree)) : null;
   const cniIncomplete = cniQuittee && valeur.cni.length > 0 && valeur.cni.length < 13;
@@ -196,7 +207,7 @@ export function FicheDuStagiaire({
           <Input type="date" {...texte('naissanceLe')} className={cn(CADRE, 'tabular-nums')} />
         </Field>
         <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
-          <Input {...texte('naissanceA', 120)} />
+          <Input {...nomPropre('naissanceA', 120)} />
         </Field>
         <Field label="Prénom du père" htmlFor={`${id}-perePrenom`} required>
           <Input {...nomPropre('perePrenom')} />
@@ -208,16 +219,16 @@ export function FicheDuStagiaire({
           <Input {...nomPropre('mereNom')} />
         </Field>
         <Field label="Adresse" htmlFor={`${id}-adresse`} required>
-          <Input {...texte('adresse', 200)} />
+          <Input {...nomPropre('adresse', 200)} />
         </Field>
       </Groupe>
 
       <Groupe titre="Renseigner le stage">
         <Field label="Formation suivie" htmlFor={`${id}-formation`} required>
-          <Input {...texte('formation', 200)} />
+          <Input {...intitule('formation', 200)} />
         </Field>
         <Field label="Poste" htmlFor={`${id}-poste`} required>
-          <Input {...texte('poste', 120)} />
+          <Input {...intitule('poste', 120)} />
         </Field>
         <Field label="Date de début" htmlFor={`${id}-debut`} required>
           <Input type="date" {...texte('debut')} className={cn(CADRE, 'tabular-nums')} />
