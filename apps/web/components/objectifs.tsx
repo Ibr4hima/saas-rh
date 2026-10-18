@@ -513,7 +513,7 @@ function Choix({
       <div
         role="radiogroup"
         aria-label={label}
-        className="flex gap-1 rounded-groupe border border-line-soft bg-bg p-1 sm:w-fit"
+        className="flex gap-1 rounded-groupe border border-line-soft bg-bg p-[3px] sm:w-fit"
       >
         {options.map((o) => (
           <button
@@ -523,7 +523,7 @@ function Choix({
             aria-checked={valeur === o.id}
             onClick={() => onChange(o.id)}
             className={cn(
-              'flex-1 rounded-controle-sm px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
+              'flex-1 h-7 rounded-controle-sm px-3.5 text-[12.5px] font-bold whitespace-nowrap transition-colors sm:flex-none',
               valeur === o.id
                 ? 'bg-surface text-primary shadow-sm'
                 : 'text-ink-muted hover:text-ink',

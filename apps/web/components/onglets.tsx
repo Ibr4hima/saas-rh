@@ -26,7 +26,10 @@ export interface Onglet {
  * Il sert deux fois : dans l'en-tête sur écran large, et dans la page quand
  * l'en-tête n'a plus la place. Les mêmes coins aux deux endroits, ceux des
  * contrôles (ADR-0108) : 10 px pour le cadre, 7 px pour un onglet, et son
- * nombre en clair, sans pastille.
+ * nombre en clair, sans pastille. Il a la hauteur des boutons de l'en-tête,
+ * 36 px : un onglet de 28 px dans un cadre de 3 px. Les choix de même dessin
+ * (« Oui » ou « Non », « Quelques heures » ou « Un ou plusieurs jours »)
+ * ont la même mesure.
  */
 export function Onglets({
   onglets,
@@ -47,7 +50,7 @@ export function Onglets({
       role="tablist"
       aria-label={label}
       className={cn(
-        'flex items-center gap-1 rounded-groupe border border-line-soft bg-bg p-1',
+        'flex items-center gap-1 rounded-groupe border border-line-soft bg-bg p-[3px]',
         className,
       )}
     >
@@ -61,7 +64,7 @@ export function Onglets({
             aria-selected={actif}
             onClick={() => onChange(o.cle)}
             className={cn(
-              'flex items-center gap-2 rounded-controle-sm px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors duration-150',
+              'flex items-center gap-2 h-7 rounded-controle-sm px-3.5 text-[12.5px] font-bold whitespace-nowrap transition-colors duration-150',
               'focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
               actif ? 'bg-surface text-primary shadow-sm' : 'text-ink-muted hover:text-ink',
             )}

@@ -916,7 +916,7 @@ function FenetreRemplacement({
         <div
           role="radiogroup"
           aria-label={question}
-          className="flex flex-col gap-1 rounded-groupe border border-line-soft bg-bg p-1 sm:w-fit sm:flex-row"
+          className="flex flex-col gap-1 rounded-groupe border border-line-soft bg-bg p-[3px] sm:w-fit sm:flex-row"
         >
           {[
             { oui: true, label: 'Oui, le contenu a changé' },
@@ -929,7 +929,7 @@ function FenetreRemplacement({
               aria-checked={aRevoir === o.oui}
               onClick={() => setARevoir(o.oui)}
               className={cn(
-                'rounded-controle-sm px-3.5 py-1.5 text-[12.5px] font-bold whitespace-nowrap transition-colors',
+                'h-7 rounded-controle-sm px-3.5 text-[12.5px] font-bold whitespace-nowrap transition-colors',
                 aRevoir === o.oui
                   ? 'bg-surface text-primary shadow-sm'
                   : 'text-ink-muted hover:text-ink',

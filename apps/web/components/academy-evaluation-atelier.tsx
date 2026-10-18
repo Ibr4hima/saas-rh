@@ -427,7 +427,7 @@ function FenetreQuestion({
           <div
             role="radiogroup"
             aria-label="Type de question"
-            className="flex gap-1 rounded-groupe border border-line-soft bg-bg p-1 sm:w-fit"
+            className="flex gap-1 rounded-groupe border border-line-soft bg-bg p-[3px] sm:w-fit"
           >
             {(['unique', 'multiple'] as const).map((t) => (
               <button
@@ -437,7 +437,7 @@ function FenetreQuestion({
                 aria-checked={type === t}
                 onClick={() => changerType(t)}
                 className={cn(
-                  'flex-1 rounded-controle-sm px-3.5 py-1.5 text-[12.5px] font-bold transition-colors sm:flex-none',
+                  'flex-1 h-7 rounded-controle-sm px-3.5 text-[12.5px] font-bold transition-colors sm:flex-none',
                   type === t
                     ? 'bg-surface text-primary shadow-sm'
                     : 'text-ink-muted hover:text-ink',

@@ -113,7 +113,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0105](0105-conge-de-maternite.md)                    | Le congé de maternité : la cessation de paiement et la reprise de service               | acceptée                                    |
 | [0106](0106-declaration-de-mouvement.md)              | La déclaration de mouvement du travailleur : la fiche, le Code du travail de 2026       | acceptée, précisée par 0107                 |
 | [0107](0107-declaration-ancien-code.md)               | La déclaration de mouvement cite le Code du travail de 1997, comme les autres documents | acceptée                                    |
-| [0108](0108-boutons-aux-coins-d-e-voting.md)          | Les boutons et les champs aux coins d'e-Voting                                          | acceptée, précisée par 0110 et 0115         |
+| [0108](0108-boutons-aux-coins-d-e-voting.md)          | Les boutons et les champs aux coins d'e-Voting                                          | acceptée, précisée (0110, 0115, 0119)       |
 | [0109](0109-delegation-sans-bandeau.md)               | La délégation se règle dans « Déléguer des tâches », sans bandeau sur les pages         | acceptée                                    |
 | [0110](0110-blocs-aux-coins-des-boutons.md)           | Les blocs et les tableaux aux coins des boutons                                         | acceptée, précisée par 0115                 |
 | [0111](0111-liste-des-documents-a-generer.md)         | La liste des documents à générer : des libellés courts, une hauteur bornée              | acceptée, précisée par 0112 et 0113         |
@@ -124,3 +124,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0116](0116-fond-de-l-ecran-de-connexion.md)          | Le fond de l'application, celui de l'écran de connexion                                 | acceptée                                    |
 | [0117](0117-date-en-haut-a-droite.md)                 | La date du jour en haut à droite de chaque écran                                        | acceptée                                    |
 | [0118](0118-entree-courante-en-bleu-clair.md)         | L'entrée courante du menu, en bleu très clair, sans filet                               | acceptée                                    |
+| [0119](0119-onglets-a-la-hauteur-des-boutons.md)      | Les onglets et les choix segmentés, à la hauteur des boutons de l'en-tête               | acceptée                                    |
