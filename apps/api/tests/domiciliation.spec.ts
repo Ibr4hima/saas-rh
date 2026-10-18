@@ -282,8 +282,8 @@ describe('la lettre', () => {
       'Veuillez agréer, Madame la Directrice Générale, l’assurance de ma considération distinguée.',
     );
     expect(enGras(directrice, 4)).toEqual(['Madame la Directrice Générale']);
-    expect(lettre().destinataire).toEqual(['Monsieur le Directeur Général de la CBAO', 'Sénégal']);
-    expect(directrice.destinataire[0]).toBe('Madame la Directrice Générale de la CBAO');
+    expect(lettre().destinataire).toBe('Monsieur le Directeur Général de la CBAO');
+    expect(directrice.destinataire).toBe('Madame la Directrice Générale de la CBAO');
   });
 
   it('chaque banque de la liste se nomme selon l’usage, avec ou sans article', () => {
@@ -293,7 +293,7 @@ describe('la lettre', () => {
       const compte = /sur le compte de l’intéressée (.+?), l’intégralité/.exec(
         paragraphe(t, 3),
       )?.[1];
-      return [b.nom, livres, compte, t.destinataire[0]];
+      return [b.nom, livres, compte, t.destinataire];
     });
     expect(formes).toEqual([
       [

@@ -36,8 +36,8 @@ export interface TextesDeLaDomiciliation {
   /** « Monsieur le Directeur Général, » */
   appel: string;
   paragraphes: Passage[][];
-  /** À qui la lettre s'adresse, en bas à gauche : la qualité et la banque, puis le pays. */
-  destinataire: [string, string];
+  /** À qui la lettre s'adresse, en bas à gauche : la qualité et la banque. */
+  destinataire: string;
 }
 
 export interface DomiciliationData {
@@ -143,7 +143,7 @@ export function textesDeLaDomiciliation(
         { texte: ', l’assurance de ma considération distinguée.' },
       ],
     ],
-    destinataire: [`${qualite} ${deLaBanque}`, 'Sénégal'],
+    destinataire: `${qualite} ${deLaBanque}`,
   };
 }
 
@@ -187,18 +187,16 @@ export function pdfDeLaDomiciliation(
       retraitDroit: 4,
     }),
   );
-  // Qui dirige la banque, en bas à gauche ; au-dessus, la place de la signature.
-  feuille.piedAGauche(
-    [[{ texte: t.destinataire[0], gras: true }], [{ texte: t.destinataire[1], gras: true }]],
-    {
-      police: 'comic',
-      taille: 12,
-      pas: 14.4,
-      finA: 67,
-      retrait: 24,
-      etiquette: [{ texte: 'À', gras: true }],
-    },
-  );
+  // Qui dirige la banque, en bas à gauche, à la hauteur du modèle ; au-dessus,
+  // la place de la signature.
+  feuille.piedAGauche([[{ texte: t.destinataire, gras: true }]], {
+    police: 'comic',
+    taille: 12,
+    pas: 14.4,
+    finA: 81.4,
+    retrait: 24,
+    etiquette: [{ texte: 'À', gras: true }],
+  });
   return feuille.terminer();
 }
 
