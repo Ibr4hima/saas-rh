@@ -21,7 +21,7 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   return (
     <div
       className={cn(
-        'rounded-[16px] border border-card-line bg-surface shadow-xs',
+        'rounded-bloc border border-card-line bg-surface shadow-xs',
         '[&:has(>[data-tableau]:first-child)]:pt-0 [&:has(>[data-tableau]:last-child)]:pb-0',
         // Le même tableau, seul dans le bloc du bord (un CardContent).
         '[&:has(>:first-child>[data-tableau]:only-child)]:pt-0',
@@ -38,7 +38,7 @@ export function CardInteractive({ className, ...props }: React.HTMLAttributes<HT
   return (
     <div
       className={cn(
-        'rounded-[16px] border border-card-line bg-surface shadow-xs transition-all duration-200',
+        'rounded-bloc border border-card-line bg-surface shadow-xs transition-all duration-200',
         'hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-md',
         className,
       )}

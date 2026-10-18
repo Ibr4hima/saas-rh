@@ -289,7 +289,7 @@ function CarteCandidat({
     <button
       type="button"
       onClick={onOuvrir}
-      className="group flex w-full items-start gap-3 rounded-[14px] border border-card-line bg-surface px-3.5 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+      className="group flex w-full items-start gap-3 rounded-bloc border border-card-line bg-surface px-3.5 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
     >
       <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11.5px] font-bold text-primary uppercase">
         {a.givenName[0]}

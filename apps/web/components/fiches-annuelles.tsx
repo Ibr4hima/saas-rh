@@ -82,7 +82,7 @@ function ChoixAnnee({
           ref={menu}
           role="menu"
           aria-label="Année"
-          className="tg-menu absolute top-full left-0 z-30 mt-1.5 min-w-36 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg"
+          className="tg-menu absolute top-full left-0 z-30 mt-1.5 min-w-36 rounded-bloc border border-card-line bg-surface p-1.5 shadow-lg"
         >
           {annees.map((a) => (
             <button
@@ -95,7 +95,7 @@ function ChoixAnnee({
                 if (a !== annee) onChoisir(a);
               }}
               className={cn(
-                'flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[12.5px] font-semibold tabular-nums transition-colors duration-150 outline-none hover:bg-hover focus-visible:bg-hover',
+                'flex w-full items-center gap-2.5 rounded-controle-sm px-2.5 py-2 text-left text-[12.5px] font-semibold tabular-nums transition-colors duration-150 outline-none hover:bg-hover focus-visible:bg-hover',
                 a === annee
                   ? 'text-primary'
                   : 'text-ink hover:text-ink-strong focus-visible:text-ink-strong',

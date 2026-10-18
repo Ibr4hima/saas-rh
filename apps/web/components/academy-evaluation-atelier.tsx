@@ -173,7 +173,7 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
           {erreur ? (
             <p
               role="alert"
-              className="rounded-[10px] bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
+              className="rounded-bloc bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
             >
               {erreur}
             </p>

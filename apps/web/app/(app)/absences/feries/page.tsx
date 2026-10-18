@@ -262,7 +262,7 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
               : 'Cette fête sort de la liste de l’année : elle ne pourra plus y être datée.'}
           </p>
           {aSupprimer.fixed ? (
-            <p className="mt-3 rounded-[9px] bg-bg px-3 py-2 text-[12px] text-ink-muted">
+            <p className="mt-3 rounded-bloc bg-bg px-3 py-2 text-[12px] text-ink-muted">
               C’est un férié à date civile. Le retirer ne vaut que pour {aSupprimer.year} : les
               autres années gardent le leur.
             </p>
@@ -342,7 +342,7 @@ function FenetreFerie({
       }
     >
       {erreur ? (
-        <p className="rounded-[9px] bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{erreur}</p>
+        <p className="rounded-bloc bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{erreur}</p>
       ) : null}
 
       <ModalSection title="Le jour">

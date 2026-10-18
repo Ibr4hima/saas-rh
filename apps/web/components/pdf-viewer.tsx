@@ -497,7 +497,7 @@ export function PdfEnLargeur({ data, titre }: { data: ArrayBuffer; titre: string
 
   if (echouee) {
     return (
-      <div className="rounded-[16px] bg-surface px-6 py-16 text-center shadow-xs ring-1 ring-card-line">
+      <div className="rounded-bloc bg-surface px-6 py-16 text-center shadow-xs ring-1 ring-card-line">
         <p className="text-[13px] text-danger">Impossible d&apos;afficher ce document.</p>
       </div>
     );
@@ -511,7 +511,7 @@ export function PdfEnLargeur({ data, titre }: { data: ArrayBuffer; titre: string
         <div
           key={i}
           style={{ aspectRatio: `${p.width} / ${p.height}` }}
-          className="overflow-hidden rounded-[16px] bg-white shadow-xs ring-1 ring-card-line"
+          className="overflow-hidden rounded-bloc bg-white shadow-xs ring-1 ring-card-line"
         >
           {pages.length > 0 ? (
             <canvas

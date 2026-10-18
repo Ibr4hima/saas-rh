@@ -25,7 +25,7 @@ export function EmptyState({ icon, title, description, action, className }: Empt
       className={cn('flex flex-col items-center justify-center px-6 py-12 text-center', className)}
     >
       {icon ? (
-        <span className="mb-3.5 flex size-11 items-center justify-center rounded-2xl bg-primary/[0.07] text-primary/70">
+        <span className="mb-3.5 flex size-11 items-center justify-center rounded-bloc bg-primary/[0.07] text-primary/70">
           {icon}
         </span>
       ) : null}

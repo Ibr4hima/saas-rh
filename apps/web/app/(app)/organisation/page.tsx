@@ -366,7 +366,7 @@ function UnitPanel({
       avatar={
         <span
           className={cn(
-            'flex size-11 items-center justify-center rounded-[14px]',
+            'flex size-11 items-center justify-center rounded-bloc',
             direction ? 'bg-primary/[0.10] text-primary' : 'bg-bg text-ink-muted',
           )}
         >

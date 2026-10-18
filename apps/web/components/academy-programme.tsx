@@ -105,7 +105,7 @@ export function Programme({
                 </>
               );
               const classes = cn(
-                'flex items-center gap-3 rounded-[10px] px-2.5',
+                'flex items-center gap-3 rounded-controle-sm px-2.5',
                 'py-2.5',
                 ici && 'bg-primary-soft/70',
               );

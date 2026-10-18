@@ -211,7 +211,7 @@ export default function SuiviDemandesDocumentsPage() {
       {erreur ? (
         <p
           role="alert"
-          className="flex items-start gap-2 rounded-[12px] bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger ring-1 ring-current/15 ring-inset"
+          className="flex items-start gap-2 rounded-bloc bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger ring-1 ring-current/15 ring-inset"
         >
           <Icon name="error" size={15} className="mt-px shrink-0" />
           {erreur}

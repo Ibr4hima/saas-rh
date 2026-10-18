@@ -361,7 +361,7 @@ export function Select({
               id={listeId}
               role="listbox"
               aria-label={ariaLabel}
-              className="tg-menu fixed z-[70] overflow-y-auto overscroll-contain rounded-[14px] border border-line bg-surface p-1.5 shadow-lg"
+              className="tg-menu fixed z-[70] overflow-y-auto overscroll-contain rounded-bloc border border-line bg-surface p-1.5 shadow-lg"
               style={{
                 left: position.left,
                 minWidth: position.width,
@@ -389,7 +389,7 @@ export function Select({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => choisir(i)}
                     className={cn(
-                      'flex cursor-pointer items-center gap-2 rounded-controle px-3 py-[7px] text-[13px] leading-snug',
+                      'flex cursor-pointer items-center gap-2 rounded-controle-sm px-3 py-[7px] text-[13px] leading-snug',
                       c.desactive && 'cursor-not-allowed text-ink-muted/50',
                       !c.desactive && i === actif && 'bg-hover',
                       !c.desactive && choisi ? 'font-semibold text-primary' : 'text-ink',

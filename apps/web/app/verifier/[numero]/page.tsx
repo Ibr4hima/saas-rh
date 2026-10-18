@@ -72,7 +72,7 @@ export default function VerifierPage() {
     // défilement : sur un écran bas, ses marges se resserrent (`court:`).
     <main className="fond-certificat flex min-h-dvh flex-col">
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-6 sm:px-8 court:py-3">
-        <div className="w-full max-w-[440px] overflow-hidden rounded-[20px] bg-surface shadow-[0_1px_2px_rgb(0_40_90/0.05),0_18px_48px_-18px_rgb(0_40_90/0.24)] ring-1 ring-[rgb(0_40_90/0.06)]">
+        <div className="w-full max-w-[440px] overflow-hidden rounded-bloc bg-surface shadow-[0_1px_2px_rgb(0_40_90/0.05),0_18px_48px_-18px_rgb(0_40_90/0.24)] ring-1 ring-[rgb(0_40_90/0.06)]">
           <header className="flex justify-center px-8 pt-7 court:pt-4">
             <BrandMark variant="candidature" repli="A" />
           </header>
@@ -125,7 +125,7 @@ function Certificat({ c }: { c: PublicCertificateView }) {
       {/* Les faits, comme un reçu : une ligne chacun, le libellé à gauche, la
           valeur à droite. */}
       <section className="px-6 pt-6 pb-7 sm:px-8 court:pt-4 court:pb-5">
-        <dl className="divide-y divide-line-soft rounded-[14px] px-4 ring-1 ring-line">
+        <dl className="divide-y divide-line-soft rounded-bloc px-4 ring-1 ring-line">
           {c.score !== null ? <Fait label="Score">{pourcent(c.score)}</Fait> : null}
           <Fait label="Délivré le">{formatDate(c.issuedAt)}</Fait>
           <Fait label={c.status === 'expire' ? 'Expiré le' : 'Valable jusqu’au'}>
@@ -226,7 +226,7 @@ function Chargement() {
     <div className="flex flex-col items-center px-8 pt-6 pb-7" aria-busy>
       <Skeleton className="h-6 w-56" />
       <Skeleton className="mt-8 h-8 w-44" />
-      <Skeleton className="mt-6 h-48 w-full rounded-[14px]" />
+      <Skeleton className="mt-6 h-48 w-full rounded-bloc" />
     </div>
   );
 }

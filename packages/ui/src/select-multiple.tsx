@@ -192,7 +192,7 @@ export function SelectMultiple({
               role="listbox"
               aria-multiselectable
               aria-label={ariaLabel ?? tout}
-              className="tg-menu fixed z-[70] overflow-y-auto overscroll-contain rounded-[14px] border border-line bg-surface p-1.5 shadow-lg"
+              className="tg-menu fixed z-[70] overflow-y-auto overscroll-contain rounded-bloc border border-line bg-surface p-1.5 shadow-lg"
               style={{
                 left: position.left,
                 minWidth: position.width,
@@ -215,7 +215,7 @@ export function SelectMultiple({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => basculer(l.rang)}
                     className={cn(
-                      'flex cursor-pointer items-center gap-2.5 rounded-controle px-3 py-[7px] text-[13px] leading-snug',
+                      'flex cursor-pointer items-center gap-2.5 rounded-controle-sm px-3 py-[7px] text-[13px] leading-snug',
                       l.rang === actif && 'bg-hover',
                       l.coche ? 'font-semibold text-ink-strong' : 'text-ink',
                     )}

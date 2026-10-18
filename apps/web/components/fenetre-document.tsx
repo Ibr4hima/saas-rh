@@ -73,7 +73,7 @@ export function FenetreDocument({
       {/* Hauteur fixée : la fenêtre se dimensionne sur son contenu, et un
           enfant qui réclame « toute la hauteur » d'un parent sans hauteur
           propre se réduit à zéro. */}
-      <div className="h-[min(72vh,720px)] overflow-hidden rounded-[12px] border border-card-line">
+      <div className="h-[min(72vh,720px)] overflow-hidden rounded-bloc border border-card-line">
         <ApercuDocument doc={apercu} />
       </div>
     </Modal>

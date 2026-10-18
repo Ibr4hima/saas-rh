@@ -205,7 +205,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
       {erreur ? (
         <p
           role="alert"
-          className="mb-4 rounded-[10px] bg-danger-soft px-3.5 py-2.5 text-[12.5px] font-semibold text-danger"
+          className="mb-4 rounded-bloc bg-danger-soft px-3.5 py-2.5 text-[12.5px] font-semibold text-danger"
         >
           {erreur}
         </p>
@@ -226,7 +226,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
               choisir(e.dataTransfer.files?.[0] ?? null);
             }}
             className={cn(
-              'flex cursor-pointer flex-col items-center gap-2 rounded-[14px] border border-dashed px-6 py-10 text-center transition-colors focus-within:ring-2 focus-within:ring-primary/40',
+              'flex cursor-pointer flex-col items-center gap-2 rounded-bloc border border-dashed px-6 py-10 text-center transition-colors focus-within:ring-2 focus-within:ring-primary/40',
               survol ? 'border-primary bg-primary/[0.04]' : 'border-line hover:border-primary/50',
             )}
           >
@@ -323,7 +323,7 @@ function InvitationsDuLot({
   }
   return (
     <ModalSection title="Accès au portail">
-      <div className="mb-4 overflow-hidden rounded-[12px] border border-line-soft">
+      <div className="mb-4 overflow-hidden rounded-bloc border border-line-soft">
         <label className="flex cursor-pointer items-center gap-3 border-b border-line-soft bg-surface-raised px-3.5 py-2.5 text-[12.5px] font-semibold text-ink-strong">
           <Checkbox
             checked={tous}
@@ -379,7 +379,7 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
       {bloquant ? (
         <p
           role="alert"
-          className="rounded-[10px] bg-danger-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-danger"
+          className="rounded-bloc bg-danger-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-danger"
         >
           <b>Ce fichier ne peut pas être importé.</b> Colonne
           {rapport.colonnesManquantes.length > 1 ? 's' : ''} absente
@@ -419,7 +419,7 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
         // Quinze lignes par page ; le tableau défile encore quand des
         // avertissements allongent les lignes.
         <>
-          <div className="max-h-[22rem] overflow-auto rounded-[12px] border border-line-soft">
+          <div className="max-h-[22rem] overflow-auto rounded-bloc border border-line-soft">
             <Table>
               <THead>
                 <tr>
@@ -553,7 +553,7 @@ function Chiffre({
   // Un zéro ne s'allume pas : « 0 erreur » en rouge se lit comme une alerte.
   const eteint = valeur === 0;
   return (
-    <div className="rounded-[12px] border border-line-soft bg-surface-raised/60 px-3.5 py-2.5">
+    <div className="rounded-bloc border border-line-soft bg-surface-raised/60 px-3.5 py-2.5">
       <p
         className={cn(
           'text-[22px] leading-none font-bold tabular-nums',

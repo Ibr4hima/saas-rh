@@ -44,7 +44,7 @@ export default function MesCertificatsPage() {
       </div>
 
       {certificats.isPending ? (
-        <Skeleton className="h-[120px] w-full rounded-[16px]" />
+        <Skeleton className="h-[120px] w-full rounded-bloc" />
       ) : certificats.isError ? (
         <LoadFailure error={certificats.error} onRetry={() => void certificats.refetch()} />
       ) : certificats.data.length === 0 ? (

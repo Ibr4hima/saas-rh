@@ -175,7 +175,7 @@ export default function GestionDesAccesPage() {
         <div
           role="status"
           className={cn(
-            'mb-3 flex items-start gap-2.5 rounded-[12px] px-3.5 py-2.5 text-[12.5px] leading-5 ring-1 ring-inset',
+            'mb-3 flex items-start gap-2.5 rounded-bloc px-3.5 py-2.5 text-[12.5px] leading-5 ring-1 ring-inset',
             erreur
               ? 'bg-danger-soft/55 text-danger ring-danger/25'
               : 'bg-success-soft/55 text-ink ring-success/25',

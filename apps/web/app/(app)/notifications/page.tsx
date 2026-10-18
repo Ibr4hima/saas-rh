@@ -134,7 +134,7 @@ export default function NotificationsPage() {
               {lignes.map((l) => (
                 <li key={l.sujet} className={cn('grid items-center gap-x-2 px-5 py-3', COLONNES)}>
                   <span className="flex min-w-0 items-center gap-3">
-                    <span className="hidden size-[30px] shrink-0 place-items-center rounded-[9px] bg-primary/[0.07] text-primary sm:grid">
+                    <span className="hidden size-[30px] shrink-0 place-items-center rounded-bloc bg-primary/[0.07] text-primary sm:grid">
                       <Icon name={l.icone as IconName} size={16} />
                     </span>
                     <span className="min-w-0 text-[12.5px] leading-snug font-medium text-ink-strong">

@@ -321,7 +321,7 @@ function PanneauNotifications({
         aria-label="Notifications"
         style={{ top: pos.top, right: pos.right }}
         className={cn(
-          'fixed z-[60] w-[23rem] overflow-hidden rounded-[16px] border border-card-line bg-surface shadow-lg',
+          'fixed z-[60] w-[23rem] overflow-hidden rounded-bloc border border-card-line bg-surface shadow-lg',
           // Sur téléphone la fenêtre prend la largeur : un panneau de 368 px
           // calé à droite y dépasserait de l'écran.
           'max-sm:inset-x-3 max-sm:!right-auto max-sm:w-auto',
@@ -409,7 +409,7 @@ function PanneauNotifications({
                     >
                       <span
                         className={cn(
-                          'mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[10px]',
+                          'mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-bloc',
                           lu ? 'bg-bg text-ink-muted' : 'bg-primary/[0.09] text-primary',
                         )}
                       >

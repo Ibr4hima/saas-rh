@@ -168,7 +168,7 @@ export function DocumentsDeposes({
           {...glisser}
           aria-disabled={deposer.isPending}
           className={cn(
-            'flex cursor-pointer flex-col items-center gap-2 rounded-[14px] border-[1.5px] border-dashed px-6 py-6 text-center transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary/40',
+            'flex cursor-pointer flex-col items-center gap-2 rounded-bloc border-[1.5px] border-dashed px-6 py-6 text-center transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary/40',
             survol
               ? 'border-primary bg-primary/[0.05]'
               : enAttente
@@ -213,7 +213,7 @@ export function DocumentsDeposes({
     <div
       {...glisser}
       className={cn(
-        'rounded-[14px] border px-3.5 py-3 transition-colors duration-150',
+        'rounded-bloc border px-3.5 py-3 transition-colors duration-150',
         survol ? 'border-primary bg-primary/[0.05]' : 'border-line-soft bg-surface',
       )}
     >
@@ -304,7 +304,7 @@ function LigneDuFichier({
         type="button"
         aria-label={`Ouvrir ${f.filename}`}
         onClick={onApercu}
-        className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-primary-soft text-primary transition-colors hover:bg-primary/15"
+        className="flex size-8 shrink-0 items-center justify-center rounded-bloc bg-primary-soft text-primary transition-colors hover:bg-primary/15"
       >
         <Icon name={f.contentType === 'application/pdf' ? 'picture_as_pdf' : 'image'} size={17} />
       </button>

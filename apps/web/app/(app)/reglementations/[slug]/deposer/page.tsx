@@ -174,7 +174,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
             />
           </Field>
           <Field label="Publication" htmlFor="publie">
-            <label className="flex items-start gap-2.5 rounded-[10px] border border-card-line px-3 py-2.5">
+            <label className="flex items-start gap-2.5 rounded-bloc border border-card-line px-3 py-2.5">
               <Checkbox
                 id="publie"
                 className="mt-0.5"
@@ -323,7 +323,7 @@ function CompteRendu({ analyse }: { analyse: ReturnType<typeof analyserTexte> })
         </ul>
       ) : null}
       {chapters.length > 0 ? (
-        <details className="rounded-[10px] border border-card-line px-3 py-2">
+        <details className="rounded-bloc border border-card-line px-3 py-2">
           <summary className="cursor-pointer text-[12px] font-semibold text-ink-muted">
             Vérifier le découpage
           </summary>
@@ -370,7 +370,7 @@ function FichierOfficiel({
   return (
     <Card>
       <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-3 py-4">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-[12px] bg-bg text-ink-muted">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-bloc bg-bg text-ink-muted">
           <Icon name="description" size={17} />
         </span>
         <div className="min-w-0 flex-1">

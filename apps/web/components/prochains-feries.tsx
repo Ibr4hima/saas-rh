@@ -55,12 +55,12 @@ export function ProchainsFeries() {
             {avenir.map((h, i) => (
               <li
                 key={h.id}
-                className="flex items-center gap-3 rounded-[9px] px-2.5 py-2.5 not-first:border-t not-first:border-line-soft"
+                className="flex items-center gap-3 rounded-controle-sm px-2.5 py-2.5 not-first:border-t not-first:border-line-soft"
               >
                 {/* La pastille de date : le jour en gros, le mois en petit —
                     le même cartouche que la frise, pour que les deux écrans
                     se reconnaissent. */}
-                <span className="flex size-9 shrink-0 flex-col items-center justify-center rounded-[10px] bg-primary/[0.07] leading-none">
+                <span className="flex size-9 shrink-0 flex-col items-center justify-center rounded-bloc bg-primary/[0.07] leading-none">
                   <span className="text-[12.5px] font-extrabold text-primary tabular-nums">
                     {Number(h.day.slice(8, 10))}
                   </span>

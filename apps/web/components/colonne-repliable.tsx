@@ -137,7 +137,7 @@ export function SousMenuFlottant({
       role="menu"
       aria-label={titre}
       style={{ left: pos?.left ?? -9999, top: pos?.top ?? 0 }}
-      className="tg-menu fixed z-[60] min-w-[13rem] rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg"
+      className="tg-menu fixed z-[60] min-w-[13rem] rounded-bloc border border-card-line bg-surface p-1.5 shadow-lg"
     >
       <p className="px-2.5 pt-1.5 pb-1 text-[10px] font-bold tracking-[0.12em] text-ink-muted uppercase">
         {titre}
@@ -147,7 +147,7 @@ export function SousMenuFlottant({
           <span
             key={l.href}
             aria-disabled
-            className="block cursor-not-allowed rounded-[9px] px-2.5 py-2 text-[12.5px] font-medium text-ink-muted/45 select-none"
+            className="block cursor-not-allowed rounded-controle-sm px-2.5 py-2 text-[12.5px] font-medium text-ink-muted/45 select-none"
           >
             {l.label}
           </span>
@@ -159,7 +159,7 @@ export function SousMenuFlottant({
             aria-current={l.actif ? 'page' : undefined}
             onClick={onFermer}
             className={cn(
-              'block rounded-[9px] px-2.5 py-2 text-[12.5px] transition-colors duration-150',
+              'block rounded-controle-sm px-2.5 py-2 text-[12.5px] transition-colors duration-150',
               l.actif
                 ? 'bg-primary/[0.07] font-bold text-primary'
                 : 'font-medium text-ink hover:bg-hover hover:text-ink-strong',

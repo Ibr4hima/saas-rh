@@ -58,7 +58,7 @@ export function FriseFeries() {
     return (
       <section>
         {entete}
-        <Skeleton className="mt-5 h-[520px] w-full rounded-[16px]" />
+        <Skeleton className="mt-5 h-[520px] w-full rounded-bloc" />
       </section>
     );
   }
@@ -84,7 +84,7 @@ export function FriseFeries() {
     return (
       <section>
         {entete}
-        <p className="mt-5 rounded-[16px] border border-dashed border-line bg-surface-raised px-5 py-8 text-center text-[12.5px] text-ink-muted">
+        <p className="mt-5 rounded-bloc border border-dashed border-line bg-surface-raised px-5 py-8 text-center text-[12.5px] text-ink-muted">
           Aucun jour férié n&apos;est encore posé pour {annee}.
         </p>
       </section>
@@ -128,8 +128,8 @@ export function FriseFeries() {
       </div>
 
       {aDater.length > 0 ? (
-        <div className="mt-5 flex flex-col gap-2.5 rounded-[16px] border border-dashed border-line bg-surface-raised px-4 py-3.5 sm:flex-row sm:items-center sm:gap-3.5">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-primary/[0.07] text-primary">
+        <div className="mt-5 flex flex-col gap-2.5 rounded-bloc border border-dashed border-line bg-surface-raised px-4 py-3.5 sm:flex-row sm:items-center sm:gap-3.5">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-bloc bg-primary/[0.07] text-primary">
             <Icon name="schedule" size={17} />
           </span>
           <div className="min-w-0 flex-1">
@@ -274,7 +274,7 @@ function Entree({
 
         <article
           className={cn(
-            'overflow-hidden rounded-[16px] border transition-shadow duration-200',
+            'overflow-hidden rounded-bloc border transition-shadow duration-200',
             prochain
               ? 'border-primary/40 bg-surface shadow-md'
               : passe

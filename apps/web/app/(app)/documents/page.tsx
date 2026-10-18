@@ -492,7 +492,7 @@ function DocumentsRemisModal({
         </>
       }
     >
-      <section className="rounded-[14px] border border-line-soft bg-surface px-4 py-4 sm:px-[18px]">
+      <section className="rounded-bloc border border-line-soft bg-surface px-4 py-4 sm:px-[18px]">
         <DocumentsDeposes demande={r} onErreur={setErreur} />
       </section>
     </Modal>
@@ -882,7 +882,7 @@ function TraiterModal({
                   type="button"
                   onClick={() => setCourante(i)}
                   className={cn(
-                    'flex w-full items-center gap-2.5 rounded-[12px] px-3 py-2.5 text-left',
+                    'flex w-full items-center gap-2.5 rounded-bloc px-3 py-2.5 text-left',
                     'ring-1 ring-inset transition-all duration-150',
                     active
                       ? 'bg-primary/[0.06] ring-primary/35'
@@ -924,7 +924,7 @@ function TraiterModal({
         </ul>
 
         {/* L'aperçu : le document tel qu'il sera remis, pas une promesse. */}
-        <div className="flex min-h-[19rem] min-w-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-card-line bg-surface shadow-xs">
+        <div className="flex min-h-[19rem] min-w-0 flex-1 flex-col overflow-hidden rounded-bloc border border-card-line bg-surface shadow-xs">
           {piece ? <Apercu piece={piece} onVue={marquerVue} /> : null}
         </div>
       </div>

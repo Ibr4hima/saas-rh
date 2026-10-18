@@ -217,7 +217,7 @@ export function Copie({
                 aria-checked={choisie}
                 onClick={() => onRepondre(q.id, o.id, multiple)}
                 className={cn(
-                  'flex items-center gap-3 rounded-[12px] border px-4 py-3 text-left text-[13.5px] leading-snug transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
+                  'flex items-center gap-3 rounded-bloc border px-4 py-3 text-left text-[13.5px] leading-snug transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
                   choisie
                     ? 'border-primary bg-primary-soft/60 font-semibold text-ink-strong'
                     : 'border-line-soft text-ink hover:border-line hover:bg-hover',
@@ -248,7 +248,7 @@ export function Copie({
         {erreur ? (
           <p
             role="alert"
-            className="rounded-[10px] bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
+            className="rounded-bloc bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
           >
             {erreur}
           </p>

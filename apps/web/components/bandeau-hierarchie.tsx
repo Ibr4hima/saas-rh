@@ -176,7 +176,7 @@ function Ligne({ anomalie }: { anomalie: AnomalieHierarchie }) {
     <li>
       <Link
         href={`/employees/${anomalie.employeeId}`}
-        className="group flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[10px] border border-line-soft px-3.5 py-2.5 transition-colors hover:border-primary/40 hover:bg-hover"
+        className="group flex flex-wrap items-center gap-x-3 gap-y-1 rounded-bloc border border-line-soft px-3.5 py-2.5 transition-colors hover:border-primary/40 hover:bg-hover"
       >
         <span className="w-20 shrink-0 font-mono text-[11.5px] text-ink-muted">
           {anomalie.matricule}

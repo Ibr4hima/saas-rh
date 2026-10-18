@@ -229,8 +229,8 @@ export default function AtelierFormationPage() {
     return (
       <Page>
         <Skeleton className="h-5 w-40 rounded-full" />
-        <Skeleton className="h-[150px] w-full rounded-[16px]" />
-        <Skeleton className="h-[280px] w-full rounded-[16px]" />
+        <Skeleton className="h-[150px] w-full rounded-bloc" />
+        <Skeleton className="h-[280px] w-full rounded-bloc" />
       </Page>
     );
   }
@@ -333,7 +333,7 @@ export default function AtelierFormationPage() {
       {erreur ? (
         <p
           role="alert"
-          className="rounded-[12px] bg-danger-soft px-4 py-2.5 text-[12.5px] font-semibold text-danger"
+          className="rounded-bloc bg-danger-soft px-4 py-2.5 text-[12.5px] font-semibold text-danger"
         >
           {erreur}
         </p>
@@ -341,7 +341,7 @@ export default function AtelierFormationPage() {
 
       {/* ———— Ce qui attend la RH avant publication ———— */}
       {!f.published && f.obstacles.length > 0 ? (
-        <div className="flex gap-3 rounded-[14px] border border-accent/25 bg-accent-soft/50 px-4 py-3">
+        <div className="flex gap-3 rounded-bloc border border-accent/25 bg-accent-soft/50 px-4 py-3">
           <Icon name="error" size={17} className="mt-px shrink-0 text-accent-text" />
           <div className="min-w-0 text-[12.5px] leading-relaxed text-ink">
             <b className="font-bold text-accent-text">Avant de publier</b>

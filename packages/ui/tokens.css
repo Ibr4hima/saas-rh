@@ -206,6 +206,10 @@
   --tg-radius-controle-sm: 7px;
   --tg-radius-groupe: 10px;
   --tg-radius-barre: 12px;
+  /* Les blocs (cartes, tableaux, menus, fenêtres, bandeaux) prennent les
+     coins des boutons : un seul rayon pour tout ce qui se pose sur la page.
+     Les lignes survolées d'un menu prennent celui des petits contrôles. */
+  --tg-radius-bloc: var(--tg-radius-controle);
   /* L'ombre d'un bouton plein : un trait sous le bord, un reflet dessus ;
      celle d'un bouton bordé, à peine. Quand on appuie, l'ombre passe
      dedans. */

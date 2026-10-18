@@ -261,7 +261,7 @@ function Propos({
   return (
     <div
       className={cn(
-        'rounded-[10px] px-3 py-2',
+        'rounded-bloc px-3 py-2',
         ton === 'n1' ? 'bg-primary-soft/70' : 'bg-line-soft/70',
       )}
     >
@@ -410,7 +410,7 @@ function ChoixNote({
             aria-checked={choisie}
             onClick={() => onChange(n)}
             className={cn(
-              'flex items-center gap-2.5 rounded-[12px] border px-3 py-2.5 text-left transition-all duration-150',
+              'flex items-center gap-2.5 rounded-bloc border px-3 py-2.5 text-left transition-all duration-150',
               choisie
                 ? cn(COULEUR_NOTE[n].filet, COULEUR_NOTE[n].fond)
                 : 'border-line hover:border-ink-muted/40 hover:bg-hover',
@@ -1110,7 +1110,7 @@ export function CarteEvaluationsAgent({ employeeId }: { employeeId: string }) {
         </CardContent>
       ) : liste.length === 0 ? (
         <CardContent>
-          <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
+          <p className="rounded-bloc border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
             Aucune évaluation validée en {annee}.
           </p>
         </CardContent>

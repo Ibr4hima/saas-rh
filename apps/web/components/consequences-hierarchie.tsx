@@ -65,7 +65,7 @@ export function ListeConsequences({
         </section>
       ) : null}
       {aRevoir.length > 0 ? (
-        <section className="rounded-[10px] border border-accent/25 bg-accent-soft/50 px-3 py-2.5">
+        <section className="rounded-bloc border border-accent/25 bg-accent-soft/50 px-3 py-2.5">
           <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold tracking-[0.06em] text-accent-text uppercase">
             <Icon name="error" size={14} />
             {faites ? 'Rattachements à revoir' : 'Deviendront à revoir'}

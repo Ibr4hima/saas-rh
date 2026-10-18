@@ -118,7 +118,7 @@ export function FenetreControleDuTitre({
             <p className="text-[12.5px] text-ink">
               Vérifiez que le document porte ces informations :
             </p>
-            <dl className="grid gap-px overflow-hidden rounded-[12px] border border-line-soft bg-line-soft">
+            <dl className="grid gap-px overflow-hidden rounded-bloc border border-line-soft bg-line-soft">
               <Ligne libelle="Numéro de la pièce">
                 <span className="font-mono">{fiche.numero}</span>
               </Ligne>

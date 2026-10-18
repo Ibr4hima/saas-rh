@@ -227,7 +227,7 @@ function Enseigne({
   return (
     <Card>
       <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-3 py-4">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-[13px] bg-primary/[0.10] text-primary">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-bloc bg-primary/[0.10] text-primary">
           <Icon name="gavel" size={19} />
         </span>
         <div className="min-w-0 flex-1">
@@ -302,7 +302,7 @@ function Sommaire({
                   onClick={() => onChapitre(c.id)}
                   aria-current={actif ? 'true' : undefined}
                   className={cn(
-                    'flex w-full items-baseline gap-2.5 rounded-[10px] border-l-[3px] px-2.5 py-2 text-left transition-colors',
+                    'flex w-full items-baseline gap-2.5 rounded-controle-sm border-l-[3px] px-2.5 py-2 text-left transition-colors',
                     actif
                       ? 'border-primary bg-primary/[0.06]'
                       : 'border-transparent hover:bg-hover',
@@ -414,7 +414,7 @@ function Chapitre({
 
               <article
                 id={`article-${a.id}`}
-                className="mb-7 scroll-mt-6 rounded-[10px] transition-shadow"
+                className="mb-7 scroll-mt-6 rounded-bloc transition-shadow"
               >
                 <p className="mb-2 text-[14px] leading-snug font-bold text-ink-strong">
                   <span className="text-primary">Article {a.numero}</span>
@@ -494,7 +494,7 @@ function Resultats({
             key={h.id}
             type="button"
             onClick={() => onOuvrir(h)}
-            className="rounded-[12px] border border-card-line bg-bg px-4 py-3 text-left transition-all hover:-translate-y-px hover:border-primary/40 hover:bg-surface hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+            className="rounded-bloc border border-card-line bg-bg px-4 py-3 text-left transition-all hover:-translate-y-px hover:border-primary/40 hover:bg-surface hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
           >
             <p className="text-[9.5px] font-extrabold tracking-[0.12em] text-ink-muted uppercase">
               {h.chapterNumero} · {h.chapterTitle}
@@ -600,7 +600,7 @@ function Pagination({
       type="button"
       onClick={() => onAller(chap.id)}
       className={cn(
-        'flex flex-1 items-center gap-3 rounded-[12px] border border-card-line px-4 py-3 transition-colors',
+        'flex flex-1 items-center gap-3 rounded-bloc border border-card-line px-4 py-3 transition-colors',
         'hover:border-primary/40 hover:bg-hover focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
       )}
     >

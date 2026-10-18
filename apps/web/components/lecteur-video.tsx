@@ -351,7 +351,7 @@ export function LecteurVideo({
         'group/lecteur relative isolate w-full overflow-hidden bg-black select-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none',
         pleinEcran
           ? 'rounded-none'
-          : 'mx-auto rounded-[20px] shadow-[0_1px_2px_rgb(0_0_0/0.06),0_18px_40px_-18px_rgb(0_0_0/0.35)]',
+          : 'mx-auto rounded-bloc shadow-[0_1px_2px_rgb(0_0_0/0.06),0_18px_40px_-18px_rgb(0_0_0/0.35)]',
         !montrerCommandes && 'cursor-none',
       )}
       // Le cadre a les proportions EXACTES de la vidéo, et toute la largeur de
@@ -551,7 +551,7 @@ export function LecteurVideo({
           mouvement. */}
       <div
         className={cn(
-          'absolute inset-x-2 bottom-2 flex items-center gap-0.5 rounded-[14px] bg-black/50 p-1 text-white ring-1 ring-white/10 backdrop-blur-xl transition-[opacity,transform] duration-300 ease-out sm:inset-x-5 sm:bottom-5 sm:gap-2 sm:rounded-[16px] sm:px-2.5 sm:py-1.5',
+          'absolute inset-x-2 bottom-2 flex items-center gap-0.5 rounded-groupe bg-black/50 p-1 text-white ring-1 ring-white/10 backdrop-blur-xl transition-[opacity,transform] duration-300 ease-out sm:inset-x-5 sm:bottom-5 sm:gap-2 sm:rounded-bloc sm:px-2.5 sm:py-1.5',
           montrerCommandes && !ailleurs
             ? 'translate-y-0 opacity-100'
             : 'pointer-events-none translate-y-2 opacity-0',
@@ -638,7 +638,7 @@ function BoutonLecteur({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className="grid size-8 shrink-0 place-items-center rounded-[10px] sm:size-9 sm:rounded-[11px] text-white/90 transition-colors duration-150 hover:bg-white/12 hover:text-white focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:outline-none active:bg-white/20"
+      className="grid size-8 shrink-0 place-items-center rounded-controle-sm sm:size-9 text-white/90 transition-colors duration-150 hover:bg-white/12 hover:text-white focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:outline-none active:bg-white/20"
     >
       {children}
     </button>

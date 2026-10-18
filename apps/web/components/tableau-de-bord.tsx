@@ -228,7 +228,7 @@ function StatTile({
   return href ? (
     <Link
       href={href}
-      className="group block rounded-[14px] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+      className="group block rounded-bloc focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
     >
       {corps}
     </Link>
@@ -406,11 +406,11 @@ function DateFerie({
   const passe = etat === 'passe';
   return (
     <li className="relative flex min-w-0 flex-1 flex-col items-center px-1 pt-2 text-center sm:px-3">
-      {/* Un carré aux angles très adoucis plutôt qu'un rond : la date y tient
+      {/* Un carré aux angles adoucis plutôt qu'un rond : la date y tient
           sur deux lignes sans que le mois vienne toucher le bord. */}
       <span
         className={cn(
-          'flex size-[52px] shrink-0 flex-col items-center justify-center rounded-[15px] border transition-colors duration-200',
+          'flex size-[52px] shrink-0 flex-col items-center justify-center rounded-bloc border transition-colors duration-200',
           prochain
             ? 'ferie-prochain border-transparent bg-primary text-primary-ink'
             : passe

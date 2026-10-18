@@ -91,7 +91,7 @@ function PieceJointe({
 
   if (fichier) {
     return (
-      <div className="flex items-center gap-3 rounded-[11px] border border-success/35 bg-success-soft px-3.5 py-3">
+      <div className="flex items-center gap-3 rounded-bloc border border-success/35 bg-success-soft px-3.5 py-3">
         {champ('sr-only')}
         <Icon name="check_circle" size={20} className="shrink-0 text-success" />
         {/* Le nom du fichier est le titre de la pièce, et se corrige ici même,
@@ -138,7 +138,7 @@ function PieceJointe({
   return (
     <label
       htmlFor={id}
-      className="relative flex cursor-pointer items-center gap-3 rounded-[11px] border border-dashed border-line bg-surface-raised px-3.5 py-3 transition-colors focus-within:ring-2 focus-within:ring-primary/40 hover:border-primary/50 hover:bg-primary-soft/40"
+      className="relative flex cursor-pointer items-center gap-3 rounded-bloc border border-dashed border-line bg-surface-raised px-3.5 py-3 transition-colors focus-within:ring-2 focus-within:ring-primary/40 hover:border-primary/50 hover:bg-primary-soft/40"
     >
       {/* Le champ COUVRE la zone au lieu de se cacher dans un coin. Un
           `sr-only` est une boîte d'un pixel posée ailleurs que là où l'on
@@ -160,7 +160,7 @@ function PieceJointe({
 
 /** La carte des écrans de message : blanche, à peine ombrée, posée sur le fond. */
 const CARTE =
-  'rounded-[24px] bg-surface ring-1 ring-line-soft shadow-[0_1px_2px_rgb(20_23_42/0.04),0_12px_32px_-16px_rgb(20_23_42/0.14)]';
+  'rounded-bloc bg-surface ring-1 ring-line-soft shadow-[0_1px_2px_rgb(20_23_42/0.04),0_12px_32px_-16px_rgb(20_23_42/0.14)]';
 
 /** L'intitulé d'une rubrique, en capitales espacées. */
 function Rubrique({ children, extra }: { children: React.ReactNode; extra?: React.ReactNode }) {
@@ -428,12 +428,12 @@ export default function ApplyPage() {
         offre={
           <div className="mt-9">
             <Skeleton className="h-4 w-28 rounded-full" />
-            <Skeleton className="mt-4 h-11 w-full max-w-md rounded-xl" />
+            <Skeleton className="mt-4 h-11 w-full max-w-md rounded-bloc" />
             <Skeleton className="mt-6 h-8 w-full max-w-sm rounded-full" />
-            <Skeleton className="mt-12 h-40 w-full rounded-xl" />
+            <Skeleton className="mt-12 h-40 w-full rounded-bloc" />
           </div>
         }
-        formulaire={<Skeleton className="h-[560px] w-full rounded-[20px]" />}
+        formulaire={<Skeleton className="h-[560px] w-full rounded-bloc" />}
       />
     );
   }
@@ -692,7 +692,7 @@ export default function ApplyPage() {
                   {fileError ? (
                     <p
                       role="alert"
-                      className="mt-3 rounded-[10px] bg-danger-soft px-3 py-2 text-[12.5px] text-danger"
+                      className="mt-3 rounded-bloc bg-danger-soft px-3 py-2 text-[12.5px] text-danger"
                     >
                       {fileError}
                     </p>
@@ -704,7 +704,7 @@ export default function ApplyPage() {
                 <p
                   ref={alerte}
                   role="alert"
-                  className="rounded-[12px] border border-danger/30 bg-danger-soft px-4 py-3 text-[12.5px] font-medium text-danger"
+                  className="rounded-bloc border border-danger/30 bg-danger-soft px-4 py-3 text-[12.5px] font-medium text-danger"
                 >
                   {serverError}
                 </p>

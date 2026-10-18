@@ -796,7 +796,7 @@ function RangeeNav({
   // qu'un libellé long, en gras sur la page courante, manque exactement ces
   // deux pixels et se coupe.
   const forme =
-    'relative flex items-center gap-2 rounded-[10px] py-[8px] pr-2.5 pl-3.5 text-[12.5px] transition-colors duration-150';
+    'relative flex items-center gap-2 rounded-controle-sm py-[8px] pr-2.5 pl-3.5 text-[12.5px] transition-colors duration-150';
 
   // Éteinte, la rangée n'est plus un lien DU TOUT : la griser sans la
   // désarmer laisserait le clic passer, et le curseur promettrait une
@@ -934,7 +934,7 @@ function Rubrique({
         onClick={() => setOuverte((v) => !v)}
         aria-expanded={ouverte}
         className={cn(
-          'relative flex items-center gap-2 rounded-[10px] py-[8px] pr-2.5 pl-3.5 text-left text-[12.5px] transition-colors duration-150',
+          'relative flex items-center gap-2 rounded-controle-sm py-[8px] pr-2.5 pl-3.5 text-left text-[12.5px] transition-colors duration-150',
           // Repliée sur la page courante, la rubrique porte l'état actif ;
           // dépliée, elle le laisse à la sous-page pour ne pas l'allumer deux
           // fois sur la même colonne.
@@ -973,7 +973,7 @@ function Rubrique({
         <div className="relative ml-[1.4rem] flex flex-col gap-px border-l border-line-soft pl-2.5">
           {enfants.map((c) => {
             const active = c.href === enfantActif;
-            const forme = 'relative rounded-[9px] px-2.5 py-[6.5px] text-[12px]';
+            const forme = 'relative rounded-controle-sm px-2.5 py-[6.5px] text-[12px]';
             // Éteinte, la sous-page n'est plus un lien DU TOUT : la griser sans
             // la désarmer laisserait le clic passer, et le curseur promettrait
             // une destination qui n'est pas prête.
@@ -1054,7 +1054,7 @@ function RubriqueRepliee({
         aria-label={item.label}
         {...survol}
         className={cn(
-          'relative flex w-full items-center rounded-[10px] py-[8px] pl-3.5 text-[12.5px] transition-colors duration-150',
+          'relative flex w-full items-center rounded-controle-sm py-[8px] pl-3.5 text-[12.5px] transition-colors duration-150',
           contientLaPage
             ? 'bg-primary/[0.07] text-primary'
             : ouvert
@@ -1438,7 +1438,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
               réserve d'un tableau qui attend ses lignes, pas comme un oubli.
 
               Elle défile à l'intérieur si la liste dépasse. */}
-          <nav className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[18px] border border-card-line bg-surface shadow-xs">
+          <nav className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-bloc border border-card-line bg-surface shadow-xs">
             {/* Plier, déplier. Le bouton se tient dans l'axe des icônes : il
                 reste sous le pointeur quand la colonne se replie, et un second
                 clic la rouvre sans qu'on ait à le chercher. */}
@@ -1453,7 +1453,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                 aria-expanded={!replie}
                 title={replie ? undefined : 'Replier le menu'}
                 {...(replie ? survolAvecBulle('Déplier le menu', setBulle) : {})}
-                className="ml-[6.5px] grid size-8 shrink-0 place-items-center rounded-[9px] text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+                className="ml-[6.5px] grid size-8 shrink-0 place-items-center rounded-controle-sm text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
               >
                 <Icon name={replie ? 'arrow_menu_open' : 'arrow_menu_close'} size={19} />
               </button>
@@ -1505,7 +1505,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
               de plus au bas de la liste, c'est l'identité de la session. */}
           <div
             className={cn(
-              'mt-auto flex shrink-0 items-center rounded-[18px] border border-card-line bg-surface py-2.5 shadow-xs',
+              'mt-auto flex shrink-0 items-center rounded-bloc border border-card-line bg-surface py-2.5 shadow-xs',
               replie ? 'justify-center' : 'gap-2.5 px-3',
             )}
           >

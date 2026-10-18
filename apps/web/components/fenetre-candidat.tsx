@@ -163,7 +163,7 @@ export function FenetreCandidat({
         // Hauteur fixée plutôt que `h-full` : la fenêtre se dimensionne sur son
         // contenu, et un enfant qui demande « toute la hauteur » d'un parent
         // sans hauteur propre se réduit à zéro.
-        <div className="h-[min(68vh,660px)] overflow-hidden rounded-[12px] border border-card-line">
+        <div className="h-[min(68vh,660px)] overflow-hidden rounded-bloc border border-card-line">
           {/* La clé force un lecteur NEUF par pièce : sans elle, passer du CV à
               la lettre réutiliserait l'état de défilement et de zoom du
               précédent, et la première page s'afficherait au mauvais endroit. */}

@@ -26,7 +26,7 @@ export default function JoindreUnDocumentPage() {
   if (myEmployee.isLoading) {
     return (
       <Page>
-        <Skeleton className="h-48 w-full rounded-[16px]" />
+        <Skeleton className="h-48 w-full rounded-bloc" />
       </Page>
     );
   }

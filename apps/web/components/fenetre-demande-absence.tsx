@@ -293,7 +293,7 @@ export function FenetreDemandeAbsence({
       }
     >
       {types.data && types.data.length === 0 ? (
-        <p className="rounded-[12px] bg-warning-soft px-3.5 py-2.5 text-[12.5px] text-warning ring-1 ring-current/15 ring-inset">
+        <p className="rounded-bloc bg-warning-soft px-3.5 py-2.5 text-[12.5px] text-warning ring-1 ring-current/15 ring-inset">
           Aucun type d&apos;absence n&apos;est encore configuré.
         </p>
       ) : null}

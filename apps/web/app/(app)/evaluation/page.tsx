@@ -131,10 +131,7 @@ function FenetreDate({ vue, onClose }: { vue: DateEvaluation; onClose: () => voi
       }
     >
       {erreur ? (
-        <p
-          role="alert"
-          className="rounded-[9px] bg-danger-soft px-3 py-2 text-[12.5px] text-danger"
-        >
+        <p role="alert" className="rounded-bloc bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
           {erreur}
         </p>
       ) : null}

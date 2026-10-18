@@ -119,8 +119,8 @@ export default function CongesEquipePage() {
           role="status"
           className={
             message.ton === 'ok'
-              ? 'flex shrink-0 items-center gap-2 rounded-[12px] bg-success-soft px-3.5 py-2.5 text-[12.5px] text-success ring-1 ring-current/15 ring-inset'
-              : 'flex shrink-0 items-center gap-2 rounded-[12px] bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger ring-1 ring-current/15 ring-inset'
+              ? 'flex shrink-0 items-center gap-2 rounded-bloc bg-success-soft px-3.5 py-2.5 text-[12.5px] text-success ring-1 ring-current/15 ring-inset'
+              : 'flex shrink-0 items-center gap-2 rounded-bloc bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger ring-1 ring-current/15 ring-inset'
           }
         >
           <Icon name={message.ton === 'ok' ? 'check_circle' : 'error'} size={16} />
@@ -152,7 +152,7 @@ export default function CongesEquipePage() {
               {aViser.map((r) => (
                 <li
                   key={r.id}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-controle-sm px-3 py-3 transition-colors duration-150 hover:bg-hover"
                 >
                   <Resume demande={r} />
                   <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -245,7 +245,7 @@ export default function CongesEquipePage() {
               {suivi.map((r) => (
                 <li
                   key={r.id}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-controle-sm px-3 py-3 transition-colors duration-150 hover:bg-hover"
                 >
                   <Resume demande={r} />
                   <div className="ml-auto flex shrink-0 items-center gap-2">

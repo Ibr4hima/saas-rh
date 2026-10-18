@@ -83,6 +83,7 @@
   --radius-controle-sm: var(--tg-radius-controle-sm);
   --radius-groupe: var(--tg-radius-groupe);
   --radius-barre: var(--tg-radius-barre);
+  --radius-bloc: var(--tg-radius-bloc);
   --shadow-bouton: var(--tg-shadow-bouton);
   --shadow-bouton-borde: var(--tg-shadow-bouton-borde);
   --shadow-bouton-enfonce: var(--tg-shadow-bouton-enfonce);
@@ -530,7 +531,7 @@ body {
   --bn-colors-side-menu: var(--tg-ink-muted);
   --bn-font-family: var(--tg-font-sans);
   --mantine-font-family: var(--tg-font-sans);
-  --bn-border-radius: 10px;
+  --bn-border-radius: var(--tg-radius-bloc);
 }
 
 /* Les menus « / » et « @ » : des entrées d'une ligne n'ont pas à garder la

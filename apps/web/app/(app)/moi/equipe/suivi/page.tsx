@@ -29,9 +29,9 @@ export default function SuiviEquipePage() {
         </h2>
         {suivi.isLoading ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Skeleton className="h-[84px] w-full rounded-[14px]" />
-            <Skeleton className="h-[84px] w-full rounded-[14px]" />
-            <Skeleton className="h-[84px] w-full rounded-[14px]" />
+            <Skeleton className="h-[84px] w-full rounded-bloc" />
+            <Skeleton className="h-[84px] w-full rounded-bloc" />
+            <Skeleton className="h-[84px] w-full rounded-bloc" />
           </div>
         ) : membres.length === 0 ? (
           <Card>
@@ -58,7 +58,7 @@ function CarteMembre({ membre: m }: { membre: MembreSuivi }) {
   return (
     <Link
       href={`/moi/equipe/suivi/${m.employeeId}`}
-      className="group flex w-full items-start gap-3 rounded-[14px] border border-card-line bg-surface px-3.5 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+      className="group flex w-full items-start gap-3 rounded-bloc border border-card-line bg-surface px-3.5 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
     >
       <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11.5px] font-bold text-primary uppercase">
         {m.givenName[0]}

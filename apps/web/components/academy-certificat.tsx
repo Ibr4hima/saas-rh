@@ -76,7 +76,7 @@ export function ListeCertificats({
             >
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span
-                  className="grid size-9 shrink-0 place-items-center rounded-[10px] text-white"
+                  className="grid size-9 shrink-0 place-items-center rounded-bloc text-white"
                   style={{ background: FOND_COUVERTURE }}
                 >
                   <Icon name="workspace_premium" size={19} />
@@ -294,7 +294,7 @@ export function CarteCertificatsAgent({ employeeId }: { employeeId: string }) {
                   key={a.courseId}
                   className="flex items-center gap-3 border-b border-line-soft py-3 last:border-b-0"
                 >
-                  <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-primary-soft text-primary">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-bloc bg-primary-soft text-primary">
                     <Icon name="school" size={19} />
                   </span>
                   <span className="min-w-0 flex-1">

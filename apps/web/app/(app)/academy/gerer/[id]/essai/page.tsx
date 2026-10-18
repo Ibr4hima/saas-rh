@@ -85,7 +85,7 @@ export default function EssaiPage() {
     return (
       <Page>
         <Skeleton className="h-5 w-48 rounded-full" />
-        <Skeleton className="h-[320px] w-full rounded-[16px]" />
+        <Skeleton className="h-[320px] w-full rounded-bloc" />
       </Page>
     );
   }
@@ -168,7 +168,7 @@ function Erreur({ texte }: { texte: string | null }) {
   return (
     <p
       role="alert"
-      className="rounded-[10px] bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
+      className="rounded-bloc bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
     >
       {texte}
     </p>
@@ -205,7 +205,7 @@ function Accueil({
             {Math.round(SEUIL_REUSSITE * 100)} % pour réussir
           </p>
         </div>
-        <p className="flex gap-3 rounded-[12px] bg-primary-soft/60 px-4 py-3 text-[12.5px] leading-relaxed text-ink">
+        <p className="flex gap-3 rounded-bloc bg-primary-soft/60 px-4 py-3 text-[12.5px] leading-relaxed text-ink">
           <Icon name="visibility" size={18} className="mt-px shrink-0 text-primary" />
           <span>
             Vous passez l’épreuve comme un agent la passera. Rien n’est enregistré et aucun
@@ -278,7 +278,7 @@ function Resultat({
           {exigees}. Rien n’a été enregistré.
         </p>
         {r.passed ? (
-          <div className="mt-2 flex w-full flex-col items-center gap-3 rounded-[14px] border border-success/25 bg-success-soft/50 px-5 py-4">
+          <div className="mt-2 flex w-full flex-col items-center gap-3 rounded-bloc border border-success/25 bg-success-soft/50 px-5 py-4">
             <p className="text-[13px] leading-relaxed text-ink">
               Un agent recevrait ce certificat. L’aperçu est barré « spécimen » : il n’a pas de
               numéro et ne se vérifie pas.

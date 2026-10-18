@@ -138,7 +138,7 @@ export function Modal({
           'modal-panel flex h-full w-full flex-col overflow-hidden border-line-soft bg-surface shadow-lg outline-none',
           // Plein écran sur téléphone : une fenêtre flottante y laisserait
           // deux centimètres de contexte inutile de chaque côté.
-          'sm:h-auto sm:max-h-[92vh] sm:rounded-[20px] sm:border',
+          'sm:h-auto sm:max-h-[92vh] sm:rounded-bloc sm:border',
           maxWidth,
         )}
       >
@@ -244,7 +244,7 @@ export function ModalSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[14px] border border-line-soft bg-surface px-4 pt-4 pb-[18px] sm:px-[18px]">
+    <section className="rounded-bloc border border-line-soft bg-surface px-4 pt-4 pb-[18px] sm:px-[18px]">
       <div className="mb-3.5 flex min-h-5 items-center justify-between gap-3">
         <p className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
           {title}

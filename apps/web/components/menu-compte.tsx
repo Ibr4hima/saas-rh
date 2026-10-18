@@ -116,7 +116,7 @@ export function MenuCompte({
           dansLeBandeau
             ? 'size-9 rounded-full border border-white/30 bg-white/10 text-hero-ink hover:border-white/55 hover:bg-white/20 focus-visible:outline-white/60'
             : cn(
-                'size-8 rounded-[9px] focus-visible:outline-primary/40',
+                'size-8 rounded-controle-sm focus-visible:outline-primary/40',
                 ouvert
                   ? 'bg-primary/[0.09] text-primary'
                   : 'text-ink-muted hover:bg-hover hover:text-ink',
@@ -271,7 +271,7 @@ function Panneau({
         ref={panneau}
         role="menu"
         style={{ top: pos.top, bottom: pos.bottom, right: pos.right, left: pos.left }}
-        className="tg-menu fixed z-[60] min-w-[13.5rem] rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg"
+        className="tg-menu fixed z-[60] min-w-[13.5rem] rounded-bloc border border-card-line bg-surface p-1.5 shadow-lg"
       >
         {children}
       </div>
@@ -300,7 +300,7 @@ function Rangee({
       role="menuitem"
       onClick={onClick}
       className={cn(
-        'group flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left text-[12.5px] font-medium transition-colors duration-150',
+        'group flex w-full items-center gap-2.5 rounded-controle-sm px-2.5 py-2 text-left text-[12.5px] font-medium transition-colors duration-150',
         danger
           ? 'text-ink hover:bg-danger-soft hover:text-danger'
           : 'text-ink hover:bg-hover hover:text-ink-strong',

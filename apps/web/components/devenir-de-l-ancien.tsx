@@ -177,7 +177,7 @@ export function DevenirDeLAncien({
                 })
               }
               className={cn(
-                'flex items-center gap-2.5 rounded-[12px] border px-3 py-2.5 text-left text-[13px] font-semibold transition-colors',
+                'flex items-center gap-2.5 rounded-bloc border px-3 py-2.5 text-left text-[13px] font-semibold transition-colors',
                 actif
                   ? 'border-primary bg-primary/[0.06] text-primary'
                   : 'border-line bg-surface text-ink hover:border-primary/40',

@@ -169,7 +169,7 @@ export function LigneObjectif({
   if (auteur && o.auteur) meta.push(<span key="a">Fixé par {o.auteur}</span>);
 
   return (
-    <li className="flex flex-col gap-2 rounded-[11px] px-3 py-3 transition-colors duration-150 hover:bg-hover sm:flex-row sm:items-start sm:gap-4">
+    <li className="flex flex-col gap-2 rounded-controle-sm px-3 py-3 transition-colors duration-150 hover:bg-hover sm:flex-row sm:items-start sm:gap-4">
       <div className="min-w-0 flex-1">
         <p className="text-[13.5px] leading-snug font-semibold text-ink-strong">
           {lienFormation && o.formation?.courseId ? (

@@ -244,7 +244,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
         </Link>
       )}
       {e.soi && !soi ? (
-        <p className="mb-3 flex shrink-0 items-center gap-2 rounded-[12px] bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
+        <p className="mb-3 flex shrink-0 items-center gap-2 rounded-bloc bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
           <Icon name="lock" size={16} className="shrink-0 text-primary" />
           <span className="min-w-0 flex-1">
             Vous ne pouvez pas modifier votre dossier personnel. Toute demande de modification se
@@ -257,7 +257,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
         </p>
       ) : null}
       {finDAcces ? (
-        <p className="mb-3 flex shrink-0 items-center gap-2 rounded-[12px] bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
+        <p className="mb-3 flex shrink-0 items-center gap-2 rounded-bloc bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">
           <Icon name="schedule" size={16} className="shrink-0 text-primary" />
           <span className="min-w-0 flex-1">
             Votre accès au portail prend fin le {dateLongue(finDAcces)}.
@@ -683,7 +683,7 @@ function CarteHistorique({
           {history.isLoading ? (
             <Skeleton className="h-16 w-full" />
           ) : n === 0 ? (
-            <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
+            <p className="rounded-bloc border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
               Aucune modification enregistrée.
             </p>
           ) : (
@@ -1619,7 +1619,7 @@ function PortalCard({
         <div className={cn('flex gap-3', actif ? 'items-center' : 'items-start')}>
           <span
             className={cn(
-              'flex size-9 shrink-0 items-center justify-center rounded-[11px]',
+              'flex size-9 shrink-0 items-center justify-center rounded-bloc',
               actif
                 ? 'bg-success-soft text-success'
                 : coupe
@@ -1701,7 +1701,7 @@ function PortalCard({
               </Button>
             </div>
             {error && !aCouper ? (
-              <p className="rounded-[10px] bg-danger-soft/55 px-3 py-2 text-[12.5px] text-danger ring-1 ring-danger/25 ring-inset">
+              <p className="rounded-bloc bg-danger-soft/55 px-3 py-2 text-[12.5px] text-danger ring-1 ring-danger/25 ring-inset">
                 {error}
               </p>
             ) : null}
@@ -1757,13 +1757,13 @@ function PortalCard({
             </div>
 
             {error ? (
-              <p className="rounded-[10px] bg-danger-soft/55 px-3 py-2 text-[12.5px] text-danger ring-1 ring-danger/25 ring-inset">
+              <p className="rounded-bloc bg-danger-soft/55 px-3 py-2 text-[12.5px] text-danger ring-1 ring-danger/25 ring-inset">
                 {error}
               </p>
             ) : null}
 
             {inviteUrl && invite ? (
-              <div className="rounded-[13px] border border-primary/20 bg-primary-soft/45 p-3">
+              <div className="rounded-bloc border border-primary/20 bg-primary-soft/45 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[9.5px] font-bold tracking-[0.1em] text-primary uppercase">
                     Lien d&apos;invitation
@@ -2137,7 +2137,7 @@ function NouveauContrat({
       >
         <div className="flex flex-col gap-3.5">
           {remplace && !inactif ? (
-            <p className="flex items-start gap-2 rounded-[12px] bg-warning-soft px-3.5 py-2.5 text-[12.5px] font-semibold text-warning ring-1 ring-current/15 ring-inset">
+            <p className="flex items-start gap-2 rounded-bloc bg-warning-soft px-3.5 py-2.5 text-[12.5px] font-semibold text-warning ring-1 ring-current/15 ring-inset">
               <Icon name="warning" size={16} className="mt-px shrink-0" />
               {prenom} est actuellement sous contrat, ce nouveau contrat remplacera l’ancien.
             </p>

@@ -182,7 +182,7 @@ function Cadre({
   return (
     <Card className={cn('shrink-0', attente && 'border-accent/30')}>
       <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
-        <span className={cn('grid size-11 shrink-0 place-items-center rounded-[12px]', ton)}>
+        <span className={cn('grid size-11 shrink-0 place-items-center rounded-bloc', ton)}>
           <Icon name={icone} size={22} />
         </span>
         <div className="min-w-0 flex-1">

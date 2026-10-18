@@ -28,7 +28,7 @@ export function DataBlock({
   return (
     <div
       className={cn(
-        'min-w-0 rounded-xl border border-bloc-line bg-bloc px-3 py-2.5',
+        'min-w-0 rounded-bloc border border-bloc-line bg-bloc px-3 py-2.5',
         full && 'col-span-full',
         className,
       )}

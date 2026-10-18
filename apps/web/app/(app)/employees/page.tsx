@@ -703,7 +703,7 @@ function SupprimerModal({
             </li>
           ))}
         </ul>
-        <p className="mt-3 rounded-[9px] bg-bg px-3 py-2 text-[12px] text-ink-muted">
+        <p className="mt-3 rounded-bloc bg-bg px-3 py-2 text-[12px] text-ink-muted">
           Réservé aux dossiers saisis par erreur : passé 30 jours, un dossier se garde et se
           désactive.
         </p>

@@ -41,7 +41,7 @@ export default function MaListePage() {
       {liste.isPending ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-[260px] rounded-[16px]" />
+            <Skeleton key={i} className="h-[260px] rounded-bloc" />
           ))}
         </div>
       ) : liste.isError ? (

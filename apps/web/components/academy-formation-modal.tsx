@@ -239,7 +239,7 @@ export function FormationModal({
                 aria-checked={choisie}
                 onClick={() => setFamille(c)}
                 className={cn(
-                  'flex items-center gap-2.5 rounded-[12px] border px-2.5 py-2 text-left text-[12.5px] leading-tight font-semibold transition-colors',
+                  'flex items-center gap-2.5 rounded-bloc border px-2.5 py-2 text-left text-[12.5px] leading-tight font-semibold transition-colors',
                   choisie
                     ? 'border-primary bg-primary-soft/60 text-primary'
                     : 'border-line-soft text-ink hover:border-line hover:bg-hover',

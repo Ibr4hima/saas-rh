@@ -81,8 +81,8 @@ export default function LeconPage() {
     return (
       <Page>
         <Skeleton className="h-5 w-48 rounded-full" />
-        <Skeleton className="aspect-video w-full rounded-[16px]" />
-        <Skeleton className="h-[140px] w-full rounded-[16px]" />
+        <Skeleton className="aspect-video w-full rounded-bloc" />
+        <Skeleton className="h-[140px] w-full rounded-bloc" />
       </Page>
     );
   }

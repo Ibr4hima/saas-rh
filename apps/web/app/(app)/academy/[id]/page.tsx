@@ -33,8 +33,8 @@ export default function FormationPage() {
     return (
       <Page>
         <Skeleton className="h-5 w-40 rounded-full" />
-        <Skeleton className="h-[200px] w-full shrink-0 rounded-[16px]" />
-        <Skeleton className="h-[320px] w-full rounded-[16px]" />
+        <Skeleton className="h-[200px] w-full shrink-0 rounded-bloc" />
+        <Skeleton className="h-[320px] w-full rounded-bloc" />
       </Page>
     );
   }

@@ -62,8 +62,8 @@ export default function ObjectifsAPIXPage() {
   if (vue.isLoading || !vue.data) {
     return (
       <Page>
-        <Skeleton className="h-40 w-full rounded-[16px]" />
-        <Skeleton className="h-40 w-full rounded-[16px]" />
+        <Skeleton className="h-40 w-full rounded-bloc" />
+        <Skeleton className="h-40 w-full rounded-bloc" />
       </Page>
     );
   }

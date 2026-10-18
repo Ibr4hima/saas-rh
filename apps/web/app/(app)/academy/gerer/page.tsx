@@ -75,7 +75,7 @@ export default function GererCataloguePage() {
     return (
       <Page>
         <Skeleton className="h-5 w-40 rounded-full" />
-        <Skeleton className="h-[320px] w-full rounded-[16px]" />
+        <Skeleton className="h-[320px] w-full rounded-bloc" />
       </Page>
     );
   }
@@ -137,7 +137,7 @@ export default function GererCataloguePage() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <span
-                        className="grid size-9 shrink-0 place-items-center rounded-[10px] text-white"
+                        className="grid size-9 shrink-0 place-items-center rounded-bloc text-white"
                         style={{ background: FOND_COUVERTURE }}
                       >
                         <Icon name={FAMILLES[f.category].icone} size={18} />

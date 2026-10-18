@@ -101,8 +101,8 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
   if (fiche.isLoading) {
     return (
       <Page>
-        <Skeleton className="h-20 w-full rounded-[16px]" />
-        <Skeleton className="h-48 w-full rounded-[16px]" />
+        <Skeleton className="h-20 w-full rounded-bloc" />
+        <Skeleton className="h-48 w-full rounded-bloc" />
       </Page>
     );
   }

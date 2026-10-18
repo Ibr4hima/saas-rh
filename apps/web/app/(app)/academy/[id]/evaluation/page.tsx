@@ -149,7 +149,7 @@ export default function EvaluationPage() {
     return (
       <Page>
         <Skeleton className="h-5 w-48 rounded-full" />
-        <Skeleton className="h-[320px] w-full rounded-[16px]" />
+        <Skeleton className="h-[320px] w-full rounded-bloc" />
       </Page>
     );
   }
@@ -274,7 +274,7 @@ function Accueil({
         {erreur ? (
           <p
             role="alert"
-            className="rounded-[10px] bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
+            className="rounded-bloc bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
           >
             {erreur}
           </p>
@@ -358,7 +358,7 @@ function Resultat({
         </p>
 
         {r.passed && r.certificat ? (
-          <div className="mt-2 flex w-full flex-col items-center gap-3 rounded-[14px] border border-success/25 bg-success-soft/50 px-5 py-4">
+          <div className="mt-2 flex w-full flex-col items-center gap-3 rounded-bloc border border-success/25 bg-success-soft/50 px-5 py-4">
             <p className="text-[13px] leading-relaxed text-ink">
               Votre certificat{' '}
               <b className="font-mono font-bold tracking-tight">{r.certificat.number}</b> est prêt.
@@ -373,7 +373,7 @@ function Resultat({
         {erreur ? (
           <p
             role="alert"
-            className="rounded-[10px] bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
+            className="rounded-bloc bg-danger-soft px-3 py-2 text-[12.5px] font-semibold text-danger"
           >
             {erreur}
           </p>

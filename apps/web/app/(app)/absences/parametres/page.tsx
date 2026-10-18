@@ -199,7 +199,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
             Il disparaît des formulaires : plus personne ne pourra déposer de demande sur ce motif.
           </p>
           {aSupprimer.usageCount > 0 ? (
-            <p className="mt-3 rounded-[9px] bg-bg px-3 py-2 text-[12px] text-ink-muted">
+            <p className="mt-3 rounded-bloc bg-bg px-3 py-2 text-[12px] text-ink-muted">
               {aSupprimer.usageCount === 1
                 ? 'La demande déjà déposée sur ce type garde son intitulé et son historique : rien n’est effacé du passé.'
                 : `Les ${aSupprimer.usageCount} demandes déjà déposées sur ce type gardent leur intitulé et leur historique : rien n’est effacé du passé.`}
@@ -312,7 +312,7 @@ function FenetreType({
       }
     >
       {erreur ? (
-        <p className="rounded-[9px] bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{erreur}</p>
+        <p className="rounded-bloc bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{erreur}</p>
       ) : null}
 
       <ModalSection title="Intitulé">
@@ -439,7 +439,7 @@ function CircuitCard() {
       <CardContent>
         <ol className="grid gap-3 sm:grid-cols-2">
           {etapes.map((titre, i) => (
-            <li key={titre} className="flex items-center gap-2.5 rounded-[12px] bg-bg px-3.5 py-3">
+            <li key={titre} className="flex items-center gap-2.5 rounded-bloc bg-bg px-3.5 py-3">
               <span className="flex size-[20px] shrink-0 items-center justify-center rounded-full bg-primary/[0.08] text-[10.5px] font-bold text-primary">
                 {i + 1}
               </span>

@@ -48,7 +48,7 @@ function SigneFichier({ contentType, grand = false }: { contentType: string; gra
     <span
       aria-hidden
       className={cn(
-        'flex shrink-0 items-center justify-center rounded-[10px] bg-primary-soft text-primary',
+        'flex shrink-0 items-center justify-center rounded-bloc bg-primary-soft text-primary',
         grand ? 'size-11' : 'size-10',
       )}
     >
@@ -194,7 +194,7 @@ export function EmployeeDocumentsCard({
             <button
               type="button"
               onClick={() => setDepotOuvert(true)}
-              className="group flex w-full flex-col items-center gap-3 rounded-[14px] border border-dashed border-line bg-surface-raised px-6 py-8 text-center transition-colors duration-150 hover:border-primary/45 hover:bg-primary/[0.03] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
+              className="group flex w-full flex-col items-center gap-3 rounded-bloc border border-dashed border-line bg-surface-raised px-6 py-8 text-center transition-colors duration-150 hover:border-primary/45 hover:bg-primary/[0.03] focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
             >
               <span className="flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary transition-transform duration-200 group-hover:-translate-y-0.5">
                 <Icon name="upload_file" size={22} />
@@ -204,7 +204,7 @@ export function EmployeeDocumentsCard({
               </span>
             </button>
           ) : (
-            <p className="rounded-[11px] border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
+            <p className="rounded-bloc border border-dashed border-line bg-surface-raised px-4 py-5 text-center text-[12.5px] text-ink-muted">
               Aucun document au dossier.
             </p>
           )
@@ -212,10 +212,10 @@ export function EmployeeDocumentsCard({
           <ul className="flex flex-col gap-2">
             {manquante && !depot ? (
               // Côté DCH : le constat, sans geste — c'est à l'agent de déposer.
-              <li className="flex items-center gap-3.5 rounded-[12px] border border-dashed border-accent/40 bg-accent-soft/20 px-3.5 py-3">
+              <li className="flex items-center gap-3.5 rounded-bloc border border-dashed border-accent/40 bg-accent-soft/20 px-3.5 py-3">
                 <span
                   aria-hidden
-                  className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-accent-soft text-accent-text"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-bloc bg-accent-soft text-accent-text"
                 >
                   <Icon name="upload_file" size={20} />
                 </span>
@@ -235,11 +235,11 @@ export function EmployeeDocumentsCard({
                     setTypeInitial(manquante);
                     setDepotOuvert(true);
                   }}
-                  className="group flex w-full items-center gap-3.5 rounded-[12px] border border-dashed border-accent/40 bg-accent-soft/20 px-3.5 py-3 text-left transition-colors duration-150 hover:border-accent/60 hover:bg-accent-soft/35 focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none"
+                  className="group flex w-full items-center gap-3.5 rounded-bloc border border-dashed border-accent/40 bg-accent-soft/20 px-3.5 py-3 text-left transition-colors duration-150 hover:border-accent/60 hover:bg-accent-soft/35 focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none"
                 >
                   <span
                     aria-hidden
-                    className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-accent-soft text-accent-text"
+                    className="flex size-10 shrink-0 items-center justify-center rounded-bloc bg-accent-soft text-accent-text"
                   >
                     <Icon name="upload_file" size={20} />
                   </span>
@@ -256,7 +256,7 @@ export function EmployeeDocumentsCard({
             {pieces.map((d) => (
               <li
                 key={d.id}
-                className="rounded-[12px] border border-line-soft bg-surface px-3.5 py-3 transition-colors duration-150 hover:border-card-line-hover"
+                className="rounded-bloc border border-line-soft bg-surface px-3.5 py-3 transition-colors duration-150 hover:border-card-line-hover"
               >
                 <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2.5">
                   <button
@@ -658,7 +658,7 @@ function FenetreDepot({
         {fichier ? (
           // Le fichier choisi : son nom se modifie sur place — c'est le nom
           // sous lequel il entre au dossier.
-          <div className="flex items-center gap-3.5 rounded-[14px] border border-line bg-surface px-3.5 py-3">
+          <div className="flex items-center gap-3.5 rounded-bloc border border-line bg-surface px-3.5 py-3">
             <SigneFichier contentType={fichier.contentType} grand />
             <div className="min-w-0 flex-1">
               <label htmlFor={`${id}-nom`} className="sr-only">
@@ -706,7 +706,7 @@ function FenetreDepot({
               choisir(e.dataTransfer.files?.[0]);
             }}
             className={cn(
-              'flex cursor-pointer flex-col items-center gap-2.5 rounded-[14px] border-[1.5px] border-dashed px-6 py-8 text-center transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary/40',
+              'flex cursor-pointer flex-col items-center gap-2.5 rounded-bloc border-[1.5px] border-dashed px-6 py-8 text-center transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary/40',
               survol
                 ? 'border-primary bg-primary/[0.05]'
                 : 'border-line bg-surface-raised hover:border-primary/45 hover:bg-primary/[0.03]',

@@ -641,7 +641,7 @@ function Bloc({
           // Gabarit unique (cf. HAUTEUR_BLOC / LARGEUR_BLOC) : la hauteur ne
           // bouge jamais, la largeur ne bouge que pour les rares noms qui ne
           // se plieraient pas en deux lignes.
-          'flex items-center gap-2.5 rounded-[14px] border px-3.5 text-left transition-all duration-200',
+          'flex items-center gap-2.5 rounded-bloc border px-3.5 text-left transition-all duration-200',
           'hover:-translate-y-0.5 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
           // Le sommet se distingue sans crier : un fond teinté suffit à dire
           // « tout part d'ici » là où une couleur pleine écraserait le reste.
@@ -664,7 +664,7 @@ function Bloc({
             que le nom de l'unité annonce déjà. */}
         <span
           className={cn(
-            'flex size-8 shrink-0 items-center justify-center rounded-[10px]',
+            'flex size-8 shrink-0 items-center justify-center rounded-bloc',
             direction ? 'bg-primary/[0.10] text-primary' : 'bg-bg text-ink-muted',
           )}
         >

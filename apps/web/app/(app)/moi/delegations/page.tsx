@@ -399,7 +399,7 @@ function EnTete({ ligne: l }: { ligne: Ligne }) {
   return (
     // Au téléphone, l'infobulle s'ouvre sur toute la largeur de l'en-tête.
     <span className="relative flex min-w-0 flex-1 items-center gap-3">
-      <span className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-primary/[0.07] text-primary">
+      <span className="grid size-[34px] shrink-0 place-items-center rounded-bloc bg-primary/[0.07] text-primary">
         <Icon name={l.icone} size={17} />
       </span>
       <span className="min-w-0 text-[13px] font-semibold text-ink-strong">
@@ -495,7 +495,7 @@ function ChoixDelegues({
         />
       </button>
       {ouvert ? (
-        <div className="tg-menu absolute top-full right-0 left-0 z-30 mt-1.5 rounded-[14px] border border-card-line bg-surface p-1.5 shadow-lg">
+        <div className="tg-menu absolute top-full right-0 left-0 z-30 mt-1.5 rounded-bloc border border-card-line bg-surface p-1.5 shadow-lg">
           <ul role="group" aria-label={`Qui : ${libelle}`} className="max-h-72 overflow-y-auto">
             {membres.map((m) => {
               const oui = coche(m);
@@ -503,7 +503,7 @@ function ChoixDelegues({
                 <li key={m.employeeId}>
                   <label
                     className={cn(
-                      'flex cursor-pointer items-center gap-3 rounded-controle px-2.5 py-2 transition-colors duration-150',
+                      'flex cursor-pointer items-center gap-3 rounded-controle-sm px-2.5 py-2 transition-colors duration-150',
                       oui ? 'bg-primary/[0.06] hover:bg-primary/[0.09]' : 'hover:bg-hover',
                     )}
                   >
@@ -564,7 +564,7 @@ function Info({ libelle, texte }: { libelle: string; texte: string }) {
         <span
           role="tooltip"
           className={cn(
-            'absolute left-1/2 z-40 w-72 -translate-x-1/2 rounded-[12px] border border-card-line bg-surface px-3.5 py-3 text-[12px] leading-relaxed font-normal text-ink shadow-lg max-md:right-0 max-md:left-0 max-md:w-auto max-md:translate-x-0',
+            'absolute left-1/2 z-40 w-72 -translate-x-1/2 rounded-bloc border border-card-line bg-surface px-3.5 py-3 text-[12px] leading-relaxed font-normal text-ink shadow-lg max-md:right-0 max-md:left-0 max-md:w-auto max-md:translate-x-0',
             enHaut ? 'bottom-full mb-2' : 'top-full mt-2',
           )}
         >

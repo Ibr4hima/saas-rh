@@ -265,7 +265,7 @@ export function CalendrierModal({ open, onClose }: { open: boolean; onClose: () 
         // Sur téléphone la fenêtre occupe tout l'écran : le mois y prend la
         // place qui reste, au lieu de tenir dans 448 px et de laisser sept
         // cents pixels de vide sous lui.
-        <div className="min-h-0 flex-1 overflow-hidden rounded-[14px] border border-line-soft bg-surface sm:h-[min(28rem,92vh_-_9rem)] sm:flex-none">
+        <div className="min-h-0 flex-1 overflow-hidden rounded-bloc border border-line-soft bg-surface sm:h-[min(28rem,92vh_-_9rem)] sm:flex-none">
           <Grille cal={cal} />
         </div>
       )}

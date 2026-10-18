@@ -62,7 +62,7 @@ export function EcranMarque({
 
           {/* Le rayon est celui des cartes de l'application : ces écrans n'ont
               pas de raison d'avoir leur propre rondeur. */}
-          <div className="relative overflow-hidden rounded-[14px] border border-card-line bg-surface [box-shadow:var(--login-ombre)]">
+          <div className="relative overflow-hidden rounded-bloc border border-card-line bg-surface [box-shadow:var(--login-ombre)]">
             <div className="px-7 pt-8 pb-6 sm:px-8">
               <h1 className="text-center text-2xl font-extrabold tracking-[-0.02em] text-ink-strong">
                 {titre}
