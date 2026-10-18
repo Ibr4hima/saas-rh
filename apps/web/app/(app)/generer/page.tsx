@@ -20,7 +20,6 @@ import {
   ficheStagiaireSchema,
   nomDuDocumentGenere,
   REQUESTABLE_DOC_LABELS,
-  requestableDocSchema,
   saisiesDe,
   sansAgent,
 } from '@teranga/contracts';
@@ -85,45 +84,76 @@ import { champDuMontant } from '../../../lib/montant';
    ce qui sortira, pas sur une imitation à l'écran.
 */
 
-/**
- * La liste de la DCH, dans son ordre, en trois familles. La famille se lit
- * sur l'identifiant : un document ajouté à la liste y trouve sa place.
- */
-const DOCUMENTS = requestableDocSchema.options;
-const FAMILLES: readonly { titre: string; documents: readonly DocumentDeLaListe[] }[] = [
-  { titre: 'Contrats', documents: DOCUMENTS.filter((d) => d.startsWith('contrat_')) },
-  { titre: 'Attestations', documents: DOCUMENTS.filter((d) => d.startsWith('attestation_')) },
-  {
-    titre: 'Autres documents',
-    documents: DOCUMENTS.filter((d) => !d.startsWith('contrat_') && !d.startsWith('attestation_')),
-  },
-];
+/** Les familles de la liste, dans leur ordre (ADR-0112). */
+const FAMILLES_DE_LA_LISTE = [
+  'Documents contractuels',
+  'Attestations',
+  'Documents de rémunération',
+  'Situation administrative du personnel',
+  'Fin de relation professionnelle',
+] as const;
+type Famille = (typeof FAMILLES_DE_LA_LISTE)[number];
 
 /**
- * Les libellés de la liste, plus courts que le titre des documents : la
- * famille dit déjà de quoi il s'agit. Le document garde son titre (ADR-0111).
+ * Chaque document de la liste, avec sa famille et son libellé, dans l'ordre
+ * où la liste les montre. Le libellé est plus court que le titre : la
+ * famille dit déjà de quoi il s'agit, et le document garde son titre
+ * (ADR-0111). La table est typée sur la liste de la DCH : un document qui y
+ * entre demande sa ligne ici.
  */
-const LIBELLES_DE_LA_LISTE: Record<DocumentDeLaListe, string> = {
-  contrat_cdd: 'Contrat à durée déterminée',
-  contrat_cdi: 'Contrat à durée indéterminée',
-  contrat_stage: 'Contrat de stage',
-  attestation_conge: 'Attestation de congé',
-  attestation_travail: 'Attestation de travail',
-  attestation_reprise_service: 'Reprise de service · Maternité',
-  attestation_reprise_disponibilite: 'Reprise après disponibilité',
-  attestation_depart_retraite: 'Départ à la retraite',
-  attestation_stage: 'Attestation de stage',
-  attestation_cessation: 'Cessation de paiement et d’activités',
-  attestation_revenu: 'Attestation de revenu',
-  domiciliation_bancaire: 'Domiciliation bancaire',
-  decision_disponibilite: 'Mise en disponibilité',
-  decision_renouvellement_disponibilite: 'Renouvellement de disponibilité',
-  declaration_mouvement: 'Déclaration de mouvement du travailleur',
-  certificat_travail: 'Certificat de travail',
+const LIGNES: Record<DocumentDeLaListe, { famille: Famille; libelle: string }> = {
+  contrat_cdd: { famille: 'Documents contractuels', libelle: 'Contrat à durée déterminée' },
+  contrat_cdi: { famille: 'Documents contractuels', libelle: 'Contrat à durée indéterminée' },
+  contrat_stage: { famille: 'Documents contractuels', libelle: 'Contrat de stage' },
+  attestation_conge: { famille: 'Attestations', libelle: 'Attestation de congé' },
+  attestation_travail: { famille: 'Attestations', libelle: 'Attestation de travail' },
+  attestation_reprise_service: {
+    famille: 'Attestations',
+    libelle: 'Reprise de service · Maternité',
+  },
+  attestation_reprise_disponibilite: {
+    famille: 'Attestations',
+    libelle: 'Reprise après disponibilité',
+  },
+  attestation_depart_retraite: { famille: 'Attestations', libelle: 'Départ à la retraite' },
+  attestation_stage: { famille: 'Attestations', libelle: 'Attestation de stage' },
+  attestation_cessation: {
+    famille: 'Attestations',
+    libelle: 'Cessation de paiement et d’activités',
+  },
+  domiciliation_bancaire: {
+    famille: 'Documents de rémunération',
+    libelle: 'Domiciliation bancaire',
+  },
+  attestation_revenu: { famille: 'Documents de rémunération', libelle: 'Attestation de revenu' },
+  decision_disponibilite: {
+    famille: 'Situation administrative du personnel',
+    libelle: 'Mise en disponibilité',
+  },
+  decision_renouvellement_disponibilite: {
+    famille: 'Situation administrative du personnel',
+    libelle: 'Renouvellement de disponibilité',
+  },
+  declaration_mouvement: {
+    famille: 'Situation administrative du personnel',
+    libelle: 'Déclaration de mouvement du travailleur',
+  },
+  certificat_travail: {
+    famille: 'Fin de relation professionnelle',
+    libelle: 'Certificat de travail',
+  },
 };
 
-/** Ceux qui s'ouvrent, dans l'ordre de la liste : le clavier passe de l'un à l'autre. */
-const OUVRABLES: readonly DocumentGenere[] = DOCUMENTS.filter(estGenere);
+const FAMILLES: readonly { titre: Famille; documents: readonly DocumentDeLaListe[] }[] =
+  FAMILLES_DE_LA_LISTE.map((titre) => ({
+    titre,
+    documents: (Object.keys(LIGNES) as DocumentDeLaListe[]).filter(
+      (d) => LIGNES[d].famille === titre,
+    ),
+  }));
+
+/** Ceux qui s'ouvrent, dans l'ordre où la liste les montre : le clavier passe de l'un à l'autre. */
+const OUVRABLES: readonly DocumentGenere[] = FAMILLES.flatMap((f) => f.documents).filter(estGenere);
 
 const nomDe = (a: EmployeeListItem) => `${a.givenName} ${a.familyName}`;
 
@@ -485,7 +515,7 @@ function ChoixDuDocument({
             choisi ? 'font-medium text-ink-strong' : 'text-ink-muted',
           )}
         >
-          {choisi ? LIBELLES_DE_LA_LISTE[choisi] : 'Choisir un document'}
+          {choisi ? LIGNES[choisi].libelle : 'Choisir un document'}
         </span>
         <Icon
           name="chevron_right"
@@ -509,17 +539,18 @@ function ChoixDuDocument({
               <div
                 key={f.titre}
                 role="group"
-                aria-labelledby={`${id}-${f.titre}`}
+                aria-labelledby={`${id}-famille-${rang}`}
                 className={cn(rang > 0 && 'mt-1.5 border-t border-line-soft pt-1.5')}
               >
                 <p
-                  id={`${id}-${f.titre}`}
+                  id={`${id}-famille-${rang}`}
                   className="px-3 pt-1.5 pb-1 text-[10.5px] font-bold tracking-[0.08em] text-ink-muted uppercase"
                 >
                   {f.titre}
                 </p>
-                {f.documents.map((d) =>
-                  estGenere(d) ? (
+                {f.documents.map((d) => {
+                  const libelle = LIGNES[d].libelle;
+                  return estGenere(d) ? (
                     <div
                       key={d}
                       id={`${id}-${d}`}
@@ -535,7 +566,7 @@ function ChoixDuDocument({
                         d === choisi ? 'font-semibold text-primary' : 'text-ink',
                       )}
                     >
-                      <span className="min-w-0 flex-1">{LIBELLES_DE_LA_LISTE[d]}</span>
+                      <span className="min-w-0 flex-1">{libelle}</span>
                       {d === choisi ? (
                         <Icon name="check" size={16} className="shrink-0 text-primary" />
                       ) : null}
@@ -548,11 +579,11 @@ function ChoixDuDocument({
                       aria-disabled
                       className="flex cursor-not-allowed items-center gap-2 rounded-controle-sm px-3 py-[7px] text-[13px] leading-snug text-ink-muted/60"
                     >
-                      <span className="min-w-0 flex-1">{LIBELLES_DE_LA_LISTE[d]}</span>
+                      <span className="min-w-0 flex-1">{libelle}</span>
                       <span className="shrink-0 text-[10.5px] whitespace-nowrap">À venir</span>
                     </div>
-                  ),
-                )}
+                  );
+                })}
               </div>
             ))}
           </div>
