@@ -89,7 +89,10 @@ export default function MotDePasseOubliePage() {
         </>
       }
     >
+      {/* En POST, comme la connexion : un envoi avant que la page ne soit
+          prête n'écrit pas l'adresse électronique dans celle de la page. */}
       <form
+        method="post"
         onSubmit={(e) => {
           e.preventDefault();
           setErreur(null);

@@ -599,6 +599,7 @@ export default function ApplyPage() {
             </div>
           ) : (
             <form
+              method="post"
               noValidate
               onSubmit={(e) => {
                 e.preventDefault();
@@ -606,6 +607,8 @@ export default function ApplyPage() {
               }}
               className="flex flex-col gap-8"
             >
+              {/* En POST, comme la connexion : un envoi avant que la page ne
+                  soit prête n'écrit pas les coordonnées dans l'adresse. */}
               <h2 className="flex h-12 items-center text-[24px] font-extrabold tracking-[-0.015em] text-ink-strong">
                 Postuler
               </h2>

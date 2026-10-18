@@ -68,7 +68,11 @@ export default function LoginPage() {
         </>
       }
     >
-      <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4" noValidate>
+      {/* En POST : envoyé avant que la page ne soit prête, le formulaire part
+          sans l'aide du script, et un GET écrirait l'e-mail et le mot de
+          passe dans l'URL, donc dans l'historique et les journaux. Une fois
+          la page prête, l'envoi passe par l'API. */}
+      <form method="post" onSubmit={onSubmit} className="mt-6 flex flex-col gap-4" noValidate>
         <ChampMarque id="email" label="Adresse email" icone="mail" erreur={errors.email?.message}>
           <SaisieMarque
             id="email"

@@ -111,7 +111,10 @@ export default function InvitationPage() {
         )
       }
     >
+      {/* En POST, comme la connexion : un envoi avant que la page ne soit
+          prête n'écrit rien dans l'adresse. */}
       <form
+        method="post"
         className="mt-6 flex flex-col gap-4"
         noValidate
         onSubmit={(e) => {

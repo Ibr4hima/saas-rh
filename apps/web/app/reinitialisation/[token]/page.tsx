@@ -96,7 +96,10 @@ export default function ReinitialisationPage() {
       titre="Nouveau mot de passe"
       sousTitre="Choisissez un mot de passe que vous n’utilisez nulle part ailleurs."
     >
+      {/* En POST, comme la connexion : un envoi avant que la page ne soit
+          prête n'écrit rien dans l'adresse. */}
       <form
+        method="post"
         className="mt-6 flex flex-col gap-4"
         noValidate
         onSubmit={(e) => {

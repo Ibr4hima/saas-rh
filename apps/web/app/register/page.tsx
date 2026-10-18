@@ -95,7 +95,9 @@ export default function RegisterPage() {
         </>
       }
     >
-      <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4" noValidate>
+      {/* En POST, comme la connexion : un envoi avant que la page ne soit
+          prête n'écrit pas le mot de passe dans l'adresse. */}
+      <form method="post" onSubmit={onSubmit} className="mt-6 flex flex-col gap-4" noValidate>
         <ChampMarque
           id="organizationName"
           label="Organisation"
