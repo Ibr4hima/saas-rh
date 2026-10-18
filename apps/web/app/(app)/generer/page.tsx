@@ -14,6 +14,7 @@ import {
   CATEGORIE_MAX,
   estGenere,
   ficheDeLaDecisionSchema,
+  ficheDomiciliationSchema,
   ficheDuContratSchema,
   ficheStagiaireSchema,
   nomDuDocumentGenere,
@@ -40,6 +41,12 @@ import {
   type SaisieDeLaDecision,
 } from '../../../components/fiche-decision-disponibilite';
 import {
+  DOMICILIATION_VIDE,
+  FicheDeLaDomiciliation,
+  versLaFicheDeLaDomiciliation,
+  type SaisieDeLaDomiciliation,
+} from '../../../components/fiche-domiciliation';
+import {
   FicheDuStagiaire,
   STAGIAIRE_VIDE,
   versLaFiche,
@@ -60,8 +67,9 @@ import { champDuMontant } from '../../../lib/montant';
    les dates de l'attestation de congé (ADR-0092), le jour du départ à la
    retraite (ADR-0093). Les contrats, de stage et de travail, se font sans
    agent : la personne n'est pas encore dans l'application, la DCH la
-   renseigne (ADR-0094, ADR-0098) ; les décisions de disponibilité aussi, la
-   DCH renseignant tout ce qu'elles impriment (ADR-0100).
+   renseigne (ADR-0094, ADR-0098) ; les décisions de disponibilité et la
+   domiciliation bancaire aussi, la DCH renseignant tout ce qu'elles
+   impriment (ADR-0100, ADR-0102).
 
    L'aperçu EST le PDF, peint par pdf.js : un modèle de l'APIX se vérifie sur
    ce qui sortira, pas sur une imitation à l'écran.
@@ -153,6 +161,8 @@ export default function GenererDesDocumentsPage() {
   const contratRetenu = useRetenue(contrat);
   const [disponibilite, setDisponibilite] = useState<SaisieDeLaDecision>(DECISION_VIDE);
   const disponibiliteRetenue = useRetenue(disponibilite);
+  const [domiciliation, setDomiciliation] = useState<SaisieDeLaDomiciliation>(DOMICILIATION_VIDE);
+  const domiciliationRetenue = useRetenue(domiciliation);
 
   const sansLAgent = choisi !== null && sansAgent(choisi);
   const demandees = choisi ? saisiesDe(choisi) : [];
@@ -174,12 +184,16 @@ export default function GenererDesDocumentsPage() {
       ? versLaFicheDuContrat(retenue ? contratRetenu : contrat, deTravail)
       : deDisponibilite
         ? versLaFicheDeLaDecision(retenue ? disponibiliteRetenue : disponibilite, deDisponibilite)
-        : versLaFiche(retenue ? stagiaireRetenu : stagiaire);
+        : choisi === 'domiciliation_bancaire'
+          ? versLaFicheDeLaDomiciliation(retenue ? domiciliationRetenue : domiciliation)
+          : versLaFiche(retenue ? stagiaireRetenu : stagiaire);
   const fiche = deTravail
     ? ficheDuContratSchema(deTravail).safeParse(ficheSansAgent(true))
     : deDisponibilite
       ? ficheDeLaDecisionSchema(deDisponibilite).safeParse(ficheSansAgent(true))
-      : ficheStagiaireSchema.safeParse(ficheSansAgent(true));
+      : choisi === 'domiciliation_bancaire'
+        ? ficheDomiciliationSchema.safeParse(ficheSansAgent(true))
+        : ficheStagiaireSchema.safeParse(ficheSansAgent(true));
 
   return (
     <Page>
@@ -191,6 +205,9 @@ export default function GenererDesDocumentsPage() {
       ) : null}
       {deTravail ? (
         <FicheDuContratDeTravail doc={deTravail} valeur={contrat} onChange={setContrat} />
+      ) : null}
+      {choisi === 'domiciliation_bancaire' ? (
+        <FicheDeLaDomiciliation valeur={domiciliation} onChange={setDomiciliation} />
       ) : null}
       {deDisponibilite ? (
         <FicheDeLaDecision

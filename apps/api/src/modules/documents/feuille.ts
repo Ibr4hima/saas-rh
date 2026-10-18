@@ -223,7 +223,7 @@ export function nouvelleFeuille({
       doc.y = y + espace + doc.currentLineHeight(true);
     },
 
-    /** Le timbre : qui émet l'acte, sous l'en-tête, à gauche ou centré. */
+    /** Le timbre : qui émet l'acte, sous l'en-tête, à gauche, à `retrait` de la marge, ou centré. */
     timbre(
       texte: string,
       {
@@ -231,14 +231,21 @@ export function nouvelleFeuille({
         police: f = famille,
         taille = 11,
         align = 'left',
-      }: { avant?: number; police?: Famille; taille?: number; align?: 'left' | 'center' } = {},
+        retrait = 0,
+      }: {
+        avant?: number;
+        police?: Famille;
+        taille?: number;
+        align?: 'left' | 'center';
+        retrait?: number;
+      } = {},
     ) {
       doc.y += avant;
       doc
         .font(police(doc, 'bold', f))
         .fontSize(taille)
         .fillColor(ENCRE);
-      const x = align === 'center' ? MARGE + (L - doc.widthOfString(texte)) / 2 : MARGE;
+      const x = align === 'center' ? MARGE + (L - doc.widthOfString(texte)) / 2 : MARGE + retrait;
       doc.text(texte, x, doc.y, { lineBreak: false });
       doc.y += doc.currentLineHeight(true);
     },
@@ -298,6 +305,7 @@ export function nouvelleFeuille({
         interligne = 3.5,
         pas,
         retrait = 0,
+        retraitDroit = 0,
         puce,
         puceA,
         align = 'justify',
@@ -307,13 +315,15 @@ export function nouvelleFeuille({
         interligne?: number;
         pas?: number;
         retrait?: number;
+        /** Le retrait du bord droit des lignes, depuis la marge de droite. */
+        retraitDroit?: number;
         puce?: string | readonly Passage[];
         puceA?: number;
         align?: 'justify' | 'left' | 'right' | 'center';
       } = {},
     ) {
       doc.y += avant;
-      const largeurUtile = L - retrait;
+      const largeurUtile = L - retrait - retraitDroit;
       const mesurer = (texte: string, gras: boolean, italique = false) =>
         doc
           .font(coupe(coupeDe(gras, italique)))
@@ -491,7 +501,7 @@ export function nouvelleFeuille({
         const occupee = pleine + espace * (l.length - 1);
         let x =
           align === 'right'
-            ? MARGE + L - occupee
+            ? MARGE + L - retraitDroit - occupee
             : align === 'center'
               ? MARGE + retrait + (largeurUtile - occupee) / 2
               : MARGE + retrait;
@@ -559,25 +569,37 @@ export function nouvelleFeuille({
 
     /**
      * Un bloc en bas de page, à gauche, à côté du pied de l'APIX : les
-     * ampliations d'une décision. Sa dernière ligne finit à `finA` au-dessus
-     * du bas du pied ; une ligne vide se donne sans passage. Si le texte de la
-     * page descend jusque-là, le bloc passe à la page suivante.
+     * ampliations d'une décision, le destinataire d'une lettre. Sa dernière
+     * ligne finit à `finA` au-dessus du bas du pied ; une ligne vide se donne
+     * sans passage. Les lignes commencent à `retrait` de la marge, l'étiquette
+     * de la première (« À ») sur la marge. Si le texte de la page descend
+     * jusque-là, le bloc passe à la page suivante.
      */
     piedAGauche(
       lignes: readonly (readonly Passage[])[],
-      { taille = 10, pas = 11.5, finA = 28 }: { taille?: number; pas?: number; finA?: number } = {},
+      {
+        taille = 10,
+        pas = 11.5,
+        finA = 28,
+        police: f = famille,
+        retrait = 0,
+        etiquette,
+      }: {
+        taille?: number;
+        pas?: number;
+        finA?: number;
+        police?: Famille;
+        retrait?: number;
+        etiquette?: readonly Passage[];
+      } = {},
     ) {
       const haut = doc.page.height - BAS_DU_PIED - finA - lignes.length * pas;
       if (doc.y > haut - pas) doc.addPage();
-      // Écrire dans la marge du bas sans ouvrir de page, comme le pied.
-      const marge = doc.page.margins.bottom;
-      doc.page.margins.bottom = 0;
-      lignes.forEach((ligne, i) => {
-        const y = haut + i * pas;
-        let x = MARGE;
-        for (const p of ligne) {
+      const ecrire = (passages: readonly Passage[], depuis: number, y: number) => {
+        let x = depuis;
+        for (const p of passages) {
           doc
-            .font(coupe(coupeDe(Boolean(p.gras), Boolean(p.italique))))
+            .font(police(doc, coupeDe(Boolean(p.gras), Boolean(p.italique)), f))
             .fontSize(taille)
             .fillColor(ENCRE);
           const largeur = doc.widthOfString(p.texte);
@@ -593,6 +615,14 @@ export function nouvelleFeuille({
           }
           x += largeur;
         }
+      };
+      // Écrire dans la marge du bas sans ouvrir de page, comme le pied.
+      const marge = doc.page.margins.bottom;
+      doc.page.margins.bottom = 0;
+      lignes.forEach((ligne, i) => {
+        const y = haut + i * pas;
+        if (i === 0 && etiquette) ecrire(etiquette, MARGE, y);
+        ecrire(ligne, MARGE + retrait, y);
       });
       doc.page.margins.bottom = marge;
     },

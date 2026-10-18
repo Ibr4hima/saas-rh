@@ -8,6 +8,7 @@
  */
 import './messages';
 export * from './acces';
+export * from './banques';
 export * from './core';
 export * from './dashboard';
 export * from './employees';

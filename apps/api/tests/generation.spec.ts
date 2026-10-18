@@ -125,12 +125,12 @@ describe('qui génère', () => {
 
 describe('quoi', () => {
   it('un document de la liste dont le modèle reste à configurer est refusé, en le disant', async () => {
-    const err = await service.pdf(dch, 'domiciliation_bancaire', employes.actif).catch((e) => e);
+    const err = await service.pdf(dch, 'declaration_mouvement', employes.actif).catch((e) => e);
     expect(err).toBeInstanceOf(ProblemException);
     expect((err as ProblemException).problem).toMatchObject({
       status: 422,
       code: 'documents.modele_a_configurer',
-      title: 'Domiciliation bancaire : modèle à configurer',
+      title: 'Déclaration de mouvement du travailleur : modèle à configurer',
     });
   });
 

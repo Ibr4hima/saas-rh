@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { TraitementView } from './acces';
+import { CODES_DES_BANQUES } from './banques';
 import { SALAIRE_MAX } from './montants';
 import { NATIONALITY_LABELS } from './nationalities';
 
@@ -89,6 +90,7 @@ export const GENERATED_DOCS = [
   'attestation_revenu',
   'decision_disponibilite',
   'decision_renouvellement_disponibilite',
+  'domiciliation_bancaire',
   'attestation_stage',
   'certificat_travail',
 ] as const satisfies readonly DocumentDeLaListe[];
@@ -158,7 +160,7 @@ export function nomDuDocumentGenere(doc: DocumentGenere, matricule: string): str
 /**
  * Ceux qui se génèrent sans agent : la DCH renseigne la personne, qui n'est
  * pas encore dans l'application ou que le document nomme seulement (ADR-0094,
- * ADR-0098, ADR-0100).
+ * ADR-0098, ADR-0100, ADR-0102).
  */
 export const DOCS_SANS_AGENT = [
   'contrat_cdd',
@@ -166,6 +168,7 @@ export const DOCS_SANS_AGENT = [
   'contrat_stage',
   'decision_disponibilite',
   'decision_renouvellement_disponibilite',
+  'domiciliation_bancaire',
 ] as const satisfies readonly DocumentGenere[];
 export type DocumentSansAgent = (typeof DOCS_SANS_AGENT)[number];
 
@@ -462,6 +465,46 @@ function lendemain(jour: string): string {
  */
 export function repriseApresProrogation(initialementAu: string, mois: number): string {
   return lendemain(finDuStage(lendemain(initialementAu), mois));
+}
+
+/**
+ * Ce que la DCH renseigne pour une domiciliation bancaire (ADR-0102) : la
+ * personne, sa fonction, son contrat et le jour où il a commencé, le jour de
+ * sa demande, sa banque et le genre de qui la dirige, son RIB, son salaire
+ * mensuel net. Tout est obligatoire.
+ */
+export const ficheDomiciliationSchema = z
+  .object({
+    civilite: z.enum(['madame', 'monsieur']),
+    prenom: nomPropre(80),
+    nom: nomPropre(80),
+    poste: intitule(120),
+    /** Le premier jour du contrat. */
+    debut: z.iso.date(),
+    contrat: z.enum(['cdd', 'cdi']),
+    /** Le jour où la personne a donné l'ordre de virement. */
+    demandeLe: z.iso.date(),
+    banque: z.enum(CODES_DES_BANQUES),
+    /** À qui la lettre s'adresse : qui dirige la banque. */
+    destinataire: z.enum(['directeur_general', 'directrice_generale']),
+    /** Le RIB : « SN », puis vingt-deux chiffres. */
+    rib: z.string().regex(/^SN\d{22}$/, 'Vingt-quatre caractères attendus, SN compris'),
+    /** Le salaire mensuel net, en francs CFA. */
+    salaire: z.number().int().min(1).max(SALAIRE_MAX),
+  })
+  .strict();
+export type FicheDomiciliation = z.infer<typeof ficheDomiciliationSchema>;
+
+/**
+ * Un RIB tel qu'il s'imprime : « SN012 01001 036123456789 54 », le code de la
+ * banque, celui du guichet, le numéro du compte et la clé. Commencé, il se
+ * groupe déjà.
+ */
+export function ribGroupe(rib: string): string {
+  const c = rib.replace(/\s/g, '');
+  return [c.slice(0, 5), c.slice(5, 10), c.slice(10, 22), c.slice(22, 24)]
+    .filter(Boolean)
+    .join(' ');
 }
 
 /** `delivered` : statut historique, conservé en lecture (voir en-tête). */
