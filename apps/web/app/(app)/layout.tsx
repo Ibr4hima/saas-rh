@@ -190,7 +190,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/moi/delegations': 'Déléguer des tâches',
   '/generer': 'Générer des documents',
   '/acces': 'Gestion des accès',
-  '/calendrier': 'Calendrier · Jours fériés',
+  '/calendrier': 'Calendrier des jours fériés',
   '/recrutement': "Offres d'emploi",
   '/recrutement/candidatures': 'Dossiers de candidature',
   '/recrutement/non-retenues': 'Candidatures non retenues',
@@ -224,7 +224,7 @@ function greeting(): string {
 
 /**
  * Les accueils, le tableau de bord et « Mes infos personnelles », saluent :
- * c'est là qu'on arrive. La date du jour s'écrit sous le salut.
+ * c'est là qu'on arrive.
  */
 function salue(pathname: string): boolean {
   return pathname === '/dashboard' || pathname === '/moi/tableau-de-bord' || pathname === '/moi';
@@ -311,9 +311,9 @@ function ActionDeLEcran({ action }: { action: ChromeAction }) {
 /**
  * L'espace APIX Academy, côté apprenant : le catalogue, les formations, les
  * leçons, l'évaluation, « Ma liste », « Mes certificats ». On y vient pour
- * apprendre, et l'en-tête s'y allège : ni date ni cloche, mais la recherche
- * et le signet de « Ma liste ». L'atelier de la DCH (/academy/gerer) reste
- * un écran de gestion, avec l'en-tête de gestion.
+ * apprendre, et l'en-tête y porte la recherche et le signet de « Ma liste » ;
+ * sur téléphone, la cloche leur laisse sa place. L'atelier de la DCH
+ * (/academy/gerer) reste un écran de gestion, avec l'en-tête de gestion.
  */
 function espaceAcademy(pathname: string): boolean {
   return (
@@ -961,17 +961,17 @@ function Rubrique({
 }
 
 /**
- * La date du jour, et derrière elle « Calendrier · Jours fériés » : le menu
- * n'y mène plus, c'est la date qui y conduit. Elle ne s'écrit qu'une fois par
- * écran : sous le salut des accueils, comme une ligne de la page ; ailleurs,
- * parmi les commandes de l'en-tête, allumée quand on est sur le calendrier,
- * comme une entrée de menu. Sous 1280 px, l'icône seule : la date complète y
- * mangerait la place du titre.
+ * La date du jour, en haut à droite de chaque écran, comme sur l'ancienne
+ * bande bleue, et derrière elle le « Calendrier des jours fériés » : le menu
+ * n'y mène plus, c'est la date qui y conduit (ADR-0117). Allumée quand on y
+ * est, comme une entrée de menu. Avec son libellé, elle prend les coins des
+ * autres boutons ; sous 1152 px, l'icône seule, dans un rond comme les
+ * commandes voisines, pour laisser la place au titre et aux onglets.
  *
  * La fenêtre du planning qu'elle ouvrait (CalendrierModal, dans
  * components/calendrier.tsx) reste dans le dépôt, prête à resservir.
  */
-function DateDuJour({ sousLeSalut = false }: { sousLeSalut?: boolean }) {
+function DateDuJour() {
   const pathname = usePathname();
   const ici = pathname.startsWith('/calendrier');
   const brut = new Date().toLocaleDateString('fr-FR', {
@@ -982,33 +982,20 @@ function DateDuJour({ sousLeSalut = false }: { sousLeSalut?: boolean }) {
   });
   const libelle = `${brut.charAt(0).toUpperCase()}${brut.slice(1)}`;
 
-  if (sousLeSalut) {
-    return (
-      <Link
-        href="/calendrier"
-        title="Calendrier · Jours fériés"
-        aria-label={`${libelle}, calendrier et jours fériés`}
-        className="mt-1 inline-flex items-center gap-1.5 rounded-controle-sm text-[13px] font-medium text-ink-muted transition-colors duration-150 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      >
-        <Icon name="calendar_month" size={15} />
-        {libelle}
-      </Link>
-    );
-  }
   return (
     <Link
       href="/calendrier"
-      title="Calendrier · Jours fériés"
-      aria-label={`${libelle}, calendrier et jours fériés`}
+      title="Calendrier des jours fériés"
+      aria-label={`${libelle}, calendrier des jours fériés`}
       aria-current={ici ? 'page' : undefined}
       className={cn(
         COMMANDE,
-        'xl:w-auto xl:gap-2 xl:rounded-controle xl:px-3',
-        ici ? COMMANDE_ACTIVE : 'xl:text-ink',
+        'min-[72rem]:w-auto min-[72rem]:gap-2 min-[72rem]:rounded-controle min-[72rem]:px-3',
+        ici ? COMMANDE_ACTIVE : 'min-[72rem]:text-ink',
       )}
     >
       <Icon name="calendar_month" size={18} />
-      <span className="hidden text-[12.5px] font-semibold whitespace-nowrap xl:inline">
+      <span className="hidden text-[12.5px] font-semibold whitespace-nowrap min-[72rem]:inline">
         {libelle}
       </span>
     </Link>
@@ -1016,7 +1003,7 @@ function DateDuJour({ sousLeSalut = false }: { sousLeSalut?: boolean }) {
 }
 
 /**
- * Le titre de l'écran, et sous le salut des accueils, la date du jour. Il se
+ * Le titre de l'écran ; aux accueils, le salut, un cran plus grand. Il se
  * tient dans l'en-tête sur écran large ; sur téléphone, en tête de la page,
  * où il a toute la largeur au lieu de se couper entre le logo et les
  * commandes.
@@ -1031,17 +1018,15 @@ function TitreDeLEcran({
   className?: string;
 }) {
   return (
-    <div className={cn('min-w-0', className)}>
-      <h1
-        className={cn(
-          'leading-tight font-extrabold tracking-[-0.02em] text-ink-strong lg:truncate',
-          salut ? 'text-[22px] lg:text-[25px]' : 'text-[20px] lg:text-[22px]',
-        )}
-      >
-        {titre}
-      </h1>
-      {salut ? <DateDuJour sousLeSalut /> : null}
-    </div>
+    <h1
+      className={cn(
+        'min-w-0 leading-tight font-extrabold tracking-[-0.02em] text-ink-strong lg:truncate',
+        salut ? 'text-[22px] lg:text-[25px]' : 'text-[20px] lg:text-[22px]',
+        className,
+      )}
+    >
+      {titre}
+    </h1>
   );
 }
 
@@ -1416,36 +1401,30 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   le document qu'elle montre (cf. components/entete.tsx). */}
               <div id={ANCRE_ACTIONS} className="flex shrink-0 items-center gap-2 empty:hidden" />
               {action ? <ActionDeLEcran action={action} /> : null}
-              {academy ? (
-                // Les raccourcis de qui apprend ; le compte d'administration,
-                // qui n'y vient que pour l'aperçu de l'atelier, n'en a pas.
-                espace === 'agent' ? (
-                  <>
-                    <LienDeLEntete
-                      href="/academy/certificats"
-                      icone="workspace_premium"
-                      libelle="Mes certificats"
-                      actif={pathname === '/academy/certificats'}
-                    />
-                    <LienDeLEntete
-                      href="/academy/ma-liste"
-                      icone="bookmark"
-                      libelle="Ma liste"
-                      actif={pathname === '/academy/ma-liste'}
-                    />
-                  </>
-                ) : null
-              ) : (
+              {/* Les raccourcis de qui apprend, dans l'Academy ; le compte
+                  d'administration, qui n'y vient que pour l'aperçu de
+                  l'atelier, n'en a pas. */}
+              {academy && espace === 'agent' ? (
                 <>
-                  {salut ? null : <DateDuJour />}
-                  {/* Sur téléphone, le menu n'existe pas : la cloche revient ici. */}
-                  {large ? null : (
-                    <NotificationsBell
-                      variante="entete"
-                      espace={deuxEspaces ? espace : undefined}
-                    />
-                  )}
+                  <LienDeLEntete
+                    href="/academy/certificats"
+                    icone="workspace_premium"
+                    libelle="Mes certificats"
+                    actif={pathname === '/academy/certificats'}
+                  />
+                  <LienDeLEntete
+                    href="/academy/ma-liste"
+                    icone="bookmark"
+                    libelle="Ma liste"
+                    actif={pathname === '/academy/ma-liste'}
+                  />
                 </>
+              ) : null}
+              <DateDuJour />
+              {/* Sur téléphone, le menu n'existe pas : la cloche revient ici,
+                  sauf dans l'Academy, où elle laisse la place à la recherche. */}
+              {large || academy ? null : (
+                <NotificationsBell variante="entete" espace={deuxEspaces ? espace : undefined} />
               )}
               {/* Sur téléphone le menu n'existe pas : sans ce bouton, ni le
                   thème ni la sortie ne seraient atteignables. */}

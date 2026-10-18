@@ -10,9 +10,9 @@ import { Icon, type IconName } from './icons';
    Ses commandes sont des ronds blancs cerclés d'un filet, comme les blocs
    qu'elles surplombent : la date quand elle se réduit à son icône, les
    raccourcis de l'Academy, et sur téléphone la cloche et le compte. Ronds,
-   comme tout bouton d'icône ; un bouton qui porte un mot prend les coins des
-   contrôles (ADR-0108). L'action de l'écran, elle, est pleine : c'est le
-   geste qu'on vient faire.
+   comme tout bouton d'icône ; un bouton qui porte un mot, la date avec son
+   libellé comprise, prend les coins des contrôles (ADR-0108). L'action de
+   l'écran, elle, est pleine : c'est le geste qu'on vient faire.
 */
 
 /** Une commande d'icône de l'en-tête, au repos. */
