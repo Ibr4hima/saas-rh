@@ -132,9 +132,10 @@
 
   /* Le menu se pose à même le fond de la page, sans colonne blanche
      (ADR-0115). Une rangée survolée y prend un voile d'encre, qui fonce le
-     fond sans le teinter ; l'entrée courante, le blanc des blocs. */
+     fond sans le teinter ; l'entrée courante, un bleu très clair, sans filet
+     ni ombre (ADR-0118). */
   --tg-menu-survol: rgb(28 32 51 / 0.05);
-  --tg-menu-actif: var(--tg-surface);
+  --tg-menu-actif: var(--tg-primary-soft);
   /* Le logo de la coquille : ses couleurs d'origine sur le fond clair. */
   --tg-logo-coquille: none;
 

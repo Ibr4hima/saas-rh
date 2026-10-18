@@ -738,15 +738,45 @@ function restreindre(items: NavItem[]): NavItem[] {
 
 /**
  * Les rangées du menu, posées sur le fond (ADR-0115). Au survol, un voile
- * d'encre ; l'entrée courante prend le blanc des blocs, cerclé de leur filet,
- * le mot et l'icône en bleu. Ce petit bloc se repère DE LOIN, avant même
- * qu'on lise : c'est lui qu'on suit du regard en revenant au menu après avoir
- * travaillé à droite. Bleu, comme toute la structure du produit : l'orange de
- * la charte est réservé à ce qui attend un geste, et une position dans un
- * menu n'attend rien.
+ * d'encre. L'entrée courante, comme sur PayFit : un bleu très clair, sans
+ * filet ni ombre, le mot en bleu, et son icône dans un rond plein
+ * (ADR-0118). Ce rond se repère DE LOIN, avant même qu'on lise : c'est lui
+ * qu'on suit du regard en revenant au menu après avoir travaillé à droite.
+ * Bleu, comme toute la structure du produit : l'orange de la charte est
+ * réservé à ce qui attend un geste, et une position dans un menu n'attend
+ * rien.
  */
-const RANGEE_ACTIVE = 'bg-menu-actif font-semibold text-primary shadow-xs ring-1 ring-card-line';
+const RANGEE_ACTIVE = 'bg-menu-actif font-semibold text-primary';
 const RANGEE_REPOS = 'font-medium text-ink hover:bg-menu-survol';
+/** La forme commune des rangées de premier rang, simples ou dépliables. */
+const FORME_RANGEE =
+  'group relative flex items-center gap-2 rounded-controle-sm py-[5px] pr-2.5 pl-2.5 text-[13px] transition-colors duration-150';
+
+/**
+ * L'icône d'une rangée, dans une case de 24 px : sur l'entrée courante, elle
+ * passe dans un rond plein sans décaler le libellé. Au repos, elle se tient
+ * un ton sous le mot.
+ */
+function IconeDeRangee({
+  icon,
+  actif,
+  eteinte = false,
+}: {
+  icon: IconName;
+  actif: boolean;
+  eteinte?: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        'flex size-6 shrink-0 items-center justify-center rounded-full transition-colors duration-150',
+        actif ? 'bg-primary text-primary-ink' : !eteinte && 'text-ink-muted group-hover:text-ink',
+      )}
+    >
+      <Icon name={icon} size={actif ? 14 : 17} fill={actif} />
+    </span>
+  );
+}
 
 /** Une entrée simple du menu. */
 function RangeeNav({
@@ -766,19 +796,9 @@ function RangeeNav({
 }) {
   const contenu = (
     <>
-      {/* Icône pleine sur l'entrée courante : la position dans le menu se lit
-          sans dépendre de la seule couleur. Au repos, l'icône se tient un ton
-          sous le mot. */}
-      {icon ? (
-        <span className="relative flex shrink-0">
-          <Icon
-            name={icon}
-            size={17}
-            fill={active && !desactive}
-            className={cn(!active && !desactive && 'text-ink-muted group-hover:text-ink')}
-          />
-        </span>
-      ) : null}
+      {/* Le rond plein de l'entrée courante : la position dans le menu se lit
+          sans dépendre de la seule couleur du fond. */}
+      {icon ? <IconeDeRangee icon={icon} actif={active && !desactive} eteinte={desactive} /> : null}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {badge && badge > 0 ? (
         <span className="rounded-full bg-alert-soft px-[6px] py-px text-[10px] font-extrabold text-alert-text">
@@ -787,12 +807,11 @@ function RangeeNav({
       ) : null}
     </>
   );
-  // `gap-2.5` comme les rubriques dépliables juste en dessous : les deux
-  // sortes de rangées s'écartaient de deux pixels, ce qui ne se voyait pas,
-  // jusqu'à ce qu'un libellé long, en gras sur la page courante, manque
-  // exactement ces deux pixels et se coupe.
-  const forme =
-    'group relative flex items-center gap-2.5 rounded-controle-sm py-[7px] pr-2.5 pl-3.5 text-[13px] transition-[background-color,color,box-shadow] duration-150';
+  // La forme des rubriques dépliables juste en dessous : les deux sortes de
+  // rangées s'écartaient de deux pixels, ce qui ne se voyait pas, jusqu'à ce
+  // qu'un libellé long, en gras sur la page courante, manque exactement ces
+  // deux pixels et se coupe.
+  const forme = FORME_RANGEE;
 
   // Éteinte, la rangée n'est plus un lien DU TOUT : la griser sans la
   // désarmer laisserait le clic passer, et le curseur promettrait une
@@ -876,26 +895,22 @@ function Rubrique({
         onClick={() => setOuverte((v) => !v)}
         aria-expanded={ouverte}
         className={cn(
-          'group relative flex items-center gap-2.5 rounded-controle-sm py-[7px] pr-2.5 pl-3.5 text-left text-[13px] transition-[background-color,color,box-shadow] duration-150',
+          FORME_RANGEE,
+          'text-left',
           // Repliée sur la page courante, la rubrique porte l'état actif ;
           // dépliée, elle le laisse à la sous-page pour ne pas l'allumer deux
           // fois sur la même colonne.
           contientLaPage && !ouverte
             ? RANGEE_ACTIVE
             : contientLaPage
-              ? // Dépliée, la rubrique s'allège : la sous-page porte déjà l'état
-                // actif, et deux blocs l'un sous l'autre alourdissent la
-                // colonne.
+              ? // Dépliée, la rubrique garde son rond et son bleu, sans le
+                // fond : la sous-page porte déjà le bleu clair, et deux fonds
+                // l'un sous l'autre alourdissent la colonne.
                 'font-semibold text-primary hover:bg-menu-survol'
               : RANGEE_REPOS,
         )}
       >
-        <Icon
-          name={item.icon}
-          size={17}
-          fill={contientLaPage}
-          className={cn(!contientLaPage && 'text-ink-muted group-hover:text-ink')}
-        />
+        <IconeDeRangee icon={item.icon} actif={contientLaPage} />
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
         {/* Le compteur reste sur le parent : replié, c'est le seul endroit où
             il puisse se voir ; déplié, il dit lequel des deux ensembles
@@ -944,7 +959,7 @@ function Rubrique({
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   forme,
-                  'transition-[background-color,color,box-shadow] duration-150',
+                  'transition-colors duration-150',
                   active
                     ? RANGEE_ACTIVE
                     : 'font-medium text-ink-muted hover:bg-menu-survol hover:text-ink',
