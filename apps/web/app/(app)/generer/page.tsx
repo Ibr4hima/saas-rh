@@ -99,6 +99,29 @@ const FAMILLES: readonly { titre: string; documents: readonly DocumentDeLaListe[
   },
 ];
 
+/**
+ * Les libellés de la liste, plus courts que le titre des documents : la
+ * famille dit déjà de quoi il s'agit. Le document garde son titre (ADR-0111).
+ */
+const LIBELLES_DE_LA_LISTE: Record<DocumentDeLaListe, string> = {
+  contrat_cdd: 'Contrat à durée déterminée',
+  contrat_cdi: 'Contrat à durée indéterminée',
+  contrat_stage: 'Contrat de stage',
+  attestation_conge: 'Attestation de congé',
+  attestation_travail: 'Attestation de travail',
+  attestation_reprise_service: 'Reprise de service · Maternité',
+  attestation_reprise_disponibilite: 'Reprise après disponibilité',
+  attestation_depart_retraite: 'Départ à la retraite',
+  attestation_stage: 'Attestation de stage',
+  attestation_cessation: 'Cessation de paiement et d’activités',
+  attestation_revenu: 'Attestation de revenu',
+  domiciliation_bancaire: 'Domiciliation bancaire',
+  decision_disponibilite: 'Mise en disponibilité',
+  decision_renouvellement_disponibilite: 'Renouvellement de disponibilité',
+  declaration_mouvement: 'Déclaration de mouvement du travailleur',
+  certificat_travail: 'Certificat de travail',
+};
+
 /** Ceux qui s'ouvrent, dans l'ordre de la liste : le clavier passe de l'un à l'autre. */
 const OUVRABLES: readonly DocumentGenere[] = DOCUMENTS.filter(estGenere);
 
@@ -108,7 +131,13 @@ const nomDe = (a: EmployeeListItem) => `${a.givenName} ${a.familyName}`;
 const CHAMP =
   'h-9 w-full rounded-controle border bg-surface text-[12.5px] transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none';
 const MENU =
-  'tg-menu absolute top-full right-0 left-0 z-30 mt-1.5 rounded-bloc border border-card-line bg-surface p-1.5 shadow-lg';
+  'tg-menu absolute top-full right-0 left-0 z-30 mt-1.5 overflow-hidden rounded-bloc border border-card-line bg-surface shadow-lg';
+/**
+ * Ce qui défile dans le panneau : une hauteur bornée, sept ou huit lignes, et
+ * jamais plus que l'écran. La barre de défilement longe le bord du panneau,
+ * les lignes gardent leur marge.
+ */
+const DEFILEMENT = 'overflow-y-auto overscroll-contain scroll-py-1.5 p-1.5';
 
 /** Ce que la DCH saisit pour un document ; une date, au format AAAA-MM-JJ. */
 type Valeurs = {
@@ -359,7 +388,7 @@ function Etape({ titre, children }: { titre: string; children: ReactNode }) {
 
 /**
  * Le document à générer, dans une liste déroulante, par familles. Un seul se
- * choisit : la pastille de chaque ligne est ronde. Un document dont le
+ * choisit, et se coche, comme dans les autres listes. Un document dont le
  * modèle reste à venir se lit sans se choisir.
  */
 function ChoixDuDocument({
@@ -456,7 +485,7 @@ function ChoixDuDocument({
             choisi ? 'font-medium text-ink-strong' : 'text-ink-muted',
           )}
         >
-          {choisi ? REQUESTABLE_DOC_LABELS[choisi] : 'Choisir un document'}
+          {choisi ? LIBELLES_DE_LA_LISTE[choisi] : 'Choisir un document'}
         </span>
         <Icon
           name="chevron_right"
@@ -474,13 +503,18 @@ function ChoixDuDocument({
             id={`${id}-liste`}
             role="listbox"
             aria-label="Documents"
-            className="max-h-[22rem] overflow-y-auto sm:max-h-[min(78vh,44rem)]"
+            className={cn(DEFILEMENT, 'max-h-[min(20rem,calc(100dvh_-_12rem))]')}
           >
-            {FAMILLES.map((f) => (
-              <div key={f.titre} role="group" aria-labelledby={`${id}-${f.titre}`}>
+            {FAMILLES.map((f, rang) => (
+              <div
+                key={f.titre}
+                role="group"
+                aria-labelledby={`${id}-${f.titre}`}
+                className={cn(rang > 0 && 'mt-1.5 border-t border-line-soft pt-1.5')}
+              >
                 <p
                   id={`${id}-${f.titre}`}
-                  className="px-2.5 pt-2 pb-1 text-[11px] font-semibold text-ink-muted"
+                  className="px-3 pt-1.5 pb-1 text-[10.5px] font-bold tracking-[0.08em] text-ink-muted uppercase"
                 >
                   {f.titre}
                 </p>
@@ -496,19 +530,15 @@ function ChoixDuDocument({
                       onMouseEnter={() => setCourant(d)}
                       onClick={() => choisir(d)}
                       className={cn(
-                        'flex cursor-pointer items-center gap-3 rounded-controle-sm px-2.5 py-2 transition-colors duration-150',
-                        d === choisi ? 'bg-primary/[0.06]' : d === courant ? 'bg-hover' : undefined,
+                        'flex cursor-pointer items-center gap-2 rounded-controle-sm px-3 py-[7px] text-[13px] leading-snug transition-colors duration-150',
+                        d === courant && 'bg-hover',
+                        d === choisi ? 'font-semibold text-primary' : 'text-ink',
                       )}
                     >
-                      <Pastille choisie={d === choisi} />
-                      <span
-                        className={cn(
-                          'min-w-0 flex-1 text-[13px]',
-                          d === choisi ? 'font-semibold text-ink-strong' : 'text-ink',
-                        )}
-                      >
-                        {REQUESTABLE_DOC_LABELS[d]}
-                      </span>
+                      <span className="min-w-0 flex-1">{LIBELLES_DE_LA_LISTE[d]}</span>
+                      {d === choisi ? (
+                        <Icon name="check" size={16} className="shrink-0 text-primary" />
+                      ) : null}
                     </div>
                   ) : (
                     <div
@@ -516,15 +546,10 @@ function ChoixDuDocument({
                       role="option"
                       aria-selected={false}
                       aria-disabled
-                      className="flex items-center gap-3 rounded-controle-sm px-2.5 py-2"
+                      className="flex cursor-not-allowed items-center gap-2 rounded-controle-sm px-3 py-[7px] text-[13px] leading-snug text-ink-muted/60"
                     >
-                      <Pastille choisie={false} eteinte />
-                      <span className="min-w-0 flex-1 text-[13px] text-ink-muted/75">
-                        {REQUESTABLE_DOC_LABELS[d]}
-                      </span>
-                      <span className="shrink-0 text-[10.5px] whitespace-nowrap text-ink-muted/75">
-                        À venir
-                      </span>
+                      <span className="min-w-0 flex-1">{LIBELLES_DE_LA_LISTE[d]}</span>
+                      <span className="shrink-0 text-[10.5px] whitespace-nowrap">À venir</span>
                     </div>
                   ),
                 )}
@@ -534,22 +559,6 @@ function ChoixDuDocument({
         </div>
       ) : null}
     </div>
-  );
-}
-
-/** La pastille d'un choix exclusif : ronde, pleine au centre une fois choisie. */
-function Pastille({ choisie, eteinte = false }: { choisie: boolean; eteinte?: boolean }) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'grid size-[18px] shrink-0 place-items-center rounded-full border bg-surface transition-colors duration-150',
-        choisie ? 'border-primary' : 'border-line',
-        eteinte && 'opacity-40',
-      )}
-    >
-      {choisie ? <span className="size-2 rounded-full bg-primary" /> : null}
-    </span>
   );
 }
 
@@ -672,7 +681,7 @@ function ChoixDeLAgent({
             id={`${id}-liste`}
             role="listbox"
             aria-label="Agents"
-            className="max-h-72 overflow-y-auto"
+            className={cn(DEFILEMENT, 'max-h-[min(18rem,calc(100dvh_-_12rem))]')}
           >
             {agents.length === 0 ? (
               <li className="px-2.5 py-2 text-[12.5px] text-ink-muted">
