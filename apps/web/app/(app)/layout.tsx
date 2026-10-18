@@ -1246,7 +1246,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const user = me.data;
-  const initials = `${user.givenName[0] ?? ''}${user.familyName[0] ?? ''}`.toUpperCase();
   const aViser = validations.data?.aViser ?? 0;
   const totalATraiter = aTraiter
     ? aTraiter.conges + aTraiter.documents + aTraiter.informations + aTraiter.pieces
@@ -1362,7 +1361,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
               certificats={espace === 'agent'}
               bascule={basculeDEspace}
               identite={{
-                initiales: initials,
                 // Plusieurs prénoms : le premier, l'initiale du deuxième, le
                 // nom (« Mouhamadou M. Ba ») ; le nom entier au survol.
                 nom: nomCourt(user.givenName, user.familyName),

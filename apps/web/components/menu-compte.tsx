@@ -49,7 +49,6 @@ export interface BasculeDEspace {
 
 /** Qui est connecté, tel que le bas du menu le présente. */
 export interface Identite {
-  initiales: string;
   /** Le nom court (« Mouhamadou M. Ba ») ; le nom entier au survol. */
   nom: string;
   nomComplet: string;
@@ -72,7 +71,7 @@ export function MenuCompte({
   bascule?: BasculeDEspace;
   /** « Mes certificats » : dans Mon espace seulement. */
   certificats: boolean;
-  /** Le bloc du bas du menu : ses initiales, son nom, son espace. */
+  /** Le bloc du bas du menu : son nom et son espace, sous sa silhouette. */
   identite?: Identite;
 }) {
   const router = useRouter();
@@ -162,8 +161,10 @@ export function MenuCompte({
             ouvert ? 'bg-menu-survol' : 'hover:bg-menu-survol',
           )}
         >
-          <span className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/[0.09] text-[11px] font-bold text-primary">
-            {identite.initiales}
+          {/* La silhouette du compte, qui suit le sexe au dossier, comme sur
+              le bouton du téléphone ; pleine quand le menu est ouvert. */}
+          <span className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/[0.09] text-primary">
+            <Icon name={soi} size={18} fill={ouvert} />
             {alerte ? (
               <span
                 aria-hidden
