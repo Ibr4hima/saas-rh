@@ -7,6 +7,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import {
   CAPACITES_DOCUMENTS,
   CAPACITES_PIECES,
+  genereQuelqueChose,
   gereQuelqueChose,
   nomCourt,
   peut,
@@ -511,8 +512,9 @@ function navigationGestion(
         // Traiter ; les réglages des congés ensuite, à qui les gère
         // seulement : traiter les congés n'y donne pas accès.
         items.push(...demandes);
-        // Générer, à sa guise, les documents de la liste (ADR-0085).
-        if (user.dirigeLaDCH) {
+        // Générer, à sa guise, les documents de la liste (ADR-0085) ; un
+        // membre, les contrats qu'on lui délègue (ADR-0114).
+        if (genereQuelqueChose(user)) {
           items.push({
             href: '/generer',
             label: 'Générer des documents',
@@ -1226,7 +1228,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       );
     }
     if (commence('/moi/delegations')) return u.dirigeLaDCH || u.role === 'admin';
-    if (commence('/generer')) return u.dirigeLaDCH;
+    if (commence('/generer')) return genereQuelqueChose(u);
     // Les objectifs : chacun les siens, le DG ceux de l'APIX, qui encadre son équipe.
     if (commence('/moi/objectifs-apix') || commence('/moi/tableau-de-bord')) return u.estDG;
     if (commence('/moi/objectifs')) return u.estAgent && !u.estDG;

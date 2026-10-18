@@ -18,6 +18,7 @@ import {
   ficheDuContratSchema,
   ficheStagiaireSchema,
   nomDuDocumentGenere,
+  peutGenerer,
   REQUESTABLE_DOC_LABELS,
   saisiesDe,
   sansAgent,
@@ -27,6 +28,7 @@ import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import {
   CHAMP,
+  DANS_L_ORDRE,
   DEFILEMENT,
   Etape,
   ListeDesDocuments,
@@ -66,6 +68,7 @@ import {
 } from '../../../components/fiche-stagiaire';
 import { api, ApiError } from '../../../lib/api';
 import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
+import { useMe } from '../../../lib/hooks';
 import { champDuMontant } from '../../../lib/montant';
 
 /*
@@ -184,6 +187,9 @@ function useRetenue<T>(valeur: T): T {
 }
 
 export default function GenererDesDocumentsPage() {
+  const me = useMe();
+  // Qui dirige la DCH génère tout ; un membre, les contrats qu'on lui délègue (ADR-0114).
+  const generables = DANS_L_ORDRE.filter((d) => peutGenerer(me.data, d));
   const [choisi, setChoisi] = useState<DocumentGenere | null>(null);
   const [agent, setAgent] = useState<EmployeeListItem | null>(null);
   const [saisies, setSaisies] = useState<Saisies | null>(null);
@@ -240,6 +246,7 @@ export default function GenererDesDocumentsPage() {
         <ListeDesDocuments
           libelle="Document à générer"
           invite="Choisir un document"
+          documents={generables}
           choisis={choisi ? [choisi] : []}
           mention={(d) => (estGenere(d) ? null : 'À venir')}
           onChoisir={(d) => {

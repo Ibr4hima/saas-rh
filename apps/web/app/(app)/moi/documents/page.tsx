@@ -4,7 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { DocumentDeLaListe, DocumentRequestView, MyEmployeeView } from '@teranga/contracts';
-import { documentsEnCours, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
+import {
+  DOCUMENTS_DEMANDABLES,
+  documentsEnCours,
+  REQUESTABLE_DOC_LABELS,
+} from '@teranga/contracts';
 import { Button } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
 import { Icon } from '../../../../components/icons';
@@ -118,6 +122,7 @@ export default function DemanderUnDocumentPage() {
         <ListeDesDocuments
           libelle="Documents à demander"
           invite="Choisir un ou plusieurs documents"
+          documents={DOCUMENTS_DEMANDABLES}
           multiple
           resume={(n) => compte(n, 'document')}
           choisis={choisis}

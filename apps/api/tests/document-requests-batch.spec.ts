@@ -174,7 +174,7 @@ afterAll(async () => {
 describe('validation en lot', () => {
   it('fait passer plusieurs demandes de « reçue » à « prête » en une fois', async () => {
     const [a] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
-    const [b] = (await service.create(moussa, { docTypes: ['contrat_cdi'] })).ids as [string];
+    const [b] = (await service.create(moussa, { docTypes: ['attestation_conge'] })).ids as [string];
 
     const res = await service.batchAdvance(rh, {
       ids: [a, b],
@@ -252,7 +252,7 @@ describe('le suivi, côté employé', () => {
 describe('lot qui n’est plus à jour', () => {
   it('écarte la demande déjà traitée et laisse partir les autres', async () => {
     const [a] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
-    const [b] = (await service.create(moussa, { docTypes: ['contrat_cdi'] })).ids as [string];
+    const [b] = (await service.create(moussa, { docTypes: ['attestation_conge'] })).ids as [string];
     // Un collègue clôt la première pendant que l'écran est ouvert.
     await service.advance(rh, a, { status: 'processing' });
     await service.advance(rh, a, { status: 'ready' });
@@ -364,7 +364,9 @@ describe('le suivi, les demandes nouvellement traitées (ADR-0048)', () => {
     const [prete] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [
       string,
     ];
-    const [refusee] = (await service.create(awa, { docTypes: ['contrat_cdi'] })).ids as [string];
+    const [refusee] = (await service.create(awa, { docTypes: ['attestation_conge'] })).ids as [
+      string,
+    ];
     await service.advance(rh, prete, { status: 'processing' });
     expect((await avisEnVigueur(awaUserId, prete))?.link).toBe('/moi/documents/suivi');
     await service.advance(rh, prete, { status: 'ready', pickupContact: 'Mme Fatou Sall' });
@@ -381,7 +383,9 @@ describe('le suivi, les demandes nouvellement traitées (ADR-0048)', () => {
     const [prete] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [
       string,
     ];
-    const [refusee] = (await service.create(awa, { docTypes: ['contrat_cdi'] })).ids as [string];
+    const [refusee] = (await service.create(awa, { docTypes: ['attestation_conge'] })).ids as [
+      string,
+    ];
     const [enCours] = (await service.create(awa, { docTypes: ['certificat_travail'] })).ids as [
       string,
     ];
@@ -396,7 +400,7 @@ describe('le suivi, les demandes nouvellement traitées (ADR-0048)', () => {
 
   it('vue sur le suivi, elle ne l’est plus : son avis passe pour lu, ceux des autres non', async () => {
     const [a] = (await service.create(awa, { docTypes: ['attestation_travail'] })).ids as [string];
-    const [b] = (await service.create(awa, { docTypes: ['contrat_cdi'] })).ids as [string];
+    const [b] = (await service.create(awa, { docTypes: ['attestation_conge'] })).ids as [string];
     const [m] = (await service.create(moussa, { docTypes: ['attestation_travail'] })).ids as [
       string,
     ];

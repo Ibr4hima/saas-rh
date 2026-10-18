@@ -2,8 +2,9 @@ import {
   capaciteDeLaPiece,
   capaciteDuDocument,
   DOCUMENT_CATEGORY_LABELS,
+  DOCUMENTS_DE_LA_DCH,
+  DOCUMENTS_DEMANDABLES,
   REQUESTABLE_DOC_LABELS,
-  requestableDocSchema,
   type Capacite,
   type PieceAVerifier,
   type RequestableDoc,
@@ -11,7 +12,8 @@ import {
 
 /* ————————————————————————————————————————————————————————————————
    Ce qui se délègue type par type, sur « Déléguer des tâches » : les
-   demandes de documents, et la vérification des documents officiels. Un
+   demandes de documents, la vérification des documents officiels, et la
+   génération des contrats que la DCH établit d'elle-même (ADR-0114). Un
    type de document par ligne, et pour chacun les membres de la DCH qui
    peuvent le traiter.
 
@@ -31,8 +33,8 @@ export interface TypeDelegable {
   capacites: readonly Capacite[];
 }
 
-/** Les documents qu'un agent demande : la liste de la DCH. */
-export const DOCUMENTS_DELEGABLES = requestableDocSchema.options;
+/** Les documents qu'un agent demande : la liste de la DCH, hors les contrats (ADR-0114). */
+export const DOCUMENTS_DELEGABLES = DOCUMENTS_DEMANDABLES;
 
 /** Les documents officiels qu'un agent dépose, par familles. */
 const FAMILLES_DE_PIECES: readonly { libelle: string; types: readonly PieceAVerifier[] }[] = [
@@ -67,4 +69,10 @@ export const TYPES_DOCUMENTS: readonly TypeDelegable[] = FAMILLES_DE_DOCUMENTS.m
 export const TYPES_PIECES: readonly TypeDelegable[] = FAMILLES_DE_PIECES.map((f) => ({
   libelle: f.libelle,
   capacites: f.types.map(capaciteDeLaPiece),
+}));
+
+/** Les contrats que la DCH établit d'elle-même : leur génération se délègue, un par un. */
+export const TYPES_GENERATION: readonly TypeDelegable[] = DOCUMENTS_DE_LA_DCH.map((d) => ({
+  libelle: REQUESTABLE_DOC_LABELS[d],
+  capacites: [`generation.${d}` as const],
 }));

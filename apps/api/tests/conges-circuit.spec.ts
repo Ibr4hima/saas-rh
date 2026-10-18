@@ -749,12 +749,14 @@ describe('les accès se lisent dans l’organigramme', () => {
   const de = (qui: SessionUser) =>
     db.withTenant({ tenantId, userId: qui.userId }, (tx) => capacitesDe(tx, qui.userId, qui.role));
 
-  it('le directeur a tout, sauf les textes ; l’administrateur, la gestion sans les demandes, les candidatures ni les accès ; un agent, rien', async () => {
+  it('le directeur a tout, sauf les textes ; l’administrateur, la gestion sans les demandes, les candidatures, les accès ni la génération des contrats ; un agent, rien', async () => {
     expect((await de(mariama.session)).capacites.sort()).toEqual([...CAPACITES_DELEGABLES].sort());
     expect((await de(mariama.session)).capacites).toContain('academy');
     expect((await de(mariama.session)).capacites).not.toContain('textes');
     expect((await de(admin)).capacites.sort()).toEqual(
-      CAPACITES_GESTION.filter((c) => c !== 'recrutement.candidatures' && c !== 'acces').sort(),
+      CAPACITES_GESTION.filter(
+        (c) => c !== 'recrutement.candidatures' && c !== 'acces' && !c.startsWith('generation.'),
+      ).sort(),
     );
     expect(await de(moussa.session)).toEqual({
       capacites: [],

@@ -7,6 +7,8 @@ import type {
 } from '@teranga/contracts';
 import {
   estGenere,
+  genereQuelqueChose,
+  peutGenerer,
   REQUESTABLE_DOC_LABELS,
   requestableDocSchema,
   sansAgent,
@@ -35,9 +37,10 @@ import type { DocumentPdf, Modele } from './feuille';
  * guise, tout document de la liste dont le modèle est configuré, pour
  * n'importe quel agent, sans demande, sauf pour soi.
  *
- * Les membres de la DCH ne génèrent que pour une demande dont le traitement
- * leur revient, depuis la file des documents. Le compte d'administration,
- * technique, ne produit pas d'actes.
+ * Les membres de la DCH génèrent pour une demande dont le traitement leur
+ * revient, depuis la file des documents ; et, depuis cette page, les contrats
+ * dont la génération leur est déléguée (ADR-0114). Le compte
+ * d'administration, technique, ne produit pas d'actes.
  *
  * Un document sans agent (les contrats de travail et de stage, ADR-0094,
  * ADR-0098) se génère d'une fiche que la DCH renseigne : la personne n'est
@@ -110,12 +113,21 @@ export class GenerationService {
     );
   }
 
-  /** Le document demandé, s'il est de la liste et que son modèle est configuré ; sinon, le refus. */
+  /**
+   * Le document demandé, s'il est de la liste, que l'appelant peut le générer
+   * et que son modèle est configuré ; sinon, le refus.
+   */
   private documentConfigure(user: SessionUser, type: string): DocumentGenere {
-    if (!user.dirigeLaDCH) problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+    if (!genereQuelqueChose(user)) {
+      problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+    }
     const doc = requestableDocSchema.safeParse(type);
     // Un document retiré de la liste ne se génère pas plus qu'il ne se demande.
     if (!doc.success) problem(404, 'documents.inconnu', 'Document inconnu');
+    // Un membre ne génère que les contrats qu'on lui a délégués.
+    if (!peutGenerer(user, doc.data)) {
+      problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+    }
     if (!estGenere(doc.data)) {
       problem(
         422,

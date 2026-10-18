@@ -17,7 +17,16 @@ import { join } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Capacite, SessionUser } from '@teranga/contracts';
-import { createDocumentRequestSchema, peut, requestableDocSchema } from '@teranga/contracts';
+import {
+  CAPACITES_GENERATION,
+  createDocumentRequestSchema,
+  DOCUMENTS_DEMANDABLES,
+  genereQuelqueChose,
+  gereQuelqueChose,
+  peut,
+  peutGenerer,
+  requestableDocSchema,
+} from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -529,7 +538,7 @@ describe('les demandes de documents', () => {
         'domiciliation_bancaire',
         'attestation_revenu',
         'certificat_travail',
-        'contrat_cdi',
+        'attestation_conge',
       ],
     });
     expect(r.ids).toHaveLength(4);
@@ -539,10 +548,10 @@ describe('les demandes de documents', () => {
     for (const doc of ['autre', 'contrat_travail', 'bulletin_salaire', 'attestation_salaire']) {
       expect(createDocumentRequestSchema.safeParse({ docTypes: [doc] }).success).toBe(false);
     }
-    // Les seize documents de la DCH partent d'un coup.
-    expect(
-      createDocumentRequestSchema.safeParse({ docTypes: requestableDocSchema.options }).success,
-    ).toBe(true);
+    // Les treize documents qu'un agent demande partent d'un coup.
+    expect(createDocumentRequestSchema.safeParse({ docTypes: DOCUMENTS_DEMANDABLES }).success).toBe(
+      true,
+    );
     // Des demandes faites avant (ADR-0045, ADR-0084) : qui dirige la DCH les a
     // dans sa file, et les traite.
     for (const doc of ['autre', 'attestation_salaire'] as const) {
@@ -597,6 +606,34 @@ describe('les demandes de documents', () => {
     ]);
     // La demande de bulletin revient à qui dirige la DCH.
     expect(await appels('document', bulletin)).toEqual(['dch:Mariama']);
+  });
+
+  it('les contrats ne se demandent pas, la DCH les établit ; leurs délégations se closent (0116)', async () => {
+    for (const doc of ['contrat_cdd', 'contrat_cdi', 'contrat_stage']) {
+      expect(createDocumentRequestSchema.safeParse({ docTypes: [doc] }).success).toBe(false);
+    }
+    expect(
+      requestableDocSchema.options.filter((d) => !(DOCUMENTS_DEMANDABLES as string[]).includes(d)),
+    ).toEqual(['contrat_cdd', 'contrat_cdi', 'contrat_stage']);
+    await habiliter(awa, 'demandes.documents.contrat_stage');
+    await habiliter(awa, 'demandes.documents.certificat_travail');
+    // Une demande de contrat de stage d'avant, qu'Awa traitait.
+    const [contrat] = (
+      await documents.create(moussa.session, { docTypes: ['contrat_stage'] as never })
+    ).ids as [string];
+    expect(await appels('document', contrat)).toEqual(['dch:Awa']);
+
+    await raw(readFileSync(join(__dirname, '../src/db/sql/0116_contrats_de_la_dch.sql'), 'utf8'));
+    await reconcilier();
+
+    const { rows } = await raw(
+      `SELECT capacite FROM habilitations
+        WHERE tenant_id = $1 AND employee_id = $2 AND fin_at IS NULL ORDER BY capacite`,
+      [tenantId, awa.employeeId],
+    );
+    expect(rows.map((r) => r.capacite)).toEqual(['demandes.documents.certificat_travail']);
+    // La demande ancienne revient à qui dirige la DCH, qui la traite toujours.
+    expect(await appels('document', contrat)).toEqual(['dch:Mariama']);
   });
 
   it('chacun suit les siennes dans son espace ; la file, qui la traite (l’administrateur la lit)', async () => {
@@ -1624,6 +1661,32 @@ describe('on ne contourne pas le système : rien sur soi-même', () => {
         )
       ).capacites,
     ).toContain('academy');
+  });
+
+  it('la génération des contrats se délègue contrat par contrat ; l’administrateur ne l’a pas (ADR-0114)', async () => {
+    const directeur = await session(mariama);
+    expect(peutGenerer(directeur, 'attestation_travail')).toBe(true);
+    expect(CAPACITES_GENERATION.every((c) => directeur.capacites?.includes(c))).toBe(true);
+    expect(genereQuelqueChose(await session(awa))).toBe(false);
+    await habiliter(awa, 'generation.contrat_stage');
+    try {
+      const delegue = await session(awa);
+      expect(genereQuelqueChose(delegue)).toBe(true);
+      expect(gereQuelqueChose(delegue)).toBe(true);
+      expect(peutGenerer(delegue, 'contrat_stage')).toBe(true);
+      expect(peutGenerer(delegue, 'contrat_cdd')).toBe(false);
+      expect(peutGenerer(delegue, 'attestation_travail')).toBe(false);
+    } finally {
+      await habiliter(awa, 'generation.contrat_stage', false);
+    }
+    expect(genereQuelqueChose(await session(awa))).toBe(false);
+    const commeAdmin = {
+      role: 'admin',
+      ...(await db.withTenant({ tenantId, userId: admin.userId }, (tx) =>
+        capacitesDe(tx, admin.userId, 'admin'),
+      )),
+    };
+    expect(genereQuelqueChose(commeAdmin)).toBe(false);
   });
 
   it('l’administrateur ne lit pas les candidatures, sauf à la DCH qui les lui confie', async () => {

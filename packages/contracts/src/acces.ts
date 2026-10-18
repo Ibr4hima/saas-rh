@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { RequestableDoc } from './document-requests';
+import type { DocumentDeLaDch, RequestableDoc } from './document-requests';
 import type { PieceAVerifier } from './documents';
 
 /**
@@ -82,6 +82,17 @@ export const CAPACITES_DEMANDES = [
   ...CAPACITES_PIECES,
 ] as const;
 
+/**
+ * Générer, depuis « Générer des documents », un document que la DCH établit
+ * d'elle-même : une habilitation par contrat (ADR-0114). Qui en détient une a
+ * la page, pour ces contrats-là.
+ */
+export const CAPACITES_GENERATION = [
+  'generation.contrat_cdd',
+  'generation.contrat_cdi',
+  'generation.contrat_stage',
+] as const satisfies readonly `generation.${DocumentDeLaDch}`[];
+
 /** Les accès : plusieurs membres peuvent détenir le même. */
 export const CAPACITES_GESTION = [
   'personnel.consulter',
@@ -96,6 +107,7 @@ export const CAPACITES_GESTION = [
   'recrutement.offres',
   'recrutement.candidatures',
   'academy',
+  ...CAPACITES_GENERATION,
   'textes',
   'pilotage',
 ] as const;
@@ -122,11 +134,16 @@ export const CAPACITES_ADMINISTRATEUR = ['textes'] as const satisfies readonly C
 
 /**
  * Ce que le rôle d'administrateur ne donne pas (décision APIX) : les dossiers
- * de candidature, et la gestion des accès, que la DCH tient et confie. Un
+ * de candidature et la gestion des accès, que la DCH tient et confie ; la
+ * génération des contrats, qui produit des actes (ADR-0085, ADR-0114). Un
  * administrateur qui dirige la DCH, ou à qui elle les confie, les a à ce
  * titre-là, jamais en tant qu'administrateur.
  */
-export const HORS_ADMINISTRATEUR: readonly Capacite[] = ['recrutement.candidatures', 'acces'];
+export const HORS_ADMINISTRATEUR: readonly Capacite[] = [
+  'recrutement.candidatures',
+  'acces',
+  ...CAPACITES_GENERATION,
+];
 
 /** Ce que le rôle d'administrateur donne de lui-même. */
 export const CAPACITES_DE_L_ADMINISTRATEUR: readonly Capacite[] = CAPACITES_GESTION.filter(
@@ -158,6 +175,7 @@ export interface InfoCapacite {
     | 'Personnel'
     | 'Congés'
     | 'Recrutement'
+    | 'Génération'
     | 'Organisation';
   /** Données sensibles : à confier avec soin. */
   sensible?: boolean;
@@ -388,6 +406,21 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
     groupe: 'Recrutement',
     sensible: true,
   },
+  'generation.contrat_cdd': {
+    libelle: 'Génération des contrats à durée déterminée',
+    description: 'Les générer depuis « Générer des documents », d’après la fiche renseignée.',
+    groupe: 'Génération',
+  },
+  'generation.contrat_cdi': {
+    libelle: 'Génération des contrats à durée indéterminée',
+    description: 'Les générer depuis « Générer des documents », d’après la fiche renseignée.',
+    groupe: 'Génération',
+  },
+  'generation.contrat_stage': {
+    libelle: 'Génération des contrats de stage',
+    description: 'Les générer depuis « Générer des documents », d’après la fiche renseignée.',
+    groupe: 'Génération',
+  },
   academy: {
     libelle: 'APIX Academy',
     description: 'Créer, modifier et supprimer les formations, et préparer leurs évaluations.',
@@ -505,6 +538,28 @@ export function gereQuelqueChose(
   user: { role: string; capacites?: readonly string[] } | null | undefined,
 ): boolean {
   return CAPACITES_GESTION.some((c) => peut(user, c));
+}
+
+/**
+ * Peut-il générer ce document depuis « Générer des documents » ? Qui dirige la
+ * DCH, tous ; un membre, les contrats dont la génération lui est déléguée
+ * (ADR-0085, ADR-0114). L'administrateur, aucun.
+ */
+export function peutGenerer(
+  user: { role: string; dirigeLaDCH?: boolean; capacites?: readonly string[] } | null | undefined,
+  doc: string,
+): boolean {
+  if (!user) return false;
+  if (user.dirigeLaDCH) return true;
+  const capacite = CAPACITES_GENERATION.find((c) => c === `generation.${doc}`);
+  return capacite !== undefined && peut(user, capacite);
+}
+
+/** A-t-il « Générer des documents » ? Qui dirige la DCH, ou qui en génère un. */
+export function genereQuelqueChose(
+  user: { role: string; dirigeLaDCH?: boolean; capacites?: readonly string[] } | null | undefined,
+): boolean {
+  return Boolean(user?.dirigeLaDCH) || CAPACITES_GENERATION.some((c) => peut(user, c));
 }
 
 // ---------- Les deux espaces ----------

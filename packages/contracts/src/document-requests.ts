@@ -15,7 +15,10 @@ import { NATIONALITY_LABELS } from './nationalities';
  * en base, sans pouvoir être posé à nouveau.
  */
 
-/** Ce qu'un agent demande : la liste de la DCH, dans son ordre (ADR-0084). */
+/**
+ * La liste de la DCH, dans son ordre (ADR-0084) : ce qu'elle génère, et ce
+ * qu'un agent demande, hors ce qu'elle établit d'elle-même (ADR-0114).
+ */
 export const requestableDocSchema = z.enum([
   'contrat_cdd',
   'contrat_cdi',
@@ -104,6 +107,25 @@ export type DocumentGenere = (typeof GENERATED_DOCS)[number];
 
 export const estGenere = (doc: string): doc is DocumentGenere =>
   (GENERATED_DOCS as readonly string[]).includes(doc);
+
+/**
+ * Ce que la DCH établit d'elle-même, selon la situation de la personne : les
+ * contrats. Un agent ne les demande pas ; leur génération se délègue, contrat
+ * par contrat (ADR-0114).
+ */
+export const DOCUMENTS_DE_LA_DCH = [
+  'contrat_cdd',
+  'contrat_cdi',
+  'contrat_stage',
+] as const satisfies readonly DocumentGenere[];
+export type DocumentDeLaDch = (typeof DOCUMENTS_DE_LA_DCH)[number];
+
+export const estDocumentDeLaDch = (doc: string): doc is DocumentDeLaDch =>
+  (DOCUMENTS_DE_LA_DCH as readonly string[]).includes(doc);
+
+/** Ce qu'un agent demande : la liste, hors ce que la DCH établit d'elle-même. */
+export const documentDemandableSchema = requestableDocSchema.exclude([...DOCUMENTS_DE_LA_DCH]);
+export const DOCUMENTS_DEMANDABLES = documentDemandableSchema.options;
 
 /** Ce que la DCH saisit avant de générer un document : le dossier ne le porte pas. */
 export type Saisie = 'salaire' | 'categorie' | 'debut' | 'fin' | 'depart' | 'reprise';
@@ -874,7 +896,7 @@ export function documentDemande(doc: RequestableDoc, bulletin: PeriodeDuBulletin
 
 export const createDocumentRequestSchema = z.object({
   /** Un ou plusieurs documents : chacun devient une demande, qui va à qui le traite. */
-  docTypes: z.array(requestableDocSchema).min(1).max(requestableDocSchema.options.length),
+  docTypes: z.array(documentDemandableSchema).min(1).max(documentDemandableSchema.options.length),
   /** Le motif (banque, visa…) : facultatif mais utile à la RH. */
   note: z
     .string()

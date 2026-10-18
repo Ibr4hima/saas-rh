@@ -7,6 +7,7 @@ import type { Capacite, MembreHabilite } from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, Checkbox, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
   TYPES_DOCUMENTS,
+  TYPES_GENERATION,
   TYPES_PIECES,
   type TypeDelegable,
 } from '../../../../components/deleguer-documents';
@@ -111,6 +112,19 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
         icone: 'verified_user',
         sensible: true,
         types: TYPES_PIECES,
+      },
+    ],
+  },
+  {
+    titre: 'Documents',
+    lignes: [
+      {
+        cle: 'generation',
+        description:
+          'Depuis « Générer des documents », la personne déléguée générera les contrats choisis ici : fiche renseignée, aperçu relu, contrat téléchargé.',
+        libelle: 'Génération de documents',
+        icone: 'description',
+        types: TYPES_GENERATION,
       },
     ],
   },

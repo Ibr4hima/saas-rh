@@ -375,6 +375,23 @@ describe('la génération', () => {
     );
   });
 
+  it('un membre à qui la génération des contrats de stage est déléguée : ceux-là seulement (ADR-0114)', async () => {
+    const delegue = session(ids.agent, { capacites: ['generation.contrat_stage'] });
+    const { pdf } = await service.pdfSansAgent(delegue, 'contrat_stage', fiche());
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(await codeOf(() => service.pdfSansAgent(delegue, 'contrat_cdd', fiche()))).toBe(
+      'auth.forbidden',
+    );
+    expect(
+      await codeOf(() => service.pdfSansAgent(delegue, 'domiciliation_bancaire', fiche())),
+    ).toBe('auth.forbidden');
+    // Le rôle d'administrateur ne la donne pas : le compte technique ne produit pas d'actes.
+    const admin = session(ids.agent, { role: 'admin' });
+    expect(await codeOf(() => service.pdfSansAgent(admin, 'contrat_stage', fiche()))).toBe(
+      'auth.forbidden',
+    );
+  });
+
   it('une fiche incomplète ou fausse est refusée : tout est obligatoire, une CNI de treize chiffres', async () => {
     for (const f of [
       { cni: '275120020123' },

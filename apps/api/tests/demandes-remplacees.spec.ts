@@ -182,16 +182,16 @@ describe('une demande identique', () => {
   });
 
   it('refusée, elle s’efface aussi', async () => {
-    const refusee = await demander({ docTypes: ['contrat_cdi'] });
+    const refusee = await demander({ docTypes: ['attestation_conge'] });
     await service.advance(rh, refusee, { status: 'rejected', message: 'Déjà remis' });
-    const nouvelle = await demander({ docTypes: ['contrat_cdi'] });
+    const nouvelle = await demander({ docTypes: ['attestation_conge'] });
     expect(await restantes(refusee, nouvelle)).toEqual([nouvelle]);
   });
 
   it('un autre document ne remplace rien', async () => {
     const attestation = await demander({ docTypes: ['attestation_travail'] });
     await prete(attestation);
-    const contrat = await demander({ docTypes: ['contrat_cdi'] });
-    expect(await restantes(attestation, contrat)).toEqual([attestation, contrat]);
+    const conge = await demander({ docTypes: ['attestation_conge'] });
+    expect(await restantes(attestation, conge)).toEqual([attestation, conge]);
   });
 });

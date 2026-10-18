@@ -130,6 +130,7 @@ export function Etape({
 export function ListeDesDocuments({
   libelle,
   invite,
+  documents = DANS_L_ORDRE,
   choisis,
   multiple = false,
   resume,
@@ -141,6 +142,8 @@ export function ListeDesDocuments({
   libelle: string;
   /** Le bouton quand rien n'est choisi : « Choisir un document ». */
   invite: string;
+  /** Ce que la liste montre : tous les documents, sauf à en restreindre. */
+  documents?: readonly DocumentDeLaListe[];
   choisis: readonly DocumentDeLaListe[];
   /** Plusieurs documents : chacun se coche, et la liste reste ouverte. */
   multiple?: boolean;
@@ -157,8 +160,13 @@ export function ListeDesDocuments({
   const bouton = useRef<HTMLButtonElement>(null);
   const [ouvert, setOuvert] = useState(false);
   const [courant, setCourant] = useState<DocumentDeLaListe | null>(null);
+  // Les familles qui ont un document à montrer ; une famille vide ne se montre pas.
+  const familles = FAMILLES.map((f) => ({
+    ...f,
+    documents: f.documents.filter((d) => documents.includes(d)),
+  })).filter((f) => f.documents.length > 0);
   // Ceux qui se choisissent, dans l'ordre de la liste : le clavier passe de l'un à l'autre.
-  const ouvrables = DANS_L_ORDRE.filter((d) => !mention?.(d));
+  const ouvrables = familles.flatMap((f) => f.documents).filter((d) => !mention?.(d));
   const retenus = DANS_L_ORDRE.filter((d) => choisis.includes(d));
   const fermer = () => setOuvert(false);
   // Un clic hors de la liste la referme.
@@ -273,7 +281,7 @@ export function ListeDesDocuments({
             aria-multiselectable={multiple || undefined}
             className={cn(DEFILEMENT, 'max-h-[min(20rem,calc(100dvh_-_12rem))]')}
           >
-            {FAMILLES.map((f, rang) => (
+            {familles.map((f, rang) => (
               <div
                 key={f.titre}
                 role="group"
