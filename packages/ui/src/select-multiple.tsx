@@ -235,7 +235,7 @@ export function SelectMultiple({
 }
 
 /** La case d'une ligne : le dessin de `Checkbox`, sans l'`input`, la ligne entière se clique. */
-function Case({ coche }: { coche: boolean }) {
+export function Case({ coche }: { coche: boolean }) {
   return (
     <span
       aria-hidden

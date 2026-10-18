@@ -49,7 +49,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0041](0041-remise-en-ligne-en-pdf.md)                | Remise en ligne : un PDF, un nom choisi, un aperçu                                      | acceptée                                    |
 | [0042](0042-demandes-effacees-et-consultees.md)       | Demandes de documents : ce qui s'efface, ce qui se consulte                             | acceptée, précisée par 0043                 |
 | [0043](0043-suivi-en-cours-puis-traitees.md)          | Suivi des demandes de documents : en cours, puis traitées                               | acceptée, précisée par 0048 et 0081         |
-| [0044](0044-demander-un-document-en-fenetre.md)       | Demander un document : un bloc, une fenêtre, sans précision                             | acceptée, précisée par 0045 et 0084         |
+| [0044](0044-demander-un-document-en-fenetre.md)       | Demander un document : un bloc, une fenêtre, sans précision                             | acceptée, précisée par 0045, 0084 et 0113   |
 | [0045](0045-autre-document-retire.md)                 | « Autre document » ne se demande plus                                                   | acceptée, précisée par 0084                 |
 | [0046](0046-formateur-obligatoire.md)                 | Le formateur d'une formation est obligatoire                                            | acceptée, précisée par 0070                 |
 | [0047](0047-sessions-et-signalement.md)               | Plus de « Se déconnecter partout » ; un signalement part sans précision                 | acceptée                                    |
@@ -116,5 +116,6 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0108](0108-boutons-aux-coins-d-e-voting.md)          | Les boutons et les champs aux coins d'e-Voting                                          | acceptée, précisée par 0110                 |
 | [0109](0109-delegation-sans-bandeau.md)               | La délégation se règle dans « Déléguer des tâches », sans bandeau sur les pages         | acceptée                                    |
 | [0110](0110-blocs-aux-coins-des-boutons.md)           | Les blocs et les tableaux aux coins des boutons                                         | acceptée                                    |
-| [0111](0111-liste-des-documents-a-generer.md)         | La liste des documents à générer : des libellés courts, une hauteur bornée              | acceptée, précisée par 0112                 |
+| [0111](0111-liste-des-documents-a-generer.md)         | La liste des documents à générer : des libellés courts, une hauteur bornée              | acceptée, précisée par 0112 et 0113         |
 | [0112](0112-cinq-familles-de-documents.md)            | La liste des documents à générer en cinq familles                                       | acceptée                                    |
+| [0113](0113-demander-un-document-en-liste.md)         | Demander un document : la liste de « Générer des documents », à choix multiple          | acceptée                                    |

@@ -1,9 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type {
-  DocumentDeLaListe,
   DocumentGenere,
   EmployeeListItem,
   EmployeeListPage,
@@ -23,9 +22,16 @@ import {
   saisiesDe,
   sansAgent,
 } from '@teranga/contracts';
-import { Badge, Button, Card, CardTitle, cn, EmptyState } from '@teranga/ui';
+import { Badge, Button, Card, cn, EmptyState } from '@teranga/ui';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
+import {
+  CHAMP,
+  DEFILEMENT,
+  Etape,
+  ListeDesDocuments,
+  MENU,
+} from '../../../components/liste-des-documents';
 import { PdfEnLargeur } from '../../../components/pdf-viewer';
 import { ActionDuBandeau } from '../../../components/actions-bandeau';
 import {
@@ -84,90 +90,7 @@ import { champDuMontant } from '../../../lib/montant';
    ce qui sortira, pas sur une imitation à l'écran.
 */
 
-/** Les familles de la liste, dans leur ordre (ADR-0112). */
-const FAMILLES_DE_LA_LISTE = [
-  'Documents contractuels',
-  'Attestations',
-  'Documents de rémunération',
-  'Situation administrative du personnel',
-  'Fin de relation professionnelle',
-] as const;
-type Famille = (typeof FAMILLES_DE_LA_LISTE)[number];
-
-/**
- * Chaque document de la liste, avec sa famille et son libellé, dans l'ordre
- * où la liste les montre. Le libellé est plus court que le titre : la
- * famille dit déjà de quoi il s'agit, et le document garde son titre
- * (ADR-0111). La table est typée sur la liste de la DCH : un document qui y
- * entre demande sa ligne ici.
- */
-const LIGNES: Record<DocumentDeLaListe, { famille: Famille; libelle: string }> = {
-  contrat_cdd: { famille: 'Documents contractuels', libelle: 'Contrat à durée déterminée' },
-  contrat_cdi: { famille: 'Documents contractuels', libelle: 'Contrat à durée indéterminée' },
-  contrat_stage: { famille: 'Documents contractuels', libelle: 'Contrat de stage' },
-  attestation_conge: { famille: 'Attestations', libelle: 'Attestation de congé' },
-  attestation_travail: { famille: 'Attestations', libelle: 'Attestation de travail' },
-  attestation_reprise_service: {
-    famille: 'Attestations',
-    libelle: 'Reprise de service · Maternité',
-  },
-  attestation_reprise_disponibilite: {
-    famille: 'Attestations',
-    libelle: 'Reprise après disponibilité',
-  },
-  attestation_depart_retraite: { famille: 'Attestations', libelle: 'Départ à la retraite' },
-  attestation_stage: { famille: 'Attestations', libelle: 'Attestation de stage' },
-  attestation_cessation: {
-    famille: 'Attestations',
-    libelle: 'Cessation de paiement et d’activités',
-  },
-  domiciliation_bancaire: {
-    famille: 'Documents de rémunération',
-    libelle: 'Domiciliation bancaire',
-  },
-  attestation_revenu: { famille: 'Documents de rémunération', libelle: 'Attestation de revenu' },
-  decision_disponibilite: {
-    famille: 'Situation administrative du personnel',
-    libelle: 'Mise en disponibilité',
-  },
-  decision_renouvellement_disponibilite: {
-    famille: 'Situation administrative du personnel',
-    libelle: 'Renouvellement de disponibilité',
-  },
-  declaration_mouvement: {
-    famille: 'Situation administrative du personnel',
-    libelle: 'Déclaration de mouvement du travailleur',
-  },
-  certificat_travail: {
-    famille: 'Fin de relation professionnelle',
-    libelle: 'Certificat de travail',
-  },
-};
-
-const FAMILLES: readonly { titre: Famille; documents: readonly DocumentDeLaListe[] }[] =
-  FAMILLES_DE_LA_LISTE.map((titre) => ({
-    titre,
-    documents: (Object.keys(LIGNES) as DocumentDeLaListe[]).filter(
-      (d) => LIGNES[d].famille === titre,
-    ),
-  }));
-
-/** Ceux qui s'ouvrent, dans l'ordre où la liste les montre : le clavier passe de l'un à l'autre. */
-const OUVRABLES: readonly DocumentGenere[] = FAMILLES.flatMap((f) => f.documents).filter(estGenere);
-
 const nomDe = (a: EmployeeListItem) => `${a.givenName} ${a.familyName}`;
-
-/** Le cadre des deux listes déroulantes, celui de « Déléguer des tâches ». */
-const CHAMP =
-  'h-9 w-full rounded-controle border bg-surface text-[12.5px] transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none';
-const MENU =
-  'tg-menu absolute top-full right-0 left-0 z-30 mt-1.5 overflow-hidden rounded-bloc border border-card-line bg-surface shadow-lg';
-/**
- * Ce qui défile dans le panneau : une hauteur bornée, sept ou huit lignes, et
- * jamais plus que l'écran. La barre de défilement longe le bord du panneau,
- * les lignes gardent leur marge.
- */
-const DEFILEMENT = 'overflow-y-auto overscroll-contain scroll-py-1.5 p-1.5';
 
 /** Ce que la DCH saisit pour un document ; une date, au format AAAA-MM-JJ. */
 type Valeurs = {
@@ -314,7 +237,15 @@ export default function GenererDesDocumentsPage() {
   return (
     <Page>
       <Etape titre="Sélectionner le document à générer">
-        <ChoixDuDocument choisi={choisi} onChoisir={setChoisi} />
+        <ListeDesDocuments
+          libelle="Document à générer"
+          invite="Choisir un document"
+          choisis={choisi ? [choisi] : []}
+          mention={(d) => (estGenere(d) ? null : 'À venir')}
+          onChoisir={(d) => {
+            if (estGenere(d)) setChoisi(d);
+          }}
+        />
       </Etape>
       {choisi === 'contrat_stage' ? (
         <FicheDuStagiaire valeur={stagiaire} onChange={setStagiaire} />
@@ -405,194 +336,6 @@ export default function GenererDesDocumentsPage() {
 }
 
 /** Un temps du parcours, en bloc : son intitulé à gauche, son choix à droite. */
-function Etape({ titre, children }: { titre: string; children: ReactNode }) {
-  return (
-    <Card>
-      <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:gap-5">
-        <CardTitle className="min-w-0 flex-1">{titre}</CardTitle>
-        <div className="w-full sm:w-[23rem] sm:shrink-0">{children}</div>
-      </div>
-    </Card>
-  );
-}
-
-/**
- * Le document à générer, dans une liste déroulante, par familles. Un seul se
- * choisit, et se coche, comme dans les autres listes. Un document dont le
- * modèle reste à venir se lit sans se choisir.
- */
-function ChoixDuDocument({
-  choisi,
-  onChoisir,
-}: {
-  choisi: DocumentGenere | null;
-  onChoisir: (d: DocumentGenere) => void;
-}) {
-  const id = useId();
-  const racine = useRef<HTMLDivElement>(null);
-  const bouton = useRef<HTMLButtonElement>(null);
-  const [ouvert, setOuvert] = useState(false);
-  const [courant, setCourant] = useState<DocumentGenere | null>(null);
-  const fermer = () => setOuvert(false);
-  // Un clic hors de la liste la referme.
-  useEffect(() => {
-    if (!ouvert) return;
-    const auClic = (e: PointerEvent) => {
-      if (!racine.current?.contains(e.target as Node)) setOuvert(false);
-    };
-    document.addEventListener('pointerdown', auClic);
-    return () => document.removeEventListener('pointerdown', auClic);
-  }, [ouvert]);
-
-  const ouvrir = () => {
-    setCourant(choisi ?? OUVRABLES[0] ?? null);
-    setOuvert(true);
-  };
-  const choisir = (d: DocumentGenere) => {
-    onChoisir(d);
-    setOuvert(false);
-    bouton.current?.focus();
-  };
-  const deplacer = (vers: 'suivant' | 'precedent' | 'premier' | 'dernier') => {
-    const i = courant ? OUVRABLES.indexOf(courant) : -1;
-    const cible =
-      vers === 'premier'
-        ? 0
-        : vers === 'dernier'
-          ? OUVRABLES.length - 1
-          : vers === 'suivant'
-            ? Math.min(i + 1, OUVRABLES.length - 1)
-            : Math.max(i - 1, 0);
-    setCourant(OUVRABLES[cible] ?? null);
-  };
-
-  // Au clavier, la ligne désignée reste en vue.
-  useEffect(() => {
-    if (ouvert && courant) {
-      document.getElementById(`${id}-${courant}`)?.scrollIntoView({ block: 'nearest' });
-    }
-  }, [id, ouvert, courant]);
-
-  return (
-    <div ref={racine} className="relative">
-      <button
-        ref={bouton}
-        type="button"
-        role="combobox"
-        aria-label="Document à générer"
-        aria-haspopup="listbox"
-        aria-expanded={ouvert}
-        aria-controls={`${id}-liste`}
-        aria-activedescendant={ouvert && courant ? `${id}-${courant}` : undefined}
-        onClick={() => (ouvert ? fermer() : ouvrir())}
-        onKeyDown={(e) => {
-          const touches: Record<string, () => void> = {
-            ArrowDown: () => (ouvert ? deplacer('suivant') : ouvrir()),
-            ArrowUp: () => (ouvert ? deplacer('precedent') : ouvrir()),
-            Home: () => ouvert && deplacer('premier'),
-            End: () => ouvert && deplacer('dernier'),
-            Enter: () => (ouvert && courant ? choisir(courant) : ouvrir()),
-            ' ': () => (ouvert && courant ? choisir(courant) : ouvrir()),
-            Escape: fermer,
-          };
-          const geste = touches[e.key];
-          if (geste) {
-            e.preventDefault();
-            geste();
-          } else if (e.key === 'Tab') {
-            fermer();
-          }
-        }}
-        className={cn(
-          CHAMP,
-          'flex items-center gap-2 pr-2 pl-3 text-left',
-          ouvert ? 'border-primary' : 'border-line hover:border-ink-muted/40',
-        )}
-      >
-        <span
-          className={cn(
-            'min-w-0 flex-1 truncate',
-            choisi ? 'font-medium text-ink-strong' : 'text-ink-muted',
-          )}
-        >
-          {choisi ? LIGNES[choisi].libelle : 'Choisir un document'}
-        </span>
-        <Icon
-          name="chevron_right"
-          size={16}
-          className={cn(
-            'shrink-0 text-ink-muted transition-transform duration-150',
-            ouvert ? '-rotate-90' : 'rotate-90',
-          )}
-        />
-      </button>
-
-      {ouvert ? (
-        <div className={MENU}>
-          <div
-            id={`${id}-liste`}
-            role="listbox"
-            aria-label="Documents"
-            className={cn(DEFILEMENT, 'max-h-[min(20rem,calc(100dvh_-_12rem))]')}
-          >
-            {FAMILLES.map((f, rang) => (
-              <div
-                key={f.titre}
-                role="group"
-                aria-labelledby={`${id}-famille-${rang}`}
-                className={cn(rang > 0 && 'mt-1.5 border-t border-line-soft pt-1.5')}
-              >
-                <p
-                  id={`${id}-famille-${rang}`}
-                  className="px-3 pt-1.5 pb-1 text-[10.5px] font-bold tracking-[0.08em] text-ink-muted uppercase"
-                >
-                  {f.titre}
-                </p>
-                {f.documents.map((d) => {
-                  const libelle = LIGNES[d].libelle;
-                  return estGenere(d) ? (
-                    <div
-                      key={d}
-                      id={`${id}-${d}`}
-                      role="option"
-                      aria-selected={d === choisi}
-                      // Le bouton garde le focus : la liste se ferme sur son départ.
-                      onMouseDown={(e) => e.preventDefault()}
-                      onMouseEnter={() => setCourant(d)}
-                      onClick={() => choisir(d)}
-                      className={cn(
-                        'flex cursor-pointer items-center gap-2 rounded-controle-sm px-3 py-[7px] text-[13px] leading-snug transition-colors duration-150',
-                        d === courant && 'bg-hover',
-                        d === choisi ? 'font-semibold text-primary' : 'text-ink',
-                      )}
-                    >
-                      <span className="min-w-0 flex-1">{libelle}</span>
-                      {d === choisi ? (
-                        <Icon name="check" size={16} className="shrink-0 text-primary" />
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div
-                      key={d}
-                      role="option"
-                      aria-selected={false}
-                      aria-disabled
-                      className="flex cursor-not-allowed items-center gap-2 rounded-controle-sm px-3 py-[7px] text-[13px] leading-snug text-ink-muted/60"
-                    >
-                      <span className="min-w-0 flex-1">{libelle}</span>
-                      <span className="shrink-0 text-[10.5px] whitespace-nowrap">À venir</span>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 /**
  * L'agent : nom ou matricule, dossiers en activité ou non (un certificat de
  * travail se délivre au départ). Le champ montre le nom retenu ; y écrire
