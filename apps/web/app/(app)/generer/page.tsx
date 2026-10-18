@@ -23,7 +23,7 @@ import {
   saisiesDe,
   sansAgent,
 } from '@teranga/contracts';
-import { Badge, Button, Card, cn, EmptyState } from '@teranga/ui';
+import { Badge, Button, Card, cn, EmptyState, Field } from '@teranga/ui';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import {
@@ -66,6 +66,7 @@ import {
   versLaFiche,
   type SaisieDuStagiaire,
 } from '../../../components/fiche-stagiaire';
+import { Groupe, Preremplissage } from '../../../components/saisie-de-fiche';
 import { api, ApiError } from '../../../lib/api';
 import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
 import { useMe } from '../../../lib/hooks';
@@ -73,11 +74,14 @@ import { champDuMontant } from '../../../lib/montant';
 
 /*
    « Générer des documents » (ADR-0085), en trois temps qui se découvrent
-   l'un après l'autre : le document, l'agent, puis le document lui-même, en
-   largeur, à télécharger depuis l'en-tête. Les deux choix se font comme on
-   ouvre « Demander un document » : un bloc, son intitulé, et à sa droite le
-   choix, en liste déroulante. Un document qui demande ce que le dossier ne
-   porte pas le fait saisir avant : le salaire de l'attestation de revenu
+   l'un après l'autre : le document, le préremplissage, puis le document
+   lui-même, en largeur, à télécharger depuis l'en-tête. Le document se
+   choisit comme on ouvre « Demander un document » : un bloc, son intitulé,
+   et à sa droite la liste déroulante. Tout ce que la DCH saisit tient dans un
+   seul bloc, « Préremplissage », en sections selon le document, et le
+   document ne se génère qu'à « Valider » ; le bloc se replie alors, et
+   « Modifier » le rouvre (ADR-0121). Un document qui demande ce que le
+   dossier ne porte pas le fait saisir : le salaire de l'attestation de revenu
    (ADR-0087), la catégorie du poste du certificat de travail (ADR-0091),
    les dates de l'attestation de congé (ADR-0092), le jour du départ à la
    retraite (ADR-0093), la disponibilité et la reprise de l'attestation de
@@ -115,17 +119,18 @@ const VIDES: Valeurs = {
   reprise: '',
 };
 
-/** L'intitulé du bloc de chaque saisie. */
-const TITRES: Record<Saisie, string> = {
-  salaire: 'Saisir le salaire net mensuel',
-  categorie: 'Saisir la catégorie du poste',
-  debut: 'Saisir la date de début du congé',
-  fin: 'Saisir la date de fin du congé',
-  depart: 'Saisir la date de départ à la retraite',
-  reprise: 'Saisir la date de reprise de service',
+/** L'intitulé de la section des saisies, document par document. */
+const SECTION_DES_SAISIES: Partial<Record<DocumentGenere, string>> = {
+  attestation_conge: 'Renseigner le congé',
+  attestation_cessation: 'Renseigner le congé de maternité',
+  attestation_reprise_service: 'Renseigner la reprise de service',
+  attestation_reprise_disponibilite: 'Renseigner la disponibilité et la reprise',
+  attestation_depart_retraite: 'Renseigner le départ à la retraite',
+  attestation_revenu: 'Renseigner le salaire',
+  certificat_travail: 'Renseigner le poste',
 };
 
-/** Le nom de chaque champ de date, pour qui le lit à voix haute. */
+/** Le nom de chaque champ de date, au-dessus du champ et à voix haute. */
 const LIBELLES_DES_DATES = {
   debut: 'Premier jour du congé',
   fin: 'Dernier jour du congé',
@@ -139,27 +144,16 @@ const LIBELLES_DES_DATES = {
  * début, celui du congé de maternité pour la cessation de paiement.
  */
 const DATES_DU_DOCUMENT: Partial<
-  Record<DocumentGenere, Partial<Record<'debut' | 'fin', { titre: string; libelle: string }>>>
+  Record<DocumentGenere, Partial<Record<'debut' | 'fin', { libelle: string }>>>
 > = {
   attestation_cessation: {
-    debut: {
-      titre: 'Saisir la date de début du congé de maternité',
-      libelle: 'Premier jour du congé de maternité',
-    },
+    debut: { libelle: 'Premier jour du congé de maternité' },
   },
   attestation_reprise_disponibilite: {
-    debut: {
-      titre: 'Saisir la date de début de la disponibilité',
-      libelle: 'Premier jour de la disponibilité',
-    },
-    fin: {
-      titre: 'Saisir la date de fin de la disponibilité',
-      libelle: 'Dernier jour de la disponibilité',
-    },
+    debut: { libelle: 'Premier jour de la disponibilité' },
+    fin: { libelle: 'Dernier jour de la disponibilité' },
   },
 };
-const titreDe = (doc: DocumentGenere, s: Saisie) =>
-  (s === 'debut' || s === 'fin' ? DATES_DU_DOCUMENT[doc]?.[s]?.titre : undefined) ?? TITRES[s];
 const libelleDe = (doc: DocumentGenere, s: keyof typeof LIBELLES_DES_DATES) =>
   (s === 'debut' || s === 'fin' ? DATES_DU_DOCUMENT[doc]?.[s]?.libelle : undefined) ??
   LIBELLES_DES_DATES[s];
@@ -176,40 +170,31 @@ const remplie = (v: Valeurs, s: Saisie) => {
   return valeur !== null && valeur !== '';
 };
 
-/** Une valeur, une fois la frappe posée : l'aperçu ne suit pas chaque touche. */
-function useRetenue<T>(valeur: T): T {
-  const [retenue, setRetenue] = useState(valeur);
-  useEffect(() => {
-    const t = setTimeout(() => setRetenue(valeur), 450);
-    return () => clearTimeout(t);
-  }, [valeur]);
-  return retenue;
+/** Ce qui a été validé : pour qui le document se génère, et ce qui part à l'API. */
+interface Validation {
+  cible: Cible;
+  saisies: Record<string, unknown>;
 }
 
 export default function GenererDesDocumentsPage() {
   const me = useMe();
+  const id = useId();
   // Qui dirige la DCH génère tout ; un membre, les contrats qu'on lui délègue (ADR-0114).
   const generables = DANS_L_ORDRE.filter((d) => peutGenerer(me.data, d));
   const [choisi, setChoisi] = useState<DocumentGenere | null>(null);
   const [agent, setAgent] = useState<EmployeeListItem | null>(null);
   const [saisies, setSaisies] = useState<Saisies | null>(null);
-  const retenues = useRetenue(saisies);
   const [stagiaire, setStagiaire] = useState<SaisieDuStagiaire>(STAGIAIRE_VIDE);
-  const stagiaireRetenu = useRetenue(stagiaire);
   const [contrat, setContrat] = useState<SaisieDuContrat>(CONTRAT_VIDE);
-  const contratRetenu = useRetenue(contrat);
   const [disponibilite, setDisponibilite] = useState<SaisieDeLaDecision>(DECISION_VIDE);
-  const disponibiliteRetenue = useRetenue(disponibilite);
   const [domiciliation, setDomiciliation] = useState<SaisieDeLaDomiciliation>(DOMICILIATION_VIDE);
-  const domiciliationRetenue = useRetenue(domiciliation);
   const [declaration, setDeclaration] = useState<SaisieDeLaDeclaration>(DECLARATION_VIDE);
-  const declarationRetenue = useRetenue(declaration);
+  // Ce que « Valider » a retenu ; null tant que le préremplissage est ouvert.
+  const [validation, setValidation] = useState<Validation | null>(null);
 
   const sansLAgent = choisi !== null && sansAgent(choisi);
   const demandees = choisi ? saisiesDe(choisi) : [];
-  const pourLAgent = (s: Saisies | null): Valeurs => (s && s.agentId === agent?.id ? s : VIDES);
-  const courantes = pourLAgent(saisies);
-  const posees = pourLAgent(retenues);
+  const courantes: Valeurs = saisies && saisies.agentId === agent?.id ? saisies : VIDES;
   const saisir = (valeur: Partial<Valeurs>) => {
     if (agent) setSaisies({ ...courantes, ...valeur, agentId: agent.id });
   };
@@ -218,27 +203,61 @@ export default function GenererDesDocumentsPage() {
     choisi === 'decision_disponibilite' || choisi === 'decision_renouvellement_disponibilite'
       ? choisi
       : null;
-  // La fiche du document sans agent, telle qu'elle part à l'API : celle qui
-  // se tape, ou celle que la frappe posée a retenue.
-  const ficheSansAgent = (retenue: boolean) =>
-    deTravail
-      ? versLaFicheDuContrat(retenue ? contratRetenu : contrat, deTravail)
-      : deDisponibilite
-        ? versLaFicheDeLaDecision(retenue ? disponibiliteRetenue : disponibilite, deDisponibilite)
-        : choisi === 'domiciliation_bancaire'
-          ? versLaFicheDeLaDomiciliation(retenue ? domiciliationRetenue : domiciliation)
-          : choisi === 'declaration_mouvement'
-            ? versLaFicheDeLaDeclaration(retenue ? declarationRetenue : declaration)
-            : versLaFiche(retenue ? stagiaireRetenu : stagiaire);
-  const fiche = deTravail
-    ? ficheDuContratSchema(deTravail).safeParse(ficheSansAgent(true))
+  // La fiche du document sans agent, telle qu'elle partira à l'API.
+  const ficheSansAgent = deTravail
+    ? versLaFicheDuContrat(contrat, deTravail)
     : deDisponibilite
-      ? ficheDeLaDecisionSchema(deDisponibilite).safeParse(ficheSansAgent(true))
+      ? versLaFicheDeLaDecision(disponibilite, deDisponibilite)
       : choisi === 'domiciliation_bancaire'
-        ? ficheDomiciliationSchema.safeParse(ficheSansAgent(true))
+        ? versLaFicheDeLaDomiciliation(domiciliation)
         : choisi === 'declaration_mouvement'
-          ? ficheDeclarationMouvementSchema.safeParse(ficheSansAgent(true))
-          : ficheStagiaireSchema.safeParse(ficheSansAgent(true));
+          ? versLaFicheDeLaDeclaration(declaration)
+          : versLaFiche(stagiaire);
+  const fiche = deTravail
+    ? ficheDuContratSchema(deTravail).safeParse(ficheSansAgent)
+    : deDisponibilite
+      ? ficheDeLaDecisionSchema(deDisponibilite).safeParse(ficheSansAgent)
+      : choisi === 'domiciliation_bancaire'
+        ? ficheDomiciliationSchema.safeParse(ficheSansAgent)
+        : choisi === 'declaration_mouvement'
+          ? ficheDeclarationMouvementSchema.safeParse(ficheSansAgent)
+          : ficheStagiaireSchema.safeParse(ficheSansAgent);
+  // « Valider » s'ouvre quand tout est saisi : la fiche complète, ou l'agent
+  // et chacune de ses saisies.
+  const pret =
+    choisi !== null &&
+    (sansLAgent ? fiche.success : agent !== null && demandees.every((s) => remplie(courantes, s)));
+
+  const valider = () => {
+    if (!choisi || !pret) return;
+    if (sansLAgent) {
+      if (!fiche.success) return;
+      setValidation({
+        cible: {
+          cle: 'fiche',
+          chemin: `/documents/generer/${choisi}`,
+          fichier: nomDuDocumentGenere(
+            choisi,
+            `${fiche.data.nom.toUpperCase()}-${fiche.data.prenom}`,
+          ),
+          titre: `${REQUESTABLE_DOC_LABELS[choisi]} : ${fiche.data.prenom} ${fiche.data.nom}`,
+        },
+        saisies: fiche.data,
+      });
+    } else if (agent) {
+      setValidation({
+        cible: {
+          cle: agent.id,
+          chemin: `/employees/${agent.id}/generer/${choisi}`,
+          fichier: nomDuDocumentGenere(choisi, agent.employeeNumber),
+          titre: `${REQUESTABLE_DOC_LABELS[choisi]} : ${nomDe(agent)}`,
+        },
+        saisies: Object.fromEntries(demandees.map((s) => [s, valeurDe(courantes, s)])),
+      });
+    }
+    // Le bloc se replie : on remonte, le document vient sous les deux blocs.
+    document.querySelector('[data-scroll-root]')?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <Page>
@@ -250,99 +269,104 @@ export default function GenererDesDocumentsPage() {
           choisis={choisi ? [choisi] : []}
           mention={(d) => (estGenere(d) ? null : 'À venir')}
           onChoisir={(d) => {
-            if (estGenere(d)) setChoisi(d);
+            if (!estGenere(d)) return;
+            setChoisi(d);
+            // Un autre document se valide à son tour.
+            setValidation(null);
           }}
         />
       </Etape>
-      {choisi === 'contrat_stage' ? (
-        <FicheDuStagiaire valeur={stagiaire} onChange={setStagiaire} />
+      {choisi ? (
+        <Preremplissage
+          valide={validation !== null}
+          pret={pret}
+          onValider={valider}
+          onModifier={() => setValidation(null)}
+        >
+          {choisi === 'contrat_stage' ? (
+            <FicheDuStagiaire valeur={stagiaire} onChange={setStagiaire} />
+          ) : null}
+          {deTravail ? (
+            <FicheDuContratDeTravail doc={deTravail} valeur={contrat} onChange={setContrat} />
+          ) : null}
+          {choisi === 'domiciliation_bancaire' ? (
+            <FicheDeLaDomiciliation valeur={domiciliation} onChange={setDomiciliation} />
+          ) : null}
+          {choisi === 'declaration_mouvement' ? (
+            <FicheDeLaDeclaration valeur={declaration} onChange={setDeclaration} />
+          ) : null}
+          {deDisponibilite ? (
+            <FicheDeLaDecision
+              doc={deDisponibilite}
+              valeur={disponibilite}
+              onChange={setDisponibilite}
+            />
+          ) : null}
+          {sansLAgent ? null : (
+            <Groupe titre="Sélectionner l’agent">
+              <Field label="Agent" htmlFor={`${id}-agent`} required>
+                <ChoixDeLAgent id={`${id}-agent`} agent={agent} onChoisir={setAgent} />
+              </Field>
+            </Groupe>
+          )}
+          {!sansLAgent && agent && demandees.length > 0 ? (
+            <Groupe titre={SECTION_DES_SAISIES[choisi] ?? 'Renseigner le document'}>
+              {demandees.map((s, i) => (
+                <Field
+                  key={s}
+                  label={
+                    s === 'salaire'
+                      ? 'Salaire net mensuel'
+                      : s === 'categorie'
+                        ? 'Catégorie du poste'
+                        : libelleDe(choisi, s)
+                  }
+                  htmlFor={`${id}-${s}`}
+                  required
+                >
+                  {s === 'salaire' ? (
+                    <ChampDuSalaire
+                      key={agent.id}
+                      id={`${id}-${s}`}
+                      premier={i === 0}
+                      salaire={courantes.salaire}
+                      onSaisir={(salaire) => saisir({ salaire })}
+                    />
+                  ) : s === 'categorie' ? (
+                    <ChampDeLaCategorie
+                      key={agent.id}
+                      id={`${id}-${s}`}
+                      premier={i === 0}
+                      categorie={courantes.categorie}
+                      onSaisir={(categorie) => saisir({ categorie })}
+                    />
+                  ) : (
+                    <ChampDeDate
+                      key={agent.id}
+                      id={`${id}-${s}`}
+                      premier={i === 0}
+                      libelle={libelleDe(choisi, s)}
+                      date={courantes[s]}
+                      // La fin et la reprise ne se choisissent pas avant le début.
+                      min={
+                        s === 'fin' || s === 'reprise' ? courantes.debut || undefined : undefined
+                      }
+                      onSaisir={(date) => saisir({ [s]: date })}
+                    />
+                  )}
+                </Field>
+              ))}
+            </Groupe>
+          ) : null}
+        </Preremplissage>
       ) : null}
-      {deTravail ? (
-        <FicheDuContratDeTravail doc={deTravail} valeur={contrat} onChange={setContrat} />
-      ) : null}
-      {choisi === 'domiciliation_bancaire' ? (
-        <FicheDeLaDomiciliation valeur={domiciliation} onChange={setDomiciliation} />
-      ) : null}
-      {choisi === 'declaration_mouvement' ? (
-        <FicheDeLaDeclaration valeur={declaration} onChange={setDeclaration} />
-      ) : null}
-      {deDisponibilite ? (
-        <FicheDeLaDecision
-          doc={deDisponibilite}
-          valeur={disponibilite}
-          onChange={setDisponibilite}
-        />
-      ) : null}
-      {choisi && !sansLAgent ? (
-        <Etape titre="Sélectionner l’agent">
-          <ChoixDeLAgent agent={agent} onChoisir={setAgent} />
-        </Etape>
-      ) : null}
-      {choisi && agent && !sansLAgent
-        ? demandees.map((s, i) => (
-            <Etape key={s} titre={titreDe(choisi, s)}>
-              {s === 'salaire' ? (
-                <ChampDuSalaire
-                  key={agent.id}
-                  premier={i === 0}
-                  salaire={courantes.salaire}
-                  onSaisir={(salaire) => saisir({ salaire })}
-                />
-              ) : s === 'categorie' ? (
-                <ChampDeLaCategorie
-                  key={agent.id}
-                  premier={i === 0}
-                  categorie={courantes.categorie}
-                  onSaisir={(categorie) => saisir({ categorie })}
-                />
-              ) : (
-                <ChampDeDate
-                  key={agent.id}
-                  premier={i === 0}
-                  libelle={libelleDe(choisi, s)}
-                  date={courantes[s]}
-                  // La fin et la reprise ne se choisissent pas avant le début.
-                  min={s === 'fin' || s === 'reprise' ? courantes.debut || undefined : undefined}
-                  onSaisir={(date) => saisir({ [s]: date })}
-                />
-              )}
-            </Etape>
-          ))
-        : null}
-      {choisi && sansLAgent && fiche.success ? (
-        <Apercu
-          choisi={choisi}
-          cible={{
-            cle: 'fiche',
-            chemin: `/documents/generer/${choisi}`,
-            fichier: nomDuDocumentGenere(
-              choisi,
-              `${fiche.data.nom.toUpperCase()}-${fiche.data.prenom}`,
-            ),
-            titre: `${REQUESTABLE_DOC_LABELS[choisi]} : ${fiche.data.prenom} ${fiche.data.nom}`,
-          }}
-          saisies={fiche.data}
-          enCours={JSON.stringify(ficheSansAgent(false)) !== JSON.stringify(ficheSansAgent(true))}
-        />
-      ) : null}
-      {choisi && !sansLAgent && agent && demandees.every((s) => remplie(posees, s)) ? (
-        <Apercu
-          choisi={choisi}
-          cible={{
-            cle: agent.id,
-            chemin: `/employees/${agent.id}/generer/${choisi}`,
-            fichier: nomDuDocumentGenere(choisi, agent.employeeNumber),
-            titre: `${REQUESTABLE_DOC_LABELS[choisi]} : ${nomDe(agent)}`,
-          }}
-          saisies={Object.fromEntries(demandees.map((s) => [s, valeurDe(posees, s)]))}
-          enCours={demandees.some((s) => valeurDe(courantes, s) !== valeurDe(posees, s))}
-        />
+      {choisi && validation ? (
+        <Apercu choisi={choisi} cible={validation.cible} saisies={validation.saisies} />
       ) : null}
     </Page>
   );
 }
 
-/** Un temps du parcours, en bloc : son intitulé à gauche, son choix à droite. */
 /**
  * L'agent : nom ou matricule, dossiers en activité ou non (un certificat de
  * travail se délivre au départ). Le champ montre le nom retenu ; y écrire
@@ -350,9 +374,12 @@ export default function GenererDesDocumentsPage() {
  * soi : son propre dossier ne se génère pas d'ici.
  */
 function ChoixDeLAgent({
+  id: idDuChamp,
   agent,
   onChoisir,
 }: {
+  /** L'identifiant du champ, que son intitulé désigne. */
+  id: string;
   agent: EmployeeListItem | null;
   onChoisir: (a: EmployeeListItem) => void;
 }) {
@@ -407,6 +434,7 @@ function ChoixDeLAgent({
         className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-muted/70"
       />
       <input
+        id={idDuChamp}
         role="combobox"
         aria-label="Agent"
         aria-expanded={visible}
@@ -511,10 +539,12 @@ function ChoixDeLAgent({
  * l'agent.
  */
 function ChampDuSalaire({
+  id,
   premier,
   salaire,
   onSaisir,
 }: {
+  id: string;
   premier: boolean;
   salaire: number | null;
   onSaisir: (salaire: number | null) => void;
@@ -524,6 +554,7 @@ function ChampDuSalaire({
     <div className="relative">
       <input
         {...montant}
+        id={id}
         autoFocus={premier}
         autoComplete="off"
         aria-label="Salaire net mensuel, en francs CFA"
@@ -548,16 +579,19 @@ function ChampDuSalaire({
  * s'affichent en capitales à la frappe, comme le document les imprime.
  */
 function ChampDeLaCategorie({
+  id,
   premier,
   categorie,
   onSaisir,
 }: {
+  id: string;
   premier: boolean;
   categorie: string;
   onSaisir: (categorie: string) => void;
 }) {
   return (
     <input
+      id={id}
       autoFocus={premier}
       autoComplete="off"
       aria-label="Catégorie du poste"
@@ -575,12 +609,14 @@ function ChampDeLaCategorie({
 
 /** Une date saisie, au calendrier du navigateur : celles du congé, le départ à la retraite. */
 function ChampDeDate({
+  id,
   premier,
   libelle,
   date,
   min,
   onSaisir,
 }: {
+  id: string;
   premier: boolean;
   libelle: string;
   date: string;
@@ -590,6 +626,7 @@ function ChampDeDate({
   return (
     <input
       type="date"
+      id={id}
       autoFocus={premier}
       aria-label={libelle}
       value={date}
@@ -616,22 +653,20 @@ interface Cible {
 }
 
 /**
- * Le document, tel qu'il sortira : en largeur, comme le procès-verbal
- * d'apix-e-voting, sans rien au-dessus. « Télécharger » se pose dans
- * l'en-tête dès que le PDF est prêt, et s'en retire tant qu'une saisie
- * en cours de frappe ne s'y lit pas encore : on n'enregistre pas l'ancien
- * document.
+ * Le document, tel qu'il sortira, une fois le préremplissage validé : en
+ * largeur, comme le procès-verbal d'apix-e-voting, sans rien au-dessus.
+ * « Télécharger » se pose dans l'en-tête dès que le PDF est prêt, et s'en
+ * retire tant que celui d'une nouvelle validation n'est pas arrivé : on
+ * n'enregistre pas l'ancien document.
  */
 function Apercu({
   choisi,
   cible,
   saisies,
-  enCours,
 }: {
   choisi: DocumentGenere;
   cible: Cible;
   saisies: Record<string, unknown>;
-  enCours: boolean;
 }) {
   const pdf = useQuery({
     queryKey: ['document-genere', choisi, cible.cle, saisies],
@@ -643,7 +678,7 @@ function Apercu({
     placeholderData: (precedent, requete) =>
       requete?.queryKey[1] === choisi && requete.queryKey[2] === cible.cle ? precedent : undefined,
   });
-  const aJour = !enCours && !pdf.isPlaceholderData;
+  const aJour = !pdf.isPlaceholderData;
 
   if (pdf.isError) {
     return (

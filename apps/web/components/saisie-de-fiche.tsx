@@ -7,31 +7,87 @@ import {
   majusculesInitiales,
   premiereMajuscule,
 } from '@teranga/contracts';
-import { Card, CardHeader, CardTitle, cn, Field, Input, Select } from '@teranga/ui';
+import { Button, Card, CardTitle, cn, Field, Input, Select } from '@teranga/ui';
 import { champDeChiffres } from '../lib/chiffres';
 import { formatDate } from '../lib/hooks';
 import { champDuMontant } from '../lib/montant';
+import { Icon } from './icons';
 
 /*
    Les pièces des fiches que la DCH renseigne pour un document sans agent
    (ADR-0094, ADR-0098, ADR-0100, ADR-0102, ADR-0106) : le contrat de stage,
    les contrats de travail, les décisions de disponibilité, la domiciliation
    bancaire, la déclaration de mouvement du travailleur. Les mêmes champs s'y
-   saisissent de la même façon.
+   saisissent de la même façon, en sections d'un seul bloc, le
+   « Préremplissage » (ADR-0121).
 */
 
 /** Le cadre des champs de la page, celui de ses listes déroulantes. */
 export const CADRE = 'h-9 rounded-controle px-3 text-[12.5px] font-medium text-ink-strong';
 
-/** Deux colonnes dès que la largeur le permet ; une seule sur un téléphone. */
+/**
+ * Une section du préremplissage : son intitulé, puis ses champs, en deux
+ * colonnes dès que la largeur le permet ; une seule sur un téléphone. Les
+ * sections se suivent dans le bloc, séparées d'un filet.
+ */
 export function Groupe({ titre, children }: { titre: string; children: ReactNode }) {
   return (
+    <section className="border-t border-line-soft px-5 pt-4 pb-5">
+      <h3 className="mb-3.5 text-[13.5px] font-bold text-ink-strong">{titre}</h3>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3.5 sm:grid-cols-2">{children}</div>
+    </section>
+  );
+}
+
+/**
+ * Le bloc « Préremplissage » : tout ce que la DCH saisit pour un document,
+ * en sections, et « Valider » au pied. Le document ne se génère qu'à la
+ * validation. Validé, le bloc se replie à la hauteur de celui du choix du
+ * document, 68 px, et « Modifier » le rouvre sur ce qui avait été saisi : les
+ * sections restent montées, cachées, et gardent tout.
+ */
+export function Preremplissage({
+  valide,
+  pret,
+  onValider,
+  onModifier,
+  children,
+}: {
+  valide: boolean;
+  /** Tout est saisi : « Valider » s'ouvre. */
+  pret: boolean;
+  onValider: () => void;
+  onModifier: () => void;
+  children: ReactNode;
+}) {
+  return (
     <Card>
-      <CardHeader>
-        <CardTitle>{titre}</CardTitle>
-      </CardHeader>
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-3.5 px-5 pb-5 sm:grid-cols-2">
+      {/* Replié, il prend la forme du bloc du choix du document : sur
+          téléphone, l'intitulé au-dessus et le bouton sur toute la largeur. */}
+      <div
+        className={cn(
+          'flex px-5 py-4',
+          valide ? 'flex-col gap-3 sm:flex-row sm:items-center sm:gap-5' : 'items-center gap-5',
+        )}
+      >
+        <CardTitle className="min-w-0 flex-1">Préremplissage</CardTitle>
+        {valide ? (
+          <Button variant="secondary" className="h-9 w-full sm:w-auto" onClick={onModifier}>
+            <Icon name="edit" size={15} />
+            Modifier
+          </Button>
+        ) : (
+          // Sur écran large, la ligne du titre garde sa hauteur, ouverte ou repliée.
+          <span aria-hidden className="hidden h-9 sm:block" />
+        )}
+      </div>
+      <div hidden={valide}>
         {children}
+        <div className="flex justify-end border-t border-line-soft px-5 py-4">
+          <Button className="h-9 px-5" disabled={!pret} onClick={onValider}>
+            Valider
+          </Button>
+        </div>
       </div>
     </Card>
   );
