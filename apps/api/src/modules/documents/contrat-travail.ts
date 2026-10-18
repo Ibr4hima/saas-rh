@@ -123,7 +123,7 @@ export function blocsDuContratDeTravail(
     },
     texte(
       `La Société Anonyme ${sigle}, au capital de 4.950.000.000 FCFA, dont le siège social est au ` +
-        `52-54, rue ${insecable('Mohamed V')}, Immeuble Alwar, numéro NINEA 28409592A3, code ` +
+        `52-54, rue ${insecable('Mohamed V')}, Immeuble Alwar, numéro NINEA ${ENTETE.ninea}, code ` +
         `Sécurité Sociale ${insecable('19 2000 5620')},`,
     ),
     texte('Cotisant à l’IPRES sous le numéro 24486.101.X,', 0),

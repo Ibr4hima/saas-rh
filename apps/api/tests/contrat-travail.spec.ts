@@ -248,7 +248,7 @@ describe('les parties', () => {
   it('l’APIX, représentée par qui dirige la direction générale, au genre de son dossier', () => {
     expect(quiCommencePar(contrat(), 'La Société Anonyme')).toBe(
       'La Société Anonyme APIX-SA, au capital de 4.950.000.000 FCFA, dont le siège social est au ' +
-        '52-54, rue Mohamed V, Immeuble Alwar, numéro NINEA 28409592A3, code Sécurité Sociale ' +
+        '52-54, rue Mohamed V, Immeuble Alwar, numéro NINEA 28409592G3, code Sécurité Sociale ' +
         '19 2000 5620,',
     );
     expect(tousLesTextes(contrat())).toContain(

@@ -48,13 +48,15 @@ export const ENTETE = {
   referenceDG: '/PR/SG/APIX/DG/DCH',
   /** Lieu d'émission : « Dakar, le … ». */
   ville: 'Dakar',
+  /** Le NINEA, celui du pied de page et des contrats de travail (ADR-0099). */
+  ninea: '28409592G3',
 } as const;
 
 /** Les mentions du pied de page, ligne par ligne, telles que l'APIX les imprime. */
 export const MENTIONS = [
   'Société Anonyme à Participation Publique Majoritaire',
   'au Capital de 4.950.000.000 FCFA - RCCM : SN DKR 2008 B 72',
-  'NINEA : 28409592G3',
+  `NINEA : ${ENTETE.ninea}`,
   '52-54, rue Mohamed V – BP 430 CP18524 Dakar SENEGAL',
   'Tel (+221) 33 849 05 55 – Fax (+221) 33 823 94 89',
   'www.investinsenegal.com',
