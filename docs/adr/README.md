@@ -120,10 +120,11 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0112](0112-cinq-familles-de-documents.md)            | La liste des documents à générer en cinq familles                                       | acceptée                                    |
 | [0113](0113-demander-un-document-en-liste.md)         | Demander un document : la liste de « Générer des documents », à choix multiple          | acceptée                                    |
 | [0114](0114-contrats-etablis-par-la-dch.md)           | Les contrats, la DCH les établit : ils ne se demandent pas, leur génération se délègue  | acceptée                                    |
-| [0115](0115-coquille-posee-sur-le-fond.md)            | La coquille posée sur le fond : ni bandeau bleu, ni colonne blanche                     | acceptée, précisée (0116, 0117, 0118, 0120) |
+| [0115](0115-coquille-posee-sur-le-fond.md)            | La coquille posée sur le fond : ni bandeau bleu, ni colonne blanche                     | acceptée, précisée (0116-0118, 0120, 0122)  |
 | [0116](0116-fond-de-l-ecran-de-connexion.md)          | Le fond de l'application, celui de l'écran de connexion                                 | acceptée                                    |
 | [0117](0117-date-en-haut-a-droite.md)                 | La date du jour en haut à droite de chaque écran                                        | acceptée                                    |
 | [0118](0118-entree-courante-en-bleu-clair.md)         | L'entrée courante du menu, en bleu très clair, sans filet                               | acceptée                                    |
 | [0119](0119-onglets-a-la-hauteur-des-boutons.md)      | Les onglets et les choix segmentés, à la hauteur des boutons de l'en-tête               | acceptée                                    |
 | [0120](0120-silhouette-du-compte.md)                  | Le bloc du compte porte la silhouette de la personne, pas ses initiales                 | acceptée                                    |
 | [0121](0121-preremplissage-valide.md)                 | Générer des documents : un seul bloc « Préremplissage », validé avant la génération     | acceptée                                    |
+| [0122](0122-en-tete-sans-filet.md)                    | L'en-tête sans filet au défilement                                                      | acceptée                                    |

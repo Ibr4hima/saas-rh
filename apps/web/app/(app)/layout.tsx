@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import {
   CAPACITES_DOCUMENTS,
   CAPACITES_PIECES,
@@ -1088,11 +1088,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const large = useEcranLarge();
   const titleOverride = usePageTitleOverride();
-  // Le contenu a défilé sous l'en-tête : un filet l'en sépare. Au repos,
-  // l'en-tête et la page ne font qu'un seul fond.
-  const zone = useRef<HTMLElement>(null);
-  const [defile, setDefile] = useState(false);
-  useEffect(() => setDefile((zone.current?.scrollTop ?? 0) > 0), [pathname]);
 
   // Ce que l'agent a devant lui : son équipe (l'entrée n'existe que pour qui
   // encadre), ce qui attend son visa, ce qu'il traite pour la DCH (badges).
@@ -1374,12 +1369,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* L'écran */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header
-          className={cn(
-            'relative z-10 flex h-14 shrink-0 items-center px-4 transition-shadow duration-200 lg:h-[76px] lg:px-7',
-            defile && 'shadow-[0_1px_0_var(--tg-line-soft),0_10px_18px_-16px_rgb(20_23_42/0.22)]',
-          )}
-        >
+        {/* L'en-tête et la page ne font qu'un seul fond, même quand le
+            contenu défile : aucun filet ne les sépare (ADR-0122). */}
+        <header className="relative z-10 flex h-14 shrink-0 items-center px-4 lg:h-[76px] lg:px-7">
           <div
             className={cn(
               'mx-auto flex w-full min-w-0 items-center gap-3 lg:gap-4',
@@ -1455,12 +1447,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         {/* Le seul panneau qui défile. `data-scroll-root` le signale aux
             fenêtres modales, qui doivent le geler comme elles gèlent la page. */}
         <main
-          ref={zone}
           data-scroll-root
-          onScroll={(e) => {
-            const d = e.currentTarget.scrollTop > 0;
-            if (d !== defile) setDefile(d);
-          }}
           className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-24 lg:px-7 lg:pt-1 lg:pb-10"
         >
           <TitreDeLEcran titre={title} salut={salut} className="mb-4 lg:hidden" />
