@@ -187,9 +187,9 @@ describe('la fiche', () => {
         fiche({ ...etrangere, entreeAuSenegalLe: '2023-12-20' }),
       ).cni,
     ).toBe('ML123456789');
-    // Le contrat d'un travailleur sénégalais ne se vise pas.
-    const visa = { numero: 'DGTSS/2024/015', le: '2024-01-10' };
-    expect(valide(fiche({ visa }))).toBe(false);
+    // Le visa d'approbation se renseigne pour toute personne, comme sur le modèle.
+    const visa = { numero: '2024/015', le: '2024-01-10' };
+    expect(valide(fiche({ visa }))).toBe(true);
     expect(valide(fiche({ ...etrangere, entreeAuSenegalLe: '2023-12-20', visa }))).toBe(true);
   });
 
@@ -218,8 +218,8 @@ describe('la fiche', () => {
     expect(valide(fiche({ armee: 'terre' }))).toBe(false);
   });
 
-  it('un horaire du formulaire ; le numéro au fichier central, dix chiffres ; une catégorie d’enregistrement, A à F', () => {
-    expect(valide(fiche({ categorieDEnregistrement: undefined }))).toBe(false);
+  it('un horaire du formulaire ; le numéro au fichier central, dix chiffres ; la catégorie d’enregistrement, facultative, de A à F', () => {
+    expect(valide(fiche({ categorieDEnregistrement: undefined }))).toBe(true);
     expect(valide(fiche({ categorieDEnregistrement: 'G' }))).toBe(false);
     expect(valide(fiche({ categorieDEnregistrement: 'F' }))).toBe(true);
     expect(valide(fiche({ horaire: 39 }))).toBe(false);
@@ -232,11 +232,11 @@ describe('la fiche', () => {
 });
 
 describe('la déclaration', () => {
-  it('le jour, les références du Code du travail de 2026 et de l’arrêté de 1963', () => {
+  it('le jour, les références du modèle : le Code du travail de 1997 et l’arrêté de 1963', () => {
     const d = declaration();
     expect(d.date.replace(/\u00a0/g, ' ')).toBe('18 octobre 2026');
-    expect(d.references).toEqual([
-      'Article 363 du Code du travail (loi n° 2026-18 du 3 septembre 2026)',
+    expect(d.references.map((r) => r.replace(/\u00a0/g, ' '))).toEqual([
+      'Article L.222, alinéas 2 à 5, du Code du travail (loi n° 97-17 du 1er décembre 1997)',
       'Arrêté ministériel n° 7301 du 17 mai 1963 déterminant les modalités des déclarations ' +
         'de mouvements de travailleurs (JO n° 3610 du 22 juin 1963, p. 835)',
     ]);
@@ -276,6 +276,9 @@ describe('la déclaration', () => {
       '1900312345',
     );
     expect(declaration().categorieDEnregistrement).toBe('B');
+    expect(
+      declaration(fiche({ categorieDEnregistrement: undefined })).categorieDEnregistrement,
+    ).toBeNull();
   });
 
   it('la travailleuse, accordée : née, fille, son époux, ses enfants', () => {
@@ -296,10 +299,10 @@ describe('la déclaration', () => {
       'Profession : Comptable | Emploi dans l’établissement : Cheffe du service Comptabilité',
       'Convention collective : Barème salarial d’APIX-SA | Catégorie : 7B',
       'Éventuellement, date du contrat : ……………………',
-      'N° et date du visa du contrat par la Direction générale du Travail et de la Sécurité ' +
-        'sociale : Sans objet',
-      'N° et date de l’enregistrement du contrat à l’inspection du travail et de la sécurité ' +
-        'sociale : ……………………',
+      'N° et date du visa d’approbation par l’inspecteur du travail et de la sécurité sociale : ' +
+        '……………………',
+      'N° et date du visa d’enregistrement à la section locale de ………… du service de la ' +
+        'main-d’œuvre : ……………………',
       'Raison sociale et adresse précise de l’employeur : APIX-SA, 52-54, rue Mohamed V, Dakar',
       'Activité de l’établissement : Société de services',
     ]);
@@ -392,9 +395,11 @@ describe('la déclaration', () => {
     expect(etrangere.travailleur.map(ligne)).toContain(
       'Carte d’identité n° ML123456789 | Délivrée à : Dakar',
     );
-    expect(etrangere.travailleur.map(ligne)).toContain(
-      'N° et date du visa du contrat par la Direction générale du Travail et de la Sécurité ' +
-        'sociale : ……………………',
+    expect(
+      declaration(fiche({ visa: { numero: '2024/015', le: '2024-01-10' } })).travailleur.map(ligne),
+    ).toContain(
+      'N° et date du visa d’approbation par l’inspecteur du travail et de la sécurité sociale : ' +
+        'n° 2024/015 du 10 janvier 2024',
     );
   });
 

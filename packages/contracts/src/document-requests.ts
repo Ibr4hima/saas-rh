@@ -522,10 +522,11 @@ export function ribGroupe(rib: string): string {
 }
 
 /*
-   La déclaration de mouvement du travailleur (ADR-0106) : l'embauche, le
-   départ et les changements dans la situation du travailleur se déclarent à
-   l'inspection du travail et de la sécurité sociale du ressort (article 363
-   du Code du travail), sur le formulaire de l'arrêté n° 7301 du 17 mai 1963.
+   La déclaration de mouvement du travailleur (ADR-0106, ADR-0107) :
+   l'embauche, le départ et les changements dans la situation du travailleur
+   se déclarent à l'inspection du travail et de la sécurité sociale (article
+   L.222 du Code du travail), sur le formulaire de l'arrêté n° 7301 du 17 mai
+   1963.
 */
 
 /** Ce qu'une déclaration de mouvement déclare, dans l'ordre du formulaire. */
@@ -629,8 +630,8 @@ export const ficheDeclarationMouvementSchema = z
       .string()
       .regex(new RegExp(`^\\d{${CHIFFRES_DE_L_IMMATRICULATION}}$`), 'Dix chiffres attendus')
       .optional(),
-    /** La catégorie d'enregistrement du travailleur, que le formulaire encadre. */
-    categorieDEnregistrement: z.enum(CATEGORIES_D_ENREGISTREMENT),
+    /** La catégorie d'enregistrement du travailleur, que le formulaire encadre ; facultative. */
+    categorieDEnregistrement: z.enum(CATEGORIES_D_ENREGISTREMENT).optional(),
     civilite: z.enum(['madame', 'monsieur']),
     prenom: nomPropre(120),
     nom: nomPropre(80),
@@ -673,9 +674,9 @@ export const ficheDeclarationMouvementSchema = z
     /** L'ouvrage d'un contrat de chantier, tel qu'il suit « chantier de » : « l’autoroute Ila Touba ». */
     chantier: facultatif(120),
     contratLe: z.iso.date().optional(),
-    /** Le visa du contrat d'un travailleur étranger (article 105 du Code du travail). */
+    /** Le visa d'approbation du contrat par l'inspecteur du travail et de la sécurité sociale. */
     visa: numeroEtDate.optional(),
-    /** L'enregistrement du contrat à l'inspection du travail (article 99 du Code du travail). */
+    /** Le visa d'enregistrement du contrat à la section locale du service de la main-d'œuvre. */
     enregistrement: numeroEtDate.optional(),
     /** Le nom et l'adresse du précédent employeur ; sans lui, « Néant ». */
     precedentEmployeur: facultatif(200),
@@ -727,8 +728,6 @@ export const ficheDeclarationMouvementSchema = z
     if (f.nationalite === 'SN' && !/^\d{13}$/.test(f.cni))
       signaler('cni', 'Treize chiffres attendus');
     seulementSi(f.nationalite !== 'SN', ['entreeAuSenegalLe'], 'Date à saisir');
-    // Le contrat d'un travailleur sénégalais ne se vise pas.
-    if (f.nationalite === 'SN' && f.visa !== undefined) signaler('visa', 'Sans objet ici');
 
     const conjoints = f.civilite === 'madame' ? 1 : EPOUSES_MAX;
     if (f.situationDeFamille === 'marie' && f.conjoints.length === 0) {

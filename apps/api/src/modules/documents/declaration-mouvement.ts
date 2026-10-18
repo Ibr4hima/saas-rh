@@ -23,10 +23,11 @@ import { elide, frDate, insecable } from './redaction';
 
 /*
  * La déclaration de mouvement du travailleur (ADR-0106) : le formulaire que
- * l'employeur adresse à l'inspection du travail et de la sécurité sociale du
- * ressort pour une embauche, un départ ou un changement dans la situation du
- * travailleur (article 363 du Code du travail, loi n° 2026-18 du 3 septembre
- * 2026), selon l'arrêté n° 7301 du 17 mai 1963, que l'article 461 maintient.
+ * l'employeur adresse à l'inspection du travail et de la sécurité sociale
+ * pour une embauche, un départ ou un changement dans la situation du
+ * travailleur (article L.222 du Code du travail), selon l'arrêté n° 7301 du
+ * 17 mai 1963. Les références sont celles du modèle, comme sur les autres
+ * documents de la DCH (ADR-0107).
  *
  * Deux pages, les rubriques du formulaire dans son ordre. Les mentions se
  * rayent ou s'encadrent, comme le formulaire le demande ; ce que la DCH n'a
@@ -52,8 +53,8 @@ export interface DeclarationDeMouvement {
   references: readonly string[];
   /** Le numéro au fichier central de la main-d'œuvre ; null : l'immatriculation se demande. */
   immatriculation: string | null;
-  /** La catégorie d'enregistrement, encadrée sous la grille du numéro. */
-  categorieDEnregistrement: (typeof CATEGORIES_D_ENREGISTREMENT)[number];
+  /** La catégorie d'enregistrement, encadrée sous la grille du numéro ; null : aucune encadrée. */
+  categorieDEnregistrement: (typeof CATEGORIES_D_ENREGISTREMENT)[number] | null;
   /** Les mouvements, ligne par ligne comme sur le formulaire, rayés ou encadrés. */
   objet: Passage[][];
   /** Le jour où le mouvement prend effet : l'entrée, le départ ou le changement. */
@@ -137,9 +138,11 @@ const LIGNES_DE_L_OBJET: readonly (readonly MouvementDuTravailleur[])[] = [
 
 /** Les textes du formulaire : la loi en vigueur, et l'arrêté qui en fixe les modalités. */
 export const REFERENCES = [
-  'Article 363 du Code du travail (loi n° 2026-18 du 3 septembre 2026)',
-  'Arrêté ministériel n° 7301 du 17 mai 1963 déterminant les modalités des déclarations ' +
-    'de mouvements de travailleurs (JO n° 3610 du 22 juin 1963, p. 835)',
+  `Article L.222, alinéas 2 à 5, du Code du travail (loi ${insecable('n° 97-17')} du ` +
+    `${insecable('1er décembre 1997')})`,
+  `Arrêté ministériel ${insecable('n° 7301')} du ${insecable('17 mai 1963')} déterminant les ` +
+    'modalités des déclarations de mouvements de travailleurs (JO ' +
+    `${insecable('n° 3610')} du ${insecable('22 juin 1963')}, ${insecable('p. 835')})`,
 ] as const;
 
 /** La situation de famille, sous les codes de l'état civil des dossiers. */
@@ -165,7 +168,7 @@ export function declarationDe(
     date: insecable(frDate(aujourdhui)),
     references: REFERENCES,
     immatriculation: f.immatriculation ?? null,
-    categorieDEnregistrement: f.categorieDEnregistrement,
+    categorieDEnregistrement: f.categorieDEnregistrement ?? null,
     objet: LIGNES_DE_L_OBJET.map((ligne) =>
       mentions(ligne.map((m) => [MOUVEMENTS_DU_TRAVAILLEUR[m], f.mouvements.includes(m)] as const)),
     ),
@@ -232,7 +235,7 @@ export function declarationDe(
           liste(f.enfants),
         ),
       ),
-      // Un départ se déclare avec sa date (article 363 du Code du travail).
+      // Un départ se déclare avec sa date (article L.222 du Code du travail).
       nature === 'depart'
         ? deux(
             champ('Date d’entrée dans l’établissement', date(f.entreeLe)),
@@ -254,13 +257,15 @@ export function declarationDe(
       pleine(champ('Éventuellement, date du contrat', date(f.contratLe))),
       pleine(
         champ(
-          'N° et date du visa du contrat par la Direction générale du Travail et de la Sécurité sociale',
-          senegalaise ? 'Sans objet' : numeroEtDate(f.visa),
+          'N° et date du visa d’approbation par l’inspecteur du travail et de la sécurité sociale',
+          numeroEtDate(f.visa),
         ),
       ),
       pleine(
         champ(
-          'N° et date de l’enregistrement du contrat à l’inspection du travail et de la sécurité sociale',
+          // La section locale se porte à la main, comme sur le modèle.
+          `N° et date du visa d’enregistrement à la section locale de ${SECTION} du service de ` +
+            'la main-d’œuvre',
           numeroEtDate(f.enregistrement),
         ),
       ),
@@ -347,31 +352,41 @@ const CACHET = { largeur: 150, hauteur: 104 };
 /** Où commence le cadre de l'immatriculation, à droite des mouvements. */
 const CADRE_DE_L_OBJET = 0.56;
 
-/** Les notes du bas du formulaire, mises à jour de l'article 363 du Code du travail. */
-const NOTES: readonly Passage[][] = [
-  [
-    libelle(
-      'La déclaration de mouvement du travailleur est à établir en trois exemplaires dûment ' +
-        'signés par l’employeur et le travailleur. Un exemplaire est remis au travailleur. Le ' +
-        'second est conservé par l’employeur. Le troisième est adressé à l’inspection du ' +
-        'travail et de la sécurité sociale du ressort ; pour un travailleur étranger, à la ' +
-        'Direction générale du Travail et de la Sécurité sociale, avec la demande de visa de ' +
-        'son contrat de travail.',
-    ),
-  ],
-  [
-    libelle('L’employeur doit '),
-    { texte: 'OBLIGATOIREMENT', gras: true },
-    libelle(' délivrer une ampliation de la déclaration de mouvement au travailleur.'),
-  ],
-  [libelle('Sont provisoirement exemptés de la déclaration de mouvement :')],
+/** Les notes du bas du formulaire, celles du modèle, chacune avec ses points. */
+const NOTES: readonly { note: Passage[]; points?: readonly string[] }[] = [
+  {
+    note: [
+      libelle(
+        'La déclaration de mouvement du travailleur est à établir en trois exemplaires dûment ' +
+          'signés par l’employeur et le travailleur. Un exemplaire est remis au travailleur. Le ' +
+          'second est conservé par l’employeur. Le troisième est déposé :',
+      ),
+    ],
+    points: [
+      'dans l’intérieur : à la section locale du service de la main-d’œuvre, à l’inspection ' +
+        'régionale du travail et de la sécurité sociale du ressort ;',
+      'à Dakar : au Bureau central du service de la main-d’œuvre.',
+    ],
+  },
+  {
+    note: [
+      libelle('L’employeur doit '),
+      { texte: 'OBLIGATOIREMENT', gras: true },
+      libelle(' délivrer une ampliation de la déclaration de mouvement au travailleur.'),
+    ],
+  },
+  {
+    note: [libelle('Sont provisoirement exemptés de la déclaration de mouvement :')],
+    points: [
+      'les travailleurs journaliers ;',
+      'les manœuvres ordinaires dans toutes les branches d’activité.',
+    ],
+  },
 ];
-const EXEMPTES = [
-  'les travailleurs journaliers ;',
-  'les manœuvres ordinaires dans toutes les branches d’activité.',
-] as const;
 /** La hauteur des notes, leur trait compris. */
-const HAUTEUR_DES_NOTES = 128;
+const HAUTEUR_DES_NOTES = 166;
+/** La section locale du service de la main-d'œuvre, à porter à la main. */
+const SECTION = '…………';
 
 /** La déclaration en PDF, sur deux pages. */
 export function pdfDeLaDeclaration(d: DeclarationDeMouvement): Promise<Buffer> {
@@ -654,7 +669,7 @@ export function pdfDeLaDeclaration(d: DeclarationDeMouvement): Promise<Buffer> {
     taille: 9,
     align: 'left',
   });
-  NOTES.forEach((note, i) =>
+  NOTES.forEach(({ note, points = [] }, i) => {
     feuille.paragraphe(note, {
       avant: 2,
       taille: 9,
@@ -662,18 +677,18 @@ export function pdfDeLaDeclaration(d: DeclarationDeMouvement): Promise<Buffer> {
       retrait: 16,
       puce: `${i + 1})`,
       puceA: 0,
-    }),
-  );
-  EXEMPTES.forEach((e) =>
-    feuille.paragraphe([libelle(e)], {
-      taille: 9,
-      interligne: 1.5,
-      retrait: 30,
-      puce: '-',
-      puceA: 19,
-      align: 'left',
-    }),
-  );
+    });
+    for (const point of points) {
+      feuille.paragraphe([libelle(point)], {
+        taille: 9,
+        interligne: 1.5,
+        retrait: 30,
+        puce: '-',
+        puceA: 19,
+        align: 'left',
+      });
+    }
+  });
   return feuille.terminer();
 }
 

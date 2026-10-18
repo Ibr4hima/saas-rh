@@ -36,10 +36,11 @@ import {
    Ce qui ne vaut que pour un mouvement ou une personne ne s'ouvre que pour
    eux : la date d'un départ ou d'un changement, les épouses d'un homme marié
    ou l'époux d'une femme mariée, les dates d'un contrat à durée déterminée,
-   l'entrée au Sénégal et le visa d'une personne étrangère, la classe, l'armée
-   et le grade de qui a fait son service. Les numéros que la DCH peut ne pas
-   connaître encore sont facultatifs : laissés vides, le formulaire garde des
-   pointillés pour les écrire à la main.
+   l'entrée au Sénégal d'une personne étrangère, la classe, l'armée et le
+   grade de qui a fait son service. Ce que la DCH peut ne pas connaître
+   encore est facultatif : laissé vide, le formulaire garde des pointillés
+   pour l'écrire à la main ; la catégorie d'enregistrement n'est alors pas
+   encadrée.
 */
 
 type Depart = (typeof DEPARTS_DU_TRAVAILLEUR)[number];
@@ -126,8 +127,7 @@ export const DECLARATION_VIDE: SaisieDeLaDeclaration = {
   adresse: '',
   cni: '',
   cniDelivreeA: '',
-  // L'autorité qu'écrit le modèle de l'APIX.
-  cniDelivreePar: 'Directeur Général de la Sûreté Nationale',
+  cniDelivreePar: '',
   css: '',
   ipres: '',
   situationDeFamille: '',
@@ -228,7 +228,7 @@ export function versLaFicheDeLaDeclaration(s: SaisieDeLaDeclaration) {
     cddAu: s.contrat === 'cdd' ? s.cddAu : undefined,
     chantier: s.contrat === 'chantier' ? s.chantier.trim() : undefined,
     contratLe: s.contratLe || undefined,
-    visa: etrangere(s) ? numeroEtDate(s.visaNumero, s.visaLe) : undefined,
+    visa: numeroEtDate(s.visaNumero, s.visaLe),
     enregistrement: numeroEtDate(s.enregistrementNumero, s.enregistrementLe),
     precedentEmployeur: s.precedentEmployeur.trim() || undefined,
     residence: s.residence.trim(),
@@ -384,11 +384,27 @@ export function FicheDeLaDeclaration({
           chiffres={valeur.immatriculation}
           onSaisir={(immatriculation) => poser({ immatriculation })}
         />
-        {liste(
-          'categorieDEnregistrement',
-          'Catégorie d’enregistrement',
-          CATEGORIES_D_ENREGISTREMENT.map((c) => [c, c] as const),
-        )}
+        <Field label="Catégorie d’enregistrement" htmlFor={`${id}-categorieDEnregistrement`}>
+          <Select
+            id={`${id}-categorieDEnregistrement`}
+            aria-label="Catégorie d’enregistrement"
+            value={valeur.categorieDEnregistrement}
+            onChange={(e) =>
+              poser({
+                categorieDEnregistrement: e.target
+                  .value as SaisieDeLaDeclaration['categorieDEnregistrement'],
+              })
+            }
+            className={CADRE}
+          >
+            <option value="">Aucune</option>
+            {CATEGORIES_D_ENREGISTREMENT.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </Select>
+        </Field>
       </Groupe>
 
       <Groupe titre="Renseigner l’état civil">
@@ -540,22 +556,18 @@ export function FicheDeLaDeclaration({
             <Input {...texte('chantier', 120)} />
           </Field>
         ) : null}
-        <Field label="N° d’enregistrement du contrat" htmlFor={`${id}-enregistrementNumero`}>
+        <Field label="N° du visa d’approbation" htmlFor={`${id}-visaNumero`}>
+          <Input {...texte('visaNumero', 30)} />
+        </Field>
+        <Field label="Date du visa d’approbation" htmlFor={`${id}-visaLe`}>
+          <Input {...date('visaLe')} />
+        </Field>
+        <Field label="N° du visa d’enregistrement" htmlFor={`${id}-enregistrementNumero`}>
           <Input {...texte('enregistrementNumero', 30)} />
         </Field>
-        <Field label="Date d’enregistrement du contrat" htmlFor={`${id}-enregistrementLe`}>
+        <Field label="Date du visa d’enregistrement" htmlFor={`${id}-enregistrementLe`}>
           <Input {...date('enregistrementLe')} />
         </Field>
-        {etrangere(valeur) ? (
-          <>
-            <Field label="N° du visa du contrat" htmlFor={`${id}-visaNumero`}>
-              <Input {...texte('visaNumero', 30)} />
-            </Field>
-            <Field label="Date du visa du contrat" htmlFor={`${id}-visaLe`}>
-              <Input {...date('visaLe')} />
-            </Field>
-          </>
-        ) : null}
         <div className="sm:col-span-2">
           <Field label="Nom et adresse du précédent employeur" htmlFor={`${id}-precedentEmployeur`}>
             <Input {...texte('precedentEmployeur', 200)} />
@@ -660,7 +672,7 @@ function ChampDeLImmatriculation({
     quitte && chiffres.length > 0 && chiffres.length < CHIFFRES_DE_L_IMMATRICULATION;
   return (
     <Field
-      label="N° d’immatriculation au fichier central de la main-d’œuvre"
+      label="N° d’immatriculation au FCMO"
       htmlFor={id}
       error={incomplet ? 'Dix chiffres attendus' : undefined}
     >
