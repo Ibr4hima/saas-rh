@@ -30,10 +30,11 @@ import {
  * renouvellement. Une page, l'en-tête et son numéro, l'analyse, les visas,
  * quatre articles, les ampliations. Les deux modèles portent le même texte, à
  * l'article 1er près : l'une met en disponibilité à compter d'un jour, l'autre
- * proroge la période fixée d'abord. La DCH renseigne qui la demande, les dates
- * de la disponibilité et celles des sessions du conseil d'administration qui
- * ont nommé la direction générale. Qui décide dirige la direction générale ;
- * qui l'exécute, la DCH. Les coquilles des modèles sont corrigées (ADR-0095).
+ * proroge la période fixée d'abord ; son analyse le dit (ADR-0101). La DCH
+ * renseigne qui la demande, les dates de la disponibilité et celles des
+ * sessions du conseil d'administration qui ont nommé la direction générale.
+ * Qui décide dirige la direction générale ; qui l'exécute, la DCH. Les
+ * coquilles des modèles sont corrigées (ADR-0095).
  */
 
 /** Ce que la décision imprime, bloc par bloc. */
@@ -120,7 +121,11 @@ export function textesDeLaDecision(d: DisponibiliteData, aujourdhui: Date): Text
     titre: REQUESTABLE_DOC_LABELS[d.doc],
     reference: ENTETE.referenceDecision,
     lieuEtDate: `${ENTETE.ville}, le ${frDate(aujourdhui)}`,
-    analyse: 'Décision accordant une mise en disponibilité pour convenances personnelles',
+    analyse:
+      d.doc === 'decision_disponibilite'
+        ? 'Décision accordant une mise en disponibilité pour convenances personnelles'
+        : 'Décision accordant le renouvellement d’une mise en disponibilité pour convenances ' +
+          'personnelles',
     timbre: `${dg.le} ${qualiteDG}`,
     visas: [
       [{ texte: `Vu la Constitution${PV}` }],

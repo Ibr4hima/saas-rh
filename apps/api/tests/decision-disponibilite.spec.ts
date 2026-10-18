@@ -274,8 +274,10 @@ describe('l’en-tête et les visas', () => {
       decision({}, { directionGenerale: { nom: 'Aminata DIOP', genre: 'female' } }).timbre,
     ).toBe('La Directrice Générale');
     expect(decision({}, { directionGenerale: null }).timbre).toBe('Le Directeur Général');
-    // Le renouvellement garde l'analyse de son modèle.
-    expect(renouvellement().analyse).toBe(t.analyse);
+    expect(renouvellement().analyse).toBe(
+      'Décision accordant le renouvellement d’une mise en disponibilité pour convenances ' +
+        'personnelles',
+    );
   });
 
   it('les neuf visas, coquilles corrigées', () => {
