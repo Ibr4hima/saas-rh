@@ -358,6 +358,13 @@ function UnitPanel({
 
   const direction = unit.unitType === 'direction';
   const parents = parentOptions(units, unitType, unit.id);
+  // Où l'unité se range ; le sommet ne le dit pas, il ne se range sous rien.
+  const parent = units.find((u) => u.id === unit.parentId);
+  const rattachement = parent
+    ? `Rattachée à ${orgUnitLabel(parent)}`
+    : unit.sommet
+      ? null
+      : 'Sans rattachement, à ranger sous la Direction Générale';
 
   return (
     <Modal
@@ -382,14 +389,12 @@ function UnitPanel({
           {unit.shortName ? (
             <span className="font-mono font-semibold">{unit.shortName}</span>
           ) : null}
-          <span>·</span>
-          <span>
-            {units.find((u) => u.id === unit.parentId)
-              ? `Rattachée à ${orgUnitLabel(units.find((u) => u.id === unit.parentId)!)}`
-              : unit.sommet
-                ? 'Au sommet de l’organigramme'
-                : 'Sans rattachement, à ranger sous la Direction Générale'}
-          </span>
+          {rattachement ? (
+            <>
+              <span>·</span>
+              <span>{rattachement}</span>
+            </>
+          ) : null}
         </span>
       }
       maxWidth="max-w-2xl"
