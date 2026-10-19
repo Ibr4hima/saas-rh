@@ -1036,7 +1036,18 @@ describe('un départ et ses congés', () => {
   });
 });
 
-describe('couper un accès', () => {
+/**
+ * Un accès coupé à la main, comme on le pouvait avant l'ADR-0125 : la
+ * connexion reste refusée tant qu'on ne le rétablit pas.
+ */
+const coupeALaMain = (a: Agent, parUserId: string) =>
+  raw(
+    `UPDATE user_tenant_memberships SET acces_coupe_le = now(), acces_coupe_par_user_id = $3
+      WHERE user_id = $1 AND tenant_id = $2`,
+    [a.userId, tenantId, parUserId],
+  );
+
+describe('l’accès au portail se ferme selon les règles', () => {
   const entrer = (a: Agent) => auth.login({ email: a.email, password: MOT_DE_PASSE }, {});
 
   it('un licenciement ou un décès ferme le portail le jour même, sans les trente jours', async () => {
@@ -1050,41 +1061,39 @@ describe('couper un accès', () => {
     expect(await codeOf(() => entrer(moussa))).toBe('auth.employee_archived');
   });
 
-  it('couper : déconnecté de partout, il ne revient pas ; rétabli, il revient', async () => {
-    const { token } = await entrer(moussa);
-    const { token: autreAppareil } = await entrer(moussa);
-    await invitations.couperLAcces(admin, moussa.employeeId, true);
-    expect(await auth.resolveSession(token)).toBeNull();
-    expect(await auth.resolveSession(autreAppareil)).toBeNull();
+  it('l’accès ne se coupe plus à la main : aucune route ne le permet (ADR-0125)', () => {
+    expect(Object.getOwnPropertyNames(PortalController.prototype)).not.toContain('couper');
+    expect(Object.getOwnPropertyNames(InvitationsService.prototype)).not.toContain('couperLAcces');
+  });
+
+  it('un accès coupé avant refuse la connexion ; rétabli, la connexion revient', async () => {
+    await coupeALaMain(moussa, adminUserId);
     expect(await codeOf(() => entrer(moussa))).toBe('auth.acces_coupe');
     expect((await people.detail(admin, moussa.employeeId)).portal.status).toBe('coupe');
 
-    await invitations.couperLAcces(admin, moussa.employeeId, false);
+    await invitations.retablirLAcces(admin, moussa.employeeId);
     expect(await codeOf(() => entrer(moussa))).toBe('AUCUNE ERREUR');
     expect((await people.detail(admin, moussa.employeeId)).portal.status).toBe('active');
   });
 
-  it('personne ne coupe le sien ; l’accès du directeur du Capital Humain, seul l’administrateur le coupe', async () => {
+  it('personne ne rétablit le sien ; l’accès de qui dirige la DCH, seule l’administration le rétablit', async () => {
     const gestionnaire = {
       userId: omar.userId,
       tenantId,
       role: 'employee',
       capacites: ['personnel.gerer'],
     } as unknown as SessionUser;
-    expect(await codeOf(() => invitations.couperLAcces(gestionnaire, omar.employeeId, true))).toBe(
+    await coupeALaMain(omar, omar.userId);
+    expect(await codeOf(() => invitations.retablirLAcces(gestionnaire, omar.employeeId))).toBe(
       'acces.son_propre_dossier',
     );
-    expect(
-      await codeOf(() => invitations.couperLAcces(gestionnaire, mariama.employeeId, true)),
-    ).toBe('portal.acces_reserve_admin');
-    expect(
-      await codeOf(() => invitations.couperLAcces(gestionnaire, moussa.employeeId, true)),
-    ).toBe('AUCUNE ERREUR');
-    expect(await codeOf(() => invitations.couperLAcces(admin, mariama.employeeId, true))).toBe(
+    await coupeALaMain(mariama, omar.userId);
+    expect(await codeOf(() => invitations.retablirLAcces(gestionnaire, mariama.employeeId))).toBe(
+      'portal.acces_reserve_admin',
+    );
+    expect(await codeOf(() => invitations.retablirLAcces(admin, mariama.employeeId))).toBe(
       'AUCUNE ERREUR',
     );
-    await invitations.couperLAcces(admin, mariama.employeeId, false);
-    await invitations.couperLAcces(admin, moussa.employeeId, false);
   });
 
   it('se déconnecter partout ferme toutes ses sessions', async () => {
@@ -1110,16 +1119,16 @@ describe('les droits du portail (audit)', () => {
     }) as unknown as SessionUser;
 
   it('un délégué ne rouvre pas l’accès qu’un autre a coupé ; le sien, oui', async () => {
-    await invitations.couperLAcces(admin, moussa.employeeId, true);
-    expect(
-      await codeOf(() => invitations.couperLAcces(gestionnaire(), moussa.employeeId, false)),
-    ).toBe('portal.retablir_reserve');
-    await invitations.couperLAcces(admin, moussa.employeeId, false);
+    await coupeALaMain(moussa, adminUserId);
+    expect(await codeOf(() => invitations.retablirLAcces(gestionnaire(), moussa.employeeId))).toBe(
+      'portal.retablir_reserve',
+    );
+    await invitations.retablirLAcces(admin, moussa.employeeId);
 
-    await invitations.couperLAcces(gestionnaire(), moussa.employeeId, true);
-    expect(
-      await codeOf(() => invitations.couperLAcces(gestionnaire(), moussa.employeeId, false)),
-    ).toBe('AUCUNE ERREUR');
+    await coupeALaMain(moussa, omar.userId);
+    expect(await codeOf(() => invitations.retablirLAcces(gestionnaire(), moussa.employeeId))).toBe(
+      'AUCUNE ERREUR',
+    );
   });
 
   it('un délégué n’invite ni le DG, ni le directeur du Capital Humain, ni un administrateur', async () => {
@@ -1826,12 +1835,12 @@ describe('qui revient', () => {
     ]);
     await inactiver();
     await revient(fatou);
-    await invitations.couperLAcces(admin, fatou.employeeId, true);
+    await coupeALaMain(fatou, adminUserId);
     expect(await portail(fatou)).toBe('coupe');
     expect(
       await codeOf(() => invitations.invite(admin, fatou.employeeId, 'employee', fatou.email)),
     ).toBe('portal.acces_coupe');
-    await invitations.couperLAcces(admin, fatou.employeeId, false);
+    await invitations.retablirLAcces(admin, fatou.employeeId);
     expect(await portail(fatou)).toBe('ferme');
   });
 
@@ -2121,8 +2130,8 @@ describe('les invitations partent d’elles-mêmes', () => {
     expect(droits.capacites).toEqual(['acces']);
     const delegue = { userId: awa.userId, tenantId, role: 'employee', ...droits } as SessionUser;
 
-    // Les portes : la page et les invitations. Couper un accès reste à la
-    // gestion du personnel ; l'administrateur n'a pas la page.
+    // Les portes : la page et les invitations. Rétablir un accès coupé reste
+    // à la gestion du personnel ; un compte d'administration n'a pas la page.
     const garde = new AccesGuard(new Reflector());
     const passe = (handler: object, sessionUser: object) => {
       try {
@@ -2135,10 +2144,12 @@ describe('les invitations partent d’elles-mêmes', () => {
         return false;
       }
     };
-    const { etatDesAcces, inviterPlusieurs, couper, retablir } = PortalController.prototype;
-    expect(
-      [etatDesAcces, inviterPlusieurs, couper, retablir].map((h) => passe(h, delegue)),
-    ).toEqual([true, true, false, false]);
+    const { etatDesAcces, inviterPlusieurs, retablir } = PortalController.prototype;
+    expect([etatDesAcces, inviterPlusieurs, retablir].map((h) => passe(h, delegue))).toEqual([
+      true,
+      true,
+      false,
+    ]);
     expect(passe(etatDesAcces, { role: 'admin', capacites: [] })).toBe(false);
     expect(passe(etatDesAcces, { role: 'employee', capacites: ['personnel.gerer'] })).toBe(false);
     expect(passe(etatDesAcces, { role: 'employee', capacites: [] })).toBe(false);

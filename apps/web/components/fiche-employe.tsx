@@ -1558,14 +1558,12 @@ function PortalCard({
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Génération impossible.'),
   });
 
-  // Couper l'accès : déconnecté de partout, il ne se reconnecte plus ;
-  // le rétablir lui rend la connexion, avec son mot de passe.
-  const [aCouper, setACouper] = useState(false);
-  const acces = useMutation({
-    mutationFn: (geste: 'couper' | 'retablir') =>
-      api(`/employees/${employeeId}/acces/${geste}`, { method: 'POST' }),
+  // L'accès ne se coupe plus à la main : il se ferme selon les règles
+  // (ADR-0125). Un accès coupé avant se rétablit d'ici ; la connexion
+  // revient, avec son mot de passe.
+  const retablir = useMutation({
+    mutationFn: () => api(`/employees/${employeeId}/acces/retablir`, { method: 'POST' }),
     onSuccess: () => {
-      setACouper(false);
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
     },
@@ -1593,148 +1591,108 @@ function PortalCard({
     return () => clearInterval(id);
   }, [envoi, employeeId, queryClient]);
 
+  const entete = (
+    <CardHeader className={cn('flex items-center justify-between gap-3', actif && 'pb-[17px]')}>
+      <CardTitle>Accès au portail</CardTitle>
+      {actif ? (
+        <Badge tone="teal">Compte actif</Badge>
+      ) : coupe ? (
+        <Badge tone="rouge">Accès coupé</Badge>
+      ) : portal.status === 'invited' ? (
+        <Badge tone="orange">Invitation en cours</Badge>
+      ) : ferme ? (
+        <Badge tone="gris">Compte fermé</Badge>
+      ) : (
+        <Badge tone="gris">Aucun accès</Badge>
+      )}
+    </CardHeader>
+  );
+  // Un compte actif n'a que son badge : rien à expliquer, rien à faire.
+  if (actif) return <Card>{entete}</Card>;
+
   return (
     <Card>
-      <CardHeader className="flex items-center justify-between gap-3">
-        <CardTitle>Accès au portail</CardTitle>
-        {actif ? (
-          <Badge tone="teal">Compte actif</Badge>
-        ) : coupe ? (
-          <Badge tone="rouge">Accès coupé</Badge>
-        ) : portal.status === 'invited' ? (
-          <Badge tone="orange">Invitation en cours</Badge>
-        ) : ferme ? (
-          <Badge tone="gris">Compte fermé</Badge>
-        ) : (
-          <Badge tone="gris">Aucun accès</Badge>
-        )}
-      </CardHeader>
+      {entete}
 
       <CardContent className="@container flex flex-col gap-4">
         {/* L'état, dit une fois, en entier : une pastille d'icône, une ligne
             qui NOMME la situation, une ligne qui l'explique. La pastille de
             l'en-tête classe la carte quand on balaie la colonne ; ce bloc-ci
             répond à « et concrètement ? ». */}
-        {/* Un compte actif n'a que son titre : il se centre sur l'icône. */}
-        <div className={cn('flex gap-3', actif ? 'items-center' : 'items-start')}>
+        <div className="flex items-start gap-3">
           <span
             className={cn(
               'flex size-9 shrink-0 items-center justify-center rounded-bloc',
-              actif
-                ? 'bg-success-soft text-success'
-                : coupe
-                  ? 'bg-danger-soft text-danger'
-                  : echec
-                    ? 'bg-warning-soft text-warning'
-                    : 'bg-primary/[0.07] text-primary',
+              coupe
+                ? 'bg-danger-soft text-danger'
+                : echec
+                  ? 'bg-warning-soft text-warning'
+                  : 'bg-primary/[0.07] text-primary',
             )}
           >
-            <Icon
-              name={actif ? 'how_to_reg' : echec ? 'warning' : invitation ? 'mail' : 'lock'}
-              size={19}
-            />
+            <Icon name={echec ? 'warning' : invitation ? 'mail' : 'lock'} size={19} />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[13px] leading-tight font-semibold text-ink-strong">
-              {actif
-                ? portal.role === 'admin'
-                  ? 'Compte actif · administration'
-                  : 'Compte actif'
-                : coupe
-                  ? 'Accès coupé'
-                  : envoi === 'en_attente'
-                    ? 'Invitation en cours d’envoi'
-                    : echec
-                      ? 'Le courriel d’invitation n’est pas parti'
-                      : portal.status === 'invited'
-                        ? 'Invitation envoyée, pas encore acceptée'
-                        : ferme
-                          ? 'Compte fermé depuis son départ'
-                          : 'Pas encore de compte'}
+              {coupe
+                ? 'Accès coupé'
+                : envoi === 'en_attente'
+                  ? 'Invitation en cours d’envoi'
+                  : echec
+                    ? 'Le courriel d’invitation n’est pas parti'
+                    : portal.status === 'invited'
+                      ? 'Invitation envoyée, pas encore acceptée'
+                      : ferme
+                        ? 'Compte fermé depuis son départ'
+                        : 'Pas encore de compte'}
             </p>
-            {actif ? null : (
-              <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-                {coupe ? (
-                  <>La connexion au portail est refusée à {prenom} jusqu&apos;au rétablissement.</>
-                ) : invitation && envoi ? (
-                  <>
-                    {echec ? 'Adressé à ' : envoi === 'envoye' ? 'Envoyée à ' : 'À '}
-                    <span className="font-semibold text-ink">{invitation.email}</span>
-                    {envoi === 'envoye' && invitation.envoyeLe
-                      ? ` le ${formatDate(invitation.envoyeLe)}`
-                      : null}
-                    {echec ? (
-                      <>. Vérifiez l’adresse, puis renvoyez l’invitation ou transmettez le lien.</>
-                    ) : (
-                      <> · valable jusqu’au {formatDate(invitation.expiresAt)}.</>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {/* Le pronom suit le sexe au dossier quand il y est. « Il ou
-                      elle » n'est pas une faute, mais quand on connaît la
-                      personne à qui l'on écrit, la phrase n'a pas à hésiter. */}
-                    {portal.parCourriel
-                      ? 'Envoyez l’invitation à'
-                      : 'Transmettez le lien d’invitation à'}{' '}
-                    <span className="font-semibold text-ink">{prenom}</span>.{' '}
-                    {gender === 'female' ? 'Elle' : gender === 'male' ? 'Il' : 'Il ou elle'}{' '}
-                    {ferme
-                      ? 'choisira un nouveau mot de passe et retrouvera son compte.'
-                      : 'choisira son mot de passe et son compte sera relié à ce dossier.'}
-                  </>
-                )}
-              </p>
-            )}
+            <p className="mt-1 text-[12px] leading-snug text-ink-muted">
+              {coupe ? (
+                <>La connexion au portail est refusée à {prenom} jusqu&apos;au rétablissement.</>
+              ) : invitation && envoi ? (
+                <>
+                  {echec ? 'Adressé à ' : envoi === 'envoye' ? 'Envoyée à ' : 'À '}
+                  <span className="font-semibold text-ink">{invitation.email}</span>
+                  {envoi === 'envoye' && invitation.envoyeLe
+                    ? ` le ${formatDate(invitation.envoyeLe)}`
+                    : null}
+                  {echec ? (
+                    <>. Vérifiez l’adresse, puis renvoyez l’invitation ou transmettez le lien.</>
+                  ) : (
+                    <> · valable jusqu’au {formatDate(invitation.expiresAt)}.</>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* Le pronom suit le sexe au dossier quand il y est. « Il ou
+                    elle » n'est pas une faute, mais quand on connaît la
+                    personne à qui l'on écrit, la phrase n'a pas à hésiter. */}
+                  {portal.parCourriel
+                    ? 'Envoyez l’invitation à'
+                    : 'Transmettez le lien d’invitation à'}{' '}
+                  <span className="font-semibold text-ink">{prenom}</span>.{' '}
+                  {gender === 'female' ? 'Elle' : gender === 'male' ? 'Il' : 'Il ou elle'}{' '}
+                  {ferme
+                    ? 'choisira un nouveau mot de passe et retrouvera son compte.'
+                    : 'choisira son mot de passe et son compte sera relié à ce dossier.'}
+                </>
+              )}
+            </p>
           </div>
         </div>
 
-        {actif || coupe ? (
+        {coupe ? (
           <>
             <div>
-              <Button
-                variant={coupe ? 'primary' : 'secondary'}
-                loading={coupe && acces.isPending}
-                onClick={() => (coupe ? acces.mutate('retablir') : setACouper(true))}
-              >
-                {coupe ? 'Rétablir l’accès' : 'Couper l’accès'}
+              <Button loading={retablir.isPending} onClick={() => retablir.mutate()}>
+                Rétablir l’accès
               </Button>
             </div>
-            {error && !aCouper ? (
+            {error ? (
               <p className="rounded-bloc bg-danger-soft/55 px-3 py-2 text-[12.5px] text-danger ring-1 ring-danger/25 ring-inset">
                 {error}
               </p>
             ) : null}
-            <Modal
-              open={aCouper}
-              onClose={() => setACouper(false)}
-              title={`Couper l’accès de ${prenom}`}
-              maxWidth="max-w-md"
-              footer={
-                <div className="flex w-full justify-end gap-2">
-                  <Button variant="secondary" onClick={() => setACouper(false)}>
-                    Annuler
-                  </Button>
-                  <Button
-                    variant="danger"
-                    loading={acces.isPending}
-                    onClick={() => acces.mutate('couper')}
-                  >
-                    Couper l’accès
-                  </Button>
-                </div>
-              }
-            >
-              <p className="text-[13px] text-ink">
-                Ses sessions se ferment sur tous ses appareils, et la connexion lui est refusée
-                jusqu&apos;au rétablissement.
-              </p>
-              {error ? (
-                <p role="alert" className="mt-2 text-[12.5px] text-danger">
-                  {error}
-                </p>
-              ) : null}
-            </Modal>
           </>
         ) : (
           <>

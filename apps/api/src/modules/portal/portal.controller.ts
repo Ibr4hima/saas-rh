@@ -72,7 +72,8 @@ export class PortalController {
    * La gestion des accès : le directeur du Capital Humain, et qui il la
    * confie. Le délégué voit où en est chacun et invite ; les comptes de la
    * direction et de l'administration restent hors de sa main
-   * (invitations.service.ts). Couper un accès se fait depuis la fiche.
+   * (invitations.service.ts). L'accès ne se coupe pas à la main : il se
+   * ferme selon les règles (ADR-0125).
    */
   @Get('portail/acces')
   @UseGuards(SessionGuard, AccesGuard)
@@ -81,22 +82,13 @@ export class PortalController {
     return this.invitations.etatDesAcces(req.sessionUser);
   }
 
-  /** Couper l'accès d'un agent : déconnecté partout, il ne se reconnecte plus. */
-  @Post('employees/:id/acces/couper')
-  @HttpCode(204)
-  @UseGuards(SessionGuard, AccesGuard)
-  @Peut('personnel.gerer')
-  async couper(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
-    await this.invitations.couperLAcces(req.sessionUser, id, true);
-  }
-
-  /** Rétablir l'accès coupé : il se reconnecte avec son mot de passe. */
+  /** Rétablir un accès coupé à la main avant l'ADR-0125 : la connexion revient, même mot de passe. */
   @Post('employees/:id/acces/retablir')
   @HttpCode(204)
   @UseGuards(SessionGuard, AccesGuard)
   @Peut('personnel.gerer')
   async retablir(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
-    await this.invitations.couperLAcces(req.sessionUser, id, false);
+    await this.invitations.retablirLAcces(req.sessionUser, id);
   }
 
   /** Mon dossier : l'employé relié au compte connecté. */

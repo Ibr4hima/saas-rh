@@ -50,14 +50,15 @@ import { compte } from '../../../lib/mots';
    la délègue.
 */
 
-type Filtre = 'tous' | 'actif' | 'invite' | 'sans' | 'coupe';
+type Filtre = 'tous' | 'actif' | 'invite' | 'sans';
 
+// L'accès ne se coupe plus à la main (ADR-0125) : un accès coupé avant reste
+// sous « Tous », avec son badge, le temps qu'on le rétablisse.
 const FILTRES: { cle: Filtre; label: string; etats: AccesAgent['etat'][] }[] = [
   { cle: 'tous', label: 'Tous', etats: ['actif', 'invite', 'expire', 'jamais', 'ferme', 'coupe'] },
   { cle: 'actif', label: 'Comptes actifs', etats: ['actif'] },
   { cle: 'invite', label: 'Invitations en attente', etats: ['invite'] },
   { cle: 'sans', label: 'Sans accès', etats: ['jamais', 'expire', 'ferme'] },
-  { cle: 'coupe', label: 'Accès coupés', etats: ['coupe'] },
 ];
 
 /** Le mot et le ton de chaque état ; l'orange pour ce qui attend. */

@@ -270,82 +270,72 @@ export class InvitationsService {
   }
 
   /**
-   * Couper l'accès d'un agent à l'organisation : ses sessions se ferment sur
-   * tous ses appareils, et il ne se reconnecte plus jusqu'à ce qu'on le
-   * rétablisse. Son dossier n'en est pas touché. Personne ne coupe le sien ;
-   * le compte d'un administrateur, ou du directeur du Capital Humain, seul
-   * un administrateur le coupe.
+   * Rétablir l'accès d'un agent coupé à la main. L'accès ne se coupe plus
+   * ainsi : il se ferme selon les règles, au départ (ADR-0125). Un accès
+   * coupé avant se rétablit encore, et la connexion revient, avec le même
+   * mot de passe. Personne ne rétablit son propre accès ; celui d'un compte
+   * d'administration, ou de qui dirige la DCH, seule l'administration le
+   * rétablit.
    */
-  async couperLAcces(user: SessionUser, employeeId: string, coupe: boolean): Promise<void> {
-    const compte = await this.db.withTenant(
-      { tenantId: user.tenantId, userId: user.userId },
-      async (tx) => {
-        const [row] = await tx
-          .select({ userId: t.persons.userId })
-          .from(t.employees)
-          .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
-          .where(eq(t.employees.id, employeeId))
-          .limit(1);
-        if (!row) problem(404, 'people.employee_not_found', 'Employé introuvable');
-        if (!row.userId) {
-          problem(422, 'portal.sans_compte', 'Cet agent n’a pas de compte sur le portail');
+  async retablirLAcces(user: SessionUser, employeeId: string): Promise<void> {
+    await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      const [row] = await tx
+        .select({ userId: t.persons.userId })
+        .from(t.employees)
+        .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+        .where(eq(t.employees.id, employeeId))
+        .limit(1);
+      if (!row) problem(404, 'people.employee_not_found', 'Employé introuvable');
+      if (!row.userId) {
+        problem(422, 'portal.sans_compte', 'Cet agent n’a pas de compte sur le portail');
+      }
+      if (row.userId === user.userId) {
+        problem(403, 'acces.son_propre_dossier', 'Vous ne pouvez pas rétablir votre propre accès');
+      }
+      const [membre] = await tx
+        .select({
+          id: t.userTenantMemberships.id,
+          role: t.userTenantMemberships.role,
+          par: t.userTenantMemberships.accesCoupeParUserId,
+        })
+        .from(t.userTenantMemberships)
+        .where(
+          and(
+            eq(t.userTenantMemberships.userId, row.userId),
+            eq(t.userTenantMemberships.tenantId, user.tenantId),
+          ),
+        )
+        .limit(1);
+      if (!membre) {
+        problem(422, 'portal.sans_compte', 'Cet agent n’a pas de compte sur le portail');
+      }
+      // L'administration, qui dirige la DCH, ou qui l'a coupé : une personne
+      // déléguée ne rouvre pas la porte qu'une autre a fermée (un
+      // licenciement, une fraude).
+      if (user.role !== 'admin' && !user.dirigeLaDCH && membre.par && membre.par !== user.userId) {
+        problem(
+          403,
+          'portal.retablir_reserve',
+          'Seul qui a coupé cet accès le rétablit',
+          'Ou l’administration, ou la direction du Capital Humain.',
+        );
+      }
+      if (user.role !== 'admin') {
+        const dch = await directionDuPersonnel(tx);
+        if (membre.role === 'admin' || dch?.directeurEmployeeId === employeeId) {
+          problem(
+            403,
+            'portal.acces_reserve_admin',
+            'Seule l’administration rétablit cet accès',
+            'Ce compte administre l’organisation ou dirige la Direction du Capital Humain : seul un compte d’administration peut rétablir son accès.',
+          );
         }
-        if (row.userId === user.userId) {
-          problem(403, 'acces.son_propre_dossier', 'Vous ne pouvez pas couper votre propre accès');
-        }
-        const [membre] = await tx
-          .select({ id: t.userTenantMemberships.id, role: t.userTenantMemberships.role })
-          .from(t.userTenantMemberships)
-          .where(
-            and(
-              eq(t.userTenantMemberships.userId, row.userId),
-              eq(t.userTenantMemberships.tenantId, user.tenantId),
-            ),
-          )
-          .limit(1);
-        if (!membre) {
-          problem(422, 'portal.sans_compte', 'Cet agent n’a pas de compte sur le portail');
-        }
-        // Rétablir un accès coupé : l'administrateur, le directeur du
-        // Capital Humain, ou qui l'a coupé. Un délégué ne rouvre pas la
-        // porte qu'un autre a fermée (un licenciement, une fraude).
-        if (!coupe && user.role !== 'admin' && !user.dirigeLaDCH) {
-          const [etat] = await tx
-            .select({ par: t.userTenantMemberships.accesCoupeParUserId })
-            .from(t.userTenantMemberships)
-            .where(eq(t.userTenantMemberships.id, membre.id));
-          if (etat?.par && etat.par !== user.userId) {
-            problem(
-              403,
-              'portal.retablir_reserve',
-              'Seul qui a coupé cet accès le rétablit',
-              'Ou l’administrateur, ou le directeur du Capital Humain.',
-            );
-          }
-        }
-        if (user.role !== 'admin') {
-          const dch = await directionDuPersonnel(tx);
-          if (membre.role === 'admin' || dch?.directeurEmployeeId === employeeId) {
-            problem(
-              403,
-              'portal.acces_reserve_admin',
-              'Seul un administrateur coupe cet accès',
-              'Ce compte administre l’organisation ou dirige la Direction du Capital Humain : seul un administrateur peut couper ou rétablir son accès.',
-            );
-          }
-        }
-        await tx
-          .update(t.userTenantMemberships)
-          .set(
-            coupe
-              ? { accesCoupeLe: new Date(), accesCoupeParUserId: user.userId }
-              : { accesCoupeLe: null, accesCoupeParUserId: null },
-          )
-          .where(eq(t.userTenantMemberships.id, membre.id));
-        return row.userId;
-      },
-    );
-    if (coupe) await this.auth.deconnecterPartout(compte, user.tenantId);
+      }
+      await tx
+        .update(t.userTenantMemberships)
+        .set({ accesCoupeLe: null, accesCoupeParUserId: null })
+        .where(eq(t.userTenantMemberships.id, membre.id));
+    });
   }
 
   /** Page publique : renseigne l'écran d'acceptation sans révéler autre chose. */
