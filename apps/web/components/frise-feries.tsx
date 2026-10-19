@@ -283,8 +283,7 @@ function Entree({
           )}
         >
           {prochain ? (
-            <p className="flex items-center gap-1.5 bg-primary px-4 py-[6px] text-[9.5px] font-extrabold tracking-[0.12em] text-primary-ink uppercase">
-              <span aria-hidden className="size-[5px] rounded-full bg-primary-ink/80" />
+            <p className="bg-primary px-4 py-[6px] text-[9.5px] font-extrabold tracking-[0.12em] text-primary-ink uppercase">
               Prochain jour férié
             </p>
           ) : null}
