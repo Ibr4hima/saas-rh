@@ -9,7 +9,13 @@ import type {
   PeriodeDuBulletin,
   RequestableDoc,
 } from '@teranga/contracts';
-import { capaciteDuDocument, documentDemande, peut } from '@teranga/contracts';
+import {
+  capaciteDuDocument,
+  DELAI_DE_TRAITEMENT_HEURES,
+  documentDemande,
+  FENETRE_DU_PRINCIPAL_HEURES,
+  peut,
+} from '@teranga/contracts';
 import {
   Button,
   CardHeader,
@@ -39,7 +45,9 @@ import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import { Pagination, usePagination } from '../../../components/pagination';
 import { DOCUMENTS_DELEGABLES } from '../../../components/deleguer-documents';
 import {
+  AuPrincipal,
   BandeauMessage,
+  ConfierAuxBackups,
   EnTetePliable,
   Pastille,
   type Message,
@@ -65,31 +73,20 @@ function docLabels(r: DocumentRequestView): string {
   return r.docTypes.map((d) => documentDemande(d, r.bulletin)).join(' · ');
 }
 
-/** Heures écoulées depuis un instant — l'unité de la file d'attente RH. */
-function hoursSince(iso: string): number {
-  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000));
-}
-
 /**
- * Une durée, toujours en heures.
+ * Une durée, toujours en heures ouvrées : les week-ends et les jours fériés
+ * ne comptent pas (ADR-0128).
  *
  * C'est l'unité de la file : deux demandes ne se comparent d'un coup d'œil que
  * dans la même unité, et une demande de document se compte en heures, pas en
- * jours ouvrés. L'urgence, elle, est portée par la couleur de la colonne.
+ * jours. L'urgence, elle, est portée par la couleur de la colonne.
  */
 function heures(h: number): string {
   return h < 1 ? '< 1 h' : `${h} h`;
 }
 
-/** Heures écoulées entre deux instants. */
-function ecartHeures(depuis: string, jusqu: string): number {
-  return Math.max(
-    0,
-    Math.floor((new Date(jusqu).getTime() - new Date(depuis).getTime()) / 3_600_000),
-  );
-}
-
 export default function DocumentRequestsPage() {
+  const queryClient = useQueryClient();
   const requests = useQuery({
     queryKey: ['document-requests', 'toutes'],
     queryFn: () => api<DocumentRequestView[]>('/document-requests'),
@@ -109,14 +106,19 @@ export default function DocumentRequestsPage() {
 
   const items = useMemo(() => requests.data ?? [], [requests.data]);
   // Ce que l'appelant peut traiter — le directeur, tout, délégué ou non —,
-  // et sa propre demande, qu'il délègue. Qui consulte seulement voit la file
-  // entière, sans geste.
+  // sa propre demande, à déléguer, et ce que les backups voient sans
+  // pouvoir encore le traiter (ADR-0128). Qui consulte seulement voit la
+  // file entière, sans geste.
   const traite = estDirecteur || miens.length > 0 || items.some((r) => r.canAdvance);
   const ouvertes = useMemo(
     () =>
       items.filter(
         (r) =>
-          OPEN.includes(r.status) && (!traite || r.canAdvance || Boolean(r.traitement?.aConfier)),
+          OPEN.includes(r.status) &&
+          (!traite ||
+            r.canAdvance ||
+            Boolean(r.traitement?.aConfier) ||
+            Boolean(r.traitement?.fenetre?.enAttente)),
       ),
     [items, traite],
   );
@@ -235,7 +237,7 @@ export default function DocumentRequestsPage() {
             </THead>
             <TBody>
               {fileVue.tranche.map((r) => {
-                const h = hoursSince(r.createdAt);
+                const h = r.heuresOuvrees ?? 0;
                 return (
                   <Tr key={r.id} className={cn(sel.coche(r.id) && LIGNE_COCHEE)}>
                     {traite && r.canAdvance ? (
@@ -248,6 +250,32 @@ export default function DocumentRequestsPage() {
                       {r.traitement?.aConfier ? (
                         <span className="block text-[11px] font-semibold text-accent-text">
                           Déléguer à un membre de la DCH
+                        </span>
+                      ) : null}
+                      {r.traitement?.fenetre?.enAttente ? (
+                        <span className="mt-0.5 block">
+                          <AuPrincipal fenetre={r.traitement.fenetre} />
+                        </span>
+                      ) : null}
+                      {r.traitement?.fenetre?.peutOuvrir ? (
+                        <span className="mt-1.5 block">
+                          <ConfierAuxBackups
+                            chemin={`/demandes/documents/${r.id}/ouvrir`}
+                            employe={r.employeeName}
+                            onFait={async () => {
+                              setMessage({
+                                ton: 'ok',
+                                texte: `Demande de ${r.employeeName} confiée à vos backups.`,
+                              });
+                              await queryClient.invalidateQueries({
+                                queryKey: ['document-requests'],
+                              });
+                              await queryClient.invalidateQueries({
+                                queryKey: ['validations-compteurs'],
+                              });
+                            }}
+                            onErreur={(texte) => setMessage({ ton: 'erreur', texte })}
+                          />
                         </span>
                       ) : null}
                       {r.note ? (
@@ -279,9 +307,14 @@ export default function DocumentRequestsPage() {
                     <Td
                       className={cn(
                         'text-right font-semibold whitespace-nowrap',
-                        // Le retard se signale seul : au-delà de 48 h une
-                        // demande de document devient un sujet.
-                        h >= 48 ? 'text-danger' : h >= 24 ? 'text-warning' : 'text-ink-muted',
+                        // Le retard se signale seul : passé 48 heures ouvrées,
+                        // la fenêtre de la personne principale est close ;
+                        // passé 72, le délai de traitement (ADR-0128).
+                        h >= DELAI_DE_TRAITEMENT_HEURES
+                          ? 'text-danger'
+                          : h >= FENETRE_DU_PRINCIPAL_HEURES
+                            ? 'text-warning'
+                            : 'text-ink-muted',
                       )}
                       style={{ fontVariantNumeric: 'tabular-nums' }}
                     >
@@ -358,7 +391,7 @@ export default function DocumentRequestsPage() {
                     className="text-right font-semibold whitespace-nowrap text-ink-muted"
                     style={{ fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {r.handledAt ? heures(ecartHeures(r.createdAt, r.handledAt)) : null}
+                    {r.handledAt && r.heuresOuvrees !== null ? heures(r.heuresOuvrees) : null}
                   </Td>
                   {/* Ce qui a été RÉPONDU au demandeur, pas l'étiquette d'un
                         automate : le document déposé dans son espace, le

@@ -646,11 +646,14 @@ describe('le directeur habilite des membres de sa direction', () => {
     ]);
   });
 
-  it('deux membres habilités : les deux sont appelés, le premier qui vise l’emporte', async () => {
+  it('deux membres habilités : l’appel à la personne principale, l’avis au backup ; la demande confiée aux backups, le premier visa l’emporte (ADR-0128)', async () => {
     await habiliter(awa);
     await habiliter(khady);
     const id = await poser(moussa);
     await viser(ousmane, id);
+    expect(await appels(id)).toEqual(['backup:Khady', 'dch:Awa']);
+    expect(await circuit(id)).toEqual(['n1:visee:Ousmane Test', 'dch:attendue:Awa Test']);
+    await absences.ouvrirAuxBackups(awa.session, id);
     expect(await appels(id)).toEqual(['dch:Awa', 'dch:Khady']);
     expect(await circuit(id)).toEqual([
       'n1:visee:Ousmane Test',

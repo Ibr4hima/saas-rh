@@ -34,6 +34,10 @@ import { api } from '../../../../lib/api';
 
    C'est le seul endroit où la délégation se règle : les pages n'en portent
    plus ni bandeau ni bouton « Déléguer » (ADR-0109).
+
+   Une demande déléguée à plusieurs a sa personne principale, choisie dans
+   la même liste, qui traite seule pendant 48 heures ouvrées ; les autres
+   sont ses backups (ADR-0128).
    ———————————————————————————————————————————————————————————————— */
 
 /** Une page, et ce que la déléguer donne — ou ses types, un par un. */
@@ -188,6 +192,10 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
 
 const cle = (capacite: Capacite, employeeId: string) => `${capacite}:${employeeId}`;
 
+/** Les demandes ont une personne principale quand elles sont déléguées à plusieurs (ADR-0128). */
+const aUnPrincipal = (capacites: readonly Capacite[]) =>
+  capacites.every((c) => c.startsWith('demandes.'));
+
 /** Une habilitation à accorder ou à retirer — ce qu'attend le serveur. */
 interface Changement {
   capacite: Capacite;
@@ -248,6 +256,46 @@ export default function DelegationsPage() {
     [actuel, touches],
   );
 
+  // La personne principale choisie, que le serveur n'a pas encore rendue : par habilitation.
+  const [principauxChoisis, setPrincipauxChoisis] = useState<Record<string, string>>({});
+  const designer = useMutation({
+    mutationFn: async (v: { capacites: readonly Capacite[]; employeeId: string }) => {
+      for (const capacite of v.capacites) {
+        await api('/habilitations/principal', {
+          method: 'PUT',
+          body: { employeeId: v.employeeId, capacite },
+        });
+      }
+    },
+    onMutate: (v) => {
+      setMessage(null);
+      setPrincipauxChoisis((p) => ({
+        ...p,
+        ...Object.fromEntries(v.capacites.map((c) => [c, v.employeeId])),
+      }));
+    },
+    onError: (err) => setMessage({ ton: 'erreur', texte: texteErreur(err) }),
+    onSettled: async (_r, _e, v) => {
+      await queryClient.invalidateQueries({ queryKey: ['habilitations'] });
+      await queryClient.invalidateQueries({ queryKey: ['validations-compteurs'] });
+      setPrincipauxChoisis((p) => {
+        const n = { ...p };
+        for (const c of v.capacites) delete n[c];
+        return n;
+      });
+    },
+  });
+  /** La personne principale d'une ligne, d'après sa première habilitation. */
+  const principalDe = (capacites: readonly Capacite[]): string | null => {
+    const premiere = capacites[0];
+    if (!premiere) return null;
+    return (
+      principauxChoisis[premiere] ??
+      membres.find((m) => m.principal.includes(premiere))?.employeeId ??
+      null
+    );
+  };
+
   const enregistrer = useMutation({
     mutationFn: async (liste: Changement[]) => {
       // Un changement à la fois, habilitation par habilitation.
@@ -303,6 +351,19 @@ export default function DelegationsPage() {
       vider();
     };
   }, [queryClient]);
+
+  /**
+   * Le choix de la personne principale d'une ligne de demandes, parmi les
+   * personnes déléguées : le geste attend que les coches soient enregistrées.
+   */
+  const choixDuPrincipal = (capacites: readonly Capacite[]): ChoixDuPrincipal | undefined =>
+    aUnPrincipal(capacites)
+      ? {
+          employeeId: principalDe(capacites),
+          bloque: !modifiable || changements.length > 0 || isPending || designer.isPending,
+          onChoisir: (m) => designer.mutate({ capacites, employeeId: m.employeeId }),
+        }
+      : undefined;
 
   if (etat.isLoading) {
     return (
@@ -376,6 +437,7 @@ export default function DelegationsPage() {
                         coche={(m) => coche(l.capacites, m)}
                         onBasculer={(m) => basculer(l.capacites, m)}
                         modifiable={modifiable}
+                        principal={choixDuPrincipal(l.capacites)}
                       />
                     ) : null}
                   </div>
@@ -393,6 +455,7 @@ export default function DelegationsPage() {
                             coche={(m) => coche(t.capacites, m)}
                             onBasculer={(m) => basculer(t.capacites, m)}
                             modifiable={modifiable}
+                            principal={choixDuPrincipal(t.capacites)}
                           />
                         </li>
                       ))}
@@ -427,9 +490,18 @@ function EnTete({ ligne: l }: { ligne: Ligne }) {
   );
 }
 
+/** La personne principale d'une ligne de demandes, et le geste de désignation (ADR-0128). */
+interface ChoixDuPrincipal {
+  employeeId: string | null;
+  bloque: boolean;
+  onChoisir: (m: MembreHabilite) => void;
+}
+
 /**
  * Qui est délégué : une liste déroulante des agents de la DCH, à cocher. Le
- * bouton dit qui l'est déjà ; chaque coche s'enregistre d'elle-même.
+ * bouton dit qui l'est déjà, la personne principale en tête ; chaque coche
+ * s'enregistre d'elle-même. Une demande déléguée à plusieurs montre la
+ * colonne « Principal ».
  */
 function ChoixDelegues({
   libelle,
@@ -437,12 +509,14 @@ function ChoixDelegues({
   coche,
   onBasculer,
   modifiable,
+  principal,
 }: {
   libelle: string;
   membres: MembreHabilite[];
   coche: (m: MembreHabilite) => boolean;
   onBasculer: (m: MembreHabilite) => void;
   modifiable: boolean;
+  principal?: ChoixDuPrincipal;
 }) {
   const [ouvert, setOuvert] = useState(false);
   const racine = useRef<HTMLDivElement>(null);
@@ -462,7 +536,12 @@ function ChoixDelegues({
     };
   }, [ouvert]);
 
-  const retenus = membres.filter(coche);
+  const estPrincipal = (m: MembreHabilite) => principal?.employeeId === m.employeeId;
+  // La personne principale en tête : la demande va d'abord à cette personne.
+  const retenus = membres
+    .filter(coche)
+    .sort((a, b) => Number(estPrincipal(b)) - Number(estPrincipal(a)));
+  const avecPrincipal = Boolean(principal) && retenus.length >= 2;
   const resume =
     retenus.length === 0
       ? null
@@ -510,17 +589,23 @@ function ChoixDelegues({
       </button>
       {ouvert ? (
         <div className="tg-menu absolute top-full right-0 left-0 z-30 mt-1.5 rounded-bloc border border-card-line bg-surface p-1.5 shadow-lg">
+          {avecPrincipal ? (
+            <p className="flex justify-end pt-0.5 pb-1 text-[10.5px] font-semibold tracking-wide text-ink-muted uppercase">
+              <span className="w-[68px] text-center">Principal</span>
+            </p>
+          ) : null}
           <ul role="group" aria-label={`Qui : ${libelle}`} className="max-h-72 overflow-y-auto">
             {membres.map((m) => {
               const oui = coche(m);
               return (
-                <li key={m.employeeId}>
-                  <label
-                    className={cn(
-                      'flex cursor-pointer items-center gap-3 rounded-controle-sm px-2.5 py-2 transition-colors duration-150',
-                      oui ? 'bg-primary/[0.06] hover:bg-primary/[0.09]' : 'hover:bg-hover',
-                    )}
-                  >
+                <li
+                  key={m.employeeId}
+                  className={cn(
+                    'flex items-center rounded-controle-sm transition-colors duration-150',
+                    oui ? 'bg-primary/[0.06] hover:bg-primary/[0.09]' : 'hover:bg-hover',
+                  )}
+                >
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 px-2.5 py-2">
                     <Checkbox
                       checked={oui}
                       onChange={() => onBasculer(m)}
@@ -535,6 +620,19 @@ function ChoixDelegues({
                       {m.nom}
                     </span>
                   </label>
+                  {avecPrincipal && principal ? (
+                    <span className="grid w-[68px] shrink-0 place-items-center">
+                      {oui ? (
+                        <Radio
+                          name={`principal-${libelle}`}
+                          checked={estPrincipal(m)}
+                          disabled={principal.bloque}
+                          onChange={() => principal.onChoisir(m)}
+                          aria-label={`Principal : ${m.nom}`}
+                        />
+                      ) : null}
+                    </span>
+                  ) : null}
                 </li>
               );
             })}
@@ -585,6 +683,40 @@ function Info({ libelle, texte }: { libelle: string; texte: string }) {
           {texte}
         </span>
       ) : null}
+    </span>
+  );
+}
+
+/**
+ * Un bouton radio dessiné, comme la case à cocher : l'`input` natif porte le
+ * clavier et le focus, transparent, et l'on peint par-dessus.
+ */
+function Radio({ className, ...props }: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+  return (
+    <span
+      className={cn(
+        'relative inline-block size-[18px] shrink-0',
+        props.disabled && 'opacity-40',
+        className,
+      )}
+    >
+      <input
+        type="radio"
+        className="peer absolute inset-0 z-10 m-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+        {...props}
+      />
+      <span
+        aria-hidden
+        className={cn(
+          'absolute inset-0 rounded-full border border-line bg-surface transition-colors duration-150',
+          'peer-hover:border-primary/50 peer-checked:border-primary',
+          'peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary',
+        )}
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-[4px] rounded-full bg-primary opacity-0 transition-opacity duration-150 peer-checked:opacity-100"
+      />
     </span>
   );
 }

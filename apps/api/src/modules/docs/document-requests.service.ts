@@ -38,8 +38,10 @@ import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
 import { accord, bulletins, de, deBulletins, DOCUMENT } from '../notifications/phrases';
 import { periodeDu } from './bulletin';
-import { agentDuCompte, detenteursDe, directionDuPersonnel } from '../acces/dch';
+import { agentDuCompte, detenteursDe, directionDuPersonnel, joursFeries } from '../acces/dch';
+import { heuresOuvreesEntre } from '../time/heures-ouvrees';
 import {
+  attenteDe,
   capaciteDesDocuments,
   capacitesVues,
   reconcilierUneDemande,
@@ -320,6 +322,8 @@ export class DocumentRequestsService {
 
       const dch = await directionDuPersonnel(tx);
       const directeur = dch?.directeurEmployeeId ?? null;
+      const feries = await joursFeries(tx);
+      const maintenant = new Date();
       const nonVues = selfOnly ? await this.traiteesNonVues(tx, user.userId) : new Set<string>();
       const fichiers = await this.fichiersDe(
         tx,
@@ -328,7 +332,11 @@ export class DocumentRequestsService {
       const lignes: DocumentRequestView[] = [];
       for (const r of rows) {
         const ouverte = ['received', 'processing'].includes(r.request.status);
-        const d = { employeeId: r.request.employeeId, confieeA: r.request.confieeAEmployeeId };
+        const d = {
+          employeeId: r.request.employeeId,
+          confieeA: r.request.confieeAEmployeeId,
+          attente: attenteDe(r.request),
+        };
         const tr =
           !selfOnly && ouverte
             ? await vueDuTraitement(tx, capaciteDesDocuments(r.request.docTypes), d, moi, dch)
@@ -344,6 +352,14 @@ export class DocumentRequestsService {
               traiteLeType(vues, moi, directeur, capaciteDesDocuments(r.request.docTypes))
             : Boolean(tr?.peutTraiter);
         const gereLesFichiers = peutAvancer;
+        // Clôture : mise à disposition, remise, ou refus. Le refus n'a pas de
+        // colonne dédiée, mais rien ne suit un refus : `updatedAt` le date donc
+        // exactement. Une correction du point de retrait laisse `readyAt` en
+        // place : la durée de traitement ne rajeunit pas.
+        const cloture =
+          r.request.readyAt ??
+          r.request.deliveredAt ??
+          (['rejected', 'cancelled'].includes(r.request.status) ? r.request.updatedAt : null);
         lignes.push({
           id: r.request.id,
           employeeId: r.request.employeeId,
@@ -371,16 +387,11 @@ export class DocumentRequestsService {
           processingAt: r.request.processingAt?.toISOString() ?? null,
           readyAt: r.request.readyAt?.toISOString() ?? null,
           deliveredAt: r.request.deliveredAt?.toISOString() ?? null,
-          // Clôture : mise à disposition, remise, ou refus. Le refus n'a pas de
-          // colonne dédiée, mais rien ne suit un refus — `updatedAt` en date donc
-          // exactement. Une correction du point de retrait, elle, laisse
-          // `readyAt` en place : la durée de traitement ne rajeunit pas.
-          handledAt:
-            r.request.readyAt?.toISOString() ??
-            r.request.deliveredAt?.toISOString() ??
-            (['rejected', 'cancelled'].includes(r.request.status)
-              ? r.request.updatedAt.toISOString()
-              : null),
+          handledAt: cloture?.toISOString() ?? null,
+          heuresOuvrees:
+            r.request.status === 'cancelled'
+              ? null
+              : Math.floor(heuresOuvreesEntre(r.request.createdAt, cloture ?? maintenant, feries)),
           nouvelle: !ouverte && nonVues.has(r.request.id),
           canAdvance: peutAvancer && (ALLOWED_TRANSITIONS[r.request.status]?.length ?? 0) > 0,
           canCancel: ouverte && r.request.employeeId === soi?.employeeId,
@@ -453,6 +464,7 @@ export class DocumentRequestsService {
       await exigerDeTraiter(tx, user, capaciteDesDocuments(row.docTypes), {
         employeeId: row.employeeId,
         confieeA: row.confieeAEmployeeId,
+        attente: attenteDe(row),
       });
       return null;
     } catch (err) {
@@ -492,6 +504,7 @@ export class DocumentRequestsService {
         await exigerDeTraiter(tx, user, capaciteDesDocuments(row.docTypes), {
           employeeId: row.employeeId,
           confieeA: row.confieeAEmployeeId,
+          attente: attenteDe(row),
         });
       }
       const allowed = ALLOWED_TRANSITIONS[row.status] ?? [];

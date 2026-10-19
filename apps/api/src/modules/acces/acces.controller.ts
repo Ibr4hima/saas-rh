@@ -15,13 +15,15 @@ import { z } from 'zod';
 import {
   accorderSchema,
   confierSchema,
+  designerPrincipalSchema,
   type AccorderInput,
   type ConfierInput,
+  type DesignerPrincipalInput,
 } from '@teranga/contracts';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { TenantDb } from '../../db/tenant-db';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
-import { confierLaDemande, TYPES_DCH, type TypeDCH } from './demandes';
+import { confierLaDemande, ouvrirAuxBackups, TYPES_DCH, type TypeDCH } from './demandes';
 import { HabilitationsService } from './habilitations.service';
 
 const typeDCHSchema = z.enum(TYPES_DCH as [TypeDCH, ...TypeDCH[]]);
@@ -49,6 +51,16 @@ export class AccesController {
     await this.habilitations.accorder(req.sessionUser, body);
   }
 
+  /** La personne principale d'une délégation de demandes (ADR-0128). */
+  @Put('habilitations/principal')
+  @HttpCode(204)
+  async designerLePrincipal(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(designerPrincipalSchema)) body: DesignerPrincipalInput,
+  ) {
+    await this.habilitations.designerLePrincipal(req.sessionUser, body);
+  }
+
   /**
    * Confier une demande de documents, d'informations ou une pièce à un
    * membre de la DCH — ou la reprendre. Les congés ont la leur
@@ -65,6 +77,23 @@ export class AccesController {
     const user = req.sessionUser;
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
       confierLaDemande(tx, user, type, id, body.employeeId),
+    );
+  }
+
+  /**
+   * La personne principale confie une demande aux backups avant la fin de la
+   * fenêtre (ADR-0128). Les congés ont la leur (absence-requests/:id/ouvrir).
+   */
+  @Post('demandes/:type/:id/ouvrir')
+  @HttpCode(204)
+  async ouvrir(
+    @Req() req: AuthenticatedRequest,
+    @Param('type', new ZodValidationPipe(typeDCHSchema)) type: TypeDCH,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const user = req.sessionUser;
+    await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      ouvrirAuxBackups(tx, user, type, id),
     );
   }
 }

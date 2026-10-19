@@ -66,7 +66,13 @@ import {
   pasSurSoi,
   subordonnesDe,
 } from '../acces/dch';
-import { aTraiterPar, voitToutLaFile } from '../acces/demandes';
+import {
+  aTraiterPar,
+  exigerDOuvrir,
+  refuserAuBackup,
+  voitToutLaFile,
+  vueDeLaFenetre,
+} from '../acces/demandes';
 import {
   aExpire,
   annoncerLeChangement,
@@ -996,6 +1002,32 @@ export class AbsencesService {
     });
   }
 
+  /**
+   * La personne principale des congés confie la demande aux backups avant la
+   * fin de la fenêtre (ADR-0128) : les backups la reçoivent aussitôt.
+   */
+  async ouvrirAuxBackups(user: SessionUser, requestId: string): Promise<void> {
+    await this.db.withTenant(ctxOf(user), async (tx) => {
+      const request = await this.verrouiller(tx, requestId);
+      const demande = await lireCircuit(tx, requestId);
+      const att = demande ? await attendu(tx, demande) : null;
+      if (request.status !== 'pending' || att?.etape !== 'dch') {
+        problem(
+          422,
+          'absence.pas_a_la_dch',
+          'Cette demande n’est pas à l’étape de la DCH',
+          'Elle attend encore le visa du N+1, ou elle est déjà traitée.',
+        );
+      }
+      exigerDOuvrir(att.fenetre, await this.selfEmployeeId(tx, user));
+      await tx
+        .update(t.absenceRequests)
+        .set({ ouverteAuxBackupsLe: new Date() })
+        .where(eq(t.absenceRequests.id, requestId));
+      await reconcilierDemande(tx, requestId);
+    });
+  }
+
   // ---------- Soldes ----------
 
   async balances(user: SessionUser, employeeId: string, year: number): Promise<BalanceView[]> {
@@ -1514,6 +1546,7 @@ export class AbsencesService {
       const estDirecteur = directeur?.userId === user.userId;
       const estAttendu = att.valideurs.some((v) => v.userId === user.userId);
       if (!estAttendu && !(att.etape === 'dch' && estDirecteur)) {
+        refuserAuBackup(att.fenetre, await this.selfEmployeeId(tx, user));
         if (att.etape === 'n1') {
           problem(
             403,
@@ -2394,6 +2427,8 @@ export class AbsencesService {
         confieeAEmployeeId: request.confieeAEmployeeId,
         deposeeLe: request.createdAt,
         debut: request.startDate,
+        aLaDCHLe: request.aLaDCHLe,
+        ouverteAuxBackupsLe: request.ouverteAuxBackupsLe,
       });
       const enAttente = request.status === 'pending';
       const expiree = request.status === 'expired';
@@ -2470,6 +2505,7 @@ export class AbsencesService {
               peutConfier: estDirecteur && !att.demandeDuDirecteur,
               aConfier: false,
               pourMoi: att.valideurs.some((v) => v.employeeId === moi),
+              fenetre: vueDeLaFenetre(att.fenetre, moi),
             }
           : null;
 

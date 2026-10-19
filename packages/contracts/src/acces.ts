@@ -473,6 +473,33 @@ export interface TraitementView {
   aConfier: boolean;
   /** Elle attend l'appelant : il la traite — ou, directeur, il doit la confier. */
   pourMoi: boolean;
+  /**
+   * La fenêtre de 48 heures, tant qu'elle court (ADR-0128) : la personne
+   * principale traite seule, les backups voient la demande sans pouvoir la
+   * traiter. Null : pas de fenêtre, ou elle a pris fin.
+   */
+  fenetre: FenetreDuPrincipalView | null;
+}
+
+/**
+ * Les délais d'une demande, en heures ouvrées (ADR-0128) : la personne
+ * principale traite seule pendant les 48 premières, et reçoit un rappel 15
+ * heures avant leur fin ; toute demande se traite en 72.
+ */
+export const FENETRE_DU_PRINCIPAL_HEURES = 48;
+export const RAPPEL_AVANT_LA_FIN_HEURES = 15;
+export const DELAI_DE_TRAITEMENT_HEURES = 72;
+
+/** La fenêtre de 48 heures d'une demande, telle que l'écran la montre. */
+export interface FenetreDuPrincipalView {
+  /** La personne principale : « Awa Diop ». */
+  principal: string;
+  /** La fin de la fenêtre (ISO) : les backups reçoivent alors la demande. */
+  jusquAu: string;
+  /** Vrai pour la personne principale, qui peut confier la demande aux backups. */
+  peutOuvrir: boolean;
+  /** Vrai pour chaque backup, qui voit la demande sans pouvoir encore la traiter. */
+  enAttente: boolean;
 }
 
 /** Confier une demande à un membre de la DCH — `null` : la reprendre. */
@@ -497,6 +524,8 @@ export interface MembreHabilite {
    * tâches en l'activant — d'ici là, ses demandes vont au directeur.
    */
   compte: boolean;
+  /** Les demandes dont la personne est principale (ADR-0128). */
+  principal: Capacite[];
 }
 
 /** L'espace du directeur du Capital Humain : ses délégations. */
@@ -516,6 +545,17 @@ export const accorderSchema = z.object({
   accordee: z.boolean(),
 });
 export type AccorderInput = z.infer<typeof accorderSchema>;
+
+/**
+ * Désigner la personne principale d'une délégation de demandes (ADR-0128),
+ * qui traite seule pendant 48 heures ouvrées ; les autres personnes déléguées
+ * sont ses backups.
+ */
+export const designerPrincipalSchema = z.object({
+  employeeId: z.uuid(),
+  capacite: capaciteSchema,
+});
+export type DesignerPrincipalInput = z.infer<typeof designerPrincipalSchema>;
 
 /** Ce qu'une habilitation emporte avec elle : on ne gère pas un dossier sans le voir. */
 const EMPORTE: Partial<Record<Capacite, readonly Capacite[]>> = {

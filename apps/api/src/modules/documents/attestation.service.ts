@@ -149,13 +149,21 @@ export class AttestationService {
   private async traiteSaDemande(tx: Tx, user: SessionUser, employeeId: string): Promise<boolean> {
     const moi = await agentDuCompte(tx, user.userId);
     const dch = await directionDuPersonnel(tx);
-    const { rows } = await tx.execute<{ confiee_a_employee_id: string | null }>(sql`
-      SELECT confiee_a_employee_id FROM document_requests
+    const { rows } = await tx.execute<{
+      confiee_a_employee_id: string | null;
+      created_at: string;
+      ouverte_aux_backups_le: string | null;
+    }>(sql`
+      SELECT confiee_a_employee_id, created_at, ouverte_aux_backups_le FROM document_requests
        WHERE employee_id = ${employeeId} AND status IN ('received', 'processing')
          AND 'attestation_travail' = ANY (doc_types)`);
     const capacite = capaciteDuDocument('attestation_travail');
     for (const r of rows) {
-      const d = { employeeId, confieeA: r.confiee_a_employee_id };
+      const d = {
+        employeeId,
+        confieeA: r.confiee_a_employee_id,
+        attente: { depuis: r.created_at, ouverteAuxBackupsLe: r.ouverte_aux_backups_le },
+      };
       if ((await vueDuTraitement(tx, capacite, d, moi, dch)).peutTraiter) return true;
     }
     return false;

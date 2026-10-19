@@ -2,8 +2,9 @@ import { sql } from 'drizzle-orm';
 import { sujetSchema, type SujetNotification } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 import { notifier, type NotificationDraft } from '../notifications/notifier';
-import { rappel } from '../notifications/phrases';
+import { pourLesBackups, rappel } from '../notifications/phrases';
 import { DELAI_RELANCE_JOURS_OUVRES, joursOuvresEcoules } from '../time/workdays';
+import type { FenetreDuPrincipal, Viseur } from './dch';
 
 /* ————————————————————————————————————————————————————————————————
    Les appels à traiter, et leurs relances — pour toutes les demandes.
@@ -16,7 +17,9 @@ import { DELAI_RELANCE_JOURS_OUVRES, joursOuvresEcoules } from '../time/workdays
    Une RELANCE part quand l'appel attend depuis plus de deux jours ouvrés,
    une fois. Elle suit l'appel : un changement de traitant repart à zéro.
    Le N+1 attendu sur un congé, lui, est rappelé tous les deux jours
-   ouvrés, jusqu'à ce que la demande passe à la DCH.
+   ouvrés, jusqu'à ce que la demande passe à la DCH. La personne principale
+   d'une délégation l'est quinze heures ouvrées avant la fin de la fenêtre
+   de 48 heures (ADR-0128).
    ———————————————————————————————————————————————————————————————— */
 
 export { frDate } from '../notifications/phrases';
@@ -35,20 +38,96 @@ export async function tenirLesAppels(
   destinataires: readonly string[],
   message: Omit<NotificationDraft, 'dedupeKey'>,
 ): Promise<void> {
-  const cle = etape ? `${prefixe}:appel:${etape}` : null;
-  const cleRappel = cle ? cle.replace(':appel:', ':rappel:') : null;
-  const qui = `{${destinataires.join(',')}}`;
+  await tenirDesAppels(tx, tenantId, prefixe, etape ? [{ etape, destinataires, message }] : []);
+}
+
+/** Des appels à une étape : qui les reçoit, et ce qu'ils disent. */
+export interface GroupeDAppels {
+  etape: string;
+  destinataires: readonly string[];
+  message: Omit<NotificationDraft, 'dedupeKey'>;
+}
+
+/**
+ * Comme `tenirLesAppels`, groupe par groupe : deux étapes à la fois (l'appel
+ * à la personne principale, l'avis aux backups), ou deux messages à la même
+ * étape.
+ * Sans groupe, la demande n'attend plus personne.
+ */
+export async function tenirDesAppels(
+  tx: Tx,
+  tenantId: string,
+  prefixe: string,
+  groupes: readonly GroupeDAppels[],
+): Promise<void> {
+  // Restent les appels attendus, et leurs relances ; tout autre s'en va.
+  const attendus = groupes.map(({ etape, destinataires }) => {
+    const cle = `${prefixe}:appel:${etape}`;
+    return sql`(dedupe_key IN (${cle}, ${`${prefixe}:rappel:${etape}`})
+                AND recipient_user_id = ANY (${`{${destinataires.join(',')}}`}::uuid[]))`;
+  });
   // `^@` (commence par) plutôt que LIKE : sous la RLS, seul un opérateur
   // « leakproof » descend dans l'index des clés (cf. migration 0107).
   await tx.execute(sql`
     DELETE FROM notifications
      WHERE (dedupe_key ^@ ${`${prefixe}:appel:`} OR dedupe_key ^@ ${`${prefixe}:rappel:`})
-       AND (${cle}::text IS NULL
-            OR dedupe_key NOT IN (${cle}, ${cleRappel})
-            OR NOT (recipient_user_id = ANY (${qui}::uuid[])))`);
-  if (!cle) return;
-  for (const userId of destinataires) {
-    await notifier(tx, tenantId, userId, { ...message, dedupeKey: cle });
+       ${attendus.length > 0 ? sql`AND NOT (${sql.join(attendus, sql` OR `)})` : sql``}`);
+  for (const { etape, destinataires, message } of groupes) {
+    for (const userId of destinataires) {
+      await notifier(tx, tenantId, userId, { ...message, dedupeKey: `${prefixe}:appel:${etape}` });
+    }
+  }
+}
+
+/**
+ * Les appels de la DCH sur une demande, d'après qui la traite (cf.
+ * `traitementDe`). Avec une personne principale et des backups (ADR-0128) :
+ * l'appel va à la personne principale ; les backups sont prévenus (étape
+ * `backup`) sans pouvoir encore traiter, puis appelés quand la fenêtre
+ * s'ouvre, par un message qui le dit. Quinze heures ouvrées avant la fin de
+ * la fenêtre, la personne principale reçoit un rappel, une fois.
+ */
+export async function appelerPourLaDCH(
+  tx: Tx,
+  tenantId: string,
+  prefixe: string,
+  t: { traitants: readonly Viseur[]; fenetre: FenetreDuPrincipal | null },
+  message: Omit<NotificationDraft, 'dedupeKey'>,
+): Promise<void> {
+  const f = t.fenetre;
+  if (!f) {
+    await tenirLesAppels(
+      tx,
+      tenantId,
+      prefixe,
+      'dch',
+      t.traitants.map((v) => v.userId),
+      message,
+    );
+    return;
+  }
+  const backups = f.backups.map((v) => v.userId);
+  await tenirDesAppels(tx, tenantId, prefixe, [
+    { etape: 'dch', destinataires: [f.principal.userId], message },
+    f.ouverte
+      ? {
+          etape: 'dch',
+          destinataires: backups,
+          message: {
+            ...message,
+            title: pourLesBackups(message.title, f.confieeParLePrincipal ? f.principal.nom : null),
+          },
+        }
+      : { etape: 'backup', destinataires: backups, message },
+  ]);
+  if (!f.ouverte && Date.now() >= f.rappelLe.getTime()) {
+    await notifier(tx, tenantId, f.principal.userId, {
+      ...message,
+      type: 'rappel',
+      title: rappel(message.title),
+      dedupeKey: `${prefixe}:rappel:dch`,
+      remplace: `${prefixe}:appel:dch`,
+    });
   }
 }
 
@@ -98,7 +177,10 @@ export async function relancer(tx: Tx, tenantId: string): Promise<void> {
              WHERE r.recipient_user_id = a.recipient_user_id
                AND r.dedupe_key = replace(a.dedupe_key, ':appel:', ':rappel:')) AS rappele_le,
            a.title, a.link
-      FROM notifications a WHERE a.dedupe_key LIKE '%:appel:%'`);
+      FROM notifications a
+     WHERE a.dedupe_key LIKE '%:appel:%'
+       -- Les backups prévenus ne traitent pas encore : rien à rappeler (ADR-0128).
+       AND a.dedupe_key NOT LIKE '%:appel:backup'`);
   if (appels.length === 0) return;
   const { rows: jours } = await tx.execute<{ jour: string | null; aujourdhui: string }>(sql`
     SELECT day::text AS jour, CURRENT_DATE::text AS aujourdhui

@@ -36,7 +36,9 @@ import { Modal } from '../../../../components/modal';
 import { Pagination, usePagination } from '../../../../components/pagination';
 import { StatutAbsence } from '../../../../components/statut-absence';
 import {
+  AuPrincipal,
   BandeauMessage,
+  ConfierAuxBackups,
   EnTetePliable,
   Pastille,
   quiTraite,
@@ -133,10 +135,16 @@ export default function CongesATraiterPage() {
   const occupe = decider.isPending || confirmer.isPending;
 
   // Ce que l'appelant peut décider à l'étape de la DCH (pour le directeur,
-  // tout, délégué ou non), et les retours qu'il confirme.
+  // tout, délégué ou non), les retours à confirmer, et ce que les backups
+  // voient sans pouvoir encore le traiter (ADR-0128).
   const toutes = demandes.data ?? [];
   const aTraiter = toutes
-    .filter((r) => (r.canDecide && r.etapeAttendue === 'dch') || r.gestes.confirmerReprise)
+    .filter(
+      (r) =>
+        (r.canDecide && r.etapeAttendue === 'dch') ||
+        r.gestes.confirmerReprise ||
+        Boolean(r.traitement?.fenetre?.enAttente),
+    )
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
   // Qui traite les congés pour la DCH — ou se voit confier une demande. Les
   // autres consultent : ils voient la file telle qu'elle est, sans geste.
@@ -278,8 +286,26 @@ export default function CongesATraiterPage() {
                             }}
                           />
                         </div>
+                      ) : r.traitement?.fenetre?.enAttente ? (
+                        <p className="text-right">
+                          <AuPrincipal fenetre={r.traitement.fenetre} />
+                        </p>
                       ) : traite ? (
                         <div className="flex items-center justify-end gap-1.5">
+                          {r.traitement?.fenetre?.peutOuvrir ? (
+                            <ConfierAuxBackups
+                              chemin={`/absence-requests/${r.id}/ouvrir`}
+                              employe={r.employeeName}
+                              onFait={async () => {
+                                setMessage({
+                                  ton: 'ok',
+                                  texte: `Demande de ${r.employeeName} confiée à vos backups.`,
+                                });
+                                await rafraichir();
+                              }}
+                              onErreur={(texte) => setMessage({ ton: 'erreur', texte })}
+                            />
+                          ) : null}
                           <BoutonDecision
                             geste="approuver"
                             employe={r.employeeName}

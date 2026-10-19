@@ -26,6 +26,12 @@ export function frDate(iso: string, avecJour = false): string {
   return d.getUTCDate() === 1 ? texte.replace(/(^|\s)1 /, '$11er ') : texte;
 }
 
+/** « le mercredi 21 octobre 2026 à 10 h » : un instant, à Dakar (UTC+0). */
+export function leJourALHeure(instant: Date): string {
+  const iso = instant.toISOString();
+  return `le ${frDate(iso.slice(0, 10), true)} à ${heureEnLettres(iso.slice(11, 16))}`;
+}
+
 /** Les heures d'une absence à l'heure, « 10:00 » à « 12:00 ». */
 export interface Heures {
   debut: string;
@@ -165,6 +171,17 @@ export function enumerer(mots: readonly string[]): string {
 export function rappel(titre: string): string {
   const debut = /^(Votre|Vos|Le|La|Les|Un|Une|Des)\b/.test(titre);
   return `Rappel : ${debut ? titre[0]!.toLowerCase() + titre.slice(1) : titre}`;
+}
+
+/**
+ * L'appel des backups quand la fenêtre de 48 heures s'ouvre (ADR-0128) :
+ * « Vous pouvez traiter : » devant le titre de l'appel, ou « Awa Diop vous
+ * confie : » quand la personne principale confie la demande avant la fin.
+ */
+export function pourLesBackups(titre: string, confieePar: string | null): string {
+  const debut = /^(Votre|Vos|Le|La|Les|Un|Une|Des)\b/.test(titre);
+  const suite = debut ? titre[0]!.toLowerCase() + titre.slice(1) : titre;
+  return `${confieePar ? `${confieePar} vous confie` : 'Vous pouvez traiter'} : ${suite}`;
 }
 
 /** « de l’année 2026 » : les objectifs, l'auto-évaluation, l'évaluation d'une année. */

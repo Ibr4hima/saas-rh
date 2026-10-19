@@ -323,12 +323,13 @@ describe('les demandes de documents', () => {
     expect(await appels('document', id)).toEqual([]);
   });
 
-  it('confiées à deux membres : les deux sont appelés ; qui la prend en charge la garde', async () => {
+  it('confiées à deux membres : l’appel à la personne principale, l’avis au backup ; qui la prend en charge la garde', async () => {
     const [id] = (await documents.create(moussa.session, { docTypes: ['attestation_travail'] }))
       .ids as [string];
     await habiliter(awa, 'demandes.documents.attestation_travail');
     await habiliter(khady, 'demandes.documents.attestation_travail');
-    expect(await appels('document', id)).toEqual(['dch:Awa', 'dch:Khady']);
+    // La délégation d’Awa est la plus ancienne : Awa est la personne principale (ADR-0128).
+    expect(await appels('document', id)).toEqual(['backup:Khady', 'dch:Awa']);
     // Déléguer n'ôte rien au directeur : la demande reste dans son compteur.
     const aTraiter = (qui: Agent) =>
       db.withTenant({ tenantId, userId: qui.session.userId }, (tx) =>
@@ -336,6 +337,7 @@ describe('les demandes de documents', () => {
       );
     expect((await aTraiter(mariama)).documents).toBe(1);
     expect((await aTraiter(awa)).documents).toBe(1);
+    expect((await aTraiter(khady)).documents).toBe(0);
     await documents.advance(awa.session, id, { status: 'processing' });
     expect(await appels('document', id)).toEqual(['dch:Awa']);
     expect(await codeOf(() => documents.advance(khady.session, id, { status: 'ready' }))).toBe(

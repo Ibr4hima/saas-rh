@@ -31,6 +31,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { accord, PIECE } from '../notifications/phrases';
 import { agentDuCompte, directionDuPersonnel, type DirectionDuPersonnel } from '../acces/dch';
 import {
+  attenteDe,
   capacitesVues,
   reconcilierUneDemande,
   uneDemandeALaFois,
@@ -342,6 +343,7 @@ export class EmployeeDocumentsService {
       await exigerDeTraiter(tx, user, capaciteDeLaPiece(doc.category as PieceAVerifier), {
         employeeId: doc.employeeId,
         confieeA: doc.confieeAEmployeeId,
+        attente: attenteDe(doc),
       });
       if (doc.version !== input.version) {
         problem(
@@ -650,7 +652,7 @@ export class EmployeeDocumentsService {
       ? await vueDuTraitement(
           tx,
           capaciteDeLaPiece(doc.category as PieceAVerifier),
-          { employeeId: doc.employeeId, confieeA: doc.confieeAEmployeeId },
+          { employeeId: doc.employeeId, confieeA: doc.confieeAEmployeeId, attente: attenteDe(doc) },
           moi,
           dch,
         )

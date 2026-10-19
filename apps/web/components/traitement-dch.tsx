@@ -1,8 +1,13 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { type EtatHabilitations, type TraitementView } from '@teranga/contracts';
-import { CardHeader, CardTitle, cn } from '@teranga/ui';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import {
+  heureEnLettres,
+  type EtatHabilitations,
+  type FenetreDuPrincipalView,
+  type TraitementView,
+} from '@teranga/contracts';
+import { Button, CardHeader, CardTitle, cn } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import { Icon, type IconName } from './icons';
@@ -144,4 +149,72 @@ export function quiTraite(t: TraitementView | null | undefined): string | null {
   if (t.traitants)
     return `${t.traitants} la ${t.traitants.includes(' ou ') ? 'traitent' : 'traite'}`;
   return 'Personne pour la traiter en ce moment';
+}
+
+/** « 21 oct. à 10 h » : la fin de la fenêtre de 48 heures, à Dakar. */
+function jusquAu(iso: string): string {
+  const d = new Date(iso);
+  const jour = d.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'Africa/Dakar',
+  });
+  const heure = d.toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: 'Africa/Dakar',
+  });
+  return `${jour} à ${heureEnLettres(heure)}`;
+}
+
+/**
+ * Pour les backups qui attendent la fin de la fenêtre (ADR-0128) : la demande,
+ * qui la traite, et jusqu'à quand.
+ */
+export function AuPrincipal({ fenetre }: { fenetre: FenetreDuPrincipalView }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-muted">
+      <Icon name="schedule" size={14} className="shrink-0" />
+      <span>
+        {fenetre.principal} la traite jusqu’au {jusquAu(fenetre.jusquAu)}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * La personne principale confie la demande aux backups avant la fin de la
+ * fenêtre (ADR-0128) : les backups la reçoivent aussitôt et la traitent aussi.
+ */
+export function ConfierAuxBackups({
+  chemin,
+  employe,
+  onFait,
+  onErreur,
+}: {
+  /** La route du geste : `/absence-requests/:id/ouvrir`, `/demandes/:type/:id/ouvrir`. */
+  chemin: string;
+  employe: string;
+  onFait: () => void | Promise<void>;
+  onErreur: (texte: string) => void;
+}) {
+  const confier = useMutation({
+    mutationFn: () => api(chemin, { method: 'POST' }),
+    onSuccess: onFait,
+    onError: (err) => onErreur(texteErreur(err)),
+  });
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      loading={confier.isPending}
+      onClick={() => confier.mutate()}
+      title={`Confier aux backups la demande de ${employe}`}
+      className="whitespace-nowrap"
+    >
+      {confier.isPending ? null : <Icon name="group" size={15} />}
+      Confier aux backups
+    </Button>
+  );
 }

@@ -3,6 +3,7 @@ import {
   capaciteDeLaPiece,
   capaciteDuDocument,
   type DocumentCategory,
+  type FenetreDuPrincipalView,
   type PieceAVerifier,
   capacitesDuType,
   type CapaciteDemande,
@@ -14,9 +15,9 @@ import {
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
-import { bulletins, DOCUMENT, enumerer, PIECE } from '../notifications/phrases';
+import { bulletins, DOCUMENT, enumerer, leJourALHeure, PIECE } from '../notifications/phrases';
 import { periodeDu } from '../docs/bulletin';
-import { retirerLesAppels, tenirLesAppels } from './appels';
+import { appelerPourLaDCH, retirerLesAppels, tenirLesAppels } from './appels';
 import {
   agentDuCompte,
   decideur,
@@ -27,7 +28,9 @@ import {
   nomsDe,
   subordonnesDe,
   traitementDe,
+  type Attente,
   type DirectionDuPersonnel,
+  type FenetreDuPrincipal,
   type Traitement,
 } from './dch';
 
@@ -146,6 +149,8 @@ export interface DemandeDCH {
   tenantId: string;
   employeeId: string;
   confieeA: string | null;
+  /** Elle attend depuis son dépôt : la fenêtre de 48 heures court depuis (ADR-0128). */
+  attente: Attente;
   nom: string;
   detail: unknown;
   /** L'habilitation qui la traite. */
@@ -159,10 +164,13 @@ async function enAttente(tx: Tx, type: TypeDCH, id?: string): Promise<DemandeDCH
     tenant_id: string;
     employee_id: string;
     confiee_a_employee_id: string | null;
+    created_at: string;
+    ouverte_aux_backups_le: string | null;
     nom: string;
     detail: unknown;
   }>(sql`
     SELECT r.id, r.tenant_id, r.employee_id, r.confiee_a_employee_id, ${def.detail} AS detail,
+           r.created_at, r.ouverte_aux_backups_le,
            p.given_name || ' ' || p.family_name AS nom
       FROM ${def.table} r
       JOIN employees e ON e.id = r.employee_id
@@ -175,11 +183,18 @@ async function enAttente(tx: Tx, type: TypeDCH, id?: string): Promise<DemandeDCH
     tenantId: r.tenant_id,
     employeeId: r.employee_id,
     confieeA: r.confiee_a_employee_id,
+    attente: { depuis: r.created_at, ouverteAuxBackupsLe: r.ouverte_aux_backups_le },
     nom: r.nom,
     detail: r.detail,
     capacite: def.capacite(r.detail),
   }));
 }
+
+/** Une demande attend la DCH depuis son dépôt, et a pu être confiée aux backups (ADR-0128). */
+export const attenteDe = (r: { createdAt: Date; ouverteAuxBackupsLe: Date | null }): Attente => ({
+  depuis: r.createdAt,
+  ouverteAuxBackupsLe: r.ouverteAuxBackupsLe,
+});
 
 /** L'habilitation qui traite un document : celle de son type. */
 export const capaciteDesDocuments = (docTypes: readonly string[]): CapaciteDemande =>
@@ -198,19 +213,12 @@ async function tenir(tx: Tx, d: DemandeDCH, dch: DirectionDuPersonnel | null): P
     });
     return;
   }
-  await tenirLesAppels(
-    tx,
-    d.tenantId,
-    prefixe,
-    'dch',
-    t.traitants.map((v) => v.userId),
-    {
-      type: 'demande_a_traiter',
-      sujet: def.sujet,
-      title: def.titre(d.nom, d.detail),
-      link: def.lien,
-    },
-  );
+  await appelerPourLaDCH(tx, d.tenantId, prefixe, t, {
+    type: 'demande_a_traiter',
+    sujet: def.sujet,
+    title: def.titre(d.nom, d.detail),
+    link: def.lien,
+  });
 }
 
 /**
@@ -296,6 +304,25 @@ export async function aTraiterPar(tx: Tx, moi: string | null): Promise<Record<Ty
 }
 
 /**
+ * La fenêtre de 48 heures, telle que l'écran la montre, tant qu'elle court
+ * (ADR-0128) : la personne principale peut confier la demande aux backups,
+ * quand des backups le peuvent ; les backups la voient sans pouvoir encore
+ * la traiter.
+ */
+export function vueDeLaFenetre(
+  f: FenetreDuPrincipal | null,
+  moi: string | null,
+): FenetreDuPrincipalView | null {
+  if (!f || f.ouverte) return null;
+  return {
+    principal: f.principal.nom,
+    jusquAu: f.finLe.toISOString(),
+    peutOuvrir: moi === f.principal.employeeId && f.backups.length > 0,
+    enAttente: f.backups.some((b) => b.employeeId === moi),
+  };
+}
+
+/**
  * Ce que l'écran montre du traitement d'une demande en attente, et si
  * l'appelant peut la traiter. « À confier » ne se dit qu'à qui l'a faite,
  * qui dirige la DCH : un autre membre n'a rien à en confier (ADR-0060).
@@ -303,7 +330,7 @@ export async function aTraiterPar(tx: Tx, moi: string | null): Promise<Record<Ty
 export async function vueDuTraitement(
   tx: Tx,
   capacite: CapaciteDemande,
-  d: { employeeId: string; confieeA: string | null },
+  d: { employeeId: string; confieeA: string | null; attente: Attente },
   moi: string | null,
   dch: DirectionDuPersonnel | null,
 ): Promise<{ vue: TraitementView; peutTraiter: boolean }> {
@@ -323,6 +350,7 @@ export async function vueDuTraitement(
         (t.traitants.some((v) => v.employeeId === moi) ||
           (t.aConfier && dch?.directeurEmployeeId === moi)),
       ),
+      fenetre: vueDeLaFenetre(t.fenetre, moi),
     },
     peutTraiter: decideur(t, moi, d.employeeId),
   };
@@ -379,12 +407,26 @@ export async function capacitesVues(
   return vues;
 }
 
+/**
+ * Les backups qui attendent la fin de la fenêtre (ADR-0128) l'apprennent,
+ * avec le moment où traiter deviendra possible.
+ */
+export function refuserAuBackup(f: FenetreDuPrincipal | null, moi: string | null): void {
+  if (!f || f.ouverte || !f.backups.some((b) => b.employeeId === moi)) return;
+  problem(
+    403,
+    'demandes.au_principal',
+    `Cette demande revient d’abord à ${f.principal.nom}`,
+    `Vous pourrez la traiter ${leJourALHeure(f.finLe)}, ou dès que ${f.principal.nom} vous la confie.`,
+  );
+}
+
 /** Refuse (403) qui ne peut pas traiter cette demande. */
 export async function exigerDeTraiter(
   tx: Tx,
   user: SessionUser,
   capacite: CapaciteDemande,
-  d: { employeeId: string; confieeA: string | null },
+  d: { employeeId: string; confieeA: string | null; attente: Attente },
 ): Promise<void> {
   const moi = await agentDuCompte(tx, user.userId);
   if (moi && moi === d.employeeId) {
@@ -397,6 +439,7 @@ export async function exigerDeTraiter(
   }
   const t = await traitementDe(tx, capacite, d);
   if (!decideur(t, moi, d.employeeId)) {
+    refuserAuBackup(t.fenetre, moi);
     const qui = nomsDe(t.traitants);
     problem(
       403,
@@ -481,4 +524,61 @@ export async function confierLaDemande(
       employeeId && !(await detenteursDe(tx, d.capacite)).includes(employeeId),
     ),
   };
+}
+
+/**
+ * La personne principale confie la demande aux backups avant la fin de la
+ * fenêtre (ADR-0128) : les backups la reçoivent aussitôt et la traitent
+ * aussi, le premier geste l'emportant. Le geste est réservé à la personne
+ * principale, tant que la fenêtre court.
+ */
+export function exigerDOuvrir(f: FenetreDuPrincipal | null, moi: string | null): void {
+  if (!f || moi !== f.principal.employeeId) {
+    problem(
+      403,
+      'demandes.ouverture_au_principal',
+      'Réservé à la personne principale de cette demande',
+    );
+  }
+  if (f.ouverte) {
+    problem(
+      422,
+      'demandes.deja_ouverte',
+      'Vos backups la traitent déjà',
+      f.confieeParLePrincipal
+        ? 'Vous la leur avez confiée.'
+        : 'Votre fenêtre de 48 heures ouvrées a pris fin.',
+    );
+  }
+  if (f.backups.length === 0) {
+    problem(
+      422,
+      'demandes.sans_backup',
+      'Vos backups ne peuvent pas la traiter en ce moment',
+      'En congé, sans accès au portail, ou dans l’équipe de la personne qui la pose.',
+    );
+  }
+}
+
+export async function ouvrirAuxBackups(
+  tx: Tx,
+  user: SessionUser,
+  type: TypeDCH,
+  id: string,
+): Promise<void> {
+  const def = DEFINITIONS[type];
+  const moi = await agentDuCompte(tx, user.userId);
+  await tx.execute(sql`SELECT 1 FROM ${def.table} WHERE id = ${id} FOR UPDATE`);
+  const [d] = await enAttente(tx, type, id);
+  if (!d) {
+    problem(
+      422,
+      'demandes.close',
+      'Cette demande n’attend plus la DCH',
+      'Elle est déjà traitée, ou introuvable.',
+    );
+  }
+  exigerDOuvrir((await traitementDe(tx, d.capacite, d)).fenetre, moi);
+  await tx.execute(sql`UPDATE ${def.table} SET ouverte_aux_backups_le = now() WHERE id = ${id}`);
+  await reconcilierUneDemande(tx, type, id);
 }

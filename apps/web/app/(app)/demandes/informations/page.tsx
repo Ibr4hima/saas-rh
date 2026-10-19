@@ -30,7 +30,9 @@ import { Modal } from '../../../../components/modal';
 import { Pagination, usePagination } from '../../../../components/pagination';
 import { valeurSignalee } from '../../../../components/telephone';
 import {
+  AuPrincipal,
   BandeauMessage,
+  ConfierAuxBackups,
   Pastille,
   texteErreur,
   type Message,
@@ -106,13 +108,19 @@ export default function InformationsATraiterPage() {
   });
 
   // Ce que l'appelant peut trancher — le directeur, tout, délégué ou non —,
-  // et sa propre demande, qu'il délègue. Qui consulte seulement voit la file
-  // entière, sans geste.
+  // sa propre demande, à déléguer, et ce que les backups voient sans
+  // pouvoir encore le traiter (ADR-0128). Qui consulte seulement voit la
+  // file entière, sans geste.
   const toutes = demandes.data ?? [];
   const traite =
     estDirecteur || peut(me.data, 'demandes.informations') || toutes.some((r) => r.canDecide);
   const aTraiter = toutes.filter(
-    (r) => r.status === 'pending' && (!traite || r.canDecide || Boolean(r.traitement?.aConfier)),
+    (r) =>
+      r.status === 'pending' &&
+      (!traite ||
+        r.canDecide ||
+        Boolean(r.traitement?.aConfier) ||
+        Boolean(r.traitement?.fenetre?.enAttente)),
   );
   const { tranche, barre } = usePagination(aTraiter);
 
@@ -170,6 +178,20 @@ export default function InformationsATraiterPage() {
                         </p>
                       ) : r.canDecide ? (
                         <div className="flex items-center justify-end gap-1.5">
+                          {r.traitement?.fenetre?.peutOuvrir ? (
+                            <ConfierAuxBackups
+                              chemin={`/demandes/informations/${r.id}/ouvrir`}
+                              employe={r.employeeName}
+                              onFait={async () => {
+                                setMessage({
+                                  ton: 'ok',
+                                  texte: `Demande de ${r.employeeName} confiée à vos backups.`,
+                                });
+                                await rafraichir();
+                              }}
+                              onErreur={(texte) => setMessage({ ton: 'erreur', texte })}
+                            />
+                          ) : null}
                           <BoutonDecision
                             geste="approuver"
                             objet="le changement"
@@ -199,6 +221,10 @@ export default function InformationsATraiterPage() {
                             }}
                           />
                         </div>
+                      ) : r.traitement?.fenetre?.enAttente ? (
+                        <p className="text-right">
+                          <AuPrincipal fenetre={r.traitement.fenetre} />
+                        </p>
                       ) : (
                         <p className="text-right text-[11.5px] font-semibold text-accent-text">
                           Déléguer à un membre de la DCH

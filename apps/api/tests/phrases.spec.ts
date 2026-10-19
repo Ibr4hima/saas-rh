@@ -6,7 +6,9 @@ import {
   de,
   duAu,
   frDate,
+  leJourALHeure,
   leLa,
+  pourLesBackups,
   rappel,
   sonSa,
 } from '../src/modules/notifications/phrases';
@@ -81,5 +83,23 @@ describe('les mots des notifications', () => {
       'Rappel : le CDD de Fatou Sall prend fin',
     );
     expect(rappel('Votre demande est à confier')).toBe('Rappel : votre demande est à confier');
+  });
+
+  it('les backups apprennent que traiter devient possible, ou qui leur confie la demande (ADR-0128)', () => {
+    expect(pourLesBackups('Moussa Ndiaye demande un congé', null)).toBe(
+      'Vous pouvez traiter : Moussa Ndiaye demande un congé',
+    );
+    expect(pourLesBackups('Moussa Ndiaye a déposé un diplôme', 'Awa Diop')).toBe(
+      'Awa Diop vous confie : Moussa Ndiaye a déposé un diplôme',
+    );
+  });
+
+  it('un instant se dit avec son jour et son heure, à Dakar', () => {
+    expect(leJourALHeure(new Date('2026-10-21T10:00:00Z'))).toBe(
+      'le mercredi 21 octobre 2026 à 10\u00a0h',
+    );
+    expect(leJourALHeure(new Date('2026-10-26T09:30:00Z'))).toBe(
+      'le lundi 26 octobre 2026 à 9\u00a0h\u00a030',
+    );
   });
 });

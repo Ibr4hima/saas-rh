@@ -165,6 +165,13 @@ export class AbsencesController {
     return this.absences.confier(req.sessionUser, id, body.employeeId);
   }
 
+  /** La personne principale confie la demande aux backups avant la fin de la fenêtre (ADR-0128). */
+  @Post('absence-requests/:id/ouvrir')
+  @HttpCode(204)
+  async ouvrir(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    await this.absences.ouvrirAuxBackups(req.sessionUser, id);
+  }
+
   // ---------- Soldes ----------
 
   @Get('employees/:id/balances')

@@ -28,6 +28,7 @@ import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
 import { agentDuCompte, directionDuPersonnel } from '../acces/dch';
 import {
+  attenteDe,
   reconcilierUneDemande,
   uneDemandeALaFois,
   voitToutLaFile,
@@ -291,7 +292,11 @@ export class ProfileChangesService {
       };
       const vues: ProfileChangeRequestView[] = [];
       for (const r of rows) {
-        const d = { employeeId: r.request.employeeId, confieeA: r.request.confieeAEmployeeId };
+        const d = {
+          employeeId: r.request.employeeId,
+          confieeA: r.request.confieeAEmployeeId,
+          attente: attenteDe(r.request),
+        };
         const certificat = certificats.get(r.request.id);
         const tr =
           !selfOnly && r.request.status === 'pending'
@@ -362,6 +367,7 @@ export class ProfileChangesService {
       await exigerDeTraiter(tx, user, 'demandes.informations', {
         employeeId: row.employeeId,
         confieeA: row.confieeAEmployeeId,
+        attente: attenteDe(row),
       });
 
       const [target] = await tx

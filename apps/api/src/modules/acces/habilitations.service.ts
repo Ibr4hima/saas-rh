@@ -3,8 +3,10 @@ import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
   CAPACITES_DELEGABLES,
+  estCapaciteDemande,
   estDelegable,
   type AccorderInput,
+  type DesignerPrincipalInput,
   type EtatHabilitations,
   type SessionUser,
 } from '@teranga/contracts';
@@ -38,8 +40,12 @@ export class HabilitationsService {
         );
       }
       if (!dch) return { estDirecteur, directeur: null, direction: null, membres: [] };
-      const { rows } = await tx.execute<{ employee_id: string; capacite: string }>(sql`
-        SELECT employee_id, capacite FROM habilitations WHERE fin_at IS NULL`);
+      const { rows } = await tx.execute<{
+        employee_id: string;
+        capacite: string;
+        principal: boolean;
+      }>(sql`
+        SELECT employee_id, capacite, principal FROM habilitations WHERE fin_at IS NULL`);
       const membres = await membresDeLaDCH(tx, dch);
       return {
         estDirecteur,
@@ -56,6 +62,9 @@ export class HabilitationsService {
           compte: m.compte,
           capacites: CAPACITES_DELEGABLES.filter((c) =>
             rows.some((r) => r.employee_id === m.employeeId && r.capacite === c),
+          ),
+          principal: CAPACITES_DELEGABLES.filter((c) =>
+            rows.some((r) => r.employee_id === m.employeeId && r.capacite === c && r.principal),
           ),
         })),
       };
@@ -116,6 +125,55 @@ export class HabilitationsService {
       await tx.execute(sql`
         INSERT INTO habilitations (id, tenant_id, capacite, employee_id, accordee_par_employee_id)
         VALUES (${id}, ${user.tenantId}, ${input.capacite}, ${input.employeeId}, ${moi})`);
+      await reconcilierLeCircuit(tx, user.tenantId);
+    });
+  }
+
+  /**
+   * Désigner la personne principale d'une délégation de demandes confiée à
+   * plusieurs (ADR-0128), qui traite seule pendant 48 heures ouvrées ; les
+   * autres personnes déléguées sont ses backups. Les demandes en attente
+   * suivent aussitôt. Sans désignation, la personne déléguée la première est
+   * principale.
+   */
+  async designerLePrincipal(user: SessionUser, input: DesignerPrincipalInput): Promise<void> {
+    await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      const moi = await agentDuCompte(tx, user.userId);
+      const dch = await directionDuPersonnel(tx);
+      if (!dch || !moi || dch.directeurEmployeeId !== moi) {
+        problem(
+          403,
+          'habilitations.reserve_au_directeur_dch',
+          'Seule la personne qui dirige la DCH gère les délégations',
+        );
+      }
+      if (!estCapaciteDemande(input.capacite)) {
+        problem(
+          422,
+          'habilitations.sans_principal',
+          'Seules les délégations de demandes ont une personne principale',
+        );
+      }
+      // Les délégations de cette demande, verrouillées : une désignation à la fois.
+      const { rows } = await tx.execute<{ id: string; employee_id: string }>(sql`
+        SELECT id, employee_id FROM habilitations
+         WHERE capacite = ${input.capacite} AND fin_at IS NULL
+         FOR UPDATE`);
+      const choisie = rows.find((r) => r.employee_id === input.employeeId);
+      if (!choisie) {
+        problem(
+          422,
+          'habilitations.principal_non_delegue',
+          'Déléguez d’abord cette demande à cette personne',
+          'La personne principale est l’une des personnes déléguées.',
+        );
+      }
+      await tx.execute(sql`
+        UPDATE habilitations SET principal = false
+         WHERE capacite = ${input.capacite} AND fin_at IS NULL AND principal
+           AND id <> ${choisie.id}`);
+      await tx.execute(sql`
+        UPDATE habilitations SET principal = true WHERE id = ${choisie.id} AND NOT principal`);
       await reconcilierLeCircuit(tx, user.tenantId);
     });
   }

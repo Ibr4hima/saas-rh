@@ -1038,6 +1038,12 @@ export interface DocumentRequestView {
    */
   handledAt: string | null;
   /**
+   * Les heures ouvrées de traitement (ADR-0128) : de la demande à sa clôture,
+   * ou jusqu'à maintenant tant qu'elle est ouverte. Les week-ends et les
+   * jours fériés ne comptent pas. Null : annulée.
+   */
+  heuresOuvrees: number | null;
+  /**
    * Traitée, et l'avis qui l'annonce n'est pas encore lu : l'agent ne l'a
    * pas encore vue (ADR-0048). Dans son propre suivi seulement
    * (`scope=mine`) ; ailleurs, toujours faux.

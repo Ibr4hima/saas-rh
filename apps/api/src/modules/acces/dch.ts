@@ -2,6 +2,8 @@ import { sql, type SQL } from 'drizzle-orm';
 import {
   CAPACITES_DELEGABLES,
   CAPACITES_DE_L_ADMINISTRATEUR,
+  FENETRE_DU_PRINCIPAL_HEURES,
+  RAPPEL_AVANT_LA_FIN_HEURES,
   type Capacite,
   type CapaciteDemande,
 } from '@teranga/contracts';
@@ -16,6 +18,7 @@ import {
   directionDeLUnite,
   uniteEnVigueur,
 } from '../people/chaine';
+import { ajouterHeuresOuvrees } from '../time/heures-ouvrees';
 
 /* ————————————————————————————————————————————————————————————————
    La Direction du Capital Humain, et ce qu'elle confie.
@@ -200,6 +203,45 @@ export function detenteursDe(tx: Tx, capacite: Capacite): Promise<string[]> {
 }
 
 /**
+ * La personne principale d'une délégation de demandes (ADR-0128), ou null.
+ * Sans backup, rien ne change : une délégation à une seule personne se
+ * traite comme avant.
+ */
+export function principalDe(tx: Tx, capacite: Capacite): Promise<string | null> {
+  return memoriser(`principal:${capacite}`, async () => {
+    const { rows } = await tx.execute<{ employee_id: string }>(sql`
+      SELECT employee_id FROM habilitations
+       WHERE capacite = ${capacite} AND fin_at IS NULL AND principal`);
+    return rows[0]?.employee_id ?? null;
+  });
+}
+
+/**
+ * Chaque délégation de demandes a sa personne principale : à défaut (la
+ * première délégation, un départ, un retrait), la personne déléguée la
+ * première l'est. Qui dirige la DCH en désigne une autre à sa guise.
+ */
+export async function tenirLesPrincipaux(tx: Tx): Promise<void> {
+  await tx.execute(sql`
+    UPDATE habilitations h SET principal = true
+     WHERE h.fin_at IS NULL AND NOT h.principal AND h.capacite LIKE 'demandes.%'
+       AND NOT EXISTS (SELECT 1 FROM habilitations p
+                        WHERE p.capacite = h.capacite AND p.fin_at IS NULL AND p.principal)
+       AND NOT EXISTS (SELECT 1 FROM habilitations a
+                        WHERE a.capacite = h.capacite AND a.fin_at IS NULL
+                          AND (a.created_at, a.employee_id) < (h.created_at, h.employee_id))`);
+}
+
+/** Les jours fériés datés, pour compter les heures ouvrées. */
+export function joursFeries(tx: Tx): Promise<Set<string>> {
+  return memoriser('feries', async () => {
+    const { rows } = await tx.execute<{ jour: string }>(sql`
+      SELECT day::text AS jour FROM holidays WHERE day IS NOT NULL`);
+    return new Set(rows.map((r) => r.jour));
+  });
+}
+
+/**
  * Qui relève de l'agent, à tout niveau de la chaîne des N+1 : ces
  * personnes-là ne traitent pas ses demandes.
  *
@@ -249,6 +291,62 @@ async function lireLesEquipes(tx: Tx): Promise<Map<string, string[]>> {
   return equipes;
 }
 
+/**
+ * Depuis quand une demande attend la DCH, et si elle a été confiée aux
+ * backups (ADR-0128).
+ */
+export interface Attente {
+  /** L'arrivée à la DCH ; null : elle arrive à l'instant. */
+  depuis: Date | string | null;
+  /** Confiée aux backups avant la fin de la fenêtre de 48 heures (null : non). */
+  ouverteAuxBackupsLe: Date | string | null;
+}
+
+/**
+ * La fenêtre de 48 heures (ADR-0128) : une délégation de demandes confiée à
+ * plusieurs personnes a sa personne principale, qui traite seule pendant 48
+ * heures ouvrées ; les backups voient la demande, puis la reçoivent et la
+ * traitent aussi, le premier geste l'emportant.
+ */
+export interface FenetreDuPrincipal {
+  principal: Viseur;
+  /** Les backups qui le peuvent, selon la règle commune (cf. `traitementDe`). */
+  backups: Viseur[];
+  /** La fin des 48 heures ouvrées. */
+  finLe: Date;
+  /** Le rappel à la personne principale, 15 heures ouvrées avant la fin. */
+  rappelLe: Date;
+  /** Ouverte aux backups : la fenêtre a pris fin, ou la demande leur a été confiée. */
+  ouverte: boolean;
+  /** Confiée aux backups avant la fin de la fenêtre. */
+  confieeParLePrincipal: boolean;
+}
+
+async function fenetreDe(
+  tx: Tx,
+  principal: Viseur,
+  backups: Viseur[],
+  attente: Attente,
+): Promise<FenetreDuPrincipal> {
+  const feries = await joursFeries(tx);
+  const depuis = attente.depuis ? new Date(attente.depuis) : new Date();
+  const finLe = ajouterHeuresOuvrees(depuis, FENETRE_DU_PRINCIPAL_HEURES, feries);
+  const rappelLe = ajouterHeuresOuvrees(
+    depuis,
+    FENETRE_DU_PRINCIPAL_HEURES - RAPPEL_AVANT_LA_FIN_HEURES,
+    feries,
+  );
+  const confiee = attente.ouverteAuxBackupsLe !== null;
+  return {
+    principal,
+    backups,
+    finLe,
+    rappelLe,
+    ouverte: confiee || Date.now() >= finLe.getTime(),
+    confieeParLePrincipal: confiee,
+  };
+}
+
 /** Qui traite une demande pour la DCH, maintenant. */
 export interface Traitement {
   /**
@@ -262,6 +360,11 @@ export interface Traitement {
   /** La demande du directeur lui-même, sans membre habilité : à lui de la confier. */
   aConfier: boolean;
   dch: DirectionDuPersonnel | null;
+  /**
+   * La fenêtre de 48 heures, quand la délégation a une personne principale
+   * en mesure de traiter (ADR-0128). Null : l'appel va à tous d'emblée.
+   */
+  fenetre: FenetreDuPrincipal | null;
 }
 
 /**
@@ -269,7 +372,9 @@ export interface Traitement {
  *
  *   1. le membre à qui le directeur l'a confiée, à la main, s'il le peut ;
  *   2. sinon, les membres habilités à ce type de demande qui le peuvent —
- *      tous prévenus ;
+ *      tous prévenus. À plusieurs, la personne principale traite seule le
+ *      temps de la fenêtre, puis avec les backups, qui traitent d'emblée
+ *      quand la personne principale ne le peut pas (ADR-0128) ;
  *   3. sinon, le directeur du Capital Humain (en congé ou non : il n'y a
  *      personne après lui).
  *
@@ -278,15 +383,20 @@ export interface Traitement {
  * demandeur s'efface, et à défaut de membre, le directeur traite. Celle du
  * directeur, qui n'a que des subordonnés à la DCH, va à ses membres
  * habilités, ou attend qu'il la confie.
+ *
+ * `attente` porte la fenêtre de 48 heures ; null (un retour de congé à
+ * confirmer, un congé validé qui change), tous les membres sont appelés.
  */
 export async function traitementDe(
   tx: Tx,
   capacite: CapaciteDemande,
-  demande: { employeeId: string; confieeA: string | null },
+  demande: { employeeId: string; confieeA: string | null; attente: Attente | null },
   dchConnue?: DirectionDuPersonnel | null,
 ): Promise<Traitement> {
   const dch = dchConnue === undefined ? await directionDuPersonnel(tx) : dchConnue;
-  if (!dch) return { traitants: [], parDelegationDe: null, aConfier: false, dch: null };
+  if (!dch) {
+    return { traitants: [], parDelegationDe: null, aConfier: false, dch: null, fenetre: null };
+  }
   const directeur = dch.directeur;
   let sous: Set<string> | null = null;
   const relevantDuDemandeur = async (employeeId: string) => {
@@ -304,26 +414,50 @@ export async function traitementDe(
     demande.confieeA !== null && demande.confieeA === dch.directeurEmployeeId;
   if (demande.confieeA && !repriseParLeDirecteur) {
     const m = await disponible(demande.confieeA);
-    if (m) return { traitants: [m], parDelegationDe: directeur, aConfier: false, dch };
+    if (m) {
+      return { traitants: [m], parDelegationDe: directeur, aConfier: false, dch, fenetre: null };
+    }
   }
   if (!repriseParLeDirecteur || directeur?.employeeId === demande.employeeId) {
+    const detenteurs = await detenteursDe(tx, capacite);
     const membres: Viseur[] = [];
-    for (const id of await detenteursDe(tx, capacite)) {
+    for (const id of detenteurs) {
       const m = await disponible(id);
       if (m) membres.push(m);
     }
+    const principalId =
+      demande.attente && detenteurs.length > 1 ? await principalDe(tx, capacite) : null;
+    const principal = membres.find((m) => m.employeeId === principalId) ?? null;
+    if (principal && demande.attente) {
+      const backups = membres.filter((m) => m !== principal);
+      const fenetre = await fenetreDe(tx, principal, backups, demande.attente);
+      return {
+        traitants: fenetre.ouverte ? [principal, ...backups] : [principal],
+        parDelegationDe: directeur,
+        aConfier: false,
+        dch,
+        fenetre,
+      };
+    }
     if (membres.length > 0) {
-      return { traitants: membres, parDelegationDe: directeur, aConfier: false, dch };
+      return {
+        traitants: membres,
+        parDelegationDe: directeur,
+        aConfier: false,
+        dch,
+        fenetre: null,
+      };
     }
   }
   if (directeur && directeur.employeeId !== demande.employeeId) {
-    return { traitants: [directeur], parDelegationDe: null, aConfier: false, dch };
+    return { traitants: [directeur], parDelegationDe: null, aConfier: false, dch, fenetre: null };
   }
   return {
     traitants: [],
     parDelegationDe: null,
     aConfier: Boolean(directeur && directeur.employeeId === demande.employeeId),
     dch,
+    fenetre: null,
   };
 }
 
@@ -550,6 +684,8 @@ export async function verifierLesHabilitations(tx: Tx, tenantId: string): Promis
       dedupeKey: `habilitations:${r.employee_id}:partie:${new Date().toISOString().slice(0, 10)}`,
     });
   }
+  // La personne principale partie, la délégation en reçoit une autre (ADR-0128).
+  await tenirLesPrincipaux(tx);
 }
 
 /**

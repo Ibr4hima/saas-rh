@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { EtapeConge, SujetNotification } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 import { notifier, type NotificationDraft } from '../notifications/notifier';
-import { relancer, retirerLesAppels, tenirLesAppels } from '../acces/appels';
+import { appelerPourLaDCH, relancer, retirerLesAppels, tenirLesAppels } from '../acces/appels';
 import { ABSENCE, absence, accord, de, duAu, frDate, leLa, sonSa } from '../notifications/phrases';
 import type { Heures, Nom } from '../notifications/phrases';
 import {
@@ -13,7 +13,9 @@ import {
   traitementDe,
   verifierLesHabilitations,
   viseur,
+  type Attente,
   type DirectionDuPersonnel,
+  type FenetreDuPrincipal,
   type Viseur,
 } from '../acces/dch';
 import { compterLesBloquees, libererLesConfiees, reconcilierLesDemandes } from '../acces/demandes';
@@ -96,6 +98,8 @@ export interface Attendu {
    * acquise, elle revient au N+1 s'il rentre avant qu'elle ait visé.
    */
   n1Absent: boolean;
+  /** À la DCH, la fenêtre de 48 heures (ADR-0128) ; null sinon. */
+  fenetre: FenetreDuPrincipal | null;
 }
 
 interface DemandeCircuit {
@@ -108,6 +112,10 @@ interface DemandeCircuit {
   deposeeLe: Date | string;
   /** Le premier jour demandé (ISO) : le N+1 absent doit être rentré la veille. */
   debut: string | null;
+  /** L'arrivée à la DCH : la fenêtre de 48 heures court depuis (null : pas encore notée). */
+  aLaDCHLe: Date | string | null;
+  /** Confiée aux backups avant la fin de la fenêtre (ADR-0128). */
+  ouverteAuxBackupsLe: Date | string | null;
 }
 
 /**
@@ -135,19 +143,31 @@ async function delaiDuN1Passe(tx: Tx, demande: DemandeCircuit): Promise<boolean>
   return (rows[0]?.jours ?? 0) >= DELAI_N1_JOURS_OUVRES;
 }
 
-/** Qui traite pour la DCH — la règle commune à toutes les demandes. */
+/**
+ * Qui traite pour la DCH : la règle commune à toutes les demandes. La
+ * fenêtre de 48 heures court depuis l'arrivée à la DCH ; sans `attente`
+ * (un retour à confirmer), tous les membres sont appelés.
+ */
 async function traitantDCH(
   tx: Tx,
   demande: DemandeCircuit,
   dch: DirectionDuPersonnel | null,
-): Promise<{ valideurs: Viseur[]; parDelegationDe: Viseur | null }> {
+  attente: Attente | null = {
+    depuis: demande.aLaDCHLe,
+    ouverteAuxBackupsLe: demande.ouverteAuxBackupsLe,
+  },
+): Promise<{
+  valideurs: Viseur[];
+  parDelegationDe: Viseur | null;
+  fenetre: FenetreDuPrincipal | null;
+}> {
   const t = await traitementDe(
     tx,
     'demandes.conges',
-    { employeeId: demande.employeeId, confieeA: demande.confieeAEmployeeId },
+    { employeeId: demande.employeeId, confieeA: demande.confieeAEmployeeId, attente },
     dch,
   );
-  return { valideurs: t.traitants, parDelegationDe: t.parDelegationDe };
+  return { valideurs: t.traitants, parDelegationDe: t.parDelegationDe, fenetre: t.fenetre };
 }
 
 /** Qui est attendu sur cette demande, maintenant — null si elle n'attend plus rien. */
@@ -163,6 +183,7 @@ export async function attendu(tx: Tx, demande: DemandeCircuit): Promise<Attendu 
     dch,
     n1SansReponse: false,
     n1Absent: false,
+    fenetre: null,
   });
   let n1SansReponse = false;
   let n1Absent = false;
@@ -203,9 +224,11 @@ export async function lireCircuit(tx: Tx, requestId: string): Promise<DemandeCir
     confiee_a_employee_id: string | null;
     created_at: string;
     start_date: string;
+    a_la_dch_le: string | null;
+    ouverte_aux_backups_le: string | null;
   }>(sql`
     SELECT id, employee_id, status, current_level, confiee_a_employee_id, created_at::text,
-           start_date::text
+           start_date::text, a_la_dch_le, ouverte_aux_backups_le
       FROM absence_requests WHERE id = ${requestId}`);
   const r = rows[0];
   return r
@@ -217,6 +240,8 @@ export async function lireCircuit(tx: Tx, requestId: string): Promise<DemandeCir
         confieeAEmployeeId: r.confiee_a_employee_id,
         deposeeLe: r.created_at,
         debut: r.start_date,
+        aLaDCHLe: r.a_la_dch_le,
+        ouverteAuxBackupsLe: r.ouverte_aux_backups_le,
       }
     : null;
 }
@@ -336,6 +361,15 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
          SET current_level = ${NIVEAU_DCH}, n1_sans_reponse = ${att.n1SansReponse}
        WHERE id = ${requestId}`);
   }
+  // L'arrivée à la DCH se note : la fenêtre de 48 heures court depuis. Revenue
+  // au N+1 de retour de congé, la demande repartira de zéro (ADR-0128).
+  if (att?.etape === 'dch' && !demande.aLaDCHLe) {
+    await tx.execute(sql`UPDATE absence_requests SET a_la_dch_le = now() WHERE id = ${requestId}`);
+  } else if (att?.etape === 'n1' && demande.aLaDCHLe) {
+    await tx.execute(sql`
+      UPDATE absence_requests SET a_la_dch_le = NULL, ouverte_aux_backups_le = NULL
+       WHERE id = ${requestId}`);
+  }
   const d = att && att.valideurs.length > 0 ? await lireDemande(tx, requestId) : null;
   const prefixe = `conge:${requestId}`;
   if (!att || !d) {
@@ -352,12 +386,18 @@ export async function reconcilierDemande(tx: Tx, requestId: string): Promise<voi
     });
     return;
   }
-  await tenirLesAppels(tx, d.tenantId, prefixe, 'dch', destinataires, {
-    type: 'conge_a_viser',
-    sujet: 'dch.conges',
-    title: demandeDe(d, motif(d, 'dch')),
-    link: '/moi/dch',
-  });
+  await appelerPourLaDCH(
+    tx,
+    d.tenantId,
+    prefixe,
+    { traitants: att.valideurs, fenetre: att.fenetre },
+    {
+      type: 'conge_a_viser',
+      sujet: 'dch.conges',
+      title: demandeDe(d, motif(d, 'dch')),
+      link: '/moi/dch',
+    },
+  );
 }
 
 // ──────────────────────────────────────────── un congé validé qui change
@@ -383,8 +423,10 @@ export async function attenduPourLaReprise(
       dch,
       n1SansReponse: false,
       n1Absent: false,
+      fenetre: null,
     };
   }
+  // Un retour à confirmer n'a pas de fenêtre : tous les membres le peuvent.
   const t = await traitantDCH(
     tx,
     {
@@ -395,8 +437,11 @@ export async function attenduPourLaReprise(
       confieeAEmployeeId: null,
       deposeeLe: new Date(),
       debut: null,
+      aLaDCHLe: null,
+      ouverteAuxBackupsLe: null,
     },
     dch,
+    null,
   );
   return { etape: 'dch', ...t, demandeDuDirecteur, dch, n1SansReponse: false, n1Absent: false };
 }
@@ -491,6 +536,7 @@ export async function annoncerLeChangement(
   const dch = await traitementDe(tx, 'demandes.conges', {
     employeeId: d.employeeId,
     confieeA: null,
+    attente: null,
   });
   // Le N+1 et la DCH lisent la même phrase, chacun avec le motif qu'il voit.
   const aux = async (title: (a: Nom) => string, dedupeKey: string) => {
@@ -806,6 +852,8 @@ export async function quiViseraPour(
     confieeAEmployeeId: null,
     deposeeLe: new Date(),
     debut: null,
+    aLaDCHLe: null,
+    ouverteAuxBackupsLe: null,
   };
   const n1 = await n1De(tx, employeeId);
   const dch = await directionDuPersonnel(tx);

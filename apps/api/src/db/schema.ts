@@ -118,6 +118,8 @@ export const habilitations = pgTable('habilitations', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   finAt: timestamp('fin_at', { withTimezone: true }),
   finMotif: text('fin_motif'),
+  /** La personne principale d'une délégation de demandes à plusieurs (ADR-0128). */
+  principal: boolean('principal').notNull().default(false),
 });
 
 export const profileChangeRequests = pgTable('profile_change_requests', {
@@ -133,6 +135,8 @@ export const profileChangeRequests = pgTable('profile_change_requests', {
   hrMessage: text('hr_message'),
   handledAt: timestamp('handled_at', { withTimezone: true }),
   confieeAEmployeeId: uuid('confiee_a_employee_id'),
+  /** Confiée aux backups avant la fin de la fenêtre de 48 heures (ADR-0128). */
+  ouverteAuxBackupsLe: timestamp('ouverte_aux_backups_le', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -290,6 +294,10 @@ export const absenceRequests = pgTable('absence_requests', {
   requestedByUserId: uuid('requested_by_user_id'),
   /** Confiée à la main à un membre de la DCH ; NULL : la règle s'applique. */
   confieeAEmployeeId: uuid('confiee_a_employee_id'),
+  /** Arrivée à la DCH : la fenêtre de 48 heures court depuis (ADR-0128). */
+  aLaDCHLe: timestamp('a_la_dch_le', { withTimezone: true }),
+  /** Confiée aux backups avant la fin de la fenêtre de 48 heures (ADR-0128). */
+  ouverteAuxBackupsLe: timestamp('ouverte_aux_backups_le', { withTimezone: true }),
   /** La fin validée au départ, quand le congé a été écourté. */
   finInitiale: date('fin_initiale'),
   /** Le jour de reprise que l'agent demande, en attente de confirmation. */
@@ -462,6 +470,8 @@ export const employeeDocuments = pgTable('employee_documents', {
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   reviewComment: text('review_comment'),
   confieeAEmployeeId: uuid('confiee_a_employee_id'),
+  /** Confiée aux backups avant la fin de la fenêtre de 48 heures (ADR-0128). */
+  ouverteAuxBackupsLe: timestamp('ouverte_aux_backups_le', { withTimezone: true }),
   /** CNI et passeport : la date d'expiration, que l'agent donne au dépôt. */
   expiresOn: date('expires_on'),
   /** CNI et passeport : une nouvelle pièce, qui remplace celle de la fiche. */
@@ -535,6 +545,8 @@ export const documentRequests = pgTable('document_requests', {
   readyAt: timestamp('ready_at', { withTimezone: true }),
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   confieeAEmployeeId: uuid('confiee_a_employee_id'),
+  /** Confiée aux backups avant la fin de la fenêtre de 48 heures (ADR-0128). */
+  ouverteAuxBackupsLe: timestamp('ouverte_aux_backups_le', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

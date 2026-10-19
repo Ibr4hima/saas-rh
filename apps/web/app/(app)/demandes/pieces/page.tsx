@@ -29,7 +29,9 @@ import { Icon } from '../../../../components/icons';
 import { Modal } from '../../../../components/modal';
 import { Pagination, usePagination } from '../../../../components/pagination';
 import {
+  AuPrincipal,
   BandeauMessage,
+  ConfierAuxBackups,
   Pastille,
   texteErreur,
   type Message,
@@ -106,14 +108,20 @@ export default function PiecesAVerifierPage() {
     });
 
   // Ce que l'appelant peut vérifier — le directeur, tout, délégué ou non —,
-  // et son propre document, qu'il délègue. Qui consulte seulement voit la
+  // son propre document, à déléguer, et ce que les backups voient sans
+  // pouvoir encore le vérifier (ADR-0128). Qui consulte seulement voit la
   // file entière, sans geste.
   const toutes = pieces.data ?? [];
   // Les types que la DCH a délégués à l'appelant.
   const miens = TYPES_PIECES.filter((t) => t.capacites.some((c) => peut(me.data, c)));
   const traite = estDirecteur || miens.length > 0 || toutes.some((p) => p.canReview);
   const aVerifier = toutes.filter(
-    (p) => p.status === 'pending' && (!traite || p.canReview || Boolean(p.traitement?.aConfier)),
+    (p) =>
+      p.status === 'pending' &&
+      (!traite ||
+        p.canReview ||
+        Boolean(p.traitement?.aConfier) ||
+        Boolean(p.traitement?.fenetre?.enAttente)),
   );
   const { tranche, barre } = usePagination(aVerifier);
 
@@ -182,6 +190,20 @@ export default function PiecesAVerifierPage() {
                         </p>
                       ) : p.canReview ? (
                         <div className="flex items-center justify-end gap-1.5">
+                          {p.traitement?.fenetre?.peutOuvrir ? (
+                            <ConfierAuxBackups
+                              chemin={`/demandes/pieces/${p.id}/ouvrir`}
+                              employe={p.employeeName}
+                              onFait={async () => {
+                                setMessage({
+                                  ton: 'ok',
+                                  texte: `Demande de ${p.employeeName} confiée à vos backups.`,
+                                });
+                                await rafraichir();
+                              }}
+                              onErreur={(texte) => setMessage({ ton: 'erreur', texte })}
+                            />
+                          ) : null}
                           <BoutonDecision
                             geste="approuver"
                             objet="le document"
@@ -212,6 +234,10 @@ export default function PiecesAVerifierPage() {
                             }}
                           />
                         </div>
+                      ) : p.traitement?.fenetre?.enAttente ? (
+                        <p className="text-right">
+                          <AuPrincipal fenetre={p.traitement.fenetre} />
+                        </p>
                       ) : (
                         <p className="text-right text-[11.5px] font-semibold text-accent-text">
                           Déléguer à un membre de la DCH
