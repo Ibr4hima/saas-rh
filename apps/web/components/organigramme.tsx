@@ -27,7 +27,7 @@ import { Icon } from './icons';
  * lecteur d'écran dans son ordre logique.
  *
  * Un tel arbre est LARGE : c'est sa nature, pas un défaut. Il se tient donc
- * dans un canevas — on le met à l'échelle, on l'attrape à la souris pour le
+ * dans un canevas, à 90 % et sans réglage : on l'attrape à la souris pour le
  * balader, et le cadre s'ouvre sur le sommet plutôt que sur le bord gauche
  * (voir `useCanevas`).
  */
@@ -51,11 +51,11 @@ const CHROME_BLOC = 72;
 /** Aucun nom ne justifie une carte plus large que cela : au-delà, on coupe. */
 const LARGEUR_BLOC_MAX = 470;
 
-/** Taille de lecture. L'arbre déborde souvent : on le balade, on ne le rapetisse pas. */
-const ZOOM_DEFAUT = 0.9;
-const ZOOM_MIN = 0.4;
-const ZOOM_MAX = 1.5;
-const PAS = 0.1;
+/**
+ * L'échelle de l'arbre, fixe : 90 %, la taille de lecture. L'arbre déborde
+ * souvent : on le balade, on ne le rapetisse pas, et rien ne la règle.
+ */
+const ZOOM = 0.9;
 
 /**
  * Une trame de points, très pâle, derrière l'arbre : elle dit « ceci est un
@@ -115,8 +115,7 @@ export function Organigramme({
 
   const racines = parEnfant.get(null) ?? [];
   const largeurs = useLargeursDesBlocs(unites);
-  const { cadre, arbre, taille, zoom, anime, deborde, ajustement, zoomer, poser, glisser } =
-    useCanevas();
+  const { cadre, arbre, taille, deborde, glisser } = useCanevas();
 
   return (
     // Le canevas prend la hauteur que la carte lui donne — un plan de service
@@ -127,14 +126,11 @@ export function Organigramme({
       <div
         ref={cadre}
         style={FOND_CANEVAS}
-        // Le bandeau du bas est RÉSERVÉ à la commande d'échelle : posée en
-        // flottant sur un arbre qui descend jusqu'au bord, elle masquerait le
-        // dernier bloc.
         className={cn(
           // `overflow-auto` sur les DEUX axes : le cadre ne fait plus la
           // hauteur de l'arbre, c'est l'arbre qui doit pouvoir défiler dans
           // le cadre — sinon un organigramme de six rangs se coupe en bas.
-          'min-h-0 flex-1 overflow-auto px-4 pt-6 pb-14',
+          'min-h-0 flex-1 overflow-auto px-4 pt-6 pb-6',
           deborde && 'cursor-grab active:cursor-grabbing',
         )}
         {...glisser}
@@ -148,17 +144,14 @@ export function Organigramme({
           className="relative mx-auto"
           style={
             taille
-              ? { width: Math.ceil(taille.w * zoom), height: Math.ceil(taille.h * zoom) }
+              ? { width: Math.ceil(taille.w * ZOOM), height: Math.ceil(taille.h * ZOOM) }
               : undefined
           }
         >
           <div
             ref={arbre}
-            className={cn(
-              'absolute top-0 left-0 flex w-max items-start gap-10 transition-opacity duration-200 ease-out',
-              anime && 'transition-[transform,opacity] duration-300',
-            )}
-            style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', opacity: taille ? 1 : 0 }}
+            className="absolute top-0 left-0 flex w-max items-start gap-10 transition-opacity duration-200 ease-out"
+            style={{ transform: `scale(${ZOOM})`, transformOrigin: '0 0', opacity: taille ? 1 : 0 }}
           >
             {racines.map((u) => (
               <Branche
@@ -176,61 +169,7 @@ export function Organigramme({
           </div>
         </div>
       </div>
-
-      <div className="absolute right-3 bottom-3 flex items-center gap-0.5 rounded-groupe border border-card-line bg-surface p-1 shadow-sm">
-        <BoutonEchelle
-          icone="remove"
-          label="Réduire"
-          disabled={zoom <= ZOOM_MIN + 0.001}
-          onClick={() => zoomer(-PAS)}
-        />
-        {/* Le pourcentage est un interrupteur : il montre tout, puis rend la
-            taille de lecture. Deux gestes qu'on veut à un clic, et un seul
-            endroit où les chercher. */}
-        <button
-          type="button"
-          onClick={() => poser(ajuste(zoom, ajustement) ? ZOOM_DEFAUT : ajustement)}
-          title={ajuste(zoom, ajustement) ? 'Revenir à la taille de lecture' : 'Voir tout l’arbre'}
-          className="rounded-[6px] px-2 py-0.5 text-[11px] font-bold tabular-nums text-ink-muted transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-        >
-          {Math.round(zoom * 100)} %
-        </button>
-        <BoutonEchelle
-          icone="add"
-          label="Agrandir"
-          disabled={zoom >= ZOOM_MAX - 0.001}
-          onClick={() => zoomer(PAS)}
-        />
-      </div>
     </div>
-  );
-}
-
-/** L'échelle est-elle déjà celle qui montre tout l'arbre ? */
-const ajuste = (zoom: number, ajustement: number) => Math.abs(zoom - ajustement) < 0.005;
-
-function BoutonEchelle({
-  icone,
-  label,
-  disabled,
-  onClick,
-}: {
-  icone: 'add' | 'remove';
-  label: string;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-      className="flex size-6 items-center justify-center rounded-[6px] text-ink-muted transition-colors hover:bg-hover hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:pointer-events-none disabled:opacity-35"
-    >
-      <Icon name={icone} size={15} />
-    </button>
   );
 }
 
@@ -306,7 +245,7 @@ function replie(texte: string, largeur: number, mesurer: (t: string) => number):
 }
 
 /**
- * Le canevas : mesurer l'arbre, le mettre à l'échelle, le balader.
+ * Le canevas : mesurer l'arbre, le balader.
  *
  * `offsetWidth` ignore les transformations : on lit donc toujours la taille
  * NATURELLE de l'arbre, même déjà réduit — sans quoi chaque mesure mangerait
@@ -319,8 +258,6 @@ function useCanevas() {
   const arbre = useRef<HTMLDivElement | null>(null);
   const [taille, setTaille] = useState<{ w: number; h: number } | null>(null);
   const [dispo, setDispo] = useState(0);
-  const [zoom, setZoom] = useState(ZOOM_DEFAUT);
-  const [anime, setAnime] = useState(false);
 
   useEffect(() => {
     const c = cadre.current;
@@ -341,8 +278,7 @@ function useCanevas() {
     return () => ro.disconnect();
   }, []);
 
-  const ajustement = taille ? Math.min(1, Math.max(ZOOM_MIN, dispo / taille.w)) : 1;
-  const deborde = taille !== null && taille.w * zoom > dispo + 1;
+  const deborde = taille !== null && taille.w * ZOOM > dispo + 1;
 
   // Le cadre s'ouvre sur le MILIEU de l'arbre, là où se tient le sommet. Sans
   // cela il s'ouvrait sur le bord gauche : une colonne de blocs sans racine
@@ -357,12 +293,9 @@ function useCanevas() {
     const c = cadre.current;
     if (!c || taille === null || centre.current) return;
     centre.current = true;
-    const debord = taille.w * zoom + 32 - c.clientWidth;
+    const debord = taille.w * ZOOM + 32 - c.clientWidth;
     if (debord > 0) c.scrollLeft = debord / 2;
-    // Les transitions n'entrent en service qu'après ce premier accord : on
-    // veut voir l'arbre à sa bonne taille, pas le voir s'y rendre.
-    requestAnimationFrame(() => setAnime(true));
-  }, [taille, zoom]);
+  }, [taille]);
 
   /**
    * Attraper l'arbre et le tirer, comme une carte.
@@ -412,13 +345,8 @@ function useCanevas() {
     cadre,
     arbre,
     taille,
-    zoom,
-    anime,
     deborde,
-    ajustement,
     glisser,
-    poser: (z: number) => setZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z))),
-    zoomer: (pas: number) => setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z + pas))),
   };
 }
 
