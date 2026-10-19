@@ -62,15 +62,6 @@
 
   --tg-success: #177245;
   --tg-success-soft: #e7f3ec;
-  /* Le sceau d'un agent, à côté de son nom (cf. Sceau) : la rosette pleine,
-     en dégradé du haut à gauche au bas à droite. Bleu de charte pour un
-     agent actif, gris pour un inactif ; la coche reste blanche. */
-  --tg-sceau-bleu-haut: #2a7bcb;
-  --tg-sceau-bleu-bas: #004f91;
-  --tg-sceau-bleu-ombre: rgb(0 60 120 / 0.35);
-  --tg-sceau-gris-haut: #9aa0b1;
-  --tg-sceau-gris-bas: #5f6579;
-  --tg-sceau-gris-ombre: rgb(40 45 60 / 0.28);
   --tg-warning: #8e6000;
   --tg-warning-soft: #faf1dc;
   --tg-danger: #b3382e;
@@ -303,13 +294,6 @@
 
     --tg-success: #5fbf8f;
     --tg-success-soft: #1d3229;
-    /* Plus clair sur un fond sombre ; la coche reste blanche. */
-    --tg-sceau-bleu-haut: #5b9fe6;
-    --tg-sceau-bleu-bas: #235fa5;
-    --tg-sceau-bleu-ombre: rgb(0 0 0 / 0.45);
-    --tg-sceau-gris-haut: #7d8396;
-    --tg-sceau-gris-bas: #4f5568;
-    --tg-sceau-gris-ombre: rgb(0 0 0 / 0.45);
     --tg-warning: #d9a94e;
     --tg-warning-soft: #362c17;
     --tg-danger: #e08078;
@@ -390,12 +374,6 @@
 
   --tg-success: #5fbf8f;
   --tg-success-soft: #1d3229;
-  --tg-sceau-bleu-haut: #5b9fe6;
-  --tg-sceau-bleu-bas: #235fa5;
-  --tg-sceau-bleu-ombre: rgb(0 0 0 / 0.45);
-  --tg-sceau-gris-haut: #7d8396;
-  --tg-sceau-gris-bas: #4f5568;
-  --tg-sceau-gris-ombre: rgb(0 0 0 / 0.45);
   --tg-warning: #d9a94e;
   --tg-warning-soft: #362c17;
   --tg-danger: #e08078;

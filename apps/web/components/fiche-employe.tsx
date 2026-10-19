@@ -283,9 +283,9 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
           et rend son blanc à la carte. */}
       <EnTete
         titre={`${e.person.givenName} ${e.person.familyName}`}
-        // L'état en un signe : le sceau plein, au bleu de l'APIX, pour un agent
-        // actif ; gris et barré pour un inactif. Le mot reste pour les
-        // lecteurs d'écran et dans l'infobulle.
+        // L'état en un signe : le sceau plein, au bleu du menu, pour un agent
+        // actif ; la rosette barrée, au trait gris, pour un inactif. Le mot
+        // reste pour les lecteurs d'écran et dans l'infobulle.
         marque={
           <span
             role="img"
