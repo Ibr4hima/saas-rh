@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CAPACITES_DOCUMENTS,
   CAPACITES_PIECES,
@@ -1063,6 +1063,39 @@ function qualite(user: SessionUser, espace: Espace): string {
   return user.estDG ? 'Espace DG' : 'Espace personnel';
 }
 
+/**
+ * Le pied de la liste du menu, quand elle dépasse : les entrées s'effacent en
+ * fondu au-dessus du compte (ADR-0142), comme une rangée d'onglets trop
+ * longue (cf. DefilementHorizontal). Rien quand tout tient, ni une fois
+ * arrivé au bout de la liste.
+ */
+function useFonduEnBas() {
+  // La liste par une ref de rappel : elle n'existe pas au premier rendu, le
+  // temps que la session se charge.
+  const [liste, setListe] = useState<HTMLElement | null>(null);
+  const [suite, setSuite] = useState(false);
+  const mesurer = useCallback(() => {
+    if (liste) setSuite(liste.scrollTop + liste.clientHeight < liste.scrollHeight - 2);
+  }, [liste]);
+  useEffect(() => {
+    if (!liste) return;
+    mesurer();
+    // La liste change de hauteur quand une rubrique s'ouvre ou se ferme.
+    const observateur = new ResizeObserver(mesurer);
+    observateur.observe(liste);
+    if (liste.firstElementChild) observateur.observe(liste.firstElementChild);
+    return () => observateur.disconnect();
+  }, [liste, mesurer]);
+  const masque = suite
+    ? 'linear-gradient(to bottom, #000 calc(100% - 48px), transparent)'
+    : undefined;
+  return {
+    liste: setListe,
+    mesurer,
+    style: masque ? { maskImage: masque, WebkitMaskImage: masque } : undefined,
+  };
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <PageTitleProvider>
@@ -1090,6 +1123,7 @@ function useEcranLarge(): boolean {
 }
 
 function AppShell({ children }: { children: React.ReactNode }) {
+  const fondu = useFonduEnBas();
   const me = useMe();
   const router = useRouter();
   const pathname = usePathname();
@@ -1320,44 +1354,53 @@ function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* La liste défile à l'intérieur si elle dépasse : la marque et la
-            personne restent en place. */}
-        <nav aria-label="Menu" className="min-h-0 flex-1 overflow-y-auto px-3 pt-1 pb-3">
-          {items.map((item, i) => {
-            // Le blanc entre deux familles vaut un intitulé, et ne coûte
-            // pas de ligne. Il se calcule sur l'entrée PRÉCÉDENTE RENDUE,
-            // pas sur l'ordre d'écriture : la navigation d'un rôle peut
-            // être amputée de deux entrées, et une famille réduite à rien
-            // ne doit pas laisser un trou derrière elle.
-            const changeDeFamille = i > 0 && item.groupe !== items[i - 1]!.groupe;
-            return (
-              <div key={item.href} className={cn('flex flex-col', changeDeFamille && 'mt-4')}>
-                {item.children ? (
-                  <Rubrique
-                    item={item}
-                    contientLaPageCourante={isActive(item.href)}
-                    badge={badgeCount(item.badge)}
-                    estActive={isChildActive}
-                  />
-                ) : (
-                  <RangeeNav
-                    href={item.href}
-                    label={item.label}
-                    icon={item.icon}
-                    active={isActive(item.href)}
-                    badge={badgeCount(item.badge)}
-                    desactive={item.desactive}
-                  />
-                )}
-              </div>
-            );
-          })}
+            personne restent en place, et la liste s'efface en fondu au-dessus
+            de la personne tant qu'il reste des entrées plus bas. */}
+        <nav
+          ref={fondu.liste}
+          onScroll={fondu.mesurer}
+          style={fondu.style}
+          aria-label="Menu"
+          className="min-h-0 flex-1 overflow-y-auto px-3 pt-1 pb-3"
+        >
+          <div>
+            {items.map((item, i) => {
+              // Le blanc entre deux familles vaut un intitulé, et ne coûte
+              // pas de ligne. Il se calcule sur l'entrée PRÉCÉDENTE RENDUE,
+              // pas sur l'ordre d'écriture : la navigation d'un rôle peut
+              // être amputée de deux entrées, et une famille réduite à rien
+              // ne doit pas laisser un trou derrière elle.
+              const changeDeFamille = i > 0 && item.groupe !== items[i - 1]!.groupe;
+              return (
+                <div key={item.href} className={cn('flex flex-col', changeDeFamille && 'mt-4')}>
+                  {item.children ? (
+                    <Rubrique
+                      item={item}
+                      contientLaPageCourante={isActive(item.href)}
+                      badge={badgeCount(item.badge)}
+                      estActive={isChildActive}
+                    />
+                  ) : (
+                    <RangeeNav
+                      href={item.href}
+                      label={item.label}
+                      icon={item.icon}
+                      active={isActive(item.href)}
+                      badge={badgeCount(item.badge)}
+                      desactive={item.desactive}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </nav>
 
-        {/* Qui je suis, au pied du menu, sous un filet : ce n'est pas une
-            destination de plus, c'est l'identité de la session. Tout le bloc
-            ouvre le menu du compte. */}
-        <div className="shrink-0 px-3 pb-3">
-          <div className="border-t border-line-soft pt-3">
+        {/* Qui je suis, au pied du menu, sans filet : la liste s'efface
+            au-dessus (ADR-0142). Ce n'est pas une destination de plus, c'est
+            l'identité de la session. Tout le bloc ouvre le menu du compte. */}
+        <div className="shrink-0 px-3 pt-1 pb-3">
+          <div>
             <MenuCompte
               variante="colonne"
               certificats={espace === 'agent'}
