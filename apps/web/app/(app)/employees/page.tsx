@@ -50,6 +50,7 @@ import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import {
   BarreSelection,
   LIGNE_COCHEE,
+  RechercheDuTableau,
   SqueletteTableau,
   ThCases,
   ThTri,
@@ -292,20 +293,12 @@ export default function EmployeesPage() {
               place, et deux séries d'actions sur la même ligne feraient
               hésiter. */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Icon
-                name="search"
-                size={15}
-                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-muted/70"
-              />
-              <Input
-                placeholder="Nom ou matricule…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                aria-label="Rechercher un employé"
-                className="h-8 w-44 pl-8 text-[12.5px] sm:w-56"
-              />
-            </div>
+            <RechercheDuTableau
+              valeur={search}
+              onChange={setSearch}
+              placeholder="Nom ou matricule…"
+              libelle="Rechercher un agent"
+            />
 
             {/* On importe des agents en poste : l'onglet des inactifs n'en reçoit pas. */}
             {peutImporter && onglet === 'active' && choisis.length === 0 ? (

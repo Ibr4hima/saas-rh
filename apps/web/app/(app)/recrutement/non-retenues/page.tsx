@@ -14,7 +14,6 @@ import {
   CardTitle,
   cn,
   EmptyState,
-  Input,
   TBody,
   Td,
   Th,
@@ -33,6 +32,7 @@ import { LIGNES_PAR_PAGE, Pagination } from '../../../../components/pagination';
 import {
   BarreSelection,
   LIGNE_COCHEE,
+  RechercheDuTableau,
   SqueletteTableau,
   TdCase,
   ThCases,
@@ -149,15 +149,14 @@ export default function CandidaturesNonRetenuesPage() {
               </BarreSelection>
             </div>
           ) : (
-            <Input
-              placeholder="Rechercher un candidat…"
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
+            <RechercheDuTableau
+              valeur={q}
+              onChange={(valeur) => {
+                setQ(valeur);
                 sel.vider();
               }}
-              className="h-8 w-56"
-              aria-label="Rechercher une candidature"
+              placeholder="Nom ou offre…"
+              libelle="Rechercher une candidature"
             />
           )}
         </CardHeader>

@@ -1,8 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { Checkbox, cn, Skeleton, Td, Th } from '@teranga/ui';
+import { Checkbox, cn, Input, Skeleton, Td, Th } from '@teranga/ui';
 import { accorde, compte } from '../lib/mots';
+import { Icon } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
    Le socle des tableaux.
@@ -336,6 +337,41 @@ export function SqueletteTableau({ lignes = 6 }: { lignes?: number }) {
       {Array.from({ length: lignes }, (_, i) => (
         <Skeleton key={i} className="h-9 w-full shrink-0" />
       ))}
+    </div>
+  );
+}
+
+/**
+ * La recherche d'un tableau, à droite du titre de son bloc : la loupe, puis
+ * le champ, en 12,5 px et à la hauteur des boutons, comme au personnel. Le
+ * texte d'invite dit ce qu'elle cherche : « Nom ou matricule… ».
+ */
+export function RechercheDuTableau({
+  valeur,
+  onChange,
+  placeholder,
+  libelle,
+}: {
+  valeur: string;
+  onChange: (valeur: string) => void;
+  placeholder: string;
+  /** Le nom du champ, pour qui ne voit pas la loupe : « Rechercher une offre ». */
+  libelle: string;
+}) {
+  return (
+    <div className="relative">
+      <Icon
+        name="search"
+        size={15}
+        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-muted/70"
+      />
+      <Input
+        placeholder={placeholder}
+        value={valeur}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={libelle}
+        className="h-8 w-44 pl-8 text-[12.5px] sm:w-56"
+      />
     </div>
   );
 }

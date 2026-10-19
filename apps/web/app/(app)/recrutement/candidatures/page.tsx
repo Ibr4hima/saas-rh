@@ -9,7 +9,6 @@ import {
   CardTitle,
   cn,
   EmptyState,
-  Input,
   TBody,
   Td,
   Th,
@@ -23,7 +22,12 @@ import { LoadFailure } from '../../../../components/load-failure';
 import { CONTRACT_LABELS } from '../../../../lib/recruitment';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
 import { Pagination, usePagination } from '../../../../components/pagination';
-import { SqueletteTableau, ThTri, useTriLocal } from '../../../../components/tableau';
+import {
+  RechercheDuTableau,
+  SqueletteTableau,
+  ThTri,
+  useTriLocal,
+} from '../../../../components/tableau';
 import { formatDate } from '../../../../lib/hooks';
 
 /** Les dossiers en lice : les autres ont leur page, « Candidatures non retenues ». */
@@ -90,12 +94,11 @@ export default function CandidaturesPage() {
       <CartePleine>
         <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
           <CardTitle>Dossiers de candidature</CardTitle>
-          <Input
-            placeholder="Rechercher une offre…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="h-8 w-52"
-            aria-label="Rechercher une offre"
+          <RechercheDuTableau
+            valeur={q}
+            onChange={setQ}
+            placeholder="Poste ou référence…"
+            libelle="Rechercher une offre"
           />
         </CardHeader>
         {jobs.isLoading ? (

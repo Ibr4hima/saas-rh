@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { DeleteJobPostingsResult, JobPostingView } from '@teranga/contracts';
+import { correspond } from '@teranga/contracts';
 import {
   Button,
   CardHeader,
@@ -30,6 +31,7 @@ import { CONTRACT_LABELS, JOB_STATUS_LABELS } from '../../../lib/recruitment';
 import {
   BarreSelection,
   LIGNE_COCHEE,
+  RechercheDuTableau,
   SqueletteTableau,
   TdCase,
   ThCases,
@@ -48,13 +50,20 @@ export default function OffresPage() {
   useHorlogeMinute();
   const [panneau, setPanneau] = useState<'modifier' | 'supprimer' | null>(null);
   const [ecartees, setEcartees] = useState<DeleteJobPostingsResult['skipped']>([]);
+  const [q, setQ] = useState('');
 
   const jobs = useQuery({ queryKey: ['jobs'], queryFn: () => api<JobPostingView[]>('/jobs') });
   const brutes = useMemo(() => jobs.data ?? [], [jobs.data]);
+  // La recherche porte sur le poste et la référence, avec la règle du
+  // personnel : ni la casse ni les accents ne comptent.
+  const trouvees = useMemo(
+    () => brutes.filter((o) => correspond(q, o.title, o.reference)),
+    [brutes, q],
+  );
 
   /** L'ordre de la liste : la référence par défaut, le reste au clic. */
   const tri = useTriLocal(
-    brutes,
+    trouvees,
     {
       reference: (o) => o.reference,
       title: (o) => o.title,
@@ -70,7 +79,7 @@ export default function OffresPage() {
   );
   const offres = tri.lignes;
   // Comme pour le personnel : la sélection porte sur la page affichée.
-  const { tranche, barre } = usePagination(offres, `${tri.colonne}|${tri.sens}`);
+  const { tranche, barre } = usePagination(offres, `${tri.colonne}|${tri.sens}|${q}`);
   const sel = useSelection(tranche);
   const choisies = sel.choisis;
   const seule = choisies.length === 1 ? choisies[0] : undefined;
@@ -104,50 +113,71 @@ export default function OffresPage() {
       <CartePleine>
         <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
           <CardTitle>Offres d&apos;emploi</CardTitle>
-          <BarreSelection sel={sel} quoi="offre" feminin>
-            {seule && seule.status === 'draft' ? (
-              <Button
-                size="sm"
-                loading={changerStatut.isPending}
-                onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
-              >
-                Publier
+          {/* À droite du titre, comme au personnel : la recherche, puis la
+              barre des lignes cochées. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <RechercheDuTableau
+              valeur={q}
+              onChange={(valeur) => {
+                setQ(valeur);
+                sel.vider();
+              }}
+              placeholder="Poste ou référence…"
+              libelle="Rechercher une offre"
+            />
+            <BarreSelection sel={sel} quoi="offre" feminin>
+              {seule && seule.status === 'draft' ? (
+                <Button
+                  size="sm"
+                  loading={changerStatut.isPending}
+                  onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
+                >
+                  Publier
+                </Button>
+              ) : null}
+              {seule ? (
+                <Button size="sm" variant="secondary" onClick={() => setPanneau('modifier')}>
+                  <Icon name="edit" size={15} />
+                  Modifier
+                </Button>
+              ) : null}
+              {seule && seule.status === 'published' ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={changerStatut.isPending}
+                  onClick={() => changerStatut.mutate({ id: seule.id, status: 'closed' })}
+                >
+                  Archiver
+                </Button>
+              ) : null}
+              {seule && seule.status === 'closed' ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={changerStatut.isPending}
+                  onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
+                >
+                  Rouvrir
+                </Button>
+              ) : null}
+              <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
+                Supprimer
               </Button>
-            ) : null}
-            {seule ? (
-              <Button size="sm" variant="secondary" onClick={() => setPanneau('modifier')}>
-                <Icon name="edit" size={15} />
-                Modifier
-              </Button>
-            ) : null}
-            {seule && seule.status === 'published' ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                loading={changerStatut.isPending}
-                onClick={() => changerStatut.mutate({ id: seule.id, status: 'closed' })}
-              >
-                Archiver
-              </Button>
-            ) : null}
-            {seule && seule.status === 'closed' ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                loading={changerStatut.isPending}
-                onClick={() => changerStatut.mutate({ id: seule.id, status: 'published' })}
-              >
-                Rouvrir
-              </Button>
-            ) : null}
-            <Button size="sm" variant="danger" onClick={() => setPanneau('supprimer')}>
-              Supprimer
-            </Button>
-          </BarreSelection>
+            </BarreSelection>
+          </div>
         </CardHeader>
         {jobs.isLoading ? (
           <CorpsDefilant>
             <SqueletteTableau />
+          </CorpsDefilant>
+        ) : offres.length === 0 && brutes.length > 0 ? (
+          <CorpsDefilant className="grid place-items-center">
+            <EmptyState
+              icon={<Icon name="person_add" size={22} />}
+              title="Aucun résultat"
+              description="Essayez une autre recherche."
+            />
           </CorpsDefilant>
         ) : offres.length === 0 ? (
           <CorpsDefilant className="grid place-items-center">
