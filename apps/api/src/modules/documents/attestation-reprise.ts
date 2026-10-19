@@ -1,4 +1,9 @@
-import { datesEnfreintes, nomDuDocumentGenere, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
+import {
+  datesEnfreintes,
+  DISPONIBILITE_TROP_LONGUE,
+  nomDuDocumentGenere,
+  REQUESTABLE_DOC_LABELS,
+} from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
 import {
@@ -110,7 +115,13 @@ function dates(debut?: string, fin?: string, reprise?: string) {
   }
   const erreurs = datesEnfreintes('attestation_reprise_disponibilite', { debut, fin, reprise });
   if (erreurs.fin) {
-    problem(400, 'documents.dates', 'Le dernier jour de la disponibilité suit le premier');
+    problem(
+      400,
+      'documents.dates',
+      erreurs.fin === DISPONIBILITE_TROP_LONGUE
+        ? DISPONIBILITE_TROP_LONGUE
+        : 'Le dernier jour de la disponibilité suit le premier',
+    );
   }
   if (erreurs.reprise) {
     problem(

@@ -19,6 +19,7 @@ import {
   ficheRenouvellementSchema,
   ficheStagiaireSchema,
   plusJours,
+  repriseAuPlusTard,
 } from '@teranga/contracts';
 
 const AUJOURDHUI = aujourdhuiIso();
@@ -268,6 +269,24 @@ describe('les décisions de disponibilité', () => {
       }),
     ).toEqual({ repriseLe: 'La reprise suit la période initiale' });
   });
+
+  it('la reprise au plus trois ans après la prise d’effet : de la disponibilité, ou de sa prorogation', () => {
+    expect(repriseAuPlusTard('2026-10-10')).toBe('2029-10-10');
+    expect(repriseAuPlusTard('2028-02-29')).toBe('2031-03-01');
+    // Demandée le 10 septembre 2026, prise d'effet le 10 octobre : pas de reprise en 2030.
+    const demandee = { demandeLe: '2026-09-10', effetLe: '2026-10-10' };
+    expect(disponibilite({ ...demandee, repriseLe: '2030-10-10' })).toEqual({
+      repriseLe: 'La disponibilité dure trois ans au plus',
+    });
+    expect(disponibilite({ ...demandee, repriseLe: '2029-10-10' })).toEqual({});
+    // La prorogation prend effet le lendemain de la période initiale.
+    const au = plusJours(AUJOURDHUI, 20);
+    const auPlusTard = repriseAuPlusTard(plusJours(au, 1));
+    expect(renouvellement({ initialementAu: au, duree: 36, repriseLe: auPlusTard })).toEqual({});
+    expect(renouvellement({ initialementAu: au, repriseLe: plusJours(auPlusTard, 1) })).toEqual({
+      repriseLe: 'La prorogation dure trois ans au plus',
+    });
+  });
 });
 
 describe('la domiciliation bancaire', () => {
@@ -345,5 +364,11 @@ describe('les dates saisies des attestations', () => {
     expect(
       datesEnfreintes('attestation_reprise_disponibilite', { ...dispo, reprise: '2026-07-01' }),
     ).toEqual({});
+    // Une disponibilité dure trois ans au plus (ADR-0136).
+    const troisAns = { debut: '2026-01-02', fin: '2029-01-01', reprise: '2029-01-02' };
+    expect(datesEnfreintes('attestation_reprise_disponibilite', troisAns)).toEqual({});
+    expect(
+      datesEnfreintes('attestation_reprise_disponibilite', { ...troisAns, fin: '2029-01-02' }),
+    ).toEqual({ fin: 'La disponibilité dure trois ans au plus' });
   });
 });

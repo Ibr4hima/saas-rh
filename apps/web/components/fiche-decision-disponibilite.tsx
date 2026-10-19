@@ -12,9 +12,11 @@ import {
   datesDeLaDisponibilite,
   datesDuRenouvellement,
   DUREE_DE_PROROGATION_MAX,
+  estUnJour,
   ficheDeLaDecisionSchema,
   orgUnitLabel,
   repriseApresProrogation,
+  repriseAuPlusTard,
 } from '@teranga/contracts';
 import { cn, Field, Input, Select } from '@teranga/ui';
 import { api } from '../lib/api';
@@ -168,10 +170,10 @@ export function FicheDeLaDecision({
     queryFn: () => api<OrgUnitView[]>('/org-units'),
     enabled: renouvellement,
   });
-  // Les règles des dates, dites sous les champs (ADR-0133) : la demande et
-  // les nominations ne viennent pas après aujourd'hui, la prise d'effet pas
-  // avant la demande, la reprise après la prise d'effet ou la période
-  // initiale.
+  // Les règles des dates, dites sous les champs (ADR-0133, ADR-0136) : la
+  // demande et les nominations ne viennent pas après aujourd'hui, la prise
+  // d'effet pas avant la demande, la reprise après la prise d'effet ou la
+  // période initiale, et au plus trois ans après la prise d'effet.
   const fiche = versLaFicheDeLaDecision(valeur, doc);
   const erreurs = reglesEnfreintes(
     fiche,
@@ -191,6 +193,14 @@ export function FicheDeLaDecision({
   });
   const aujourdhui = aujourdhuiIso();
   const debutDeLaReprise = lendemain(renouvellement ? valeur.initialementAu : valeur.effetLe);
+  // La reprise, au plus trois ans après la prise d'effet : de la
+  // disponibilité, ou de sa prorogation, le lendemain de la période initiale.
+  const priseDEffet = renouvellement
+    ? debutDeLaReprise
+    : estUnJour(valeur.effetLe)
+      ? valeur.effetLe
+      : undefined;
+  const finDeLaReprise = priseDEffet ? repriseAuPlusTard(priseDEffet) : undefined;
 
   return (
     <>
@@ -284,7 +294,7 @@ export function FicheDeLaDecision({
           required
           error={erreurs.repriseLe}
         >
-          <Input {...date('repriseLe', { min: debutDeLaReprise })} />
+          <Input {...date('repriseLe', { min: debutDeLaReprise, max: finDeLaReprise })} />
         </Field>
       </Groupe>
 

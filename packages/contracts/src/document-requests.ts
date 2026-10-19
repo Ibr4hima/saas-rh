@@ -166,11 +166,36 @@ const SAISIES_DES_DOCUMENTS: Partial<Record<DocumentGenere, readonly Saisie[]>> 
 export const saisiesDe = (doc: string): readonly Saisie[] =>
   (estGenere(doc) && SAISIES_DES_DOCUMENTS[doc]) || [];
 
+/** Une disponibilité dure trois ans au plus, sa prorogation aussi (ADR-0135, ADR-0136). */
+export const DISPONIBILITE_ANS_MAX = 3;
+
+/** Ce que dit une disponibilité, ou une prorogation, de plus de trois ans. */
+export const DISPONIBILITE_TROP_LONGUE = 'La disponibilité dure trois ans au plus';
+
+/**
+ * Le dernier jour, au plus tard, d'une disponibilité qui commence le
+ * `debut` : la veille du même jour, trois ans plus tard. Du 2 janvier 2026
+ * au 1er janvier 2029.
+ */
+export function finDeDisponibiliteAuPlusTard(debut: string): string {
+  return finDeLaDuree(debut, 12 * DISPONIBILITE_ANS_MAX);
+}
+
+/**
+ * La date limite de reprise la plus tardive d'une disponibilité, ou d'une
+ * prorogation, qui prend effet le `effet` : le même jour, trois ans plus
+ * tard. Prise d'effet le 10 octobre 2026 : reprise le 10 octobre 2029 au
+ * plus tard.
+ */
+export function repriseAuPlusTard(effet: string): string {
+  return lendemain(finDeDisponibiliteAuPlusTard(effet));
+}
+
 /**
  * Ce que les dates saisies d'un document enfreignent, saisie par saisie
- * (ADR-0133) ; vide, rien. Le dernier jour d'un congé ou d'une disponibilité
- * suit le premier ; la reprise de service ne précède pas le dernier jour de
- * la disponibilité.
+ * (ADR-0133, ADR-0136) ; vide, rien. Le dernier jour d'un congé ou d'une
+ * disponibilité suit le premier ; une disponibilité dure trois ans au plus ;
+ * la reprise de service ne précède pas son dernier jour.
  */
 export function datesEnfreintes(
   doc: string,
@@ -180,7 +205,16 @@ export function datesEnfreintes(
   const [debut, fin, reprise] = [jour(s.debut), jour(s.fin), jour(s.reprise)];
   const erreurs: Partial<Record<Saisie, string>> = {};
   const deuxJours = doc === 'attestation_conge' || doc === 'attestation_reprise_disponibilite';
-  if (deuxJours && debut && fin && fin <= debut) erreurs.fin = 'Après le premier jour';
+  if (deuxJours && debut && fin && fin <= debut) {
+    erreurs.fin = 'Après le premier jour';
+  } else if (
+    doc === 'attestation_reprise_disponibilite' &&
+    debut &&
+    fin &&
+    fin > finDeDisponibiliteAuPlusTard(debut)
+  ) {
+    erreurs.fin = DISPONIBILITE_TROP_LONGUE;
+  }
   if (doc === 'attestation_reprise_disponibilite' && fin && reprise && reprise < fin) {
     erreurs.reprise = 'Pas avant le dernier jour de la disponibilité';
   }
@@ -490,32 +524,41 @@ const ficheDeLaDecision = z.object({
   repriseLe: z.iso.date(),
 });
 
-/** La mise en disponibilité : son premier jour. */
 /**
- * Les dates croisées d'une mise en disponibilité (ADR-0133) : la prise
- * d'effet pas avant la demande, la reprise après la prise d'effet.
+ * Les dates croisées d'une mise en disponibilité (ADR-0133, ADR-0136) : la
+ * prise d'effet pas avant la demande, la reprise après la prise d'effet et
+ * au plus trois ans après.
  */
 export function datesDeLaDisponibilite(f: Record<string, unknown>): ReglesDesDates {
   const [demande, effet, reprise] = [jourDe(f.demandeLe), jourDe(f.effetLe), jourDe(f.repriseLe)];
   const regles: ReglesDesDates = {};
   if (demande && effet && effet < demande) regles.effetLe = 'Pas avant la demande';
-  if (effet && reprise && reprise <= effet) regles.repriseLe = 'La reprise suit la prise d’effet';
+  if (effet && reprise && reprise <= effet) {
+    regles.repriseLe = 'La reprise suit la prise d’effet';
+  } else if (effet && reprise && reprise > repriseAuPlusTard(effet)) {
+    regles.repriseLe = DISPONIBILITE_TROP_LONGUE;
+  }
   return regles;
 }
 
 export const ficheDisponibiliteSchema = ficheDeLaDecision
-  .extend({ effetLe: z.iso.date() })
+  .extend({
+    /** La mise en disponibilité : son premier jour. */
+    effetLe: z.iso.date(),
+  })
   .strict()
   .superRefine((f, ctx) => poser(ctx, datesDeLaDisponibilite(f)));
 export type FicheDisponibilite = z.infer<typeof ficheDisponibiliteSchema>;
 
 /** Une disponibilité se proroge de trois ans au plus, comme elle se renouvelle (ADR-0135). */
-export const DUREE_DE_PROROGATION_MAX = 36;
+export const DUREE_DE_PROROGATION_MAX = 12 * DISPONIBILITE_ANS_MAX;
 
 /**
- * Les dates croisées d'un renouvellement (ADR-0133, ADR-0134) : la période
- * initiale dans l'ordre, la reprise après elle. La demande n'a que la borne
- * de son champ : pas après aujourd'hui.
+ * Les dates croisées d'un renouvellement (ADR-0133, ADR-0134, ADR-0136) : la
+ * période initiale dans l'ordre, la reprise après elle et au plus trois ans
+ * après la prise d'effet de la prorogation, le lendemain de la période
+ * initiale. La demande n'a que la borne de son champ : pas après
+ * aujourd'hui.
  */
 export function datesDuRenouvellement(f: Record<string, unknown>): ReglesDesDates {
   const [du, au, reprise] = [
@@ -525,7 +568,11 @@ export function datesDuRenouvellement(f: Record<string, unknown>): ReglesDesDate
   ];
   const regles: ReglesDesDates = {};
   if (du && au && au < du) regles.initialementAu = 'La fin suit le début';
-  if (au && reprise && reprise <= au) regles.repriseLe = 'La reprise suit la période initiale';
+  if (au && reprise && reprise <= au) {
+    regles.repriseLe = 'La reprise suit la période initiale';
+  } else if (au && reprise && reprise > repriseAuPlusTard(lendemain(au))) {
+    regles.repriseLe = 'La prorogation dure trois ans au plus';
+  }
   return regles;
 }
 

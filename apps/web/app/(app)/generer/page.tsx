@@ -14,6 +14,7 @@ import {
   CIBLES_DES_DOCUMENTS,
   datesEnfreintes,
   estGenere,
+  finDeDisponibiliteAuPlusTard,
   ficheDeclarationMouvementSchema,
   ficheDeLaDecisionSchema,
   ficheDomiciliationSchema,
@@ -423,13 +424,21 @@ export default function GenererDesDocumentsPage() {
                       premier={i === 0}
                       libelle={libelleDe(choisi, s)}
                       date={courantes[s]}
-                      // La fin se choisit après le début ; la reprise, pas avant la fin.
+                      // La fin se choisit après le début, et une disponibilité
+                      // dure trois ans au plus ; la reprise, pas avant la fin.
                       min={
                         s === 'fin' && courantes.debut
                           ? plusJours(courantes.debut, 1)
                           : s === 'reprise'
                             ? courantes.fin || courantes.debut || undefined
                             : undefined
+                      }
+                      max={
+                        s === 'fin' &&
+                        choisi === 'attestation_reprise_disponibilite' &&
+                        courantes.debut
+                          ? finDeDisponibiliteAuPlusTard(courantes.debut)
+                          : undefined
                       }
                       invalide={Boolean(erreursDesDates[s])}
                       onSaisir={(date) => saisir({ [s]: date })}
@@ -709,6 +718,7 @@ function ChampDeDate({
   libelle,
   date,
   min,
+  max,
   invalide = false,
   onSaisir,
 }: {
@@ -717,6 +727,7 @@ function ChampDeDate({
   libelle: string;
   date: string;
   min?: string;
+  max?: string;
   invalide?: boolean;
   onSaisir: (date: string) => void;
 }) {
@@ -729,6 +740,7 @@ function ChampDeDate({
       aria-invalid={invalide || undefined}
       value={date}
       min={min}
+      max={max}
       onChange={(e) => onSaisir(e.target.value)}
       className={cn(
         CHAMP,

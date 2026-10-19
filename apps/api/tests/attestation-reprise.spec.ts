@@ -276,6 +276,23 @@ describe('le dossier et les dates', () => {
     expect(await code({ ...DATES, reprise: DATES.fin })).toBe('AUCUNE ERREUR');
   });
 
+  it('une disponibilité dure trois ans au plus : jusqu’à la veille du même jour, trois ans plus tard (ADR-0136)', async () => {
+    const titre = async (saisies: { debut: string; fin: string; reprise: string }) => {
+      try {
+        await enTenant((tx) => attestationDeReprise.pdf(tx, employes.agent!, saisies));
+        return 'AUCUNE ERREUR';
+      } catch (err) {
+        return err instanceof ProblemException ? err.problem.title : String(err);
+      }
+    };
+    expect(await titre({ debut: '2026-01-02', fin: '2029-01-01', reprise: '2029-01-02' })).toBe(
+      'AUCUNE ERREUR',
+    );
+    expect(await titre({ debut: '2026-01-02', fin: '2029-01-02', reprise: '2029-01-03' })).toBe(
+      'La disponibilité dure trois ans au plus',
+    );
+  });
+
   it('un dossier inactif ou un stage est refusé, en le disant', async () => {
     expect(
       await codeOf(() => enTenant((tx) => attestationDeReprise.pdf(tx, employes.sorti!, DATES))),
