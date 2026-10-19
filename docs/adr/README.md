@@ -120,7 +120,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0112](0112-cinq-familles-de-documents.md)            | La liste des documents à générer en cinq familles                                       | acceptée                                    |
 | [0113](0113-demander-un-document-en-liste.md)         | Demander un document : la liste de « Générer des documents », à choix multiple          | acceptée                                    |
 | [0114](0114-contrats-etablis-par-la-dch.md)           | Les contrats, la DCH les établit : ils ne se demandent pas, leur génération se délègue  | acceptée                                    |
-| [0115](0115-coquille-posee-sur-le-fond.md)            | La coquille posée sur le fond : ni bandeau bleu, ni colonne blanche                     | acceptée, précisée (0116-0118, 0120, 0122)  |
+| [0115](0115-coquille-posee-sur-le-fond.md)            | La coquille posée sur le fond : ni bandeau bleu, ni colonne blanche                     | acceptée, précisée 6 fois, de 0116 à 0124   |
 | [0116](0116-fond-de-l-ecran-de-connexion.md)          | Le fond de l'application, celui de l'écran de connexion                                 | acceptée                                    |
 | [0117](0117-date-en-haut-a-droite.md)                 | La date du jour en haut à droite de chaque écran                                        | acceptée                                    |
 | [0118](0118-entree-courante-en-bleu-clair.md)         | L'entrée courante du menu, en bleu très clair, sans filet                               | acceptée                                    |
@@ -129,3 +129,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0121](0121-preremplissage-valide.md)                 | Générer des documents : un seul bloc « Préremplissage », validé avant la génération     | acceptée                                    |
 | [0122](0122-en-tete-sans-filet.md)                    | L'en-tête sans filet au défilement                                                      | acceptée                                    |
 | [0123](0123-sessions-du-conseil-proposees.md)         | Les décisions de disponibilité proposent les sessions du conseil d'administration       | acceptée                                    |
+| [0124](0124-action-aux-mesures-de-la-date.md)         | L'action de l'écran, aux mesures du bouton de la date                                   | acceptée                                    |

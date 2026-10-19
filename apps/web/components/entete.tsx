@@ -24,11 +24,13 @@ export const COMMANDE_ACTIVE =
   'border-primary/30 bg-primary-soft text-primary hover:border-primary/40 hover:text-primary';
 
 /**
- * L'action de l'écran : un bouton plein, l'icône et le mot. Sur téléphone,
- * l'icône seule, dans un rond ; le mot reste aux lecteurs d'écran.
+ * L'action de l'écran : un bouton plein, l'icône et le mot, aux mesures du
+ * bouton de la date (ADR-0124) : 36 px de haut, 12 px de marge, 8 px entre
+ * l'icône et le mot, le mot en 12,5 px. Sur téléphone, l'icône seule, dans
+ * un rond ; le mot reste aux lecteurs d'écran.
  */
 export const ACTION =
-  'inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-controle border border-transparent bg-primary px-3.5 text-[13px] font-semibold whitespace-nowrap text-primary-ink shadow-bouton transition-[background-color,box-shadow] duration-150 ease-out hover:bg-primary-hover active:shadow-bouton-enfonce focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary max-sm:w-9 max-sm:rounded-full max-sm:px-0';
+  'inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-controle border border-transparent bg-primary px-3 text-[12.5px] font-semibold whitespace-nowrap text-primary-ink shadow-bouton transition-[background-color,box-shadow] duration-150 ease-out hover:bg-primary-hover active:shadow-bouton-enfonce focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary max-sm:w-9 max-sm:rounded-full max-sm:px-0';
 
 /**
  * Un geste de la page dans l'en-tête : « Télécharger » le document qu'elle
