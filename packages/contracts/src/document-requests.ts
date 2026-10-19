@@ -9,6 +9,7 @@ import {
   dateDeNaissanceSchema,
   delivranceDeLaCniSchema,
   estUnJour,
+  finDeLaDuree,
   jusquAujourdhuiSchema,
 } from './dates';
 import { SALAIRE_MAX } from './montants';
@@ -407,24 +408,8 @@ export const ficheStagiaireSchema = z
   .strict();
 export type FicheStagiaire = z.infer<typeof ficheStagiaireSchema>;
 
-/**
- * Le dernier jour d'un stage de `mois` mois qui commence le `debut` : la
- * veille du même quantième, `mois` mois plus tard (du 19 août au 18
- * novembre) ; si ce quantième n'existe pas, le dernier jour du mois (du 31
- * janvier au 28 février).
- */
-export function finDuStage(debut: string, mois: number): string {
-  const [a, m, j] = debut.split('-').map(Number) as [number, number, number];
-  const cible = new Date(Date.UTC(a, m - 1 + mois, 1));
-  const joursDuMois = new Date(
-    Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  const fin =
-    j > joursDuMois
-      ? new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth(), joursDuMois))
-      : new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth(), j - 1));
-  return fin.toISOString().slice(0, 10);
-}
+/** Le dernier jour d'un stage de `mois` mois : la règle de toute durée en mois. */
+export const finDuStage = finDeLaDuree;
 
 /** Le dernier jour d'un contrat à durée déterminée : la règle du stage (ADR-0098). */
 export const finDuContrat = finDuStage;
@@ -524,8 +509,8 @@ export const ficheDisponibiliteSchema = ficheDeLaDecision
   .superRefine((f, ctx) => poser(ctx, datesDeLaDisponibilite(f)));
 export type FicheDisponibilite = z.infer<typeof ficheDisponibiliteSchema>;
 
-/** Une disponibilité se proroge de deux ans au plus. */
-export const DUREE_DE_PROROGATION_MAX = 24;
+/** Une disponibilité se proroge de trois ans au plus, comme elle se renouvelle (ADR-0135). */
+export const DUREE_DE_PROROGATION_MAX = 36;
 
 /**
  * Les dates croisées d'un renouvellement (ADR-0133, ADR-0134) : la période

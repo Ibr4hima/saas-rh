@@ -1,10 +1,16 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { BalanceView, MyEmployeeView } from '@teranga/contracts';
+import type {
+  AbsenceRequestView,
+  AbsenceType,
+  BalanceView,
+  MyEmployeeView,
+} from '@teranga/contracts';
 import { Skeleton } from '@teranga/ui';
+import { FenetreRenouvellement } from '../../../../components/conge-valide';
 import { BlocQuiOuvre, EnTete, Repere } from '../../../../components/fiche';
 import { aujourdhui, FenetreDemandeAbsence } from '../../../../components/fenetre-demande-absence';
 import { Page } from '../../../../components/gabarit';
@@ -19,8 +25,14 @@ import { compte } from '../../../../lib/mots';
    ———————————————————————————————————————————————————————————————— */
 
 export default function PoserUneDemandePage() {
+  const queryClient = useQueryClient();
   const [ouverte, setOuverte] = useState(false);
   const [envoyee, setEnvoyee] = useState<string | null>(null);
+  const [renouvellementOuvert, setRenouvellementOuvert] = useState(false);
+  const [renouvellementEnvoye, setRenouvellementEnvoye] = useState<{
+    du: string;
+    au: string;
+  } | null>(null);
 
   const myEmployee = useQuery({
     queryKey: ['me-employee'],
@@ -35,6 +47,25 @@ export default function PoserUneDemandePage() {
     queryFn: () => api<BalanceView[]>(`/employees/${employeeId}/balances?year=${annee}`),
     enabled: Boolean(employeeId),
   });
+  // Une période en cours qui se renouvelle (la disponibilité, ADR-0135) :
+  // l'agent demande la suivante depuis ici, jusqu'à son dernier jour.
+  const demandes = useQuery({
+    queryKey: ['my-requests', employeeId],
+    queryFn: () =>
+      api<AbsenceRequestView[]>(`/absence-requests?employeeId=${employeeId}&limit=100`),
+    enabled: Boolean(employeeId),
+  });
+  const types = useQuery({
+    queryKey: ['absence-types'],
+    queryFn: () => api<AbsenceType[]>('/absence-types'),
+    enabled: Boolean(employeeId),
+  });
+  const aRenouveler = (demandes.data ?? []).find(
+    (r) => r.employeeId === employeeId && r.gestes.renouveler,
+  );
+  const anneesMax =
+    (types.data ?? []).find((t) => t.id === aRenouveler?.absenceTypeId)?.maxYearsPerRequest ?? null;
+
   // Le solde qui se décompte : le congé annuel, en pratique. Un stagiaire
   // n'en a pas.
   const stagiaire = Boolean(myEmployee.data?.stagiaire);
@@ -86,6 +117,41 @@ export default function PoserUneDemandePage() {
           ) : null
         }
       />
+
+      {(aRenouveler && anneesMax) || renouvellementEnvoye ? (
+        <BlocQuiOuvre
+          titre="Demander un renouvellement"
+          disabled={!aRenouveler || !anneesMax}
+          onOuvrir={() => {
+            setRenouvellementEnvoye(null);
+            setRenouvellementOuvert(true);
+          }}
+          envoi={
+            renouvellementEnvoye ? (
+              <>
+                Demande envoyée : renouvellement du {formatDate(renouvellementEnvoye.du)} au{' '}
+                {formatDate(renouvellementEnvoye.au)}.{' '}
+                <Link href="/moi/conges/historique" className="underline">
+                  Voir l&apos;historique
+                </Link>
+              </>
+            ) : null
+          }
+        />
+      ) : null}
+
+      {renouvellementOuvert && aRenouveler && anneesMax ? (
+        <FenetreRenouvellement
+          demande={aRenouveler}
+          anneesMax={anneesMax}
+          onClose={() => setRenouvellementOuvert(false)}
+          onFait={(periode) => {
+            setRenouvellementOuvert(false);
+            setRenouvellementEnvoye(periode);
+            void queryClient.invalidateQueries({ queryKey: ['my-requests'] });
+          }}
+        />
+      ) : null}
 
       {ouverte && employeeId ? (
         <FenetreDemandeAbsence

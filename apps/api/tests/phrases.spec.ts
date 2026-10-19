@@ -60,6 +60,11 @@ describe('les mots des notifications', () => {
       article: 'une',
       feminin: true,
     });
+    expect(absence('Disponibilité')).toMatchObject({
+      nom: 'disponibilité',
+      article: 'une',
+      feminin: true,
+    });
   });
 
   it('accorde l’article et le possessif, élision comprise', () => {
@@ -73,6 +78,10 @@ describe('les mots des notifications', () => {
     expect(`${leLa(ponctuelle)}${ponctuelle.nom}`).toBe('L’absence ponctuelle');
     expect(sonSa(ponctuelle)).toBe('son');
     expect(de(ponctuelle.nom)).toBe('d’absence ponctuelle');
+    const disponibilite = absence('Disponibilité');
+    expect(`${leLa(disponibilite)}${disponibilite.nom}`).toBe('La disponibilité');
+    expect(sonSa(disponibilite)).toBe('sa');
+    expect(de(disponibilite.nom)).toBe('de disponibilité');
   });
 
   it('un rappel garde le nom propre, et met le reste en minuscule', () => {

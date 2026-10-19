@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { CapaciteDemande, CompteursDemandes, TraitementView } from './acces';
+import { finDeLaDuree, plusJours } from './dates';
 
 /** Contrats du module « congés & absences » (Lot 1). */
 
@@ -34,6 +35,9 @@ export const CONTINUITE_LABELS: Record<Continuite, string> = {
   jamais: 'Jamais',
 };
 
+/** Une durée max en années va jusqu'à dix ans : la disponibilité en prend trois (ADR-0135). */
+export const ANNEES_MAX_PAR_DEMANDE = 10;
+
 const absenceTypeFields = z.object({
   name: z.string().trim().min(2).max(80),
   deductsBalance: z.boolean().default(false),
@@ -48,6 +52,14 @@ const absenceTypeFields = z.object({
   allowsHours: z.boolean().optional(),
   /** Au plus tant de jours ouvrés par demande ; null : pas de plafond. */
   maxDaysPerRequest: z.number().int().min(1).max(365).nullish(),
+  /** Ou au plus tant d'années (la disponibilité) ; l'un ou l'autre, pas les deux. */
+  maxYearsPerRequest: z.number().int().min(1).max(ANNEES_MAX_PAR_DEMANDE).nullish(),
+  /**
+   * Une durée max en années se renouvelle : l'agent demande, pendant sa
+   * période, la suivante. Omis, il reste ce qu'il était ; sans durée max en
+   * années, non.
+   */
+  renouvelable: z.boolean().optional(),
   /** Omis, il reste ce qu'il était ; à la création, jamais. */
   continuite: continuiteSchema.optional(),
 });
@@ -79,17 +91,29 @@ const heuresMessage = {
   path: ['allowsHours'] as PropertyKey[],
 };
 
+/** Une durée max se donne en jours ouvrés ou en années, pas les deux. */
+const uneDureeMax = (v: {
+  maxDaysPerRequest?: number | null;
+  maxYearsPerRequest?: number | null;
+}) => v.maxDaysPerRequest == null || v.maxYearsPerRequest == null;
+const dureeMaxMessage = {
+  message: 'Une durée max se donne en jours ouvrés ou en années',
+  path: ['maxYearsPerRequest'] as PropertyKey[],
+};
+
 export const createAbsenceTypeSchema = absenceTypeFields
   .refine(quotaCoherent, quotaMessage)
   .refine(decompteSurQuota, decompteMessage)
-  .refine(heuresHorsSolde, heuresMessage);
+  .refine(heuresHorsSolde, heuresMessage)
+  .refine(uneDureeMax, dureeMaxMessage);
 export type CreateAbsenceTypeInput = z.infer<typeof createAbsenceTypeSchema>;
 
 /** La fenêtre de modification renvoie le type entier : même forme qu'à la création. */
 export const updateAbsenceTypeSchema = absenceTypeFields
   .refine(quotaCoherent, quotaMessage)
   .refine(decompteSurQuota, decompteMessage)
-  .refine(heuresHorsSolde, heuresMessage);
+  .refine(heuresHorsSolde, heuresMessage)
+  .refine(uneDureeMax, dureeMaxMessage);
 export type UpdateAbsenceTypeInput = z.infer<typeof updateAbsenceTypeSchema>;
 
 export interface AbsenceType {
@@ -103,9 +127,36 @@ export interface AbsenceType {
   motifConfidentiel: boolean;
   allowsHours: boolean;
   maxDaysPerRequest: number | null;
+  maxYearsPerRequest: number | null;
+  renouvelable: boolean;
   continuite: Continuite;
   /** Nombre de demandes déjà déposées sur ce type : il ne se supprime pas à la légère. */
   usageCount: number;
+}
+
+/**
+ * Le dernier jour qu'une demande peut atteindre quand la durée max du type
+ * se donne en années : trois ans à compter du 1er novembre 2026 mènent au
+ * 31 octobre 2029. Null sans durée max en années.
+ */
+export function finAuPlusTard(
+  type: Pick<AbsenceType, 'maxYearsPerRequest'>,
+  debut: string,
+): string | null {
+  return type.maxYearsPerRequest === null
+    ? null
+    : finDeLaDuree(debut, 12 * type.maxYearsPerRequest);
+}
+
+/**
+ * La période d'un renouvellement de `annees` années : du lendemain de la
+ * fin de la période renouvelée à la veille du même jour, autant d'années
+ * plus tard. Une disponibilité qui finit le 1er novembre 2029, renouvelée
+ * deux ans, va du 2 novembre 2029 au 1er novembre 2031.
+ */
+export function periodeDuRenouvellement(fin: string, annees: number): { du: string; au: string } {
+  const du = plusJours(fin, 1);
+  return { du, au: finDeLaDuree(du, 12 * annees) };
 }
 
 // ---------- Jours fériés ----------
@@ -362,6 +413,13 @@ export const annulerAbsenceSchema = z
   .default({});
 export type AnnulerAbsenceInput = z.infer<typeof annulerAbsenceSchema>;
 
+/** Renouveler sa disponibilité (ADR-0135) : pour combien d'années, et pourquoi. */
+export const renouvelerSchema = z.object({
+  annees: z.number().int().min(1).max(ANNEES_MAX_PAR_DEMANDE),
+  reason: z.string().trim().max(1000).optional(),
+});
+export type RenouvelerInput = z.infer<typeof renouvelerSchema>;
+
 /** Revenir plus tôt : le jour où l'agent reprend le travail. */
 export const demanderRepriseSchema = z.object({ reprise: isoDate });
 export type DemanderRepriseInput = z.infer<typeof demanderRepriseSchema>;
@@ -448,6 +506,8 @@ export interface AbsenceRequestView {
   annulation: { par: string | null; motif: string | null } | null;
   /** Le jour de reprise que l'agent demande, tant qu'il attend confirmation. */
   repriseDemandee: string | null;
+  /** La demande renouvelle une période qui vient de finir (ADR-0135). */
+  renouvellement: boolean;
   /** Qui doit confirmer ce retour. */
   repriseAttendDe: string | null;
   /** Ce que l'utilisateur courant peut faire de ce congé. */
@@ -457,6 +517,8 @@ export interface AbsenceRequestView {
     confirmerReprise: boolean;
     rappeler: boolean;
     joindreJustificatif: boolean;
+    /** L'agent, pendant sa période validée d'un type renouvelable, demande la suivante. */
+    renouveler: boolean;
   };
   /**
    * En attente : les délégations que l'absence laisserait sans personne

@@ -285,6 +285,8 @@ interface Demande {
   demandeurUserId: string | null;
   /** Le motif ne regarde que l'agent et la DCH (cf. migration 0076). */
   confidentiel: boolean;
+  /** Elle renouvelle une période qui finit (ADR-0135). */
+  renouvellement: boolean;
 }
 
 /** Ce qu'un message dit de la demande — qui, quoi, quand. */
@@ -302,12 +304,14 @@ export async function lireDemande(tx: Tx, requestId: string): Promise<Demande | 
     jours: string;
     user_id: string | null;
     confidentiel: boolean;
+    renouvellement: boolean;
   }>(sql`
     SELECT r.id, r.tenant_id, r.employee_id, p.given_name || ' ' || p.family_name AS nom,
            ty.name AS type, r.start_date::text AS debut, r.end_date::text AS fin,
            to_char(r.start_time, 'HH24:MI') AS heure_debut,
            to_char(r.end_time, 'HH24:MI') AS heure_fin,
-           r.days_count::text AS jours, p.user_id, ty.motif_confidentiel AS confidentiel
+           r.days_count::text AS jours, p.user_id, ty.motif_confidentiel AS confidentiel,
+           r.renouvelle_id IS NOT NULL AS renouvellement
       FROM absence_requests r
       JOIN employees e ON e.id = r.employee_id
       JOIN persons p ON p.id = e.person_id
@@ -327,6 +331,7 @@ export async function lireDemande(tx: Tx, requestId: string): Promise<Demande | 
         jours: Number(r.jours),
         demandeurUserId: r.user_id,
         confidentiel: r.confidentiel,
+        renouvellement: r.renouvellement,
       }
     : null;
 }
@@ -339,9 +344,15 @@ function motif(d: Demande, pour: 'agent' | 'n1' | 'dch'): Nom {
   return pour === 'n1' && d.confidentiel ? ABSENCE : absence(d.type);
 }
 
-/** « Moussa Ndiaye demande un congé annuel du 10 au 12 mai 2027 ». */
+/**
+ * « Moussa Ndiaye demande un congé annuel du 10 au 12 mai 2027 » ; « Awa
+ * Diop demande le renouvellement de sa disponibilité, du 2 novembre 2029
+ * au 1er novembre 2031 ».
+ */
 function demandeDe(d: Demande, a: Nom): string {
-  return `${d.nom} demande ${a.article} ${a.nom} ${duAu(d.debut, d.fin, d.heures)}`;
+  return d.renouvellement
+    ? `${d.nom} demande le renouvellement de ${sonSa(a)} ${a.nom}, ${duAu(d.debut, d.fin, d.heures)}`
+    : `${d.nom} demande ${a.article} ${a.nom} ${duAu(d.debut, d.fin, d.heures)}`;
 }
 
 /** La clé de l'appel à viser : une par demande, par étape. */

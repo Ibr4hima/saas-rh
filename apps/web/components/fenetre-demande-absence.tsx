@@ -4,6 +4,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { useEffect, useState } from 'react';
 import {
   dureeEnLettres,
+  finAuPlusTard,
   HEURE_DEBUT_JOURNEE,
   HEURE_FIN_JOURNEE,
   heureEnLettres,
@@ -214,6 +215,10 @@ export function FenetreDemandeAbsence({
   // Le plafond du type, en jours ouvrés : quelques heures n'y touchent pas.
   const plafond = selectedType?.maxDaysPerRequest ?? null;
   const depasse = !parHeures && plafond !== null && days > plafond;
+  // Ou en années (la disponibilité, ADR-0135) : la fin ne va pas au-delà.
+  const finPermise = selectedType && startDate ? finAuPlusTard(selectedType, startDate) : null;
+  const depasseLesAnnees =
+    !parHeures && finPermise !== null && endDate !== '' && endDate > finPermise;
   const calendaires = joursCalendaires(startDate, endDate);
   const weekEnd = Math.max(0, calendaires - days - feries.length);
   const lignes = annees.map((annee, i) => {
@@ -227,6 +232,9 @@ export function FenetreDemandeAbsence({
     Boolean(selectedType?.deductsBalance) && lignes.every((l) => l.balance !== undefined);
   const manquent = decompte ? lignes.filter((l) => l.apres < 0) : [];
   const insufficient = manquent.length > 0;
+  // Ce qui ne se décompte pas tient en une case : « Non décompté » vaut pour
+  // chaque année, et une disponibilité de trois ans en touche quatre.
+  const soldesAffiches = selectedType?.deductsBalance ? lignes : lignes.slice(0, 1);
 
   const retires: string[] = [];
   if (weekEnd > 0) retires.push(`${compte(weekEnd, 'jour')} de week-end`);
@@ -272,6 +280,7 @@ export function FenetreDemandeAbsence({
     !periodeInvalide &&
     !insufficient &&
     !depasse &&
+    !depasseLesAnnees &&
     (!parHeures || heuresValides);
 
   return (
@@ -473,6 +482,7 @@ export function FenetreDemandeAbsence({
                 id="end"
                 type="date"
                 min={startDate || undefined}
+                max={finPermise ?? undefined}
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />
@@ -525,7 +535,7 @@ export function FenetreDemandeAbsence({
             <dl
               className={cn(
                 'grid grid-cols-2 gap-x-10 gap-y-[18px]',
-                plusieurs && 'sm:grid-cols-3',
+                soldesAffiches.length > 1 && 'sm:grid-cols-3',
               )}
             >
               <Donnee label="Jours ouvrés">
@@ -536,8 +546,11 @@ export function FenetreDemandeAbsence({
                   </span>
                 ) : null}
               </Donnee>
-              {lignes.map((l) => (
-                <Donnee key={l.annee} label={plusieurs ? `Solde ${l.annee} après` : 'Solde après'}>
+              {soldesAffiches.map((l) => (
+                <Donnee
+                  key={l.annee}
+                  label={soldesAffiches.length > 1 ? `Solde ${l.annee} après` : 'Solde après'}
+                >
                   {decompte && l.balance ? (
                     <span className={cn(l.apres < 0 && 'text-danger')}>
                       {compte(l.apres, 'jour')}
@@ -562,6 +575,11 @@ export function FenetreDemandeAbsence({
               <p className="mt-3 text-[12px] text-danger">
                 « {selectedType?.name} » se demande pour{' '}
                 {compte(plafond, 'jour ouvré', 'jours ouvrés')} au plus.
+              </p>
+            ) : depasseLesAnnees && selectedType?.maxYearsPerRequest ? (
+              <p className="mt-3 text-[12px] text-danger">
+                « {selectedType.name} » se demande pour{' '}
+                {compte(selectedType.maxYearsPerRequest, 'an')} au plus.
               </p>
             ) : insufficient ? (
               <p className="mt-3 text-[12px] text-danger">

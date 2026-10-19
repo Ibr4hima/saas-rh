@@ -617,6 +617,76 @@ describe('l’absence ponctuelle', () => {
     expect(await lu()).toMatchObject({ allowsHours: false, maxDaysPerRequest: null });
   });
 
+  it('la disponibilité aussi : sans quota, trois ans au plus par demande', async () => {
+    const disponibilite = (await absences.listTypes(admin)).find((t) => t.name === 'Disponibilité');
+    expect(disponibilite).toMatchObject({
+      maxDaysPerRequest: null,
+      maxYearsPerRequest: 3,
+      renouvelable: true,
+      deductsBalance: false,
+      allowanceDays: null,
+      frequency: 'none',
+      requiresDocument: false,
+      allowsHours: false,
+    });
+  });
+
+  it('une durée max se donne en jours ouvrés ou en années : donnée dans l’une, elle remplace l’autre', async () => {
+    const champs = {
+      name: 'Disponibilité',
+      deductsBalance: false,
+      allowanceDays: null,
+      frequency: 'none' as const,
+      requiresDocument: false,
+    };
+    const valide = (v: object) => createAbsenceTypeSchema.safeParse({ ...champs, ...v }).success;
+    expect(valide({ maxDaysPerRequest: 3, maxYearsPerRequest: 3 })).toBe(false);
+    expect(valide({ maxYearsPerRequest: 0 })).toBe(false);
+    expect(valide({ maxYearsPerRequest: 11 })).toBe(false);
+    expect(valide({ maxYearsPerRequest: 10 })).toBe(true);
+    const { id } = await absences.createType(admin, { ...champs, maxYearsPerRequest: 3 });
+    const lu = async () => (await absences.listTypes(admin)).find((t) => t.id === id);
+    expect(await lu()).toMatchObject({ maxDaysPerRequest: null, maxYearsPerRequest: 3 });
+    await absences.updateType(admin, id, champs);
+    expect(await lu()).toMatchObject({ maxDaysPerRequest: null, maxYearsPerRequest: 3 });
+    await absences.updateType(admin, id, { ...champs, maxDaysPerRequest: 20 });
+    expect(await lu()).toMatchObject({ maxDaysPerRequest: 20, maxYearsPerRequest: null });
+    await absences.updateType(admin, id, { ...champs, maxYearsPerRequest: 2 });
+    expect(await lu()).toMatchObject({ maxDaysPerRequest: null, maxYearsPerRequest: 2 });
+  });
+
+  it('seule une durée max en années se renouvelle', async () => {
+    const champs = {
+      name: 'Disponibilité',
+      deductsBalance: false,
+      allowanceDays: null,
+      frequency: 'none' as const,
+      requiresDocument: false,
+    };
+    const { id } = await absences.createType(admin, {
+      ...champs,
+      maxYearsPerRequest: 3,
+      renouvelable: true,
+    });
+    const lu = async () => (await absences.listTypes(admin)).find((t) => t.id === id);
+    expect(await lu()).toMatchObject({ maxYearsPerRequest: 3, renouvelable: true });
+    // Omis, il reste ce qu'il était.
+    await absences.updateType(admin, id, champs);
+    expect(await lu()).toMatchObject({ renouvelable: true });
+    // En jours ouvrés, la durée max ne se renouvelle pas.
+    await absences.updateType(admin, id, { ...champs, maxDaysPerRequest: 20 });
+    expect(await lu()).toMatchObject({ maxDaysPerRequest: 20, renouvelable: false });
+    const { id: autre } = await absences.createType(admin, {
+      ...champs,
+      name: 'Congé sabbatique',
+      renouvelable: true,
+    });
+    expect((await absences.listTypes(admin)).find((t) => t.id === autre)).toMatchObject({
+      maxYearsPerRequest: null,
+      renouvelable: false,
+    });
+  });
+
   it('ce qui se décompte du solde se prend à la journée', async () => {
     const champs = {
       name: 'Congé annuel',

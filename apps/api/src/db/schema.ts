@@ -241,6 +241,10 @@ export const absenceTypes = pgTable('absence_types', {
   allowsHours: boolean('allows_hours').notNull().default(false),
   /** Au plus tant de jours ouvrés par demande ; null : pas de plafond. */
   maxDaysPerRequest: integer('max_days_per_request'),
+  /** Ou au plus tant d'années (la disponibilité, migration 0120) ; l'un ou l'autre. */
+  maxYearsPerRequest: integer('max_years_per_request'),
+  /** Une durée max en années qui se renouvelle : l'agent demande la période suivante. */
+  renouvelable: boolean('renouvelable').notNull().default(false),
   /** La continuité du service (ADR-0129) : 'toujours', 'au_dela_d_un_jour' ou 'jamais'. */
   continuite: text('continuite').notNull().default('jamais'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -304,6 +308,8 @@ export const absenceRequests = pgTable('absence_requests', {
   finInitiale: date('fin_initiale'),
   /** Le jour de reprise que l'agent demande, en attente de confirmation. */
   repriseDemandee: date('reprise_demandee'),
+  /** La demande que celle-ci renouvelle (migration 0120) ; null : une demande comme une autre. */
+  renouvelleId: uuid('renouvelle_id'),
   ecourteNature: text('ecourte_nature'),
   ecourteParUserId: uuid('ecourte_par_user_id'),
   ecourteLe: timestamp('ecourte_le', { withTimezone: true }),

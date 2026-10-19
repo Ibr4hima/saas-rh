@@ -20,6 +20,26 @@ export function plusJours(jour: string, jours: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Le dernier jour d'une durée de `mois` mois qui commence le `debut` : la
+ * veille du même quantième, `mois` mois plus tard (du 19 août au 18
+ * novembre) ; si ce quantième n'existe pas, le dernier jour du mois (du 31
+ * janvier au 28 février). Un stage, un contrat, une disponibilité de trois
+ * ans (36 mois) se terminent ainsi.
+ */
+export function finDeLaDuree(debut: string, mois: number): string {
+  const [a, m, j] = debut.split('-').map(Number) as [number, number, number];
+  const cible = new Date(Date.UTC(a, m - 1 + mois, 1));
+  const joursDuMois = new Date(
+    Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  const fin =
+    j > joursDuMois
+      ? new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth(), joursDuMois))
+      : new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth(), j - 1));
+  return fin.toISOString().slice(0, 10);
+}
+
 /** Le même jour, `ans` années plus tôt ; un 29 février devient le 28. */
 export function ansPlusTot(jour: string, ans: number): string {
   const [a, m, j] = jour.split('-').map(Number) as [number, number, number];

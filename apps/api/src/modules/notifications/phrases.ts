@@ -115,11 +115,13 @@ export const CONTRAT: Record<ContractType, string> = {
 
 /**
  * Le nom d'un type d'absence dans une phrase : « congé annuel », « congé
- * maladie », « mission », « absence ponctuelle ».
+ * maladie », « mission », « absence ponctuelle », « disponibilité ».
  */
 export function absence(type: string): Nom {
   const bas = type.toLowerCase();
-  if (bas === 'mission' || bas.startsWith('absence')) return nom(bas, true);
+  if (bas === 'mission' || bas.startsWith('absence') || bas.startsWith('disponibilité')) {
+    return nom(bas, true);
+  }
   return nom(bas.startsWith('congé') ? bas : `congé ${bas}`, false);
 }
 

@@ -26,6 +26,7 @@ import {
   decideAbsenceRequestSchema,
   deciderRepriseSchema,
   demanderRepriseSchema,
+  renouvelerSchema,
   joindreJustificatifSchema,
   listAbsenceRequestsQuerySchema,
   previewAbsenceSchema,
@@ -42,6 +43,7 @@ import {
   type DecideAbsenceRequestInput,
   type DeciderRepriseInput,
   type DemanderRepriseInput,
+  type RenouvelerInput,
   type JoindreJustificatifInput,
   type ListAbsenceRequestsQuery,
   type RappelerInput,
@@ -266,6 +268,16 @@ export class AbsencesController {
   }
 
   // ---------- Un congé validé qui change ----------
+
+  /** L'agent renouvelle sa disponibilité : la période suivante, à viser (ADR-0135). */
+  @Post('absence-requests/:id/renouvellement')
+  async renouveler(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(renouvelerSchema)) body: RenouvelerInput,
+  ) {
+    return this.absences.renouveler(req.sessionUser, id, body);
+  }
 
   /** L'agent revient plus tôt : son jour de reprise, à confirmer par son N+1. */
   @Post('absence-requests/:id/reprise')

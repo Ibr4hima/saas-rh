@@ -2,8 +2,8 @@
 
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { AbsenceRequestView } from '@teranga/contracts';
-import { Button, Field, Input, Textarea } from '@teranga/ui';
+import { periodeDuRenouvellement, type AbsenceRequestView } from '@teranga/contracts';
+import { Button, Field, Input, Select, Textarea } from '@teranga/ui';
 import { dureeAbsence, periodeAbsence } from '../lib/absences';
 import { api, ApiError } from '../lib/api';
 import { formatDate } from '../lib/hooks';
@@ -46,7 +46,7 @@ const message = (err: unknown) => (err instanceof ApiError ? err.message : 'Acti
 /**
  * Ce qu'il est arrivé au congé, en une ligne sous sa période : une reprise
  * qui attend d'être confirmée (en orange : elle attend), un congé écourté,
- * un congé annulé par la DCH.
+ * un congé annulé par la DCH, une période qui en renouvelle une autre.
  */
 export function MentionConge({ demande: r }: { demande: AbsenceRequestView }) {
   if (r.repriseDemandee) {
@@ -75,7 +75,96 @@ export function MentionConge({ demande: r }: { demande: AbsenceRequestView }) {
       </p>
     );
   }
+  if (r.renouvellement) {
+    return <p className="mt-0.5 text-[11.5px] text-ink-muted">Renouvellement</p>;
+  }
   return null;
+}
+
+/**
+ * L'agent renouvelle sa disponibilité (ADR-0135) : la période suivante, du
+ * lendemain de la fin, pour une à trois années.
+ */
+export function FenetreRenouvellement({
+  demande: r,
+  anneesMax,
+  onClose,
+  onFait,
+}: {
+  demande: AbsenceRequestView;
+  /** Le plus d'années que le type permet par demande. */
+  anneesMax: number;
+  onClose: () => void;
+  onFait: (periode: { du: string; au: string }) => void;
+}) {
+  const [annees, setAnnees] = useState('');
+  const [motif, setMotif] = useState('');
+  const periode = annees ? periodeDuRenouvellement(r.endDate, Number(annees)) : null;
+  const envoyer = useMutation({
+    mutationFn: () =>
+      api(`/absence-requests/${r.id}/renouvellement`, {
+        method: 'POST',
+        body: { annees: Number(annees), ...(motif.trim() ? { reason: motif.trim() } : {}) },
+      }),
+    onSuccess: () => {
+      if (periode) onFait(periode);
+    },
+  });
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Demander un renouvellement"
+      subtitle={periodeDe(r)}
+      maxWidth="max-w-md"
+      footer={
+        <div className="flex w-full justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button disabled={!periode} loading={envoyer.isPending} onClick={() => envoyer.mutate()}>
+            Envoyer la demande
+          </Button>
+        </div>
+      }
+    >
+      <Field
+        label="Durée du renouvellement"
+        htmlFor="duree-renouvellement"
+        required
+        error={envoyer.error ? message(envoyer.error) : undefined}
+        hint={periode ? `Du ${formatDate(periode.du)} au ${formatDate(periode.au)}` : undefined}
+      >
+        <Select
+          id="duree-renouvellement"
+          aria-label="Durée du renouvellement"
+          value={annees}
+          onChange={(e) => setAnnees(e.target.value)}
+        >
+          <option value="" hidden>
+            Choisir
+          </option>
+          {Array.from({ length: anneesMax }, (_, i) => i + 1).map((n) => (
+            <option key={n} value={n}>
+              {compte(n, 'an')}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <div className="mt-4">
+        <Field label="Motif" htmlFor="motif-renouvellement">
+          <Textarea
+            id="motif-renouvellement"
+            rows={3}
+            maxLength={1000}
+            value={motif}
+            onChange={(e) => setMotif(e.target.value)}
+            placeholder="Facultatif"
+          />
+        </Field>
+      </div>
+    </Modal>
+  );
 }
 
 /** L'agent revient plus tôt : il choisit le jour où il reprend. */

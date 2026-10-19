@@ -3,7 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import type { AbsenceType, Continuite } from '@teranga/contracts';
-import { CONTINUITE_LABELS, continuiteSchema, peut } from '@teranga/contracts';
+import {
+  ANNEES_MAX_PAR_DEMANDE,
+  CONTINUITE_LABELS,
+  continuiteSchema,
+  peut,
+} from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -140,6 +145,14 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
                           {t.maxDaysPerRequest > 1 ? 'j ouvrés' : 'j ouvré'}
                         </span>
                       </>
+                    ) : t.maxYearsPerRequest != null ? (
+                      <>
+                        {t.maxYearsPerRequest}{' '}
+                        <span className="text-ink-muted">
+                          {t.maxYearsPerRequest > 1 ? 'ans' : 'an'}
+                          {t.renouvelable ? ' renouvelable' : ''}
+                        </span>
+                      </>
                     ) : (
                       <span className="text-ink-muted">Sans plafond</span>
                     )}
@@ -229,8 +242,20 @@ type BrouillonType = {
   motifConfidentiel: boolean;
   allowsHours: boolean;
   /** Vide : sans plafond. */
-  maxDaysPerRequest: string;
+  dureeMax: string;
+  /** La durée max se donne en jours ouvrés ou en années (ADR-0135). */
+  uniteDureeMax: UniteDureeMax;
+  /** Une durée max en années se renouvelle, ou non. */
+  renouvelable: boolean;
   continuite: Continuite;
+};
+
+type UniteDureeMax = 'jours_ouvres' | 'ans';
+
+/** Les bornes d'une durée max, selon son unité. */
+const BORNES_DE_LA_DUREE_MAX: Record<UniteDureeMax, { max: number; message: string }> = {
+  jours_ouvres: { max: 365, message: 'Entre 1 et 365 jours ouvrés' },
+  ans: { max: ANNEES_MAX_PAR_DEMANDE, message: `Entre 1 et ${ANNEES_MAX_PAR_DEMANDE} ans` },
 };
 
 function FenetreType({
@@ -250,7 +275,9 @@ function FenetreType({
     resteJoignable: cible?.resteJoignable ?? false,
     motifConfidentiel: cible?.motifConfidentiel ?? false,
     allowsHours: cible?.allowsHours ?? false,
-    maxDaysPerRequest: cible?.maxDaysPerRequest == null ? '' : String(cible.maxDaysPerRequest),
+    dureeMax: String(cible?.maxDaysPerRequest ?? cible?.maxYearsPerRequest ?? ''),
+    uniteDureeMax: cible?.maxYearsPerRequest != null ? 'ans' : 'jours_ouvres',
+    renouvelable: cible?.renouvelable ?? false,
     continuite: cible?.continuite ?? 'jamais',
   });
   const [erreur, setErreur] = useState<string | null>(null);
@@ -259,10 +286,14 @@ function FenetreType({
 
   const avecQuota = form.allowanceDays.trim() !== '';
   const decompte = avecQuota && form.deductsBalance;
-  const plafond = form.maxDaysPerRequest.trim();
+  const plafond = form.dureeMax.trim();
+  const bornes = BORNES_DE_LA_DUREE_MAX[form.uniteDureeMax];
   const plafondInvalide =
     plafond !== '' &&
-    !(Number.isInteger(Number(plafond)) && Number(plafond) >= 1 && Number(plafond) <= 365);
+    !(Number.isInteger(Number(plafond)) && Number(plafond) >= 1 && Number(plafond) <= bornes.max);
+  const enAnnees = form.uniteDureeMax === 'ans';
+  // Seule une durée max en années se renouvelle.
+  const renouvelable = form.renouvelable && enAnnees && plafond !== '';
   const nomTropCourt = form.name.trim().length < 2;
   const annee = new Date().getFullYear();
 
@@ -279,7 +310,9 @@ function FenetreType({
         motifConfidentiel: form.motifConfidentiel,
         // Ce qui se décompte du solde se prend à la journée.
         allowsHours: form.allowsHours && !decompte,
-        maxDaysPerRequest: plafond === '' ? null : Number(plafond),
+        maxDaysPerRequest: plafond === '' || enAnnees ? null : Number(plafond),
+        maxYearsPerRequest: plafond === '' || !enAnnees ? null : Number(plafond),
+        renouvelable,
         continuite: form.continuite,
       };
       return cible
@@ -353,22 +386,45 @@ function FenetreType({
             />
           </Field>
           <Field
-            label="Jours max par demande"
+            label="Durée max par demande"
             htmlFor="typeMax"
-            error={plafondInvalide ? 'Entre 1 et 365 jours ouvrés' : undefined}
+            error={plafondInvalide ? bornes.message : undefined}
           >
-            <Input
-              id="typeMax"
-              type="number"
-              min={1}
-              max={365}
-              step={1}
-              value={form.maxDaysPerRequest}
-              onChange={(e) => set('maxDaysPerRequest', e.target.value)}
-              placeholder="Sans plafond"
-            />
+            <div className="flex gap-2">
+              <Input
+                id="typeMax"
+                type="number"
+                min={1}
+                max={bornes.max}
+                step={1}
+                value={form.dureeMax}
+                onChange={(e) => set('dureeMax', e.target.value)}
+                placeholder="Sans plafond"
+                aria-describedby={plafondInvalide ? 'typeMax-message' : undefined}
+                className="min-w-0 flex-1"
+              />
+              <Select
+                aria-label="Unité de la durée max"
+                value={form.uniteDureeMax}
+                onChange={(e) => set('uniteDureeMax', e.target.value as UniteDureeMax)}
+                className="w-[136px]"
+              >
+                <option value="jours_ouvres">Jours ouvrés</option>
+                <option value="ans">Ans</option>
+              </Select>
+            </div>
           </Field>
         </ModalGrid>
+        {/* Une durée en années se renouvelle : l'agent demande la période suivante. */}
+        <label className="mt-3.5 flex items-start gap-2.5 text-[12.5px] text-ink">
+          <Checkbox
+            className="mt-0.5"
+            checked={renouvelable}
+            disabled={!enAnnees || plafond === ''}
+            onChange={(e) => set('renouvelable', e.target.checked)}
+          />
+          <span className="font-semibold text-ink-strong">Durée max renouvelable</span>
+        </label>
       </ModalSection>
 
       <ModalSection title="Règles">

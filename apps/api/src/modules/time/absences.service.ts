@@ -34,6 +34,7 @@ import type {
   Holiday,
   ListAbsenceRequestsQuery,
   RappelerInput,
+  RenouvelerInput,
   SessionUser,
   SetBalanceInput,
   UpdateAbsenceTypeInput,
@@ -42,9 +43,11 @@ import type {
 import {
   CAPACITE_INFOS,
   dansLaJournee,
+  finAuPlusTard,
   horsDeLaJournee,
   joursDHeures,
   peut,
+  periodeDuRenouvellement,
   MAX_JUSTIFICATIF_BYTES,
   SENEGAL_FIXED_HOLIDAYS,
   SENEGAL_MOBILE_HOLIDAYS,
@@ -118,6 +121,8 @@ type DefaultType = {
   motifConfidentiel?: boolean;
   allowsHours?: boolean;
   maxDaysPerRequest?: number;
+  maxYearsPerRequest?: number;
+  renouvelable?: boolean;
   continuite?: Continuite;
 };
 
@@ -176,10 +181,23 @@ const DEFAULT_TYPES: DefaultType[] = [
     maxDaysPerRequest: 3,
     continuite: 'au_dela_d_un_jour',
   },
+  // L'agent s'éloigne du service pour des années, sans solde à décompter :
+  // trois ans au plus par demande, renouvelable (ADR-0135).
+  {
+    name: 'Disponibilité',
+    deductsBalance: false,
+    allowanceDays: null,
+    frequency: 'none',
+    requiresDocument: false,
+    maxYearsPerRequest: 3,
+    renouvelable: true,
+  },
 ];
 
 /** « 1 jour ouvré », « 3 jours ouvrés ». */
 const enJoursOuvres = (n: number) => (n > 1 ? `${n} jours ouvrés` : `${n} jour ouvré`);
+/** « 1 an », « 3 ans ». */
+const enAnnees = (n: number) => (n > 1 ? `${n} ans` : `${n} an`);
 
 function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
   return { tenantId: user.tenantId, userId: user.userId };
@@ -259,6 +277,7 @@ const SANS_GESTE: AbsenceRequestView['gestes'] = {
   confirmerReprise: false,
   rappeler: false,
   joindreJustificatif: false,
+  renouveler: false,
 };
 
 /**
@@ -373,6 +392,8 @@ export class AbsencesService {
             motifConfidentiel: d.motifConfidentiel ?? false,
             allowsHours: d.allowsHours ?? false,
             maxDaysPerRequest: d.maxDaysPerRequest ?? null,
+            maxYearsPerRequest: d.maxYearsPerRequest ?? null,
+            renouvelable: d.renouvelable ?? false,
             continuite: d.continuite ?? 'jamais',
           });
         }
@@ -398,6 +419,9 @@ export class AbsencesService {
           motifConfidentiel: input.motifConfidentiel ?? false,
           allowsHours: input.allowsHours ?? false,
           maxDaysPerRequest: input.maxDaysPerRequest ?? null,
+          maxYearsPerRequest: input.maxYearsPerRequest ?? null,
+          // Seule une durée max en années se renouvelle.
+          renouvelable: (input.renouvelable ?? false) && input.maxYearsPerRequest != null,
           continuite: input.continuite ?? 'jamais',
         }),
       );
@@ -428,6 +452,20 @@ export class AbsencesService {
           'Un type décompté du solde se demande à la journée',
         );
       }
+      // Omise, une durée max reste ce qu'elle était ; donnée dans une unité,
+      // elle remplace celle de l'autre.
+      const plafondEnJours =
+        input.maxDaysPerRequest !== undefined
+          ? input.maxDaysPerRequest
+          : input.maxYearsPerRequest != null
+            ? null
+            : row.maxDaysPerRequest;
+      const plafondEnAnnees =
+        input.maxYearsPerRequest !== undefined
+          ? input.maxYearsPerRequest
+          : input.maxDaysPerRequest != null
+            ? null
+            : row.maxYearsPerRequest;
       const quota = input.allowanceDays ?? null;
       const change =
         row.deductsBalance !== input.deductsBalance ||
@@ -458,10 +496,9 @@ export class AbsencesService {
             // redevient pas visible par oubli.
             motifConfidentiel: input.motifConfidentiel ?? row.motifConfidentiel,
             allowsHours,
-            maxDaysPerRequest:
-              input.maxDaysPerRequest === undefined
-                ? row.maxDaysPerRequest
-                : input.maxDaysPerRequest,
+            maxDaysPerRequest: plafondEnJours,
+            maxYearsPerRequest: plafondEnAnnees,
+            renouvelable: (input.renouvelable ?? row.renouvelable) && plafondEnAnnees != null,
             continuite: input.continuite ?? row.continuite,
           })
           .where(eq(t.absenceTypes.id, id));
@@ -1166,6 +1203,8 @@ export class AbsencesService {
   async createRequest(
     user: SessionUser,
     input: CreateAbsenceRequestInput,
+    /** La demande que celle-ci renouvelle, cf. `renouveler`. */
+    renouvelle?: string,
   ): Promise<{ id: string; daysCount: number }> {
     const id = uuidv7();
     let daysCount = 0;
@@ -1268,6 +1307,16 @@ export class AbsencesService {
             `Cette période en compte ${daysCount}.`,
           );
         }
+        // Ou en années (la disponibilité) : la période ne va pas au-delà.
+        const finPermise = finAuPlusTard(type, input.startDate);
+        if (finPermise !== null && type.maxYearsPerRequest !== null && input.endDate > finPermise) {
+          problem(
+            422,
+            'absence.duree_max',
+            `« ${type.name} » se demande pour ${enAnnees(type.maxYearsPerRequest)} au plus`,
+            `Terminez la demande le ${frDate(finPermise)} au plus tard.`,
+          );
+        }
         // Quelques heures comptent pour une part de la journée.
         if (heures) daysCount = joursDHeures(heures.debut, heures.fin);
 
@@ -1302,6 +1351,7 @@ export class AbsencesService {
           daysCount: daysCount.toString(),
           reason: input.reason,
           requestedByUserId: user.userId,
+          renouvelleId: renouvelle ?? null,
         });
         if (document) {
           const pieceId = uuidv7();
@@ -1465,6 +1515,7 @@ export class AbsencesService {
             requiresDocument: t.absenceTypes.requiresDocument,
             confidentiel: t.absenceTypes.motifConfidentiel,
             continuite: t.absenceTypes.continuite,
+            renouvelable: t.absenceTypes.renouvelable,
           })
           .from(t.absenceRequests)
           .innerJoin(t.employees, eq(t.employees.id, t.absenceRequests.employeeId))
@@ -1506,6 +1557,7 @@ export class AbsencesService {
           requiresDocument: t.absenceTypes.requiresDocument,
           confidentiel: t.absenceTypes.motifConfidentiel,
           continuite: t.absenceTypes.continuite,
+          renouvelable: t.absenceTypes.renouvelable,
         })
         .from(t.absenceRequests)
         .innerJoin(t.employees, eq(t.employees.id, t.absenceRequests.employeeId))
@@ -1853,6 +1905,72 @@ export class AbsencesService {
       await reconcilierReprise(tx, requestId);
       if (d) await annoncerLeChangement(tx, d, { quoi: 'annule', parLAgent: sienne }, user.userId);
     });
+  }
+
+  /**
+   * Le renouvellement d'une disponibilité (ADR-0135) : pendant sa période
+   * validée, l'agent demande la suivante, du lendemain de la fin, pour
+   * autant d'années que le type en permet au plus. La demande suit le
+   * circuit de toute demande, et se dit renouvellement.
+   */
+  async renouveler(
+    user: SessionUser,
+    requestId: string,
+    input: RenouvelerInput,
+  ): Promise<{ id: string; daysCount: number }> {
+    const { request, type } = await this.db.withTenant(ctxOf(user), async (tx) => {
+      const [row] = await tx
+        .select({ request: t.absenceRequests, type: t.absenceTypes })
+        .from(t.absenceRequests)
+        .innerJoin(t.absenceTypes, eq(t.absenceTypes.id, t.absenceRequests.absenceTypeId))
+        .where(eq(t.absenceRequests.id, requestId))
+        .limit(1);
+      if (!row) problem(404, 'absence.request_not_found', 'Demande introuvable');
+      if ((await this.selfEmployeeId(tx, user)) !== row.request.employeeId) {
+        problem(
+          403,
+          'absence.renouvellement_le_sien',
+          'Vous ne pouvez renouveler que vos absences',
+        );
+      }
+      return row;
+    });
+    if (!type.renouvelable || type.maxYearsPerRequest === null || type.deletedAt !== null) {
+      problem(422, 'absence.pas_renouvelable', `« ${type.name} » ne se renouvelle pas`);
+    }
+    const jour = aujourdhui();
+    if (
+      request.status !== 'approved' ||
+      request.startDate > jour ||
+      request.endDate < jour ||
+      request.repriseDemandee !== null
+    ) {
+      problem(
+        422,
+        'absence.renouvellement_hors_periode',
+        'Seule une période validée et en cours se renouvelle',
+        'Le renouvellement se demande pendant la période, au plus tard son dernier jour.',
+      );
+    }
+    if (input.annees > type.maxYearsPerRequest) {
+      problem(
+        422,
+        'absence.duree_max',
+        `« ${type.name} » se renouvelle pour ${enAnnees(type.maxYearsPerRequest)} au plus`,
+      );
+    }
+    const { du, au } = periodeDuRenouvellement(request.endDate, input.annees);
+    return this.createRequest(
+      user,
+      {
+        employeeId: request.employeeId,
+        absenceTypeId: request.absenceTypeId,
+        startDate: du,
+        endDate: au,
+        reason: input.reason,
+      },
+      request.id,
+    );
   }
 
   /**
@@ -2341,6 +2459,8 @@ export class AbsencesService {
         motifConfidentiel: t.absenceTypes.motifConfidentiel,
         allowsHours: t.absenceTypes.allowsHours,
         maxDaysPerRequest: t.absenceTypes.maxDaysPerRequest,
+        maxYearsPerRequest: t.absenceTypes.maxYearsPerRequest,
+        renouvelable: t.absenceTypes.renouvelable,
         continuite: t.absenceTypes.continuite,
       })
       .from(t.absenceTypes)
@@ -2462,6 +2582,7 @@ export class AbsencesService {
       requiresDocument: boolean;
       confidentiel: boolean;
       continuite: string;
+      renouvelable: boolean;
     }>,
   ): Promise<AbsenceRequestView[]> {
     if (rows.length === 0) return [];
@@ -2550,6 +2671,34 @@ export class AbsencesService {
           .where(inArray(t.employees.id, [...new Set(rows.map((r) => r.request.employeeId))]))
       ).map((e) => [e.id, e.n1]),
     );
+    // Ce que l'agent peut encore renouveler (ADR-0135) : sa période validée
+    // et en cours, d'un type renouvelable, sans demande qui la suive dès le
+    // lendemain.
+    const renouvelables = rows
+      .filter(
+        ({ request: r, renouvelable }) =>
+          renouvelable &&
+          r.status === 'approved' &&
+          r.employeeId === moi &&
+          r.startDate <= today &&
+          r.endDate >= today &&
+          r.repriseDemandee === null,
+      )
+      .map(({ request: r }) => r.id);
+    const suivies = new Set<string>();
+    if (renouvelables.length > 0) {
+      const { rows: lues } = await tx.execute<{ id: string }>(sql`
+        SELECT r.id FROM absence_requests r
+         WHERE r.id IN (${sql.join(
+           renouvelables.map((id) => sql`${id}`),
+           sql`, `,
+         )})
+           AND EXISTS (SELECT 1 FROM absence_requests s
+                        WHERE s.employee_id = r.employee_id
+                          AND s.status IN ('pending', 'approved')
+                          AND s.start_date = r.end_date + 1)`);
+      for (const l of lues) suivies.add(l.id);
+    }
     const vues: AbsenceRequestView[] = [];
     for (const {
       request,
@@ -2729,6 +2878,7 @@ export class AbsencesService {
             : null,
         repriseDemandee: valide ? request.repriseDemandee : null,
         repriseAttendDe,
+        renouvellement: request.renouvelleId !== null,
         continuite: enAttente
           ? await alerteDeContinuite(tx, {
               id: request.id,
@@ -2750,6 +2900,7 @@ export class AbsencesService {
           joindreJustificatif:
             (request.status === 'pending' || (valide && !justificatif)) &&
             (sienne || request.requestedByUserId === user.userId || gere),
+          renouveler: renouvelables.includes(request.id) && !suivies.has(request.id),
         },
         approvals: visas.map((a) => ({
           level: a.level,

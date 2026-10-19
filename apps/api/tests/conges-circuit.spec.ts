@@ -22,6 +22,7 @@ import {
   CAPACITES_DELEGABLES,
   CAPACITES_GESTION,
   createAbsenceRequestSchema,
+  finDeLaDuree,
   type Capacite,
   type SessionUser,
 } from '@teranga/contracts';
@@ -1168,6 +1169,7 @@ describe('un congé validé qui change', () => {
       confirmerReprise: false,
       rappeler: false,
       joindreJustificatif: false,
+      renouveler: false,
     });
     // Dans son espace, Awa l'annule ; au calendrier, qui dirige la DCH le peut aussi.
     expect((await vue(id, awa.session)).gestes.annuler).toBe(true);
@@ -2157,5 +2159,94 @@ describe('une absence ponctuelle', () => {
     } finally {
       await raw(`DELETE FROM holidays WHERE tenant_id = $1 AND day = '2027-03-02'`, [tenantId]);
     }
+  });
+});
+
+describe('une disponibilité', () => {
+  let disponibiliteId: string;
+  let sabbatiqueId: string;
+  beforeAll(async () => {
+    disponibiliteId = randomUUID();
+    sabbatiqueId = randomUUID();
+    await raw(
+      `INSERT INTO absence_types (id, tenant_id, name, max_years_per_request, renouvelable)
+       VALUES ($1,$2,'Disponibilité',3,true), ($3,$2,'Congé sabbatique',1,false)`,
+      [disponibiliteId, tenantId, sabbatiqueId],
+    );
+  });
+
+  it('trois ans au plus par demande : jusqu’à la veille du même jour, trois ans plus tard', async () => {
+    const demande = (fin: string) =>
+      absences.createRequest(moussa.session, {
+        employeeId: moussa.employeeId,
+        absenceTypeId: disponibiliteId,
+        startDate: '2031-03-03',
+        endDate: fin,
+      });
+    const refus = await demande('2034-03-03').then(
+      () => null,
+      (err: unknown) => (err instanceof ProblemException ? err.problem : err),
+    );
+    expect(refus).toMatchObject({
+      code: 'absence.duree_max',
+      title: '« Disponibilité » se demande pour 3 ans au plus',
+      detail: 'Terminez la demande le 2 mars 2034 au plus tard.',
+    });
+    expect((await demande('2034-03-02')).daysCount).toBeGreaterThan(700);
+  });
+
+  it('renouvelable : pendant sa période, l’agent demande la suivante, d’un à trois ans', async () => {
+    const id = await enConge(moussa, disponibiliteId, 60);
+    expect((await vue(id, moussa.session)).gestes.renouveler).toBe(true);
+    expect(await codeOf(() => absences.renouveler(moussa.session, id, { annees: 4 }))).toBe(
+      'absence.duree_max',
+    );
+    expect(await codeOf(() => absences.renouveler(ousmane.session, id, { annees: 1 }))).toBe(
+      'absence.renouvellement_le_sien',
+    );
+    const { id: suite } = await absences.renouveler(moussa.session, id, { annees: 2 });
+    const { rows } = await raw(
+      `SELECT r.start_date::text AS du, r.end_date::text AS au, r.renouvelle_id, r.status,
+              (o.end_date + 1)::text AS lendemain
+         FROM absence_requests r JOIN absence_requests o ON o.id = r.renouvelle_id
+        WHERE r.id = $1`,
+      [suite],
+    );
+    const lendemain = rows[0]!.lendemain as string;
+    expect(rows[0]).toMatchObject({
+      renouvelle_id: id,
+      status: 'pending',
+      du: lendemain,
+      au: finDeLaDuree(lendemain, 24),
+    });
+    expect((await vue(suite, moussa.session)).renouvellement).toBe(true);
+    // Le N+1 l'apprend comme un renouvellement.
+    expect(await appels(suite)).toEqual(['n1:Ousmane']);
+    expect(await notif('Ousmane', `conge:${suite}:appel:%`)).toMatch(
+      /^Moussa Test demande le renouvellement de sa disponibilité, du .+ au .+$/,
+    );
+    // La suite demandée, la période ne se renouvelle plus.
+    expect((await vue(id, moussa.session)).gestes.renouveler).toBe(false);
+    expect(await codeOf(() => absences.renouveler(moussa.session, id, { annees: 1 }))).toBe(
+      'absence.overlap',
+    );
+  });
+
+  it('pas avant le premier jour, ni d’un type qui ne se renouvelle pas', async () => {
+    const aVenir = randomUUID();
+    await raw(
+      `INSERT INTO absence_requests (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+       VALUES ($1,$2,$3,$4, CURRENT_DATE + 10, CURRENT_DATE + 40, 20, 'approved')`,
+      [aVenir, tenantId, moussa.employeeId, disponibiliteId],
+    );
+    expect((await vue(aVenir, moussa.session)).gestes.renouveler).toBe(false);
+    expect(await codeOf(() => absences.renouveler(moussa.session, aVenir, { annees: 1 }))).toBe(
+      'absence.renouvellement_hors_periode',
+    );
+    const sabbatique = await enConge(moussa, sabbatiqueId, 5);
+    expect((await vue(sabbatique, moussa.session)).gestes.renouveler).toBe(false);
+    expect(await codeOf(() => absences.renouveler(moussa.session, sabbatique, { annees: 1 }))).toBe(
+      'absence.pas_renouvelable',
+    );
   });
 });

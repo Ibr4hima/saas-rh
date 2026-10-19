@@ -37,7 +37,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0029](0029-refus-de-candidature-par-courriel.md)     | Le refus d'une candidature part par courriel, sans recopier l'adresse                   | acceptée, précisée par 0030 et 0062         |
 | [0030](0030-candidatures-non-retenues-a-part.md)      | Les candidatures non retenues ont leur page                                             | acceptée                                    |
 | [0031](0031-accuse-de-reception.md)                   | L'accusé de réception d'une candidature, et des courriels sans réponse                  | acceptée                                    |
-| [0032](0032-absence-ponctuelle-a-l-heure.md)          | L'absence ponctuelle, à l'heure ou à la journée, plafonnée par demande                  | acceptée                                    |
+| [0032](0032-absence-ponctuelle-a-l-heure.md)          | L'absence ponctuelle, à l'heure ou à la journée, plafonnée par demande                  | acceptée, précisée par 0135                 |
 | [0033](0033-fonction-de-responsable.md)               | La fonction de responsable s'écrit dans les affectations                                | acceptée, précisée (0038, 0064, 0126, 0127) |
 | [0034](0034-n-plus-un-des-chefs-d-unite.md)           | Le chef d'un département ou d'un service relève de l'unité au-dessus                    | acceptée, relève précisée par 0035          |
 | [0035](0035-releve-d-un-chef-et-stagiaires.md)        | Relève d'un chef : l'équipe passe au nouveau ; aucun stagiaire n'est n+1                | acceptée, directeurs précisés par 0037      |
@@ -105,7 +105,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0097](0097-capitales-du-lieu-et-du-poste.md)         | Lieu de naissance et adresse en capitales initiales, formation et poste à l'initiale    | acceptée, précisée par 0098                 |
 | [0098](0098-contrats-de-travail.md)                   | Les contrats de travail : la fiche saisie, le modèle de l'APIX en Times New Roman       | acceptée, précisée 4 fois, de 0099 à 0133   |
 | [0099](0099-ninea-de-l-apix.md)                       | Le NINEA de l'APIX est 28409592G3, partout                                              | acceptée                                    |
-| [0100](0100-decisions-de-disponibilite.md)            | Les décisions de disponibilité : la fiche saisie, une page sur le modèle de l'APIX      | acceptée, précisée 5 fois, de 0101 à 0133   |
+| [0100](0100-decisions-de-disponibilite.md)            | Les décisions de disponibilité : la fiche saisie, une page sur le modèle de l'APIX      | acceptée, précisée 6 fois, de 0101 à 0135   |
 | [0101](0101-analyse-du-renouvellement.md)             | L'analyse du renouvellement de disponibilité nomme le renouvellement                    | acceptée                                    |
 | [0102](0102-domiciliation-bancaire.md)                | La domiciliation bancaire : la fiche saisie, le RIB saisi deux fois                     | acceptée, précisée par 0103 et 0133         |
 | [0103](0103-destinataire-de-la-domiciliation.md)      | Le destinataire de la domiciliation tient sur une ligne, sans « Sénégal »               | acceptée                                    |
@@ -140,3 +140,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0132](0132-stage-au-choix.md)                        | L'attestation de stage : le stage au choix, quand le dossier en compte plusieurs        | acceptée                                    |
 | [0133](0133-dates-des-fiches.md)                      | Les dates des fiches : la CNI à jour, rien dans l'avenir, chaque fin après son début    | acceptée, précisée par 0134                 |
 | [0134](0134-delivrance-de-la-cni.md)                  | La délivrance de la CNI dans chaque fiche ; le renouvellement demandé sans date limite  | acceptée                                    |
+| [0135](0135-disponibilite.md)                         | La disponibilité, trois ans au plus, renouvelable ; l'agent demande le renouvellement   | acceptée                                    |
