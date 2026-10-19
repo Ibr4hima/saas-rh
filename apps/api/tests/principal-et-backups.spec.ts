@@ -448,6 +448,19 @@ describe('la fenêtre de 48 heures, sur une demande de document', () => {
     expect(await codeOf(() => ouvrir(awa, 'documents', id))).toBe('demandes.sans_backup');
   });
 
+  it('la demande d’un backup reste à la personne principale, la fenêtre close aussi ; un second backup la reçoit alors', async () => {
+    const id = await demanderUneAttestation(khady);
+    await vieillir('document_requests', id, 49);
+    await reconcilier();
+    expect(await appels('document', id)).toEqual(['dch:Awa']);
+    expect(await codeOf(() => documents.advance(khady.session, id, CLORE))).toBe(
+      'demandes.la_sienne',
+    );
+    await habiliter(binta, ATTESTATION);
+    expect(await appels('document', id)).toEqual(['dch:Awa', 'dch:Binta']);
+    await documents.advance(binta.session, id, CLORE);
+  });
+
   it('une personne principale en congé, ou à l’origine de la demande : les backups traitent d’emblée', async () => {
     const sienne = await demanderUneAttestation(awa);
     expect(await appels('document', sienne)).toEqual(['dch:Khady']);
