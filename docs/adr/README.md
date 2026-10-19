@@ -129,7 +129,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0121](0121-preremplissage-valide.md)                 | Générer des documents : un seul bloc « Préremplissage », validé avant la génération     | acceptée                                    |
 | [0122](0122-en-tete-sans-filet.md)                    | L'en-tête sans filet au défilement                                                      | acceptée                                    |
 | [0123](0123-sessions-du-conseil-proposees.md)         | Les décisions de disponibilité proposent les sessions du conseil d'administration       | acceptée                                    |
-| [0124](0124-action-aux-mesures-de-la-date.md)         | L'action de l'écran, aux mesures du bouton de la date                                   | acceptée                                    |
+| [0124](0124-action-aux-mesures-de-la-date.md)         | L'action de l'écran, aux mesures du bouton de la date                                   | acceptée, précisée par 0141                 |
 | [0125](0125-acces-ferme-par-les-regles.md)            | L'accès au portail ne se coupe plus à la main                                           | acceptée                                    |
 | [0126](0126-directeur-general-adjoint.md)             | Le DGA se désigne à côté du DG ; son poste s'écrit au genre                             | acceptée, précisée par 0127                 |
 | [0127](0127-dga-par-nouvelle-affectation.md)          | « Nouvelle affectation » donne aussi la place de DGA                                    | acceptée                                    |
@@ -146,3 +146,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0138](0138-cadre-du-focus-au-clavier.md)             | Le cadre du focus ne paraît qu'à la navigation au clavier                               | acceptée                                    |
 | [0139](0139-retour-a-gauche-du-titre.md)              | Le retour à la page précédente, un rond à gauche du titre de l'écran                    | acceptée, précisée par 0140                 |
 | [0140](0140-retour-sans-cadre.md)                     | Le retour à la page précédente, sans cadre, comme la cloche du menu                     | acceptée                                    |
+| [0141](0141-hauteur-apparente-de-l-action.md)         | L'action de l'écran, à la hauteur apparente du bouton de la date                        | acceptée                                    |
