@@ -191,10 +191,6 @@ export function FicheDeLaDecision({
   });
   const aujourdhui = aujourdhuiIso();
   const debutDeLaReprise = lendemain(renouvellement ? valeur.initialementAu : valeur.effetLe);
-  // La demande d'un renouvellement vient au plus tard le lendemain de la période initiale.
-  const lendemainInitial = renouvellement ? lendemain(valeur.initialementAu) : undefined;
-  const demandeAuPlusTard =
-    lendemainInitial && lendemainInitial < aujourdhui ? lendemainInitial : aujourdhui;
 
   return (
     <>
@@ -241,7 +237,7 @@ export function FicheDeLaDecision({
           required
           error={erreurs.demandeLe}
         >
-          <Input {...date('demandeLe', { max: demandeAuPlusTard })} />
+          <Input {...date('demandeLe', { max: aujourdhui })} />
         </Field>
       </Groupe>
 

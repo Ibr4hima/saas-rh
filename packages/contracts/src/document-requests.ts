@@ -4,11 +4,12 @@ import { CODES_DES_BANQUES } from './banques';
 import {
   aujourdhuiIso,
   avantAujourdhuiSchema,
+  CNI_EXPIREE,
+  cniDelivreeAuPlusTot,
   dateDeNaissanceSchema,
   delivranceDeLaCniSchema,
   estUnJour,
   jusquAujourdhuiSchema,
-  plusJours,
 } from './dates';
 import { SALAIRE_MAX } from './montants';
 import { NATIONALITY_LABELS } from './nationalities';
@@ -382,6 +383,11 @@ export const ficheStagiaireSchema = z
     naissanceA: lieu(120),
     /** Le numéro de la carte nationale d'identité : treize chiffres. */
     cni: z.string().regex(/^\d{13}$/, 'Treize chiffres attendus'),
+    /**
+     * La CNI est à jour : délivrée il y a moins de dix ans. Le contrat n'en
+     * écrit pas la date (ADR-0134).
+     */
+    cniDelivreeLe: delivranceDeLaCniSchema,
     perePrenom: nomPropre(80),
     merePrenom: nomPropre(80),
     mereNom: nomPropre(80),
@@ -522,12 +528,11 @@ export type FicheDisponibilite = z.infer<typeof ficheDisponibiliteSchema>;
 export const DUREE_DE_PROROGATION_MAX = 24;
 
 /**
- * Les dates croisées d'un renouvellement (ADR-0133) : la période initiale
- * dans l'ordre, la reprise après elle ; la prorogation prend effet le
- * lendemain de la période initiale, la demande vient au plus tard ce jour-là.
+ * Les dates croisées d'un renouvellement (ADR-0133, ADR-0134) : la période
+ * initiale dans l'ordre, la reprise après elle. La demande n'a que la borne
+ * de son champ : pas après aujourd'hui.
  */
 export function datesDuRenouvellement(f: Record<string, unknown>): ReglesDesDates {
-  const demande = jourDe(f.demandeLe);
   const [du, au, reprise] = [
     jourDe(f.initialementDu),
     jourDe(f.initialementAu),
@@ -536,9 +541,6 @@ export function datesDuRenouvellement(f: Record<string, unknown>): ReglesDesDate
   const regles: ReglesDesDates = {};
   if (du && au && au < du) regles.initialementAu = 'La fin suit le début';
   if (au && reprise && reprise <= au) regles.repriseLe = 'La reprise suit la période initiale';
-  if (demande && au && demande > plusJours(au, 1)) {
-    regles.demandeLe = 'Au plus tard le lendemain de la disponibilité initiale';
-  }
   return regles;
 }
 
@@ -738,17 +740,20 @@ const pays = z.string().refine((code) => code in NATIONALITY_LABELS, 'Pays incon
 const facultatif = (max: number) => z.string().trim().min(1).max(max).optional();
 
 /**
- * Les dates croisées d'une déclaration de mouvement (ADR-0133) : le
- * mouvement suit l'entrée dans l'établissement, qui suit la naissance ; la
- * fin d'un CDD suit son début ; un visa approuve ou enregistre un contrat
- * déjà daté ; on entre au Sénégal après sa naissance et avant d'entrer dans
- * l'établissement ; la classe de recrutement n'est ni avant l'année de
- * naissance, ni dans l'avenir.
+ * Les dates croisées d'une déclaration de mouvement (ADR-0133, ADR-0134) :
+ * le mouvement suit l'entrée dans l'établissement, qui suit la naissance ;
+ * une CNI sénégalaise est à jour, une carte étrangère délivrée après la
+ * naissance ; la fin d'un CDD suit son début ; un visa approuve ou enregistre
+ * un contrat déjà daté ; on entre au Sénégal après sa naissance et avant
+ * d'entrer dans l'établissement ; la classe de recrutement n'est ni avant
+ * l'année de naissance, ni dans l'avenir.
  */
 export function datesDeLaDeclaration(f: Record<string, unknown>): ReglesDesDates {
   const piece = (p: unknown) =>
     p !== null && typeof p === 'object' ? jourDe((p as { le?: unknown }).le) : null;
   const naissance = jourDe(f.naissanceLe);
+  const delivrance = jourDe(f.cniDelivreeLe);
+  const etrangere = typeof f.nationalite === 'string' && f.nationalite !== 'SN';
   const entree = jourDe(f.entreeLe);
   const effet = jourDe(f.effetLe);
   const [cddDu, cddAu] = [jourDe(f.cddDu), jourDe(f.cddAu)];
@@ -764,6 +769,11 @@ export function datesDeLaDeclaration(f: Record<string, unknown>): ReglesDesDates
     regles.effetLe = 'Le mouvement suit l’entrée dans l’établissement';
   }
   if (entree && naissance && entree <= naissance) regles.entreeLe = 'L’entrée suit la naissance';
+  if (delivrance && !etrangere && delivrance < cniDelivreeAuPlusTot()) {
+    regles.cniDelivreeLe = CNI_EXPIREE;
+  } else if (delivrance && naissance && delivrance <= naissance) {
+    regles.cniDelivreeLe = 'Après la naissance';
+  }
   if (cddDu && cddAu && cddAu < cddDu) regles.cddAu = 'La fin suit le début';
   if (contrat && visa && visa < contrat) regles['visa.le'] = 'Pas avant la date du contrat';
   if (contrat && enregistrement && enregistrement < contrat) {
@@ -820,6 +830,11 @@ export const ficheDeclarationMouvementSchema = z
       .trim()
       .toUpperCase()
       .regex(/^[A-Z0-9]{5,20}$/, 'Des chiffres ou des lettres, de cinq à vingt'),
+    /**
+     * La délivrance de la carte, que le formulaire n'écrit pas : une CNI
+     * sénégalaise vaut dix ans et doit être à jour (ADR-0134).
+     */
+    cniDelivreeLe: jusquAujourdhuiSchema,
     cniDelivreeA: lieu(120),
     /** Qui a délivré la carte : « Directeur Général de la Sûreté Nationale ». */
     cniDelivreePar: intitule(120),

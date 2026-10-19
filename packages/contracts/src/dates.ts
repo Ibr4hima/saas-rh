@@ -37,7 +37,7 @@ export const neAuPlusTard = (): string => ansPlusTot(aujourdhuiIso(), AGE_MINIMU
 /** Une carte nationale d'identité vaut dix ans à compter de sa délivrance. */
 export const VALIDITE_DE_LA_CNI_ANS = 10;
 
-/** La première date de délivrance d'une CNI encore valide aujourd'hui. */
+/** La première délivrance d'une CNI encore valide aujourd'hui : il y a dix ans, plus un jour. */
 export const cniDelivreeAuPlusTot = (): string =>
   plusJours(ansPlusTot(aujourdhuiIso(), VALIDITE_DE_LA_CNI_ANS), 1);
 
@@ -59,8 +59,14 @@ export const avantAujourdhuiSchema = z.iso
   .date()
   .refine((d) => d < aujourdhuiIso(), 'Avant aujourd’hui');
 
-/** La délivrance d'une CNI encore valide : il y a moins de dix ans, pas dans l'avenir. */
+/** Ce que dit une CNI délivrée il y a dix ans ou plus. */
+export const CNI_EXPIREE = 'CNI expirée : délivrée il y a plus de dix ans';
+
+/**
+ * La délivrance d'une CNI encore valide : il y a moins de dix ans, pas dans
+ * l'avenir. Délivrée le 10 octobre 2019, elle vaut jusqu'au 9 octobre 2029.
+ */
 export const delivranceDeLaCniSchema = jusquAujourdhuiSchema.refine(
   (d) => d >= cniDelivreeAuPlusTot(),
-  'CNI expirée : délivrée il y a plus de dix ans',
+  CNI_EXPIREE,
 );

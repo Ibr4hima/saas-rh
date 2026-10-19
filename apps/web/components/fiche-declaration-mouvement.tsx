@@ -9,6 +9,7 @@ import {
   datesDeLaDeclaration,
   CHANGEMENTS_DU_TRAVAILLEUR,
   CHIFFRES_DE_L_IMMATRICULATION,
+  cniDelivreeAuPlusTot,
   DEPARTS_DU_TRAVAILLEUR,
   DISPOSITION_MAX,
   DISPOSITIONS_MAX,
@@ -46,7 +47,8 @@ import {
    grade de qui a fait son service. Ce que la DCH peut ne pas connaître
    encore est facultatif : laissé vide, le formulaire garde des pointillés
    pour l'écrire à la main ; la catégorie d'enregistrement n'est alors pas
-   encadrée.
+   encadrée. La date de délivrance de la carte d'identité, que le formulaire
+   n'écrit pas, dit qu'une CNI sénégalaise est à jour (ADR-0134).
 */
 
 type Depart = (typeof DEPARTS_DU_TRAVAILLEUR)[number];
@@ -75,6 +77,7 @@ export type SaisieDeLaDeclaration = {
   mereNom: string;
   adresse: string;
   cni: string;
+  cniDelivreeLe: string;
   cniDelivreeA: string;
   cniDelivreePar: string;
   css: string;
@@ -132,6 +135,7 @@ export const DECLARATION_VIDE: SaisieDeLaDeclaration = {
   mereNom: '',
   adresse: '',
   cni: '',
+  cniDelivreeLe: '',
   cniDelivreeA: '',
   cniDelivreePar: '',
   css: '',
@@ -216,6 +220,7 @@ export function versLaFicheDeLaDeclaration(s: SaisieDeLaDeclaration) {
     mereNom: s.mereNom.trim(),
     adresse: s.adresse.trim(),
     cni: s.cni.trim(),
+    cniDelivreeLe: s.cniDelivreeLe,
     cniDelivreeA: s.cniDelivreeA.trim(),
     cniDelivreePar: s.cniDelivreePar.trim(),
     css: s.css.trim() || undefined,
@@ -274,9 +279,10 @@ export function FicheDeLaDeclaration({
   const id = useId();
   const poser = (champ: Partial<SaisieDeLaDeclaration>) => onChange({ ...valeur, ...champ });
   const { texte, nomPropre, lieu, intitule } = champsDeTexte(id, valeur, poser);
-  // Les règles des dates, dites sous les champs (ADR-0133) : l'entrée et le
-  // contrat avant aujourd'hui, les visas et la déclaration d'embauche pas
-  // après, les visas pas avant le contrat.
+  // Les règles des dates, dites sous les champs (ADR-0133, ADR-0134) :
+  // l'entrée et le contrat avant aujourd'hui, les visas et la déclaration
+  // d'embauche pas après, les visas pas avant le contrat, une CNI
+  // sénégalaise délivrée il y a moins de dix ans.
   const fiche = versLaFicheDeLaDeclaration(valeur);
   const erreurs = reglesEnfreintes(
     fiche,
@@ -494,14 +500,25 @@ export function FicheDeLaDeclaration({
         ) : (
           <ChampDeLaCNI id={`${id}-cni`} cni={valeur.cni} onSaisir={(cni) => poser({ cni })} />
         )}
+        <Field
+          label="Date de délivrance"
+          htmlFor={`${id}-cniDelivreeLe`}
+          required
+          error={erreurDe('cniDelivreeLe')}
+        >
+          <Input
+            {...date('cniDelivreeLe', {
+              min: etrangere(valeur) ? valeur.naissanceLe : cniDelivreeAuPlusTot(),
+              max: aujourdhui,
+            })}
+          />
+        </Field>
         <Field label="Lieu de délivrance" htmlFor={`${id}-cniDelivreeA`} required>
           <Input {...lieu('cniDelivreeA', 120)} />
         </Field>
-        <div className="sm:col-span-2">
-          <Field label="Autorité de délivrance" htmlFor={`${id}-cniDelivreePar`} required>
-            <Input {...intitule('cniDelivreePar', 120)} />
-          </Field>
-        </div>
+        <Field label="Autorité de délivrance" htmlFor={`${id}-cniDelivreePar`} required>
+          <Input {...intitule('cniDelivreePar', 120)} />
+        </Field>
         <Field label="N° d’immatriculation à la CSS" htmlFor={`${id}-css`}>
           <Input {...texte('css', 30)} className={cn(CADRE, 'tabular-nums')} />
         </Field>

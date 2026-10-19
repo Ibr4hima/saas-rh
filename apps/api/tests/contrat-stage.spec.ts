@@ -14,6 +14,8 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FicheStagiaire, SessionUser } from '@teranga/contracts';
 import {
+  ansPlusTot,
+  aujourdhuiIso,
   cniGroupee,
   ficheStagiaireSchema,
   finDuStage,
@@ -66,6 +68,7 @@ const fiche = (f: Partial<FicheStagiaire> = {}): FicheStagiaire => ({
   naissanceLe: '2002-03-12',
   naissanceA: 'Pikine - Dakar',
   cni: '2751200201234',
+  cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 3),
   perePrenom: 'Mamadou',
   merePrenom: 'Fatou',
   mereNom: 'Diop',
@@ -166,6 +169,12 @@ describe('la saisie', () => {
     expect(cniGroupee('2751')).toBe('2 751');
     expect(cniGroupee('2')).toBe('2');
     expect(cniGroupee('')).toBe('');
+  });
+
+  it('la date de délivrance de la CNI se renseigne, mais le contrat ne l’écrit pas', () => {
+    expect(contrat({ cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 1) })).toEqual(
+      contrat({ cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 9) }),
+    );
   });
 
   it('la fiche validée porte les capitales, même saisie sans elles', () => {
@@ -392,12 +401,14 @@ describe('la génération', () => {
     );
   });
 
-  it('une fiche incomplète ou fausse est refusée : tout est obligatoire, une CNI de treize chiffres', async () => {
+  it('une fiche incomplète ou fausse est refusée : tout est obligatoire, une CNI de treize chiffres, à jour', async () => {
     for (const f of [
       { cni: '275120020123' },
       { cni: '27512002012345' },
       { cni: '275120020123A' },
       { cni: '2 751 2002 01234' },
+      { cniDelivreeLe: undefined },
+      { cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 10) },
       { duree: 0 },
       { allocation: 0 },
       { prenom: '' },

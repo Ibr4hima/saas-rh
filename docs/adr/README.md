@@ -101,7 +101,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0093](0093-attestation-de-depart-a-la-retraite.md)   | L'attestation de départ à la retraite : le jour du départ saisi                         | acceptée, précisée par 0130                 |
 | [0094](0094-contrat-de-stage.md)                      | Le contrat de stage : sans agent, la personne et le stage renseignés par la DCH         | acceptée, précisée (0095, 0096, 0098, 0121) |
 | [0095](0095-coquilles-des-modeles.md)                 | Les coquilles des modèles de l'APIX se corrigent à la reprise                           | acceptée                                    |
-| [0096](0096-fiche-du-contrat-de-stage.md)             | La fiche du contrat de stage : tout obligatoire, capitales initiales, CNI groupée       | acceptée, précisée par 0097 et 0121         |
+| [0096](0096-fiche-du-contrat-de-stage.md)             | La fiche du contrat de stage : tout obligatoire, capitales initiales, CNI groupée       | acceptée, précisée par 0097, 0121 et 0134   |
 | [0097](0097-capitales-du-lieu-et-du-poste.md)         | Lieu de naissance et adresse en capitales initiales, formation et poste à l'initiale    | acceptée, précisée par 0098                 |
 | [0098](0098-contrats-de-travail.md)                   | Les contrats de travail : la fiche saisie, le modèle de l'APIX en Times New Roman       | acceptée, précisée 4 fois, de 0099 à 0133   |
 | [0099](0099-ninea-de-l-apix.md)                       | Le NINEA de l'APIX est 28409592G3, partout                                              | acceptée                                    |
@@ -111,7 +111,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0103](0103-destinataire-de-la-domiciliation.md)      | Le destinataire de la domiciliation tient sur une ligne, sans « Sénégal »               | acceptée                                    |
 | [0104](0104-reprise-apres-disponibilite.md)           | L'attestation de reprise après disponibilité : les dates saisies, l'agent au dossier    | acceptée, précisée par 0105 et 0133         |
 | [0105](0105-conge-de-maternite.md)                    | Le congé de maternité : la cessation de paiement et la reprise de service               | acceptée, précisée par 0130                 |
-| [0106](0106-declaration-de-mouvement.md)              | La déclaration de mouvement du travailleur : la fiche, le Code du travail de 2026       | acceptée, précisée par 0107 et 0133         |
+| [0106](0106-declaration-de-mouvement.md)              | La déclaration de mouvement du travailleur : la fiche, le Code du travail de 2026       | acceptée, précisée par 0107, 0133 et 0134   |
 | [0107](0107-declaration-ancien-code.md)               | La déclaration de mouvement cite le Code du travail de 1997, comme les autres documents | acceptée                                    |
 | [0108](0108-boutons-aux-coins-d-e-voting.md)          | Les boutons et les champs aux coins d'e-Voting                                          | acceptée, précisée (0110, 0115, 0119)       |
 | [0109](0109-delegation-sans-bandeau.md)               | La délégation se règle dans « Déléguer des tâches », sans bandeau sur les pages         | acceptée, précisée par 0128                 |
@@ -138,4 +138,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0130](0130-cible-des-documents.md)                   | Chaque document a sa cible : la liste ne propose que les agents concernés               | acceptée, précisée par 0131 et 0132         |
 | [0131](0131-retraite-des-40-ans.md)                   | Le départ à la retraite dès 40 ans, sous CDI ou CDD ; deux retouches de la liste        | acceptée                                    |
 | [0132](0132-stage-au-choix.md)                        | L'attestation de stage : le stage au choix, quand le dossier en compte plusieurs        | acceptée                                    |
-| [0133](0133-dates-des-fiches.md)                      | Les dates des fiches : la CNI à jour, rien dans l'avenir, chaque fin après son début    | acceptée                                    |
+| [0133](0133-dates-des-fiches.md)                      | Les dates des fiches : la CNI à jour, rien dans l'avenir, chaque fin après son début    | acceptée, précisée par 0134                 |
+| [0134](0134-delivrance-de-la-cni.md)                  | La délivrance de la CNI dans chaque fiche ; le renouvellement demandé sans date limite  | acceptée                                    |

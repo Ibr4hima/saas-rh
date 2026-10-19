@@ -1,12 +1,12 @@
 /**
- * Les dates des fiches et des saisies (ADR-0133) : la CNI à jour, une date
- * de naissance à quinze ans révolus, les demandes et les nominations pas
- * après aujourd'hui, l'entrée et le contrat avant, chaque fin après son
- * début. Les dates se fixent par rapport à aujourd'hui : l'essai vaut tous
- * les jours.
+ * Les dates des fiches et des saisies (ADR-0133, ADR-0134) : la CNI à jour
+ * dans chaque fiche qui la porte, une date de naissance à quinze ans
+ * révolus, les demandes et les nominations pas après aujourd'hui, l'entrée
+ * et le contrat avant, chaque fin après son début. Les dates se fixent par
+ * rapport à aujourd'hui : l'essai vaut tous les jours.
  */
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ansPlusTot,
   aujourdhuiIso,
@@ -69,6 +69,7 @@ const stage = (f: Record<string, unknown> = {}) =>
       naissanceLe: '2002-03-12',
       naissanceA: 'Dakar',
       cni: '2751200201234',
+      cniDelivreeLe: ansPlusTot(AUJOURDHUI, 3),
       perePrenom: 'Mamadou',
       merePrenom: 'Fatou',
       mereNom: 'Diop',
@@ -148,6 +149,7 @@ const declaration = (f: Record<string, unknown> = {}) =>
       mereNom: 'Sall',
       adresse: 'Dakar',
       cni: '2751199012345',
+      cniDelivreeLe: ansPlusTot(AUJOURDHUI, 4),
       cniDelivreeA: 'Dakar',
       cniDelivreePar: 'Directeur Général de la Sûreté Nationale',
       situationDeFamille: 'celibataire',
@@ -168,18 +170,54 @@ const declaration = (f: Record<string, unknown> = {}) =>
     }),
   );
 
-describe('les contrats de travail', () => {
-  it('la CNI à jour : délivrée il y a moins de dix ans, pas dans l’avenir', () => {
-    expect(contrat()).toEqual({});
-    expect(contrat({ cniDelivreeLe: cniDelivreeAuPlusTot() })).toEqual({});
-    expect(contrat({ cniDelivreeLe: ansPlusTot(AUJOURDHUI, 10) })).toEqual({
-      cniDelivreeLe: 'CNI expirée : délivrée il y a plus de dix ans',
+describe('la CNI des fiches', () => {
+  it('chaque fiche qui la porte demande sa délivrance : il y a moins de dix ans, pas dans l’avenir', () => {
+    for (const f of [contrat, stage, declaration]) {
+      expect(f()).toEqual({});
+      expect(f({ cniDelivreeLe: cniDelivreeAuPlusTot() })).toEqual({});
+      expect(f({ cniDelivreeLe: ansPlusTot(AUJOURDHUI, 10) })).toEqual({
+        cniDelivreeLe: 'CNI expirée : délivrée il y a plus de dix ans',
+      });
+      expect(f({ cniDelivreeLe: DEMAIN })).toEqual({ cniDelivreeLe: 'Pas après aujourd’hui' });
+      expect(Object.keys(f({ cniDelivreeLe: undefined }))).toEqual(['cniDelivreeLe']);
+    }
+  });
+
+  it('délivrée le 10 octobre 2019, une CNI vaut jusqu’au 9 octobre 2029 inclus', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2029-10-09T23:59:00Z'));
+      expect(stage({ cniDelivreeLe: '2019-10-10' })).toEqual({});
+      expect(declaration({ cniDelivreeLe: '2019-10-10' })).toEqual({});
+      vi.setSystemTime(new Date('2029-10-10T00:00:00Z'));
+      expect(stage({ cniDelivreeLe: '2019-10-10' })).toEqual({
+        cniDelivreeLe: 'CNI expirée : délivrée il y a plus de dix ans',
+      });
+      expect(declaration({ cniDelivreeLe: '2019-10-10' })).toEqual({
+        cniDelivreeLe: 'CNI expirée : délivrée il y a plus de dix ans',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('une carte étrangère, à la déclaration de mouvement : délivrée après la naissance, sans la validité de la CNI', () => {
+    const etrangere = {
+      nationalite: 'ML',
+      cni: 'A1234567',
+      entreeAuSenegalLe: plusJours(AUJOURDHUI, -30),
+    };
+    expect(declaration({ ...etrangere, cniDelivreeLe: ansPlusTot(AUJOURDHUI, 12) })).toEqual({});
+    expect(declaration({ ...etrangere, cniDelivreeLe: '1990-03-12' })).toEqual({
+      cniDelivreeLe: 'Après la naissance',
     });
-    expect(contrat({ cniDelivreeLe: DEMAIN })).toEqual({
+    expect(declaration({ ...etrangere, cniDelivreeLe: DEMAIN })).toEqual({
       cniDelivreeLe: 'Pas après aujourd’hui',
     });
   });
+});
 
+describe('les contrats de travail', () => {
   it('la date de naissance : quinze ans révolus, comme au dossier de l’agent', () => {
     for (const f of [contrat, stage]) {
       expect(f({ naissanceLe: HIER })).toEqual({
@@ -210,7 +248,7 @@ describe('les décisions de disponibilité', () => {
     });
   });
 
-  it('le renouvellement : la même chose, la demande au plus tard le lendemain de la période initiale', () => {
+  it('le renouvellement : la même chose ; la demande peut venir après la période initiale', () => {
     expect(renouvellement()).toEqual({});
     expect(renouvellement({ demandeLe: DEMAIN })).toEqual({ demandeLe: 'Pas après aujourd’hui' });
     expect(renouvellement({ pvDirectionGeneraleLe: DEMAIN })).toEqual({
@@ -222,14 +260,13 @@ describe('les décisions de disponibilité', () => {
         initialementAu: plusJours(AUJOURDHUI, -40),
         demandeLe: HIER,
       }),
-    ).toEqual({ demandeLe: 'Au plus tard le lendemain de la disponibilité initiale' });
+    ).toEqual({});
     expect(
       renouvellement({
-        initialementDu: ansPlusTot(AUJOURDHUI, 2),
-        initialementAu: plusJours(AUJOURDHUI, -2),
-        demandeLe: HIER,
+        initialementAu: plusJours(AUJOURDHUI, -40),
+        repriseLe: plusJours(AUJOURDHUI, -40),
       }),
-    ).toEqual({});
+    ).toEqual({ repriseLe: 'La reprise suit la période initiale' });
   });
 });
 

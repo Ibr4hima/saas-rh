@@ -11,7 +11,12 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SessionUser } from '@teranga/contracts';
-import { ficheDeclarationMouvementSchema, nomDuDocumentGenere } from '@teranga/contracts';
+import {
+  ansPlusTot,
+  aujourdhuiIso,
+  ficheDeclarationMouvementSchema,
+  nomDuDocumentGenere,
+} from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
@@ -62,6 +67,7 @@ const fiche = (f: Record<string, unknown> = {}) => ({
   mereNom: 'Sall',
   adresse: 'Cité Keur Gorgui, Dakar',
   cni: '2751199012345',
+  cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 4),
   cniDelivreeA: 'Dakar',
   cniDelivreePar: 'Directeur Général de la Sûreté Nationale',
   situationDeFamille: 'marie',
@@ -191,6 +197,19 @@ describe('la fiche', () => {
     const visa = { numero: '2024/015', le: '2024-01-10' };
     expect(valide(fiche({ visa }))).toBe(true);
     expect(valide(fiche({ ...etrangere, entreeAuSenegalLe: '2023-12-20', visa }))).toBe(true);
+  });
+
+  it('la carte se date de sa délivrance, que le formulaire n’écrit pas : une CNI sénégalaise à jour', () => {
+    expect(valide(fiche({ cniDelivreeLe: undefined }))).toBe(false);
+    expect(valide(fiche({ cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 10) }))).toBe(false);
+    // Une carte étrangère n'a pas la validité de dix ans de la CNI sénégalaise.
+    const etrangere = { nationalite: 'ML', cni: 'ML123456789', entreeAuSenegalLe: '2023-12-20' };
+    expect(valide(fiche({ ...etrangere, cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 12) }))).toBe(
+      true,
+    );
+    expect(declaration(fiche({ cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 1) }))).toEqual(
+      declaration(fiche({ cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 9) })),
+    );
   });
 
   it('les épouses d’un homme marié, quatre au plus ; l’époux d’une femme mariée ; personne sinon', () => {

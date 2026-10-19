@@ -2,7 +2,9 @@
 
 import { useId } from 'react';
 import {
+  aujourdhuiIso,
   CATEGORIE_MAX,
+  cniDelivreeAuPlusTot,
   DUREE_DE_STAGE_MAX,
   ficheStagiaireSchema,
   finDuStage,
@@ -27,7 +29,9 @@ import {
    obligatoire. À la frappe, les prénoms, les noms, le lieu de naissance et
    l'adresse prennent une capitale à chaque mot, sauf aux petits mots d'un
    lieu (« Patte d’Oie », ADR-0098), la formation et le poste à leur première
-   lettre (ADR-0097) ; le numéro de la CNI se groupe comme sur la carte.
+   lettre (ADR-0097) ; le numéro de la CNI se groupe comme sur la carte. La
+   date de délivrance de la CNI, que le contrat n'écrit pas, dit qu'elle est
+   à jour (ADR-0134).
 */
 
 /** La fiche telle qu'elle se tape : du texte, une durée choisie, un montant. */
@@ -38,6 +42,7 @@ export type SaisieDuStagiaire = {
   naissanceLe: string;
   naissanceA: string;
   cni: string;
+  cniDelivreeLe: string;
   perePrenom: string;
   merePrenom: string;
   mereNom: string;
@@ -57,6 +62,7 @@ export const STAGIAIRE_VIDE: SaisieDuStagiaire = {
   naissanceLe: '',
   naissanceA: '',
   cni: '',
+  cniDelivreeLe: '',
   perePrenom: '',
   merePrenom: '',
   mereNom: '',
@@ -82,6 +88,7 @@ export function versLaFiche(s: SaisieDuStagiaire) {
     naissanceLe: s.naissanceLe,
     naissanceA: s.naissanceA.trim(),
     cni: s.cni,
+    cniDelivreeLe: s.cniDelivreeLe,
     perePrenom: s.perePrenom.trim(),
     merePrenom: s.merePrenom.trim(),
     mereNom: s.mereNom.trim(),
@@ -142,6 +149,22 @@ export function FicheDuStagiaire({
         <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
           <Input {...lieu('naissanceA', 120)} />
         </Field>
+        {/* La CNI est à jour : délivrée il y a moins de dix ans (ADR-0134). */}
+        <Field
+          label="Date de délivrance de la CNI"
+          htmlFor={`${id}-cniDelivreeLe`}
+          required
+          error={erreurs.cniDelivreeLe}
+        >
+          <Input
+            type="date"
+            {...texte('cniDelivreeLe')}
+            min={cniDelivreeAuPlusTot()}
+            max={aujourdhuiIso()}
+            aria-invalid={erreurs.cniDelivreeLe ? true : undefined}
+            className={cn(CADRE, 'tabular-nums')}
+          />
+        </Field>
         <Field label="Prénom du père" htmlFor={`${id}-perePrenom`} required>
           <Input {...nomPropre('perePrenom')} />
         </Field>
@@ -151,9 +174,11 @@ export function FicheDuStagiaire({
         <Field label="Nom de la mère" htmlFor={`${id}-mereNom`} required>
           <Input {...nomPropre('mereNom')} />
         </Field>
-        <Field label="Adresse" htmlFor={`${id}-adresse`} required>
-          <Input {...lieu('adresse', 200)} />
-        </Field>
+        <div className="sm:col-span-2">
+          <Field label="Adresse" htmlFor={`${id}-adresse`} required>
+            <Input {...lieu('adresse', 200)} />
+          </Field>
+        </div>
       </Groupe>
 
       <Groupe titre="Renseigner le stage">
