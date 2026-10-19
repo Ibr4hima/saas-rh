@@ -26,7 +26,14 @@ import {
   useEspaceChoisi,
   type Espace,
 } from '../../components/espace';
-import { ACTION, ANCRE_ACTIONS, COMMANDE, COMMANDE_ACTIVE } from '../../components/entete';
+import {
+  ACTION,
+  ANCRE_ACTIONS,
+  ANCRE_RETOUR,
+  ANCRE_RETOUR_TELEPHONE,
+  COMMANDE,
+  COMMANDE_ACTIVE,
+} from '../../components/entete';
 import { ANCRE_ONGLETS } from '../../components/onglets';
 import { RechercheAcademy } from '../../components/recherche-academy';
 import { api } from '../../lib/api';
@@ -1387,7 +1394,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
             >
               <BrandMark variant="barre" />
             </Link>
-            <TitreDeLEcran titre={title} salut={salut} className="hidden lg:block" />
+            {/* À gauche du titre, le retour que la page y pose, s'il y en a un
+                (cf. components/entete.tsx). */}
+            <div className="hidden min-w-0 items-center gap-3 lg:flex">
+              <div id={ANCRE_RETOUR} className="flex shrink-0 empty:hidden" />
+              <TitreDeLEcran titre={title} salut={salut} />
+            </div>
 
             {/* Emplacement laissé aux écrans qui ont des onglets à poser ici.
                 La coquille ne sait pas lesquels : elle réserve la place, la
@@ -1450,7 +1462,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
           data-scroll-root
           className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-24 lg:px-7 lg:pt-1 lg:pb-10"
         >
-          <TitreDeLEcran titre={title} salut={salut} className="mb-4 lg:hidden" />
+          <div className="mb-4 flex min-w-0 items-center gap-3 lg:hidden">
+            <div id={ANCRE_RETOUR_TELEPHONE} className="flex shrink-0 empty:hidden" />
+            <TitreDeLEcran titre={title} salut={salut} />
+          </div>
           {rubrique && (rubrique.children?.length ?? 0) > 1 ? (
             <nav
               aria-label={rubrique.label}

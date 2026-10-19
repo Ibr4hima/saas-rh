@@ -144,3 +144,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0136](0136-reprise-au-plus-trois-ans.md)             | La disponibilité dure trois ans au plus : les décisions et l'attestation de reprise     | acceptée                                    |
 | [0137](0137-documents-demandables.md)                 | « Demander un document » n'offre à l'agent que les documents de sa cible                | acceptée                                    |
 | [0138](0138-cadre-du-focus-au-clavier.md)             | Le cadre du focus ne paraît qu'à la navigation au clavier                               | acceptée                                    |
+| [0139](0139-retour-a-gauche-du-titre.md)              | Le retour à la page précédente, un rond à gauche du titre de l'écran                    | acceptée                                    |

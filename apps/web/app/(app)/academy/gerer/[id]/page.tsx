@@ -17,7 +17,8 @@ import {
   MAX_VIDEO_LOCALE_BYTES,
 } from '@teranga/contracts';
 import { Badge, Button, Card, cn, Input, Skeleton } from '@teranga/ui';
-import { Couverture, RetourAcademy } from '../../../../../components/academy-carte';
+import { Couverture } from '../../../../../components/academy-carte';
+import { RetourDeLEcran } from '../../../../../components/entete';
 import { SectionEvaluation } from '../../../../../components/academy-evaluation-atelier';
 import { FormationModal } from '../../../../../components/academy-formation-modal';
 import { Page } from '../../../../../components/gabarit';
@@ -237,7 +238,7 @@ export default function AtelierFormationPage() {
   if (vue.isError) {
     return (
       <Page>
-        <RetourAcademy href="/academy/gerer" label="Gérer le catalogue" />
+        <RetourDeLEcran href="/academy/gerer" libelle="Gérer le catalogue" />
         <LoadFailure error={vue.error} onRetry={() => void vue.refetch()} />
       </Page>
     );
@@ -249,7 +250,7 @@ export default function AtelierFormationPage() {
 
   return (
     <Page>
-      <RetourAcademy href="/academy/gerer" label="Gérer le catalogue" />
+      <RetourDeLEcran href="/academy/gerer" libelle="Gérer le catalogue" />
 
       {/* ———— La formation, et son état ———— */}
       <Card className="shrink-0 overflow-hidden">

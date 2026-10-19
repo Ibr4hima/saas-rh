@@ -60,6 +60,7 @@ import {
 import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { LoadFailure } from './load-failure';
 import { Page } from './gabarit';
+import { RetourDeLEcran } from './entete';
 import { Sceau } from './sceau';
 import { FenetreSignalement, useMesSignalements } from './signalement';
 
@@ -237,12 +238,10 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
       {soi ? null : (
         // Le retour mène à l'onglet où se range le dossier : un inactif se
         // retrouve parmi les inactifs, pas en tête des actifs.
-        <Link
+        <RetourDeLEcran
           href={actif ? '/employees' : '/employees?onglet=inactifs'}
-          className="mb-3 inline-flex items-center gap-1 text-[11.5px] font-semibold text-ink-muted transition-colors hover:text-primary"
-        >
-          ← Gestion du personnel
-        </Link>
+          libelle="Gestion du personnel"
+        />
       )}
       {e.soi && !soi ? (
         <p className="mb-3 flex shrink-0 items-center gap-2 rounded-bloc bg-primary/[0.06] px-3.5 py-2.5 text-[12.5px] text-ink">

@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { CourseDetail } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@teranga/ui';
-import { BarreProgression, Couverture, RetourAcademy } from '../../../../components/academy-carte';
+import { BarreProgression, Couverture } from '../../../../components/academy-carte';
+import { RetourDeLEcran } from '../../../../components/entete';
 import { CarteEvaluation } from '../../../../components/academy-evaluation-carte';
 import { Programme } from '../../../../components/academy-programme';
 import { Page } from '../../../../components/gabarit';
@@ -41,7 +42,7 @@ export default function FormationPage() {
   if (formation.isError) {
     return (
       <Page>
-        <RetourAcademy href="/academy" label="APIX Academy" />
+        <RetourDeLEcran href="/academy" libelle="APIX Academy" />
         <LoadFailure error={formation.error} onRetry={() => void formation.refetch()} />
       </Page>
     );
@@ -91,7 +92,7 @@ export default function FormationPage() {
 
   return (
     <Page>
-      <RetourAcademy href="/academy" label="APIX Academy" />
+      <RetourDeLEcran href="/academy" libelle="APIX Academy" />
 
       <Card className="shrink-0 overflow-hidden">
         <div className="grid md:grid-cols-[260px_minmax(0,1fr)]">

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import type { CertificateSummary } from '@teranga/contracts';
 import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
-import { RetourAcademy } from '../../../../components/academy-carte';
+import { RetourDeLEcran } from '../../../../components/entete';
 import { ListeCertificats } from '../../../../components/academy-certificat';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
@@ -31,7 +31,7 @@ export default function MesCertificatsPage() {
 
   return (
     <Page>
-      {restreint ? null : <RetourAcademy href="/academy" label="APIX Academy" />}
+      {restreint ? null : <RetourDeLEcran href="/academy" libelle="APIX Academy" />}
       <div className="flex items-baseline gap-3">
         <h2 className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
           Mes certificats

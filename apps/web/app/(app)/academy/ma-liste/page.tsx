@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import type { CourseSummary } from '@teranga/contracts';
 import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
-import { CarteFormation, RetourAcademy } from '../../../../components/academy-carte';
+import { CarteFormation } from '../../../../components/academy-carte';
+import { RetourDeLEcran } from '../../../../components/entete';
 import { Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { LoadFailure } from '../../../../components/load-failure';
@@ -26,7 +27,7 @@ export default function MaListePage() {
 
   return (
     <Page>
-      <RetourAcademy href="/academy" label="APIX Academy" />
+      <RetourDeLEcran href="/academy" libelle="APIX Academy" />
       <div className="flex items-baseline gap-3">
         <h2 className="text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase">
           Ma liste

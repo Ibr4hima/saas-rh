@@ -142,16 +142,3 @@ export function CarteFormation({ formation }: { formation: CourseSummary }) {
     </div>
   );
 }
-
-/** Le lien de retour, en tête d'écran : vers le catalogue, ou vers la formation. */
-export function RetourAcademy({ href, label }: { href: string; label: string }) {
-  return (
-    <Link
-      href={href}
-      className="inline-flex w-fit max-w-full items-center gap-1 text-[12.5px] font-semibold text-ink-muted transition-colors hover:text-primary"
-    >
-      <Icon name="chevron_left" size={17} className="shrink-0" />
-      <span className="truncate">{label}</span>
-    </Link>
-  );
-}

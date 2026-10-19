@@ -7,7 +7,7 @@ import { useCallback, useState } from 'react';
 import type { AttemptView, CourseAdminView, TrialResult } from '@teranga/contracts';
 import { SEUIL_REUSSITE } from '@teranga/contracts';
 import { Badge, Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
-import { RetourAcademy } from '../../../../../../components/academy-carte';
+import { RetourDeLEcran } from '../../../../../../components/entete';
 import {
   cocher,
   Copie,
@@ -92,7 +92,7 @@ export default function EssaiPage() {
   if (formation.isError) {
     return (
       <Page>
-        <RetourAcademy href="/academy/gerer" label="Gérer le catalogue" />
+        <RetourDeLEcran href="/academy/gerer" libelle="Gérer le catalogue" />
         <LoadFailure error={formation.error} onRetry={() => void formation.refetch()} />
       </Page>
     );
@@ -134,7 +134,7 @@ export default function EssaiPage() {
 
   return (
     <Page>
-      <RetourAcademy href={`/academy/gerer/${id}`} label={f.title} />
+      <RetourDeLEcran href={`/academy/gerer/${id}`} libelle={f.title} />
       {resultat ? (
         <Resultat
           resultat={resultat}

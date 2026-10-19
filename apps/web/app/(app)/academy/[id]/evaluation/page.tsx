@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AttemptResult, AttemptView, CourseDetail } from '@teranga/contracts';
 import { Button, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
-import { RetourAcademy } from '../../../../../components/academy-carte';
+import { RetourDeLEcran } from '../../../../../components/entete';
 import { ApercuCertificat } from '../../../../../components/academy-certificat';
 import {
   cocher,
@@ -156,7 +156,7 @@ export default function EvaluationPage() {
   if (formation.isError) {
     return (
       <Page>
-        <RetourAcademy href="/academy" label="APIX Academy" />
+        <RetourDeLEcran href="/academy" libelle="APIX Academy" />
         <LoadFailure error={formation.error} onRetry={() => void formation.refetch()} />
       </Page>
     );
@@ -198,7 +198,7 @@ export default function EvaluationPage() {
 
   return (
     <Page>
-      <RetourAcademy href={`/academy/${id}`} label={f.title} />
+      <RetourDeLEcran href={`/academy/${id}`} libelle={f.title} />
       {resultat ? (
         <Resultat
           resultat={resultat}

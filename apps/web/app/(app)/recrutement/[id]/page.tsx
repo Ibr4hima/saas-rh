@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import type { ApplicationView, JobPostingView } from '@teranga/contracts';
@@ -22,6 +21,7 @@ import { LoadFailure } from '../../../../components/load-failure';
 import { Icon, type IconName } from '../../../../components/icons';
 import { FenetreCandidat } from '../../../../components/fenetre-candidat';
 import { Modal } from '../../../../components/modal';
+import { RetourDeLEcran } from '../../../../components/entete';
 import { usePageTitle } from '../../../../components/page-title';
 import { Page } from '../../../../components/gabarit';
 import { anciennete, useHorlogeMinute } from '../../../../lib/temps';
@@ -81,13 +81,10 @@ export default function JobPage() {
 
   return (
     <Page>
-      <Link
+      <RetourDeLEcran
         href={lit ? '/recrutement/candidatures' : '/recrutement'}
-        className="inline-flex w-fit items-center gap-1 text-[12.5px] font-semibold text-ink-muted transition-colors hover:text-primary"
-      >
-        <Icon name="chevron_left" size={16} />
-        {lit ? 'Dossiers de candidature' : 'Offres d’emploi'}
-      </Link>
+        libelle={lit ? 'Dossiers de candidature' : 'Offres d’emploi'}
+      />
 
       <CarteOffre offre={j} />
 

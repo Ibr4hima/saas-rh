@@ -16,7 +16,8 @@ import {
   EmptyState,
   Skeleton,
 } from '@teranga/ui';
-import { BarreProgression, RetourAcademy } from '../../../../../../components/academy-carte';
+import { BarreProgression } from '../../../../../../components/academy-carte';
+import { RetourDeLEcran } from '../../../../../../components/entete';
 import { ApercuCertificat } from '../../../../../../components/academy-certificat';
 import { Programme } from '../../../../../../components/academy-programme';
 import { FenetreDocument } from '../../../../../../components/fenetre-document';
@@ -92,9 +93,9 @@ export default function LeconPage() {
     const code = err instanceof ApiError ? err.problem.code : undefined;
     return (
       <Page>
-        <RetourAcademy
+        <RetourDeLEcran
           href={formation.data ? `/academy/${id}` : '/academy'}
-          label={formation.data?.title ?? 'APIX Academy'}
+          libelle={formation.data?.title ?? 'APIX Academy'}
         />
         {code === 'academy.lesson_locked' || code === 'academy.video_unavailable' ? (
           <Card className="flex flex-1 items-center justify-center">
@@ -143,7 +144,7 @@ export default function LeconPage() {
 
   return (
     <Page>
-      <RetourAcademy href={`/academy/${id}`} label={f.title} />
+      <RetourDeLEcran href={`/academy/${id}`} libelle={f.title} />
 
       {/* Une seule colonne, aux marges de toutes les pages : la vidéo d'abord
           — c'est elle qu'on regarde —, la leçon et le programme dessous. */}

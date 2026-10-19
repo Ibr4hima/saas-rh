@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, type IconName } from './icons';
@@ -61,5 +62,46 @@ export function ActionDeLEntete({
       <span className="max-sm:sr-only">{label}</span>
     </button>,
     cible,
+  );
+}
+
+/**
+ * Le retour à la page d'où l'on vient (la liste, le catalogue, la formation),
+ * à gauche du titre de l'écran : un rond de l'en-tête, le chevron vers
+ * l'arrière. Il remplace le lien « page précédente » qui se tenait en tête de
+ * la page, sous le titre. La page le pose par un portail, comme ses gestes ;
+ * sur téléphone, où le titre descend en tête de la page, il le suit.
+ */
+export const ANCRE_RETOUR = 'entete-retour';
+export const ANCRE_RETOUR_TELEPHONE = 'entete-retour-telephone';
+
+export function RetourDeLEcran({ href, libelle }: { href: string; libelle: string }) {
+  const [cibles, setCibles] = React.useState<HTMLElement[]>([]);
+  React.useEffect(
+    () =>
+      setCibles(
+        [ANCRE_RETOUR, ANCRE_RETOUR_TELEPHONE]
+          .map((id) => document.getElementById(id))
+          .filter((c): c is HTMLElement => c !== null),
+      ),
+    [],
+  );
+  return (
+    <>
+      {cibles.map((cible) =>
+        createPortal(
+          <Link
+            href={href}
+            title={`Retour : ${libelle}`}
+            aria-label={`Retour : ${libelle}`}
+            className={COMMANDE}
+          >
+            <Icon name="chevron_backward" size={20} />
+          </Link>,
+          cible,
+          cible.id,
+        ),
+      )}
+    </>
   );
 }

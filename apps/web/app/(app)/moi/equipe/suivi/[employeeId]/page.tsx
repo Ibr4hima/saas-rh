@@ -29,7 +29,7 @@ import {
 import { Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../../../../../../lib/api';
 import { aujourdhui } from '../../../../../../lib/temps';
-import { RetourAcademy } from '../../../../../../components/academy-carte';
+import { RetourDeLEcran } from '../../../../../../components/entete';
 import { EvaluationAnnuelle } from '../../../../../../components/evaluation-objectifs';
 import { EnTete, Repere } from '../../../../../../components/fiche';
 import { FicheAnnuelle, SeparateurAnnee } from '../../../../../../components/fiches-annuelles';
@@ -110,7 +110,7 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
   if (!fiche.data) {
     return (
       <Page>
-        <RetourAcademy href="/moi/equipe/suivi" label="Suivi & Évaluation" />
+        <RetourDeLEcran href="/moi/equipe/suivi" libelle="Suivi & Évaluation" />
         <Card>
           <EmptyState
             className="py-14"
@@ -147,7 +147,7 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
 
   return (
     <Page>
-      <RetourAcademy href="/moi/equipe/suivi" label="Suivi & Évaluation" />
+      <RetourDeLEcran href="/moi/equipe/suivi" libelle="Suivi & Évaluation" />
       {/* La même tête que le dossier du personnel. */}
       <EnTete
         titre={nom}
