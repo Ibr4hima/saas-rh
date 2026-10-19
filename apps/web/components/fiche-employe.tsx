@@ -60,6 +60,7 @@ import {
 import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { LoadFailure } from './load-failure';
 import { Page } from './gabarit';
+import { Sceau } from './sceau';
 import { FenetreSignalement, useMesSignalements } from './signalement';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -282,17 +283,17 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
           et rend son blanc à la carte. */}
       <EnTete
         titre={`${e.person.givenName} ${e.person.familyName}`}
-        // L'état en un signe : vérifié, en vert, pour un agent actif ; barré,
-        // en gris, pour un inactif. Le mot reste pour les lecteurs d'écran et
-        // dans l'infobulle.
+        // L'état en un signe : le sceau plein, au bleu de l'APIX, pour un agent
+        // actif ; gris et barré pour un inactif. Le mot reste pour les
+        // lecteurs d'écran et dans l'infobulle.
         marque={
           <span
             role="img"
             aria-label={STATUS_LABELS[e.status] ?? e.status}
             title={STATUS_LABELS[e.status] ?? e.status}
-            className={cn('inline-flex', actif ? 'text-success' : 'text-ink-muted')}
+            className="inline-flex"
           >
-            <Icon name={actif ? 'verified' : 'verified_off'} size={22} />
+            <Sceau actif={actif} />
           </span>
         }
         // Sous le nom, les deux choses qui désignent la personne dans une

@@ -37,6 +37,7 @@ import { Page } from '../../../../../../components/gabarit';
 import { Modal } from '../../../../../../components/modal';
 import { Telephone } from '../../../../../../components/telephone';
 import { Icon } from '../../../../../../components/icons';
+import { Sceau } from '../../../../../../components/sceau';
 import { CLE_OBJECTIFS } from '../../../../../../components/objectifs';
 
 // L'éditeur ne vit que dans le navigateur, et ne se charge que sur cette page.
@@ -152,17 +153,12 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
         titre={nom}
         marque={
           m.parti ? (
-            <span
-              role="img"
-              aria-label="Inactif"
-              title="Inactif"
-              className="inline-flex text-ink-muted"
-            >
-              <Icon name="verified_off" size={22} />
+            <span role="img" aria-label="Inactif" title="Inactif" className="inline-flex">
+              <Sceau actif={false} />
             </span>
           ) : (
-            <span role="img" aria-label="Actif" title="Actif" className="inline-flex text-success">
-              <Icon name="verified" size={22} />
+            <span role="img" aria-label="Actif" title="Actif" className="inline-flex">
+              <Sceau actif />
             </span>
           )
         }
