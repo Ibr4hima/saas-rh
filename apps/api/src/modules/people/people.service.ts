@@ -27,7 +27,7 @@ import type {
   SessionUser,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
-import { peut, posteDeResponsable, type OrgUnitType } from '@teranga/contracts';
+import { peut, posteDAdjoint, posteDeResponsable, type OrgUnitType } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
 import { problem, ProblemException } from '../../common/problem';
 import { preparerInvitation } from '../portal/invitation';
@@ -1463,6 +1463,7 @@ export class PeopleService {
       await directionDeEmploye(tx, id),
     );
     if (input.responsable) return this.affecterALaTete(tx, user, id, input);
+    if (input.adjoint) return this.affecterCommeAdjoint(tx, user, id, input);
     return muter(tx, user.tenantId, id, { ...input, positionTitle: input.positionTitle! });
   }
 
@@ -1593,6 +1594,145 @@ export class PeopleService {
         this.suiteDeLaPassation(user),
       );
     }
+  }
+
+  /**
+   * La mutation qui donne la place de DGA, depuis la fiche (ADR-0127) : elle
+   * se joue comme depuis l'organigramme (ADR-0126), et la personne remplacée
+   * devient ce qu'on décide (ADR-0038).
+   */
+  private async affecterCommeAdjoint(
+    tx: Tx,
+    user: SessionUser,
+    id: string,
+    input: NewAssignmentInput,
+  ): Promise<ConsequencesHierarchie> {
+    await verrouillerLaChaine(tx);
+    const avant = await lireLaChaine(tx);
+    const journal: ChangementRattachement[] = [];
+    await this.prendreLaPlaceDeDGA(tx, user, journal, id, {
+      uniteId: input.orgUnitId!,
+      startDate: input.startDate,
+      repreneurEquipeId: input.repreneurEquipeId,
+      posteDeLAncien: input.posteDeLAncien,
+      devenirDeLAncien: input.devenirDeLAncien,
+    });
+    await reconcilierLeCircuit(tx, user.tenantId);
+    return { changements: journal, aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)) };
+  }
+
+  /**
+   * La place de DGA, en un geste : la personne rejoint la Direction Générale
+   * au poste de DGA, au genre, à la date choisie, au plus tard aujourd'hui,
+   * sous le DG ; puis l'organigramme la désigne, avec ses règles et ses
+   * cascades. L'appelant tient le verrou de la chaîne et relit le circuit
+   * ensuite.
+   */
+  private async prendreLaPlaceDeDGA(
+    tx: Tx,
+    user: SessionUser,
+    journal: ChangementRattachement[],
+    id: string,
+    p: {
+      uniteId: string;
+      startDate: string;
+      repreneurEquipeId?: string;
+      posteDeLAncien?: string;
+      devenirDeLAncien?: DevenirDeLAncien;
+    },
+  ): Promise<void> {
+    if (!peut(user, 'organigramme')) {
+      problem(
+        403,
+        'auth.forbidden',
+        'Droits insuffisants pour cette action',
+        'La désignation du DGA relève de l’organigramme.',
+      );
+    }
+    await exigerUniteVivante(tx, p.uniteId);
+    const { rows } = await tx.execute<{
+      name: string;
+      short_name: string | null;
+      sommet: boolean;
+      dg: string | null;
+      futur: boolean;
+    }>(sql`
+      SELECT name, short_name, (id = ${SOMMET}) AS sommet, manager_employee_id AS dg,
+             ${p.startDate}::date > CURRENT_DATE AS futur
+        FROM org_units WHERE id = ${p.uniteId}`);
+    const unite = rows[0]!;
+    if (!unite.sommet) {
+      problem(
+        422,
+        'org.adjoint_au_sommet',
+        'La direction générale adjointe n’existe qu’au sommet',
+        'Seule la Direction Générale a un DGA.',
+      );
+    }
+    if (unite.futur) {
+      problem(422, 'org.passation_future', 'La prise de fonction se date au plus tard aujourd’hui');
+    }
+    if (!unite.dg) {
+      problem(
+        422,
+        'org.aucun_directeur_general',
+        'Désignez d’abord le DG',
+        'Le DGA relève du DG : la Direction Générale a son responsable avant son DGA.',
+      );
+    }
+    if (unite.dg === id) {
+      problem(
+        422,
+        'org.adjoint_est_le_dg',
+        'La direction générale et la direction générale adjointe vont à deux personnes',
+        'Choisissez une autre personne que le DG.',
+      );
+    }
+    // Le DGA ne dirige aucune unité.
+    const { rows: tete } = await tx.execute<{ unite: string; nom: string }>(sql`
+      SELECT o.name AS unite, p.given_name || ' ' || p.family_name AS nom
+        FROM org_units o
+        JOIN employees e ON e.id = o.manager_employee_id
+        JOIN persons p ON p.id = e.person_id
+       WHERE o.manager_employee_id = ${id} AND o.deleted_at IS NULL
+       LIMIT 1`);
+    if (tete[0]) {
+      problem(
+        422,
+        'people.dirige_deja',
+        `${tete[0].nom} dirige « ${tete[0].unite} »`,
+        `${tete[0].nom} dirige « ${tete[0].unite} » : désignez d’abord une autre personne à sa tête.`,
+      );
+    }
+    const { rows: personne } = await tx.execute<{ genre: string | null }>(sql`
+      SELECT p.gender AS genre FROM employees e JOIN persons p ON p.id = e.person_id
+       WHERE e.id = ${id}`);
+
+    // Le DGA relève du DG : la mutation l'y rattache.
+    const { changements } = await muter(tx, user.tenantId, id, {
+      orgUnitId: p.uniteId,
+      startDate: p.startDate,
+      positionTitle: posteDAdjoint(
+        { name: unite.name, shortName: unite.short_name },
+        personne[0]?.genre,
+      ),
+      managerEmployeeId: unite.dg!,
+      ...(p.repreneurEquipeId ? { repreneurEquipeId: p.repreneurEquipeId } : {}),
+    });
+    fusionnerAuJournal(journal, changements);
+    await new OrgUnitsService(this.db).designerDansLaTransaction(
+      tx,
+      user,
+      journal,
+      p.uniteId,
+      {
+        adjointEmployeeId: id,
+        depuis: p.startDate,
+        posteDeLAncien: p.posteDeLAncien,
+        devenirDeLAncien: p.devenirDeLAncien,
+      },
+      this.suiteDeLaPassation(user),
+    );
   }
 
   /**

@@ -660,6 +660,12 @@ const nouvelleAffectation = z.object({
    * responsable, et celui qu'il remplace reçoit `posteDeLAncien`.
    */
   responsable: z.boolean().optional(),
+  /**
+   * La place de DGA, au sommet seulement, ce jour-là (ADR-0127) : le poste
+   * est celui de DGA, au genre, et la personne remplacée reçoit
+   * `posteDeLAncien` ou `devenirDeLAncien`.
+   */
+  adjoint: z.boolean().optional(),
   posteDeLAncien: trimmed(120).optional(),
   /** Ce que devient celui qu'il remplace ; prime sur `posteDeLAncien`. */
   devenirDeLAncien: devenirDeLAncienSchema.optional(),
@@ -681,13 +687,21 @@ const nouvelleAffectation = z.object({
   repreneurEquipeId: z.uuid().optional(),
 });
 export const newAssignmentSchema = nouvelleAffectation
-  .refine((a) => a.responsable || a.positionTitle, {
+  .refine((a) => a.responsable || a.adjoint || a.positionTitle, {
     message: 'Indiquez le poste',
     path: ['positionTitle'],
   })
   .refine((a) => !a.responsable || a.orgUnitId, {
     message: 'Choisissez l’unité qu’il dirigera',
     path: ['orgUnitId'],
+  })
+  .refine((a) => !a.adjoint || a.orgUnitId, {
+    message: 'Choisissez la Direction Générale',
+    path: ['orgUnitId'],
+  })
+  .refine((a) => !(a.responsable && a.adjoint), {
+    message: 'Une seule désignation à la fois',
+    path: ['adjoint'],
   });
 export type NewAssignmentInput = z.infer<typeof newAssignmentSchema>;
 

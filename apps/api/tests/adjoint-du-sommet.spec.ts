@@ -12,8 +12,10 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  newAssignmentSchema,
   posteDAdjoint,
   type CreateEmployeeInput,
+  type NewAssignmentInput,
   type SessionUser,
   type UpdateOrgUnitInput,
 } from '@teranga/contracts';
@@ -321,6 +323,76 @@ describe('la désignation', () => {
 
     expect(await adjointEcrit()).toBeNull();
     expect((await affectations(a)).at(-1)!.poste).toBe('Analyste');
+  });
+});
+
+describe('depuis une nouvelle affectation (ADR-0127)', () => {
+  /** La place de DGA, depuis la fiche de la personne. */
+  const commeDGA = async (id: string, plus: Partial<NewAssignmentInput> = {}) =>
+    people.newAssignment(user, id, {
+      adjoint: true,
+      orgUnitId: uDG,
+      startDate: await jour(0),
+      ...plus,
+    });
+
+  it('la personne rejoint la Direction Générale au poste de DGA, sous le DG', async () => {
+    const dg = await leDG();
+    const x = await agent('X', uDGT, { genre: 'female' });
+    const aujourdhui = await jour(0);
+
+    await commeDGA(x);
+
+    expect(await adjointEcrit()).toBe(x);
+    expect(await n1(x)).toBe(dg);
+    expect((await affectations(x)).at(-1)).toMatchObject({
+      poste: 'Directrice générale adjointe',
+      unite: uDG,
+      responsable: false,
+      du: aujourdhui,
+      au: null,
+    });
+    expect((await sommet()).adjoint?.employeeId).toBe(x);
+  });
+
+  it('remplace le DGA en place, qui reçoit son poste', async () => {
+    const dg = await leDG();
+    const a = await agent('A', uDG, { genre: 'female' });
+    const b = await agent('B', uDGT, { genre: 'male' });
+    await designer(a, { depuis: '2024-06-01' });
+
+    expect(await codeOf(() => commeDGA(b))).toBe('org.poste_de_l_ancien_requis');
+    await commeDGA(b, reste('Conseillère'));
+
+    expect(await adjointEcrit()).toBe(b);
+    expect(await n1(b)).toBe(dg);
+    expect((await affectations(a)).at(-1)!.poste).toBe('Conseillère');
+    expect((await affectations(b)).at(-1)!.poste).toBe('Directeur général adjoint');
+  });
+
+  it('refusée : hors du sommet, au DG, à une tête d’unité, sans DG', async () => {
+    const x = await agent('X', uDG, { genre: 'female' });
+    expect(await codeOf(() => commeDGA(x))).toBe('org.aucun_directeur_general');
+    expect(await codeOf(() => designer(x))).toBe('org.aucun_directeur_general');
+
+    const dg = await leDG();
+    const c = await agent('C', uCellule, { genre: 'male' });
+    await organigramme.update(user, uCellule, { managerEmployeeId: c, depuis: '2024-01-01' });
+    expect(await codeOf(() => commeDGA(x, { orgUnitId: uDGT }))).toBe('org.adjoint_au_sommet');
+    expect(await codeOf(() => commeDGA(dg))).toBe('org.adjoint_est_le_dg');
+    expect(await codeOf(() => commeDGA(c))).toBe('people.dirige_deja');
+    expect(await adjointEcrit()).toBeNull();
+  });
+
+  it('le formulaire : une désignation à la fois, la Direction Générale choisie', () => {
+    const base = { startDate: '2026-10-19', orgUnitId: uDG };
+    expect(newAssignmentSchema.safeParse({ ...base, adjoint: true }).success).toBe(true);
+    expect(
+      newAssignmentSchema.safeParse({ ...base, adjoint: true, responsable: true }).success,
+    ).toBe(false);
+    expect(newAssignmentSchema.safeParse({ startDate: '2026-10-19', adjoint: true }).success).toBe(
+      false,
+    );
   });
 });
 

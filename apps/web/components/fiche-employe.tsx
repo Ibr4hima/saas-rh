@@ -12,7 +12,7 @@ import type {
   InviteResult,
   RepriseDesResponsabilites,
 } from '@teranga/contracts';
-import { peut, posteDeResponsable, titreDeLaFiche } from '@teranga/contracts';
+import { peut, posteDAdjoint, posteDeResponsable, titreDeLaFiche } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -784,6 +784,7 @@ function AssignmentsCard({
   const [nouveauN1, setNouveauN1] = useState('');
   const [repreneur, setRepreneur] = useState('');
   const [responsable, setResponsable] = useState(false);
+  const [adjoint, setAdjoint] = useState(false);
   const [devenir, setDevenir] = useState<Devenir>(DEVENIR_INITIAL);
   const [bilan, setBilan] = useState<ConsequencesHierarchie | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -805,6 +806,7 @@ function AssignmentsCard({
     if (!open) return;
     setOrgUnitId(actuelle?.orgUnitId ?? '');
     setResponsable(false);
+    setAdjoint(false);
     setDevenir(DEVENIR_INITIAL);
     setError(null);
     // Une fois par ouverture.
@@ -841,7 +843,18 @@ function AssignmentsCard({
   // Déjà à la tête de l'unité choisie : il l'est, la case ne se décoche pas.
   const dejaALaTete = dirige.some((u) => u.id === orgUnitId);
   const aLaTete = (responsable || dejaALaTete) && peutDesigner;
-  const posteDeLaTete = aLaTete && uniteVisee ? posteDeResponsable(uniteVisee, genre) : '';
+  // Au sommet, la place de DGA se donne de la même façon (ADR-0127) : le
+  // poste est celui de DGA, au genre, et la personne remplacée reçoit le sien.
+  const auSommet = Boolean(uniteVisee?.sommet);
+  const dejaAdjoint = auSommet && uniteVisee?.adjoint?.employeeId === employeeId;
+  const commeAdjoint = peutDesigner && auSommet && !aLaTete && (adjoint || dejaAdjoint);
+  const designe = aLaTete || commeAdjoint;
+  const posteDesigne =
+    aLaTete && uniteVisee
+      ? posteDeResponsable(uniteVisee, genre)
+      : commeAdjoint && uniteVisee
+        ? posteDAdjoint(uniteVisee, genre)
+        : '';
   // Désigné responsable, son n+1 est celui qu'impose sa place : il ne se
   // choisit pas.
   const ancien =
@@ -851,7 +864,16 @@ function AssignmentsCard({
     uniteVisee.managerDepuis
       ? uniteVisee
       : null;
-  const dirigeAilleurs = aLaTete ? dirige.find((u) => u.id !== orgUnitId) : undefined;
+  const ancienAdjoint =
+    commeAdjoint && uniteVisee?.adjoint && uniteVisee.adjoint.employeeId !== employeeId
+      ? uniteVisee.adjoint
+      : null;
+  // Le DGA ne dirige aucune unité.
+  const dirigeAilleurs = aLaTete
+    ? dirige.find((u) => u.id !== orgUnitId)
+    : commeAdjoint
+      ? dirige[0]
+      : undefined;
   // Ce que devient celui qu'il remplace (ADR-0038).
   const devenirLu = ancien
     ? lireLeDevenir(devenir, {
@@ -862,11 +884,21 @@ function AssignmentsCard({
         min: ancien.managerDepuis,
       })
     : null;
+  const devenirAdjointLu =
+    ancienAdjoint && uniteVisee
+      ? lireLeDevenir(devenir, {
+          quittee: uniteVisee,
+          unites,
+          ancienId: ancienAdjoint.employeeId,
+          depuis: startDate,
+          min: ancienAdjoint.depuis,
+        })
+      : null;
   // Même unité, même poste : rien ne change.
   const inchangee =
     Boolean(actuelle) &&
     orgUnitId === (actuelle?.orgUnitId ?? '') &&
-    (aLaTete ? posteDeLaTete : positionTitle.trim()) === actuelle?.positionTitle;
+    (designe ? posteDesigne : positionTitle.trim()) === actuelle?.positionTitle;
   const aujourdhuiIso = new Date().toISOString().slice(0, 10);
   // Le directeur de la direction visée est son n+1 d'office : proposé d'emblée.
   const directeurVise = changeDeDirection ? n1DOffice(unites, orgUnitId || null, employeeId) : null;
@@ -885,12 +917,19 @@ function AssignmentsCard({
       api<ConsequencesHierarchie>(`/employees/${employeeId}/assignments`, {
         method: 'POST',
         body: {
-          ...(aLaTete ? { responsable: true } : { positionTitle }),
+          ...(aLaTete
+            ? { responsable: true }
+            : commeAdjoint
+              ? { adjoint: true }
+              : { positionTitle }),
           orgUnitId: orgUnitId || undefined,
           startDate,
-          ...(changeDeDirection && nouveauN1 && !aLaTete ? { managerEmployeeId: nouveauN1 } : {}),
+          ...(changeDeDirection && nouveauN1 && !designe ? { managerEmployeeId: nouveauN1 } : {}),
           ...(repreneurRequis && repreneur ? { repreneurEquipeId: repreneur } : {}),
           ...(ancien && devenirLu?.corps ? { devenirDeLAncien: devenirLu.corps } : {}),
+          ...(ancienAdjoint && devenirAdjointLu?.corps
+            ? { devenirDeLAncien: devenirAdjointLu.corps }
+            : {}),
         },
       }),
     onSuccess: (res) => {
@@ -899,6 +938,7 @@ function AssignmentsCard({
       setNouveauN1('');
       setRepreneur('');
       setResponsable(false);
+      setAdjoint(false);
       setDevenir(DEVENIR_INITIAL);
       setError(null);
       setBilan(res ?? null);
@@ -952,10 +992,11 @@ function AssignmentsCard({
                 !directionVisee ||
                 inchangee ||
                 (repreneurRequis && !repreneur) ||
-                (aLaTete
+                (designe
                   ? startDate > aujourdhuiIso ||
                     Boolean(dirigeAilleurs) ||
-                    (Boolean(ancien) && !devenirLu?.corps)
+                    (Boolean(ancien) && !devenirLu?.corps) ||
+                    (Boolean(ancienAdjoint) && !devenirAdjointLu?.corps)
                   : !positionTitle.trim() || bloqueeParLaDate)
               }
             >
@@ -975,6 +1016,7 @@ function AssignmentsCard({
               onChange={(id) => {
                 setOrgUnitId(id);
                 setResponsable(false);
+                setAdjoint(false);
                 setDevenir(DEVENIR_INITIAL);
               }}
               idPrefix="asg"
@@ -991,22 +1033,48 @@ function AssignmentsCard({
               <Checkbox
                 checked={aLaTete}
                 disabled={dejaALaTete}
-                onChange={(ev) => setResponsable(ev.target.checked)}
+                onChange={(ev) => {
+                  setResponsable(ev.target.checked);
+                  if (ev.target.checked) setAdjoint(false);
+                  setDevenir(DEVENIR_INITIAL);
+                }}
               />
-              Désigner comme{' '}
-              {posteDeResponsable(uniteVisee, null).replace(/^Responsable/, 'responsable')}
+              {auSommet
+                ? 'Désigner comme DG'
+                : `Désigner comme ${posteDeResponsable(uniteVisee, null).replace(/^Responsable/, 'responsable')}`}
+            </label>
+          ) : null}
+          {/* Au sommet, la place de DGA, l'une ou l'autre : le DG n'est pas
+              son propre adjoint. */}
+          {peutDesigner && auSommet && !dejaALaTete ? (
+            <label
+              className={cn(
+                'mt-2.5 flex items-center gap-2.5 text-[13px] text-ink',
+                dejaAdjoint ? 'cursor-default' : 'cursor-pointer',
+              )}
+            >
+              <Checkbox
+                checked={commeAdjoint}
+                disabled={dejaAdjoint}
+                onChange={(ev) => {
+                  setAdjoint(ev.target.checked);
+                  if (ev.target.checked) setResponsable(false);
+                  setDevenir(DEVENIR_INITIAL);
+                }}
+              />
+              Désigner comme DGA
             </label>
           ) : null}
           <ModalGrid className="mt-3.5">
-            <Field label="Nouveau poste" htmlFor="asg-title" required={!aLaTete}>
+            <Field label="Nouveau poste" htmlFor="asg-title" required={!designe}>
               <Input
                 id="asg-title"
-                value={aLaTete ? posteDeLaTete : positionTitle}
-                // Désigné responsable, son poste s'écrit tout seul : il se lit,
-                // il ne se saisit pas.
-                readOnly={aLaTete}
-                tabIndex={aLaTete ? -1 : undefined}
-                className={aLaTete ? 'cursor-default bg-bg text-ink-strong' : undefined}
+                value={designe ? posteDesigne : positionTitle}
+                // Désigné responsable ou DGA, le poste s'écrit tout seul : il
+                // se lit, il ne se saisit pas.
+                readOnly={designe}
+                tabIndex={designe ? -1 : undefined}
+                className={designe ? 'cursor-default bg-bg text-ink-strong' : undefined}
                 onChange={(ev) => setPositionTitle(ev.target.value)}
               />
             </Field>
@@ -1015,8 +1083,8 @@ function AssignmentsCard({
                 id="asg-start"
                 type="date"
                 value={startDate}
-                min={ancien?.managerDepuis ?? undefined}
-                max={aLaTete ? aujourdhuiIso : undefined}
+                min={ancien?.managerDepuis ?? ancienAdjoint?.depuis ?? undefined}
+                max={designe ? aujourdhuiIso : undefined}
                 onChange={(ev) => setStartDate(ev.target.value)}
               />
             </Field>
@@ -1027,7 +1095,7 @@ function AssignmentsCard({
               place.
             </p>
           ) : null}
-          {bloqueeParLaDate && !aLaTete ? (
+          {bloqueeParLaDate && !designe ? (
             <p className="mt-3.5 flex items-start gap-2 text-[12.5px] leading-relaxed text-ink">
               <Icon name="event" size={16} className="mt-px shrink-0 text-primary" />
               <span>
@@ -1057,11 +1125,29 @@ function AssignmentsCard({
             />
           </ModalSection>
         ) : null}
+        {ancienAdjoint && uniteVisee ? (
+          <ModalSection title="Passation">
+            <DevenirDeLAncien
+              ancien={{
+                id: ancienAdjoint.employeeId,
+                nom: ancienAdjoint.nomAbrege,
+                genre: ancienAdjoint.genre,
+              }}
+              quittee={uniteVisee}
+              unites={unites}
+              depuis={startDate}
+              min={ancienAdjoint.depuis}
+              valeur={devenir}
+              onChange={setDevenir}
+              idPrefix="asg-ancien-adjoint"
+            />
+          </ModalSection>
+        ) : null}
 
-        {(changeDeDirection && directionVisee && !aLaTete) || repreneurRequis ? (
+        {(changeDeDirection && directionVisee && !designe) || repreneurRequis ? (
           <ModalSection title="Hiérarchie">
             <ModalGrid>
-              {changeDeDirection && directionVisee && !aLaTete ? (
+              {changeDeDirection && directionVisee && !designe ? (
                 <Field
                   label="Nouveau manager"
                   htmlFor="asg-n1"

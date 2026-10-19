@@ -898,6 +898,14 @@ export class OrgUnitsService {
         [prochain],
         'vous désigner à la direction générale adjointe',
       );
+      if (!unite!.dg) {
+        problem(
+          422,
+          'org.aucun_directeur_general',
+          'Désignez d’abord le DG',
+          'Le DGA relève du DG : la Direction Générale a son responsable avant son DGA.',
+        );
+      }
       if (prochain === unite!.dg) {
         problem(
           422,

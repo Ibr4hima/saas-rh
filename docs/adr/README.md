@@ -38,7 +38,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0030](0030-candidatures-non-retenues-a-part.md)      | Les candidatures non retenues ont leur page                                             | acceptée                                    |
 | [0031](0031-accuse-de-reception.md)                   | L'accusé de réception d'une candidature, et des courriels sans réponse                  | acceptée                                    |
 | [0032](0032-absence-ponctuelle-a-l-heure.md)          | L'absence ponctuelle, à l'heure ou à la journée, plafonnée par demande                  | acceptée                                    |
-| [0033](0033-fonction-de-responsable.md)               | La fonction de responsable s'écrit dans les affectations                                | acceptée, précisée (0038, 0064, 0126)       |
+| [0033](0033-fonction-de-responsable.md)               | La fonction de responsable s'écrit dans les affectations                                | acceptée, précisée (0038, 0064, 0126, 0127) |
 | [0034](0034-n-plus-un-des-chefs-d-unite.md)           | Le chef d'un département ou d'un service relève de l'unité au-dessus                    | acceptée, relève précisée par 0035          |
 | [0035](0035-releve-d-un-chef-et-stagiaires.md)        | Relève d'un chef : l'équipe passe au nouveau ; aucun stagiaire n'est n+1                | acceptée, directeurs précisés par 0037      |
 | [0036](0036-responsable-choisi-dans-la-direction.md)  | Le responsable d'un département ou d'un service se choisit dans la direction            | acceptée                                    |
@@ -131,4 +131,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0123](0123-sessions-du-conseil-proposees.md)         | Les décisions de disponibilité proposent les sessions du conseil d'administration       | acceptée                                    |
 | [0124](0124-action-aux-mesures-de-la-date.md)         | L'action de l'écran, aux mesures du bouton de la date                                   | acceptée                                    |
 | [0125](0125-acces-ferme-par-les-regles.md)            | L'accès au portail ne se coupe plus à la main                                           | acceptée                                    |
-| [0126](0126-directeur-general-adjoint.md)             | Le DGA se désigne à côté du DG ; son poste s'écrit au genre                             | acceptée                                    |
+| [0126](0126-directeur-general-adjoint.md)             | Le DGA se désigne à côté du DG ; son poste s'écrit au genre                             | acceptée, précisée par 0127                 |
+| [0127](0127-dga-par-nouvelle-affectation.md)          | « Nouvelle affectation » donne aussi la place de DGA                                    | acceptée                                    |
