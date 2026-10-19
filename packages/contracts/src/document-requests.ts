@@ -1,6 +1,15 @@
 import { z } from 'zod';
 import type { TraitementView } from './acces';
 import { CODES_DES_BANQUES } from './banques';
+import {
+  aujourdhuiIso,
+  avantAujourdhuiSchema,
+  dateDeNaissanceSchema,
+  delivranceDeLaCniSchema,
+  estUnJour,
+  jusquAujourdhuiSchema,
+  plusJours,
+} from './dates';
 import { SALAIRE_MAX } from './montants';
 import { NATIONALITY_LABELS } from './nationalities';
 
@@ -155,6 +164,27 @@ const SAISIES_DES_DOCUMENTS: Partial<Record<DocumentGenere, readonly Saisie[]>> 
 export const saisiesDe = (doc: string): readonly Saisie[] =>
   (estGenere(doc) && SAISIES_DES_DOCUMENTS[doc]) || [];
 
+/**
+ * Ce que les dates saisies d'un document enfreignent, saisie par saisie
+ * (ADR-0133) ; vide, rien. Le dernier jour d'un congé ou d'une disponibilité
+ * suit le premier ; la reprise de service ne précède pas le dernier jour de
+ * la disponibilité.
+ */
+export function datesEnfreintes(
+  doc: string,
+  s: Partial<Record<Saisie, unknown>>,
+): Partial<Record<Saisie, string>> {
+  const jour = (v: unknown) => (typeof v === 'string' && estUnJour(v) ? v : null);
+  const [debut, fin, reprise] = [jour(s.debut), jour(s.fin), jour(s.reprise)];
+  const erreurs: Partial<Record<Saisie, string>> = {};
+  const deuxJours = doc === 'attestation_conge' || doc === 'attestation_reprise_disponibilite';
+  if (deuxJours && debut && fin && fin <= debut) erreurs.fin = 'Après le premier jour';
+  if (doc === 'attestation_reprise_disponibilite' && fin && reprise && reprise < fin) {
+    erreurs.reprise = 'Pas avant le dernier jour de la disponibilité';
+  }
+  return erreurs;
+}
+
 /** Une catégorie de la convention collective : « 7B », « M2 ». */
 export const CATEGORIE_MAX = 40;
 
@@ -308,6 +338,23 @@ export function cniGroupee(chiffres: string, espace = ' '): string {
   return groupes.join(espace);
 }
 
+/**
+ * Les règles croisées des dates d'une fiche (ADR-0133), relevées par une
+ * fonction que l'écran appelle aussi : Zod les tait tant qu'une liste de la
+ * fiche n'est pas choisie, l'écran les dit dès que les deux dates sont là.
+ */
+export type ReglesDesDates = Record<string, string>;
+
+/** Une date complète d'une fiche ; null : vide, ou à moitié saisie. */
+const jourDe = (v: unknown): string | null => (typeof v === 'string' && estUnJour(v) ? v : null);
+
+/** Les règles relevées, posées comme des problèmes de la fiche. */
+function poser(ctx: z.RefinementCtx, regles: ReglesDesDates): void {
+  for (const [chemin, message] of Object.entries(regles)) {
+    ctx.addIssue({ code: 'custom', path: chemin.split('.'), message });
+  }
+}
+
 /** Un prénom, un nom : chaque mot prend sa capitale. */
 const nomPropre = (max: number) => z.string().trim().min(1).max(max).transform(majusculesInitiales);
 /** Un lieu, une adresse : chaque mot prend sa capitale, sauf les petits mots. */
@@ -331,7 +378,7 @@ export const ficheStagiaireSchema = z
     civilite: z.enum(['madame', 'monsieur']),
     prenom: nomPropre(80),
     nom: nomPropre(80),
-    naissanceLe: z.iso.date(),
+    naissanceLe: dateDeNaissanceSchema,
     naissanceA: lieu(120),
     /** Le numéro de la carte nationale d'identité : treize chiffres. */
     cni: z.string().regex(/^\d{13}$/, 'Treize chiffres attendus'),
@@ -389,11 +436,12 @@ const ficheDuContratDeTravail = z.object({
   civilite: z.enum(['madame', 'monsieur']),
   prenom: nomPropre(80),
   nom: nomPropre(80),
-  naissanceLe: z.iso.date(),
+  naissanceLe: dateDeNaissanceSchema,
   naissanceA: lieu(120),
   /** Le numéro de la carte nationale d'identité : treize chiffres. */
   cni: z.string().regex(/^\d{13}$/, 'Treize chiffres attendus'),
-  cniDelivreeLe: z.iso.date(),
+  /** La CNI est à jour : délivrée il y a moins de dix ans (ADR-0133). */
+  cniDelivreeLe: delivranceDeLaCniSchema,
   cniDelivreeA: lieu(120),
   /** Le pays, par son code ISO 3166-1 : le contrat en écrit le gentilé. */
   nationalite: z.string().refine((code) => code in NATIONALITY_LABELS, 'Pays inconnu'),
@@ -444,25 +492,55 @@ const ficheDeLaDecision = z.object({
   nom: nomPropre(80),
   poste: intitule(120),
   /** La date de la lettre de demande. */
-  demandeLe: z.iso.date(),
-  pvDirectionGeneraleLe: z.iso.date(),
-  pvDirectionGeneraleAdjointeLe: z.iso.date(),
+  demandeLe: jusquAujourdhuiSchema,
+  pvDirectionGeneraleLe: jusquAujourdhuiSchema,
+  pvDirectionGeneraleAdjointeLe: jusquAujourdhuiSchema,
   /** Le jour où le service doit reprendre : sans reprise, la démission est constatée. */
   repriseLe: z.iso.date(),
 });
 
 /** La mise en disponibilité : son premier jour. */
+/**
+ * Les dates croisées d'une mise en disponibilité (ADR-0133) : la prise
+ * d'effet pas avant la demande, la reprise après la prise d'effet.
+ */
+export function datesDeLaDisponibilite(f: Record<string, unknown>): ReglesDesDates {
+  const [demande, effet, reprise] = [jourDe(f.demandeLe), jourDe(f.effetLe), jourDe(f.repriseLe)];
+  const regles: ReglesDesDates = {};
+  if (demande && effet && effet < demande) regles.effetLe = 'Pas avant la demande';
+  if (effet && reprise && reprise <= effet) regles.repriseLe = 'La reprise suit la prise d’effet';
+  return regles;
+}
+
 export const ficheDisponibiliteSchema = ficheDeLaDecision
   .extend({ effetLe: z.iso.date() })
   .strict()
-  .refine((f) => f.repriseLe > f.effetLe, {
-    message: 'La reprise suit la prise d’effet',
-    path: ['repriseLe'],
-  });
+  .superRefine((f, ctx) => poser(ctx, datesDeLaDisponibilite(f)));
 export type FicheDisponibilite = z.infer<typeof ficheDisponibiliteSchema>;
 
 /** Une disponibilité se proroge de deux ans au plus. */
 export const DUREE_DE_PROROGATION_MAX = 24;
+
+/**
+ * Les dates croisées d'un renouvellement (ADR-0133) : la période initiale
+ * dans l'ordre, la reprise après elle ; la prorogation prend effet le
+ * lendemain de la période initiale, la demande vient au plus tard ce jour-là.
+ */
+export function datesDuRenouvellement(f: Record<string, unknown>): ReglesDesDates {
+  const demande = jourDe(f.demandeLe);
+  const [du, au, reprise] = [
+    jourDe(f.initialementDu),
+    jourDe(f.initialementAu),
+    jourDe(f.repriseLe),
+  ];
+  const regles: ReglesDesDates = {};
+  if (du && au && au < du) regles.initialementAu = 'La fin suit le début';
+  if (au && reprise && reprise <= au) regles.repriseLe = 'La reprise suit la période initiale';
+  if (demande && au && demande > plusJours(au, 1)) {
+    regles.demandeLe = 'Au plus tard le lendemain de la disponibilité initiale';
+  }
+  return regles;
+}
 
 /**
  * Le renouvellement d'une disponibilité : l'unité d'affectation, la période
@@ -480,14 +558,7 @@ export const ficheRenouvellementSchema = ficheDeLaDecision
     duree: z.number().int().min(1).max(DUREE_DE_PROROGATION_MAX),
   })
   .strict()
-  .refine((f) => f.initialementAu >= f.initialementDu, {
-    message: 'La fin suit le début',
-    path: ['initialementAu'],
-  })
-  .refine((f) => f.repriseLe > f.initialementAu, {
-    message: 'La reprise suit la période initiale',
-    path: ['repriseLe'],
-  });
+  .superRefine((f, ctx) => poser(ctx, datesDuRenouvellement(f)));
 export type FicheRenouvellement = z.infer<typeof ficheRenouvellementSchema>;
 
 export type DecisionDeDisponibilite =
@@ -526,6 +597,15 @@ export function repriseApresProrogation(initialementAu: string, mois: number): s
 }
 
 /**
+ * Les dates croisées d'une domiciliation (ADR-0133) : l'ordre de virement
+ * vient du personnel, pas avant le début du contrat.
+ */
+export function datesDeLaDomiciliation(f: Record<string, unknown>): ReglesDesDates {
+  const [debut, demande] = [jourDe(f.debut), jourDe(f.demandeLe)];
+  return debut && demande && demande < debut ? { demandeLe: 'Pas avant le début du contrat' } : {};
+}
+
+/**
  * Ce que la DCH renseigne pour une domiciliation bancaire (ADR-0102) : la
  * personne, sa fonction, son contrat et le jour où il a commencé, le jour de
  * sa demande, sa banque et le genre de qui la dirige, son RIB, son salaire
@@ -537,11 +617,11 @@ export const ficheDomiciliationSchema = z
     prenom: nomPropre(80),
     nom: nomPropre(80),
     poste: intitule(120),
-    /** Le premier jour du contrat. */
-    debut: z.iso.date(),
+    /** Le premier jour du contrat : la personne fait déjà partie du personnel. */
+    debut: jusquAujourdhuiSchema,
     contrat: z.enum(['cdd', 'cdi']),
     /** Le jour où la personne a donné l'ordre de virement. */
-    demandeLe: z.iso.date(),
+    demandeLe: jusquAujourdhuiSchema,
     banque: z.enum(CODES_DES_BANQUES),
     /** À qui la lettre s'adresse : qui dirige la banque. */
     destinataire: z.enum(['directeur_general', 'directrice_generale']),
@@ -550,7 +630,8 @@ export const ficheDomiciliationSchema = z
     /** Le salaire mensuel net, en francs CFA. */
     salaire: z.number().int().min(1).max(SALAIRE_MAX),
   })
-  .strict();
+  .strict()
+  .superRefine((f, ctx) => poser(ctx, datesDeLaDomiciliation(f)));
 export type FicheDomiciliation = z.infer<typeof ficheDomiciliationSchema>;
 
 /**
@@ -645,9 +726,9 @@ export const CHIFFRES_DE_L_IMMATRICULATION = 10;
 /** Les catégories d'enregistrement du travailleur au fichier central, sous sa grille. */
 export const CATEGORIES_D_ENREGISTREMENT = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
 
-/** Le numéro et la date d'une pièce : une déclaration, un visa, un enregistrement. */
+/** Le numéro et la date d'une pièce : une déclaration, un visa, un enregistrement, déjà faits. */
 const numeroEtDate = z
-  .object({ numero: z.string().trim().min(1).max(30), le: z.iso.date() })
+  .object({ numero: z.string().trim().min(1).max(30), le: jusquAujourdhuiSchema })
   .strict();
 
 /** Un pays, par son code ISO 3166-1. */
@@ -655,6 +736,51 @@ const pays = z.string().refine((code) => code in NATIONALITY_LABELS, 'Pays incon
 
 /** Une valeur facultative : sans elle, le formulaire laisse des pointillés. */
 const facultatif = (max: number) => z.string().trim().min(1).max(max).optional();
+
+/**
+ * Les dates croisées d'une déclaration de mouvement (ADR-0133) : le
+ * mouvement suit l'entrée dans l'établissement, qui suit la naissance ; la
+ * fin d'un CDD suit son début ; un visa approuve ou enregistre un contrat
+ * déjà daté ; on entre au Sénégal après sa naissance et avant d'entrer dans
+ * l'établissement ; la classe de recrutement n'est ni avant l'année de
+ * naissance, ni dans l'avenir.
+ */
+export function datesDeLaDeclaration(f: Record<string, unknown>): ReglesDesDates {
+  const piece = (p: unknown) =>
+    p !== null && typeof p === 'object' ? jourDe((p as { le?: unknown }).le) : null;
+  const naissance = jourDe(f.naissanceLe);
+  const entree = jourDe(f.entreeLe);
+  const effet = jourDe(f.effetLe);
+  const [cddDu, cddAu] = [jourDe(f.cddDu), jourDe(f.cddAu)];
+  const contrat = jourDe(f.contratLe);
+  const [visa, enregistrement] = [piece(f.visa), piece(f.enregistrement)];
+  const auSenegal = jourDe(f.entreeAuSenegalLe);
+  const classe =
+    typeof f.classeDeRecrutement === 'string' && /^\d{4}$/.test(f.classeDeRecrutement)
+      ? f.classeDeRecrutement
+      : null;
+  const regles: ReglesDesDates = {};
+  if (effet && entree && effet < entree) {
+    regles.effetLe = 'Le mouvement suit l’entrée dans l’établissement';
+  }
+  if (entree && naissance && entree <= naissance) regles.entreeLe = 'L’entrée suit la naissance';
+  if (cddDu && cddAu && cddAu < cddDu) regles.cddAu = 'La fin suit le début';
+  if (contrat && visa && visa < contrat) regles['visa.le'] = 'Pas avant la date du contrat';
+  if (contrat && enregistrement && enregistrement < contrat) {
+    regles['enregistrement.le'] = 'Pas avant la date du contrat';
+  }
+  if (auSenegal && entree && auSenegal > entree) {
+    regles.entreeAuSenegalLe = 'Pas après l’entrée dans l’établissement';
+  } else if (auSenegal && naissance && auSenegal <= naissance) {
+    regles.entreeAuSenegalLe = 'Après la naissance';
+  }
+  if (classe && classe > aujourdhuiIso().slice(0, 4)) {
+    regles.classeDeRecrutement = 'Pas après cette année';
+  } else if (classe && naissance && classe < naissance.slice(0, 4)) {
+    regles.classeDeRecrutement = 'Pas avant l’année de naissance';
+  }
+  return regles;
+}
 
 /**
  * Ce que la DCH renseigne pour une déclaration de mouvement (ADR-0106) : le
@@ -679,7 +805,7 @@ export const ficheDeclarationMouvementSchema = z
     civilite: z.enum(['madame', 'monsieur']),
     prenom: nomPropre(120),
     nom: nomPropre(80),
-    naissanceLe: z.iso.date(),
+    naissanceLe: dateDeNaissanceSchema,
     naissanceA: lieu(120),
     naissancePays: pays,
     /** Le pays, par son code : le formulaire en écrit le gentilé. */
@@ -704,7 +830,8 @@ export const ficheDeclarationMouvementSchema = z
     conjoints: z.array(nomPropre(120)).max(EPOUSES_MAX),
     /** Les enfants à charge : prénom et nom. */
     enfants: z.array(nomPropre(120)).max(ENFANTS_MAX),
-    entreeLe: z.iso.date(),
+    /** L'entrée dans l'établissement, avant aujourd'hui (ADR-0133). */
+    entreeLe: avantAujourdhuiSchema,
     /** La déclaration faite à l'embauche, pour un départ ou un changement. */
     declarationDEmbauche: numeroEtDate.optional(),
     profession: intitule(120),
@@ -717,7 +844,8 @@ export const ficheDeclarationMouvementSchema = z
     cddAu: z.iso.date().optional(),
     /** L'ouvrage d'un contrat de chantier, tel qu'il suit « chantier de » : « l’autoroute Ila Touba ». */
     chantier: facultatif(120),
-    contratLe: z.iso.date().optional(),
+    /** La date du contrat, avant aujourd'hui (ADR-0133). */
+    contratLe: avantAujourdhuiSchema.optional(),
     /** Le visa d'approbation du contrat par l'inspecteur du travail et de la sécurité sociale. */
     visa: numeroEtDate.optional(),
     /** Le visa d'enregistrement du contrat à la section locale du service de la main-d'œuvre. */
@@ -726,7 +854,7 @@ export const ficheDeclarationMouvementSchema = z
     precedentEmployeur: facultatif(200),
     residence: lieu(120),
     /** Pour un travailleur étranger. */
-    entreeAuSenegalLe: z.iso.date().optional(),
+    entreeAuSenegalLe: jusquAujourdhuiSchema.optional(),
     serviceMilitaire: z.boolean(),
     /** L'année de la classe de recrutement. */
     classeDeRecrutement: z
@@ -760,14 +888,10 @@ export const ficheDeclarationMouvementSchema = z
       signaler('mouvements', 'Une embauche, un départ ou des changements');
     }
     seulementSi(nature !== 'embauche', ['effetLe'], 'Date à saisir');
-    if (f.effetLe !== undefined && f.effetLe < f.entreeLe) {
-      signaler('effetLe', 'Le mouvement suit l’entrée dans l’établissement');
-    }
     // La présente déclaration est celle de l'embauche.
     if (nature === 'embauche' && f.declarationDEmbauche !== undefined) {
       signaler('declarationDEmbauche', 'Sans objet ici');
     }
-    if (f.entreeLe <= f.naissanceLe) signaler('entreeLe', 'L’entrée suit la naissance');
 
     if (f.nationalite === 'SN' && !/^\d{13}$/.test(f.cni))
       signaler('cni', 'Treize chiffres attendus');
@@ -783,12 +907,11 @@ export const ficheDeclarationMouvementSchema = z
     }
 
     seulementSi(f.contrat === 'cdd', ['cddDu', 'cddAu'], 'Date à saisir');
-    if (f.cddDu !== undefined && f.cddAu !== undefined && f.cddAu < f.cddDu) {
-      signaler('cddAu', 'La fin suit le début');
-    }
     seulementSi(f.contrat === 'chantier', ['chantier'], 'À renseigner');
 
     seulementSi(f.serviceMilitaire, ['classeDeRecrutement', 'armee', 'grade'], 'À renseigner');
+
+    poser(ctx, datesDeLaDeclaration(f));
   });
 export type FicheDeclarationMouvement = z.infer<typeof ficheDeclarationMouvementSchema>;
 

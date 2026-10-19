@@ -155,6 +155,44 @@ export function champsDeTexte<T>(id: string, valeur: T, poser: (champ: Partial<T
   };
 }
 
+/** Une règle que Zod dit enfreinte : son code, le champ qu'elle vise, son message. */
+type Probleme = { code: string; path: readonly PropertyKey[]; message: string };
+
+/**
+ * Les règles qu'enfreint une fiche, champ par champ (ADR-0133) : une date
+ * dans l'avenir, une fin avant son début. `problemes` : ce que Zod dit des
+ * champs ; `croisees` : les règles qui lient deux dates, que Zod tait tant
+ * qu'une liste de la fiche n'est pas choisie. Un champ vide se tait :
+ * « Valider » attend déjà qu'il soit rempli. `fiche` : ce qui part à l'API ;
+ * un champ imbriqué se nomme par son chemin (« visa.le »).
+ */
+export function reglesEnfreintes(
+  fiche: unknown,
+  problemes: readonly Probleme[] | undefined,
+  croisees: Record<string, string> = {},
+): Record<string, string> {
+  const rempli = (chemin: readonly PropertyKey[]) => {
+    const valeur = chemin.reduce<unknown>(
+      (v, cle) =>
+        v !== null && typeof v === 'object' ? (v as Record<PropertyKey, unknown>)[cle] : undefined,
+      fiche,
+    );
+    return !(
+      valeur === undefined ||
+      valeur === '' ||
+      (Array.isArray(valeur) && valeur.length === 0)
+    );
+  };
+  const erreurs: Record<string, string> = {};
+  for (const p of problemes ?? []) {
+    if (p.code === 'custom' && rempli(p.path)) erreurs[p.path.map(String).join('.')] ??= p.message;
+  }
+  for (const [chemin, message] of Object.entries(croisees)) {
+    if (rempli(chemin.split('.'))) erreurs[chemin] ??= message;
+  }
+  return erreurs;
+}
+
 /** Madame ou Monsieur. */
 export function ChampDeLaCivilite({
   id,

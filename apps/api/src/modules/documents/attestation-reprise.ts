@@ -1,4 +1,4 @@
-import { nomDuDocumentGenere, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
+import { datesEnfreintes, nomDuDocumentGenere, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
 import {
@@ -100,17 +100,23 @@ export function pdfDeLAttestationDeReprise(
   });
 }
 
-/** Les dates saisies, contrôlées : toutes là, la fin après le début, la reprise après le début. */
+/**
+ * Les dates saisies, contrôlées (ADR-0133) : toutes là, le dernier jour après
+ * le premier, la reprise pas avant le dernier jour.
+ */
 function dates(debut?: string, fin?: string, reprise?: string) {
   if (!debut || !fin || !reprise) {
     problem(400, 'documents.dates', 'Dates de la disponibilité et de la reprise à saisir');
   }
-  if (fin < debut) problem(400, 'documents.dates', 'La fin de la disponibilité précède son début');
-  if (reprise <= debut) {
+  const erreurs = datesEnfreintes('attestation_reprise_disponibilite', { debut, fin, reprise });
+  if (erreurs.fin) {
+    problem(400, 'documents.dates', 'Le dernier jour de la disponibilité suit le premier');
+  }
+  if (erreurs.reprise) {
     problem(
       400,
       'documents.dates',
-      'La reprise de service ne suit pas le début de la disponibilité',
+      'La reprise de service ne précède pas le dernier jour de la disponibilité',
     );
   }
   return { debut, fin, reprise };

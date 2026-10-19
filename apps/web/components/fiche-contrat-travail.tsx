@@ -4,10 +4,14 @@ import { useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { OrgUnitView } from '@teranga/contracts';
 import {
+  aujourdhuiIso,
   CATEGORIE_MAX,
+  cniDelivreeAuPlusTot,
   DUREE_DE_CDD_MAX,
   enChiffres,
+  ficheDuContratSchema,
   finDuContrat,
+  neAuPlusTard,
   orgUnitLabel,
   salaireBrut,
 } from '@teranga/contracts';
@@ -22,6 +26,7 @@ import {
   ChampDeLaDuree,
   ChampDuMontant,
   Groupe,
+  reglesEnfreintes,
 } from './saisie-de-fiche';
 
 /*
@@ -139,6 +144,9 @@ export function FicheDuContratDeTravail({
     salaireDeBase !== null && sursalaire !== null && primeDeTransport !== null
       ? salaireBrut({ salaireDeBase, sursalaire, primeDeTransport })
       : null;
+  // Les règles des dates, dites sous les champs (ADR-0133).
+  const fiche = versLaFicheDuContrat(valeur, doc);
+  const erreurs = reglesEnfreintes(fiche, ficheDuContratSchema(doc).safeParse(fiche).error?.issues);
 
   return (
     <>
@@ -155,14 +163,38 @@ export function FicheDuContratDeTravail({
         <Field label="Nom" htmlFor={`${id}-nom`} required>
           <Input {...nomPropre('nom')} />
         </Field>
-        <Field label="Date de naissance" htmlFor={`${id}-naissanceLe`} required>
-          <Input type="date" {...texte('naissanceLe')} className={cn(CADRE, 'tabular-nums')} />
+        <Field
+          label="Date de naissance"
+          htmlFor={`${id}-naissanceLe`}
+          required
+          error={erreurs.naissanceLe}
+        >
+          <Input
+            type="date"
+            {...texte('naissanceLe')}
+            max={neAuPlusTard()}
+            aria-invalid={erreurs.naissanceLe ? true : undefined}
+            className={cn(CADRE, 'tabular-nums')}
+          />
         </Field>
         <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
           <Input {...lieu('naissanceA', 120)} />
         </Field>
-        <Field label="Date de délivrance de la CNI" htmlFor={`${id}-cniDelivreeLe`} required>
-          <Input type="date" {...texte('cniDelivreeLe')} className={cn(CADRE, 'tabular-nums')} />
+        {/* La CNI est à jour : délivrée il y a moins de dix ans (ADR-0133). */}
+        <Field
+          label="Date de délivrance de la CNI"
+          htmlFor={`${id}-cniDelivreeLe`}
+          required
+          error={erreurs.cniDelivreeLe}
+        >
+          <Input
+            type="date"
+            {...texte('cniDelivreeLe')}
+            min={cniDelivreeAuPlusTot()}
+            max={aujourdhuiIso()}
+            aria-invalid={erreurs.cniDelivreeLe ? true : undefined}
+            className={cn(CADRE, 'tabular-nums')}
+          />
         </Field>
         <Field label="Lieu de délivrance de la CNI" htmlFor={`${id}-cniDelivreeA`} required>
           <Input {...lieu('cniDelivreeA', 120)} />

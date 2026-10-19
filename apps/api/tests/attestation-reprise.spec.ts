@@ -265,13 +265,15 @@ describe('le dossier et les dates', () => {
     );
   });
 
-  it('les trois dates, dans l’ordre ; la reprise peut précéder la fin, pas le début', async () => {
+  it('les trois dates, dans l’ordre : le dernier jour après le premier, la reprise pas avant le dernier (ADR-0133)', async () => {
     const code = (saisies: { debut?: string; fin?: string; reprise?: string }) =>
       codeOf(() => enTenant((tx) => attestationDeReprise.pdf(tx, employes.agent!, saisies)));
     expect(await code({ debut: DATES.debut, fin: DATES.fin })).toBe('documents.dates');
     expect(await code({ ...DATES, fin: '2025-12-31' })).toBe('documents.dates');
+    expect(await code({ ...DATES, fin: DATES.debut })).toBe('documents.dates');
     expect(await code({ ...DATES, reprise: DATES.debut })).toBe('documents.dates');
-    expect(await code({ ...DATES, reprise: '2026-05-15' })).toBe('AUCUNE ERREUR');
+    expect(await code({ ...DATES, reprise: '2026-05-15' })).toBe('documents.dates');
+    expect(await code({ ...DATES, reprise: DATES.fin })).toBe('AUCUNE ERREUR');
   });
 
   it('un dossier inactif ou un stage est refusé, en le disant', async () => {

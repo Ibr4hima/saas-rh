@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { nomDuDocumentGenere } from '@teranga/contracts';
+import { datesEnfreintes, nomDuDocumentGenere } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
 import type { AbsencesService } from '../time/absences.service';
@@ -106,7 +106,9 @@ export function attestationDeConge(absences: AbsencesService): Modele {
   return {
     async pdf(tx, employeeId, { debut, fin }) {
       if (!debut || !fin) problem(400, 'documents.dates', 'Dates du congé à saisir');
-      if (fin < debut) problem(400, 'documents.dates', 'La fin du congé précède son début');
+      if (datesEnfreintes('attestation_conge', { debut, fin }).fin) {
+        problem(400, 'documents.dates', 'Le dernier jour du congé suit le premier');
+      }
       const d = await donnees(tx, absences, employeeId, debut, fin);
       return {
         filename: nomDuDocumentGenere('attestation_conge', d.employeeNumber),

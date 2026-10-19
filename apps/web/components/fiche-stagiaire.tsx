@@ -1,7 +1,13 @@
 'use client';
 
 import { useId } from 'react';
-import { CATEGORIE_MAX, DUREE_DE_STAGE_MAX, finDuStage } from '@teranga/contracts';
+import {
+  CATEGORIE_MAX,
+  DUREE_DE_STAGE_MAX,
+  ficheStagiaireSchema,
+  finDuStage,
+  neAuPlusTard,
+} from '@teranga/contracts';
 import { cn, Field, Input } from '@teranga/ui';
 import {
   CADRE,
@@ -11,6 +17,7 @@ import {
   ChampDeLaDuree,
   ChampDuMontant,
   Groupe,
+  reglesEnfreintes,
 } from './saisie-de-fiche';
 
 /*
@@ -99,6 +106,9 @@ export function FicheDuStagiaire({
   const poser = (champ: Partial<SaisieDuStagiaire>) => onChange({ ...valeur, ...champ });
   const { texte, nomPropre, lieu, intitule } = champsDeTexte(id, valeur, poser);
   const fin = valeur.debut && valeur.duree ? finDuStage(valeur.debut, Number(valeur.duree)) : null;
+  // Les règles des dates, dites sous les champs (ADR-0133).
+  const fiche = versLaFiche(valeur);
+  const erreurs = reglesEnfreintes(fiche, ficheStagiaireSchema.safeParse(fiche).error?.issues);
 
   return (
     <>
@@ -115,8 +125,19 @@ export function FicheDuStagiaire({
         <Field label="Nom" htmlFor={`${id}-nom`} required>
           <Input {...nomPropre('nom')} />
         </Field>
-        <Field label="Date de naissance" htmlFor={`${id}-naissanceLe`} required>
-          <Input type="date" {...texte('naissanceLe')} className={cn(CADRE, 'tabular-nums')} />
+        <Field
+          label="Date de naissance"
+          htmlFor={`${id}-naissanceLe`}
+          required
+          error={erreurs.naissanceLe}
+        >
+          <Input
+            type="date"
+            {...texte('naissanceLe')}
+            max={neAuPlusTard()}
+            aria-invalid={erreurs.naissanceLe ? true : undefined}
+            className={cn(CADRE, 'tabular-nums')}
+          />
         </Field>
         <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
           <Input {...lieu('naissanceA', 120)} />

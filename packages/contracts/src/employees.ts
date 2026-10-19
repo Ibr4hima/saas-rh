@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dateDeNaissanceSchema } from './dates';
 import type { AnomalieHierarchie, ChangementRattachement } from './hierarchie';
 
 /** Contrats du module « dossier employé » (Lot 1). */
@@ -385,19 +386,8 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Date de naissance : dans le passé, et âge minimum de 15 ans. */
-const birthDateSchema = isoDate.refine(
-  (v) => {
-    const today = new Date();
-    const min = new Date(
-      Date.UTC(today.getUTCFullYear() - 15, today.getUTCMonth(), today.getUTCDate()),
-    )
-      .toISOString()
-      .slice(0, 10);
-    return v <= min;
-  },
-  { message: 'La personne doit avoir au moins 15 ans (date dans le passé)' },
-);
+/** Date de naissance : dans le passé, et âge minimum de 15 ans (la règle de toutes les fiches). */
+const birthDateSchema = dateDeNaissanceSchema;
 
 /** Cohérence de la pièce d'identité — partagée entre création et mise à jour. */
 function checkIdDocument(

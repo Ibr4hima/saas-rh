@@ -76,7 +76,7 @@ const fiche = (f: Partial<FicheCdd> = {}): FicheCdd => ({
   naissanceLe: '2000-01-24',
   naissanceA: 'Dakar',
   cni: '2751200201234',
-  cniDelivreeLe: '2018-01-17',
+  cniDelivreeLe: '2024-01-17',
   cniDelivreeA: 'Dakar',
   nationalite: 'SN',
   adresse: 'Patte d’Oie Cité Impôt et Domaines - Dakar',
@@ -272,7 +272,7 @@ describe('les parties', () => {
     const textes = tousLesTextes(contrat());
     for (const ligne of [
       'Madame Awa NDIAYE, née le 24 janvier 2000 à Dakar,',
-      'CNI n° 2 751 2002 01234, délivrée le 17 janvier 2018 à Dakar,',
+      'CNI n° 2 751 2002 01234, délivrée le 17 janvier 2024 à Dakar,',
       'Nationalité Sénégalaise,',
       'Demeurant à Patte d’Oie Cité Impôt et Domaines - Dakar,',
       'L’Employée,',

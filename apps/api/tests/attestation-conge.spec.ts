@@ -260,6 +260,8 @@ describe('ce que l’attestation exige', () => {
       { debut: '2026-09-07' },
       { fin: '2026-09-29' },
       { debut: '2026-09-29', fin: '2026-09-07' },
+      // Le dernier jour suit strictement le premier (ADR-0133).
+      { debut: '2026-09-07', fin: '2026-09-07' },
     ]) {
       expect(await codeOf(() => enTenant((tx) => modele.pdf(tx, employes.cdi!, saisies)))).toBe(
         'documents.dates',

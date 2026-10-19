@@ -8,13 +8,24 @@ import type {
   PreremplissageDeLaDecision,
 } from '@teranga/contracts';
 import {
+  aujourdhuiIso,
+  datesDeLaDisponibilite,
+  datesDuRenouvellement,
   DUREE_DE_PROROGATION_MAX,
+  ficheDeLaDecisionSchema,
   orgUnitLabel,
   repriseApresProrogation,
 } from '@teranga/contracts';
 import { cn, Field, Input, Select } from '@teranga/ui';
 import { api } from '../lib/api';
-import { CADRE, champsDeTexte, ChampDeLaCivilite, ChampDeLaDuree, Groupe } from './saisie-de-fiche';
+import {
+  CADRE,
+  champsDeTexte,
+  ChampDeLaCivilite,
+  ChampDeLaDuree,
+  Groupe,
+  reglesEnfreintes,
+} from './saisie-de-fiche';
 
 /*
    Ce que la DCH renseigne pour une décision de disponibilité (ADR-0100) : qui
@@ -157,24 +168,33 @@ export function FicheDeLaDecision({
     queryFn: () => api<OrgUnitView[]>('/org-units'),
     enabled: renouvellement,
   });
-  const date = (champ: keyof SaisieDeLaDecision, min?: string) => ({
+  // Les règles des dates, dites sous les champs (ADR-0133) : la demande et
+  // les nominations ne viennent pas après aujourd'hui, la prise d'effet pas
+  // avant la demande, la reprise après la prise d'effet ou la période
+  // initiale.
+  const fiche = versLaFicheDeLaDecision(valeur, doc);
+  const erreurs = reglesEnfreintes(
+    fiche,
+    ficheDeLaDecisionSchema(doc).safeParse(fiche).error?.issues,
+    renouvellement ? datesDuRenouvellement(fiche) : datesDeLaDisponibilite(fiche),
+  );
+  const date = (
+    champ: keyof SaisieDeLaDecision,
+    { min, max }: { min?: string; max?: string } = {},
+  ) => ({
     ...texte(champ),
     type: 'date',
-    min,
+    min: min || undefined,
+    max,
+    'aria-invalid': erreurs[champ] ? true : undefined,
     className: cn(CADRE, 'tabular-nums'),
   });
-
-  // La reprise suit la prise d'effet, ou la période initiale ; sa fin suit son début.
+  const aujourdhui = aujourdhuiIso();
   const debutDeLaReprise = lendemain(renouvellement ? valeur.initialementAu : valeur.effetLe);
-  const repriseTot =
-    debutDeLaReprise !== undefined &&
-    valeur.repriseLe !== '' &&
-    valeur.repriseLe < debutDeLaReprise;
-  const finTot =
-    renouvellement &&
-    valeur.initialementDu !== '' &&
-    valeur.initialementAu !== '' &&
-    valeur.initialementAu < valeur.initialementDu;
+  // La demande d'un renouvellement vient au plus tard le lendemain de la période initiale.
+  const lendemainInitial = renouvellement ? lendemain(valeur.initialementAu) : undefined;
+  const demandeAuPlusTard =
+    lendemainInitial && lendemainInitial < aujourdhui ? lendemainInitial : aujourdhui;
 
   return (
     <>
@@ -215,8 +235,13 @@ export function FicheDeLaDecision({
             </Field>
           </div>
         ) : null}
-        <Field label="Date de la demande" htmlFor={`${id}-demandeLe`} required>
-          <Input {...date('demandeLe')} />
+        <Field
+          label="Date de la demande"
+          htmlFor={`${id}-demandeLe`}
+          required
+          error={erreurs.demandeLe}
+        >
+          <Input {...date('demandeLe', { max: demandeAuPlusTard })} />
         </Field>
       </Groupe>
 
@@ -234,12 +259,9 @@ export function FicheDeLaDecision({
               label="Fin de la disponibilité initiale"
               htmlFor={`${id}-initialementAu`}
               required
-              error={finTot ? 'La fin suit le début' : undefined}
+              error={erreurs.initialementAu}
             >
-              <Input
-                {...date('initialementAu', valeur.initialementDu || undefined)}
-                aria-invalid={finTot || undefined}
-              />
+              <Input {...date('initialementAu', { min: valeur.initialementDu })} />
             </Field>
             <ChampDeLaDuree
               id={`${id}-duree`}
@@ -251,23 +273,22 @@ export function FicheDeLaDecision({
             />
           </>
         ) : (
-          <Field label="Date de prise d’effet" htmlFor={`${id}-effetLe`} required>
-            <Input {...date('effetLe')} />
+          <Field
+            label="Date de prise d’effet"
+            htmlFor={`${id}-effetLe`}
+            required
+            error={erreurs.effetLe}
+          >
+            <Input {...date('effetLe', { min: valeur.demandeLe })} />
           </Field>
         )}
         <Field
           label="Date limite de reprise"
           htmlFor={`${id}-repriseLe`}
           required
-          error={
-            repriseTot
-              ? renouvellement
-                ? 'La reprise suit la période initiale'
-                : 'La reprise suit la prise d’effet'
-              : undefined
-          }
+          error={erreurs.repriseLe}
         >
-          <Input {...date('repriseLe', debutDeLaReprise)} aria-invalid={repriseTot || undefined} />
+          <Input {...date('repriseLe', { min: debutDeLaReprise })} />
         </Field>
       </Groupe>
 
@@ -276,15 +297,17 @@ export function FicheDeLaDecision({
           label="Nomination à la Direction Générale"
           htmlFor={`${id}-pvDirectionGeneraleLe`}
           required
+          error={erreurs.pvDirectionGeneraleLe}
         >
-          <Input {...date('pvDirectionGeneraleLe')} />
+          <Input {...date('pvDirectionGeneraleLe', { max: aujourdhui })} />
         </Field>
         <Field
           label="Nomination à la Direction Générale Adjointe"
           htmlFor={`${id}-pvDirectionGeneraleAdjointeLe`}
           required
+          error={erreurs.pvDirectionGeneraleAdjointeLe}
         >
-          <Input {...date('pvDirectionGeneraleAdjointeLe')} />
+          <Input {...date('pvDirectionGeneraleAdjointeLe', { max: aujourdhui })} />
         </Field>
       </Groupe>
     </>

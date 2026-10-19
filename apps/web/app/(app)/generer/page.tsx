@@ -12,6 +12,7 @@ import type {
 import {
   CATEGORIE_MAX,
   CIBLES_DES_DOCUMENTS,
+  datesEnfreintes,
   estGenere,
   ficheDeclarationMouvementSchema,
   ficheDeLaDecisionSchema,
@@ -21,6 +22,7 @@ import {
   horsCible,
   nomDuDocumentGenere,
   peutGenerer,
+  plusJours,
   REQUESTABLE_DOC_LABELS,
   saisiesDe,
   sansAgent,
@@ -250,14 +252,18 @@ export default function GenererDesDocumentsPage() {
   const stagesAChoisir =
     choisi === 'attestation_stage' && stages.data && stages.data.length > 1 ? stages.data : null;
   const stageCourant = stage && stage.agentId === agent?.id ? stage.debut : '';
+  // Les dates saisies dans l'ordre (ADR-0133) : le dernier jour d'un congé
+  // ou d'une disponibilité après le premier, la reprise pas avant le dernier.
+  const erreursDesDates = choisi ? datesEnfreintes(choisi, courantes) : {};
   // « Valider » s'ouvre quand tout est saisi : la fiche complète, ou l'agent
-  // et chacune de ses saisies, le stage compris.
+  // et chacune de ses saisies, dans l'ordre, le stage compris.
   const pret =
     choisi !== null &&
     (sansLAgent
       ? fiche.success
       : agent !== null &&
         demandees.every((s) => remplie(courantes, s)) &&
+        Object.keys(erreursDesDates).length === 0 &&
         (choisi !== 'attestation_stage' ||
           (stages.isSuccess && (!stagesAChoisir || stageCourant !== ''))));
 
@@ -392,6 +398,7 @@ export default function GenererDesDocumentsPage() {
                   }
                   htmlFor={`${id}-${s}`}
                   required
+                  error={erreursDesDates[s]}
                 >
                   {s === 'salaire' ? (
                     <ChampDuSalaire
@@ -416,10 +423,15 @@ export default function GenererDesDocumentsPage() {
                       premier={i === 0}
                       libelle={libelleDe(choisi, s)}
                       date={courantes[s]}
-                      // La fin et la reprise ne se choisissent pas avant le début.
+                      // La fin se choisit après le début ; la reprise, pas avant la fin.
                       min={
-                        s === 'fin' || s === 'reprise' ? courantes.debut || undefined : undefined
+                        s === 'fin' && courantes.debut
+                          ? plusJours(courantes.debut, 1)
+                          : s === 'reprise'
+                            ? courantes.fin || courantes.debut || undefined
+                            : undefined
                       }
+                      invalide={Boolean(erreursDesDates[s])}
                       onSaisir={(date) => saisir({ [s]: date })}
                     />
                   )}
@@ -697,6 +709,7 @@ function ChampDeDate({
   libelle,
   date,
   min,
+  invalide = false,
   onSaisir,
 }: {
   id: string;
@@ -704,6 +717,7 @@ function ChampDeDate({
   libelle: string;
   date: string;
   min?: string;
+  invalide?: boolean;
   onSaisir: (date: string) => void;
 }) {
   return (
@@ -712,6 +726,7 @@ function ChampDeDate({
       id={id}
       autoFocus={premier}
       aria-label={libelle}
+      aria-invalid={invalide || undefined}
       value={date}
       min={min}
       onChange={(e) => onSaisir(e.target.value)}

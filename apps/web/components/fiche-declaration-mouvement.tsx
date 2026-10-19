@@ -3,8 +3,10 @@
 import { useId, useState, type ChangeEvent } from 'react';
 import type { NatureDuMouvement, SituationDeFamille } from '@teranga/contracts';
 import {
+  aujourdhuiIso,
   CATEGORIE_MAX,
   CATEGORIES_D_ENREGISTREMENT,
+  datesDeLaDeclaration,
   CHANGEMENTS_DU_TRAVAILLEUR,
   CHIFFRES_DE_L_IMMATRICULATION,
   DEPARTS_DU_TRAVAILLEUR,
@@ -12,10 +14,13 @@ import {
   DISPOSITIONS_MAX,
   ENFANTS_MAX,
   EPOUSES_MAX,
+  ficheDeclarationMouvementSchema,
   HORAIRES_HEBDOMADAIRES,
   majusculesInitiales,
   maritalLabelsFor,
   MOUVEMENTS_DU_TRAVAILLEUR,
+  neAuPlusTard,
+  plusJours,
 } from '@teranga/contracts';
 import { Checkbox, cn, Field, Input, Select } from '@teranga/ui';
 import { champDeChiffres } from '../lib/chiffres';
@@ -27,6 +32,7 @@ import {
   ChampDeLaCNI,
   ChampDuMontant,
   Groupe,
+  reglesEnfreintes,
 } from './saisie-de-fiche';
 
 /*
@@ -243,6 +249,13 @@ export function versLaFicheDeLaDeclaration(s: SaisieDeLaDeclaration) {
   };
 }
 
+/** Les dates que la fiche range dans une pièce : leur chemin, celui des règles enfreintes. */
+const CHEMINS_DES_DATES: Partial<Record<keyof SaisieDeLaDeclaration, string>> = {
+  declarationLe: 'declarationDEmbauche.le',
+  visaLe: 'visa.le',
+  enregistrementLe: 'enregistrement.le',
+};
+
 /** Le code d'une situation de famille, sous celui de l'état civil des dossiers. */
 const ETAT_CIVIL = {
   celibataire: 'single',
@@ -261,10 +274,28 @@ export function FicheDeLaDeclaration({
   const id = useId();
   const poser = (champ: Partial<SaisieDeLaDeclaration>) => onChange({ ...valeur, ...champ });
   const { texte, nomPropre, lieu, intitule } = champsDeTexte(id, valeur, poser);
-  const date = (champ: keyof SaisieDeLaDeclaration & string, min?: string) => ({
+  // Les règles des dates, dites sous les champs (ADR-0133) : l'entrée et le
+  // contrat avant aujourd'hui, les visas et la déclaration d'embauche pas
+  // après, les visas pas avant le contrat.
+  const fiche = versLaFicheDeLaDeclaration(valeur);
+  const erreurs = reglesEnfreintes(
+    fiche,
+    ficheDeclarationMouvementSchema.safeParse(fiche).error?.issues,
+    datesDeLaDeclaration(fiche),
+  );
+  const erreurDe = (champ: keyof SaisieDeLaDeclaration & string) =>
+    erreurs[CHEMINS_DES_DATES[champ] ?? champ];
+  const aujourdhui = aujourdhuiIso();
+  const veille = plusJours(aujourdhui, -1);
+  const date = (
+    champ: keyof SaisieDeLaDeclaration & string,
+    { min, max }: { min?: string; max?: string } = {},
+  ) => ({
     ...texte(champ),
     type: 'date',
     min: min || undefined,
+    max: max || undefined,
+    'aria-invalid': erreurDe(champ) ? true : undefined,
     className: cn(CADRE, 'tabular-nums'),
   });
   /** Une liste à choisir : son libellé, ses options. */
@@ -370,13 +401,23 @@ export function FicheDeLaDeclaration({
           </fieldset>
         ) : null}
         {valeur.nature === 'depart' ? (
-          <Field label="Date de départ de l’établissement" htmlFor={`${id}-effetLe`} required>
-            <Input {...date('effetLe', valeur.entreeLe)} />
+          <Field
+            label="Date de départ de l’établissement"
+            htmlFor={`${id}-effetLe`}
+            required
+            error={erreurDe('effetLe')}
+          >
+            <Input {...date('effetLe', { min: valeur.entreeLe })} />
           </Field>
         ) : null}
         {valeur.nature === 'changement' ? (
-          <Field label="Date d’effet" htmlFor={`${id}-effetLe`} required>
-            <Input {...date('effetLe', valeur.entreeLe)} />
+          <Field
+            label="Date d’effet"
+            htmlFor={`${id}-effetLe`}
+            required
+            error={erreurDe('effetLe')}
+          >
+            <Input {...date('effetLe', { min: valeur.entreeLe })} />
           </Field>
         ) : null}
         <ChampDeLImmatriculation
@@ -419,8 +460,13 @@ export function FicheDeLaDeclaration({
         <Field label="Nom" htmlFor={`${id}-nom`} required>
           <Input {...nomPropre('nom')} />
         </Field>
-        <Field label="Date de naissance" htmlFor={`${id}-naissanceLe`} required>
-          <Input {...date('naissanceLe')} />
+        <Field
+          label="Date de naissance"
+          htmlFor={`${id}-naissanceLe`}
+          required
+          error={erreurDe('naissanceLe')}
+        >
+          <Input {...date('naissanceLe', { max: neAuPlusTard() })} />
         </Field>
         <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
           <Input {...lieu('naissanceA', 120)} />
@@ -511,19 +557,28 @@ export function FicheDeLaDeclaration({
       </Groupe>
 
       <Groupe titre="Renseigner l’emploi">
-        <Field label="Date d’entrée dans l’établissement" htmlFor={`${id}-entreeLe`} required>
-          <Input {...date('entreeLe')} />
+        <Field
+          label="Date d’entrée dans l’établissement"
+          htmlFor={`${id}-entreeLe`}
+          required
+          error={erreurDe('entreeLe')}
+        >
+          <Input {...date('entreeLe', { max: veille })} />
         </Field>
-        <Field label="Date du contrat" htmlFor={`${id}-contratLe`}>
-          <Input {...date('contratLe')} />
+        <Field label="Date du contrat" htmlFor={`${id}-contratLe`} error={erreurDe('contratLe')}>
+          <Input {...date('contratLe', { max: veille })} />
         </Field>
         {valeur.nature === 'depart' || valeur.nature === 'changement' ? (
           <>
             <Field label="N° de la déclaration d’embauche" htmlFor={`${id}-declarationNumero`}>
               <Input {...texte('declarationNumero', 30)} />
             </Field>
-            <Field label="Date de la déclaration d’embauche" htmlFor={`${id}-declarationLe`}>
-              <Input {...date('declarationLe')} />
+            <Field
+              label="Date de la déclaration d’embauche"
+              htmlFor={`${id}-declarationLe`}
+              error={erreurDe('declarationLe')}
+            >
+              <Input {...date('declarationLe', { max: aujourdhui })} />
             </Field>
           </>
         ) : null}
@@ -546,8 +601,13 @@ export function FicheDeLaDeclaration({
             <Field label="Début du contrat" htmlFor={`${id}-cddDu`} required>
               <Input {...date('cddDu')} />
             </Field>
-            <Field label="Fin du contrat" htmlFor={`${id}-cddAu`} required>
-              <Input {...date('cddAu', valeur.cddDu)} />
+            <Field
+              label="Fin du contrat"
+              htmlFor={`${id}-cddAu`}
+              required
+              error={erreurDe('cddAu')}
+            >
+              <Input {...date('cddAu', { min: valeur.cddDu })} />
             </Field>
           </>
         ) : null}
@@ -559,14 +619,22 @@ export function FicheDeLaDeclaration({
         <Field label="N° du visa d’approbation" htmlFor={`${id}-visaNumero`}>
           <Input {...texte('visaNumero', 30)} />
         </Field>
-        <Field label="Date du visa d’approbation" htmlFor={`${id}-visaLe`}>
-          <Input {...date('visaLe')} />
+        <Field
+          label="Date du visa d’approbation"
+          htmlFor={`${id}-visaLe`}
+          error={erreurDe('visaLe')}
+        >
+          <Input {...date('visaLe', { min: valeur.contratLe, max: aujourdhui })} />
         </Field>
         <Field label="N° du visa d’enregistrement" htmlFor={`${id}-enregistrementNumero`}>
           <Input {...texte('enregistrementNumero', 30)} />
         </Field>
-        <Field label="Date du visa d’enregistrement" htmlFor={`${id}-enregistrementLe`}>
-          <Input {...date('enregistrementLe')} />
+        <Field
+          label="Date du visa d’enregistrement"
+          htmlFor={`${id}-enregistrementLe`}
+          error={erreurDe('enregistrementLe')}
+        >
+          <Input {...date('enregistrementLe', { min: valeur.contratLe, max: aujourdhui })} />
         </Field>
         <div className="sm:col-span-2">
           <Field label="Nom et adresse du précédent employeur" htmlFor={`${id}-precedentEmployeur`}>
@@ -577,8 +645,18 @@ export function FicheDeLaDeclaration({
           <Input {...lieu('residence', 120)} />
         </Field>
         {etrangere(valeur) ? (
-          <Field label="Date d’entrée au Sénégal" htmlFor={`${id}-entreeAuSenegalLe`} required>
-            <Input {...date('entreeAuSenegalLe', valeur.naissanceLe)} />
+          <Field
+            label="Date d’entrée au Sénégal"
+            htmlFor={`${id}-entreeAuSenegalLe`}
+            required
+            error={erreurDe('entreeAuSenegalLe')}
+          >
+            <Input
+              {...date('entreeAuSenegalLe', {
+                min: valeur.naissanceLe,
+                max: valeur.entreeLe && valeur.entreeLe < aujourdhui ? valeur.entreeLe : aujourdhui,
+              })}
+            />
           </Field>
         ) : null}
       </Groupe>
@@ -590,9 +668,15 @@ export function FicheDeLaDeclaration({
         ])}
         {service ? (
           <>
-            <Field label="Classe de recrutement" htmlFor={`${id}-classeDeRecrutement`} required>
+            <Field
+              label="Classe de recrutement"
+              htmlFor={`${id}-classeDeRecrutement`}
+              required
+              error={erreurDe('classeDeRecrutement')}
+            >
               <Input
                 {...texte('classeDeRecrutement', 4)}
+                aria-invalid={erreurDe('classeDeRecrutement') ? true : undefined}
                 inputMode="numeric"
                 onChange={(e: ChangeEvent<HTMLInputElement>) =>
                   poser({ classeDeRecrutement: e.target.value.replace(/\D/g, '') })

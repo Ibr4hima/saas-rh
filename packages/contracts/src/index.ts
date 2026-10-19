@@ -10,6 +10,7 @@ import './messages';
 export * from './acces';
 export * from './banques';
 export * from './core';
+export * from './dates';
 export * from './dashboard';
 export * from './employees';
 export * from './hierarchie';

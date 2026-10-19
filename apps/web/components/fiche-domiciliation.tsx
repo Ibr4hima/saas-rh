@@ -1,10 +1,24 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { BANQUES, ribGroupe, type CodeDeBanque } from '@teranga/contracts';
+import {
+  aujourdhuiIso,
+  BANQUES,
+  datesDeLaDomiciliation,
+  ficheDomiciliationSchema,
+  ribGroupe,
+  type CodeDeBanque,
+} from '@teranga/contracts';
 import { Button, cn, Field, Input, Select } from '@teranga/ui';
 import { champDeChiffres } from '../lib/chiffres';
-import { CADRE, champsDeTexte, ChampDeLaCivilite, ChampDuMontant, Groupe } from './saisie-de-fiche';
+import {
+  CADRE,
+  champsDeTexte,
+  ChampDeLaCivilite,
+  ChampDuMontant,
+  Groupe,
+  reglesEnfreintes,
+} from './saisie-de-fiche';
 
 /*
    Ce que la DCH renseigne pour une domiciliation bancaire (ADR-0102) : la
@@ -85,9 +99,20 @@ export function FicheDeLaDomiciliation({
   const id = useId();
   const poser = (champ: Partial<SaisieDeLaDomiciliation>) => onChange({ ...valeur, ...champ });
   const { texte, nomPropre, intitule } = champsDeTexte(id, valeur, poser);
-  const date = (champ: 'debut' | 'demandeLe') => ({
+  // Les règles des dates, dites sous les champs (ADR-0133) : le contrat a
+  // commencé, la demande ne vient ni avant lui, ni après aujourd'hui.
+  const fiche = versLaFicheDeLaDomiciliation(valeur);
+  const erreurs = reglesEnfreintes(
+    fiche,
+    ficheDomiciliationSchema.safeParse(fiche).error?.issues,
+    datesDeLaDomiciliation(fiche),
+  );
+  const date = (champ: 'debut' | 'demandeLe', min?: string) => ({
     ...texte(champ),
     type: 'date',
+    min: min || undefined,
+    max: aujourdhuiIso(),
+    'aria-invalid': erreurs[champ] ? true : undefined,
     className: cn(CADRE, 'tabular-nums'),
   });
 
@@ -125,7 +150,12 @@ export function FicheDeLaDomiciliation({
             <option value="cdi">Contrat à durée indéterminée</option>
           </Select>
         </Field>
-        <Field label="Date de début du contrat" htmlFor={`${id}-debut`} required>
+        <Field
+          label="Date de début du contrat"
+          htmlFor={`${id}-debut`}
+          required
+          error={erreurs.debut}
+        >
           <Input {...date('debut')} />
         </Field>
       </Groupe>
@@ -181,8 +211,13 @@ export function FicheDeLaDomiciliation({
           montant={valeur.salaire}
           onSaisir={(salaire) => poser({ salaire })}
         />
-        <Field label="Date de la demande" htmlFor={`${id}-demandeLe`} required>
-          <Input {...date('demandeLe')} />
+        <Field
+          label="Date de la demande"
+          htmlFor={`${id}-demandeLe`}
+          required
+          error={erreurs.demandeLe}
+        >
+          <Input {...date('demandeLe', valeur.debut)} />
         </Field>
       </Groupe>
     </>
