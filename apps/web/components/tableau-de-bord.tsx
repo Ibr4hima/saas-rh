@@ -181,10 +181,11 @@ function StatTile({
        « combien », l'ordre dans lequel la question se pose. L'icône tient
        dans une pastille bleue, à droite, la même pour les quatre tuiles :
        une pastille orange sur l'une d'elles la faisait lire comme une alerte
-       permanente. Au survol, la tuile se soulève, la pastille fonce et la
-       flèche paraît ; un clic n'ouvre rien, les pages restent au menu. */
+       permanente. Au survol, la tuile se soulève et la pastille fonce ; un
+       clic n'ouvre rien, les pages restent au menu, et aucune flèche ne
+       promet le contraire. */
     <div className="group h-full">
-      <CardInteractive className="@container relative h-full px-4 pt-3.5 pb-4">
+      <CardInteractive className="@container h-full px-4 pt-3.5 pb-4">
         <div className="flex items-center justify-between gap-3">
           {/* L'étiquette courte dès que la TUILE est étroite, pas l'écran : à
             1024 px, quatre tuiles et le menu ne laissent pas la place. */}
@@ -209,15 +210,10 @@ function StatTile({
         {/* `title` parce que la ligne est TRONQUÉE sur grand écran : sans lui,
             ce qui dépasse de la carte est simplement perdu. */}
         {context ? (
-          <p title={context} className="mt-2 text-[11.5px] text-ink-muted sm:truncate sm:pr-5">
+          <p title={context} className="mt-2 text-[11.5px] text-ink-muted sm:truncate">
             {context}
           </p>
         ) : null}
-        <Icon
-          name="arrow_forward"
-          size={16}
-          className="absolute right-3.5 bottom-3.5 hidden -translate-x-1 text-primary opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100 sm:block"
-        />
       </CardInteractive>
     </div>
   );
