@@ -118,7 +118,8 @@ export function textesDeLaRepriseDeService(
 
 /**
  * Le dossier, et le jour saisi. Les modèles attestent un congé de maternité :
- * un dossier au genre masculin est refusé, en le disant.
+ * un dossier qui ne porte pas le genre féminin est refusé, en le disant
+ * (ADR-0130).
  */
 async function donnees(
   tx: Tx,
@@ -129,12 +130,14 @@ async function donnees(
 ): Promise<CongeDeMaterniteData> {
   if (!jour) problem(400, 'documents.dates', manque);
   const dossier = await dossierDeLAgent(tx, employeeId, document);
-  if (dossier.agent.genre === 'male') {
+  if (dossier.agent.genre !== 'female') {
     problem(
       422,
       'documents.maternite',
       `${document} : congé de maternité`,
-      'Le dossier de l’agent porte le genre masculin.',
+      dossier.agent.genre === 'male'
+        ? 'Le dossier de l’agent porte le genre masculin.'
+        : 'Le dossier de l’agent ne porte pas de genre.',
     );
   }
   return { ...dossier, signataire: await quiDirigeLaDCH(tx), jour };

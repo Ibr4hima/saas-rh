@@ -13,7 +13,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { saisiesDuDocumentSchema, type SaisiesDuDocument } from '@teranga/contracts';
+import {
+  agentsDeLaCibleQuerySchema,
+  saisiesDuDocumentSchema,
+  type AgentsDeLaCibleQuery,
+  type SaisiesDuDocument,
+} from '@teranga/contracts';
 import { AccesGuard } from '../auth/acces.guard';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { AttestationService } from './attestation.service';
@@ -94,6 +99,19 @@ export class DocumentsController {
   ) {
     const { filename, pdf } = await this.generation.pdfSansAgent(req.sessionUser, type, corps);
     this.send(res, filename, pdf);
+  }
+
+  /**
+   * Les agents à qui le document s'adresse, d'après un nom ou un matricule
+   * (ADR-0130) : « Générer des documents » ne propose qu'eux.
+   */
+  @Get('documents/generer/:type/agents')
+  agents(
+    @Req() req: AuthenticatedRequest,
+    @Param('type') type: string,
+    @Query(new ZodValidationPipe(agentsDeLaCibleQuerySchema)) query: AgentsDeLaCibleQuery,
+  ) {
+    return this.generation.agents(req.sessionUser, type, query.q);
   }
 
   /**

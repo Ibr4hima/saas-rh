@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type {
+  AgentDeLaCible,
   DocumentGenere,
   DocumentSansAgent,
   SaisiesDuDocument,
@@ -23,6 +24,7 @@ import { attestationDeRetraite } from './attestation-retraite';
 import { attestationDeRevenu } from './attestation-revenu';
 import { attestationDeStage } from './attestation-stage';
 import { certificatDeTravail } from './certificat-travail';
+import { agentsDeLaCible, exigerLaCible } from './cibles';
 import { attestationDeCessation, attestationDeRepriseDeService } from './conge-de-maternite';
 import { contratDeStage, type ModeleSansAgent } from './contrat-stage';
 import { contratDeTravail } from './contrat-travail';
@@ -44,7 +46,8 @@ import type { DocumentPdf, Modele } from './feuille';
  *
  * Un document sans agent (les contrats de travail et de stage, ADR-0094,
  * ADR-0098) se génère d'une fiche que la DCH renseigne : la personne n'est
- * pas encore dans l'application.
+ * pas encore dans l'application. Un document avec agent ne se génère que
+ * pour un agent de sa cible (ADR-0130).
  */
 @Injectable()
 export class GenerationService {
@@ -97,8 +100,23 @@ export class GenerationService {
     const modele = this.modeles[doc];
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await pasSurSoi(tx, user.userId, [employeeId], 'générer un document pour');
+      await exigerLaCible(tx, doc, employeeId);
       return modele.pdf(tx, employeeId, saisies);
     });
+  }
+
+  /**
+   * Les agents de la cible du document qui répondent à la recherche
+   * (ADR-0130) : la page ne propose qu'eux.
+   */
+  async agents(user: SessionUser, type: string, q: string): Promise<AgentDeLaCible[]> {
+    const doc = this.documentConfigure(user, type);
+    if (sansAgent(doc)) {
+      problem(422, 'documents.sans_agent', `${REQUESTABLE_DOC_LABELS[doc]} : sans agent`);
+    }
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      agentsDeLaCible(tx, doc, q, user.userId),
+    );
   }
 
   /** Un document sans agent, d'après la fiche que la DCH renseigne. */

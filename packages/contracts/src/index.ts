@@ -20,6 +20,7 @@ export * from './recruitment';
 export * from './recherche';
 export * from './documents';
 export * from './document-requests';
+export * from './cibles-des-documents';
 export * from './montants';
 export * from './nationalities';
 export * from './profile-changes';

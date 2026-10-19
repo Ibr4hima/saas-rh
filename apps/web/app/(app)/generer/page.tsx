@@ -2,21 +2,17 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
-import type {
-  DocumentGenere,
-  EmployeeListItem,
-  EmployeeListPage,
-  MyEmployeeView,
-  Saisie,
-} from '@teranga/contracts';
+import type { AgentDeLaCible, DocumentAvecAgent, DocumentGenere, Saisie } from '@teranga/contracts';
 import {
   CATEGORIE_MAX,
+  CIBLES_DES_DOCUMENTS,
   estGenere,
   ficheDeclarationMouvementSchema,
   ficheDeLaDecisionSchema,
   ficheDomiciliationSchema,
   ficheDuContratSchema,
   ficheStagiaireSchema,
+  horsCible,
   nomDuDocumentGenere,
   peutGenerer,
   REQUESTABLE_DOC_LABELS,
@@ -98,7 +94,7 @@ import { champDuMontant } from '../../../lib/montant';
    ce qui sortira, pas sur une imitation à l'écran.
 */
 
-const nomDe = (a: EmployeeListItem) => `${a.givenName} ${a.familyName}`;
+const nomDe = (a: AgentDeLaCible) => `${a.givenName} ${a.familyName}`;
 
 /** Ce que la DCH saisit pour un document ; une date, au format AAAA-MM-JJ. */
 type Valeurs = {
@@ -183,7 +179,7 @@ export default function GenererDesDocumentsPage() {
   // Qui dirige la DCH génère tout ; un membre, les contrats qu'on lui délègue (ADR-0114).
   const generables = DANS_L_ORDRE.filter((d) => peutGenerer(me.data, d));
   const [choisi, setChoisi] = useState<DocumentGenere | null>(null);
-  const [agent, setAgent] = useState<EmployeeListItem | null>(null);
+  const [agent, setAgent] = useState<AgentDeLaCible | null>(null);
   const [saisies, setSaisies] = useState<Saisies | null>(null);
   const [stagiaire, setStagiaire] = useState<SaisieDuStagiaire>(STAGIAIRE_VIDE);
   const [contrat, setContrat] = useState<SaisieDuContrat>(CONTRAT_VIDE);
@@ -194,6 +190,7 @@ export default function GenererDesDocumentsPage() {
   const [validation, setValidation] = useState<Validation | null>(null);
 
   const sansLAgent = choisi !== null && sansAgent(choisi);
+  const avecAgent: DocumentAvecAgent | null = choisi !== null && !sansAgent(choisi) ? choisi : null;
   const demandees = choisi ? saisiesDe(choisi) : [];
   const courantes: Valeurs = saisies && saisies.agentId === agent?.id ? saisies : VIDES;
   const saisir = (valeur: Partial<Valeurs>) => {
@@ -273,6 +270,11 @@ export default function GenererDesDocumentsPage() {
           onChoisir={(d) => {
             if (!estGenere(d)) return;
             setChoisi(d);
+            // L'agent choisi reste dans la cible du nouveau document ; hors d'elle, le
+            // champ se vide (ADR-0130).
+            if (agent && !sansAgent(d) && horsCible(CIBLES_DES_DOCUMENTS[d], agent.situation)) {
+              setAgent(null);
+            }
             // Un autre document se valide à son tour.
             setValidation(null);
           }}
@@ -304,13 +306,20 @@ export default function GenererDesDocumentsPage() {
               onChange={setDisponibilite}
             />
           ) : null}
-          {sansLAgent ? null : (
+          {avecAgent ? (
             <Groupe titre="Sélectionner l’agent">
               <Field label="Agent" htmlFor={`${id}-agent`} required>
-                <ChoixDeLAgent id={`${id}-agent`} agent={agent} onChoisir={setAgent} />
+                {/* Un autre document, une autre cible : le champ repart de l'agent retenu. */}
+                <ChoixDeLAgent
+                  key={avecAgent}
+                  id={`${id}-agent`}
+                  doc={avecAgent}
+                  agent={agent}
+                  onChoisir={setAgent}
+                />
               </Field>
             </Groupe>
-          )}
+          ) : null}
           {!sansLAgent && agent && demandees.length > 0 ? (
             <Groupe titre={SECTION_DES_SAISIES[choisi] ?? 'Renseigner le document'}>
               {demandees.map((s, i) => (
@@ -370,20 +379,24 @@ export default function GenererDesDocumentsPage() {
 }
 
 /**
- * L'agent : nom ou matricule, dossiers en activité ou non (un certificat de
- * travail se délivre au départ). Le champ montre le nom retenu ; y écrire
- * en cherche un autre, et le quitter sans choisir garde le premier. Jamais
- * soi : son propre dossier ne se génère pas d'ici.
+ * L'agent, dans la cible du document (ADR-0130) : une
+ * attestation de travail ne propose pas un stage, un certificat de travail
+ * pas un dossier en activité. Un clic ouvre la liste de toute la cible, par
+ * nom ; un nom ou un matricule la resserre. Le champ montre le nom retenu ;
+ * y écrire en cherche un autre, et le quitter sans choisir garde le premier.
+ * Jamais soi : son propre dossier ne se génère pas d'ici.
  */
 function ChoixDeLAgent({
   id: idDuChamp,
+  doc,
   agent,
   onChoisir,
 }: {
   /** L'identifiant du champ, que son intitulé désigne. */
   id: string;
-  agent: EmployeeListItem | null;
-  onChoisir: (a: EmployeeListItem) => void;
+  doc: DocumentAvecAgent;
+  agent: AgentDeLaCible | null;
+  onChoisir: (a: AgentDeLaCible) => void;
 }) {
   const id = useId();
   const [texte, setTexte] = useState(agent ? nomDe(agent) : '');
@@ -391,10 +404,13 @@ function ChoixDeLAgent({
   const [ouverte, setOuverte] = useState(false);
   const [courant, setCourant] = useState(0);
 
+  // Le nom retenu, tel que le champ le montre, ne cherche rien : la liste
+  // montre toute la cible.
   useEffect(() => {
-    const t = setTimeout(() => setCherche(texte.trim()), 200);
+    const saisi = agent && texte === nomDe(agent) ? '' : texte.trim();
+    const t = setTimeout(() => setCherche(saisi), 200);
     return () => clearTimeout(t);
-  }, [texte]);
+  }, [texte, agent]);
   useEffect(() => {
     setCourant(0);
   }, [cherche]);
@@ -403,25 +419,27 @@ function ChoixDeLAgent({
     document.getElementById(`${id}-${courant}`)?.scrollIntoView({ block: 'nearest' });
   }, [id, courant]);
 
-  const moi = useQuery({
-    queryKey: ['me-employee'],
-    queryFn: () => api<MyEmployeeView>('/me/employee'),
-    retry: false,
-  });
   const resultats = useQuery({
-    queryKey: ['employees', 'generer', cherche],
+    queryKey: ['generer-agents', doc, cherche],
     queryFn: ({ signal }) =>
-      api<EmployeeListPage>(
-        `/employees?q=${encodeURIComponent(cherche)}&sort=name&dir=asc&limit=8`,
-        { signal },
-      ),
-    enabled: cherche.length > 0,
+      api<AgentDeLaCible[]>(`/documents/generer/${doc}/agents?q=${encodeURIComponent(cherche)}`, {
+        signal,
+      }),
+    enabled: ouverte,
   });
-  const agents = (resultats.data?.items ?? []).filter((a) => a.id !== moi.data?.employeeId);
-  const visible = ouverte && cherche.length > 0;
+  const agents = resultats.data ?? [];
+  const visible = ouverte;
+  // À l'ouverture, la ligne de l'agent retenu est désignée, et en vue.
+  useEffect(() => {
+    if (!ouverte || cherche || !agent) return;
+    const i = (resultats.data ?? []).findIndex((a) => a.id === agent.id);
+    if (i >= 0) setCourant(i);
+  }, [ouverte, cherche, agent, resultats.data]);
+  // Les dossiers inactifs se signalent quand la cible les mêle aux autres.
+  const mele = CIBLES_DES_DOCUMENTS[doc].dossiers === 'tous';
 
   const remettre = () => setTexte(agent ? nomDe(agent) : '');
-  const choisir = (a: EmployeeListItem | undefined) => {
+  const choisir = (a: AgentDeLaCible | undefined) => {
     if (!a) return;
     setOuverte(false);
     setTexte(nomDe(a));
@@ -450,12 +468,17 @@ function ChoixDeLAgent({
           setTexte(e.target.value);
           setOuverte(true);
         }}
-        // Tant que le champ montre le nom retenu, y entrer en sélectionne tout
-        // le nom : on écrit par-dessus pour en chercher un autre. Au clic, le
+        // Un clic ouvre la liste de toute la cible, avant toute frappe. Tant
+        // que le champ montre le nom retenu, y entrer en sélectionne tout le
+        // nom : on écrit par-dessus pour en chercher un autre. Au clic, le
         // navigateur poserait le curseur au relâché et défairait la sélection :
         // le clic la pose lui-même.
-        onFocus={(e) => e.target.select()}
+        onFocus={(e) => {
+          e.target.select();
+          setOuverte(true);
+        }}
         onMouseDown={(e) => {
+          setOuverte(true);
           if (!agent || texte !== nomDe(agent)) return;
           e.preventDefault();
           e.currentTarget.focus();
@@ -522,7 +545,7 @@ function ChoixDeLAgent({
                       {a.positionTitle ? ` · ${a.positionTitle}` : null}
                     </span>
                   </span>
-                  {a.status !== 'active' ? (
+                  {mele && a.status !== 'active' ? (
                     <Badge className="shrink-0">Dossier inactif</Badge>
                   ) : null}
                 </li>

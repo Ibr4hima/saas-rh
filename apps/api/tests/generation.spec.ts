@@ -69,17 +69,17 @@ beforeAll(async () => {
     );
   }
   // Le dossier de qui dirige la DCH (relié à son compte), un dossier en
-  // activité, un dossier inactif.
-  for (const [cle, numero, statut, userId] of [
-    ['dch', 'GEN-001', 'active', ids.dch],
-    ['actif', 'GEN-002', 'active', null],
-    ['archive', 'GEN-003', 'archived', null],
+  // activité, à l'âge de la retraite, un dossier inactif.
+  for (const [cle, numero, statut, userId, naissance] of [
+    ['dch', 'GEN-001', 'active', ids.dch, null],
+    ['actif', 'GEN-002', 'active', null, '1960-04-12'],
+    ['archive', 'GEN-003', 'archived', null, null],
   ] as const) {
     const personId = randomUUID();
     await raw(
-      `INSERT INTO persons (id, tenant_id, user_id, given_name, family_name)
-       VALUES ($1, $2, $3, 'Agent', $4)`,
-      [personId, tenantId, userId, cle],
+      `INSERT INTO persons (id, tenant_id, user_id, given_name, family_name, birth_date)
+       VALUES ($1, $2, $3, 'Agent', $4, $5)`,
+      [personId, tenantId, userId, cle, naissance],
     );
     await raw(
       `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on, status)

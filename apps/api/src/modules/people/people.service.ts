@@ -67,6 +67,7 @@ import { debutDeLAnciennete, joursHorsDeLAnciennete, premierJourDuStage } from '
 import { debutDuStage, exigerEnActivite, finDeContratPassee } from './en-activite';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 import { exigerUniteVivante, muter } from './mutation';
+import { rechercheDesAgents } from './recherche';
 import {
   OrgUnitsService,
   type PassationAilleurs,
@@ -187,19 +188,7 @@ export class PeopleService {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       // Chaque mot cherché doit se trouver dans le prénom, le nom ou le
       // matricule, dans n'importe quel ordre : « Awa Diop » comme « Diop Awa ».
-      const mots = (query.q ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
-      const recherche =
-        mots.length === 0
-          ? sql`TRUE`
-          : sql.join(
-              mots.map((mot) => {
-                const motif = `%${mot.replace(/[\\%_]/g, '\\$&')}%`;
-                return sql`(sans_accents(p.given_name) LIKE sans_accents(${motif})
-                         OR sans_accents(p.family_name) LIKE sans_accents(${motif})
-                         OR sans_accents(e.employee_number) LIKE sans_accents(${motif}))`;
-              }),
-              sql` AND `,
-            );
+      const recherche = rechercheDesAgents(query.q);
 
       /**
        * Le socle : une ligne par agent, colonnes affichées comprises. La
