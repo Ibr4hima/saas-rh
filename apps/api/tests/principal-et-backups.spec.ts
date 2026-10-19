@@ -461,7 +461,7 @@ describe('la fenêtre de 48 heures, sur une demande de document', () => {
     await documents.advance(binta.session, id, CLORE);
   });
 
-  it('une personne principale en congé, ou à l’origine de la demande : les backups traitent d’emblée', async () => {
+  it('une personne principale en congé, ou à l’origine de la demande : la personne suivante assure la suppléance et traite d’emblée (ADR-0129)', async () => {
     const sienne = await demanderUneAttestation(awa);
     expect(await appels('document', sienne)).toEqual(['dch:Khady']);
     expect((await vueDocument(khady, sienne)).canAdvance).toBe(true);
@@ -469,7 +469,13 @@ describe('la fenêtre de 48 heures, sur une demande de document', () => {
     await enConge(awa);
     const id = await demanderUneAttestation();
     expect(await appels('document', id)).toEqual(['dch:Khady']);
-    expect((await vueDocument(khady, id)).traitement?.fenetre).toBeNull();
+    const v = await vueDocument(khady, id);
+    expect(v.canAdvance).toBe(true);
+    expect(v.traitement?.fenetre).toMatchObject({
+      principal: 'Khady Test',
+      peutOuvrir: false,
+      enAttente: false,
+    });
   });
 
   it('les jours fériés ne comptent pas : soixante heures plus tard, la fenêtre court encore', async () => {

@@ -21,6 +21,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { BoutonDecision } from '../../../../components/bouton-decision';
+import { AlerteContinuite, MentionContinuite } from '../../../../components/continuite';
 import {
   FenetreAnnulation,
   FenetreRappel,
@@ -80,6 +81,8 @@ export default function CongesATraiterPage() {
 
   const [message, setMessage] = useState<Message>(null);
   const [refus, setRefus] = useState<AbsenceRequestView | null>(null);
+  // Valider ce qui laisserait une délégation sans personne se confirme (ADR-0129).
+  const [aValider, setAValider] = useState<AbsenceRequestView | null>(null);
   const [motif, setMotif] = useState('');
   const [viewedDoc, setViewedDoc] = useState<ViewableDoc | null>(null);
   // Un congé validé en cours, ou à venir : le rappeler, l'annuler.
@@ -106,6 +109,7 @@ export default function CongesATraiterPage() {
       }),
     onSuccess: async (_, v) => {
       setRefus(null);
+      setAValider(null);
       setMotif('');
       setMessage({
         ton: 'ok',
@@ -247,6 +251,7 @@ export default function CongesATraiterPage() {
                     <Td className="whitespace-nowrap tabular-nums">
                       <Periode demande={r} />
                       <MentionConge demande={r} />
+                      {r.continuite ? <MentionContinuite alerte={r.continuite} /> : null}
                     </Td>
                     <Td className="text-right font-semibold whitespace-nowrap tabular-nums">
                       <Jours demande={r} />
@@ -318,7 +323,8 @@ export default function CongesATraiterPage() {
                             bloque={occupe || r.justificatifAttendu}
                             onClick={() => {
                               setMessage(null);
-                              decider.mutate({ demande: r, decision: 'approved' });
+                              if (r.continuite) setAValider(r);
+                              else decider.mutate({ demande: r, decision: 'approved' });
                             }}
                           />
                           <BoutonDecision
@@ -377,6 +383,7 @@ export default function CongesATraiterPage() {
               </Button>
               <Button
                 variant="danger"
+                disabled={Boolean(refus.continuite) && !motif.trim()}
                 loading={decider.isPending}
                 onClick={() => decider.mutate({ demande: refus, decision: 'rejected' })}
               >
@@ -385,10 +392,22 @@ export default function CongesATraiterPage() {
             </div>
           }
         >
+          {refus.continuite ? (
+            <AlerteContinuite
+              alerte={refus.continuite}
+              qui={refus.employeeName}
+              appreciation={false}
+            />
+          ) : null}
           <Field
             label="Motif"
             htmlFor="motif-refus-dch"
-            hint="Facultatif. Il est transmis à l’agent avec le refus."
+            required={Boolean(refus.continuite)}
+            hint={
+              refus.continuite
+                ? 'Obligatoire. Il est transmis à l’agent avec le refus.'
+                : 'Facultatif. Il est transmis à l’agent avec le refus.'
+            }
           >
             <Textarea
               id="motif-refus-dch"
@@ -397,6 +416,36 @@ export default function CongesATraiterPage() {
               onChange={(e) => setMotif(e.target.value)}
             />
           </Field>
+        </Modal>
+      ) : null}
+
+      {/* Valider malgré l'alerte de continuité */}
+      {aValider?.continuite ? (
+        <Modal
+          open
+          onClose={() => setAValider(null)}
+          title={`Valider le congé de ${aValider.employeeName}`}
+          subtitle={`${aValider.absenceTypeName} · ${periodeAbsence(aValider)} · ${dureeAbsence(aValider)}`}
+          maxWidth="max-w-lg"
+          footer={
+            <div className="flex w-full justify-end gap-2">
+              <Button variant="secondary" onClick={() => setAValider(null)}>
+                Annuler
+              </Button>
+              <Button
+                loading={decider.isPending}
+                onClick={() => decider.mutate({ demande: aValider, decision: 'approved' })}
+              >
+                Valider la demande
+              </Button>
+            </div>
+          }
+        >
+          <AlerteContinuite
+            alerte={aValider.continuite}
+            qui={aValider.employeeName}
+            appreciation={false}
+          />
         </Modal>
       ) : null}
 

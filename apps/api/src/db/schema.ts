@@ -241,6 +241,8 @@ export const absenceTypes = pgTable('absence_types', {
   allowsHours: boolean('allows_hours').notNull().default(false),
   /** Au plus tant de jours ouvrés par demande ; null : pas de plafond. */
   maxDaysPerRequest: integer('max_days_per_request'),
+  /** La continuité du service (ADR-0129) : 'toujours', 'au_dela_d_un_jour' ou 'jamais'. */
+  continuite: text('continuite').notNull().default('jamais'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),

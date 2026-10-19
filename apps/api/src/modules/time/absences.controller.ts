@@ -19,6 +19,7 @@ import type { Response } from 'express';
 import {
   annulerAbsenceSchema,
   confierSchema,
+  continuiteDemandeeSchema,
   createAbsenceRequestSchema,
   createAbsenceTypeSchema,
   createHolidaySchema,
@@ -34,6 +35,7 @@ import {
   updateHolidaySchema,
   type AnnulerAbsenceInput,
   type ConfierInput,
+  type ContinuiteDemandeeInput,
   type CreateAbsenceRequestInput,
   type CreateAbsenceTypeInput,
   type CreateHolidayInput,
@@ -194,6 +196,17 @@ export class AbsencesController {
   }
 
   // ---------- Demandes ----------
+
+  /** Ce que la demande laisserait sans personne, avant de l'envoyer (ADR-0129). */
+  @Post('absence-continuite')
+  @HttpCode(200)
+  @FermeAuxInactifs()
+  continuite(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(continuiteDemandeeSchema)) body: ContinuiteDemandeeInput,
+  ) {
+    return this.absences.continuitePrevue(req.sessionUser, body);
+  }
 
   @Post('absence-preview')
   @FermeAuxInactifs()

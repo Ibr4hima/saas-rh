@@ -133,4 +133,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0125](0125-acces-ferme-par-les-regles.md)            | L'accès au portail ne se coupe plus à la main                                           | acceptée                                    |
 | [0126](0126-directeur-general-adjoint.md)             | Le DGA se désigne à côté du DG ; son poste s'écrit au genre                             | acceptée, précisée par 0127                 |
 | [0127](0127-dga-par-nouvelle-affectation.md)          | « Nouvelle affectation » donne aussi la place de DGA                                    | acceptée                                    |
-| [0128](0128-principal-et-backups.md)                  | Principal et backups : 48 heures ouvrées à la personne principale, 72 pour traiter      | acceptée                                    |
+| [0128](0128-principal-et-backups.md)                  | Principal et backups : 48 heures ouvrées à la personne principale, 72 pour traiter      | acceptée, précisée par 0129                 |
+| [0129](0129-continuite-du-service.md)                 | La continuité du service : l'alerte, l'appréciation de la DCH, la suppléance            | acceptée                                    |

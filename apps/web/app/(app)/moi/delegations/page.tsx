@@ -619,6 +619,11 @@ function ChoixDelegues({
                     >
                       {m.nom}
                     </span>
+                    {/* En congé aujourd'hui : la personne suivante dans l'ordre des
+                        délégations assure la suppléance (ADR-0129). */}
+                    {m.absent ? (
+                      <span className="shrink-0 text-[11px] text-ink-muted">En congé</span>
+                    ) : null}
                   </label>
                   {avecPrincipal && principal ? (
                     <span className="grid w-[68px] shrink-0 place-items-center">

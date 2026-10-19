@@ -47,6 +47,19 @@ export function countWorkdays(
   return { workingDays, holidaysSkipped };
 }
 
+/** Les jours ouvrés d'une période, du premier au dernier inclus (dates ISO). */
+export function joursOuvresDe(
+  startIso: string,
+  endIso: string,
+  holidays: ReadonlySet<string>,
+): string[] {
+  const jours: string[] = [];
+  for (const day of eachDay(startIso, endIso)) {
+    if (!isWeekend(day) && !holidays.has(day)) jours.push(day);
+  }
+  return jours;
+}
+
 /**
  * Les jours ouvrés d'une période, année par année : un congé du 28 décembre
  * au 8 janvier se retranche pour partie du solde de chaque année. Les années

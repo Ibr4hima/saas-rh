@@ -14,6 +14,7 @@ import {
   Textarea,
 } from '@teranga/ui';
 import { BoutonDecision } from '../../../../components/bouton-decision';
+import { MentionContinuite } from '../../../../components/continuite';
 import { FenetreRappel, MentionConge } from '../../../../components/conge-valide';
 import { CartePleine, CorpsDefilant, Page } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
@@ -336,6 +337,7 @@ function Resume({ demande: r }: { demande: AbsenceRequestView }) {
         {r.absenceTypeName} · {periodeAbsence(r)} · {dureeAbsence(r)}
       </p>
       <MentionConge demande={r} />
+      {r.continuite && r.status === 'pending' ? <MentionContinuite alerte={r.continuite} /> : null}
       {r.reason ? (
         <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-ink-muted">{r.reason}</p>
       ) : null}

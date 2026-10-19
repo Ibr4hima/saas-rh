@@ -2,8 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import type { AbsenceType } from '@teranga/contracts';
-import { peut } from '@teranga/contracts';
+import type { AbsenceType, Continuite } from '@teranga/contracts';
+import { CONTINUITE_LABELS, continuiteSchema, peut } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -15,6 +15,7 @@ import {
   EmptyState,
   Field,
   Input,
+  Select,
   TBody,
   THead,
   Table,
@@ -154,6 +155,13 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
                       {t.requiresDocument ? <Badge tone="orange">Justificatif</Badge> : null}
                       {t.resteJoignable ? <Badge tone="teal">Joignable</Badge> : null}
                       {t.motifConfidentiel ? <Badge tone="prune">Confidentiel</Badge> : null}
+                      {t.continuite === 'jamais' ? null : (
+                        <Badge tone="orange">
+                          {t.continuite === 'toujours'
+                            ? 'Continuité'
+                            : 'Continuité au-delà d’un jour'}
+                        </Badge>
+                      )}
                     </div>
                   </Td>
                   {peutGerer ? (
@@ -222,6 +230,7 @@ type BrouillonType = {
   allowsHours: boolean;
   /** Vide : sans plafond. */
   maxDaysPerRequest: string;
+  continuite: Continuite;
 };
 
 function FenetreType({
@@ -242,6 +251,7 @@ function FenetreType({
     motifConfidentiel: cible?.motifConfidentiel ?? false,
     allowsHours: cible?.allowsHours ?? false,
     maxDaysPerRequest: cible?.maxDaysPerRequest == null ? '' : String(cible.maxDaysPerRequest),
+    continuite: cible?.continuite ?? 'jamais',
   });
   const [erreur, setErreur] = useState<string | null>(null);
   const set = <K extends keyof BrouillonType>(k: K, v: BrouillonType[K]) =>
@@ -270,6 +280,7 @@ function FenetreType({
         // Ce qui se décompte du solde se prend à la journée.
         allowsHours: form.allowsHours && !decompte,
         maxDaysPerRequest: plafond === '' ? null : Number(plafond),
+        continuite: form.continuite,
       };
       return cible
         ? api(`/absence-types/${cible.id}`, { method: 'PATCH', body })
@@ -414,6 +425,21 @@ function FenetreType({
             />
             <span className="font-semibold text-ink-strong">Motif réservé à la DCH</span>
           </label>
+        </div>
+        <div className="mt-4 sm:max-w-[50%]">
+          <Field label="Continuité du service" htmlFor="typeContinuite">
+            <Select
+              id="typeContinuite"
+              value={form.continuite}
+              onChange={(e) => set('continuite', continuiteSchema.parse(e.target.value))}
+            >
+              {continuiteSchema.options.map((c) => (
+                <option key={c} value={c}>
+                  {CONTINUITE_LABELS[c]}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
       </ModalSection>
     </Modal>

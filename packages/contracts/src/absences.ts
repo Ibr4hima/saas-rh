@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { CompteursDemandes, TraitementView } from './acces';
+import type { CapaciteDemande, CompteursDemandes, TraitementView } from './acces';
 
 /** Contrats du module « congés & absences » (Lot 1). */
 
@@ -19,6 +19,21 @@ export const ABSENCE_FREQUENCY_LABELS: Record<AbsenceFrequency, string> = {
   none: 'Sans quota',
 };
 
+/**
+ * La continuité du service (ADR-0129) : une demande de ce type qui laisserait
+ * une délégation de demandes sans personne porte une alerte, et la DCH
+ * l'apprécie. Toujours (le congé annuel), au-delà d'un jour (l'absence
+ * ponctuelle), ou jamais (la maladie, la maternité : la force majeure).
+ */
+export const continuiteSchema = z.enum(['toujours', 'au_dela_d_un_jour', 'jamais']);
+export type Continuite = z.infer<typeof continuiteSchema>;
+
+export const CONTINUITE_LABELS: Record<Continuite, string> = {
+  toujours: 'Toujours',
+  au_dela_d_un_jour: 'Au-delà d’un jour',
+  jamais: 'Jamais',
+};
+
 const absenceTypeFields = z.object({
   name: z.string().trim().min(2).max(80),
   deductsBalance: z.boolean().default(false),
@@ -33,6 +48,8 @@ const absenceTypeFields = z.object({
   allowsHours: z.boolean().optional(),
   /** Au plus tant de jours ouvrés par demande ; null : pas de plafond. */
   maxDaysPerRequest: z.number().int().min(1).max(365).nullish(),
+  /** Omis, il reste ce qu'il était ; à la création, jamais. */
+  continuite: continuiteSchema.optional(),
 });
 
 type ChampsDuType = {
@@ -86,6 +103,7 @@ export interface AbsenceType {
   motifConfidentiel: boolean;
   allowsHours: boolean;
   maxDaysPerRequest: number | null;
+  continuite: Continuite;
   /** Nombre de demandes déjà déposées sur ce type : il ne se supprime pas à la légère. */
   usageCount: number;
 }
@@ -440,8 +458,58 @@ export interface AbsenceRequestView {
     rappeler: boolean;
     joindreJustificatif: boolean;
   };
+  /**
+   * En attente : les délégations que l'absence laisserait sans personne
+   * (ADR-0129). Null : aucune.
+   */
+  continuite: AlerteDeContinuite | null;
   createdAt: string;
 }
+
+// ---------- La continuité du service ----------
+
+/** Une autre personne déléguée, absente sur la période : en congé, ou en demande. */
+export interface AbsenceDUnePersonneDeleguee {
+  nom: string;
+  du: string;
+  au: string;
+  /** Demandée, pas encore validée. */
+  demandee: boolean;
+}
+
+/**
+ * Des délégations qui resteraient sans personne pendant l'absence demandée :
+ * les jours ouvrés où toutes les autres personnes déléguées sont absentes.
+ */
+export interface TrouDeContinuite {
+  /** Les délégations : leurs habilitations, dans l'ordre de la liste. */
+  capacites: CapaciteDemande[];
+  /** Le premier et le dernier jour ouvré sans personne (ISO). */
+  du: string;
+  au: string;
+  absences: AbsenceDUnePersonneDeleguee[];
+}
+
+export interface AlerteDeContinuite {
+  trous: TrouDeContinuite[];
+  /**
+   * La personne qui demande resterait seule à traiter les absences et
+   * congés : sa demande va à qui dirige la DCH, quels que soient son type et
+   * sa durée.
+   */
+  auDirecteur: boolean;
+}
+
+/** Ce qu'une demande d'absence laisserait sans personne, avant de l'envoyer. */
+export const continuiteDemandeeSchema = z.object({
+  employeeId: z.uuid(),
+  absenceTypeId: z.uuid(),
+  startDate: isoDate,
+  endDate: isoDate,
+  /** À l'heure : quelques heures d'un jour. */
+  aLHeure: z.boolean().optional(),
+});
+export type ContinuiteDemandeeInput = z.infer<typeof continuiteDemandeeSchema>;
 
 // ---------- Jours fériés du Sénégal ----------
 

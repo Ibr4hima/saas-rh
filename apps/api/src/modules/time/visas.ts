@@ -19,6 +19,7 @@ import {
   type Viseur,
 } from '../acces/dch';
 import { compterLesBloquees, libererLesConfiees, reconcilierLesDemandes } from '../acces/demandes';
+import { seuleAuxConges } from '../acces/continuite';
 import { DG } from '../people/chaine';
 import { DELAI_N1_JOURS_OUVRES } from './workdays';
 import { reconcilierLesEvaluations } from '../objectifs/evaluation-attendue';
@@ -112,6 +113,8 @@ interface DemandeCircuit {
   deposeeLe: Date | string;
   /** Le premier jour demandé (ISO) : le N+1 absent doit être rentré la veille. */
   debut: string | null;
+  /** Le dernier jour demandé (ISO) : la continuité du service se lit sur la période. */
+  fin: string | null;
   /** L'arrivée à la DCH : la fenêtre de 48 heures court depuis (null : pas encore notée). */
   aLaDCHLe: Date | string | null;
   /** Confiée aux backups avant la fin de la fenêtre (ADR-0128). */
@@ -206,7 +209,25 @@ export async function attendu(tx: Tx, demande: DemandeCircuit): Promise<Attendu 
       return leN1(n1);
     }
   }
-  const t = await traitantDCH(tx, demande, dch);
+  // La personne qui demande resterait seule à traiter les absences et congés
+  // pendant son absence : qui dirige la DCH apprécie la demande, quels que
+  // soient son type et sa durée (ADR-0129).
+  const t =
+    !demandeDuDirecteur &&
+    demande.debut &&
+    demande.fin &&
+    (await seuleAuxConges(tx, {
+      id: demande.id || null,
+      employeeId: demande.employeeId,
+      du: demande.debut,
+      au: demande.fin,
+    }))
+      ? {
+          valideurs: dch?.directeur ? [dch.directeur] : [],
+          parDelegationDe: null,
+          fenetre: null,
+        }
+      : await traitantDCH(tx, demande, dch);
   if (demandeDuDirecteur && t.valideurs.length === 0) {
     // Passée à ses membres, qui ne peuvent plus : elle revient au DG.
     return leN1(await n1De(tx, demande.employeeId));
@@ -224,11 +245,12 @@ export async function lireCircuit(tx: Tx, requestId: string): Promise<DemandeCir
     confiee_a_employee_id: string | null;
     created_at: string;
     start_date: string;
+    end_date: string;
     a_la_dch_le: string | null;
     ouverte_aux_backups_le: string | null;
   }>(sql`
     SELECT id, employee_id, status, current_level, confiee_a_employee_id, created_at::text,
-           start_date::text, a_la_dch_le, ouverte_aux_backups_le
+           start_date::text, end_date::text, a_la_dch_le, ouverte_aux_backups_le
       FROM absence_requests WHERE id = ${requestId}`);
   const r = rows[0];
   return r
@@ -240,6 +262,7 @@ export async function lireCircuit(tx: Tx, requestId: string): Promise<DemandeCir
         confieeAEmployeeId: r.confiee_a_employee_id,
         deposeeLe: r.created_at,
         debut: r.start_date,
+        fin: r.end_date,
         aLaDCHLe: r.a_la_dch_le,
         ouverteAuxBackupsLe: r.ouverte_aux_backups_le,
       }
@@ -437,6 +460,7 @@ export async function attenduPourLaReprise(
       confieeAEmployeeId: null,
       deposeeLe: new Date(),
       debut: null,
+      fin: null,
       aLaDCHLe: null,
       ouverteAuxBackupsLe: null,
     },
@@ -852,6 +876,7 @@ export async function quiViseraPour(
     confieeAEmployeeId: null,
     deposeeLe: new Date(),
     debut: null,
+    fin: null,
     aLaDCHLe: null,
     ouverteAuxBackupsLe: null,
   };

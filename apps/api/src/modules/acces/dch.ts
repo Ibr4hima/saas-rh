@@ -362,7 +362,8 @@ export interface Traitement {
   dch: DirectionDuPersonnel | null;
   /**
    * La fenêtre de 48 heures, quand la délégation a une personne principale
-   * en mesure de traiter (ADR-0128). Null : l'appel va à tous d'emblée.
+   * en mesure de traiter, ou une personne qui assure la suppléance (ADR-0128,
+   * ADR-0129). Null : l'appel va à tous d'emblée.
    */
   fenetre: FenetreDuPrincipal | null;
 }
@@ -373,8 +374,9 @@ export interface Traitement {
  *   1. le membre à qui le directeur l'a confiée, à la main, s'il le peut ;
  *   2. sinon, les membres habilités à ce type de demande qui le peuvent —
  *      tous prévenus. À plusieurs, la personne principale traite seule le
- *      temps de la fenêtre, puis avec les backups, qui traitent d'emblée
- *      quand la personne principale ne le peut pas (ADR-0128) ;
+ *      temps de la fenêtre, puis avec les backups (ADR-0128) ; la personne
+ *      principale indisponible, la première personne disponible parmi les
+ *      backups assure la suppléance (ADR-0129) ;
  *   3. sinon, le directeur du Capital Humain (en congé ou non : il n'y a
  *      personne après lui).
  *
@@ -427,7 +429,13 @@ export async function traitementDe(
     }
     const principalId =
       demande.attente && detenteurs.length > 1 ? await principalDe(tx, capacite) : null;
-    const principal = membres.find((m) => m.employeeId === principalId) ?? null;
+    // La personne principale indisponible (absente, à l'origine de la
+    // demande…), la première personne disponible dans l'ordre des
+    // délégations assure la suppléance, avec la fenêtre ; au retour de la
+    // personne principale, la suppléance cesse (ADR-0129).
+    const principal = principalId
+      ? (membres.find((m) => m.employeeId === principalId) ?? membres[0] ?? null)
+      : null;
     if (principal && demande.attente) {
       const backups = membres.filter((m) => m !== principal);
       const fenetre = await fenetreDe(tx, principal, backups, demande.attente);

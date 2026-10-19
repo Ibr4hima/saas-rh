@@ -17,6 +17,9 @@ import type {
   AgentSaisieView,
   AbsencePreview,
   AbsenceRequestView,
+  AlerteDeContinuite,
+  Continuite,
+  ContinuiteDemandeeInput,
   AnnulerAbsenceInput,
   AbsenceType,
   BalanceView,
@@ -37,6 +40,7 @@ import type {
   UpdateHolidayInput,
 } from '@teranga/contracts';
 import {
+  CAPACITE_INFOS,
   dansLaJournee,
   horsDeLaJournee,
   joursDHeures,
@@ -53,18 +57,30 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { holidayDedupeKey } from '../notifications/notifications.service';
-import { absence, accord, de, duAu, frDate, type Heures } from '../notifications/phrases';
+import {
+  absence,
+  accord,
+  de,
+  duAu,
+  enumerer,
+  frDate,
+  leLa,
+  type Heures,
+} from '../notifications/phrases';
 import { DG } from '../people/chaine';
 import { contratEchu, dernierContrat, typeDeContratAu } from '../people/en-activite';
 import { notifier } from '../notifications/notifier';
+import { alerteDeContinuite } from '../acces/continuite';
 import {
   detenteursDe,
   directionDuPersonnel,
+  joursFeries,
   membreDCH,
   nomDe,
   nomsDe,
   pasSurSoi,
   subordonnesDe,
+  type DirectionDuPersonnel,
 } from '../acces/dch';
 import {
   aTraiterPar,
@@ -102,6 +118,7 @@ type DefaultType = {
   motifConfidentiel?: boolean;
   allowsHours?: boolean;
   maxDaysPerRequest?: number;
+  continuite?: Continuite;
 };
 
 // La maternité s'ouvre à la naissance : ses jours ne se rechargent ni au mois
@@ -114,6 +131,7 @@ const DEFAULT_TYPES: DefaultType[] = [
     allowanceDays: 30,
     frequency: 'annual',
     requiresDocument: false,
+    continuite: 'toujours',
   },
   {
     name: 'Maladie',
@@ -156,6 +174,7 @@ const DEFAULT_TYPES: DefaultType[] = [
     requiresDocument: false,
     allowsHours: true,
     maxDaysPerRequest: 3,
+    continuite: 'au_dela_d_un_jour',
   },
 ];
 
@@ -354,6 +373,7 @@ export class AbsencesService {
             motifConfidentiel: d.motifConfidentiel ?? false,
             allowsHours: d.allowsHours ?? false,
             maxDaysPerRequest: d.maxDaysPerRequest ?? null,
+            continuite: d.continuite ?? 'jamais',
           });
         }
         rows = await this.selectTypes(tx);
@@ -378,6 +398,7 @@ export class AbsencesService {
           motifConfidentiel: input.motifConfidentiel ?? false,
           allowsHours: input.allowsHours ?? false,
           maxDaysPerRequest: input.maxDaysPerRequest ?? null,
+          continuite: input.continuite ?? 'jamais',
         }),
       );
     } catch (err) {
@@ -441,6 +462,7 @@ export class AbsencesService {
               input.maxDaysPerRequest === undefined
                 ? row.maxDaysPerRequest
                 : input.maxDaysPerRequest,
+            continuite: input.continuite ?? row.continuite,
           })
           .where(eq(t.absenceTypes.id, id));
       } catch (err) {
@@ -1442,6 +1464,7 @@ export class AbsencesService {
             deductsBalance: decompteDeLaDemande,
             requiresDocument: t.absenceTypes.requiresDocument,
             confidentiel: t.absenceTypes.motifConfidentiel,
+            continuite: t.absenceTypes.continuite,
           })
           .from(t.absenceRequests)
           .innerJoin(t.employees, eq(t.employees.id, t.absenceRequests.employeeId))
@@ -1482,6 +1505,7 @@ export class AbsencesService {
           deductsBalance: decompteDeLaDemande,
           requiresDocument: t.absenceTypes.requiresDocument,
           confidentiel: t.absenceTypes.motifConfidentiel,
+          continuite: t.absenceTypes.continuite,
         })
         .from(t.absenceRequests)
         .innerJoin(t.employees, eq(t.employees.id, t.absenceRequests.employeeId))
@@ -1565,6 +1589,30 @@ export class AbsencesService {
         );
       }
 
+      // La continuité du service (ADR-0129) : la demande laisserait une
+      // délégation sans personne. Qui l'apprécie pour la DCH motive un refus,
+      // et qui dirige la DCH apprend une validation qu'une autre personne a
+      // donnée.
+      const alerte = async () =>
+        alerteDeContinuite(tx, {
+          id: requestId,
+          employeeId: request.employeeId,
+          du: request.startDate,
+          au: request.endDate,
+          continuite: await this.continuiteDuType(tx, request.absenceTypeId),
+          jours: num(request.daysCount),
+        });
+      const exigerLeMotif = async () => {
+        if (input.decision !== 'rejected' || input.comment?.trim()) return;
+        if (!(await alerte())) return;
+        problem(
+          422,
+          'absence.motif_continuite',
+          'Indiquez le motif du refus',
+          'La demande laisserait une délégation sans personne : son refus se motive.',
+        );
+      };
+
       const viser = (level: number, parDelegationDe: string | null = null) =>
         tx.insert(t.absenceApprovals).values({
           id: uuidv7(),
@@ -1589,6 +1637,13 @@ export class AbsencesService {
       };
 
       if (att.etape === 'n1') {
+        if (input.decision === 'rejected') {
+          // Le N+1 qui traite aussi pour la DCH apprécie pour elle.
+          const suite = await attendu(tx, { ...demande, currentLevel: NIVEAU_DCH });
+          if (suite?.valideurs.some((v) => v.userId === user.userId) || estDirecteur) {
+            await exigerLeMotif();
+          }
+        }
         await viser(NIVEAU_N1);
         if (input.decision === 'rejected' || att.demandeDuDirecteur) {
           await clore(NIVEAU_N1);
@@ -1605,8 +1660,10 @@ export class AbsencesService {
         const aussiDCH = traiteAussi || suite?.dch?.directeur?.userId === user.userId;
         if (aussiDCH) {
           const pourLeCompteDe = traiteAussi ? (suite?.parDelegationDe?.employeeId ?? null) : null;
+          const trous = await alerte();
           await viser(NIVEAU_DCH, pourLeCompteDe);
           await clore(NIVEAU_DCH);
+          if (trous) await this.prevenirDuTrou(tx, user, requestId, trous, suite?.dch ?? null);
           return;
         }
         await reconcilierLeCircuit(tx, user.tenantId);
@@ -1614,9 +1671,92 @@ export class AbsencesService {
       }
 
       // L'étape de la DCH : son traitant, ou le directeur qui reprend la main.
+      await exigerLeMotif();
+      const trous = input.decision === 'approved' ? await alerte() : null;
       const pourLeCompteDe = estAttendu ? (att.parDelegationDe?.employeeId ?? null) : null;
       await viser(NIVEAU_DCH, pourLeCompteDe);
       await clore(NIVEAU_DCH);
+      if (trous) await this.prevenirDuTrou(tx, user, requestId, trous, att.dch);
+    });
+  }
+
+  /** Le réglage de continuité d'un type d'absence (ADR-0129). */
+  private async continuiteDuType(tx: Tx, typeId: string): Promise<Continuite> {
+    const [type] = await tx
+      .select({ continuite: t.absenceTypes.continuite })
+      .from(t.absenceTypes)
+      .where(eq(t.absenceTypes.id, typeId))
+      .limit(1);
+    return (type?.continuite as Continuite | undefined) ?? 'jamais';
+  }
+
+  /**
+   * Validée malgré l'alerte par une autre personne : qui dirige la DCH apprend
+   * le trou, pour réorganiser sa direction s'il le faut (ADR-0129).
+   */
+  private async prevenirDuTrou(
+    tx: Tx,
+    user: SessionUser,
+    requestId: string,
+    alerte: AlerteDeContinuite,
+    dch: DirectionDuPersonnel | null,
+  ): Promise<void> {
+    const directeur = dch?.directeur;
+    if (!directeur || directeur.userId === user.userId) return;
+    const d = await lireDemande(tx, requestId);
+    if (!d) return;
+    const a = absence(d.type);
+    const delegations = enumerer(
+      alerte.trous
+        .flatMap((tr) => tr.capacites)
+        .map((c) => {
+          const libelle = CAPACITE_INFOS[c].libelle;
+          return `les ${libelle[0]!.toLowerCase()}${libelle.slice(1)}`;
+        }),
+    );
+    const du = alerte.trous.map((tr) => tr.du).sort()[0]!;
+    const au = alerte.trous
+      .map((tr) => tr.au)
+      .sort()
+      .at(-1)!;
+    await notifier(tx, d.tenantId, directeur.userId, {
+      type: 'delegation',
+      sujet: 'dch.delegations',
+      title: `${leLa(a)}${a.nom} ${de(d.nom)} est ${accord('validé', a)} : plus personne pour ${delegations} ${duAu(du, au)}`,
+      link: '/moi/delegations',
+      dedupeKey: `continuite:${requestId}`,
+    });
+  }
+
+  /**
+   * Ce que la demande laisserait sans personne, avant de l'envoyer : le
+   * formulaire le dit à qui la pose (ADR-0129). L'agent pour soi ; qui traite
+   * les congés, pour l'agent dont la demande se saisit.
+   */
+  async continuitePrevue(
+    user: SessionUser,
+    input: ContinuiteDemandeeInput,
+  ): Promise<AlerteDeContinuite | null> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const self = await this.selfEmployeeId(tx, user);
+      if (self !== input.employeeId && !(await this.gereLesConges(tx, user))) {
+        problem(403, 'absence.self_only', 'Vous ne pouvez poser une demande que pour vous-même');
+      }
+      const au = input.aLHeure ? input.startDate : input.endDate;
+      if (au < input.startDate) return null;
+      const jours = input.aLHeure
+        ? 0.5
+        : countWorkdays(input.startDate, au, await joursFeries(tx)).workingDays;
+      return avecMemoire(async () =>
+        alerteDeContinuite(tx, {
+          id: null,
+          employeeId: input.employeeId,
+          du: input.startDate,
+          au,
+          continuite: await this.continuiteDuType(tx, input.absenceTypeId),
+          jours,
+        }),
+      );
     });
   }
 
@@ -2201,6 +2341,7 @@ export class AbsencesService {
         motifConfidentiel: t.absenceTypes.motifConfidentiel,
         allowsHours: t.absenceTypes.allowsHours,
         maxDaysPerRequest: t.absenceTypes.maxDaysPerRequest,
+        continuite: t.absenceTypes.continuite,
       })
       .from(t.absenceTypes)
       .where(isNull(t.absenceTypes.deletedAt))
@@ -2218,6 +2359,7 @@ export class AbsencesService {
       ...r,
       allowanceDays: r.allowanceDays == null ? null : Number(r.allowanceDays),
       frequency: r.frequency as AbsenceType['frequency'],
+      continuite: r.continuite as Continuite,
       usageCount: Number(usages.find((u) => u.typeId === r.id)?.n ?? 0),
     }));
   }
@@ -2319,6 +2461,7 @@ export class AbsencesService {
       deductsBalance: boolean;
       requiresDocument: boolean;
       confidentiel: boolean;
+      continuite: string;
     }>,
   ): Promise<AbsenceRequestView[]> {
     if (rows.length === 0) return [];
@@ -2418,6 +2561,7 @@ export class AbsencesService {
       deductsBalance,
       requiresDocument,
       confidentiel,
+      continuite: continuiteDuType,
     } of rows) {
       const att = await attendu(tx, {
         id: request.id,
@@ -2427,6 +2571,7 @@ export class AbsencesService {
         confieeAEmployeeId: request.confieeAEmployeeId,
         deposeeLe: request.createdAt,
         debut: request.startDate,
+        fin: request.endDate,
         aLaDCHLe: request.aLaDCHLe,
         ouverteAuxBackupsLe: request.ouverteAuxBackupsLe,
       });
@@ -2584,6 +2729,16 @@ export class AbsencesService {
             : null,
         repriseDemandee: valide ? request.repriseDemandee : null,
         repriseAttendDe,
+        continuite: enAttente
+          ? await alerteDeContinuite(tx, {
+              id: request.id,
+              employeeId: request.employeeId,
+              du: request.startDate,
+              au: request.endDate,
+              continuite: continuiteDuType as Continuite,
+              jours: num(request.daysCount),
+            })
+          : null,
         gestes: {
           annuler: sienne ? request.status === 'pending' || aVenir : gere && aVenir,
           demanderReprise:

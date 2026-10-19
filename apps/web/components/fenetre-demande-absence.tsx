@@ -11,9 +11,11 @@ import {
   type AbsencePreview,
   type AbsenceType,
   type AgentSaisieView,
+  type AlerteDeContinuite,
   type BalanceView,
 } from '@teranga/contracts';
 import { Button, cn, Field, Input, Select, Skeleton, Textarea } from '@teranga/ui';
+import { AlerteContinuite } from './continuite';
 import { Donnee } from './fiche';
 import { Icon } from './icons';
 import { Modal, ModalGrid, ModalSection } from './modal';
@@ -123,6 +125,18 @@ export function FenetreDemandeAbsence({
       }),
     enabled: Boolean(startDate && fin && fin >= startDate),
   });
+  // Ce que la demande laisserait sans personne (ADR-0129) : elle part quand
+  // même, et la DCH l'apprécie.
+  const continuite = useQuery({
+    queryKey: ['absence-continuite', employeeId, typeId, startDate, fin, parHeures],
+    queryFn: async () =>
+      (await api<AlerteDeContinuite | null>('/absence-continuite', {
+        method: 'POST',
+        body: { employeeId, absenceTypeId: typeId, startDate, endDate: fin, aLHeure: parHeures },
+      })) ?? null,
+    enabled: Boolean(employeeId && typeId && startDate && fin && fin >= startDate),
+  });
+  const nomDeLAgent = pourAutrui ? agents.data?.find((a) => a.id === agentId)?.nom : undefined;
   // Le solde de chaque année touchée : un congé du 28 décembre au 8 janvier
   // se retranche pour partie du droit de chacune.
   const parts = preview.data?.parAnnee ?? [];
@@ -465,6 +479,11 @@ export function FenetreDemandeAbsence({
             </Field>
           </ModalGrid>
         )}
+        {continuite.data && !periodeInvalide ? (
+          <div className="mt-4">
+            <AlerteContinuite alerte={continuite.data} qui={nomDeLAgent} />
+          </div>
+        ) : null}
       </ModalSection>
 
       <ModalSection title="Motif">
