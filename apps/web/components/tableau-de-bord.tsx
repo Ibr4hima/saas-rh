@@ -344,9 +344,9 @@ function FicheDirection({
  *
  * Les dates sont à intervalles ÉGAUX : l'espacement dit l'ordre, la mention
  * « dans 49 j » dit la distance. Rien n'est écrit au-dessus des pastilles :
- * le prochain férié se reconnaît à son aplat bleu et à son double anneau, et
- * le passé à son gris ; un intitulé par-dessus ne faisait que répéter ce que
- * la couleur montrait déjà.
+ * le prochain férié se reconnaît à son aplat bleu, et le passé à son gris ;
+ * un intitulé par-dessus ne faisait que répéter ce que la couleur montrait
+ * déjà.
  */
 function Frise({ jours }: { jours: DashboardHoliday[] }) {
   const passes = jours.filter((h) => ecartJours(h.day) < 0).length;
@@ -389,15 +389,19 @@ function DateFerie({
   return (
     <li className="relative flex min-w-0 flex-1 flex-col items-center px-1 pt-2 text-center sm:px-3">
       {/* Un carré aux angles adoucis plutôt qu'un rond : la date y tient
-          sur deux lignes sans que le mois vienne toucher le bord. */}
+          sur deux lignes sans que le mois vienne toucher le bord. L'anneau,
+          à la couleur de la carte, découpe le rail autour d'elle : le trait
+          s'arrête net au lieu de la traverser. Un anneau plutôt qu'une
+          bordure, qui agrandirait la pastille et casserait l'alignement des
+          dates sur le rail. */}
       <span
         className={cn(
-          'flex size-[52px] shrink-0 flex-col items-center justify-center rounded-bloc border transition-colors duration-200',
+          'flex size-[52px] shrink-0 flex-col items-center justify-center rounded-bloc border ring-4 ring-surface transition-colors duration-200',
           prochain
-            ? 'ferie-prochain border-transparent bg-primary text-primary-ink'
+            ? 'border-transparent bg-primary text-primary-ink'
             : passe
-              ? 'ferie-neutre border-line-soft bg-bg text-ink-muted'
-              : 'ferie-neutre border-line bg-surface text-ink-strong',
+              ? 'border-line-soft bg-bg text-ink-muted'
+              : 'border-line bg-surface text-ink-strong',
         )}
       >
         <span className="text-[17px] leading-none font-bold" style={TABULAIRE}>
