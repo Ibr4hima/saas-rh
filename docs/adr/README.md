@@ -143,3 +143,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0135](0135-disponibilite.md)                         | La disponibilité, trois ans au plus, renouvelable ; l'agent demande le renouvellement   | acceptée                                    |
 | [0136](0136-reprise-au-plus-trois-ans.md)             | La disponibilité dure trois ans au plus : les décisions et l'attestation de reprise     | acceptée                                    |
 | [0137](0137-documents-demandables.md)                 | « Demander un document » n'offre à l'agent que les documents de sa cible                | acceptée                                    |
+| [0138](0138-cadre-du-focus-au-clavier.md)             | Le cadre du focus ne paraît qu'à la navigation au clavier                               | acceptée                                    |

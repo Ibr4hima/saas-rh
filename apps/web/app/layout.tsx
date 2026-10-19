@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
+import { SCRIPT_CLAVIER } from '../components/clavier';
 import { SCRIPT_AMORCAGE } from '../components/preferences';
 import { logoInstalle } from '../lib/logo-installe';
 import { Providers } from './providers';
@@ -35,6 +36,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           nonce={nonce}
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: SCRIPT_AMORCAGE }}
+        />
+        {/* Le cadre du focus ne paraît qu'à la navigation au clavier (ADR-0138). */}
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: SCRIPT_CLAVIER }}
         />
       </head>
       <body>
