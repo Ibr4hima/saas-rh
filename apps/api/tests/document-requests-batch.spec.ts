@@ -386,7 +386,7 @@ describe('le suivi, les demandes nouvellement traitées (ADR-0048)', () => {
     const [refusee] = (await service.create(awa, { docTypes: ['attestation_conge'] })).ids as [
       string,
     ];
-    const [enCours] = (await service.create(awa, { docTypes: ['certificat_travail'] })).ids as [
+    const [enCours] = (await service.create(awa, { docTypes: ['attestation_revenu'] })).ids as [
       string,
     ];
     await service.batchAdvance(rh, { ids: [prete], status: 'ready' });

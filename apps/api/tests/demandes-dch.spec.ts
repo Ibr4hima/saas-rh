@@ -175,6 +175,18 @@ beforeAll(async () => {
   awa = await agent('Awa', uDCH);
   khady = await agent('Khady', uDCH);
   moussa = await agent('Moussa', uDSID);
+  // Un stage, puis un CDI : Moussa demande ce qu'un emploi et un stage
+  // ouvrent, dans sa cible (ADR-0137).
+  for (const [type, debut, fin] of [
+    ['stage', '2023-01-02', '2023-06-30'],
+    ['cdi', '2023-09-01', null],
+  ]) {
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [randomUUID(), tenantId, moussa.employeeId, type, debut, fin],
+    );
+  }
 });
 
 beforeEach(async () => {
@@ -353,16 +365,16 @@ describe('les demandes de documents', () => {
     await habiliter(khady, 'demandes.documents.domiciliation_bancaire');
     const ids = (
       await documents.create(moussa.session, {
-        docTypes: ['attestation_travail', 'domiciliation_bancaire', 'certificat_travail'],
+        docTypes: ['attestation_travail', 'domiciliation_bancaire', 'attestation_revenu'],
         note: 'Dossier de visa',
       })
     ).ids;
     expect(ids).toHaveLength(3);
-    const [attestation, domiciliation, certificat] = ids as [string, string, string];
+    const [attestation, domiciliation, revenu] = ids as [string, string, string];
     expect(await appels('document', attestation)).toEqual(['dch:Awa']);
     expect(await appels('document', domiciliation)).toEqual(['dch:Khady']);
-    // Personne n'est habilité aux certificats : ils restent au directeur.
-    expect(await appels('document', certificat)).toEqual(['dch:Mariama']);
+    // Aucune délégation pour les attestations de revenu : elles restent à qui dirige la DCH.
+    expect(await appels('document', revenu)).toEqual(['dch:Mariama']);
     expect(
       await codeOf(() => documents.advance(awa.session, domiciliation, { status: 'processing' })),
     ).toBe('demandes.pas_traitant');
@@ -372,8 +384,8 @@ describe('les demandes de documents', () => {
       [ids],
     );
     expect(rows).toEqual([
+      { doc_types: ['attestation_revenu'], note: 'Dossier de visa' },
       { doc_types: ['attestation_travail'], note: 'Dossier de visa' },
-      { doc_types: ['certificat_travail'], note: 'Dossier de visa' },
       { doc_types: ['domiciliation_bancaire'], note: 'Dossier de visa' },
     ]);
   });
@@ -539,7 +551,7 @@ describe('les demandes de documents', () => {
       docTypes: [
         'domiciliation_bancaire',
         'attestation_revenu',
-        'certificat_travail',
+        'decision_disponibilite',
         'attestation_conge',
       ],
     });
@@ -659,25 +671,26 @@ describe('les demandes de documents', () => {
   });
 
   it('un membre ne voit que les documents qui lui sont délégués, ni la demande à confier de qui dirige la DCH', async () => {
-    await habiliter(awa, 'demandes.documents.certificat_travail');
-    const demande = async (qui: Agent, doc: 'attestation_travail' | 'certificat_travail') =>
+    await habiliter(awa, 'demandes.documents.attestation_revenu');
+    const demande = async (qui: Agent, doc: 'attestation_travail' | 'attestation_revenu') =>
       ((await documents.create(qui.session, { docTypes: [doc] })).ids as [string])[0];
     const deMariama = await demande(mariama, 'attestation_travail');
-    const certificat = await demande(moussa, 'certificat_travail');
+    const revenu = await demande(moussa, 'attestation_revenu');
     const attestation = await demande(moussa, 'attestation_travail');
     const sonAttestation = await demande(awa, 'attestation_travail');
-    const sonCertificat = await demande(awa, 'certificat_travail');
+    const sonRevenu = await demande(awa, 'attestation_revenu');
     const file = async (qui: SessionUser) =>
       new Map((await documents.list(qui, {})).map((r) => [r.id, r]));
 
-    // Awa traite les certificats : les attestations, même la sienne, ne sont
-    // pas dans sa file ; son propre certificat y est, sans geste.
+    // Awa traite les attestations de revenu : les attestations de travail,
+    // même la sienne, ne sont pas dans sa file ; sa propre attestation de
+    // revenu y est, sans geste.
     const deAwa = await file(awa.session);
-    expect([...deAwa.keys()].sort()).toEqual([certificat, sonCertificat].sort());
-    expect(deAwa.get(certificat)?.canAdvance).toBe(true);
-    expect(deAwa.get(sonCertificat)?.canAdvance).toBe(false);
+    expect([...deAwa.keys()].sort()).toEqual([revenu, sonRevenu].sort());
+    expect(deAwa.get(revenu)?.canAdvance).toBe(true);
+    expect(deAwa.get(sonRevenu)?.canAdvance).toBe(false);
     expect((await documents.list(awa.session, { scope: 'mine' })).map((r) => r.id).sort()).toEqual(
-      [sonAttestation, sonCertificat].sort(),
+      [sonAttestation, sonRevenu].sort(),
     );
 
     // « À confier » ne se dit qu'à Mariama, qui dirige la DCH et l'a
@@ -691,7 +704,7 @@ describe('les demandes de documents', () => {
     expect((await file(mariama.session)).get(attestation)?.canAdvance).toBe(true);
 
     // Prête, une attestation se corrige par qui traite les attestations :
-    // pas au titre des certificats, ni par l'administrateur, qui lit.
+    // pas au titre des attestations de revenu, ni par le compte admin, qui lit.
     await documents.advance(mariama.session, attestation, { status: 'processing' });
     await documents.advance(mariama.session, attestation, {
       status: 'ready',

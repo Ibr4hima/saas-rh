@@ -3,12 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { DocumentDeLaListe, DocumentRequestView, MyEmployeeView } from '@teranga/contracts';
-import {
-  DOCUMENTS_DEMANDABLES,
-  documentsEnCours,
-  REQUESTABLE_DOC_LABELS,
+import type {
+  DocumentDeLaListe,
+  DocumentDemandable,
+  DocumentRequestView,
+  MyEmployeeView,
 } from '@teranga/contracts';
+import { documentsEnCours, REQUESTABLE_DOC_LABELS } from '@teranga/contracts';
 import { Button } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
 import { Icon } from '../../../../components/icons';
@@ -20,9 +21,10 @@ import { compte } from '../../../../lib/mots';
    « Demander un document » : ce que l'agent demande à la Direction du
    Capital Humain, dans la liste de la DCH (ADR-0084). La page tient en un
    bloc, comme « Générer des documents » : on coche un ou plusieurs documents
-   dans la liste, on relit ce qui part, on envoie (ADR-0113). L'avancement se
-   suit dans « Suivi de mes demandes » ; ce que l'agent fournit a sa page,
-   « Joindre un document ».
+   dans la liste, on relit ce qui part, on envoie (ADR-0113). La liste n'offre
+   que les documents de la cible de l'agent : son contrat, son âge, son genre
+   en décident (ADR-0137). L'avancement se suit dans « Suivi de mes
+   demandes » ; ce que l'agent fournit a sa page, « Joindre un document ».
 */
 
 /** « a, b et c » — la virgule pour la liste, « et » pour le dernier. */
@@ -42,6 +44,11 @@ export default function DemanderUnDocumentPage() {
     queryKey: ['me-employee'],
     queryFn: () => api<MyEmployeeView>('/me/employee'),
     retry: false,
+  });
+  // Les documents de sa cible, dans l'ordre de la liste.
+  const demandables = useQuery({
+    queryKey: ['document-requests', 'demandables'],
+    queryFn: () => api<DocumentDemandable[]>('/document-requests/demandables'),
   });
   const demandes = useQuery({
     // scope=mine : l'espace personnel reste personnel même pour un membre RH.
@@ -122,13 +129,13 @@ export default function DemanderUnDocumentPage() {
         <ListeDesDocuments
           libelle="Documents à demander"
           invite="Choisir un ou plusieurs documents"
-          documents={DOCUMENTS_DEMANDABLES}
+          documents={demandables.data ?? []}
           multiple
           resume={(n) => compte(n, 'document')}
           choisis={choisis}
           mention={(d) => (enCours.has(d) ? 'En cours' : null)}
           onChoisir={basculer}
-          disabled={!moi.data}
+          disabled={!moi.data || !demandables.data}
         />
       </Etape>
       {erreur ? (

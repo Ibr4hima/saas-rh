@@ -4,19 +4,23 @@
  * de le générer pour un autre. Une attestation de travail ne se délivre pas
  * pour un stage, ni un certificat de travail pour un dossier en activité ;
  * le congé de maternité suppose le genre féminin, le départ à la retraite
- * 40 ans au moins et un CDI ou un CDD (ADR-0131).
+ * 40 ans au moins et un CDI ou un CDD (ADR-0131). « Demander un document »
+ * n'offre à l'agent que les documents de sa cible (ADR-0137).
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SessionUser } from '@teranga/contracts';
 import { CAPACITES_DELEGABLES } from '@teranga/contracts';
+import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
+import { DocumentRequestsService } from '../src/modules/docs/document-requests.service';
 import { AttestationService } from '../src/modules/documents/attestation.service';
 import { GenerationService } from '../src/modules/documents/generation.service';
+import { NotificationsService } from '../src/modules/notifications/notifications.service';
 import { AbsencesService } from '../src/modules/time/absences.service';
 
 const env = loadEnv();
@@ -291,5 +295,95 @@ describe('qui voit la cible', () => {
       'auth.forbidden',
     );
     expect(await codeOf(() => service.agents(dch, 'contrat_cdi', ''))).toBe('documents.sans_agent');
+  });
+});
+
+describe('les documents qu’un agent demande (ADR-0137)', () => {
+  const agents = ['awa', 'moussa', 'binta', 'khady', 'samba'] as const;
+  const comptes = {} as Record<(typeof agents)[number], SessionUser>;
+  let demandes: DocumentRequestsService;
+
+  beforeAll(async () => {
+    demandes = new DocumentRequestsService(
+      db,
+      new NotificationsService(db),
+      new EncryptionService(),
+    );
+    for (const cle of agents) {
+      const userId = randomUUID();
+      await raw(
+        `INSERT INTO users (id, email, password_hash, given_name, family_name)
+         VALUES ($1, $2, 'x', $3, 'Cibles')`,
+        [userId, `cibles-agent-${cle}-${userId}@test.local`, cle],
+      );
+      await raw(
+        `UPDATE persons SET user_id = $1 WHERE id = (SELECT person_id FROM employees WHERE id = $2)`,
+        [userId, employes[cle]],
+      );
+      comptes[cle] = session(userId, {});
+    }
+  });
+
+  afterAll(async () => {
+    const userIds = Object.values(comptes).map((c) => c.userId);
+    await raw(`UPDATE persons SET user_id = NULL WHERE user_id = ANY($1)`, [userIds]);
+    await raw(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+  });
+
+  it('la liste n’offre que les documents de sa cible : le contrat, le genre, l’âge, le stage en décident', async () => {
+    const liste = (cle: (typeof agents)[number]) => demandes.demandables(comptes[cle]);
+    const emploi = [
+      'domiciliation_bancaire',
+      'decision_disponibilite',
+      'decision_renouvellement_disponibilite',
+      'declaration_mouvement',
+    ];
+    // Awa : un CDI, 42 ans, le genre féminin ; ni stage, ni départ.
+    expect(await liste('awa')).toEqual([
+      'attestation_conge',
+      'attestation_travail',
+      'attestation_reprise_service',
+      'attestation_reprise_disponibilite',
+      'attestation_depart_retraite',
+      'attestation_cessation',
+      'attestation_revenu',
+      ...emploi,
+    ]);
+    // Moussa : un CDI, 31 ans, le genre masculin : ni la maternité, ni la retraite.
+    expect(await liste('moussa')).toEqual([
+      'attestation_conge',
+      'attestation_travail',
+      'attestation_reprise_disponibilite',
+      'attestation_revenu',
+      ...emploi,
+    ]);
+    // Binta, en stage : l'attestation de stage seule.
+    expect(await liste('binta')).toEqual(['attestation_stage']);
+    // Khady, en CDI après son stage : l'attestation de stage aussi.
+    expect(await liste('khady')).toContain('attestation_stage');
+    // Samba, en détachement : un contrat de travail, mais ni CDI ni CDD.
+    expect(await liste('samba')).toEqual([
+      'attestation_conge',
+      'attestation_travail',
+      'attestation_reprise_disponibilite',
+      'attestation_revenu',
+    ]);
+  });
+
+  it('le serveur refuse un document hors de sa cible, et dit pourquoi', async () => {
+    const refus = (cle: (typeof agents)[number], doc: string) =>
+      codeOf(() => demandes.create(comptes[cle], { docTypes: [doc] as never }));
+    expect(await refus('binta', 'attestation_travail')).toBe('documents.stage');
+    expect(await refus('moussa', 'attestation_cessation')).toBe('documents.genre');
+    expect(await refus('moussa', 'attestation_depart_retraite')).toBe('documents.age');
+    expect(await refus('moussa', 'attestation_stage')).toBe('documents.sans_stage');
+    expect(await refus('moussa', 'certificat_travail')).toBe('documents.en_activite');
+    expect(await refus('samba', 'domiciliation_bancaire')).toBe('documents.contrat');
+    // Rien n'est parti.
+    const { rows } = await raw(
+      `SELECT count(*)::int AS n FROM document_requests WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    expect(rows[0].n).toBe(0);
   });
 });

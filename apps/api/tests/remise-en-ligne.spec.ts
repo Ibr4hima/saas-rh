@@ -131,6 +131,7 @@ beforeEach(async () => {
   await raw(`DELETE FROM habilitations WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM assignments WHERE tenant_id = $1`, [tenantId]);
   await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
+  await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM employees WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM persons WHERE tenant_id = $1`, [tenantId]);
 
@@ -152,6 +153,12 @@ beforeEach(async () => {
       `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on, status)
        VALUES ($1,$2,$3,$4,'2024-01-01','active')`,
       [employeeId, tenantId, personId, matricule],
+    );
+    // Un CDI : la domiciliation bancaire est dans la cible de chaque agent (ADR-0137).
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date)
+       VALUES ($1,$2,$3,'cdi','2024-01-01')`,
+      [randomUUID(), tenantId, employeeId],
     );
   }
   // Ibrahima dirige la DCH ; Khady y traite les attestations de travail.
@@ -181,6 +188,7 @@ afterAll(async () => {
     'habilitations',
     'assignments',
     'org_units',
+    'contracts',
     'employees',
     'persons',
     'user_tenant_memberships',

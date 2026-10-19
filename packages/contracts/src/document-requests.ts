@@ -137,6 +137,7 @@ export const estDocumentDeLaDch = (doc: string): doc is DocumentDeLaDch =>
 /** Ce qu'un agent demande : la liste, hors ce que la DCH établit d'elle-même. */
 export const documentDemandableSchema = requestableDocSchema.exclude([...DOCUMENTS_DE_LA_DCH]);
 export const DOCUMENTS_DEMANDABLES = documentDemandableSchema.options;
+export type DocumentDemandable = (typeof DOCUMENTS_DEMANDABLES)[number];
 
 /** Ce que la DCH saisit avant de générer un document : le dossier ne le porte pas. */
 export type Saisie = 'salaire' | 'categorie' | 'debut' | 'fin' | 'depart' | 'reprise';

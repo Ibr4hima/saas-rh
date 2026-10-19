@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import type { DocumentGenere, DocumentSansAgent } from './document-requests';
+import {
+  DOCUMENTS_DEMANDABLES,
+  type DocumentDemandable,
+  type DocumentGenere,
+  type DocumentSansAgent,
+} from './document-requests';
 import type { ContractType, EmployeeStatus, Gender } from './employees';
 
 /*
@@ -75,6 +80,25 @@ export const CIBLES_DES_DOCUMENTS: Record<DocumentAvecAgent, CibleDuDocument> = 
   certificat_travail: { dossiers: 'inactifs', contratDeTravail: true },
 };
 
+/** Un CDI ou un CDD en cours : ce que supposent les documents d'un emploi à l'APIX. */
+const SOUS_CDI_OU_CDD: CibleDuDocument = { dossiers: 'en_activite', contrats: ['cdi', 'cdd'] };
+
+/**
+ * À qui chaque document se demande (ADR-0137) : « Demander un document »
+ * n'offre à l'agent que les documents de sa cible, et le serveur refuse les
+ * autres. Un document qui se génère pour un agent garde la cible de
+ * « Générer des documents » ; ceux que la DCH renseigne sur une fiche
+ * reçoivent la leur : la domiciliation bancaire, les décisions de
+ * disponibilité et la déclaration de mouvement supposent un CDI ou un CDD.
+ */
+export const CIBLES_DES_DEMANDES: Record<DocumentDemandable, CibleDuDocument> = {
+  ...CIBLES_DES_DOCUMENTS,
+  domiciliation_bancaire: SOUS_CDI_OU_CDD,
+  decision_disponibilite: SOUS_CDI_OU_CDD,
+  decision_renouvellement_disponibilite: SOUS_CDI_OU_CDD,
+  declaration_mouvement: SOUS_CDI_OU_CDD,
+};
+
 /** Ce qui écarte un agent de la cible d'un document : le code du refus. */
 export type HorsCible =
   'not_active' | 'en_activite' | 'stage' | 'contrat' | 'sans_stage' | 'genre' | 'age';
@@ -92,6 +116,10 @@ export function horsCible(cible: CibleDuDocument, s: SituationDeLAgent): HorsCib
   if (cible.ageMin !== undefined && (s.age === null || s.age < cible.ageMin)) return 'age';
   return null;
 }
+
+/** Les documents qu'un agent peut demander, dans l'ordre de la liste. */
+export const documentsDemandablesPar = (s: SituationDeLAgent): DocumentDemandable[] =>
+  DOCUMENTS_DEMANDABLES.filter((doc) => horsCible(CIBLES_DES_DEMANDES[doc], s) === null);
 
 /** Un agent de la cible, tel que « Générer des documents » le propose. */
 export interface AgentDeLaCible {

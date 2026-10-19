@@ -9,6 +9,7 @@ import type {
   CreateDocumentRequestInput,
   CreateDocumentRequestResult,
   DeposerFichierInput,
+  DocumentDemandable,
   DocumentRequestStatus,
   DocumentRequestView,
   FichierRemisView,
@@ -18,8 +19,11 @@ import type {
 } from '@teranga/contracts';
 import {
   peut,
+  CIBLES_DES_DEMANDES,
   DOC_REQUEST_STATUS_LABELS,
+  documentsDemandablesPar,
   documentsEnCours,
+  horsCible,
   FICHIERS_REMIS_MAX,
   MAX_FICHIER_REMIS_BYTES,
   OPEN_DOCUMENT_REQUEST_STATUSES,
@@ -40,6 +44,7 @@ import { accord, bulletins, de, deBulletins, DOCUMENT } from '../notifications/p
 import { periodeDu } from './bulletin';
 import { agentDuCompte, detenteursDe, directionDuPersonnel, joursFeries } from '../acces/dch';
 import { heuresOuvreesEntre } from '../time/heures-ouvrees';
+import { refuserHorsCible, situationDuDossier } from '../documents/cibles';
 import {
   attenteDe,
   capaciteDesDocuments,
@@ -172,6 +177,17 @@ export class DocumentRequestsService {
         );
       }
 
+      // Chaque document se demande dans sa cible (ADR-0137) : la liste n'offre
+      // que ceux-là, le serveur refuse les autres. Un document retiré n'en a
+      // pas : seule une demande d'avant le porte.
+      const situation = await situationDuDossier(tx, self.employeeId);
+      for (const doc of docTypes) {
+        if (!situation || !(doc in CIBLES_DES_DEMANDES)) continue;
+        const cible = CIBLES_DES_DEMANDES[doc];
+        const raison = horsCible(cible, situation);
+        if (raison) refuserHorsCible(doc, cible, situation, raison);
+      }
+
       await uneDemandeALaFois(tx, self.employeeId);
       const ouvertes = await tx
         .select({ status: t.documentRequests.status, docTypes: t.documentRequests.docTypes })
@@ -210,6 +226,18 @@ export class DocumentRequestsService {
       }
     });
     return { ids };
+  }
+
+  /**
+   * Les documents que l'agent peut demander (ADR-0137) : ceux de sa cible,
+   * dans l'ordre de la liste. Sans dossier, aucun.
+   */
+  async demandables(user: SessionUser): Promise<DocumentDemandable[]> {
+    return this.db.withTenant(ctxOf(user), async (tx) => {
+      const soi = await this.selfEmployee(tx, user);
+      const situation = soi ? await situationDuDossier(tx, soi.employeeId) : null;
+      return situation ? documentsDemandablesPar(situation) : [];
+    });
   }
 
   /**

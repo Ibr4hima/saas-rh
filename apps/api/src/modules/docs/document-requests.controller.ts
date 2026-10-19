@@ -60,6 +60,12 @@ export class DocumentRequestsController {
     return this.requests.create(req.sessionUser, body);
   }
 
+  /** Les documents que l'agent peut demander : ceux de sa cible (ADR-0137). */
+  @Get('document-requests/demandables')
+  demandables(@Req() req: AuthenticatedRequest) {
+    return this.requests.demandables(req.sessionUser);
+  }
+
   /** File RH (tout le tenant) ou historique personnel selon le rôle. */
   @Get('document-requests')
   list(

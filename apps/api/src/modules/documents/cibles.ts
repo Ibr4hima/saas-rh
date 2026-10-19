@@ -8,6 +8,7 @@ import {
   type CibleDuDocument,
   type ContractType,
   type DocumentAvecAgent,
+  type DocumentDemandable,
   type EmployeeStatus,
   type Gender,
   type HorsCible,
@@ -18,10 +19,10 @@ import type { Tx } from '../../db/tenant-db';
 import { rechercheDesAgents } from '../people/recherche';
 
 /*
- * La cible de chaque document (ADR-0130) : les agents que « Générer des
- * documents » propose, et le refus de générer pour un autre. La règle vit au
- * contrat, partagée avec la page ; ici se lit, au dossier, la situation de
- * chaque agent.
+ * La cible de chaque document (ADR-0130, ADR-0137) : les agents que
+ * « Générer des documents » propose, les documents qu'un agent demande, et le
+ * refus pour un autre. La règle vit au contrat, partagée avec les pages ; ici
+ * se lit, au dossier, la situation de chaque agent.
  */
 
 type Ligne = {
@@ -115,9 +116,18 @@ export async function agentsDeLaCible(
     }));
 }
 
+/** La situation du dossier d'un agent ; null : pas de dossier. */
+export async function situationDuDossier(
+  tx: Tx,
+  employeeId: string,
+): Promise<SituationDeLAgent | null> {
+  const [ligne] = await lireLesSituations(tx, sql`e.id = ${employeeId}`);
+  return ligne ? situationDe(ligne) : null;
+}
+
 /** Le refus, en le disant : le titre nomme le document, le détail la règle. */
-function refuser(
-  doc: DocumentAvecAgent,
+export function refuserHorsCible(
+  doc: DocumentDemandable,
   cible: CibleDuDocument,
   s: SituationDeLAgent,
   raison: HorsCible,
@@ -175,5 +185,5 @@ export async function exigerLaCible(
   const cible = CIBLES_DES_DOCUMENTS[doc];
   const situation = situationDe(ligne);
   const raison = horsCible(cible, situation);
-  if (raison) refuser(doc, cible, situation, raison);
+  if (raison) refuserHorsCible(doc, cible, situation, raison);
 }
