@@ -119,11 +119,13 @@ export interface StageDeLAgent {
 }
 
 /**
- * Le dernier stage commencé d'un agent (ADR-0089), que son dossier soit en
- * activité ou non : l'attestation de stage se délivre le plus souvent après
- * le stage, au départ de l'agent ou après son embauche.
+ * Les stages commencés d'un agent, du plus ancien au plus récent, que son
+ * dossier soit en activité ou non (ADR-0089, ADR-0132) : un stage en 2012,
+ * un autre en 2015. Renouvelé dans le mois, c'est le même stage ; il va du
+ * premier jour de son premier contrat au dernier jour de son dernier, ou au
+ * départ s'il vient avant.
  */
-export async function stageDeLAgent(tx: Tx, employeeId: string): Promise<StageDeLAgent> {
+export async function stagesDeLAgent(tx: Tx, employeeId: string): Promise<StageDeLAgent[]> {
   const { rows } = await tx.execute<{
     employee_number: string;
     given_name: string;
@@ -133,53 +135,100 @@ export async function stageDeLAgent(tx: Tx, employeeId: string): Promise<StageDe
     fin: string | null;
     poste_prevu: string | null;
   }>(sql`
+    WITH contrats AS (
+      -- « sc », pas « c » : la règle du stage nomme déjà « c » ses contrats.
+      SELECT sc.start_date, sc.end_date, sc.created_at, sc.planned_position_title,
+             ${premierJourDuStage(employeeId, sql`sc.start_date`)} AS premier
+        FROM contracts sc
+       WHERE sc.employee_id = ${employeeId} AND sc.contract_type = 'stage'
+         AND sc.start_date <= CURRENT_DATE
+    ),
+    -- Le dernier contrat de chaque stage : c'est lui qui le finit.
+    derniers AS (
+      SELECT DISTINCT ON (premier) premier, start_date, end_date, planned_position_title
+        FROM contrats WHERE premier IS NOT NULL
+       ORDER BY premier, start_date DESC, created_at DESC
+    )
     SELECT e.employee_number, p.given_name, p.family_name, p.gender,
-           ${premierJourDuStage(employeeId, sql`st.start_date`)}::text AS debut,
+           d.premier::text AS debut,
            -- Un départ ne clôt pas le contrat : le stage finit au premier
            -- des deux.
-           LEAST(st.end_date,
+           LEAST(d.end_date,
                  (SELECT min(pi.dernier_jour) FROM periodes_inactivite pi
-                   WHERE pi.employee_id = e.id AND pi.dernier_jour >= st.start_date))::text AS fin,
-           st.planned_position_title AS poste_prevu
+                   WHERE pi.employee_id = e.id AND pi.dernier_jour >= d.start_date))::text AS fin,
+           d.planned_position_title AS poste_prevu
       FROM employees e
       JOIN persons p ON p.id = e.person_id
-      LEFT JOIN LATERAL (
-        SELECT c.start_date, c.end_date, c.planned_position_title FROM contracts c
-         WHERE c.employee_id = e.id AND c.contract_type = 'stage'
-           AND c.start_date <= CURRENT_DATE
-         ORDER BY c.start_date DESC, c.created_at DESC LIMIT 1) st ON true
-     WHERE e.id = ${employeeId}`);
-  const row = rows[0];
-  if (!row) {
+      LEFT JOIN derniers d ON true
+     WHERE e.id = ${employeeId}
+     ORDER BY d.premier`);
+  if (rows.length === 0) {
     problem(404, 'people.employee_not_found', 'Employé introuvable');
   }
-  if (!row.debut) {
+  const stages: StageDeLAgent[] = [];
+  for (const row of rows) {
+    if (!row.debut) continue;
+    // Le poste du stage, pas celui d'aujourd'hui : après une embauche, le
+    // poste a changé.
+    const { rows: postes } = await tx.execute<{ position_title: string }>(sql`
+      SELECT a.position_title FROM assignments a
+       WHERE a.employee_id = ${employeeId}
+         AND a.validity && daterange(${row.debut}::date, (${row.fin}::date + 1))
+       ORDER BY lower(a.validity) DESC LIMIT 1`);
+    stages.push({
+      agent: {
+        nom: `${row.given_name} ${row.family_name.toUpperCase()}`,
+        genre: row.gender,
+      },
+      employeeNumber: row.employee_number,
+      debut: row.debut,
+      fin: row.fin,
+      poste: postes[0]?.position_title ?? row.poste_prevu,
+    });
+  }
+  return stages;
+}
+
+/**
+ * Le stage que l'attestation cite (ADR-0132) : celui qui commence le jour
+ * `debut`, que la DCH choisit quand le dossier en compte plusieurs ; à un
+ * seul stage, celui-là.
+ */
+export async function stageDeLAgent(
+  tx: Tx,
+  employeeId: string,
+  debut?: string,
+): Promise<StageDeLAgent> {
+  const stages = await stagesDeLAgent(tx, employeeId);
+  if (stages.length === 0) {
     problem(
       422,
       'documents.sans_stage',
       'Aucun stage au dossier',
-      'L’attestation de stage cite le dernier stage commencé de l’agent.',
+      'L’attestation de stage cite un stage commencé de l’agent.',
     );
   }
-
-  // Le poste du stage, pas celui d'aujourd'hui : après une embauche, le
-  // poste a changé.
-  const { rows: postes } = await tx.execute<{ position_title: string }>(sql`
-    SELECT a.position_title FROM assignments a
-     WHERE a.employee_id = ${employeeId}
-       AND a.validity && daterange(${row.debut}::date, (${row.fin}::date + 1))
-     ORDER BY lower(a.validity) DESC LIMIT 1`);
-
-  return {
-    agent: {
-      nom: `${row.given_name} ${row.family_name.toUpperCase()}`,
-      genre: row.gender,
-    },
-    employeeNumber: row.employee_number,
-    debut: row.debut,
-    fin: row.fin,
-    poste: postes[0]?.position_title ?? row.poste_prevu,
-  };
+  if (debut) {
+    const stage = stages.find((s) => s.debut === debut);
+    if (!stage) {
+      problem(
+        422,
+        'documents.stage_inconnu',
+        'Stage introuvable au dossier',
+        'Aucun stage de l’agent ne commence ce jour-là.',
+      );
+    }
+    return stage;
+  }
+  if (stages.length > 1) {
+    problem(
+      400,
+      'documents.stage_a_choisir',
+      'Stage à choisir',
+      `Le dossier compte ${stages.length} stages : l’attestation en cite un.`,
+    );
+  }
+  return stages[0]!;
 }
 
 export interface EmploiDeLAgent {

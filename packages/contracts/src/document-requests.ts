@@ -177,9 +177,20 @@ export const saisiesDuDocumentSchema = z
     depart: z.iso.date().optional(),
     /** Le jour de la reprise de service, après une disponibilité ou un congé de maternité. */
     reprise: z.iso.date().optional(),
+    /** Le premier jour du stage que l'attestation cite, parmi ceux du dossier (ADR-0132). */
+    stage: z.iso.date().optional(),
   })
   .strict();
 export type SaisiesDuDocument = z.infer<typeof saisiesDuDocumentSchema>;
+
+/** Un stage du dossier, tel que l'attestation de stage le cite (ADR-0132). */
+export interface StageAuDossier {
+  /** Son premier jour, qui le désigne : la saisie `stage`. */
+  debut: string;
+  /** Son dernier jour ; null : pas encore fixé. */
+  fin: string | null;
+  poste: string | null;
+}
 
 /**
  * Le nom du fichier d'un document généré : « attestation-travail-M0012.pdf ».

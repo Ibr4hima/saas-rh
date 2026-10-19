@@ -69,7 +69,7 @@ beforeAll(async () => {
     );
   }
   // Le dossier de qui dirige la DCH (relié à son compte), un dossier en
-  // activité, à l'âge de la retraite, un dossier inactif.
+  // activité, à l'âge de la retraite et sous CDI, un dossier inactif.
   for (const [cle, numero, statut, userId, naissance] of [
     ['dch', 'GEN-001', 'active', ids.dch, null],
     ['actif', 'GEN-002', 'active', null, '1960-04-12'],
@@ -87,9 +87,15 @@ beforeAll(async () => {
       [employes[cle], tenantId, personId, numero, statut],
     );
   }
+  await raw(
+    `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date)
+     VALUES ($1, $2, $3, 'cdi', '2024-03-01')`,
+    [randomUUID(), tenantId, employes.actif],
+  );
 });
 
 afterAll(async () => {
+  await raw('DELETE FROM contracts WHERE tenant_id = $1', [tenantId]);
   await raw('DELETE FROM employees WHERE tenant_id = $1', [tenantId]);
   await raw('DELETE FROM persons WHERE tenant_id = $1', [tenantId]);
   // L'attestation de congé sème les fériés de la période, comme une demande de congé.

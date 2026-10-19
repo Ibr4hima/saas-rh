@@ -18,6 +18,8 @@ import {
  * L'attestation de stage, sur le modèle officiel de l'APIX (ADR-0089) : la
  * mise en page des autres attestations, le numéro de la direction générale,
  * puis le stage, ses dates et le poste occupé. Qui atteste dirige la DCH.
+ * Le dossier compte-t-il plusieurs stages, la DCH choisit celui que
+ * l'attestation cite (ADR-0132).
  */
 
 export interface StageData extends StageDeLAgent {
@@ -68,18 +70,22 @@ export function pdfDeLAttestationDeStage(
   return pdfDUneAttestation(textes, { titre: 'Attestation de stage', logo });
 }
 
-/** Ce que l'attestation imprimerait aujourd'hui pour ce dossier, sans contrôle des droits. */
+/**
+ * Ce que l'attestation imprimerait aujourd'hui pour ce dossier, sans contrôle
+ * des droits ; `debut` : le premier jour du stage cité.
+ */
 export async function textesDeStagePour(
   tx: Tx,
   employeeId: string,
+  debut?: string,
 ): Promise<TextesDUneAttestation> {
-  return textesDeLAttestationDeStage(await donnees(tx, employeeId), new Date());
+  return textesDeLAttestationDeStage(await donnees(tx, employeeId, debut), new Date());
 }
 
 /** Le modèle, tel que « Générer des documents » l'appelle (ADR-0085), droits vérifiés. */
 export const attestationDeStage: Modele = {
-  async pdf(tx, employeeId) {
-    const d = await donnees(tx, employeeId);
+  async pdf(tx, employeeId, { stage }) {
+    const d = await donnees(tx, employeeId, stage);
     return {
       filename: nomDuDocumentGenere('attestation_stage', d.employeeNumber),
       pdf: await pdfDeLAttestationDeStage(textesDeLAttestationDeStage(d, new Date())),
@@ -87,6 +93,9 @@ export const attestationDeStage: Modele = {
   },
 };
 
-async function donnees(tx: Tx, employeeId: string): Promise<StageData> {
-  return { ...(await stageDeLAgent(tx, employeeId)), signataire: await quiDirigeLaDCH(tx) };
+async function donnees(tx: Tx, employeeId: string, debut?: string): Promise<StageData> {
+  return {
+    ...(await stageDeLAgent(tx, employeeId, debut)),
+    signataire: await quiDirigeLaDCH(tx),
+  };
 }

@@ -40,15 +40,11 @@ export const LIGNES: Record<DocumentDeLaListe, { famille: Famille; libelle: stri
     famille: 'Attestations',
     libelle: 'Reprise de service · Maternité',
   },
-  attestation_reprise_disponibilite: {
-    famille: 'Attestations',
-    libelle: 'Reprise après disponibilité',
-  },
   attestation_depart_retraite: { famille: 'Attestations', libelle: 'Départ à la retraite' },
   attestation_stage: { famille: 'Attestations', libelle: 'Attestation de stage' },
   attestation_cessation: {
     famille: 'Attestations',
-    libelle: 'Cessation de paiement et d’activités',
+    libelle: 'Cessation de paiement et d’act. · Maternité',
   },
   domiciliation_bancaire: {
     famille: 'Documents de rémunération',
@@ -62,6 +58,11 @@ export const LIGNES: Record<DocumentDeLaListe, { famille: Famille; libelle: stri
   decision_renouvellement_disponibilite: {
     famille: 'Situation administrative du personnel',
     libelle: 'Renouvellement de disponibilité',
+  },
+  // La reprise après disponibilité suit la disponibilité (ADR-0131).
+  attestation_reprise_disponibilite: {
+    famille: 'Situation administrative du personnel',
+    libelle: 'Reprise après disponibilité',
   },
   declaration_mouvement: {
     famille: 'Situation administrative du personnel',

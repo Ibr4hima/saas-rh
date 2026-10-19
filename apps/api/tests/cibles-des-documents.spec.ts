@@ -4,7 +4,7 @@
  * de le générer pour un autre. Une attestation de travail ne se délivre pas
  * pour un stage, ni un certificat de travail pour un dossier en activité ;
  * le congé de maternité suppose le genre féminin, le départ à la retraite
- * 55 ans au moins.
+ * 40 ans au moins et un CDI ou un CDD (ADR-0131).
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -48,7 +48,7 @@ async function codeOf(fn: () => Promise<unknown>): Promise<string> {
 const DOSSIERS = {
   // Qui dirige la DCH : son propre dossier ne se propose jamais.
   dch: ['Mariama', 'Cissé', 'active', 'female', '1979-02-10', [['cdi', '2015-01-05', null]]],
-  awa: ['Awa', 'Diop', 'active', 'female', '1990-06-01', [['cdi', '2018-03-01', null]]],
+  awa: ['Awa', 'Diop', 'active', 'female', '1984-06-01', [['cdi', '2018-03-01', null]]],
   moussa: ['Moussa', 'Ndiaye', 'active', 'male', '1995-01-20', [['cdi', '2020-09-01', null]]],
   cheikh: ['Cheikh', 'Mbaye', 'active', 'male', '1968-05-15', [['cdi', '2001-02-01', null]]],
   // En stage aujourd'hui, embauche prévue l'an prochain.
@@ -77,18 +77,23 @@ const DOSSIERS = {
   ],
   // Un départ après un CDI : le certificat de travail.
   aminata: ['Aminata', 'Fall', 'archived', 'female', '1985-08-30', [['cdi', '2012-04-01', null]]],
-  // Un stage, puis le départ : ni certificat de travail, ni attestation de travail.
+  // Deux stages, puis le départ : ni certificat de travail, ni attestation de travail.
   ousmane: [
     'Ousmane',
     'Gaye',
     'archived',
     'male',
     '2001-07-07',
-    [['stage', '2025-01-06', '2025-06-30']],
+    [
+      ['stage', '2019-02-04', '2019-07-31'],
+      ['stage', '2025-01-06', '2025-06-30'],
+    ],
   ],
   // Ni genre ni date de naissance au dossier.
   fatou: ['Fatou', 'Sall', 'active', null, null, [['cdd', '2025-02-01', '2027-01-31']]],
   ndeye: ['Ndèye', 'Thiam', 'active', 'female', null, [['cdi', '2019-10-01', null]]],
+  // En détachement : un contrat de travail, mais ni CDI ni CDD.
+  samba: ['Samba', 'Diallo', 'active', 'male', '1975-03-03', [['detachement', '2021-01-04', null]]],
 } as const;
 type Cle = keyof typeof DOSSIERS;
 const employes = {} as Record<Cle, string>;
@@ -164,7 +169,7 @@ afterAll(async () => {
 
 describe('la liste des agents, document par document', () => {
   it('l’attestation de travail : les dossiers en activité sous contrat de travail, ni stage, ni dossier inactif, ni soi', async () => {
-    const attendus = ['Awa', 'Moussa', 'Cheikh', 'Khady', 'Fatou', 'Ndèye'];
+    const attendus = ['Awa', 'Moussa', 'Cheikh', 'Khady', 'Fatou', 'Ndèye', 'Samba'];
     for (const doc of [
       'attestation_travail',
       'attestation_revenu',
@@ -189,8 +194,8 @@ describe('la liste des agents, document par document', () => {
     }
   });
 
-  it('le départ à la retraite : à partir de 55 ans, la date de naissance au dossier', async () => {
-    expect(await noms('attestation_depart_retraite')).toEqual(['Cheikh']);
+  it('le départ à la retraite : dès 40 ans, sous CDI ou CDD, la date de naissance au dossier', async () => {
+    expect((await noms('attestation_depart_retraite')).sort()).toEqual(['Awa', 'Cheikh']);
   });
 
   it('la recherche : un nom ou un matricule, sans égard aux accents ni à l’ordre', async () => {
@@ -232,7 +237,14 @@ describe('le refus', () => {
     expect((jeune as ProblemException).problem).toMatchObject({
       status: 422,
       code: 'documents.age',
-      title: 'Attestation de départ à la retraite : moins de 55 ans',
+      title: 'Attestation de départ à la retraite : moins de 40 ans',
+    });
+    const detache = await service
+      .pdf(dch, 'attestation_depart_retraite', employes.samba, { depart: '2027-01-31' })
+      .catch((e: unknown) => e);
+    expect((detache as ProblemException).problem).toMatchObject({
+      code: 'documents.contrat',
+      title: 'Attestation de départ à la retraite : ni CDI ni CDD',
     });
     const sansNaissance = await service
       .pdf(dch, 'attestation_depart_retraite', employes.ndeye, { depart: '2027-01-31' })
@@ -252,6 +264,24 @@ describe('le refus', () => {
       categorie: '7B',
     });
     expect(certificat.filename).toBe('certificat-travail-CIB-007.pdf');
+  });
+});
+
+describe('l’attestation de stage', () => {
+  it('à plusieurs stages, la page demande lequel ; l’attestation cite celui-là', async () => {
+    expect(await service.stages(dch, employes.ousmane)).toEqual([
+      { debut: '2019-02-04', fin: '2019-07-31', poste: null },
+      { debut: '2025-01-06', fin: '2025-06-30', poste: null },
+    ]);
+    expect(await codeOf(() => service.pdf(dch, 'attestation_stage', employes.ousmane))).toBe(
+      'documents.stage_a_choisir',
+    );
+    const { filename } = await service.pdf(dch, 'attestation_stage', employes.ousmane, {
+      stage: '2019-02-04',
+    });
+    expect(filename).toBe('attestation-stage-CIB-008.pdf');
+    // Sans stage au dossier, pas de liste : l'agent est hors de la cible.
+    expect(await codeOf(() => service.stages(dch, employes.awa))).toBe('documents.sans_stage');
   });
 });
 

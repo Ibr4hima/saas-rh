@@ -3,10 +3,10 @@
  * qu'elle DIT, et quel stage elle cite.
  *
  * Elle se délivre le plus souvent après le stage, au départ de l'agent ou
- * après son embauche. Elle cite le dernier stage commencé, du premier jour
- * (un renouvellement dans le mois ne fait pas un nouveau stage) au dernier
- * (la fin du contrat, ou le départ s'il vient avant), et le poste occupé
- * pendant le stage.
+ * après son embauche. Elle cite un stage du dossier, du premier jour (un
+ * renouvellement dans le mois ne fait pas un nouveau stage) au dernier (la
+ * fin du contrat, ou le départ s'il vient avant), et le poste occupé pendant
+ * le stage. À plusieurs stages, la DCH choisit lequel (ADR-0132).
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -49,7 +49,8 @@ const enGras = (textes: TextesDUneAttestation, i: number) =>
 const enTenant = <T>(fn: (tx: Tx) => Promise<T>) =>
   db.withTenant({ tenantId, userId: adminUserId }, fn);
 
-const textesDe = (employeeId: string) => enTenant((tx) => textesDeStagePour(tx, employeeId));
+const textesDe = (employeeId: string, debut?: string) =>
+  enTenant((tx) => textesDeStagePour(tx, employeeId, debut));
 
 async function codeOf(fn: () => Promise<unknown>): Promise<string> {
   try {
@@ -195,6 +196,19 @@ beforeAll(async () => {
     contrats: [['stage', '2026-09-01', null]],
     postePrevu: 'Assistante RH',
   });
+  // Deux stages, en 2012 puis en 2015, puis l'embauche.
+  await creer('deux', ['Khady', 'Faye', 'female'], {
+    contrats: [
+      ['stage', '2012-03-01', '2012-08-31'],
+      ['stage', '2015-01-05', '2015-05-04'],
+      ['cdi', '2016-01-04', null],
+    ],
+    affectations: [
+      ['Stagiaire juriste', '2012-03-01', '2012-09-01'],
+      ['Stagiaire comptable', '2015-01-05', '2015-05-05'],
+      ['Comptable', '2016-01-04', null],
+    ],
+  });
   // Jamais en stage.
   await creer('cdi', ['Babacar', 'Gueye', 'male'], {
     contrats: [['cdi', '2020-01-01', null]],
@@ -327,6 +341,19 @@ describe('le stage que l’attestation cite', () => {
   it('en cours, sans fin fixée ni affectation : un blanc, et le poste du contrat', async () => {
     expect(enClair(await textesDe(employes.encours!), 0)).toMatch(
       /allant du 1er septembre 2026 au …+, en qualité d’Assistante RH\.$/,
+    );
+  });
+
+  it('deux stages, en 2012 puis en 2015 : la DCH choisit celui que l’attestation cite', async () => {
+    expect(await codeOf(() => textesDe(employes.deux!))).toBe('documents.stage_a_choisir');
+    expect(enClair(await textesDe(employes.deux!, '2012-03-01'), 0)).toContain(
+      'allant du 1er mars 2012 au 31 août 2012, en qualité de Stagiaire juriste.',
+    );
+    expect(enClair(await textesDe(employes.deux!, '2015-01-05'), 0)).toContain(
+      'allant du 5 janvier 2015 au 4 mai 2015, en qualité de Stagiaire comptable.',
+    );
+    expect(await codeOf(() => textesDe(employes.deux!, '2013-01-07'))).toBe(
+      'documents.stage_inconnu',
     );
   });
 

@@ -123,6 +123,8 @@ function refuser(
   raison: HorsCible,
 ): never {
   const libelle = REQUESTABLE_DOC_LABELS[doc];
+  // « CDI », « CDD » : les contrats que la cible admet.
+  const contrats = (cible.contrats ?? []).map((c) => c.toUpperCase());
   const [titre, detail] = {
     not_active: [
       `${libelle} : dossier inactif`,
@@ -135,6 +137,12 @@ function refuser(
     stage: [
       `${libelle} : contrat de stage`,
       'Ce document suppose un contrat de travail ; pour un stage, c’est l’attestation de stage qui convient.',
+    ],
+    contrat: [
+      contrats.length === 1
+        ? `${libelle} : pas de ${contrats[0]}`
+        : `${libelle} : ni ${contrats.join(' ni ')}`,
+      `Ce document suppose un ${contrats.join(' ou un ')} en cours.`,
     ],
     sans_stage: [
       `${libelle} : aucun stage au dossier`,
@@ -150,7 +158,7 @@ function refuser(
       s.age === null
         ? `${libelle} : date de naissance manquante`
         : `${libelle} : moins de ${cible.ageMin} ans`,
-      `La retraite se prend au plus tôt à ${cible.ageMin} ans ; l’âge se lit à la date de naissance du dossier.`,
+      `Le départ à la retraite se propose dès ${cible.ageMin} ans ; l’âge se lit à la date de naissance du dossier.`,
     ],
   }[raison] as [string, string];
   problem(422, `documents.${raison}`, titre, detail);

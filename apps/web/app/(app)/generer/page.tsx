@@ -2,7 +2,13 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
-import type { AgentDeLaCible, DocumentAvecAgent, DocumentGenere, Saisie } from '@teranga/contracts';
+import type {
+  AgentDeLaCible,
+  DocumentAvecAgent,
+  DocumentGenere,
+  Saisie,
+  StageAuDossier,
+} from '@teranga/contracts';
 import {
   CATEGORIE_MAX,
   CIBLES_DES_DOCUMENTS,
@@ -19,7 +25,7 @@ import {
   saisiesDe,
   sansAgent,
 } from '@teranga/contracts';
-import { Badge, Button, Card, cn, EmptyState, Field } from '@teranga/ui';
+import { Badge, Button, Card, cn, EmptyState, Field, Select } from '@teranga/ui';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import {
@@ -66,7 +72,7 @@ import {
 import { Groupe, Preremplissage } from '../../../components/saisie-de-fiche';
 import { api, ApiError } from '../../../lib/api';
 import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
-import { useMe } from '../../../lib/hooks';
+import { formatDate, useMe } from '../../../lib/hooks';
 import { champDuMontant } from '../../../lib/montant';
 
 /*
@@ -83,7 +89,9 @@ import { champDuMontant } from '../../../lib/montant';
    les dates de l'attestation de congé (ADR-0092), le jour du départ à la
    retraite (ADR-0093), la disponibilité et la reprise de l'attestation de
    reprise après disponibilité (ADR-0104), le jour du congé de maternité ou de
-   la reprise de service (ADR-0105). Les contrats, de stage et de travail, se font sans
+   la reprise de service (ADR-0105), le stage que cite l'attestation de stage
+   quand le dossier en compte plusieurs (ADR-0132). Les contrats, de stage et
+   de travail, se font sans
    agent : la personne n'est pas encore dans l'application, la DCH la
    renseigne (ADR-0094, ADR-0098) ; les décisions de disponibilité, la
    domiciliation bancaire et la déclaration de mouvement du travailleur
@@ -167,6 +175,15 @@ const remplie = (v: Valeurs, s: Saisie) => {
   return valeur !== null && valeur !== '';
 };
 
+/** « 1er mars 2012 » : un jour d'un stage. */
+const jourDuStage = (iso: string) => formatDate(iso).replace(/^1 /, '1er ');
+
+/** « Du 1er mars 2012 au 31 août 2012 · Stagiaire juriste » : un stage du dossier. */
+const periodeDuStage = (s: StageAuDossier) =>
+  (s.fin
+    ? `Du ${jourDuStage(s.debut)} au ${jourDuStage(s.fin)}`
+    : `Depuis le ${jourDuStage(s.debut)}`) + (s.poste ? ` · ${s.poste}` : '');
+
 /** Ce qui a été validé : pour qui le document se génère, et ce qui part à l'API. */
 interface Validation {
   cible: Cible;
@@ -181,6 +198,8 @@ export default function GenererDesDocumentsPage() {
   const [choisi, setChoisi] = useState<DocumentGenere | null>(null);
   const [agent, setAgent] = useState<AgentDeLaCible | null>(null);
   const [saisies, setSaisies] = useState<Saisies | null>(null);
+  // Le stage que l'attestation cite, pour un agent (ADR-0132).
+  const [stage, setStage] = useState<{ agentId: string; debut: string } | null>(null);
   const [stagiaire, setStagiaire] = useState<SaisieDuStagiaire>(STAGIAIRE_VIDE);
   const [contrat, setContrat] = useState<SaisieDuContrat>(CONTRAT_VIDE);
   const [disponibilite, setDisponibilite] = useState<SaisieDeLaDecision>(DECISION_VIDE);
@@ -221,11 +240,26 @@ export default function GenererDesDocumentsPage() {
         : choisi === 'declaration_mouvement'
           ? ficheDeclarationMouvementSchema.safeParse(ficheSansAgent)
           : ficheStagiaireSchema.safeParse(ficheSansAgent);
+  // L'attestation de stage cite un stage du dossier : à plusieurs, la DCH
+  // choisit lequel (ADR-0132).
+  const stages = useQuery({
+    queryKey: ['stages', agent?.id],
+    queryFn: () => api<StageAuDossier[]>(`/employees/${agent?.id}/stages`),
+    enabled: choisi === 'attestation_stage' && agent !== null,
+  });
+  const stagesAChoisir =
+    choisi === 'attestation_stage' && stages.data && stages.data.length > 1 ? stages.data : null;
+  const stageCourant = stage && stage.agentId === agent?.id ? stage.debut : '';
   // « Valider » s'ouvre quand tout est saisi : la fiche complète, ou l'agent
-  // et chacune de ses saisies.
+  // et chacune de ses saisies, le stage compris.
   const pret =
     choisi !== null &&
-    (sansLAgent ? fiche.success : agent !== null && demandees.every((s) => remplie(courantes, s)));
+    (sansLAgent
+      ? fiche.success
+      : agent !== null &&
+        demandees.every((s) => remplie(courantes, s)) &&
+        (choisi !== 'attestation_stage' ||
+          (stages.isSuccess && (!stagesAChoisir || stageCourant !== ''))));
 
   const valider = () => {
     if (!choisi || !pret) return;
@@ -251,7 +285,10 @@ export default function GenererDesDocumentsPage() {
           fichier: nomDuDocumentGenere(choisi, agent.employeeNumber),
           titre: `${REQUESTABLE_DOC_LABELS[choisi]} : ${nomDe(agent)}`,
         },
-        saisies: Object.fromEntries(demandees.map((s) => [s, valeurDe(courantes, s)])),
+        saisies: {
+          ...Object.fromEntries(demandees.map((s) => [s, valeurDe(courantes, s)])),
+          ...(stagesAChoisir ? { stage: stageCourant } : {}),
+        },
       });
     }
     // Le bloc se replie : on remonte, le document vient sous les deux blocs.
@@ -317,6 +354,27 @@ export default function GenererDesDocumentsPage() {
                   agent={agent}
                   onChoisir={setAgent}
                 />
+              </Field>
+            </Groupe>
+          ) : null}
+          {stagesAChoisir && agent ? (
+            <Groupe titre="Sélectionner le stage">
+              <Field label="Stage" htmlFor={`${id}-stage`} required>
+                <Select
+                  id={`${id}-stage`}
+                  aria-label="Stage"
+                  value={stageCourant}
+                  onChange={(e) => setStage({ agentId: agent.id, debut: e.target.value })}
+                >
+                  <option value="" disabled hidden>
+                    Choisir un stage
+                  </option>
+                  {stagesAChoisir.map((s) => (
+                    <option key={s.debut} value={s.debut}>
+                      {periodeDuStage(s)}
+                    </option>
+                  ))}
+                </Select>
               </Field>
             </Groupe>
           ) : null}

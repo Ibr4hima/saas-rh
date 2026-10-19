@@ -5,6 +5,7 @@ import type {
   DocumentSansAgent,
   SaisiesDuDocument,
   SessionUser,
+  StageAuDossier,
 } from '@teranga/contracts';
 import {
   estGenere,
@@ -31,6 +32,7 @@ import { contratDeTravail } from './contrat-travail';
 import { declarationDeMouvement } from './declaration-mouvement';
 import { decisionDeDisponibilite } from './decision-disponibilite';
 import { domiciliationBancaire } from './domiciliation';
+import { stagesDeLAgent } from './dossier';
 import { AttestationService } from './attestation.service';
 import type { DocumentPdf, Modele } from './feuille';
 
@@ -102,6 +104,23 @@ export class GenerationService {
       await pasSurSoi(tx, user.userId, [employeeId], 'générer un document pour');
       await exigerLaCible(tx, doc, employeeId);
       return modele.pdf(tx, employeeId, saisies);
+    });
+  }
+
+  /**
+   * Les stages d'un agent, pour l'attestation de stage (ADR-0132) : à
+   * plusieurs, la page demande lequel l'attestation cite.
+   */
+  async stages(user: SessionUser, employeeId: string): Promise<StageAuDossier[]> {
+    this.documentConfigure(user, 'attestation_stage');
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await pasSurSoi(tx, user.userId, [employeeId], 'générer un document pour');
+      await exigerLaCible(tx, 'attestation_stage', employeeId);
+      return (await stagesDeLAgent(tx, employeeId)).map(({ debut, fin, poste }) => ({
+        debut,
+        fin,
+        poste,
+      }));
     });
   }
 

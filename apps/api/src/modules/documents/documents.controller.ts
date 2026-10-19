@@ -49,6 +49,12 @@ export class DocumentsController {
     this.send(res, filename, pdf, disposition === 'inline');
   }
 
+  /** Les stages d'un agent : l'attestation de stage en cite un (ADR-0132). */
+  @Get('employees/:id/stages')
+  stages(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.generation.stages(req.sessionUser, id);
+  }
+
   /**
    * Un document de la liste, généré pour un agent depuis « Générer des
    * documents » (ADR-0085) ; « inline » l'ouvre dans la visionneuse du

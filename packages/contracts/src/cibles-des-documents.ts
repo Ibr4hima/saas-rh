@@ -14,10 +14,10 @@ import type { ContractType, EmployeeStatus, Gender } from './employees';
 export type DocumentAvecAgent = Exclude<DocumentGenere, DocumentSansAgent>;
 
 /**
- * La retraite se prend au plus tôt à 55 ans, par la retraite anticipée de
- * l'IPRES ; 60 ans est l'âge ordinaire.
+ * Le départ à la retraite se propose dès 40 ans : large, pour couvrir les
+ * retraites anticipées (ADR-0131).
  */
-export const AGE_DE_LA_RETRAITE_ANTICIPEE = 55;
+export const AGE_MIN_DU_DEPART_A_LA_RETRAITE = 40;
 
 /** Ce que la cible d'un document regarde au dossier d'un agent. */
 export interface SituationDeLAgent {
@@ -41,6 +41,8 @@ export interface CibleDuDocument {
   dossiers: 'en_activite' | 'inactifs' | 'tous';
   /** Un contrat de travail : tout contrat, sauf un stage. */
   contratDeTravail?: true;
+  /** Les seuls contrats admis : le contrat qui fait foi en est un. */
+  contrats?: readonly ContractType[];
   /** Un stage commencé au dossier. */
   stage?: true;
   genre?: Gender;
@@ -59,9 +61,11 @@ export const CIBLES_DES_DOCUMENTS: Record<DocumentAvecAgent, CibleDuDocument> = 
   // Le congé de maternité : un dossier au genre féminin.
   attestation_reprise_service: { ...SOUS_CONTRAT_DE_TRAVAIL, genre: 'female' },
   attestation_reprise_disponibilite: SOUS_CONTRAT_DE_TRAVAIL,
+  // Sous CDI ou CDD seulement (ADR-0131).
   attestation_depart_retraite: {
-    ...SOUS_CONTRAT_DE_TRAVAIL,
-    ageMin: AGE_DE_LA_RETRAITE_ANTICIPEE,
+    dossiers: 'en_activite',
+    contrats: ['cdi', 'cdd'],
+    ageMin: AGE_MIN_DU_DEPART_A_LA_RETRAITE,
   },
   // Le stage s'atteste pendant, ou après : au départ, ou après l'embauche.
   attestation_stage: { dossiers: 'tous', stage: true },
@@ -72,13 +76,17 @@ export const CIBLES_DES_DOCUMENTS: Record<DocumentAvecAgent, CibleDuDocument> = 
 };
 
 /** Ce qui écarte un agent de la cible d'un document : le code du refus. */
-export type HorsCible = 'not_active' | 'en_activite' | 'stage' | 'sans_stage' | 'genre' | 'age';
+export type HorsCible =
+  'not_active' | 'en_activite' | 'stage' | 'contrat' | 'sans_stage' | 'genre' | 'age';
 
 /** Ce qui écarte un agent de la cible ; null : l'agent en est. */
 export function horsCible(cible: CibleDuDocument, s: SituationDeLAgent): HorsCible | null {
   if (cible.dossiers === 'en_activite' && !s.enActivite) return 'not_active';
   if (cible.dossiers === 'inactifs' && s.enActivite) return 'en_activite';
   if (cible.contratDeTravail && s.contrat === 'stage') return 'stage';
+  if (cible.contrats && (s.contrat === null || !cible.contrats.includes(s.contrat))) {
+    return 'contrat';
+  }
   if (cible.stage && !s.stage) return 'sans_stage';
   if (cible.genre && s.genre !== cible.genre) return 'genre';
   if (cible.ageMin !== undefined && (s.age === null || s.age < cible.ageMin)) return 'age';
