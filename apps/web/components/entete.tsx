@@ -20,6 +20,14 @@ import { Icon, type IconName } from './icons';
 export const COMMANDE =
   'relative flex size-9 shrink-0 items-center justify-center rounded-full border border-card-line bg-surface text-ink-muted shadow-bouton-borde transition-colors duration-150 hover:border-line hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 
+/**
+ * Une commande d'icône à même le fond, sans cadre : la cloche du menu, le
+ * retour de l'écran. Un rond qui prend le voile d'encre des rangées du menu
+ * au survol.
+ */
+export const COMMANDE_SUR_LE_FOND =
+  'relative flex size-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-menu-survol hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+
 /** La même, ouverte ou sur sa page : elle prend le bleu des positions. */
 export const COMMANDE_ACTIVE =
   'border-primary/30 bg-primary-soft text-primary hover:border-primary/40 hover:text-primary';
@@ -67,10 +75,11 @@ export function ActionDeLEntete({
 
 /**
  * Le retour à la page d'où l'on vient (la liste, le catalogue, la formation),
- * à gauche du titre de l'écran : un rond de l'en-tête, le chevron vers
- * l'arrière. Il remplace le lien « page précédente » qui se tenait en tête de
- * la page, sous le titre. La page le pose par un portail, comme ses gestes ;
- * sur téléphone, où le titre descend en tête de la page, il le suit.
+ * à gauche du titre de l'écran : le chevron vers l'arrière, à même le fond,
+ * comme la cloche du menu (ADR-0139, ADR-0140). Il remplace le lien « page
+ * précédente » qui se tenait en tête de la page, sous le titre. La page le
+ * pose par un portail, comme ses gestes ; sur téléphone, où le titre descend
+ * en tête de la page, il le suit.
  */
 export const ANCRE_RETOUR = 'entete-retour';
 export const ANCRE_RETOUR_TELEPHONE = 'entete-retour-telephone';
@@ -94,7 +103,7 @@ export function RetourDeLEcran({ href, libelle }: { href: string; libelle: strin
             href={href}
             title={`Retour : ${libelle}`}
             aria-label={`Retour : ${libelle}`}
-            className={COMMANDE}
+            className={COMMANDE_SUR_LE_FOND}
           >
             <Icon name="chevron_backward" size={20} />
           </Link>,

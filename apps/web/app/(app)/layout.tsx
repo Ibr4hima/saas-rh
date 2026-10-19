@@ -1395,9 +1395,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
               <BrandMark variant="barre" />
             </Link>
             {/* À gauche du titre, le retour que la page y pose, s'il y en a un
-                (cf. components/entete.tsx). */}
-            <div className="hidden min-w-0 items-center gap-3 lg:flex">
-              <div id={ANCRE_RETOUR} className="flex shrink-0 empty:hidden" />
+                (cf. components/entete.tsx). Sans cadre, son rond déborde à
+                gauche : le chevron s'aligne sur le bord des blocs. */}
+            <div className="hidden min-w-0 items-center gap-1 lg:flex">
+              <div id={ANCRE_RETOUR} className="-ml-2 flex shrink-0 empty:hidden" />
               <TitreDeLEcran titre={title} salut={salut} />
             </div>
 
@@ -1462,8 +1463,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
           data-scroll-root
           className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-24 lg:px-7 lg:pt-1 lg:pb-10"
         >
-          <div className="mb-4 flex min-w-0 items-center gap-3 lg:hidden">
-            <div id={ANCRE_RETOUR_TELEPHONE} className="flex shrink-0 empty:hidden" />
+          <div className="mb-4 flex min-w-0 items-center gap-1 lg:hidden">
+            <div id={ANCRE_RETOUR_TELEPHONE} className="-ml-2 flex shrink-0 empty:hidden" />
             <TitreDeLEcran titre={title} salut={salut} />
           </div>
           {rubrique && (rubrique.children?.length ?? 0) > 1 ? (

@@ -12,7 +12,7 @@ import type {
 } from '@teranga/contracts';
 import { Button, cn, EmptyState } from '@teranga/ui';
 import { api } from '../lib/api';
-import { COMMANDE, COMMANDE_ACTIVE } from './entete';
+import { COMMANDE, COMMANDE_ACTIVE, COMMANDE_SUR_LE_FOND } from './entete';
 import { Icon, type IconName } from './icons';
 
 function relativeTime(iso: string): string {
@@ -167,7 +167,7 @@ export function NotificationsBell({
             ? // À même le fond, comme les rangées du menu : un rond sans cadre,
               // qui prend leur voile d'encre au survol.
               cn(
-                'relative flex size-9 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-menu-survol hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+                COMMANDE_SUR_LE_FOND,
                 open && 'bg-primary-soft text-primary hover:bg-primary-soft hover:text-primary',
               )
             : // Un rond blanc de l'en-tête, comme ses voisins.
