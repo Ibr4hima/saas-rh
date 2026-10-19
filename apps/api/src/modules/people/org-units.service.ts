@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type {
+  AdjointDuSommet,
   ChangementRattachement,
   ConsequencesHierarchie,
   CreateOrgUnitInput,
@@ -23,10 +24,12 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import {
+  adjointEnPlace,
   alignerLesChefs,
   apresNouveauChef,
   apresNouveauDG,
   apresNouveauDirecteur,
+  apresNouvelAdjoint,
   directeurGeneral,
   directionDeLUnite,
   perimetre,
@@ -195,6 +198,7 @@ export class OrgUnitsService {
           JOIN employees e ON e.id = a.employee_id AND e.status = 'active'
          GROUP BY m.unite`);
       const effectif = new Map(effectifs.map((x) => [x.unite, x.n]));
+      const adjoint = await this.adjointDuSommet(tx);
 
       return rows.map((r) => ({
         id: r.id,
@@ -212,12 +216,40 @@ export class OrgUnitsService {
         managerNumber: r.managerNumber,
         managerPosition: r.managerPosition,
         managerDepuis: r.managerDepuis,
+        adjoint: r.sommet ? adjoint : null,
         sommet: Boolean(r.sommet),
         directionDuPersonnel: r.directionDuPersonnel,
         headcount: effectif.get(r.id) ?? 0,
         attachedEmployees: r.attachedEmployees,
       }));
     });
+  }
+
+  /** Le DGA en place, pour la fiche du sommet (ADR-0126). */
+  private async adjointDuSommet(tx: Tx): Promise<AdjointDuSommet | null> {
+    const id = await adjointEnPlace(tx);
+    if (!id) return null;
+    const { rows } = await tx.execute<{
+      given_name: string;
+      family_name: string;
+      gender: string | null;
+      employee_number: string;
+      depuis: string;
+    }>(sql`
+      SELECT p.given_name, p.family_name, p.gender, e.employee_number,
+             (SELECT lower(a.validity)::text FROM assignments a
+               WHERE a.employee_id = e.id AND a.validity @> CURRENT_DATE LIMIT 1) AS depuis
+        FROM employees e JOIN persons p ON p.id = e.person_id
+       WHERE e.id = ${id}`);
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      employeeId: id,
+      nomAbrege: nomAbrege(r.given_name, r.family_name),
+      genre: r.gender === 'female' || r.gender === 'male' ? r.gender : null,
+      matricule: r.employee_number,
+      depuis: r.depuis,
+    };
   }
 
   async create(user: SessionUser, input: CreateOrgUnitInput): Promise<{ id: string }> {
@@ -517,11 +549,35 @@ export class OrgUnitsService {
   ): Promise<void> {
     await this.requireUnit(tx, id, 'org.unit_not_found');
 
+    // Le DGA se désigne seul (ADR-0126) : la date et le devenir de la
+    // personne remplacée ne valent que pour cette désignation.
+    if (input.adjointEmployeeId !== undefined) {
+      const { adjointEmployeeId, depuis, devenirDeLAncien, posteDeLAncien, ...reste } = input;
+      if (Object.values(reste).some((v) => v !== undefined)) {
+        problem(
+          422,
+          'org.adjoint_seul',
+          'La direction générale adjointe se désigne seule',
+          'Enregistrez d’abord les autres changements de l’unité, puis la désignation.',
+        );
+      }
+      await this.designerLAdjoint(
+        tx,
+        user,
+        journal,
+        id,
+        { adjointEmployeeId, depuis, devenirDeLAncien, posteDeLAncien },
+        suite,
+      );
+      return;
+    }
+
     const [before] = await tx
       .select({
         unitType: t.orgUnits.unitType,
         parentId: t.orgUnits.parentId,
         managerEmployeeId: t.orgUnits.managerEmployeeId,
+        adjointEmployeeId: t.orgUnits.adjointEmployeeId,
         dch: t.orgUnits.directionDuPersonnel,
         shortName: t.orgUnits.shortName,
       })
@@ -731,6 +787,11 @@ export class OrgUnitsService {
     if (input.shortName !== undefined) changes.shortName = input.shortName;
     if (input.managerEmployeeId !== undefined) {
       changes.managerEmployeeId = input.managerEmployeeId;
+      // Le DGA qui prend la tête du sommet quitte sa place : elle est
+      // vacante (ADR-0126).
+      if (estSommet && prochain !== null && prochain === before!.adjointEmployeeId) {
+        changes.adjointEmployeeId = null;
+      }
     }
     if (input.directionDuPersonnel !== undefined) {
       changes.directionDuPersonnel = input.directionDuPersonnel;
@@ -785,6 +846,143 @@ export class OrgUnitsService {
         ancien: ancien!,
         nouveau: prochain,
         depuis: input.depuis ?? etat[0]!.aujourdhui,
+        devenir,
+      });
+    }
+  }
+
+  /**
+   * La direction générale adjointe change de main (ADR-0126). Elle n'existe
+   * qu'au sommet ; s'y désigne un agent en activité, hors stage, affecté à la
+   * Direction Générale, qui n'est pas le DG et ne dirige aucune unité. La
+   * désignation s'écrit dans les affectations, comme celle d'un responsable :
+   * le poste de DGA, au genre, à compter de la prise de fonction ; la
+   * personne remplacée reçoit son nouveau poste, ou part ailleurs
+   * (ADR-0038). Le DGA relève du DG, et reprend l'équipe de la personne
+   * remplacée.
+   */
+  private async designerLAdjoint(
+    tx: Tx,
+    user: SessionUser,
+    journal: ChangementRattachement[],
+    id: string,
+    input: Pick<
+      UpdateOrgUnitInput,
+      'adjointEmployeeId' | 'depuis' | 'devenirDeLAncien' | 'posteDeLAncien'
+    >,
+    suite?: SuiteDeLaPassation,
+  ): Promise<void> {
+    if (id !== (await uniteRacine(tx))?.id) {
+      problem(
+        422,
+        'org.adjoint_au_sommet',
+        'La direction générale adjointe n’existe qu’au sommet',
+        'Seule la Direction Générale a un DGA.',
+      );
+    }
+    const [unite] = await tx
+      .select({ dg: t.orgUnits.managerEmployeeId, ecrit: t.orgUnits.adjointEmployeeId })
+      .from(t.orgUnits)
+      .where(eq(t.orgUnits.id, id))
+      .limit(1);
+    // La personne remplacée est le DGA EN PLACE : un DGA parti, ou muté
+    // ailleurs, n'a plus de poste à recevoir.
+    const ancien = await adjointEnPlace(tx);
+    const prochain = input.adjointEmployeeId ?? null;
+    if (prochain === ancien && prochain === (unite!.ecrit ?? null)) return;
+
+    if (prochain && prochain !== ancien) {
+      await pasSurSoi(
+        tx,
+        user.userId,
+        [prochain],
+        'vous désigner à la direction générale adjointe',
+      );
+      if (prochain === unite!.dg) {
+        problem(
+          422,
+          'org.adjoint_est_le_dg',
+          'La direction générale et la direction générale adjointe vont à deux personnes',
+          'Choisissez une autre personne que le DG.',
+        );
+      }
+      await this.assertEmployeActif(tx, prochain);
+      await exigerHorsStage(tx, prochain);
+      if (await sortDuPerimetre(tx, prochain, id)) {
+        problem(
+          422,
+          'org.adjoint_hors_direction_generale',
+          'Affectez d’abord cette personne à la Direction Générale',
+          'D’abord l’affectation, ensuite la désignation : la direction générale adjointe siège à la Direction Générale.',
+        );
+      }
+      const [tete] = await tx
+        .select({ nom: t.orgUnits.name })
+        .from(t.orgUnits)
+        .where(and(eq(t.orgUnits.managerEmployeeId, prochain), isNull(t.orgUnits.deletedAt)))
+        .limit(1);
+      if (tete) {
+        problem(
+          422,
+          'org.adjoint_dirige_une_unite',
+          `Cette personne dirige « ${tete.nom} »`,
+          'Désignez d’abord quelqu’un d’autre à sa tête, puis reprenez la désignation.',
+        );
+      }
+    }
+
+    // Ce que devient la personne remplacée (ADR-0038) : rester à la
+    // Direction Générale, à un poste qu'on dit, ou autre chose, que la suite
+    // écrit ensuite.
+    const devenir: DevenirDeLAncien | undefined =
+      input.devenirDeLAncien ??
+      (input.posteDeLAncien
+        ? { choix: 'affectation', orgUnitId: id, positionTitle: input.posteDeLAncien }
+        : undefined);
+    if (devenir?.choix === 'affectation' && devenir.orgUnitId === id && devenir.responsable) {
+      problem(
+        422,
+        'org.devenir_meme_unite',
+        'Choisissez une autre unité à diriger',
+        'La direction générale adjointe change de main : choisissez une autre unité à diriger, ou un poste à la Direction Générale.',
+      );
+    }
+    const resteIci = devenir?.choix === 'affectation' && devenir.orgUnitId === id;
+    const changeDeMain = prochain !== ancien;
+    const devenirAilleurs = Boolean(changeDeMain && ancien && devenir && !resteIci);
+    if (devenirAilleurs && !suite) {
+      problem(
+        422,
+        'org.devenir_hors_service',
+        'Ce que devient la personne remplacée s’écrit depuis l’organigramme ou sa fiche',
+      );
+    }
+
+    await tx
+      .update(t.orgUnits)
+      .set({ adjointEmployeeId: prochain, updatedAt: new Date() })
+      .where(eq(t.orgUnits.id, id));
+    if (!changeDeMain) return;
+    await inscrireLaPassation(tx, user, {
+      uniteId: id,
+      nouveau: prochain,
+      ancien,
+      depuis: input.depuis,
+      posteDeLAncien:
+        resteIci && devenir?.choix === 'affectation' ? devenir.positionTitle : undefined,
+      devenirAilleurs,
+      place: 'adjoint',
+    });
+    if (prochain) await apresNouvelAdjoint(tx, journal, ancien, prochain);
+    if (devenirAilleurs && devenir) {
+      const { rows } = await tx.execute<{ aujourdhui: string }>(
+        sql`SELECT CURRENT_DATE::text AS aujourdhui`,
+      );
+      await suite!(tx, journal, {
+        uniteId: id,
+        ancien: ancien!,
+        nouveau: prochain,
+        depuis: input.depuis ?? rows[0]!.aujourdhui,
         devenir,
       });
     }

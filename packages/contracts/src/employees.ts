@@ -138,9 +138,16 @@ export const updateOrgUnitSchema = z.object({
   parentId: z.uuid().nullable().optional(),
   managerEmployeeId: z.uuid().nullable().optional(),
   /**
-   * Avec un changement de responsable : le jour où le nouveau prend ses
-   * fonctions, et où l'ancien les quitte. Leurs affectations le disent dès ce
-   * jour-là. Au plus tard aujourd'hui ; par défaut, aujourd'hui.
+   * Au sommet seulement : le DGA (ADR-0126). `null` libère la place,
+   * l'absence la laisse inchangée. La désignation se fait seule : pas dans la
+   * même opération qu'un nouveau responsable.
+   */
+  adjointEmployeeId: z.uuid().nullable().optional(),
+  /**
+   * Avec un changement de responsable, ou de DGA : le jour de la passation,
+   * où la personne désignée prend ses fonctions et où la précédente les
+   * quitte. Les affectations le disent dès ce jour-là. Au plus tard
+   * aujourd'hui ; par défaut, aujourd'hui.
    */
   depuis: isoDate.optional(),
   /** Le poste que l'ancien responsable occupe ensuite, dans la même unité. */
@@ -232,6 +239,21 @@ export function posteDeResponsable(
 }
 
 /**
+ * Le poste de DGA, tel que les affectations l'écrivent (ADR-0126) :
+ * « Directeur général adjoint », « Directrice générale adjointe ». Sans genre
+ * connu, comme pour un responsable, l'intitulé ne devine pas : « Responsable
+ * adjoint·e de la DG ».
+ */
+export function posteDAdjoint(
+  sommet: { name: string; shortName?: string | null },
+  genre: string | null | undefined,
+): string {
+  if (genre === 'female') return 'Directrice générale adjointe';
+  if (genre === 'male') return 'Directeur général adjoint';
+  return `Responsable adjoint·e de la ${sommet.shortName || sommet.name}`.slice(0, 120);
+}
+
+/**
  * Rattachements autorisés : une direction relève d'une autre direction — la
  * Direction Générale chapeaute les directions métier —, un département d'une
  * direction, un service d'un département ou directement d'une direction.
@@ -260,6 +282,20 @@ export const ORG_UNIT_TYPE_LABELS: Record<OrgUnitType, string> = {
   service: 'Service',
 };
 
+/** Le DGA en place, pour la fiche du sommet (ADR-0126). */
+export interface AdjointDuSommet {
+  employeeId: string;
+  /** Premier prénom en entier, suivants en initiales (cf. `nomAbrege`). */
+  nomAbrege: string;
+  genre: 'female' | 'male' | null;
+  matricule: string;
+  /**
+   * Le début de son affectation en cours : remplacée, la personne reçoit son
+   * nouveau poste au plus tôt ce jour-là.
+   */
+  depuis: string;
+}
+
 /** Unité enrichie pour l'organigramme : responsable et effectif direct. */
 export interface OrgUnitView extends OrgUnit {
   managerEmployeeId: string | null;
@@ -281,6 +317,11 @@ export interface OrgUnitView extends OrgUnit {
    * jour. `null` : rien à lui donner.
    */
   managerDepuis: string | null;
+  /**
+   * Au sommet, le DGA en place : en activité, et affecté à la Direction
+   * Générale. `null` ailleurs, ou quand la place est vacante.
+   */
+  adjoint: AdjointDuSommet | null;
   /**
    * L'unité est LE sommet de l'organigramme — la Direction Générale, dont le
    * responsable est le directeur général. Dit par le serveur, avec la même

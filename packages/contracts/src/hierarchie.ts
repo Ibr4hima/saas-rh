@@ -94,6 +94,10 @@ export type MotifChangement =
   | 'devient_dg'
   /** Relevait de l'ancien DG : relève du nouveau. */
   | 'suit_le_dg'
+  /** Le nouveau DGA relève du DG. */
+  | 'devient_dga'
+  /** Relevait du DGA remplacé : relève du nouveau DGA. */
+  | 'suit_le_dga'
   /** Un directeur relève du directeur général. */
   | 'directeur'
   /** L'ancien DG, resté à la Direction Générale, relève du nouveau. */

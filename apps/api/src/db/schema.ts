@@ -95,6 +95,8 @@ export const orgUnits = pgTable('org_units', {
   /** Abrégé d'une direction (« DCH ») — NULL pour les autres types. */
   shortName: text('short_name'),
   managerEmployeeId: uuid('manager_employee_id'),
+  /** Au sommet seulement : le DGA (ADR-0126). */
+  adjointEmployeeId: uuid('adjoint_employee_id'),
   /** La direction qui traite les demandes du personnel (la DCH) — une seule. */
   directionDuPersonnel: boolean('direction_du_personnel').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

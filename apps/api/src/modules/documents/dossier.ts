@@ -1,7 +1,7 @@
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { directionDuPersonnel } from '../acces/dch';
 import { debutDeLAnciennete, premierJourDuStage } from '../people/anciennete';
-import { DG } from '../people/chaine';
+import { adjointEnPlace, DG } from '../people/chaine';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import type { Tx } from '../../db/tenant-db';
@@ -282,6 +282,12 @@ async function personne(tx: Tx, employeeId: SQL): Promise<Personne | null> {
 /** Qui dirige le sommet de l'organigramme, la direction générale ; null : la place est vacante. */
 export function quiDirigeLeSommet(tx: Tx): Promise<Personne | null> {
   return personne(tx, DG);
+}
+
+/** Qui seconde le DG : le DGA en place (ADR-0126) ; null : la place est vacante. */
+export async function quiSecondeLeSommet(tx: Tx): Promise<Personne | null> {
+  const id = await adjointEnPlace(tx);
+  return id ? personne(tx, sql`${id}`) : null;
 }
 
 /** Qui dirige la DCH, la direction du personnel ; null : la place est vacante. */

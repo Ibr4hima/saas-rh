@@ -16,6 +16,8 @@ import { Icon } from './icons';
 const MOTIFS: Record<MotifChangement, string> = {
   devient_dg: 'devient directeur général : ne relève plus de personne',
   suit_le_dg: 'relevait de l’ancien directeur général',
+  devient_dga: 'prend la direction générale adjointe : relève de qui dirige la Direction Générale',
+  suit_le_dga: 'relevait de qui occupait la direction générale adjointe',
   directeur: 'dirige une direction : relève du directeur général',
   ancien_dg: 'ancien directeur général, resté à la Direction Générale',
   direction_pourvue: 'quelqu’un dirige désormais sa direction',

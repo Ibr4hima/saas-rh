@@ -214,9 +214,15 @@ function UnitPanel({
     enabled: canManage && !estAdmin,
   });
   const [managerId, setManagerId] = useState(unit.managerEmployeeId ?? '');
+  // Au sommet, le DGA se désigne à côté du DG (ADR-0126). Le DGA qui prend
+  // la tête quitte sa place : le choix suit.
+  const adjointEnPlace = unit.adjoint?.employeeId ?? '';
+  const [adjointId, setAdjointId] = useState(adjointEnPlace);
+  useEffect(() => setAdjointId(adjointEnPlace), [adjointEnPlace]);
   const aujourdhui = new Date().toISOString().slice(0, 10);
   const [depuis, setDepuis] = useState(aujourdhui);
   const [devenir, setDevenir] = useState<Devenir>(DEVENIR_INITIAL);
+  const [devenirAdjoint, setDevenirAdjoint] = useState<Devenir>(DEVENIR_INITIAL);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(unit.name);
@@ -253,6 +259,7 @@ function UnitPanel({
       setApercu(null);
       setDepuis(new Date().toISOString().slice(0, 10));
       setDevenir(DEVENIR_INITIAL);
+      setDevenirAdjoint(DEVENIR_INITIAL);
       void queryClient.invalidateQueries({ queryKey: ['org-units'] });
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
       void queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
@@ -344,6 +351,39 @@ function UnitPanel({
   const passationPrete =
     (!dater || (depuis >= (depuisMin ?? '') && depuis <= aujourdhui)) &&
     (!ancienAPlacer || Boolean(devenirLu?.corps));
+
+  // La même passation pour la direction générale adjointe : une désignation
+  // à la fois, la date et le devenir valent pour celle qui change.
+  const changeAdjoint = unit.sommet && adjointEnPlace !== adjointId;
+  const candidatAdjoint = (eligible.data ?? []).find((e) => e.employeeId === adjointId);
+  const ancienAdjoint = changeAdjoint ? unit.adjoint : null;
+  const daterAdjoint = changeAdjoint && (Boolean(adjointId) || Boolean(ancienAdjoint));
+  const depuisMinAdjoint = [candidatAdjoint?.depuis ?? '', ancienAdjoint?.depuis ?? '']
+    .sort()
+    .at(-1);
+  const devenirAdjointLu = ancienAdjoint
+    ? lireLeDevenir(devenirAdjoint, {
+        quittee: unit,
+        unites: units,
+        ancienId: ancienAdjoint.employeeId,
+        depuis,
+        min: ancienAdjoint.depuis,
+      })
+    : null;
+  const passationAdjointPrete =
+    (!daterAdjoint || (depuis >= (depuisMinAdjoint ?? '') && depuis <= aujourdhui)) &&
+    (!ancienAdjoint || Boolean(devenirAdjointLu?.corps));
+  // Les titres du sommet suivent le genre de qui les porte ; vacants, ils
+  // disent la fonction.
+  const titreDuDG = unit.managerGender === 'female' ? 'Directrice Générale' : 'Directeur Général';
+  const titreDuDGA =
+    unit.adjoint?.genre === 'female' ? 'Directrice Générale Adjointe' : 'Directeur Général Adjoint';
+  const responsable = unit.managerShortName ? (
+    <>
+      {unit.managerShortName}
+      {unit.managerNumber ? <span className="text-ink-muted"> · {unit.managerNumber}</span> : null}
+    </>
+  ) : null;
 
   // Ce que la dissolution rendrait faux, selon l'unité d'accueil choisie.
   const apercuDissolution = useQuery({
@@ -636,41 +676,82 @@ function UnitPanel({
       <Card>
         <CardContent className="py-4">
           <DataGrid>
-            <DataBlock label="Effectif">
-              {unit.headcount} {unit.headcount > 1 ? 'personnes' : 'personne'}
-            </DataBlock>
-            <DataBlock label="Responsable">
-              {unit.managerShortName ? (
-                <>
-                  {unit.managerShortName}
-                  {unit.managerNumber ? (
-                    <span className="text-ink-muted"> · {unit.managerNumber}</span>
+            {unit.sommet ? (
+              <>
+                <DataBlock label={titreDuDG}>{responsable}</DataBlock>
+                <DataBlock label={titreDuDGA}>
+                  {unit.adjoint ? (
+                    <>
+                      {unit.adjoint.nomAbrege}
+                      <span className="text-ink-muted"> · {unit.adjoint.matricule}</span>
+                    </>
                   ) : null}
-                </>
-              ) : null}
-            </DataBlock>
+                </DataBlock>
+              </>
+            ) : (
+              <>
+                <DataBlock label="Effectif">
+                  {unit.headcount} {unit.headcount > 1 ? 'personnes' : 'personne'}
+                </DataBlock>
+                <DataBlock label="Responsable">{responsable}</DataBlock>
+              </>
+            )}
           </DataGrid>
 
           {/* Qui dirige la DCH a toutes les habilitations : l'administrateur seul le désigne. */}
           {canManage && (!unit.directionDuPersonnel || estAdmin) ? (
             <div className="mt-3 border-t border-line-soft pt-3">
-              <Field label="Désigner un responsable" htmlFor="unit-manager">
-                <Select
-                  id="unit-manager"
-                  value={managerId}
-                  onChange={(ev) => setManagerId(ev.target.value)}
-                  className="h-[34px]"
+              {/* Au sommet, le DG et le DGA se désignent côte à côte, une
+                  désignation à la fois. */}
+              <div className={cn(unit.sommet && 'grid gap-3 sm:grid-cols-2')}>
+                <Field
+                  label={unit.sommet ? 'Désigner un DG' : 'Désigner un responsable'}
+                  htmlFor="unit-manager"
                 >
-                  <option value="">Aucun</option>
-                  {(eligible.data ?? [])
-                    .filter((e) => e.employeeId !== moi.data?.employeeId)
-                    .map((e) => (
-                      <option key={e.employeeId} value={e.employeeId}>
-                        {nomAbrege(e.givenName, e.familyName)} · {e.employeeNumber}
-                      </option>
-                    ))}
-                </Select>
-              </Field>
+                  <Select
+                    id="unit-manager"
+                    aria-label={unit.sommet ? 'Désigner un DG' : 'Désigner un responsable'}
+                    value={managerId}
+                    disabled={changeAdjoint}
+                    onChange={(ev) => setManagerId(ev.target.value)}
+                    className="h-[34px]"
+                  >
+                    <option value="">Aucun</option>
+                    {(eligible.data ?? [])
+                      .filter((e) => e.employeeId !== moi.data?.employeeId)
+                      .map((e) => (
+                        <option key={e.employeeId} value={e.employeeId}>
+                          {nomAbrege(e.givenName, e.familyName)} · {e.employeeNumber}
+                        </option>
+                      ))}
+                  </Select>
+                </Field>
+                {unit.sommet ? (
+                  <Field label="Désigner un DGA" htmlFor="unit-adjoint">
+                    <Select
+                      id="unit-adjoint"
+                      aria-label="Désigner un DGA"
+                      value={adjointId}
+                      disabled={change}
+                      onChange={(ev) => setAdjointId(ev.target.value)}
+                      className="h-[34px]"
+                    >
+                      <option value="">Aucun</option>
+                      {(eligible.data ?? [])
+                        .filter(
+                          (e) =>
+                            e.employeeId !== moi.data?.employeeId &&
+                            e.employeeId !== unit.managerEmployeeId,
+                        )
+                        .map((e) => (
+                          <option key={e.employeeId} value={e.employeeId}>
+                            {nomAbrege(e.givenName, e.familyName)} · {e.employeeNumber}
+                          </option>
+                        ))}
+                    </Select>
+                  </Field>
+                ) : null}
+              </div>
               {change ? (
                 <div className="mt-3 flex flex-col gap-3">
                   {dater ? (
@@ -717,6 +798,60 @@ function UnitPanel({
                         ...(dater ? { depuis } : {}),
                         ...(ancienAPlacer && devenirLu?.corps
                           ? { devenirDeLAncien: devenirLu.corps }
+                          : {}),
+                      })
+                    }
+                  >
+                    Enregistrer
+                  </Button>
+                </div>
+              ) : null}
+              {changeAdjoint ? (
+                <div className="mt-3 flex flex-col gap-3">
+                  {daterAdjoint ? (
+                    <div className="w-full sm:w-44">
+                      <Field
+                        label={adjointId ? 'Début de fonction' : 'À compter du'}
+                        htmlFor="unit-adjoint-depuis"
+                        required
+                      >
+                        <Input
+                          id="unit-adjoint-depuis"
+                          type="date"
+                          value={depuis}
+                          min={depuisMinAdjoint || undefined}
+                          max={aujourdhui}
+                          onChange={(ev) => setDepuis(ev.target.value)}
+                        />
+                      </Field>
+                    </div>
+                  ) : null}
+                  {ancienAdjoint ? (
+                    <DevenirDeLAncien
+                      ancien={{
+                        id: ancienAdjoint.employeeId,
+                        nom: ancienAdjoint.nomAbrege,
+                        genre: ancienAdjoint.genre,
+                      }}
+                      quittee={unit}
+                      unites={units}
+                      depuis={depuis}
+                      min={ancienAdjoint.depuis}
+                      valeur={devenirAdjoint}
+                      onChange={setDevenirAdjoint}
+                      idPrefix="unit-ancien-adjoint"
+                    />
+                  ) : null}
+                  <Button
+                    className="self-end"
+                    loading={verification || appliquer.isPending}
+                    disabled={!passationAdjointPrete}
+                    onClick={() =>
+                      void verifierPuisAppliquer({
+                        adjointEmployeeId: adjointId || null,
+                        ...(daterAdjoint ? { depuis } : {}),
+                        ...(ancienAdjoint && devenirAdjointLu?.corps
+                          ? { devenirDeLAncien: devenirAdjointLu.corps }
                           : {}),
                       })
                     }

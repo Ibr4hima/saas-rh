@@ -12,7 +12,13 @@ import {
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import type { Tx } from '../../db/tenant-db';
 import type { ModeleSansAgent } from './contrat-stage';
-import { quiDirigeLaDCH, quiDirigeLeSommet, uniteDAffectation, type Unite } from './dossier';
+import {
+  quiDirigeLaDCH,
+  quiDirigeLeSommet,
+  quiSecondeLeSommet,
+  uniteDAffectation,
+  type Unite,
+} from './dossier';
 import { ENTETE, SESSIONS_DU_CONSEIL } from './entete';
 import { nouvelleFeuille, type Passage } from './feuille';
 import {
@@ -56,6 +62,12 @@ export interface TextesDeLaDecision {
 export type DisponibiliteData = {
   /** Qui dirige la direction générale ; null : la place est vacante. */
   directionGenerale: Personne | null;
+  /**
+   * Qui seconde le DG, le DGA en place (ADR-0126) : le visa de sa
+   * nomination s'accorde à son genre. Vacante, la place garde le texte du
+   * modèle.
+   */
+  directionGeneraleAdjointe?: Personne | null;
   /** Qui dirige la DCH ; null : la place est vacante. */
   dch: Personne | null;
 } & (
@@ -114,6 +126,9 @@ export function textesDeLaDecision(d: DisponibiliteData, aujourdhui: Date): Text
     'Directeur Général',
     'Directrice Générale',
   );
+  const genreDGA = d.directionGeneraleAdjointe?.genre ?? null;
+  const dga = accords(genreDGA);
+  const qualiteDGA = auGenre(genreDGA, 'Directeur Général Adjoint', 'Directrice Générale Adjointe');
   const genreDCH = d.dch?.genre ?? null;
   const dch = accords(genreDCH);
   const societe = (lien: string) =>
@@ -173,7 +188,8 @@ export function textesDeLaDecision(d: DisponibiliteData, aujourdhui: Date): Text
           texte:
             'Vu le procès-verbal de la session du ' +
             `${insecable(frDate(f.pvDirectionGeneraleAdjointeLe))} du Conseil d’Administration de ` +
-            `la société anonyme ${sigle} qui a nommé le Directeur Général Adjoint d’${sigle}${PV}`,
+            `la société anonyme ${sigle} qui a nommé ${dga.le.toLowerCase()} ${qualiteDGA} ` +
+            `d’${sigle}${PV}`,
         },
       ],
       [
@@ -309,6 +325,7 @@ async function donnees(
       doc,
       fiche,
       directionGenerale: await quiDirigeLeSommet(tx),
+      directionGeneraleAdjointe: await quiSecondeLeSommet(tx),
       dch: await quiDirigeLaDCH(tx),
     };
   }
@@ -318,6 +335,7 @@ async function donnees(
     fiche,
     unite: await uniteDAffectation(tx, fiche.affectation),
     directionGenerale: await quiDirigeLeSommet(tx),
+    directionGeneraleAdjointe: await quiSecondeLeSommet(tx),
     dch: await quiDirigeLaDCH(tx),
   };
 }

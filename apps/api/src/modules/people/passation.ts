@@ -1,6 +1,11 @@
 import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import { posteDeResponsable, type OrgUnitType, type SessionUser } from '@teranga/contracts';
+import {
+  posteDAdjoint,
+  posteDeResponsable,
+  type OrgUnitType,
+  type SessionUser,
+} from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
 import { frDate } from '../acces/appels';
@@ -18,6 +23,9 @@ import { enActivite } from './en-activite';
    close la veille sinon. Celui qu'il remplace quitte la tête ce même jour,
    pour le poste qu'on lui donne, dans son unité ; ou il part ailleurs, ou
    quitte l'APIX, et c'est l'appelant qui l'écrit (ADR-0038).
+
+   La place de DGA, au sommet, passe de main de la même façon (ADR-0126) :
+   le poste s'écrit, au genre, sans la marque du responsable.
 */
 
 interface Place extends Record<string, unknown> {
@@ -94,6 +102,11 @@ export interface Passation {
   posteDeLAncien?: string;
   /** L'ancien ne reste pas dans l'unité : ce qu'il devient s'écrit ensuite. */
   devenirAilleurs?: boolean;
+  /**
+   * La place qui change de main : la tête de l'unité, ou, au sommet, celle
+   * de DGA (ADR-0126). Par défaut, la tête.
+   */
+  place?: 'tete' | 'adjoint';
 }
 
 /**
@@ -154,13 +167,16 @@ export async function inscrireLaPassation(tx: Tx, user: SessionUser, p: Passatio
       SELECT name, unit_type, short_name, (id = ${SOMMET}) AS sommet
         FROM org_units WHERE id = ${p.uniteId}`);
     const u = unite[0]!;
+    const adjoint = p.place === 'adjoint';
     await changerDePoste(tx, user.tenantId, p.nouveau, nouveau, depuis, {
       orgUnitId: p.uniteId,
-      titre: posteDeResponsable(
-        { name: u.name, unitType: u.unit_type, shortName: u.short_name, sommet: u.sommet },
-        genre,
-      ),
-      responsable: true,
+      titre: adjoint
+        ? posteDAdjoint({ name: u.name, shortName: u.short_name }, genre)
+        : posteDeResponsable(
+            { name: u.name, unitType: u.unit_type, shortName: u.short_name, sommet: u.sommet },
+            genre,
+          ),
+      responsable: !adjoint,
     });
   }
 
@@ -171,7 +187,9 @@ export async function inscrireLaPassation(tx: Tx, user: SessionUser, p: Passatio
         422,
         'org.poste_de_l_ancien_requis',
         `Indiquez le nouveau poste ${de(nom)}`,
-        `Indiquez le nouveau poste ${de(nom)}, qui quitte la tête de l’unité.`,
+        `Indiquez le nouveau poste ${de(nom)}, qui quitte ${
+          p.place === 'adjoint' ? 'la direction générale adjointe' : 'la tête de l’unité'
+        }.`,
       );
     }
     // Le même poste, dans la même unité, sur une affectation qui ne disait

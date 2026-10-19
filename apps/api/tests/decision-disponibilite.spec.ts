@@ -107,7 +107,11 @@ const DCH: Personne = { nom: 'Mariama CISSÉ', genre: 'female' };
 const DEA: Unite = { nom: 'Direction de l’Environnement des Affaires', type: 'direction' };
 const AUJOURDHUI = new Date('2026-10-18T10:00:00');
 
-type Direction = { directionGenerale?: Personne | null; dch?: Personne | null };
+type Direction = {
+  directionGenerale?: Personne | null;
+  directionGeneraleAdjointe?: Personne | null;
+  dch?: Personne | null;
+};
 
 const decision = (f: Partial<FicheDisponibilite> = {}, d: Direction = {}) =>
   textesDeLaDecision(
@@ -331,6 +335,20 @@ describe('l’en-tête et les visas', () => {
     ).toBe(
       'Vu le procès-verbal de la session du 7 mai 2024 du Conseil d’Administration de la société ' +
         'anonyme APIX-SA qui a nommé la Directrice Générale d’APIX-SA ;',
+    );
+  });
+
+  it('la direction générale adjointe à son genre ; vacante, le texte du modèle (ADR-0126)', () => {
+    const adjointe = { nom: 'Ndèye FALL', genre: 'female' };
+    expect(visas(decision({}, { directionGeneraleAdjointe: adjointe }))[6]).toBe(
+      'Vu le procès-verbal de la session du 13 décembre 2024 du Conseil d’Administration de la ' +
+        'société anonyme APIX-SA qui a nommé la Directrice Générale Adjointe d’APIX-SA ;',
+    );
+    expect(visas(renouvellement({}, { directionGeneraleAdjointe: adjointe }))[6]).toMatch(
+      /qui a nommé la Directrice Générale Adjointe d’APIX-SA ;$/,
+    );
+    expect(visas(decision({}, { directionGeneraleAdjointe: null }))[6]).toMatch(
+      /qui a nommé le Directeur Général Adjoint d’APIX-SA ;$/,
     );
   });
 });

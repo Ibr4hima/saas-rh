@@ -4,7 +4,7 @@ import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import type { Tx } from '../../db/tenant-db';
 import { frDate } from '../notifications/phrases';
-import { debutDuStage, exigerEnActivite } from './en-activite';
+import { debutDuStage, enActivite, exigerEnActivite } from './en-activite';
 
 /* ————————————————————————————————————————————————————————————————
    La chaîne hiérarchique : ses définitions, la validation d'un rattachement,
@@ -360,6 +360,28 @@ export async function uniteRacine(
  */
 export async function directeurGeneral(tx: Tx): Promise<string | null> {
   return (await uniteRacine(tx))?.managerId ?? null;
+}
+
+/**
+ * Le DGA EN PLACE (ADR-0126) : l'agent que porte le sommet, en activité et
+ * affecté aujourd'hui à la Direction Générale. Parti, ou muté ailleurs, la
+ * place est vacante : la fiche du sommet ne montre plus personne, et la
+ * prochaine désignation n'a pas de poste à rendre. `null` : pas de DGA.
+ */
+export async function adjointEnPlace(tx: Tx): Promise<string | null> {
+  const { rows } = await tx.execute<{ sommet: string; adjoint: string | null }>(sql`
+    SELECT so.id AS sommet, so.adjoint_employee_id AS adjoint
+      FROM org_units so WHERE so.id = ${SOMMET}`);
+  const r = rows[0];
+  if (!r?.adjoint) return null;
+  const { rows: place } = await tx.execute<{ enPlace: boolean }>(sql`
+    ${perimetre(r.sommet)}
+    SELECT COALESCE(${enActivite(sql`${r.adjoint}::uuid`)}, false)
+       AND EXISTS (SELECT 1 FROM assignments a
+                    WHERE a.employee_id = ${r.adjoint}
+                      AND a.org_unit_id IN (SELECT id FROM perimetre)
+                      AND a.validity @> CURRENT_DATE) AS "enPlace"`);
+  return place[0]?.enPlace ? r.adjoint : null;
 }
 
 /** Cette direction a-t-elle un responsable désigné ? */
@@ -760,6 +782,31 @@ export async function apresNouveauDG(
   for (const id of await sansN1DansLaDirection(tx, SOMMET)) {
     if (id !== nouveau && id !== ancien) {
       await tenterRattachement(tx, journal, id, nouveau, 'responsable_de_sa_direction');
+    }
+  }
+}
+
+/**
+ * Un nouveau DGA (ADR-0126). Ce que la règle impose :
+ *   - le DGA relève du DG ;
+ *   - ce qui relevait du DGA remplacé relève du nouveau DGA : l'équipe reste
+ *     à la place, elle ne suit pas la personne qui part.
+ * L'adjoint du sommet est DÉJÀ écrit quand on arrive ici. Restée à la
+ * Direction Générale, la personne remplacée garde son n+1 : le DG.
+ */
+export async function apresNouvelAdjoint(
+  tx: Tx,
+  journal: ChangementRattachement[],
+  ancien: string | null,
+  nouveau: string,
+): Promise<void> {
+  const dg = await directeurGeneral(tx);
+  if (dg && dg !== nouveau) await tenterRattachement(tx, journal, nouveau, dg, 'devient_dga');
+  if (ancien && ancien !== nouveau) {
+    for (const agent of await equipeDe(tx, ancien)) {
+      if (agent.id !== nouveau) {
+        await tenterRattachement(tx, journal, agent.id, nouveau, 'suit_le_dga');
+      }
     }
   }
 }
