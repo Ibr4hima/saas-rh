@@ -25,25 +25,27 @@
   /* Le fond des pages, et celui de l'écran de connexion (ADR-0116) : un
      bleu-gris clair, à la teinte du bleu de la charte (ADR-0143). Le blanc
      des cartes et des tableaux s'en détache nettement (1,14:1), et le
-     texte secondaire y garde 5,5:1. Les autres surfaces reprennent la
-     plateforme APIX (--carte / --carte-douce) : des gris chauds. */
+     texte secondaire y garde 5,5:1. Les gris des cartes (en-tête des
+     tableaux, filets, survol, rail des barres) en prennent la teinte, à
+     peine saturée : les gris chauds de la plateforme APIX y viraient au
+     beige et ternissaient le blanc qui les porte (ADR-0144). */
   --tg-bg: #ebf1f8;
   --tg-surface: #ffffff;
-  --tg-surface-raised: #fafaf9;
+  --tg-surface-raised: #f8fafd;
   /* Teinte des ÉTATS (rangée survolée, bouton discret, onglet au repos).
      Elle ne dérive pas du fond : le fond est presque blanc, et un survol qui
      en dépendrait se verrait à peine sur une carte blanche. C'est une couleur
      à part, tenue quelques points en dessous du blanc — assez pour que la
      rangée sous le curseur se détache, jamais assez pour peser. */
-  --tg-hover: #f5f3f0;
+  --tg-hover: #eff4f9;
   --tg-ink: #1c2033;
   --tg-ink-strong: #14172a;
   --tg-ink-muted: #5a5f75;
-  --tg-line: #d8d3cf;
-  --tg-line-soft: #eceae7;
-  /* Le bloc d'une donnée en lecture (DataBlock) : le gris chaud des
-     surfaces et son filet, sans teinte de marque. Le bleu reste à
-     l'intitulé, qui structure ; le fond, lui, se tait. */
+  --tg-line: #ced5dd;
+  --tg-line-soft: #e6ebf0;
+  /* Le bloc d'une donnée en lecture (DataBlock) : le gris des surfaces et
+     son filet, à peine bleutés. Le bleu franc reste à l'intitulé, qui
+     structure ; le fond, lui, se tait. */
   --tg-bloc: var(--tg-surface-raised);
   --tg-bloc-line: var(--tg-line-soft);
 
@@ -238,7 +240,7 @@
      reste réservé à ce qui attend un geste (cf. en-tête de ce fichier), et ne
      doit pas s'user à colorer des graphiques. */
   --tg-chart-2: #ca631f;
-  --tg-chart-track: #eae7e3;
+  --tg-chart-track: #e3e8ee;
 
   /* --- Gabarit de page ---
      La largeur MAXIMALE du contenu, la même sur tous les écrans. Onze

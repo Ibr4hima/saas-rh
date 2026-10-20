@@ -121,7 +121,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0113](0113-demander-un-document-en-liste.md)         | Demander un document : la liste de « Générer des documents », à choix multiple          | acceptée                                    |
 | [0114](0114-contrats-etablis-par-la-dch.md)           | Les contrats, la DCH les établit : ils ne se demandent pas, leur génération se délègue  | acceptée                                    |
 | [0115](0115-coquille-posee-sur-le-fond.md)            | La coquille posée sur le fond : ni bandeau bleu, ni colonne blanche                     | acceptée, précisée 7 fois, de 0116 à 0142   |
-| [0116](0116-fond-de-l-ecran-de-connexion.md)          | Le fond de l'application, celui de l'écran de connexion                                 | acceptée, précisée par 0143                 |
+| [0116](0116-fond-de-l-ecran-de-connexion.md)          | Le fond de l'application, celui de l'écran de connexion                                 | acceptée, précisée (0143, 0144)             |
 | [0117](0117-date-en-haut-a-droite.md)                 | La date du jour en haut à droite de chaque écran                                        | acceptée                                    |
 | [0118](0118-entree-courante-en-bleu-clair.md)         | L'entrée courante du menu, en bleu très clair, sans filet                               | acceptée, précisée par 0143                 |
 | [0119](0119-onglets-a-la-hauteur-des-boutons.md)      | Les onglets et les choix segmentés, à la hauteur des boutons de l'en-tête               | acceptée                                    |
@@ -148,4 +148,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0140](0140-retour-sans-cadre.md)                     | Le retour à la page précédente, sans cadre, comme la cloche du menu                     | acceptée                                    |
 | [0141](0141-hauteur-apparente-de-l-action.md)         | L'action de l'écran, à la hauteur apparente du bouton de la date                        | acceptée                                    |
 | [0142](0142-pied-du-menu-en-fondu.md)                 | Le pied du menu, sans filet : la liste s'efface au-dessus du compte                     | acceptée                                    |
-| [0143](0143-fond-bleu-gris.md)                        | Le fond de l'application, un bleu-gris qui détache les blocs                            | acceptée                                    |
+| [0143](0143-fond-bleu-gris.md)                        | Le fond de l'application, un bleu-gris qui détache les blocs                            | acceptée, précisée par 0144                 |
+| [0144](0144-gris-accordes-au-fond.md)                 | Les gris des blocs, accordés au fond bleu-gris                                          | acceptée                                    |
