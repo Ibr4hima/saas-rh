@@ -22,11 +22,12 @@
   color-scheme: light;
 
   /* --- Couleurs sémantiques (light) --- */
-  /* Le fond des pages : celui de l'écran de connexion, un blanc à peine
-     bleui, sous le blanc des cartes (ADR-0116). Les autres surfaces
-     reprennent la plateforme APIX (--carte / --carte-douce) : des gris
-     chauds. */
-  --tg-bg: #f3f6fa;
+  /* Le fond des pages, et celui de l'écran de connexion (ADR-0116) : un
+     bleu-gris clair, à la teinte du bleu de la charte (ADR-0143). Le blanc
+     des cartes et des tableaux s'en détache nettement (1,14:1), et le
+     texte secondaire y garde 5,5:1. Les autres surfaces reprennent la
+     plateforme APIX (--carte / --carte-douce) : des gris chauds. */
+  --tg-bg: #ebf1f8;
   --tg-surface: #ffffff;
   --tg-surface-raised: #fafaf9;
   /* Teinte des ÉTATS (rangée survolée, bouton discret, onglet au repos).
@@ -133,9 +134,10 @@
   /* Le menu se pose à même le fond de la page, sans colonne blanche
      (ADR-0115). Une rangée survolée y prend un voile d'encre, qui fonce le
      fond sans le teinter ; l'entrée courante, un bleu très clair, sans filet
-     ni ombre (ADR-0118). */
+     ni ombre (ADR-0118). Ce bleu a un cran de plus que le bleu pâle de la
+     charte, qui se fondait dans le fond bleu-gris (ADR-0143). */
   --tg-menu-survol: rgb(28 32 51 / 0.05);
-  --tg-menu-actif: var(--tg-primary-soft);
+  --tg-menu-actif: #dbe9fc;
   /* Le logo de la coquille : ses couleurs d'origine sur le fond clair. */
   --tg-logo-coquille: none;
 
@@ -275,6 +277,9 @@
     --tg-hover: #1e2839;
     --tg-hero: #16213a;
     --tg-menu-survol: rgb(237 241 247 / 0.05);
+    /* La nuit, l'entrée courante garde le bleu profond de la charte de nuit
+       (ADR-0118). */
+    --tg-menu-actif: var(--tg-primary-soft);
     /* La nuit, le logo passe au blanc pur : ses encres foncées se perdraient
        dans le fond. */
     --tg-logo-coquille: brightness(0) invert(1);
@@ -359,6 +364,7 @@
   --tg-hover: #1e2839;
   --tg-hero: #16213a;
   --tg-menu-survol: rgb(237 241 247 / 0.05);
+  --tg-menu-actif: var(--tg-primary-soft);
   --tg-logo-coquille: brightness(0) invert(1);
 
   --tg-primary: #86b5ea;
