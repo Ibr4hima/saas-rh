@@ -21,9 +21,8 @@ export type EtatLigneImport =
  *
  * À ne pas confondre avec le motif d'un refus : celui-ci dit pourquoi rien
  * n'est écrit, ceux-là disent ce que le dossier n'aura pas. Une même ligne
- * peut en porter plusieurs — un abrégé de direction inconnu ET un matricule
- * de responsable introuvable —, et n'en montrer qu'un ferait corriger la
- * moitié du problème.
+ * peut en porter plusieurs, et n'en montrer qu'un ferait corriger la moitié
+ * du problème.
  */
 export interface AvertissementImport {
   /** L'intitulé de la colonne en cause, pour retrouver la case du tableur. */
@@ -41,10 +40,6 @@ export interface LigneImport {
   uniteAbrege: string | null;
   /** L'unité retrouvée dans l'organigramme, ou null si l'abrégé est inconnu. */
   uniteResolue: string | null;
-  /** Le matricule du responsable hiérarchique, tel que le fichier l'écrit. */
-  responsable: string | null;
-  /** Le nom du responsable retrouvé, ou null si le matricule est introuvable. */
-  responsableResolu: string | null;
   etat: EtatLigneImport;
   /** Pour une ligne refusée ou ignorée : ce qui cloche, en une phrase. */
   motif: string | null;
@@ -72,15 +67,6 @@ export interface RapportImportEmployes {
   erreurs: number;
   /** Dossiers créés sans rattachement d'unité, faute d'un abrégé connu. */
   sansUnite: number;
-  /** Dossiers dont le responsable hiérarchique a été retrouvé et rattaché. */
-  rattaches: number;
-  /**
-   * Dossiers qui entrent SANS responsable hiérarchique — colonne vide ou
-   * matricule introuvable. Ils ne pourront ni recevoir d'objectifs ni être
-   * évalués avant qu'on leur en désigne un : c'est le contrôle de la chaîne
-   * hiérarchique qui les reprend ensuite.
-   */
-  sansResponsable: number;
   /** Faux en aperçu : rien n'a été écrit dans la base. */
   applique: boolean;
   crees: number;

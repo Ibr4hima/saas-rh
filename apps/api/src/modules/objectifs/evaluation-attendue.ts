@@ -8,7 +8,7 @@ import type { Tx } from '../../db/tenant-db';
 import { retirerLesAppels, tenirLesAppels } from '../acces/appels';
 import { notifierChacun } from '../notifications/notifier';
 import { deLAnnee } from '../notifications/phrases';
-import { DG } from '../people/chaine';
+import { DG, n1Fonctionnel } from '../people/chaine';
 
 /** Le jour de l'évaluation de l'organisation, « MM-JJ » : le 15 décembre sans réglage. */
 export async function lireLeJourDEvaluation(tx: Tx): Promise<string> {
@@ -52,7 +52,7 @@ export async function prevenirDeLOuverture(
       JOIN persons p ON p.id = e.person_id
      WHERE f.annee = ${annee} AND f.commentaires_envoyes_le IS NULL
        AND e.status = 'active' AND p.user_id IS NOT NULL AND p.deleted_at IS NULL
-       AND e.manager_employee_id IS NOT NULL AND e.id IS DISTINCT FROM ${DG}
+       AND ${n1Fonctionnel('e')} IS NOT NULL AND e.id IS DISTINCT FROM ${DG}
        AND jsonb_path_exists(f.contenu, ${CONTIENT_UN_OBJECTIF}::jsonpath)`);
   await notifierChacun(
     tx,
@@ -73,9 +73,10 @@ export const prefixeEvaluation = (employeeId: string, annee: number) =>
   `objectifs:${employeeId}:${annee}`;
 
 /**
- * Une auto-évaluation envoyée attend le N+1 d'aujourd'hui. Son appel le
- * suit : l'agent change de N+1, le nouveau est appelé et l'ancien perd le
- * sien. Un N+1 sans accès ouvert l'est dès qu'il en a un. Idempotente.
+ * Une auto-évaluation envoyée attend le N+1 fonctionnel d'aujourd'hui
+ * (ADR-0147). Son appel le suit : l'agent change de N+1, le nouveau est
+ * appelé et l'ancien perd le sien. Un N+1 sans accès ouvert l'est dès l'ouverture de son accès.
+ * Idempotente.
  */
 export async function reconcilierLesEvaluations(tx: Tx, employeeId?: string): Promise<void> {
   // Une fiche qui n'attend plus d'évaluation (validée, ou rouverte) ne garde
@@ -100,7 +101,7 @@ export async function reconcilierLesEvaluations(tx: Tx, employeeId?: string): Pr
     SELECT f.tenant_id, f.employee_id, f.annee,
            p.given_name || ' ' || p.family_name AS nom,
            (SELECT pn.user_id FROM employees n JOIN persons pn ON pn.id = n.person_id
-             WHERE n.id = e.manager_employee_id AND n.status = 'active'
+             WHERE n.id = ${n1Fonctionnel('e')} AND n.status = 'active'
                AND pn.deleted_at IS NULL AND e.id IS DISTINCT FROM ${DG}) AS n1
       FROM objectifs_fiches f
       JOIN employees e ON e.id = f.employee_id

@@ -4,32 +4,26 @@ import { MOTS } from './bandeau-hierarchie';
 import { Icon } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
-   Ce qu'une opération fait à la chaîne hiérarchique — dit AVANT de valider.
+   Ce qu'une opération fait à la chaîne hiérarchique, dit AVANT de valider.
 
-   Deux listes. En bleu, les rattachements que la règle change d'elle-même
-   (un nouveau DG reprend les directeurs, un repreneur reprend une équipe) :
-   l'opération les fera, on les montre pour qu'aucun ne surprenne. En orange
-   — l'attente —, ceux qu'elle rendra FAUX et qu'il faudra revoir : le
-   contrôle de la chaîne les signalera ensuite.
+   Deux listes. En bleu, les N+1 que l'organigramme change de lui-même
+   (ADR-0147) : l'opération les fera, on les montre pour qu'aucun ne
+   surprenne. En orange, l'attente : les agents qu'elle laissera sans N+1
+   hiérarchique, que le contrôle de la chaîne signalera ensuite.
    ———————————————————————————————————————————————————————————————— */
 
 const MOTIFS: Record<MotifChangement, string> = {
-  devient_dg: 'devient directeur général : ne relève plus de personne',
-  suit_le_dg: 'relevait de l’ancien directeur général',
-  devient_dga: 'prend la direction générale adjointe : relève de qui dirige la Direction Générale',
-  suit_le_dga: 'relevait de qui occupait la direction générale adjointe',
-  directeur: 'dirige une direction : relève du directeur général',
-  ancien_dg: 'ancien directeur général, resté à la Direction Générale',
-  direction_pourvue: 'quelqu’un dirige désormais sa direction',
-  chef_d_unite: 'relève du responsable de l’unité au-dessus de la sienne',
-  suit_le_directeur: 'relevait de qui dirigeait la direction',
-  ancien_directeur: 'dirigeait la direction, y reste',
-  suit_le_chef: 'relevait de l’ancien responsable de l’unité',
-  ancien_chef: 'ancien responsable, resté dans l’unité',
-  reprise_equipe: 'reprise de l’équipe',
-  prend_la_place: 'prend la place de celui qui part',
-  responsable_de_sa_direction: 'relève d’office du responsable de sa direction',
-  retour_du_responsable: 'son responsable est revenu',
+  dg: 'DG : ne relève de personne',
+  tete_de_direction: 'à la tête d’une direction : relève du DG',
+  dga: 'DGA : relève du DG',
+  unite_au_dessus: 'à la tête de son unité : relève de la tête de l’unité au-dessus',
+  tete_de_son_unite: 'relève de la tête de son unité',
+  niveau_au_dessus: 'son unité est sans tête : relève du premier niveau occupé au-dessus',
+  direction_generale: 'rattachement direct à la Direction Générale : relève du DG',
+  rattachement_choisi: 'relève de la place choisie à la Direction Générale',
+  sans_unite: 'sans unité : plus de N+1 hiérarchique',
+  sans_dg: 'la Direction Générale n’a pas de DG : plus de N+1 hiérarchique',
+  fonctionnel_retire: 'son N+1 fonctionnel ne peut plus l’être : retour au N+1 hiérarchique',
 };
 
 export function aDesConsequences(c: ConsequencesHierarchie | null | undefined): boolean {
@@ -55,11 +49,14 @@ export function ListeConsequences({
           </h4>
           <ul className="flex flex-col gap-1">
             {changements.map((c) => (
-              <li key={c.employeeId} className="text-[12.5px] leading-snug text-ink">
+              <li
+                key={`${c.employeeId}-${c.motif}`}
+                className="text-[12.5px] leading-snug text-ink"
+              >
                 <b className="font-semibold text-ink-strong">{c.nom}</b> :{' '}
-                <span className="text-ink-muted">{c.avant ?? 'aucun n+1'}</span>
+                <span className="text-ink-muted">{c.avant ?? 'aucun N+1'}</span>
                 <Icon name="arrow_forward" size={13} className="mx-1 align-[-2px] text-ink-muted" />
-                <span className="font-semibold">{c.apres ?? 'aucun n+1'}</span>
+                <span className="font-semibold">{c.apres ?? 'aucun N+1'}</span>
                 <span className="block text-[11.5px] text-ink-muted">{MOTIFS[c.motif]}</span>
               </li>
             ))}

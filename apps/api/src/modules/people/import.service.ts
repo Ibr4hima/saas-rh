@@ -1,15 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, inArray, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import type { LigneImport, RapportImportEmployes, SessionUser } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import { lirePremiereFeuille, XlsxIllisible } from '../../common/xlsx';
-import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
-import { DG, directionDeLUnite, uniteEnVigueur } from './chaine';
+import { reconcilierLeCircuit } from '../time/visas';
 import { convertirLigne, correspondre } from './import-employes';
 import { PeopleService } from './people.service';
-import { contratEchu } from './en-activite';
+import { recalculerLaChaine } from './recalcul-de-la-chaine';
 
 /* ————————————————————————————————————————————————————————————————
    L'import d'un fichier d'effectif.
@@ -43,9 +41,6 @@ import { contratEchu } from './en-activite';
       quarante-neuf précédentes, et le rapport nomme la ligne ET la colonne
       pour que la RH corrige dans son tableur.
    ———————————————————————————————————————————————————————————————— */
-
-/** Le n+1 d'un dossier, joint à sa propre table. */
-const n1 = alias(t.employees, 'n1');
 
 /** Au-delà, c'est un fichier qu'on n'importe pas : c'est une migration. */
 const MAX_LIGNES = 5_000;
@@ -82,8 +77,6 @@ export class ImportEmployesService {
       ignores: 0,
       erreurs: 0,
       sansUnite: 0,
-      rattaches: 0,
-      sansResponsable: 0,
       applique: false,
       crees: 0,
     };
@@ -92,8 +85,7 @@ export class ImportEmployesService {
     // qu'une — « la colonne Matricule manque » — noie la seule qui compte.
     if (manquantes.length > 0) return vide;
 
-    const { employesParMatricule, unitesParAbrege, directionsPourvues, directeurs } =
-      await this.contexte(user);
+    const { employesParMatricule, unitesParAbrege } = await this.contexte(user);
 
     // Les matricules vus DANS LE FICHIER : deux lignes ne peuvent pas créer
     // le même dossier, et la deuxième s'ignore comme un doublon de base.
@@ -117,8 +109,6 @@ export class ImportEmployesService {
           poste: null,
           uniteAbrege: null,
           uniteResolue: null,
-          responsable: null,
-          responsableResolu: null,
           etat: 'erreur',
           motif: converti.refus.motif,
           colonne: converti.refus.colonne,
@@ -127,7 +117,7 @@ export class ImportEmployesService {
         return;
       }
 
-      const { matricule, nom, poste, uniteAbrege, responsableMatricule } = converti.ok;
+      const { matricule, nom, poste, uniteAbrege } = converti.ok;
       // L'unité se résout AVANT qu'on sache si la ligne sera écrite : la
       // colonne « Direction » du compte rendu dit ce que la plateforme a
       // compris de l'abrégé, et une ligne ignorée pour doublon n'a pas pour
@@ -144,8 +134,6 @@ export class ImportEmployesService {
           poste,
           uniteAbrege,
           uniteResolue: unite?.nom ?? null,
-          responsable: responsableMatricule,
-          responsableResolu: null,
           etat: 'ignore',
           motif: dejaLa
             ? 'Ce matricule existe déjà dans la plateforme : le dossier reste inchangé'
@@ -164,12 +152,7 @@ export class ImportEmployesService {
         poste,
         uniteAbrege,
         uniteResolue: unite?.nom ?? null,
-        responsable: responsableMatricule,
         emailPro: converti.ok.entree.employee.workEmail ?? null,
-        // Résolu dans une seconde passe : le responsable peut se trouver PLUS
-        // BAS dans le même fichier, et l'on ne le sait qu'après avoir lu
-        // toutes les lignes.
-        responsableResolu: null,
         etat: 'a-creer',
         motif: null,
         colonne: null,
@@ -199,96 +182,8 @@ export class ImportEmployesService {
       aCreer.push({ ligne: numero, converti });
     });
 
-    // ——— Les responsables hiérarchiques, une fois TOUTES les lignes lues ———
-    //
-    // Le n+1 d'un agent peut se trouver plus bas dans le même fichier : on ne
-    // peut donc pas le résoudre à la volée. Deux sources, dans cet ordre :
-    // l'effectif déjà en base, puis les dossiers que ce fichier va créer.
-    //
-    // Et la règle, dès l'aperçu, exactement comme l'écriture l'appliquera :
-    // l'agent ET son n+1 affectés à une direction, le n+1 actif, dans la même
-    // direction — sauf le directeur général pour une direction sans tête.
-    // Un aperçu qui annonce « rattaché » ce que l'écriture refuse ensuite
-    // ferait approuver un compte rendu faux.
-    const directionDeLigne = (l: LigneImport) => {
-      if (!l.poste || !l.uniteAbrege) return null;
-      return unitesParAbrege.get(normaliser(l.uniteAbrege))?.direction ?? null;
-    };
-    const aNaitre = new Map<string, LigneImport>();
-    for (const l of lignes) {
-      if (l.etat === 'a-creer' && l.matricule && l.nom) aNaitre.set(cleMatricule(l.matricule), l);
-    }
-    const refuser = (l: LigneImport, texte: string) =>
-      l.avertissements.push({ colonne: NOM_COLONNE_RESPONSABLE, texte });
-    // Un refus de rattachement : ce qu'il advient du dossier (sans n+1, ou
-    // repris par le directeur) ne se sait qu'une fois toutes les lignes lues.
-    const refus = new Map<LigneImport, string>();
-    for (const l of lignes) {
-      if (l.etat !== 'a-creer' || !l.responsable) continue;
-      // D'abord l'affectation, ensuite la hiérarchie : sans direction
-      // reconnue, le n+1 ne se pose pas — l'aperçu le dit avant l'import.
-      const directionAgent = directionDeLigne(l);
-      if (!directionAgent) {
-        refuser(l, 'Sans direction affectée : dossier créé sans n+1. Affectez-le d’abord');
-        continue;
-      }
-      const cle = cleMatricule(l.responsable);
-      if (l.matricule && cle === cleMatricule(l.matricule)) {
-        refus.set(l, 'Un agent ne peut pas être son propre responsable');
-        continue;
-      }
-      const existant = employesParMatricule.get(cle);
-      const ligneN1 = aNaitre.get(cle);
-      const n1 = existant
-        ? existant
-        : ligneN1
-          ? { nom: ligneN1.nom!, actif: true, direction: directionDeLigne(ligneN1), estDG: false }
-          : null;
-      if (!n1) {
-        refus.set(l, `Matricule « ${l.responsable} » introuvable`);
-        continue;
-      }
-      if (!n1.actif) {
-        refus.set(l, `${n1.nom} est inactif`);
-        continue;
-      }
-      if (!n1.direction) {
-        refus.set(l, `${n1.nom} n’est affecté à aucune direction`);
-        continue;
-      }
-      const memeDirection = n1.direction.id === directionAgent.id;
-      const dgCouvre = n1.estDG && !directionsPourvues.has(directionAgent.id);
-      if (!memeDirection && !dgCouvre) {
-        refus.set(
-          l,
-          `${n1.nom} relève de « ${n1.direction.nom} », l’agent de « ${directionAgent.nom} »`,
-        );
-        continue;
-      }
-      l.responsableResolu = n1.nom;
-    }
-
-    // ——— Sans n+1 qui tienne, le directeur de sa direction le reprend
-    // d'office (règle 5 de la chaîne) : l'aperçu le dit comme l'écriture le
-    // fera, à la création du dossier.
-    const parDefaut = new Set<LigneImport>();
-    for (const l of lignes) {
-      if (l.etat !== 'a-creer' || l.responsableResolu) continue;
-      const direction = directionDeLigne(l);
-      const directeur = direction ? directeurs.get(direction.id) : undefined;
-      if (!directeur) continue;
-      l.responsableResolu = directeur;
-      parDefaut.add(l);
-    }
-    for (const [l, raison] of refus) {
-      refuser(
-        l,
-        parDefaut.has(l)
-          ? `${raison} : rattaché d’office à ${l.responsableResolu}, qui dirige sa direction`
-          : `${raison} : dossier créé sans n+1`,
-      );
-    }
-
+    // Le N+1 ne s'importe pas : le N+1 découle de l'organigramme (ADR-0147). Une
+    // colonne N+1 dans le fichier est rendue parmi les colonnes ignorées.
     const compter = (lignesRapport: LigneImport[]) => ({
       aCreer: lignesRapport.filter((l) => l.etat === 'a-creer').length,
       ignores: lignesRapport.filter((l) => l.etat === 'ignore').length,
@@ -296,9 +191,6 @@ export class ImportEmployesService {
       sansUnite: lignesRapport.filter(
         (l) => l.etat === 'a-creer' && l.uniteAbrege && !l.uniteResolue,
       ).length,
-      rattaches: lignesRapport.filter((l) => l.etat === 'a-creer' && l.responsableResolu).length,
-      sansResponsable: lignesRapport.filter((l) => l.etat === 'a-creer' && !l.responsableResolu)
-        .length,
     });
 
     const rapport: RapportImportEmployes = {
@@ -309,32 +201,29 @@ export class ImportEmployesService {
     };
     if (!appliquer) return rapport;
 
-    // ——— L'écriture : on crée TOUT, puis on rattache ———
-    //
-    // Deux passes, et c'est le fichier qui l'impose : la ligne 3 peut relever
-    // de la ligne 40, qui n'existe pas encore quand on écrit la troisième.
-    // Créer d'abord, rattacher ensuite, c'est le seul ordre qui marche sans
-    // demander au RH de trier son classeur.
+    // L'écriture : chaque dossier dans sa transaction.
     let crees = 0;
-    const nes = new Map<string, string>();
     for (const { ligne, converti } of aCreer) {
       if (!('ok' in converti)) continue;
-      const { entree, uniteAbrege, matricule } = converti.ok;
+      const { entree, uniteAbrege } = converti.ok;
       const unite = uniteAbrege ? unitesParAbrege.get(normaliser(uniteAbrege)) : undefined;
       try {
-        const { id } = await this.people.create(user, {
-          ...entree,
-          ...(entree.assignment
-            ? {
-                assignment: {
-                  positionTitle: entree.assignment.positionTitle,
-                  startDate: entree.assignment.startDate,
-                  ...(unite ? { orgUnitId: unite.id } : {}),
-                },
-              }
-            : {}),
-        });
-        nes.set(cleMatricule(matricule), id);
+        const { id } = await this.people.create(
+          user,
+          {
+            ...entree,
+            ...(entree.assignment
+              ? {
+                  assignment: {
+                    positionTitle: entree.assignment.positionTitle,
+                    startDate: entree.assignment.startDate,
+                    ...(unite ? { orgUnitId: unite.id } : {}),
+                  },
+                }
+              : {}),
+          },
+          { recalculer: false },
+        );
         const creee = rapport.lignes.find((l) => l.ligne === ligne);
         if (creee) creee.employeeId = id;
         crees++;
@@ -350,41 +239,12 @@ export class ImportEmployesService {
       }
     }
 
-    // ——— Seconde passe : les rattachements ———
-    for (const l of rapport.lignes) {
-      if (l.etat !== 'a-creer' || !l.responsable || !l.responsableResolu || !l.matricule) continue;
-      // Repris d'office par son directeur à la création : rien à rattacher.
-      if (parDefaut.has(l)) continue;
-      const id = nes.get(cleMatricule(l.matricule));
-      const cleResp = cleMatricule(l.responsable);
-      const responsableId = employesParMatricule.get(cleResp)?.id ?? nes.get(cleResp) ?? null;
-      if (!id) continue;
-      if (!responsableId) {
-        // Son n+1 devait naître de ce fichier, et sa ligne a échoué.
-        l.avertissements.push({
-          colonne: NOM_COLONNE_RESPONSABLE,
-          texte: `Le dossier de ${l.responsableResolu} n’a pas pu être créé : rattachement non fait`,
-        });
-        continue;
-      }
-      try {
-        await this.people.update(user, id, { employee: { managerEmployeeId: responsableId } });
-      } catch (err) {
-        // Le dossier RESTE : seul le rattachement échoue. Le cas courant est
-        // la règle de direction — un responsable d'une autre direction —, et
-        // c'est exactement ce que la RH doit lire pour corriger son classeur.
-        l.responsableResolu = null;
-        l.avertissements.push({ colonne: NOM_COLONNE_RESPONSABLE, texte: messageDErreur(err) });
-      }
-    }
-
-    // Le compte rendu final dit ce que la base contient, pas ce que l'aperçu
-    // prévoyait : le n+1 de chaque dossier créé se relit après écriture.
-    const reels = await this.responsablesReels(user, [...nes.values()]);
-    for (const l of rapport.lignes) {
-      const id =
-        l.etat === 'a-creer' && l.matricule ? nes.get(cleMatricule(l.matricule)) : undefined;
-      if (id) l.responsableResolu = reels.get(id) ?? null;
+    // La chaîne se calcule une fois, pour tout le lot (ADR-0147).
+    if (crees > 0) {
+      await this.db.withTenant(ctxOf(user), async (tx: Tx) => {
+        await recalculerLaChaine(tx, user.tenantId);
+        await reconcilierLeCircuit(tx, user.tenantId);
+      });
     }
 
     return {
@@ -406,107 +266,31 @@ export class ImportEmployesService {
     }
   }
 
-  /** Le nom du n+1 de chaque dossier, tel qu'il est en base. */
-  private async responsablesReels(user: SessionUser, ids: string[]) {
-    if (ids.length === 0) return new Map<string, string>();
-    return this.db.withTenant(ctxOf(user), async (tx: Tx) => {
-      const lignes = await tx
-        .select({ id: t.employees.id, prenom: t.persons.givenName, nom: t.persons.familyName })
-        .from(t.employees)
-        .innerJoin(n1, eq(n1.id, t.employees.managerEmployeeId))
-        .innerJoin(t.persons, eq(t.persons.id, n1.personId))
-        .where(inArray(t.employees.id, ids));
-      return new Map(lignes.map((r) => [r.id, `${r.prenom} ${r.nom}`]));
-    });
-  }
-
   /**
    * Ce qu'il faut savoir AVANT de lire les lignes : les matricules déjà pris
    * et les unités de l'organigramme. Deux requêtes, pas deux par ligne.
    */
   private async contexte(user: SessionUser) {
     return this.db.withTenant(ctxOf(user), async (tx: Tx) => {
-      // Le nom et l'identifiant en plus du matricule : le fichier désigne le
-      // n+1 par son matricule, et le compte rendu doit pouvoir écrire son nom
-      // — puis le rattachement, son identifiant. Son statut et sa direction,
-      // lus avec les définitions de la chaîne, disent dès l'aperçu si le
-      // rattachement tiendra.
-      const { rows: employes } = await tx.execute<{
-        id: string;
-        numero: string;
-        prenom: string;
-        nom: string;
-        actif: boolean;
-        direction_id: string | null;
-        direction_nom: string | null;
-        est_dg: boolean;
-      }>(sql`
-        SELECT e.id, e.employee_number AS numero, p.given_name AS prenom, p.family_name AS nom,
-               (e.status = 'active' AND NOT ${contratEchu(sql`e.id`)}) AS actif,
-               ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'id')} AS direction_id,
-               ${directionDeLUnite(uniteEnVigueur(sql`e.id`), 'name')} AS direction_nom,
-               (e.id IS NOT DISTINCT FROM ${DG}) AS est_dg
-          FROM employees e JOIN persons p ON p.id = e.person_id`);
-      const { rows: unites } = await tx.execute<{
-        id: string;
-        nom: string;
-        abrege: string | null;
-        unit_type: string;
-        manager_employee_id: string | null;
-        direction_id: string | null;
-        direction_nom: string | null;
-      }>(sql`
-        SELECT o.id, o.name AS nom, o.short_name AS abrege, o.unit_type, o.manager_employee_id,
-               ${directionDeLUnite(sql`o.id`, 'id')} AS direction_id,
-               ${directionDeLUnite(sql`o.id`, 'name')} AS direction_nom
-          FROM org_units o WHERE o.deleted_at IS NULL`);
+      const { rows: employes } = await tx.execute<{ id: string; numero: string }>(sql`
+        SELECT e.id, e.employee_number AS numero FROM employees e`);
+      const { rows: unites } = await tx.execute<{ id: string; nom: string; abrege: string | null }>(
+        sql`SELECT o.id, o.name AS nom, o.short_name AS abrege
+              FROM org_units o WHERE o.deleted_at IS NULL`,
+      );
 
       // On accepte l'abrégé ET le nom complet : un fichier peut écrire
       // « DCH » comme « Direction du Capital Humain », et les deux désignent
       // la même unité.
-      type Unite = { id: string; nom: string; direction: { id: string; nom: string } | null };
+      type Unite = { id: string; nom: string };
       const unitesParAbrege = new Map<string, Unite>();
       for (const u of unites) {
-        const valeur: Unite = {
-          id: u.id,
-          nom: u.nom,
-          direction: u.direction_id ? { id: u.direction_id, nom: u.direction_nom ?? '' } : null,
-        };
+        const valeur: Unite = { id: u.id, nom: u.nom };
         if (u.abrege) unitesParAbrege.set(normaliser(u.abrege), valeur);
         unitesParAbrege.set(normaliser(u.nom), valeur);
       }
-      const directionsPourvues = new Set(
-        unites.filter((u) => u.unit_type === 'direction' && u.manager_employee_id).map((u) => u.id),
-      );
-      const employesParMatricule = new Map<
-        string,
-        {
-          id: string;
-          nom: string;
-          actif: boolean;
-          direction: { id: string; nom: string } | null;
-          estDG: boolean;
-        }
-      >();
-      for (const e of employes) {
-        employesParMatricule.set(cleMatricule(e.numero), {
-          id: e.id,
-          nom: `${e.prenom} ${e.nom}`,
-          actif: e.actif,
-          direction: e.direction_id ? { id: e.direction_id, nom: e.direction_nom ?? '' } : null,
-          estDG: e.est_dg,
-        });
-      }
-      // Le directeur ACTIF de chaque direction pourvue : c'est de lui que
-      // relève d'office un agent sans n+1 (règle 5 de la chaîne).
-      const actifs = new Map(employes.filter((e) => e.actif).map((e) => [e.id, e]));
-      const directeurs = new Map<string, string>();
-      for (const u of unites) {
-        const d = u.unit_type === 'direction' && u.manager_employee_id;
-        const tete = d ? actifs.get(u.manager_employee_id!) : undefined;
-        if (tete) directeurs.set(u.id, `${tete.prenom} ${tete.nom}`);
-      }
-      return { employesParMatricule, unitesParAbrege, directionsPourvues, directeurs };
+      const employesParMatricule = new Map(employes.map((e) => [cleMatricule(e.numero), e.id]));
+      return { employesParMatricule, unitesParAbrege };
     });
   }
 }
@@ -515,16 +299,12 @@ function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
   return { tenantId: user.tenantId, userId: user.userId };
 }
 
-/** L'intitulé du fichier type, pour situer les avertissements du n+1. */
-const NOM_COLONNE_RESPONSABLE = 'Matricule du responsable';
-
 /**
  * La clé d'un matricule : ce qui doit se retrouver malgré la frappe.
  *
  * « APIX-0001 », « apix 0001 » et « APIX0001 » désignent la même personne dans
- * un classeur tenu à la main depuis des années — et c'est par ce matricule
- * qu'on rattache un agent à son n+1. On compare donc les lettres et les
- * chiffres, sans la casse ni les séparateurs.
+ * un classeur tenu à la main depuis des années. On compare donc les lettres
+ * et les chiffres, sans la casse ni les séparateurs.
  */
 function cleMatricule(texte: string): string {
   return texte

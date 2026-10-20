@@ -1,11 +1,11 @@
 /**
- * Manager d'un employé (migration 0013).
+ * Le N+1 d'un agent, lu dans son dossier et dans la liste (ADR-0147).
  *
- * À ne pas confondre avec le responsable d'unité : celui-ci désigne qui dirige
- * une unité, celui-là à qui un agent rend compte. Une boucle hiérarchique
- * (A → B → A) ferait tourner sans fin toute remontée de chaîne, d'où la
- * vérification récursive côté applicatif — le CHECK SQL ne couvre que le cas
- * « soi-même ».
+ * À ne pas confondre avec le responsable d'unité : le premier désigne qui
+ * dirige une unité, le second de qui un agent relève. Le N+1 hiérarchique se
+ * calcule à partir des têtes d'unité ; le N+1 fonctionnel se choisit, et une
+ * boucle (A choisit B pendant que B relève de A) ferait tourner sans fin
+ * toute remontée de chaîne : elle se refuse.
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -17,6 +17,7 @@ import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
 import { PeopleService } from '../src/modules/people/people.service';
+import { recalculerLaChaine } from '../src/modules/people/recalcul-de-la-chaine';
 
 const env = loadEnv();
 
@@ -60,28 +61,39 @@ async function creerEmploye(numero: string): Promise<string> {
   return employeeId;
 }
 
-const setManager = (id: string, managerEmployeeId: string | null) =>
-  people.update(user, id, { employee: { managerEmployeeId } });
+const choisirLeFonctionnel = (id: string, n1FonctionnelId: string | null) =>
+  people.update(user, id, { employee: { n1FonctionnelId } });
 
-/**
- * D'abord l'affectation, ensuite la hiérarchie : un n+1 ne se désigne
- * qu'entre agents affectés à une direction. Les trois dossiers du test sont
- * donc placés dans la même, avant tout rattachement.
- */
+/** La direction des trois dossiers du test, sous une Direction Générale. */
+let uDET: string;
+
+/** Les trois dossiers placés dans la même direction, sous la Direction Générale. */
 async function affecterDansUneDirection(...ids: string[]) {
-  const directionId = randomUUID();
+  const sommet = randomUUID();
+  uDET = randomUUID();
   await raw(
     `INSERT INTO org_units (id, tenant_id, name, unit_type, short_name)
-     VALUES ($1,$2,'Direction des Études','direction','DET')`,
-    [directionId, tenantId],
+     VALUES ($1,$2,'Direction Générale','direction','DG')`,
+    [sommet, tenantId],
+  );
+  await raw(
+    `INSERT INTO org_units (id, tenant_id, parent_id, name, unit_type, short_name)
+     VALUES ($1,$2,$3,'Direction des Études','direction','DET')`,
+    [uDET, tenantId, sommet],
   );
   for (const id of ids) {
     await raw(
       `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
        VALUES ($1,$2,$3,$4,'Analyste','[2024-01-01,)')`,
-      [randomUUID(), tenantId, id, directionId],
+      [randomUUID(), tenantId, id, uDET],
     );
   }
+}
+
+/** Une tête posée en SQL, puis la chaîne recalculée. */
+async function diriger(uniteId: string, employeeId: string): Promise<void> {
+  await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [uniteId, employeeId]);
+  await db.withTenant({ tenantId, userId }, (tx) => recalculerLaChaine(tx, tenantId));
 }
 
 beforeAll(async () => {
@@ -101,7 +113,12 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await raw(`UPDATE employees SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
+  await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
+  await raw(
+    `UPDATE employees SET manager_employee_id = NULL, n1_fonctionnel_employee_id = NULL
+      WHERE tenant_id = $1`,
+    [tenantId],
+  );
   await raw(`DELETE FROM assignments WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM employees WHERE tenant_id = $1`, [tenantId]);
@@ -113,7 +130,12 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await raw(`UPDATE employees SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
+  await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
+  await raw(
+    `UPDATE employees SET manager_employee_id = NULL, n1_fonctionnel_employee_id = NULL
+      WHERE tenant_id = $1`,
+    [tenantId],
+  );
   await raw(`DELETE FROM assignments WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM employees WHERE tenant_id = $1`, [tenantId]);
@@ -125,11 +147,11 @@ afterAll(async () => {
   await ownerPool?.end();
 });
 
-describe('désignation', () => {
+describe('le N+1 hiérarchique, dans le dossier', () => {
   beforeEach(() => affecterDansUneDirection(alice, bruno, carla));
 
-  it('rattache un employé à son manager', async () => {
-    await setManager(bruno, alice);
+  it('la tête de la direction est le N+1 de ses agents', async () => {
+    await diriger(uDET, alice);
     const detail = await people.detail(user, bruno);
     expect(detail.managerId).toBe(alice);
     expect(detail.managerName).toBe('ALICE Test');
@@ -137,63 +159,50 @@ describe('désignation', () => {
     expect(detail.managerNumber).toBe('ALICE');
   });
 
-  it('accepte l’absence de manager — elle se signale, elle ne se refuse pas', async () => {
-    // La règle de l'APIX veut un n+1 pour chacun, mais elle ne se tient pas
-    // par un refus : on crée souvent un dossier avant de savoir de qui
-    // l'agent relèvera. C'est le contrôle de la chaîne hiérarchique qui le
-    // signale (`hierarchie-regle.spec.ts`), et l'évaluation qui s'en abstient.
-    await setManager(bruno, alice);
-    await setManager(bruno, null);
+  it('sans tête ni DG au-dessus, pas de N+1 : le contrôle le signale, rien ne se refuse', async () => {
     const detail = await people.detail(user, bruno);
     expect(detail.managerId).toBeNull();
     expect(detail.managerNumber).toBeNull();
   });
 
-  it('refuse un employé au dossier archivé', async () => {
-    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [alice]);
-    expect(await codeOf(() => setManager(bruno, alice))).toBe('people.manager_not_active');
-  });
-
-  it('refuse un n+1 tant que l’agent, ou le n+1, n’est affecté à aucune direction', async () => {
-    await raw(`DELETE FROM assignments WHERE employee_id = $1`, [bruno]);
-    expect(await codeOf(() => setManager(bruno, alice))).toBe('people.sans_affectation');
-    expect(await codeOf(() => setManager(alice, bruno))).toBe(
-      'people.responsable_sans_affectation',
-    );
-  });
-
-  it('refuse un manager inexistant', async () => {
-    expect(await codeOf(() => setManager(bruno, randomUUID()))).toBe('people.manager_not_found');
+  it('un N+1 saisi est ignoré : l’organigramme le donne', async () => {
+    await diriger(uDET, alice);
+    expect(
+      await codeOf(() =>
+        people.update(user, bruno, { employee: { managerEmployeeId: carla } as never }),
+      ),
+    ).toBe('AUCUNE ERREUR');
+    expect((await people.detail(user, bruno)).managerId).toBe(alice);
   });
 });
 
-describe('boucles hiérarchiques', () => {
-  beforeEach(() => affecterDansUneDirection(alice, bruno, carla));
-
-  it('refuse d’être son propre manager', async () => {
-    expect(await codeOf(() => setManager(bruno, bruno))).toBe('people.manager_is_self');
+describe('le N+1 fonctionnel, contre les boucles', () => {
+  beforeEach(async () => {
+    await affecterDansUneDirection(alice, bruno, carla);
+    await diriger(uDET, alice);
   });
 
-  it('refuse une boucle directe A → B → A', async () => {
-    await setManager(bruno, alice);
-    expect(await codeOf(() => setManager(alice, bruno))).toBe('people.manager_cycle');
+  it('refuse soi-même, un dossier archivé, un agent inexistant', async () => {
+    expect(await codeOf(() => choisirLeFonctionnel(bruno, bruno))).toBe('people.n1_soi_meme');
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [carla]);
+    expect(await codeOf(() => choisirLeFonctionnel(bruno, carla))).toBe('people.agent_inactif');
+    expect(await codeOf(() => choisirLeFonctionnel(bruno, randomUUID()))).toBe(
+      'people.n1_introuvable',
+    );
+  });
+
+  it('refuse une boucle directe : A choisit B, qui relève de A', async () => {
+    expect(await codeOf(() => choisirLeFonctionnel(alice, bruno))).toBe('people.n1_boucle');
   });
 
   it('refuse une boucle indirecte A → B → C → A', async () => {
-    await setManager(bruno, alice);
-    await setManager(carla, bruno);
-    expect(await codeOf(() => setManager(alice, carla))).toBe('people.manager_cycle');
+    await choisirLeFonctionnel(bruno, carla);
+    expect(await codeOf(() => choisirLeFonctionnel(alice, bruno))).toBe('people.n1_boucle');
   });
 
-  it('accepte une chaîne hiérarchique profonde', async () => {
-    await setManager(bruno, alice);
-    await setManager(carla, bruno);
-    expect((await people.detail(user, carla)).managerId).toBe(bruno);
-  });
-
-  it('accepte deux subordonnés pour le même manager', async () => {
-    await setManager(bruno, alice);
-    await setManager(carla, alice);
+  it('accepte une chaîne profonde', async () => {
+    await choisirLeFonctionnel(carla, bruno);
+    expect((await people.detail(user, carla)).n1Fonctionnel?.id).toBe(bruno);
     expect((await people.detail(user, carla)).managerId).toBe(alice);
   });
 });
@@ -205,7 +214,7 @@ describe('liste des employés', () => {
     // C'est le matricule que la colonne affiche : il est unique, là où deux
     // agents peuvent porter le même nom. Le nom reste disponible pour
     // l'infobulle.
-    await setManager(bruno, alice);
+    await diriger(uDET, alice);
     const page = await people.list(user, { limit: 25, sort: 'recent', dir: 'desc', offset: 0 });
     const ligne = page.items.find((i) => i.employeeNumber === 'BRUNO')!;
     expect(ligne.managerNumber).toBe('ALICE');
@@ -216,7 +225,7 @@ describe('liste des employés', () => {
   it('nomme ET numérote les managers dans la liste de filtre', async () => {
     // Deux homonymes y étaient indiscernables : c'est le défaut même qu'on
     // corrige en affichant le matricule.
-    await setManager(bruno, alice);
+    await diriger(uDET, alice);
     const page = await people.list(user, { limit: 25, sort: 'recent', dir: 'desc', offset: 0 });
     expect(page.facets.managers).toEqual([{ id: alice, name: 'ALICE Test (ALICE)' }]);
   });
@@ -283,8 +292,9 @@ describe('tri, filtres et effectifs', () => {
     await affecter(alice, 'Comptable', uniteId);
     await affecter(bruno, 'Comptable', null);
     await affecter(carla, 'Analyste', uniteId);
-    // Bruno n'a pas de direction : il ne peut relever de personne. Carla, si.
-    await setManager(carla, alice);
+    // Bruno n'a pas d'unité : aucun N+1. Carla relève de la
+    // tête de sa direction.
+    await diriger(uniteId, alice);
 
     expect((await lister({ positionTitle: 'Comptable' })).items).toHaveLength(2);
     expect((await lister({ managerId: alice })).items.map((i) => i.employeeNumber)).toEqual([

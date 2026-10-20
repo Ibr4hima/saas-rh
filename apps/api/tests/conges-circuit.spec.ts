@@ -36,6 +36,7 @@ import { capacitesDe } from '../src/modules/acces/dch';
 import { HabilitationsService } from '../src/modules/acces/habilitations.service';
 import { OrgUnitsService } from '../src/modules/people/org-units.service';
 import { PeopleService } from '../src/modules/people/people.service';
+import { recalculerLaChaine } from '../src/modules/people/recalcul-de-la-chaine';
 import { AbsencesService } from '../src/modules/time/absences.service';
 import { DashboardController } from '../src/modules/analytics/dashboard.controller';
 import { AccesGuard } from '../src/modules/auth/acces.guard';
@@ -112,19 +113,37 @@ async function agent(
   return { employeeId, session: session ?? ({} as SessionUser), prenom };
 }
 
-async function unite(nom: string, parent: string | null, dch = false): Promise<string> {
+async function unite(
+  nom: string,
+  parent: string | null,
+  dch = false,
+  type: 'direction' | 'department' | 'service' = 'direction',
+): Promise<string> {
   const id = randomUUID();
   await raw(
     `INSERT INTO org_units (id, tenant_id, unit_type, name, parent_id, direction_du_personnel)
-     VALUES ($1,$2,'direction',$3,$4,$5)`,
-    [id, tenantId, nom, parent, dch],
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [id, tenantId, type, nom, parent, dch],
   );
   return id;
 }
 
+const diriger = (uniteId: string, employeeId: string) =>
+  raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [uniteId, employeeId]);
+
 let uDG: string;
 let uDCH: string;
 let uDSID: string;
+/*
+   Les N+1 du bac découlent de l'organigramme (ADR-0147) : Awa dirige le
+   service Paie de la DCH, où travaille Binta ; Ousmane, le département
+   Études de la DSID, où travaille Moussa ; Sans, le service Support de la
+   DSID, où travaille Fatou. La DSID n'a pas de tête : Ousmane et Sans
+   relèvent du DG.
+*/
+let uPaie: string;
+let uEtudes: string;
+let uSupport: string;
 let dg: Agent;
 let mariama: Agent;
 let awa: Agent;
@@ -267,20 +286,23 @@ beforeAll(async () => {
   uDG = await unite('Direction Générale', null);
   uDCH = await unite('Direction du Capital Humain', uDG, true);
   uDSID = await unite('Direction des Systèmes', uDG);
+  uPaie = await unite('Service Paie', uDCH, false, 'service');
+  uEtudes = await unite('Département Études', uDSID, false, 'department');
+  uSupport = await unite('Service Support', uDSID, false, 'service');
   dg = await agent('Cheikh', uDG, null);
-  await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [uDG, dg.employeeId]);
+  await diriger(uDG, dg.employeeId);
   mariama = await agent('Mariama', uDCH, dg.employeeId);
-  await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [
-    uDCH,
-    mariama.employeeId,
-  ]);
-  awa = await agent('Awa', uDCH, mariama.employeeId);
+  await diriger(uDCH, mariama.employeeId);
+  awa = await agent('Awa', uPaie, mariama.employeeId);
+  await diriger(uPaie, awa.employeeId);
   khady = await agent('Khady', uDCH, mariama.employeeId);
-  binta = await agent('Binta', uDCH, awa.employeeId);
-  ousmane = await agent('Ousmane', uDSID, dg.employeeId);
-  moussa = await agent('Moussa', uDSID, ousmane.employeeId);
-  sansCompte = await agent('Sans', uDSID, dg.employeeId, null);
-  fatou = await agent('Fatou', uDSID, sansCompte.employeeId);
+  binta = await agent('Binta', uPaie, awa.employeeId);
+  ousmane = await agent('Ousmane', uEtudes, dg.employeeId);
+  await diriger(uEtudes, ousmane.employeeId);
+  moussa = await agent('Moussa', uEtudes, ousmane.employeeId);
+  sansCompte = await agent('Sans', uSupport, dg.employeeId, null);
+  await diriger(uSupport, sansCompte.employeeId);
+  fatou = await agent('Fatou', uSupport, sansCompte.employeeId);
 });
 
 beforeEach(async () => {
@@ -294,18 +316,30 @@ beforeEach(async () => {
     `UPDATE org_units SET manager_employee_id = $2, direction_du_personnel = true WHERE id = $1`,
     [uDCH, mariama.employeeId],
   );
+  await diriger(uPaie, awa.employeeId);
+  await diriger(uEtudes, ousmane.employeeId);
+  await diriger(uSupport, sansCompte.employeeId);
   await raw(
     `UPDATE employees SET status = 'active', fin_activite = NULL, inactivite_motif = NULL
       WHERE tenant_id = $1`,
     [tenantId],
   );
-  await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [
+  for (const [qui, n1] of [
+    [moussa, ousmane],
+    [mariama, dg],
+    [binta, awa],
+    [ousmane, dg],
+    [sansCompte, dg],
+    [fatou, sansCompte],
+  ] as const) {
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [
+      qui.employeeId,
+      n1.employeeId,
+    ]);
+  }
+  await raw(`UPDATE assignments SET org_unit_id = $2 WHERE employee_id = $1`, [
     moussa.employeeId,
-    ousmane.employeeId,
-  ]);
-  await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [
-    mariama.employeeId,
-    dg.employeeId,
+    uEtudes,
   ]);
   // Une relève à la tête de la DCH fait passer l'équipe de Mariama au
   // nouveau directeur : chacune revient sous elle.
@@ -317,7 +351,7 @@ beforeEach(async () => {
   }
   await raw(`UPDATE assignments SET org_unit_id = $2 WHERE employee_id = $1`, [
     awa.employeeId,
-    uDCH,
+    uPaie,
   ]);
 });
 
@@ -807,8 +841,14 @@ describe('le poste de directeur vacant', () => {
 describe('la demande suit le N+1, et se clôt proprement', () => {
   it('un nouveau N+1 reprend la demande, et il est prévenu', async () => {
     const id = await poser(moussa);
-    await people.update(admin, moussa.employeeId, {
-      employee: { managerEmployeeId: sansCompte.employeeId },
+    // Moussa passe au service Support : son N+1 est désormais Sans.
+    await raw(`UPDATE assignments SET org_unit_id = $2 WHERE employee_id = $1`, [
+      moussa.employeeId,
+      uSupport,
+    ]);
+    await db.withTenant({ tenantId, userId: admin.userId }, async (tx) => {
+      await recalculerLaChaine(tx, tenantId);
+      await reconcilierLeCircuit(tx, tenantId);
     });
     // Le nouveau N+1 n'a pas d'accès : la demande va à la DCH.
     expect(await appels(id)).toEqual(['dch:Mariama']);

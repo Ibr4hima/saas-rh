@@ -116,8 +116,6 @@ export const devenirDeLAncienSchema = z.discriminatedUnion('choix', [
       responsable: z.boolean().optional(),
       /** Le poste de celui qu'il y remplace, qui y reste. */
       posteDeLAncien: trimmed(120).optional(),
-      /** Son n+1, quand il change de direction ; sinon, celui d'office. */
-      managerEmployeeId: z.uuid().optional(),
     })
     .refine((d) => d.responsable || d.positionTitle, {
       message: 'Indiquez son nouveau poste',
@@ -468,8 +466,11 @@ export const employeeFieldsSchema = z.object({
   hiredOn: isoDate,
   workEmail: z.email().optional(),
   workPhone: optionalTrimmed(30),
-  /** À qui l'agent rend compte. Absent = personne (un DG n'a pas de manager). */
-  managerEmployeeId: optionalUuid,
+  /**
+   * Le N+1 fonctionnel, quand ce n'est pas le N+1 hiérarchique (ADR-0147).
+   * Le hiérarchique découle de l'organigramme : ce N+1 ne se saisit pas.
+   */
+  n1FonctionnelId: optionalUuid,
   customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -515,13 +516,12 @@ export const initialContractSchema = reglesDuContrat(z.object(champsDuContrat));
  * du contrat. Sur un dossier inactif, il le réactive.
  */
 /**
- * Ce qu'un agent qui revient reprend : la RH le décide. Les unités dont il
- * redevient responsable, parmi celles qu'il dirigeait ; son équipe, quand il
- * n'en dirigeait aucune (sinon, elle suit l'unité).
+ * Ce qu'un agent qui revient reprend : la RH le décide. Les unités dont
+ * l'agent redevient la tête, parmi les unités dirigées avant ; leur équipe
+ * suit (ADR-0147).
  */
 export const repriseDesResponsabilitesSchema = z.object({
   unites: z.array(z.uuid()).max(20).default([]),
-  equipe: z.boolean().default(false),
 });
 export type RepriseDesResponsabilites = z.infer<typeof repriseDesResponsabilitesSchema>;
 
@@ -615,6 +615,16 @@ export const updatePersonFieldsSchema = z
   // fournies est vérifiée.
   .superRefine((p, ctx) => checkIdDocument(p, ctx, false));
 
+/**
+ * Le N+1 hiérarchique choisi à la Direction Générale (ADR-0147) : le DGA, ou
+ * la tête d'une autre unité. Une place, pas une personne.
+ */
+export const rattachementChoisiSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('dga') }),
+  z.object({ type: z.literal('unite'), uniteId: z.uuid() }),
+]);
+export type RattachementChoisi = z.infer<typeof rattachementChoisiSchema>;
+
 export const updateEmployeeFieldsSchema = z
   .object({
     employeeNumber: matricule,
@@ -628,8 +638,16 @@ export const updateEmployeeFieldsSchema = z
      * statut sans rien de tout cela — un dossier archivé dont le portail reste
      * ouvert. Il a sa route : POST employees/archive.
      */
-    /** null = plus de manager ; absent = inchangé. */
-    managerEmployeeId: z.uuid().nullable(),
+    /**
+     * Le N+1 fonctionnel (ADR-0147) : `null`, le N+1 hiérarchique ; absent,
+     * inchangé.
+     */
+    n1FonctionnelId: z.uuid().nullable(),
+    /**
+     * À la Direction Générale seulement : la place dont l'agent relève à la
+     * place du DG. `null`, le DG ; absent, inchangé.
+     */
+    rattachementChoisi: rattachementChoisiSchema.nullable(),
   })
   .partial();
 
@@ -659,22 +677,6 @@ const nouvelleAffectation = z.object({
   posteDeLAncien: trimmed(120).optional(),
   /** Ce que devient celui qu'il remplace ; prime sur `posteDeLAncien`. */
   devenirDeLAncien: devenirDeLAncienSchema.optional(),
-  /**
-   * Le nouveau responsable hiérarchique, dans la même opération.
-   *
-   * Muter un agent d'une direction à l'autre rend son n+1 caduc — il reste
-   * dans l'ancienne direction. Et l'on ne peut pas le changer AVANT la
-   * mutation : la règle refuserait un responsable d'une autre direction. Les
-   * deux gestes n'en font donc qu'un. Absent, le n+1 courant est conservé, à
-   * condition qu'il tienne encore après la mutation.
-   */
-  managerEmployeeId: z.uuid().optional(),
-  /**
-   * Qui reprend l'équipe de l'agent, quand il en encadre une et quitte sa
-   * direction : ses agents, eux, y restent. Sans repreneur, la mutation est
-   * refusée — une équipe ne se retrouve pas rattachée hors de sa direction.
-   */
-  repreneurEquipeId: z.uuid().optional(),
 });
 export const newAssignmentSchema = nouvelleAffectation
   .refine((a) => a.responsable || a.adjoint || a.positionTitle, {
@@ -788,12 +790,6 @@ export interface EmployeeListPage {
  * place. C'est ce qui permet de rouvrir l'accès sans rien redemander à
  * l'agent, six mois plus tard, avec les identifiants qu'il connaît déjà.
  */
-/**
- * Qui reprend l'équipe de chaque agent qui part et en encadre une : partant →
- * repreneur. Un encadrant sans repreneur reste de côté, avec le motif.
- */
-const repreneursSchema = z.record(z.uuid(), z.uuid()).optional();
-
 export const archiveEmployeesSchema = z
   .object({
     ids: z.array(z.uuid()).min(1).max(100),
@@ -807,7 +803,6 @@ export const archiveEmployeesSchema = z
      * aujourd'hui. Jamais dans le futur.
      */
     le: isoDate.optional(),
-    repreneurs: repreneursSchema,
     /** Réactivation : ce que chaque agent reprend, par identifiant. */
     reprendre: z.record(z.uuid(), repriseDesResponsabilitesSchema).optional(),
   })
@@ -824,7 +819,6 @@ export type ArchiveEmployeesInput = z.infer<typeof archiveEmployeesSchema>;
  */
 export const deleteEmployeesSchema = z.object({
   ids: z.array(z.uuid()).min(1).max(50),
-  repreneurs: repreneursSchema,
 });
 export type DeleteEmployeesInput = z.infer<typeof deleteEmployeesSchema>;
 
@@ -892,7 +886,7 @@ export interface EmployeeListItem {
   managerNumber: string | null;
   managerName: string | null;
   workEmail: string | null;
-  /** Agents ACTIFS dont il est le n+1 : qui part avec une équipe doit la confier. */
+  /** Agents ACTIFS dont ce dossier est le N+1 hiérarchique (ADR-0147). */
   teamSize: number;
   /** Inactif : pourquoi (`null` : dossier désactivé avant qu'on le demande), et depuis quand. */
   inactiviteMotif: MotifInactivite | null;
@@ -963,21 +957,30 @@ export interface EmployeeDetail {
   hiredOn: string;
   workEmail: string | null;
   workPhone: string | null;
+  /** Le N+1 hiérarchique, calculé à partir de l'organigramme (ADR-0147). */
   managerId: string | null;
   managerName: string | null;
   /** Le matricule du manager : il le distingue d'un homonyme dans une liste. */
   managerNumber: string | null;
-  /** Ses agents directs, actifs — ceux qu'il faudra confier s'il part. */
+  /** Le N+1 fonctionnel choisi ; `null` : le N+1 hiérarchique. */
+  n1Fonctionnel: { id: string; nom: string; matricule: string } | null;
+  /**
+   * À la Direction Générale : la place dont l'agent relève à la place du DG,
+   * quand la DCH l'a choisie. `uniteNom` dit laquelle.
+   */
+  rattachementChoisi: (RattachementChoisi & { uniteNom?: string }) | null;
+  /** L'agent est là où le N+1 hiérarchique se choisit : à la Direction Générale. */
+  rattachementAuChoix: boolean;
+  /** Ses agents directs, actifs : les agents dont ce dossier est le N+1 hiérarchique. */
   team: { id: string; name: string }[];
   /**
-   * Ce qu'il pourrait reprendre à son retour, au choix de la RH. Inactif :
-   * les unités qu'il dirigeait, restées sans responsable, et son équipe
-   * restée où son départ l'avait mise. Actif : les unités qu'il dirige et son
-   * équipe, qu'une interruption entre deux contrats lui ferait quitter.
+   * Ce que l'agent pourrait reprendre au retour, au choix de la RH. Inactif :
+   * les unités dirigées avant le départ, restées sans responsable. Actif :
+   * les unités dirigées, qu'une interruption entre deux contrats ferait
+   * quitter.
    */
   responsabilites: {
     unites: { id: string; nom: string; directionId: string | null }[];
-    equipe: number;
   };
   customFields: Record<string, unknown>;
   person: {

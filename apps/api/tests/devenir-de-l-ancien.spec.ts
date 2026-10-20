@@ -219,13 +219,14 @@ describe('il reste à l’APIX', () => {
       responsable: false,
       du: '2025-01-01',
     });
-    // Ancien directeur, il relevait du DG : à sa nouvelle place, c'est la
-    // nouvelle directrice. Son équipe, elle, est passée à elle aussi.
+    // Ancienne tête de la direction, Z relevait du DG : au département
+    // Études, sans tête, Z relève de la nouvelle tête de la direction
+    // (ADR-0147). Son équipe aussi.
     expect(await n1(z)).toBe(x);
     expect(await n1(w)).toBe(x);
     const motifs = Object.fromEntries(r.changements.map((c) => [c.nom, c.motif]));
-    expect(motifs['Z Test']).toBe('responsable_de_sa_direction');
-    expect(motifs['W Test']).toBe('suit_le_directeur');
+    expect(motifs['Z Test']).toBe('niveau_au_dessus');
+    expect(motifs['W Test']).toBe('tete_de_son_unite');
   });
 
   it('dans une autre direction : son directeur le reprend, son équipe reste', async () => {

@@ -474,13 +474,13 @@ describe('une tâche que le temps déclenche', () => {
 });
 
 describe('avant même le passage, un contrat échu ferme les portes', () => {
-  it('ni n+1, ni responsable d’unité, ni affectation, ni invitation au portail', async () => {
+  it('ni N+1 fonctionnel, ni responsable d’unité, ni affectation, ni invitation au portail', async () => {
     // Fatou n'est pas encore passée dans les inactifs : c'est la date qui refuse.
     expect((await statut(fatou)).status).toBe('active');
     expect(
       await codeOf(() =>
         people.update(admin, moussa.employeeId, {
-          employee: { managerEmployeeId: fatou.employeeId },
+          employee: { n1FonctionnelId: fatou.employeeId },
         }),
       ),
     ).toBe('people.contrat_echu');
@@ -2346,7 +2346,7 @@ describe('les invitations partent d’elles-mêmes', () => {
       expect(await ouvertes()).toBe(1);
     });
 
-    it('un responsable qui change de direction par un nouveau contrat : son équipe remonte à son n+1', async () => {
+    it('une tête d’unité qui change de direction par un nouveau contrat : son équipe remonte au niveau au-dessus', async () => {
       // Fatou dirige la comptabilité, où travaille Ibou ; elle relève d'Omar.
       await raw(`UPDATE contracts SET end_date = NULL WHERE employee_id = $1`, [fatou.employeeId]);
       // Une mutation, elle, demande toujours qui reprend l'unité et l'équipe.
@@ -2369,7 +2369,7 @@ describe('les invitations partent d’elles-mêmes', () => {
       expect(await n1De(fatou)).toBe(mariama.employeeId);
       expect(await chefDe(uCompta)).toBeNull();
       expect(r.changements).toContainEqual(
-        expect.objectContaining({ employeeId: ibou.employeeId, motif: 'reprise_equipe' }),
+        expect.objectContaining({ employeeId: ibou.employeeId, motif: 'niveau_au_dessus' }),
       );
       expect((await affectations(fatou)).at(-1)).toEqual({
         poste: 'Analyste RH',
@@ -2444,7 +2444,6 @@ describe('les invitations partent d’elles-mêmes', () => {
       // La fiche dit ce qu'elle pourrait reprendre.
       expect((await rh.detail(admin, fatou.employeeId)).responsabilites).toEqual({
         unites: [{ id: uCompta, nom: 'Service Comptabilité', directionId: uDFC }],
-        equipe: 1,
       });
 
       const r = await rh.newContract(admin, fatou.employeeId, {
@@ -2463,12 +2462,12 @@ describe('les invitations partent d’elles-mêmes', () => {
         contractType: 'cdi',
         startDate: await jour(0),
         affectation: await placeDe(fatou),
-        reprendre: { unites: [uCompta], equipe: false },
+        reprendre: { unites: [uCompta] },
       });
       expect(await chefDe(uCompta)).toBe(fatou.employeeId);
       expect(await n1De(ibou)).toBe(fatou.employeeId);
       expect(r.changements).toContainEqual(
-        expect.objectContaining({ employeeId: ibou.employeeId, motif: 'retour_du_responsable' }),
+        expect.objectContaining({ employeeId: ibou.employeeId, motif: 'tete_de_son_unite' }),
       );
     });
 
@@ -2485,12 +2484,12 @@ describe('les invitations partent d’elles-mêmes', () => {
         contractType: 'cdi',
         startDate: await jour(0),
         affectation: await placeDe(fatou),
-        reprendre: { unites: [uCompta], equipe: false },
+        reprendre: { unites: [uCompta] },
       });
       expect(await chefDe(uCompta)).toBe(fatou.employeeId);
       expect(await n1De(fatou)).toBe(moussa.employeeId);
       expect(r.changements).toContainEqual(
-        expect.objectContaining({ employeeId: fatou.employeeId, motif: 'chef_d_unite' }),
+        expect.objectContaining({ employeeId: fatou.employeeId, motif: 'unite_au_dessus' }),
       );
     });
 
@@ -2504,7 +2503,7 @@ describe('les invitations partent d’elles-mêmes', () => {
         contractType: 'cdi',
         startDate: await jour(3),
         affectation: await placeDe(fatou),
-        reprendre: { unites: [uCompta], equipe: false },
+        reprendre: { unites: [uCompta] },
       });
       expect((await statut(fatou)).status).toBe('archived');
 
@@ -2540,12 +2539,12 @@ describe('les invitations partent d’elles-mêmes', () => {
         contractType: 'cdi',
         startDate: await jour(0),
         affectation: await placeDe(fatou),
-        reprendre: { unites: [uEtudes], equipe: false },
+        reprendre: { unites: [uEtudes] },
       });
       expect(await n1De(awa)).toBe(fatou.employeeId);
       expect(await n1De(fatou)).toBe(omar.employeeId);
       expect(r.changements).toContainEqual(
-        expect.objectContaining({ employeeId: awa.employeeId, motif: 'chef_d_unite' }),
+        expect.objectContaining({ employeeId: awa.employeeId, motif: 'unite_au_dessus' }),
       );
     });
 
@@ -2558,7 +2557,7 @@ describe('les invitations partent d’elles-mêmes', () => {
             startDate: await jour(0),
             endDate: await jour(90),
             affectation: await placeDe(fatou),
-            reprendre: { unites: [uCompta], equipe: false },
+            reprendre: { unites: [uCompta] },
           }),
         ),
       ).toBe('people.retour_en_stage');
@@ -2588,7 +2587,7 @@ describe('les invitations partent d’elles-mêmes', () => {
           rh.archive(admin, {
             ids: [fatou.employeeId],
             archived: false,
-            reprendre: { [fatou.employeeId]: { unites: [uCompta], equipe: false } },
+            reprendre: { [fatou.employeeId]: { unites: [uCompta] } },
           }),
         ),
       ).toBe('people.responsabilite_non_rendue');
@@ -2637,7 +2636,7 @@ describe('les invitations partent d’elles-mêmes', () => {
             contractType: 'cdi',
             startDate: await jour(0),
             affectation: await placeDe(fatou),
-            reprendre: { unites: [uCompta], equipe: false },
+            reprendre: { unites: [uCompta] },
           }),
         ),
       ).toBe('people.responsabilite_non_rendue');
@@ -2670,7 +2669,7 @@ describe('les invitations partent d’elles-mêmes', () => {
       const r = await rh.archive(admin, {
         ids: [fatou.employeeId],
         archived: false,
-        reprendre: { [fatou.employeeId]: { unites: [uCompta], equipe: false } },
+        reprendre: { [fatou.employeeId]: { unites: [uCompta] } },
       });
       expect(r.done).toBe(1);
       expect(await chefDe(uCompta)).toBe(fatou.employeeId);
@@ -2691,7 +2690,7 @@ describe('les invitations partent d’elles-mêmes', () => {
         contractType: 'cdi',
         startDate: await jour(10),
         affectation: { positionTitle: 'Poste', orgUnitId: uDFC },
-        reprendre: { unites: [uDFC], equipe: false },
+        reprendre: { unites: [uDFC] },
       });
       await finiIlYA(omar, 2);
       await inactiver();

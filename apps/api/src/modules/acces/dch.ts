@@ -568,26 +568,18 @@ export async function pasSurSoi(
 }
 
 /**
- * Personne ne se désigne N+1 d'un agent, ni repreneur d'une équipe : il se
- * donnerait le visa de leurs congés et leur évaluation, sans que personne
- * l'ait décidé. Sauf ce que la règle fait déjà : le responsable de la
- * direction de l'agent en est le N+1 d'office.
+ * Personne ne se désigne N+1 fonctionnel d'un agent : on se donnerait son
+ * évaluation sans que personne l'ait décidé. Sauf ce que l'organigramme fait
+ * déjà : le N+1 hiérarchique de l'agent (ADR-0147).
  */
 export async function pasResponsableDeSoi(
   tx: Tx,
   userId: string,
   responsableId: string | null | undefined,
-  direction: { id: string } | null,
+  hierarchiqueId: string | null,
 ): Promise<void> {
-  if (!responsableId) return;
-  if (direction) {
-    const { rows } = await tx.execute<{ id: string }>(sql`
-      SELECT id FROM org_units
-       WHERE id = ${direction.id} AND manager_employee_id = ${responsableId}
-         AND deleted_at IS NULL`);
-    if (rows.length > 0) return;
-  }
-  await pasSurSoi(tx, userId, [responsableId], 'vous désigner responsable');
+  if (!responsableId || responsableId === hierarchiqueId) return;
+  await pasSurSoi(tx, userId, [responsableId], 'vous désigner N+1');
 }
 
 /**

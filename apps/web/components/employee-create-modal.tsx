@@ -7,7 +7,6 @@ import { Button, Checkbox, cn, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../lib/countries';
 import { contractEnd, maritalLabels, maxBirthDate } from '../lib/person';
-import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { formatDate } from '../lib/hooks';
 import { ChoixUnite, directionDe } from './choix-unite';
 import { Modal, ModalGrid, ModalSection } from './modal';
@@ -49,7 +48,6 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
 
   // Emploi
   const [employeeNumber, setEmployeeNumber] = useState('');
-  const [managerId, setManagerId] = useState('');
   const [contractType, setContractType] = useState('cdi');
   const [contractStart, setContractStart] = useState(todayIso());
   const [durationMonths, setDurationMonths] = useState('');
@@ -69,19 +67,10 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   });
   const unites = orgUnits.data ?? [];
   const directionChoisie = directionDe(unites, uniteId);
-  // Les responsables possibles : ceux de la direction choisie, plus le
-  // directeur général — de qui relève un directeur, et lui seul quand la
-  // direction n'a pas encore de tête.
-  const { options: managers } = useResponsablesPossibles(
-    directionChoisie ? (directionChoisie.shortName ?? directionChoisie.name) : null,
-  );
   const marital = maritalLabels(gender || undefined);
-  // D'abord la direction, ensuite le manager, choisi parmi ses agents : le
-  // poste n'y entre pas. Il devient obligatoire avec la direction, sans quoi
-  // l'affectation, et la direction avec elle, ne s'enregistrerait pas.
-  const peutChoisirLeN1 = Boolean(directionChoisie);
-  // Le directeur coiffe sa direction : pourvue, il est le n+1 d'office.
-  const directeur = n1DOffice(unites, uniteId || null);
+  // Le poste devient obligatoire avec la direction, sans quoi l'affectation,
+  // et la direction avec elle, ne s'enregistrerait pas. Le N+1 ne se demande
+  // pas : l'organigramme le donne (ADR-0147).
 
   const needsDuration = contractType === 'cdd' || contractType === 'stage';
   const months = Number(durationMonths);
@@ -132,8 +121,6 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             hiredOn: contractStart,
             workEmail: composeWorkEmail(workEmail),
             workPhone: composePhone(workPhoneCountry, workPhoneLocal),
-            // Le n+1 part avec l'affectation, jamais sans elle.
-            managerEmployeeId: peutChoisirLeN1 && managerId ? managerId : undefined,
           },
           assignment: positionTitle.trim()
             ? {
@@ -404,45 +391,11 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
           <ChoixUnite
             unites={unites}
             value={uniteId}
-            onChange={(id) => {
-              // Le responsable appartenait à l'ancienne direction : le
-              // garder ferait échouer l'enregistrement sur une règle qu'on
-              // vient de rendre fausse sous ses pieds. Le directeur de la
-              // nouvelle le remplace d'office.
-              if (directionDe(unites, id)?.id !== directionChoisie?.id) {
-                setManagerId(n1DOffice(unites, id || null) ?? '');
-              }
-              setUniteId(id);
-            }}
+            onChange={setUniteId}
             idPrefix="creation"
             libelle="Direction affectée"
             vide="—"
           />
-          <Field
-            label="Manager"
-            htmlFor="managerId"
-            hint={
-              directionChoisie
-                ? `Les agents de ${directionChoisie.shortName ?? directionChoisie.name}, et le directeur général.`
-                : 'Renseignez d’abord la direction.'
-            }
-          >
-            <Select
-              id="managerId"
-              value={peutChoisirLeN1 ? managerId : ''}
-              disabled={!peutChoisirLeN1}
-              onChange={(e) => setManagerId(e.target.value)}
-            >
-              {!peutChoisirLeN1 || !directeur ? (
-                <option value="">À désigner plus tard</option>
-              ) : null}
-              {managers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {libelleResponsable(m)}
-                </option>
-              ))}
-            </Select>
-          </Field>
         </ModalGrid>
       </ModalSection>
     </Modal>

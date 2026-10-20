@@ -823,12 +823,18 @@ export function EvaluationAnnuelle({
   prenom,
   fiche,
   reportable = true,
+  lecture = false,
 }: {
   employeeId: string;
   prenom: string;
   fiche: FicheObjectifs;
   /** Un agent parti n'a pas d'année suivante où reporter. */
   reportable?: boolean;
+  /**
+   * Vue par le N+1 hiérarchique quand un autre agent est le N+1 fonctionnel
+   * (ADR-0147) : elle se lit, sans rien y faire.
+   */
+  lecture?: boolean;
 }) {
   const queryClient = useQueryClient();
   const ev = fiche.evaluation;
@@ -922,7 +928,7 @@ export function EvaluationAnnuelle({
                   statut={fiche.statuts[o.id]}
                 />
               ) : null}
-              {envoyes && !validee ? (
+              {envoyes && !validee && !lecture ? (
                 <>
                   {o.formation ? null : (
                     <ChoixStatut
@@ -966,7 +972,7 @@ export function EvaluationAnnuelle({
                 ev.commentairesN1[o.id]?.trim() ||
                 reportes.includes(o.id)) ? (
                 <Propos
-                  qui="Vous"
+                  qui={lecture ? 'N+1 fonctionnel' : 'Vous'}
                   texte={ev.commentairesN1[o.id]}
                   ton="n1"
                   statut={a}
@@ -985,7 +991,7 @@ export function EvaluationAnnuelle({
         </p>
       ) : validee ? (
         <div className="flex flex-col gap-2.5 border-t border-line-soft pt-4">
-          <Intitule>Votre appréciation</Intitule>
+          <Intitule>{lecture ? 'Appréciation' : 'Votre appréciation'}</Intitule>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <NoteDonnee note={ev.note!} />
             {objectifs.every((o) => atteinte(o)) ? (
@@ -996,7 +1002,7 @@ export function EvaluationAnnuelle({
             Validée le {dateLongue(ev.valideeLe!)}
           </span>
         </div>
-      ) : (
+      ) : lecture ? null : (
         <>
           <div className="flex flex-col gap-2.5 border-t border-line-soft pt-4">
             <div className="flex flex-wrap items-center justify-between gap-2">

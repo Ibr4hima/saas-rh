@@ -55,6 +55,7 @@ import {
   directionDeEmploye,
   directionDeLUnite,
   dirigeUneDirection,
+  n1Fonctionnel,
   uniteEnVigueur,
 } from '../people/chaine';
 
@@ -108,6 +109,8 @@ interface LigneMembre extends Record<string, unknown> {
   phone: string | null;
   /** Parti de l'APIX : il ne reste là que le temps que son n+1 l'évalue. */
   parti: boolean;
+  /** L'appelant en est le N+1 hiérarchique, pas le fonctionnel : la fiche se lit, sans la main. */
+  lecture_seule: boolean;
 }
 
 /** Parti de l'APIX en laissant une auto-évaluation envoyée, pas encore validée. En SQL. */
@@ -517,7 +520,7 @@ export class ObjectifsService {
     const an = annee ?? this.anneeCourante();
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
-      const membres = await this.directs(tx, moi, true);
+      const membres = await this.directs(tx, moi, true, true);
       const ids = membres.map((m) => m.id);
       const objectifs = ids.length
         ? await this.lire(
@@ -554,7 +557,7 @@ export class ObjectifsService {
     const an = annee ?? this.anneeCourante();
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const moi = await this.exigerAgent(tx, user);
-      const membre = (await this.directs(tx, moi, true)).find((m) => m.id === employeeId);
+      const membre = (await this.directs(tx, moi, true, true)).find((m) => m.id === employeeId);
       if (!membre) {
         problem(404, 'objectifs.hors_equipe', 'Cet agent ne fait pas partie de votre équipe');
       }
@@ -959,7 +962,7 @@ export class ObjectifsService {
     const { rows } = await tx.execute<{ compte: string }>(sql`
       SELECT pn.user_id AS compte
         FROM employees e
-        JOIN employees n ON n.id = e.manager_employee_id
+        JOIN employees n ON n.id = ${n1Fonctionnel('e')}
         JOIN persons pn ON pn.id = n.person_id
        WHERE e.id = ${moi} AND e.id IS DISTINCT FROM ${DG}
          AND n.status = 'active' AND pn.user_id IS NOT NULL AND pn.deleted_at IS NULL`);
@@ -1022,10 +1025,11 @@ export class ObjectifsService {
       const figees = formationsDe((await this.progression(tx, [moi])).get(moi)).filter((x) =>
         cites.has(x.courseId),
       );
-      // Elle part à quelqu'un : sans N+1, elle ne s'envoie pas.
+      // Elle part à quelqu'un, son N+1 fonctionnel (ADR-0147) : sans N+1,
+      // elle ne s'envoie pas.
       const { rows } = await tx.execute<{ n1: string | null }>(sql`
-        SELECT manager_employee_id AS n1 FROM employees
-         WHERE id = ${moi} AND id IS DISTINCT FROM ${DG}`);
+        SELECT ${n1Fonctionnel('e')} AS n1 FROM employees e
+         WHERE e.id = ${moi} AND e.id IS DISTINCT FROM ${DG}`);
       if (!rows[0]?.n1) {
         problem(
           422,
@@ -1484,7 +1488,10 @@ export class ObjectifsService {
     return moi;
   }
 
-  /** L'agent doit être un direct ACTIF de l'appelant — jamais le DG. */
+  /**
+   * L'agent doit être un direct ACTIF de l'appelant, jamais le DG : l'appelant
+   * en est le N+1 fonctionnel (ADR-0147), qui seul fixe et évalue.
+   */
   private async exigerSonN1(
     tx: Tx,
     moi: string,
@@ -1492,11 +1499,11 @@ export class ObjectifsService {
     evaluation = false,
   ): Promise<void> {
     const { rows } = await tx.execute(sql`
-      SELECT 1 FROM employees
-       WHERE id = ${employeeId} AND manager_employee_id = ${moi}
-         AND (status = 'active'
-              ${evaluation ? sql`OR ${evaluationEnSuspens(sql`employees.id`)}` : sql``})
-         AND id IS DISTINCT FROM ${DG}`);
+      SELECT 1 FROM employees e
+       WHERE e.id = ${employeeId} AND ${n1Fonctionnel('e')} = ${moi}
+         AND (e.status = 'active'
+              ${evaluation ? sql`OR ${evaluationEnSuspens(sql`e.id`)}` : sql``})
+         AND e.id IS DISTINCT FROM ${DG}`);
     if (rows.length === 0) {
       problem(403, 'objectifs.hors_equipe', 'Vous fixez les objectifs de votre équipe seulement');
     }
@@ -1541,17 +1548,26 @@ export class ObjectifsService {
   }
 
   /**
-   * Les directs ACTIFS de l'agent, avec leur poste du jour, jamais le DG.
-   * `evaluations` y ajoute ceux qui sont partis en laissant une
-   * auto-évaluation envoyée, pas encore validée : leur n+1 la termine.
+   * Les directs ACTIFS de l'appelant, avec leur poste du jour, jamais le DG :
+   * les agents dont l'appelant est le N+1 fonctionnel (ADR-0147).
+   * `evaluations` y ajoute les agents partis en laissant une auto-évaluation
+   * envoyée, pas encore validée : leur N+1 la termine. `lecture` y ajoute
+   * les agents dont l'appelant est le N+1 hiérarchique sans en être le
+   * fonctionnel : leur fiche se lit, sans la main.
    */
-  private async directs(tx: Tx, moi: string, evaluations = false): Promise<LigneMembre[]> {
+  private async directs(
+    tx: Tx,
+    moi: string,
+    evaluations = false,
+    lecture = false,
+  ): Promise<LigneMembre[]> {
     const { rows } = await tx.execute<LigneMembre>(sql`
       SELECT e.id, e.employee_number, p.given_name, p.family_name,
              a.position_title, u.name AS unite,
              ${directionDeLUnite(sql`a.org_unit_id`, 'short_name')} AS direction_abrege,
              ${directionDeLUnite(sql`a.org_unit_id`, 'name')} AS direction_nom,
-             e.work_email, e.work_phone, p.phone, e.status <> 'active' AS parti
+             e.work_email, e.work_phone, p.phone, e.status <> 'active' AS parti,
+             ${n1Fonctionnel('e')} IS DISTINCT FROM ${moi} AS lecture_seule
         FROM employees e
         JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
         LEFT JOIN LATERAL (
@@ -1563,7 +1579,8 @@ export class ObjectifsService {
            LIMIT 1
         ) a ON true
         LEFT JOIN org_units u ON u.id = a.org_unit_id AND u.deleted_at IS NULL
-       WHERE e.manager_employee_id = ${moi}
+       WHERE (${n1Fonctionnel('e')} = ${moi}
+              ${lecture ? sql`OR e.manager_employee_id = ${moi}` : sql``})
          AND (e.status = 'active'
               ${evaluations ? sql`OR ${evaluationEnSuspens(sql`e.id`)}` : sql``})
          AND e.id IS DISTINCT FROM ${DG}
@@ -1642,6 +1659,7 @@ export class ObjectifsService {
       enRetard: objectifs.filter((o) => o.enRetard).length,
       aEvaluer,
       parti: m.parti,
+      lectureSeule: m.lecture_seule,
     };
   }
 

@@ -91,8 +91,8 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
         await queryClient.invalidateQueries({ queryKey: ['employees'] });
         await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
         await queryClient.invalidateQueries({ queryKey: ['org-units'] });
-        // Dix dossiers importés sans n+1, c'est dix anomalies de plus : le
-        // bandeau doit le dire avant qu'on quitte l'écran.
+        // Dix dossiers importés sans affectation, c'est dix anomalies de plus :
+        // le bandeau doit le dire avant qu'on quitte l'écran.
         await queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
       }
     } catch (err) {
@@ -169,8 +169,8 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
           </p>
         )
       }
-      // Sept colonnes depuis que le responsable s'y trouve : quatre pouces de
-      // plus, et les noms cessent de se couper en deux lignes.
+      // Six colonnes : à cette largeur, les noms ne se coupent pas en deux
+      // lignes.
       maxWidth="max-w-5xl"
       footer={
         etape === 'apercu' && rapport ? (
@@ -259,13 +259,6 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
               Les intitulés se reconnaissent sans tenir compte des accents ni de la casse, et
               l’ordre des colonnes n’a pas d’importance. La direction se désigne par son acronyme («
               DCH ») ou par son nom complet. Rien n’est écrit avant que vous ne validiez l’aperçu.
-            </p>
-            <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
-              Une colonne <b>Matricule du responsable</b> rattache chaque agent à son n+1, et le
-              fichier n’a pas besoin d’être trié : un chef peut figurer plus bas que son équipe.
-              Sans elle, chaque agent relève du directeur de sa direction ; dans une direction sans
-              directeur, il entre sans n+1 et ne pourra ni recevoir d’objectifs ni être évalué avant
-              qu’on lui en désigne un.
             </p>
           </ModalSection>
         </>
@@ -387,7 +380,7 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
           {rapport.colonnesManquantes.join(', ')}. Ajoutez-les à la première ligne du classeur.
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
           <Chiffre
             valeur={rapport.applique ? rapport.crees : rapport.aCreer}
             libelle={rapport.applique ? 'dossiers créés' : 'dossiers à créer'}
@@ -395,13 +388,11 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
           />
           <Chiffre valeur={rapport.ignores} libelle="lignes ignorées" ton="neutre" />
           <Chiffre valeur={rapport.erreurs} libelle="lignes en erreur" ton="danger" />
-          {/* L'orange pour les deux chiffres qui laissent du travail : ces
-              agents entrent sans direction ou sans n+1, et quelqu'un devra
-              les rattacher. Sans n+1, ils ne pourront d'ailleurs ni recevoir
-              d'objectifs ni être évalués. Une ligne ignorée, elle, n'attend
-              rien — le dossier existe déjà et reste intact. */}
+          {/* L'orange pour le chiffre qui laisse du travail : ces agents
+              entrent sans direction, donc sans N+1 hiérarchique (ADR-0147),
+              et quelqu'un devra les affecter. Une ligne ignorée, elle,
+              n'attend rien : le dossier existe déjà et reste intact. */}
           <Chiffre valeur={rapport.sansUnite} libelle="sans direction" ton="warning" />
-          <Chiffre valeur={rapport.sansResponsable} libelle="sans n+1" ton="warning" />
         </div>
       )}
 
@@ -432,7 +423,6 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
                     toute façon en clair. */}
                   <Th className="hidden md:table-cell">Poste</Th>
                   <Th className="hidden md:table-cell">Direction</Th>
-                  <Th className="hidden lg:table-cell">Responsable</Th>
                   <Th>État</Th>
                 </tr>
               </THead>
@@ -457,26 +447,6 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
                             title={l.etat === 'a-creer' ? 'Acronyme inconnu' : undefined}
                           >
                             {l.uniteAbrege}
-                          </span>
-                        ) : null}
-                      </Td>
-                      {/* Le n+1 : le nom quand le matricule a été retrouvé, le
-                        matricule en orange quand il ne l'a pas été : c'est
-                        alors lui qu'on corrige dans le tableur. */}
-                      <Td className="hidden whitespace-nowrap lg:table-cell">
-                        {l.responsableResolu ? (
-                          <span title={l.responsable ?? undefined}>{l.responsableResolu}</span>
-                        ) : l.responsable ? (
-                          // Le matricule ne s'allume que si le rattachement
-                          // MANQUERA vraiment : sur une ligne ignorée, rien
-                          // n'est écrit et il n'y a donc rien en attente.
-                          <span
-                            className={cn(
-                              'font-mono text-[11.5px]',
-                              l.etat === 'a-creer' && 'text-accent-text',
-                            )}
-                          >
-                            {l.responsable}
                           </span>
                         ) : null}
                       </Td>

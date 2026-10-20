@@ -1,55 +1,24 @@
-/**
- * La chaîne hiérarchique, et son contrôle.
- *
- * Trois règles, décidées avec l'APIX :
- *
- *   1. TOUT agent actif a un responsable (n+1) — sauf le directeur général,
- *      qui n'en a pas dans l'agence (il répond au conseil d'administration).
- *   2. Ce responsable appartient à la MÊME DIRECTION que l'agent. L'exception
- *      est le directeur lui-même : son n+1 est le directeur général.
- *   3. Le chef d'un département ou d'un service relève du responsable de
- *      l'unité au-dessus de la sienne : le chef du département pour un
- *      service qui en dépend, sinon le directeur.
- *
- * Elles ne sont pas décoratives : tout le module d'évaluation en dépend. Une
- * campagne ouverte sur un effectif où trente agents n'ont pas de n+1, c'est
- * trente personnes que personne ne peut évaluer, découvert en décembre. D'où
- * ce contrôle, qui se lit AVANT d'ouvrir quoi que ce soit.
- */
+import { z } from 'zod';
 
 /**
- * Ce qui peut clocher dans la chaîne, du plus bloquant au plus bénin.
+ * Les deux N+1 (ADR-0147), et le contrôle de la chaîne.
  *
- * Une seule anomalie par agent — la première de cette liste qui s'applique.
- * En afficher trois pour le même dossier n'aide pas : on corrige la fiche une
- * fois, et le contrôle se relit.
+ * Le N+1 HIÉRARCHIQUE se calcule à partir de l'organigramme : ce N+1 vise
+ * les congés et voit l'équipe. Le N+1 FONCTIONNEL se choisit : ce N+1 fixe
+ * les objectifs et évalue ; par défaut, c'est le hiérarchique.
+ *
+ * Le hiérarchique ne se saisissant plus, ce N+1 ne peut plus être « faux » :
+ * le contrôle ne signale que ce qui EMPÊCHE de le calculer.
  */
+
+/** Ce qui empêche de calculer le N+1 hiérarchique d'un agent. */
 export type TypeAnomalieHierarchie =
-  /** L'agent appartient à une boucle : A relève de B qui relève de A. */
-  | 'boucle'
-  /** Le directeur général a un n+1 : il entrerait dans l'équipe de quelqu'un. */
-  | 'dg_rattache'
-  /** Actif, sans n+1, et ce n'est pas le directeur général. */
-  | 'sans_responsable'
-  /** Le n+1 désigné a un dossier archivé : il n'encadre plus personne. */
-  | 'responsable_archive'
-  /** Le n+1 désigné est en stage : un stagiaire n'est le n+1 de personne. */
-  | 'responsable_stagiaire'
-  /** Le directeur général est affecté hors de la Direction Générale. */
-  | 'dg_hors_direction_generale'
-  /** Un directeur dont le n+1 n'est pas le directeur général. */
-  | 'directeur_mal_rattache'
-  /**
-   * Le chef d'un département ou d'un service dont le n+1 n'est pas le
-   * responsable de l'unité au-dessus de la sienne.
-   */
-  | 'chef_mal_rattache'
-  /** Le n+1 appartient à une autre direction. */
-  | 'hors_direction'
-  /** Sans affectation : la règle de direction n'est pas vérifiable. */
-  | 'sans_direction'
-  /** Son n+1 n'est affecté à aucune direction : c'est lui qu'il faut affecter. */
-  | 'responsable_sans_direction';
+  /** Sans affectation à une unité : rien ne dit de qui l'agent relève. */
+  | 'sans_unite'
+  /** Personne au-dessus : la Direction Générale n'a pas de DG. */
+  | 'sans_dg'
+  /** Le DG est affecté hors de la Direction Générale. */
+  | 'dg_hors_direction_generale';
 
 export interface AnomalieHierarchie {
   employeeId: string;
@@ -58,84 +27,55 @@ export interface AnomalieHierarchie {
   /** La direction de l'agent, telle que l'organigramme la donne. */
   direction: string | null;
   type: TypeAnomalieHierarchie;
-  /** Le n+1 désigné, quand il y en a un — c'est souvent lui le problème. */
+  /** Son N+1 fonctionnel choisi, le cas échéant : c'est ce N+1 qui évalue. */
   responsable: string | null;
-  /** La direction du n+1, pour que « hors direction » se lise sans chercher. */
   directionDuResponsable: string | null;
 }
 
 /**
- * Les anomalies qui EMPÊCHENT d'évaluer, par opposition à celles qu'il faut
- * corriger sans qu'elles arrêtent quoi que ce soit.
- *
- * Un agent sans n+1 — ou dont le n+1 est archivé, ou pris dans une boucle —
- * ne peut ni recevoir d'objectifs ni être évalué : il n'y a personne pour les
- * lui fixer ni pour l'évaluer. Ce n'est pas une punition, c'est une
- * impossibilité. Un rattachement hors direction, lui, est une entorse à la
- * règle : quelqu'un peut l'évaluer, et la fiche se corrige sans bloquer la
- * campagne.
- *
- * Les dossiers déjà créés sans n+1 ne sont donc jamais supprimés ni modifiés
- * d'office : ils sont SIGNALÉS, et restent hors du champ de l'évaluation le
- * temps qu'on leur désigne un responsable.
+ * Les anomalies qui EMPÊCHENT d'évaluer, faute de N+1 fonctionnel choisi :
+ * il n'y a personne pour fixer les objectifs ni pour évaluer.
  */
-export const ANOMALIES_BLOQUANTES: TypeAnomalieHierarchie[] = [
-  'boucle',
-  'sans_responsable',
-  'responsable_archive',
-];
+export const ANOMALIES_BLOQUANTES: TypeAnomalieHierarchie[] = ['sans_unite', 'sans_dg'];
 
-/**
- * Pourquoi un rattachement a changé sans qu'on touche à la fiche : c'est une
- * CASCADE, la conséquence qu'impose une règle quand l'organigramme bouge.
- */
+/** Pourquoi un N+1 a changé : la règle que l'organigramme applique. */
 export type MotifChangement =
-  /** Le nouveau directeur général perd son n+1 : il ne relève de personne. */
-  | 'devient_dg'
-  /** Relevait de l'ancien DG : relève du nouveau. */
-  | 'suit_le_dg'
-  /** Le nouveau DGA relève du DG. */
-  | 'devient_dga'
-  /** Relevait du DGA remplacé : relève du nouveau DGA. */
-  | 'suit_le_dga'
-  /** Un directeur relève du directeur général. */
-  | 'directeur'
-  /** L'ancien DG, resté à la Direction Générale, relève du nouveau. */
-  | 'ancien_dg'
-  /** Rattaché au DG le temps que sa direction ait une tête : relève du directeur. */
-  | 'direction_pourvue'
-  /** Le chef d'un département ou d'un service relève de l'unité au-dessus de la sienne. */
-  | 'chef_d_unite'
-  /** Relevait de l'ancien directeur : relève du nouveau, sans le suivre. */
-  | 'suit_le_directeur'
-  /** L'ancien directeur, resté dans la direction, relève du nouveau. */
-  | 'ancien_directeur'
-  /** Relevait de l'ancien chef d'un département ou d'un service : relève du nouveau. */
-  | 'suit_le_chef'
-  /** L'ancien chef d'un département ou d'un service, resté dans l'unité, relève du nouveau. */
-  | 'ancien_chef'
-  /** L'équipe d'un agent qui part passe à son repreneur. */
-  | 'reprise_equipe'
-  /** Le repreneur, pris dans l'équipe, prend la place du partant. */
-  | 'prend_la_place'
-  /** Sans n+1, dans une direction qui a sa tête : relève d'office du directeur. */
-  | 'responsable_de_sa_direction'
-  /** Son responsable, parti à la fin de son contrat, est revenu : il relève de nouveau de lui. */
-  | 'retour_du_responsable';
+  /** Le DG : ne relève de personne. */
+  | 'dg'
+  /** Tête d'une direction : relève du DG. */
+  | 'tete_de_direction'
+  /** Le DGA : relève du DG. */
+  | 'dga'
+  /** Tête d'un département ou d'un service : relève de la tête de l'unité au-dessus. */
+  | 'unite_au_dessus'
+  /** Relève de la tête de son unité. */
+  | 'tete_de_son_unite'
+  /** Son unité est sans tête : relève du premier niveau occupé au-dessus. */
+  | 'niveau_au_dessus'
+  /** Rattaché directement à la Direction Générale : relève du DG. */
+  | 'direction_generale'
+  /** À la Direction Générale, la place que la DCH a choisie : le DGA ou une tête d'unité. */
+  | 'rattachement_choisi'
+  /** Sans unité : plus de N+1 hiérarchique. */
+  | 'sans_unite'
+  /** Personne au-dessus : la Direction Générale n'a pas de DG. */
+  | 'sans_dg'
+  /** Son N+1 fonctionnel ne peut plus l'être : l'agent revient au hiérarchique. */
+  | 'fonctionnel_retire';
 
 export interface ChangementRattachement {
   employeeId: string;
   nom: string;
-  /** Le n+1 d'avant, et celui d'après — `null` : aucun. */
+  /** Le N+1 d'avant, et le N+1 d'après : `null`, aucun. */
   avant: string | null;
   apres: string | null;
   motif: MotifChangement;
 }
 
 /**
- * Ce qu'une opération fait à la chaîne : les rattachements qu'elle change
- * d'elle-même, et ceux qu'elle rend FAUX et qu'il faudra revoir. Sert deux
- * fois : en aperçu, avant de valider ; en compte rendu, après.
+ * Ce qu'une opération fait à la chaîne : les N+1 qu'elle change. Sert deux
+ * fois : en aperçu, avant de valider ; en compte rendu, après. `aRevoir` :
+ * ce qu'elle laisse sans N+1 hiérarchique.
  */
 export interface ConsequencesHierarchie {
   changements: ChangementRattachement[];
@@ -146,14 +86,27 @@ export function bloqueLEvaluation(type: TypeAnomalieHierarchie): boolean {
   return ANOMALIES_BLOQUANTES.includes(type);
 }
 
+/** Un agent dont la règle de l'ADR-0147 a changé le N+1, à revoir une fois. */
+export interface ChangementParLaRegle {
+  employeeId: string;
+  matricule: string;
+  nom: string;
+  /** Son n+1 d'avant la règle. */
+  avant: { id: string; nom: string };
+  /** Son N+1 hiérarchique, désormais ; `null` : aucun. */
+  apres: { id: string; nom: string } | null;
+}
+
 export interface ControleHierarchie {
-  /** Le directeur général : le responsable de l'unité racine. */
+  /** Le DG : la tête de l'unité racine. */
   directeurGeneral: { employeeId: string; nom: string } | null;
   /**
    * Les unités au sommet, quand il y en a PLUSIEURS — vide sinon. Il n'en
    * faut qu'une (la Direction Générale) : deux sommets, c'est deux « DG ».
    */
   sommetsMultiples: string[];
+  /** Les directions rattachées ailleurs qu'à la Direction Générale. */
+  directionsHorsDG: string[];
   /** Agents actifs examinés. */
   effectif: number;
   anomalies: AnomalieHierarchie[];
@@ -161,4 +114,10 @@ export interface ControleHierarchie {
   parType: Record<TypeAnomalieHierarchie, number>;
   /** Agents qui ne peuvent ni recevoir d'objectifs ni être évalués. */
   nonEvaluables: number;
+  /** Les N+1 que la règle a changés, à revoir une fois. */
+  changesParLaRegle: ChangementParLaRegle[];
 }
+
+/** Revoir un N+1 changé par la règle : garder l'ancien comme N+1 fonctionnel, ou non. */
+export const revoirLeChangementSchema = z.object({ garder: z.boolean() });
+export type RevoirLeChangement = z.infer<typeof revoirLeChangementSchema>;

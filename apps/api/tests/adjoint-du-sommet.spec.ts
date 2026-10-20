@@ -241,13 +241,16 @@ describe('la désignation', () => {
     expect(await adjointEcrit()).toBeNull();
   });
 
-  it('remplacé : la personne remplacée reçoit son poste, son équipe passe au nouveau DGA', async () => {
+  it('remplacé : la personne remplacée reçoit son poste ; qui relevait du DGA relève du nouveau', async () => {
     const dg = await leDG();
     const a = await agent('A', uDG, { genre: 'female' });
     const b = await agent('B', uDG, { genre: 'male' });
     const e = await agent('E', uDG, { genre: 'male' });
     await designer(a, { depuis: '2024-06-01' });
-    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [e, a]);
+    // À la Direction Générale, E relève du DGA, par choix (ADR-0147) : la
+    // place, pas la personne.
+    await people.update(user, e, { employee: { rattachementChoisi: { type: 'dga' } } });
+    expect(await n1(e)).toBe(a);
 
     const { changements } = await designer(b, {
       depuis: await jour(0),
@@ -267,7 +270,7 @@ describe('la désignation', () => {
     expect(await n1(b)).toBe(dg);
     expect(await n1(e)).toBe(b);
     expect(changements).toContainEqual(
-      expect.objectContaining({ employeeId: e, motif: 'suit_le_dga' }),
+      expect.objectContaining({ employeeId: e, motif: 'rattachement_choisi' }),
     );
   });
 
@@ -370,11 +373,17 @@ describe('depuis une nouvelle affectation (ADR-0127)', () => {
     expect((await affectations(b)).at(-1)!.poste).toBe('Directeur général adjoint');
   });
 
-  it('refusée : hors du sommet, au DG, à une tête d’unité, sans DG', async () => {
+  it('sans DG, la désignation passe : le DGA relève du DG à son arrivée', async () => {
     const x = await agent('X', uDG, { genre: 'female' });
-    expect(await codeOf(() => commeDGA(x))).toBe('org.aucun_directeur_general');
-    expect(await codeOf(() => designer(x))).toBe('org.aucun_directeur_general');
+    await commeDGA(x);
+    expect(await adjointEcrit()).toBe(x);
+    expect(await n1(x)).toBeNull();
+    const dg = await leDG();
+    expect(await n1(x)).toBe(dg);
+  });
 
+  it('refusée : hors du sommet, au DG, à une tête d’unité', async () => {
+    const x = await agent('X', uDG, { genre: 'female' });
     const dg = await leDG();
     const c = await agent('C', uCellule, { genre: 'male' });
     await organigramme.update(user, uCellule, { managerEmployeeId: c, depuis: '2024-01-01' });

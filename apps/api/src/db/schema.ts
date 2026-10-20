@@ -186,8 +186,19 @@ export const employees = pgTable('employees', {
   customFields: jsonb('custom_fields').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  /** À qui l'agent rend compte — distinct du responsable d'unité. */
+  /**
+   * Le N+1 hiérarchique : calculé à partir de l'organigramme, réécrit par la
+   * chaîne après chaque geste (ADR-0147). Ce N+1 ne se saisit pas.
+   */
   managerEmployeeId: uuid('manager_employee_id'),
+  /** Le N+1 fonctionnel, choisi ; `null` : le N+1 hiérarchique (ADR-0147). */
+  n1FonctionnelEmployeeId: uuid('n1_fonctionnel_employee_id'),
+  /** À la Direction Générale seulement : la tête de cette unité, à la place du DG. */
+  n1UniteId: uuid('n1_unite_id'),
+  /** À la Direction Générale seulement : le DGA, à la place du DG. */
+  n1Dga: boolean('n1_dga').notNull().default(false),
+  /** Le n+1 d'avant la règle, que la DCH revoit une fois (migration 0121). */
+  n1AvantLaRegle: uuid('n1_avant_la_regle'),
 });
 
 export const assignments = pgTable('assignments', {

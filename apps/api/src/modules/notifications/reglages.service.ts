@@ -36,7 +36,8 @@ export class NotificationsReglagesService {
       const { rows } = await tx.execute<{ oui: boolean }>(sql`
         SELECT EXISTS (
           SELECT 1 FROM employees e
-           WHERE e.manager_employee_id = ${moi} AND e.status = 'active'
+           WHERE (e.manager_employee_id = ${moi} OR e.n1_fonctionnel_employee_id = ${moi})
+             AND e.status = 'active'
              AND e.id IS DISTINCT FROM ${DG}) AS oui`);
       aUneEquipe = Boolean(rows[0]?.oui);
     }

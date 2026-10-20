@@ -24,6 +24,7 @@ import {
   listEmployeesQuerySchema,
   newAssignmentSchema,
   newContractSchema,
+  revoirLeChangementSchema,
   updateEmployeeSchema,
   updateOrgUnitSchema,
   type ArchiveEmployeesInput,
@@ -36,6 +37,7 @@ import {
   type DeleteOrgUnitInput,
   type NewAssignmentInput,
   type NewContractInput,
+  type RevoirLeChangement,
   type UpdateEmployeeInput,
   type UpdateOrgUnitInput,
 } from '@teranga/contracts';
@@ -61,17 +63,26 @@ export class PeopleController {
   // ---------- Chaîne hiérarchique ----------
 
   /**
-   * Le contrôle de la chaîne : qui n'a pas de n+1, qui en a un hors de sa
-   * direction, quelles boucles existent.
-   *
-   * En lecture seule, et volontairement : il SIGNALE, il ne corrige rien
-   * d'office. Les dossiers déjà créés sans responsable restent en place — on
-   * leur en désigne un, dossier par dossier.
+   * Le contrôle de la chaîne (ADR-0147) : ce qui empêche de calculer le N+1
+   * hiérarchique (un agent sans unité, l'absence de DG), et les N+1 que la
+   * règle a changés, à revoir une fois.
    */
   @Get('hierarchie/controle')
   @Peut('organigramme', 'personnel.gerer', 'pilotage')
   controleHierarchie(@Req() req: AuthenticatedRequest) {
     return this.hierarchie.controle(req.sessionUser);
+  }
+
+  /** Revoir un N+1 changé par la règle : garder l'ancien comme N+1 fonctionnel, ou non. */
+  @Post('hierarchie/regle/:id')
+  @HttpCode(204)
+  @Peut('personnel.gerer')
+  revoirLeChangement(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(revoirLeChangementSchema)) body: RevoirLeChangement,
+  ) {
+    return this.hierarchie.revoir(req.sessionUser, id, body.garder);
   }
 
   // ---------- Employés ----------

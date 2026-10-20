@@ -40,12 +40,6 @@ import { Icon } from '../../../components/icons';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
 import { Onglets, OngletsDeLEntete } from '../../../components/onglets';
 import { Pagination } from '../../../components/pagination';
-import {
-  equipesAConfier,
-  RepriseDesEquipes,
-  toutesConfiees,
-  type EquipeAConfier,
-} from '../../../components/reprise-equipes';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import {
   BarreSelection,
@@ -222,12 +216,10 @@ export default function EmployeesPage() {
       archived,
       motif,
       le,
-      repreneurs,
     }: {
       archived: boolean;
       motif?: MotifInactivite;
       le?: string;
-      repreneurs?: Record<string, string>;
     }) =>
       api<EmployeeBatchResult>('/employees/archive', {
         method: 'POST',
@@ -236,13 +228,10 @@ export default function EmployeesPage() {
           archived,
           motif,
           le,
-          repreneurs,
         },
       }),
     onSuccess: apresLot,
   });
-  // Qui part avec une équipe la confie : on le demande avant de désactiver.
-  const aConfier = equipesAConfier(actifsChoisis);
 
   const filtreActif = Boolean(debounced);
 
@@ -500,12 +489,11 @@ export default function EmployeesPage() {
       {panneau === 'desactiver' ? (
         <DesactiverModal
           lot={actifsChoisis}
-          equipes={aConfier}
           enCours={archiver.isPending}
           onClose={() => setPanneau(null)}
-          onConfirmer={(motif, le, repreneurs) => {
+          onConfirmer={(motif, le) => {
             setPanneau(null);
-            archiver.mutate({ archived: true, motif, le, repreneurs });
+            archiver.mutate({ archived: true, motif, le });
           }}
         />
       ) : null}
@@ -585,16 +573,13 @@ function SupprimerModal({
 }) {
   const [saisie, setSaisie] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
-  const equipes = equipesAConfier(employes);
-  const [repreneurs, setRepreneurs] = useState<Record<string, string>>({});
-  const confirme =
-    saisie.trim().toUpperCase() === MOT_DE_CONFIRMATION && toutesConfiees(equipes, repreneurs);
+  const confirme = saisie.trim().toUpperCase() === MOT_DE_CONFIRMATION;
 
   const supprimer = useMutation({
     mutationFn: () =>
       api<EmployeeBatchResult>('/employees/delete', {
         method: 'POST',
-        body: { ids: employes.map((e) => e.id), repreneurs },
+        body: { ids: employes.map((e) => e.id) },
       }),
     onSuccess: onFini,
     onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Suppression impossible.'),
@@ -667,17 +652,6 @@ function SupprimerModal({
         </p>
       </ModalSection>
 
-      {equipes.length > 0 ? (
-        <ModalSection title="Leurs équipes">
-          <RepriseDesEquipes
-            equipes={equipes}
-            lot={employes}
-            repreneurs={repreneurs}
-            onChange={setRepreneurs}
-          />
-        </ModalSection>
-      ) : null}
-
       <ModalSection title="Confirmation">
         <label
           htmlFor="confirmation"
@@ -698,25 +672,22 @@ function SupprimerModal({
 }
 
 /**
- * Désactiver des profils : on dit pourquoi — il se lira dans la liste des
- * inactifs — et, pour qui encadre une équipe, qui la reprend.
+ * Désactiver des profils : on dit pourquoi, et cela se lira dans la liste des
+ * inactifs. Les équipes suivent l'organigramme (ADR-0147).
  */
 function DesactiverModal({
   lot,
-  equipes,
   enCours,
   onClose,
   onConfirmer,
 }: {
   lot: EmployeeListItem[];
-  equipes: EquipeAConfier[];
   enCours: boolean;
   onClose: () => void;
-  onConfirmer: (motif: MotifInactivite, le: string, repreneurs: Record<string, string>) => void;
+  onConfirmer: (motif: MotifInactivite, le: string) => void;
 }) {
   const [motif, setMotif] = useState<MotifInactivite | ''>('');
   const [le, setLe] = useState(aujourdhui());
-  const [repreneurs, setRepreneurs] = useState<Record<string, string>>({});
   return (
     <Modal
       open
@@ -730,8 +701,8 @@ function DesactiverModal({
           </Button>
           <Button
             loading={enCours}
-            disabled={!motif || !le || le > aujourdhui() || !toutesConfiees(equipes, repreneurs)}
-            onClick={() => motif && onConfirmer(motif, le, repreneurs)}
+            disabled={!motif || !le || le > aujourdhui()}
+            onClick={() => motif && onConfirmer(motif, le)}
           >
             Désactiver
           </Button>
@@ -766,18 +737,6 @@ function DesactiverModal({
           </Field>
         </ModalGrid>
       </ModalSection>
-      {equipes.length > 0 ? (
-        <ModalSection
-          title={equipes.length > 1 ? 'Qui reprend leurs équipes ?' : 'Qui reprend son équipe ?'}
-        >
-          <RepriseDesEquipes
-            equipes={equipes}
-            lot={lot}
-            repreneurs={repreneurs}
-            onChange={setRepreneurs}
-          />
-        </ModalSection>
-      ) : null}
     </Modal>
   );
 }

@@ -25,15 +25,9 @@ import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import {
   adjointEnPlace,
-  alignerLesChefs,
-  apresNouveauChef,
-  apresNouveauDG,
-  apresNouveauDirecteur,
-  apresNouvelAdjoint,
-  directeurGeneral,
   directionDeLUnite,
+  fusionnerAuJournal,
   perimetre,
-  placesDesChefs,
   SOMMET,
   sortDuPerimetre,
   uniteRacine,
@@ -44,6 +38,7 @@ import { pasSurSoi } from '../acces/dch';
 import { reconcilierLeCircuit } from '../time/visas';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 import { inscrireLaPassation } from './passation';
+import { recalculerLaChaine } from './recalcul-de-la-chaine';
 
 interface TeteHorsPerimetre extends Record<string, unknown> {
   unit_id: string;
@@ -498,10 +493,10 @@ export class OrgUnitsService {
 
   /**
    * Joue une opération sur l'organigramme et mesure ce qu'elle fait à la
-   * chaîne hiérarchique : les rattachements changés par cascade (le
-   * journal), et les anomalies qu'elle fait APPARAÎTRE — celles d'avant ne
-   * sont pas les siennes. En aperçu, tout est annulé une fois mesuré :
-   * l'aperçu dit exactement ce que ferait l'opération, puisque c'est elle.
+   * chaîne : les N+1 que le recalcul change (ADR-0147), et les anomalies
+   * qu'elle fait APPARAÎTRE, celles d'avant n'étant pas les siennes. En
+   * aperçu, tout est annulé une fois mesuré : l'aperçu dit exactement ce que
+   * ferait l'opération, puisque c'est elle.
    */
   private async executer(
     user: SessionUser,
@@ -515,6 +510,10 @@ export class OrgUnitsService {
         const avant = await lireLaChaine(tx);
         const journal: ChangementRattachement[] = [];
         await operation(tx, journal);
+        fusionnerAuJournal(
+          journal,
+          await recalculerLaChaine(tx, user.tenantId, { prevenir: !apercu }),
+        );
         const apres = await lireLaChaine(tx);
         resultat = { changements: journal, aRevoir: nouvellesAnomalies(avant, apres) };
         if (apercu) throw new AnnulerLApercu();
@@ -692,15 +691,8 @@ export class OrgUnitsService {
     // sans parent — n'est PAS le sommet : son responsable est un directeur.
     const estSommet = nextParent === null && (sommet ?? id) === id;
     const devientSommet = estSommet && before!.parentId !== null;
-    const devientDirection =
-      nextType === 'direction' && (input.unitType !== undefined || input.parentId !== undefined);
     // Diriger le sommet, c'est être le directeur général.
     const nouveauDG = estSommet && prochain !== null && (responsableChange || devientSommet);
-    const nouveauDirecteur =
-      !estSommet &&
-      nextType === 'direction' &&
-      prochain !== null &&
-      (responsableChange || devientDirection);
 
     if (estSommet && responsableChange && prochain === null) {
       problem(
@@ -726,15 +718,6 @@ export class OrgUnitsService {
       }
     } else if (input.managerEmployeeId) {
       await this.assertManagerEligible(tx, id, input.managerEmployeeId);
-    }
-    if (nouveauDirecteur && !(await directeurGeneral(tx))) {
-      // ——— Un directeur relève du directeur général : il en faut un.
-      problem(
-        422,
-        'org.aucun_directeur_general',
-        'Désignez d’abord le directeur général',
-        'Qui dirige une direction relève du directeur général : la Direction Générale a son responsable avant les directions.',
-      );
     }
 
     // Ce que devient l'ancien (ADR-0038) : rester à un poste dans
@@ -769,10 +752,6 @@ export class OrgUnitsService {
         'Ce que devient la personne remplacée s’écrit depuis l’organigramme ou sa fiche',
       );
     }
-
-    // La place des chefs de département et de service avant l'opération :
-    // ceux dont le supérieur change en dépendent ensuite (règle 3 bis).
-    const chefsAvant = await placesDesChefs(tx);
 
     // Re-rattacher une unité, ou en changer le type, déplace des PÉRIMÈTRES :
     // un responsable affecté dedans peut se retrouver hors de l'unité qu'il
@@ -814,32 +793,8 @@ export class OrgUnitsService {
     }
     await this.assertAucuneTeteSortie(tx, tetesAvant);
 
-    // ——— Les cascades : ce que la règle impose, une fois l'unité écrite.
-    if (nouveauDG) {
-      await apresNouveauDG(
-        tx,
-        journal,
-        estSommet && !devientSommet ? ancien : null,
-        prochain,
-        !devenirAilleurs,
-      );
-    } else if (nouveauDirecteur) {
-      await apresNouveauDirecteur(
-        tx,
-        journal,
-        id,
-        responsableChange ? ancien : null,
-        prochain,
-        !devenirAilleurs,
-      );
-    }
-    await alignerLesChefs(tx, journal, chefsAvant);
-    // Une fois les chefs à leur place : pris dans l'équipe de l'ancien, le
-    // nouveau ne relève déjà plus de lui.
-    if (responsableChange && prochain !== null && nextType !== 'direction') {
-      await apresNouveauChef(tx, journal, id, ancien, prochain, !devenirAilleurs);
-    }
-    // Son équipe passée au nouveau, l'ancien part là où on l'envoie.
+    // Les N+1 se recalculent ensuite (ADR-0147) : ce qui relevait de
+    // l'ancienne tête relève de la nouvelle. L'ancienne part là où on l'envoie.
     if (devenirAilleurs && devenir) {
       await suite!(tx, journal, {
         uniteId: id,
@@ -898,14 +853,6 @@ export class OrgUnitsService {
         [prochain],
         'vous désigner à la direction générale adjointe',
       );
-      if (!unite!.dg) {
-        problem(
-          422,
-          'org.aucun_directeur_general',
-          'Désignez d’abord le DG',
-          'Le DGA relève du DG : la Direction Générale a son responsable avant son DGA.',
-        );
-      }
       if (prochain === unite!.dg) {
         problem(
           422,
@@ -981,7 +928,6 @@ export class OrgUnitsService {
       devenirAilleurs,
       place: 'adjoint',
     });
-    if (prochain) await apresNouvelAdjoint(tx, journal, ancien, prochain);
     if (devenirAilleurs && devenir) {
       const { rows } = await tx.execute<{ aujourdhui: string }>(
         sql`SELECT CURRENT_DATE::text AS aujourdhui`,
@@ -1063,6 +1009,16 @@ export class OrgUnitsService {
         'org.parent_type_invalid',
         `Un ${ORG_UNIT_TYPE_LABELS[unitType].toLowerCase()} ne peut pas relever d’un ${ORG_UNIT_TYPE_LABELS[parent.unitType as OrgUnitType].toLowerCase()}`,
         `« ${parent.name} » n’est pas un rattachement valide.`,
+      );
+    }
+    // Une direction se rattache à la Direction Générale, et à elle seule
+    // (ADR-0147) : sa tête relève du DG.
+    if (unitType === 'direction' && parentId !== (await uniteRacine(tx))?.id) {
+      problem(
+        422,
+        'org.direction_hors_dg',
+        'Une direction se rattache à la Direction Générale',
+        `« ${parent.name} » n’est pas la Direction Générale.`,
       );
     }
   }
