@@ -148,5 +148,6 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0140](0140-retour-sans-cadre.md)                     | Le retour à la page précédente, sans cadre, comme la cloche du menu                     | acceptée                                    |
 | [0141](0141-hauteur-apparente-de-l-action.md)         | L'action de l'écran, à la hauteur apparente du bouton de la date                        | acceptée                                    |
 | [0142](0142-pied-du-menu-en-fondu.md)                 | Le pied du menu, sans filet : la liste s'efface au-dessus du compte                     | acceptée                                    |
-| [0143](0143-fond-bleu-gris.md)                        | Le fond de l'application, un bleu-gris qui détache les blocs                            | acceptée, précisée par 0144                 |
+| [0143](0143-fond-bleu-gris.md)                        | Le fond de l'application, un bleu-gris qui détache les blocs                            | acceptée, précisée (0144, 0145)             |
 | [0144](0144-gris-accordes-au-fond.md)                 | Les gris des blocs, accordés au fond bleu-gris                                          | acceptée                                    |
+| [0145](0145-retour-au-fond-f3f6fa.md)                 | Le fond de l'application revient à #F3F6FA                                              | acceptée                                    |

@@ -23,13 +23,13 @@
 
   /* --- Couleurs sémantiques (light) --- */
   /* Le fond des pages, et celui de l'écran de connexion (ADR-0116) : un
-     bleu-gris clair, à la teinte du bleu de la charte (ADR-0143). Le blanc
-     des cartes et des tableaux s'en détache nettement (1,14:1), et le
-     texte secondaire y garde 5,5:1. Les gris des cartes (en-tête des
-     tableaux, filets, survol, rail des barres) en prennent la teinte, à
-     peine saturée : les gris chauds de la plateforme APIX y viraient au
-     beige et ternissaient le blanc qui les porte (ADR-0144). */
-  --tg-bg: #ebf1f8;
+     blanc à peine bleui, sous le blanc des cartes, revenu après l'essai
+     d'un bleu-gris plus soutenu (ADR-0143, ADR-0145). Le texte secondaire
+     y garde 5,8:1. Les gris des cartes (en-tête des tableaux, filets,
+     survol, rail des barres) en prennent la teinte, à peine saturée : les
+     gris chauds de la plateforme APIX viraient au beige à côté du bleuté
+     et ternissaient le blanc qui les porte (ADR-0144). */
+  --tg-bg: #f3f6fa;
   --tg-surface: #ffffff;
   --tg-surface-raised: #f8fafd;
   /* Teinte des ÉTATS (rangée survolée, bouton discret, onglet au repos).
@@ -137,7 +137,8 @@
      (ADR-0115). Une rangée survolée y prend un voile d'encre, qui fonce le
      fond sans le teinter ; l'entrée courante, un bleu très clair, sans filet
      ni ombre (ADR-0118). Ce bleu a un cran de plus que le bleu pâle de la
-     charte, qui se fondait dans le fond bleu-gris (ADR-0143). */
+     charte (ADR-0143), et le garde sur le fond revenu à #F3F6FA : il s'en
+     détache mieux (ADR-0145). */
   --tg-menu-survol: rgb(28 32 51 / 0.05);
   --tg-menu-actif: #dbe9fc;
   /* Le logo de la coquille : ses couleurs d'origine sur le fond clair. */
