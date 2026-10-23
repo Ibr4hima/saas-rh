@@ -1,0 +1,140 @@
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  type ChangerReglagesInput,
+  changerReglagesSchema,
+  type ChangerSujetsInput,
+  changerSujetsSchema,
+  type Espace,
+  notificationEspaceQuerySchema,
+  type NotificationIdsInput,
+  notificationIdsSchema,
+  type NotificationScope,
+  notificationScopeQuerySchema,
+  notificationViderQuerySchema,
+} from '@teranga/contracts';
+import { ZodValidationPipe } from '../../common/zod.pipe';
+import { AccesGuard, Peut } from '../auth/acces.guard';
+import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
+import { NotificationsService } from './notifications.service';
+import { NotificationsReglagesService } from './reglages.service';
+
+@Controller()
+@UseGuards(SessionGuard, AccesGuard)
+export class NotificationsController {
+  constructor(
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(NotificationsReglagesService) private readonly reglages: NotificationsReglagesService,
+  ) {}
+
+  // Ses réglages : où chaque sujet le trouve, sa pause pendant ses congés.
+
+  @Get('notifications/reglages')
+  lireReglages(@Req() req: AuthenticatedRequest) {
+    return this.reglages.lire(req.sessionUser);
+  }
+
+  @Put('notifications/reglages/sujets')
+  changerSujets(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(changerSujetsSchema)) body: ChangerSujetsInput,
+  ) {
+    return this.reglages.changerSujets(req.sessionUser, body);
+  }
+
+  @Put('notifications/reglages')
+  changerReglages(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(changerReglagesSchema)) body: ChangerReglagesInput,
+  ) {
+    return this.reglages.changerReglages(req.sessionUser, body);
+  }
+
+  // La boîte
+
+  @Get('notifications')
+  list(
+    @Req() req: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(notificationScopeQuerySchema))
+    query: { scope: NotificationScope; espace?: Espace; limite: number },
+  ) {
+    return this.notifications.list(req.sessionUser, query.scope, query.espace, query.limite);
+  }
+
+  @Post('notifications/:id/read')
+  @HttpCode(204)
+  async markRead(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    await this.notifications.markRead(req.sessionUser, id);
+  }
+
+  @Post('notifications/read-all')
+  @HttpCode(204)
+  async markAllRead(
+    @Req() req: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(notificationEspaceQuerySchema)) query: { espace?: Espace },
+  ) {
+    await this.notifications.markAllRead(req.sessionUser, query.espace);
+  }
+
+  /**
+   * Ranger. Les routes de rangement portent une LISTE d'identifiants : c'est
+   * un geste qu'on fait par lot (« je vide ce qui traîne »), et un aller-retour
+   * par ligne ferait clignoter la boîte autant de fois qu'on a coché.
+   */
+  @Post('notifications/archive')
+  @HttpCode(204)
+  async archive(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(notificationIdsSchema)) body: NotificationIdsInput,
+  ) {
+    await this.notifications.archive(req.sessionUser, body.ids);
+  }
+
+  @Post('notifications/unarchive')
+  @HttpCode(204)
+  async unarchive(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(notificationIdsSchema)) body: NotificationIdsInput,
+  ) {
+    await this.notifications.unarchive(req.sessionUser, body.ids);
+  }
+
+  @Post('notifications/archive-all')
+  @HttpCode(204)
+  async archiveAll(
+    @Req() req: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(notificationEspaceQuerySchema)) query: { espace?: Espace },
+  ) {
+    await this.notifications.archiveAll(req.sessionUser, query.espace);
+  }
+
+  /** Vider la boîte ou les archives : effacer, pour de bon, toute la vue. */
+  @Post('notifications/clear')
+  @HttpCode(204)
+  async clear(
+    @Req() req: AuthenticatedRequest,
+    @Query(new ZodValidationPipe(notificationViderQuerySchema))
+    query: { scope: NotificationScope; espace?: Espace },
+  ) {
+    await this.notifications.vider(req.sessionUser, query.scope, query.espace);
+  }
+
+  /** Les contrats sous l'œil de la RH jusqu'à leur expiration. */
+  @Get('contracts/expiring')
+  @Peut('pilotage', 'personnel.consulter')
+  expiring(@Req() req: AuthenticatedRequest) {
+    return this.notifications.expiringContracts(req.sessionUser);
+  }
+}
