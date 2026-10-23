@@ -135,8 +135,8 @@ describe('correspondance des colonnes', () => {
   });
 });
 
-describe('la colonne du N+1 ne se lit plus (ADR-0147)', () => {
-  it('un intitulé de N+1 passe parmi les colonnes ignorées', () => {
+describe('la colonne du responsable hiérarchique', () => {
+  it('reconnaît les intitulés qu’un classeur tenu à la main emploie', () => {
     for (const intitule of [
       'Matricule du responsable',
       'MATRICULE RESPONSABLE',
@@ -144,20 +144,19 @@ describe('la colonne du N+1 ne se lit plus (ADR-0147)', () => {
       'Matricule du supérieur',
       'n+1',
     ]) {
-      const { colonnes, inconnues, manquantes } = correspondre([
+      const { colonnes, inconnues } = correspondre([
         'Prénom',
         'Nom',
         'Matricule',
         "Date d'embauche",
         intitule,
       ]);
-      expect(inconnues, intitule).toEqual([intitule]);
-      expect(manquantes, intitule).toEqual([]);
-      expect(Object.keys(colonnes), intitule).not.toContain('responsable');
+      expect(inconnues, intitule).toEqual([]);
+      expect(colonnes.responsable, intitule).toBe(4);
     }
   });
 
-  it('la ligne se convertit sans elle', () => {
+  it('rend le matricule du n+1 en capitales, à résoudre plus tard', () => {
     const { colonnes } = correspondre([
       'Prénom',
       'Nom',
@@ -166,8 +165,20 @@ describe('la colonne du N+1 ne se lit plus (ADR-0147)', () => {
       'Matricule du responsable',
     ]);
     const r = convertirLigne(['Awa', 'Diop', 'APIX-0002', '01/03/2024', ' apix-0001 '], colonnes);
-    expect('ok' in r).toBe(true);
-    expect('ok' in r && 'responsableMatricule' in r.ok).toBe(false);
+    expect('ok' in r && r.ok.responsableMatricule).toBe('APIX-0001');
+  });
+
+  it('ne réclame pas la colonne : elle est facultative', () => {
+    const { manquantes, colonnes } = correspondre([
+      'Prénom',
+      'Nom',
+      'Matricule',
+      'Début du contrat',
+    ]);
+    expect(manquantes).toEqual([]);
+    expect(colonnes.responsable).toBeUndefined();
+    const r = convertirLigne(['Awa', 'Diop', 'APIX-0002', '01/03/2024'], colonnes);
+    expect('ok' in r && r.ok.responsableMatricule).toBeNull();
   });
 });
 

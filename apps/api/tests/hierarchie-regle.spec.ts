@@ -1,24 +1,30 @@
 /**
- * Les deux N+1 (ADR-0147), éprouvés en base.
+ * La règle hiérarchique de l'APIX, éprouvée en base.
  *
- *   1. Le N+1 HIÉRARCHIQUE se calcule à partir de l'organigramme : la tête de
- *      l'unité de l'agent, la tête de l'unité au-dessus pour qui dirige, le DG
- *      pour les têtes de direction et le DGA. Ce N+1 ne se saisit pas, et suit
- *      chaque geste : une désignation, une mutation, un départ, le jour qui
- *      vient.
- *   2. À la Direction Générale seulement, la place dont relève un agent
- *      rattaché directement se choisit : le DGA, ou la tête d'une autre unité.
- *   3. Le N+1 FONCTIONNEL se choisit librement, dans toute direction, hors
- *      stage ; quand ce N+1 ne peut plus l'être, l'agent revient au hiérarchique
- *      et la DCH en est prévenue.
+ *   1. Chaque agent a un responsable (n+1). Seule exception : le directeur
+ *      général, qui est le responsable de l'unité RACINE.
+ *   2. Ce responsable appartient à la même direction que l'agent. Seule
+ *      exception : un directeur, qui relève du directeur général.
+ *   3. Un stagiaire n'est le n+1 de personne.
  *
- * Le bac d'essai : la Direction Générale au sommet, la DSID et la DCH sous
- * elle.
+ * Ce que ces tests protègent surtout, c'est ce que la règle NE fait PAS : elle
+ * ne touche jamais aux dossiers déjà créés sans n+1. Ils restent en place, le
+ * contrôle les signale, et l'évaluation les laisse de côté jusqu'à correction.
+ *
+ * L'ORDRE de construction compte, et ce n'est pas un artifice de test : on ne
+ * désigne le responsable d'une unité qu'une fois son dossier créé. Tant que la
+ * racine n'a personne, nul n'est « le directeur général » aux yeux de la
+ * règle — d'où `creerLeDG` et `creerUnDirecteur`, qui font les deux gestes
+ * dans le bon ordre.
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { CreateEmployeeInput, SessionUser } from '@teranga/contracts';
+import {
+  listEmployeesQuerySchema,
+  type CreateEmployeeInput,
+  type SessionUser,
+} from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -27,7 +33,6 @@ import { TenantDb } from '../src/db/tenant-db';
 import { HierarchieService } from '../src/modules/people/hierarchie.service';
 import { OrgUnitsService } from '../src/modules/people/org-units.service';
 import { PeopleService } from '../src/modules/people/people.service';
-import { recalculerLaChaine } from '../src/modules/people/recalcul-de-la-chaine';
 
 const env = loadEnv();
 
@@ -41,6 +46,7 @@ let people: PeopleService;
 let hierarchie: HierarchieService;
 let organigramme: OrgUnitsService;
 
+/** L'organigramme du bac d'essai : la DG, et deux directions sous elle. */
 let uDG: string;
 let uDSID: string;
 let uDCH: string;
@@ -59,17 +65,48 @@ async function codeOf(fn: () => Promise<unknown>): Promise<string> {
   }
 }
 
-function dossier(matricule: string, uniteId: string | null): CreateEmployeeInput {
+/** Un dossier tel que le SERVICE le crée — c'est ce chemin que la règle garde. */
+function dossier(
+  matricule: string,
+  uniteId: string | null,
+  responsableId?: string,
+): CreateEmployeeInput {
   return {
     person: { givenName: matricule, familyName: 'Test' },
-    employee: { employeeNumber: matricule, hiredOn: '2024-01-01' },
-    contract: { contractType: 'cdi', startDate: '2024-01-01' },
+    employee: {
+      employeeNumber: matricule,
+      hiredOn: '2024-01-01',
+      ...(responsableId ? { managerEmployeeId: responsableId } : {}),
+    },
     assignment: { positionTitle: 'Analyste', startDate: '2024-01-01', orgUnitId: uniteId },
   } as CreateEmployeeInput;
 }
 
-const agent = async (matricule: string, uniteId: string | null) =>
-  (await people.create(user, dossier(matricule, uniteId))).id;
+/** Un dossier posé en SQL, comme un import en a laissé : sans n+1. */
+async function dossierBrut(matricule: string, uniteId: string | null): Promise<string> {
+  const personId = randomUUID();
+  const employeeId = randomUUID();
+  await raw(
+    `INSERT INTO persons (id, tenant_id, given_name, family_name) VALUES ($1,$2,$3,'Test')`,
+    [personId, tenantId, matricule],
+  );
+  await raw(
+    `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on)
+     VALUES ($1,$2,$3,$4,'2024-01-01')`,
+    [employeeId, tenantId, personId, matricule],
+  );
+  if (uniteId) {
+    await raw(
+      `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+       VALUES ($1,$2,$3,$4,'Analyste','[2024-01-01,)')`,
+      [randomUUID(), tenantId, employeeId, uniteId],
+    );
+  }
+  return employeeId;
+}
+
+const dirigerUnite = (uniteId: string, employeeId: string | null) =>
+  raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [uniteId, employeeId]);
 
 async function unite(
   nom: string,
@@ -84,38 +121,23 @@ async function unite(
   return id;
 }
 
-/** Ce que fait la veille : la chaîne se recalcule. */
-const recalculer = () =>
-  db.withTenant({ tenantId, userId }, (tx) => recalculerLaChaine(tx, tenantId));
-
-/** Une tête posée en SQL, puis la chaîne recalculée. */
-async function diriger(uniteId: string, employeeId: string | null): Promise<void> {
-  await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [uniteId, employeeId]);
-  await recalculer();
+/** Le directeur général : son dossier, puis sa désignation sur la racine. */
+async function creerLeDG(): Promise<string> {
+  const { id } = await people.create(user, dossier('DG', uDG));
+  await dirigerUnite(uDG, id);
+  return id;
 }
 
-async function designerLeDGA(employeeId: string | null): Promise<void> {
-  await raw(`UPDATE org_units SET adjoint_employee_id = $2 WHERE id = $1`, [uDG, employeeId]);
-  await recalculer();
-}
-
-const n1 = async (id: string) => (await people.detail(user, id)).managerId;
-const fonctionnel = async (id: string) => (await people.detail(user, id)).n1Fonctionnel?.id ?? null;
-
-/** Un contrat, daté par rapport à aujourd'hui : `fin` null, sans terme. */
-async function contrat(
-  employeeId: string,
-  type: 'cdi' | 'cdd' | 'stage',
-  debut: number,
-  fin: number | null,
-): Promise<void> {
-  await raw(`DELETE FROM contracts WHERE employee_id = $1`, [employeeId]);
-  await raw(
-    `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
-     VALUES ($1,$2,$3,$4, CURRENT_DATE + $5::int,
-             CASE WHEN $6::int IS NULL THEN NULL ELSE CURRENT_DATE + $6::int END)`,
-    [randomUUID(), tenantId, employeeId, type, debut, fin],
-  );
+/**
+ * Un directeur : rattaché au DG pendant que sa direction est sans tête, puis
+ * désigné à la tête de celle-ci. C'est le seul ordre possible, et le produit
+ * l'autorise explicitement — une direction sans directeur n'a personne
+ * d'autre au-dessus que le directeur général.
+ */
+async function creerUnDirecteur(matricule: string, direction: string, dg: string): Promise<string> {
+  const { id } = await people.create(user, dossier(matricule, direction, dg));
+  await dirigerUnite(direction, id);
+  return id;
 }
 
 beforeAll(async () => {
@@ -134,27 +156,11 @@ beforeAll(async () => {
     tenantId,
     `hier-${tenantId.slice(0, 8)}`,
   ]);
-  // L'administration reçoit ce que la DCH apprendrait : le bac n'a pas de DCH.
-  await raw(
-    `INSERT INTO user_tenant_memberships (id, user_id, tenant_id, role)
-     VALUES ($1,$2,$3,'admin')`,
-    [randomUUID(), userId, tenantId],
-  );
 });
 
 async function vider() {
-  await raw(
-    `UPDATE org_units SET manager_employee_id = NULL, adjoint_employee_id = NULL
-      WHERE tenant_id = $1`,
-    [tenantId],
-  );
-  await raw(
-    `UPDATE employees SET manager_employee_id = NULL, n1_fonctionnel_employee_id = NULL,
-                          n1_unite_id = NULL, n1_dga = false, n1_avant_la_regle = NULL
-      WHERE tenant_id = $1`,
-    [tenantId],
-  );
-  await raw(`DELETE FROM notifications WHERE tenant_id = $1`, [tenantId]);
+  await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
+  await raw(`UPDATE employees SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
   for (const table of ['assignments', 'contracts', 'employees', 'persons', 'org_units']) {
     await raw(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
   }
@@ -170,350 +176,568 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await vider();
+  const comptes = await raw(`SELECT user_id FROM user_tenant_memberships WHERE tenant_id = $1`, [
+    tenantId,
+  ]);
   await raw(`DELETE FROM user_tenant_memberships WHERE tenant_id = $1`, [tenantId]);
+  for (const c of comptes.rows) await raw(`DELETE FROM users WHERE id = $1`, [c.user_id]);
   await raw(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
   await raw(`DELETE FROM users WHERE id = $1`, [userId]);
   await db?.pool.end();
   await ownerPool?.end();
 });
 
-/** Le DG, et une tête à la DSID. */
-async function bac(): Promise<{ dg: string; dsid: string }> {
-  const dg = await agent('DG', uDG);
-  await diriger(uDG, dg);
-  const dsid = await agent('DSID', uDSID);
-  await diriger(uDSID, dsid);
-  return { dg, dsid };
-}
-
-describe('le N+1 hiérarchique se calcule', () => {
-  it('à la création : la tête de son unité, le DG pour une tête de direction', async () => {
-    const { dg, dsid } = await bac();
-    const a = await agent('A', uDSID);
-    expect(await n1(a)).toBe(dsid);
-    expect(await n1(dsid)).toBe(dg);
-    expect(await n1(dg)).toBeNull();
+describe('le rattachement peut venir plus tard', () => {
+  it('crée un dossier sans responsable — on le rattachera ensuite', async () => {
+    await creerLeDG();
+    const { id } = await people.create(user, dossier('A', uDSID));
+    expect((await people.detail(user, id)).managerId).toBeNull();
   });
 
-  it('une direction sans tête laisse ses agents au DG', async () => {
-    const { dg } = await bac();
-    const a = await agent('A', uDCH);
-    expect(await n1(a)).toBe(dg);
+  it('retirer le n+1, dans une direction pourvue, le rend au directeur', async () => {
+    const dg = await creerLeDG();
+    const chef = await creerUnDirecteur('CHEF', uDSID, dg);
+    const b = (await people.create(user, dossier('B', uDSID, chef))).id;
+    const a = (await people.create(user, dossier('A', uDSID, b))).id;
+    await people.update(user, a, { employee: { managerEmployeeId: null } });
+    expect((await people.detail(user, a)).managerId).toBe(chef);
     expect((await hierarchie.controle(user)).anomalies).toEqual([]);
   });
 
-  it('une tête désignée reprend son unité ; partie, le niveau au-dessus reprend', async () => {
-    const { dg } = await bac();
-    const a = await agent('A', uDCH);
-    const rh = await agent('RH', uDCH);
-    await diriger(uDCH, rh);
-    expect(await n1(a)).toBe(rh);
-    expect(await n1(rh)).toBe(dg);
-    await diriger(uDCH, null);
-    expect(await n1(a)).toBe(dg);
+  it('accepte de RETIRER un responsable dans une direction sans tête : c’est le contrôle qui le signale', async () => {
+    const dg = await creerLeDG();
+    const a = (await people.create(user, dossier('A', uDSID, dg))).id;
+    await people.update(user, a, { employee: { managerEmployeeId: null } });
+    expect((await people.detail(user, a)).managerId).toBeNull();
+    // Rien n'est perdu : l'agent réapparaît dans les anomalies, et sort du
+    // champ de l'évaluation jusqu'à ce qu'on lui redésigne un n+1.
+    const c = await hierarchie.controle(user);
+    expect(c.anomalies.map((x) => `${x.matricule}:${x.type}`)).toEqual(['A:sans_responsable']);
+    expect(c.nonEvaluables).toBe(1);
   });
 
-  it('la tête d’un service relève du département qui le contient', async () => {
-    const { dsid } = await bac();
-    const dep = await unite('Département Études', 'department', uDSID);
-    const srv = await unite('Service Dév', 'service', dep);
-    const chefDep = await agent('DEP', dep);
-    await diriger(dep, chefDep);
-    const chefSrv = await agent('SRV', srv);
-    await diriger(srv, chefSrv);
-    const a = await agent('A', srv);
-    expect(await n1(a)).toBe(chefSrv);
-    expect(await n1(chefSrv)).toBe(chefDep);
-    expect(await n1(chefDep)).toBe(dsid);
-  });
-
-  it('une mutation vers une autre direction se programme : le N+1 change le jour venu', async () => {
-    const { dsid } = await bac();
-    const rh = await agent('RH', uDCH);
-    await diriger(uDCH, rh);
-    const a = await agent('A', uDSID);
-    const demain = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-    await people.newAssignment(user, a, {
-      orgUnitId: uDCH,
-      positionTitle: 'Chargé RH',
-      startDate: demain,
-    });
-    expect(await n1(a)).toBe(dsid);
-    // Le jour venu : l'affectation commence, la veille recalcule.
-    await raw(
-      `UPDATE assignments SET validity = daterange(lower(validity), CURRENT_DATE)
-        WHERE employee_id = $1 AND org_unit_id = $2`,
-      [a, uDSID],
-    );
-    await raw(
-      `UPDATE assignments SET validity = daterange(CURRENT_DATE, NULL)
-        WHERE employee_id = $1 AND org_unit_id = $2`,
-      [a, uDCH],
-    );
-    await recalculer();
-    expect(await n1(a)).toBe(rh);
-  });
-
-  it('le N+1 hiérarchique ne se saisit pas', async () => {
-    const { dsid } = await bac();
-    const a = await agent('A', uDSID);
-    const rh = await agent('RH', uDCH);
-    await people.update(user, a, { employee: { managerEmployeeId: rh } as never });
-    expect(await n1(a)).toBe(dsid);
+  it('rattache un dossier créé sans n+1, une fois le responsable connu', async () => {
+    const dg = await creerLeDG();
+    const chef = await creerUnDirecteur('CHEF', uDSID, dg);
+    const a = (await people.create(user, dossier('A', uDSID))).id;
+    await people.update(user, a, { employee: { managerEmployeeId: chef } });
+    expect((await people.detail(user, a)).managerId).toBe(chef);
+    expect((await hierarchie.controle(user)).anomalies).toEqual([]);
   });
 });
 
-describe('à la Direction Générale, la place se choisit', () => {
-  /** Un département rattaché à la Direction Générale, et sa tête. */
-  async function cabinet(): Promise<{ cab: string; chefCab: string }> {
-    const cab = await unite('Cabinet', 'department', uDG);
-    const chefCab = await agent('CAB', cab);
-    await diriger(cab, chefCab);
-    return { cab, chefCab };
+describe('le responsable est dans la même direction', () => {
+  it('accepte un responsable de la même direction', async () => {
+    const dg = await creerLeDG();
+    const chef = await creerUnDirecteur('CHEF', uDSID, dg);
+    const { id } = await people.create(user, dossier('A', uDSID, chef));
+    expect((await people.detail(user, id)).managerId).toBe(chef);
+  });
+
+  it('accepte un responsable d’une SOUS-UNITÉ de la même direction', async () => {
+    // Chef de service et agent ne sont pas dans la même unité, mais bien dans
+    // la même direction : c'est la direction qui fait la règle, pas l'unité.
+    const dg = await creerLeDG();
+    const directeur = await creerUnDirecteur('DIR', uDSID, dg);
+    const service = await unite('Service Dév', 'service', uDSID);
+    const chefDeService = (await people.create(user, dossier('CHEFSERV', service, directeur))).id;
+    const { id } = await people.create(user, dossier('A', uDSID, chefDeService));
+    expect((await people.detail(user, id)).managerId).toBe(chefDeService);
+  });
+
+  it('refuse un responsable d’une AUTRE direction', async () => {
+    const dg = await creerLeDG();
+    const rh = await creerUnDirecteur('RH', uDCH, dg);
+    await creerUnDirecteur('DIR', uDSID, dg);
+    expect(await codeOf(() => people.create(user, dossier('A', uDSID, rh)))).toBe(
+      'people.manager_autre_direction',
+    );
+  });
+
+  it('refuse un n+1 à un agent qui n’est affecté à aucune direction', async () => {
+    const dg = await creerLeDG();
+    const rh = await creerUnDirecteur('RH', uDCH, dg);
+    expect(await codeOf(() => people.create(user, dossier('A', null, rh)))).toBe(
+      'people.sans_affectation',
+    );
+    // Le dossier, lui, se crée sans n+1 — on le rattachera une fois affecté.
+    const { id } = await people.create(user, dossier('A', null));
+    expect(
+      await codeOf(() => people.update(user, id, { employee: { managerEmployeeId: rh } })),
+    ).toBe('people.sans_affectation');
+  });
+
+  it('refuse un n+1 qui n’est lui-même affecté à aucune direction', async () => {
+    await creerLeDG();
+    const sansAffectation = await dossierBrut('SANS', null);
+    expect(await codeOf(() => people.create(user, dossier('A', uDCH, sansAffectation)))).toBe(
+      'people.responsable_sans_affectation',
+    );
+  });
+
+  it('refuse de sortir de toute direction un agent qui a un n+1, ou qui en est un', async () => {
+    const dg = await creerLeDG();
+    const chef = await creerUnDirecteur('CHEF', uDCH, dg);
+    const encadrant = (await people.create(user, dossier('ENC', uDCH, chef))).id;
+    const agent = (await people.create(user, dossier('A', uDCH, encadrant))).id;
+    const sortir = (id: string) =>
+      people.newAssignment(user, id, {
+        positionTitle: 'Chargé de mission',
+        orgUnitId: null,
+        startDate: '2025-06-01',
+      } as never);
+    expect(await codeOf(() => sortir(agent))).toBe('people.mutation_sans_direction');
+    // Sans son n+1, Encadrant reste celui d'A : son équipe ne le suit pas.
+    await people.update(user, encadrant, { employee: { managerEmployeeId: null } });
+    expect(await codeOf(() => sortir(encadrant))).toBe('people.equipe_sans_repreneur');
+  });
+
+  it('accepte le directeur général pendant qu’une direction est sans tête, puis refuse', async () => {
+    const dg = await creerLeDG();
+    // La DSID n'a pas de directeur : son premier agent se rattache au DG.
+    const premier = (await people.create(user, dossier('PREMIER', uDSID, dg))).id;
+    await dirigerUnite(uDSID, premier);
+    // La tête est désignée : le chemin se referme.
+    expect(await codeOf(() => people.create(user, dossier('SECOND', uDSID, dg)))).toBe(
+      'people.manager_autre_direction',
+    );
+  });
+});
+
+describe('le cas des directeurs', () => {
+  it('rattache un directeur au directeur général, hors de sa direction', async () => {
+    const dg = await creerLeDG();
+    const directeur = await creerUnDirecteur('DIR', uDSID, dg);
+    // Le rattachement est relu MAINTENANT qu'il dirige la DSID : il tient, et
+    // il traverse deux directions.
+    await people.update(user, directeur, { employee: { managerEmployeeId: dg } });
+    expect((await people.detail(user, directeur)).managerId).toBe(dg);
+  });
+
+  it('refuse qu’un directeur relève de quelqu’un d’autre que le directeur général', async () => {
+    const dg = await creerLeDG();
+    const directeur = await creerUnDirecteur('DIR', uDSID, dg);
+    // Un autre directeur, donc pas de boucle : sa chaîne monte au DG.
+    const rh = await creerUnDirecteur('RH', uDCH, dg);
+    expect(
+      await codeOf(() => people.update(user, directeur, { employee: { managerEmployeeId: rh } })),
+    ).toBe('people.directeur_hors_dg');
+  });
+
+  it('refuse un directeur quand AUCUN directeur général n’est désigné', async () => {
+    // Personne ne coiffe la racine : nul n'est « le DG ».
+    const premier = (await people.create(user, dossier('PREMIER', uDG))).id;
+    const directeur = (await people.create(user, dossier('DIR', uDSID))).id;
+    await dirigerUnite(uDSID, directeur);
+    expect(
+      await codeOf(() =>
+        people.update(user, directeur, { employee: { managerEmployeeId: premier } }),
+      ),
+    ).toBe('people.aucun_directeur_general');
+  });
+});
+
+describe('le directeur général ne relève de personne', () => {
+  it('refuse de lui donner un n+1 depuis sa fiche', async () => {
+    const dg = await creerLeDG();
+    // Un agent sans lien avec lui : aucune boucle ne peut expliquer le refus.
+    const agent = await dossierBrut('A', uDSID);
+    expect(
+      await codeOf(() => people.update(user, dg, { employee: { managerEmployeeId: agent } })),
+    ).toBe('people.dg_sans_responsable');
+  });
+
+  it('laisse RETIRER le n+1 qu’une donnée ancienne lui a donné', async () => {
+    const dg = await creerLeDG();
+    const agent = await dossierBrut('A', uDSID);
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [dg, agent]);
+    await people.update(user, dg, { employee: { managerEmployeeId: null } });
+    expect((await people.detail(user, dg)).managerId).toBeNull();
+  });
+
+  it('nommer à la racine quelqu’un qui a un n+1 le lui retire : il ne relève plus de personne', async () => {
+    const futur = await dossierBrut('FUTUR', uDG);
+    const autre = await dossierBrut('AUTRE', uDG);
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [futur, autre]);
+    const r = await organigramme.update(user, uDG, { managerEmployeeId: futur });
+    expect(r.changements).toEqual([
+      expect.objectContaining({
+        employeeId: futur,
+        avant: 'AUTRE Test',
+        apres: null,
+        motif: 'devient_dg',
+      }),
+      // AUTRE, lui, n'avait pas de n+1 : à la Direction Générale, il relève du DG.
+      expect.objectContaining({
+        employeeId: autre,
+        avant: null,
+        apres: 'FUTUR Test',
+        motif: 'responsable_de_sa_direction',
+      }),
+    ]);
+    expect((await hierarchie.controle(user)).directeurGeneral?.employeeId).toBe(futur);
+    expect((await people.detail(user, futur)).managerId).toBeNull();
+  });
+
+  it('ne gêne pas la nomination d’un directeur, qui, lui, relève du DG', async () => {
+    const dg = await creerLeDG();
+    const directeur = (await people.create(user, dossier('DIR', uDSID, dg))).id;
+    await organigramme.update(user, uDSID, { managerEmployeeId: directeur });
+    expect((await people.detail(user, directeur)).managerId).toBe(dg);
+  });
+
+  it('le contrôle signale un DG rattaché — et lui seul, même s’il ferme une boucle', async () => {
+    const dg = await creerLeDG();
+    const agent = await dossierBrut('A', uDG);
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [agent, dg]);
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [dg, agent]);
+    // A relève du DG, qui relève de A : la boucle n'existe que par le n+1 du
+    // DG. C'est ce lien qu'il faut retirer, et c'est lui qu'on montre.
+    const c = await hierarchie.controle(user);
+    expect(c.anomalies.map((a) => `${a.matricule}:${a.type}`)).toEqual(['DG:dg_rattache']);
+    expect(c.anomalies[0]?.responsable).toBe('A Test');
+
+    await people.update(user, dg, { employee: { managerEmployeeId: null } });
+    expect((await hierarchie.controle(user)).anomalies).toEqual([]);
+  });
+});
+
+describe('la mutation d’une direction à l’autre', () => {
+  it('confie l’agent au directeur de sa nouvelle direction quand on ne choisit pas', async () => {
+    const dg = await creerLeDG();
+    const chefDSID = await creerUnDirecteur('CHEF', uDSID, dg);
+    const chefDCH = await creerUnDirecteur('RH', uDCH, dg);
+    const a = (await people.create(user, dossier('A', uDSID, chefDSID))).id;
+    const r = await people.newAssignment(user, a, {
+      positionTitle: 'Juriste',
+      orgUnitId: uDCH,
+      startDate: '2025-01-01',
+    });
+    expect((await people.detail(user, a)).managerId).toBe(chefDCH);
+    expect(r.changements).toEqual([
+      expect.objectContaining({ employeeId: a, motif: 'responsable_de_sa_direction' }),
+    ]);
+    expect(r.aRevoir).toEqual([]);
+  });
+
+  it('refuse de laisser l’agent avec un responsable de son ancienne direction, quand la nouvelle n’a pas de tête', async () => {
+    const dg = await creerLeDG();
+    const chefDSID = await creerUnDirecteur('CHEF', uDSID, dg);
+    const a = (await people.create(user, dossier('A', uDSID, chefDSID))).id;
+    expect(
+      await codeOf(() =>
+        people.newAssignment(user, a, {
+          positionTitle: 'Juriste',
+          orgUnitId: uDCH,
+          startDate: '2025-01-01',
+        }),
+      ),
+    ).toBe('people.responsable_hors_nouvelle_direction');
+  });
+
+  it('accepte la mutation quand elle porte le nouveau responsable', async () => {
+    const dg = await creerLeDG();
+    const chefDSID = await creerUnDirecteur('CHEF', uDSID, dg);
+    const chefDCH = await creerUnDirecteur('RH', uDCH, dg);
+    const a = (await people.create(user, dossier('A', uDSID, chefDSID))).id;
+    await people.newAssignment(user, a, {
+      positionTitle: 'Juriste',
+      orgUnitId: uDCH,
+      startDate: '2025-01-01',
+      managerEmployeeId: chefDCH,
+    });
+    const detail = await people.detail(user, a);
+    expect(detail.managerId).toBe(chefDCH);
+    expect(detail.assignments[0]?.orgUnitId).toBe(uDCH);
+  });
+
+  it('refuse un nouveau responsable qui n’est pas dans la direction d’arrivée', async () => {
+    const dg = await creerLeDG();
+    const chefDSID = await creerUnDirecteur('CHEF', uDSID, dg);
+    await creerUnDirecteur('RH', uDCH, dg);
+    const a = (await people.create(user, dossier('A', uDSID, chefDSID))).id;
+    expect(
+      await codeOf(() =>
+        people.newAssignment(user, a, {
+          positionTitle: 'Juriste',
+          orgUnitId: uDCH,
+          startDate: '2025-01-01',
+          managerEmployeeId: chefDSID,
+        }),
+      ),
+    ).toBe('people.manager_autre_direction');
+  });
+
+  it('accepte une mutation DANS la même direction sans rien redemander', async () => {
+    const dg = await creerLeDG();
+    const chef = await creerUnDirecteur('CHEF', uDSID, dg);
+    const service = await unite('Service Dév', 'service', uDSID);
+    const a = (await people.create(user, dossier('A', uDSID, chef))).id;
+    await people.newAssignment(user, a, {
+      positionTitle: 'Développeur',
+      orgUnitId: service,
+      startDate: '2025-01-01',
+    });
+    expect((await people.detail(user, a)).managerId).toBe(chef);
+  });
+});
+
+describe('le contrôle de la chaîne', () => {
+  it('ne signale rien sur une agence en règle', async () => {
+    const dg = await creerLeDG();
+    const directeur = await creerUnDirecteur('DIR', uDSID, dg);
+    await people.create(user, dossier('A', uDSID, directeur));
+
+    const c = await hierarchie.controle(user);
+    expect(c.directeurGeneral?.employeeId).toBe(dg);
+    expect(c.effectif).toBe(3);
+    expect(c.anomalies).toEqual([]);
+    expect(c.nonEvaluables).toBe(0);
+  });
+
+  it('liste les dossiers laissés sans responsable par un import', async () => {
+    await creerLeDG();
+    await dossierBrut('IMPORTE-1', uDSID);
+    await dossierBrut('IMPORTE-2', null);
+
+    const c = await hierarchie.controle(user);
+    expect(c.parType.sans_responsable).toBe(2);
+    // Les deux sont hors du champ de l'évaluation — pas supprimés.
+    expect(c.nonEvaluables).toBe(2);
+    expect(c.effectif).toBe(3);
+    expect(c.anomalies.map((a) => a.matricule)).toEqual(['IMPORTE-1', 'IMPORTE-2']);
+    expect(c.anomalies[0]?.direction).toBe('Direction des Systèmes');
+  });
+
+  it('signale un rattachement hors direction, sans le compter comme bloquant', async () => {
+    const dg = await creerLeDG();
+    const rh = await creerUnDirecteur('RH', uDCH, dg);
+    const a = await dossierBrut('A', uDSID);
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [a, rh]);
+
+    const c = await hierarchie.controle(user);
+    expect(c.parType.hors_direction).toBe(1);
+    expect(c.nonEvaluables).toBe(0);
+    const anomalie = c.anomalies.find((x) => x.matricule === 'A');
+    expect(anomalie?.responsable).toBe('RH Test');
+    expect(anomalie?.directionDuResponsable).toBe('Direction du Capital Humain');
+  });
+
+  it('signale l’absence de directeur général', async () => {
+    await dossierBrut('A', uDSID);
+    const c = await hierarchie.controle(user);
+    expect(c.directeurGeneral).toBeNull();
+    expect(c.parType.sans_responsable).toBe(1);
+  });
+
+  it('signale un responsable dont le dossier est archivé', async () => {
+    const dg = await creerLeDG();
+    const chef = await creerUnDirecteur('CHEF', uDSID, dg);
+    const a = (await people.create(user, dossier('A', uDSID, chef))).id;
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [chef]);
+
+    const c = await hierarchie.controle(user);
+    expect(c.anomalies.find((x) => x.employeeId === a)?.type).toBe('responsable_archive');
+    expect(c.nonEvaluables).toBe(1);
+  });
+
+  it('signale les agents restés rattachés au DG après la nomination d’un directeur', async () => {
+    // Le chemin toléré à la création — une direction sans tête — laisse une
+    // trace dès qu'un directeur est nommé : ces agents relèvent d'une autre
+    // direction que la leur, et le contrôle est plus strict que l'écriture.
+    const dg = await creerLeDG();
+    const premier = (await people.create(user, dossier('PREMIER', uDSID, dg))).id;
+    const second = (await people.create(user, dossier('SECOND', uDSID, dg))).id;
+    await dirigerUnite(uDSID, premier);
+
+    const c = await hierarchie.controle(user);
+    expect(c.anomalies.map((a) => `${a.matricule}:${a.type}`)).toEqual(['SECOND:hors_direction']);
+    expect(second).toBeTruthy();
+  });
+});
+
+describe('personne ne se désigne N+1 ni repreneur', () => {
+  /** Un compte relié à ce dossier : celui d'un membre de la DCH. */
+  async function compteDe(employeeId: string): Promise<SessionUser> {
+    const id = randomUUID();
+    await raw(
+      `INSERT INTO users (id, email, password_hash, given_name, family_name)
+       VALUES ($1,$2,'x','Rh','Test')`,
+      [id, `rh-${id}@test.local`],
+    );
+    await raw(
+      `INSERT INTO user_tenant_memberships (id, tenant_id, user_id, role)
+       VALUES ($1,$2,$3,'employee')`,
+      [randomUUID(), tenantId, id],
+    );
+    await raw(
+      `UPDATE persons SET user_id = $2
+        WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [employeeId, id],
+    );
+    return { userId: id, tenantId, role: 'employee' } as SessionUser;
   }
 
-  it('le DG par défaut, puis le DGA ou la tête d’une autre unité', async () => {
-    const { dg, dsid } = await bac();
-    const { chefCab } = await cabinet();
-    const dga = await agent('DGA', uDG);
-    await designerLeDGA(dga);
-    expect(await n1(chefCab)).toBe(dg);
-    expect((await people.detail(user, chefCab)).rattachementAuChoix).toBe(true);
+  async function bac() {
+    const dg = await creerLeDG();
+    const chef = await creerUnDirecteur('CHEF', uDCH, dg);
+    const rh = (await people.create(user, dossier('RH', uDCH, chef))).id;
+    const agent = (await people.create(user, dossier('A', uDCH, chef))).id;
+    return { dg, chef, rh, agent, session: await compteDe(rh) };
+  }
 
-    await people.update(user, chefCab, { employee: { rattachementChoisi: { type: 'dga' } } });
-    expect(await n1(chefCab)).toBe(dga);
-    await people.update(user, chefCab, {
-      employee: { rattachementChoisi: { type: 'unite', uniteId: uDSID } },
-    });
-    expect(await n1(chefCab)).toBe(dsid);
-    expect((await people.detail(user, chefCab)).rattachementChoisi).toMatchObject({
-      type: 'unite',
-      uniteId: uDSID,
-    });
-    await people.update(user, chefCab, { employee: { rattachementChoisi: null } });
-    expect(await n1(chefCab)).toBe(dg);
-  });
-
-  it('le choix désigne une place : il suit qui la tient, le DG reprend pendant la vacance', async () => {
-    const { dg } = await bac();
-    const { chefCab } = await cabinet();
-    await people.update(user, chefCab, {
-      employee: { rattachementChoisi: { type: 'unite', uniteId: uDSID } },
-    });
-    const autre = await agent('DSID2', uDSID);
-    await diriger(uDSID, autre);
-    expect(await n1(chefCab)).toBe(autre);
-    await diriger(uDSID, null);
-    expect(await n1(chefCab)).toBe(dg);
-    expect((await people.detail(user, chefCab)).rattachementChoisi).toMatchObject({
-      uniteId: uDSID,
-    });
-  });
-
-  it('un agent rattaché directement à la Direction Générale choisit aussi', async () => {
-    const { dsid } = await bac();
-    const a = await agent('A', uDG);
-    await people.update(user, a, {
-      employee: { rattachementChoisi: { type: 'unite', uniteId: uDSID } },
-    });
-    expect(await n1(a)).toBe(dsid);
-  });
-
-  it('refusé ailleurs, sans DGA, vers une unité sans tête, et quand il bouclerait', async () => {
-    await bac();
-    const { cab, chefCab } = await cabinet();
-    const a = await agent('A', uDSID);
+  it('ni à la modification, ni à la création, ni à la mutation', async () => {
+    const { rh, agent, session } = await bac();
+    const service = await unite('Service paie', 'department', uDCH);
     expect(
-      await codeOf(() =>
-        people.update(user, a, { employee: { rattachementChoisi: { type: 'dga' } } }),
-      ),
-    ).toBe('people.rattachement_non_choisi');
-    expect(
-      await codeOf(() =>
-        people.update(user, chefCab, { employee: { rattachementChoisi: { type: 'dga' } } }),
-      ),
-    ).toBe('people.sans_dga');
-    expect(
-      await codeOf(() =>
-        people.update(user, chefCab, {
-          employee: { rattachementChoisi: { type: 'unite', uniteId: uDCH } },
-        }),
-      ),
-    ).toBe('people.unite_sans_tete');
-    // Un service sous le cabinet : sa tête relève de la tête du cabinet.
-    const scab = await unite('Service du cabinet', 'service', cab);
-    const chefScab = await agent('SCAB', scab);
-    await diriger(scab, chefScab);
-    expect(
-      await codeOf(() =>
-        people.update(user, chefCab, {
-          employee: { rattachementChoisi: { type: 'unite', uniteId: scab } },
-        }),
-      ),
-    ).toBe('people.n1_boucle');
-  });
-
-  it('muté hors de la Direction Générale, le choix s’efface', async () => {
-    const { dsid } = await bac();
-    const a = await agent('A', uDG);
-    const rh = await agent('RH', uDCH);
-    await diriger(uDCH, rh);
-    await people.update(user, a, {
-      employee: { rattachementChoisi: { type: 'unite', uniteId: uDCH } },
-    });
-    await people.newAssignment(user, a, {
-      orgUnitId: uDSID,
-      positionTitle: 'Analyste',
-      startDate: new Date().toISOString().slice(0, 10),
-    });
-    expect(await n1(a)).toBe(dsid);
-    expect((await people.detail(user, a)).rattachementChoisi).toBeNull();
-  });
-});
-
-describe('le N+1 fonctionnel se choisit librement', () => {
-  it('tout agent actif, d’une autre direction ; le hiérarchique ne bouge pas', async () => {
-    const { dsid } = await bac();
-    const a = await agent('A', uDSID);
-    const b = await agent('B', uDCH);
-    await people.update(user, a, { employee: { n1FonctionnelId: b } });
-    expect(await fonctionnel(a)).toBe(b);
-    expect(await n1(a)).toBe(dsid);
-    await people.update(user, a, { employee: { n1FonctionnelId: null } });
-    expect(await fonctionnel(a)).toBeNull();
-  });
-
-  it('se choisit dès la création', async () => {
-    await bac();
-    const b = await agent('B', uDCH);
-    const { id } = await people.create(user, {
-      ...dossier('A', uDSID),
-      employee: { employeeNumber: 'A', hiredOn: '2024-01-01', n1FonctionnelId: b },
-    } as CreateEmployeeInput);
-    expect(await fonctionnel(id)).toBe(b);
-  });
-
-  it('refusé : soi-même, le DG, une personne en stage, un agent inactif, une boucle', async () => {
-    const { dg, dsid } = await bac();
-    const a = await agent('A', uDSID);
-    const choisir = (pour: string, n1Id: string) =>
-      codeOf(() => people.update(user, pour, { employee: { n1FonctionnelId: n1Id } }));
-    expect(await choisir(a, a)).toBe('people.n1_soi_meme');
-    expect(await choisir(dg, a)).toBe('people.dg_sans_n1');
-    const stage = await agent('STAGE', uDCH);
-    await contrat(stage, 'stage', -30, 60);
-    expect(await choisir(a, stage)).toBe('people.n1_stagiaire');
-    const bientot = await agent('BIENTOT', uDCH);
-    await contrat(bientot, 'stage', 10, 100);
-    expect(await choisir(a, bientot)).toBe('people.n1_stagiaire');
-    const parti = await agent('PARTI', uDCH);
-    await people.archive(user, { ids: [parti], archived: true, motif: 'demission' });
-    expect(await choisir(a, parti)).toBe('people.agent_inactif');
-    // A relève de la tête de la DSID : que A soit son N+1 bouclerait.
-    expect(await choisir(dsid, a)).toBe('people.n1_boucle');
-    expect(await fonctionnel(a)).toBeNull();
-  });
-
-  it('parti, l’agent revient au N+1 hiérarchique, et la DCH en est prévenue', async () => {
-    const { dsid } = await bac();
-    const a = await agent('A', uDSID);
-    const b = await agent('B', uDCH);
-    await people.update(user, a, { employee: { n1FonctionnelId: b } });
-    await people.archive(user, { ids: [b], archived: true, motif: 'demission' });
-    expect(await fonctionnel(a)).toBeNull();
-    expect(await n1(a)).toBe(dsid);
-    const { rows } = await raw(
-      `SELECT title FROM notifications WHERE tenant_id = $1 AND type = 'n1_fonctionnel_retire'`,
-      [tenantId],
+      await codeOf(() => people.update(session, agent, { employee: { managerEmployeeId: rh } })),
+    ).toBe('acces.son_propre_dossier');
+    expect(await codeOf(() => people.create(session, dossier('B', uDCH, rh)))).toBe(
+      'acces.son_propre_dossier',
     );
-    expect(rows.map((r) => r.title)).toEqual(['B Test n’est plus le N+1 fonctionnel de A Test']);
-  });
-
-  it('passé en stage, de même, au passage de la veille', async () => {
-    await bac();
-    const a = await agent('A', uDSID);
-    const b = await agent('B', uDCH);
-    await people.update(user, a, { employee: { n1FonctionnelId: b } });
-    await contrat(b, 'stage', 0, 90);
-    await recalculer();
-    expect(await fonctionnel(a)).toBeNull();
-  });
-});
-
-describe('le contrôle ne signale que ce qui empêche le calcul', () => {
-  it('un agent sans unité, des têtes sans DG au-dessus, un DG hors de la Direction Générale', async () => {
-    const dsid = await agent('DSID', uDSID);
-    await diriger(uDSID, dsid);
-    const seul = await agent('SEUL', null);
-    let c = await hierarchie.controle(user);
-    expect(c.anomalies.map((x) => `${x.matricule}:${x.type}`)).toEqual([
-      'DSID:sans_dg',
-      'SEUL:sans_unite',
-    ]);
-    expect(c.nonEvaluables).toBe(2);
-    // Un N+1 fonctionnel choisi rend l'évaluation possible.
-    await people.update(user, seul, { employee: { n1FonctionnelId: dsid } });
-    c = await hierarchie.controle(user);
-    expect(c.nonEvaluables).toBe(1);
-    // Le DG affecté hors de la Direction Générale.
-    const dg = await agent('DG', uDCH);
-    await diriger(uDG, dg);
-    c = await hierarchie.controle(user);
-    expect(c.anomalies.map((x) => `${x.matricule}:${x.type}`)).toEqual([
-      'DG:dg_hors_direction_generale',
-      'SEUL:sans_unite',
-    ]);
-  });
-
-  it('une direction se rattache à la Direction Générale', async () => {
-    await bac();
+    const muter = (qui: SessionUser) =>
+      people.newAssignment(qui, agent, {
+        positionTitle: 'Gestionnaire paie',
+        orgUnitId: service,
+        startDate: '2025-06-01',
+        managerEmployeeId: rh,
+      } as never);
+    expect(await codeOf(() => muter(session))).toBe('acces.son_propre_dossier');
+    // Le même geste, fait par un autre, passe.
+    expect(await codeOf(() => muter(user))).toBe('AUCUNE ERREUR');
+    expect((await people.detail(user, agent)).managerId).toBe(rh);
+    // Déjà son N+1 : le formulaire qui renvoie la même valeur passe.
     expect(
       await codeOf(() =>
-        organigramme.create(user, {
-          name: 'Direction perdue',
-          unitType: 'direction',
-          parentId: uDSID,
-          shortName: 'DP',
+        people.update(session, agent, {
+          employee: { managerEmployeeId: rh, workPhone: '+221 33 000 00 00' },
         }),
       ),
-    ).toBe('org.direction_hors_dg');
+    ).toBe('AUCUNE ERREUR');
+  });
+
+  it('ni repreneur de l’équipe d’un partant', async () => {
+    const { chef, rh, session } = await bac();
+    const enc = (await people.create(user, dossier('ENC', uDCH, chef))).id;
+    await people.create(user, dossier('X', uDCH, enc));
+    const r = await people.archive(session, {
+      ids: [enc],
+      archived: true,
+      repreneurs: { [enc]: rh },
+    });
+    expect(r.done).toBe(0);
+    expect(r.skipped[0]?.reason).toMatch(/^Vous ne pouvez pas vous désigner responsable/);
+    expect(r.skipped[0]?.reason).not.toContain('\u2014');
+    expect(
+      await codeOf(() =>
+        people.newAssignment(session, enc, {
+          positionTitle: 'Chargé de mission',
+          orgUnitId: uDCH,
+          startDate: '2025-06-01',
+          repreneurEquipeId: rh,
+        } as never),
+      ),
+    ).toBe('acces.son_propre_dossier');
+  });
+
+  it('le directeur reste le N+1 d’office des agents de sa direction', async () => {
+    const { chef } = await bac();
+    const session = await compteDe(chef);
+    expect(await codeOf(() => people.create(session, dossier('C', uDCH, chef)))).toBe(
+      'AUCUNE ERREUR',
+    );
   });
 });
 
-describe('le passage à la règle se revoit une fois', () => {
-  it('les N+1 qu’elle a changés : garder l’ancien comme N+1 fonctionnel, ou valider', async () => {
-    const { dsid } = await bac();
-    const rh = await agent('RH', uDCH);
-    await diriger(uDCH, rh);
-    const a = await agent('A', uDSID);
-    const b = await agent('B', uDSID);
-    const c = await agent('C', uDSID);
-    // Avant la règle, A et B relevaient de RH ; C, de la tête de la DSID.
-    await raw(`UPDATE employees SET n1_avant_la_regle = $2 WHERE id = ANY($1)`, [[a, b], rh]);
-    await raw(`UPDATE employees SET n1_avant_la_regle = $2 WHERE id = $1`, [c, dsid]);
-    await recalculer();
-    let controle = await hierarchie.controle(user);
-    expect(controle.changesParLaRegle.map((x) => [x.matricule, x.avant.id, x.apres?.id])).toEqual([
-      ['A', rh, dsid],
-      ['B', rh, dsid],
-    ]);
-    await hierarchie.revoir(user, a, true);
-    await hierarchie.revoir(user, b, false);
-    expect(await fonctionnel(a)).toBe(rh);
-    expect(await fonctionnel(b)).toBeNull();
-    expect(await n1(a)).toBe(dsid);
-    controle = await hierarchie.controle(user);
-    expect(controle.changesParLaRegle).toEqual([]);
-  });
-});
+describe('un stagiaire n’est le n+1 de personne', () => {
+  /** Un contrat, daté par rapport à aujourd'hui : `fin` null, sans terme. */
+  async function contrat(
+    employeeId: string,
+    type: 'cdi' | 'cdd' | 'stage',
+    debut: number,
+    fin: number | null,
+  ): Promise<void> {
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+       VALUES ($1,$2,$3,$4, CURRENT_DATE + $5::int,
+               CASE WHEN $6::int IS NULL THEN NULL ELSE CURRENT_DATE + $6::int END)`,
+      [randomUUID(), tenantId, employeeId, type, debut, fin],
+    );
+  }
 
-describe('l’ordre des désignations ne compte plus', () => {
-  it('un DGA se désigne avant le DG ; la chaîne se complète à l’arrivée du DG', async () => {
-    const dga = await agent('DGA', uDG);
-    await organigramme.update(user, uDG, { adjointEmployeeId: dga });
-    expect(await n1(dga)).toBeNull();
-    const dg = await agent('DG', uDG);
-    await organigramme.update(user, uDG, { managerEmployeeId: dg });
-    expect(await n1(dga)).toBe(dg);
+  /** Le DG, le directeur de la DSID, et une stagiaire dans sa direction. */
+  async function bac(): Promise<{ chef: string; stagiaire: string }> {
+    const dg = await creerLeDG();
+    const chef = await creerUnDirecteur('CHEF', uDSID, dg);
+    const stagiaire = (await people.create(user, dossier('STAGE', uDSID, chef))).id;
+    await contrat(stagiaire, 'stage', -30, 60);
+    return { chef, stagiaire };
+  }
+
+  it('refusé à la création comme dans la fiche', async () => {
+    const { chef, stagiaire } = await bac();
+    expect(await codeOf(() => people.create(user, dossier('A', uDSID, stagiaire)))).toBe(
+      'people.n1_stagiaire',
+    );
+    const b = (await people.create(user, dossier('B', uDSID, chef))).id;
+    expect(
+      await codeOf(() => people.update(user, b, { employee: { managerEmployeeId: stagiaire } })),
+    ).toBe('people.n1_stagiaire');
+    expect((await people.detail(user, b)).managerId).toBe(chef);
+  });
+
+  it('refusé aussi quand son stage n’a pas commencé, permis une fois fini', async () => {
+    const { chef } = await bac();
+    const bientot = (await people.create(user, dossier('BIENTOT', uDSID, chef))).id;
+    await contrat(bientot, 'stage', 10, 100);
+    expect(await codeOf(() => people.create(user, dossier('A', uDSID, bientot)))).toBe(
+      'people.n1_stagiaire',
+    );
+    const ancien = (await people.create(user, dossier('ANCIEN', uDSID, chef))).id;
+    await contrat(ancien, 'stage', -200, -20);
+    await contrat(ancien, 'cdi', -19, null);
+    expect(await codeOf(() => people.create(user, dossier('C', uDSID, ancien)))).toBe(
+      'AUCUNE ERREUR',
+    );
+  });
+
+  it('qui a une équipe ne passe pas sous contrat de stage', async () => {
+    const { chef } = await bac();
+    const enc = (await people.create(user, dossier('ENC', uDSID, chef))).id;
+    await people.create(user, dossier('X', uDSID, enc));
+    const err = await people
+      .newContract(user, enc, {
+        contractType: 'stage',
+        startDate: '2026-11-01',
+        endDate: '2027-04-30',
+        affectation: { positionTitle: 'Stagiaire', orgUnitId: uDSID },
+      } as never)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ProblemException);
+    expect((err as ProblemException).problem).toMatchObject({
+      code: 'people.n1_en_stage',
+      detail: expect.stringMatching(/^ENC est le n\+1 d’un agent : /),
+    });
+  });
+
+  it('la liste des n+1 possibles l’écarte', async () => {
+    const { chef, stagiaire } = await bac();
+    const page = await people.list(
+      user,
+      listEmployeesQuerySchema.parse({ status: 'active', horsStage: 'true', limit: 100 }),
+    );
+    const ids = page.items.map((i) => i.id);
+    expect(ids).toContain(chef);
+    expect(ids).not.toContain(stagiaire);
+    const tous = await people.list(user, listEmployeesQuerySchema.parse({ limit: 100 }));
+    expect(tous.items.map((i) => i.id)).toContain(stagiaire);
+  });
+
+  it('le contrôle signale un n+1 stagiaire', async () => {
+    const { chef, stagiaire } = await bac();
+    const a = (await people.create(user, dossier('A', uDSID, chef))).id;
+    await raw(`UPDATE employees SET manager_employee_id = $2 WHERE id = $1`, [a, stagiaire]);
+    const c = await hierarchie.controle(user);
+    expect(c.anomalies.map((x) => `${x.matricule}:${x.type}`)).toEqual(['A:responsable_stagiaire']);
   });
 });

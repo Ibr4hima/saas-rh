@@ -34,6 +34,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
+import { compte } from '../lib/mots';
 import { CarteCertificatsAgent } from './academy-certificat';
 import { CarteEvaluationsAgent } from './evaluation-objectifs';
 import { EmployeeDocumentsCard } from './employee-documents-card';
@@ -47,7 +48,7 @@ import { Pagination, usePagination } from './pagination';
 import { contractEnd, ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../lib/person';
 import { formatDate, useMe } from '../lib/hooks';
 import { aujourdhui } from '../lib/temps';
-import type { ConsequencesHierarchie, OrgUnitView } from '@teranga/contracts';
+import type { ConsequencesHierarchie, OrgUnit, OrgUnitView } from '@teranga/contracts';
 import { aDesConsequences, ListeConsequences } from './consequences-hierarchie';
 import { ChoixUnite, directionDe, parLibelle } from './choix-unite';
 import {
@@ -56,6 +57,7 @@ import {
   lireLeDevenir,
   type Devenir,
 } from './devenir-de-l-ancien';
+import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { LoadFailure } from './load-failure';
 import { Page } from './gabarit';
 import { RetourDeLEcran } from './entete';
@@ -501,6 +503,8 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
           <AssignmentsCard
             employeeId={e.id}
             assignments={e.assignments}
+            team={e.team}
+            managerId={e.managerId}
             genre={e.person.gender}
             dirige={e.responsabilites.unites}
             enStage={enStage}
@@ -734,6 +738,8 @@ function affectationEnVigueur(assignments: EmployeeDetail['assignments']) {
 function AssignmentsCard({
   employeeId,
   assignments,
+  team,
+  managerId,
   genre,
   dirige,
   enStage,
@@ -741,6 +747,8 @@ function AssignmentsCard({
 }: {
   employeeId: string;
   assignments: EmployeeDetail['assignments'];
+  team: EmployeeDetail['team'];
+  managerId: string | null;
   genre: string | null;
   /** Les unités qu'il dirige : une personne n'en dirige qu'une. */
   dirige: EmployeeDetail['responsabilites']['unites'];
@@ -773,6 +781,8 @@ function AssignmentsCard({
   const [positionTitle, setPositionTitle] = useState('');
   const [orgUnitId, setOrgUnitId] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [nouveauN1, setNouveauN1] = useState('');
+  const [repreneur, setRepreneur] = useState('');
   const [responsable, setResponsable] = useState(false);
   const [adjoint, setAdjoint] = useState(false);
   const [devenir, setDevenir] = useState<Devenir>(DEVENIR_INITIAL);
@@ -785,8 +795,10 @@ function AssignmentsCard({
     enabled: canManage && open,
   });
 
-  // Le N+1 suit l'organigramme (ADR-0147) : une mutation ne demande ni
-  // N+1 ni personne pour reprendre une équipe, et se programme.
+  // ——— Changer de direction, c'est changer de n+1 — et, pour qui encadre,
+  // confier son équipe, qui reste dans l'ancienne. Les deux se décident
+  // ICI, dans la même opération : faits l'un après l'autre, chacun serait
+  // refusé par la règle.
   const unites = orgUnits.data ?? [];
   const actuelle = affectationEnVigueur(assignments);
   // Ouverte, elle part de sa place actuelle : on change ce qui change.
@@ -800,7 +812,24 @@ function AssignmentsCard({
     // Une fois par ouverture.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  const directionActuelle = directionDe(unites, actuelle?.orgUnitId);
   const directionVisee = directionDe(unites, orgUnitId || null);
+  const changeDeDirection =
+    open && orgUnits.isSuccess && directionVisee?.id !== directionActuelle?.id;
+  const libelle = (u: OrgUnit | null) => (u ? (u.shortName ?? u.name) : null);
+  const { options: n1Possibles } = useResponsablesPossibles(
+    libelle(directionVisee),
+    employeeId,
+    false,
+    open,
+  );
+  const { options: repreneursPossibles } = useResponsablesPossibles(
+    libelle(directionActuelle),
+    employeeId,
+    false,
+    open,
+  );
+  const repreneurRequis = changeDeDirection && team.length > 0;
 
   // Désigné responsable de l'unité : son poste est celui de la tête de
   // l'unité, au plus tard aujourd'hui, et celui qu'il remplace reçoit le sien.
@@ -826,7 +855,8 @@ function AssignmentsCard({
       : commeAdjoint && uniteVisee
         ? posteDAdjoint(uniteVisee, genre)
         : '';
-  // La personne remplacée à la tête de l'unité.
+  // Désigné responsable, son n+1 est celui qu'impose sa place : il ne se
+  // choisit pas.
   const ancien =
     aLaTete &&
     uniteVisee?.managerEmployeeId &&
@@ -870,6 +900,17 @@ function AssignmentsCard({
     orgUnitId === (actuelle?.orgUnitId ?? '') &&
     (designe ? posteDesigne : positionTitle.trim()) === actuelle?.positionTitle;
   const aujourdhuiIso = new Date().toISOString().slice(0, 10);
+  // Le directeur de la direction visée est son n+1 d'office : proposé d'emblée.
+  const directeurVise = changeDeDirection ? n1DOffice(unites, orgUnitId || null, employeeId) : null;
+  useEffect(() => {
+    setNouveauN1(directeurVise ?? '');
+  }, [directeurVise]);
+  // Le n+1 n'est pas daté : il vaut dès aujourd'hui. Une mutation vers une
+  // autre direction qui touche à la hiérarchie s'enregistre donc le jour où
+  // elle prend effet — le serveur refuserait de la programmer.
+  const programmee = startDate > new Date().toISOString().slice(0, 10);
+  const bloqueeParLaDate =
+    programmee && changeDeDirection && Boolean(managerId || nouveauN1 || team.length > 0);
 
   const create = useMutation({
     mutationFn: () =>
@@ -883,6 +924,8 @@ function AssignmentsCard({
               : { positionTitle }),
           orgUnitId: orgUnitId || undefined,
           startDate,
+          ...(changeDeDirection && nouveauN1 && !designe ? { managerEmployeeId: nouveauN1 } : {}),
+          ...(repreneurRequis && repreneur ? { repreneurEquipeId: repreneur } : {}),
           ...(ancien && devenirLu?.corps ? { devenirDeLAncien: devenirLu.corps } : {}),
           ...(ancienAdjoint && devenirAdjointLu?.corps
             ? { devenirDeLAncien: devenirAdjointLu.corps }
@@ -892,6 +935,8 @@ function AssignmentsCard({
     onSuccess: (res) => {
       setOpen(false);
       setPositionTitle('');
+      setNouveauN1('');
+      setRepreneur('');
       setResponsable(false);
       setAdjoint(false);
       setDevenir(DEVENIR_INITIAL);
@@ -946,12 +991,13 @@ function AssignmentsCard({
                 !startDate ||
                 !directionVisee ||
                 inchangee ||
+                (repreneurRequis && !repreneur) ||
                 (designe
                   ? startDate > aujourdhuiIso ||
                     Boolean(dirigeAilleurs) ||
                     (Boolean(ancien) && !devenirLu?.corps) ||
                     (Boolean(ancienAdjoint) && !devenirAdjointLu?.corps)
-                  : !positionTitle.trim())
+                  : !positionTitle.trim() || bloqueeParLaDate)
               }
             >
               Enregistrer
@@ -1049,6 +1095,16 @@ function AssignmentsCard({
               place.
             </p>
           ) : null}
+          {bloqueeParLaDate && !designe ? (
+            <p className="mt-3.5 flex items-start gap-2 text-[12.5px] leading-relaxed text-ink">
+              <Icon name="event" size={16} className="mt-px shrink-0 text-primary" />
+              <span>
+                Une mutation vers une autre direction s’enregistre le jour où elle prend effet : le
+                n+1 vaut dès aujourd’hui, et la chaîne hiérarchique resterait fausse jusqu’à cette
+                date.
+              </span>
+            </p>
+          ) : null}
         </ModalSection>
 
         {ancien ? (
@@ -1085,6 +1141,54 @@ function AssignmentsCard({
               onChange={setDevenir}
               idPrefix="asg-ancien-adjoint"
             />
+          </ModalSection>
+        ) : null}
+
+        {(changeDeDirection && directionVisee && !designe) || repreneurRequis ? (
+          <ModalSection title="Hiérarchie">
+            <ModalGrid>
+              {changeDeDirection && directionVisee && !designe ? (
+                <Field
+                  label="Nouveau manager"
+                  htmlFor="asg-n1"
+                  hint={`Dans ${libelle(directionVisee)}.`}
+                >
+                  <Select
+                    id="asg-n1"
+                    value={nouveauN1}
+                    onChange={(ev) => setNouveauN1(ev.target.value)}
+                  >
+                    <option value="">Garder le manager actuel</option>
+                    {n1Possibles.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {libelleResponsable(m)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
+              {repreneurRequis ? (
+                <Field
+                  label="Qui reprend son équipe"
+                  htmlFor="asg-repreneur"
+                  required
+                  hint={`${team.map((m) => m.name).join(', ')} ${team.length > 1 ? 'restent' : 'reste'} dans ${libelle(directionActuelle) ?? 'sa direction'}.`}
+                >
+                  <Select
+                    id="asg-repreneur"
+                    value={repreneur}
+                    onChange={(ev) => setRepreneur(ev.target.value)}
+                  >
+                    <option value="">Choisir</option>
+                    {repreneursPossibles.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {libelleResponsable(m)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
+            </ModalGrid>
           </ModalSection>
         ) : null}
       </Modal>
@@ -1748,13 +1852,13 @@ function lendemain(iso: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-const SANS_REPRISE: RepriseDesResponsabilites = { unites: [] };
-const reprendQuelqueChose = (r: RepriseDesResponsabilites) => r.unites.length > 0;
+const SANS_REPRISE: RepriseDesResponsabilites = { unites: [], equipe: false };
+const reprendQuelqueChose = (r: RepriseDesResponsabilites) => r.unites.length > 0 || r.equipe;
 
 /**
- * Ce que l'agent reprend à son retour : la RH le décide, rien d'office. Les
- * unités que l'agent dirigeait, restées sans responsable. Son équipe suit
- * l'organigramme (ADR-0147).
+ * Ce qu'il reprend à son retour : la RH le décide, rien d'office. Les unités
+ * qu'il dirigeait, restées sans responsable ; son équipe, s'il n'en
+ * dirigeait aucune (sinon, elle suit l'unité).
  */
 function ChoixDuRetour({
   responsabilites,
@@ -1774,7 +1878,8 @@ function ChoixDuRetour({
   const unites = enStage
     ? []
     : responsabilites.unites.filter((u) => !directionId || u.directionId === directionId);
-  if (unites.length === 0) return null;
+  const equipe = responsabilites.unites.length === 0 && responsabilites.equipe > 0;
+  if (unites.length === 0 && !equipe) return null;
   return (
     <Field label="À son retour">
       <div className="flex flex-col gap-2">
@@ -1797,6 +1902,15 @@ function ChoixDuRetour({
             Redevient responsable de « {u.nom} »
           </label>
         ))}
+        {equipe ? (
+          <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-ink">
+            <Checkbox
+              checked={valeur.equipe}
+              onChange={(ev) => onChange({ ...valeur, equipe: ev.target.checked })}
+            />
+            Reprend son équipe ({compte(responsabilites.equipe, 'agent', 'agents')})
+          </label>
+        ) : null}
       </div>
     </Field>
   );
@@ -1984,6 +2098,7 @@ function NouveauContrat({
         : reprise.unites.filter((id) =>
             responsabilites.unites.some((u) => u.id === id && u.directionId === directionId),
           ),
+    equipe: reprise.equipe,
   };
   const fermer = () => {
     setOuvert(false);

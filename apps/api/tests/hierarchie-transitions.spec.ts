@@ -1,10 +1,12 @@
 /**
- * Les transitions de la chaîne hiérarchique, de bout en bout (ADR-0147).
+ * Les transitions de la chaîne hiérarchique, de bout en bout.
  *
  * L'organigramme bouge : un DG succède à un autre, une direction reçoit sa
- * tête, une unité se déplace ou se dissout, un agent change d'unité. Le N+1
- * hiérarchique se recalcule à chaque geste : rien n'est à confier ni à
- * choisir, et ce que le geste change est dit AVANT de valider, puis fait.
+ * tête, un chef d'équipe part ou change de direction, une unité se déplace
+ * ou se dissout. À chaque geste, la chaîne doit rester en règle — soit parce
+ * que la règle s'applique d'elle-même (les CASCADES, annoncées), soit parce
+ * que le geste est refusé avec son motif, soit parce que ce qu'il rend faux
+ * est dit AVANT de valider, puis signalé.
  *
  * Le bac d'essai : la Direction Générale (le sommet), la DSID et la DCH sous
  * elle, un département Études dans la DSID.
@@ -50,17 +52,21 @@ async function codeOf(fn: () => Promise<unknown>): Promise<string> {
   }
 }
 
-/** Un agent, affecté : son N+1 découle de l'organigramme. */
-async function agent(matricule: string, uniteId: string): Promise<string> {
+/** Un agent, affecté, et rattaché s'il le faut — par le service, sous la règle. */
+async function agent(matricule: string, uniteId: string, n1?: string): Promise<string> {
   const input = {
     person: { givenName: matricule, familyName: 'Test' },
-    employee: { employeeNumber: matricule, hiredOn: '2024-01-01' },
+    employee: {
+      employeeNumber: matricule,
+      hiredOn: '2024-01-01',
+      ...(n1 ? { managerEmployeeId: n1 } : {}),
+    },
     assignment: { positionTitle: 'Analyste', startDate: '2024-01-01', orgUnitId: uniteId },
   } as CreateEmployeeInput;
   return (await people.create(user, input)).id;
 }
 
-/** La personne remplacée, s'il y en a une, reste dans l'unité comme conseiller. */
+/** Celui qu'il remplace, s'il y en a un, reste dans l'unité comme conseiller. */
 const nommer = (uniteId: string, employeeId: string | null, depuis?: string) =>
   organigramme.update(user, uniteId, {
     managerEmployeeId: employeeId,
@@ -85,8 +91,8 @@ async function leDG(matricule = 'DG'): Promise<string> {
   return id;
 }
 
-/** Une tête de direction : affectée dans sa direction, puis nommée. */
-async function uneTete(matricule: string, direction: string): Promise<string> {
+/** Un directeur : affecté dans sa direction, puis nommé — il passe sous le DG. */
+async function unDirecteur(matricule: string, direction: string): Promise<string> {
   const id = await agent(matricule, direction);
   await nommer(direction, id, '2024-01-01');
   return id;
@@ -102,17 +108,8 @@ async function unite(nom: string, type: string, parentId: string | null): Promis
 }
 
 async function vider() {
-  await raw(
-    `UPDATE org_units SET manager_employee_id = NULL, adjoint_employee_id = NULL
-      WHERE tenant_id = $1`,
-    [tenantId],
-  );
-  await raw(
-    `UPDATE employees SET manager_employee_id = NULL, n1_fonctionnel_employee_id = NULL,
-                          n1_unite_id = NULL, n1_dga = false
-      WHERE tenant_id = $1`,
-    [tenantId],
-  );
+  await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
+  await raw(`UPDATE employees SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
   for (const table of ['assignments', 'contracts', 'employees', 'persons', 'org_units']) {
     await raw(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
   }
@@ -153,43 +150,43 @@ afterAll(async () => {
   await ownerPool?.end();
 });
 
-describe('le DG', () => {
-  it('se nomme parmi les agents de la Direction Générale, pas ailleurs', async () => {
+describe('le directeur général', () => {
+  it('se nomme parmi les agents de la Direction Générale — pas ailleurs', async () => {
     const ailleurs = await agent('AILLEURS', uDSID);
     expect(await codeOf(() => nommer(uDG, ailleurs))).toBe('org.dg_hors_direction_generale');
   });
 
-  it('ne se retire pas : se remplace', async () => {
+  it('ne se retire pas : il se remplace', async () => {
     await leDG();
     expect(await codeOf(() => nommer(uDG, null))).toBe('org.dg_requis');
   });
 
-  it('un nouveau DG reprend tout ce qui relevait du DG précédent, et ce DG aussi', async () => {
+  it('un nouveau DG reprend tout ce qui relevait de l’ancien, et l’ancien passe sous lui', async () => {
     const ancien = await leDG('ANCIEN');
-    const dsid = await uneTete('DSID', uDSID);
-    const dch = await uneTete('DCH', uDCH);
-    const assistant = await agent('ASSISTANT', uDG);
-    const adjoint = await agent('ADJOINT', uDG);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const dch = await unDirecteur('DCH', uDCH);
+    const assistant = await agent('ASSISTANT', uDG, ancien);
+    const adjoint = await agent('ADJOINT', uDG, ancien);
 
     const r = await nommer(uDG, adjoint);
 
     expect(await n1(adjoint)).toBeNull();
     for (const id of [dsid, dch, assistant, ancien]) expect(await n1(id)).toBe(adjoint);
     expect(r.changements.map((c) => `${c.nom}:${c.motif}`).sort()).toEqual([
-      'ADJOINT Test:dg',
-      'ANCIEN Test:direction_generale',
-      'ASSISTANT Test:direction_generale',
-      'DCH Test:tete_de_direction',
-      'DSID Test:tete_de_direction',
+      'ADJOINT Test:devient_dg',
+      'ANCIEN Test:ancien_dg',
+      'ASSISTANT Test:suit_le_dg',
+      'DCH Test:suit_le_dg',
+      'DSID Test:suit_le_dg',
     ]);
     expect(r.aRevoir).toEqual([]);
     expect(await anomalies()).toEqual([]);
   });
 
-  it('l’aperçu dit tout ce que ferait la succession, et n’écrit rien', async () => {
+  it('l’aperçu dit tout ce que ferait la succession — et n’écrit rien', async () => {
     const ancien = await leDG('ANCIEN');
-    const dsid = await uneTete('DSID', uDSID);
-    const adjoint = await agent('ADJOINT', uDG);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const adjoint = await agent('ADJOINT', uDG, ancien);
 
     const apercu = await organigramme.apercu(user, uDG, {
       managerEmployeeId: adjoint,
@@ -206,45 +203,42 @@ describe('le DG', () => {
     expect(r.changements).toEqual(apercu.changements);
   });
 
-  it('ne quitte pas la Direction Générale tant que la place est la sienne', async () => {
+  it('ne quitte pas la Direction Générale tant qu’il en est le DG', async () => {
     const dg = await leDG();
     expect(await codeOf(() => muter(dg, uDSID))).toBe('people.dg_quitte_la_dg');
     // Une mutation DANS la Direction Générale reste possible.
     await muter(dg, uDG);
   });
 
-  it('une tête de direction se nomme avant le DG : sans N+1 jusqu’à son arrivée', async () => {
+  it('pas de directeur avant le DG', async () => {
     const chef = await agent('CHEF', uDSID);
-    await nommer(uDSID, chef);
-    expect(await n1(chef)).toBeNull();
-    expect(await anomalies()).toEqual(['CHEF:sans_dg']);
-    const dg = await leDG();
-    expect(await n1(chef)).toBe(dg);
-    expect(await anomalies()).toEqual([]);
+    expect(await codeOf(() => nommer(uDSID, chef))).toBe('org.aucun_directeur_general');
   });
 });
 
-describe('les têtes de direction', () => {
-  it('nommée, une tête de direction relève du DG', async () => {
+describe('les directeurs', () => {
+  it('un directeur nommé passe sous le DG', async () => {
     const dg = await leDG();
     const chef = await agent('CHEF', uDSID);
-    await nommer(uDSID, chef);
+    const r = await nommer(uDSID, chef);
     expect(await n1(chef)).toBe(dg);
+    expect(r.changements).toEqual([
+      expect.objectContaining({ nom: 'CHEF Test', apres: 'DG Test', motif: 'directeur' }),
+    ]);
   });
 
-  it('une direction sans tête : ses agents relèvent du DG en attendant, et c’est en règle', async () => {
+  it('une direction sans tête : ses agents relèvent du DG en attendant — et c’est en règle', async () => {
     const dg = await leDG();
-    const a = await agent('A', uDSID);
-    const b = await agent('B', uEtudes);
-    expect([await n1(a), await n1(b)]).toEqual([dg, dg]);
+    await agent('A', uDSID, dg);
+    await agent('B', uEtudes, dg);
     expect(await anomalies()).toEqual([]);
   });
 
-  it('dès qu’elle a sa tête, les agents qu’attendait le DG passent dessous', async () => {
+  it('dès qu’elle a sa tête, ceux qu’attendait le DG passent sous le directeur', async () => {
     const dg = await leDG();
-    const a = await agent('A', uDSID);
-    const b = await agent('B', uEtudes);
-    const chef = await agent('CHEF', uDSID);
+    const a = await agent('A', uDSID, dg);
+    const b = await agent('B', uEtudes, dg);
+    const chef = await agent('CHEF', uDSID, dg);
 
     const r = await nommer(uDSID, chef);
 
@@ -252,17 +246,17 @@ describe('les têtes de direction', () => {
     expect(await n1(b)).toBe(chef);
     expect(await n1(chef)).toBe(dg);
     expect(r.changements.map((c) => `${c.nom}:${c.motif}`).sort()).toEqual([
-      'A Test:tete_de_son_unite',
-      'B Test:niveau_au_dessus',
+      'A Test:direction_pourvue',
+      'B Test:direction_pourvue',
     ]);
     expect(await anomalies()).toEqual([]);
   });
 
-  it('une nouvelle tête : la précédente, restée dans la direction, passe dessous, l’équipe aussi', async () => {
+  it('un nouveau directeur : l’ancien, resté dans la direction, passe sous lui, son équipe aussi', async () => {
     const dg = await leDG();
-    const ancien = await uneTete('ANCIEN', uDSID);
-    const equipier = await agent('EQUIPIER', uDSID);
-    const nouveau = await agent('NOUVEAU', uDSID);
+    const ancien = await unDirecteur('ANCIEN', uDSID);
+    const equipier = await agent('EQUIPIER', uDSID, ancien);
+    const nouveau = await agent('NOUVEAU', uDSID, ancien);
 
     const r = await nommer(uDSID, nouveau);
 
@@ -270,79 +264,127 @@ describe('les têtes de direction', () => {
     expect(await n1(ancien)).toBe(nouveau);
     expect(await n1(equipier)).toBe(nouveau);
     expect(r.changements.map((c) => `${c.nom}:${c.motif}`).sort()).toEqual([
-      'ANCIEN Test:tete_de_son_unite',
-      'EQUIPIER Test:tete_de_son_unite',
-      'NOUVEAU Test:tete_de_direction',
+      'ANCIEN Test:ancien_directeur',
+      'EQUIPIER Test:suit_le_directeur',
+      'NOUVEAU Test:directeur',
     ]);
     expect(await anomalies()).toEqual([]);
   });
 
-  it('l’ancienne tête part dans une autre direction : l’équipe ne suit pas', async () => {
+  it('l’ancien directeur part dans une autre direction : son ancienne équipe ne le suit pas', async () => {
     await leDG();
-    const ancien = await uneTete('ANCIEN', uDSID);
-    const equipier = await agent('EQUIPIER', uDSID);
+    const ancien = await unDirecteur('ANCIEN', uDSID);
+    const equipier = await agent('EQUIPIER', uDSID, ancien);
     const nouveau = await agent('NOUVEAU', uDSID);
     await nommer(uDSID, nouveau, '2024-01-01');
-    // Conseiller à la DSID, l'ancienne tête rejoint ensuite la DCH, qui a la sienne.
-    const dch = await uneTete('DCH', uDCH);
+    // Conseiller à la DSID, il rejoint ensuite la DCH, qui a son directeur.
+    const dch = await unDirecteur('DCH', uDCH);
     await muter(ancien, uDCH);
     expect(await n1(equipier)).toBe(nouveau);
     expect(await n1(ancien)).toBe(dch);
     expect(await anomalies()).toEqual([]);
   });
 
-  it('une tête retirée sans successeur : la direction retombe sous le DG, en règle', async () => {
-    const dg = await leDG();
-    await uneTete('CHEF', uDSID);
-    const a = await agent('A', uDSID);
+  it('un directeur retiré sans successeur : la direction retombe sous le DG, en règle', async () => {
+    await leDG();
+    const chef = await unDirecteur('CHEF', uDSID);
+    await agent('A', uDSID, chef);
     await nommer(uDSID, null);
-    expect(await n1(a)).toBe(dg);
     expect(await anomalies()).toEqual([]);
   });
 });
 
-describe('un départ ne demande personne pour reprendre une équipe', () => {
-  it('une tête d’unité ne part pas sans successeur', async () => {
+describe('qui part avec une équipe la confie', () => {
+  it('muté dans une autre direction : refusé sans repreneur', async () => {
     await leDG();
-    await uneTete('DSID', uDSID);
-    const chef = await agent('CHEF', uEtudes);
-    await nommer(uEtudes, chef);
-    const refus = await people.archive(user, { ids: [chef], archived: true, motif: 'demission' });
-    expect(refus.done).toBe(0);
-    expect(refus.skipped[0]?.reason).toBe(
-      "Dirige « Département Études » : nommez d'abord un successeur",
+    const dsid = await unDirecteur('DSID', uDSID);
+    const dch = await unDirecteur('DCH', uDCH);
+    const chef = await agent('CHEF', uDSID, dsid);
+    await agent('A', uDSID, chef);
+    expect(await codeOf(() => muter(chef, uDCH, { managerEmployeeId: dch }))).toBe(
+      'people.equipe_sans_repreneur',
     );
   });
 
-  it('l’unité retirée à sa tête, son équipe passe au niveau au-dessus, et la tête peut partir', async () => {
+  it('le repreneur pris dans l’équipe prend la place ; les autres passent sous lui', async () => {
     await leDG();
-    const dsid = await uneTete('DSID', uDSID);
-    const chef = await agent('CHEF', uEtudes);
-    await nommer(uEtudes, chef);
-    const a = await agent('A', uEtudes);
-    expect(await n1(a)).toBe(chef);
-    await nommer(uEtudes, null);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const dch = await unDirecteur('DCH', uDCH);
+    const chef = await agent('CHEF', uDSID, dsid);
+    const a = await agent('A', uDSID, chef);
+    const b = await agent('B', uDSID, chef);
+
+    const r = await muter(chef, uDCH, { managerEmployeeId: dch, repreneurEquipeId: a });
+
     expect(await n1(a)).toBe(dsid);
-    const r = await people.archive(user, { ids: [chef], archived: true, motif: 'demission' });
-    expect(r.done).toBe(1);
+    expect(await n1(b)).toBe(a);
+    expect(await n1(chef)).toBe(dch);
+    expect(r.changements.map((c) => `${c.nom}:${c.motif}`).sort()).toEqual([
+      'A Test:prend_la_place',
+      'B Test:reprise_equipe',
+    ]);
     expect(await anomalies()).toEqual([]);
   });
 
-  it('un lot de départs : rien à confier', async () => {
+  it('un repreneur d’une autre direction est refusé : rien ne bouge', async () => {
     await leDG();
-    const dsid = await uneTete('DSID', uDSID);
-    const a = await agent('A', uDSID);
-    const b = await agent('B', uDSID);
-    const r = await people.archive(user, { ids: [a, b], archived: true, motif: 'demission' });
-    expect(r.done).toBe(2);
-    expect((await people.detail(user, dsid)).team).toEqual([]);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const dch = await unDirecteur('DCH', uDCH);
+    const chef = await agent('CHEF', uDSID, dsid);
+    const a = await agent('A', uDSID, chef);
+    expect(
+      await codeOf(() => muter(chef, uDCH, { managerEmployeeId: dch, repreneurEquipeId: dch })),
+    ).toBe('people.manager_autre_direction');
+    expect(await n1(a)).toBe(chef);
   });
 
-  it('effacé, de même', async () => {
+  it('muté DANS sa direction, il garde son équipe sans rien demander', async () => {
     await leDG();
-    await uneTete('DSID', uDSID);
-    const a = await agent('A', uDSID);
-    expect((await people.remove(user, { ids: [a] })).done).toBe(1);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const chef = await agent('CHEF', uDSID, dsid);
+    const a = await agent('A', uDSID, chef);
+    await muter(chef, uEtudes);
+    expect(await n1(a)).toBe(chef);
+  });
+
+  it('archivé : sans repreneur il reste, avec repreneur son équipe passe', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const chef = await agent('CHEF', uDSID, dsid);
+    const a = await agent('A', uDSID, chef);
+
+    const refus = await people.archive(user, { ids: [chef], archived: true });
+    expect(refus.done).toBe(0);
+    expect(refus.skipped[0]?.reason).toBe('Encadre un agent : choisissez qui reprend son équipe');
+
+    const fait = await people.archive(user, {
+      ids: [chef],
+      archived: true,
+      repreneurs: { [chef]: dsid },
+    });
+    expect(fait.done).toBe(1);
+    expect(await n1(a)).toBe(dsid);
+    expect(fait.changements?.map((c) => c.motif)).toEqual(['reprise_equipe']);
+  });
+
+  it('archivé avec toute son équipe dans le même lot : rien à confier', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const chef = await agent('CHEF', uDSID, dsid);
+    const a = await agent('A', uDSID, chef);
+    const r = await people.archive(user, { ids: [chef, a], archived: true });
+    expect(r.done).toBe(2);
+  });
+
+  it('effacé : même règle que l’archivage', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const chef = await agent('CHEF', uDSID, dsid);
+    const a = await agent('A', uDSID, chef);
+    expect((await people.remove(user, { ids: [chef] })).done).toBe(0);
+    const r = await people.remove(user, { ids: [chef], repreneurs: { [chef]: dsid } });
+    expect(r.done).toBe(1);
+    expect(await n1(a)).toBe(dsid);
   });
 });
 
@@ -358,85 +400,79 @@ describe('les réorganisations', () => {
     );
   });
 
-  it('déplacer une unité : la chaîne suit, et l’aperçu le dit d’abord', async () => {
+  it('déplacer une unité est permis ; l’aperçu dit d’abord les rattachements qu’il rend faux', async () => {
     await leDG();
-    const dsid = await uneTete('DSID', uDSID);
-    const dch = await uneTete('DCH', uDCH);
-    const a = await agent('A', uEtudes);
-    expect(await n1(a)).toBe(dsid);
+    const dsid = await unDirecteur('DSID', uDSID);
+    await unDirecteur('DCH', uDCH);
+    await agent('A', uEtudes, dsid);
 
     const apercu = await organigramme.apercu(user, uEtudes, { parentId: uDCH });
-    expect(apercu.changements.map((c) => `${c.nom}:${c.avant}:${c.apres}`)).toEqual([
-      'A Test:DSID Test:DCH Test',
-    ]);
-    expect(apercu.aRevoir).toEqual([]);
-    expect(await n1(a)).toBe(dsid);
+    expect(apercu.aRevoir.map((a) => `${a.matricule}:${a.type}`)).toEqual(['A:hors_direction']);
+    expect(await anomalies()).toEqual([]);
 
     const r = await organigramme.update(user, uEtudes, { parentId: uDCH });
-    expect(r.changements).toEqual(apercu.changements);
-    expect(await n1(a)).toBe(dch);
+    expect(r.aRevoir).toEqual(apercu.aRevoir);
+    expect(await anomalies()).toEqual(['A:hors_direction']);
   });
 
-  it('dissoudre sans unité d’accueil : l’aperçu dit qui se retrouvera sans unité', async () => {
+  it('dissoudre sans unité d’accueil : l’aperçu dit qui se retrouvera sans direction', async () => {
     await leDG();
-    await uneTete('DSID', uDSID);
-    await agent('A', uEtudes);
+    const dsid = await unDirecteur('DSID', uDSID);
+    await agent('A', uEtudes, dsid);
     const apercu = await organigramme.apercuSuppression(user, uEtudes, {});
-    expect(apercu.aRevoir.map((a) => `${a.matricule}:${a.type}`)).toEqual(['A:sans_unite']);
-    // Avec une unité d'accueil, rien ne se casse.
+    expect(apercu.aRevoir.map((a) => `${a.matricule}:${a.type}`)).toEqual(['A:sans_direction']);
+    // Avec une unité d'accueil dans la même direction, rien ne se casse.
     const avecAccueil = await organigramme.apercuSuppression(user, uEtudes, { reassignTo: uDSID });
     expect(avecAccueil.aRevoir).toEqual([]);
   });
 
-  it('une direction ne se crée et ne se forme que sous la Direction Générale', async () => {
-    await leDG();
-    expect(
-      await codeOf(() =>
-        organigramme.update(user, uEtudes, { unitType: 'direction', shortName: 'DE' }),
-      ),
-    ).toBe('org.direction_hors_dg');
-  });
-
-  it('un département rattaché à la Direction Générale devenu direction : sa tête relève du DG', async () => {
+  it('un département devenu direction : son responsable devient directeur, sous le DG', async () => {
     const dg = await leDG();
-    const cab = await unite('Cabinet', 'department', uDG);
-    const chef = await agent('CHEF', cab);
-    await nommer(cab, chef);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const chef = await agent('CHEF', uEtudes, dsid);
+    await nommer(uEtudes, chef);
+    const r = await organigramme.update(user, uEtudes, { unitType: 'direction', shortName: 'DE' });
     expect(await n1(chef)).toBe(dg);
-    await organigramme.update(user, cab, { unitType: 'direction', shortName: 'CAB' });
-    expect(await n1(chef)).toBe(dg);
-    expect(await anomalies()).toEqual([]);
+    expect(r.changements.map((c) => c.motif)).toEqual(['directeur']);
   });
 });
 
-describe('les mutations', () => {
-  it('la tête d’une unité ne la quitte pas par une mutation', async () => {
+/* ————————————————————————————————————————————————————————————————
+   Les cas trouvés par l'audit de bout en bout : un test par défaut.
+   ———————————————————————————————————————————————————————————————— */
+
+describe('les mutations, dans l’ordre où l’on corrige', () => {
+  it('un responsable d’unité apprend d’abord qu’il dirige — pas qu’il encadre', async () => {
     await leDG();
-    await uneTete('DSID', uDSID);
-    const chef = await agent('CHEF', uEtudes);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const chef = await agent('CHEF', uEtudes, dsid);
     await nommer(uEtudes, chef);
-    await agent('A', uEtudes);
+    await agent('A', uEtudes, chef);
     expect(await codeOf(() => muter(chef, uDCH))).toBe('people.manager_cannot_leave_unit');
   });
 
-  it('une mutation PROGRAMMÉE vers une autre direction s’enregistre ; le N+1 attend le jour venu', async () => {
+  it('refuse une mutation PROGRAMMÉE vers une autre direction tant qu’elle touche au n+1', async () => {
     await leDG();
-    const dsid = await uneTete('DSID', uDSID);
-    await uneTete('DCH', uDCH);
-    const a = await agent('A', uDSID);
-    await people.newAssignment(user, a, {
-      positionTitle: 'Chargé RH',
-      orgUnitId: uDCH,
-      startDate: '2099-01-01',
-    } as never);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const dch = await unDirecteur('DCH', uDCH);
+    const a = await agent('A', uDSID, dsid);
+    expect(
+      await codeOf(() =>
+        people.newAssignment(user, a, {
+          positionTitle: 'Chargé RH',
+          orgUnitId: uDCH,
+          startDate: '2099-01-01',
+          managerEmployeeId: dch,
+        } as never),
+      ),
+    ).toBe('people.mutation_programmee_hors_direction');
     expect(await n1(a)).toBe(dsid);
-    expect(await anomalies()).toEqual([]);
   });
 
-  it('une mutation programmée DANS la même direction, de même', async () => {
+  it('accepte une mutation programmée DANS la même direction', async () => {
     await leDG();
-    const dsid = await uneTete('DSID', uDSID);
-    const a = await agent('A', uDSID);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const a = await agent('A', uDSID, dsid);
     await people.newAssignment(user, a, {
       positionTitle: 'Analyste principal',
       orgUnitId: uEtudes,
@@ -446,63 +482,83 @@ describe('les mutations', () => {
     expect(await anomalies()).toEqual([]);
   });
 
-  it('le DG reste N+1 d’un agent qui passe d’une direction sans tête à une autre', async () => {
+  it('garde le DG comme n+1 d’un agent qui passe d’une direction sans tête à une autre', async () => {
     const dg = await leDG();
-    const a = await agent('A', uDSID);
+    const a = await agent('A', uDSID, dg);
     const r = await muter(a, uDCH);
     expect(await n1(a)).toBe(dg);
     expect(r.aRevoir).toEqual([]);
   });
 
-  it('placé dans une direction pourvue, un agent sans unité relève de sa tête', async () => {
+  it('placé dans une direction pourvue, un agent sans n+1 relève d’office du directeur', async () => {
     await leDG();
-    const dsid = await uneTete('DSID', uDSID);
+    const dsid = await unDirecteur('DSID', uDSID);
     const { id } = await people.create(user, {
       person: { givenName: 'A', familyName: 'Test' },
       employee: { employeeNumber: 'A', hiredOn: '2024-01-01' },
     } as CreateEmployeeInput);
-    expect(await anomalies()).toEqual(['A:sans_unite']);
     const r = await muter(id, uDSID);
     expect(await n1(id)).toBe(dsid);
     expect(r.aRevoir).toEqual([]);
-    expect(await anomalies()).toEqual([]);
   });
 
   it('rend ce que la mutation laisse à faire, sans attendre le contrôle', async () => {
     await leDG();
-    const a = await agent('A', uDSID);
-    const r = await muter(a, null);
-    expect(r.aRevoir.map((x) => `${x.matricule}:${x.type}`)).toEqual(['A:sans_unite']);
+    const { id } = await people.create(user, {
+      person: { givenName: 'A', familyName: 'Test' },
+      employee: { employeeNumber: 'A', hiredOn: '2024-01-01' },
+    } as CreateEmployeeInput);
+    // Placé dans une direction SANS tête, il lui faut encore son n+1 : c'est dit.
+    const r = await muter(id, uDSID);
+    expect(r.aRevoir.map((x) => `${x.matricule}:${x.type}:${x.direction}`)).toEqual([
+      'A:sans_responsable:Direction des Systèmes',
+    ]);
   });
 });
 
-describe('une tête coiffe son unité', () => {
-  it('une tête nommée reprend toute son unité, départements sans tête compris', async () => {
+describe('le directeur coiffe sa direction', () => {
+  it('nommé, il reprend qui n’avait pas de n+1 ; les autres gardent le leur', async () => {
     const dg = await leDG();
+    // Sans directeur, personne ne leur donne de n+1 d'office.
     const d = await agent('D', uDSID);
     const a = await agent('A', uEtudes);
     const c = await agent('C', uDSID);
-    expect([await n1(a), await n1(c)]).toEqual([dg, dg]);
+    const b = await agent('B', uDSID, c);
+    expect([await n1(a), await n1(c), await n1(b)]).toEqual([null, null, c]);
 
     const r = await nommer(uDSID, d);
     expect(await n1(d)).toBe(dg);
     expect(await n1(a)).toBe(d);
     expect(await n1(c)).toBe(d);
+    // B garde C : le directeur est son n+2.
+    expect(await n1(b)).toBe(c);
     expect(r.changements.map((x) => `${x.nom}:${x.motif}`).sort()).toEqual([
-      'A Test:niveau_au_dessus',
-      'C Test:tete_de_son_unite',
+      'A Test:direction_pourvue',
+      'C Test:direction_pourvue',
+      'D Test:directeur',
     ]);
     expect(await anomalies()).toEqual([]);
   });
 
-  it('un agent créé dans une direction pourvue relève de sa tête, dans un département aussi', async () => {
+  it('un agent créé sans n+1 dans une direction pourvue relève du directeur', async () => {
     await leDG();
-    const dsid = await uneTete('DSID', uDSID);
+    const dsid = await unDirecteur('DSID', uDSID);
     expect(await n1(await agent('A', uDSID))).toBe(dsid);
-    expect(await n1(await agent('B', uEtudes))).toBe(dsid);
+    // Dans un département de la direction aussi.
+    const b = await agent('B', uEtudes);
+    expect(await n1(b)).toBe(dsid);
+    // Un n+1 choisi est gardé.
+    expect(await n1(await agent('C', uEtudes, b))).toBe(b);
   });
 
-  it('à la Direction Générale, le DG reprend qui y est rattaché', async () => {
+  it('sans directeur, un agent créé sans n+1 le reste — et le contrôle le signale', async () => {
+    await leDG();
+    const a = await agent('A', uDSID);
+    expect(await n1(a)).toBeNull();
+    expect(await anomalies()).toEqual(['A:sans_responsable']);
+  });
+
+  it('à la Direction Générale, le DG reprend qui n’a pas de n+1', async () => {
     const x = await agent('X', uDG);
     const dg = await leDG();
     expect(await n1(x)).toBe(dg);
@@ -510,22 +566,59 @@ describe('une tête coiffe son unité', () => {
   });
 });
 
-describe('les retours', () => {
-  it('rouvrir un dossier : la chaîne le reprend tout de suite', async () => {
+describe('les départs en lot', () => {
+  it('un départ refusé rend son équipe à confier : le lot se recalcule', async () => {
+    // B encadre C, qui encadre D. On archive B et C sans repreneur : C est
+    // refusé (D reste), donc C reste — et redevient l'équipe de B, qui ne
+    // peut plus partir sans repreneur. Avant, B partait et laissait C sous
+    // un n+1 archivé.
     await leDG();
-    const dsid = await uneTete('DSID', uDSID);
-    const a = await agent('A', uDSID);
-    await people.archive(user, { ids: [a], archived: true, motif: 'demission' });
-    const r = await people.archive(user, { ids: [a], archived: false });
-    expect(r.done).toBe(1);
-    expect(r.aRevoir).toEqual([]);
-    expect(await n1(a)).toBe(dsid);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const b = await agent('B', uDSID, dsid);
+    const c = await agent('C', uDSID, b);
+    await agent('D', uDSID, c);
+    const r = await people.archive(user, { ids: [b, c], archived: true });
+    expect(r.done).toBe(0);
+    expect(r.skipped.map((s) => s.name).sort()).toEqual(['B Test', 'C Test']);
+    expect(await anomalies()).toEqual([]);
   });
 
-  it('le nombre d’agents d’une tête ne compte jamais le DG', async () => {
+  it('deux reprises qui formeraient une boucle annulent le lot entier', async () => {
+    // B et D partent. S (équipe de B) est confié à R ; R (équipe de D) est
+    // confié à S. Chacune se tient seule ; écrites toutes deux, R et S
+    // relèveraient l'un de l'autre.
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const b = await agent('B', uDSID, dsid);
+    const d = await agent('D', uDSID, dsid);
+    const s = await agent('S', uDSID, b);
+    const r = await agent('R', uDSID, d);
+    expect(
+      await codeOf(() =>
+        people.archive(user, { ids: [b, d], archived: true, repreneurs: { [b]: r, [d]: s } }),
+      ),
+    ).toBe('people.manager_cycle');
+    expect(await n1(s)).toBe(b);
+    expect(await n1(r)).toBe(d);
+    expect((await people.detail(user, b)).status).toBe('active');
+  });
+
+  it('rouvrir un dossier dont le n+1 est parti le dit tout de suite', async () => {
+    await leDG();
+    const dsid = await unDirecteur('DSID', uDSID);
+    const chef = await agent('CHEF', uDSID, dsid);
+    const a = await agent('A', uDSID, chef);
+    await people.archive(user, { ids: [a], archived: true });
+    await people.archive(user, { ids: [chef], archived: true });
+    const r = await people.archive(user, { ids: [a], archived: false });
+    expect(r.done).toBe(1);
+    expect(r.aRevoir?.map((x) => `${x.matricule}:${x.type}`)).toEqual(['A:responsable_archive']);
+  });
+
+  it('le nombre d’agents d’un encadrant ne compte jamais le DG', async () => {
     // Une donnée d'avant la règle : le DG rattaché à un agent.
     const dg = await leDG();
-    const dsid = await uneTete('DSID', uDSID);
+    const dsid = await unDirecteur('DSID', uDSID);
     await raw(`UPDATE employees SET manager_employee_id = $1 WHERE id = $2`, [dsid, dg]);
     const page = await people.list(user, {
       limit: 50,
@@ -535,16 +628,17 @@ describe('les retours', () => {
     } as never);
     expect(page.items.find((i) => i.id === dsid)?.teamSize).toBe(0);
     expect((await people.detail(user, dsid)).team).toEqual([]);
+    expect(await anomalies()).toEqual(['DG:dg_rattache']);
   });
 });
 
 describe('le contrôle, avec les définitions de l’écriture', () => {
   it('compte un agent pas encore arrivé dans la direction qu’il rejoint', async () => {
     await leDG();
-    await uneTete('DSID', uDSID);
+    const dsid = await unDirecteur('DSID', uDSID);
     const futur = await people.create(user, {
       person: { givenName: 'Futur', familyName: 'Test' },
-      employee: { employeeNumber: 'FUTUR', hiredOn: '2099-01-01' },
+      employee: { employeeNumber: 'FUTUR', hiredOn: '2099-01-01', managerEmployeeId: dsid },
       assignment: { positionTitle: 'Analyste', startDate: '2099-01-01', orgUnitId: uDSID },
     } as CreateEmployeeInput);
     expect(futur.id).toBeTruthy();
@@ -557,26 +651,32 @@ describe('le contrôle, avec les définitions de l’écriture', () => {
     expect(await anomalies()).toEqual(['DG:dg_hors_direction_generale']);
   });
 
-  it('signale un agent sans affectation, et cet agent seul', async () => {
+  it('signale le rattachement à un n+1 sans affectation, sous le nom de l’agent', async () => {
     await leDG();
-    await uneTete('DSID', uDSID);
-    const a = await agent('A', uDSID);
-    await agent('B', uDSID);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const a = await agent('A', uDSID, dsid);
+    const b = await agent('B', uDSID, a);
     await raw(`DELETE FROM assignments WHERE employee_id = $1`, [a]);
-    expect(await anomalies()).toEqual(['A:sans_unite']);
+    expect(b).toBeTruthy();
+    expect((await anomalies()).sort()).toEqual([
+      'A:sans_direction',
+      'B:responsable_sans_direction',
+    ]);
   });
 
   it('survit à une boucle d’unités d’avant la règle', async () => {
     // Deux départements qui se contiennent l'un l'autre : impossible par
     // l'application, possible dans une vieille base. Rien ne doit tourner
     // sans fin.
-    const dg = await leDG();
+    await leDG();
     const x = await unite('Boucle X', 'department', uDSID);
     const y = await unite('Boucle Y', 'department', x);
     await raw(`UPDATE org_units SET parent_id = $1 WHERE id = $2`, [y, x]);
-    const a = await agent('A', y);
-    expect(await n1(a)).toBe(dg);
-    expect(await anomalies()).toEqual([]);
+    await agent('A', y);
+    const controle = await hierarchie.controle(user);
+    expect(controle.anomalies.map((a) => `${a.matricule}:${a.type}`)).toContain(
+      'A:sans_responsable',
+    );
     expect(
       await codeOf(() =>
         people.list(user, { limit: 5, offset: 0, sort: 'name', dir: 'asc' } as never),
@@ -587,14 +687,14 @@ describe('le contrôle, avec les définitions de l’écriture', () => {
 });
 
 describe('deux gestes simultanés', () => {
-  it('A N+1 fonctionnel de B pendant que B le devient de A : un seul passe, pas de boucle', async () => {
+  it('A sous B pendant que B passe sous A : un seul passe, pas de boucle', async () => {
     await leDG();
-    await uneTete('DSID', uDSID);
-    const a = await agent('A', uDSID);
-    const b = await agent('B', uDSID);
+    const dsid = await unDirecteur('DSID', uDSID);
+    const a = await agent('A', uDSID, dsid);
+    const b = await agent('B', uDSID, dsid);
     const resultats = await Promise.allSettled([
-      people.update(user, a, { employee: { n1FonctionnelId: b } }),
-      people.update(user, b, { employee: { n1FonctionnelId: a } }),
+      people.update(user, a, { employee: { managerEmployeeId: b } }),
+      people.update(user, b, { employee: { managerEmployeeId: a } }),
     ]);
     expect(resultats.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(await anomalies()).toEqual([]);

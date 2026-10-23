@@ -157,20 +157,10 @@ describe('hiérarchie des types', () => {
     ).toBe('org.parent_type_invalid');
   });
 
-  it('refuse une direction sous une autre direction : elle se rattache à la Direction Générale', async () => {
-    expect(await codeOf(() => service.update(user, autreDirection, { parentId: direction }))).toBe(
-      'org.direction_hors_dg',
-    );
-    expect(
-      await codeOf(() =>
-        service.create(user, {
-          name: 'Sous-direction',
-          unitType: 'direction',
-          parentId: direction,
-          shortName: 'SD',
-        }),
-      ),
-    ).toBe('org.direction_hors_dg');
+  it('accepte une direction sous une AUTRE direction — une sous-direction', async () => {
+    await service.update(user, autreDirection, { parentId: direction });
+    const unites = await service.list(user);
+    expect(unites.find((u) => u.id === autreDirection)?.parentId).toBe(direction);
   });
 
   it('refuse un second sommet, à la création comme au re-rattachement', async () => {
@@ -525,7 +515,7 @@ describe('l’acronyme', () => {
         service.create(user, { name: 'Direction X', unitType: 'direction', parentId: racine }),
       ),
     ).toBe('org.acronyme_requis');
-    const dept = await creerUnite('Département X', 'department', racine);
+    const dept = await creerUnite('Département X', 'department', direction);
     expect(await codeOf(() => service.update(user, dept, { unitType: 'direction' }))).toBe(
       'org.acronyme_requis',
     );
@@ -541,18 +531,17 @@ describe('l’acronyme', () => {
 });
 
 describe('re-rattachement', () => {
-  it('refuse un changement de type qui ferait sortir le DG de la Direction Générale', async () => {
-    // Le DG siège au cabinet, un département de la Direction Générale :
-    // ériger le cabinet en direction l'en ferait sortir. Une direction ne se
-    // forme que sous la Direction Générale : c'est le seul périmètre qu'un
-    // changement de type peut encore couper.
-    const cabinet = await creerUnite('Cabinet', 'department', racine);
-    await raw(`UPDATE assignments SET org_unit_id = $1 WHERE employee_id = $2`, [cabinet, dgId]);
+  it('refuse un changement de type qui ferait sortir un responsable de son périmètre', async () => {
+    // chefId dirige la direction mère depuis le département : ériger le
+    // département en direction l'en ferait sortir — une sous-direction a
+    // sa propre tête.
+    await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [departement]);
+    await raw(`UPDATE org_units SET manager_employee_id = $1 WHERE id = $2`, [chefId, direction]);
     expect(
       await codeOf(() =>
-        service.update(user, cabinet, { unitType: 'direction', shortName: 'CAB' }),
+        service.update(user, departement, { unitType: 'direction', shortName: 'DX' }),
       ),
-    ).toBe('org.dg_hors_direction_generale');
+    ).toBe('org.manager_would_leave_unit');
   });
 
   it('refuse une réorganisation qui ferait sortir le DG de la Direction Générale', async () => {

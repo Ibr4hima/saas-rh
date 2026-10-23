@@ -54,7 +54,8 @@ type Champ =
   | 'indicatifPro'
   | 'telephonePro'
   | 'poste'
-  | 'unite';
+  | 'unite'
+  | 'responsable';
 
 /**
  * Les intitulés attendus, et leurs variantes admises.
@@ -88,8 +89,18 @@ const INTITULES: Record<Champ, string[]> = {
   telephonePro: ['Téléphone professionnel', 'Téléphone pro', 'Poste téléphonique'],
   poste: ['Poste', 'Fonction', 'Intitulé du poste'],
   unite: ['Direction affectée', 'Direction', 'Unité', 'Service'],
-  // Pas de colonne du N+1 : le N+1 découle de l'organigramme (ADR-0147). La
-  // colonne d'un fichier ancien est rendue parmi les colonnes ignorées.
+  // Le n+1 se désigne par son MATRICULE, pas par son nom : deux homonymes
+  // existent dans toute agence de trois cents personnes, et un nom mal
+  // orthographié ne se rattache à personne. Le matricule, lui, est unique et
+  // déjà dans la colonne d'à côté.
+  responsable: [
+    'Matricule du responsable',
+    'Matricule responsable',
+    'Responsable hiérarchique',
+    'Matricule du supérieur',
+    'Supérieur hiérarchique',
+    'N+1',
+  ],
 };
 
 /** Sans ces quatre colonnes, aucune ligne ne peut créer de dossier. */
@@ -251,6 +262,8 @@ export interface LigneConvertie {
   poste: string | null;
   /** L'abrégé écrit dans le fichier, à résoudre contre l'organigramme. */
   uniteAbrege: string | null;
+  /** Le matricule du n+1 écrit dans le fichier, à résoudre contre l'effectif. */
+  responsableMatricule: string | null;
   /** Ce qui ne bloque pas la création mais que la RH doit lire. */
   avertissements: AvertissementImport[];
   /** Prête à passer à la création de dossier, orgUnitId non résolu. */
@@ -489,6 +502,7 @@ export function convertirLigne(
       nom: `${prenom} ${nom}`,
       poste,
       uniteAbrege: lireTexte('unite') ?? null,
+      responsableMatricule: lireTexte('responsable')?.toUpperCase() ?? null,
       avertissements,
       entree: verdict.data as LigneConvertie['entree'],
     },

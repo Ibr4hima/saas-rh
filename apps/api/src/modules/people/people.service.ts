@@ -34,18 +34,22 @@ import { preparerInvitation } from '../portal/invitation';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import {
-  choixDuRattachementOuvert,
+  appliquerReprise,
   DG,
+  directionDeEmploye,
   directionDeLUnite,
   directionDeUnite,
   directionsDesUnites,
   equipeDe,
   fusionnerAuJournal,
+  planifierReprise,
+  rattacherDOffice,
+  remettreEnRegle,
   SOMMET,
   uniteRacine,
-  validerN1Fonctionnel,
-  validerRattachementChoisi,
+  validerRattachement,
   verrouillerLaChaine,
+  type PlanDeReprise,
 } from './chaine';
 import { frDate } from '../acces/appels';
 import { administrateursEnFonction, pasResponsableDeSoi, pasSurSoi } from '../acces/dch';
@@ -63,7 +67,6 @@ import { debutDeLAnciennete, joursHorsDeLAnciennete, premierJourDuStage } from '
 import { debutDuStage, exigerEnActivite, finDeContratPassee } from './en-activite';
 import { lireLaChaine, nouvellesAnomalies } from './hierarchie.service';
 import { exigerUniteVivante, muter } from './mutation';
-import { recalculerLaChaine } from './recalcul-de-la-chaine';
 import { rechercheDesAgents } from './recherche';
 import {
   OrgUnitsService,
@@ -384,17 +387,18 @@ export class PeopleService {
   /**
    * Un dossier neuf.
    *
-   * Son N+1 hiérarchique découle de l'organigramme (ADR-0147) : la chaîne se
-   * recalcule une fois le dossier et son affectation écrits. Un N+1
-   * fonctionnel peut se choisir dès la création ; ce choix se vérifie ensuite.
-   * `recalculer` faux : l'appelant recalcule une fois pour tout un lot (un
-   * import).
+   * Le responsable hiérarchique n'est PAS exigé ici, et c'est un choix : on
+   * crée souvent un dossier avant de savoir de qui l'agent relèvera, et un
+   * import n'en sait rien du tout. Sans n+1 choisi, l'agent relève d'office du
+   * responsable de sa direction s'il y en a un ; sinon, la règle de l'APIX —
+   * un n+1 pour chacun — se tient par un AVERTISSEMENT (le contrôle de la
+   * chaîne hiérarchique) et par une conséquence : sans n+1, ni objectifs ni
+   * évaluation.
+   *
+   * Ce qui est vérifié, en revanche, c'est le rattachement QUAND il est
+   * donné : même direction, responsable actif, pas de boucle.
    */
-  async create(
-    user: SessionUser,
-    input: CreateEmployeeInput,
-    { recalculer = true }: { recalculer?: boolean } = {},
-  ): Promise<CreateEmployeeResult> {
+  async create(user: SessionUser, input: CreateEmployeeInput): Promise<CreateEmployeeResult> {
     const employeeId = uuidv7();
     const personId = uuidv7();
     let invitation: InvitationAuPassage | null = null;
@@ -413,6 +417,11 @@ export class PeopleService {
           ...person,
           nationalIdEncrypted: nationalId ? this.crypto.encrypt(nationalId) : null,
         });
+        if (input.employee.managerEmployeeId) {
+          const direction = await directionDeUnite(tx, input.assignment?.orgUnitId ?? null);
+          await pasResponsableDeSoi(tx, user.userId, input.employee.managerEmployeeId, direction);
+          await validerRattachement(tx, employeeId, input.employee.managerEmployeeId, direction);
+        }
         await tx.insert(t.employees).values({
           id: employeeId,
           tenantId: user.tenantId,
@@ -422,6 +431,7 @@ export class PeopleService {
           hiredOn: input.employee.hiredOn,
           workEmail: input.employee.workEmail,
           workPhone: input.employee.workPhone,
+          managerEmployeeId: input.employee.managerEmployeeId ?? null,
           customFields: input.employee.customFields ?? {},
         });
         if (input.contract) {
@@ -446,12 +456,8 @@ export class PeopleService {
             validity: `[${input.assignment.startDate},)`,
           });
         }
-        if (recalculer || input.employee.n1FonctionnelId) {
-          await recalculerLaChaine(tx, user.tenantId);
-        }
-        if (input.employee.n1FonctionnelId) {
-          await this.choisirLeN1Fonctionnel(tx, user, employeeId, input.employee.n1FonctionnelId);
-        }
+        // Sans n+1 choisi, il relève d'office du responsable de sa direction.
+        if (!input.employee.managerEmployeeId) await rattacherDOffice(tx, [], employeeId);
         // L'invitation demandée dans la foulée : manquée, le dossier reste.
         if (input.inviter) invitation = await this.inviterAuPassage(tx, user, employeeId);
       });
@@ -500,6 +506,7 @@ export class PeopleService {
     tx: Tx,
     employeeId: string,
     status: string,
+    team: { id: string }[],
   ): Promise<EmployeeDetail['responsabilites']> {
     const unite = (o: string) => sql`json_build_object(
       'id', ${sql.raw(o)}.id, 'nom', ${sql.raw(o)}.name,
@@ -510,43 +517,21 @@ export class PeopleService {
              WHERE o.manager_employee_id = ${employeeId} AND o.deleted_at IS NULL
              ORDER BY o.name`,
       );
-      return { unites: rows.map((r) => r.u) };
+      return { unites: rows.map((r) => r.u), equipe: team.length };
     }
     const { rows } = await tx.execute<{
       unites: EmployeeDetail['responsabilites']['unites'] | null;
+      equipe: number;
     }>(sql`
       SELECT (SELECT json_agg(${unite('o')} ORDER BY o.name) FROM org_units o
                WHERE o.id = ANY(p.headed_unit_ids) AND o.deleted_at IS NULL
-                 AND o.manager_employee_id IS NULL) AS unites
+                 AND o.manager_employee_id IS NULL) AS unites,
+             (SELECT count(*)::int FROM jsonb_to_recordset(p.team_reassignments) AS m(id uuid, n1 uuid)
+                JOIN employees e ON e.id = m.id AND e.status = 'active'
+                                AND e.manager_employee_id = m.n1) AS equipe
         FROM periodes_inactivite p
        WHERE p.employee_id = ${employeeId} AND p.reprise_le IS NULL`);
-    return { unites: rows[0]?.unites ?? [] };
-  }
-
-  /**
-   * Le N+1 fonctionnel choisi pour un agent (ADR-0147), vérifié : personne ne
-   * se le donne à soi-même, sauf si c'est déjà son N+1 hiérarchique. `null` :
-   * le N+1 hiérarchique.
-   */
-  private async choisirLeN1Fonctionnel(
-    tx: Tx,
-    user: SessionUser,
-    employeeId: string,
-    n1Id: string | null,
-  ): Promise<void> {
-    if (n1Id) {
-      const [dossier] = await tx
-        .select({ hierarchique: t.employees.managerEmployeeId })
-        .from(t.employees)
-        .where(eq(t.employees.id, employeeId))
-        .limit(1);
-      await pasResponsableDeSoi(tx, user.userId, n1Id, dossier?.hierarchique ?? null);
-      await validerN1Fonctionnel(tx, employeeId, n1Id);
-    }
-    await tx
-      .update(t.employees)
-      .set({ n1FonctionnelEmployeeId: n1Id, updatedAt: new Date() })
-      .where(eq(t.employees.id, employeeId));
+    return { unites: rows[0]?.unites ?? [], equipe: rows[0]?.equipe ?? 0 };
   }
 
   /** Son compte a perdu son mot de passe (parti plus de trente jours). */
@@ -634,26 +619,7 @@ export class PeopleService {
             .limit(1)
         : [];
       const team = await equipeDe(tx, employee.id);
-      const responsabilites = await this.responsabilites(tx, employee.id, employee.status);
-      // Le N+1 fonctionnel choisi, et la place choisie à la Direction
-      // Générale (ADR-0147).
-      const { rows: fonctionnel } = await tx.execute<{
-        id: string;
-        nom: string;
-        matricule: string;
-      }>(
-        sql`SELECT f.id, p.given_name || ' ' || p.family_name AS nom, f.employee_number AS matricule
-              FROM employees f JOIN persons p ON p.id = f.person_id
-             WHERE f.id = ${employee.n1FonctionnelEmployeeId}`,
-      );
-      const { rows: placeChoisie } = await tx.execute<{ nom: string }>(
-        sql`SELECT name AS nom FROM org_units WHERE id = ${employee.n1UniteId}`,
-      );
-      const rattachementChoisi: EmployeeDetail['rattachementChoisi'] = employee.n1Dga
-        ? { type: 'dga' }
-        : employee.n1UniteId
-          ? { type: 'unite', uniteId: employee.n1UniteId, uniteNom: placeChoisie[0]?.nom }
-          : null;
+      const responsabilites = await this.responsabilites(tx, employee.id, employee.status, team);
       // L'ancienneté, ou le début du stage (ADR-0083) : aujourd'hui, ou au
       // dernier jour d'un dossier inactif.
       const jour =
@@ -699,10 +665,6 @@ export class PeopleService {
         managerId: employee.managerEmployeeId,
         managerName: managerRow ? `${managerRow.givenName} ${managerRow.familyName}` : null,
         managerNumber: managerRow?.employeeNumber ?? null,
-        n1Fonctionnel: fonctionnel[0] ?? null,
-        rattachementChoisi,
-        rattachementAuChoix:
-          employee.status === 'active' && (await choixDuRattachementOuvert(tx, employee.id)),
         team,
         customFields: (employee.customFields ?? {}) as Record<string, unknown>,
         person: {
@@ -851,10 +813,7 @@ export class PeopleService {
             'La fiche d’un agent inactif ne se modifie pas : réactivez-la d’abord.',
           );
         }
-        const n1Change =
-          input.employee?.n1FonctionnelId !== undefined ||
-          input.employee?.rattachementChoisi !== undefined;
-        if (n1Change) await verrouillerLaChaine(tx);
+        if (input.employee?.managerEmployeeId !== undefined) await verrouillerLaChaine(tx);
 
         if (input.person && Object.keys(input.person).length > 0) {
           const { nationalId, ...rest } = input.person;
@@ -878,7 +837,19 @@ export class PeopleService {
             .where(eq(t.persons.id, employee.personId));
         }
         if (input.employee && Object.keys(input.employee).length > 0) {
-          if (n1Change) await exigerEnActivite(tx, id, 'recevoir de N+1');
+          if (input.employee.managerEmployeeId) {
+            await exigerEnActivite(tx, id, 'recevoir de n+1');
+            const direction = await directionDeEmploye(tx, id);
+            if (input.employee.managerEmployeeId !== employee.managerEmployeeId) {
+              await pasResponsableDeSoi(
+                tx,
+                user.userId,
+                input.employee.managerEmployeeId,
+                direction,
+              );
+            }
+            await validerRattachement(tx, id, input.employee.managerEmployeeId, direction);
+          }
           // Les colonnes sont nommées une à une, jamais l'objet reçu en bloc.
           // Le schéma Zod ne laisse déjà rien passer d'autre, mais il ne
           // s'applique qu'à la frontière HTTP : un appel interne écrirait le
@@ -902,35 +873,21 @@ export class PeopleService {
           if (e.hiredOn !== undefined) champs.hiredOn = e.hiredOn;
           if (e.workEmail !== undefined) champs.workEmail = e.workEmail;
           if (e.workPhone !== undefined) champs.workPhone = e.workPhone;
+          if (e.managerEmployeeId !== undefined) champs.managerEmployeeId = e.managerEmployeeId;
           if (Object.keys(champs).length > 0) {
             champs.updatedAt = new Date();
             await tx.update(t.employees).set(champs).where(eq(t.employees.id, id));
           }
-          // La place choisie à la Direction Générale, puis le N+1 fonctionnel,
-          // qui se vérifie contre le N+1 hiérarchique qu'elle donne.
-          if (e.rattachementChoisi !== undefined) {
-            const choix = e.rattachementChoisi
-              ? await validerRattachementChoisi(tx, id, e.rattachementChoisi)
-              : null;
-            await tx
-              .update(t.employees)
-              .set({
-                n1Dga: choix?.type === 'dga',
-                n1UniteId: choix?.type === 'unite' ? choix.uniteId : null,
-                updatedAt: new Date(),
-              })
-              .where(eq(t.employees.id, id));
-            await recalculerLaChaine(tx, user.tenantId);
-          }
-          if (e.n1FonctionnelId !== undefined) {
-            await this.choisirLeN1Fonctionnel(tx, user, id, e.n1FonctionnelId);
-          }
-          if (n1Change) {
-            // Un nouveau N+1 hiérarchique reprend les demandes de congé qui
-            // attendaient le visa de l'ancien ; un nouveau N+1 fonctionnel,
-            // l'évaluation qui l'attendait.
+          // Vidé, le n+1 revient d'office au responsable de sa direction,
+          // s'il en a un : dans une direction pourvue, personne n'est sans n+1.
+          if (e.managerEmployeeId === null) await rattacherDOffice(tx, [], id);
+          // Un nouveau n+1 reprend les demandes de congé qui attendaient
+          // le visa de l'ancien.
+          if (
+            e.managerEmployeeId !== undefined &&
+            e.managerEmployeeId !== employee.managerEmployeeId
+          ) {
             await faireSuivreLesDemandes(tx, id);
-            await reconcilierLeCircuit(tx, user.tenantId);
           }
         }
       });
@@ -1073,6 +1030,7 @@ export class PeopleService {
           previousEndDate: remplaceLaFin ? (precedent?.endDate ?? null) : null,
           // Ce qu'il reprendra le jour venu, s'il revient d'une interruption.
           resumeUnitIds: aVenir ? (input.reprendre?.unites ?? []) : [],
+          resumeTeam: aVenir ? (input.reprendre?.equipe ?? false) : false,
         });
         if (aVenir) {
           // Le directeur général reste à la Direction Générale : refusé
@@ -1090,6 +1048,14 @@ export class PeopleService {
         }
 
         if (dossier.status === 'archived') {
+          // Une autre direction : son ancien n+1 n'en est plus. Le responsable
+          // de la nouvelle le reprend d'office à la réouverture.
+          if (derniere && !memeDirection) {
+            await tx
+              .update(t.employees)
+              .set({ managerEmployeeId: null })
+              .where(eq(t.employees.id, id));
+          }
           const r = await this.archiverOuRouvrir(
             tx,
             user,
@@ -1432,7 +1398,7 @@ export class PeopleService {
       await tx.execute(sql`
         UPDATE assignments SET validity = daterange(lower(validity), ${derniere.au}::date)
          WHERE id = ${precedente.id}`);
-      await this.faireSuivre(tx, user.tenantId);
+      await this.faireSuivre(tx, user.tenantId, []);
       return { changements: [], aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)) };
     });
   }
@@ -1442,9 +1408,9 @@ export class PeopleService {
    * courante à startDate (borne exclusive) et ouvre la nouvelle [startDate,).
    * Jamais d'UPDATE destructif : l'historique reste intégralement lisible.
    *
-   * Les refus viennent dans l'ordre où l'on corrige : d'abord qui dirige
-   * quoi (le DG, la tête d'une unité), puis la date. Les N+1 se recalculent
-   * ensuite à partir de l'organigramme (ADR-0147).
+   * La chaîne hiérarchique doit y survivre, et les refus viennent dans
+   * l'ordre où l'on corrige : d'abord qui dirige quoi (le DG, un responsable
+   * d'unité), puis la date, puis l'équipe, puis son propre n+1.
    */
   async newAssignment(
     user: SessionUser,
@@ -1473,6 +1439,18 @@ export class PeopleService {
     input: NewAssignmentInput,
   ): Promise<ConsequencesHierarchie> {
     await pasSurSoi(tx, user.userId, [id], 'changer votre propre affectation');
+    await pasResponsableDeSoi(
+      tx,
+      user.userId,
+      input.managerEmployeeId,
+      await directionDeUnite(tx, input.orgUnitId ?? null),
+    );
+    await pasResponsableDeSoi(
+      tx,
+      user.userId,
+      input.repreneurEquipeId,
+      await directionDeEmploye(tx, id),
+    );
     if (input.responsable) return this.affecterALaTete(tx, user, id, input);
     if (input.adjoint) return this.affecterCommeAdjoint(tx, user, id, input);
     return muter(tx, user.tenantId, id, { ...input, positionTitle: input.positionTitle! });
@@ -1495,10 +1473,10 @@ export class PeopleService {
     await this.prendreLaTete(tx, user, journal, id, {
       uniteId: input.orgUnitId!,
       startDate: input.startDate,
+      repreneurEquipeId: input.repreneurEquipeId,
       posteDeLAncien: input.posteDeLAncien,
       devenirDeLAncien: input.devenirDeLAncien,
     });
-    fusionnerAuJournal(journal, await recalculerLaChaine(tx, user.tenantId));
     await reconcilierLeCircuit(tx, user.tenantId);
     return { changements: journal, aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)) };
   }
@@ -1506,8 +1484,8 @@ export class PeopleService {
   /**
    * Il prend la tête de l'unité, en un geste : il y prend le poste de
    * responsable à la date choisie, au plus tard aujourd'hui, et
-   * l'organigramme le désigne, avec ses règles. L'appelant tient le verrou
-   * de la chaîne, la recalcule et relit le circuit ensuite.
+   * l'organigramme le désigne, avec ses règles et ses cascades. L'appelant
+   * tient le verrou de la chaîne et relit le circuit ensuite.
    */
   private async prendreLaTete(
     tx: Tx,
@@ -1517,6 +1495,7 @@ export class PeopleService {
     p: {
       uniteId: string;
       startDate: string;
+      repreneurEquipeId?: string;
       posteDeLAncien?: string;
       devenirDeLAncien?: DevenirDeLAncien;
     },
@@ -1575,12 +1554,17 @@ export class PeopleService {
       personne[0]?.genre,
     );
 
-    // Son N+1 découle de sa place : la chaîne le recalcule ensuite.
+    // Son n+1 est celui qu'impose sa place : sa désignation l'y rattache.
     const { changements } = await muter(
       tx,
       user.tenantId,
       id,
-      { orgUnitId: uniteId, startDate: p.startDate, positionTitle },
+      {
+        orgUnitId: uniteId,
+        startDate: p.startDate,
+        positionTitle,
+        ...(p.repreneurEquipeId ? { repreneurEquipeId: p.repreneurEquipeId } : {}),
+      },
       { responsable: true },
     );
     fusionnerAuJournal(journal, changements);
@@ -1618,19 +1602,20 @@ export class PeopleService {
     await this.prendreLaPlaceDeDGA(tx, user, journal, id, {
       uniteId: input.orgUnitId!,
       startDate: input.startDate,
+      repreneurEquipeId: input.repreneurEquipeId,
       posteDeLAncien: input.posteDeLAncien,
       devenirDeLAncien: input.devenirDeLAncien,
     });
-    fusionnerAuJournal(journal, await recalculerLaChaine(tx, user.tenantId));
     await reconcilierLeCircuit(tx, user.tenantId);
     return { changements: journal, aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)) };
   }
 
   /**
    * La place de DGA, en un geste : la personne rejoint la Direction Générale
-   * au poste de DGA, au genre, à la date choisie, au plus tard aujourd'hui ;
-   * puis l'organigramme la désigne, avec ses règles. L'appelant tient le
-   * verrou de la chaîne, la recalcule et relit le circuit ensuite.
+   * au poste de DGA, au genre, à la date choisie, au plus tard aujourd'hui,
+   * sous le DG ; puis l'organigramme la désigne, avec ses règles et ses
+   * cascades. L'appelant tient le verrou de la chaîne et relit le circuit
+   * ensuite.
    */
   private async prendreLaPlaceDeDGA(
     tx: Tx,
@@ -1640,6 +1625,7 @@ export class PeopleService {
     p: {
       uniteId: string;
       startDate: string;
+      repreneurEquipeId?: string;
       posteDeLAncien?: string;
       devenirDeLAncien?: DevenirDeLAncien;
     },
@@ -1675,6 +1661,14 @@ export class PeopleService {
     if (unite.futur) {
       problem(422, 'org.passation_future', 'La prise de fonction se date au plus tard aujourd’hui');
     }
+    if (!unite.dg) {
+      problem(
+        422,
+        'org.aucun_directeur_general',
+        'Désignez d’abord le DG',
+        'Le DGA relève du DG : la Direction Générale a son responsable avant son DGA.',
+      );
+    }
     if (unite.dg === id) {
       problem(
         422,
@@ -1703,7 +1697,7 @@ export class PeopleService {
       SELECT p.gender AS genre FROM employees e JOIN persons p ON p.id = e.person_id
        WHERE e.id = ${id}`);
 
-    // Le DGA relève du DG : la chaîne le recalcule ensuite.
+    // Le DGA relève du DG : la mutation l'y rattache.
     const { changements } = await muter(tx, user.tenantId, id, {
       orgUnitId: p.uniteId,
       startDate: p.startDate,
@@ -1711,6 +1705,8 @@ export class PeopleService {
         { name: unite.name, shortName: unite.short_name },
         personne[0]?.genre,
       ),
+      managerEmployeeId: unite.dg!,
+      ...(p.repreneurEquipeId ? { repreneurEquipeId: p.repreneurEquipeId } : {}),
     });
     fusionnerAuJournal(journal, changements);
     await new OrgUnitsService(this.db).designerDansLaTransaction(
@@ -1738,18 +1734,25 @@ export class PeopleService {
   }
 
   /**
-   * La personne remplacée part ailleurs, à la tête d'une autre unité, ou
-   * quitte l'APIX. Les N+1 se recalculent ensuite (ADR-0147) : l'équipe de
-   * l'unité relève de la nouvelle tête.
+   * Il part ailleurs, à la tête d'une autre unité, ou quitte l'APIX. Son
+   * équipe est déjà passée au nouveau ; sans successeur, celle qu'il garde
+   * remonte d'un cran, à son propre n+1, quand elle ne peut pas le suivre.
    */
   private async devenirDeLAncien(
     tx: Tx,
     user: SessionUser,
     journal: ChangementRattachement[],
-    { ancien, depuis, devenir }: PassationAilleurs,
+    { ancien, nouveau, depuis, devenir }: PassationAilleurs,
   ): Promise<void> {
     await pasSurSoi(tx, user.userId, [ancien], 'changer votre propre affectation');
     const [cible] = await this.chargerCibles(tx, [ancien]);
+    const [dossier] = await tx
+      .select({ n1: t.employees.managerEmployeeId })
+      .from(t.employees)
+      .where(eq(t.employees.id, ancien))
+      .limit(1);
+    const equipe = await equipeDe(tx, ancien);
+    const repreneur = equipe.length > 0 ? (nouveau ?? dossier?.n1 ?? null) : null;
 
     if (devenir.choix === 'depart') {
       if (devenir.le > depuis) {
@@ -1776,6 +1779,7 @@ export class PeopleService {
         archived: true,
         motif: devenir.motif,
         le: devenir.le,
+        ...(repreneur ? { repreneurs: { [ancien]: repreneur } } : {}),
       });
       if (r.done === 0) {
         problem(
@@ -1789,20 +1793,32 @@ export class PeopleService {
       return;
     }
 
+    const directionVisee = await directionDeUnite(tx, devenir.orgUnitId);
+    const changeDeDirection = directionVisee?.id !== (await directionDeEmploye(tx, ancien))?.id;
+    const reprise = repreneur && changeDeDirection ? { repreneurEquipeId: repreneur } : {};
     if (devenir.responsable) {
       await this.prendreLaTete(tx, user, journal, ancien, {
         uniteId: devenir.orgUnitId,
         startDate: depuis,
+        ...reprise,
         posteDeLAncien: devenir.posteDeLAncien,
       });
       return;
+    }
+    if (devenir.managerEmployeeId) {
+      await pasResponsableDeSoi(tx, user.userId, devenir.managerEmployeeId, directionVisee);
     }
     const { changements } = await muter(tx, user.tenantId, ancien, {
       orgUnitId: devenir.orgUnitId,
       positionTitle: devenir.positionTitle!,
       startDate: depuis,
+      ...(devenir.managerEmployeeId ? { managerEmployeeId: devenir.managerEmployeeId } : {}),
+      ...reprise,
     });
     fusionnerAuJournal(journal, changements);
+    // Le n+1 qu'il avait comme responsable ne tient peut-être plus à sa
+    // nouvelle place : un ancien directeur relevait du DG.
+    await remettreEnRegle(tx, journal, ancien);
   }
 
   /** Historique d'audit du dossier : qui a changé quoi, quand (ADR-0008). */
@@ -1908,7 +1924,7 @@ export class PeopleService {
         );
       }
     }
-    const retenus: typeof cibles = [];
+    let retenus: typeof cibles = [];
     for (const c of cibles) {
       const motif =
         (await this.motifDeRefus(tx, user, c, geste)) ??
@@ -1918,6 +1934,12 @@ export class PeopleService {
     }
 
     const journal: ChangementRattachement[] = [];
+    if (input.archived) {
+      const depart = await this.planifierLesDeparts(tx, user, retenus, input.repreneurs);
+      skipped.push(...depart.refus);
+      retenus = depart.retenus;
+      for (const plan of depart.plans) await appliquerReprise(tx, journal, plan);
+    }
     if (retenus.length === 0) return { done: 0, skipped, changements: journal, aRevoir: [] };
 
     const ids = retenus.map((c) => c.id);
@@ -1941,14 +1963,15 @@ export class PeopleService {
         updatedAt: new Date(),
       })
       .where(inArray(t.employees.id, ids));
+    // Réactivé sans n+1, il relève d'office du responsable de sa direction.
     const invitations: NonNullable<EmployeeBatchResult['invitations']> = [];
     if (!input.archived) {
       // Il reprend ce que la RH a choisi, parmi ce que son départ a défait.
       for (const c of retenus) {
         const laisse = laisses.get(c.id);
         if (!laisse) continue;
-        const choix = input.reprendre?.[c.id] ?? { unites: [] };
-        const [refusee] = await retrouverSaPlace(tx, c.id, laisse, choix);
+        const choix = input.reprendre?.[c.id] ?? { unites: [], equipe: false };
+        const [refusee] = await retrouverSaPlace(tx, journal, c.id, laisse, choix);
         if (refusee) {
           problem(
             422,
@@ -1958,6 +1981,7 @@ export class PeopleService {
           );
         }
       }
+      for (const c of retenus) await rattacherDOffice(tx, journal, c.id);
       // Parti plus de trente jours, il revient sans mot de passe : son
       // invitation part d'elle-même.
       for (const c of retenus) {
@@ -1987,11 +2011,10 @@ export class PeopleService {
         .returning({ id: t.absenceRequests.id });
       for (const d of annulees) await reconcilierDemande(tx, d.id);
     }
-    // Les agents qui relevaient d'une personne partie relèvent du premier
-    // niveau occupé au-dessus ; un dossier rouvert reprend le N+1 de
-    // l'organigramme (ADR-0147).
-    fusionnerAuJournal(journal, await recalculerLaChaine(tx, user.tenantId));
-    await this.faireSuivre(tx, user.tenantId);
+    await this.faireSuivre(tx, user.tenantId, journal);
+    // Un dossier rouvert revient avec le n+1 et l'affectation qu'il avait :
+    // l'un ou l'autre a pu changer depuis. Ce qu'il faut revoir se dit
+    // tout de suite, plutôt que d'attendre le prochain contrôle.
     return {
       done: retenus.length,
       skipped,
@@ -2034,8 +2057,67 @@ export class PeopleService {
    * vont à qui les attend désormais, et le directeur du Capital Humain
    * apprend que son délégué n'est plus là.
    */
-  private async faireSuivre(tx: Tx, tenantId: string): Promise<void> {
+  private async faireSuivre(
+    tx: Tx,
+    tenantId: string,
+    _journal: ChangementRattachement[] = [],
+  ): Promise<void> {
     await reconcilierLeCircuit(tx, tenantId);
+  }
+
+  /**
+   * Qui part avec une équipe la confie : les reprises d'un LOT, vérifiées
+   * ensemble avant que rien ne s'écrive.
+   *
+   * Les agents qui partent dans le même lot ne comptent pas — on ne confie
+   * pas une équipe qui s'en va aussi, ni à quelqu'un qui s'en va. Mais un
+   * départ refusé change la donne pour les autres : l'agent qui reste
+   * redevient un membre d'équipe à confier, un repreneur possible, un n+1 à
+   * la place duquel on peut se mettre. On recommence donc jusqu'à ce que
+   * plus rien ne bouge — le lot ne fait que rétrécir, le calcul s'arrête.
+   */
+  private async planifierLesDeparts<C extends { id: string; nom: string }>(
+    tx: Tx,
+    user: SessionUser,
+    candidats: C[],
+    repreneurs: Record<string, string> | undefined,
+  ): Promise<{ retenus: C[]; plans: PlanDeReprise[]; refus: EmployeeBatchResult['skipped'] }> {
+    let retenus = candidats;
+    const refus: EmployeeBatchResult['skipped'] = [];
+    for (;;) {
+      const partants = new Set(retenus.map((c) => c.id));
+      const plans: PlanDeReprise[] = [];
+      const tour: EmployeeBatchResult['skipped'] = [];
+      for (const c of retenus) {
+        const equipe = (await equipeDe(tx, c.id)).filter((a) => !partants.has(a.id));
+        if (equipe.length === 0) continue;
+        const repreneur = repreneurs?.[c.id];
+        const effectif = equipe.length > 1 ? `${equipe.length} agents` : 'un agent';
+        if (!repreneur) {
+          tour.push({
+            id: c.id,
+            name: c.nom,
+            reason: `Encadre ${effectif} : choisissez qui reprend son équipe`,
+          });
+          continue;
+        }
+        try {
+          await pasResponsableDeSoi(tx, user.userId, repreneur, await directionDeEmploye(tx, c.id));
+          plans.push(await planifierReprise(tx, c.id, repreneur, equipe, partants));
+        } catch (err) {
+          if (!(err instanceof ProblemException)) throw err;
+          tour.push({
+            id: c.id,
+            name: c.nom,
+            reason: [err.problem.title, err.problem.detail].filter(Boolean).join('. '),
+          });
+        }
+      }
+      if (tour.length === 0) return { retenus, plans, refus };
+      refus.push(...tour);
+      const refuses = new Set(tour.map((r) => r.id));
+      retenus = retenus.filter((c) => !refuses.has(c.id));
+    }
   }
 
   /**
@@ -2068,13 +2150,16 @@ export class PeopleService {
       }
 
       const journal: ChangementRattachement[] = [];
-      for (const c of candidats) await this.effacer(tx, user, c);
-      // Qui relevait d'un dossier effacé relève de nouveau de ce que donne
-      // l'organigramme (ADR-0147).
-      fusionnerAuJournal(journal, await recalculerLaChaine(tx, user.tenantId));
-      await this.faireSuivre(tx, user.tenantId);
+      const depart = await this.planifierLesDeparts(tx, user, candidats, input.repreneurs);
+      skipped.push(...depart.refus);
+      for (const plan of depart.plans) await appliquerReprise(tx, journal, plan);
+      const detaches: string[] = [];
+      for (const c of depart.retenus) detaches.push(...(await this.effacer(tx, user, c)));
+      // Qui s'est retrouvé sans n+1 relève d'office du responsable de sa direction.
+      for (const id of detaches) await rattacherDOffice(tx, journal, id);
+      await this.faireSuivre(tx, user.tenantId, journal);
       return {
-        done: candidats.length,
+        done: depart.retenus.length,
         skipped,
         changements: journal,
         aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),

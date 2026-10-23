@@ -154,12 +154,6 @@ export const SUJETS = {
     icone: 'work_history',
     pour: (p) => peut(p, 'personnel.gerer'),
   },
-  'dch.rattachements': {
-    groupe: 'gestion',
-    libelle: 'N+1 à revoir',
-    icone: 'account_tree',
-    pour: (p) => peut(p, 'personnel.gerer'),
-  },
   'dch.delegations': {
     groupe: 'gestion',
     libelle: 'Délégations de la DCH',

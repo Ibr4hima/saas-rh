@@ -1,11 +1,32 @@
 import { sql, type SQL } from 'drizzle-orm';
-import type { ContractType, RepriseDesResponsabilites } from '@teranga/contracts';
+import type {
+  ChangementRattachement,
+  ContractType,
+  MotifChangement,
+  RepriseDesResponsabilites,
+} from '@teranga/contracts';
 import { ProblemException } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
 import { administrateursEnFonction, alerterLaDCH } from '../acces/dch';
 import { CONTRAT } from '../notifications/phrases';
 import { reconcilierDemande, reconcilierLeCircuit, reconcilierReprise } from '../time/visas';
-import { sortDuPerimetre, verrouillerLaChaine } from './chaine';
+import {
+  alignerLesChefs,
+  apresNouveauDG,
+  apresNouveauDirecteur,
+  directionDeEmploye,
+  directionDeLUnite,
+  equipeDe,
+  n1DOffice,
+  placesDesChefs,
+  type PlaceDeChef,
+  rattacher,
+  rattacherDOffice,
+  SOMMET,
+  sortDuPerimetre,
+  validerRattachement,
+  verrouillerLaChaine,
+} from './chaine';
 import {
   debutDuContratAVenir,
   dernierContrat,
@@ -14,7 +35,6 @@ import {
   sousContrat,
 } from './en-activite';
 import { muter } from './mutation';
-import { recalculerLaChaine } from './recalcul-de-la-chaine';
 import { parLeSysteme } from '../../db/systeme';
 import { expediteurEnService } from '../courriels/expediteur';
 import { preparerInvitation } from '../portal/invitation';
@@ -190,8 +210,7 @@ export async function reprendreLActivite(
 
 /**
  * Ce qu'un départ à la fin du contrat a défait : les unités qu'il
- * dirigeait. (`equipe` : ce que notaient les départs d'avant l'ADR-0147 ;
- * l'équipe suit désormais la tête de l'unité.)
+ * dirigeait, et où chacun de son équipe est allé.
  */
 export type CeQuIlALaisse = {
   unites: string[];
@@ -199,28 +218,40 @@ export type CeQuIlALaisse = {
 };
 
 /**
- * Au retour, l'agent reprend ce que la RH a choisi, parmi ce que son départ
- * a défait : la tête des unités choisies, si elles sont restées sans
- * responsable, que l'agent travaille dans leur périmètre et ne revienne pas
- * en stage. Leur équipe suit : la chaîne se recalcule ensuite, chez
- * l'appelant (ADR-0147). À appeler une fois le dossier redevenu actif. Rend
- * les unités choisies que l'agent n'a pas pu reprendre.
+ * Revenu, il reprend ce que la RH a choisi, parmi ce que son départ a
+ * défait : la tête des unités choisies, si elles sont restées sans
+ * responsable, qu'il travaille dans leur périmètre (avec ce que la règle
+ * impose à un directeur ou au DG) et qu'il ne revient pas en stage ; avec elles, son équipe, pour ceux qui
+ * sont encore là où son départ les avait mis. Sans unité à diriger, son
+ * équipe ne revient que si la RH l'a choisi. Chef d'un département ou d'un
+ * service, il relève de l'unité au-dessus de la sienne, et les chefs des
+ * unités qu'elle coiffe relèvent de lui (règle 3 bis). À appeler une fois le
+ * dossier redevenu actif. Rend les unités choisies qu'il n'a pas pu reprendre.
  */
 export async function retrouverSaPlace(
   tx: Tx,
+  journal: ChangementRattachement[],
   employeeId: string,
   laisse: CeQuIlALaisse,
   choix: RepriseDesResponsabilites,
 ): Promise<{ id: string; nom: string }[]> {
   const refusees: { id: string; nom: string }[] = [];
+  let rendues = 0;
   // Les stagiaires ne dirigent pas d'unité.
   const { rows: contrat } = await tx.execute<{ stage: boolean }>(
     sql`SELECT ${enStage(employeeId)} AS stage`,
   );
   const stagiaire = Boolean(contrat[0]?.stage);
+  let chefsAvant: Map<string, PlaceDeChef> | null = null;
   for (const uniteId of laisse.unites.filter((u) => choix.unites.includes(u))) {
-    const { rows } = await tx.execute<{ nom: string; libre: boolean }>(sql`
-      SELECT name AS nom, manager_employee_id IS NULL AS libre
+    const { rows } = await tx.execute<{
+      nom: string;
+      libre: boolean;
+      direction: boolean;
+      sommet: boolean;
+    }>(sql`
+      SELECT name AS nom, manager_employee_id IS NULL AS libre,
+             unit_type = 'direction' AS direction, id = ${SOMMET} AS sommet
         FROM org_units WHERE id = ${uniteId} AND deleted_at IS NULL`);
     const u = rows[0];
     if (!u) continue;
@@ -228,21 +259,43 @@ export async function retrouverSaPlace(
       refusees.push({ id: uniteId, nom: u.nom });
       continue;
     }
+    chefsAvant ??= await placesDesChefs(tx);
     await tx.execute(sql`
       UPDATE org_units SET manager_employee_id = ${employeeId}, updated_at = now()
        WHERE id = ${uniteId}`);
+    rendues += 1;
+    if (u.sommet) await apresNouveauDG(tx, journal, null, employeeId);
+    else if (u.direction) await apresNouveauDirecteur(tx, journal, uniteId, null, employeeId);
   }
+  const equipe = laisse.unites.length > 0 ? rendues > 0 : choix.equipe;
+  if (!equipe) return refusees;
+  for (const m of laisse.equipe) {
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      SELECT id FROM employees
+       WHERE id = ${m.id} AND status = 'active' AND manager_employee_id = ${m.n1}`);
+    if (rows.length === 0) continue;
+    try {
+      await validerRattachement(tx, m.id, employeeId, await directionDeEmploye(tx, m.id));
+    } catch (err) {
+      if (err instanceof ProblemException) continue;
+      throw err;
+    }
+    await rattacher(tx, journal, m.id, employeeId, 'retour_du_responsable');
+  }
+  if (chefsAvant) await alignerLesChefs(tx, journal, chefsAvant);
   return refusees;
 }
 
 /**
  * Les contrats arrivés à terme : leurs agents passent dans les inactifs.
  *
- * Ce qu'un départ ordonné demanderait à la DCH, un successeur à la tête de
- * l'unité, la date ne l'attend pas :
- *   - une unité dirigée par l'agent reste sans tête : ses agents relèvent du
- *     premier niveau occupé au-dessus, et la chaîne se recalcule
- *     (ADR-0147) ;
+ * Ce qu'un départ ordonné demanderait à la DCH — un successeur à la tête de
+ * l'unité, un repreneur pour l'équipe —, la date ne l'attend pas :
+ *   - une unité qu'il dirigeait reste sans responsable (le contrôle de la
+ *     chaîne la signale) ;
+ *   - son équipe remonte d'un cran, à son propre n+1, si la règle le
+ *     permet ; sinon au responsable de sa direction ; sinon elle attend
+ *     un n+1 ;
  *   - ses demandes de congé en attente sont annulées ; son portail reste
  *     ouvert trente jours, restreint, puis se ferme.
  * Les comptes partis depuis plus de trente jours perdent leur mot de passe.
@@ -276,13 +329,14 @@ async function appliquerLesContratsQuiCommencent(tx: Tx, tenantId: string): Prom
     poste: string;
     unite: string | null;
     reprendUnites: string[];
+    reprendEquipe: boolean;
     status: string;
     finActivite: string | null;
   }>(sql`
     SELECT c.id AS contrat, c.employee_id AS id, c.start_date::text AS debut,
            COALESCE(c.end_date < CURRENT_DATE, false) AS fini,
            c.planned_position_title AS poste, c.planned_org_unit_id AS unite,
-           c.resume_unit_ids AS "reprendUnites",
+           c.resume_unit_ids AS "reprendUnites", c.resume_team AS "reprendEquipe",
            e.status, e.fin_activite::text AS "finActivite"
       FROM contracts c JOIN employees e ON e.id = c.employee_id
      WHERE c.planned_position_title IS NOT NULL AND c.start_date <= CURRENT_DATE
@@ -290,6 +344,7 @@ async function appliquerLesContratsQuiCommencent(tx: Tx, tenantId: string): Prom
   if (rows.length === 0) return;
   await verrouillerLaChaine(tx);
   const expediteur = expediteurEnService();
+  const journal: ChangementRattachement[] = [];
   for (const c of rows) {
     await tx.execute(sql`
       UPDATE contracts SET planned_position_title = NULL, planned_org_unit_id = NULL
@@ -316,13 +371,26 @@ async function appliquerLesContratsQuiCommencent(tx: Tx, tenantId: string): Prom
 
     // Parti avant que ce contrat commence : il revient.
     if (!c.finActivite || c.finActivite >= c.debut) continue;
+    const { rows: avant } = await tx.execute<{ autre: boolean }>(sql`
+      SELECT ${directionDeLUnite(sql`a.org_unit_id`, 'id')}
+               IS DISTINCT FROM ${directionDeLUnite(sql`${place.orgUnitId}::uuid`, 'id')} AS autre
+        FROM assignments a WHERE a.employee_id = ${c.id}
+       ORDER BY lower(a.validity) DESC LIMIT 1`);
+    // Une autre direction : son ancien n+1 n'en est plus.
+    if (avant[0]?.autre) {
+      await tx.execute(sql`UPDATE employees SET manager_employee_id = NULL WHERE id = ${c.id}`);
+    }
     const laisse = await reprendreLActivite(tx, tenantId, c.id, c.debut, place);
     await tx.execute(sql`
       UPDATE employees
          SET status = 'active', archived_at = NULL, inactivite_motif = NULL, updated_at = now()
        WHERE id = ${c.id}`);
     // Ce que la RH a choisi qu'il reprenne, à l'enregistrement du contrat.
-    await retrouverSaPlace(tx, c.id, laisse, { unites: c.reprendUnites });
+    await retrouverSaPlace(tx, journal, c.id, laisse, {
+      unites: c.reprendUnites,
+      equipe: c.reprendEquipe,
+    });
+    await rattacherDOffice(tx, journal, c.id);
     const { rows: compte } = await tx.execute<{ ferme: boolean }>(sql`
       SELECT u.password_hash IS NULL AS ferme
         FROM employees e JOIN persons p ON p.id = e.person_id JOIN users u ON u.id = p.user_id
@@ -338,7 +406,6 @@ async function appliquerLesContratsQuiCommencent(tx: Tx, tenantId: string): Prom
       }
     }
   }
-  await recalculerLaChaine(tx, tenantId);
   await reconcilierLeCircuit(tx, tenantId);
 }
 
@@ -350,11 +417,13 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
     type: string;
     fin: string;
     reprise: string | null;
+    n1: string | null;
     admin: string | null;
   }>(sql`
     SELECT e.id, p.given_name || ' ' || p.family_name AS nom, c.id AS contrat,
            c.contract_type AS type, c.end_date::text AS fin,
            (${debutDuContratAVenir(sql`e.id`)})::text AS reprise,
+           e.manager_employee_id AS n1,
            (SELECT m.user_id FROM user_tenant_memberships m
              WHERE m.user_id = p.user_id AND m.tenant_id = e.tenant_id AND m.role = 'admin') AS admin
       FROM employees e
@@ -368,6 +437,8 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
   await verrouillerLaChaine(tx);
 
   for (const a of rows) {
+    const equipe = await equipeDe(tx, a.id);
+
     // Le lendemain de son dernier jour : c'est de là qu'il est inactif.
     await tx.execute(sql`
       UPDATE employees
@@ -380,11 +451,33 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
        WHERE manager_employee_id = ${a.id} AND deleted_at IS NULL
       RETURNING id`);
 
+    // L'équipe remonte d'un cran — rattachement par rattachement, sous la
+    // règle —, ou passe au responsable de sa direction.
+    const journal: ChangementRattachement[] = [];
+    const parties: CeQuIlALaisse['equipe'] = [];
+    for (const m of equipe) {
+      const candidats: [string | null, MotifChangement][] = [
+        [a.n1, 'reprise_equipe'],
+        [(await n1DOffice(tx, m.id))?.id ?? null, 'responsable_de_sa_direction'],
+      ];
+      for (const [cible, motif] of candidats) {
+        if (!cible || cible === a.id) continue;
+        try {
+          await validerRattachement(tx, m.id, cible, await directionDeEmploye(tx, m.id));
+          await rattacher(tx, journal, m.id, cible, motif);
+          parties.push({ id: m.id, n1: cible });
+          break;
+        } catch (err) {
+          if (!(err instanceof ProblemException)) throw err;
+        }
+      }
+    }
+
     // S'il revient, il retrouvera ce que personne n'aura refait (cf. `retrouverSaPlace`).
     await tx.execute(sql`
       UPDATE periodes_inactivite
          SET headed_unit_ids = ${`{${quittees.map((u) => u.id).join(',')}}`}::uuid[],
-             team_reassignments = '[]'::jsonb
+             team_reassignments = ${JSON.stringify(parties)}::jsonb
        WHERE employee_id = ${a.id} AND reprise_le IS NULL`);
 
     const { rows: annulees } = await tx.execute<{ id: string }>(sql`
@@ -427,7 +520,6 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
       );
     }
   }
-  await recalculerLaChaine(tx, tenantId);
   await reconcilierLeCircuit(tx, tenantId);
   return rows.length;
 }

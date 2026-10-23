@@ -10,7 +10,8 @@ import {
 } from '@teranga/contracts';
 import { cn, Field, Input, Select } from '@teranga/ui';
 import { de } from '../lib/mots';
-import { ChoixUnite } from './choix-unite';
+import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/responsables';
+import { ChoixUnite, directionDe } from './choix-unite';
 
 /*
    Ce que devient celui qui quitte la tête d'une unité (ADR-0038) : il reste
@@ -29,6 +30,8 @@ export interface Devenir {
   uniteId: string;
   /** Le poste de celui qu'il remplace à la tête de cette autre unité. */
   posteDuRemplace: string;
+  /** Son n+1 choisi, quand il change de direction ; vide : celui d'office. */
+  n1: string;
   motif: MotifInactivite | '';
   /** Son dernier jour, s'il part. */
   le: string;
@@ -39,6 +42,7 @@ export const DEVENIR_INITIAL: Devenir = {
   poste: '',
   uniteId: '',
   posteDuRemplace: '',
+  n1: '',
   motif: '',
   le: '',
 };
@@ -70,6 +74,12 @@ interface Contexte {
 /** Le choix lu sur l'organigramme, et ce qu'il envoie ; `corps` nul tant qu'il manque quelque chose. */
 export function lireLeDevenir(d: Devenir, { quittee, unites, ancienId, depuis, min }: Contexte) {
   const cible = unites.find((u) => u.id === d.uniteId) ?? null;
+  const directionCible = directionDe(unites, d.uniteId);
+  const changeDeDirection =
+    d.choix === 'ailleurs' &&
+    Boolean(directionCible) &&
+    directionCible?.id !== directionDe(unites, quittee.id)?.id;
+  const n1 = changeDeDirection ? d.n1 || n1DOffice(unites, d.uniteId) || '' : '';
   const remplace =
     d.choix === 'tete' &&
     cible &&
@@ -82,8 +92,13 @@ export function lireLeDevenir(d: Devenir, { quittee, unites, ancienId, depuis, m
   let corps: CorpsDuDevenir | null = null;
   if (d.choix === 'reste' && d.poste.trim()) {
     corps = { choix: 'affectation', orgUnitId: quittee.id, positionTitle: d.poste.trim() };
-  } else if (d.choix === 'ailleurs' && cible && d.poste.trim()) {
-    corps = { choix: 'affectation', orgUnitId: cible.id, positionTitle: d.poste.trim() };
+  } else if (d.choix === 'ailleurs' && cible && d.poste.trim() && (!changeDeDirection || n1)) {
+    corps = {
+      choix: 'affectation',
+      orgUnitId: cible.id,
+      positionTitle: d.poste.trim(),
+      ...(changeDeDirection ? { managerEmployeeId: n1 } : {}),
+    };
   } else if (
     d.choix === 'tete' &&
     cible &&
@@ -99,7 +114,7 @@ export function lireLeDevenir(d: Devenir, { quittee, unites, ancienId, depuis, m
   } else if (d.choix === 'depart' && d.motif && d.le && d.le <= depuis && (!min || d.le >= min)) {
     corps = { choix: 'depart', motif: d.motif, le: d.le };
   }
-  return { cible, remplace, corps };
+  return { cible, directionCible, changeDeDirection, n1, remplace, corps };
 }
 
 export function DevenirDeLAncien({
@@ -117,6 +132,14 @@ export function DevenirDeLAncien({
   const { quittee, unites, depuis, min } = contexte;
   const lu = lireLeDevenir(valeur, { ...contexte, ancienId: ancien.id });
   const set = (p: Partial<Devenir>) => onChange({ ...valeur, ...p });
+  const { options: n1Possibles } = useResponsablesPossibles(
+    lu.changeDeDirection && lu.directionCible
+      ? (lu.directionCible.shortName ?? lu.directionCible.name)
+      : null,
+    ancien.id,
+    false,
+    lu.changeDeDirection,
+  );
   // Parti, son dernier jour est par défaut la veille de la passation.
   const dernierJour = min && veille(depuis) < min ? min : veille(depuis);
   const choix: { v: ChoixDuDevenir; label: string }[] = [
@@ -180,7 +203,7 @@ export function DevenirDeLAncien({
           <ChoixUnite
             unites={unites}
             value={valeur.uniteId}
-            onChange={(id) => set({ uniteId: id, posteDuRemplace: '' })}
+            onChange={(id) => set({ uniteId: id, posteDuRemplace: '', n1: '' })}
             idPrefix={`${idPrefix}-unite`}
             requis
           />
@@ -197,6 +220,22 @@ export function DevenirDeLAncien({
               onChange={(ev) => set({ poste: ev.target.value })}
             />
           </Field>
+          {lu.changeDeDirection ? (
+            <Field label="Nouveau manager" htmlFor={`${idPrefix}-n1`} required>
+              <Select
+                id={`${idPrefix}-n1`}
+                value={lu.n1}
+                onChange={(ev) => set({ n1: ev.target.value })}
+              >
+                {lu.n1 ? null : <option value="">Choisir</option>}
+                {n1Possibles.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {libelleResponsable(m)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
         </div>
       ) : null}
 

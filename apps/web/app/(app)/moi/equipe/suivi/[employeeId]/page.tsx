@@ -174,7 +174,7 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
               <span className="relative flex">
                 <Icon name="rate_review" size={16} />
                 {/* Des commentaires attendent l'évaluation. */}
-                {m.aEvaluer > 0 && !m.lectureSeule ? (
+                {m.aEvaluer > 0 ? (
                   <span
                     aria-hidden
                     className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-accent ring-2 ring-surface"
@@ -229,7 +229,6 @@ export default function FicheSuiviPage({ params }: { params: Promise<{ employeeI
         employeeId={employeeId}
         prenom={m.givenName}
         parti={m.parti}
-        lecture={m.lectureSeule}
         vue={vue}
         annee={annee}
         enCours={enCours}
@@ -273,7 +272,6 @@ function FichesDuMembre({
   employeeId,
   prenom,
   parti,
-  lecture,
   vue,
   annee,
   enCours,
@@ -289,11 +287,6 @@ function FichesDuMembre({
   prenom: string;
   /** Parti : ses objectifs ne se fixent plus, son évaluation se termine. */
   parti: boolean;
-  /**
-   * Vu par son N+1 hiérarchique, un autre agent étant son N+1 fonctionnel
-   * (ADR-0147) : tout se lit, rien ne se fixe ni ne s'évalue.
-   */
-  lecture: boolean;
   vue: Vue;
   /** L'année à l'écran. */
   annee: number;
@@ -352,7 +345,6 @@ function FichesDuMembre({
   // pas rendu compte.
   const fixable =
     !parti &&
-    !lecture &&
     annee >= enCours &&
     dateDEvaluation(annee, jourEvaluation) >= aujourdhui() &&
     !fiche?.evaluation.envoyesLe;
@@ -390,7 +382,6 @@ function FichesDuMembre({
               prenom={prenom}
               fiche={fiche}
               reportable={!parti}
-              lecture={lecture}
             />
           </FicheAnnuelle>
         ) : null}
@@ -416,7 +407,7 @@ function FichesDuMembre({
             annee={annee}
             fiche={fiche}
             // L'agent a envoyé son auto-évaluation : ses objectifs ne changent plus.
-            verrouillee={parti || lecture || Boolean(fiche?.evaluation.envoyesLe)}
+            verrouillee={parti || Boolean(fiche?.evaluation.envoyesLe)}
             // Envoyée, la fiche garde l'état de ses formations à ce jour-là.
             formations={fiche?.formations ?? formations}
             catalogue={catalogue}

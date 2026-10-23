@@ -11,7 +11,6 @@ import { TenantDb, type Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prevenirDeLOuverture } from '../objectifs/evaluation-attendue';
 import { inactiverLesContratsEchus } from '../people/activite';
-import { recalculerLaChaine } from '../people/recalcul-de-la-chaine';
 import { reconcilierLeCircuit } from '../time/visas';
 
 /** Une minute entre la fin d'un tour et le début du suivant. */
@@ -92,15 +91,10 @@ export class Veille implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Dans cet ordre : un dossier rangé n'a plus d'échéance ni de demande à
-   * suivre ; la chaîne suit les affectations et les stages qui commencent
-   * (ADR-0147), avant que le circuit ne s'y aligne.
-   */
+  /** Dans cet ordre : un dossier rangé n'a plus d'échéance ni de demande à suivre. */
   private etapes(tenantId: string): Array<[string, (tx: Tx) => Promise<unknown>]> {
     return [
       ['contrats', (tx) => inactiverLesContratsEchus(tx, tenantId)],
-      ['chaîne', (tx) => recalculerLaChaine(tx, tenantId)],
       ['échéances', (tx) => this.notifications.genererLesEcheances(tx, tenantId)],
       ['circuit', (tx) => reconcilierLeCircuit(tx, tenantId)],
       ['auto-évaluation', (tx) => prevenirDeLOuverture(tx, tenantId)],

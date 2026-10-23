@@ -452,11 +452,6 @@ export interface MembreSuivi {
   aEvaluer: number;
   /** Parti de l'APIX : il reste là le temps que son n+1 termine son évaluation. */
   parti: boolean;
-  /**
-   * Vu par son N+1 hiérarchique quand un autre agent est son N+1 fonctionnel
-   * (ADR-0147) : la fiche se lit, sans rien y faire.
-   */
-  lectureSeule: boolean;
 }
 
 export interface SuiviEquipe {

@@ -5,8 +5,9 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import type {
   EmployeeDetail,
+  EmployeeListItem,
+  EmployeeListPage,
   OrgUnitView,
-  RattachementChoisi,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
 import { peut } from '@teranga/contracts';
@@ -17,8 +18,9 @@ import { useMe } from '../lib/hooks';
 import { maritalLabels, maxBirthDate } from '../lib/person';
 import {
   libelleResponsable,
-  rattachementsPossibles,
-  useN1FonctionnelsPossibles,
+  n1DOffice,
+  superieurImpose,
+  useResponsablesPossibles,
 } from '../lib/responsables';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
@@ -85,10 +87,7 @@ interface FormValues {
   workEmail: string;
   workPhone: string;
   status: string;
-  /** `''` : identique au N+1 hiérarchique. */
-  n1FonctionnelId: string;
-  /** À la Direction Générale : `''` le DG, `dga`, ou `unite:<id>`. */
-  rattachement: string;
+  managerEmployeeId: string;
 }
 
 const PERSON_KEYS = [
@@ -106,7 +105,14 @@ const PERSON_KEYS = [
   'phone',
   'addressLine',
 ] as const;
-const EMPLOYEE_KEYS = ['employeeNumber', 'hiredOn', 'workEmail', 'workPhone', 'status'] as const;
+const EMPLOYEE_KEYS = [
+  'employeeNumber',
+  'hiredOn',
+  'workEmail',
+  'workPhone',
+  'status',
+  'managerEmployeeId',
+] as const;
 const REQUIRED_KEYS = new Set(['givenName', 'familyName', 'employeeNumber', 'hiredOn', 'status']);
 
 function toDefaults(e: EmployeeDetail): FormValues {
@@ -129,20 +135,9 @@ function toDefaults(e: EmployeeDetail): FormValues {
     workEmail: localWorkEmail(e.workEmail),
     workPhone: e.workPhone ?? '',
     status: e.status,
-    n1FonctionnelId: e.n1Fonctionnel?.id ?? '',
-    rattachement: valeurDuRattachement(e.rattachementChoisi),
+    // Vidé, le champ vaut « plus de manager » : c'est bien un effacement.
+    managerEmployeeId: e.managerId ?? '',
   };
-}
-
-function valeurDuRattachement(r: RattachementChoisi | null): string {
-  if (!r) return '';
-  return r.type === 'dga' ? 'dga' : `unite:${r.uniteId}`;
-}
-
-function versRattachement(valeur: string): RattachementChoisi | null {
-  if (valeur === 'dga') return { type: 'dga' };
-  if (valeur.startsWith('unite:')) return { type: 'unite', uniteId: valeur.slice(6) };
-  return null;
 }
 
 /**
@@ -193,38 +188,53 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
   const voitSensible = peut(useMe().data, 'personnel.sensible');
   const [serverError, setServerError] = useState<string | null>(null);
 
-  // Les deux N+1 (ADR-0147). Le hiérarchique se lit : l'organigramme le
-  // donne. Ce N+1 ne se choisit qu'à la Direction Générale, pour qui y est
-  // rattaché directement. Le fonctionnel se choisit ; le DG n'en a pas.
+  // C'est dans cette fenêtre qu'on corrige les dossiers signalés par le
+  // bandeau de la chaîne hiérarchique : elle doit guider, pas piéger.
+  // L'affectation qui fait foi — en cours, sinon la prochaine —, comme au
+  // serveur : un agent qui n'a pas encore pris son poste est déjà de sa
+  // direction, et son n+1 s'y choisit.
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const affectation =
+    employee.assignments.find((a) => a.current) ??
+    [...employee.assignments]
+      .filter((a) => a.validFrom > aujourdhui)
+      .sort((a, b) => a.validFrom.localeCompare(b.validFrom))[0];
+  const direction = affectation?.directionName ?? null;
+  // D'abord l'affectation, ensuite la hiérarchie : sans direction, le n+1 ne
+  // se choisit pas — et le directeur général n'en a jamais. Dans ces deux
+  // cas, le champ ne garde que le n+1 actuel, pour qu'on puisse le RETIRER :
+  // c'est ainsi qu'on corrige un dossier signalé. Un directeur, lui, ne
+  // relève que du directeur général : c'est le seul choix proposé.
   const unites = useQuery({
     queryKey: ['org-units'],
     queryFn: () => api<OrgUnitView[]>('/org-units'),
   });
   const estDG = (unites.data ?? []).some((u) => u.sommet && u.managerEmployeeId === employee.id);
-  const { options: fonctionnels } = useN1FonctionnelsPossibles(employee.id, !estDG);
-  const fonctionnel = employee.n1Fonctionnel;
-  const n1Fonctionnels =
-    fonctionnel && !fonctionnels.some((m) => m.id === fonctionnel.id)
-      ? [...fonctionnels, fonctionnel]
-      : fonctionnels;
-  const rattachements = rattachementsPossibles(unites.data ?? [], employee.id);
-  // La place choisie, vacante aujourd'hui, reste choisie : elle reste donc
-  // dans la liste.
-  const choisi = valeurDuRattachement(employee.rattachementChoisi);
-  if (choisi && !rattachements.some((r) => r.valeur === choisi)) {
-    rattachements.push({
-      valeur: choisi,
-      libelle:
-        choisi === 'dga' ? 'DGA' : (employee.rattachementChoisi?.uniteNom ?? 'Unité choisie'),
-    });
-  }
-  const hierarchique = employee.managerName
-    ? libelleResponsable({
-        id: employee.managerId ?? '',
-        nom: employee.managerName,
-        matricule: employee.managerNumber,
-      })
-    : 'Aucun';
+  const estDirecteur = (unites.data ?? []).some(
+    (u) => u.unitType === 'direction' && !u.sommet && u.managerEmployeeId === employee.id,
+  );
+  const { options: possibles } = useResponsablesPossibles(
+    affectation?.directionShortName ?? affectation?.directionName ?? null,
+    employee.id,
+    estDirecteur,
+  );
+  const peutChoisir = Boolean(direction) && !estDG;
+  // Le chef d'un département ou d'un service relève de l'unité au-dessus de
+  // la sienne : c'est le seul choix proposé.
+  const impose = superieurImpose(unites.data ?? [], employee.id);
+  // Dans une direction pourvue, personne n'est sans n+1 : vidé, le champ
+  // reviendrait d'office au directeur. On ne propose donc pas de le vider.
+  const dOffice = n1DOffice(unites.data ?? [], affectation?.orgUnitId, employee.id);
+  const actuel =
+    employee.managerId && employee.managerName
+      ? { id: employee.managerId, nom: employee.managerName, matricule: employee.managerNumber }
+      : null;
+  const choix = impose ? [impose] : possibles;
+  const managers = peutChoisir
+    ? [...choix, ...(actuel && !choix.some((m) => m.id === actuel.id) ? [actuel] : [])]
+    : actuel
+      ? [actuel]
+      : [];
 
   const form = useForm<FormValues>({ defaultValues: toDefaults(employee) });
   const errors = form.formState.errors;
@@ -248,12 +258,9 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
       }
       return Object.keys(out).length > 0 ? out : undefined;
     };
-    const emploi = { ...pick(EMPLOYEE_KEYS) } as NonNullable<UpdateEmployeeInput['employee']>;
-    if (dirty.rattachement) emploi.rattachementChoisi = versRattachement(v.rattachement);
-    if (dirty.n1FonctionnelId) emploi.n1FonctionnelId = v.n1FonctionnelId || null;
     const body: UpdateEmployeeInput = {
       person: pick(PERSON_KEYS) as UpdateEmployeeInput['person'],
-      employee: Object.keys(emploi).length > 0 ? emploi : undefined,
+      employee: pick(EMPLOYEE_KEYS) as UpdateEmployeeInput['employee'],
     };
     // Rien de modifié : refermer suffit, inutile d'aller déranger le serveur.
     if (!body.person && !body.employee) {
@@ -419,6 +426,32 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               })}
             />
           </Field>
+          <Field
+            label="Manager"
+            htmlFor="managerEmployeeId"
+            hint={
+              estDG
+                ? 'Le directeur général ne relève de personne.'
+                : estDirecteur
+                  ? 'Qui dirige une direction relève du directeur général.'
+                  : impose
+                    ? 'Le responsable d’une unité relève de l’unité au-dessus de la sienne.'
+                    : direction
+                      ? `Les agents de ${direction}, et le directeur général.`
+                      : 'Affectez d’abord l’agent à une direction.'
+            }
+          >
+            <Select id="managerEmployeeId" {...form.register('managerEmployeeId')}>
+              {peutChoisir && dOffice ? null : (
+                <option value="">{peutChoisir ? 'À désigner plus tard' : 'Aucun'}</option>
+              )}
+              {managers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {libelleResponsable(m)}
+                </option>
+              ))}
+            </Select>
+          </Field>
           {/* La date d'embauche, et elle seule : le début d'un contrat se
               corrige sur le contrat, dans le bloc Contrats de la fiche. */}
           <Field label="Date d’embauche" htmlFor="hiredOn" error={errors.hiredOn?.message} required>
@@ -428,36 +461,6 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               {...form.register('hiredOn', { required: 'La date d’embauche est requise' })}
             />
           </Field>
-          <Field label="N+1 hiérarchique" htmlFor="rattachement">
-            {employee.rattachementAuChoix ? (
-              <Select id="rattachement" {...form.register('rattachement')}>
-                {rattachements.map((r) => (
-                  <option key={r.valeur} value={r.valeur}>
-                    {r.libelle}
-                  </option>
-                ))}
-              </Select>
-            ) : (
-              <Input
-                id="rattachement"
-                className="cursor-default bg-bg text-ink-muted focus:border-line"
-                readOnly
-                value={hierarchique}
-              />
-            )}
-          </Field>
-          {estDG ? null : (
-            <Field label="N+1 fonctionnel" htmlFor="n1FonctionnelId">
-              <Select id="n1FonctionnelId" {...form.register('n1FonctionnelId')}>
-                <option value="">Identique au N+1 hiérarchique</option>
-                {n1Fonctionnels.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {libelleResponsable(m)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
           <Field label="Email professionnel" htmlFor="workEmail">
             <WorkEmailInput
               id="workEmail"

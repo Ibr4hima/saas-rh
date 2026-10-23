@@ -18,7 +18,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0010](0010-conventions-schema.md)                    | Conventions de schéma : UUIDv7 applicatif, timestamptz UTC, snake_case                  | acceptée                                    |
 | [0011](0011-signature-electronique-deux-etages.md)    | Signature électronique à deux étages (avancée maison V1, qualifiée V2)                  | acceptée                                    |
 | [0012](0012-arbitrages-direction-capital-humain.md)   | Arbitrages de la Direction du Capital Humain (APIX)                                     | acceptée, précisée par 0040, 0042, 0085     |
-| [0013](0013-coherence-organigramme.md)                | Règles de cohérence de l'organigramme                                                   | acceptée, précisée (0034, 0036, 0147)       |
+| [0013](0013-coherence-organigramme.md)                | Règles de cohérence de l'organigramme                                                   | acceptée, précisée par 0034 et 0036         |
 | [0014](0014-corrections-informations-personnelles.md) | Corrections des informations personnelles par l'employé                                 | acceptée, précisée par 0080                 |
 | [0015](0015-courriels-sortants.md)                    | Courriels sortants : file dédiée, Mailpit en développement, Microsoft 365 en production | acceptée                                    |
 | [0016](0016-compte-d-un-agent-parti.md)               | Compte d’un agent parti : mot de passe effacé après trente jours, retour par invitation | acceptée                                    |
@@ -39,10 +39,10 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0031](0031-accuse-de-reception.md)                   | L'accusé de réception d'une candidature, et des courriels sans réponse                  | acceptée                                    |
 | [0032](0032-absence-ponctuelle-a-l-heure.md)          | L'absence ponctuelle, à l'heure ou à la journée, plafonnée par demande                  | acceptée, précisée par 0135                 |
 | [0033](0033-fonction-de-responsable.md)               | La fonction de responsable s'écrit dans les affectations                                | acceptée, précisée (0038, 0064, 0126, 0127) |
-| [0034](0034-n-plus-un-des-chefs-d-unite.md)           | Le chef d'un département ou d'un service relève de l'unité au-dessus                    | acceptée, précisée (0035, 0147)             |
+| [0034](0034-n-plus-un-des-chefs-d-unite.md)           | Le chef d'un département ou d'un service relève de l'unité au-dessus                    | acceptée, relève précisée par 0035          |
 | [0035](0035-releve-d-un-chef-et-stagiaires.md)        | Relève d'un chef : l'équipe passe au nouveau ; aucun stagiaire n'est n+1                | acceptée, directeurs précisés par 0037      |
 | [0036](0036-responsable-choisi-dans-la-direction.md)  | Le responsable d'un département ou d'un service se choisit dans la direction            | acceptée                                    |
-| [0037](0037-directeur-remplace-son-equipe-passe.md)   | Directeur remplacé : son équipe passe au nouveau directeur                              | acceptée, précisée par 0147                 |
+| [0037](0037-directeur-remplace-son-equipe-passe.md)   | Directeur remplacé : son équipe passe au nouveau directeur                              | acceptée                                    |
 | [0038](0038-devenir-de-l-ancien-responsable.md)       | Responsable remplacé : il reste, change d'affectation, prend une autre tête ou part     | acceptée, précisée par 0126                 |
 | [0039](0039-bulletin-de-salaire-avec-ses-mois.md)     | Le bulletin de salaire se demande avec ses mois                                         | acceptée, bulletin retiré par 0084          |
 | [0040](0040-document-remis-en-ligne.md)               | Le document demandé peut se remettre en ligne                                           | acceptée, précisée par 0041, 0042           |
@@ -81,7 +81,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0073](0073-evaluation-minutee.md)                    | Academy : l'évaluation minutée, sa durée réglée par la gestion                          | acceptée                                    |
 | [0074](0074-notifications-sans-whatsapp.md)           | Notifications : la plateforme et le courriel, sans WhatsApp                             | acceptée                                    |
 | [0075](0075-objectifs-annuels.md)                     | Objectifs : une fiche et une évaluation par an, la date au 15 décembre                  | acceptée, précisée par 0076                 |
-| [0076](0076-evaluation-annuelle.md)                   | Évaluation annuelle : la coche de l'agent, l'atteinte de chaque objectif par le n+1     | acceptée, précisée (0077, 0079, 0147)       |
+| [0076](0076-evaluation-annuelle.md)                   | Évaluation annuelle : la coche de l'agent, l'atteinte de chaque objectif par le n+1     | acceptée, précisée par 0077 et 0079         |
 | [0077](0077-resultats-obtenus.md)                     | Le dossier montre les résultats obtenus : la case de chaque objectif, rien d'autre      | acceptée                                    |
 | [0078](0078-mes-objectifs-une-annee-a-la-fois.md)     | Mes objectifs : une année à la fois, comme chez le n+1                                  | acceptée                                    |
 | [0079](0079-auto-evaluation-sans-commentaire.md)      | Auto-évaluation : un statut par objectif, sans commentaire                              | acceptée                                    |
@@ -152,4 +152,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0144](0144-gris-accordes-au-fond.md)                 | Les gris des blocs, accordés au fond bleu-gris                                          | acceptée                                    |
 | [0145](0145-retour-au-fond-f3f6fa.md)                 | Le fond de l'application revient à #F3F6FA                                              | acceptée, précisée par 0146                 |
 | [0146](0146-entree-courante-bleu-pale.md)             | L'entrée courante du menu revient au bleu pâle de la charte                             | acceptée                                    |
-| [0147](0147-deux-n-plus-un.md)                        | Deux N+1 : le hiérarchique suit l'organigramme, le fonctionnel se choisit               | acceptée                                    |
+| [0147](0147-deux-n-plus-un.md)                        | Deux N+1 : le hiérarchique suit l'organigramme, le fonctionnel se choisit               | remplacée par ADR-0148                      |
+| [0148](0148-un-seul-n-plus-un.md)                     | Un seul N+1, comme avant : abandon de l'ADR-0147                                        | acceptée                                    |

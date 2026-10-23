@@ -70,7 +70,7 @@ function CarteMembre({ membre: m }: { membre: MembreSuivi }) {
             {m.givenName} {m.familyName}
           </span>
           {/* Des commentaires envoyés attendent l'évaluation. */}
-          {m.aEvaluer > 0 && !m.lectureSeule ? (
+          {m.aEvaluer > 0 ? (
             <Badge tone="orange" size="sm">
               À évaluer
             </Badge>
@@ -79,12 +79,6 @@ function CarteMembre({ membre: m }: { membre: MembreSuivi }) {
           {m.parti ? (
             <Badge tone="gris" size="sm">
               Inactif
-            </Badge>
-          ) : null}
-          {/* Évalué par son N+1 fonctionnel : la fiche se lit (ADR-0147). */}
-          {m.lectureSeule ? (
-            <Badge tone="gris" size="sm">
-              Lecture seule
             </Badge>
           ) : null}
         </span>

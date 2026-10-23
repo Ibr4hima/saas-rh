@@ -486,7 +486,7 @@ describe('suppression définitive', () => {
     expect(await compte('absence_approvals', 'request_id = $1', [requestId])).toBe(1);
   });
 
-  it('refuse d’effacer la tête d’une unité sans successeur ; son équipe suit l’organigramme', async () => {
+  it('refuse d’effacer un chef d’équipe sans repreneur ; détache ses agents déjà partis', async () => {
     const subalterne = await creerDossier('BRUNO', false);
     await raw(`UPDATE employees SET manager_employee_id = $1 WHERE id = $2`, [
       awa.employeeId,
@@ -497,16 +497,21 @@ describe('suppression définitive', () => {
       `INSERT INTO org_units (id, tenant_id, name, unit_type) VALUES ($1,$2,'Service X','service')`,
       [uniteId, tenantId],
     );
-    // Tête d'une unité : on refuse tant que l'unité attend sa relève…
+    // Chef d'une unité : on refuse tant qu'il n'a pas de successeur…
     await raw(`UPDATE org_units SET manager_employee_id = $1 WHERE id = $2`, [
       awa.employeeId,
       uniteId,
     ]);
     expect((await people.remove(admin, { ids: [awa.employeeId] })).done).toBe(0);
 
-    // …sans unité à diriger, rien à confier : la chaîne se recalcule
-    // (ADR-0147).
+    // …n+1 d'un agent actif : on refuse tant que personne ne reprend son équipe…
     await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE id = $1`, [uniteId]);
+    const refus = await people.remove(admin, { ids: [awa.employeeId] });
+    expect(refus.done).toBe(0);
+    expect(refus.skipped[0]?.reason).toContain('choisissez qui reprend son équipe');
+
+    // …et d'un agent déjà archivé, la suppression le détache simplement.
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [subalterne.employeeId]);
     expect((await people.remove(admin, { ids: [awa.employeeId] })).done).toBe(1);
     const reste = await raw(`SELECT manager_employee_id FROM employees WHERE id = $1`, [
       subalterne.employeeId,
