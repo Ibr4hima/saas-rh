@@ -106,7 +106,7 @@ function mapUniqueViolation(err: unknown): never {
       422,
       'org.sommet_unique',
       'L’organigramme a déjà son sommet',
-      'Rattachez cette unité sous la Direction Générale : il n’y a qu’un sommet, et son responsable est le directeur général.',
+      'Rattachez cette unité sous la Direction Générale : il n’y a qu’un sommet, et son responsable est le DG.',
     );
   }
   if (detail.includes('sibling_name_unique')) {
@@ -306,7 +306,7 @@ export class OrgUnitsService {
         422,
         'org.sommet_indissoluble',
         'La Direction Générale ne se supprime pas',
-        'Elle porte le sommet de l’organigramme et son responsable est le directeur général. Renommez-la au besoin.',
+        'Elle porte le sommet de l’organigramme et son responsable est le DG. Renommez-la au besoin.',
       );
     }
 
@@ -620,7 +620,7 @@ export class OrgUnitsService {
         422,
         'org.sommet_fixe',
         'La Direction Générale reste au sommet',
-        'C’est elle que toutes les directions rejoignent, et son responsable est le directeur général.',
+        'C’est elle que toutes les directions rejoignent, et son responsable est le DG.',
       );
     }
     if (nextParent === null && before!.parentId !== null) {
@@ -707,7 +707,7 @@ export class OrgUnitsService {
         422,
         'org.dg_requis',
         'La Direction Générale garde toujours un responsable',
-        'On ne retire pas le directeur général : on désigne son successeur, qui reprend ce qui relevait de lui.',
+        'On ne retire pas le DG : on désigne la personne qui prend sa suite et reprend ce qui relevait du DG.',
       );
     }
     if (nouveauDG) {
@@ -720,8 +720,8 @@ export class OrgUnitsService {
         problem(
           422,
           'org.dg_hors_direction_generale',
-          'Affectez d’abord le futur directeur général à la Direction Générale',
-          'D’abord l’affectation, ensuite la hiérarchie : il siège à la Direction Générale avant d’en prendre la tête.',
+          'Affectez d’abord le futur DG à la Direction Générale',
+          'D’abord l’affectation, ensuite la hiérarchie : on siège à la Direction Générale avant d’en prendre la tête.',
         );
       }
     } else if (input.managerEmployeeId) {
@@ -732,8 +732,8 @@ export class OrgUnitsService {
       problem(
         422,
         'org.aucun_directeur_general',
-        'Désignez d’abord le directeur général',
-        'Qui dirige une direction relève du directeur général : la Direction Générale a son responsable avant les directions.',
+        'Désignez d’abord le DG',
+        'Qui dirige une direction relève du DG : la Direction Générale a son responsable avant les directions.',
       );
     }
 
@@ -1140,8 +1140,8 @@ export class OrgUnitsService {
       problem(
         422,
         'org.dg_hors_direction_generale',
-        'Le directeur général sortirait de la Direction Générale',
-        'Il siège à la Direction Générale : ce changement l’en ferait sortir. Désignez d’abord son successeur.',
+        'Le DG sortirait de la Direction Générale',
+        'Sa place est à la Direction Générale : ce changement l’en ferait sortir. Désignez d’abord la personne qui prendra sa suite.',
       );
     }
     problem(
@@ -1173,7 +1173,7 @@ export class OrgUnitsService {
         422,
         'org.sommet_unique',
         `L’organigramme a déjà son sommet : « ${sommet.name} »`,
-        'Rattachez cette unité sous la Direction Générale : il n’y a qu’un sommet, et son responsable est le directeur général.',
+        'Rattachez cette unité sous la Direction Générale : il n’y a qu’un sommet, et son responsable est le DG.',
       );
     }
   }

@@ -9,6 +9,7 @@ import {
   HEURE_FIN_JOURNEE,
   heureEnLettres,
   minutesEntre,
+  premierDuMois,
   type AbsencePreview,
   type AbsenceType,
   type AgentSaisieView,
@@ -42,7 +43,9 @@ function jourEnLettres(iso: string): string {
   if (!iso) return '';
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  return premierDuMois(
+    d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }),
+  );
 }
 
 /**

@@ -1,4 +1,4 @@
-import { deElide } from '@teranga/contracts';
+import { deElide, premierDuMois } from '@teranga/contracts';
 import type { LogoCourriel } from './logo';
 
 /* ────────────────────────────────────────────────────────────────
@@ -65,12 +65,14 @@ const echapper = (v: string) =>
   v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const dateLongue = (iso: string) =>
-  new Date(iso).toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'Africa/Dakar',
-  });
+  premierDuMois(
+    new Date(iso).toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'Africa/Dakar',
+    }),
+  );
 
 /** « au poste de Chargé d'études », « au poste d'Analyste ». */
 const auPoste = (poste: string) => `au poste ${deElide(poste).replace("'", '’')}${poste}`;

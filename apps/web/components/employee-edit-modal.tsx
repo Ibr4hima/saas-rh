@@ -434,9 +434,9 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
             htmlFor="managerEmployeeId"
             hint={
               estDG
-                ? 'Le directeur général ne relève de personne.'
+                ? 'Le DG ne relève de personne.'
                 : estDirecteur
-                  ? 'Qui dirige une direction relève du directeur général.'
+                  ? 'Qui dirige une direction relève du DG.'
                   : impose
                     ? 'Le responsable d’une unité relève de l’unité au-dessus de la sienne.'
                     : direction

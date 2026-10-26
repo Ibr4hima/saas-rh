@@ -1,3 +1,4 @@
+import { premierDuMois } from '@teranga/contracts';
 import { sql, type SQL } from 'drizzle-orm';
 import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
@@ -25,14 +26,16 @@ import type { Tx } from '../../db/tenant-db';
    compte : rien de ce qu'il y avait laissé ne se perd.
    ———————————————————————————————————————————————————————————————— */
 
-/** « 17 octobre 2026 » — jamais d'ISO brut dans un message lu par un humain. */
+/** « 17 octobre 2026 », « 1er juin 2026 » : jamais d'ISO brut dans un message lu par un humain. */
 const jour = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
+  premierDuMois(
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }),
+  );
 
 /** Le dernier contrat d'un agent, en sous-requête SQL. */
 export const dernierContrat = (employeeId: SQL | string) => sql`(

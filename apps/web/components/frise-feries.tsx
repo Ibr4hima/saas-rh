@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { Holiday } from '@teranga/contracts';
+import { premierDuMois, type Holiday } from '@teranga/contracts';
 import { Badge, cn, Skeleton } from '@teranga/ui';
 import { api } from '../lib/api';
 import { Icon } from './icons';
@@ -313,11 +313,13 @@ function Entree({
             <div className="mt-3 grid grid-cols-2 gap-x-4 border-t border-line-soft pt-3">
               <Colonne intitule="Date">
                 <span style={TABULAIRE}>
-                  {d.toLocaleDateString('fr-FR', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })}
+                  {premierDuMois(
+                    d.toLocaleDateString('fr-FR', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    }),
+                  )}
                 </span>
               </Colonne>
               <Colonne intitule="Jour">

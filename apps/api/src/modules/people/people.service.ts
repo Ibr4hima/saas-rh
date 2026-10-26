@@ -1043,8 +1043,8 @@ export class PeopleService {
             problem(
               422,
               'people.dg_quitte_la_dg',
-              'Le directeur général reste affecté à la Direction Générale',
-              'Pour lui confier une autre direction, désignez d’abord son successeur à la tête de la Direction Générale.',
+              'Le DG reste affecté à la Direction Générale',
+              'Pour confier une autre direction au DG, désignez d’abord la personne qui prendra sa suite à la tête de la Direction Générale.',
             );
           }
           return { id: contractId, rouvert: false, invitation: null, changements: [], aRevoir: [] };

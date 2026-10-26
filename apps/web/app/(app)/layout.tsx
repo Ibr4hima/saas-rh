@@ -11,6 +11,7 @@ import {
   gereQuelqueChose,
   nomCourt,
   peut,
+  premierDuMois,
   type CompteursValidations,
   type SessionUser,
 } from '@teranga/contracts';
@@ -969,12 +970,14 @@ function Rubrique({
 function DateDuJour() {
   const pathname = usePathname();
   const ici = pathname.startsWith('/calendrier');
-  const brut = new Date().toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const brut = premierDuMois(
+    new Date().toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }),
+  );
   const libelle = `${brut.charAt(0).toUpperCase()}${brut.slice(1)}`;
 
   return (

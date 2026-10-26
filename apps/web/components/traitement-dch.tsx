@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   heureEnLettres,
+  premierDuMois,
   type EtatHabilitations,
   type FenetreDuPrincipalView,
   type TraitementView,
@@ -154,11 +155,13 @@ export function quiTraite(t: TraitementView | null | undefined): string | null {
 /** « 21 oct. à 10 h » : la fin de la fenêtre de 48 heures, à Dakar. */
 function jusquAu(iso: string): string {
   const d = new Date(iso);
-  const jour = d.toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'Africa/Dakar',
-  });
+  const jour = premierDuMois(
+    d.toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'Africa/Dakar',
+    }),
+  );
   const heure = d.toLocaleTimeString('fr-FR', {
     hour: '2-digit',
     minute: '2-digit',

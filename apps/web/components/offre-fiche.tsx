@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useMemo } from 'react';
+import { premierDuMois } from '@teranga/contracts';
 import { Icon, type IconName } from './icons';
 
 /**
@@ -15,11 +16,13 @@ import { Icon, type IconName } from './icons';
 
 /** « 1 octobre 2026 » — une date qu'on lit, pas un ISO qu'on déchiffre. */
 export function jourFr(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  return premierDuMois(
+    new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }),
+  );
 }
 
 /** Jours pleins d'ici la date limite — négatif une fois celle-ci passée. */

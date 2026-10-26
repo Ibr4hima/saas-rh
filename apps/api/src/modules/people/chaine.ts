@@ -158,8 +158,8 @@ export async function validerRattachement(
     problem(
       422,
       'people.dg_sans_responsable',
-      'Le directeur général ne relève de personne',
-      'Cet agent dirige l’unité racine de l’organigramme : il n’a pas de n+1 dans l’agence.',
+      'Le DG ne relève de personne',
+      'Cet agent dirige l’unité racine de l’organigramme : pas de n+1 dans l’agence.',
     );
   }
   const [manager] = await tx
@@ -254,16 +254,16 @@ export async function validerRattachement(
       problem(
         422,
         'people.aucun_directeur_general',
-        'Aucun directeur général n’est désigné',
-        'Qui dirige une direction relève du directeur général : désignez d’abord le responsable de l’unité racine dans l’organigramme.',
+        'Aucun DG n’est désigné',
+        'Qui dirige une direction relève du DG : désignez d’abord le responsable de l’unité racine dans l’organigramme.',
       );
     }
     if (managerId !== dg) {
       problem(
         422,
         'people.directeur_hors_dg',
-        'Qui dirige une direction relève du directeur général',
-        'Cet agent dirige une direction : son responsable hiérarchique ne peut être que le directeur général.',
+        'Qui dirige une direction relève du DG',
+        'Cet agent dirige une direction : son responsable hiérarchique ne peut être que le DG.',
       );
     }
     return;
@@ -1028,8 +1028,8 @@ export async function assertDGALaDirectionGenerale(tx: Tx): Promise<void> {
     problem(
       422,
       'org.dg_hors_direction_generale',
-      'Le directeur général resterait hors de la Direction Générale',
-      'Il siège à la Direction Générale : cette opération l’en ferait sortir. Désignez d’abord son successeur.',
+      'Le DG resterait hors de la Direction Générale',
+      'Sa place est à la Direction Générale : cette opération l’en ferait sortir. Désignez d’abord la personne qui prendra sa suite.',
     );
   }
 }

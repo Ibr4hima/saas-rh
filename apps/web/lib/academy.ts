@@ -1,5 +1,5 @@
 import type { AcademyCategory, EtatLecon, StatutSuivi } from '@teranga/contracts';
-import { ACADEMY_CATEGORY_LABELS } from '@teranga/contracts';
+import { ACADEMY_CATEGORY_LABELS, premierDuMois } from '@teranga/contracts';
 import type { IconName } from '../components/icons';
 
 /* ————————————————————————————————————————————————————————————————
@@ -100,7 +100,7 @@ export function quandLisible(iso: string, maintenant = new Date()): string {
   const ecart = Math.round((jour(d) - jour(maintenant)) / 86_400_000);
   if (ecart === 0) return `aujourd’hui à ${heure}`;
   if (ecart === 1) return `demain à ${heure}`;
-  return `le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} à ${heure}`;
+  return `le ${premierDuMois(d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }))} à ${heure}`;
 }
 
 export const STATUTS_CERTIFICAT = {

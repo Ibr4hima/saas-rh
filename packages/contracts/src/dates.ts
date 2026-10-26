@@ -10,6 +10,14 @@ import { z } from 'zod';
 export const estUnJour = (jour: string | undefined): jour is string =>
   jour !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(jour);
 
+/**
+ * Le premier du mois est un ordinal en français : « 1er juin 2023 », « jeudi
+ * 1er juin », jamais « 1 juin ». Intl ne le sait pas : c'est un usage, pas
+ * une locale. `date` est une date déjà écrite, le mois en lettres, sans
+ * heure en lettres : « à 1 h » deviendrait « à 1er h ».
+ */
+export const premierDuMois = (date: string): string => date.replace(/(^|\s)1(?=\s\p{L})/u, '$11er');
+
 /** Aujourd'hui, au format AAAA-MM-JJ. */
 export const aujourdhuiIso = (): string => new Date().toISOString().slice(0, 10);
 

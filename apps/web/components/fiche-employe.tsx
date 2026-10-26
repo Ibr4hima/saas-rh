@@ -17,6 +17,7 @@ import {
   peut,
   posteDAdjoint,
   posteDeResponsable,
+  premierDuMois,
   titreDeLaFiche,
   uniteAvecArticle,
 } from '@teranga/contracts';
@@ -136,13 +137,15 @@ function seniority(
   return rest === 0 ? y : `${y} et ${rest} mois`;
 }
 
-/** « 30 octobre 2026 ». */
+/** « 30 octobre 2026 », « 1er juin 2023 ». */
 const dateLongue = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  premierDuMois(
+    new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }),
+  );
 
 /** Une adresse qui ne tient pas sur la ligne se coupe après l'arobase, pas au milieu d'un mot. */
 function Courriel({ adresse }: { adresse: string }) {
@@ -711,13 +714,15 @@ function CarteHistorique({
                     {TABLE_LABELS[h.tableName] ?? h.tableName}
                   </p>
                   <p className="mt-0.5 text-[11px] text-ink-muted/80">
-                    {new Date(h.occurredAt).toLocaleString('fr-FR', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {premierDuMois(
+                      new Date(h.occurredAt).toLocaleString('fr-FR', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      }),
+                    )}
                   </p>
                 </li>
               ))}

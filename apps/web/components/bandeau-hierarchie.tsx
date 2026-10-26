@@ -43,7 +43,7 @@ export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: 
   },
   dg_rattache: {
     court: 'DG rattaché',
-    explication: 'Le directeur général ne relève de personne : retirez son n+1.',
+    explication: 'Le DG ne relève de personne : retirez son n+1.',
   },
   sans_responsable: {
     court: 'Sans n+1',
@@ -59,11 +59,11 @@ export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: 
   },
   dg_hors_direction_generale: {
     court: 'DG hors Direction Générale',
-    explication: 'Le directeur général siège à la Direction Générale : réaffectez-le.',
+    explication: 'Le DG siège à la Direction Générale : changez son affectation.',
   },
   directeur_mal_rattache: {
     court: 'n+1 autre que le DG',
-    explication: 'Qui dirige une direction relève du directeur général, de personne d’autre.',
+    explication: 'Qui dirige une direction relève du DG, de personne d’autre.',
   },
   chef_mal_rattache: {
     court: 'Chef mal rattaché',
@@ -119,7 +119,7 @@ export function BandeauHierarchie() {
               <>{compte(c.anomalies.length, 'dossier')} à compléter</>
             ) : null}
             {c.directeurGeneral === null ? (
-              <> Aucun directeur général n’est désigné à la tête de l’organigramme.</>
+              <> Aucun DG n’est désigné à la tête de l’organigramme.</>
             ) : null}
           </>
         }

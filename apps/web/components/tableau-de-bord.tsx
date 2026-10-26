@@ -8,7 +8,7 @@ import type {
   DashboardHoliday,
   DashboardView,
 } from '@teranga/contracts';
-import { peut } from '@teranga/contracts';
+import { peut, premierDuMois } from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -616,10 +616,12 @@ export function TableauDeBord({ suiviDesContrats }: { suiviDesContrats: boolean 
           value={
             d ? (
               prochainFerie ? (
-                new Date(`${prochainFerie.day}T00:00:00`).toLocaleDateString('fr-FR', {
-                  day: 'numeric',
-                  month: 'short',
-                })
+                premierDuMois(
+                  new Date(`${prochainFerie.day}T00:00:00`).toLocaleDateString('fr-FR', {
+                    day: 'numeric',
+                    month: 'short',
+                  }),
+                )
               ) : (
                 <span className="text-[15px] font-semibold text-ink-muted">Aucun</span>
               )
