@@ -45,6 +45,7 @@ import { TenantDb } from '../src/db/tenant-db';
 import { AcademySuiviService } from '../src/modules/academy/academy-suivi.service';
 import { annoncerLOuverture, reconcilierLesGrilles } from '../src/modules/evaluations/circuit';
 import { EvaluationsService } from '../src/modules/evaluations/evaluations.service';
+import { initiales } from '../src/modules/evaluations/grille-cadre';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -816,8 +817,9 @@ describe('la DCH', () => {
   });
 
   it('reçoit les grilles terminées au dossier, et leur PDF', async () => {
+    // Avec les deux notes de la synthèse du N+1.
     expect(await evaluations.dossier(session('ndeye'), agents.moussa)).toEqual([
-      expect.objectContaining({ annee: ANNEE, modele: 'cadre' }),
+      expect.objectContaining({ annee: ANNEE, modele: 'cadre', comprehension: 'A', tenue: 'B' }),
     ]);
     expect(await codeOf(() => evaluations.dossier(session('awa'), agents.moussa))).toBe(
       'auth.forbidden',
@@ -826,10 +828,22 @@ describe('la DCH', () => {
     const { filename, pdf } = await evaluations.pdf(session('ndeye'), agents.moussa, ANNEE);
     expect(filename).toBe(`grille-evaluation-${ANNEE}-EVA-MOUSSA.pdf`);
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    // Les paraphes s'écrivent dans l'écriture manuscrite, embarquée.
+    expect(pdf.includes(Buffer.from('Allura'))).toBe(true);
 
     // Une grille en cours reste à la hiérarchie.
     expect(await codeOf(() => evaluations.grille(session('ndeye'), agents.aissatou, ANNEE))).toBe(
       'evaluations.hors_perimetre',
     );
+  });
+});
+
+describe('les paraphes', () => {
+  it('les initiales de chaque prénom et de chaque nom, sans les particules', () => {
+    expect(initiales('Mariama CISSÉ')).toBe('M.C.');
+    expect(initiales('Cheikh Tidiane MBAYE')).toBe('C.T.M.');
+    expect(initiales('Jean-Pierre DIOP')).toBe('J.-P.D.');
+    expect(initiales('Fatou de SOUZA')).toBe('F.S.');
+    expect(initiales('Élodie NDOYE')).toBe('É.N.');
   });
 });

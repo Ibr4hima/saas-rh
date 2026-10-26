@@ -586,6 +586,9 @@ export interface GrilleAuDossier {
   annee: number;
   modele: Personnel;
   termineeLe: string;
+  /** Les deux notes de la synthèse du N+1 : la compréhension et la tenue du poste. */
+  comprehension: Niveau | null;
+  tenue: Niveau | null;
 }
 
 /** Les années où l'agent a une grille à lire, de la plus récente à la plus ancienne. */

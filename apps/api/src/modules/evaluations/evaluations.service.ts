@@ -351,9 +351,10 @@ export class EvaluationsService {
   }
 
   /**
-   * Les grilles terminées d'un agent, à son dossier : pour la DCH qui suit
-   * l'évaluation. Consulter les dossiers n'y suffit pas : une grille ne se
-   * lit pas comme une adresse.
+   * Les grilles terminées d'un agent, à son dossier, avec les deux notes de
+   * la synthèse du N+1 (ADR-0151) : pour la DCH qui suit l'évaluation.
+   * Consulter les dossiers n'y suffit pas : une grille ne se lit pas comme une
+   * adresse.
    */
   async dossier(user: SessionUser, employeeId: string): Promise<GrilleAuDossier[]> {
     if (!peut(user, 'pilotage')) {
@@ -365,6 +366,7 @@ export class EvaluationsService {
           annee: t.evaluationGrilles.annee,
           modele: t.evaluationGrilles.modele,
           termineeLe: t.evaluationGrilles.termineeLe,
+          contenu: t.evaluationGrilles.contenu,
         })
         .from(t.evaluationGrilles)
         .where(
@@ -374,11 +376,16 @@ export class EvaluationsService {
           ),
         );
       return lignes
-        .map((l) => ({
-          annee: l.annee,
-          modele: l.modele as Personnel,
-          termineeLe: iso(l.termineeLe)!,
-        }))
+        .map((l) => {
+          const { comprehension, tenue } = contenuDeGrilleSchema.parse(l.contenu);
+          return {
+            annee: l.annee,
+            modele: l.modele as Personnel,
+            termineeLe: iso(l.termineeLe)!,
+            comprehension,
+            tenue,
+          };
+        })
         .sort((a, b) => b.annee - a.annee);
     });
   }

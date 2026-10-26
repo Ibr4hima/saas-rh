@@ -100,10 +100,11 @@ export type Coupe = 'normal' | 'bold' | 'italic' | 'bold-italic';
  * Les familles des documents : Arial, la police principale (ADR-0090), Times
  * New Roman, celle des contrats de travail (ADR-0098), Comic Sans MS pour ce
  * que les modèles de l'APIX écrivent avec elle, Gill Sans MT, celle des
- * grilles d'évaluation (ADR-0149), et Google Sans, celle du certificat d'APIX
- * Academy.
+ * grilles d'évaluation (ADR-0149), Google Sans, celle du certificat d'APIX
+ * Academy, et une écriture manuscrite, celle des paraphes des signataires
+ * d'une grille (ADR-0151).
  */
-export type Famille = 'arial' | 'times' | 'comic' | 'gill-sans' | 'google-sans';
+export type Famille = 'arial' | 'times' | 'comic' | 'gill-sans' | 'google-sans' | 'signature';
 
 /**
  * Où les systèmes rangent Arial, Times New Roman et Comic Sans MS, quand ils
@@ -191,6 +192,9 @@ const FICHIERS: Record<Famille, Partial<Record<Coupe, readonly string[]>>> = {
     normal: ['fonts/google-sans-regular.ttf'],
     bold: ['fonts/google-sans-bold.ttf'],
     italic: ['fonts/google-sans-italic.ttf'],
+  },
+  signature: {
+    normal: ['fonts/allura-regular.ttf'],
   },
 };
 

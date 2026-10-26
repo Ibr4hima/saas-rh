@@ -1266,9 +1266,24 @@ export function useMessageBref(duree = 2500) {
 
 // ──────────────────────────────────────────────── au dossier de l'agent
 
+/** Une note de la synthèse du N+1, au dossier : ce qu'elle veut dire, en toutes lettres. */
+function NoteDeSynthese({
+  niveau,
+  libelles,
+}: {
+  niveau: Niveau | null;
+  libelles: Record<Niveau, string>;
+}) {
+  return niveau ? <>{libelles[niveau]}</> : <NonRenseigne />;
+}
+
+/** Les libellés des deux notes de la synthèse, dans l'ordre de la grille. */
+const [COMPREHENSION, TENUE] = SYNTHESE_DU_N1;
+
 /**
- * Les grilles transmises à la DCH, au dossier de l'agent : l'année, la
- * date de la transmission, et le PDF, l'original de la DCH.
+ * Les grilles transmises à la DCH, au dossier de l'agent : l'année, les
+ * deux notes de la synthèse du N+1, la date de la transmission, et le PDF,
+ * l'original de la DCH (ADR-0151).
  */
 export function CarteDesGrilles({
   employeeId,
@@ -1306,8 +1321,15 @@ export function CarteDesGrilles({
           <THead>
             <tr>
               <Th>Année</Th>
-              <Th className="max-sm:hidden">Grille</Th>
-              <Th>Transmise le</Th>
+              {/* Sur un téléphone, « du poste » se sous-entend : les deux notes
+                  et le PDF tiennent dans la largeur. */}
+              <Th>
+                Compréhension<span className="max-sm:hidden"> du poste</span>
+              </Th>
+              <Th>
+                Tenue<span className="max-sm:hidden"> du poste</span>
+              </Th>
+              <Th className="max-md:hidden">Transmise le</Th>
               <Th>
                 <span className="sr-only">PDF</span>
               </Th>
@@ -1317,10 +1339,15 @@ export function CarteDesGrilles({
             {liste.map((g) => (
               <Tr key={g.annee}>
                 <Td className="font-semibold text-ink-strong tabular-nums">{g.annee}</Td>
-                <Td className="max-sm:hidden">
-                  {g.modele === 'cadre' ? 'Personnel cadre' : 'Personnel non cadre'}
+                <Td>
+                  <NoteDeSynthese niveau={g.comprehension} libelles={COMPREHENSION!.niveaux} />
                 </Td>
-                <Td className="tabular-nums">{leEnLettres(g.termineeLe)}</Td>
+                <Td>
+                  <NoteDeSynthese niveau={g.tenue} libelles={TENUE!.niveaux} />
+                </Td>
+                <Td className="whitespace-nowrap tabular-nums max-md:hidden">
+                  {leEnLettres(g.termineeLe)}
+                </Td>
                 <Td className="w-12 text-right">
                   <button
                     type="button"

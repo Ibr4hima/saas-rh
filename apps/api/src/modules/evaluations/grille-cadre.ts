@@ -37,7 +37,9 @@ import {
    texte y est corrigé de ses fautes.
 
    Ce qui est rempli s'imprime sur les pointillés du modèle ; ce qui ne
-   l'est pas garde ses pointillés, à remplir à la main. Chaque champ tient
+   l'est pas garde ses pointillés, à remplir à la main. Qui a validé la
+   grille dans l'application la paraphe : ses initiales, à la main, sur sa
+   ligne de signature (ADR-0151). Chaque champ tient
    dans sa place : un texte long s'y imprime plus petit, une liste longue
    s'y resserre, la grille garde ses six pages. Le texte mis en forme
    s'imprime comme il s'est écrit : gras, italique, puces et numéros.
@@ -86,6 +88,26 @@ const D = 564.9;
 const L = D - G;
 /** Le texte dans un cadre : à 5,5 points de son bord. */
 const RETRAIT = 5.5;
+
+/**
+ * Les initiales d'un nom, comme on paraphe : « Mariama CISSÉ » donne
+ * « M.C. », « Jean-Pierre DIOP » donne « J.-P.D. ». Chaque prénom et chaque
+ * nom compte ; une particule en minuscules (« de », « du ») ne compte pas.
+ */
+export function initiales(nom: string): string {
+  return nom
+    .trim()
+    .split(/\s+/)
+    .filter((mot) => /^\p{Lu}/u.test(mot))
+    .map((mot) =>
+      mot
+        .split('-')
+        .filter(Boolean)
+        .map((partie) => `${[...partie][0]!.toLocaleUpperCase('fr')}.`)
+        .join('-'),
+    )
+    .join('');
+}
 
 /** « 15 décembre 2026 » ; rien sans date. */
 const enLettres = (iso: string | null) => (iso ? dateEnLettres(iso.slice(0, 10)) : '');
@@ -254,6 +276,30 @@ class Feuille {
       lineBreak: false,
       baseline: 'middle',
     });
+  }
+
+  /**
+   * Le paraphe de qui a validé : ses initiales à la main, en noir et en gras,
+   * un peu penchées, posées sur sa ligne de signature. Allura n'a qu'une
+   * graisse : son contour, tracé à la même encre, l'épaissit.
+   */
+  paraphe(nom: string, x: number, base: number, taille = 26) {
+    const texte = initiales(nom);
+    if (!texte) return;
+    this.doc.save();
+    this.doc.rotate(-4, { origin: [x, base] });
+    this.style({ famille: 'signature', taille, couleur: ENCRE });
+    this.doc
+      .lineWidth(taille * 0.045)
+      .lineJoin('round')
+      .strokeColor(ENCRE)
+      .text(texte, x, base, {
+        lineBreak: false,
+        baseline: 'alphabetic',
+        fill: true,
+        stroke: true,
+      });
+    this.doc.restore();
   }
 
   /** Une case à cocher, et sa croix quand elle l'est. */
@@ -849,14 +895,10 @@ function pageDeLaRatification(f: Feuille, d: DonneesDeLaGrille) {
   f.texte('RATIFICATION :', 45, 426, { coupe: 'bold', taille: 8 });
   f.texte('ÉVALUATEUR (N+1)', xN1, 426, { taille: 8 });
   f.texte('ÉVALUÉ (N)', xN, 426, { taille: 8 });
+  const r = d.ratification;
   const lignes: [string, string | null, string | null][] = [
-    ['PRÉNOM ET NOM :', d.ratification.evaluateur, d.ratification.agent],
-    [
-      'DATE :',
-      enLettres(d.ratification.envoyeeLe) || null,
-      enLettres(d.ratification.valideeLe) || null,
-    ],
-    ['SIGNATURE :', null, null],
+    ['PRÉNOM ET NOM :', r.evaluateur, r.agent],
+    ['DATE :', enLettres(r.envoyeeLe) || null, enLettres(r.valideeLe) || null],
   ];
   lignes.forEach(([libelle, n1, n], i) => {
     const base = 456 + i * 30.6;
@@ -869,6 +911,17 @@ function pageDeLaRatification(f: Feuille, d: DonneesDeLaGrille) {
       else f.pointilles(x, x + 150, base + 1);
     }
   });
+  // La signature : le N+1 paraphe en envoyant la grille à l'agent, l'agent
+  // en la validant.
+  const baseSignature = 456 + 2 * 30.6;
+  f.texte('SIGNATURE :', 45, baseSignature, { taille: 8 });
+  for (const [x, nom, signe] of [
+    [xN1, r.evaluateur, Boolean(r.envoyeeLe)],
+    [xN, r.agent, Boolean(r.valideeLe)],
+  ] as const) {
+    f.pointilles(x, x + 150, baseSignature + 1);
+    if (signe && nom) f.paraphe(nom, x + 8, baseSignature - 2);
+  }
   f.texte(
     '(Le document doit obligatoirement être validé par la signature de l’agent évalué (N).)',
     45,
@@ -924,7 +977,10 @@ function pageDeLaHierarchie(f: Feuille, d: DonneesDeLaGrille) {
   f.bande(296, 309.2, 'OBSERVATIONS N+1', 10);
   f.cadre(G, 296, D, 434);
   f.texteRiche(d.contenu.observations, x0, x1, [330, 351, 372, 393], 9);
-  f.texte('SIGNATURE DE N+1', 360, 422, { coupe: 'bold', taille: 10 });
+  const finSignature = f.texte('SIGNATURE DE N+1', 360, 422, { coupe: 'bold', taille: 10 });
+  if (d.ratification.envoyeeLe && d.ratification.evaluateur) {
+    f.paraphe(d.ratification.evaluateur, finSignature + 14, 425, 24);
+  }
 
   // Les commentaires du N+2.
   const n2 = d.n2;
@@ -937,6 +993,10 @@ function pageDeLaHierarchie(f: Feuille, d: DonneesDeLaGrille) {
   f.champ('Fonction', n2?.fonction ?? null, xDroite, 512.5, x1, 9);
   f.champ('Date', enLettres(n2?.le ?? null) || null, xDroite, 538, x1, 9);
   f.champ('Signature', null, xDroite, 563, x1, 9);
+  if (n2?.le && n2.prenom && n2.nom) {
+    const debut = xDroite + f.largeur('Signature', { taille: 9 }) + 10;
+    f.paraphe(`${n2.prenom} ${n2.nom}`, debut, 562, 20);
+  }
 
   // Les commentaires des autres hiérarchies : à la main.
   f.bande(590, 603.2, 'COMMENTAIRES ÉVENTUELS DES AUTRES HIÉRARCHIES', 10);

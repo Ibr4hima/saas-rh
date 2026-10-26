@@ -22,7 +22,8 @@
  * endroit. Gill Sans MT, celle des grilles d'évaluation (ADR-0149), n'a pas
  * d'équivalent aux mêmes chasses : Cabin, de la même famille humaniste, en
  * tient lieu. Google Sans reste celle du certificat d'APIX Academy, comme du
- * site.
+ * site. Allura, une écriture manuscrite, trace les paraphes des signataires
+ * des grilles d'évaluation (ADR-0151).
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -90,6 +91,13 @@ const FAMILLES = [
       { nom: 'cabin-italic.ttf', style: 'italic', poids: '400' },
       { nom: 'cabin-bold-italic.ttf', style: 'italic', poids: '700' },
     ],
+  },
+  {
+    // Les paraphes des grilles d'évaluation : les initiales de qui a validé,
+    // comme à la main (ADR-0151).
+    css: 'Allura',
+    licence: { source: 'ofl/allura/OFL.txt', nom: 'allura-OFL.txt' },
+    coupes: [{ nom: 'allura-regular.ttf', style: 'normal', poids: '400' }],
   },
   {
     // Comic Relief n'a pas d'italique.
@@ -236,6 +244,8 @@ writeFileSync(
     "Arimo, Tinos et Comic Relief tiennent la place d'Arial, de Times New Roman\n" +
     'et de Comic Sans MS, que leur licence interdit de versionner : mêmes\n' +
     "chasses, licence OFL (fichiers `*-OFL.txt`). Les polices d'origine se\n" +
-    'déposent à la racine de `assets/` (cf. `assets/README.md`).\n',
+    'déposent à la racine de `assets/` (cf. `assets/README.md`).\n\n' +
+    'Allura, une écriture manuscrite (OFL), trace les paraphes des\n' +
+    "signataires des grilles d'évaluation.\n",
 );
 console.log(`✓ ${coupes} coupes, ${(total / 1024).toFixed(0)} Ko, dans ${OUT}`);
