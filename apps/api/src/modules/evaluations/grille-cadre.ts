@@ -1,15 +1,20 @@
 import PDFDocument from 'pdfkit';
 import {
   CRITERES_CADRE,
+  FORMATIONS,
   NIVEAUX,
   NIVEAUX_D_OBJECTIF,
   NOTE_COMMANDEMENT,
+  numerosDesBlocs,
+  OBJECTIFS_A_VENIR,
   SIGNIFICATION_DES_NIVEAUX,
   SYNTHESE_DU_N1,
   dateEnLettres,
   type ContenuDeGrille,
   type IdentificationDeGrille,
   type Niveau,
+  type Segment,
+  type TexteRiche,
 } from '@teranga/contracts';
 import {
   cheminLogo,
@@ -33,8 +38,9 @@ import {
 
    Ce qui est rempli s'imprime sur les pointillés du modèle ; ce qui ne
    l'est pas garde ses pointillés, à remplir à la main. Chaque champ tient
-   dans sa place : un texte long s'y imprime plus petit, la grille garde ses
-   six pages.
+   dans sa place : un texte long s'y imprime plus petit, une liste longue
+   s'y resserre, la grille garde ses six pages. Le texte mis en forme
+   s'imprime comme il s'est écrit : gras, italique, puces et numéros.
    ──────────────────────────────────────────────────────────────── */
 
 type Doc = typeof PDFDocument.prototype;
@@ -124,6 +130,27 @@ interface Style {
   taille?: number;
   couleur?: string;
 }
+
+/** Un morceau de texte d'une seule coupe. */
+interface Morceau {
+  texte: string;
+  coupe: Coupe;
+}
+
+/** Une ligne d'un texte mis en forme : son retrait, sa puce ou son numéro, ses morceaux. */
+interface LigneRiche {
+  retrait: number;
+  marque: { texte: string; x: number } | null;
+  morceaux: Morceau[];
+}
+
+/** La puce de chaque niveau d'une liste. */
+const PUCES = ['•', '–', '•'] as const;
+/** L'interligne d'un texte resserré, en multiple de sa taille. */
+const INTERLIGNE = 1.25;
+
+const coupeDe = (s: Segment): Coupe =>
+  s.gras && s.italique ? 'bold-italic' : s.gras ? 'bold' : s.italique ? 'italic' : 'normal';
 
 class Feuille {
   private numero = 0;
@@ -278,6 +305,171 @@ class Feuille {
       if (ligne) this.texte(ligne, x0, base, { taille: t });
       else this.pointilles(x0, x1, base + 1);
     });
+  }
+
+  /**
+   * Un texte mis en forme sur des lignes à remplir. Il s'imprime sur leurs
+   * bases, plus petit s'il le faut, jusqu'à 7,5 points ; au-delà, ou pour
+   * une liste plus longue que les lignes, ses lignes se répartissent dans
+   * leur hauteur, de la ligne au-dessus de la première base à la dernière.
+   * Les lignes restées vides gardent leurs pointillés.
+   */
+  texteRiche(t: TexteRiche, x0: number, x1: number, bases: readonly number[], taille = 9) {
+    const largeur = x1 - x0;
+    for (let tt = taille; tt >= 7.5; tt -= 0.25) {
+      const lignes = this.disposer(t, largeur, tt);
+      if (lignes.length > bases.length) continue;
+      bases.forEach((base, i) => {
+        const ligne = lignes[i];
+        if (ligne) this.poser(ligne, x0, base, tt);
+        else this.pointilles(x0, x1, base + 1);
+      });
+      return;
+    }
+    const pas = bases.length > 1 ? bases[1]! - bases[0]! : 2 * taille;
+    const haut = bases[0]! - pas;
+    const bas = bases[bases.length - 1]!;
+    const capacite = (tt: number) => Math.floor((bas - haut) / (tt * INTERLIGNE));
+    let tt = taille;
+    let lignes = this.disposer(t, largeur, tt);
+    while (lignes.length > capacite(tt) && tt > 6.5) {
+      tt -= 0.25;
+      lignes = this.disposer(t, largeur, tt);
+    }
+    if (lignes.length > capacite(tt)) {
+      lignes = lignes.slice(0, capacite(tt));
+      this.couperLaFin(lignes[lignes.length - 1]!, largeur, tt);
+    }
+    // Les lignes se répartissent dans la hauteur, sans s'écarter plus que le modèle.
+    const interligne = Math.min(pas, (bas - haut) / lignes.length);
+    lignes.forEach((l, i) => this.poser(l, x0, haut + (i + 1) * interligne, tt));
+  }
+
+  /** Une ligne d'un texte mis en forme, posée sur sa base. */
+  private poser(ligne: LigneRiche, x0: number, base: number, taille: number) {
+    if (ligne.marque) this.texte(ligne.marque.texte, x0 + ligne.marque.x, base, { taille });
+    let x = x0 + ligne.retrait;
+    for (const m of ligne.morceaux) x = this.texte(m.texte, x, base, { coupe: m.coupe, taille });
+  }
+
+  /** La dernière ligne d'un texte qui ne tient pas : elle finit sur « … ». */
+  private couperLaFin(ligne: LigneRiche, largeur: number, taille: number) {
+    const fin = ' …';
+    const place = largeur - ligne.retrait - this.largeur(fin, { taille });
+    const mesure = () =>
+      ligne.morceaux.reduce((l, m) => l + this.largeur(m.texte, { coupe: m.coupe, taille }), 0);
+    while (ligne.morceaux.length > 0 && mesure() > place) {
+      const dernier = ligne.morceaux[ligne.morceaux.length - 1]!;
+      dernier.texte = dernier.texte.replace(/\s*\S*$/, '');
+      if (!dernier.texte) ligne.morceaux.pop();
+    }
+    ligne.morceaux.push({ texte: fin, coupe: 'normal' });
+  }
+
+  /**
+   * Les lignes d'un texte mis en forme, coupé à `largeur` : chaque bloc
+   * commence une ligne ; une puce ou un numéro s'écrit dans la marge du
+   * niveau, et le texte de la liste s'aligne après lui, ligne après ligne.
+   */
+  disposer(t: TexteRiche, largeur: number, taille: number): LigneRiche[] {
+    const numeros = numerosDesBlocs(t);
+    const retraitDeNiveau = taille * 1.6;
+    const lignes: LigneRiche[] = [];
+    t.forEach((b, i) => {
+      const marque =
+        b.type === 'puce' ? PUCES[b.niveau]! : b.type === 'numero' ? `${numeros[i]}.` : null;
+      const xMarque = b.niveau * retraitDeNiveau;
+      const retrait = marque
+        ? Math.max((b.niveau + 1) * retraitDeNiveau, xMarque + this.largeur(marque, { taille }) + 3)
+        : 0;
+      const coupees = this.couperRiche(b.segments, largeur - retrait, taille);
+      coupees.forEach((morceaux, j) =>
+        lignes.push({
+          retrait,
+          marque: j === 0 && marque ? { texte: marque, x: xMarque } : null,
+          morceaux,
+        }),
+      );
+    });
+    return lignes;
+  }
+
+  /**
+   * Les lignes d'un bloc mis en forme, coupé à `largeur` entre ses mots ;
+   * un mot plus long que la ligne se coupe où il le faut. Un bloc vide
+   * garde sa ligne.
+   */
+  private couperRiche(segments: readonly Segment[], largeur: number, taille: number): Morceau[][] {
+    // Les mots, chacun en morceaux de sa coupe : « **ab**cd » est un mot.
+    const mots: Morceau[][] = [];
+    let mot: Morceau[] = [];
+    for (const s of segments) {
+      for (const partie of s.texte.split(/(\s+)/)) {
+        if (!partie) continue;
+        if (/^\s+$/.test(partie)) {
+          if (mot.length > 0) mots.push(mot);
+          mot = [];
+        } else {
+          mot.push({ texte: partie, coupe: coupeDe(s) });
+        }
+      }
+    }
+    if (mot.length > 0) mots.push(mot);
+
+    const mesure = (m: readonly Morceau[]) =>
+      m.reduce((l, x) => l + this.largeur(x.texte, { coupe: x.coupe, taille }), 0);
+    const espace = this.largeur(' ', { taille });
+    const lignes: Morceau[][] = [];
+    let ligne: Morceau[] = [];
+    let occupe = 0;
+    const ajouter = (m: readonly Morceau[], l: number) => {
+      if (ligne.length > 0) ligne.push({ texte: ' ', coupe: 'normal' });
+      ligne.push(...m.map((x) => ({ ...x })));
+      occupe += (ligne.length > m.length ? espace : 0) + l;
+    };
+    for (const m of mots) {
+      const l = mesure(m);
+      if (ligne.length > 0 && occupe + espace + l <= largeur) {
+        ajouter(m, l);
+        continue;
+      }
+      if (ligne.length > 0) lignes.push(ligne);
+      ligne = [];
+      occupe = 0;
+      if (l <= largeur) {
+        ajouter(m, l);
+        continue;
+      }
+      // Un mot trop long : lettre à lettre, ligne après ligne.
+      let morceau: Morceau[] = [];
+      let pris = 0;
+      for (const x of m) {
+        for (const lettre of x.texte) {
+          const ll = this.largeur(lettre, { coupe: x.coupe, taille });
+          if (pris + ll > largeur && morceau.length > 0) {
+            lignes.push(morceau);
+            morceau = [];
+            pris = 0;
+          }
+          const avant = morceau[morceau.length - 1];
+          if (avant && avant.coupe === x.coupe) avant.texte += lettre;
+          else morceau.push({ texte: lettre, coupe: x.coupe });
+          pris += ll;
+        }
+      }
+      ligne = morceau;
+      occupe = pris;
+    }
+    if (ligne.length > 0 || lignes.length === 0) lignes.push(ligne);
+    // Les morceaux voisins de même coupe ne font qu'un.
+    return lignes.map((l) =>
+      l.reduce<Morceau[]>((fondus, x) => {
+        const avant = fondus[fondus.length - 1];
+        if (avant && avant.coupe === x.coupe) avant.texte += x.texte;
+        else fondus.push({ ...x });
+        return fondus;
+      }, []),
+    );
   }
 
   /** Les lignes d'un texte coupé à `largeur`, ses retours à la ligne gardés. */
@@ -457,7 +649,7 @@ function pageDesObjectifs(f: Feuille, c: ContenuDeGrille) {
     const y = premiere + i * hauteur;
     if (i > 0) f.trait(xGrille, y, xGrille + 4 * colonne, y);
     f.texte(`OBJECTIF ${i + 1}`, 35, y + 16, { taille: 11 });
-    f.surLignes(o.texte, 35, 300, [y + 34, y + 51, y + 68], 9.5);
+    f.texteRiche(o.texte, 35, 300, [y + 34, y + 51, y + 68], 9.5);
     if (o.niveau) {
       const k = NIVEAUX.indexOf(o.niveau);
       f.croix(xGrille + (k + 0.5) * colonne, y + hauteur / 2, 5);
@@ -484,7 +676,7 @@ function pageDesObjectifs(f: Feuille, c: ContenuDeGrille) {
     { taille: 10 },
   );
   const bases = Array.from({ length: 8 }, (_, i) => 466 + i * 26);
-  f.surLignes(c.raisons, 35, D - RETRAIT - 4, bases, 9.5);
+  f.texteRiche(c.raisons, 35, D - RETRAIT - 4, bases, 9.5);
 }
 
 // ──────────────────────────────────────────────── page 3 : les treize critères
@@ -598,13 +790,12 @@ function pageDuResume(f: Feuille, c: ContenuDeGrille) {
 
   f.bande(131.8, 152.1, 'RÉSUMÉ DE L’ÉVALUATION DES PERFORMANCES', 12);
   f.texte('1- POINTS FORTS DE L’ÉVALUÉ :', x0, 172, { taille: 8 });
-  f.surLignes(c.pointsForts, x0, x1, [190, 208, 226, 244], 9);
+  f.texteRiche(c.pointsForts, x0, x1, [190, 208, 226, 244], 9);
   f.texte('2- POINTS FAIBLES DE L’ÉVALUÉ (à améliorer) :', x0, 266, { taille: 8 });
-  f.surLignes(c.pointsFaibles, x0, x1, [284, 302, 320, 338], 9);
+  f.texteRiche(c.pointsFaibles, x0, x1, [284, 302, 320, 338], 9);
 
   f.bande(348.2, 368.6, 'ACTIONS POUR AMÉLIORER LES PERFORMANCES DE N', 12);
-  f.texte('Contenu et justification :', x0, 386, { taille: 8 });
-  f.surLignes(c.actions, x0, x1, [404, 422, 440], 9);
+  f.texteRiche(c.actions, x0, x1, [386, 404, 422, 440], 9);
 
   f.bande(
     451.8,
@@ -612,14 +803,15 @@ function pageDuResume(f: Feuille, c: ContenuDeGrille) {
     'OBJECTIFS DE TRAVAIL POUR LA PÉRIODE À VENIR (à remplir par N+1 après concertation avec N)',
     11,
   );
-  const xDelai = 420;
-  f.centre('OBJECTIFS', x0, xDelai - 20, 494, { taille: 9 });
-  f.centre('DÉLAIS', xDelai, x1, 494, { taille: 9 });
-  c.objectifsAVenir.forEach((o, i) => {
+  const xEcheance = 420;
+  f.centre('OBJECTIFS', x0, xEcheance - 20, 494, { taille: 9 });
+  f.centre('ÉCHÉANCES', xEcheance, x1, 494, { taille: 9 });
+  for (let i = 0; i < OBJECTIFS_A_VENIR; i++) {
+    const o = c.objectifsAVenir[i];
     const base = 518 + i * 40;
-    f.surLignes(o.texte, x0, xDelai - 20, [base, base + 16], 9);
-    f.surLignes(o.delai, xDelai, x1, [base], 9);
-  });
+    f.surLignes(o?.texte ?? '', x0, xEcheance - 20, [base, base + 16], 9);
+    f.surLignes(o?.echeance ? dateEnLettres(o.echeance) : '', xEcheance, x1, [base], 9);
+  }
 }
 
 // ──────────────────────────────────────────────── page 5 : formation et ratification
@@ -635,9 +827,10 @@ function pageDeLaRatification(f: Feuille, d: DonneesDeLaGrille) {
     'BESOINS DE FORMATION IDENTIFIÉS (à remplir par N+1 après concertation avec N)',
     11,
   );
-  d.contenu.formations.forEach((formation, i) =>
-    f.champ(`Formation n° ${i + 1}`, formation || null, x0, 152 + i * 38.5, x1, 8),
-  );
+  for (let i = 0; i < FORMATIONS; i++) {
+    const formation = d.contenu.formations[i];
+    f.champ(`Formation n° ${i + 1}`, formation?.titre ?? null, x0, 152 + i * 38.5, x1, 8);
+  }
 
   f.bande(260.7, 281.1, 'RATIFICATION DE L’ENTRETIEN', 11);
   f.centre('COMMENTAIRES ÉVENTUELS DE L’ÉVALUÉ :', G, D, 303.6, { taille: 8 });
@@ -730,7 +923,7 @@ function pageDeLaHierarchie(f: Feuille, d: DonneesDeLaGrille) {
   // Les observations du N+1.
   f.bande(296, 309.2, 'OBSERVATIONS N+1', 10);
   f.cadre(G, 296, D, 434);
-  f.surLignes(d.contenu.observations, x0, x1, [330, 351, 372, 393], 9);
+  f.texteRiche(d.contenu.observations, x0, x1, [330, 351, 372, 393], 9);
   f.texte('SIGNATURE DE N+1', 360, 422, { coupe: 'bold', taille: 10 });
 
   // Les commentaires du N+2.

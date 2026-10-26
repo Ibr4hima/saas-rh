@@ -154,4 +154,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0146](0146-entree-courante-bleu-pale.md)             | L'entrée courante du menu revient au bleu pâle de la charte                             | acceptée                                    |
 | [0147](0147-deux-n-plus-un.md)                        | Deux N+1 : le hiérarchique suit l'organigramme, le fonctionnel se choisit               | remplacée par ADR-0148                      |
 | [0148](0148-un-seul-n-plus-un.md)                     | Un seul N+1, comme avant : abandon de l'ADR-0147                                        | acceptée                                    |
-| [0149](0149-evaluation-sur-la-grille-de-l-apix.md)    | L'évaluation annuelle sur la grille de l'APIX, sans objectifs fixés dans l'application  | acceptée                                    |
+| [0149](0149-evaluation-sur-la-grille-de-l-apix.md)    | L'évaluation annuelle sur la grille de l'APIX, sans objectifs fixés dans l'application  | acceptée, en partie remplacée : 0150        |
+| [0150](0150-grille-en-texte-mis-en-forme.md)          | La grille en texte mis en forme ; échéances et formations de l'APIX Academy             | acceptée                                    |

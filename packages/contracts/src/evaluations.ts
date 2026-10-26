@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { MOIS_DE_L_ANNEE } from './document-requests';
 import type { Personnel } from './employees';
+import { texteBrut, texteRicheSchema, texteRicheVide } from './texte-riche';
 
 /* ────────────────────────────────────────────────────────────────
    L'évaluation annuelle sur la grille de l'APIX (ADR-0149).
@@ -217,14 +218,17 @@ export const SYNTHESE_DU_N1: readonly {
   },
 ];
 
-/** Combien de lignes la grille donne à chaque liste. */
+/**
+ * Combien de lignes la grille donne à chaque liste : trois objectifs de
+ * l'année écoulée, quatre objectifs à venir et trois formations au plus.
+ */
 export const OBJECTIFS_ECOULES = 3;
 export const OBJECTIFS_A_VENIR = 4;
 export const FORMATIONS = 3;
 
 /**
- * La longueur de chaque champ : ce qui tient dans sa place sur le PDF, où la
- * grille garde ses six pages.
+ * La longueur de chaque champ, retours à la ligne compris : ce qui tient
+ * dans sa place sur le PDF, où la grille garde ses six pages.
  */
 export const LIMITES_DE_LA_GRILLE = {
   objectif: 220,
@@ -233,8 +237,6 @@ export const LIMITES_DE_LA_GRILLE = {
   pointsFaibles: 520,
   actions: 520,
   objectifAVenir: 180,
-  delai: 40,
-  formation: 120,
   observations: 520,
   commentairesAgent: 520,
   commentairesN2: 360,
@@ -242,6 +244,38 @@ export const LIMITES_DE_LA_GRILLE = {
 } as const;
 
 const texte = (max: number) => z.string().trim().max(max).default('');
+
+/** Un texte sur une ligne : les retours à la ligne collés deviennent des espaces. */
+const ligne = (max: number) =>
+  z
+    .string()
+    .transform((s) => s.replace(/\s+/g, ' ').trim())
+    .pipe(z.string().max(max))
+    .default('');
+
+/** Un objectif à venir : son texte, et son échéance s'il en a une. */
+export interface ObjectifAVenir {
+  texte: string;
+  /** AAAA-MM-JJ ; null : sans échéance. */
+  echeance: string | null;
+}
+
+/**
+ * Les objectifs à venir par échéance, de la plus proche à la plus
+ * lointaine ; à échéance égale, dans leur ordre. Ceux sans échéance restent
+ * en bas.
+ */
+export function parEcheance<T extends ObjectifAVenir>(objectifs: readonly T[]): T[] {
+  const cle = (o: T) => o.echeance ?? '9999-12-31';
+  return [...objectifs].sort((a, b) => (cle(a) < cle(b) ? -1 : cle(a) > cle(b) ? 1 : 0));
+}
+
+/** Une formation de l'APIX Academy demandée pour l'agent : son titre est gardé tel qu'il était. */
+export const formationDemandeeSchema = z.object({
+  courseId: z.uuid(),
+  titre: z.string().trim().max(200),
+});
+export type FormationDemandee = z.infer<typeof formationDemandeeSchema>;
 
 /**
  * Ce que le N+1 écrit dans la grille. Tout est facultatif tant que la grille
@@ -251,55 +285,69 @@ const texte = (max: number) => z.string().trim().max(max).default('');
 export const contenuDeGrilleSchema = z.object({
   /** « Agent nouveau à son poste actuel » ; `null` : la case suit l'ancienneté. */
   nouveauAuPoste: z.boolean().nullable().default(null),
+  /** Du texte en gras ou en italique, sans puce ni numéro. */
   objectifs: z
     .array(
       z.object({
-        texte: texte(LIMITES_DE_LA_GRILLE.objectif),
+        texte: texteRicheSchema(LIMITES_DE_LA_GRILLE.objectif, false),
         niveau: niveauSchema.nullable().default(null),
       }),
     )
     .max(OBJECTIFS_ECOULES)
     .default([]),
-  raisons: texte(LIMITES_DE_LA_GRILLE.raisons),
+  raisons: texteRicheSchema(LIMITES_DE_LA_GRILLE.raisons, true),
   /** Le niveau de chaque critère, dans l'ordre de la grille. */
   criteres: z.array(niveauSchema.nullable()).max(CRITERES_CADRE.length).default([]),
-  pointsForts: texte(LIMITES_DE_LA_GRILLE.pointsForts),
-  pointsFaibles: texte(LIMITES_DE_LA_GRILLE.pointsFaibles),
-  actions: texte(LIMITES_DE_LA_GRILLE.actions),
+  pointsForts: texteRicheSchema(LIMITES_DE_LA_GRILLE.pointsForts, true),
+  pointsFaibles: texteRicheSchema(LIMITES_DE_LA_GRILLE.pointsFaibles, true),
+  actions: texteRicheSchema(LIMITES_DE_LA_GRILLE.actions, true),
+  /** Une liste, rangée par échéance ; les lignes restées vides ne se gardent pas. */
   objectifsAVenir: z
     .array(
       z.object({
-        texte: texte(LIMITES_DE_LA_GRILLE.objectifAVenir),
-        delai: texte(LIMITES_DE_LA_GRILLE.delai),
+        texte: ligne(LIMITES_DE_LA_GRILLE.objectifAVenir),
+        echeance: z.iso.date().nullable().default(null),
       }),
     )
     .max(OBJECTIFS_A_VENIR)
-    .default([]),
-  formations: z.array(texte(LIMITES_DE_LA_GRILLE.formation)).max(FORMATIONS).default([]),
+    .default([])
+    .transform((liste) => parEcheance(liste.filter((o) => o.texte !== '' || o.echeance))),
+  /**
+   * Les formations demandées, prises au catalogue de l'APIX Academy. Une
+   * formation écrite à la main, d'avant le catalogue, ne se garde pas.
+   */
+  formations: z
+    .preprocess(
+      (v) => (Array.isArray(v) ? v.filter((f) => typeof f === 'object' && f !== null) : v),
+      z.array(formationDemandeeSchema).max(FORMATIONS),
+    )
+    .default([])
+    .transform((liste) =>
+      liste.filter((f, i) => liste.findIndex((g) => g.courseId === f.courseId) === i),
+    ),
   comprehension: niveauSchema.nullable().default(null),
   tenue: niveauSchema.nullable().default(null),
-  observations: texte(LIMITES_DE_LA_GRILLE.observations),
+  observations: texteRicheSchema(LIMITES_DE_LA_GRILLE.observations, true),
 });
 export type ContenuDeGrille = z.infer<typeof contenuDeGrilleSchema>;
 
-/** Une grille vide, à la forme complète : trois objectifs, treize critères, quatre objectifs à venir, trois formations. */
+/** Une grille vide, à la forme complète : trois objectifs et treize critères à remplir. */
 export function grilleVide(): ContenuDeGrille {
   return completerLaGrille(contenuDeGrilleSchema.parse({}));
 }
 
-/** La grille à sa forme complète, quoi qu'en ait gardé l'enregistrement. */
+/**
+ * La grille à sa forme complète, quoi qu'en ait gardé l'enregistrement :
+ * ses trois objectifs et ses treize critères. Les listes (objectifs à venir,
+ * formations) gardent leur longueur.
+ */
 export function completerLaGrille(c: ContenuDeGrille): ContenuDeGrille {
   const remplir = <T>(liste: T[], n: number, vide: () => T) =>
     Array.from({ length: n }, (_, i) => liste[i] ?? vide());
   return {
     ...c,
-    objectifs: remplir(c.objectifs, OBJECTIFS_ECOULES, () => ({ texte: '', niveau: null })),
+    objectifs: remplir(c.objectifs, OBJECTIFS_ECOULES, () => ({ texte: [], niveau: null })),
     criteres: remplir(c.criteres, CRITERES_CADRE.length, () => null),
-    objectifsAVenir: remplir(c.objectifsAVenir, OBJECTIFS_A_VENIR, () => ({
-      texte: '',
-      delai: '',
-    })),
-    formations: remplir(c.formations, FORMATIONS, () => ''),
   };
 }
 
@@ -312,25 +360,46 @@ export function completerLaGrille(c: ContenuDeGrille): ContenuDeGrille {
  */
 export function ceQuiManque(c: ContenuDeGrille, avecCommandement: boolean): string[] {
   const manque: string[] = [];
-  const objectifs = c.objectifs.filter((o) => o.texte !== '' || o.niveau !== null);
+  const objectifs = c.objectifs.filter((o) => !texteRicheVide(o.texte) || o.niveau !== null);
   if (objectifs.length === 0) manque.push('Un objectif de la période écoulée');
-  if (objectifs.some((o) => o.texte === '' || o.niveau === null)) {
+  if (objectifs.some((o) => texteRicheVide(o.texte) || o.niveau === null)) {
     manque.push('Le texte et le niveau de chaque objectif');
   }
-  if (objectifs.some((o) => o.niveau === 'C' || o.niveau === 'D') && c.raisons === '') {
+  if (objectifs.some((o) => o.niveau === 'C' || o.niveau === 'D') && texteRicheVide(c.raisons)) {
     manque.push('Les raisons des objectifs partiellement réalisés ou non réalisés');
   }
   const criteres = CRITERES_CADRE.filter((cr) => avecCommandement || !cr.commandement);
   if (criteres.some((cr) => !c.criteres[cr.numero - 1])) {
     manque.push('Le niveau de chaque critère');
   }
-  if (c.pointsForts === '') manque.push('Les points forts');
-  if (c.pointsFaibles === '') manque.push('Les points faibles');
-  if (c.objectifsAVenir.some((o) => o.delai !== '' && o.texte === '')) {
-    manque.push('L’objectif de chaque délai');
+  if (texteRicheVide(c.pointsForts)) manque.push('Les points forts');
+  if (texteRicheVide(c.pointsFaibles)) manque.push('Les points faibles');
+  if (c.objectifsAVenir.some((o) => o.echeance && o.texte.trim() === '')) {
+    manque.push('L’objectif de chaque échéance');
   }
   if (!c.comprehension || !c.tenue) manque.push('La synthèse générale');
   return manque;
+}
+
+/**
+ * Les champs trop longs pour leur place sur le PDF : la grille ne
+ * s'enregistre pas tant qu'il y en a. L'écran les compte à mesure.
+ */
+export function champsTropLongs(c: ContenuDeGrille): string[] {
+  const L = LIMITES_DE_LA_GRILLE;
+  const trop: string[] = [];
+  c.objectifs.forEach((o, i) => {
+    if (texteBrut(o.texte).length > L.objectif) trop.push(`L’objectif ${i + 1}`);
+  });
+  const champs = [
+    ['Les raisons', c.raisons, L.raisons],
+    ['Les points forts', c.pointsForts, L.pointsForts],
+    ['Les points faibles', c.pointsFaibles, L.pointsFaibles],
+    ['Les actions', c.actions, L.actions],
+    ['Les observations', c.observations, L.observations],
+  ] as const;
+  for (const [libelle, t, max] of champs) if (texteBrut(t).length > max) trop.push(libelle);
+  return trop;
 }
 
 export const enregistrerGrilleSchema = z.object({ contenu: contenuDeGrilleSchema });
@@ -433,6 +502,12 @@ export interface ActionsSurLaGrille {
   pdf: boolean;
 }
 
+/** Une formation du catalogue de l'APIX Academy, que le N+1 peut demander pour l'agent. */
+export interface FormationProposable {
+  courseId: string;
+  titre: string;
+}
+
 /** Une grille, telle que la personne qui l'ouvre a le droit de la lire. */
 export interface VueDeGrille {
   employeeId: string;
@@ -452,6 +527,11 @@ export interface VueDeGrille {
   commandement: boolean;
   /** Pour l'agent, sans la page 6 : la synthèse et les observations du N+1 restent vides. */
   contenu: ContenuDeGrille;
+  /**
+   * Au N+1 qui remplit la grille : le catalogue de l'APIX Academy, sans ce
+   * que l'agent a terminé ou obtenu, ni ce que l'agent anime. Vide sinon.
+   */
+  formationsProposables: FormationProposable[];
   commentairesAgent: string;
   commentairesN2: string;
   /** Le dernier renvoi de l'agent, tant que la grille n'est pas repartie. */

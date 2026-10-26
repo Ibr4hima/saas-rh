@@ -47,13 +47,26 @@
   --color-warning-soft: var(--tg-warning-soft);
   --color-danger: var(--tg-danger);
   --color-danger-soft: var(--tg-danger-soft);
-  --color-partiel: var(--tg-partiel);
-  --color-partiel-line: var(--tg-partiel-line);
-  --color-partiel-ink: var(--tg-partiel-ink);
-  --color-partiel-soft: var(--tg-partiel-soft);
-  --color-partiel-text: var(--tg-partiel-text);
-  --color-note-b: var(--tg-note-b);
-  --color-note-b-soft: var(--tg-note-b-soft);
+  --color-niveau-a: var(--tg-niveau-a);
+  --color-niveau-a-ink: var(--tg-niveau-a-ink);
+  --color-niveau-a-line: var(--tg-niveau-a-line);
+  --color-niveau-a-soft: var(--tg-niveau-a-soft);
+  --color-niveau-a-text: var(--tg-niveau-a-text);
+  --color-niveau-b: var(--tg-niveau-b);
+  --color-niveau-b-ink: var(--tg-niveau-b-ink);
+  --color-niveau-b-line: var(--tg-niveau-b-line);
+  --color-niveau-b-soft: var(--tg-niveau-b-soft);
+  --color-niveau-b-text: var(--tg-niveau-b-text);
+  --color-niveau-c: var(--tg-niveau-c);
+  --color-niveau-c-ink: var(--tg-niveau-c-ink);
+  --color-niveau-c-line: var(--tg-niveau-c-line);
+  --color-niveau-c-soft: var(--tg-niveau-c-soft);
+  --color-niveau-c-text: var(--tg-niveau-c-text);
+  --color-niveau-d: var(--tg-niveau-d);
+  --color-niveau-d-ink: var(--tg-niveau-d-ink);
+  --color-niveau-d-line: var(--tg-niveau-d-line);
+  --color-niveau-d-soft: var(--tg-niveau-d-soft);
+  --color-niveau-d-text: var(--tg-niveau-d-text);
   --color-badge-bleu-ink: var(--tg-badge-bleu-ink);
   --color-badge-bleu-line: var(--tg-badge-bleu-line);
   --color-badge-orange-ink: var(--tg-badge-orange-ink);
@@ -476,6 +489,51 @@ body {
   .login-monte {
     animation: none;
   }
+}
+
+/* ── Champs de texte mis en forme (BlockNote) ─────────────────────────────
+   Les couleurs de la plateforme plutôt que celles de l'éditeur ; elles
+   suivent d'elles-mêmes le clair et le sombre, et la barre de mise en forme
+   en hérite. `:root` en tête : la feuille de BlockNote se charge après
+   celle-ci et déclare les mêmes sélecteurs, il faut un cran de plus. */
+:root .bn-root,
+:root .bn-root[data-color-scheme='dark'] {
+  --bn-colors-editor-text: var(--tg-ink-strong);
+  --bn-colors-editor-background: transparent;
+  --bn-colors-menu-text: var(--tg-ink);
+  --bn-colors-menu-background: var(--tg-surface);
+  --bn-colors-tooltip-text: var(--tg-ink);
+  --bn-colors-tooltip-background: var(--tg-surface-raised);
+  --bn-colors-hovered-text: var(--tg-ink-strong);
+  --bn-colors-hovered-background: var(--tg-hover);
+  --bn-colors-selected-text: var(--tg-primary-ink);
+  --bn-colors-selected-background: var(--tg-primary);
+  --bn-colors-disabled-text: var(--tg-ink-muted);
+  --bn-colors-disabled-background: var(--tg-line-soft);
+  --bn-colors-shadow: var(--tg-line);
+  --bn-colors-border: var(--tg-line);
+  --bn-font-family: var(--tg-font-sans);
+  --mantine-font-family: var(--tg-font-sans);
+  --bn-border-radius: var(--tg-radius-bloc);
+}
+/* La police de la plateforme, à la taille des champs : BlockNote impose
+   « Inter » et 16 px sur le texte, sans passer par sa variable. */
+:root .editeur-riche .bn-default-styles {
+  font-family: var(--tg-font-sans);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+/* ProseMirror coupe les ligatures (« fi », « fl ») : on les rend. */
+.editeur-riche .bn-editor {
+  padding-inline: 12px;
+  font-variant-ligatures: normal;
+  font-feature-settings: normal;
+}
+.editeur-riche .bn-editor:focus {
+  outline: none;
+}
+.editeur-riche .bn-block-content {
+  padding-block: 1px;
 }
 
 /* ── Glissière du son du lecteur Academy ──────────────────────────────────

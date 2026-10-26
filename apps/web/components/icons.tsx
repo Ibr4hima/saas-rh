@@ -64,6 +64,8 @@ export const ICON_NAMES = [
   'folder_managed',
   'format_bold',
   'format_italic',
+  'format_list_bulleted',
+  'format_list_numbered',
   'format_underlined',
   'free_cancellation',
   'fullscreen',

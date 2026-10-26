@@ -70,22 +70,31 @@
   --tg-danger: #b3382e;
   --tg-danger-soft: #fae9e7;
 
-  /* Le jaune d'un objectif PARTIELLEMENT atteint (le bleu dit atteint, le
-     rouge non atteint). Un jaune franc ne fait que 2,2:1 sur blanc : son
-     filet, plus soutenu, dessine la case (3,3:1) et le signe s'y pose en brun
-     (6,3:1). */
-  --tg-partiel: #e5a50a;
-  --tg-partiel-line: #b98500;
-  --tg-partiel-ink: #3d2b00;
-  /* Sa version légère : l'aplat pâle d'un badge, et son texte (5,3:1). */
-  --tg-partiel-soft: #fdf4d9;
-  --tg-partiel-text: #8a5c00;
-
-  /* Les notes, du vert au rouge : A le vert du succès, B ce vert-olive, C le
-     jaune de « partiellement », D le rouge — chacune en aplat pâle et texte
-     soutenu (B : 5,4:1). */
-  --tg-note-b: #4f6b00;
-  --tg-note-b-soft: #eef5d8;
+  /* Les niveaux de A à D de la grille d'évaluation, en couleurs claires :
+     A vert, B jaune tirant sur le vert, C orange tirant sur le jaune, D
+     rouge. Chacun a son aplat pâle et son filet (le niveau choisi), son texte
+     sur l'aplat (5,1 à 5,3:1), sa pastille et la lettre qui s'y pose (5,3 à
+     5,9:1). L'écran seul les colore : le PDF reste en noir. */
+  --tg-niveau-a: #86c99d;
+  --tg-niveau-a-ink: #0f4a29;
+  --tg-niveau-a-line: #86c99d;
+  --tg-niveau-a-soft: #dcf3e3;
+  --tg-niveau-a-text: #1b7240;
+  --tg-niveau-b: #b3cf62;
+  --tg-niveau-b-ink: #34460a;
+  --tg-niveau-b-line: #b3cf62;
+  --tg-niveau-b-soft: #ecf4cf;
+  --tg-niveau-b-text: #536d0c;
+  --tg-niveau-c: #efb553;
+  --tg-niveau-c-ink: #5a3500;
+  --tg-niveau-c-line: #efb553;
+  --tg-niveau-c-soft: #fde9c8;
+  --tg-niveau-c-text: #8c5300;
+  --tg-niveau-d: #ee9d93;
+  --tg-niveau-d-ink: #6e1a12;
+  --tg-niveau-d-line: #ee9d93;
+  --tg-niveau-d-soft: #fde1dd;
+  --tg-niveau-d-text: #b02c20;
 
   /* --- Badges : six tons, et seulement six ---
      Fond blanc, le mot dans sa couleur, et un liseré de la même couleur en
@@ -301,13 +310,27 @@
     --tg-warning-soft: #362c17;
     --tg-danger: #e08078;
     --tg-danger-soft: #3a2321;
-    --tg-partiel: #e9b949;
-    --tg-partiel-line: #e9b949;
-    --tg-partiel-ink: #14172a;
-    --tg-partiel-soft: #362c17;
-    --tg-partiel-text: #e9b949;
-    --tg-note-b: #b5d36a;
-    --tg-note-b-soft: #283217;
+    /* La nuit : des pastilles claires, la lettre en sombre (7,9 à 10,2:1). */
+    --tg-niveau-a: #82d3a2;
+    --tg-niveau-a-ink: #0b2416;
+    --tg-niveau-a-line: #3f8c5f;
+    --tg-niveau-a-soft: #1b3426;
+    --tg-niveau-a-text: #82d3a2;
+    --tg-niveau-b: #c2da7d;
+    --tg-niveau-b-ink: #1d2606;
+    --tg-niveau-b-line: #7b963a;
+    --tg-niveau-b-soft: #283219;
+    --tg-niveau-b-text: #c2da7d;
+    --tg-niveau-c: #f1bd69;
+    --tg-niveau-c-ink: #2b1a00;
+    --tg-niveau-c-line: #a77226;
+    --tg-niveau-c-soft: #3a2b14;
+    --tg-niveau-c-text: #f1bd69;
+    --tg-niveau-d: #f29a90;
+    --tg-niveau-d-ink: #3a0d08;
+    --tg-niveau-d-line: #a65148;
+    --tg-niveau-d-soft: #3d2220;
+    --tg-niveau-d-text: #f29a90;
 
     /* La nuit, le rapport s'inverse : sur les surfaces sombres le badge
        devient un aplat rouge PROFOND à chiffre clair. */
@@ -381,13 +404,27 @@
   --tg-warning-soft: #362c17;
   --tg-danger: #e08078;
   --tg-danger-soft: #3a2321;
-  --tg-partiel: #e9b949;
-  --tg-partiel-line: #e9b949;
-  --tg-partiel-ink: #14172a;
-  --tg-partiel-soft: #362c17;
-  --tg-partiel-text: #e9b949;
-  --tg-note-b: #b5d36a;
-  --tg-note-b-soft: #283217;
+  /* La nuit : des pastilles claires, la lettre en sombre (7,9 à 10,2:1). */
+  --tg-niveau-a: #82d3a2;
+  --tg-niveau-a-ink: #0b2416;
+  --tg-niveau-a-line: #3f8c5f;
+  --tg-niveau-a-soft: #1b3426;
+  --tg-niveau-a-text: #82d3a2;
+  --tg-niveau-b: #c2da7d;
+  --tg-niveau-b-ink: #1d2606;
+  --tg-niveau-b-line: #7b963a;
+  --tg-niveau-b-soft: #283219;
+  --tg-niveau-b-text: #c2da7d;
+  --tg-niveau-c: #f1bd69;
+  --tg-niveau-c-ink: #2b1a00;
+  --tg-niveau-c-line: #a77226;
+  --tg-niveau-c-soft: #3a2b14;
+  --tg-niveau-c-text: #f1bd69;
+  --tg-niveau-d: #f29a90;
+  --tg-niveau-d-ink: #3a0d08;
+  --tg-niveau-d-line: #a65148;
+  --tg-niveau-d-soft: #3d2220;
+  --tg-niveau-d-text: #f29a90;
 
   --tg-alert: #f87171;
   --tg-alert-soft: #7a2422;

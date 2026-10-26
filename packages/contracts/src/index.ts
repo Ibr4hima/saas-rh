@@ -28,4 +28,5 @@ export * from './profile-changes';
 export * from './reference-texts';
 export * from './academy';
 export * from './evaluations';
+export * from './texte-riche';
 export * from './notifications-reglages';

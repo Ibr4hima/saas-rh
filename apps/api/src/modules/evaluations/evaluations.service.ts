@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
   ancienneteEnLettres,
@@ -10,10 +10,12 @@ import {
   nomDeLaGrille,
   OBJECTIFS_ECOULES,
   peut,
+  texteRicheDe,
   type ActionsSurLaGrille,
   type ContenuDeGrille,
   type EtatDeGrille,
   type EvaluationsDeLEquipe,
+  type FormationProposable,
   type GrilleAuDossier,
   type IdentificationDeGrille,
   type LigneDEvaluation,
@@ -32,6 +34,7 @@ import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { retirerLesAppels, tenirLesAppels } from '../acces/appels';
+import { AcademySuiviService } from '../academy/academy-suivi.service';
 import type { DocumentPdf } from '../documents/feuille';
 import { notifier } from '../notifications/notifier';
 import {
@@ -115,7 +118,10 @@ const nomDuDocument = (prenom: string, nom: string) => `${prenom} ${nom.toUpperC
 
 @Injectable()
 export class EvaluationsService {
-  constructor(@Inject(TenantDb) private readonly db: TenantDb) {}
+  constructor(
+    @Inject(TenantDb) private readonly db: TenantDb,
+    @Inject(AcademySuiviService) private readonly academy: AcademySuiviService,
+  ) {}
 
   private ctx(user: SessionUser) {
     return { tenantId: user.tenantId, userId: user.userId };
@@ -396,7 +402,12 @@ export class EvaluationsService {
       const c = await this.contexte(tx, user, employeeId, annee);
       this.exiger(c, 'enregistrer');
       const modele = this.modeleDe(c.agent);
-      const complet = completerLaGrille(contenuDeGrilleSchema.parse(contenu));
+      const lu = completerLaGrille(contenuDeGrilleSchema.parse(contenu));
+      const avant = c.grille ? contenuDeGrilleSchema.parse(c.grille.contenu).formations : [];
+      const complet = {
+        ...lu,
+        formations: await this.formationsDuCatalogue(tx, lu.formations, avant),
+      };
       if (!c.grille) {
         await tx.insert(t.evaluationGrilles).values({
           id: uuidv7(),
@@ -608,7 +619,7 @@ export class EvaluationsService {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const c = await this.contexte(tx, user, employeeId, annee);
       this.exiger(c, 'pdf');
-      const v = this.vue(tx, c);
+      const v = await this.vue(tx, c);
       if (v.modele !== 'cadre') {
         problem(
           422,
@@ -740,8 +751,65 @@ export class EvaluationsService {
       .slice(0, OBJECTIFS_ECOULES);
     return {
       ...vide,
-      objectifs: vide.objectifs.map((o, i) => ({ ...o, texte: aVenir[i] ?? '' })),
+      objectifs: vide.objectifs.map((o, i) => ({ ...o, texte: texteRicheDe(aVenir[i] ?? '') })),
     };
+  }
+
+  /**
+   * Les formations que le N+1 peut demander pour l'agent : le catalogue de
+   * l'APIX Academy, sans ce que l'agent a terminé ou obtenu, ni ce que
+   * l'agent anime (ADR-0150).
+   */
+  private async formationsProposables(tx: Tx, employeeId: string): Promise<FormationProposable[]> {
+    const suivi = (await this.academy.suivi(tx, [employeeId])).get(employeeId) ?? [];
+    const animees = await tx
+      .select({ id: t.academyCourses.id })
+      .from(t.academyCourses)
+      .where(eq(t.academyCourses.formateurEmployeeId, employeeId));
+    const exclues = new Set(animees.map((a) => a.id));
+    return suivi
+      .filter((f) => f.courseId && !exclues.has(f.courseId))
+      .filter((f) => f.status !== 'terminee' && f.status !== 'certifiee')
+      .map((f) => ({ courseId: f.courseId!, titre: f.title }))
+      .sort((a, b) => a.titre.localeCompare(b.titre, 'fr'));
+  }
+
+  /**
+   * Les formations demandées, telles que le catalogue les connaît : une
+   * formation publiée, sous son titre d'aujourd'hui. Une formation déjà
+   * demandée, retirée du catalogue depuis, se garde sous son titre.
+   */
+  private async formationsDuCatalogue(
+    tx: Tx,
+    demandees: ContenuDeGrille['formations'],
+    deja: ContenuDeGrille['formations'],
+  ): Promise<ContenuDeGrille['formations']> {
+    if (demandees.length === 0) return [];
+    const publiees = await tx
+      .select({ id: t.academyCourses.id, titre: t.academyCourses.title })
+      .from(t.academyCourses)
+      .where(
+        and(
+          inArray(
+            t.academyCourses.id,
+            demandees.map((f) => f.courseId),
+          ),
+          isNotNull(t.academyCourses.publishedAt),
+        ),
+      );
+    const titres = new Map([
+      ...deja.map((f) => [f.courseId, f.titre] as const),
+      ...publiees.map((p) => [p.id, p.titre] as const),
+    ]);
+    const inconnue = demandees.find((f) => !titres.has(f.courseId));
+    if (inconnue) {
+      problem(
+        422,
+        'evaluations.formation',
+        `La formation « ${inconnue.titre} » n’est pas au catalogue de l’APIX Academy`,
+      );
+    }
+    return demandees.map((f) => ({ courseId: f.courseId, titre: titres.get(f.courseId)! }));
   }
 
   private actions(c: Contexte): ActionsSurLaGrille {
@@ -823,19 +891,20 @@ export class EvaluationsService {
     return agent.personnel;
   }
 
-  private vue(_tx: Tx, c: Contexte): VueDeGrille {
+  private async vue(tx: Tx, c: Contexte): Promise<VueDeGrille> {
     const g = c.grille;
     let contenu = g
       ? completerLaGrille(contenuDeGrilleSchema.parse(g.contenu))
       : (c.prefill ?? grilleVide());
     if (c.role === 'agent') {
       // La page 6 est réservée à la hiérarchie.
-      contenu = { ...contenu, comprehension: null, tenue: null, observations: '' };
+      contenu = { ...contenu, comprehension: null, tenue: null, observations: [] };
     }
     const figee =
       g && g.etat !== 'brouillon' ? (g.identification as IdentificationDeGrille | null) : null;
     const identification = figee ?? this.identification(c.agent, c.aujourdhui);
     const n2Fige = g?.n2Identite as { nom: string; prenom: string; fonction: string | null } | null;
+    const actions = this.actions(c);
     const n2 = n2Fige
       ? { nom: `${n2Fige.prenom} ${n2Fige.nom}`, fonction: n2Fige.fonction }
       : c.agent.n2 && c.role !== 'agent'
@@ -853,6 +922,9 @@ export class EvaluationsService {
       identification,
       commandement: c.agent.encadre,
       contenu,
+      formationsProposables: actions.enregistrer
+        ? await this.formationsProposables(tx, c.agent.id)
+        : [],
       commentairesAgent: g?.commentairesAgent ?? '',
       commentairesN2: c.role === 'agent' ? '' : (g?.commentairesN2 ?? ''),
       renvoi:
@@ -868,7 +940,7 @@ export class EvaluationsService {
         valideeN2Le: c.role === 'agent' ? null : iso(g?.valideeN2Le ?? null),
         termineeLe: iso(g?.termineeLe ?? null),
       },
-      actions: this.actions(c),
+      actions,
     };
   }
 

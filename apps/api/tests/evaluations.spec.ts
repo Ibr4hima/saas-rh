@@ -15,7 +15,9 @@
  * On vérifie que la DCH fixe la période, que le N+1 remplit la grille de
  * chacun de ses agents, que l'agent la lit sans la page 6, la valide ou la
  * renvoie, que le N+2 est facultatif et ne bloque jamais, et que la DCH
- * suit les grilles et reçoit leur PDF.
+ * suit les grilles et reçoit leur PDF. Le texte mis en forme (ADR-0150), les
+ * échéances des objectifs à venir et les formations de l'APIX Academy
+ * proposées au N+1 ont leurs propres cas.
  *
  * La période se pose autour d'aujourd'hui : le test ne dépend pas du jour où
  * il tourne.
@@ -25,17 +27,22 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   ceQuiManque,
+  champsTropLongs,
+  contenuDeGrilleSchema,
   CRITERES_CADRE,
   grilleVide,
-  OBJECTIFS_A_VENIR,
   periodeDEvaluationEnLettres,
+  texteBrut,
+  texteRicheDe,
   type ContenuDeGrille,
   type SessionUser,
+  type TexteRiche,
 } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
+import { AcademySuiviService } from '../src/modules/academy/academy-suivi.service';
 import { annoncerLOuverture, reconcilierLesGrilles } from '../src/modules/evaluations/circuit';
 import { EvaluationsService } from '../src/modules/evaluations/evaluations.service';
 
@@ -77,6 +84,8 @@ const NOMS: Nom[] = [
 const comptes = Object.fromEntries(NOMS.map((n) => [n, randomUUID()])) as Record<Nom, string>;
 const agents = Object.fromEntries(NOMS.map((n) => [n, randomUUID()])) as Record<Nom, string>;
 const unites = { generale: randomUUID(), dch: randomUUID(), etudes: randomUUID() };
+/** Les formations de l'APIX Academy : Moussa a terminé « Excel », et anime « Accueil ». */
+const cours = { gestion: randomUUID(), excel: randomUUID(), accueil: randomUUID() };
 
 /** La DCH : Mariama la dirige ; Ndèye en suit le tableau de bord. */
 const session = (qui: Nom) =>
@@ -153,36 +162,70 @@ async function titres(qui: Nom): Promise<string[]> {
   return (rows as { title: string }[]).map((r) => r.title);
 }
 
+/** Une liste à puces, une ligne par élément. */
+const puces = (...lignes: string[]): TexteRiche =>
+  lignes.map((texte) => ({ type: 'puce', niveau: 0, segments: [{ texte }] }));
+
 /** Une grille complète ; le commandement noté pour qui encadre. */
 function complete(commandement = false): ContenuDeGrille {
   const vide = grilleVide();
   return {
     ...vide,
     objectifs: [
-      { texte: 'Instruire les dossiers d’agrément dans les délais', niveau: 'B' },
-      { texte: 'Former deux collègues aux outils de suivi', niveau: 'C' },
-      { texte: '', niveau: null },
+      { texte: texteRicheDe('Instruire les dossiers d’agrément dans les délais'), niveau: 'B' },
+      { texte: texteRicheDe('Former deux collègues aux outils de suivi'), niveau: 'C' },
+      { texte: [], niveau: null },
     ],
-    raisons: 'La seconde formation a été reportée au début de l’année suivante.',
+    raisons: texteRicheDe('La seconde formation a été reportée au début de l’année suivante.'),
     criteres: CRITERES_CADRE.map((c) => (c.commandement && !commandement ? null : 'B')),
-    pointsForts: 'Rigueur, disponibilité.',
-    pointsFaibles: 'Des délais parfois serrés.',
-    actions: 'Un atelier de planification.',
-    objectifsAVenir: vide.objectifsAVenir.map((o, i) =>
-      i === 0 ? { texte: 'Réduire les délais d’instruction', delai: 'Juin' } : o,
-    ),
-    formations: ['Gestion de projet', '', ''],
+    pointsForts: puces('Rigueur', 'Disponibilité'),
+    pointsFaibles: texteRicheDe('Des délais parfois serrés.'),
+    actions: texteRicheDe('Un atelier de planification.'),
+    objectifsAVenir: [
+      { texte: 'Réduire les délais d’instruction', echeance: `${ANNEE + 1}-06-30` },
+    ],
+    formations: [{ courseId: cours.gestion, titre: 'Gestion de projet' }],
     comprehension: 'A',
     tenue: 'B',
-    observations: 'Agent fiable.',
+    observations: texteRicheDe('Agent fiable.'),
   };
+}
+
+/** Une formation publiée de l'APIX Academy, une leçon prête ; rend la leçon. */
+async function formation(id: string, titre: string, formateur: Nom | null = null) {
+  const moduleId = randomUUID();
+  const lecon = randomUUID();
+  await raw(
+    `INSERT INTO academy_courses (id, tenant_id, title, category, published_at, created_by_user_id,
+                                  formateur_employee_id, formateur_nom)
+     VALUES ($1,$2,$3,'bureautique', now(), $4, $5, $6)`,
+    [
+      id,
+      tenantId,
+      titre,
+      comptes.mariama,
+      formateur ? agents[formateur] : null,
+      formateur ? `Formateur ${formateur}` : null,
+    ],
+  );
+  await raw(
+    `INSERT INTO academy_modules (id, tenant_id, course_id, position, title) VALUES ($1,$2,$3,0,'Bases')`,
+    [moduleId, tenantId, id],
+  );
+  await raw(
+    `INSERT INTO academy_lessons (id, tenant_id, course_id, module_id, position, title,
+       video_provider, video_uid, video_status, duration_seconds)
+     VALUES ($1,$2,$3,$4,0,'Leçon 1','local',$5,'prete',60)`,
+    [lecon, tenantId, id, moduleId, randomUUID()],
+  );
+  return lecon;
 }
 
 beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 3 });
   db = new TenantDb();
-  evaluations = new EvaluationsService(db);
+  evaluations = new EvaluationsService(db, new AcademySuiviService());
 
   await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1,'Évaluations',$2)`, [
     tenantId,
@@ -243,6 +286,16 @@ beforeAll(async () => {
   ] as const) {
     await raw(`UPDATE org_units SET manager_employee_id = $1 WHERE id = $2`, [chef, id]);
   }
+
+  await formation(cours.gestion, 'Gestion de projet');
+  const excel = await formation(cours.excel, 'Excel avancé');
+  await formation(cours.accueil, 'Accueil des investisseurs', 'moussa');
+  await raw(
+    `INSERT INTO academy_lesson_progress (tenant_id, employee_id, lesson_id, watched, watched_seconds,
+                                          completed_at, updated_at)
+     VALUES ($1,$2,$3,'[[0,60]]',60, now(), now())`,
+    [tenantId, agents.moussa, excel],
+  );
 });
 
 afterAll(async () => {
@@ -370,15 +423,18 @@ describe('le remplissage', () => {
     const partielle = {
       ...grilleVide(),
       objectifs: [
-        { texte: 'Instruire les dossiers', niveau: null },
-        { texte: '', niveau: null },
-        { texte: '', niveau: null },
+        { texte: texteRicheDe('Instruire les dossiers'), niveau: null },
+        { texte: [], niveau: null },
+        { texte: [], niveau: null },
       ],
     };
     const vue = await evaluations.enregistrer(session('awa'), agents.moussa, ANNEE, partielle);
     expect(vue.etat).toBe('brouillon');
     expect(vue.role).toBe('n1');
-    expect(vue.contenu.objectifs[0]).toEqual({ texte: 'Instruire les dossiers', niveau: null });
+    expect(vue.contenu.objectifs[0]).toEqual({
+      texte: texteRicheDe('Instruire les dossiers'),
+      niveau: null,
+    });
     expect(vue.actions.envoyer).toBe(true);
     expect(await codeOf(() => evaluations.envoyer(session('awa'), agents.moussa, ANNEE))).toBe(
       'evaluations.incomplete',
@@ -401,11 +457,10 @@ describe('le remplissage', () => {
   it('une grille neuve reprend les objectifs à venir de la précédente', async () => {
     const precedente = {
       ...grilleVide(),
-      objectifsAVenir: Array.from({ length: OBJECTIFS_A_VENIR }, (_, i) =>
-        i < 2
-          ? { texte: `Objectif fixé l’an passé n° ${i + 1}`, delai: 'Décembre' }
-          : { texte: '', delai: '' },
-      ),
+      objectifsAVenir: [
+        { texte: 'Objectif fixé l’an passé n° 1', echeance: `${ANNEE}-03-31` },
+        { texte: 'Objectif fixé l’an passé n° 2', echeance: null },
+      ],
     };
     await raw(
       `INSERT INTO evaluation_grilles (id, tenant_id, employee_id, annee, modele, etat, contenu,
@@ -415,11 +470,133 @@ describe('le remplissage', () => {
     );
     const vue = await evaluations.grille(session('awa'), agents.aissatou, ANNEE);
     expect(vue.etat).toBeNull();
-    expect(vue.contenu.objectifs.map((o) => o.texte)).toEqual([
+    expect(vue.contenu.objectifs.map((o) => texteBrut(o.texte))).toEqual([
       'Objectif fixé l’an passé n° 1',
       'Objectif fixé l’an passé n° 2',
       '',
     ]);
+  });
+});
+
+describe('les champs de la grille', () => {
+  it('le texte mis en forme s’enregistre rangé, et ce que le PDF ne tient pas est refusé', async () => {
+    const contenu = {
+      ...complete(),
+      objectifs: [
+        {
+          texte: [
+            {
+              type: 'paragraphe' as const,
+              niveau: 0,
+              segments: [
+                { texte: 'Instruire ', gras: true },
+                { texte: 'les', gras: true },
+                { texte: ' dossiers' },
+                { texte: '' },
+              ],
+            },
+            { type: 'paragraphe' as const, niveau: 0, segments: [] },
+          ],
+          niveau: 'B' as const,
+        },
+        { texte: [], niveau: null },
+        { texte: [], niveau: null },
+      ],
+      raisons: [
+        { type: 'numero' as const, niveau: 0, segments: [{ texte: 'Un report' }] },
+        { type: 'puce' as const, niveau: 1, segments: [{ texte: 'en mars', italique: true }] },
+      ],
+    };
+    const vue = await evaluations.enregistrer(session('awa'), agents.aissatou, ANNEE, contenu);
+    expect(vue.contenu.objectifs[0]!.texte).toEqual([
+      {
+        type: 'paragraphe',
+        niveau: 0,
+        segments: [{ texte: 'Instruire les', gras: true }, { texte: ' dossiers' }],
+      },
+    ]);
+    expect(vue.contenu.raisons).toEqual(contenu.raisons);
+
+    // Un objectif est du texte, sans puce ni numéro.
+    const avecPuce = { ...contenu, objectifs: [{ texte: puces('Un'), niveau: 'B' }] };
+    expect(contenuDeGrilleSchema.safeParse(avecPuce).success).toBe(false);
+    // Ce qui dépasse sa place sur le PDF ne s'enregistre pas ; l'écran le dit.
+    const trop = { ...contenu, pointsForts: texteRicheDe('x'.repeat(521)) };
+    expect(contenuDeGrilleSchema.safeParse(trop).success).toBe(false);
+    expect(champsTropLongs(trop)).toEqual(['Les points forts']);
+  });
+
+  it('les objectifs à venir se rangent par échéance ; une échéance sans objectif manque', async () => {
+    const contenu = {
+      ...complete(),
+      objectifsAVenir: [
+        { texte: 'Sans échéance', echeance: null },
+        { texte: 'En juin', echeance: `${ANNEE + 1}-06-30` },
+        { texte: '', echeance: null },
+        { texte: 'En mars', echeance: `${ANNEE + 1}-03-31` },
+      ],
+    };
+    const vue = await evaluations.enregistrer(session('awa'), agents.aissatou, ANNEE, contenu);
+    expect(vue.contenu.objectifsAVenir.map((o) => o.texte)).toEqual([
+      'En mars',
+      'En juin',
+      'Sans échéance',
+    ]);
+    const orpheline = {
+      ...vue.contenu,
+      objectifsAVenir: [{ texte: '', echeance: `${ANNEE + 1}-01-15` }],
+    };
+    expect(ceQuiManque(orpheline, false)).toEqual(['L’objectif de chaque échéance']);
+  });
+
+  it('les formations proposées : le catalogue, sans ce que l’agent a terminé ni anime', async () => {
+    const vue = await evaluations.grille(session('awa'), agents.moussa, ANNEE);
+    expect(vue.formationsProposables).toEqual([
+      { courseId: cours.gestion, titre: 'Gestion de projet' },
+    ]);
+    // La demande garde le titre du catalogue ; une formation inconnue est refusée.
+    const demandee = await evaluations.enregistrer(session('awa'), agents.moussa, ANNEE, {
+      ...vue.contenu,
+      formations: [{ courseId: cours.gestion, titre: 'Autre titre' }],
+    });
+    expect(demandee.contenu.formations).toEqual([
+      { courseId: cours.gestion, titre: 'Gestion de projet' },
+    ]);
+    expect(
+      await codeOf(() =>
+        evaluations.enregistrer(session('awa'), agents.moussa, ANNEE, {
+          ...vue.contenu,
+          formations: [{ courseId: randomUUID(), titre: 'Inconnue' }],
+        }),
+      ),
+    ).toBe('evaluations.formation');
+  });
+
+  it('une grille d’avant le texte riche se relit, et s’imprime', async () => {
+    const ancienne = {
+      objectifs: [{ texte: 'Un objectif\nsur deux lignes', niveau: 'B' }],
+      raisons: '',
+      pointsForts: 'Rigueur.',
+      objectifsAVenir: [
+        { texte: 'Un objectif', delai: 'Juin' },
+        { texte: '', delai: '' },
+      ],
+      formations: ['Gestion de projet', '', ''],
+      observations: 'Agent fiable.',
+    };
+    await raw(
+      `INSERT INTO evaluation_grilles (id, tenant_id, employee_id, annee, modele, etat, contenu,
+                                       terminee_le)
+       VALUES ($1,$2,$3,$4,'cadre','terminee',$5::jsonb, now())`,
+      [randomUUID(), tenantId, agents.khady, ANNEE - 2, JSON.stringify(ancienne)],
+    );
+    const vue = await evaluations.grille(session('awa'), agents.khady, ANNEE - 2);
+    expect(vue.contenu.objectifs[0]!.texte).toEqual(texteRicheDe('Un objectif\nsur deux lignes'));
+    expect(vue.contenu.pointsForts).toEqual(texteRicheDe('Rigueur.'));
+    expect(vue.contenu.objectifsAVenir).toEqual([{ texte: 'Un objectif', echeance: null }]);
+    expect(vue.contenu.formations).toEqual([]);
+    const { pdf } = await evaluations.pdf(session('awa'), agents.khady, ANNEE - 2);
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
   });
 });
 
@@ -435,10 +612,12 @@ describe('le circuit', () => {
 
     const lue = await evaluations.grille(session('moussa'), agents.moussa, ANNEE);
     expect(lue.role).toBe('agent');
-    expect(lue.contenu.pointsForts).toBe('Rigueur, disponibilité.');
+    expect(lue.contenu.pointsForts).toEqual(puces('Rigueur', 'Disponibilité'));
     expect(lue.contenu.comprehension).toBeNull();
     expect(lue.contenu.tenue).toBeNull();
-    expect(lue.contenu.observations).toBe('');
+    expect(lue.contenu.observations).toEqual([]);
+    // L'agent ne choisit pas les formations : le catalogue n'est pas montré à l'agent.
+    expect(lue.formationsProposables).toEqual([]);
     expect(lue.n2).toBeNull();
     expect(lue.actions).toMatchObject({ valider: true, renvoyer: true, pdf: false });
     expect(await codeOf(() => evaluations.pdf(session('moussa'), agents.moussa, ANNEE))).toBe(

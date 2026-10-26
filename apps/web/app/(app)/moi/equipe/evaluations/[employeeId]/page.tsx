@@ -1,10 +1,14 @@
 'use client';
 
+// La feuille de l'éditeur part avec la page, pas avec l'éditeur chargé à la
+// demande : une feuille venue d'un module différé peut manquer à l'affichage.
+import '@blocknote/mantine/style.css';
 import { use, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ceQuiManque,
+  champsTropLongs,
   dateEnLettres,
   LIMITES_DE_LA_GRILLE,
   type ContenuDeGrille,
@@ -217,6 +221,7 @@ function Remplissage({ vue }: { vue: VueDeGrille }) {
   const [message, setMessage] = useMessageBref();
   const carte = useRef<HTMLDivElement>(null);
   const manque = ceQuiManque(contenu, vue.commandement);
+  const tropLongs = champsTropLongs(contenu);
   useGardeDeSaisie(modifie);
 
   const chemin = `/evaluations/grilles/${vue.employeeId}/${vue.annee}`;
@@ -317,6 +322,10 @@ function Remplissage({ vue }: { vue: VueDeGrille }) {
                   <p role="status" className="font-semibold text-success">
                     {message}
                   </p>
+                ) : tropLongs.length > 0 ? (
+                  <p role="alert" className="text-danger">
+                    Trop long pour sa place sur le PDF : {tropLongs.map(minuscule).join(', ')}.
+                  </p>
                 ) : manque.length > 0 ? (
                   <p className="text-ink-muted">
                     À compléter : {manque.map(minuscule).join(', ')}.
@@ -327,7 +336,9 @@ function Remplissage({ vue }: { vue: VueDeGrille }) {
                 <Button
                   variant="secondary"
                   className="h-9 flex-1 px-4 sm:flex-none"
-                  disabled={(!modifie && Boolean(vue.etat)) || geste !== null}
+                  disabled={
+                    (!modifie && Boolean(vue.etat)) || tropLongs.length > 0 || geste !== null
+                  }
                   loading={geste === 'enregistrer'}
                   onClick={() => sauver('enregistrer', () => setMessage('Grille enregistrée'))}
                 >
@@ -335,7 +346,7 @@ function Remplissage({ vue }: { vue: VueDeGrille }) {
                 </Button>
                 <Button
                   className="h-9 flex-1 px-5 sm:flex-none"
-                  disabled={manque.length > 0 || geste !== null}
+                  disabled={manque.length > 0 || tropLongs.length > 0 || geste !== null}
                   loading={geste === 'valider'}
                   onClick={valider}
                 >

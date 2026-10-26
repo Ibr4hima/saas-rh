@@ -10,10 +10,13 @@ import {
   type ComponentProps,
   type ReactNode,
 } from 'react';
+import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
   CRITERES_CADRE,
   dateEnLettres,
+  FORMATIONS,
   LIBELLES_OU_EN_EST,
   LIMITES_DE_LA_GRILLE,
   NIVEAUX,
@@ -21,11 +24,15 @@ import {
   nomDeLaGrille,
   periodeDEvaluationEnLettres,
   SYNTHESE_DU_N1,
+  texteRicheVide,
   type ContenuDeGrille,
+  type FormationDemandee,
+  type FormationProposable,
   type GrilleAuDossier,
   type Niveau,
   type OuEnEst,
   type PeriodeEvaluation,
+  type TexteRiche,
   type VueDeGrille,
 } from '@teranga/contracts';
 import {
@@ -39,7 +46,6 @@ import {
   cn,
   EmptyState,
   Field,
-  Input,
   Skeleton,
   Table,
   TBody,
@@ -56,9 +62,21 @@ import { majuscule } from '../lib/mots';
 import { ActionDeLEntete } from './entete';
 import { FenetreDocument } from './fenetre-document';
 import { Donnee } from './fiche';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 import { Modal } from './modal';
+import { EditeurObjectifsAVenir, Echeance } from './objectifs-a-venir';
 import { PdfEnLargeur } from './pdf-viewer';
+import { TexteRicheLu } from './texte-riche';
+
+/**
+ * L'éditeur de texte mis en forme, chargé à la demande : BlockNote ne pèse
+ * que sur la page qui fait remplir la grille. La place du champ est tenue
+ * pendant qu'il arrive.
+ */
+const EditeurRiche = dynamic(() => import('./editeur-riche'), {
+  ssr: false,
+  loading: () => <div className="min-h-[inherit] rounded-controle border border-line bg-surface" />,
+});
 
 /*
    La grille d'évaluation de l'APIX à l'écran (ADR-0149) : le N+1 la remplit
@@ -146,6 +164,62 @@ function Section({ titre, children }: { titre: string; children: ReactNode }) {
   );
 }
 
+/**
+ * La couleur de chaque niveau, à l'écran seulement : A vert, B jaune tirant
+ * sur le vert, C orange tirant sur le jaune, D rouge, en teintes claires.
+ */
+const COULEURS_DU_NIVEAU: Record<Niveau, { choix: string; pastille: string; texte: string }> = {
+  A: {
+    choix: 'border-niveau-a-line bg-niveau-a-soft',
+    pastille: 'bg-niveau-a text-niveau-a-ink',
+    texte: 'text-niveau-a-text',
+  },
+  B: {
+    choix: 'border-niveau-b-line bg-niveau-b-soft',
+    pastille: 'bg-niveau-b text-niveau-b-ink',
+    texte: 'text-niveau-b-text',
+  },
+  C: {
+    choix: 'border-niveau-c-line bg-niveau-c-soft',
+    pastille: 'bg-niveau-c text-niveau-c-ink',
+    texte: 'text-niveau-c-text',
+  },
+  D: {
+    choix: 'border-niveau-d-line bg-niveau-d-soft',
+    pastille: 'bg-niveau-d text-niveau-d-ink',
+    texte: 'text-niveau-d-text',
+  },
+};
+
+/** Le signe dans la case d'un objectif : dépassé ou réalisé, en partie, pas du tout. */
+const SIGNE_DU_NIVEAU: Record<Niveau, IconName> = {
+  A: 'check',
+  B: 'check',
+  C: 'remove',
+  D: 'close',
+};
+
+/**
+ * La case d'un objectif de l'année écoulée. Elle ne se coche pas : le
+ * niveau de l'objectif la remplit, à sa couleur.
+ */
+function CaseDuNiveau({ niveau }: { niveau: Niveau | null }) {
+  return (
+    <span
+      role="img"
+      aria-label={niveau ? `${niveau} : ${NIVEAUX_D_OBJECTIF[niveau]}` : 'Niveau à donner'}
+      className={cn(
+        'flex size-[18px] shrink-0 items-center justify-center rounded-[5px] border-[1.5px] transition-colors duration-150',
+        niveau
+          ? cn(COULEURS_DU_NIVEAU[niveau].pastille, 'border-transparent')
+          : 'border-ink-muted/40 bg-surface',
+      )}
+    >
+      {niveau ? <Icon name={SIGNE_DU_NIVEAU[niveau]} size={14} weight={600} /> : null}
+    </span>
+  );
+}
+
 /** Les quatre niveaux, A à D, à cocher : chacun avec ce qu'il veut dire. */
 export function ChoixDeNiveau({
   legende,
@@ -164,7 +238,9 @@ export function ChoixDeNiveau({
 }) {
   const nom = useId();
   return (
-    <fieldset className="min-w-0">
+    // `relative` : la légende, cachée, se place dans son cadre ; sans lui,
+    // elle débordait de la zone qui défile et faisait défiler la page entière.
+    <fieldset className="relative min-w-0">
       <legend className="sr-only">{legende}</legend>
       <div
         className={cn(
@@ -184,7 +260,7 @@ export function ChoixDeNiveau({
                 'relative flex cursor-pointer items-start gap-2.5 rounded-controle border px-3 py-2.5 transition-colors duration-150',
                 'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary',
                 choisi
-                  ? 'border-primary/50 bg-primary-soft'
+                  ? COULEURS_DU_NIVEAU[n].choix
                   : 'border-line bg-surface hover:border-ink-muted/40 hover:bg-hover',
               )}
             >
@@ -202,7 +278,7 @@ export function ChoixDeNiveau({
               <span
                 className={cn(
                   'flex size-6 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold transition-colors duration-150',
-                  choisi ? 'bg-primary text-primary-ink' : 'bg-line-soft text-ink-strong',
+                  choisi ? COULEURS_DU_NIVEAU[n].pastille : 'bg-line-soft text-ink-strong',
                 )}
               >
                 {n}
@@ -210,7 +286,7 @@ export function ChoixDeNiveau({
               <span
                 className={cn(
                   'min-w-0 pt-[3px] text-[12px] leading-snug',
-                  choisi ? 'font-semibold text-primary' : 'text-ink',
+                  choisi ? cn('font-semibold', COULEURS_DU_NIVEAU[n].texte) : 'text-ink',
                 )}
               >
                 {libelles[n]}
@@ -228,7 +304,12 @@ function NiveauDonne({ niveau, libelle }: { niveau: Niveau | null; libelle?: str
   if (!niveau) return <NonRenseigne />;
   return (
     <span className="flex items-start gap-2.5">
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12px] font-extrabold text-primary">
+      <span
+        className={cn(
+          'flex size-6 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold',
+          COULEURS_DU_NIVEAU[niveau].pastille,
+        )}
+      >
         {niveau}
       </span>
       {libelle ? (
@@ -259,14 +340,109 @@ function SansObjet({ numero, intitule }: { numero: number; intitule: string }) {
   );
 }
 
-/** Un texte de la grille, en lecture, ses retours à la ligne gardés. */
-function TexteDonne({ children }: { children: string }) {
-  return children ? (
-    <p className="text-[12.5px] leading-relaxed break-words whitespace-pre-line text-ink-strong">
-      {children}
-    </p>
-  ) : (
-    <NonRenseigne />
+/** Un texte de la grille, en lecture, tel qu'il s'est écrit. */
+function TexteDonne({ texte }: { texte: TexteRiche }) {
+  return texteRicheVide(texte) ? <NonRenseigne /> : <TexteRicheLu texte={texte} />;
+}
+
+/**
+ * Un champ de texte mis en forme, à remplir : `listes` y admet les puces et
+ * les numéros. La place du champ est tenue pendant que l'éditeur arrive.
+ */
+function ChampRiche({
+  label,
+  valeur,
+  onChange,
+  listes,
+  max,
+  compact = false,
+}: {
+  label: string;
+  valeur: TexteRiche;
+  onChange: (t: TexteRiche) => void;
+  listes: boolean;
+  max: number;
+  compact?: boolean;
+}) {
+  return (
+    <div className={compact ? 'min-h-[38px]' : 'min-h-[58px]'}>
+      <EditeurRiche
+        label={label}
+        valeur={valeur}
+        onChange={onChange}
+        listes={listes}
+        max={max}
+        compact={compact}
+      />
+    </div>
+  );
+}
+
+/** Une formation en badge : le rayon vaut la moitié d'une ligne, un titre long passe à la ligne. */
+const BADGE =
+  'inline-flex max-w-full items-center gap-1.5 rounded-[15px] border px-3 py-[5px] text-left text-[12px] font-semibold transition-colors duration-150';
+
+/**
+ * Les besoins de formation, à choisir d'un clic dans le catalogue de l'APIX
+ * Academy : ce que l'agent n'a ni terminé ni obtenu, et n'anime pas. Une
+ * formation déjà demandée qui n'y est plus se retire d'un clic. Trois au
+ * plus, les trois lignes du modèle.
+ */
+function ChoixDesFormations({
+  choisies,
+  proposables,
+  onChange,
+}: {
+  choisies: FormationDemandee[];
+  proposables: FormationProposable[];
+  onChange: (formations: FormationDemandee[]) => void;
+}) {
+  const lignes = [
+    ...proposables,
+    ...choisies.filter((c) => !proposables.some((p) => p.courseId === c.courseId)),
+  ];
+  const complete = choisies.length >= FORMATIONS;
+  if (lignes.length === 0) {
+    return (
+      <p className="text-[12.5px] text-ink-muted/70">
+        Aucune formation de l’APIX Academy à proposer
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {lignes.map(({ courseId, titre }) => {
+        const choisie = choisies.some((c) => c.courseId === courseId);
+        const bloquee = !choisie && complete;
+        return (
+          <button
+            key={courseId}
+            type="button"
+            aria-pressed={choisie}
+            disabled={bloquee}
+            title={bloquee ? 'Trois formations au plus' : undefined}
+            onClick={() =>
+              onChange(
+                choisie
+                  ? choisies.filter((c) => c.courseId !== courseId)
+                  : [...choisies, { courseId, titre }],
+              )
+            }
+            className={cn(
+              BADGE,
+              'outline-none focus-visible:ring-2 focus-visible:ring-primary/35',
+              choisie
+                ? 'border-primary bg-primary pl-2 text-primary-ink'
+                : 'border-line bg-surface text-ink hover:border-primary/40 hover:text-primary',
+              bloquee && 'cursor-not-allowed opacity-50 hover:border-line hover:text-ink',
+            )}
+          >
+            {choisie ? <Icon name="check" size={15} className="shrink-0" /> : null}
+            <span className="min-w-0">{titre}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -361,7 +537,7 @@ export function SaisieDeLaGrille({
   contenu: ContenuDeGrille;
   onChange: (contenu: ContenuDeGrille) => void;
 }) {
-  const id = useId();
+  const L = LIMITES_DE_LA_GRILLE;
   const poser = (champ: Partial<ContenuDeGrille>) => onChange({ ...contenu, ...champ });
   const remplacer = <T,>(liste: T[], i: number, valeur: T) =>
     liste.map((x, k) => (k === i ? valeur : x));
@@ -387,39 +563,48 @@ export function SaisieDeLaGrille({
         <div className="flex flex-col gap-6">
           {contenu.objectifs.map((o, i) => (
             <div key={i} className="flex flex-col gap-2.5">
-              <Field label={`Objectif ${i + 1}`} htmlFor={`${id}-objectif-${i}`} required={i === 0}>
-                <ZoneDeTexte
-                  id={`${id}-objectif-${i}`}
-                  max={LIMITES_DE_LA_GRILLE.objectif}
-                  value={o.texte}
-                  onChange={(e) =>
-                    poser({
-                      objectifs: remplacer(contenu.objectifs, i, { ...o, texte: e.target.value }),
-                    })
+              <Field label={`Objectif ${i + 1}`} required={i === 0}>
+                <div className="flex items-start gap-2.5">
+                  <span className="pt-[11px]">
+                    <CaseDuNiveau niveau={o.niveau} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <ChampRiche
+                      compact
+                      listes={false}
+                      label={`Objectif ${i + 1}`}
+                      max={L.objectif}
+                      valeur={o.texte}
+                      onChange={(texte) =>
+                        poser({ objectifs: remplacer(contenu.objectifs, i, { ...o, texte }) })
+                      }
+                    />
+                  </div>
+                </div>
+              </Field>
+              <div className="sm:pl-7">
+                <ChoixDeNiveau
+                  court
+                  legende={`Niveau de l’objectif ${i + 1}`}
+                  valeur={o.niveau}
+                  libelles={NIVEAUX_D_OBJECTIF}
+                  onChange={(niveau) =>
+                    poser({ objectifs: remplacer(contenu.objectifs, i, { ...o, niveau }) })
                   }
                 />
-              </Field>
-              <ChoixDeNiveau
-                court
-                legende={`Niveau de l’objectif ${i + 1}`}
-                valeur={o.niveau}
-                libelles={NIVEAUX_D_OBJECTIF}
-                onChange={(niveau) =>
-                  poser({ objectifs: remplacer(contenu.objectifs, i, { ...o, niveau }) })
-                }
-              />
+              </div>
             </div>
           ))}
           <Field
             label="Raisons des objectifs non atteints ou partiellement réalisés"
-            htmlFor={`${id}-raisons`}
             required={avecRaisons}
           >
-            <ZoneDeTexte
-              id={`${id}-raisons`}
-              max={LIMITES_DE_LA_GRILLE.raisons}
-              value={contenu.raisons}
-              onChange={(e) => poser({ raisons: e.target.value })}
+            <ChampRiche
+              listes
+              label="Raisons des objectifs non atteints ou partiellement réalisés"
+              max={L.raisons}
+              valeur={contenu.raisons}
+              onChange={(raisons) => poser({ raisons })}
             />
           </Field>
         </div>
@@ -452,94 +637,51 @@ export function SaisieDeLaGrille({
 
       <Section titre="Résumé de l’évaluation des performances">
         <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
-          <Field label="Points forts de l’évalué" htmlFor={`${id}-forts`} required>
-            <ZoneDeTexte
-              id={`${id}-forts`}
-              max={LIMITES_DE_LA_GRILLE.pointsForts}
-              value={contenu.pointsForts}
-              onChange={(e) => poser({ pointsForts: e.target.value })}
+          <Field label="Points forts de l’évalué" required>
+            <ChampRiche
+              listes
+              label="Points forts de l’évalué"
+              max={L.pointsForts}
+              valeur={contenu.pointsForts}
+              onChange={(pointsForts) => poser({ pointsForts })}
             />
           </Field>
-          <Field
-            label="Points faibles de l’évalué (à améliorer)"
-            htmlFor={`${id}-faibles`}
-            required
-          >
-            <ZoneDeTexte
-              id={`${id}-faibles`}
-              max={LIMITES_DE_LA_GRILLE.pointsFaibles}
-              value={contenu.pointsFaibles}
-              onChange={(e) => poser({ pointsFaibles: e.target.value })}
+          <Field label="Points faibles de l’évalué (à améliorer)" required>
+            <ChampRiche
+              listes
+              label="Points faibles de l’évalué (à améliorer)"
+              max={L.pointsFaibles}
+              valeur={contenu.pointsFaibles}
+              onChange={(pointsFaibles) => poser({ pointsFaibles })}
             />
           </Field>
         </div>
       </Section>
 
       <Section titre="Actions pour améliorer les performances de l’évalué">
-        <Field label="Contenu et justification" htmlFor={`${id}-actions`}>
-          <ZoneDeTexte
-            id={`${id}-actions`}
-            max={LIMITES_DE_LA_GRILLE.actions}
-            value={contenu.actions}
-            onChange={(e) => poser({ actions: e.target.value })}
-          />
-        </Field>
+        <ChampRiche
+          listes
+          label="Actions pour améliorer les performances de l’évalué"
+          max={L.actions}
+          valeur={contenu.actions}
+          onChange={(actions) => poser({ actions })}
+        />
       </Section>
 
       <Section titre="Objectifs de travail pour la période à venir">
-        <div className="flex flex-col gap-3.5">
-          {contenu.objectifsAVenir.map((o, i) => (
-            <div key={i} className="grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_11rem]">
-              <Field label={`Objectif ${i + 1}`} htmlFor={`${id}-a-venir-${i}`}>
-                <ZoneDeTexte
-                  id={`${id}-a-venir-${i}`}
-                  max={LIMITES_DE_LA_GRILLE.objectifAVenir}
-                  value={o.texte}
-                  onChange={(e) =>
-                    poser({
-                      objectifsAVenir: remplacer(contenu.objectifsAVenir, i, {
-                        ...o,
-                        texte: e.target.value,
-                      }),
-                    })
-                  }
-                />
-              </Field>
-              <Field label="Délai" htmlFor={`${id}-delai-${i}`}>
-                <Input
-                  id={`${id}-delai-${i}`}
-                  maxLength={LIMITES_DE_LA_GRILLE.delai}
-                  value={o.delai}
-                  onChange={(e) =>
-                    poser({
-                      objectifsAVenir: remplacer(contenu.objectifsAVenir, i, {
-                        ...o,
-                        delai: e.target.value,
-                      }),
-                    })
-                  }
-                />
-              </Field>
-            </div>
-          ))}
-        </div>
+        <EditeurObjectifsAVenir
+          initial={contenu.objectifsAVenir}
+          annee={vue.annee}
+          onChange={(objectifsAVenir) => poser({ objectifsAVenir })}
+        />
       </Section>
 
       <Section titre="Besoins de formation identifiés">
-        <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-3">
-          {contenu.formations.map((f, i) => (
-            <Field key={i} label={`Formation n° ${i + 1}`} htmlFor={`${id}-formation-${i}`}>
-              <Input
-                id={`${id}-formation-${i}`}
-                maxLength={LIMITES_DE_LA_GRILLE.formation}
-                value={f}
-                onChange={(e) =>
-                  poser({ formations: remplacer(contenu.formations, i, e.target.value) })
-                }
-              />
-            </Field>
-          ))}
-        </div>
+        <ChoixDesFormations
+          choisies={contenu.formations}
+          proposables={vue.formationsProposables}
+          onChange={(formations) => poser({ formations })}
+        />
       </Section>
 
       <Section titre="Partie strictement réservée à la hiérarchie">
@@ -559,12 +701,13 @@ export function SaisieDeLaGrille({
               />
             </div>
           ))}
-          <Field label="Observations du N+1" htmlFor={`${id}-observations`}>
-            <ZoneDeTexte
-              id={`${id}-observations`}
-              max={LIMITES_DE_LA_GRILLE.observations}
-              value={contenu.observations}
-              onChange={(e) => poser({ observations: e.target.value })}
+          <Field label="Observations du N+1">
+            <ChampRiche
+              listes
+              label="Observations du N+1"
+              max={L.observations}
+              valeur={contenu.observations}
+              onChange={(observations) => poser({ observations })}
             />
           </Field>
         </div>
@@ -581,9 +724,7 @@ export function SaisieDeLaGrille({
  */
 export function GrilleEnLecture({ vue }: { vue: VueDeGrille }) {
   const c = vue.contenu;
-  const objectifs = c.objectifs.filter((o) => o.texte || o.niveau);
-  const aVenir = c.objectifsAVenir.filter((o) => o.texte || o.delai);
-  const formations = c.formations.filter(Boolean);
+  const objectifs = c.objectifs.filter((o) => !texteRicheVide(o.texte) || o.niveau);
   const nouveau = c.nouveauAuPoste ?? vue.identification.nouveauAuPoste;
   return (
     <>
@@ -604,17 +745,26 @@ export function GrilleEnLecture({ vue }: { vue: VueDeGrille }) {
           {objectifs.map((o, i) => (
             <div key={i} className="flex flex-col gap-2">
               <Intitule>Objectif {i + 1}</Intitule>
-              <TexteDonne>{o.texte}</TexteDonne>
-              <NiveauDonne
-                niveau={o.niveau}
-                libelle={o.niveau ? NIVEAUX_D_OBJECTIF[o.niveau] : ''}
-              />
+              <div className="flex items-start gap-2.5">
+                <span className="pt-[3px]">
+                  <CaseDuNiveau niveau={o.niveau} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <TexteDonne texte={o.texte} />
+                </div>
+              </div>
+              <div className="sm:pl-7">
+                <NiveauDonne
+                  niveau={o.niveau}
+                  libelle={o.niveau ? NIVEAUX_D_OBJECTIF[o.niveau] : ''}
+                />
+              </div>
             </div>
           ))}
-          {c.raisons ? (
+          {!texteRicheVide(c.raisons) ? (
             <div>
               <Intitule>Raisons des objectifs non atteints ou partiellement réalisés</Intitule>
-              <TexteDonne>{c.raisons}</TexteDonne>
+              <TexteDonne texte={c.raisons} />
             </div>
           ) : null}
         </div>
@@ -643,37 +793,36 @@ export function GrilleEnLecture({ vue }: { vue: VueDeGrille }) {
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <div>
             <Intitule>Points forts de l’évalué</Intitule>
-            <TexteDonne>{c.pointsForts}</TexteDonne>
+            <TexteDonne texte={c.pointsForts} />
           </div>
           <div>
             <Intitule>Points faibles de l’évalué (à améliorer)</Intitule>
-            <TexteDonne>{c.pointsFaibles}</TexteDonne>
+            <TexteDonne texte={c.pointsFaibles} />
           </div>
         </div>
       </Section>
 
       <Section titre="Actions pour améliorer les performances de l’évalué">
-        <TexteDonne>{c.actions}</TexteDonne>
+        <TexteDonne texte={c.actions} />
       </Section>
 
       <Section titre="Objectifs de travail pour la période à venir">
-        {aVenir.length === 0 ? (
+        {c.objectifsAVenir.length === 0 ? (
           <NonRenseigne />
         ) : (
-          <ul className="flex flex-col gap-4">
-            {aVenir.map((o, i) => (
-              <li
-                key={i}
-                className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_11rem] sm:gap-5"
-              >
-                <div>
-                  <Intitule>Objectif {i + 1}</Intitule>
-                  <TexteDonne>{o.texte}</TexteDonne>
-                </div>
-                <div>
-                  <Intitule>Délai</Intitule>
-                  <TexteDonne>{o.delai}</TexteDonne>
-                </div>
+          <ul className="flex flex-col gap-1.5">
+            {c.objectifsAVenir.map((o, i) => (
+              <li key={i} className="flex items-start gap-[11px]">
+                <span
+                  aria-hidden
+                  className="w-2 shrink-0 text-[12.5px] leading-relaxed text-ink-muted"
+                >
+                  •
+                </span>
+                <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed break-words text-ink-strong">
+                  {o.texte}
+                </p>
+                {o.echeance ? <Echeance date={o.echeance} className="pt-px" /> : null}
               </li>
             ))}
           </ul>
@@ -681,17 +830,23 @@ export function GrilleEnLecture({ vue }: { vue: VueDeGrille }) {
       </Section>
 
       <Section titre="Besoins de formation identifiés">
-        {formations.length === 0 ? (
+        {c.formations.length === 0 ? (
           <NonRenseigne />
         ) : (
-          <ul className="flex flex-col gap-2">
-            {formations.map((f, i) => (
-              <li key={i} className="text-[12.5px] leading-relaxed text-ink-strong">
-                <span className="text-ink-muted">Formation n° {i + 1} : </span>
-                {f}
-              </li>
+          <div className="flex flex-wrap gap-2">
+            {c.formations.map((f) => (
+              <Link
+                key={f.courseId}
+                href={`/academy/${f.courseId}`}
+                className={cn(
+                  BADGE,
+                  'border-primary/20 bg-primary-soft text-primary hover:border-primary/45',
+                )}
+              >
+                <span className="min-w-0">{f.titre}</span>
+              </Link>
             ))}
-          </ul>
+          </div>
         )}
       </Section>
     </>
