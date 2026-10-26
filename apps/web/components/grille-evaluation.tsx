@@ -1,10 +1,12 @@
 'use client';
 
 import {
+  memo,
   useCallback,
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -22,14 +24,17 @@ import {
   NIVEAUX,
   NIVEAUX_D_OBJECTIF,
   nomDeLaGrille,
+  OBJECTIFS_ECOULES,
   periodeDEvaluationEnLettres,
   SYNTHESE_DU_N1,
   texteRicheVide,
   type ContenuDeGrille,
+  type CritereDeGrille,
   type FormationDemandee,
   type FormationProposable,
   type GrilleAuDossier,
   type Niveau,
+  type ObjectifAVenir,
   type OuEnEst,
   type PeriodeEvaluation,
   type TexteRiche,
@@ -221,7 +226,7 @@ function CaseDuNiveau({ niveau }: { niveau: Niveau | null }) {
 }
 
 /** Les quatre niveaux, A à D, à cocher : chacun avec ce qu'il veut dire. */
-export function ChoixDeNiveau({
+export const ChoixDeNiveau = memo(function ChoixDeNiveau({
   legende,
   valeur,
   libelles,
@@ -231,12 +236,15 @@ export function ChoixDeNiveau({
   legende: string;
   valeur: Niveau | null;
   libelles: Record<Niveau, string>;
-  /** Un nouveau clic sur le niveau coché le retire. */
+  /** Un nouveau clic sur le niveau coché le retire, mais pas le second d'un double-clic. */
   onChange: (n: Niveau | null) => void;
   /** Des libellés d'un ou deux mots : les quatre niveaux tiennent sur une ligne. */
   court?: boolean;
 }) {
   const nom = useId();
+  // L'heure du dernier choix : le clic qui le suit de près est celui d'un
+  // double-clic, il ne retire rien.
+  const choisiA = useRef(0);
   return (
     // `relative` : la légende, cachée, se place dans son cadre ; sans lui,
     // elle débordait de la zone qui défile et faisait défiler la page entière.
@@ -269,9 +277,12 @@ export function ChoixDeNiveau({
                 name={nom}
                 value={n}
                 checked={choisi}
-                onChange={() => onChange(n)}
+                onChange={() => {
+                  choisiA.current = Date.now();
+                  onChange(n);
+                }}
                 onClick={() => {
-                  if (choisi) onChange(null);
+                  if (choisi && Date.now() - choisiA.current > 600) onChange(null);
                 }}
                 className="sr-only"
               />
@@ -297,7 +308,7 @@ export function ChoixDeNiveau({
       </div>
     </fieldset>
   );
-}
+});
 
 /** Un niveau donné, en lecture : la lettre dans sa pastille, puis ce qu'elle veut dire. */
 function NiveauDonne({ niveau, libelle }: { niveau: Niveau | null; libelle?: string }) {
@@ -349,7 +360,7 @@ function TexteDonne({ texte }: { texte: TexteRiche }) {
  * Un champ de texte mis en forme, à remplir : `listes` y admet les puces et
  * les numéros. La place du champ est tenue pendant que l'éditeur arrive.
  */
-function ChampRiche({
+const ChampRiche = memo(function ChampRiche({
   label,
   valeur,
   onChange,
@@ -376,7 +387,7 @@ function ChampRiche({
       />
     </div>
   );
-}
+});
 
 /** Une formation en badge : le rayon vaut la moitié d'une ligne, un titre long passe à la ligne. */
 const BADGE =
@@ -388,7 +399,7 @@ const BADGE =
  * formation déjà demandée qui n'y est plus se retire d'un clic. Trois au
  * plus, les trois lignes du modèle.
  */
-function ChoixDesFormations({
+const ChoixDesFormations = memo(function ChoixDesFormations({
   choisies,
   proposables,
   onChange,
@@ -444,7 +455,7 @@ function ChoixDesFormations({
       })}
     </div>
   );
-}
+});
 
 /** L'intitulé d'un champ en lecture, petit et gris, comme ceux des fiches. */
 function Intitule({ children }: { children: ReactNode }) {
@@ -522,6 +533,135 @@ function Identification({ vue, nouveau }: { vue: VueDeGrille; nouveau?: ReactNod
 
 // ──────────────────────────────────────────────── la saisie du N+1
 
+/** Une modification de la grille, faite sur son dernier état. */
+type MiseAJour = (maj: (c: ContenuDeGrille) => ContenuDeGrille) => void;
+
+const remplacer = <T,>(liste: T[], i: number, valeur: T) =>
+  liste.map((x, k) => (k === i ? valeur : x));
+
+/**
+ * Les gestes de chaque champ, faits une fois pour toutes : chacun ne touche
+ * que son champ, sur le dernier état de la grille. Stables, ils laissent les
+ * autres champs tels qu'ils sont quand on écrit dans l'un d'eux : une frappe
+ * ne redessine que son champ.
+ */
+function useGestes(onChange: MiseAJour) {
+  return useMemo(() => {
+    const poser = (champ: Partial<ContenuDeGrille>) => onChange((c) => ({ ...c, ...champ }));
+    const objectif = (i: number, champ: Partial<ContenuDeGrille['objectifs'][number]>) =>
+      onChange((c) => ({
+        ...c,
+        objectifs: remplacer(c.objectifs, i, { ...c.objectifs[i]!, ...champ }),
+      }));
+    return {
+      nouveauAuPoste: (nouveauAuPoste: boolean) => poser({ nouveauAuPoste }),
+      objectifs: Array.from({ length: OBJECTIFS_ECOULES }, (_, i) => ({
+        texte: (texte: TexteRiche) => objectif(i, { texte }),
+        niveau: (niveau: Niveau | null) => objectif(i, { niveau }),
+      })),
+      raisons: (raisons: TexteRiche) => poser({ raisons }),
+      criteres: CRITERES_CADRE.map(
+        (cr) => (niveau: Niveau | null) =>
+          onChange((c) => ({ ...c, criteres: remplacer(c.criteres, cr.numero - 1, niveau) })),
+      ),
+      pointsForts: (pointsForts: TexteRiche) => poser({ pointsForts }),
+      pointsFaibles: (pointsFaibles: TexteRiche) => poser({ pointsFaibles }),
+      actions: (actions: TexteRiche) => poser({ actions }),
+      objectifsAVenir: (objectifsAVenir: ObjectifAVenir[]) => poser({ objectifsAVenir }),
+      formations: (formations: FormationDemandee[]) => poser({ formations }),
+      comprehension: (comprehension: Niveau | null) => poser({ comprehension }),
+      tenue: (tenue: Niveau | null) => poser({ tenue }),
+      observations: (observations: TexteRiche) => poser({ observations }),
+    };
+  }, [onChange]);
+}
+
+/** Un objectif de l'année écoulée : sa case, son texte, son niveau. */
+const ObjectifEcoule = memo(function ObjectifEcoule({
+  i,
+  objectif,
+  surTexte,
+  surNiveau,
+}: {
+  i: number;
+  objectif: ContenuDeGrille['objectifs'][number];
+  surTexte: (t: TexteRiche) => void;
+  surNiveau: (n: Niveau | null) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      <Field label={`Objectif ${i + 1}`} required={i === 0}>
+        <div className="flex items-start gap-2.5">
+          <span className="pt-[11px]">
+            <CaseDuNiveau niveau={objectif.niveau} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <ChampRiche
+              compact
+              listes={false}
+              label={`Objectif ${i + 1}`}
+              max={LIMITES_DE_LA_GRILLE.objectif}
+              valeur={objectif.texte}
+              onChange={surTexte}
+            />
+          </div>
+        </div>
+      </Field>
+      <div className="sm:pl-7">
+        <ChoixDeNiveau
+          court
+          legende={`Niveau de l’objectif ${i + 1}`}
+          valeur={objectif.niveau}
+          libelles={NIVEAUX_D_OBJECTIF}
+          onChange={surNiveau}
+        />
+      </div>
+    </div>
+  );
+});
+
+/** Un critère de la grille, à noter de A à D. */
+const CritereANoter = memo(function CritereANoter({
+  critere,
+  valeur,
+  onChange,
+}: {
+  critere: CritereDeGrille;
+  valeur: Niveau | null;
+  onChange: (n: Niveau | null) => void;
+}) {
+  return (
+    <li className="flex flex-col gap-2.5">
+      <p className="text-[13px] font-semibold text-ink-strong">
+        <span className="text-ink-muted tabular-nums">{critere.numero}.</span> {critere.intitule}
+        <span className="text-danger">{'\u00a0'}*</span>
+      </p>
+      <ChoixDeNiveau
+        legende={critere.intitule}
+        valeur={valeur}
+        libelles={critere.niveaux}
+        onChange={onChange}
+      />
+    </li>
+  );
+});
+
+/** La case « agent nouveau à son poste actuel », sous l'identification. */
+const NouveauAuPoste = memo(function NouveauAuPoste({
+  coche,
+  onChange,
+}: {
+  coche: boolean;
+  onChange: (coche: boolean) => void;
+}) {
+  return (
+    <label className="mt-5 flex w-max max-w-full cursor-pointer items-center gap-2.5 text-[12.5px] font-medium text-ink-strong">
+      <Checkbox checked={coche} onChange={(e) => onChange(e.target.checked)} />
+      Agent nouveau à son poste actuel
+    </label>
+  );
+});
+
 /**
  * La grille que remplit le N+1 : les sections du modèle, dans son ordre,
  * de l'identification à la partie réservée à la hiérarchie. Les champs
@@ -535,65 +675,35 @@ export function SaisieDeLaGrille({
 }: {
   vue: VueDeGrille;
   contenu: ContenuDeGrille;
-  onChange: (contenu: ContenuDeGrille) => void;
+  /** Stable : chaque champ s'en sert pour ne changer que lui-même. */
+  onChange: MiseAJour;
 }) {
   const L = LIMITES_DE_LA_GRILLE;
-  const poser = (champ: Partial<ContenuDeGrille>) => onChange({ ...contenu, ...champ });
-  const remplacer = <T,>(liste: T[], i: number, valeur: T) =>
-    liste.map((x, k) => (k === i ? valeur : x));
+  const gestes = useGestes(onChange);
   const avecRaisons = contenu.objectifs.some((o) => o.niveau === 'C' || o.niveau === 'D');
-  const nouveau = contenu.nouveauAuPoste ?? vue.identification.nouveauAuPoste;
 
   return (
     <>
       <Identification
         vue={vue}
         nouveau={
-          <label className="mt-5 flex w-max max-w-full cursor-pointer items-center gap-2.5 text-[12.5px] font-medium text-ink-strong">
-            <Checkbox
-              checked={nouveau}
-              onChange={(e) => poser({ nouveauAuPoste: e.target.checked })}
-            />
-            Agent nouveau à son poste actuel
-          </label>
+          <NouveauAuPoste
+            coche={contenu.nouveauAuPoste ?? vue.identification.nouveauAuPoste}
+            onChange={gestes.nouveauAuPoste}
+          />
         }
       />
 
       <Section titre="Rappel sur les objectifs fixés à l’agent pour la période écoulée">
         <div className="flex flex-col gap-6">
           {contenu.objectifs.map((o, i) => (
-            <div key={i} className="flex flex-col gap-2.5">
-              <Field label={`Objectif ${i + 1}`} required={i === 0}>
-                <div className="flex items-start gap-2.5">
-                  <span className="pt-[11px]">
-                    <CaseDuNiveau niveau={o.niveau} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <ChampRiche
-                      compact
-                      listes={false}
-                      label={`Objectif ${i + 1}`}
-                      max={L.objectif}
-                      valeur={o.texte}
-                      onChange={(texte) =>
-                        poser({ objectifs: remplacer(contenu.objectifs, i, { ...o, texte }) })
-                      }
-                    />
-                  </div>
-                </div>
-              </Field>
-              <div className="sm:pl-7">
-                <ChoixDeNiveau
-                  court
-                  legende={`Niveau de l’objectif ${i + 1}`}
-                  valeur={o.niveau}
-                  libelles={NIVEAUX_D_OBJECTIF}
-                  onChange={(niveau) =>
-                    poser({ objectifs: remplacer(contenu.objectifs, i, { ...o, niveau }) })
-                  }
-                />
-              </div>
-            </div>
+            <ObjectifEcoule
+              key={i}
+              i={i}
+              objectif={o}
+              surTexte={gestes.objectifs[i]!.texte}
+              surNiveau={gestes.objectifs[i]!.niveau}
+            />
           ))}
           <Field
             label="Raisons des objectifs non atteints ou partiellement réalisés"
@@ -604,7 +714,7 @@ export function SaisieDeLaGrille({
               label="Raisons des objectifs non atteints ou partiellement réalisés"
               max={L.raisons}
               valeur={contenu.raisons}
-              onChange={(raisons) => poser({ raisons })}
+              onChange={gestes.raisons}
             />
           </Field>
         </div>
@@ -612,24 +722,16 @@ export function SaisieDeLaGrille({
 
       <Section titre="Évaluation des performances dans le poste">
         <ol className="flex flex-col gap-6">
-          {CRITERES_CADRE.map((c) =>
+          {CRITERES_CADRE.map((c, i) =>
             c.commandement && !vue.commandement ? (
               <SansObjet key={c.numero} numero={c.numero} intitule={c.intitule} />
             ) : (
-              <li key={c.numero} className="flex flex-col gap-2.5">
-                <p className="text-[13px] font-semibold text-ink-strong">
-                  <span className="text-ink-muted tabular-nums">{c.numero}.</span> {c.intitule}
-                  <span className="text-danger">{'\u00a0'}*</span>
-                </p>
-                <ChoixDeNiveau
-                  legende={c.intitule}
-                  valeur={contenu.criteres[c.numero - 1] ?? null}
-                  libelles={c.niveaux}
-                  onChange={(niveau) =>
-                    poser({ criteres: remplacer(contenu.criteres, c.numero - 1, niveau) })
-                  }
-                />
-              </li>
+              <CritereANoter
+                key={c.numero}
+                critere={c}
+                valeur={contenu.criteres[c.numero - 1] ?? null}
+                onChange={gestes.criteres[i]!}
+              />
             ),
           )}
         </ol>
@@ -643,7 +745,7 @@ export function SaisieDeLaGrille({
               label="Points forts de l’évalué"
               max={L.pointsForts}
               valeur={contenu.pointsForts}
-              onChange={(pointsForts) => poser({ pointsForts })}
+              onChange={gestes.pointsForts}
             />
           </Field>
           <Field label="Points faibles de l’évalué (à améliorer)" required>
@@ -652,7 +754,7 @@ export function SaisieDeLaGrille({
               label="Points faibles de l’évalué (à améliorer)"
               max={L.pointsFaibles}
               valeur={contenu.pointsFaibles}
-              onChange={(pointsFaibles) => poser({ pointsFaibles })}
+              onChange={gestes.pointsFaibles}
             />
           </Field>
         </div>
@@ -664,7 +766,7 @@ export function SaisieDeLaGrille({
           label="Actions pour améliorer les performances de l’évalué"
           max={L.actions}
           valeur={contenu.actions}
-          onChange={(actions) => poser({ actions })}
+          onChange={gestes.actions}
         />
       </Section>
 
@@ -672,7 +774,7 @@ export function SaisieDeLaGrille({
         <EditeurObjectifsAVenir
           initial={contenu.objectifsAVenir}
           annee={vue.annee}
-          onChange={(objectifsAVenir) => poser({ objectifsAVenir })}
+          onChange={gestes.objectifsAVenir}
         />
       </Section>
 
@@ -680,7 +782,7 @@ export function SaisieDeLaGrille({
         <ChoixDesFormations
           choisies={contenu.formations}
           proposables={vue.formationsProposables}
-          onChange={(formations) => poser({ formations })}
+          onChange={gestes.formations}
         />
       </Section>
 
@@ -697,7 +799,7 @@ export function SaisieDeLaGrille({
                 legende={s.intitule}
                 valeur={contenu[s.cle]}
                 libelles={s.niveaux}
-                onChange={(niveau) => poser({ [s.cle]: niveau })}
+                onChange={gestes[s.cle]}
               />
             </div>
           ))}
@@ -707,7 +809,7 @@ export function SaisieDeLaGrille({
               label="Observations du N+1"
               max={L.observations}
               valeur={contenu.observations}
-              onChange={(observations) => poser({ observations })}
+              onChange={gestes.observations}
             />
           </Field>
         </div>

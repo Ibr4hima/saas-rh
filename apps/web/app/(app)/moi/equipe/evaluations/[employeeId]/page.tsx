@@ -3,7 +3,7 @@
 // La feuille de l'éditeur part avec la page, pas avec l'éditeur chargé à la
 // demande : une feuille venue d'un module différé peut manquer à l'affichage.
 import '@blocknote/mantine/style.css';
-import { use, useEffect, useRef, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -223,6 +223,13 @@ function Remplissage({ vue }: { vue: VueDeGrille }) {
   const manque = ceQuiManque(contenu, vue.commandement);
   const tropLongs = champsTropLongs(contenu);
   useGardeDeSaisie(modifie);
+  // Un seul geste, stable, pour toute la grille : chaque champ y applique sa
+  // modification au dernier état, sans faire redessiner les autres.
+  const changer = useCallback((maj: (c: ContenuDeGrille) => ContenuDeGrille) => {
+    setContenu(maj);
+    setModifie(true);
+    setErreur(null);
+  }, []);
 
   const chemin = `/evaluations/grilles/${vue.employeeId}/${vue.annee}`;
   const rafraichir = async (nouvelle: VueDeGrille) => {
@@ -303,15 +310,7 @@ function Remplissage({ vue }: { vue: VueDeGrille }) {
             )}
           </div>
           <div hidden={valide}>
-            <SaisieDeLaGrille
-              vue={vue}
-              contenu={contenu}
-              onChange={(c) => {
-                setContenu(c);
-                setModifie(true);
-                setErreur(null);
-              }}
-            />
+            <SaisieDeLaGrille vue={vue} contenu={contenu} onChange={changer} />
             <div className="flex flex-col gap-3 border-t border-line-soft px-5 py-4 sm:flex-row sm:items-center sm:gap-5">
               <div className="min-w-0 flex-1 text-[12px] leading-relaxed">
                 {erreur ? (

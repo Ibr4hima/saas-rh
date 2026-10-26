@@ -18,7 +18,7 @@ import {
   useCreateBlockNote,
   useEditorState,
 } from '@blocknote/react';
-import type { KeyboardEvent, MouseEvent } from 'react';
+import { memo, useCallback, useMemo, type KeyboardEvent, type MouseEvent } from 'react';
 import {
   NIVEAU_MAX,
   normaliserTexteRiche,
@@ -280,7 +280,7 @@ const BarreListes = barreDeMiseEnForme(true);
  * compte ses caractères ; au-delà, il passe au rouge et la grille ne
  * s'enregistre plus.
  */
-export default function EditeurRiche({
+function EditeurRiche({
   valeur,
   onChange,
   listes,
@@ -311,6 +311,31 @@ export default function EditeurRiche({
   });
   const longueur = texteBrut(valeur).length;
   const trop = longueur > max;
+  const changement = useCallback(
+    () => onChange(depuisBlockNote(editeur.document as unknown as BlocBN[])),
+    [editeur, onChange],
+  );
+  // L'éditeur ne se redessine pas à chaque frappe : il tient son texte, seul
+  // le compteur suit.
+  const vue = useMemo(
+    () => (
+      <BlockNoteView
+        editor={editeur}
+        theme={theme === 'sombre' ? 'dark' : 'light'}
+        sideMenu={false}
+        slashMenu={false}
+        formattingToolbar={false}
+        emojiPicker={false}
+        filePanel={false}
+        tableHandles={false}
+        linkToolbar={false}
+        onChange={changement}
+      >
+        <FormattingToolbarController formattingToolbar={listes ? BarreListes : BarreTexte} />
+      </BlockNoteView>
+    ),
+    [editeur, theme, listes, changement],
+  );
 
   /**
    * Le clavier d'un formulaire : Tab passe au champ suivant, sauf dans une
@@ -357,20 +382,7 @@ export default function EditeurRiche({
           compact ? 'min-h-[38px]' : 'min-h-[58px]',
         )}
       >
-        <BlockNoteView
-          editor={editeur}
-          theme={theme === 'sombre' ? 'dark' : 'light'}
-          sideMenu={false}
-          slashMenu={false}
-          formattingToolbar={false}
-          emojiPicker={false}
-          filePanel={false}
-          tableHandles={false}
-          linkToolbar={false}
-          onChange={() => onChange(depuisBlockNote(editeur.document as unknown as BlocBN[]))}
-        >
-          <FormattingToolbarController formattingToolbar={listes ? BarreListes : BarreTexte} />
-        </BlockNoteView>
+        {vue}
       </div>
       {longueur >= max * 0.8 ? (
         <p
@@ -385,3 +397,5 @@ export default function EditeurRiche({
     </div>
   );
 }
+
+export default memo(EditeurRiche);

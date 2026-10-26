@@ -1,6 +1,14 @@
 'use client';
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  memo,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import {
   dateEnLettres,
   LIMITES_DE_LA_GRILLE,
@@ -193,7 +201,7 @@ interface Ligne extends ObjectifAVenir {
  * l'un à l'autre. Les objectifs se rangent par échéance quand on quitte la
  * puce de l'échéance : rien ne bouge pendant qu'on la choisit.
  */
-export function EditeurObjectifsAVenir({
+export const EditeurObjectifsAVenir = memo(function EditeurObjectifsAVenir({
   initial,
   annee,
   onChange,
@@ -341,4 +349,4 @@ export function EditeurObjectifsAVenir({
       )}
     </div>
   );
-}
+});
