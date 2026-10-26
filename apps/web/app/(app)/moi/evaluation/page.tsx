@@ -258,7 +258,7 @@ function Ratification({ vue, onRenvoyee }: { vue: VueDeGrille; onRenvoyee: () =>
           onClose={() => setFenetre(null)}
         >
           Votre grille d’évaluation {vue.annee} repart à votre N+1
-          {commentaires.trim() ? ', avec vos commentaires' : ''}. Elle ne se modifie plus.
+          {commentaires.trim() ? ', avec vos commentaires' : ''}. Elle ne pourra plus être modifiée.
         </Confirmation>
       ) : null}
       {fenetre === 'renvoyer' ? (

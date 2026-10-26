@@ -488,8 +488,8 @@ function SuiviDeLaGrille({ vue }: { vue: VueDeGrille }) {
           onClose={() => setConfirmer(null)}
         >
           La grille d’évaluation {vue.annee} de {vue.agent.nom} part à la DCH
-          {vue.etat === 'chez_n2' ? ', sans attendre les commentaires du N+2' : ''}. Elle ne se
-          modifie plus.
+          {vue.etat === 'chez_n2' ? ', sans attendre les commentaires du N+2' : ''}. Elle ne pourra
+          plus être modifiée.
         </Confirmation>
       ) : null}
       {confirmer === 'n2' ? (
@@ -502,7 +502,7 @@ function SuiviDeLaGrille({ vue }: { vue: VueDeGrille }) {
           onClose={() => setConfirmer(null)}
         >
           La grille d’évaluation {vue.annee} de {vue.agent.nom} part à la DCH
-          {commentaires.trim() ? ' avec vos commentaires' : ''}. Elle ne se modifie plus.
+          {commentaires.trim() ? ' avec vos commentaires' : ''}. Elle ne pourra plus être modifiée.
         </Confirmation>
       ) : null}
     </>
