@@ -60,8 +60,9 @@ import { RechercheDuTableau, SqueletteTableau } from '../../../components/tablea
    l'agent change avec, comme si le choix y avait été fait.
 
    Le tableau ne garde que deux statuts : un agent est évalué quand sa grille
-   est transmise à la DCH, non évalué avant. Les étapes du circuit restent
-   au N+1 ; l'en-tête en compte les grandes lignes.
+   est transmise à la DCH, non évalué avant ; « En retard » s'y ajoute passé
+   la fin de la période. Les étapes du circuit restent au N+1 ; l'en-tête en
+   compte les grandes lignes.
 */
 
 type Filtre = 'tous' | 'evalues' | 'non_evalues' | 'en_retard';
@@ -324,11 +325,18 @@ export default function EvaluationPage() {
                   <Td className="max-lg:hidden">{l.n1}</Td>
                   <Td className="max-sm:hidden">{choixDuPersonnel(l)}</Td>
                   <Td>
-                    {evalue(l) ? (
-                      <Badge tone="vert">Évalué</Badge>
-                    ) : (
-                      <Badge tone="gris">Non évalué</Badge>
-                    )}
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {evalue(l) ? (
+                        <Badge tone="vert">Évalué</Badge>
+                      ) : (
+                        <Badge tone="gris">Non évalué</Badge>
+                      )}
+                      {l.enRetard ? (
+                        <span className="text-[11.5px] font-semibold text-accent-text">
+                          En retard
+                        </span>
+                      ) : null}
+                    </span>
                   </Td>
                   {/* Le jour où la grille est arrivée à la DCH. */}
                   <Td className="text-ink-muted tabular-nums max-sm:hidden">
